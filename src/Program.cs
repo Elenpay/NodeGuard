@@ -16,16 +16,32 @@ namespace Company.WebApplication1
             var builder = WebApplication.CreateBuilder(args);
 
             // Add services to the container.
-            var connectionString = builder.Configuration.GetConnectionString("DefaultConnection") ?? throw new InvalidOperationException("Connection string 'DefaultConnection' not found.");
-            builder.Services.AddDbContext<ApplicationDbContext>(options =>
-                options.UseSqlServer(connectionString));
+
             builder.Services.AddDatabaseDeveloperPageExceptionFilter();
-            builder.Services.AddDefaultIdentity<IdentityUser>(options => options.SignIn.RequireConfirmedAccount = true)
+            builder.Services.AddDefaultIdentity<IdentityUser>(options => options.SignIn.RequireConfirmedAccount = false)
                 .AddEntityFrameworkStores<ApplicationDbContext>();
             builder.Services.AddRazorPages();
-            builder.Services.AddServerSideBlazor();
+            builder.Services.AddServerSideBlazor().AddCircuitOptions(options => { options.DetailedErrors = true; });
             builder.Services.AddScoped<AuthenticationStateProvider, RevalidatingIdentityAuthenticationStateProvider<IdentityUser>>();
-            builder.Services.AddSingleton<WeatherForecastService>();
+
+            //DbContext
+            var connectionString = Environment.GetEnvironmentVariable("POSTGRES_CONNECTIONSTRING") ?? "Host=localhost;Port=35432;Database=fundsmanager;Username=rw_dev;Password=rw_dev";
+            builder.Services.AddDbContext<ApplicationDbContext>(options =>
+            {
+                //options.EnableSensitiveDataLogging();
+                //options.EnableDetailedErrors();
+                options.UseNpgsql(connectionString);
+            }, ServiceLifetime.Transient);
+
+            //DBContextFactory
+            builder.Services.AddDbContextFactory<ApplicationDbContext>(
+                options =>
+                {
+                    //options.EnableSensitiveDataLogging();
+                    //options.EnableDetailedErrors();
+                    options.UseNpgsql(connectionString);
+                }, ServiceLifetime.Transient);
+
 
             var app = builder.Build();
 

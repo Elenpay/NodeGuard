@@ -1,0 +1,5 @@
+docker/bin/
+.vs/
+docker/obj/
+src/bin/
+src/obj/
