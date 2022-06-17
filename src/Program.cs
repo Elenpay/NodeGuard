@@ -1,3 +1,6 @@
+using Blazorise;
+using Blazorise.Bootstrap;
+using Blazorise.Icons.FontAwesome;
 using FundsManager.Areas.Identity;
 using FundsManager.Data;
 using Microsoft.AspNetCore.Components;
@@ -41,6 +44,16 @@ namespace Company.WebApplication1
                     //options.EnableDetailedErrors();
                     options.UseNpgsql(connectionString);
                 }, ServiceLifetime.Transient);
+
+            //Blazorise
+
+            builder.Services
+                .AddBlazorise(options =>
+                {
+                    options.Immediate = true;
+                })
+                .AddBootstrapProviders()
+                .AddFontAwesomeIcons();
 
 
             var app = builder.Build();
