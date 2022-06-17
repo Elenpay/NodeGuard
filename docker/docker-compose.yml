@@ -9,6 +9,8 @@ services:
     build:
       context: ..
       dockerfile: src/Dockerfile
+    ports:
+        - "35433:5432"
     environment:
         POSTGRES_CONNECTIONSTRING: Host=127.0.0.1;Port=5432;Database=fundsmanager;Username=rw_dev;Password=rw_dev
 

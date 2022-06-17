@@ -25,7 +25,7 @@ namespace Company.WebApplication1
             builder.Services.AddScoped<AuthenticationStateProvider, RevalidatingIdentityAuthenticationStateProvider<IdentityUser>>();
 
             //DbContext
-            var connectionString = Environment.GetEnvironmentVariable("POSTGRES_CONNECTIONSTRING") ?? "Host=localhost;Port=35432;Database=fundsmanager;Username=rw_dev;Password=rw_dev";
+            var connectionString = Environment.GetEnvironmentVariable("POSTGRES_CONNECTIONSTRING") ?? "Host=localhost;Port=35433;Database=fundsmanager;Username=rw_dev;Password=rw_dev";
             builder.Services.AddDbContext<ApplicationDbContext>(options =>
             {
                 //options.EnableSensitiveDataLogging();
