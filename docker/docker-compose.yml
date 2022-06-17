@@ -14,7 +14,7 @@ services:
     environment:
         POSTGRES_CONNECTIONSTRING: Host=127.0.0.1;Port=5432;Database=fundsmanager;Username=rw_dev;Password=rw_dev
 
-  internaltools_postgres:
+  fundsmanager_postgres:
     container_name: fundsmanager_postgres
     image: postgres:13
     restart: always
