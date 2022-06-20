@@ -1,0 +1,31 @@
+version: '3.4'
+
+services:
+  fundsmanager:
+    container_name: fundsmanager
+    hostname: fundsmanager
+    restart: always
+    image: fundsmanager
+    build:
+      context: ..
+      dockerfile: src/Dockerfile
+    ports:
+        - "35433:5432"
+    environment:
+        POSTGRES_CONNECTIONSTRING: Host=127.0.0.1;Port=5432;Database=fundsmanager;Username=rw_dev;Password=rw_dev
+
+  fundsmanager_postgres:
+    container_name: fundsmanager_postgres
+    image: postgres:13
+    restart: always
+    network_mode: service:fundsmanager
+    environment: 
+      POSTGRES_DB: fundsmanager
+      POSTGRES_USER: rw_dev
+      POSTGRES_PASSWORD: rw_dev
+      TZ: Europe/Madrid
+    volumes:
+      - fundsmanager_postgres_data:/var/lib/postgresql/data
+
+volumes:
+    fundsmanager_postgres_data:
