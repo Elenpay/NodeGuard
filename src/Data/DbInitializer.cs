@@ -1,4 +1,5 @@
-﻿using Microsoft.EntityFrameworkCore;
+﻿using Microsoft.AspNetCore.Identity;
+using Microsoft.EntityFrameworkCore;
 
 namespace FundsManager.Data
 {
@@ -8,6 +9,8 @@ namespace FundsManager.Data
         {
             //DI
             var applicationDbContext = serviceProvider.GetRequiredService<ApplicationDbContext>();
+
+
 
             //Migrations
             var isConnected = false;
@@ -24,6 +27,28 @@ namespace FundsManager.Data
                 Thread.Sleep(1_000);
 
             }
+
+            //Roles
+
+            applicationDbContext.Roles.Add(new IdentityRole
+            {
+                Name = ApplicationUserRole.NodeManager.ToString("G"),
+                NormalizedName = ApplicationUserRole.NodeManager.ToString("G").ToUpper()
+            });
+            
+            applicationDbContext.Roles.Add(new IdentityRole
+            {
+                Name = ApplicationUserRole.Superadmin.ToString("G"),
+                NormalizedName = ApplicationUserRole.Superadmin.ToString("G").ToUpper()
+            }); 
+
+            applicationDbContext.Roles.Add(new IdentityRole
+            {
+                Name = ApplicationUserRole.TrustedFinanceUser.ToString("G"),
+                NormalizedName = ApplicationUserRole.TrustedFinanceUser.ToString("G").ToUpper()
+            });
+
+            applicationDbContext.SaveChanges();
         }
     }
 }
