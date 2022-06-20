@@ -2,6 +2,10 @@
 
 namespace FundsManager.Data
 {
+    public enum ApplicationUserRole
+    {
+        NodeManager, TrustedFinanceUser, Superadmin
+    }
     public class ApplicationUser : IdentityUser
     {
 
