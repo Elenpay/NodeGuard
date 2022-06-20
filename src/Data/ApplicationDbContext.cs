@@ -9,5 +9,9 @@ namespace FundsManager.Data
             : base(options)
         {
         }
+
+        public DbSet<ApplicationUser> ApplicationUsers { get; set; }
+
+        public DbSet<Key> Keys { get; set; }
     }
 }
