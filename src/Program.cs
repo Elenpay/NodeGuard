@@ -20,8 +20,9 @@ namespace Company.WebApplication1
 
             // Add services to the container.
 
-            builder.Services.AddDatabaseDeveloperPageExceptionFilter();
+                builder.Services.AddDatabaseDeveloperPageExceptionFilter();
             builder.Services.AddDefaultIdentity<IdentityUser>(options => options.SignIn.RequireConfirmedAccount = false)
+                .AddRoles<IdentityRole>().AddRoleManager<RoleManager<IdentityRole>>()
                 .AddEntityFrameworkStores<ApplicationDbContext>();
             builder.Services.AddRazorPages();
             builder.Services.AddServerSideBlazor().AddCircuitOptions(options => { options.DetailedErrors = true; });
@@ -57,6 +58,24 @@ namespace Company.WebApplication1
 
 
             var app = builder.Build();
+
+
+            //DbInitialisation & Migrations
+
+            using (var scope = app.Services.CreateScope())
+            {
+                var servicesProvider = scope.ServiceProvider;
+                try
+                {
+                    DbInitializer.Initialize(servicesProvider);
+                }
+                catch (Exception ex)
+                {
+                    var logger = servicesProvider.GetRequiredService<ILogger<Program>>();
+                    logger.LogError(ex, "An error occurred while seeding the database.");
+                    throw;
+                }
+            }
 
             // Configure the HTTP request pipeline.
             if (app.Environment.IsDevelopment())
