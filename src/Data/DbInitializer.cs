@@ -29,24 +29,39 @@ namespace FundsManager.Data
             }
 
             //Roles
+            const ApplicationUserRole nodeManager = ApplicationUserRole.NodeManager;
 
-            applicationDbContext.Roles.Add(new IdentityRole
+            var roles = applicationDbContext.Roles.ToList();
+            if (roles.FirstOrDefault(x=> x.Name == nodeManager.ToString("G")) == null)
             {
-                Name = ApplicationUserRole.NodeManager.ToString("G"),
-                NormalizedName = ApplicationUserRole.NodeManager.ToString("G").ToUpper()
-            });
-            
-            applicationDbContext.Roles.Add(new IdentityRole
-            {
-                Name = ApplicationUserRole.Superadmin.ToString("G"),
-                NormalizedName = ApplicationUserRole.Superadmin.ToString("G").ToUpper()
-            }); 
+                applicationDbContext.Roles.Add(new IdentityRole
+                {
+                    Name = nodeManager.ToString("G"),
+                    NormalizedName = nodeManager.ToString("G").ToUpper()
+                });
+            }
 
-            applicationDbContext.Roles.Add(new IdentityRole
+            const ApplicationUserRole superadmin = ApplicationUserRole.Superadmin;
+
+            if (roles.FirstOrDefault(x => x.Name == superadmin.ToString("G")) == null)
             {
-                Name = ApplicationUserRole.TrustedFinanceUser.ToString("G"),
-                NormalizedName = ApplicationUserRole.TrustedFinanceUser.ToString("G").ToUpper()
-            });
+                applicationDbContext.Roles.Add(new IdentityRole
+                {
+                    Name = superadmin.ToString("G"),
+                    NormalizedName = superadmin.ToString("G").ToUpper()
+                });
+            }
+
+            const ApplicationUserRole trustedFinanceUser = ApplicationUserRole.TrustedFinanceUser;
+
+            if (roles.FirstOrDefault(x => x.Name == trustedFinanceUser.ToString("G")) == null)
+            {
+                applicationDbContext.Roles.Add(new IdentityRole
+                {
+                    Name = trustedFinanceUser.ToString("G"),
+                    NormalizedName = trustedFinanceUser.ToString("G").ToUpper()
+                });
+            }
 
             applicationDbContext.SaveChanges();
         }
