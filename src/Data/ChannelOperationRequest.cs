@@ -32,8 +32,9 @@ namespace FundsManager.Data
 
         public ICollection<ChannelOperationRequestSignature> ChannelOperationRequestSignatures { get; set; }
 
-        public string? WalletId { get; set; }
-        public Wallet? Wallet { get; set; }
+        public int WalletId { get; set; }
+        public Wallet Wallet { get; set; }
+
         public int SourceNodeId { get; set; }
         public Node SourceNode { get; set; }
         public int DestNodeId { get; set; }
