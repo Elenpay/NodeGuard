@@ -197,12 +197,6 @@ namespace FundsManager.Migrations
                         .IsRequired()
                         .HasColumnType("text");
 
-                    b.Property<string>("WalletId")
-                        .HasColumnType("text");
-
-                    b.Property<int?>("WalletId1")
-                        .HasColumnType("integer");
-
                     b.Property<string>("XPUB")
                         .IsRequired()
                         .HasColumnType("text");
@@ -210,8 +204,6 @@ namespace FundsManager.Migrations
                     b.HasKey("Id");
 
                     b.HasIndex("UserId");
-
-                    b.HasIndex("WalletId1");
 
                     b.ToTable("Keys");
                 });
@@ -284,6 +276,21 @@ namespace FundsManager.Migrations
                     b.HasKey("Id");
 
                     b.ToTable("Wallets");
+                });
+
+            modelBuilder.Entity("KeyWallet", b =>
+                {
+                    b.Property<int>("KeysId")
+                        .HasColumnType("integer");
+
+                    b.Property<int>("WalletsId")
+                        .HasColumnType("integer");
+
+                    b.HasKey("KeysId", "WalletsId");
+
+                    b.HasIndex("WalletsId");
+
+                    b.ToTable("KeyWallet");
                 });
 
             modelBuilder.Entity("Microsoft.AspNetCore.Identity.IdentityRole", b =>
@@ -576,13 +583,22 @@ namespace FundsManager.Migrations
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
 
-                    b.HasOne("FundsManager.Data.Wallet", "Wallet")
-                        .WithMany("Keys")
-                        .HasForeignKey("WalletId1");
-
                     b.Navigation("User");
+                });
 
-                    b.Navigation("Wallet");
+            modelBuilder.Entity("KeyWallet", b =>
+                {
+                    b.HasOne("FundsManager.Data.Key", null)
+                        .WithMany()
+                        .HasForeignKey("KeysId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("FundsManager.Data.Wallet", null)
+                        .WithMany()
+                        .HasForeignKey("WalletsId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
                 });
 
             modelBuilder.Entity("Microsoft.AspNetCore.Identity.IdentityRoleClaim<string>", b =>
@@ -656,8 +672,6 @@ namespace FundsManager.Migrations
             modelBuilder.Entity("FundsManager.Data.Wallet", b =>
                 {
                     b.Navigation("ChannelOperationRequestsAsSource");
-
-                    b.Navigation("Keys");
                 });
 
             modelBuilder.Entity("FundsManager.Data.ApplicationUser", b =>
