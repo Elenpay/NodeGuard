@@ -5,10 +5,11 @@ namespace FundsManager.Data
     public class ApplicationUser : IdentityUser
     {
 
-
-        #region Relationships
-
-        public List<Key> Keys { get; set; }
+        
+        #region Relationships 
+        public ICollection<Key> Keys { get; set; }
+        public ICollection<ChannelOperationRequest> ChannelOperationRequests { get; set; }
+        public ICollection<Node> Nodes { get; set; }
 
         #endregion
     }

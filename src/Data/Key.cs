@@ -17,6 +17,9 @@
         public string? UserId { get; set; }
         public ApplicationUser? User { get; set; }
 
+        public string? WalletId { get; set; }
+        public Wallet? Wallet { get; set; }
+
         #endregion
     }
 }
