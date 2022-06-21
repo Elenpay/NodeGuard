@@ -26,7 +26,6 @@ namespace FundsManager.Data
             //    .HasMany(node => node.ChannelOperationRequestsAsDestination)
             //    .WithOne(cor => cor.DestNode)
             //    .HasForeignKey(cor => cor.DestNode);
-            modelBuilder.Entity<Node>().Ignore(node => node.ChannelOperationRequestsAsDestination);
 
             modelBuilder.Entity<ChannelOperationRequest>()
                 .HasOne(cor => cor.SourceNode)
