@@ -2,7 +2,7 @@
 namespace FundsManager.Data
 {
 
-    public enum ChannelOperationRequestStatus: ushort
+    public enum ChannelOperationRequestStatus
     {
         Pending = 0,
         Approved = 1,
@@ -10,7 +10,7 @@ namespace FundsManager.Data
         Rejected = 3
     }
 
-    public enum OperationRequestType: ushort
+    public enum OperationRequestType
     {
         Open = 1,
         Close = 2
