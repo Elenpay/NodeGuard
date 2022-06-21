@@ -9,7 +9,7 @@
     {
         public string Name { get; set; }
 
-        public string MofN { get; set; }
+        public int MofN { get; set; }
 
         public string Description { get; set; }
 
