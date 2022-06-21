@@ -10,7 +10,7 @@ namespace FundsManager.Data
         Rejected = 3
     }
 
-    public enum OperationRequestType: ushort
+    public enum OperationRequestType
     {
         Open = 1,
         Close = 2
