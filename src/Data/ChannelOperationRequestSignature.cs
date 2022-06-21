@@ -8,8 +8,8 @@
 
         #region Relationships
 
-        public string? ChannelOpenRequestId { get; set; }
-        public ChannelOperationRequest? ChannelOperationRequest { get; set; }
+        public int ChannelOpenRequestId { get; set; }
+        public ChannelOperationRequest ChannelOperationRequest { get; set; }
 
         #endregion
     }
