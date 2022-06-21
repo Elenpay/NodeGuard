@@ -1,5 +1,4 @@
-﻿
-namespace FundsManager.Data
+﻿namespace FundsManager.Data.Models
 {
 
     public enum ChannelOperationRequestStatus
@@ -24,7 +23,7 @@ namespace FundsManager.Data
 
         public string AmountCryptoUnit { get; set; } // TODO worth an enum?
 
-        public ChannelOperationRequestStatus status { get; set; }
+        public ChannelOperationRequestStatus Status { get; set; }
 
         public OperationRequestType RequestType { get; set; }
 
@@ -40,7 +39,7 @@ namespace FundsManager.Data
         public int DestNodeId { get; set; }
         public Node DestNode { get; set; }
         public string UserId { get; set; }
-        public ApplicationUser? User { get; set; }
+        public ApplicationUser User { get; set; }
         public int ChannelId { get; set; }
         public Channel Channel { get; set; }
 

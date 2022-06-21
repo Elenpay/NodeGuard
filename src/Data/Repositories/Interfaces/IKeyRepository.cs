@@ -1,4 +1,6 @@
-﻿namespace FundsManager.Data.Repositories.Interfaces;
+﻿using FundsManager.Data.Models;
+
+namespace FundsManager.Data.Repositories.Interfaces;
 
 public interface IKeyRepository
 {

@@ -1,7 +1,6 @@
-﻿
-using System.ComponentModel.DataAnnotations;
+﻿using System.ComponentModel.DataAnnotations;
 
-namespace FundsManager.Data
+namespace FundsManager.Data.Models
 {
     public class Channel : Entity
     {

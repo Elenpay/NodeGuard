@@ -1,4 +1,4 @@
-﻿namespace FundsManager.Data
+﻿namespace FundsManager.Data.Models
 {
     public class Key : Entity
     {
@@ -13,7 +13,7 @@
         public bool IsCompromised { get; set; }
 
         #region Relationships
-        
+
         public string UserId { get; set; }
         public ApplicationUser User { get; set; }
 

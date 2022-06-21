@@ -1,6 +1,6 @@
 ﻿using Microsoft.AspNetCore.Identity;
 
-namespace FundsManager.Data
+namespace FundsManager.Data.Models
 {
     public enum ApplicationUserRole
     {
@@ -9,7 +9,7 @@ namespace FundsManager.Data
     public class ApplicationUser : IdentityUser
     {
 
-        
+
         #region Relationships 
         public ICollection<Key> Keys { get; set; }
         public ICollection<ChannelOperationRequest> ChannelOperationRequests { get; set; }
@@ -19,4 +19,4 @@ namespace FundsManager.Data
     }
 }
 
-  
+

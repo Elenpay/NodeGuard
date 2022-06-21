@@ -1,4 +1,4 @@
-﻿namespace FundsManager.Data
+﻿namespace FundsManager.Data.Models
 {
     public class ChannelOperationRequestSignature : Entity
     {

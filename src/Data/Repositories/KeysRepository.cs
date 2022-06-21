@@ -1,4 +1,5 @@
-﻿using FundsManager.Data.Repositories.Interfaces;
+﻿using FundsManager.Data.Models;
+using FundsManager.Data.Repositories.Interfaces;
 using Microsoft.EntityFrameworkCore;
 
 namespace FundsManager.Data.Repositories
