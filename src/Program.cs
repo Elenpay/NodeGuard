@@ -3,14 +3,13 @@ using Blazorise.Bootstrap;
 using Blazorise.Icons.FontAwesome;
 using FundsManager.Areas.Identity;
 using FundsManager.Data;
-using Microsoft.AspNetCore.Components;
+using FundsManager.Data.Repositories;
+using FundsManager.Data.Repositories.Interfaces;
 using Microsoft.AspNetCore.Components.Authorization;
-using Microsoft.AspNetCore.Components.Web;
 using Microsoft.AspNetCore.Identity;
-using Microsoft.AspNetCore.Identity.UI;
 using Microsoft.EntityFrameworkCore;
 
-namespace Company.WebApplication1
+namespace FundsManager
 {
     public class Program
     {
@@ -22,10 +21,22 @@ namespace Company.WebApplication1
 
             builder.Services.AddDatabaseDeveloperPageExceptionFilter();
             builder.Services.AddDefaultIdentity<IdentityUser>(options => options.SignIn.RequireConfirmedAccount = false)
+                .AddRoles<IdentityRole>().AddRoleManager<RoleManager<IdentityRole>>()
                 .AddEntityFrameworkStores<ApplicationDbContext>();
             builder.Services.AddRazorPages();
             builder.Services.AddServerSideBlazor().AddCircuitOptions(options => { options.DetailedErrors = true; });
             builder.Services.AddScoped<AuthenticationStateProvider, RevalidatingIdentityAuthenticationStateProvider<IdentityUser>>();
+
+            //Dependency Injection 
+
+            //Repos DI
+            builder.Services.AddTransient<IApplicationUserRepository, ApplicationUserRepository>();
+            builder.Services.AddTransient<IChannelOperationRequestRepository, ChannelOperationRequestRepository>();
+            builder.Services.AddTransient<IChannelOperationRequestSignatureRepository, ChannelOperationRequestSignatureRepository>();
+            builder.Services.AddTransient<IChannelRepository, ChannelRepository>();
+            builder.Services.AddTransient<IKeyRepository, KeyRepository>();
+            builder.Services.AddTransient<INodeRepository, NodeRepository>();
+            builder.Services.AddTransient<IWalletRepository, WalletRepository>();
 
             //DbContext
             var connectionString = Environment.GetEnvironmentVariable("POSTGRES_CONNECTIONSTRING") ?? "Host=localhost;Port=35433;Database=fundsmanager;Username=rw_dev;Password=rw_dev";
@@ -57,6 +68,24 @@ namespace Company.WebApplication1
 
 
             var app = builder.Build();
+
+
+            //DbInitialisation & Migrations
+
+            using (var scope = app.Services.CreateScope())
+            {
+                var servicesProvider = scope.ServiceProvider;
+                try
+                {
+                    DbInitializer.Initialize(servicesProvider);
+                }
+                catch (Exception ex)
+                {
+                    var logger = servicesProvider.GetRequiredService<ILogger<Program>>();
+                    logger.LogError(ex, "An error occurred while seeding the database.");
+                    throw;
+                }
+            }
 
             // Configure the HTTP request pipeline.
             if (app.Environment.IsDevelopment())

@@ -3,6 +3,7 @@ using System;
 using FundsManager.Data;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 
@@ -11,9 +12,10 @@ using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 namespace FundsManager.Migrations
 {
     [DbContext(typeof(ApplicationDbContext))]
-    partial class ApplicationDbContextModelSnapshot : ModelSnapshot
+    [Migration("20220621011710_AddedRelationships")]
+    partial class AddedRelationships
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -83,7 +85,10 @@ namespace FundsManager.Migrations
                         .IsRequired()
                         .HasColumnType("text");
 
-                    b.Property<int>("ChannelId")
+                    b.Property<string>("ChannelId")
+                        .HasColumnType("text");
+
+                    b.Property<int?>("ChannelId1")
                         .HasColumnType("integer");
 
                     b.Property<DateTimeOffset>("CreationDatetime")
@@ -109,7 +114,10 @@ namespace FundsManager.Migrations
                         .IsRequired()
                         .HasColumnType("text");
 
-                    b.Property<int>("WalletId")
+                    b.Property<string>("WalletId")
+                        .HasColumnType("text");
+
+                    b.Property<int?>("WalletId1")
                         .HasColumnType("integer");
 
                     b.Property<int>("status")
@@ -117,7 +125,7 @@ namespace FundsManager.Migrations
 
                     b.HasKey("Id");
 
-                    b.HasIndex("ChannelId");
+                    b.HasIndex("ChannelId1");
 
                     b.HasIndex("DestNodeId");
 
@@ -125,7 +133,7 @@ namespace FundsManager.Migrations
 
                     b.HasIndex("UserId");
 
-                    b.HasIndex("WalletId");
+                    b.HasIndex("WalletId1");
 
                     b.ToTable("ChannelOperationRequests");
                 });
@@ -138,10 +146,10 @@ namespace FundsManager.Migrations
 
                     NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
 
-                    b.Property<int>("ChannelOpenRequestId")
-                        .HasColumnType("integer");
+                    b.Property<string>("ChannelOpenRequestId")
+                        .HasColumnType("text");
 
-                    b.Property<int>("ChannelOperationRequestId")
+                    b.Property<int?>("ChannelOperationRequestId")
                         .HasColumnType("integer");
 
                     b.Property<DateTimeOffset>("CreationDatetime")
@@ -194,8 +202,13 @@ namespace FundsManager.Migrations
                         .HasColumnType("timestamp with time zone");
 
                     b.Property<string>("UserId")
-                        .IsRequired()
                         .HasColumnType("text");
+
+                    b.Property<string>("WalletId")
+                        .HasColumnType("text");
+
+                    b.Property<int?>("WalletId1")
+                        .HasColumnType("integer");
 
                     b.Property<string>("XPUB")
                         .IsRequired()
@@ -204,6 +217,8 @@ namespace FundsManager.Migrations
                     b.HasKey("Id");
 
                     b.HasIndex("UserId");
+
+                    b.HasIndex("WalletId1");
 
                     b.ToTable("Keys");
                 });
@@ -260,8 +275,9 @@ namespace FundsManager.Migrations
                     b.Property<bool>("IsCompromised")
                         .HasColumnType("boolean");
 
-                    b.Property<int>("MofN")
-                        .HasColumnType("integer");
+                    b.Property<string>("MofN")
+                        .IsRequired()
+                        .HasColumnType("text");
 
                     b.Property<string>("Name")
                         .IsRequired()
@@ -276,21 +292,6 @@ namespace FundsManager.Migrations
                     b.HasKey("Id");
 
                     b.ToTable("Wallets");
-                });
-
-            modelBuilder.Entity("KeyWallet", b =>
-                {
-                    b.Property<int>("KeysId")
-                        .HasColumnType("integer");
-
-                    b.Property<int>("WalletsId")
-                        .HasColumnType("integer");
-
-                    b.HasKey("KeysId", "WalletsId");
-
-                    b.HasIndex("WalletsId");
-
-                    b.ToTable("KeyWallet");
                 });
 
             modelBuilder.Entity("Microsoft.AspNetCore.Identity.IdentityRole", b =>
@@ -525,9 +526,7 @@ namespace FundsManager.Migrations
                 {
                     b.HasOne("FundsManager.Data.Channel", "Channel")
                         .WithMany("ChannelOperationRequests")
-                        .HasForeignKey("ChannelId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
+                        .HasForeignKey("ChannelId1");
 
                     b.HasOne("FundsManager.Data.Node", "DestNode")
                         .WithMany("ChannelOperationRequestsAsDestination")
@@ -549,9 +548,7 @@ namespace FundsManager.Migrations
 
                     b.HasOne("FundsManager.Data.Wallet", "Wallet")
                         .WithMany("ChannelOperationRequestsAsSource")
-                        .HasForeignKey("WalletId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
+                        .HasForeignKey("WalletId1");
 
                     b.Navigation("Channel");
 
@@ -568,9 +565,7 @@ namespace FundsManager.Migrations
                 {
                     b.HasOne("FundsManager.Data.ChannelOperationRequest", "ChannelOperationRequest")
                         .WithMany("ChannelOperationRequestSignatures")
-                        .HasForeignKey("ChannelOperationRequestId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
+                        .HasForeignKey("ChannelOperationRequestId");
 
                     b.Navigation("ChannelOperationRequest");
                 });
@@ -579,26 +574,15 @@ namespace FundsManager.Migrations
                 {
                     b.HasOne("FundsManager.Data.ApplicationUser", "User")
                         .WithMany("Keys")
-                        .HasForeignKey("UserId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
+                        .HasForeignKey("UserId");
+
+                    b.HasOne("FundsManager.Data.Wallet", "Wallet")
+                        .WithMany("Keys")
+                        .HasForeignKey("WalletId1");
 
                     b.Navigation("User");
-                });
 
-            modelBuilder.Entity("KeyWallet", b =>
-                {
-                    b.HasOne("FundsManager.Data.Key", null)
-                        .WithMany()
-                        .HasForeignKey("KeysId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
-
-                    b.HasOne("FundsManager.Data.Wallet", null)
-                        .WithMany()
-                        .HasForeignKey("WalletsId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
+                    b.Navigation("Wallet");
                 });
 
             modelBuilder.Entity("Microsoft.AspNetCore.Identity.IdentityRoleClaim<string>", b =>
@@ -672,6 +656,8 @@ namespace FundsManager.Migrations
             modelBuilder.Entity("FundsManager.Data.Wallet", b =>
                 {
                     b.Navigation("ChannelOperationRequestsAsSource");
+
+                    b.Navigation("Keys");
                 });
 
             modelBuilder.Entity("FundsManager.Data.ApplicationUser", b =>
