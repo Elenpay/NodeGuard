@@ -30,6 +30,7 @@ namespace FundsManager
             //Dependency Injection 
 
             //Repos DI
+            builder.Services.AddTransient(typeof(IRepository<>), typeof(Repository<>));
             builder.Services.AddTransient<IApplicationUserRepository, ApplicationUserRepository>();
             builder.Services.AddTransient<IChannelOperationRequestRepository, ChannelOperationRequestRepository>();
             builder.Services.AddTransient<IChannelOperationRequestSignatureRepository, ChannelOperationRequestSignatureRepository>();
