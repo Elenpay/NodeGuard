@@ -14,6 +14,10 @@ FundsManager is a web-app to control, audit and manage the governance of a Light
 - Docker desktop
 - Dotnet SDK 6+
 - Dotnet-ef global tool
+- Polar
+
+## Test network
+- Import network file to Polar from devnetwork.zip (on the root of this repo)
 
 ## Migrations
 
