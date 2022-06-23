@@ -19,7 +19,7 @@
     {
         public decimal Amount { get; set; }
 
-        public string Description { get; set; }
+        public string? Description { get; set; }
 
         public string AmountCryptoUnit { get; set; } // TODO worth an enum?
 

@@ -33,4 +33,8 @@
     <Protobuf Include="lnd\lnrpc\lightning.proto" GrpcServices="Client" />
   </ItemGroup>
 
+  <ItemGroup>
+    <Folder Include="Migrations\" />
+  </ItemGroup>
+
 </Project>

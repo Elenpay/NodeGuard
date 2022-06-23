@@ -11,7 +11,7 @@
 
         public int MofN { get; set; }
 
-        public string Description { get; set; }
+        public string? Description { get; set; }
 
         public bool IsArchived { get; set; }
 

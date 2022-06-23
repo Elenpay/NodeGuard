@@ -56,12 +56,15 @@ namespace FundsManager.Migrations
                         .IsRequired()
                         .HasColumnType("text");
 
-                    b.Property<string>("ChannelPoint")
+                    b.Property<DateTimeOffset>("CreationDatetime")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("FundingTx")
                         .IsRequired()
                         .HasColumnType("text");
 
-                    b.Property<DateTimeOffset>("CreationDatetime")
-                        .HasColumnType("timestamp with time zone");
+                    b.Property<long>("FundingTxOutputIndex")
+                        .HasColumnType("bigint");
 
                     b.Property<DateTimeOffset>("UpdateDatetime")
                         .HasColumnType("timestamp with time zone");
@@ -93,7 +96,6 @@ namespace FundsManager.Migrations
                         .HasColumnType("timestamp with time zone");
 
                     b.Property<string>("Description")
-                        .IsRequired()
                         .HasColumnType("text");
 
                     b.Property<int>("DestNodeId")
@@ -183,7 +185,6 @@ namespace FundsManager.Migrations
                         .HasColumnType("timestamp with time zone");
 
                     b.Property<string>("Description")
-                        .IsRequired()
                         .HasColumnType("text");
 
                     b.Property<bool>("IsArchived")
@@ -222,10 +223,17 @@ namespace FundsManager.Migrations
 
                     NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
 
+                    b.Property<string>("ChannelAdminMacaroon")
+                        .IsRequired()
+                        .HasColumnType("text");
+
                     b.Property<DateTimeOffset>("CreationDatetime")
                         .HasColumnType("timestamp with time zone");
 
                     b.Property<string>("Description")
+                        .HasColumnType("text");
+
+                    b.Property<string>("Endpoint")
                         .IsRequired()
                         .HasColumnType("text");
 
@@ -257,7 +265,6 @@ namespace FundsManager.Migrations
                         .HasColumnType("timestamp with time zone");
 
                     b.Property<string>("Description")
-                        .IsRequired()
                         .HasColumnType("text");
 
                     b.Property<bool>("IsArchived")
