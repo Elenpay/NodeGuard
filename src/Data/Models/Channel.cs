@@ -6,7 +6,9 @@ namespace FundsManager.Data.Models
     {
         public string ChannelPoint { get; set; }
         public string ChannelId { get; set; }
-        public string Capacity { get; set; }
+        public decimal Capacity { get; set; }
+
+        public string BtcCloseAddress { get; set; }
 
         #region Relationships
 
