@@ -1,4 +1,5 @@
-﻿using System.Text;
+﻿using System.Buffers.Text;
+using System.Text;
 using FundsManager.Data.Models;
 using FundsManager.Data.Repositories.Interfaces;
 using Google.Protobuf;
@@ -97,16 +98,17 @@ namespace FundsManager.Services
                     //    { BasePsbt = ByteString.Empty, NoPublish = false, PendingChanId = ByteString.Empty }
                     //},
                     //TODO Convert to satoshis with LightMoney
-                    LocalFundingAmount = (long)channelOperationRequest.Amount,
+                    LocalFundingAmount = channelOperationRequest.SatsAmount,
                     //TODO Close address
                     //CloseAddress = "bc1...003"
                     Private = channelOperationRequest.IsChannelPrivate,
-                    //NodePubkey = ByteString.CopyFrom(Encoding.UTF8.GetBytes(destination.PubKey)),
-                    NodePubkeyString = destination.PubKey
+                    NodePubkey = ByteString.CopyFrom(Convert.FromHexString(destination.PubKey)),
+
 
                 };
+               
 
-                 var openChannelResult = await client.OpenChannelSyncAsync(openChannelRequest, new Metadata{ {"macaroon", source.ChannelAdminMacaroon} }
+                var openChannelResult = await client.OpenChannelSyncAsync(openChannelRequest, new Metadata{ {"macaroon", source.ChannelAdminMacaroon} }
                 );
 
                 _logger.LogInformation("Opened channel on channel point:{}:{} request id:{} from node:{} to node:{}",
@@ -118,11 +120,15 @@ namespace FundsManager.Services
 
                 //Channel creation
 
+                //FundingTxidbytes to hex string
+
+                var fundingTxid = Convert.ToHexString(openChannelResult.FundingTxidBytes.ToByteArray());
+
                 var channel = new Channel
                 {
-                    Capacity = channelOperationRequest.Amount,
+                    Capacity = channelOperationRequest.SatsAmount,
                     //TODO Channel id retrieval it is not on the result from the open channel
-                    FundingTx = openChannelResult.FundingTxidStr, //TODO Validate this data (?)
+                    FundingTx = fundingTxid, //TODO Validate this data (?)
                     FundingTxOutputIndex = openChannelResult.OutputIndex,
                     CreationDatetime = DateTimeOffset.Now,
                     UpdateDatetime = DateTimeOffset.Now,

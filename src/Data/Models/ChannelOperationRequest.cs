@@ -17,7 +17,10 @@
 
     public class ChannelOperationRequest : Entity
     {
-        public decimal Amount { get; set; }
+        /// <summary>
+        /// Amount in satoshis
+        /// </summary>
+        public long SatsAmount { get; set; }
 
         public string? Description { get; set; }
 
