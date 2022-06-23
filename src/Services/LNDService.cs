@@ -2,6 +2,7 @@
 using FundsManager.Data.Models;
 using FundsManager.Data.Repositories.Interfaces;
 using Google.Protobuf;
+using Grpc.Core;
 using Lnrpc;
 using Channel = FundsManager.Data.Models.Channel;
 
@@ -10,9 +11,8 @@ namespace FundsManager.Services
     public interface ILNDService
     {
         /// <summary>
-        /// Opens a lightning channel
+        /// Opens a channel with a completely signed PSBT from a node to another given node
         /// </summary>
-        /// <param name="channel"></param>
         /// <param name="channelOperationRequest"></param>
         /// <param name="source"></param>
         /// <param name="destination"></param>
@@ -20,7 +20,7 @@ namespace FundsManager.Services
         public Task<bool> OpenChannel(ChannelOperationRequest channelOperationRequest, Node source, Node destination);
 
         /// <summary>
-        /// Closes a lightning channel
+        /// Based on a channel operation request of type close, requests the close of a channel to LND without acking the request
         /// </summary>
         /// <param name="channelOperationRequest"></param>
         /// <param name="forceClose"></param>
@@ -48,7 +48,7 @@ namespace FundsManager.Services
         }
 
         /// <summary>
-        /// Opens a channel with a PSBT from a node to another given node
+        /// Opens a channel with a completely signed PSBT from a node to another given node
         /// </summary>
         /// <param name="channelOperationRequest"></param>
         /// <param name="source"></param>
@@ -63,6 +63,11 @@ namespace FundsManager.Services
             if (channelOperationRequest.RequestType != OperationRequestType.Open)
                 return false;
 
+            if (source.Id == destination.Id)
+            {
+                
+            }
+
             var result = true;
 
             //TODO Log user approver 
@@ -73,6 +78,7 @@ namespace FundsManager.Services
                 destination.Name);
             try
             {
+                
                 var openChannelResult = await _lightningClient.OpenChannelSyncAsync(new OpenChannelRequest
                 {
                     //TODO Shim details for the PSBT
@@ -82,13 +88,14 @@ namespace FundsManager.Services
                     //    { BasePsbt = ByteString.Empty, NoPublish = false, PendingChanId = ByteString.Empty }
                     //},
                     //TODO Convert to satoshis with LightMoney
-                    LocalFundingAmount = (long) channelOperationRequest.Amount,
+                    LocalFundingAmount = (long)channelOperationRequest.Amount,
                     //TODO Close address
                     //CloseAddress = "bc1...003"
                     Private = channelOperationRequest.IsChannelPrivate,
                     NodePubkey = ByteString.CopyFrom(Encoding.UTF8.GetBytes(destination.PubKey)),
 
-                });
+                }, new Metadata{ {"macaroon", source.ChannelAdminMacaroon} }
+                );
 
                 _logger.LogInformation("Opened channel on channel point:{}:{} request id:{} from node:{} to node:{}",
                     openChannelResult.FundingTxidStr,
@@ -103,11 +110,12 @@ namespace FundsManager.Services
                 {
                     Capacity = channelOperationRequest.Amount,
                     //TODO Channel id retrieval it is not on the result from the open channel
-                    ChannelPoint = $"{openChannelResult.FundingTxidStr}:{openChannelResult.OutputIndex}",
+                    FundingTx = openChannelResult.FundingTxidStr, //TODO Validate this data (?)
+                    FundingTxOutputIndex = openChannelResult.OutputIndex,
                     CreationDatetime = DateTimeOffset.Now,
                     UpdateDatetime = DateTimeOffset.Now,
-                    ChannelOperationRequests = new List<ChannelOperationRequest> {channelOperationRequest}
-                    //TODO Store close address
+                    ChannelOperationRequests = new List<ChannelOperationRequest> { channelOperationRequest }
+                    //TODO Set btc close address
                 };
                 var channelCreationResult = await _channelRepository.AddAsync(channel);
 
@@ -168,39 +176,27 @@ namespace FundsManager.Services
 
                     if (channel != null)
                     {
-                        var splittedChannelPoint = channel.ChannelPoint.Split(':');
-                        if (splittedChannelPoint.Length != 2)
+                        //Time to close the channel
+                        var closeChannelResult = _lightningClient.CloseChannel(new CloseChannelRequest
                         {
-                            //Invalid channel point
-                            _logger.LogError("Invalid channel point for channel id:{} channelpoint:{}", channel.Id,
-                                channel.ChannelPoint);
-                            return false;
-                        }
-
-                        if (uint.TryParse(splittedChannelPoint.Last(), out var outputIndex))
-                        {
-                            //Time to close the channel
-                            var closeChannelResult = _lightningClient.CloseChannel(new CloseChannelRequest
+                            ChannelPoint = new ChannelPoint
                             {
-                                ChannelPoint = new ChannelPoint
-                                {
-                                    FundingTxidStr = splittedChannelPoint.First(),
-                                    OutputIndex = outputIndex
-                                },
-                                Force = forceClose,
+                                FundingTxidStr = channel.FundingTx,
+                                OutputIndex = channel.FundingTxOutputIndex
+                            },
+                            Force = forceClose,
 
-                            });
+                        },new Metadata { { "macaroon", channelOperationRequest.SourceNode.ChannelAdminMacaroon } });
 
-                            _logger.LogInformation("Channel close request:{} triggered",
-                                channelOperationRequest.Id);
+                        _logger.LogInformation("Channel close request:{} triggered",
+                            channelOperationRequest.Id);
 
-                            //TODO The closeChannelResult is a streaming with the status updates, this is an async long operation, maybe we should track this process elsewhere (?)
-
-
-                        }
+                        //TODO The closeChannelResult is a streaming with the status updates, this is an async long operation, maybe we should track this process elsewhere (?)
 
 
                     }
+
+
                 }
             }
             catch (Exception e)
