@@ -3,12 +3,13 @@ using FundsManager.Data.Models;
 using FundsManager.Data.Repositories.Interfaces;
 using Google.Protobuf;
 using Grpc.Core;
+using Grpc.Net.Client;
 using Lnrpc;
 using Channel = FundsManager.Data.Models.Channel;
 
 namespace FundsManager.Services
 {
-    public interface ILNDService
+    public interface ILndService
     {
         /// <summary>
         /// Opens a channel with a completely signed PSBT from a node to another given node
@@ -31,7 +32,7 @@ namespace FundsManager.Services
     /// <summary>
     /// Service in charge of communicating with LND over gRPC
     /// </summary>
-    public class LndService : ILNDService
+    public class LndService : ILndService
     {
         private readonly Lightning.LightningClient _lightningClient;
         private readonly ILogger<LndService> _logger;
@@ -65,8 +66,17 @@ namespace FundsManager.Services
 
             if (source.Id == destination.Id)
             {
-                
+                return false;
             }
+
+            var httpHandler = new HttpClientHandler();
+            // Return `true` to allow certificates that are untrusted/invalid
+            httpHandler.ServerCertificateCustomValidationCallback =
+                HttpClientHandler.DangerousAcceptAnyServerCertificateValidator;
+
+            var grpcChannel = GrpcChannel.ForAddress($"https://{source.Endpoint}",
+                new GrpcChannelOptions { HttpHandler = httpHandler });
+            var client = new Lightning.LightningClient(grpcChannel);
 
             var result = true;
 
@@ -78,8 +88,7 @@ namespace FundsManager.Services
                 destination.Name);
             try
             {
-                
-                var openChannelResult = await _lightningClient.OpenChannelSyncAsync(new OpenChannelRequest
+                var openChannelRequest = new OpenChannelRequest
                 {
                     //TODO Shim details for the PSBT
                     //FundingShim = new FundingShim
@@ -92,9 +101,12 @@ namespace FundsManager.Services
                     //TODO Close address
                     //CloseAddress = "bc1...003"
                     Private = channelOperationRequest.IsChannelPrivate,
-                    NodePubkey = ByteString.CopyFrom(Encoding.UTF8.GetBytes(destination.PubKey)),
+                    //NodePubkey = ByteString.CopyFrom(Encoding.UTF8.GetBytes(destination.PubKey)),
+                    NodePubkeyString = destination.PubKey
 
-                }, new Metadata{ {"macaroon", source.ChannelAdminMacaroon} }
+                };
+
+                 var openChannelResult = await client.OpenChannelSyncAsync(openChannelRequest, new Metadata{ {"macaroon", source.ChannelAdminMacaroon} }
                 );
 
                 _logger.LogInformation("Opened channel on channel point:{}:{} request id:{} from node:{} to node:{}",

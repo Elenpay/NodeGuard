@@ -1,3 +1,0 @@
-[submodule "src/lnd"]
-	path = src/lnd
-	url = https://github.com/lightningnetwork/lnd.git

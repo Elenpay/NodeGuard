@@ -11,8 +11,9 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <None Remove="lnd\lnrpc\lightning.proto" />
+    <None Remove="Proto\lightning.proto" />
   </ItemGroup>
+
 
   <ItemGroup>
     <PackageReference Include="Blazorise.Bootstrap" Version="1.0.5" />
@@ -30,11 +31,11 @@
   </ItemGroup>
 
   <ItemGroup>
-    <Protobuf Include="lnd\lnrpc\lightning.proto" GrpcServices="Client" />
+    <Folder Include="Migrations\" />
   </ItemGroup>
 
   <ItemGroup>
-    <Folder Include="Migrations\" />
+    <Protobuf Include="Proto\lightning.proto" GrpcServices="Client" />
   </ItemGroup>
 
 </Project>

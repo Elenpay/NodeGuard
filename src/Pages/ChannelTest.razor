@@ -1,0 +1,37 @@
+﻿@page "/channeltest"
+@using FundsManager.Data.Repositories.Interfaces
+@using FundsManager.Services
+@using FundsManager.Data.Models
+@inject INodeRepository NodeRepository
+@inject ILndService  LndService
+<PageTitle>Channel test</PageTitle>
+
+<h1>Open channel from Alice to Carol (1000 sats)</h1>
+
+
+<button class="btn btn-primary" @onclick="OpenChannel">Open</button>
+
+@code {
+
+    
+
+
+    private async Task OpenChannel()
+    {
+        var nodes = await NodeRepository.GetAll();
+
+        var carol = nodes.FirstOrDefault(x => x.Name == "Carol");
+        var alice = nodes.FirstOrDefault(x => x.Name == "Alice");
+
+        var channelresult = LndService.OpenChannel(new ChannelOperationRequest
+        {
+            Amount = 20000,
+            RequestType = OperationRequestType.Open,
+            
+
+        }, alice, carol);
+
+
+
+    }
+}
