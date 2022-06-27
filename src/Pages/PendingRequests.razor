@@ -1,0 +1,102 @@
+﻿@page "/pending-requests"
+
+<PageTitle>Pending Requests</PageTitle>
+<h1>My Pending Requests</h1>
+<br />
+<br />
+@using FundsManager.Data.Repositories.Interfaces
+@inject IChannelOperationRequestRepository ChannelOperationRequestRepository
+<DataGrid TItem="ChannelOperationRequest"
+          Data="@_channelRequests"
+          @bind-SelectedRow="@_selectedRequest"
+          CustomFilter="@RequestPendingFilter"
+          ShowPager="true"
+          ShowPageSizes="true"
+          Editable="true"
+          Striped="true">
+    <ChildContent>
+        <DataGridColumn TItem="ChannelOperationRequest" Field="@nameof(ChannelOperationRequest.Id)" Caption="#" Sortable="false" Displayable="true"/>
+        <DataGridColumn TItem="ChannelOperationRequest" Field="DestNode.Name" Caption="Remote Node" Sortable="false" Displayable="true"/>
+        <DataGridColumn TItem="ChannelOperationRequest" Field="Wallet.Name" Caption="Source of Funds" Sortable="false" Displayable="true"/>
+        <DataGridColumn TItem="ChannelOperationRequest" Field="@nameof(ChannelOperationRequest.Amount)" Caption="Value" Sortable="false" Displayable="true">
+            <DisplayTemplate>
+                @{
+                    @($"{context.Amount} {context.AmountCryptoUnit}")
+                }
+            </DisplayTemplate>
+        </DataGridColumn>
+        <DataGridColumn TItem="ChannelOperationRequest" Field="@nameof(ChannelOperationRequest.WalletId)" Caption="Signatures Collected" Sortable="false" Displayable="true">
+            <DisplayTemplate>
+                @{
+                    var signaturesCollected = context?.ChannelOperationRequestSignatures?.Count ?? 0;
+                    var signaturesRequired = context?.Wallet?.MofN ?? 0;
+                    @($"{signaturesCollected} out of {signaturesRequired}")
+                }
+            </DisplayTemplate>
+        </DataGridColumn>
+        <DataGridCommandColumn TItem="ChannelOperationRequest" Caption="Actions" Displayable="true">
+            <NewCommandTemplate>
+                <Button Color="Color.Primary" hidden ></Button>
+            </NewCommandTemplate>
+            <EditCommandTemplate>
+                <Button Color="Color.Primary" Clicked="@ShowModal">Approve</Button>
+            </EditCommandTemplate>
+        </DataGridCommandColumn>
+    </ChildContent>
+    <EmptyTemplate>
+        <div class="box">
+            No records were found.
+        </div>
+    </EmptyTemplate>
+    <LoadingTemplate>
+        <div class="box">
+            <progress class="progress is-small is-primary" max="100"></progress>
+        </div>
+    </LoadingTemplate>
+</DataGrid>
+<Modal @bind-Visible="@_modalVisible">
+    <ModalContent Centered>
+        <ModalHeader>
+            <ModalTitle>Sign Operation: @_selectedRequest?.Id</ModalTitle>
+            <CloseButton />
+        </ModalHeader>
+        <ModalBody>
+            <Field>
+                <FieldLabel>Please plug in your trezor and confirm the operation on the device</FieldLabel>
+            </Field>
+        </ModalBody>
+        <ModalFooter>
+            <Button Color="Color.Secondary" Clicked="@HideModal">Cancel Operation</Button>
+            <Button Color="Color.Primary" Clicked="@HideModal">Approve</Button>
+        </ModalFooter>
+    </ModalContent>
+</Modal>
+
+@code {
+    private List<ChannelOperationRequest>? _channelRequests;
+    private ChannelOperationRequest? _selectedRequest;
+    
+    protected override async Task OnInitializedAsync()
+    {
+        _channelRequests = await ChannelOperationRequestRepository.GetAll();
+        await base.OnInitializedAsync();
+    }
+
+    private static bool RequestPendingFilter(ChannelOperationRequest req)
+    {
+        return req.Status.Equals(ChannelOperationRequestStatus.Pending);
+    }
+
+    private bool _modalVisible;
+    private Task ShowModal()
+    {
+        _modalVisible = true;
+        return Task.CompletedTask;
+    }
+
+    private Task HideModal()
+    {
+        _modalVisible = false;
+        return Task.CompletedTask;
+    }
+}
