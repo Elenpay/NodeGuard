@@ -5,6 +5,7 @@ using FundsManager.Areas.Identity;
 using FundsManager.Data;
 using FundsManager.Data.Repositories;
 using FundsManager.Data.Repositories.Interfaces;
+using Lnrpc;
 using Microsoft.AspNetCore.Components.Authorization;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
@@ -38,6 +39,9 @@ namespace FundsManager
             builder.Services.AddTransient<IKeyRepository, KeyRepository>();
             builder.Services.AddTransient<INodeRepository, NodeRepository>();
             builder.Services.AddTransient<IWalletRepository, WalletRepository>();
+
+            //gRPC
+            builder.Services.AddGrpcClient<Lightning.LightningClient>();
 
             //DbContext
             var connectionString = Environment.GetEnvironmentVariable("POSTGRES_CONNECTIONSTRING") ?? "Host=localhost;Port=35433;Database=fundsmanager;Username=rw_dev;Password=rw_dev";

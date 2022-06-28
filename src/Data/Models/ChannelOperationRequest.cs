@@ -19,7 +19,7 @@
     {
         public decimal Amount { get; set; }
 
-        public string Description { get; set; }
+        public string? Description { get; set; }
 
         public string AmountCryptoUnit { get; set; } // TODO worth an enum?
 
@@ -40,8 +40,10 @@
         public Node DestNode { get; set; }
         public string UserId { get; set; }
         public ApplicationUser User { get; set; }
-        public int ChannelId { get; set; }
-        public Channel Channel { get; set; }
+        public int? ChannelId { get; set; }
+        public Channel? Channel { get; set; }
+
+        public bool IsChannelPrivate { get; set; }
 
         #endregion
     }

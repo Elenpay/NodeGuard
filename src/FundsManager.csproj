@@ -11,8 +11,14 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <None Remove="lnd\lnrpc\lightning.proto" />
+    <None Remove="Blazorise.DataGrid" />
+  </ItemGroup>
+
+  <ItemGroup>
     <PackageReference Include="Blazorise.Bootstrap" Version="1.0.5" />
     <PackageReference Include="Blazorise.Icons.FontAwesome" Version="1.0.5" />
+    <PackageReference Include="Grpc.AspNetCore" Version="2.40.0" />
     <PackageReference Include="Microsoft.AspNetCore.Diagnostics.EntityFrameworkCore" Version="6.0.4" />
     <PackageReference Include="Microsoft.AspNetCore.Identity.EntityFrameworkCore" Version="6.0.4" />
     <PackageReference Include="Microsoft.AspNetCore.Identity.UI" Version="6.0.6" />
@@ -22,6 +28,15 @@
     </PackageReference>
     <PackageReference Include="Microsoft.VisualStudio.Azure.Containers.Tools.Targets" Version="1.15.1" />
     <PackageReference Include="Npgsql.EntityFrameworkCore.PostgreSQL" Version="6.0.4" />
+    <PackageReference Include="Blazorise.DataGrid" Version="1.0.5" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Protobuf Include="lnd\lnrpc\lightning.proto" GrpcServices="Client" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Folder Include="Migrations\" />
   </ItemGroup>
 
 </Project>
