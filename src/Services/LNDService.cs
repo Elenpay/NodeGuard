@@ -1,4 +1,5 @@
 ﻿using System.Buffers.Text;
+using System.Security.Cryptography;
 using System.Text;
 using FundsManager.Data.Models;
 using FundsManager.Data.Repositories.Interfaces;
@@ -75,8 +76,9 @@ namespace FundsManager.Services
             httpHandler.ServerCertificateCustomValidationCallback =
                 HttpClientHandler.DangerousAcceptAnyServerCertificateValidator;
 
-            var grpcChannel = GrpcChannel.ForAddress($"https://{source.Endpoint}",
+            using var grpcChannel = GrpcChannel.ForAddress($"https://{source.Endpoint}",
                 new GrpcChannelOptions { HttpHandler = httpHandler });
+            
             var client = new Lightning.LightningClient(grpcChannel);
 
             var result = true;
@@ -92,12 +94,11 @@ namespace FundsManager.Services
                 var openChannelRequest = new OpenChannelRequest
                 {
                     //TODO Shim details for the PSBT
-                    //FundingShim = new FundingShim
-                    //{
-                    //    PsbtShim = new PsbtShim
-                    //    { BasePsbt = ByteString.Empty, NoPublish = false, PendingChanId = ByteString.Empty }
-                    //},
-                    //TODO Convert to satoshis with LightMoney
+                    FundingShim = new FundingShim
+                    {
+                        PsbtShim = new PsbtShim
+                        { BasePsbt = ByteString.Empty, NoPublish = false, PendingChanId = ByteString.CopyFrom(RandomNumberGenerator.GetBytes(32)) }
+                    },
                     LocalFundingAmount = channelOperationRequest.SatsAmount,
                     //TODO Close address
                     //CloseAddress = "bc1...003"
@@ -106,49 +107,95 @@ namespace FundsManager.Services
 
 
                 };
-               
 
-                var openChannelResult = await client.OpenChannelSyncAsync(openChannelRequest, new Metadata{ {"macaroon", source.ChannelAdminMacaroon} }
-                );
-
-                _logger.LogInformation("Opened channel on channel point:{}:{} request id:{} from node:{} to node:{}",
-                    openChannelResult.FundingTxidStr,
-                    openChannelResult.OutputIndex,
-                    channelOperationRequest.Id,
-                    source.Name,
-                    destination.Name);
-
-                //Channel creation
-
-                //FundingTxidbytes to hex string
-
-                var fundingTxid = Convert.ToHexString(openChannelResult.FundingTxidBytes.ToByteArray());
-
-                var channel = new Channel
+                //If PSBT mode is not enabled.. go the sync way
+                var channelPoint
+                    = new ChannelPoint();
+                if (openChannelRequest.FundingShim == null)
                 {
-                    Capacity = channelOperationRequest.SatsAmount,
-                    //TODO Channel id retrieval it is not on the result from the open channel
-                    FundingTx = fundingTxid, //TODO Validate this data (?)
-                    FundingTxOutputIndex = openChannelResult.OutputIndex,
-                    CreationDatetime = DateTimeOffset.Now,
-                    UpdateDatetime = DateTimeOffset.Now,
-                    ChannelOperationRequests = new List<ChannelOperationRequest> { channelOperationRequest }
-                    //TODO Set btc close address
-                };
-                var channelCreationResult = await _channelRepository.AddAsync(channel);
+                    
+                    channelPoint = await client.OpenChannelSyncAsync(openChannelRequest,
+                        new Metadata {{"macaroon", source.ChannelAdminMacaroon}}
+                    );
 
-                if (!channelCreationResult.Item1)
-                {
-                    _logger.LogError("Error while saving channel entity for channel operation request with id:{} error:{}",
-                        channelOperationRequest.Id, channelCreationResult.Item2);
+                    _logger.LogInformation("Opened channel on channel point:{}:{} request id:{} from node:{} to node:{}",
+                        channelPoint.FundingTxidStr,
+                        channelPoint.OutputIndex,
+                        channelOperationRequest.Id,
+                        source.Name,
+                        destination.Name);
 
-                    if (channel.Id > 0)
+                    //Channel creation
+
+                    //FundingTxidbytes to hex string
+
+                    var fundingTxid = Convert.ToHexString(channelPoint.FundingTxidBytes.ToByteArray());
+
+                    var channel = new Channel
                     {
-                        channelOperationRequest.ChannelId = channel.Id;
+                        Capacity = channelOperationRequest.SatsAmount,
+                        //TODO Channel id retrieval it is not on the result from the open channel
+                        FundingTx = fundingTxid, //TODO Validate this data (?)
+                        FundingTxOutputIndex = channelPoint.OutputIndex,
+                        CreationDatetime = DateTimeOffset.Now,
+                        UpdateDatetime = DateTimeOffset.Now,
+                        ChannelOperationRequests = new List<ChannelOperationRequest> { channelOperationRequest }
+                        //TODO Set btc close address
+                    };
+                    var channelCreationResult = await _channelRepository.AddAsync(channel);
 
-                        _channelOperationRequestRepository.Update(channelOperationRequest);
+                    if (!channelCreationResult.Item1)
+                    {
+                        _logger.LogError("Error while saving channel entity for channel operation request with id:{} error:{}",
+                            channelOperationRequest.Id, channelCreationResult.Item2);
+
+                        if (channel.Id > 0)
+                        {
+                            channelOperationRequest.ChannelId = channel.Id;
+
+                            _channelOperationRequestRepository.Update(channelOperationRequest);
+                        }
                     }
                 }
+                else // Go to the async way with OpenStatusUpdate (PSBT)
+                { 
+                    var openStatusUpdateStream = client.OpenChannel(openChannelRequest,
+                        new Metadata { { "macaroon", source.ChannelAdminMacaroon } }
+                    );
+
+                    await foreach (var response in openStatusUpdateStream.ResponseStream.ReadAllAsync())
+                    {
+
+                        switch (response.UpdateCase)
+                        {
+                            case OpenStatusUpdate.UpdateOneofCase.None:
+                                break;
+                            case OpenStatusUpdate.UpdateOneofCase.ChanPending:
+                                break;
+                            case OpenStatusUpdate.UpdateOneofCase.ChanOpen:
+                                break;
+                            case OpenStatusUpdate.UpdateOneofCase.PsbtFund:
+                                
+                                //We got the funding address
+
+                                //Generation of the Base PSBT with the output
+
+                                break;
+                            default:
+                                throw new ArgumentOutOfRangeException();
+                        }
+
+                        if (response?.PsbtFund?.FundingAddress != null)
+                        {
+
+                        }
+                    }
+
+                    //TODO Abandoning channels pending (?)
+                }
+                
+
+
             }
 
             catch (Exception e)

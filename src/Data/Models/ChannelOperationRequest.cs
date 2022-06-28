@@ -6,7 +6,8 @@
         Pending = 0,
         Approved = 1,
         Cancelled = 2,
-        Rejected = 3
+        Rejected = 3,
+        PSBTSignaturesPending = 4
     }
 
     public enum OperationRequestType
