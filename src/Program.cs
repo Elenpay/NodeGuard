@@ -3,6 +3,7 @@ using Blazorise.Bootstrap;
 using Blazorise.Icons.FontAwesome;
 using FundsManager.Areas.Identity;
 using FundsManager.Data;
+using FundsManager.Data.Models;
 using FundsManager.Data.Repositories;
 using FundsManager.Data.Repositories.Interfaces;
 using FundsManager.Services;
@@ -22,7 +23,7 @@ namespace FundsManager
             // Add services to the container.
 
             builder.Services.AddDatabaseDeveloperPageExceptionFilter();
-            builder.Services.AddDefaultIdentity<IdentityUser>(options => options.SignIn.RequireConfirmedAccount = false)
+            builder.Services.AddDefaultIdentity<ApplicationUser>(options => options.SignIn.RequireConfirmedAccount = false)
                 .AddRoles<IdentityRole>().AddRoleManager<RoleManager<IdentityRole>>()
                 .AddEntityFrameworkStores<ApplicationDbContext>();
             builder.Services.AddRazorPages();

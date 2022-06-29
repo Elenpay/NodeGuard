@@ -1,7 +1,14 @@
-﻿using FundsManager.Data.Models;
+﻿using System.Net;
+using FundsManager.Data.Models;
 using FundsManager.Data.Repositories.Interfaces;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
+using NBitcoin;
+using NBitcoin.RPC;
+using NBXplorer;
+using NBXplorer.DerivationStrategy;
+using NBXplorer.Models;
+using Key = FundsManager.Data.Models.Key;
 
 namespace FundsManager.Data
 {
@@ -11,9 +18,34 @@ namespace FundsManager.Data
         {
             //DI
             var applicationDbContext = serviceProvider.GetRequiredService<ApplicationDbContext>();
-            var nodeRepository= serviceProvider.GetRequiredService<INodeRepository>();
+            var nodeRepository = serviceProvider.GetRequiredService<INodeRepository>();
 
             var webHostEnvironment = serviceProvider.GetRequiredService<IWebHostEnvironment>();
+            var logger = serviceProvider.GetService<ILogger<Program>>();
+            //Nbxplorer setup & check
+            var network = Environment.GetEnvironmentVariable("BITCOIN_NETWORK");
+            var nbxplorerUri = Environment.GetEnvironmentVariable("NBXPLORER_URI") ??
+                               throw new ArgumentNullException("Environment.GetEnvironmentVariable(\"NBXPLORER_URI\")");
+            var userManager = serviceProvider.GetRequiredService<UserManager<ApplicationUser>>();
+
+
+            var nbXplorerNetwork = network switch
+            {
+                "REGTEST" => Network.RegTest,
+                "MAINNET" => Network.Main,
+                "TESTNET" => Network.TestNet,
+                _ => Network.RegTest
+            };
+
+            var provider = new NBXplorerNetworkProvider(nbXplorerNetwork.ChainName);
+            var nbxplorerClient = new ExplorerClient(provider.GetFromCryptoCode(nbXplorerNetwork.NetworkSet.CryptoCode),
+                new Uri(nbxplorerUri));
+
+            while (!nbxplorerClient.GetStatus().IsFullySynched)
+            {
+                logger.LogInformation("Waiting for nbxplorer to be synched..");
+                Thread.Sleep(100);
+            }
 
 
             //Migrations
@@ -37,11 +69,33 @@ namespace FundsManager.Data
 
             if (webHostEnvironment.IsDevelopment())
             {
+
+                //Users
+                var adminUsername = "admin@clovrlabs.com";
+
+                var adminUser = applicationDbContext.ApplicationUsers.FirstOrDefault(x => x.NormalizedEmail == adminUsername.ToUpper());
+                if (adminUser == null)
+                {
+
+                    adminUser = new ApplicationUser
+                    {
+                        NormalizedUserName = adminUsername.ToUpper(),
+                        UserName = adminUsername,
+                        EmailConfirmed = true,
+                        Email = adminUsername,
+                        NormalizedEmail = adminUsername.ToUpper(),
+
+                    };
+                    var adminIdentityResult = Task.Run(() => userManager.CreateAsync(adminUser, "Pass9299a8s.asa9")).Result;
+
+                }
+
+
+                //TODO Roles
+
                 //Testing node from Polar (ALICE) LND 0.14.3 -> check devnetwork.zip polar file
-                var nodes = Task.Run(()=>nodeRepository.GetAll()).Result;
+                var nodes = Task.Run(() => nodeRepository.GetAll()).Result;
 
-
-               
                 var alice = new Node
                 {
                     ChannelAdminMacaroon =
@@ -69,19 +123,110 @@ namespace FundsManager.Data
                     Name = "Carol",
                     CreationDatetime = DateTimeOffset.UtcNow,
                     PubKey = "03485d8dcdd149c87553eeb80586eb2bece874d412e9f117304446ce189955d375",
-                    
+
                 };
-                
+
                 if (!nodes.Any(x => x.PubKey == carol.PubKey))
                 {
                     var valueTuple = Task.Run(() => nodeRepository.AddAsync(carol)).Result;
 
                 }
+
+
+                if (!applicationDbContext.Wallets.Any())
+                {
+
+                    //Wallets
+
+                    //Individual wallets
+                    var wallet1 = nbxplorerClient.GenerateWallet();
+                    var wallet2 = nbxplorerClient.GenerateWallet();
+
+                    var testingMultisigWallet = new Wallet
+                    {
+                        MofN = 1,
+                        Keys = new List<Key>
+                        {
+                            new Key
+                            {
+                                Name = "Key 1",
+                                UserId = adminUser.Id,
+                                XPUB = wallet1.DerivationScheme.ToString()
+                            },
+                            new Key
+                            {
+                                Name = "Key 2",
+                                UserId = adminUser.Id,
+                                XPUB = wallet2.DerivationScheme.ToString()
+                            },
+
+                        },
+                        Name = "Test wallet",
+                        WalletAddressType = WalletAddressType.NativeSegwit,
+
+                    };
+
+                    //Now we fund a multisig address of that wallet with the miner (polar)
+
+                    var rpcuser = Environment.GetEnvironmentVariable("NBXPLORER_BTCRPCUSER");
+                    var rpcpassword = Environment.GetEnvironmentVariable("NBXPLORER_BTCRPCPASSWORD");
+                    var rpcuri = Environment.GetEnvironmentVariable("NBXPLORER_BTCRPCURL");
+
+                    var minerRPC = new RPCClient(new NetworkCredential(rpcuser, rpcpassword), new Uri(rpcuri),
+                        nbXplorerNetwork);
+                    //We mine 100 blocks
+                    minerRPC.Generate(10);
+
+                    //Nbxplorer tracking of the multisig derivation scheme
+                    var factory = new DerivationStrategyFactory(nbXplorerNetwork);
+                    var bitcoinExtPubKey1 = new BitcoinExtPubKey(wallet1.DerivationScheme.ToString(), nbXplorerNetwork);
+                    var bitcoinExtPubKey2 = new BitcoinExtPubKey(wallet2.DerivationScheme.ToString(), nbXplorerNetwork);
+
+                    //1-of-2 multisig by Key 1 and Key 2 from wallet1/wallet2
+                    var multisigScriptPubKey = PayToMultiSigTemplate.Instance.GenerateScriptPubKey(1,
+                        new[]
+                        {
+                            bitcoinExtPubKey1.GetPublicKey(),
+                            bitcoinExtPubKey2.GetPublicKey()
+                        });
+
+                    var multisigAddress = multisigScriptPubKey.WitHash.GetAddress(nbXplorerNetwork);
+
+                    var derivationStrategy = factory.CreateMultiSigDerivationStrategy(new BitcoinExtPubKey[] {
+                        bitcoinExtPubKey1,
+                        bitcoinExtPubKey2},
+                        testingMultisigWallet.MofN);
+
+                    nbxplorerClient.Track(derivationStrategy, new TrackWalletRequest{Wait = true});
+                    nbxplorerClient.Track(new AddressTrackedSource(multisigAddress));
+
+                    var multisigFundCoins = Money.Coins(20m); //20BTC
+
+                    var minerToMultisigTxId = minerRPC.SendToAddress(multisigAddress, multisigFundCoins);
+                    var tx = minerRPC.GetRawTransaction(minerToMultisigTxId);
+
+                    //6 blocks to confirm
+                    minerRPC.Generate(6);
+
+                    Thread.Sleep(20_000);
+
+                    var balance =  nbxplorerClient.GetBalance(multisigAddress);
+                    var confirmedBalance = (Money) balance.Confirmed;
+                    if (confirmedBalance.ToUnit(MoneyUnit.BTC) != 20)
+                    {
+                        throw new Exception("The multisig wallet balance is not 20BTC");
+                    }
+
+
+                    applicationDbContext.Add(testingMultisigWallet);
+                }
+
+
             }
             else
             {
-                
-                
+
+
             }
 
             applicationDbContext.SaveChanges();
