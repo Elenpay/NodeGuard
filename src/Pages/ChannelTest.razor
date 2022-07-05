@@ -2,36 +2,223 @@
 @using FundsManager.Data.Repositories.Interfaces
 @using FundsManager.Services
 @using FundsManager.Data.Models
+@using NBitcoin
+@using NBXplorer
+@using Key = NBitcoin.Key
 @inject INodeRepository NodeRepository
-@inject ILndService  LndService
+@inject IWalletRepository WalletRepository
+@inject ILndService LndService
 <PageTitle>Channel test</PageTitle>
 
 <h1>Open channel from Alice to Carol (1000 sats)</h1>
 
+<button class="btn btn-primary" @onclick="GeneratePSBT">Generate PSBT</button>
+<p>Template PSBT</p>
+<MemoEdit @bind-Text="@templatePSBTString"></MemoEdit>
+<p>Signed with Key 1 PSBT</p>
+<FileEdit Changed="@OnPSBT1FileUploadEnded"></FileEdit>
+<MemoEdit Text="@_psbtSign1String" TextChanged="OnPSBT1TextChanged"></MemoEdit>
+<p>Signed with Key 2 PSBT</p>
+<FileEdit Changed="@OnPSBT2FileUploadEnded"></FileEdit>
+<MemoEdit Text="@_psbtSign2String" TextChanged="OnPSBT2TextChanged"></MemoEdit>
+<button class="btn btn-primary" @onclick="CombinePSBT">Combine</button>
 
-<button class="btn btn-primary" @onclick="OpenChannel">Open</button>
+<p>Combined PSBT</p>
+<MemoEdit Text="@_combinedPsbtString" TextChanged="OnCombinedPSBTChanged"></MemoEdit>
+<button class="btn btn-primary" @onclick="OpenChannelRequest">Open</button>
+
 
 @code {
 
-    
+    private PSBT? templatePSBT;
+    private string? templatePSBTString;
+
+    private PSBT? _psbtSign1;
+    private string _psbtSign1String;
+
+    private PSBT? _psbtSign2;
+    private string _psbtSign2String;
+
+    private PSBT? _combinedPsbt;
+    private string? _combinedPsbtString;
 
 
-    private async Task OpenChannel()
+
+    private async Task OpenChannelRequest()
     {
         var nodes = await NodeRepository.GetAll();
 
         var carol = nodes.FirstOrDefault(x => x.Name == "Carol");
         var alice = nodes.FirstOrDefault(x => x.Name == "Alice");
+        var defaultWallet = (await WalletRepository.GetAll()).First();
 
-        var channelresult = LndService.OpenChannel(new ChannelOperationRequest
+        if (_combinedPsbt != null)
         {
-            SatsAmount = 20000,
-            RequestType = OperationRequestType.Open,
-            
+            var channelresult = LndService.RequestOpenChannel(new ChannelOperationRequest
+            {
+                SatsAmount = 20000,
+                RequestType = OperationRequestType.Open,
+                Status = ChannelOperationRequestStatus.Pending,
+                Wallet =      defaultWallet,  
+                WalletId = defaultWallet.Id,
+                
 
-        }, alice, carol);
+            }, alice, carol, _combinedPsbt);
 
+        }
+       
 
 
     }
+    
+
+    private async Task GeneratePSBT()
+    {
+        var nbXplorerNetwork = Network.RegTest;
+        var provider = new NBXplorerNetworkProvider(nbXplorerNetwork.ChainName);
+        var nbxplorerNetwork = provider.GetFromCryptoCode(nbXplorerNetwork.NetworkSet.CryptoCode);
+
+        var defaultWallet = (await WalletRepository.GetAll()).First();
+
+        var channelOperationRequest = new ChannelOperationRequest
+        {
+            SatsAmount = 200000,
+            RequestType = OperationRequestType.Open,
+            WalletId = defaultWallet.Id,
+            Wallet = defaultWallet,
+            Status = ChannelOperationRequestStatus.Pending
+
+        };
+
+
+        templatePSBT = await LndService.GenerateTemplatePSBT(channelOperationRequest);
+        templatePSBTString = templatePSBT.ToBase64();
+
+        //Wallet 1
+        //var mnemonic1 = new Mnemonic("social mango annual basic work brain economy one safe physical junk other toy valid load cook napkin maple runway island oil fan legend stem");
+        //var masterKey = mnemonic1.DeriveExtKey().GetWif(Network.RegTest);
+
+      
+        //var keyPath = new KeyPath("84'").Derive(nbxplorerNetwork.CoinType).Derive(0,true); https:github.com/dgarage/NBXplorer/blob/0595a87f22c142aee6a6e4a0194f75aec4717819/NBXplorer/Controllers/MainController.cs#L1141
+        //var accountKey = masterKey.Derive(keyPath);
+        //if (accountKey.Neuter().ToWif() != "tpubDCPqCySQAAMdD2VuYQSgqfmFt37vNpe51jqFqF95RpbctzWEhyA77CKPdD6ZgAvkNYBGQgeFcEZmoPyBD5uu2oSJ1wuyKzpdjBRbWXMBRMv")
+        //{
+        //    throw new ArgumentException("Invalid tpub");
+        //}
+        //_psbtSign1 = templatePSBT.SignWithKeys(accountKey.PrivateKey);
+        //_psbtSign1String = _psbtSign1.ToBase64();
+
+
+        //PSBTSign1 = psbt1.ToBase64();
+
+
+        ////Wallet 2
+        //var mnemonic2 = new Mnemonic("solar goat auto bachelor chronic input twin depth fork scale divorce fury mushroom column image sauce car public artist announce treat spend jacket physical");
+        //var extKey2 = mnemonic2.DeriveExtKey().GetWif(Network.RegTest);
+        //var privateKey2 = extKey2.PrivateKey;
+
+        //var psbt2 = psbt.SignWithKeys(privateKey2);
+
+        //PSBTSign2 = psbt2.ToBase64();
+
+        //var psbtCombined = psbt1.Combine(psbt2);
+
+        //_combinedPsbt = psbtCombined.ToBase64();
+
+
+
+        StateHasChanged();
+    }
+
+    private async Task OnPSBT1FileUploadEnded(FileChangedEventArgs arg)
+    {
+        var fileEntry = arg.Files.FirstOrDefault();
+        if (fileEntry != null)
+        {
+            using MemoryStream ms = new MemoryStream();
+            await fileEntry.OpenReadStream().CopyToAsync(ms);
+
+            var bytes = ms.ToArray();
+
+            _psbtSign1 = PSBT.Load(bytes, Network.RegTest);
+
+            _psbtSign1String = _psbtSign1.ToBase64();
+        }
+       
+        
+    }
+
+    private async Task OnPSBT2FileUploadEnded(FileChangedEventArgs arg)
+    {
+       
+        var fileEntry = arg.Files.FirstOrDefault();
+        if (fileEntry != null)
+        {
+            using var reader = new StreamReader(fileEntry.OpenReadStream());
+            var hexOrBase64 = await reader.ReadToEndAsync();
+
+            _psbtSign2String = hexOrBase64;
+            _psbtSign2 = PSBT.Parse(hexOrBase64, Network.RegTest);
+        }
+       
+    }
+
+    private async Task CombinePSBT()
+    {
+        if (_psbtSign1 != null && _psbtSign2 != null)
+        {
+            _combinedPsbt = _psbtSign1.Combine(_psbtSign2);
+            _combinedPsbtString = _combinedPsbt.ToBase64();
+
+        }
+    }
+
+    private async Task OnPSBT1TextChanged(string arg)
+    {
+        if (!string.IsNullOrEmpty(arg))
+        {
+            if (PSBT.TryParse(arg, Network.RegTest, out _psbtSign1))
+            {
+
+            }
+            else if(Transaction.TryParse(arg, Network.RegTest, out var tx))
+            {
+                _psbtSign1 = tx.CreatePSBT(Network.RegTest);
+
+            }
+
+        }
+    }
+    private async Task OnPSBT2TextChanged(string arg)
+    {
+        if (!string.IsNullOrEmpty(arg))
+        {
+            if (PSBT.TryParse(arg, Network.RegTest, out _psbtSign2))
+            {
+
+            }
+            else if(Transaction.TryParse(arg, Network.RegTest, out var tx))
+            {
+                _psbtSign2 = tx.CreatePSBT(Network.RegTest);
+
+            }
+
+        }
+    }
+
+    private async Task OnCombinedPSBTChanged(string arg)
+    {
+      
+        if (!string.IsNullOrEmpty(arg))
+        {
+            if (PSBT.TryParse(arg, Network.RegTest, out _combinedPsbt))
+            {
+
+            }
+          
+
+            
+        }
+    }
+
 }

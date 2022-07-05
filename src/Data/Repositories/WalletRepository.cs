@@ -28,7 +28,9 @@ namespace FundsManager.Data.Repositories
 
         public async Task<List<Wallet>> GetAll()
         {
-            throw new NotImplementedException();
+            await using var applicationDbContext = await _dbContextFactory.CreateDbContextAsync();
+
+            return await applicationDbContext.Wallets.Include(x=> x.Keys).ThenInclude(x=> x.User).ToListAsync();
         }
 
         public async Task<(bool, string?)> AddAsync(Wallet type)

@@ -2,12 +2,14 @@
 using FundsManager.Data.Models;
 using FundsManager.Data.Repositories.Interfaces;
 using Microsoft.AspNetCore.Identity;
+using Microsoft.AspNetCore.Mvc.Formatters;
 using Microsoft.EntityFrameworkCore;
 using NBitcoin;
 using NBitcoin.RPC;
 using NBXplorer;
 using NBXplorer.DerivationStrategy;
 using NBXplorer.Models;
+using Newtonsoft.Json;
 using Key = FundsManager.Data.Models.Key;
 
 namespace FundsManager.Data
@@ -43,7 +45,7 @@ namespace FundsManager.Data
 
             while (!nbxplorerClient.GetStatus().IsFullySynched)
             {
-                logger.LogInformation("Waiting for nbxplorer to be synched..");
+                logger!.LogInformation("Waiting for nbxplorer to be synched..");
                 Thread.Sleep(100);
             }
 
@@ -76,7 +78,6 @@ namespace FundsManager.Data
                 var adminUser = applicationDbContext.ApplicationUsers.FirstOrDefault(x => x.NormalizedEmail == adminUsername.ToUpper());
                 if (adminUser == null)
                 {
-
                     adminUser = new ApplicationUser
                     {
                         NormalizedUserName = adminUsername.ToUpper(),
@@ -86,8 +87,7 @@ namespace FundsManager.Data
                         NormalizedEmail = adminUsername.ToUpper(),
 
                     };
-                    var adminIdentityResult = Task.Run(() => userManager.CreateAsync(adminUser, "Pass9299a8s.asa9")).Result;
-
+                    _ = Task.Run(() => userManager.CreateAsync(adminUser, "Pass9299a8s.asa9")).Result;
                 }
 
 
@@ -110,8 +110,7 @@ namespace FundsManager.Data
                 };
                 if (!nodes.Any(x => x.PubKey == alice.PubKey))
                 {
-                    var valueTuple = Task.Run(() => nodeRepository.AddAsync(alice)).Result;
-
+                    _ = Task.Run(() => nodeRepository.AddAsync(alice)).Result;
                 }
 
                 //Testing node from Polar (CAROL) LND 0.14.3 -> check devnetwork.zip polar file
@@ -128,8 +127,7 @@ namespace FundsManager.Data
 
                 if (!nodes.Any(x => x.PubKey == carol.PubKey))
                 {
-                    var valueTuple = Task.Run(() => nodeRepository.AddAsync(carol)).Result;
-
+                    _ = Task.Run(() => nodeRepository.AddAsync(carol)).Result;
                 }
 
 
@@ -139,25 +137,60 @@ namespace FundsManager.Data
                     //Wallets
 
                     //Individual wallets
-                    var wallet1 = nbxplorerClient.GenerateWallet();
-                    var wallet2 = nbxplorerClient.GenerateWallet();
+                    var wallet1seed = "social mango annual basic work brain economy one safe physical junk other toy valid load cook napkin maple runway island oil fan legend stem";
+                    //var wallet1 = nbxplorerClient.GenerateWallet(new GenerateWalletRequest
+                    //{
+                    //    ExistingMnemonic = wallet1seed,
+                    //    ScriptPubKeyType = ScriptPubKeyType.Segwit,
+                    //    SavePrivateKeys = true,
+
+                    //});
+                    var masterKey1 = new Mnemonic(wallet1seed).DeriveExtKey().GetWif(Network.RegTest);
+                    var keyPath1 = new KeyPath("m/48'/1'/1'"); //https://github.com/dgarage/NBXplorer/blob/0595a87f22c142aee6a6e4a0194f75aec4717819/NBXplorer/Controllers/MainController.cs#L1141
+                    var accountKey1 = masterKey1.Derive(keyPath1);
+                    var bitcoinExtPubKey1 = accountKey1.Neuter();
+                    var accountKeyPath1 = new RootedKeyPath(masterKey1.GetPublicKey().GetHDFingerPrint(), keyPath1);
+
+                    var wallet1DerivationScheme = bitcoinExtPubKey1.ToWif();
+
+                    logger.LogInformation("Wallet 1 seed: {}", wallet1seed);
+                    var wallet2seed = "solar goat auto bachelor chronic input twin depth fork scale divorce fury mushroom column image sauce car public artist announce treat spend jacket physical";
+                    //var wallet2 = nbxplorerClient.GenerateWallet(new GenerateWalletRequest
+                    //{
+                    //    ExistingMnemonic = wallet2seed,
+                    //    ScriptPubKeyType = ScriptPubKeyType.Segwit,
+                    //    SavePrivateKeys = true,
+                    //});
+
+                    var masterKey2 = new Mnemonic(wallet2seed).DeriveExtKey().GetWif(Network.RegTest);
+                    var keyPath2 = new KeyPath("m/48'/1'/1'"); //https://github.com/dgarage/NBXplorer/blob/0595a87f22c142aee6a6e4a0194f75aec4717819/NBXplorer/Controllers/MainController.cs#L1141
+                    var accountKey2 = masterKey2.Derive(keyPath2);
+                    var bitcoinExtPubKey2 = accountKey2.Neuter();
+                    var accountKeyPath2 = new RootedKeyPath(masterKey2.GetPublicKey().GetHDFingerPrint(), keyPath2);
+
+                    var wallet2DerivationScheme = bitcoinExtPubKey2.ToWif();
+
+
+                    logger.LogInformation("Wallet 2 seed: {}", wallet2seed);
 
                     var testingMultisigWallet = new Wallet
                     {
-                        MofN = 1,
+                        MofN = 2,
                         Keys = new List<Key>
                         {
                             new Key
                             {
                                 Name = "Key 1",
                                 UserId = adminUser.Id,
-                                XPUB = wallet1.DerivationScheme.ToString()
+                                XPUB = wallet1DerivationScheme.ToString()
+                                //XPUB = wallet1.DerivationScheme.ToString()
                             },
                             new Key
                             {
                                 Name = "Key 2",
                                 UserId = adminUser.Id,
-                                XPUB = wallet2.DerivationScheme.ToString()
+                                XPUB = wallet2DerivationScheme.ToString()
+                                //XPUB = wallet2.DerivationScheme.ToString()
                             },
 
                         },
@@ -172,52 +205,53 @@ namespace FundsManager.Data
                     var rpcpassword = Environment.GetEnvironmentVariable("NBXPLORER_BTCRPCPASSWORD");
                     var rpcuri = Environment.GetEnvironmentVariable("NBXPLORER_BTCRPCURL");
 
-                    var minerRPC = new RPCClient(new NetworkCredential(rpcuser, rpcpassword), new Uri(rpcuri),
+                    var minerRPC = new RPCClient(new NetworkCredential(rpcuser, rpcpassword), new Uri(rpcuri!),
                         nbXplorerNetwork);
-                    //We mine 100 blocks
+                    //We mine 10 blocks
                     minerRPC.Generate(10);
 
                     //Nbxplorer tracking of the multisig derivation scheme
                     var factory = new DerivationStrategyFactory(nbXplorerNetwork);
-                    var bitcoinExtPubKey1 = new BitcoinExtPubKey(wallet1.DerivationScheme.ToString(), nbXplorerNetwork);
-                    var bitcoinExtPubKey2 = new BitcoinExtPubKey(wallet2.DerivationScheme.ToString(), nbXplorerNetwork);
 
-                    //1-of-2 multisig by Key 1 and Key 2 from wallet1/wallet2
-                    var multisigScriptPubKey = PayToMultiSigTemplate.Instance.GenerateScriptPubKey(1,
-                        new[]
+                    //2-of-2 multisig by Key 1 and Key 2 from wallet1/wallet2
+
+                    var derivationStrategy = factory.CreateMultiSigDerivationStrategy(new BitcoinExtPubKey[]
                         {
-                            bitcoinExtPubKey1.GetPublicKey(),
-                            bitcoinExtPubKey2.GetPublicKey()
+                            bitcoinExtPubKey1,
+                            bitcoinExtPubKey2
+                            //new BitcoinExtPubKey(wallet1.DerivationScheme.ToString(),nbXplorerNetwork),
+                            //new BitcoinExtPubKey(wallet2.DerivationScheme.ToString(),nbXplorerNetwork)
+                        },
+                        testingMultisigWallet.MofN,
+                        new DerivationStrategyOptions
+                        {
+                            ScriptPubKeyType = ScriptPubKeyType.Segwit,
+
                         });
 
-                    var multisigAddress = multisigScriptPubKey.WitHash.GetAddress(nbXplorerNetwork);
+                    nbxplorerClient.Track(derivationStrategy);
+                    var evts = nbxplorerClient.CreateLongPollingNotificationSession();
 
-                    var derivationStrategy = factory.CreateMultiSigDerivationStrategy(new BitcoinExtPubKey[] {
-                        bitcoinExtPubKey1,
-                        bitcoinExtPubKey2},
-                        testingMultisigWallet.MofN);
 
-                    nbxplorerClient.Track(derivationStrategy, new TrackWalletRequest{Wait = true});
-                    nbxplorerClient.Track(new AddressTrackedSource(multisigAddress));
+                    var keyPathInformation = nbxplorerClient.GetUnused(derivationStrategy, DerivationFeature.Deposit);
+                    var multisigAddress = keyPathInformation.Address;
+
 
                     var multisigFundCoins = Money.Coins(20m); //20BTC
 
-                    var minerToMultisigTxId = minerRPC.SendToAddress(multisigAddress, multisigFundCoins);
-                    var tx = minerRPC.GetRawTransaction(minerToMultisigTxId);
+                    minerRPC.SendToAddress(multisigAddress, multisigFundCoins);
 
                     //6 blocks to confirm
                     minerRPC.Generate(6);
 
-                    Thread.Sleep(20_000);
+                    WaitNbxplorerNotification(evts, derivationStrategy);
 
-                    var balance =  nbxplorerClient.GetBalance(multisigAddress);
-                    var confirmedBalance = (Money) balance.Confirmed;
-                    if (confirmedBalance.ToUnit(MoneyUnit.BTC) != 20)
+                    var balance = nbxplorerClient.GetBalance(derivationStrategy);
+                    var confirmedBalance = (Money)balance.Confirmed;
+                    if (confirmedBalance.ToUnit(MoneyUnit.BTC) < 20)
                     {
-                        throw new Exception("The multisig wallet balance is not 20BTC");
+                        throw new Exception("The multisig wallet balance is not <= 20BTC");
                     }
-
-
                     applicationDbContext.Add(testingMultisigWallet);
                 }
 
@@ -225,7 +259,6 @@ namespace FundsManager.Data
             }
             else
             {
-
 
             }
 
@@ -266,6 +299,18 @@ namespace FundsManager.Data
                     Name = trustedFinanceUser.ToString("G"),
                     NormalizedName = trustedFinanceUser.ToString("G").ToUpper()
                 });
+            }
+        }
+        private static NewTransactionEvent WaitNbxplorerNotification(LongPollingNotificationSession evts, DerivationStrategyBase derivationStrategy)
+        {
+            while (true)
+            {
+                var evt = evts.NextEvent();
+                if (evt is NewTransactionEvent tx)
+                {
+                    if (tx.DerivationStrategy == derivationStrategy)
+                        return tx;
+                }
             }
         }
     }

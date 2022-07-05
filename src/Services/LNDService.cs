@@ -8,6 +8,7 @@ using Grpc.Core;
 using Grpc.Net.Client;
 using Lnrpc;
 using NBitcoin;
+using NBitcoin.RPC;
 using NBXplorer;
 using NBXplorer.DerivationStrategy;
 using NBXplorer.Models;
@@ -18,20 +19,22 @@ namespace FundsManager.Services
     public interface ILndService
     {
         /// <summary>
-        /// Opens a channel with a completely signed PSBT from a node to another given node
+        /// Request to open a channel
         /// </summary>
         /// <param name="channelOperationRequest"></param>
         /// <param name="source"></param>
         /// <param name="destination"></param>
+        /// <param name="psbt"></param>
         /// <returns></returns>
-        public Task<bool> OpenChannel(ChannelOperationRequest channelOperationRequest, Node source, Node destination);
+        public Task<bool> RequestOpenChannel(ChannelOperationRequest channelOperationRequest, Node source, Node destination, PSBT psbt);
 
         /// <summary>
         /// Generates a template PSBT with Sighash_NONE and some UTXOs from the wallet related to the request without signing
         /// </summary>
         /// <param name="channelOperationRequest"></param>
+        /// <param name="destinationAddress"></param>
         /// <returns></returns>
-        public Task<PSBT?> GenerateTemplatePSBT(ChannelOperationRequest channelOperationRequest);
+        public Task<PSBT?> GenerateTemplatePSBT(ChannelOperationRequest channelOperationRequest, BitcoinAddress? destinationAddress = null);
 
         /// <summary>
         /// Based on a channel operation request of type close, requests the close of a channel to LND without acking the request
@@ -47,15 +50,13 @@ namespace FundsManager.Services
     /// </summary>
     public class LndService : ILndService
     {
-        private readonly Lightning.LightningClient _lightningClient;
         private readonly ILogger<LndService> _logger;
         private readonly IChannelRepository _channelRepository;
         private readonly IChannelOperationRequestRepository _channelOperationRequestRepository;
 
-        public LndService(Lightning.LightningClient lightningClient, ILogger<LndService> logger, IChannelRepository channelRepository,
+        public LndService( ILogger<LndService> logger, IChannelRepository channelRepository,
             IChannelOperationRequestRepository channelOperationRequestRepository)
         {
-            _lightningClient = lightningClient;
             _logger = logger;
             _channelRepository = channelRepository;
             _channelOperationRequestRepository = channelOperationRequestRepository;
@@ -67,8 +68,10 @@ namespace FundsManager.Services
         /// <param name="channelOperationRequest"></param>
         /// <param name="source"></param>
         /// <param name="destination"></param>
+        /// <param name="psbt"></param>
         /// <returns></returns>
-        public async Task<bool> OpenChannel(ChannelOperationRequest channelOperationRequest, Node source, Node destination)
+        public async Task<bool> RequestOpenChannel(ChannelOperationRequest channelOperationRequest, Node source,
+            Node destination, PSBT psbt)
         {
             if (channelOperationRequest == null) throw new ArgumentNullException(nameof(channelOperationRequest));
             if (source == null) throw new ArgumentNullException(nameof(source));
@@ -94,6 +97,8 @@ namespace FundsManager.Services
 
             var result = true;
 
+            var pendingChannelId =RandomNumberGenerator.GetBytes(32);
+
             //TODO Log user approver 
 
             _logger.LogInformation("Channel open request for  request id:{} from node:{} to node:{}",
@@ -108,7 +113,7 @@ namespace FundsManager.Services
                     FundingShim = new FundingShim
                     {
                         PsbtShim = new PsbtShim
-                        { BasePsbt = ByteString.Empty, NoPublish = false, PendingChanId = ByteString.CopyFrom(RandomNumberGenerator.GetBytes(32)) }
+                        { BasePsbt = ByteString.FromBase64(psbt.ToBase64()), NoPublish = false, PendingChanId = ByteString.CopyFrom(pendingChannelId) }
                     },
                     LocalFundingAmount = channelOperationRequest.SatsAmount,
                     //TODO Close address
@@ -187,9 +192,69 @@ namespace FundsManager.Services
                                 break;
                             case OpenStatusUpdate.UpdateOneofCase.PsbtFund:
 
-                                //We got the funding address
+                                //We got the funded PSBT, we need to tweak the tx outputs
+                                //We combine the PSBTs and finalize it
+                                var hexPSBT = Convert.ToHexString((response.PsbtFund.Psbt.ToByteArray()));
+                                if (PSBT.TryParse(hexPSBT, Network.RegTest, //TODO Remove regtest
+                                        out var fundedPSBT))
+                                {
+                                    var finalizedPSBT = fundedPSBT.Finalize();
 
-                                //Generation of the Base PSBT with the output
+                                    finalizedPSBT.AssertSanity();
+
+                                    var channelfundingTx = finalizedPSBT.ExtractTransaction();
+
+                                    var fundingMoney = new Money(channelOperationRequest.SatsAmount, MoneyUnit.Satoshi);
+                                    var txBuilder = Network.RegTest.CreateTransactionBuilder();
+                                    var (network, nbxplorerClient) = GenerateNetwork();
+                                    
+                                    //Temp tx to calculate the change
+                                    var derivationStrategyBase = GetDerivationStrategy(channelOperationRequest,network);
+                                    var coins = await GetTxInputCoins(channelOperationRequest, nbxplorerClient,
+                                        derivationStrategyBase);
+                                    var feeRateResult = await GetFeeRateResult(network,nbxplorerClient);
+
+                                    var fundingAddress = BitcoinAddress.Create(response.PsbtFund.FundingAddress,network);
+
+                                    var temptx = txBuilder
+                                        .AddCoins(coins)
+                                        .SendEstimatedFees(feeRateResult.FeeRate)
+                                        .SendAllRemainingToChange()
+                                        .Send(fundingAddress, fundingMoney)
+                                        .SetChange(coins.FirstOrDefault().ScriptPubKey)
+                                        .SetSigningOptions(SigHash.None)
+                                        .BuildTransaction(true);
+
+                                    //We manually fix the change
+
+
+                                    channelfundingTx.Outputs[0].Value = temptx.Outputs[0].Value;
+                                    channelfundingTx.Outputs[1].Value = fundingMoney;
+
+                                    var checkTx = channelfundingTx.Check();
+
+                                    if (checkTx == TransactionCheckResult.Success)
+                                    {
+                                        var fundingStateStepResp = await client.FundingStateStepAsync(new FundingTransitionMsg
+                                        {
+                                            PsbtFinalize = new FundingPsbtFinalize
+                                            {
+                                                PendingChanId = ByteString.CopyFrom(pendingChannelId),
+                                                FinalRawTx =
+                                                    ByteString.CopyFrom(Convert.FromHexString(channelfundingTx.ToHex()))
+                                            }, 
+                                        }, new Metadata { { "macaroon", source.ChannelAdminMacaroon }});
+
+                                    }
+                                    else
+                                    {
+                                        //TODO
+                                    }
+
+
+
+                                }
+
 
                                 break;
                             default:
@@ -223,7 +288,7 @@ namespace FundsManager.Services
 
         }
 
-        public async Task<PSBT?> GenerateTemplatePSBT(ChannelOperationRequest channelOperationRequest)
+        public async Task<PSBT?> GenerateTemplatePSBT(ChannelOperationRequest channelOperationRequest, BitcoinAddress? destinationAddress = null)
         {
             if (channelOperationRequest == null) throw new ArgumentNullException(nameof(channelOperationRequest));
 
@@ -240,8 +305,107 @@ namespace FundsManager.Services
                 return null;
             }
 
+            var (nbXplorerNetwork, nbxplorerClient) = GenerateNetwork();
+
+            if (!(await nbxplorerClient.GetStatusAsync()).IsFullySynched)
+            {
+                _logger.LogError("Error, nbxplorer not fully synched");
+                return null;
+            }
+
+            //UTXOs -> they need to be tracked first on nbxplorer to get results!!
+            //TODO Create track method for nbxplorer
+
+            var derivationStrategy = GetDerivationStrategy(channelOperationRequest, nbXplorerNetwork);
+
+
+            var coins = await GetTxInputCoins(channelOperationRequest, nbxplorerClient, derivationStrategy);
+
+            //We got enough inputs to fund the TX so time to build the PSBT without outputs (funding address of the channel)
+
+            PSBT? result = null;
+
+            var txBuilder = nbXplorerNetwork.CreateTransactionBuilder();
+
+            var feeRateResult = await GetFeeRateResult(nbXplorerNetwork, nbxplorerClient);
+
+            var changeAddress = nbxplorerClient.GetUnused(derivationStrategy, DerivationFeature.Change);
+
+            if (destinationAddress != null)
+            {
+                result = txBuilder.AddCoins(coins)
+                    .Send(destinationAddress,new Money(channelOperationRequest.SatsAmount, MoneyUnit.Satoshi))
+                    .SetSigningOptions(SigHash.None)
+                    .SetChange(changeAddress.Address)
+                    .SendEstimatedFees(feeRateResult.FeeRate)
+                    .BuildPSBT(false);
+            }
+            else
+            {
+                result = txBuilder.AddCoins(coins)
+                    .SetSigningOptions(SigHash.None)
+                    .SetChange(changeAddress.Address)
+                    .SendEstimatedFees(feeRateResult.FeeRate)
+                    .BuildPSBT(false);
+            }
+
+          
+
+            //TODO Remove hack when https://github.com/MetacoSA/NBitcoin/issues/1112 is fixed
+            result.Settings.SigningOptions = new SigningOptions(SigHash.None);
+            
+            return result;
+        }
+
+        private static async Task<GetFeeRateResult> GetFeeRateResult(Network nbXplorerNetwork, ExplorerClient nbxplorerClient)
+        {
+            var feeRateResult = new GetFeeRateResult();
+            if (nbXplorerNetwork == Network.RegTest)
+            {
+                feeRateResult = new GetFeeRateResult
+                {
+                    BlockCount = 1,
+                    FeeRate = new FeeRate(1M)
+                };
+            }
+            else
+            {
+                feeRateResult = await nbxplorerClient.GetFeeRateAsync(1);
+            }
+
+            return feeRateResult;
+        }
+
+        private DerivationStrategyBase? GetDerivationStrategy(ChannelOperationRequest channelOperationRequest,
+            Network nbXplorerNetwork)
+        {
+            var bitcoinExtPubKeys = channelOperationRequest?.Wallet?.Keys.Select(x => new BitcoinExtPubKey(x.XPUB,
+                    nbXplorerNetwork))
+                .ToList();
+
+            if (bitcoinExtPubKeys != null && !bitcoinExtPubKeys.Any())
+            {
+                _logger.LogError("No XPUBs for the wallet found");
+                return null;
+            }
+
+
+            var factory = new DerivationStrategyFactory(nbXplorerNetwork);
+
+            var derivationStrategy = factory.CreateMultiSigDerivationStrategy(bitcoinExtPubKeys.ToArray(),
+                channelOperationRequest.Wallet.MofN,
+                new DerivationStrategyOptions
+                {
+                    ScriptPubKeyType = ScriptPubKeyType.Segwit
+                });
+            return derivationStrategy;
+        }
+
+        private (Network nbXplorerNetwork, ExplorerClient nbxplorerClient) GenerateNetwork()
+        {
             var network = Environment.GetEnvironmentVariable("BITCOIN_NETWORK");
-            var nbxplorerUri = Environment.GetEnvironmentVariable("NBXPLORER_URI") ?? throw new ArgumentNullException("Environment.GetEnvironmentVariable(\"NBXPLORER_URI\")");
+            var nbxplorerUri = Environment.GetEnvironmentVariable("NBXPLORER_URI") ??
+                               throw new ArgumentNullException("Environment.GetEnvironmentVariable(\"NBXPLORER_URI\")");
 
             if (network == null)
             {
@@ -260,41 +424,26 @@ namespace FundsManager.Services
             };
 
             var provider = new NBXplorerNetworkProvider(nbXplorerNetwork.ChainName);
-            var nbxplorerClient = new ExplorerClient(provider.GetFromCryptoCode(nbXplorerNetwork.NetworkSet.CryptoCode), new Uri(nbxplorerUri));
+            var nbxplorerClient = new ExplorerClient(provider.GetFromCryptoCode(nbXplorerNetwork.NetworkSet.CryptoCode),
+                new Uri(nbxplorerUri));
+            return (nbXplorerNetwork, nbxplorerClient);
+        }
 
-            if (!(await nbxplorerClient.GetStatusAsync()).IsFullySynched)
-            {
-                _logger.LogError("Error, nbxplorer not fully synched");
-                return null;
-            }
-
-            //UTXOs -> they need to be tracked first on nbxplorer to get results!!
-            //TODO Create track method for nbxplorer
-
-            var walletXPUBs = channelOperationRequest?.Wallet?.Keys.Select(x => x.XPUB).ToList();
-
-            if (walletXPUBs != null && !walletXPUBs.Any())
-            {
-                _logger.LogError("No XPUBs for the wallet found");
-                return null;
-            }
-
-            var xpubKeysList = walletXPUBs?.Select(x => new ExtPubKey(x)).ToList();
-            var factory = new DerivationStrategyFactory(nbXplorerNetwork);
-            var directDerivationStrategy = factory.CreateMultiSigDerivationStrategy(xpubKeysList.ToArray(),
-                channelOperationRequest.Wallet.MofN);
-
-            var derivationSchemeTrackedSource = new DerivationSchemeTrackedSource(directDerivationStrategy);
-            var utxoChanges = await nbxplorerClient.GetUTXOsAsync(derivationSchemeTrackedSource);
+        private async Task<List<ScriptCoin>> GetTxInputCoins(ChannelOperationRequest channelOperationRequest, ExplorerClient nbxplorerClient,
+            DerivationStrategyBase derivationStrategy)
+        {
+            var utxoChanges = await nbxplorerClient.GetUTXOsAsync(derivationStrategy);
 
 
             if (utxoChanges == null || !utxoChanges.Confirmed.UTXOs.Any())
             {
-                _logger.LogError("PSBT cannot be generated, no UTXOs are available for walletId:{}",channelOperationRequest.WalletId);
-                return null;
+                _logger.LogError("PSBT cannot be generated, no UTXOs are available for walletId:{}",
+                    channelOperationRequest.WalletId);
+                return new List<ScriptCoin>();
             }
 
-            var utxosStack = new Stack<UTXO>(utxoChanges.Confirmed.UTXOs.OrderByDescending(x=> x.Confirmations));
+            var utxosStack = new Stack<UTXO>(utxoChanges.Confirmed.UTXOs.OrderByDescending(x => x.Confirmations));
+
 
             //FIFO Algorithm to match the amount
 
@@ -304,8 +453,8 @@ namespace FundsManager.Services
             {
                 _logger.LogError(
                     "Error, the total UTXOs set balance for walletid:{} ({} sats) is less than the channel amount request ({}sats)",
-                    channelOperationRequest.WalletId,totalUTXOsConfirmedSats, channelOperationRequest.SatsAmount );
-                return null;
+                    channelOperationRequest.WalletId, totalUTXOsConfirmedSats, channelOperationRequest.SatsAmount);
+                return new List<ScriptCoin>();
             }
 
             var utxosSatsAmountAccumulator = 0M;
@@ -319,30 +468,13 @@ namespace FundsManager.Services
                     selectedUTXOs.Add(utxo);
                     utxosSatsAmountAccumulator += ((Money) utxo.Value).Satoshi;
                 }
-
             }
 
             //UTXOS to Enumerable of ICOINS
 
-            var coins = selectedUTXOs.Select(x => new Coin(x.Outpoint, new TxOut((Money) x.Value, x.ScriptPubKey))).ToList();
-
-            //We got enough inputs to fund the TX so time to build the PSBT without outputs (funding address of the channel)
-
-            PSBT? result = null;
-
-            var txBuilder = nbXplorerNetwork.CreateTransactionBuilder();
-            var feeRateResult = await nbxplorerClient.GetFeeRateAsync(1);
-
-            result = txBuilder.AddCoins(coins)
-                .SetSigningOptions(SigHash.None)
-                .SetChange(coins.First().ScriptPubKey) //Same as firt UTXOs
-                .SendEstimatedFees(feeRateResult.FeeRate)
-                .BuildPSBT(false);
-
-            //TODO Remove hack when https://github.com/MetacoSA/NBitcoin/issues/1112 is fixed
-            result.Settings.SigningOptions = new SigningOptions(SigHash.None);
-            
-            return result;
+            var coins = selectedUTXOs.Select(x => x.AsCoin(derivationStrategy).ToScriptCoin(x.ScriptPubKey))
+                .ToList();
+            return coins;
         }
 
         /// <summary>
@@ -374,22 +506,23 @@ namespace FundsManager.Services
 
                     if (channel != null)
                     {
-                        //Time to close the channel
-                        var closeChannelResult = _lightningClient.CloseChannel(new CloseChannelRequest
-                        {
-                            ChannelPoint = new ChannelPoint
-                            {
-                                FundingTxidStr = channel.FundingTx,
-                                OutputIndex = channel.FundingTxOutputIndex
-                            },
-                            Force = forceClose,
+                        //TODO
+                        ////Time to close the channel
+                        //var closeChannelResult = _lightningClient.CloseChannel(new CloseChannelRequest
+                        //{
+                        //    ChannelPoint = new ChannelPoint
+                        //    {
+                        //        FundingTxidStr = channel.FundingTx,
+                        //        OutputIndex = channel.FundingTxOutputIndex
+                        //    },
+                        //    Force = forceClose,
 
-                        }, new Metadata { { "macaroon", channelOperationRequest.SourceNode.ChannelAdminMacaroon } });
+                        //}, new Metadata { { "macaroon", channelOperationRequest.SourceNode.ChannelAdminMacaroon } });
 
-                        _logger.LogInformation("Channel close request:{} triggered",
-                            channelOperationRequest.Id);
+                        //_logger.LogInformation("Channel close request:{} triggered",
+                        //    channelOperationRequest.Id);
 
-                        //TODO The closeChannelResult is a streaming with the status updates, this is an async long operation, maybe we should track this process elsewhere (?)
+                        ////TODO The closeChannelResult is a streaming with the status updates, this is an async long operation, maybe we should track this process elsewhere (?)
 
 
                     }

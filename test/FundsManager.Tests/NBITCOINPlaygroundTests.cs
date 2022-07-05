@@ -1,5 +1,6 @@
 using FluentAssertions;
 using NBitcoin;
+using NBitcoin.DataEncoders;
 using NBitcoin.Tests;
 
 namespace FundsManager.Tests
@@ -78,8 +79,15 @@ namespace FundsManager.Tests
             var bobAddress = bobRPC.GetNewAddress();
 
             Console.WriteLine("Multisig adress by Alice and Bob gets money from miner");
-            var aliceKey = new Key();
-            var bobKey = new Key();
+
+            var mnemonic1 = new Mnemonic("social mango annual basic work brain economy one safe physical junk other toy valid load cook napkin maple runway island oil fan legend stem");
+            var extKey1 = mnemonic1.DeriveExtKey().GetWif(Network.RegTest);
+
+            var accountKey1 = extKey1.Derive(new KeyPath("m/84'/1'/0'"));
+            var aliceKey = accountKey1.PrivateKey;
+            var mnemonic2 = new Mnemonic("solar goat auto bachelor chronic input twin depth fork scale divorce fury mushroom column image sauce car public artist announce treat spend jacket physical");
+            var extKey2 = mnemonic2.DeriveExtKey().GetWif(Network.RegTest);
+            var bobKey = extKey2.PrivateKey;
 
 
             //2-of-2 multisig by Bob and Alice
@@ -122,7 +130,10 @@ namespace FundsManager.Tests
 
             var alicePSBT = channelFundingPSBT.SignWithKeys(aliceKey);
 
+            alicePSBT.Inputs.First().PartialSigs.Count.Should().Be(1);
+
             var bobPSBT = channelFundingPSBT.SignWithKeys(bobKey);
+            bobPSBT.Inputs.First().PartialSigs.Count.Should().Be(2);
 
             //We combine the PSBTs and finalize it
             var finalizedPSBT = alicePSBT.Combine(bobPSBT).Finalize();
@@ -144,6 +155,7 @@ namespace FundsManager.Tests
                 .SetSigningOptions(SigHash.None)
                 .BuildTransaction(true);
 
+
             //We add a the output, this could be a channel funding address in this case bobaddress
             
             var channelFundingTxOut = new TxOut(fundingMoney, bobAddress);
@@ -156,9 +168,9 @@ namespace FundsManager.Tests
             var check = channelfundingTx.Check();
             check.Should().Be(TransactionCheckResult.Success);
 
-            var bobInitialBalance = bobRPC.GetBalance();
+            var bobInitialBalance = bobRPC.GetBalance().Satoshi;
 
-            bobInitialBalance.Should().Be(0M);
+            bobInitialBalance.Should().Be(0L);
 
             //Channel funding broadcast
             minerRPC.SendRawTransaction(channelfundingTx);
@@ -170,6 +182,79 @@ namespace FundsManager.Tests
                 .Be(19M);
 
 
+        }
+
+
+
+        [Fact]
+        public void XPRVtoVPRV()
+        {
+            var xprv =
+                "tprv8ZgxMBicQKsPduvXYAnkop1b1UoAY2pS68pe9jHuJwuMvx6G5sh4C67peYZkRawdBWbMbfoybgQJ3g8nTZAezEeHyaW9A9UjtpTRmSyJwUn";
+
+            var multisigVprv = tprvToVprv(xprv);
+
+            multisigVprv.Should().Contain("Vprv");
+
+            var xprv2 =
+                "tprv8ZgxMBicQKsPdCVYPYV98ANgxLfD7MRWP3UjYdVgX3h5NB6J1VD6URUjTQe8Uaj9ifjyVuaWBhrPZnrX5gRRwE26sdDQcRvkqfYnHK3Aqv7";
+
+            var multisigVprv2 = tprvToVprv(xprv2);
+
+            multisigVprv2.Should().Contain("Vprv");
+
+        }
+
+        [Fact]
+        public void xprvtovPRV()
+        {
+            var xprv =
+                "tprv8ZgxMBicQKsPduvXYAnkop1b1UoAY2pS68pe9jHuJwuMvx6G5sh4C67peYZkRawdBWbMbfoybgQJ3g8nTZAezEeHyaW9A9UjtpTRmSyJwUn";
+
+            var multisigVprv = tprvToVprv(xprv);
+
+            multisigVprv.Should().Contain("Vprv");
+
+            var xprv2 =
+                "tprv8ZgxMBicQKsPdCVYPYV98ANgxLfD7MRWP3UjYdVgX3h5NB6J1VD6URUjTQe8Uaj9ifjyVuaWBhrPZnrX5gRRwE26sdDQcRvkqfYnHK3Aqv7";
+
+            var multisigVprv2 = tprvToVprv(xprv2);
+
+            multisigVprv2.Should().Contain("Vprv");
+
+        }
+
+        private static string tprvToVprv(string xprv)
+        {
+            var encoder = new Base58Encoder();
+            var xprvBytes = encoder.DecodeData(xprv);
+
+            var strippedVersionBytes = new byte[xprvBytes.Length - 4];
+            Buffer.BlockCopy(xprvBytes, 4, strippedVersionBytes, 0, strippedVersionBytes.Length);
+
+            var multisigVprvVersionBytes =
+                Convert.FromHexString("02575048"); //SLIP-0132 : Registered HD version bytes for BIP-0032
+
+            var newVprvBytes = multisigVprvVersionBytes.Concat(strippedVersionBytes).ToArray();
+
+            var multisigVprv = encoder.EncodeData(newVprvBytes);
+            return multisigVprv;
+        }
+        private static string tprvTovprv(string xprv)
+        {
+            var encoder = new Base58Encoder();
+            var xprvBytes = encoder.DecodeData(xprv);
+
+            var strippedVersionBytes = new byte[xprvBytes.Length - 4];
+            Buffer.BlockCopy(xprvBytes, 4, strippedVersionBytes, 0, strippedVersionBytes.Length);
+
+            var multisigVprvVersionBytes =
+                Convert.FromHexString("045f18bc"); //SLIP-0132 : Registered HD version bytes for BIP-0032
+
+            var newVprvBytes = multisigVprvVersionBytes.Concat(strippedVersionBytes).ToArray();
+
+            var multisigVprv = encoder.EncodeData(newVprvBytes);
+            return multisigVprv;
         }
     }
     

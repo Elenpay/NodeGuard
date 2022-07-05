@@ -3,11 +3,26 @@
 
     public enum ChannelOperationRequestStatus
     {
-        Pending = 0,
+        /// <summary>
+        /// Pending status is when the PSBT is fully signed by signers but waiting to be signed by the funds manager and broadcasted
+        /// </summary>
         Approved = 1,
         Cancelled = 2,
         Rejected = 3,
-        PSBTSignaturesPending = 4
+        Pending = 4,
+        /// <summary>
+        /// Approved and waiting for PSBT signatures filling, only for OperationRequestType = Open
+        /// </summary>
+        PSBTSignaturesPending = 5,
+        /// <summary>
+        /// The operation tx is signed and waiting for broadcast
+        /// </summary>
+        PendingBroadcast = 6,
+        /// <summary>
+        /// The TX is fully broadcast
+        /// </summary>
+        Broadcast = 7
+
     }
 
     public enum OperationRequestType
@@ -25,7 +40,7 @@
 
         public string? Description { get; set; }
 
-        public string AmountCryptoUnit { get; set; } // TODO worth an enum?
+        public string? AmountCryptoUnit { get; set; } // TODO worth an enum?
 
         public ChannelOperationRequestStatus Status { get; set; }
 
