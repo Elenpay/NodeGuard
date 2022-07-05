@@ -61,16 +61,16 @@
                 Status = ChannelOperationRequestStatus.Pending,
                 Wallet =      defaultWallet,  
                 WalletId = defaultWallet.Id,
-                
+
 
             }, alice, carol, _combinedPsbt);
 
         }
-       
+
 
 
     }
-    
+
 
     private async Task GeneratePSBT()
     {
@@ -98,7 +98,7 @@
         //var mnemonic1 = new Mnemonic("social mango annual basic work brain economy one safe physical junk other toy valid load cook napkin maple runway island oil fan legend stem");
         //var masterKey = mnemonic1.DeriveExtKey().GetWif(Network.RegTest);
 
-      
+
         //var keyPath = new KeyPath("84'").Derive(nbxplorerNetwork.CoinType).Derive(0,true); https:github.com/dgarage/NBXplorer/blob/0595a87f22c142aee6a6e4a0194f75aec4717819/NBXplorer/Controllers/MainController.cs#L1141
         //var accountKey = masterKey.Derive(keyPath);
         //if (accountKey.Neuter().ToWif() != "tpubDCPqCySQAAMdD2VuYQSgqfmFt37vNpe51jqFqF95RpbctzWEhyA77CKPdD6ZgAvkNYBGQgeFcEZmoPyBD5uu2oSJ1wuyKzpdjBRbWXMBRMv")
@@ -144,13 +144,13 @@
 
             _psbtSign1String = _psbtSign1.ToBase64();
         }
-       
-        
+
+
     }
 
     private async Task OnPSBT2FileUploadEnded(FileChangedEventArgs arg)
     {
-       
+
         var fileEntry = arg.Files.FirstOrDefault();
         if (fileEntry != null)
         {
@@ -160,7 +160,7 @@
             _psbtSign2String = hexOrBase64;
             _psbtSign2 = PSBT.Parse(hexOrBase64, Network.RegTest);
         }
-       
+
     }
 
     private async Task CombinePSBT()
@@ -186,7 +186,8 @@
                 _psbtSign1 = tx.CreatePSBT(Network.RegTest);
 
             }
-
+            _psbtSign1String = arg;
+            StateHasChanged();
         }
     }
     private async Task OnPSBT2TextChanged(string arg)
@@ -203,6 +204,8 @@
 
             }
 
+            _psbtSign2String = arg;
+            StateHasChanged();
         }
     }
 

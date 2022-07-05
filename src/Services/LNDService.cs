@@ -1,17 +1,14 @@
-﻿using System.Buffers.Text;
-using System.Security.Cryptography;
-using System.Text;
-using FundsManager.Data.Models;
+﻿using FundsManager.Data.Models;
 using FundsManager.Data.Repositories.Interfaces;
 using Google.Protobuf;
 using Grpc.Core;
 using Grpc.Net.Client;
 using Lnrpc;
 using NBitcoin;
-using NBitcoin.RPC;
 using NBXplorer;
 using NBXplorer.DerivationStrategy;
 using NBXplorer.Models;
+using System.Security.Cryptography;
 using Channel = FundsManager.Data.Models.Channel;
 
 namespace FundsManager.Services
@@ -99,7 +96,7 @@ namespace FundsManager.Services
 
             var pendingChannelId = RandomNumberGenerator.GetBytes(32);
 
-            //TODO Log user approver 
+            //TODO Log user approver
 
             _logger.LogInformation("Channel open request for  request id:{} from node:{} to node:{}",
                 channelOperationRequest.Id,
@@ -120,8 +117,6 @@ namespace FundsManager.Services
                     //CloseAddress = "bc1...003"
                     Private = channelOperationRequest.IsChannelPrivate,
                     NodePubkey = ByteString.CopyFrom(Convert.FromHexString(destination.PubKey)),
-
-
                 };
 
                 //If PSBT mode is not enabled.. go the sync way
@@ -129,7 +124,6 @@ namespace FundsManager.Services
                     = new ChannelPoint();
                 if (openChannelRequest.FundingShim == null)
                 {
-
                     channelPoint = await client.OpenChannelSyncAsync(openChannelRequest,
                         new Metadata { { "macaroon", source.ChannelAdminMacaroon } }
                     );
@@ -179,17 +173,32 @@ namespace FundsManager.Services
                         new Metadata { { "macaroon", source.ChannelAdminMacaroon } }
                     );
 
+                    string? finalTxHex = null;
                     await foreach (var response in openStatusUpdateStream.ResponseStream.ReadAllAsync())
                     {
-
                         switch (response.UpdateCase)
                         {
                             case OpenStatusUpdate.UpdateOneofCase.None:
                                 break;
+
                             case OpenStatusUpdate.UpdateOneofCase.ChanPending:
+                                //Time to broadcast the TX
+                                //if(finalTxHex != null)
+                                //{
+                                //    var walletKitClient = new Walletrpc.WalletKit.WalletKitClient(grpcChannel);
+                                //    var publishResult = await walletKitClient.PublishTransactionAsync(new Walletrpc.Transaction
+                                //    {
+                                //        Label = $"Publish tx for Channel Operation Request id: {channelOperationRequest.Id}",
+                                //        TxHex = ByteString.CopyFrom(Convert.FromHexString(finalTxHex))
+                                //    }, new Metadata { { "macaroon", source.ChannelAdminMacaroon } });
+
+                                //}
+
                                 break;
+
                             case OpenStatusUpdate.UpdateOneofCase.ChanOpen:
                                 break;
+
                             case OpenStatusUpdate.UpdateOneofCase.PsbtFund:
 
                                 //We got the funded PSBT, we need to tweak the tx outputs
@@ -198,29 +207,29 @@ namespace FundsManager.Services
                                 if (PSBT.TryParse(hexPSBT, Network.RegTest, //TODO Remove regtest
                                         out var fundedPSBT))
                                 {
-                                    var finalizedPSBT = fundedPSBT.Finalize();
+                                    //var finalizedPSBT = fundedPSBT.Finalize();
 
-                                    finalizedPSBT.AssertSanity();
+                                    fundedPSBT.AssertSanity();
 
-                                    finalizedPSBT.Settings.SigningOptions = new SigningOptions
+                                    fundedPSBT.Settings.SigningOptions = new SigningOptions
                                     {
                                         SigHash = SigHash.None
                                     };
 
- 
-                                    var channelfundingTx = finalizedPSBT.ExtractTransaction();
+                                    var channelfundingTx = fundedPSBT.GetGlobalTransaction();
 
                                     var fundingMoney = new Money(channelOperationRequest.SatsAmount, MoneyUnit.Satoshi);
                                     var txBuilder = Network.RegTest.CreateTransactionBuilder();
                                     var (network, nbxplorerClient) = GenerateNetwork();
 
-                                    //Temp tx to calculate the change
                                     var derivationStrategyBase = GetDerivationStrategy(channelOperationRequest, network);
                                     var coins = await GetTxInputCoins(channelOperationRequest, nbxplorerClient,
                                         derivationStrategyBase);
                                     var feeRateResult = await GetFeeRateResult(network, nbxplorerClient);
 
                                     var fundingAddress = BitcoinAddress.Create(response.PsbtFund.FundingAddress, network);
+
+                                    //Temp tx to calculate the change
 
                                     var temptx = txBuilder
                                         .AddCoins(coins)
@@ -232,13 +241,14 @@ namespace FundsManager.Services
                                         .BuildTransaction(true);
 
                                     //We manually fix the change
- 
-                                    channelfundingTx.Outputs[0].Value = temptx.Outputs[1].Value;
-                                    //channelfundingTx.Outputs[1].Value = fundingMoney;
-                                    //channelfundingTx.
-                                    var checkTx = channelfundingTx.Check();
+
+                                    channelfundingTx.Outputs[0].Value = temptx.Outputs.Where(x => x.ScriptPubKey != fundingAddress.ScriptPubKey).FirstOrDefault().Value;
 
                                     var changeFixedPSBT = channelfundingTx.CreatePSBT(network).UpdateFrom(fundedPSBT);
+
+                                    channelfundingTx = changeFixedPSBT.GetGlobalTransaction(); //TODO Can extract
+
+                                    var checkTx = channelfundingTx.Check();
 
                                     //We tell lnd to verify the psbt
                                     var verifyPSBT = client.FundingStateStep(
@@ -250,51 +260,36 @@ namespace FundsManager.Services
                                                 PendingChanId = ByteString.CopyFrom(pendingChannelId)
                                             }
                                         }, new Metadata { { "macaroon", source.ChannelAdminMacaroon } });
-                                    
+
+                                    //TODO Important!! We need to SIGHASH_ALL as fundsmanager to protect the output from tampering
 
                                     if (checkTx == TransactionCheckResult.Success)
                                     {
-                                        var txHex = channelfundingTx.ToHex();
+                                        finalTxHex = channelfundingTx.ToHex();
                                         var fundingStateStepResp = await client.FundingStateStepAsync(new FundingTransitionMsg
                                         {
                                             PsbtFinalize = new FundingPsbtFinalize
                                             {
                                                 PendingChanId = ByteString.CopyFrom(pendingChannelId),
-                                                // FinalRawTx =
-                                                //     ByteString.CopyFrom(Convert.FromHexString(txHex)),
-                                                SignedPsbt = ByteString.CopyFrom(Convert.FromHexString(fundedPSBT.ToHex()))
+                                                //FinalRawTx = ByteString.CopyFrom(Convert.FromHexString(finalTxHex)),
+                                                SignedPsbt = ByteString.CopyFrom(Convert.FromHexString(changeFixedPSBT.Finalize().ToHex()))
                                             },
                                         }, new Metadata { { "macaroon", source.ChannelAdminMacaroon } });
-
                                     }
                                     else
                                     {
-                                        //TODO
+                                        CancelPendingChannel(source, client, pendingChannelId);
                                     }
-
-
-
                                 }
 
-
                                 break;
+
                             default:
                                 throw new ArgumentOutOfRangeException();
                         }
-
-                        if (response?.PsbtFund?.FundingAddress != null)
-                        {
-
-                        }
                     }
-
-                    //TODO Abandoning channels pending (?)
                 }
-
-
-
             }
-
             catch (Exception e)
             {
                 _logger.LogError(e,
@@ -303,10 +298,36 @@ namespace FundsManager.Services
                     source.Name,
                     destination.Name);
                 result = false;
+
+                CancelPendingChannel(source, client, pendingChannelId);
             }
 
             return result;
+        }
 
+        private void CancelPendingChannel(Node source, Lightning.LightningClient client, byte[] pendingChannelId)
+        {
+            try
+            {
+                if (pendingChannelId != null)
+                {
+                    var cancelRequest = new FundingShimCancel
+                    {
+                        PendingChanId = ByteString.CopyFrom(pendingChannelId)
+                    };
+
+                    var cancelResult = client.FundingStateStep(new FundingTransitionMsg
+                    {
+                        ShimCancel = cancelRequest,
+                    },
+                            new Metadata { { "macaroon", source.ChannelAdminMacaroon } }
+                        );
+                }
+            }
+            catch (Exception e)
+            {
+                _logger.LogError(e, "Error while cancelling pending channel with id:{} (hex)", Convert.ToHexString(pendingChannelId));
+            }
         }
 
         public async Task<PSBT?> GenerateTemplatePSBT(ChannelOperationRequest channelOperationRequest, BitcoinAddress? destinationAddress = null)
@@ -339,7 +360,6 @@ namespace FundsManager.Services
 
             var derivationStrategy = GetDerivationStrategy(channelOperationRequest, nbXplorerNetwork);
 
-
             var coins = await GetTxInputCoins(channelOperationRequest, nbxplorerClient, derivationStrategy);
 
             //We got enough inputs to fund the TX so time to build the PSBT without outputs (funding address of the channel)
@@ -369,8 +389,6 @@ namespace FundsManager.Services
                     .SendEstimatedFees(feeRateResult.FeeRate)
                     .BuildPSBT(false);
             }
-
-
 
             //TODO Remove hack when https://github.com/MetacoSA/NBitcoin/issues/1112 is fixed
             result.Settings.SigningOptions = new SigningOptions(SigHash.None);
@@ -410,7 +428,6 @@ namespace FundsManager.Services
                 return null;
             }
 
-
             var factory = new DerivationStrategyFactory(nbXplorerNetwork);
 
             var derivationStrategy = factory.CreateMultiSigDerivationStrategy(bitcoinExtPubKeys.ToArray(),
@@ -433,7 +450,6 @@ namespace FundsManager.Services
                 _logger.LogError("Bitcoin network not set");
             }
 
-
             //Nbxplorer api client
 
             var nbXplorerNetwork = network switch
@@ -455,7 +471,6 @@ namespace FundsManager.Services
         {
             var utxoChanges = await nbxplorerClient.GetUTXOsAsync(derivationStrategy);
 
-
             if (utxoChanges == null || !utxoChanges.Confirmed.UTXOs.Any())
             {
                 _logger.LogError("PSBT cannot be generated, no UTXOs are available for walletId:{}",
@@ -464,7 +479,6 @@ namespace FundsManager.Services
             }
 
             var utxosStack = new Stack<UTXO>(utxoChanges.Confirmed.UTXOs.OrderByDescending(x => x.Confirmations));
-
 
             //FIFO Algorithm to match the amount
 
@@ -509,7 +523,6 @@ namespace FundsManager.Services
         {
             if (channelOperationRequest == null) throw new ArgumentNullException(nameof(channelOperationRequest));
 
-
             if (channelOperationRequest.RequestType != OperationRequestType.Close)
                 return false;
 
@@ -544,11 +557,7 @@ namespace FundsManager.Services
                         //    channelOperationRequest.Id);
 
                         ////TODO The closeChannelResult is a streaming with the status updates, this is an async long operation, maybe we should track this process elsewhere (?)
-
-
                     }
-
-
                 }
             }
             catch (Exception e)
@@ -560,7 +569,6 @@ namespace FundsManager.Services
             }
 
             return result;
-
         }
     }
 }

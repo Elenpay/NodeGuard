@@ -35,6 +35,8 @@
 
   <ItemGroup>
     <Protobuf Include="Proto\lightning.proto" GrpcServices="Client" />
+    <Protobuf Include="Proto\signer.proto" GrpcServices="Client" />
+    <Protobuf Include="Proto\walletkit.proto" GrpcServices="Client" />
   </ItemGroup>
 
 </Project>
