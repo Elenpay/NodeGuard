@@ -10,10 +10,6 @@
     <DockerComposeProjectPath>..\..\docker\docker-compose.dcproj</DockerComposeProjectPath>
   </PropertyGroup>
 
-  <ItemGroup>
-    <None Remove="Proto\lightning.proto" />
-  </ItemGroup>
-
 
   <ItemGroup>
     <PackageReference Include="Blazorise.Bootstrap" Version="1.0.5" />

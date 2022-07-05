@@ -10,7 +10,8 @@ WORKDIR /src
 COPY ["src/FundsManager.csproj", "."]
 RUN dotnet restore "./FundsManager.csproj"
 COPY . .
-WORKDIR "/src"
+WORKDIR /src/src
+RUN ls -l
 RUN dotnet build "FundsManager.csproj" -c Release -o /app/build
 
 FROM build AS publish
