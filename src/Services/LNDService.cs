@@ -54,7 +54,7 @@ namespace FundsManager.Services
         private readonly IChannelRepository _channelRepository;
         private readonly IChannelOperationRequestRepository _channelOperationRequestRepository;
 
-        public LndService( ILogger<LndService> logger, IChannelRepository channelRepository,
+        public LndService(ILogger<LndService> logger, IChannelRepository channelRepository,
             IChannelOperationRequestRepository channelOperationRequestRepository)
         {
             _logger = logger;
@@ -97,7 +97,7 @@ namespace FundsManager.Services
 
             var result = true;
 
-            var pendingChannelId =RandomNumberGenerator.GetBytes(32);
+            var pendingChannelId = RandomNumberGenerator.GetBytes(32);
 
             //TODO Log user approver 
 
@@ -202,19 +202,25 @@ namespace FundsManager.Services
 
                                     finalizedPSBT.AssertSanity();
 
+                                    finalizedPSBT.Settings.SigningOptions = new SigningOptions
+                                    {
+                                        SigHash = SigHash.None
+                                    };
+
+ 
                                     var channelfundingTx = finalizedPSBT.ExtractTransaction();
 
                                     var fundingMoney = new Money(channelOperationRequest.SatsAmount, MoneyUnit.Satoshi);
                                     var txBuilder = Network.RegTest.CreateTransactionBuilder();
                                     var (network, nbxplorerClient) = GenerateNetwork();
-                                    
+
                                     //Temp tx to calculate the change
-                                    var derivationStrategyBase = GetDerivationStrategy(channelOperationRequest,network);
+                                    var derivationStrategyBase = GetDerivationStrategy(channelOperationRequest, network);
                                     var coins = await GetTxInputCoins(channelOperationRequest, nbxplorerClient,
                                         derivationStrategyBase);
-                                    var feeRateResult = await GetFeeRateResult(network,nbxplorerClient);
+                                    var feeRateResult = await GetFeeRateResult(network, nbxplorerClient);
 
-                                    var fundingAddress = BitcoinAddress.Create(response.PsbtFund.FundingAddress,network);
+                                    var fundingAddress = BitcoinAddress.Create(response.PsbtFund.FundingAddress, network);
 
                                     var temptx = txBuilder
                                         .AddCoins(coins)
@@ -226,24 +232,39 @@ namespace FundsManager.Services
                                         .BuildTransaction(true);
 
                                     //We manually fix the change
-
-
-                                    channelfundingTx.Outputs[0].Value = temptx.Outputs[0].Value;
-                                    channelfundingTx.Outputs[1].Value = fundingMoney;
-
+ 
+                                    channelfundingTx.Outputs[0].Value = temptx.Outputs[1].Value;
+                                    //channelfundingTx.Outputs[1].Value = fundingMoney;
+                                    //channelfundingTx.
                                     var checkTx = channelfundingTx.Check();
+
+                                    var changeFixedPSBT = channelfundingTx.CreatePSBT(network).UpdateFrom(fundedPSBT);
+
+                                    //We tell lnd to verify the psbt
+                                    var verifyPSBT = client.FundingStateStep(
+                                        new FundingTransitionMsg
+                                        {
+                                            PsbtVerify = new FundingPsbtVerify
+                                            {
+                                                FundedPsbt = ByteString.CopyFrom(Convert.FromHexString(changeFixedPSBT.ToHex())),
+                                                PendingChanId = ByteString.CopyFrom(pendingChannelId)
+                                            }
+                                        }, new Metadata { { "macaroon", source.ChannelAdminMacaroon } });
+                                    
 
                                     if (checkTx == TransactionCheckResult.Success)
                                     {
+                                        var txHex = channelfundingTx.ToHex();
                                         var fundingStateStepResp = await client.FundingStateStepAsync(new FundingTransitionMsg
                                         {
                                             PsbtFinalize = new FundingPsbtFinalize
                                             {
                                                 PendingChanId = ByteString.CopyFrom(pendingChannelId),
-                                                FinalRawTx =
-                                                    ByteString.CopyFrom(Convert.FromHexString(channelfundingTx.ToHex()))
-                                            }, 
-                                        }, new Metadata { { "macaroon", source.ChannelAdminMacaroon }});
+                                                // FinalRawTx =
+                                                //     ByteString.CopyFrom(Convert.FromHexString(txHex)),
+                                                SignedPsbt = ByteString.CopyFrom(Convert.FromHexString(fundedPSBT.ToHex()))
+                                            },
+                                        }, new Metadata { { "macaroon", source.ChannelAdminMacaroon } });
 
                                     }
                                     else
@@ -334,7 +355,7 @@ namespace FundsManager.Services
             if (destinationAddress != null)
             {
                 result = txBuilder.AddCoins(coins)
-                    .Send(destinationAddress,new Money(channelOperationRequest.SatsAmount, MoneyUnit.Satoshi))
+                    .Send(destinationAddress, new Money(channelOperationRequest.SatsAmount, MoneyUnit.Satoshi))
                     .SetSigningOptions(SigHash.None)
                     .SetChange(changeAddress.Address)
                     .SendEstimatedFees(feeRateResult.FeeRate)
@@ -349,11 +370,11 @@ namespace FundsManager.Services
                     .BuildPSBT(false);
             }
 
-          
+
 
             //TODO Remove hack when https://github.com/MetacoSA/NBitcoin/issues/1112 is fixed
             result.Settings.SigningOptions = new SigningOptions(SigHash.None);
-            
+
             return result;
         }
 
@@ -447,7 +468,7 @@ namespace FundsManager.Services
 
             //FIFO Algorithm to match the amount
 
-            var totalUTXOsConfirmedSats = utxosStack.Sum(x => ((Money) x.Value).Satoshi);
+            var totalUTXOsConfirmedSats = utxosStack.Sum(x => ((Money)x.Value).Satoshi);
 
             if (totalUTXOsConfirmedSats < channelOperationRequest.SatsAmount)
             {
@@ -466,7 +487,7 @@ namespace FundsManager.Services
                 if (utxosStack.TryPop(out var utxo))
                 {
                     selectedUTXOs.Add(utxo);
-                    utxosSatsAmountAccumulator += ((Money) utxo.Value).Satoshi;
+                    utxosSatsAmountAccumulator += ((Money)utxo.Value).Satoshi;
                 }
             }
 
