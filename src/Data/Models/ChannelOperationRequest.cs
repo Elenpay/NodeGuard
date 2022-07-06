@@ -9,19 +9,22 @@
         Approved = 1,
         Cancelled = 2,
         Rejected = 3,
+        /// <summary>
+        /// Pending status means that it is waiting for approval by treasury guys
+        /// </summary>
         Pending = 4,
         /// <summary>
         /// Approved and waiting for PSBT signatures filling, only for OperationRequestType = Open
         /// </summary>
         PSBTSignaturesPending = 5,
         /// <summary>
-        /// The operation tx is signed and waiting for broadcast
+        /// The operation tx is signed and waiting for onchain confirmation
         /// </summary>
-        PendingBroadcast = 6,
+        OnChainConfirmationPending = 6,
         /// <summary>
-        /// The TX is fully broadcast
+        /// The TX is fully broadcast this means that the channel has been open/closed
         /// </summary>
-        Broadcast = 7
+        OnChainConfirmed = 7
 
     }
 

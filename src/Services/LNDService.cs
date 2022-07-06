@@ -16,14 +16,14 @@ namespace FundsManager.Services
     public interface ILndService
     {
         /// <summary>
-        /// Request to open a channel
+        /// Opens a channel based on a presigned psbt with inputs
         /// </summary>
         /// <param name="channelOperationRequest"></param>
         /// <param name="source"></param>
         /// <param name="destination"></param>
-        /// <param name="psbt"></param>
+        /// <param name="presignedPSBT"></param>
         /// <returns></returns>
-        public Task<bool> RequestOpenChannel(ChannelOperationRequest channelOperationRequest, Node source, Node destination, PSBT psbt);
+        public Task<bool> OpenChannel(ChannelOperationRequest channelOperationRequest, Node source, Node destination, PSBT presignedPSBT);
 
         /// <summary>
         /// Generates a template PSBT with Sighash_NONE and some UTXOs from the wallet related to the request without signing
@@ -65,10 +65,10 @@ namespace FundsManager.Services
         /// <param name="channelOperationRequest"></param>
         /// <param name="source"></param>
         /// <param name="destination"></param>
-        /// <param name="psbt"></param>
+        /// <param name="presignedPSBT"></param>
         /// <returns></returns>
-        public async Task<bool> RequestOpenChannel(ChannelOperationRequest channelOperationRequest, Node source,
-            Node destination, PSBT psbt)
+        public async Task<bool> OpenChannel(ChannelOperationRequest channelOperationRequest, Node source,
+            Node destination, PSBT presignedPSBT)
         {
             if (channelOperationRequest == null) throw new ArgumentNullException(nameof(channelOperationRequest));
             if (source == null) throw new ArgumentNullException(nameof(source));
@@ -82,8 +82,9 @@ namespace FundsManager.Services
                 return false;
             }
 
+            //Setup of grpc lnd api client (Lightning.proto)
+            //Hack to allow self-signed https grpc calls
             var httpHandler = new HttpClientHandler();
-            // Return `true` to allow certificates that are untrusted/invalid
             httpHandler.ServerCertificateCustomValidationCallback =
                 HttpClientHandler.DangerousAcceptAnyServerCertificateValidator;
 
@@ -92,9 +93,20 @@ namespace FundsManager.Services
 
             var client = new Lightning.LightningClient(grpcChannel);
 
-            var result = true;
+            var result = false;
+
+            //32 bytes of secure randomness for the pending channel id (lnd)
 
             var pendingChannelId = RandomNumberGenerator.GetBytes(32);
+
+            var pendingChannelIdHex = Convert.ToHexString(pendingChannelId);
+
+            var (network, nbxplorerClient) = GenerateNetwork();
+
+            //Derivation strategy for the multisig address based on its wallet
+            var derivationStrategyBase = GetDerivationStrategy(channelOperationRequest, network);
+
+            var closeAddress = await nbxplorerClient.GetUnusedAsync(derivationStrategyBase, DerivationFeature.Deposit, 0, true);
 
             //TODO Log user approver
 
@@ -104,151 +116,111 @@ namespace FundsManager.Services
                 destination.Name);
             try
             {
+                //We prepare the request (shim) with the base PSBT we had presigned with the UTXOs to fund the channel
                 var openChannelRequest = new OpenChannelRequest
                 {
-                    //TODO Shim details for the PSBT
                     FundingShim = new FundingShim
                     {
                         PsbtShim = new PsbtShim
-                        { BasePsbt = ByteString.FromBase64(psbt.ToBase64()), NoPublish = false, PendingChanId = ByteString.CopyFrom(pendingChannelId) }
+                        {
+                            BasePsbt = ByteString.FromBase64(presignedPSBT.ToBase64()),
+                            NoPublish = false,
+                            PendingChanId = ByteString.CopyFrom(pendingChannelId)
+                        }
                     },
                     LocalFundingAmount = channelOperationRequest.SatsAmount,
-                    //TODO Close address
-                    //CloseAddress = "bc1...003"
+                    CloseAddress = closeAddress?.Address.ToString(),
                     Private = channelOperationRequest.IsChannelPrivate,
                     NodePubkey = ByteString.CopyFrom(Convert.FromHexString(destination.PubKey)),
                 };
 
-                //If PSBT mode is not enabled.. go the sync way
-                var channelPoint
-                    = new ChannelPoint();
-                if (openChannelRequest.FundingShim == null)
+                //We launch a openstatusupdate stream for all the events when calling OpenChannel api method from LND
+                var openStatusUpdateStream = client.OpenChannel(openChannelRequest,
+                    new Metadata { { "macaroon", source.ChannelAdminMacaroon } }
+                );
+
+                await foreach (var response in openStatusUpdateStream.ResponseStream.ReadAllAsync())
                 {
-                    channelPoint = await client.OpenChannelSyncAsync(openChannelRequest,
-                        new Metadata { { "macaroon", source.ChannelAdminMacaroon } }
-                    );
-
-                    _logger.LogInformation("Opened channel on channel point:{}:{} request id:{} from node:{} to node:{}",
-                        channelPoint.FundingTxidStr,
-                        channelPoint.OutputIndex,
-                        channelOperationRequest.Id,
-                        source.Name,
-                        destination.Name);
-
-                    //Channel creation
-
-                    //FundingTxidbytes to hex string
-
-                    var fundingTxid = Convert.ToHexString(channelPoint.FundingTxidBytes.ToByteArray());
-
-                    var channel = new Channel
+                    switch (response.UpdateCase)
                     {
-                        Capacity = channelOperationRequest.SatsAmount,
-                        //TODO Channel id retrieval it is not on the result from the open channel
-                        FundingTx = fundingTxid, //TODO Validate this data (?)
-                        FundingTxOutputIndex = channelPoint.OutputIndex,
-                        CreationDatetime = DateTimeOffset.Now,
-                        UpdateDatetime = DateTimeOffset.Now,
-                        ChannelOperationRequests = new List<ChannelOperationRequest> { channelOperationRequest }
-                        //TODO Set btc close address
-                    };
-                    var channelCreationResult = await _channelRepository.AddAsync(channel);
+                        case OpenStatusUpdate.UpdateOneofCase.None:
+                            break;
 
-                    if (!channelCreationResult.Item1)
-                    {
-                        _logger.LogError("Error while saving channel entity for channel operation request with id:{} error:{}",
-                            channelOperationRequest.Id, channelCreationResult.Item2);
+                        case OpenStatusUpdate.UpdateOneofCase.ChanPending:
+                            //Channel funding tx on mempool and pending status on lnd
 
-                        if (channel.Id > 0)
-                        {
-                            channelOperationRequest.ChannelId = channel.Id;
+                            _logger.LogInformation("Channel pending for channel operation request id:{} for pending channel id:{}", 
+                                channelOperationRequest.Id, pendingChannelIdHex);
 
+                            channelOperationRequest.Status = ChannelOperationRequestStatus.OnChainConfirmationPending;
                             _channelOperationRequestRepository.Update(channelOperationRequest);
-                        }
-                    }
-                }
-                else // Go to the async way with OpenStatusUpdate (PSBT)
-                {
-                    var openStatusUpdateStream = client.OpenChannel(openChannelRequest,
-                        new Metadata { { "macaroon", source.ChannelAdminMacaroon } }
-                    );
 
-                    string? finalTxHex = null;
-                    await foreach (var response in openStatusUpdateStream.ResponseStream.ReadAllAsync())
-                    {
-                        switch (response.UpdateCase)
-                        {
-                            case OpenStatusUpdate.UpdateOneofCase.None:
-                                break;
+                            break;
 
-                            case OpenStatusUpdate.UpdateOneofCase.ChanPending:
-                                //Time to broadcast the TX
-                                //if(finalTxHex != null)
-                                //{
-                                //    var walletKitClient = new Walletrpc.WalletKit.WalletKitClient(grpcChannel);
-                                //    var publishResult = await walletKitClient.PublishTransactionAsync(new Walletrpc.Transaction
-                                //    {
-                                //        Label = $"Publish tx for Channel Operation Request id: {channelOperationRequest.Id}",
-                                //        TxHex = ByteString.CopyFrom(Convert.FromHexString(finalTxHex))
-                                //    }, new Metadata { { "macaroon", source.ChannelAdminMacaroon } });
+                        case OpenStatusUpdate.UpdateOneofCase.ChanOpen:
+                            _logger.LogInformation("Channel opened for channel operation request request id:{} channel point:{}",
+                                channelOperationRequest.Id, response.ChanOpen.ChannelPoint.ToString());
 
-                                //}
+                            channelOperationRequest.Status = ChannelOperationRequestStatus.OnChainConfirmed;
+                            _channelOperationRequestRepository.Update(channelOperationRequest);
+                            break;
 
-                                break;
+                        case OpenStatusUpdate.UpdateOneofCase.PsbtFund:
 
-                            case OpenStatusUpdate.UpdateOneofCase.ChanOpen:
-                                break;
+                            //We got the funded PSBT, we need to tweak the tx outputs and mimick lnd-cli calls
+                            var hexPSBT = Convert.ToHexString((response.PsbtFund.Psbt.ToByteArray()));
+                            if (PSBT.TryParse(hexPSBT, network, 
+                                    out var fundedPSBT))
+                            {
 
-                            case OpenStatusUpdate.UpdateOneofCase.PsbtFund:
+                                fundedPSBT.AssertSanity();
 
-                                //We got the funded PSBT, we need to tweak the tx outputs
-                                //We combine the PSBTs and finalize it
-                                var hexPSBT = Convert.ToHexString((response.PsbtFund.Psbt.ToByteArray()));
-                                if (PSBT.TryParse(hexPSBT, Network.RegTest, //TODO Remove regtest
-                                        out var fundedPSBT))
+                                //We ensure to Sighash.NONE
+                                fundedPSBT.Settings.SigningOptions = new SigningOptions
                                 {
-                                    //var finalizedPSBT = fundedPSBT.Finalize();
+                                    SigHash = SigHash.None
+                                };
 
-                                    fundedPSBT.AssertSanity();
+                                var channelfundingTx = fundedPSBT.GetGlobalTransaction();
 
-                                    fundedPSBT.Settings.SigningOptions = new SigningOptions
-                                    {
-                                        SigHash = SigHash.None
-                                    };
+                                var fundingMoney = new Money(channelOperationRequest.SatsAmount, MoneyUnit.Satoshi);
+                                
+                                var txBuilder = network.CreateTransactionBuilder();
+                                                                      
+                                var feeRateResult = await GetFeeRateResult(network, nbxplorerClient);
 
-                                    var channelfundingTx = fundedPSBT.GetGlobalTransaction();
+                                var fundingAddress = BitcoinAddress.Create(response.PsbtFund.FundingAddress, network);
 
-                                    var fundingMoney = new Money(channelOperationRequest.SatsAmount, MoneyUnit.Satoshi);
-                                    var txBuilder = Network.RegTest.CreateTransactionBuilder();
-                                    var (network, nbxplorerClient) = GenerateNetwork();
+                                //Temp tx to calculate the change -> TODO Remove this hack
+                                var coins = fundedPSBT.Inputs.Select(x => new Coin(
+                                        x.PrevOut.Hash, x.PrevOut.N, new Money(x.WitnessUtxo.Value, MoneyUnit.BTC), x.RedeemScript)).ToList();
+                                var temptx = txBuilder
+                                    .AddCoins(coins)
+                                    .SendEstimatedFees(feeRateResult.FeeRate)
+                                    .SendAllRemainingToChange()
+                                    .Send(fundingAddress, fundingMoney)
+                                    .SetChange(coins.FirstOrDefault().ScriptPubKey)
+                                    .SetSigningOptions(SigHash.None)
+                                    .BuildTransaction(true);
 
-                                    var derivationStrategyBase = GetDerivationStrategy(channelOperationRequest, network);
-                                    var coins = await GetTxInputCoins(channelOperationRequest, nbxplorerClient,
-                                        derivationStrategyBase);
-                                    var feeRateResult = await GetFeeRateResult(network, nbxplorerClient);
+                                //We manually fix the change (it was wrong from the Base template due to nbitcoin requiring a change on a PSBT)
 
-                                    var fundingAddress = BitcoinAddress.Create(response.PsbtFund.FundingAddress, network);
+                                channelfundingTx.Outputs[0].Value = temptx?.Outputs.Where(x => x.ScriptPubKey != fundingAddress.ScriptPubKey).FirstOrDefault().Value;
 
-                                    //Temp tx to calculate the change
+                                //TODO Important!! We need to SIGHASH_ALL as fundsmanager to protect the output from tampering by adding a UTXO by us and signing with SIGHASH_ALL
 
-                                    var temptx = txBuilder
-                                        .AddCoins(coins)
-                                        .SendEstimatedFees(feeRateResult.FeeRate)
-                                        .SendAllRemainingToChange()
-                                        .Send(fundingAddress, fundingMoney)
-                                        .SetChange(coins.FirstOrDefault().ScriptPubKey)
-                                        .SetSigningOptions(SigHash.None)
-                                        .BuildTransaction(true);
 
-                                    //We manually fix the change
+                                //We merge fundedPSBT with the ones with the change fixed
+                                var changeFixedPSBT = channelfundingTx.CreatePSBT(network).UpdateFrom(fundedPSBT);
 
-                                    channelfundingTx.Outputs[0].Value = temptx.Outputs.Where(x => x.ScriptPubKey != fundingAddress.ScriptPubKey).FirstOrDefault().Value;
+                                channelfundingTx = changeFixedPSBT.GetGlobalTransaction();
 
-                                    var changeFixedPSBT = channelfundingTx.CreatePSBT(network).UpdateFrom(fundedPSBT);
+                                //Just a check of the tx based on the changeFixedPSBT
+                                var checkTx = channelfundingTx.Check();
 
-                                    channelfundingTx = changeFixedPSBT.GetGlobalTransaction(); //TODO Can extract
 
-                                    var checkTx = channelfundingTx.Check();
+                                if (checkTx == TransactionCheckResult.Success)
+                                {
 
                                     //We tell lnd to verify the psbt
                                     var verifyPSBT = client.FundingStateStep(
@@ -261,32 +233,30 @@ namespace FundsManager.Services
                                             }
                                         }, new Metadata { { "macaroon", source.ChannelAdminMacaroon } });
 
-                                    //TODO Important!! We need to SIGHASH_ALL as fundsmanager to protect the output from tampering
+                                    //PSBT marked as verified so time to finalize the PSBT and broadcast the tx
 
-                                    if (checkTx == TransactionCheckResult.Success)
+                                    var fundingStateStepResp = await client.FundingStateStepAsync(new FundingTransitionMsg
                                     {
-                                        finalTxHex = channelfundingTx.ToHex();
-                                        var fundingStateStepResp = await client.FundingStateStepAsync(new FundingTransitionMsg
+                                        PsbtFinalize = new FundingPsbtFinalize
                                         {
-                                            PsbtFinalize = new FundingPsbtFinalize
-                                            {
-                                                PendingChanId = ByteString.CopyFrom(pendingChannelId),
-                                                //FinalRawTx = ByteString.CopyFrom(Convert.FromHexString(finalTxHex)),
-                                                SignedPsbt = ByteString.CopyFrom(Convert.FromHexString(changeFixedPSBT.Finalize().ToHex()))
-                                            },
-                                        }, new Metadata { { "macaroon", source.ChannelAdminMacaroon } });
-                                    }
-                                    else
-                                    {
-                                        CancelPendingChannel(source, client, pendingChannelId);
-                                    }
+                                            PendingChanId = ByteString.CopyFrom(pendingChannelId),
+                                            //FinalRawTx = ByteString.CopyFrom(Convert.FromHexString(finalTxHex)),
+                                            SignedPsbt = ByteString.CopyFrom(Convert.FromHexString(changeFixedPSBT.Finalize().ToHex()))
+                                        },
+                                    }, new Metadata { { "macaroon", source.ChannelAdminMacaroon } });
+
+                                    
                                 }
+                                else
+                                {
+                                    CancelPendingChannel(source, client, pendingChannelId);
+                                }
+                            }
 
-                                break;
+                            break;
 
-                            default:
-                                throw new ArgumentOutOfRangeException();
-                        }
+                        default:
+                            throw new ArgumentOutOfRangeException();
                     }
                 }
             }
@@ -439,6 +409,11 @@ namespace FundsManager.Services
             return derivationStrategy;
         }
 
+        /// <summary>
+        /// Generates the ExplorerClient for using nbxplorer based on a bitcoin networy type
+        /// </summary>
+        /// <returns></returns>
+        /// <exception cref="ArgumentNullException"></exception>
         private (Network nbXplorerNetwork, ExplorerClient nbxplorerClient) GenerateNetwork()
         {
             var network = Environment.GetEnvironmentVariable("BITCOIN_NETWORK");

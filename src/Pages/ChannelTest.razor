@@ -54,7 +54,7 @@
 
         if (_combinedPsbt != null)
         {
-            var channelresult = LndService.RequestOpenChannel(new ChannelOperationRequest
+            var channelresult = LndService.OpenChannel(new ChannelOperationRequest
             {
                 SatsAmount = 20000,
                 RequestType = OperationRequestType.Open,
