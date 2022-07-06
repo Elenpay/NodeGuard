@@ -163,6 +163,29 @@ namespace FundsManager.Services
 
                             channelOperationRequest.Status = ChannelOperationRequestStatus.OnChainConfirmed;
                             _channelOperationRequestRepository.Update(channelOperationRequest);
+
+                            var channel = new Channel
+                            {
+                                ChannelId = pendingChannelIdHex,
+                                CreationDatetime = DateTimeOffset.Now,
+                                FundingTx = response.ChanOpen.ChannelPoint.FundingTxidStr,
+                                FundingTxOutputIndex = response.ChanOpen.ChannelPoint.OutputIndex,
+                                BtcCloseAddress = closeAddress?.Address.ToString(),
+                                SatsAmount = channelOperationRequest.SatsAmount,
+                                UpdateDatetime = DateTimeOffset.Now,
+                                ChannelOperationRequests = new List<ChannelOperationRequest> { channelOperationRequest }
+
+
+                            };
+
+                            var addChannelResult = await _channelRepository.AddAsync(channel);
+
+                            if(addChannelResult.Item1 != false)
+                            {
+                                _logger.LogError("Channel for channel operation request id:{} could not be created, reason:{}", channelOperationRequest.Id, addChannelResult.Item2);
+                            }
+
+
                             break;
 
                         case OpenStatusUpdate.UpdateOneofCase.PsbtFund:
@@ -191,9 +214,16 @@ namespace FundsManager.Services
 
                                 var fundingAddress = BitcoinAddress.Create(response.PsbtFund.FundingAddress, network);
 
-                                //Temp tx to calculate the change -> TODO Remove this hack
+                                //Temp tx to calculate the change -> TODO Remove this hack in the future
                                 var coins = fundedPSBT.Inputs.Select(x => new Coin(
                                         x.PrevOut.Hash, x.PrevOut.N, new Money(x.WitnessUtxo.Value, MoneyUnit.BTC), x.RedeemScript)).ToList();
+                                if (!coins.Any())
+                                {
+                                    var errorMessage = "No UTXOs found for funding a temptx in the open channel method";
+                                    _logger.LogError(errorMessage);
+                                    throw new ArgumentException(nameof(coins));
+                                }
+
                                 var temptx = txBuilder
                                     .AddCoins(coins)
                                     .SendEstimatedFees(feeRateResult.FeeRate)
@@ -205,7 +235,7 @@ namespace FundsManager.Services
 
                                 //We manually fix the change (it was wrong from the Base template due to nbitcoin requiring a change on a PSBT)
 
-                                channelfundingTx.Outputs[0].Value = temptx?.Outputs.Where(x => x.ScriptPubKey != fundingAddress.ScriptPubKey).FirstOrDefault().Value;
+                                channelfundingTx.Outputs[0].Value = temptx?.Outputs?.FirstOrDefault(x => x.ScriptPubKey != fundingAddress.ScriptPubKey)?.Value;
 
                                 //TODO Important!! We need to SIGHASH_ALL as fundsmanager to protect the output from tampering by adding a UTXO by us and signing with SIGHASH_ALL
 
