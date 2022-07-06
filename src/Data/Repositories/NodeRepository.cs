@@ -1,4 +1,5 @@
-﻿using FundsManager.Data.Models;
+﻿using System.Security.Cryptography.X509Certificates;
+using FundsManager.Data.Models;
 using FundsManager.Data.Repositories.Interfaces;
 using Microsoft.EntityFrameworkCore;
 
@@ -23,7 +24,22 @@ namespace FundsManager.Data.Repositories
         {
             await using var applicationDbContext = await _dbContextFactory.CreateDbContextAsync();
 
-            return await applicationDbContext.Nodes.FirstOrDefaultAsync(x => x.Id == id);
+            return await applicationDbContext.Nodes
+                .Include(node => node.Users)
+                .ThenInclude(user => user.Keys)
+                .ThenInclude(key => key.Wallets)
+                .FirstOrDefaultAsync(x => x.Id == id);
+        }
+
+        public async Task<Node?> GetByPubkey(string key)
+        {
+            await using var applicationDbContext = await _dbContextFactory.CreateDbContextAsync();
+
+            return await applicationDbContext.Nodes
+                .Include(node => node.Users)
+                .ThenInclude(user => user.Keys)
+                .ThenInclude(key => key.Wallets)
+                .FirstOrDefaultAsync(x => x.PubKey == key);
         }
 
         public async Task<List<Node>> GetAll()

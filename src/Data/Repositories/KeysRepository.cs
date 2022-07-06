@@ -28,7 +28,10 @@ namespace FundsManager.Data.Repositories
 
         public async Task<List<Key>> GetAll()
         {
-            throw new NotImplementedException();
+            await using var applicationDbContext = await _dbContextFactory.CreateDbContextAsync();
+
+            return await applicationDbContext.Keys.ToListAsync();
+            
         }
 
         public async Task<(bool, string?)> AddAsync(Key type)
