@@ -69,6 +69,15 @@ namespace FundsManager.Data
             //Roles
             SetRoles(applicationDbContext);
 
+            //Default Internal Wallet
+
+            var internalWallet = new InternalWallet
+            {
+                DerivationPath = "m/48'"
+                CreationDatetime = DateTimeOffset.Now
+                
+            }
+
             if (webHostEnvironment.IsDevelopment())
             {
 

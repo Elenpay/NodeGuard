@@ -19,6 +19,7 @@ services:
         NBXPLORER_BTCRPCPASSWORD: "polarpass"
         NBXPLORER_BTCRPCURL: http://host.docker.internal:18443/
         NBXPLORER_BTCNODEENDPOINT: host.docker.internal:19444
+        DEFAULT_DERIVATION_PATH: 
 
   fundsmanager_postgres:
     container_name: fundsmanager_postgres

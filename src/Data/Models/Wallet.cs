@@ -12,6 +12,9 @@
     {
         public string Name { get; set; }
 
+        /// <summary>
+        /// M-of-N Multisig threshold
+        /// </summary>
         public int MofN { get; set; }
 
         public string? Description { get; set; }
