@@ -23,14 +23,16 @@ namespace FundsManager.Data.Repositories
         {
             await using var applicationDbContext = await _dbContextFactory.CreateDbContextAsync();
 
-            return await applicationDbContext.ApplicationUsers.FirstOrDefaultAsync(x => x.Id == id);
+            return await applicationDbContext.ApplicationUsers
+                .Include(user => user.Keys)
+                .FirstOrDefaultAsync(x => x.Id == id);
         }
 
         public async Task<List<ApplicationUser>> GetAll()
         {
             await using var applicationDbContext = await _dbContextFactory.CreateDbContextAsync();
 
-            var result = await applicationDbContext.ApplicationUsers.ToListAsync();
+            var result = await applicationDbContext.ApplicationUsers.Include(user => user.Keys).ToListAsync();
             return result;
         }
 

@@ -5,6 +5,7 @@ namespace FundsManager.Data.Repositories.Interfaces;
 public interface INodeRepository
 {
     Task<Node?> GetById(int id);
+    Task<Node?> GetByPubkey(string key);
     Task<List<Node>> GetAll();
     Task<(bool, string?)> AddAsync(Node type);
     Task<(bool, string?)> AddRangeAsync(List<Node> type);
