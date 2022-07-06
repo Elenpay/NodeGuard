@@ -56,6 +56,9 @@
         public int WalletId { get; set; }
         public Wallet Wallet { get; set; }
 
+        public int InternalWalletId { get; set; }
+        public InternalWallet InternalWallet { get;set;}
+
         public int SourceNodeId { get; set; }
         public Node SourceNode { get; set; }
         public int DestNodeId { get; set; }

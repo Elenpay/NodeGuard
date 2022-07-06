@@ -1,9 +1,11 @@
-﻿using FundsManager.Data.Models;
+﻿using FundsManager.Data;
+using FundsManager.Data.Models;
 using FundsManager.Data.Repositories.Interfaces;
 using Google.Protobuf;
 using Grpc.Core;
 using Grpc.Net.Client;
 using Lnrpc;
+using Microsoft.EntityFrameworkCore;
 using NBitcoin;
 using NBXplorer;
 using NBXplorer.DerivationStrategy;
@@ -50,13 +52,15 @@ namespace FundsManager.Services
         private readonly ILogger<LndService> _logger;
         private readonly IChannelRepository _channelRepository;
         private readonly IChannelOperationRequestRepository _channelOperationRequestRepository;
+        private readonly IDbContextFactory<ApplicationDbContext> _dbContextFactory;
 
         public LndService(ILogger<LndService> logger, IChannelRepository channelRepository,
-            IChannelOperationRequestRepository channelOperationRequestRepository)
+            IChannelOperationRequestRepository channelOperationRequestRepository, IDbContextFactory<ApplicationDbContext> dbContextFactory)
         {
             _logger = logger;
             _channelRepository = channelRepository;
             _channelOperationRequestRepository = channelOperationRequestRepository;
+            _dbContextFactory = dbContextFactory;
         }
 
         /// <summary>
@@ -237,12 +241,18 @@ namespace FundsManager.Services
 
                                 channelfundingTx.Outputs[0].Value = temptx?.Outputs?.FirstOrDefault(x => x.ScriptPubKey != fundingAddress.ScriptPubKey)?.Value;
 
-                                //TODO Important!! We need to SIGHASH_ALL as fundsmanager to protect the output from tampering by adding a UTXO by us and signing with SIGHASH_ALL
-
-
                                 //We merge fundedPSBT with the ones with the change fixed
                                 var changeFixedPSBT = channelfundingTx.CreatePSBT(network).UpdateFrom(fundedPSBT);
 
+                                //We need to SIGHASH_ALL as fundsmanager to protect the output from tampering by adding a UTXO by us and signing with SIGHASH_ALL
+
+                                changeFixedPSBT.Settings.SigningOptions = new SigningOptions(SigHash.All);
+
+                                var internalWalletAccountKey = channelOperationRequest.InternalWallet.GetAccountKey(network);
+                                foreach(var input in changeFixedPSBT.Inputs){
+                                    input.Sign(internalWalletAccountKey.PrivateKey);
+                                }
+                                
                                 channelfundingTx = changeFixedPSBT.GetGlobalTransaction();
 
                                 //Just a check of the tx based on the changeFixedPSBT
@@ -305,6 +315,12 @@ namespace FundsManager.Services
             return result;
         }
 
+        /// <summary>
+        /// Cancels a pending channel from LND PSBT-based funding of channels
+        /// </summary>
+        /// <param name="source"></param>
+        /// <param name="client"></param>
+        /// <param name="pendingChannelId"></param>
         private void CancelPendingChannel(Node source, Lightning.LightningClient client, byte[] pendingChannelId)
         {
             try
@@ -330,6 +346,7 @@ namespace FundsManager.Services
             }
         }
 
+        
         public async Task<PSBT?> GenerateTemplatePSBT(ChannelOperationRequest channelOperationRequest, BitcoinAddress? destinationAddress = null)
         {
             if (channelOperationRequest == null) throw new ArgumentNullException(nameof(channelOperationRequest));

@@ -9,8 +9,6 @@ namespace FundsManager.Data.Models
     /// </summary>
     public class InternalWallet : Entity
     {
-
-
         /// <summary>
         /// Derivation path of the wallet
         /// </summary>
@@ -19,20 +17,20 @@ namespace FundsManager.Data.Models
         /// <summary>
         /// 4 Words mnemonic
         /// </summary>
-        public string Mnemonic { get; set; }
+        public string MnemonicString { get; set; }
 
         /// <summary>
         /// Returns the master private key (xprv..tprv)
         /// </summary>
         /// <param name="network"></param>
         /// <returns></returns>
-        private string? GetMasterPrivateKey(Network network)
+        public string? GetMasterPrivateKey(Network network)
         {
-            if (string.IsNullOrWhiteSpace(Mnemonic))
+            if (string.IsNullOrWhiteSpace(MnemonicString))
             {
                 return null;
             }
-             return new Mnemonic(Mnemonic).DeriveExtKey().GetWif(network).ToWif();
+            return new Mnemonic(MnemonicString).DeriveExtKey().GetWif(network).ToWif();
 
         }
 
@@ -41,14 +39,14 @@ namespace FundsManager.Data.Models
         /// </summary>
         /// <param name="network"></param>
         /// <returns></returns>
-		private string? GetXPUB(Network network)
+		public string? GetXPUB(Network network)
         {
-            if (string.IsNullOrWhiteSpace(DerivationPath) || string.IsNullOrWhiteSpace(Mnemonic))
+            if (string.IsNullOrWhiteSpace(DerivationPath) || string.IsNullOrWhiteSpace(MnemonicString))
             {
                 return null;
             }
 
-            var masterKey = new Mnemonic(Mnemonic).DeriveExtKey().GetWif(network);
+            var masterKey = new Mnemonic(MnemonicString).DeriveExtKey().GetWif(network);
             var keyPath = new KeyPath(DerivationPath); //https://github.com/dgarage/NBXplorer/blob/0595a87fc14aee6a6e4a0194f75aec4717819/NBXplorer/Controllers/MainController.cs#L1141
             var accountKey = masterKey.Derive(keyPath);
             var bitcoinExtPubKey = accountKey.Neuter();
@@ -59,7 +57,12 @@ namespace FundsManager.Data.Models
             return walletDerivationScheme;
         }
 
+        public BitcoinExtKey GetAccountKey(Network network)
+        {
+            var accountKey = new Mnemonic(MnemonicString).DeriveExtKey().GetWif(network).Derive(new KeyPath(DerivationPath));
 
+            return accountKey;
+        }
     }
 }
 

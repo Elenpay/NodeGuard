@@ -14,10 +14,15 @@
 
         #region Relationships
 
-        public string UserId { get; set; }
-        public ApplicationUser User { get; set; }
+        public string? UserId { get; set; }
+        public ApplicationUser? User { get; set; }
 
         public ICollection<Wallet> Wallets { get; set; }
+
+        /// <summary>
+        /// Indicates if the key comes from a internal wallet managed by the fundsmanager
+        /// </summary>
+        public bool IsFundsManagerPrivateKey { get; set; }
 
         #endregion 
     }

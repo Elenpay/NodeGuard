@@ -28,7 +28,8 @@
                 "NBXPLORER_BTCRPCPASSWORD": "polarpass",
                 "NBXPLORER_BTCRPCURL": "http://host.docker.internal:18443/",
                 "NBXPLORER_BTCNODEENDPOINT": "host.docker.internal:19444",
-                "ASPNETCORE_URLS": "http://localhost:5001"
+                "ASPNETCORE_URLS": "http://localhost:5001",
+                "DEFAULT_DERIVATION_PATH": "m/48'/1'/1'"
             },
             "sourceFileMap": {
                 "/Views": "${workspaceFolder}/Views"

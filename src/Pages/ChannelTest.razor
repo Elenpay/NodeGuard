@@ -1,13 +1,12 @@
 ﻿@page "/channeltest"
-@using FundsManager.Data.Repositories.Interfaces
-@using FundsManager.Services
-@using FundsManager.Data.Models
+
 @using NBitcoin
 @using NBXplorer
 @using Key = NBitcoin.Key
 @inject INodeRepository NodeRepository
 @inject IWalletRepository WalletRepository
 @inject ILndService LndService
+@inject IDbContextFactory<ApplicationDbContext> DbContextFactory
 <PageTitle>Channel test</PageTitle>
 
 <h1>Open channel from Alice to Carol (1000 sats)</h1>
@@ -16,10 +15,10 @@
 <p>Template PSBT</p>
 <MemoEdit @bind-Text="@templatePSBTString"></MemoEdit>
 <p>Signed with Key 1 PSBT</p>
-<FileEdit Changed="@OnPSBT1FileUploadEnded"></FileEdit>
+@*<FileEdit Changed="@OnPSBT1FileUploadEnded"></FileEdit>*@
 <MemoEdit Text="@_psbtSign1String" TextChanged="OnPSBT1TextChanged"></MemoEdit>
 <p>Signed with Key 2 PSBT</p>
-<FileEdit Changed="@OnPSBT2FileUploadEnded"></FileEdit>
+@*<FileEdit Changed="@OnPSBT2FileUploadEnded"></FileEdit>*@
 <MemoEdit Text="@_psbtSign2String" TextChanged="OnPSBT2TextChanged"></MemoEdit>
 <button class="btn btn-primary" @onclick="CombinePSBT">Combine</button>
 
@@ -41,7 +40,6 @@
 
     private PSBT? _combinedPsbt;
     private string? _combinedPsbtString;
-
 
 
     private async Task OpenChannelRequest()
@@ -67,18 +65,17 @@
 
         }
 
-
-
     }
-
 
     private async Task GeneratePSBT()
     {
+        var context = await DbContextFactory.CreateDbContextAsync();
         var nbXplorerNetwork = Network.RegTest;
         var provider = new NBXplorerNetworkProvider(nbXplorerNetwork.ChainName);
         var nbxplorerNetwork = provider.GetFromCryptoCode(nbXplorerNetwork.NetworkSet.CryptoCode);
 
         var defaultWallet = (await WalletRepository.GetAll()).First();
+        var internalWallet = context.InternalWallets.Last();
 
         var channelOperationRequest = new ChannelOperationRequest
         {
@@ -86,7 +83,9 @@
             RequestType = OperationRequestType.Open,
             WalletId = defaultWallet.Id,
             Wallet = defaultWallet,
-            Status = ChannelOperationRequestStatus.Pending
+            Status = ChannelOperationRequestStatus.Pending,
+            InternalWalletId = internalWallet.Id,
+            InternalWallet = internalWallet
 
         };
 

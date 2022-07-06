@@ -69,14 +69,7 @@ namespace FundsManager.Data
             //Roles
             SetRoles(applicationDbContext);
 
-            //Default Internal Wallet
 
-            var internalWallet = new InternalWallet
-            {
-                DerivationPath = "m/48'"
-                CreationDatetime = DateTimeOffset.Now
-                
-            }
 
             if (webHostEnvironment.IsDevelopment())
             {
@@ -139,6 +132,22 @@ namespace FundsManager.Data
                     _ = Task.Run(() => nodeRepository.AddAsync(carol)).Result;
                 }
 
+                InternalWallet internalWallet = null;
+                if (!applicationDbContext.InternalWallets.Any())
+                {
+                    //Default Internal Wallet
+
+                    internalWallet = new InternalWallet
+                    {
+                        DerivationPath = Environment.GetEnvironmentVariable("DEFAULT_DERIVATION_PATH"),
+                        MnemonicString = "middle teach digital prefer fiscal theory syrup enter crash muffin easily anxiety ill barely eagle swim volume consider dynamic unaware deputy middle into physical",
+                        CreationDatetime = DateTimeOffset.Now,
+
+                    };
+
+                    applicationDbContext.Add(internalWallet);
+                }
+
 
                 if (!applicationDbContext.Wallets.Any())
                 {
@@ -147,15 +156,9 @@ namespace FundsManager.Data
 
                     //Individual wallets
                     var wallet1seed = "social mango annual basic work brain economy one safe physical junk other toy valid load cook napkin maple runway island oil fan legend stem";
-                    //var wallet1 = nbxplorerClient.GenerateWallet(new GenerateWalletRequest
-                    //{
-                    //    ExistingMnemonic = wallet1seed,
-                    //    ScriptPubKeyType = ScriptPubKeyType.Segwit,
-                    //    SavePrivateKeys = true,
 
-                    //});
                     var masterKey1 = new Mnemonic(wallet1seed).DeriveExtKey().GetWif(Network.RegTest);
-                    var keyPath1 = new KeyPath("m/48'/1'/1'"); //https://github.com/dgarage/NBXplorer/blob/0595a87f22c142aee6a6e4a0194f75aec4717819/NBXplorer/Controllers/MainController.cs#L1141
+                    var keyPath1 = new KeyPath(Environment.GetEnvironmentVariable("DEFAULT_DERIVATION_PATH")); //https://github.com/dgarage/NBXplorer/blob/0595a87f22c142aee6a6e4a0194f75aec4717819/NBXplorer/Controllers/MainController.cs#L1141
                     var accountKey1 = masterKey1.Derive(keyPath1);
                     var bitcoinExtPubKey1 = accountKey1.Neuter();
                     var accountKeyPath1 = new RootedKeyPath(masterKey1.GetPublicKey().GetHDFingerPrint(), keyPath1);
@@ -163,22 +166,16 @@ namespace FundsManager.Data
                     var wallet1DerivationScheme = bitcoinExtPubKey1.ToWif();
 
                     logger.LogInformation("Wallet 1 seed: {}", wallet1seed);
+
                     var wallet2seed = "solar goat auto bachelor chronic input twin depth fork scale divorce fury mushroom column image sauce car public artist announce treat spend jacket physical";
-                    //var wallet2 = nbxplorerClient.GenerateWallet(new GenerateWalletRequest
-                    //{
-                    //    ExistingMnemonic = wallet2seed,
-                    //    ScriptPubKeyType = ScriptPubKeyType.Segwit,
-                    //    SavePrivateKeys = true,
-                    //});
 
                     var masterKey2 = new Mnemonic(wallet2seed).DeriveExtKey().GetWif(Network.RegTest);
-                    var keyPath2 = new KeyPath("m/48'/1'/1'"); //https://github.com/dgarage/NBXplorer/blob/0595a87f22c142aee6a6e4a0194f75aec4717819/NBXplorer/Controllers/MainController.cs#L1141
+                    var keyPath2 = new KeyPath(Environment.GetEnvironmentVariable("DEFAULT_DERIVATION_PATH")); //https://github.com/dgarage/NBXplorer/blob/0595a87f22c142aee6a6e4a0194f75aec4717819/NBXplorer/Controllers/MainController.cs#L1141
                     var accountKey2 = masterKey2.Derive(keyPath2);
                     var bitcoinExtPubKey2 = accountKey2.Neuter();
                     var accountKeyPath2 = new RootedKeyPath(masterKey2.GetPublicKey().GetHDFingerPrint(), keyPath2);
 
                     var wallet2DerivationScheme = bitcoinExtPubKey2.ToWif();
-
 
                     logger.LogInformation("Wallet 2 seed: {}", wallet2seed);
 
@@ -201,7 +198,12 @@ namespace FundsManager.Data
                                 XPUB = wallet2DerivationScheme.ToString()
                                 //XPUB = wallet2.DerivationScheme.ToString()
                             },
-
+                            new Key
+                            {
+                                Name = "FundsManager Key",
+                                XPUB = internalWallet.GetXPUB(nbXplorerNetwork),
+                                IsFundsManagerPrivateKey = true
+                            }
                         },
                         Name = "Test wallet",
                         WalletAddressType = WalletAddressType.NativeSegwit,
@@ -268,7 +270,22 @@ namespace FundsManager.Data
             }
             else
             {
+                if (!applicationDbContext.InternalWallets.Any())
+                {
+                    //Default Internal Wallet, for production we generate a whole random new Mnemonic
 
+                    var internalWallet = new InternalWallet
+                    {
+                        DerivationPath = Environment.GetEnvironmentVariable("DEFAULT_DERIVATION_PATH"),
+                        MnemonicString = new Mnemonic(Wordlist.English).ToString(),
+                        CreationDatetime = DateTimeOffset.Now,
+
+                    };
+
+                    applicationDbContext.Add(internalWallet);
+
+                    logger.LogInformation("A new internal wallet seed has been generated: {}", internalWallet.MnemonicString);
+                }
             }
 
             applicationDbContext.SaveChanges();
