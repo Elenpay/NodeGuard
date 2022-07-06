@@ -49,6 +49,8 @@
         var carol = nodes.FirstOrDefault(x => x.Name == "Carol");
         var alice = nodes.FirstOrDefault(x => x.Name == "Alice");
         var defaultWallet = (await WalletRepository.GetAll()).First();
+        var context = await DbContextFactory.CreateDbContextAsync();
+        var internalWallet = context.InternalWallets.OrderBy(x=> x.Id).Last();
 
         if (_combinedPsbt != null)
         {
@@ -59,6 +61,8 @@
                 Status = ChannelOperationRequestStatus.Pending,
                 Wallet =      defaultWallet,  
                 WalletId = defaultWallet.Id,
+                InternalWallet = internalWallet,
+                InternalWalletId = internalWallet.Id
 
 
             }, alice, carol, _combinedPsbt);
@@ -75,7 +79,7 @@
         var nbxplorerNetwork = provider.GetFromCryptoCode(nbXplorerNetwork.NetworkSet.CryptoCode);
 
         var defaultWallet = (await WalletRepository.GetAll()).First();
-        var internalWallet = context.InternalWallets.Last();
+        var internalWallet = context.InternalWallets.OrderBy(x=> x.Id).Last();
 
         var channelOperationRequest = new ChannelOperationRequest
         {

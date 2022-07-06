@@ -30,7 +30,6 @@ namespace FundsManager.Data
                                throw new ArgumentNullException("Environment.GetEnvironmentVariable(\"NBXPLORER_URI\")");
             var userManager = serviceProvider.GetRequiredService<UserManager<ApplicationUser>>();
 
-
             var nbXplorerNetwork = network switch
             {
                 "REGTEST" => Network.RegTest,
@@ -49,7 +48,6 @@ namespace FundsManager.Data
                 Thread.Sleep(100);
             }
 
-
             //Migrations
             var isConnected = false;
             while (isConnected == false)
@@ -63,17 +61,13 @@ namespace FundsManager.Data
                 {
                 }
                 Thread.Sleep(1_000);
-
             }
 
             //Roles
             SetRoles(applicationDbContext);
 
-
-
             if (webHostEnvironment.IsDevelopment())
             {
-
                 //Users
                 var adminUsername = "admin@clovrlabs.com";
 
@@ -87,11 +81,9 @@ namespace FundsManager.Data
                         EmailConfirmed = true,
                         Email = adminUsername,
                         NormalizedEmail = adminUsername.ToUpper(),
-
                     };
                     _ = Task.Run(() => userManager.CreateAsync(adminUser, "Pass9299a8s.asa9")).Result;
                 }
-
 
                 //TODO Roles
 
@@ -107,8 +99,6 @@ namespace FundsManager.Data
                     Name = "Alice",
                     CreationDatetime = DateTimeOffset.UtcNow,
                     PubKey = "03b48034270e522e4033afdbe43383d66d426638927b940d09a8a7a0de4d96e807",
-
-
                 };
                 if (!nodes.Any(x => x.PubKey == alice.PubKey))
                 {
@@ -124,7 +114,6 @@ namespace FundsManager.Data
                     Name = "Carol",
                     CreationDatetime = DateTimeOffset.UtcNow,
                     PubKey = "03485d8dcdd149c87553eeb80586eb2bece874d412e9f117304446ce189955d375",
-
                 };
 
                 if (!nodes.Any(x => x.PubKey == carol.PubKey))
@@ -142,16 +131,14 @@ namespace FundsManager.Data
                         DerivationPath = Environment.GetEnvironmentVariable("DEFAULT_DERIVATION_PATH"),
                         MnemonicString = "middle teach digital prefer fiscal theory syrup enter crash muffin easily anxiety ill barely eagle swim volume consider dynamic unaware deputy middle into physical",
                         CreationDatetime = DateTimeOffset.Now,
-
                     };
 
                     applicationDbContext.Add(internalWallet);
+                    applicationDbContext.SaveChanges();
                 }
-
 
                 if (!applicationDbContext.Wallets.Any())
                 {
-
                     //Wallets
 
                     //Individual wallets
@@ -207,7 +194,7 @@ namespace FundsManager.Data
                         },
                         Name = "Test wallet",
                         WalletAddressType = WalletAddressType.NativeSegwit,
-
+                        InternalWalletId = internalWallet.Id
                     };
 
                     //Now we fund a multisig address of that wallet with the miner (polar)
@@ -224,29 +211,25 @@ namespace FundsManager.Data
                     //Nbxplorer tracking of the multisig derivation scheme
                     var factory = new DerivationStrategyFactory(nbXplorerNetwork);
 
-                    //2-of-2 multisig by Key 1 and Key 2 from wallet1/wallet2
+                    //2-of-3 multisig by Key 1 and Key 2 from wallet1/wallet2 and the internal wallet
 
                     var derivationStrategy = factory.CreateMultiSigDerivationStrategy(new BitcoinExtPubKey[]
                         {
                             bitcoinExtPubKey1,
-                            bitcoinExtPubKey2
-                            //new BitcoinExtPubKey(wallet1.DerivationScheme.ToString(),nbXplorerNetwork),
-                            //new BitcoinExtPubKey(wallet2.DerivationScheme.ToString(),nbXplorerNetwork)
+                            bitcoinExtPubKey2,
+                            new(internalWallet.GetXPUB(nbXplorerNetwork),nbXplorerNetwork),
                         },
                         testingMultisigWallet.MofN,
                         new DerivationStrategyOptions
                         {
                             ScriptPubKeyType = ScriptPubKeyType.Segwit,
-
                         });
 
                     nbxplorerClient.Track(derivationStrategy);
                     var evts = nbxplorerClient.CreateLongPollingNotificationSession();
 
-
                     var keyPathInformation = nbxplorerClient.GetUnused(derivationStrategy, DerivationFeature.Deposit);
                     var multisigAddress = keyPathInformation.Address;
-
 
                     var multisigFundCoins = Money.Coins(20m); //20BTC
 
@@ -265,8 +248,6 @@ namespace FundsManager.Data
                     }
                     applicationDbContext.Add(testingMultisigWallet);
                 }
-
-
             }
             else
             {
@@ -279,7 +260,6 @@ namespace FundsManager.Data
                         DerivationPath = Environment.GetEnvironmentVariable("DEFAULT_DERIVATION_PATH"),
                         MnemonicString = new Mnemonic(Wordlist.English).ToString(),
                         CreationDatetime = DateTimeOffset.Now,
-
                     };
 
                     applicationDbContext.Add(internalWallet);
@@ -327,6 +307,7 @@ namespace FundsManager.Data
                 });
             }
         }
+
         private static NewTransactionEvent WaitNbxplorerNotification(LongPollingNotificationSession evts, DerivationStrategyBase derivationStrategy)
         {
             while (true)

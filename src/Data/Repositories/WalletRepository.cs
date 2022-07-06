@@ -23,14 +23,14 @@ namespace FundsManager.Data.Repositories
         {
             await using var applicationDbContext = await _dbContextFactory.CreateDbContextAsync();
 
-            return await applicationDbContext.Wallets.FirstOrDefaultAsync(x => x.Id == id);
+            return await applicationDbContext.Wallets.Include(x => x.InternalWallet).FirstOrDefaultAsync(x => x.Id == id);
         }
 
         public async Task<List<Wallet>> GetAll()
         {
             await using var applicationDbContext = await _dbContextFactory.CreateDbContextAsync();
 
-            return await applicationDbContext.Wallets.Include(x=> x.Keys).ThenInclude(x=> x.User).ToListAsync();
+            return await applicationDbContext.Wallets.Include(x => x.Keys).ThenInclude(x => x.User).ToListAsync();
         }
 
         public async Task<(bool, string?)> AddAsync(Wallet type)
@@ -69,4 +69,3 @@ namespace FundsManager.Data.Repositories
         }
     }
 }
-

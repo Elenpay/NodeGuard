@@ -210,36 +210,16 @@ namespace FundsManager.Services
 
                                 var channelfundingTx = fundedPSBT.GetGlobalTransaction();
 
-                                var fundingMoney = new Money(channelOperationRequest.SatsAmount, MoneyUnit.Satoshi);
-                                
-                                var txBuilder = network.CreateTransactionBuilder();
-                                                                      
-                                var feeRateResult = await GetFeeRateResult(network, nbxplorerClient);
-
-                                var fundingAddress = BitcoinAddress.Create(response.PsbtFund.FundingAddress, network);
-
-                                //Temp tx to calculate the change -> TODO Remove this hack in the future
-                                var coins = fundedPSBT.Inputs.Select(x => new Coin(
-                                        x.PrevOut.Hash, x.PrevOut.N, new Money(x.WitnessUtxo.Value, MoneyUnit.BTC), x.RedeemScript)).ToList();
-                                if (!coins.Any())
-                                {
-                                    var errorMessage = "No UTXOs found for funding a temptx in the open channel method";
-                                    _logger.LogError(errorMessage);
-                                    throw new ArgumentException(nameof(coins));
-                                }
-
-                                var temptx = txBuilder
-                                    .AddCoins(coins)
-                                    .SendEstimatedFees(feeRateResult.FeeRate)
-                                    .SendAllRemainingToChange()
-                                    .Send(fundingAddress, fundingMoney)
-                                    .SetChange(coins.FirstOrDefault().ScriptPubKey)
-                                    .SetSigningOptions(SigHash.None)
-                                    .BuildTransaction(true);
-
                                 //We manually fix the change (it was wrong from the Base template due to nbitcoin requiring a change on a PSBT)
 
-                                channelfundingTx.Outputs[0].Value = temptx?.Outputs?.FirstOrDefault(x => x.ScriptPubKey != fundingAddress.ScriptPubKey)?.Value;
+                                var totalIn = new Money(0L);
+                                foreach (var input in fundedPSBT.Inputs)
+                                {
+                                    totalIn = totalIn + (input.GetTxOut().Value);
+                                }
+                                var totalOut = new Money(channelOperationRequest.SatsAmount, MoneyUnit.Satoshi);
+                                var totalFees = presignedPSBT.GetFee();
+                                channelfundingTx.Outputs[0].Value = totalIn - totalOut - totalFees;
 
                                 //We merge fundedPSBT with the ones with the change fixed
                                 var changeFixedPSBT = channelfundingTx.CreatePSBT(network).UpdateFrom(fundedPSBT);
