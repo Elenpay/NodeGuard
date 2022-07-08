@@ -68,6 +68,13 @@ namespace FundsManager.Data
 
             if (webHostEnvironment.IsDevelopment())
             {
+                //Miner setup
+                var rpcuser = Environment.GetEnvironmentVariable("NBXPLORER_BTCRPCUSER");
+                var rpcpassword = Environment.GetEnvironmentVariable("NBXPLORER_BTCRPCPASSWORD");
+                var rpcuri = Environment.GetEnvironmentVariable("NBXPLORER_BTCRPCURL");
+                var minerRPC = new RPCClient(new NetworkCredential(rpcuser, rpcpassword), new Uri(rpcuri!),
+                    nbXplorerNetwork);
+                var factory = new DerivationStrategyFactory(nbXplorerNetwork);
                 //Users
                 var adminUsername = "admin@clovrlabs.com";
 
@@ -128,13 +135,50 @@ namespace FundsManager.Data
 
                     internalWallet = new InternalWallet
                     {
-                        DerivationPath = Environment.GetEnvironmentVariable("DEFAULT_DERIVATION_PATH"),
+                        DerivationPath = "m/84'/1'/1'", //Segwit
                         MnemonicString = "middle teach digital prefer fiscal theory syrup enter crash muffin easily anxiety ill barely eagle swim volume consider dynamic unaware deputy middle into physical",
                         CreationDatetime = DateTimeOffset.Now,
                     };
 
                     applicationDbContext.Add(internalWallet);
                     applicationDbContext.SaveChanges();
+
+                    //Funding of internal wallet
+
+                    //We mine 10 blocks
+                    minerRPC.Generate(10);
+
+                    //Singlesig segwit for the fundsmanager internal wallet
+
+                    var derivationStrategy = factory.CreateDirectDerivationStrategy(internalWallet.GetAccountKey(nbXplorerNetwork).Neuter(),
+                    new DerivationStrategyOptions
+                    {
+                        ScriptPubKeyType = ScriptPubKeyType.Segwit,
+                    });
+
+                    //Nbxplorer tracking of the multisig derivation scheme
+
+                    nbxplorerClient.Track(derivationStrategy);
+                    var evts = nbxplorerClient.CreateLongPollingNotificationSession();
+
+                    var keyPathInformation = nbxplorerClient.GetUnused(derivationStrategy, DerivationFeature.Deposit);
+                    var internalWalletAddress = keyPathInformation.Address;
+
+                    var fundingCoins = Money.Coins(0.1m); //0.01BTC
+
+                    minerRPC.SendToAddress(internalWalletAddress, fundingCoins);
+
+                    //6 blocks to confirm
+                    minerRPC.Generate(6);
+
+                    WaitNbxplorerNotification(evts, derivationStrategy);
+
+                    var balance = nbxplorerClient.GetBalance(derivationStrategy);
+                    var confirmedBalance = (Money)balance.Confirmed;
+                    if (confirmedBalance.ToUnit(MoneyUnit.BTC) < 0.1M)
+                    {
+                        throw new Exception("The internal wallet balance is not >= 0.1BTC");
+                    }
                 }
 
                 if (!applicationDbContext.Wallets.Any())
@@ -198,18 +242,8 @@ namespace FundsManager.Data
                     };
 
                     //Now we fund a multisig address of that wallet with the miner (polar)
-
-                    var rpcuser = Environment.GetEnvironmentVariable("NBXPLORER_BTCRPCUSER");
-                    var rpcpassword = Environment.GetEnvironmentVariable("NBXPLORER_BTCRPCPASSWORD");
-                    var rpcuri = Environment.GetEnvironmentVariable("NBXPLORER_BTCRPCURL");
-
-                    var minerRPC = new RPCClient(new NetworkCredential(rpcuser, rpcpassword), new Uri(rpcuri!),
-                        nbXplorerNetwork);
                     //We mine 10 blocks
                     minerRPC.Generate(10);
-
-                    //Nbxplorer tracking of the multisig derivation scheme
-                    var factory = new DerivationStrategyFactory(nbXplorerNetwork);
 
                     //2-of-3 multisig by Key 1 and Key 2 from wallet1/wallet2 and the internal wallet
 
@@ -224,6 +258,7 @@ namespace FundsManager.Data
                         {
                             ScriptPubKeyType = ScriptPubKeyType.Segwit,
                         });
+                    //Nbxplorer tracking of the multisig derivation scheme
 
                     nbxplorerClient.Track(derivationStrategy);
                     var evts = nbxplorerClient.CreateLongPollingNotificationSession();
@@ -244,7 +279,7 @@ namespace FundsManager.Data
                     var confirmedBalance = (Money)balance.Confirmed;
                     if (confirmedBalance.ToUnit(MoneyUnit.BTC) < 20)
                     {
-                        throw new Exception("The multisig wallet balance is not <= 20BTC");
+                        throw new Exception("The multisig wallet balance is not >= 20BTC");
                     }
                     applicationDbContext.Add(testingMultisigWallet);
                 }

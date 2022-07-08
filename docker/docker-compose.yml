@@ -55,7 +55,7 @@ services:
       NBXPLORER_BTCNODEENDPOINT: host.docker.internal:19444
     command: ["--noauth"]
     volumes:
-    - "nbxplorer_datadir:/datadir"
+    #- "nbxplorer_datadir:/datadir"
     - "bitcoin_datadir:/root/.bitcoin"
 
 

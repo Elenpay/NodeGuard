@@ -63,8 +63,10 @@ namespace FundsManager.Data.Repositories
         {
             using var applicationDbContext = _dbContextFactory.CreateDbContext();
 
+            type.Wallet = null;
+            type.User = null;
+
             return _repository.Update(type, applicationDbContext);
         }
     }
 }
-

@@ -30,7 +30,7 @@ namespace FundsManager
             builder.Services.AddServerSideBlazor().AddCircuitOptions(options => { options.DetailedErrors = true; });
             builder.Services.AddScoped<AuthenticationStateProvider, RevalidatingIdentityAuthenticationStateProvider<IdentityUser>>();
 
-            //Dependency Injection 
+            //Dependency Injection
 
             //Repos DI
             builder.Services.AddTransient(typeof(IRepository<>), typeof(Repository<>));
@@ -41,10 +41,10 @@ namespace FundsManager
             builder.Services.AddTransient<IKeyRepository, KeyRepository>();
             builder.Services.AddTransient<INodeRepository, NodeRepository>();
             builder.Services.AddTransient<IWalletRepository, WalletRepository>();
+            builder.Services.AddTransient<IInternalWalletRepository, InternalWalletRepository>();
 
             //Service DI
             builder.Services.AddTransient<ILndService, LndService>();
-
 
             //gRPC
             builder.Services.AddGrpcClient<Lightning.LightningClient>(options =>
@@ -80,9 +80,7 @@ namespace FundsManager
                 .AddBootstrapProviders()
                 .AddFontAwesomeIcons();
 
-
             var app = builder.Build();
-
 
             //DbInitialisation & Migrations
 

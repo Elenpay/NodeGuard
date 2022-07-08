@@ -6,7 +6,9 @@
 @inject INodeRepository NodeRepository
 @inject IWalletRepository WalletRepository
 @inject ILndService LndService
-@inject IDbContextFactory<ApplicationDbContext> DbContextFactory
+@inject IChannelOperationRequestRepository ChannelOperationRequestRepository
+@inject IInternalWalletRepository InternalWalletRepository
+@inject IApplicationUserRepository ApplicationUserRepository
 <PageTitle>Channel test</PageTitle>
 
 <h1>Open channel from Alice to Carol (1000 sats)</h1>
@@ -49,37 +51,57 @@
         var carol = nodes.FirstOrDefault(x => x.Name == "Carol");
         var alice = nodes.FirstOrDefault(x => x.Name == "Alice");
         var defaultWallet = (await WalletRepository.GetAll()).First();
-        var context = await DbContextFactory.CreateDbContextAsync();
-        var internalWallet = context.InternalWallets.OrderBy(x=> x.Id).Last();
+        var channelOperationRequest = await ChannelOperationRequest(defaultWallet, carol, alice);
 
         if (_combinedPsbt != null)
         {
-            var channelresult = LndService.OpenChannel(new ChannelOperationRequest
+            //Hack to prevent PK issue -> this would not happen on a normal UI
+            var temp = channelOperationRequest.Wallet;
+
+            channelOperationRequest.Wallet = null;
+
+
+            var result = await ChannelOperationRequestRepository.AddAsync(channelOperationRequest);
+
+            channelOperationRequest.Wallet = temp;
+            if (result.Item1)
             {
-                SatsAmount = 20000,
-                RequestType = OperationRequestType.Open,
-                Status = ChannelOperationRequestStatus.Pending,
-                Wallet =      defaultWallet,  
-                WalletId = defaultWallet.Id,
-                InternalWallet = internalWallet,
-                InternalWalletId = internalWallet.Id
+                var channelresult = LndService.OpenChannel(channelOperationRequest, alice, carol, _combinedPsbt);
 
+                //TODO Toastr
+            }
 
-            }, alice, carol, _combinedPsbt);
-
+            
         }
 
     }
 
+    private async Task<ChannelOperationRequest> ChannelOperationRequest(Wallet defaultWallet, Node? carol, Node? alice)
+    {
+        var user = (await ApplicationUserRepository.GetAll()).First();
+        var channelOperationRequest = new ChannelOperationRequest
+        {
+            SatsAmount = 20000,
+            RequestType = OperationRequestType.Open,
+            Status = ChannelOperationRequestStatus.Pending,
+            Wallet = defaultWallet,
+            WalletId = defaultWallet.Id,
+         
+            DestNodeId = carol.Id,
+            SourceNodeId = alice.Id,
+            UserId = user.Id,
+    //User = user
+        };
+        return channelOperationRequest;
+    }
+
     private async Task GeneratePSBT()
     {
-        var context = await DbContextFactory.CreateDbContextAsync();
         var nbXplorerNetwork = Network.RegTest;
         var provider = new NBXplorerNetworkProvider(nbXplorerNetwork.ChainName);
         var nbxplorerNetwork = provider.GetFromCryptoCode(nbXplorerNetwork.NetworkSet.CryptoCode);
 
         var defaultWallet = (await WalletRepository.GetAll()).First();
-        var internalWallet = context.InternalWallets.OrderBy(x=> x.Id).Last();
 
         var channelOperationRequest = new ChannelOperationRequest
         {
@@ -88,9 +110,6 @@
             WalletId = defaultWallet.Id,
             Wallet = defaultWallet,
             Status = ChannelOperationRequestStatus.Pending,
-            InternalWalletId = internalWallet.Id,
-            InternalWallet = internalWallet
-
         };
 
 
@@ -214,6 +233,7 @@
 
     private async Task OnCombinedPSBTChanged(string arg)
     {
+        _combinedPsbtString = arg;
       
         if (!string.IsNullOrEmpty(arg))
         {
