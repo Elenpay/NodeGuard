@@ -135,10 +135,13 @@ namespace FundsManager.Data
 
                     internalWallet = new InternalWallet
                     {
-                        DerivationPath = "m/84'/1'/1'", //Segwit
+                        //DerivationPath = "m/48'/1'/1'", //Segwit
+                        DerivationPath = Environment.GetEnvironmentVariable("DEFAULT_DERIVATION_PATH"),
                         MnemonicString = "middle teach digital prefer fiscal theory syrup enter crash muffin easily anxiety ill barely eagle swim volume consider dynamic unaware deputy middle into physical",
                         CreationDatetime = DateTimeOffset.Now,
                     };
+
+                    var masterPrivateKey = internalWallet.GetMasterPrivateKey(nbXplorerNetwork);
 
                     applicationDbContext.Add(internalWallet);
                     applicationDbContext.SaveChanges();

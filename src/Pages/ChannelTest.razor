@@ -66,7 +66,7 @@
             channelOperationRequest.Wallet = temp;
             if (result.Item1)
             {
-                var channelresult = LndService.OpenChannel(channelOperationRequest, alice, carol, _combinedPsbt);
+                var channelresult = await LndService.OpenChannel(channelOperationRequest, alice, carol, _combinedPsbt);
 
                 //TODO Toastr
             }

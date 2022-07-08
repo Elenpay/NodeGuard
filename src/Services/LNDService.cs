@@ -12,6 +12,7 @@ using NBXplorer.DerivationStrategy;
 using NBXplorer.Models;
 using System.Security.Cryptography;
 using Channel = FundsManager.Data.Models.Channel;
+using Key = FundsManager.Data.Models.Key;
 
 namespace FundsManager.Services
 {
@@ -106,9 +107,10 @@ namespace FundsManager.Services
             var pendingChannelIdHex = Convert.ToHexString(pendingChannelId);
 
             var (network, nbxplorerClient) = GenerateNetwork();
+            var txBuilder = network.CreateTransactionBuilder();
 
             //Derivation strategy for the multisig address based on its wallet
-            var derivationStrategyBase = GetDerivationStrategy(channelOperationRequest, network);
+            var (derivationStrategyBase, internalWalletDerivationStrategy) = GetDerivationStrategy(channelOperationRequest, network);
 
             var closeAddress = await nbxplorerClient.GetUnusedAsync(derivationStrategyBase, DerivationFeature.Deposit, 0, true);
 
@@ -153,7 +155,7 @@ namespace FundsManager.Services
                         case OpenStatusUpdate.UpdateOneofCase.ChanPending:
                             //Channel funding tx on mempool and pending status on lnd
 
-                            _logger.LogInformation("Channel pending for channel operation request id:{} for pending channel id:{}", 
+                            _logger.LogInformation("Channel pending for channel operation request id:{} for pending channel id:{}",
                                 channelOperationRequest.Id, pendingChannelIdHex);
 
                             channelOperationRequest.Status = ChannelOperationRequestStatus.OnChainConfirmationPending;
@@ -178,17 +180,14 @@ namespace FundsManager.Services
                                 SatsAmount = channelOperationRequest.SatsAmount,
                                 UpdateDatetime = DateTimeOffset.Now,
                                 ChannelOperationRequests = new List<ChannelOperationRequest> { channelOperationRequest }
-
-
                             };
 
                             var addChannelResult = await _channelRepository.AddAsync(channel);
 
-                            if(addChannelResult.Item1 != false)
+                            if (addChannelResult.Item1 != false)
                             {
                                 _logger.LogError("Channel for channel operation request id:{} could not be created, reason:{}", channelOperationRequest.Id, addChannelResult.Item2);
                             }
-
 
                             break;
 
@@ -196,13 +195,12 @@ namespace FundsManager.Services
 
                             //We got the funded PSBT, we need to tweak the tx outputs and mimick lnd-cli calls
                             var hexPSBT = Convert.ToHexString((response.PsbtFund.Psbt.ToByteArray()));
-                            if (PSBT.TryParse(hexPSBT, network, 
+                            if (PSBT.TryParse(hexPSBT, network,
                                     out var fundedPSBT))
                             {
-
                                 fundedPSBT.AssertSanity();
 
-                                //We ensure to Sighash.NONE
+                                //We ensure to SigHash.None
                                 fundedPSBT.Settings.SigningOptions = new SigningOptions
                                 {
                                     SigHash = SigHash.None
@@ -221,27 +219,71 @@ namespace FundsManager.Services
                                 var totalFees = presignedPSBT.GetFee();
                                 channelfundingTx.Outputs[0].Value = totalIn - totalOut - totalFees;
 
-                                //We merge fundedPSBT with the ones with the change fixed
-                                var changeFixedPSBT = channelfundingTx.CreatePSBT(network).UpdateFrom(fundedPSBT);
+                                //We need to SIGHASH_ALL | AnyOneCanpay as fundsmanager to protect the output from tampering by adding a UTXO by us and signing with SIGHASH_ALL
 
-                                //We need to SIGHASH_ALL as fundsmanager to protect the output from tampering by adding a UTXO by us and signing with SIGHASH_ALL
+                                var unusedInternalWalletAddress =
+                                    await nbxplorerClient.GetUnusedAsync(
+                                        internalWalletDerivationStrategy, DerivationFeature.Deposit);
 
-                                changeFixedPSBT.Settings.SigningOptions = new SigningOptions(SigHash.All);
+                                var fundManagerUTXOS = await nbxplorerClient.GetUTXOsAsync(internalWalletDerivationStrategy);
+                                //We limit to one 1 UTXO only.. important remark
+                                var fundManagerUTXO = fundManagerUTXOS.Confirmed.UTXOs.FirstOrDefault();
+                                if (fundManagerUTXO == null || fundManagerUTXOS.Confirmed.UTXOs.Sum(x => (Money)x.Value) <= 0)
+                                {
+                                    _logger.LogError("Internal wallet for the fundmanager has no balance it its UTXO set");
+                                    return false;
+                                };
 
-                                var internalWalletAccountKey = channelOperationRequest.InternalWallet.GetAccountKey(network);
-                                foreach(var input in changeFixedPSBT.Inputs){
-                                    input.Sign(internalWalletAccountKey.PrivateKey);
+                                //var derivedBitcoinExtKey = channelOperationRequest.Wallet.InternalWallet
+                                //    .GetAccountKey(network).Derive(fundManagerUTXO.KeyPath);
+
+                                //We get the UTXO keyPath / derivation path from nbxplorer
+
+                                var UTXOs = await nbxplorerClient.GetUTXOsAsync(derivationStrategyBase);
+
+                                var OutpointKeyPathDictionary = UTXOs.Confirmed.UTXOs.ToDictionary(x => x.Outpoint, x => x.KeyPath);
+
+                                var txInKeyPathDictionary =
+                                    channelfundingTx.Inputs.Where(x => OutpointKeyPathDictionary.ContainsKey(x.PrevOut)).ToDictionary(x => x, x => OutpointKeyPathDictionary[x.PrevOut]);
+
+                                if (!txInKeyPathDictionary.Any())
+                                {
+                                    _logger.LogError("Error, keypaths for the UTXOs used in this tx are not found");
+                                    return false;
                                 }
-                                
+
+                                var privateKeysForUsedUTXOs = txInKeyPathDictionary.Select(x =>
+                                    channelOperationRequest.Wallet.InternalWallet.GetAccountKey(network)
+                                        .Derive(x.Value).PrivateKey).ToList();
+
+                                //var fundManagerTX = txBuilder
+                                //    .AddKeys(derivedBitcoinExtKey.PrivateKey)
+                                //    .AddCoin(fundManagerUTXO.AsCoin(internalWalletDerivationStrategy))
+                                //    .Send(fundManagerUTXO.ScriptPubKey, fundManagerUTXO.Value)
+                                //    .SetSigningOptions(SigHash.None)
+                                //    .SendEstimatedFees(FeeRate.Zero)
+                                //    .BuildPSBT(true);
+
+                                ////TODO Remove-> We merge, we shall have 1 input fron fundsmanager internal wallet and N from the multisig treasury wallet and three outputs, 1 for the channel funding, another for the change and the one goign back to the fundsManager internal wallet (this is a way to SIGHASH_ALL)
+
+                                //channelfundingTx.Inputs.AddRange(fundManagerTX.Inputs);
+                                //channelfundingTx.Outputs.AddRange(fundManagerTX.Outputs);
+
+                                //We merge fundedPSBT with the ones with the change fixed
+
+                                var changeFixedPSBT = channelfundingTx.CreatePSBT(network).UpdateFrom(fundedPSBT);
+                                changeFixedPSBT.Inputs.FirstOrDefault().Sign(privateKeysForUsedUTXOs.First());
+
+                                //Sanity check
+                                changeFixedPSBT.AssertSanity();
+
                                 channelfundingTx = changeFixedPSBT.GetGlobalTransaction();
 
                                 //Just a check of the tx based on the changeFixedPSBT
                                 var checkTx = channelfundingTx.Check();
 
-
                                 if (checkTx == TransactionCheckResult.Success)
                                 {
-
                                     //We tell lnd to verify the psbt
                                     var verifyPSBT = client.FundingStateStep(
                                         new FundingTransitionMsg
@@ -264,8 +306,6 @@ namespace FundsManager.Services
                                             SignedPsbt = ByteString.CopyFrom(Convert.FromHexString(changeFixedPSBT.Finalize().ToHex()))
                                         },
                                     }, new Metadata { { "macaroon", source.ChannelAdminMacaroon } });
-
-                                    
                                 }
                                 else
                                 {
@@ -326,7 +366,6 @@ namespace FundsManager.Services
             }
         }
 
-        
         public async Task<PSBT?> GenerateTemplatePSBT(ChannelOperationRequest channelOperationRequest, BitcoinAddress? destinationAddress = null)
         {
             if (channelOperationRequest == null) throw new ArgumentNullException(nameof(channelOperationRequest));
@@ -355,11 +394,27 @@ namespace FundsManager.Services
             //UTXOs -> they need to be tracked first on nbxplorer to get results!!
             //TODO Create track method for nbxplorer
 
-            var derivationStrategy = GetDerivationStrategy(channelOperationRequest, nbXplorerNetwork);
+            var (derivationStrategy, internalWalletDerivationStrategy) = GetDerivationStrategy(channelOperationRequest, nbXplorerNetwork);
 
-            var coins = await GetTxInputCoins(channelOperationRequest, nbxplorerClient, derivationStrategy);
+            var multisigCoins = await GetTxInputCoins(channelOperationRequest, nbxplorerClient, derivationStrategy);
 
-            //We got enough inputs to fund the TX so time to build the PSBT without outputs (funding address of the channel)
+            var utxoChanges = (await nbxplorerClient.GetUTXOsAsync(internalWalletDerivationStrategy));
+            var internalWalletCoins = utxoChanges.Confirmed.UTXOs.Select(x => x.AsCoin(internalWalletDerivationStrategy)
+                    )
+                .ToList();
+
+            var firstInternalWalletUTXO = internalWalletCoins.FirstOrDefault();
+            if (firstInternalWalletUTXO == null)
+            {
+                _logger.LogError("Internal wallet has not UTXOs");
+                return null;
+            }
+
+            var firtInernalWalletUTXOMoney = (Money)firstInternalWalletUTXO.Amount;
+            var internalWalletReturnScriptPubKey = firstInternalWalletUTXO.ScriptPubKey;
+
+            //We got enough inputs to fund the TX so time to build the PSBT with a output to the InternalWallet to return the funds,
+            //the funding address of the channel will be added later by LND
 
             PSBT? result = null;
 
@@ -371,20 +426,32 @@ namespace FundsManager.Services
 
             if (destinationAddress != null)
             {
-                result = txBuilder.AddCoins(coins)
-                    .Send(destinationAddress, new Money(channelOperationRequest.SatsAmount, MoneyUnit.Satoshi))
-                    .SetSigningOptions(SigHash.None)
-                    .SetChange(changeAddress.Address)
-                    .SendEstimatedFees(feeRateResult.FeeRate)
-                    .BuildPSBT(false);
+                var builder = txBuilder;
+                builder.AddCoins(multisigCoins);
+                //builder.AddCoin(firstInternalWalletUTXO);
+
+                builder.Send(destinationAddress, new Money(channelOperationRequest.SatsAmount, MoneyUnit.Satoshi))
+                                .Send(internalWalletReturnScriptPubKey, firtInernalWalletUTXOMoney)
+                                .SetSigningOptions(SigHash.None)
+                                .SendAllRemainingToChange()
+                                .SetChange(changeAddress.Address)
+                                .SendEstimatedFees(feeRateResult.FeeRate);
+
+                result = builder.BuildPSBT(false);
             }
             else
             {
-                result = txBuilder.AddCoins(coins)
-                    .SetSigningOptions(SigHash.None)
+                var feesCoins = new Money(0.0000001M, MoneyUnit.BTC);
+                var builder = txBuilder;
+                builder.AddCoins(multisigCoins);
+                //builder.AddCoin(firstInternalWalletUTXO);
+
+                builder.SetSigningOptions(SigHash.None)
+                    .SendAllRemainingToChange()
                     .SetChange(changeAddress.Address)
-                    .SendEstimatedFees(feeRateResult.FeeRate)
-                    .BuildPSBT(false);
+                    .SendEstimatedFees(feeRateResult.FeeRate);
+
+                result = builder.BuildPSBT(false);
             }
 
             //TODO Remove hack when https://github.com/MetacoSA/NBitcoin/issues/1112 is fixed
@@ -401,7 +468,7 @@ namespace FundsManager.Services
                 feeRateResult = new GetFeeRateResult
                 {
                     BlockCount = 1,
-                    FeeRate = new FeeRate(1M)
+                    FeeRate = new FeeRate(4M)
                 };
             }
             else
@@ -412,28 +479,33 @@ namespace FundsManager.Services
             return feeRateResult;
         }
 
-        private DerivationStrategyBase? GetDerivationStrategy(ChannelOperationRequest channelOperationRequest,
+        private (DerivationStrategyBase?, DerivationStrategyBase?) GetDerivationStrategy(ChannelOperationRequest channelOperationRequest,
             Network nbXplorerNetwork)
         {
             var bitcoinExtPubKeys = channelOperationRequest?.Wallet?.Keys.Select(x => new BitcoinExtPubKey(x.XPUB,
                     nbXplorerNetwork))
                 .ToList();
 
-            if (bitcoinExtPubKeys != null && !bitcoinExtPubKeys.Any())
+            if (bitcoinExtPubKeys == null || !bitcoinExtPubKeys.Any())
             {
                 _logger.LogError("No XPUBs for the wallet found");
-                return null;
+                return (null, null);
             }
 
             var factory = new DerivationStrategyFactory(nbXplorerNetwork);
 
-            var derivationStrategy = factory.CreateMultiSigDerivationStrategy(bitcoinExtPubKeys.ToArray(),
+            var multiSigDerivationStrategy
+                = factory.CreateMultiSigDerivationStrategy(bitcoinExtPubKeys.ToArray(),
                 channelOperationRequest.Wallet.MofN,
                 new DerivationStrategyOptions
                 {
                     ScriptPubKeyType = ScriptPubKeyType.Segwit
                 });
-            return derivationStrategy;
+
+            var internalWalletXPUB = new BitcoinExtPubKey(channelOperationRequest.Wallet.InternalWallet.GetXPUB(nbXplorerNetwork), nbXplorerNetwork);
+            var internalWalletDerivationStrategy = new DirectDerivationStrategy(internalWalletXPUB, true);
+
+            return (multiSigDerivationStrategy, internalWalletDerivationStrategy);
         }
 
         /// <summary>
