@@ -3,6 +3,7 @@
 @using NBitcoin
 @using NBXplorer
 @using Key = NBitcoin.Key
+@using FundsManager.Data.Repositories
 @inject INodeRepository NodeRepository
 @inject IWalletRepository WalletRepository
 @inject ILndService LndService
@@ -10,6 +11,7 @@
 @inject IInternalWalletRepository InternalWalletRepository
 @inject IApplicationUserRepository ApplicationUserRepository
 @inject IToastService toastService
+@inject IChannelRepository ChannelRepository
 
 <PageTitle>Channel test</PageTitle>
 
@@ -28,7 +30,8 @@
 
 <p>Combined PSBT</p>
 <MemoEdit Text="@_combinedPsbtString" TextChanged="OnCombinedPSBTChanged" Rows="6"></MemoEdit>
-<button class="btn btn-primary" @onclick="OpenChannelRequest">Open</button>
+<button class="btn btn-primary" @onclick="OpenChannelRequest">Open channel</button>
+<button class="btn btn-danger" @onclick="CloseChannelRequest">Close channel</button>
 
 
 @code {
@@ -45,6 +48,7 @@
     private PSBT? _combinedPsbt;
     private string? _combinedPsbtString;
 
+    private int? _lastChannelId;
 
     private async Task OpenChannelRequest()
     {
@@ -73,11 +77,14 @@
                 if (channelresult)
                 {
                     toastService.ShowSuccess("Channel created!");
+                    _lastChannelId = channelOperationRequest.ChannelId;
                 }
                 else
                 {
                     toastService.ShowError("Channel creation failed!");
                 }
+
+
             }
 
             
@@ -221,5 +228,59 @@
             
         }
     }
+
+    private async Task CloseChannelRequest()
+    {
+        var nodes = await NodeRepository.GetAll();
+
+        var alice = nodes.FirstOrDefault(x => x.Name == "Alice");
+        var user = (await ApplicationUserRepository.GetAll()).First();
+
+        Channel? channel = null;
+        if(_lastChannelId != null)
+            channel = await ChannelRepository.GetById(_lastChannelId.Value);
+
+        if (channel != null)
+        {
+            var defaultWallet = (await WalletRepository.GetAll()).First();
+
+            var channelOperationRequest = new ChannelOperationRequest
+            {
+                AmountCryptoUnit = MoneyUnit.Satoshi,
+                ChannelId = _lastChannelId,
+                CreationDatetime = DateTimeOffset.Now,
+                RequestType = OperationRequestType.Close,
+                SourceNodeId = alice.Id,
+                Status = ChannelOperationRequestStatus.Pending,
+                UserId = user.Id,
+                WalletId =  defaultWallet.Id,
+                
+            };
+            var result = await ChannelOperationRequestRepository.AddAsync(channelOperationRequest);
+
+            channelOperationRequest.SourceNode = alice;
+
+            if (result.Item1)
+            {
+                var channelresult = await LndService.CloseChannel(channelOperationRequest, alice,false);
+
+                if (channelresult)
+                {
+                    toastService.ShowSuccess("Channel closed!");
+                }
+                else
+                {
+                    toastService.ShowError("Channel closing failed!");
+                }
+            }
+
+        }
+        
+
+
+        }
+    
+
+}
 
 }

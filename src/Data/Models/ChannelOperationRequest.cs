@@ -1,4 +1,6 @@
-﻿namespace FundsManager.Data.Models
+﻿using NBitcoin;
+
+namespace FundsManager.Data.Models
 {
     public enum ChannelOperationRequestStatus
     {
@@ -46,7 +48,7 @@
 
         public string? Description { get; set; }
 
-        public string? AmountCryptoUnit { get; set; } // TODO worth an enum?
+        public MoneyUnit AmountCryptoUnit { get; set; }
 
         public ChannelOperationRequestStatus Status { get; set; }
 
@@ -61,8 +63,8 @@
 
         public int SourceNodeId { get; set; }
         public Node SourceNode { get; set; }
-        public int DestNodeId { get; set; }
-        public Node DestNode { get; set; }
+        public int? DestNodeId { get; set; }
+        public Node? DestNode { get; set; }
         public string UserId { get; set; }
         public ApplicationUser User { get; set; }
         public int? ChannelId { get; set; }

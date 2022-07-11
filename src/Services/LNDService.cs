@@ -17,7 +17,7 @@ namespace FundsManager.Services
     public interface ILndService
     {
         /// <summary>
-        /// Opens a channel based on a presigned psbt with inputs
+        /// Opens a channel based on a presigned psbt with inputs, this method waits for I/O on the blockchain, therefore it can last its execution for minutes
         /// </summary>
         /// <param name="channelOperationRequest"></param>
         /// <param name="source"></param>
@@ -35,12 +35,13 @@ namespace FundsManager.Services
         public Task<PSBT?> GenerateTemplatePSBT(ChannelOperationRequest channelOperationRequesd);
 
         /// <summary>
-        /// Based on a channel operation request of type close, requests the close of a channel to LND without acking the request
+        /// Based on a channel operation request of type close, requests the close of a channel to LND without acking the request.
+        /// This method waits for I/O on the blockchain, therefore it can last its execution for minutes
         /// </summary>
         /// <param name="channelOperationRequest"></param>
         /// <param name="forceClose"></param>
         /// <returns></returns>
-        public Task<bool> CloseChannel(ChannelOperationRequest channelOperationRequest, bool forceClose = false);
+        public Task<bool> CloseChannel(ChannelOperationRequest channelOperationRequest, Node sourceNode, bool forceClose = false);
     }
 
     /// <summary>d
@@ -58,14 +59,6 @@ namespace FundsManager.Services
             _channelOperationRequestRepository = channelOperationRequestRepository;
         }
 
-        /// <summary>
-        /// Opens a channel with a completely signed PSBT from a node to another given node
-        /// </summary>
-        /// <param name="channelOperationRequest"></param>
-        /// <param name="source"></param>
-        /// <param name="destination"></param>
-        /// <param name="presignedPSBT"></param>
-        /// <returns></returns>
         public async Task<bool> OpenChannel(ChannelOperationRequest channelOperationRequest, Node source,
             Node destination, PSBT presignedPSBT)
         {
@@ -171,7 +164,11 @@ namespace FundsManager.Services
                             {
                                 ChannelId = pendingChannelIdHex,
                                 CreationDatetime = DateTimeOffset.Now,
-                                FundingTx = response.ChanOpen.ChannelPoint.FundingTxidStr,
+                                FundingTx = Convert.ToHexString(response.ChanOpen.ChannelPoint.FundingTxidBytes
+                                        .ToByteArray()
+                                        .Reverse()//Endianness of the txidbytes is different we need to reverse
+                                        .ToArray())
+                                    .ToLower(),
                                 FundingTxOutputIndex = response.ChanOpen.ChannelPoint.OutputIndex,
                                 BtcCloseAddress = closeAddress?.Address.ToString(),
                                 SatsAmount = channelOperationRequest.SatsAmount,
@@ -610,19 +607,14 @@ namespace FundsManager.Services
             return coins;
         }
 
-        /// <summary>
-        /// Based on a channel operation request of type close, requests the close of a channel to LND without acking the request
-        /// </summary>
-        /// <param name="channelOperationRequest"></param>
-        /// <param name="forceClose"></param>
-        /// <returns></returns>
-        /// <exception cref="ArgumentNullException"></exception>
-        public async Task<bool> CloseChannel(ChannelOperationRequest channelOperationRequest, bool forceClose = false)
+        public async Task<bool> CloseChannel(ChannelOperationRequest channelOperationRequest, Node sourceNode, bool forceClose = false)
         {
             if (channelOperationRequest == null) throw new ArgumentNullException(nameof(channelOperationRequest));
 
             if (channelOperationRequest.RequestType != OperationRequestType.Close)
                 return false;
+
+            //TODO Lock method to approved status only (?)
 
             var result = true;
 
@@ -638,23 +630,96 @@ namespace FundsManager.Services
 
                     if (channel != null)
                     {
-                        //TODO
-                        ////Time to close the channel
-                        //var closeChannelResult = _lightningClient.CloseChannel(new CloseChannelRequest
-                        //{
-                        //    ChannelPoint = new ChannelPoint
-                        //    {
-                        //        FundingTxidStr = channel.FundingTx,
-                        //        OutputIndex = channel.FundingTxOutputIndex
-                        //    },
-                        //    Force = forceClose,
+                        using var grpcChannel = GrpcChannel.ForAddress($"https://{sourceNode.Endpoint}",
+                            new GrpcChannelOptions
+                            {
+                                HttpHandler = new HttpClientHandler
+                                {
+                                    ServerCertificateCustomValidationCallback =
+                                        HttpClientHandler.DangerousAcceptAnyServerCertificateValidator
+                                }
+                            });
 
-                        //}, new Metadata { { "macaroon", channelOperationRequest.SourceNode.ChannelAdminMacaroon } });
+                        var client = new Lightning.LightningClient(grpcChannel);
 
-                        //_logger.LogInformation("Channel close request:{} triggered",
-                        //    channelOperationRequest.Id);
+                        //Time to close the channel
+                        var closeChannelResult = client.CloseChannel(new CloseChannelRequest
+                        {
+                            ChannelPoint = new ChannelPoint
+                            {
+                                FundingTxidStr = channel.FundingTx,
+                                OutputIndex = channel.FundingTxOutputIndex
+                            },
+                            Force = forceClose,
+                        }, new Metadata { { "macaroon", channelOperationRequest.SourceNode.ChannelAdminMacaroon } });
 
-                        ////TODO The closeChannelResult is a streaming with the status updates, this is an async long operation, maybe we should track this process elsewhere (?)
+                        _logger.LogInformation("Channel close request:{} triggered",
+                            channelOperationRequest.Id);
+
+                        //This is is I/O bounded to the blockchain block time
+                        await foreach (var response in closeChannelResult.ResponseStream.ReadAllAsync())
+                        {
+                            switch (response.UpdateCase)
+                            {
+                                case CloseStatusUpdate.UpdateOneofCase.None:
+                                    break;
+
+                                case CloseStatusUpdate.UpdateOneofCase.ClosePending:
+                                    var closePendingTxid = Convert.ToHexString(response.ClosePending.Txid.ToByteArray().Reverse().ToArray()).ToLower();
+
+                                    _logger.LogInformation(
+                                        "Channel close request in status:{} for channel operation request:{} for channel:{} closing txId:{}",
+                                        ChannelOperationRequestStatus.OnChainConfirmed,
+                                        channelOperationRequest.Id,
+                                        channel.Id,
+                                        closePendingTxid);
+
+                                    channelOperationRequest.Status =
+                                        ChannelOperationRequestStatus.OnChainConfirmationPending;
+
+                                    var onChainPendingUpdate = _channelOperationRequestRepository.Update(channelOperationRequest);
+
+                                    if (onChainPendingUpdate.Item1 == false)
+                                    {
+                                        _logger.LogError("Error while updating channel operation request id:{} to status:{}", channelOperationRequest.Id, ChannelOperationRequestStatus.OnChainConfirmationPending);
+                                    }
+                                    break;
+
+                                case CloseStatusUpdate.UpdateOneofCase.ChanClose:
+
+                                    if (response.ChanClose.Success)
+                                    {
+                                        var chanCloseClosingTxid = Convert.ToHexString(response.ChanClose.ClosingTxid.ToByteArray().Reverse().ToArray()).ToLower();
+                                        ;
+                                        _logger.LogInformation(
+                                            "Channel close request in status:{} for channel operation request:{} for channel:{} closing txId:{}",
+                                            ChannelOperationRequestStatus.OnChainConfirmed,
+                                            channelOperationRequest.Id,
+                                            channel.Id,
+                                            chanCloseClosingTxid);
+
+                                        channelOperationRequest.Status =
+                                            ChannelOperationRequestStatus.OnChainConfirmed;
+
+                                        var onChainConfirmedUpdate = _channelOperationRequestRepository.Update(channelOperationRequest);
+
+                                        if (onChainConfirmedUpdate.Item1 == false)
+                                        {
+                                            _logger.LogError(
+                                                "Error while updating channel operation request id:{} to status:{}",
+                                                channelOperationRequest.Id,
+                                                ChannelOperationRequestStatus.OnChainConfirmationPending);
+                                        }
+
+                                        result = true;
+                                    }
+
+                                    break;
+
+                                default:
+                                    throw new ArgumentOutOfRangeException();
+                            }
+                        }
                     }
                 }
             }
