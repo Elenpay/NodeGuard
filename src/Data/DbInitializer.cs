@@ -128,7 +128,7 @@ namespace FundsManager.Data
                     _ = Task.Run(() => nodeRepository.AddAsync(carol)).Result;
                 }
 
-                InternalWallet internalWallet = null;
+                InternalWallet? internalWallet = null;
                 if (!applicationDbContext.InternalWallets.Any())
                 {
                     //Default Internal Wallet
@@ -136,7 +136,7 @@ namespace FundsManager.Data
                     internalWallet = new InternalWallet
                     {
                         //DerivationPath = "m/48'/1'/1'", //Segwit
-                        DerivationPath = Environment.GetEnvironmentVariable("DEFAULT_DERIVATION_PATH"),
+                        DerivationPath = Environment.GetEnvironmentVariable("DEFAULT_DERIVATION_PATH")!,
                         MnemonicString = "middle teach digital prefer fiscal theory syrup enter crash muffin easily anxiety ill barely eagle swim volume consider dynamic unaware deputy middle into physical",
                         CreationDatetime = DateTimeOffset.Now,
                     };

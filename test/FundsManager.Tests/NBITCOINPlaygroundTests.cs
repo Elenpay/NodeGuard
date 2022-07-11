@@ -55,6 +55,7 @@ namespace FundsManager.Tests
                 Console.WriteLine($"Bob Balance: {bobRPC.GetBalance()}");
             }
         }
+
         [Fact]
         public void PSBTTest()
         {
@@ -89,12 +90,10 @@ namespace FundsManager.Tests
             var extKey2 = mnemonic2.DeriveExtKey().GetWif(Network.RegTest);
             var bobKey = extKey2.PrivateKey;
 
-
             //2-of-2 multisig by Bob and Alice
             var multisigScriptPubKey = PayToMultiSigTemplate.Instance.GenerateScriptPubKey(2, new[] { aliceKey.PubKey, bobKey.PubKey });
 
             var multisigAddress = multisigScriptPubKey.WitHash.GetAddress(Network.RegTest);
-
 
             var multisigFundCoins = Money.Coins(20m);
             var minerToMultisigTxId = minerRPC.SendToAddress(multisigAddress, multisigFundCoins);
@@ -106,7 +105,6 @@ namespace FundsManager.Tests
             var multisigUTXOs = minerToAliceTx.Outputs.AsCoins()
                             .Where(c => c.ScriptPubKey == multisigAddress.ScriptPubKey)
                             .ToDictionary(c => c.Outpoint, c => c);
-
 
             var txBuilder = Network.RegTest.CreateTransactionBuilder();
             var feesCoins = Money.Coins(0.00001m);
@@ -147,23 +145,21 @@ namespace FundsManager.Tests
             //Temp tx to calculate the change
             var temptx = txBuilder
                 .AddCoin(multisigUTXOs.First().Value.ToScriptCoin(multisigScriptPubKey))
-                .AddKeys(new[]{aliceKey,bobKey})
+                .AddKeys(new[] { aliceKey, bobKey })
                 .SendFees(feesCoins)
                 .SendAllRemainingToChange()
-                .Send(bobAddress,fundingMoney)
+                .Send(bobAddress, fundingMoney)
                 .SetChange(multisigScriptPubKey)
                 .SetSigningOptions(SigHash.None)
                 .BuildTransaction(true);
 
-
             //We add a the output, this could be a channel funding address in this case bobaddress
-            
+
             var channelFundingTxOut = new TxOut(fundingMoney, bobAddress);
             channelfundingTx.Outputs.Add(channelFundingTxOut);
 
             channelfundingTx.Outputs[0].Value = temptx.Outputs[1].Value;
             channelfundingTx.Outputs[1].Value = fundingMoney;
-
 
             var check = channelfundingTx.Check();
             check.Should().Be(TransactionCheckResult.Success);
@@ -180,11 +176,7 @@ namespace FundsManager.Tests
 
             bobActualBalance.ToDecimal(MoneyUnit.BTC).Should()
                 .Be(19M);
-
-
         }
-
-
 
         [Fact]
         public void XPRVtoVPRV()
@@ -202,7 +194,6 @@ namespace FundsManager.Tests
             var multisigVprv2 = tprvToVprv(xprv2);
 
             multisigVprv2.Should().Contain("Vprv");
-
         }
 
         [Fact]
@@ -221,7 +212,6 @@ namespace FundsManager.Tests
             var multisigVprv2 = tprvToVprv(xprv2);
 
             multisigVprv2.Should().Contain("Vprv");
-
         }
 
         private static string tprvToVprv(string xprv)
@@ -240,6 +230,7 @@ namespace FundsManager.Tests
             var multisigVprv = encoder.EncodeData(newVprvBytes);
             return multisigVprv;
         }
+
         private static string tprvTovprv(string xprv)
         {
             var encoder = new Base58Encoder();
@@ -257,5 +248,4 @@ namespace FundsManager.Tests
             return multisigVprv;
         }
     }
-    
 }
