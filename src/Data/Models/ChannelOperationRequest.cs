@@ -1,4 +1,5 @@
-﻿using NBitcoin;
+﻿using System.ComponentModel.DataAnnotations.Schema;
+using NBitcoin;
 
 namespace FundsManager.Data.Models
 {
@@ -45,6 +46,12 @@ namespace FundsManager.Data.Models
         /// Amount in satoshis
         /// </summary>
         public long SatsAmount { get; set; }
+
+        /// <summary>
+        /// Calculated property to convert to btc
+        /// </summary>
+        [NotMapped]
+        public decimal Amount => new Money(SatsAmount, MoneyUnit.Satoshi).ToDecimal(MoneyUnit.BTC);
 
         public string? Description { get; set; }
 
