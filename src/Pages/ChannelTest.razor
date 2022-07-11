@@ -1,0 +1,286 @@
+﻿@page "/channeltest"
+
+@using NBitcoin
+@using NBXplorer
+@using Key = NBitcoin.Key
+@using FundsManager.Data.Repositories
+@inject INodeRepository NodeRepository
+@inject IWalletRepository WalletRepository
+@inject ILndService LndService
+@inject IChannelOperationRequestRepository ChannelOperationRequestRepository
+@inject IInternalWalletRepository InternalWalletRepository
+@inject IApplicationUserRepository ApplicationUserRepository
+@inject IToastService toastService
+@inject IChannelRepository ChannelRepository
+
+<PageTitle>Channel test</PageTitle>
+
+<h1>Open channel from Alice to Carol (20000 sats)</h1>
+
+<button class="btn btn-primary" @onclick="GeneratePSBT">Generate PSBT</button>
+<p>Template PSBT</p>
+<MemoEdit @bind-Text="@templatePSBTString" Rows="3"></MemoEdit>
+<p>Signed with Key 1 PSBT</p>
+@*<FileEdit Changed="@OnPSBT1FileUploadEnded"></FileEdit>*@
+<MemoEdit Text="@_psbtSign1String" TextChanged="OnPSBT1TextChanged" Rows="4"></MemoEdit>
+<p>Signed with Key 2 PSBT</p>
+@*<FileEdit Changed="@OnPSBT2FileUploadEnded"></FileEdit>*@
+<MemoEdit Text="@_psbtSign2String" TextChanged="OnPSBT2TextChanged" Rows="4"></MemoEdit>
+<button class="btn btn-primary" @onclick="CombinePSBT">Combine</button>
+
+<p>Combined PSBT</p>
+<MemoEdit Text="@_combinedPsbtString" TextChanged="OnCombinedPSBTChanged" Rows="6"></MemoEdit>
+<button class="btn btn-primary" @onclick="OpenChannelRequest">Open channel</button>
+<button class="btn btn-danger" @onclick="CloseChannelRequest">Close channel</button>
+
+
+@code {
+
+    private PSBT? templatePSBT;
+    private string? templatePSBTString;
+
+    private PSBT? _psbtSign1;
+    private string _psbtSign1String;
+
+    private PSBT? _psbtSign2;
+    private string _psbtSign2String;
+
+    private PSBT? _combinedPsbt;
+    private string? _combinedPsbtString;
+
+    private int? _lastChannelId;
+
+    private async Task OpenChannelRequest()
+    {
+        var nodes = await NodeRepository.GetAll();
+
+        var carol = nodes.FirstOrDefault(x => x.Name == "Carol");
+        var alice = nodes.FirstOrDefault(x => x.Name == "Alice");
+        var defaultWallet = (await WalletRepository.GetAll()).First();
+        var channelOperationRequest = await ChannelOperationRequest(defaultWallet, carol, alice);
+
+        if (_combinedPsbt != null)
+        {
+            //Hack to prevent PK issue -> this would not happen on a normal UI
+            var temp = channelOperationRequest.Wallet;
+
+            channelOperationRequest.Wallet = null;
+
+
+            var result = await ChannelOperationRequestRepository.AddAsync(channelOperationRequest);
+
+            channelOperationRequest.Wallet = temp;
+            if (result.Item1)
+            {
+                var channelresult = await LndService.OpenChannel(channelOperationRequest, alice, carol, _combinedPsbt);
+
+                if (channelresult)
+                {
+                    toastService.ShowSuccess("Channel created!");
+                    _lastChannelId = channelOperationRequest.ChannelId;
+                }
+                else
+                {
+                    toastService.ShowError("Channel creation failed!");
+                }
+
+
+            }
+
+            
+        }
+
+    }
+
+    private async Task<ChannelOperationRequest> ChannelOperationRequest(Wallet defaultWallet, Node? carol, Node? alice)
+    {
+        var user = (await ApplicationUserRepository.GetAll()).First();
+        var channelOperationRequest = new ChannelOperationRequest
+        {
+            SatsAmount = 20000,
+            RequestType = OperationRequestType.Open,
+            Status = ChannelOperationRequestStatus.Pending,
+            Wallet = defaultWallet,
+            WalletId = defaultWallet.Id,
+         
+            DestNodeId = carol.Id,
+            SourceNodeId = alice.Id,
+            UserId = user.Id,
+    //User = user
+        };
+        return channelOperationRequest;
+    }
+
+    private async Task GeneratePSBT()
+    {
+        var nbXplorerNetwork = Network.RegTest;
+        var provider = new NBXplorerNetworkProvider(nbXplorerNetwork.ChainName);
+
+        var defaultWallet = (await WalletRepository.GetAll()).First();
+
+        var channelOperationRequest = new ChannelOperationRequest
+        {
+            SatsAmount = 200000,
+            RequestType = OperationRequestType.Open,
+            WalletId = defaultWallet.Id,
+            Wallet = defaultWallet,
+            Status = ChannelOperationRequestStatus.Pending,
+        };
+
+
+        templatePSBT = await LndService.GenerateTemplatePSBT(channelOperationRequest);
+        templatePSBTString = templatePSBT.ToBase64();
+
+       StateHasChanged();
+    }
+
+    private async Task OnPSBT1FileUploadEnded(FileChangedEventArgs arg)
+    {
+        var fileEntry = arg.Files.FirstOrDefault();
+        if (fileEntry != null)
+        {
+            using MemoryStream ms = new MemoryStream();
+            await fileEntry.OpenReadStream().CopyToAsync(ms);
+
+            var bytes = ms.ToArray();
+
+            _psbtSign1 = PSBT.Load(bytes, Network.RegTest);
+
+            _psbtSign1String = _psbtSign1.ToBase64();
+        }
+
+
+    }
+
+    private async Task OnPSBT2FileUploadEnded(FileChangedEventArgs arg)
+    {
+
+        var fileEntry = arg.Files.FirstOrDefault();
+        if (fileEntry != null)
+        {
+            using var reader = new StreamReader(fileEntry.OpenReadStream());
+            var hexOrBase64 = await reader.ReadToEndAsync();
+
+            _psbtSign2String = hexOrBase64;
+            _psbtSign2 = PSBT.Parse(hexOrBase64, Network.RegTest);
+        }
+
+    }
+
+    private async Task CombinePSBT()
+    {
+        if (_psbtSign1 != null && _psbtSign2 != null)
+        {
+            _combinedPsbt = _psbtSign1.Combine(_psbtSign2);
+            _combinedPsbtString = _combinedPsbt.ToBase64();
+
+        }
+    }
+
+    private async Task OnPSBT1TextChanged(string arg)
+    {
+        if (!string.IsNullOrEmpty(arg))
+        {
+            if (PSBT.TryParse(arg, Network.RegTest, out _psbtSign1))
+            {
+
+            }
+            else if(Transaction.TryParse(arg, Network.RegTest, out var tx))
+            {
+                _psbtSign1 = tx.CreatePSBT(Network.RegTest);
+
+            }
+            _psbtSign1String = arg;
+            StateHasChanged();
+        }
+    }
+    private async Task OnPSBT2TextChanged(string arg)
+    {
+        if (!string.IsNullOrEmpty(arg))
+        {
+            if (PSBT.TryParse(arg, Network.RegTest, out _psbtSign2))
+            {
+
+            }
+            else if(Transaction.TryParse(arg, Network.RegTest, out var tx))
+            {
+                _psbtSign2 = tx.CreatePSBT(Network.RegTest);
+
+            }
+
+            _psbtSign2String = arg;
+            StateHasChanged();
+        }
+    }
+
+    private async Task OnCombinedPSBTChanged(string arg)
+    {
+        _combinedPsbtString = arg;
+      
+        if (!string.IsNullOrEmpty(arg))
+        {
+            if (PSBT.TryParse(arg, Network.RegTest, out _combinedPsbt))
+            {
+
+            }
+          
+
+            
+        }
+    }
+
+    private async Task CloseChannelRequest()
+    {
+        var nodes = await NodeRepository.GetAll();
+
+        var alice = nodes.FirstOrDefault(x => x.Name == "Alice");
+        var user = (await ApplicationUserRepository.GetAll()).First();
+
+        Channel? channel = null;
+        if(_lastChannelId != null)
+            channel = await ChannelRepository.GetById(_lastChannelId.Value);
+
+        if (channel != null)
+        {
+            var defaultWallet = (await WalletRepository.GetAll()).First();
+
+            var channelOperationRequest = new ChannelOperationRequest
+            {
+                AmountCryptoUnit = MoneyUnit.Satoshi,
+                ChannelId = _lastChannelId,
+                CreationDatetime = DateTimeOffset.Now,
+                RequestType = OperationRequestType.Close,
+                SourceNodeId = alice.Id,
+                Status = ChannelOperationRequestStatus.Pending,
+                UserId = user.Id,
+                WalletId =  defaultWallet.Id,
+                
+            };
+            var result = await ChannelOperationRequestRepository.AddAsync(channelOperationRequest);
+
+            channelOperationRequest.SourceNode = alice;
+
+            if (result.Item1)
+            {
+                var channelresult = await LndService.CloseChannel(channelOperationRequest, alice,false);
+
+                if (channelresult)
+                {
+                    toastService.ShowSuccess("Channel closed!");
+                }
+                else
+                {
+                    toastService.ShowError("Channel closing failed!");
+                }
+            }
+
+        }
+        
+
+
+        }
+    
+
+}
+
+}

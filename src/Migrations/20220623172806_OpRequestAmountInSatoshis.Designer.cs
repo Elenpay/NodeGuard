@@ -3,6 +3,7 @@ using System;
 using FundsManager.Data;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 
@@ -11,9 +12,10 @@ using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 namespace FundsManager.Migrations
 {
     [DbContext(typeof(ApplicationDbContext))]
-    partial class ApplicationDbContextModelSnapshot : ModelSnapshot
+    [Migration("20220623172806_OpRequestAmountInSatoshis")]
+    partial class OpRequestAmountInSatoshis
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -48,6 +50,9 @@ namespace FundsManager.Migrations
                     b.Property<string>("BtcCloseAddress")
                         .HasColumnType("text");
 
+                    b.Property<decimal>("Capacity")
+                        .HasColumnType("numeric");
+
                     b.Property<string>("ChannelId")
                         .HasColumnType("text");
 
@@ -59,9 +64,6 @@ namespace FundsManager.Migrations
                         .HasColumnType("text");
 
                     b.Property<long>("FundingTxOutputIndex")
-                        .HasColumnType("bigint");
-
-                    b.Property<long>("SatsAmount")
                         .HasColumnType("bigint");
 
                     b.Property<DateTimeOffset>("UpdateDatetime")
@@ -80,8 +82,9 @@ namespace FundsManager.Migrations
 
                     NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
 
-                    b.Property<int>("AmountCryptoUnit")
-                        .HasColumnType("integer");
+                    b.Property<string>("AmountCryptoUnit")
+                        .IsRequired()
+                        .HasColumnType("text");
 
                     b.Property<int?>("ChannelId")
                         .HasColumnType("integer");
@@ -92,7 +95,7 @@ namespace FundsManager.Migrations
                     b.Property<string>("Description")
                         .HasColumnType("text");
 
-                    b.Property<int?>("DestNodeId")
+                    b.Property<int>("DestNodeId")
                         .HasColumnType("integer");
 
                     b.Property<bool>("IsChannelPrivate")
@@ -152,56 +155,22 @@ namespace FundsManager.Migrations
                     b.Property<DateTimeOffset>("CreationDatetime")
                         .HasColumnType("timestamp with time zone");
 
-                    b.Property<bool>("IsTemplatePSBT")
-                        .HasColumnType("boolean");
-
                     b.Property<string>("PSBT")
                         .IsRequired()
                         .HasColumnType("text");
 
                     b.Property<string>("SignatureContent")
+                        .IsRequired()
                         .HasColumnType("text");
 
                     b.Property<DateTimeOffset>("UpdateDatetime")
                         .HasColumnType("timestamp with time zone");
-
-                    b.Property<string>("UserSignerId")
-                        .HasColumnType("text");
 
                     b.HasKey("Id");
 
                     b.HasIndex("ChannelOperationRequestId");
 
-                    b.HasIndex("UserSignerId");
-
                     b.ToTable("ChannelOperationRequestSignatures");
-                });
-
-            modelBuilder.Entity("FundsManager.Data.Models.InternalWallet", b =>
-                {
-                    b.Property<int>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("integer");
-
-                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
-
-                    b.Property<DateTimeOffset>("CreationDatetime")
-                        .HasColumnType("timestamp with time zone");
-
-                    b.Property<string>("DerivationPath")
-                        .IsRequired()
-                        .HasColumnType("text");
-
-                    b.Property<string>("MnemonicString")
-                        .IsRequired()
-                        .HasColumnType("text");
-
-                    b.Property<DateTimeOffset>("UpdateDatetime")
-                        .HasColumnType("timestamp with time zone");
-
-                    b.HasKey("Id");
-
-                    b.ToTable("InternalWallets");
                 });
 
             modelBuilder.Entity("FundsManager.Data.Models.Key", b =>
@@ -224,9 +193,6 @@ namespace FundsManager.Migrations
                     b.Property<bool>("IsCompromised")
                         .HasColumnType("boolean");
 
-                    b.Property<bool>("IsFundsManagerPrivateKey")
-                        .HasColumnType("boolean");
-
                     b.Property<string>("Name")
                         .IsRequired()
                         .HasColumnType("text");
@@ -235,6 +201,7 @@ namespace FundsManager.Migrations
                         .HasColumnType("timestamp with time zone");
 
                     b.Property<string>("UserId")
+                        .IsRequired()
                         .HasColumnType("text");
 
                     b.Property<string>("XPUB")
@@ -300,9 +267,6 @@ namespace FundsManager.Migrations
                     b.Property<string>("Description")
                         .HasColumnType("text");
 
-                    b.Property<int>("InternalWalletId")
-                        .HasColumnType("integer");
-
                     b.Property<bool>("IsArchived")
                         .HasColumnType("boolean");
 
@@ -323,8 +287,6 @@ namespace FundsManager.Migrations
                         .HasColumnType("integer");
 
                     b.HasKey("Id");
-
-                    b.HasIndex("InternalWalletId");
 
                     b.ToTable("Wallets");
                 });
@@ -580,7 +542,9 @@ namespace FundsManager.Migrations
 
                     b.HasOne("FundsManager.Data.Models.Node", "DestNode")
                         .WithMany("ChannelOperationRequestsAsDestination")
-                        .HasForeignKey("DestNodeId");
+                        .HasForeignKey("DestNodeId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
 
                     b.HasOne("FundsManager.Data.Models.Node", "SourceNode")
                         .WithMany("ChannelOperationRequestsAsSource")
@@ -619,33 +583,18 @@ namespace FundsManager.Migrations
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
 
-                    b.HasOne("FundsManager.Data.Models.ApplicationUser", "UserSigner")
-                        .WithMany()
-                        .HasForeignKey("UserSignerId");
-
                     b.Navigation("ChannelOperationRequest");
-
-                    b.Navigation("UserSigner");
                 });
 
             modelBuilder.Entity("FundsManager.Data.Models.Key", b =>
                 {
                     b.HasOne("FundsManager.Data.Models.ApplicationUser", "User")
                         .WithMany("Keys")
-                        .HasForeignKey("UserId");
-
-                    b.Navigation("User");
-                });
-
-            modelBuilder.Entity("FundsManager.Data.Models.Wallet", b =>
-                {
-                    b.HasOne("FundsManager.Data.Models.InternalWallet", "InternalWallet")
-                        .WithMany()
-                        .HasForeignKey("InternalWalletId")
+                        .HasForeignKey("UserId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
 
-                    b.Navigation("InternalWallet");
+                    b.Navigation("User");
                 });
 
             modelBuilder.Entity("KeyWallet", b =>

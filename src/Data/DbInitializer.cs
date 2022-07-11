@@ -1,8 +1,17 @@
-﻿using FundsManager.Data.Models;
+﻿using System.Net;
+using FundsManager.Data.Models;
 using FundsManager.Data.Repositories;
 using FundsManager.Data.Repositories.Interfaces;
 using Microsoft.AspNetCore.Identity;
+using Microsoft.AspNetCore.Mvc.Formatters;
 using Microsoft.EntityFrameworkCore;
+using NBitcoin;
+using NBitcoin.RPC;
+using NBXplorer;
+using NBXplorer.DerivationStrategy;
+using NBXplorer.Models;
+using Newtonsoft.Json;
+using Key = FundsManager.Data.Models.Key;
 
 namespace FundsManager.Data
 {
@@ -17,9 +26,33 @@ namespace FundsManager.Data
             var channelOperationRequestRepository = serviceProvider.GetRequiredService<IChannelOperationRequestRepository>();
             var walletRepository = serviceProvider.GetRequiredService<IWalletRepository>();
             var keyRepository = serviceProvider.GetRequiredService<IKeyRepository>();
+            var nodeRepository = serviceProvider.GetRequiredService<INodeRepository>();
 
             var webHostEnvironment = serviceProvider.GetRequiredService<IWebHostEnvironment>();
+            var logger = serviceProvider.GetService<ILogger<Program>>();
+            //Nbxplorer setup & check
+            var network = Environment.GetEnvironmentVariable("BITCOIN_NETWORK");
+            var nbxplorerUri = Environment.GetEnvironmentVariable("NBXPLORER_URI") ??
+                               throw new ArgumentNullException("Environment.GetEnvironmentVariable(\"NBXPLORER_URI\")");
+            var userManager = serviceProvider.GetRequiredService<UserManager<ApplicationUser>>();
 
+            var nbXplorerNetwork = network switch
+            {
+                "REGTEST" => Network.RegTest,
+                "MAINNET" => Network.Main,
+                "TESTNET" => Network.TestNet,
+                _ => Network.RegTest
+            };
+
+            var provider = new NBXplorerNetworkProvider(nbXplorerNetwork.ChainName);
+            var nbxplorerClient = new ExplorerClient(provider.GetFromCryptoCode(nbXplorerNetwork.NetworkSet.CryptoCode),
+                new Uri(nbxplorerUri));
+
+            while (!nbxplorerClient.GetStatus().IsFullySynched)
+            {
+                logger!.LogInformation("Waiting for nbxplorer to be synched..");
+                Thread.Sleep(100);
+            }
 
             //Migrations
             var isConnected = false;
@@ -34,7 +67,6 @@ namespace FundsManager.Data
                 {
                 }
                 Thread.Sleep(1_000);
-
             }
 
             //Roles
@@ -42,48 +74,35 @@ namespace FundsManager.Data
 
             if (webHostEnvironment.IsDevelopment())
             {
-                var notTheBoss = new ApplicationUser()
-                {
-                    AccessFailedCount = 0,
-                    Email = "userinalice@elenpay.com",
-                    EmailConfirmed = true,
-                    LockoutEnabled = false,
-                    UserName = "userinalice",
-                    ChannelOperationRequests = new List<ChannelOperationRequest>()
-                };
+                //Miner setup
+                var rpcuser = Environment.GetEnvironmentVariable("NBXPLORER_BTCRPCUSER");
+                var rpcpassword = Environment.GetEnvironmentVariable("NBXPLORER_BTCRPCPASSWORD");
+                var rpcuri = Environment.GetEnvironmentVariable("NBXPLORER_BTCRPCURL");
+                var minerRPC = new RPCClient(new NetworkCredential(rpcuser, rpcpassword), new Uri(rpcuri!),
+                    nbXplorerNetwork);
+                var factory = new DerivationStrategyFactory(nbXplorerNetwork);
+                //Users
+                var adminUsername = "admin@clovrlabs.com";
 
-                var theBoss = new ApplicationUser()
+                var adminUser = applicationDbContext.ApplicationUsers.FirstOrDefault(x => x.NormalizedEmail == adminUsername.ToUpper());
+                if (adminUser == null)
                 {
-                    AccessFailedCount = 0,
-                    Email = "boss@blockchain.com",
-                    EmailConfirmed = true,
-                    LockoutEnabled = false,
-                    UserName = "boss",
-                    ChannelOperationRequests = new List<ChannelOperationRequest>()
-                };
-                
-                var someoneElse = new ApplicationUser()
-                {
-                    AccessFailedCount = 0,
-                    Email = "nobody@blockchain.com",
-                    EmailConfirmed = true,
-                    LockoutEnabled = false,
-                    UserName = "nobody",
-                    ChannelOperationRequests = new List<ChannelOperationRequest>()
-                };
-                
-                // Users
-                var users = Task.Run(()=>appUserRepository.GetAll()).Result;
-                if (!users.Any())
-                {
-                    _ = Task.Run(() => appUserRepository.AddAsync(theBoss)).Result;
-                    _ = Task.Run(() => appUserRepository.AddAsync(someoneElse)).Result;
-                    // TODO replace with AddRangeSync once we get it working
+                    adminUser = new ApplicationUser
+                    {
+                        NormalizedUserName = adminUsername.ToUpper(),
+                        UserName = adminUsername,
+                        EmailConfirmed = true,
+                        Email = adminUsername,
+                        NormalizedEmail = adminUsername.ToUpper(),
+                    };
+                    _ = Task.Run(() => userManager.CreateAsync(adminUser, "Pass9299a8s.asa9")).Result;
                 }
 
-                // nodes
+                //TODO Roles
+
                 //Testing node from Polar (ALICE) LND 0.14.3 -> check devnetwork.zip polar file
                 var nodes = Task.Run(()=>nodeRepository.GetAll()).Result;
+
                 var alice = new Node
                 {
                     ChannelAdminMacaroon =
@@ -92,8 +111,7 @@ namespace FundsManager.Data
                     Endpoint = "host.docker.internal:10001",
                     Name = "Alice",
                     CreationDatetime = DateTimeOffset.UtcNow,
-                    PubKey = "0201036c6e6402f801030a10dc64226b045d25f090b114baebcbf04c1201301a160a0761646472657373120472656164120577726974651a130a04696e666f120472656164120577726974651a170a08696e766f69636573120472656164120577726974651a210a086d616361726f6f6e120867656e6572617465120472656164120577726974651a160a076d657373616765120472656164120577726974651a170a086f6666636861696e120472656164120577726974651a160a076f6e636861696e120472656164120577726974651a140a057065657273120472656164120577726974651a180a067369676e6572120867656e657261746512047265616400000620a21b8cc8c071aa5104b706b751aede972f642537c05da31450fb4b02c6da776e",
-                    Users = new List<ApplicationUser>(){notTheBoss}
+                    PubKey = "03b48034270e522e4033afdbe43383d66d426638927b940d09a8a7a0de4d96e807",
                 };
                 if (!nodes.Any(x => x.PubKey == alice.PubKey))
                 {
@@ -110,215 +128,190 @@ namespace FundsManager.Data
                     CreationDatetime = DateTimeOffset.UtcNow,
                     PubKey = "03485d8dcdd149c87553eeb80586eb2bece874d412e9f117304446ce189955d375",
                 };
-                
+                    
                 if (!nodes.Any(x => x.PubKey == carol.PubKey))
                 {
                     _ = Task.Run(() => nodeRepository.AddAsync(carol)).Result;
                 }
-                
-                //Testing node from Polar (CAROL) LND 0.14.3 -> check devnetwork.zip polar file
-                var bob = new Node
-                {
-                    ChannelAdminMacaroon = "04c1201301a160a0761646472657373120472656164120577726974651a130a046e",
-                    //THIS MIGHT CHANGE ON YOUR MACHINE!!
-                    Endpoint = "host.docker.internal:10005",
-                    Name = "bob",
-                    CreationDatetime = DateTimeOffset.UtcNow,
-                    PubKey = "4d412e9f117304446ce189955d37503485d8dcdd149c87553eeb80586eb2bece87",
-                    
-                };
-                
-                if (!nodes.Any(x => x.PubKey == bob.PubKey))
-                {
-                    _ = Task.Run(() => nodeRepository.AddAsync(bob)).Result;
-                }
 
-                // Keys
-                Key secretKey = new Key()
+                InternalWallet? internalWallet = null;
+                if (!applicationDbContext.InternalWallets.Any())
                 {
-                    Description = "Master key do not share",
-                    Name = "Secret",
-                    IsArchived = false,
-                    IsCompromised = false,
-                    XPUB = "test",
-                    UserId = theBoss.Id,
-                    Wallets = new List<Wallet>()
-                };
-                Key superSecretKey = new Key()
-                {
-                    Description = "Master key do not share, please", 
-                    Name = "SuperSecret",
-                    IsArchived = false,
-                    IsCompromised = false,
-                    XPUB = "test",
-                    UserId = notTheBoss.Id,
-                    Wallets = new List<Wallet>()
-                };
-                Key topSecretKey = new Key()
-                {
-                    Description = "Master key do not share, please please",
-                    Name = "TopSecret",
-                    IsArchived = false,
-                    IsCompromised = false,
-                    XPUB = "test",
-                    UserId = someoneElse.Id,
-                    Wallets = new List<Wallet>()
-                };
-                
-                var keys = Task.Run(()=>keyRepository.GetAll()).Result;
-                if (!keys.Any())
-                {
-                    _ = Task.Run(() => keyRepository.AddAsync(secretKey)).Result;
-                    _ = Task.Run(() => keyRepository.AddAsync(superSecretKey)).Result;
-                    _ = Task.Run(() => keyRepository.AddAsync(topSecretKey)).Result;
-                    // TODO replace with AddRangeSync once we get it working
-                }
-                
-                // Wallets
-                var wallets = Task.Run(()=>walletRepository.GetAll()).Result;
-                Wallet myWallet = new Wallet()
-                {
-                    Name = "My Personal Wallet",
-                    IsArchived = false,
-                    IsCompromised = false,
-                    CreationDatetime = DateTimeOffset.UtcNow,
-                    UpdateDatetime = DateTimeOffset.UtcNow,
-                    MofN = 7,
-                    Description = "Random wallet created for development"
-                };
-                Wallet someWallet = new Wallet()
-                {
-                    Name = "Botin Family crypto Wallet",
-                    IsArchived = false,
-                    IsCompromised = false,
-                    CreationDatetime = new DateTimeOffset(2022, 7, 1, 8, 6, 32, new TimeSpan(0, 0, 0)),
-                    UpdateDatetime = DateTimeOffset.UtcNow,
-                    MofN = 3,
-                    Description = "Random wallet created for development"
-                };
-                Wallet clovrWallet = new Wallet()
-                {
-                    Name = "Clovr Labs Wallet",
-                    IsArchived = false,
-                    IsCompromised = false,
-                    CreationDatetime = new DateTimeOffset(2022, 7, 1, 8, 6, 32, new TimeSpan(0, 0, 0)),
-                    UpdateDatetime = DateTimeOffset.UtcNow,
-                    MofN = 3,
-                    Description = "Random wallet created for development"
-                };
-                if (!wallets.Any())
-                {
-                    superSecretKey.Wallets.Add(myWallet);
-                    secretKey.Wallets.Add(someWallet);
-                    topSecretKey.Wallets.Add(clovrWallet);
-                    _ = Task.Run(() => keyRepository.Update(topSecretKey)).Result;
-                    _ = Task.Run(() => keyRepository.Update(secretKey)).Result;
-                    _ = Task.Run(() => keyRepository.Update(superSecretKey)).Result;
-                    // TODO replace with AddRangeSync once we get it working
-                }
-            
-                // ChannelOperationRequests
-                var operationRequests = Task.Run(()=>channelOperationRequestRepository.GetAll()).Result;
-                if (!operationRequests.Any())
-                {
-                    ChannelOperationRequest firstOpRequest = new()
+                    //Default Internal Wallet
+
+                    internalWallet = new InternalWallet
                     {
-                        Description = "first",
-                        RequestType = OperationRequestType.Open,
-                        SourceNodeId = alice.Id,
-                        DestNodeId = carol.Id,
-                        Amount = 121,
-                        AmountCryptoUnit = "Sat",
-                        Status = ChannelOperationRequestStatus.Approved,
+                        //DerivationPath = "m/48'/1'/1'", //Segwit
+                        DerivationPath = Environment.GetEnvironmentVariable("DEFAULT_DERIVATION_PATH")!,
+                        MnemonicString = "middle teach digital prefer fiscal theory syrup enter crash muffin easily anxiety ill barely eagle swim volume consider dynamic unaware deputy middle into physical",
                         CreationDatetime = DateTimeOffset.Now,
-                        UpdateDatetime = DateTimeOffset.Now,
-                        WalletId = myWallet.Id,
-                        ChannelOperationRequestSignatures = new List<ChannelOperationRequestSignature>()
-                        {
-                            new()
-                            {
-                                PSBT = "PSBT123",
-                                ChannelOpenRequestId = 1,
+                };
+                
+                    var masterPrivateKey = internalWallet.GetMasterPrivateKey(nbXplorerNetwork);
 
-                                CreationDatetime = DateTimeOffset.Now,
-                                UpdateDatetime = DateTimeOffset.Now,
-                                SignatureContent = "aslkjsalkjflafjalksjklajdla"
-                            }
-                        }
-                    };
-                    ChannelOperationRequest secondOpRequest = new()
+                    applicationDbContext.Add(internalWallet);
+                    applicationDbContext.SaveChanges();
+
+                    //Funding of internal wallet
+
+                    //We mine 10 blocks
+                    minerRPC.Generate(10);
+
+                    //Singlesig segwit for the fundsmanager internal wallet
+
+                    var derivationStrategy = factory.CreateDirectDerivationStrategy(internalWallet.GetAccountKey(nbXplorerNetwork).Neuter(),
+                    new DerivationStrategyOptions
                     {
-                        Description = "second",
-                        RequestType = OperationRequestType.Open,
-                        SourceNodeId = alice.Id,
-                        DestNodeId = carol.Id,
-                        Amount = 5234,
-                        AmountCryptoUnit = "Sat",
-                        Status = ChannelOperationRequestStatus.Pending,
-                        CreationDatetime = DateTimeOffset.UtcNow,
-                        UpdateDatetime = DateTimeOffset.UtcNow,
-                        WalletId = someWallet.Id,
-                        ChannelOperationRequestSignatures = new List<ChannelOperationRequestSignature>()
-                        {
-                            new()
-                            {
-                                PSBT = "PSBT789",
-                                ChannelOpenRequestId = 1,
+                        ScriptPubKeyType = ScriptPubKeyType.Segwit,
+                    });
 
-                                CreationDatetime = DateTimeOffset.Now,
-                                UpdateDatetime = DateTimeOffset.Now,
-                                SignatureContent = "kjehfkjhnjekrhfjheruhuiewfuiheiuhf"
-                            }
-                        }
-                    };
+                    //Nbxplorer tracking of the multisig derivation scheme
 
-                    ChannelOperationRequest thirdOpRequest = new()
+                    nbxplorerClient.Track(derivationStrategy);
+                    var evts = nbxplorerClient.CreateLongPollingNotificationSession();
+
+                    var keyPathInformation = nbxplorerClient.GetUnused(derivationStrategy, DerivationFeature.Deposit);
+                    var internalWalletAddress = keyPathInformation.Address;
+
+                    var fundingCoins = Money.Coins(0.1m); //0.01BTC
+
+                    minerRPC.SendToAddress(internalWalletAddress, fundingCoins);
+
+                    //6 blocks to confirm
+                    minerRPC.Generate(6);
+
+                    WaitNbxplorerNotification(evts, derivationStrategy);
+
+                    var balance = nbxplorerClient.GetBalance(derivationStrategy);
+                    var confirmedBalance = (Money)balance.Confirmed;
+                    if (confirmedBalance.ToUnit(MoneyUnit.BTC) < 0.1M)
                     {
-                        Description = "Third",
-                        RequestType = OperationRequestType.Close,
-                        SourceNodeId = carol.Id,
-                        DestNodeId = alice.Id,
-                        Amount = 2,
-                        AmountCryptoUnit = "Sat",
-                        Status = ChannelOperationRequestStatus.Pending,
-                        CreationDatetime = DateTimeOffset.UtcNow,
-                        UpdateDatetime = DateTimeOffset.UtcNow,
-                        WalletId = clovrWallet.Id,
-                        ChannelOperationRequestSignatures = new List<ChannelOperationRequestSignature>()
-                        {
-                            new()
-                            {
-                                PSBT = "PSBT0123",
-                                ChannelOpenRequestId = 1,
+                        throw new Exception("The internal wallet balance is not >= 0.1BTC");
+                    }
+                }
 
-                                CreationDatetime = DateTimeOffset.Now,
-                                UpdateDatetime = DateTimeOffset.Now,
-                                SignatureContent = "aslkjsalkjflafjalksjklajdla"
+                if (!applicationDbContext.Wallets.Any())
+                {
+                    //Wallets
+
+                    //Individual wallets
+                    var wallet1seed = "social mango annual basic work brain economy one safe physical junk other toy valid load cook napkin maple runway island oil fan legend stem";
+
+                    var masterKey1 = new Mnemonic(wallet1seed).DeriveExtKey().GetWif(Network.RegTest);
+                    var keyPath1 = new KeyPath(Environment.GetEnvironmentVariable("DEFAULT_DERIVATION_PATH")); //https://github.com/dgarage/NBXplorer/blob/0595a87f22c142aee6a6e4a0194f75aec4717819/NBXplorer/Controllers/MainController.cs#L1141
+                    var accountKey1 = masterKey1.Derive(keyPath1);
+                    var bitcoinExtPubKey1 = accountKey1.Neuter();
+                    var accountKeyPath1 = new RootedKeyPath(masterKey1.GetPublicKey().GetHDFingerPrint(), keyPath1);
+
+                    var wallet1DerivationScheme = bitcoinExtPubKey1.ToWif();
+
+                    logger.LogInformation("Wallet 1 seed: {}", wallet1seed);
+
+                    var wallet2seed = "solar goat auto bachelor chronic input twin depth fork scale divorce fury mushroom column image sauce car public artist announce treat spend jacket physical";
+
+                    var masterKey2 = new Mnemonic(wallet2seed).DeriveExtKey().GetWif(Network.RegTest);
+                    var keyPath2 = new KeyPath(Environment.GetEnvironmentVariable("DEFAULT_DERIVATION_PATH")); //https://github.com/dgarage/NBXplorer/blob/0595a87f22c142aee6a6e4a0194f75aec4717819/NBXplorer/Controllers/MainController.cs#L1141
+                    var accountKey2 = masterKey2.Derive(keyPath2);
+                    var bitcoinExtPubKey2 = accountKey2.Neuter();
+                    var accountKeyPath2 = new RootedKeyPath(masterKey2.GetPublicKey().GetHDFingerPrint(), keyPath2);
+
+                    var wallet2DerivationScheme = bitcoinExtPubKey2.ToWif();
+
+                    logger.LogInformation("Wallet 2 seed: {}", wallet2seed);
+
+                    var testingMultisigWallet = new Wallet
+                    {
+                        MofN = 2,
+                        Keys = new List<Key>
+                        {
+                            new Key
+                            {
+                                Name = "Key 1",
+                                UserId = adminUser.Id,
+                                XPUB = wallet1DerivationScheme.ToString()
+                                //XPUB = wallet1.DerivationScheme.ToString()
                             },
-                            new()
+                            new Key
                             {
-                                PSBT = "PSBT456",
-                                ChannelOpenRequestId = 2,
-
-                                CreationDatetime = DateTimeOffset.Now,
-                                UpdateDatetime = DateTimeOffset.Now,
-                                SignatureContent = "poweirpowiefposidfpodifopi"
+                                Name = "Key 2",
+                                UserId = adminUser.Id,
+                                XPUB = wallet2DerivationScheme.ToString()
+                                //XPUB = wallet2.DerivationScheme.ToString()
+                            },
+                            new Key
+                            {
+                                Name = "FundsManager Key",
+                                XPUB = internalWallet.GetXPUB(nbXplorerNetwork),
+                                IsFundsManagerPrivateKey = true
                             }
-                        }
+                        },
+                        Name = "Test wallet",
+                        WalletAddressType = WalletAddressType.NativeSegwit,
+                        InternalWalletId = internalWallet.Id
                     };
-                    
-                    theBoss.ChannelOperationRequests.Add(firstOpRequest);
-                    someoneElse.ChannelOperationRequests.Add(secondOpRequest);
-                    someoneElse.ChannelOperationRequests.Add(thirdOpRequest);
 
-                    _ = Task.Run(() => appUserRepository.Update(theBoss)).Result;
-                    _ = Task.Run(() => appUserRepository.Update(someoneElse)).Result;
-                    
+                    //Now we fund a multisig address of that wallet with the miner (polar)
+                    //We mine 10 blocks
+                    minerRPC.Generate(10);
+
+                    //2-of-3 multisig by Key 1 and Key 2 from wallet1/wallet2 and the internal wallet
+
+                    var derivationStrategy = factory.CreateMultiSigDerivationStrategy(new BitcoinExtPubKey[]
+                        {
+                            bitcoinExtPubKey1,
+                            bitcoinExtPubKey2,
+                            new(internalWallet.GetXPUB(nbXplorerNetwork),nbXplorerNetwork),
+                        },
+                        testingMultisigWallet.MofN,
+                        new DerivationStrategyOptions
+                {
+                            ScriptPubKeyType = ScriptPubKeyType.Segwit,
+                        });
+                    //Nbxplorer tracking of the multisig derivation scheme
+
+                    nbxplorerClient.Track(derivationStrategy);
+                    var evts = nbxplorerClient.CreateLongPollingNotificationSession();
+
+                    var keyPathInformation = nbxplorerClient.GetUnused(derivationStrategy, DerivationFeature.Deposit);
+                    var multisigAddress = keyPathInformation.Address;
+
+                    var multisigFundCoins = Money.Coins(20m); //20BTC
+
+                    minerRPC.SendToAddress(multisigAddress, multisigFundCoins);
+
+                    //6 blocks to confirm
+                    minerRPC.Generate(6);
+
+                    WaitNbxplorerNotification(evts, derivationStrategy);
+
+                    var balance = nbxplorerClient.GetBalance(derivationStrategy);
+                    var confirmedBalance = (Money)balance.Confirmed;
+                    if (confirmedBalance.ToUnit(MoneyUnit.BTC) < 20)
+                    {
+                        throw new Exception("The multisig wallet balance is not >= 20BTC");
+                    }
+                    applicationDbContext.Add(testingMultisigWallet);
                 }
             }
             else
             {
+                if (!applicationDbContext.InternalWallets.Any())
+                {
+                    //Default Internal Wallet, for production we generate a whole random new Mnemonic
+                
+                    var internalWallet = new InternalWallet
+                    {
+                        DerivationPath = Environment.GetEnvironmentVariable("DEFAULT_DERIVATION_PATH"),
+                        MnemonicString = new Mnemonic(Wordlist.English).ToString(),
+                        CreationDatetime = DateTimeOffset.Now,
+                    };
+                
+                    applicationDbContext.Add(internalWallet);
+
+                    logger.LogInformation("A new internal wallet seed has been generated: {}", internalWallet.MnemonicString);
+                }
             }
+
             applicationDbContext.SaveChanges();
         }
 
@@ -356,6 +349,19 @@ namespace FundsManager.Data
                     Name = trustedFinanceUser.ToString("G"),
                     NormalizedName = trustedFinanceUser.ToString("G").ToUpper()
                 });
+            }
+        }
+
+        private static NewTransactionEvent WaitNbxplorerNotification(LongPollingNotificationSession evts, DerivationStrategyBase derivationStrategy)
+        {
+            while (true)
+            {
+                var evt = evts.NextEvent();
+                if (evt is NewTransactionEvent tx)
+                {
+                    if (tx.DerivationStrategy == derivationStrategy)
+                        return tx;
+                }
             }
         }
     }

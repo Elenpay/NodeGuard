@@ -1,12 +1,36 @@
-﻿namespace FundsManager.Data.Models
-{
+﻿using NBitcoin;
 
+namespace FundsManager.Data.Models
+{
     public enum ChannelOperationRequestStatus
     {
-        Pending = 0,
+        /// <summary>
+        /// Pending status is when the PSBT is fully signed by signers but waiting to be signed by the funds manager and broadcasted
+        /// </summary>
         Approved = 1,
+
         Cancelled = 2,
-        Rejected = 3
+        Rejected = 3,
+
+        /// <summary>
+        /// Pending status means that it is waiting for approval by treasury guys
+        /// </summary>
+        Pending = 4,
+
+        /// <summary>
+        /// Approved and waiting for PSBT signatures filling, only for OperationRequestType = Open
+        /// </summary>
+        PSBTSignaturesPending = 5,
+
+        /// <summary>
+        /// The operation tx is signed and waiting for onchain confirmation
+        /// </summary>
+        OnChainConfirmationPending = 6,
+
+        /// <summary>
+        /// The TX is fully broadcast this means that the channel has been open/closed
+        /// </summary>
+        OnChainConfirmed = 7
     }
 
     public enum OperationRequestType
@@ -17,11 +41,14 @@
 
     public class ChannelOperationRequest : Entity
     {
-        public decimal Amount { get; set; }
+        /// <summary>
+        /// Amount in satoshis
+        /// </summary>
+        public long SatsAmount { get; set; }
 
         public string? Description { get; set; }
 
-        public string AmountCryptoUnit { get; set; } // TODO worth an enum?
+        public MoneyUnit AmountCryptoUnit { get; set; }
 
         public ChannelOperationRequestStatus Status { get; set; }
 
@@ -36,8 +63,8 @@
 
         public int SourceNodeId { get; set; }
         public Node SourceNode { get; set; }
-        public int DestNodeId { get; set; }
-        public Node DestNode { get; set; }
+        public int? DestNodeId { get; set; }
+        public Node? DestNode { get; set; }
         public string UserId { get; set; }
         public ApplicationUser User { get; set; }
         public int? ChannelId { get; set; }
@@ -45,6 +72,6 @@
 
         public bool IsChannelPrivate { get; set; }
 
-        #endregion
+        #endregion Relationships
     }
 }

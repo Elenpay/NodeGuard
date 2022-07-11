@@ -3,3 +3,6 @@ docker/bin/
 docker/obj/
 src/bin/
 src/obj/
+test/FundsManager.Tests/obj/
+test/FundsManager.Tests/bin/
+FundsManager.sln.DotSettings.user

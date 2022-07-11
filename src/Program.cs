@@ -1,10 +1,13 @@
+using Blazored.Toast;
 using Blazorise;
 using Blazorise.Bootstrap;
 using Blazorise.Icons.FontAwesome;
 using FundsManager.Areas.Identity;
 using FundsManager.Data;
+using FundsManager.Data.Models;
 using FundsManager.Data.Repositories;
 using FundsManager.Data.Repositories.Interfaces;
+using FundsManager.Services;
 using Lnrpc;
 using Microsoft.AspNetCore.Components.Authorization;
 using Microsoft.AspNetCore.Identity;
@@ -21,14 +24,15 @@ namespace FundsManager
             // Add services to the container.
 
             builder.Services.AddDatabaseDeveloperPageExceptionFilter();
-            builder.Services.AddDefaultIdentity<IdentityUser>(options => options.SignIn.RequireConfirmedAccount = false)
-                .AddRoles<IdentityRole>().AddRoleManager<RoleManager<IdentityRole>>()
+            builder.Services.AddDefaultIdentity<ApplicationUser>(options => options.SignIn.RequireConfirmedAccount = false)
+                .AddRoles<IdentityRole>()
+                .AddRoleManager<RoleManager<IdentityRole>>()
                 .AddEntityFrameworkStores<ApplicationDbContext>();
             builder.Services.AddRazorPages();
             builder.Services.AddServerSideBlazor().AddCircuitOptions(options => { options.DetailedErrors = true; });
             builder.Services.AddScoped<AuthenticationStateProvider, RevalidatingIdentityAuthenticationStateProvider<IdentityUser>>();
 
-            //Dependency Injection 
+            //Dependency Injection
 
             //Repos DI
             builder.Services.AddTransient(typeof(IRepository<>), typeof(Repository<>));
@@ -39,9 +43,13 @@ namespace FundsManager
             builder.Services.AddTransient<IKeyRepository, KeyRepository>();
             builder.Services.AddTransient<INodeRepository, NodeRepository>();
             builder.Services.AddTransient<IWalletRepository, WalletRepository>();
+            builder.Services.AddTransient<IInternalWalletRepository, InternalWalletRepository>();
 
-            //gRPC
-            builder.Services.AddGrpcClient<Lightning.LightningClient>();
+            //BlazoredToast
+            builder.Services.AddBlazoredToast();
+
+            //Service DI
+            builder.Services.AddTransient<ILndService, LndService>();
 
             //DbContext
             var connectionString = Environment.GetEnvironmentVariable("POSTGRES_CONNECTIONSTRING") ?? "Host=localhost;Port=35433;Database=fundsmanager;Username=rw_dev;Password=rw_dev";
@@ -71,9 +79,7 @@ namespace FundsManager
                 .AddBootstrapProviders()
                 .AddFontAwesomeIcons();
 
-
             var app = builder.Build();
-
 
             //DbInitialisation & Migrations
 

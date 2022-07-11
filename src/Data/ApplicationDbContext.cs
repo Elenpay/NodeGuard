@@ -44,5 +44,7 @@ namespace FundsManager.Data
 
         public DbSet<Channel> Channels { get; set; }
 
+        public DbSet<InternalWallet> InternalWallets { get; set; }
+
     }
 }

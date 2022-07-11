@@ -13,6 +13,13 @@ services:
         - "35433:5432"
     environment:
         POSTGRES_CONNECTIONSTRING: Host=127.0.0.1;Port=5432;Database=fundsmanager;Username=rw_dev;Password=rw_dev
+        BITCOIN_NETWORK: REGTEST
+        NBXPLORER_URI: http://nbxplorer:32838
+        NBXPLORER_BTCRPCUSER: "polaruser"
+        NBXPLORER_BTCRPCPASSWORD: "polarpass"
+        NBXPLORER_BTCRPCURL: http://host.docker.internal:18443/
+        NBXPLORER_BTCNODEENDPOINT: host.docker.internal:19444
+        DEFAULT_DERIVATION_PATH: m/48'/1'/1'
 
   fundsmanager_postgres:
     container_name: fundsmanager_postgres
@@ -27,5 +34,33 @@ services:
     volumes:
       - fundsmanager_postgres_data:/var/lib/postgresql/data
 
+  nbxplorer:
+    restart: unless-stopped
+    image: nicolasdorier/nbxplorer:2.3.26
+    hostname: nbxplorer
+    platform: linux/amd64
+    ports:
+    - "32838:32838"
+    environment:
+      NBXPLORER_NETWORK: regtest
+      NBXPLORER_BIND: 0.0.0.0:32838
+      NBXPLORER_TRIMEVENTS: 10000
+      NBXPLORER_SIGNALFILESDIR: /datadir
+      #Keeping dbtrie for dev until it is fully removed since we would need to modify nbxplorer docker image to wait for the db to be ready
+      NBXPLORER_DBTRIE: 1
+      NBXPLORER_CHAINS: "btc"
+      NBXPLORER_BTCRPCUSER: "polaruser"
+      NBXPLORER_BTCRPCPASSWORD: "polarpass"
+      NBXPLORER_BTCRPCURL: http://host.docker.internal:18443/
+      NBXPLORER_BTCNODEENDPOINT: host.docker.internal:19444
+    command: ["--noauth"]
+    volumes:
+    #- "nbxplorer_datadir:/datadir"
+    - "bitcoin_datadir:/root/.bitcoin"
+
+
+
 volumes:
     fundsmanager_postgres_data:
+    bitcoin_datadir: 
+    nbxplorer_datadir: 

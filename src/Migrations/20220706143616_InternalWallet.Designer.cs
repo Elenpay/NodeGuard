@@ -3,6 +3,7 @@ using System;
 using FundsManager.Data;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 
@@ -11,9 +12,10 @@ using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 namespace FundsManager.Migrations
 {
     [DbContext(typeof(ApplicationDbContext))]
-    partial class ApplicationDbContextModelSnapshot : ModelSnapshot
+    [Migration("20220706143616_InternalWallet")]
+    partial class InternalWallet
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -80,8 +82,8 @@ namespace FundsManager.Migrations
 
                     NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
 
-                    b.Property<int>("AmountCryptoUnit")
-                        .HasColumnType("integer");
+                    b.Property<string>("AmountCryptoUnit")
+                        .HasColumnType("text");
 
                     b.Property<int?>("ChannelId")
                         .HasColumnType("integer");
@@ -92,7 +94,10 @@ namespace FundsManager.Migrations
                     b.Property<string>("Description")
                         .HasColumnType("text");
 
-                    b.Property<int?>("DestNodeId")
+                    b.Property<int>("DestNodeId")
+                        .HasColumnType("integer");
+
+                    b.Property<int>("InternalWalletId")
                         .HasColumnType("integer");
 
                     b.Property<bool>("IsChannelPrivate")
@@ -125,6 +130,8 @@ namespace FundsManager.Migrations
                     b.HasIndex("ChannelId");
 
                     b.HasIndex("DestNodeId");
+
+                    b.HasIndex("InternalWalletId");
 
                     b.HasIndex("SourceNodeId");
 
@@ -580,7 +587,15 @@ namespace FundsManager.Migrations
 
                     b.HasOne("FundsManager.Data.Models.Node", "DestNode")
                         .WithMany("ChannelOperationRequestsAsDestination")
-                        .HasForeignKey("DestNodeId");
+                        .HasForeignKey("DestNodeId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("FundsManager.Data.Models.InternalWallet", "InternalWallet")
+                        .WithMany()
+                        .HasForeignKey("InternalWalletId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
 
                     b.HasOne("FundsManager.Data.Models.Node", "SourceNode")
                         .WithMany("ChannelOperationRequestsAsSource")
@@ -603,6 +618,8 @@ namespace FundsManager.Migrations
                     b.Navigation("Channel");
 
                     b.Navigation("DestNode");
+
+                    b.Navigation("InternalWallet");
 
                     b.Navigation("SourceNode");
 
