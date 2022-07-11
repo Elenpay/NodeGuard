@@ -1,6 +1,7 @@
 ﻿@page "/create-channel"
 @using FundsManager.Data.Repositories.Interfaces
 @using Blazorise.Extensions
+@using NBitcoin
 
 <PageTitle>Create Channel</PageTitle>
 
@@ -137,7 +138,7 @@
         
         // TODO Fill all the appropriate fields
         ChannelOperationRequest request = new ChannelOperationRequest();
-        request.Amount = amount.Value;
+        request.SatsAmount = new Money(amount.Value, MoneyUnit.BTC).Satoshi;
         request.RequestType = OperationRequestType.Open;
         request.Description = "Created by user via Funds Manager";
         request.Wallet = walletsPerNode[Int32.Parse(selectedWallet)];

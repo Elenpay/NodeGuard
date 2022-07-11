@@ -2,8 +2,6 @@
 
 @using NBitcoin
 @using NBXplorer
-@using Key = NBitcoin.Key
-@using FundsManager.Data.Repositories
 @inject INodeRepository NodeRepository
 @inject IWalletRepository WalletRepository
 @inject ILndService LndService
@@ -87,7 +85,7 @@
 
             }
 
-            
+
         }
 
     }
@@ -96,18 +94,18 @@
     {
         var user = (await ApplicationUserRepository.GetAll()).First();
         var channelOperationRequest = new ChannelOperationRequest
-        {
-            SatsAmount = 20000,
-            RequestType = OperationRequestType.Open,
-            Status = ChannelOperationRequestStatus.Pending,
-            Wallet = defaultWallet,
-            WalletId = defaultWallet.Id,
-         
-            DestNodeId = carol.Id,
-            SourceNodeId = alice.Id,
-            UserId = user.Id,
-    //User = user
-        };
+            {
+                SatsAmount = 20000,
+                RequestType = OperationRequestType.Open,
+                Status = ChannelOperationRequestStatus.Pending,
+                Wallet = defaultWallet,
+                WalletId = defaultWallet.Id,
+
+                DestNodeId = carol.Id,
+                SourceNodeId = alice.Id,
+                UserId = user.Id,
+                //User = user
+            };
         return channelOperationRequest;
     }
 
@@ -119,19 +117,19 @@
         var defaultWallet = (await WalletRepository.GetAll()).First();
 
         var channelOperationRequest = new ChannelOperationRequest
-        {
-            SatsAmount = 200000,
-            RequestType = OperationRequestType.Open,
-            WalletId = defaultWallet.Id,
-            Wallet = defaultWallet,
-            Status = ChannelOperationRequestStatus.Pending,
-        };
+            {
+                SatsAmount = 200000,
+                RequestType = OperationRequestType.Open,
+                WalletId = defaultWallet.Id,
+                Wallet = defaultWallet,
+                Status = ChannelOperationRequestStatus.Pending,
+            };
 
 
         templatePSBT = await LndService.GenerateTemplatePSBT(channelOperationRequest);
         templatePSBTString = templatePSBT.ToBase64();
 
-       StateHasChanged();
+        StateHasChanged();
     }
 
     private async Task OnPSBT1FileUploadEnded(FileChangedEventArgs arg)
@@ -185,7 +183,7 @@
             {
 
             }
-            else if(Transaction.TryParse(arg, Network.RegTest, out var tx))
+            else if (Transaction.TryParse(arg, Network.RegTest, out var tx))
             {
                 _psbtSign1 = tx.CreatePSBT(Network.RegTest);
 
@@ -202,7 +200,7 @@
             {
 
             }
-            else if(Transaction.TryParse(arg, Network.RegTest, out var tx))
+            else if (Transaction.TryParse(arg, Network.RegTest, out var tx))
             {
                 _psbtSign2 = tx.CreatePSBT(Network.RegTest);
 
@@ -216,16 +214,16 @@
     private async Task OnCombinedPSBTChanged(string arg)
     {
         _combinedPsbtString = arg;
-      
+
         if (!string.IsNullOrEmpty(arg))
         {
             if (PSBT.TryParse(arg, Network.RegTest, out _combinedPsbt))
             {
 
             }
-          
 
-            
+
+
         }
     }
 
@@ -237,7 +235,7 @@
         var user = (await ApplicationUserRepository.GetAll()).First();
 
         Channel? channel = null;
-        if(_lastChannelId != null)
+        if (_lastChannelId != null)
             channel = await ChannelRepository.GetById(_lastChannelId.Value);
 
         if (channel != null)
@@ -245,24 +243,24 @@
             var defaultWallet = (await WalletRepository.GetAll()).First();
 
             var channelOperationRequest = new ChannelOperationRequest
-            {
-                AmountCryptoUnit = MoneyUnit.Satoshi,
-                ChannelId = _lastChannelId,
-                CreationDatetime = DateTimeOffset.Now,
-                RequestType = OperationRequestType.Close,
-                SourceNodeId = alice.Id,
-                Status = ChannelOperationRequestStatus.Pending,
-                UserId = user.Id,
-                WalletId =  defaultWallet.Id,
-                
-            };
+                {
+                    AmountCryptoUnit = MoneyUnit.Satoshi,
+                    ChannelId = _lastChannelId,
+                    CreationDatetime = DateTimeOffset.Now,
+                    RequestType = OperationRequestType.Close,
+                    SourceNodeId = alice.Id,
+                    Status = ChannelOperationRequestStatus.Pending,
+                    UserId = user.Id,
+                    WalletId = defaultWallet.Id,
+
+                };
             var result = await ChannelOperationRequestRepository.AddAsync(channelOperationRequest);
 
             channelOperationRequest.SourceNode = alice;
 
             if (result.Item1)
             {
-                var channelresult = await LndService.CloseChannel(channelOperationRequest, alice,false);
+                var channelresult = await LndService.CloseChannel(channelOperationRequest, alice, false);
 
                 if (channelresult)
                 {
@@ -275,12 +273,12 @@
             }
 
         }
-        
 
 
-        }
-    
+
+    }
+
 
 }
 
-}
+
