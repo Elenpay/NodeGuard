@@ -94,6 +94,7 @@ namespace FundsManager.Services
 
             var client = new Lightning.LightningClient(grpcChannel);
 
+            //TODO Return a human-readable error string for the UI
             var result = false;
 
             //32 bytes of secure randomness for the pending channel id (lnd)
@@ -198,6 +199,8 @@ namespace FundsManager.Services
                                     channelOperationRequest.Id,
                                     channelUpdate.Item2);
                             }
+
+                            result = true;
 
                             break;
 

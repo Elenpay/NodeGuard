@@ -9,23 +9,25 @@
 @inject IChannelOperationRequestRepository ChannelOperationRequestRepository
 @inject IInternalWalletRepository InternalWalletRepository
 @inject IApplicationUserRepository ApplicationUserRepository
+@inject IToastService toastService
+
 <PageTitle>Channel test</PageTitle>
 
-<h1>Open channel from Alice to Carol (1000 sats)</h1>
+<h1>Open channel from Alice to Carol (20000 sats)</h1>
 
 <button class="btn btn-primary" @onclick="GeneratePSBT">Generate PSBT</button>
 <p>Template PSBT</p>
-<MemoEdit @bind-Text="@templatePSBTString"></MemoEdit>
+<MemoEdit @bind-Text="@templatePSBTString" Rows="3"></MemoEdit>
 <p>Signed with Key 1 PSBT</p>
 @*<FileEdit Changed="@OnPSBT1FileUploadEnded"></FileEdit>*@
-<MemoEdit Text="@_psbtSign1String" TextChanged="OnPSBT1TextChanged"></MemoEdit>
+<MemoEdit Text="@_psbtSign1String" TextChanged="OnPSBT1TextChanged" Rows="4"></MemoEdit>
 <p>Signed with Key 2 PSBT</p>
 @*<FileEdit Changed="@OnPSBT2FileUploadEnded"></FileEdit>*@
-<MemoEdit Text="@_psbtSign2String" TextChanged="OnPSBT2TextChanged"></MemoEdit>
+<MemoEdit Text="@_psbtSign2String" TextChanged="OnPSBT2TextChanged" Rows="4"></MemoEdit>
 <button class="btn btn-primary" @onclick="CombinePSBT">Combine</button>
 
 <p>Combined PSBT</p>
-<MemoEdit Text="@_combinedPsbtString" TextChanged="OnCombinedPSBTChanged"></MemoEdit>
+<MemoEdit Text="@_combinedPsbtString" TextChanged="OnCombinedPSBTChanged" Rows="6"></MemoEdit>
 <button class="btn btn-primary" @onclick="OpenChannelRequest">Open</button>
 
 
@@ -68,7 +70,14 @@
             {
                 var channelresult = await LndService.OpenChannel(channelOperationRequest, alice, carol, _combinedPsbt);
 
-                //TODO Toastr
+                if (channelresult)
+                {
+                    toastService.ShowSuccess("Channel created!");
+                }
+                else
+                {
+                    toastService.ShowError("Channel creation failed!");
+                }
             }
 
             
@@ -99,7 +108,6 @@
     {
         var nbXplorerNetwork = Network.RegTest;
         var provider = new NBXplorerNetworkProvider(nbXplorerNetwork.ChainName);
-        var nbxplorerNetwork = provider.GetFromCryptoCode(nbXplorerNetwork.NetworkSet.CryptoCode);
 
         var defaultWallet = (await WalletRepository.GetAll()).First();
 
@@ -116,40 +124,7 @@
         templatePSBT = await LndService.GenerateTemplatePSBT(channelOperationRequest);
         templatePSBTString = templatePSBT.ToBase64();
 
-        //Wallet 1
-        //var mnemonic1 = new Mnemonic("social mango annual basic work brain economy one safe physical junk other toy valid load cook napkin maple runway island oil fan legend stem");
-        //var masterKey = mnemonic1.DeriveExtKey().GetWif(Network.RegTest);
-
-
-        //var keyPath = new KeyPath("84'").Derive(nbxplorerNetwork.CoinType).Derive(0,true); https:github.com/dgarage/NBXplorer/blob/0595a87f22c142aee6a6e4a0194f75aec4717819/NBXplorer/Controllers/MainController.cs#L1141
-        //var accountKey = masterKey.Derive(keyPath);
-        //if (accountKey.Neuter().ToWif() != "tpubDCPqCySQAAMdD2VuYQSgqfmFt37vNpe51jqFqF95RpbctzWEhyA77CKPdD6ZgAvkNYBGQgeFcEZmoPyBD5uu2oSJ1wuyKzpdjBRbWXMBRMv")
-        //{
-        //    throw new ArgumentException("Invalid tpub");
-        //}
-        //_psbtSign1 = templatePSBT.SignWithKeys(accountKey.PrivateKey);
-        //_psbtSign1String = _psbtSign1.ToBase64();
-
-
-        //PSBTSign1 = psbt1.ToBase64();
-
-
-        ////Wallet 2
-        //var mnemonic2 = new Mnemonic("solar goat auto bachelor chronic input twin depth fork scale divorce fury mushroom column image sauce car public artist announce treat spend jacket physical");
-        //var extKey2 = mnemonic2.DeriveExtKey().GetWif(Network.RegTest);
-        //var privateKey2 = extKey2.PrivateKey;
-
-        //var psbt2 = psbt.SignWithKeys(privateKey2);
-
-        //PSBTSign2 = psbt2.ToBase64();
-
-        //var psbtCombined = psbt1.Combine(psbt2);
-
-        //_combinedPsbt = psbtCombined.ToBase64();
-
-
-
-        StateHasChanged();
+       StateHasChanged();
     }
 
     private async Task OnPSBT1FileUploadEnded(FileChangedEventArgs arg)

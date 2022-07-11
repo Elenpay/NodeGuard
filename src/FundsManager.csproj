@@ -12,6 +12,7 @@
 
 
   <ItemGroup>
+    <PackageReference Include="Blazored.Toast" Version="3.2.2" />
     <PackageReference Include="Blazorise.Bootstrap" Version="1.0.5" />
     <PackageReference Include="Blazorise.Icons.FontAwesome" Version="1.0.5" />
     <PackageReference Include="Grpc.AspNetCore" Version="2.46.0" />

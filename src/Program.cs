@@ -1,3 +1,4 @@
+using Blazored.Toast;
 using Blazorise;
 using Blazorise.Bootstrap;
 using Blazorise.Icons.FontAwesome;
@@ -24,7 +25,8 @@ namespace FundsManager
 
             builder.Services.AddDatabaseDeveloperPageExceptionFilter();
             builder.Services.AddDefaultIdentity<ApplicationUser>(options => options.SignIn.RequireConfirmedAccount = false)
-                .AddRoles<IdentityRole>().AddRoleManager<RoleManager<IdentityRole>>()
+                .AddRoles<IdentityRole>()
+                .AddRoleManager<RoleManager<IdentityRole>>()
                 .AddEntityFrameworkStores<ApplicationDbContext>();
             builder.Services.AddRazorPages();
             builder.Services.AddServerSideBlazor().AddCircuitOptions(options => { options.DetailedErrors = true; });
@@ -43,14 +45,11 @@ namespace FundsManager
             builder.Services.AddTransient<IWalletRepository, WalletRepository>();
             builder.Services.AddTransient<IInternalWalletRepository, InternalWalletRepository>();
 
+            //BlazoredToast
+            builder.Services.AddBlazoredToast();
+
             //Service DI
             builder.Services.AddTransient<ILndService, LndService>();
-
-            //gRPC
-            builder.Services.AddGrpcClient<Lightning.LightningClient>(options =>
-            {
-                options.Address = new Uri("https://host.docker.internal:10001");
-            });
 
             //DbContext
             var connectionString = Environment.GetEnvironmentVariable("POSTGRES_CONNECTIONSTRING") ?? "Host=localhost;Port=35433;Database=fundsmanager;Username=rw_dev;Password=rw_dev";
