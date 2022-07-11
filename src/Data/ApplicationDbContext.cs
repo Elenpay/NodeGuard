@@ -11,24 +11,14 @@ namespace FundsManager.Data
         {
         }
 
+        protected override void OnConfiguring(DbContextOptionsBuilder optionsBuilder)
+        {
+            optionsBuilder.EnableDetailedErrors();
+        }
+
         protected override void OnModelCreating(ModelBuilder modelBuilder)
         {
-            //modelBuilder.Entity<ChannelOperationRequest>().Ignore(cor => cor.DestNode);
-            //modelBuilder.Entity<ChannelOperationRequest>().Ignore(cor => cor.SourceNode);
-
-            //modelBuilder.Entity<Node>().Ignore(node => node.ChannelOperationRequestsAsSource);
-            //modelBuilder.Entity<Node>().Ignore(node => node.ChannelOperationRequestsAsDestination);
-
-            //modelBuilder.Entity<Node>()
-            //    .HasMany(node => node.ChannelOperationRequestsAsSource)
-            //    .WithOne(cor => cor.SourceNode)
-            //    .HasForeignKey(cor => cor.DestNode);
-            //modelBuilder.Entity<Node>()
-            //    .HasMany(node => node.ChannelOperationRequestsAsDestination)
-            //    .WithOne(cor => cor.DestNode)
-            //    .HasForeignKey(cor => cor.DestNode);
-
-            modelBuilder.Entity<ChannelOperationRequest>()
+        modelBuilder.Entity<ChannelOperationRequest>()
                 .HasOne(cor => cor.SourceNode)
                 .WithMany(node => node.ChannelOperationRequestsAsSource)
                 .HasForeignKey(cor => cor.SourceNodeId);

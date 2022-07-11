@@ -1,5 +1,6 @@
 ﻿using System.Net;
 using FundsManager.Data.Models;
+using FundsManager.Data.Repositories;
 using FundsManager.Data.Repositories.Interfaces;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc.Formatters;
@@ -20,6 +21,11 @@ namespace FundsManager.Data
         {
             //DI
             var applicationDbContext = serviceProvider.GetRequiredService<ApplicationDbContext>();
+            var appUserRepository = serviceProvider.GetRequiredService<IApplicationUserRepository>();
+            var nodeRepository = serviceProvider.GetRequiredService<INodeRepository>();
+            var channelOperationRequestRepository = serviceProvider.GetRequiredService<IChannelOperationRequestRepository>();
+            var walletRepository = serviceProvider.GetRequiredService<IWalletRepository>();
+            var keyRepository = serviceProvider.GetRequiredService<IKeyRepository>();
             var nodeRepository = serviceProvider.GetRequiredService<INodeRepository>();
 
             var webHostEnvironment = serviceProvider.GetRequiredService<IWebHostEnvironment>();
@@ -95,7 +101,7 @@ namespace FundsManager.Data
                 //TODO Roles
 
                 //Testing node from Polar (ALICE) LND 0.14.3 -> check devnetwork.zip polar file
-                var nodes = Task.Run(() => nodeRepository.GetAll()).Result;
+                var nodes = Task.Run(()=>nodeRepository.GetAll()).Result;
 
                 var alice = new Node
                 {
@@ -122,7 +128,7 @@ namespace FundsManager.Data
                     CreationDatetime = DateTimeOffset.UtcNow,
                     PubKey = "03485d8dcdd149c87553eeb80586eb2bece874d412e9f117304446ce189955d375",
                 };
-
+                    
                 if (!nodes.Any(x => x.PubKey == carol.PubKey))
                 {
                     _ = Task.Run(() => nodeRepository.AddAsync(carol)).Result;
@@ -139,8 +145,8 @@ namespace FundsManager.Data
                         DerivationPath = Environment.GetEnvironmentVariable("DEFAULT_DERIVATION_PATH")!,
                         MnemonicString = "middle teach digital prefer fiscal theory syrup enter crash muffin easily anxiety ill barely eagle swim volume consider dynamic unaware deputy middle into physical",
                         CreationDatetime = DateTimeOffset.Now,
-                    };
-
+                };
+                
                     var masterPrivateKey = internalWallet.GetMasterPrivateKey(nbXplorerNetwork);
 
                     applicationDbContext.Add(internalWallet);
@@ -258,7 +264,7 @@ namespace FundsManager.Data
                         },
                         testingMultisigWallet.MofN,
                         new DerivationStrategyOptions
-                        {
+                {
                             ScriptPubKeyType = ScriptPubKeyType.Segwit,
                         });
                     //Nbxplorer tracking of the multisig derivation scheme
@@ -292,14 +298,14 @@ namespace FundsManager.Data
                 if (!applicationDbContext.InternalWallets.Any())
                 {
                     //Default Internal Wallet, for production we generate a whole random new Mnemonic
-
+                
                     var internalWallet = new InternalWallet
                     {
                         DerivationPath = Environment.GetEnvironmentVariable("DEFAULT_DERIVATION_PATH"),
                         MnemonicString = new Mnemonic(Wordlist.English).ToString(),
                         CreationDatetime = DateTimeOffset.Now,
                     };
-
+                
                     applicationDbContext.Add(internalWallet);
 
                     logger.LogInformation("A new internal wallet seed has been generated: {}", internalWallet.MnemonicString);

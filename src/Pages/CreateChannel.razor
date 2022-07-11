@@ -1,0 +1,155 @@
+﻿@page "/create-channel"
+@using FundsManager.Data.Repositories.Interfaces
+@using Blazorise.Extensions
+
+<PageTitle>Create Channel</PageTitle>
+
+<h1>Open Channel</h1>
+<p></p>
+<Fields>
+    <Field>
+        <Validation Validator="@ValidationRule.IsAlphanumeric">
+            <TextEdit @bind-Text="@nodeName">
+                <Feedback>
+                    <ValidationNone>Please Insert the key of a Lighting Node</ValidationNone>
+                    <ValidationError>Enter a valid key</ValidationError>
+                </Feedback>
+            </TextEdit>
+        </Validation>
+        <Button Color="Color.Secondary" Clicked="@FetchNodeInfo" style="position: absolute; right: 0;">Search</Button>
+    </Field>
+</Fields>
+<br />
+<Div hidden="@hideRemainingFields" Position="Position.Relative">
+    <Fields Flex="Flex.JustifyContent.Start">
+        <Field>
+            <FieldLabel>Node Found: @selectedNodeName</FieldLabel>
+        </Field>
+        <br />
+        <br />
+    </Fields>
+    <Fields Flex="Flex.JustifyContent.Start">
+        <Field>
+            <FieldLabel>Please select the source of the funds</FieldLabel>
+        </Field>
+        <br />
+        <br />        
+    <DropdownList TItem="Wallet" TValue="string"
+                      Data="@walletsPerNode.Values"
+                      TextField="@((item) => item.Name)"
+                      ValueField="@((item) => item.Id.ToString())"
+                      @bind-SelectedValue="@selectedWallet"
+                      Color="Color.Primary"
+                      MaxMenuHeight="200px"
+                      >
+            @(selectedWallet.IsNullOrEmpty() ? "Select item" : walletsPerNode[Int32.Parse(selectedWallet)].Name)
+        </DropdownList>
+    </Fields>
+    <br />
+    <br />
+    <Fields hidden="@(selectedWallet.IsNullOrEmpty())">
+        <Field>
+            <FieldLabel>Please select the Amount</FieldLabel>
+            <Validation Validator="@IsValidDecimal">
+                <NumericEdit disabled="@(selectedWallet.IsNullOrEmpty())" TValue="decimal?" @bind-Text=@amount placeholder="Select the amount">
+                    <Feedback>
+                        <ValidationNone>Please enter the amount in Satoshis</ValidationNone>
+                        <ValidationError>Enter a valid number</ValidationError>
+                    </Feedback>
+                </NumericEdit>
+            </Validation>
+        </Field>
+    </Fields>
+    <Fields hidden="@(selectedWallet.IsNullOrEmpty())">
+        <br />
+        <br />
+        <Button Flex="Flex.JustifyContent.Center" Color="Color.Secondary" Clicked="@CreateChannelRequest">Create Channel</Button>
+    </Fields>
+</Div>
+@inject INodeRepository NodeRepository
+@inject IChannelOperationRequestRepository ChannelOperationRequestRepository
+@code{
+    string? nodeName;
+    decimal? amount;
+    string selectedWallet;
+    bool hideRemainingFields = true;
+    string? selectedNodeName;
+    Dictionary<int, Wallet> walletsPerNode = new();
+
+    static void IsValidDecimal( ValidatorEventArgs e )
+    {
+        if ( Blazorise.Utilities.Converters.TryChangeType<decimal>( e.Value, out var result ) )
+        {
+            if ( result > 0 )
+            {
+                e.Status = ValidationStatus.Success;
+                return;
+            }
+        }
+        e.Status = ValidationStatus.Error;
+    }
+    
+    private async Task FetchNodeInfo()
+    {
+        walletsPerNode.Clear();
+        selectedWallet = String.Empty;
+        amount = Decimal.Zero;
+        
+        Node? foundNode = await NodeRepository.GetByPubkey(nodeName);
+        if (foundNode != null)
+        {
+            selectedNodeName = foundNode.Name;
+            hideRemainingFields = false;
+            
+            // Continue reading at your own peril
+            var usersInNode = foundNode.Users;
+            if (usersInNode.Count > 0)
+            {
+                foreach (var user  in usersInNode)
+                {
+                    var keysPerUser = user.Keys;
+                    if (keysPerUser.Count > 0)
+                    {
+                        foreach (var key  in keysPerUser)
+                        {
+                            var walletsPerKey = key.Wallets;
+                            if (walletsPerKey.Count > 0)
+                            {
+                                foreach (var wallet  in walletsPerKey)
+                                {
+                                    walletsPerNode.Add(wallet.Id, wallet);
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        } else
+        {
+            hideRemainingFields = true;
+        }
+
+    }
+
+    private Task CreateChannelRequest()
+    {
+        // TODO Validations / signatures
+        
+        // TODO Fill all the appropriate fields
+        ChannelOperationRequest request = new ChannelOperationRequest();
+        request.Amount = amount.Value;
+        request.RequestType = OperationRequestType.Open;
+        request.Description = "Created by user via Funds Manager";
+        request.Wallet = walletsPerNode[Int32.Parse(selectedWallet)];
+        if (ChannelOperationRequestRepository.AddAsync(request).IsCompletedSuccessfully)
+        {
+            // TODO Decide what to display in this case
+        }
+        else
+        {
+            // TODO Capture, Filter and display error message
+        } 
+        return Task.CompletedTask;
+
+    }
+}

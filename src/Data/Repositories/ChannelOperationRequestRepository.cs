@@ -28,7 +28,9 @@ namespace FundsManager.Data.Repositories
 
         public async Task<List<ChannelOperationRequest>> GetAll()
         {
-            throw new NotImplementedException();
+            await using var applicationDbContext = await _dbContextFactory.CreateDbContextAsync();
+
+            return await applicationDbContext.ChannelOperationRequests.ToListAsync();
         }
 
         public async Task<(bool, string?)> AddAsync(ChannelOperationRequest type)
