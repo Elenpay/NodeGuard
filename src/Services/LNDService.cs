@@ -241,7 +241,9 @@ namespace FundsManager.Services
                                 var OutpointKeyPathDictionary = UTXOs.Confirmed.UTXOs.ToDictionary(x => x.Outpoint, x => x.KeyPath);
 
                                 var txInKeyPathDictionary =
-                                    channelfundingTx.Inputs.Where(x => OutpointKeyPathDictionary.ContainsKey(x.PrevOut)).ToDictionary(x => x, x => OutpointKeyPathDictionary[x.PrevOut]);
+                                    channelfundingTx.Inputs.Where(x => OutpointKeyPathDictionary.ContainsKey(x.PrevOut))
+                                        .ToDictionary(x => x,
+                                            x => OutpointKeyPathDictionary[x.PrevOut]);
 
                                 if (!txInKeyPathDictionary.Any())
                                 {
