@@ -1,0 +1,87 @@
+stages:
+  # - integration_tests
+  - build
+  # - deploy_staging
+  # - deploy_production
+image: docker:stable
+variables:
+  DOCKER_DRIVER: overlay2
+  DOCKER_TLS_CERTDIR: "" # HOTFIX?
+  ANSIBLE_HOST_KEY_CHECKING: 'false'
+  ANSIBLE_FORCE_COLOR: 'true'  
+
+services:
+  - docker:dind
+# integration_tests:
+#   stage: integration_tests
+#   tags:
+#     - lightning_spot_runners
+#   image: docker/compose:latest
+#   rules:
+#     - if: '$CI_COMMIT_REF_NAME != "develop" && $CI_COMMIT_REF_NAME != "main" &&  $CI_PIPELINE_SOURCE == "merge_request_event"'
+#       changes:
+#         - "src/**/*"
+#         - "FundsManager.sln"
+#         - ".gitlab-ci.yml"
+
+#   script:
+#     - mkdir /tmp/polar
+#     - unzip ./btcpayserver-clovr.polar.zip -d /tmp/polar
+#     - mkdir ./test/volumes
+#     - cp -r /tmp/polar/volumes ./test/
+#     - cd test
+#     - chown 1000:1000 ./volumes -R
+#     - docker login -u gitlab-ci-token -p $CI_BUILD_TOKEN registry.gitlab.com
+#     - docker-compose up --exit-code-from integrationtestsrunner
+
+build:
+  stage: build
+  tags:
+    - lightning_spot_runners
+  script:
+    - docker login -u gitlab-ci-token -p $CI_BUILD_TOKEN registry.gitlab.com
+    - docker build -t registry.gitlab.com/clovrlabs/lightningnetwork/fundsmanager:$CI_COMMIT_REF_NAME -f ./src/Dockerfile .
+    - docker push registry.gitlab.com/clovrlabs/lightningnetwork/fundsmanager:$CI_COMMIT_REF_NAME
+  rules:
+    - if: '($CI_COMMIT_REF_NAME == "main" && $CI_COMMIT_TAG =~ "^([0-9]+)\.([0-9]+)\.([0-9]+)$") || $CI_COMMIT_REF_NAME == "develop" &&  $CI_PIPELINE_SOURCE != "merge_request_event"' 
+      changes:
+        - "src/**/*"
+        - "FundsManager.sln"
+        - ".gitlab-ci.yml"
+
+# deploy_staging:
+#   image: quay.io/ansible/ansible-runner:latest
+#   rules:
+#     - if: '$CI_COMMIT_REF_NAME == "develop" &&  $CI_PIPELINE_SOURCE != "merge_request_event"'
+#       changes:
+#         - "src/**/*"
+#         - "FundsManager.sln"
+#         - "ansible/**/*"
+#         - ".gitlab-ci.yml"
+#   before_script:
+#     - eval $(ssh-agent -s)
+#     - echo "$SSH_PRIVATE_KEY_STAGING" | tr -d '\r' | ssh-add -
+#     - mkdir -p ~/.ssh
+#     - chmod 700 ~/.ssh
+#   stage: deploy_staging
+#   tags:
+#     - lightning_spot_runners
+#   script:
+#     - ansible-playbook ansible/deploy_playbook.yaml -i ansible/inventory.yaml
+
+
+# deploy_production:
+#   image: quay.io/ansible/ansible-runner:latest
+#   rules:
+#     - if: '$CI_COMMIT_TAG =~ /^([0-9]+)\.([0-9]+)\.([0-9]+)$/ '
+#   before_script:
+#     - eval $(ssh-agent -s)
+#     - echo "$SSH_PRIVATE_KEY_PRODUCTION" | tr -d '\r' | ssh-add -
+#     - mkdir -p ~/.ssh
+#     - chmod 700 ~/.ssh
+#   stage: deploy_production
+#   tags:
+#     - lightning_spot_runners
+#   script:
+#     - ansible-playbook ansible/deploy_playbook.yaml -i ansible/inventory.yaml -e "BITCOIND_P2PPORT=$BITCOIND_P2PPORT_PRODUCTION BITCOIND_RPCPORT=$BITCOIND_RPCPORT_PRODUCTION SENTRY_DSN=$SENTRY_DSN SENTRY_ENVIRONMENT=production CI_BUILD_TOKEN=$CI_BUILD_TOKEN BTCPAY_IMAGE_TAG=main ANSIBLE_HOST_TARGET=btcpay-production BITCOIND_SERVER=$BITCOIND_SERVER_PRODUCTION DB_HOSTNAME=$DB_HOSTNAME_PRODUCTION BTCPAY_POSTGRES='$BTCPAY_POSTGRES_PRODUCTION' BTCPAY_NETWORK=$BTCPAY_NETWORK_PRODUCTION BITCOIND_RPCUSER=$BITCOIND_RPCUSER_PRODUCTION BITCOIND_PASSWORD=$BITCOIND_PASSWORD_PRODUCTION"
+
