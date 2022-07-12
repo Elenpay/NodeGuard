@@ -1,0 +1,38 @@
+version: '3.4'
+
+services:
+  fundsmanager:
+    container_name: fundsmanager
+    hostname: fundsmanager
+    restart: always
+    image: registry.gitlab.com/clovrlabs/lightningnetwork/fundsmanager:develop
+    pull_policy: always
+    ports:
+      - "5432:5432"
+    environment:
+      POSTGRES_CONNECTIONSTRING: "{{ POSTGRES_CONNECTIONSTRING }}"
+      BITCOIN_NETWORK: "{{ BITCOIN_NETWORK }}"
+      NBXPLORER_URI: "{{ NBXPLORER_URI }}"
+      NBXPLORER_BTCRPCUSER: "{{ NBXPLORER_BTCRPCUSER }}"
+      NBXPLORER_BTCRPCPASSWORD: "{{ NBXPLORER_BTCRPCPASSWORD }}"
+      NBXPLORER_BTCRPCURL: "{{ NBXPLORER_BTCRPCURL }}"
+      NBXPLORER_BTCNODEENDPOINT: "{{ NBXPLORER_BTCNODEENDPOINT }}"
+      DEFAULT_DERIVATION_PATH: "{{ DEFAULT_DERIVATION_PATH }}"
+
+  fundsmanager_postgres:
+    container_name: fundsmanager_postgres
+    hostname: fundsmanager_postgres
+    pull_policy: always
+    image: postgres:13
+    restart: always
+    network_mode: service:fundsmanager
+    environment:
+      POSTGRES_DB: fundsmanager
+      POSTGRES_USER: rw_dev
+      POSTGRES_PASSWORD: rw_dev
+      TZ: Europe/Madrid
+    volumes:
+      - fundsmanager_postgres_data:/var/lib/postgresql/data
+
+volumes:
+  fundsmanager_postgres_data:

@@ -1,7 +1,7 @@
 stages:
   # - integration_tests
   - build
-  # - deploy_staging
+  - deploy_staging
   # - deploy_production
 image: docker:stable
 variables:
@@ -49,25 +49,25 @@ build:
         - "FundsManager.sln"
         - ".gitlab-ci.yml"
 
-# deploy_staging:
-#   image: quay.io/ansible/ansible-runner:latest
-#   rules:
-#     - if: '$CI_COMMIT_REF_NAME == "develop" &&  $CI_PIPELINE_SOURCE != "merge_request_event"'
-#       changes:
-#         - "src/**/*"
-#         - "FundsManager.sln"
-#         - "ansible/**/*"
-#         - ".gitlab-ci.yml"
-#   before_script:
-#     - eval $(ssh-agent -s)
-#     - echo "$SSH_PRIVATE_KEY_STAGING" | tr -d '\r' | ssh-add -
-#     - mkdir -p ~/.ssh
-#     - chmod 700 ~/.ssh
-#   stage: deploy_staging
-#   tags:
-#     - lightning_spot_runners
-#   script:
-#     - ansible-playbook ansible/deploy_playbook.yaml -i ansible/inventory.yaml
+deploy_staging:
+  image: quay.io/ansible/ansible-runner:latest
+  rules:
+    - if: '$CI_COMMIT_REF_NAME == "develop" &&  $CI_PIPELINE_SOURCE != "merge_request_event"'
+      changes:
+        - "src/**/*"
+        - "FundsManager.sln"
+        - "ansible/**/*"
+        - ".gitlab-ci.yml"
+  before_script:
+    - eval $(ssh-agent -s)
+    - echo "$SSH_PRIVATE_KEY_STAGING" | tr -d '\r' | ssh-add -
+    - mkdir -p ~/.ssh
+    - chmod 700 ~/.ssh
+  stage: deploy_staging
+  tags:
+    - lightning_spot_runners
+  script:
+    - ansible-playbook ansible/deploy_playbook.yaml -i ansible/inventory.yaml
 
 
 # deploy_production:
