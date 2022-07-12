@@ -151,42 +151,11 @@ namespace FundsManager.Data
                     applicationDbContext.Add(internalWallet);
                     applicationDbContext.SaveChanges();
 
-                    //Funding of internal wallet
-
-                    //We mine 10 blocks
-                    minerRPC.Generate(10);
-
-                    //Singlesig segwit for the fundsmanager internal wallet
-
-                    var derivationStrategy = factory.CreateDirectDerivationStrategy(internalWallet.GetAccountKey(nbXplorerNetwork).Neuter(),
-                    new DerivationStrategyOptions
-                    {
-                        ScriptPubKeyType = ScriptPubKeyType.Segwit,
-                    });
-
-                    //Nbxplorer tracking of the multisig derivation scheme
-
-                    nbxplorerClient.Track(derivationStrategy);
-                    var evts = nbxplorerClient.CreateLongPollingNotificationSession();
-
-                    var keyPathInformation = nbxplorerClient.GetUnused(derivationStrategy, DerivationFeature.Deposit);
-                    var internalWalletAddress = keyPathInformation.Address;
-
-                    var fundingCoins = Money.Coins(0.1m); //0.01BTC
-
-                    minerRPC.SendToAddress(internalWalletAddress, fundingCoins);
-
-                    //6 blocks to confirm
-                    minerRPC.Generate(6);
-
-                    WaitNbxplorerNotification(evts, derivationStrategy);
-
-                    var balance = nbxplorerClient.GetBalance(derivationStrategy);
-                    var confirmedBalance = (Money)balance.Confirmed;
-                    if (confirmedBalance.ToUnit(MoneyUnit.BTC) < 0.1M)
-                    {
-                        throw new Exception("The internal wallet balance is not >= 0.1BTC");
-                    }
+                    logger.LogInformation("Internal wallet setup, seed:{}", internalWallet.MnemonicString);
+                }
+                else
+                {
+                    internalWallet = applicationDbContext.InternalWallets.First();
                 }
 
                 if (!applicationDbContext.Wallets.Any())
