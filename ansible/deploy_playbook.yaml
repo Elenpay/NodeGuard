@@ -8,7 +8,8 @@
     NBXPLORER_BTCRPCURL: http://10.8.0.10:18443/
     NBXPLORER_BTCNODEENDPOINT: 10.8.0.10:18444
     DEFAULT_DERIVATION_PATH: m/48'/1'/1'
-
+    ASPNETCORE_ENVIRONMENT: Development
+    FUNDSMANAGER_IMAGE_TAG: develop
     
   hosts: 
    - btcpay-staging

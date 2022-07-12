@@ -5,10 +5,11 @@ services:
     container_name: fundsmanager
     hostname: fundsmanager
     restart: always
-    image: registry.gitlab.com/clovrlabs/lightningnetwork/fundsmanager:develop
+    image: registry.gitlab.com/clovrlabs/lightningnetwork/fundsmanager:{{ FUNDSMANAGER_IMAGE_TAG }}
     pull_policy: always
     ports:
       - "5432:5432"
+      - "5001:80"
     environment:
       POSTGRES_CONNECTIONSTRING: "{{ POSTGRES_CONNECTIONSTRING }}"
       BITCOIN_NETWORK: "{{ BITCOIN_NETWORK }}"
@@ -18,6 +19,7 @@ services:
       NBXPLORER_BTCRPCURL: "{{ NBXPLORER_BTCRPCURL }}"
       NBXPLORER_BTCNODEENDPOINT: "{{ NBXPLORER_BTCNODEENDPOINT }}"
       DEFAULT_DERIVATION_PATH: "{{ DEFAULT_DERIVATION_PATH }}"
+      ASPNETCORE_ENVIRONMENT: "{{ ASPNETCORE_ENVIRONMENT }}"
 
   fundsmanager_postgres:
     container_name: fundsmanager_postgres
