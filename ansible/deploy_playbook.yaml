@@ -10,7 +10,7 @@
     DEFAULT_DERIVATION_PATH: m/48'/1'/1'
     ASPNETCORE_ENVIRONMENT: Development
     FUNDSMANAGER_IMAGE_TAG: develop
-    
+    CI_BUILD_TOKEN: "{{ lookup('env','CI_BUILD_TOKEN') }}"
   hosts: 
    - btcpay-staging
   tasks:
