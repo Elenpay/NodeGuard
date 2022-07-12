@@ -8,7 +8,6 @@ services:
     image: registry.gitlab.com/clovrlabs/lightningnetwork/fundsmanager:{{ FUNDSMANAGER_IMAGE_TAG }}
     pull_policy: always
     ports:
-      - "5432:5432"
       - "5001:80"
     environment:
       POSTGRES_CONNECTIONSTRING: "{{ POSTGRES_CONNECTIONSTRING }}"
@@ -27,7 +26,8 @@ services:
     pull_policy: always
     image: postgres:13
     restart: always
-    network_mode: service:fundsmanager
+    ports:
+      - "5432:5432"
     environment:
       POSTGRES_DB: fundsmanager
       POSTGRES_USER: rw_dev
