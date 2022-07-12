@@ -1,0 +1,32 @@
+- name: Deploy staging
+  vars:
+    POSTGRES_CONNECTIONSTRING: Host=fundsmanager_postgres;Port=5432;Database=fundsmanager;Username=rw_dev;Password=rw_dev
+    BITCOIN_NETWORK: REGTEST
+    NBXPLORER_URI: http://172.17.0.1:32838
+    NBXPLORER_BTCRPCUSER: "{{ lookup('env','BITCOIND_RPCUSER_STAGING') }}"
+    NBXPLORER_BTCRPCPASSWORD: "{{ lookup('env','BITCOIND_PASSWORD_STAGING') }}"
+    NBXPLORER_BTCRPCURL: http://10.8.0.10:18443/
+    NBXPLORER_BTCNODEENDPOINT: 10.8.0.10:18444
+    DEFAULT_DERIVATION_PATH: m/48'/1'/1'
+    ASPNETCORE_ENVIRONMENT: Development
+    FUNDSMANAGER_IMAGE_TAG: develop
+    
+  hosts: 
+   - btcpay-staging
+  tasks:
+    - name: Upload compose
+      ansible.builtin.template:
+        src: docker-compose.deploy.yaml
+        dest: /home/ubuntu/fundsmanager/docker-compose.yaml
+        mode: "0644"
+      diff: yes
+    - name: Docker login
+      shell: sudo docker login -u gitlab-ci-token -p {{ CI_BUILD_TOKEN }} registry.gitlab.com
+    - name: Pull image
+      ansible.builtin.shell:
+        cmd: sudo docker-compose pull
+        chdir: /home/ubuntu/fundsmanager
+    - name: Deploy changes
+      ansible.builtin.shell:
+        cmd: sudo docker-compose up -d
+        chdir: /home/ubuntu/fundsmanager      
