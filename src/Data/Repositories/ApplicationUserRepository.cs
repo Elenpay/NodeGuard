@@ -19,6 +19,24 @@ namespace FundsManager.Data.Repositories
             _dbContextFactory = dbContextFactory;
         }
 
+        public async Task<ApplicationUser?> GetByUsername(string username)
+        {
+            await using var applicationDbContext = _dbContextFactory.CreateDbContext();
+
+            if (username == null) throw new ArgumentNullException(nameof(username));
+
+            try
+            {
+                return applicationDbContext.ApplicationUsers
+                    .SingleOrDefault(x => x.NormalizedUserName == username.ToUpper());
+            }
+            catch (Exception e)
+            {
+                _logger.LogError(e, "Error on repository");
+                return null;
+            }
+        }
+
         public async Task<ApplicationUser?> GetById(string id)
         {
             await using var applicationDbContext = await _dbContextFactory.CreateDbContextAsync();
@@ -72,4 +90,3 @@ namespace FundsManager.Data.Repositories
         }
     }
 }
-
