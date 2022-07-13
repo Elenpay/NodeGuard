@@ -1,0 +1,21 @@
+﻿@page "/wallets"
+@using System.Security.Claims
+
+@inject IWalletRepository WalletRepository
+<h3>Wallet</h3>
+
+
+@code {
+
+    [CascadingParameter]
+    private ApplicationUser? _loggedUser { get; set; }
+
+    
+    [CascadingParameter]
+    private ClaimsPrincipal _claimsPrincipal {get; set; }
+    protected override async Task OnInitializedAsync()
+    {
+       
+    }
+
+}

@@ -1,12 +1,15 @@
 ﻿@inherits LayoutComponentBase
 @using Blazored.Toast.Configuration
+@using System.Security.Claims
 @inject AuthenticationStateProvider AuthenticationStateProvider
 @inject NavigationManager NavigationManager
+@inject IApplicationUserRepository ApplicationUserRepository
+
 <PageTitle>FundsManager</PageTitle>
 
 <div class="page">
     <div class="sidebar">
-        <NavMenu/>
+        <NavMenu />
     </div>
 
     <main>
@@ -19,29 +22,44 @@
                         IconType="IconType.FontAwesome"
                         SuccessClass="success-toast-override"
                         SuccessIcon="fa fa-thumbs-up"
-                        ErrorIcon="fa fa-bug" 
+                        ErrorIcon="fa fa-bug"
                         ShowProgressBar="true"
-                        RemoveToastsOnNavigation="true"/>
+                        RemoveToastsOnNavigation="true" />
 
-        <article class="content px-4">
-            @Body
-        </article>
+        <CascadingValue Value="_loggedUser">
+            <CascadingValue Value="_claimsPrincipal">
+                <article class="content px-4">
+                    @Body
+                </article>
+            </CascadingValue>
+        </CascadingValue>
     </main>
 </div>
 
 @code
 {
-    [CascadingParameter] protected Task<AuthenticationState> AuthState { get; set; }
+    private Task<AuthenticationState> AuthenticationStateTask { get; set; }
+    private ApplicationUser? _loggedUser;
+    private ClaimsPrincipal _claimsPrincipal;
 
     protected override async Task OnInitializedAsync()
     {
+        AuthenticationStateTask = AuthenticationStateProvider.GetAuthenticationStateAsync();
 
-
-        var user = (await AuthState).User;
-        if (user != null && !user.Identity.IsAuthenticated)
+        _claimsPrincipal = (await AuthenticationStateTask).User;
+        if (_claimsPrincipal.Identity != null && !_claimsPrincipal.Identity.IsAuthenticated)
         {
             var returnUrl = NavigationManager.ToBaseRelativePath(NavigationManager.Uri);
             NavigationManager.NavigateTo($"Identity/Account/Login?&returnUrl=/{returnUrl}", true);
+        }
+        else
+        {
+            //User retrieval
+            
+            if (_claimsPrincipal?.Identity != null && _claimsPrincipal.Identity.IsAuthenticated)
+            {
+                if (_claimsPrincipal.Identity.Name != null) _loggedUser = await ApplicationUserRepository.GetByUsername(_claimsPrincipal.Identity.Name);
+            }
         }
 
 
