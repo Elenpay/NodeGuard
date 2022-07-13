@@ -1,0 +1,24 @@
+﻿@page "/wallets"
+
+@inject IWalletRepository WalletRepository
+@inject IApplicationUserRepository ApplicationUserRepository
+<h3>Wallet</h3>
+
+
+@code {
+    [CascadingParameter]
+    private Task<AuthenticationState> AuthenticationStateTask { get; set; }
+
+    private ApplicationUser? _applicationUser;
+    protected override async Task OnInitializedAsync()
+    {
+        //User retrieval
+        var authState = await AuthenticationStateTask;
+        var user = authState.User;
+        if (user.Identity != null && user.Identity.IsAuthenticated)
+        {
+            _applicationUser = await ApplicationUserRepository.GetByUsername(user.Identity.Name);
+        }
+    }
+
+}

@@ -31,13 +31,13 @@
 
 @code
 {
-    [CascadingParameter] protected Task<AuthenticationState> AuthState { get; set; }
+    private Task<AuthenticationState> AuthenticationStateTask { get; set; }
 
     protected override async Task OnInitializedAsync()
     {
+        AuthenticationStateTask = AuthenticationStateProvider.GetAuthenticationStateAsync();
 
-
-        var user = (await AuthState).User;
+        var user = (await AuthenticationStateTask).User;
         if (user != null && !user.Identity.IsAuthenticated)
         {
             var returnUrl = NavigationManager.ToBaseRelativePath(NavigationManager.Uri);
