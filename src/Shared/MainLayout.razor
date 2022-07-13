@@ -1,6 +1,7 @@
 ﻿@inherits LayoutComponentBase
 @using Blazored.Toast.Configuration
-
+@inject AuthenticationStateProvider AuthenticationStateProvider
+@inject NavigationManager NavigationManager
 <PageTitle>FundsManager</PageTitle>
 
 <div class="page">
@@ -27,3 +28,23 @@
         </article>
     </main>
 </div>
+
+@code
+{
+    [CascadingParameter] protected Task<AuthenticationState> AuthState { get; set; }
+
+    protected override async Task OnInitializedAsync()
+    {
+
+
+        var user = (await AuthState).User;
+        if (user != null && !user.Identity.IsAuthenticated)
+        {
+            var returnUrl = NavigationManager.ToBaseRelativePath(NavigationManager.Uri);
+            NavigationManager.NavigateTo($"Identity/Account/Login?&returnUrl=/{returnUrl}", true);
+        }
+
+
+    }
+
+}
