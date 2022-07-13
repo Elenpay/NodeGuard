@@ -1,24 +1,21 @@
 ﻿@page "/wallets"
+@using System.Security.Claims
 
 @inject IWalletRepository WalletRepository
-@inject IApplicationUserRepository ApplicationUserRepository
 <h3>Wallet</h3>
 
 
 @code {
-    [CascadingParameter]
-    private Task<AuthenticationState> AuthenticationStateTask { get; set; }
 
-    private ApplicationUser? _applicationUser;
+    [CascadingParameter]
+    private ApplicationUser? _loggedUser { get; set; }
+
+    
+    [CascadingParameter]
+    private ClaimsPrincipal _claimsPrincipal {get; set; }
     protected override async Task OnInitializedAsync()
     {
-        //User retrieval
-        var authState = await AuthenticationStateTask;
-        var user = authState.User;
-        if (user.Identity != null && user.Identity.IsAuthenticated)
-        {
-            _applicationUser = await ApplicationUserRepository.GetByUsername(user.Identity.Name);
-        }
+       
     }
 
 }
