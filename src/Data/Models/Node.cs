@@ -12,7 +12,7 @@ namespace FundsManager.Data.Models
         /// <summary>
         /// Macaroon with channel admin permissions
         /// </summary>
-        public string ChannelAdminMacaroon { get; set; }
+        public string? ChannelAdminMacaroon { get; set; }
 
         /// <summary>
         ///host:port grpc endpoint
