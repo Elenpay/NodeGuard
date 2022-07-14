@@ -59,7 +59,7 @@
     <br />
     <Fields>
         <Field>
-            <Button Block Disabled=@(_selectedDestNode == null) Type="ButtonType.Submit" PreventDefaultOnSubmit Color="Color.Primary" Clicked="@CreateChannelRequest">Create Channel</Button>
+            <Button Flex="Flex.JustifyContent.End" Disabled=@(_selectedDestNode == null) Type="ButtonType.Submit" PreventDefaultOnSubmit Color="Color.Primary" Clicked="@CreateChannelRequest">Create Channel</Button>
         </Field>
     </Fields>
 </Form>
@@ -107,18 +107,20 @@
     private async Task CreateChannelRequest()
     {
         // TODO Sanitise inputs
-        ChannelOperationRequest request = new();
         if (_amount != null && _selectedWallet != null && LoggedUser != null &&
             _selectedSourceNode != null && _selectedDestNode != null)
         {
-            request.SatsAmount = new Money(_amount.Value, MoneyUnit.BTC).Satoshi;
-            request.RequestType = OperationRequestType.Open;
-            request.Description = "Created by user via Funds Manager";
-            request.WalletId = _selectedWallet.Id;
-            request.Status = ChannelOperationRequestStatus.Pending;
-            request.UserId = LoggedUser.Id;
-            request.SourceNodeId = _selectedSourceNode.Id;
-            request.DestNodeId = _selectedDestNode.Id;
+            ChannelOperationRequest request = new()
+            {
+                SatsAmount = new Money(_amount.Value, MoneyUnit.BTC).Satoshi,
+                RequestType = OperationRequestType.Open,
+                Description = "Created by user via Funds Manager",
+                WalletId = _selectedWallet.Id,
+                Status = ChannelOperationRequestStatus.Pending,
+                UserId = LoggedUser.Id,
+                SourceNodeId = _selectedSourceNode.Id,
+                DestNodeId = _selectedDestNode.Id
+            };
             
             var createChannelResult = await ChannelOperationRequestRepository.AddAsync(request);
             if (createChannelResult.Item1)
