@@ -24,6 +24,7 @@
         /// </summary>
         public bool IsFundsManagerPrivateKey { get; set; }
 
-        #endregion 
+        #endregion Relationships
+
     }
 }

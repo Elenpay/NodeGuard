@@ -30,9 +30,9 @@ namespace FundsManager
                 .AddEntityFrameworkStores<ApplicationDbContext>();
             builder.Services.AddRazorPages();
             builder.Services.AddServerSideBlazor().AddCircuitOptions(options => { options.DetailedErrors = true; });
-            builder.Services.AddScoped<AuthenticationStateProvider, RevalidatingIdentityAuthenticationStateProvider<IdentityUser>>();
 
             //Dependency Injection
+            builder.Services.AddScoped<AuthenticationStateProvider, RevalidatingIdentityAuthenticationStateProvider<ApplicationUser>>();
 
             //Repos DI
             builder.Services.AddTransient(typeof(IRepository<>), typeof(Repository<>));
@@ -78,6 +78,8 @@ namespace FundsManager
                 })
                 .AddBootstrapProviders()
                 .AddFontAwesomeIcons();
+
+            builder.Services.AddAuthorization();
 
             var app = builder.Build();
 

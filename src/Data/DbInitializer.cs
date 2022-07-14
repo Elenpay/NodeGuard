@@ -2,6 +2,7 @@
 using FundsManager.Data.Models;
 using FundsManager.Data.Repositories;
 using FundsManager.Data.Repositories.Interfaces;
+using FundsManager.Helpers;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc.Formatters;
 using Microsoft.EntityFrameworkCore;
@@ -30,18 +31,12 @@ namespace FundsManager.Data
             var webHostEnvironment = serviceProvider.GetRequiredService<IWebHostEnvironment>();
             var logger = serviceProvider.GetService<ILogger<Program>>();
             //Nbxplorer setup & check
-            var network = Environment.GetEnvironmentVariable("BITCOIN_NETWORK");
             var nbxplorerUri = Environment.GetEnvironmentVariable("NBXPLORER_URI") ??
                                throw new ArgumentNullException("Environment.GetEnvironmentVariable(\"NBXPLORER_URI\")");
             var userManager = serviceProvider.GetRequiredService<UserManager<ApplicationUser>>();
+            var roleManager = serviceProvider.GetService<RoleManager<IdentityRole>>();
 
-            var nbXplorerNetwork = network switch
-            {
-                "REGTEST" => Network.RegTest,
-                "MAINNET" => Network.Main,
-                "TESTNET" => Network.TestNet,
-                _ => Network.RegTest
-            };
+            var nbXplorerNetwork = CurrentNetworkHelper.GetCurrentNetwork();
 
             var provider = new NBXplorerNetworkProvider(nbXplorerNetwork.ChainName);
             var nbxplorerClient = new ExplorerClient(provider.GetFromCryptoCode(nbXplorerNetwork.NetworkSet.CryptoCode),
@@ -69,7 +64,7 @@ namespace FundsManager.Data
             }
 
             //Roles
-            SetRoles(applicationDbContext);
+            SetRoles(roleManager);
 
             if (webHostEnvironment.IsDevelopment())
             {
@@ -95,11 +90,21 @@ namespace FundsManager.Data
                         NormalizedEmail = adminUsername.ToUpper(),
                     };
                     _ = Task.Run(() => userManager.CreateAsync(adminUser, "Pass9299a8s.asa9")).Result;
+
+                    //We are gods with super powers
+                    var role1 = Task.Run(() => userManager.AddToRoleAsync(adminUser, ApplicationUserRole.FinanceManager.ToString("G"))).Result;
+                    var role2 = Task.Run(() => userManager.AddToRoleAsync(adminUser, ApplicationUserRole.NodeManager.ToString("G"))).Result;
+                    var role3 = Task.Run(() => userManager.AddToRoleAsync(adminUser, ApplicationUserRole.Superadmin.ToString("G"))).Result;
+
+                    if (!role1.Succeeded || !role2.Succeeded || !role3.Succeeded)
+                    {
+                        throw new Exception("Can't set role of admin user");
+                    }
                 }
 
-                //TODO Roles
+                //TODO Nodes for regtest
 
-                //Testing node from Polar (ALICE) LND 0.14.3 -> check devnetwork.zip polar file
+                //Testing node from Polar (ALICE) LND 0.15.0 -> check devnetwork.zip polar file
                 var nodes = Task.Run(() => nodeRepository.GetAll()).Result;
 
                 var alice = new Node
@@ -117,7 +122,7 @@ namespace FundsManager.Data
                     _ = Task.Run(() => nodeRepository.AddAsync(alice)).Result;
                 }
 
-                //Testing node from Polar (CAROL) LND 0.14.3 -> check devnetwork.zip polar file
+                //Testing node from Polar (CAROL) LND 0.15.0 -> check devnetwork.zip polar file
                 var carol = new Node
                 {
                     ChannelAdminMacaroon = "0201036c6e6402f801030a10dc64226b045d25f090b114baebcbf04c1201301a160a0761646472657373120472656164120577726974651a130a04696e666f120472656164120577726974651a170a08696e766f69636573120472656164120577726974651a210a086d616361726f6f6e120867656e6572617465120472656164120577726974651a160a076d657373616765120472656164120577726974651a170a086f6666636861696e120472656164120577726974651a160a076f6e636861696e120472656164120577726974651a140a057065657273120472656164120577726974651a180a067369676e6572120867656e657261746512047265616400000620a21b8cc8c071aa5104b706b751aede972f642537c05da31450fb4b02c6da776e",
@@ -283,40 +288,47 @@ namespace FundsManager.Data
             applicationDbContext.SaveChanges();
         }
 
-        private static void SetRoles(ApplicationDbContext applicationDbContext)
+        private static void SetRoles(RoleManager<IdentityRole>? roleManager)
         {
             const ApplicationUserRole nodeManager = ApplicationUserRole.NodeManager;
 
-            var roles = applicationDbContext.Roles.ToList();
+            var roles = roleManager.Roles.ToList();
             if (roles.FirstOrDefault(x => x.Name == nodeManager.ToString("G")) == null)
             {
-                applicationDbContext.Roles.Add(new IdentityRole
+                var identityRole = new IdentityRole
                 {
                     Name = nodeManager.ToString("G"),
                     NormalizedName = nodeManager.ToString("G").ToUpper()
-                });
+                };
+                var roleCreation = Task.Run(() => roleManager.CreateAsync(identityRole)).Result;
             }
 
             const ApplicationUserRole superadmin = ApplicationUserRole.Superadmin;
 
             if (roles.FirstOrDefault(x => x.Name == superadmin.ToString("G")) == null)
             {
-                applicationDbContext.Roles.Add(new IdentityRole
                 {
-                    Name = superadmin.ToString("G"),
-                    NormalizedName = superadmin.ToString("G").ToUpper()
-                });
+                    var identityRole = new IdentityRole
+                    {
+                        Name = superadmin.ToString("G"),
+                        NormalizedName = superadmin.ToString("G").ToUpper()
+                    };
+                    var roleCreation = Task.Run(() => roleManager.CreateAsync(identityRole)).Result;
+                }
             }
 
-            const ApplicationUserRole trustedFinanceUser = ApplicationUserRole.TrustedFinanceUser;
+            const ApplicationUserRole financeManager = ApplicationUserRole.FinanceManager;
 
-            if (roles.FirstOrDefault(x => x.Name == trustedFinanceUser.ToString("G")) == null)
+            if (roles.FirstOrDefault(x => x.Name == financeManager.ToString("G")) == null)
             {
-                applicationDbContext.Roles.Add(new IdentityRole
                 {
-                    Name = trustedFinanceUser.ToString("G"),
-                    NormalizedName = trustedFinanceUser.ToString("G").ToUpper()
-                });
+                    var identityRole = new IdentityRole
+                    {
+                        Name = financeManager.ToString("G"),
+                        NormalizedName = financeManager.ToString("G").ToUpper()
+                    };
+                    var roleCreation = Task.Run(() => roleManager.CreateAsync(identityRole)).Result;
+                }
             }
         }
 

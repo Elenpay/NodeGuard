@@ -1,6 +1,9 @@
 ﻿using FundsManager.Data.Models;
 using FundsManager.Data.Repositories.Interfaces;
+using FundsManager.Helpers;
 using Microsoft.EntityFrameworkCore;
+using NBitcoin;
+using Key = FundsManager.Data.Models.Key;
 
 namespace FundsManager.Data.Repositories
 {
@@ -31,12 +34,27 @@ namespace FundsManager.Data.Repositories
             await using var applicationDbContext = await _dbContextFactory.CreateDbContextAsync();
 
             return await applicationDbContext.Keys.ToListAsync();
-            
         }
 
         public async Task<(bool, string?)> AddAsync(Key type)
         {
             await using var applicationDbContext = await _dbContextFactory.CreateDbContextAsync();
+
+            type.SetCreationDatetime();
+            type.SetUpdateDatetime();
+
+            try
+            {
+                var xpub = new BitcoinExtPubKey(type.XPUB, CurrentNetworkHelper.GetCurrentNetwork());
+            }
+            catch (Exception e)
+            {
+                const string errorWhileValidatingXpub = "Error while validating XPUB";
+
+                _logger.LogError(errorWhileValidatingXpub);
+
+                return (false, errorWhileValidatingXpub);
+            }
 
             return await _repository.AddAsync(type, applicationDbContext);
         }
@@ -66,8 +84,23 @@ namespace FundsManager.Data.Repositories
         {
             using var applicationDbContext = _dbContextFactory.CreateDbContext();
 
+            type.SetCreationDatetime();
+            type.SetUpdateDatetime();
+
+            type.Wallets = null;
+
             return _repository.Update(type, applicationDbContext);
+        }
+
+        public async Task<List<Key>> GetUserKeys(ApplicationUser applicationUser)
+        {
+            if (applicationUser == null) throw new ArgumentNullException(nameof(applicationUser));
+
+            await using var applicationDbContext = _dbContextFactory.CreateDbContext();
+
+            var result = await applicationDbContext.Keys.Include(x => x.Wallets).Where(x => x.UserId == applicationUser.Id).ToListAsync();
+
+            return result;
         }
     }
 }
-

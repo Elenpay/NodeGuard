@@ -8,11 +8,11 @@
 @code {
 
     [CascadingParameter]
-    private ApplicationUser? _loggedUser { get; set; }
+    private ApplicationUser? LoggedUser { get; set; }
 
     
     [CascadingParameter]
-    private ClaimsPrincipal _claimsPrincipal {get; set; }
+    private ClaimsPrincipal ClaimsPrincipal {get; set; }
     protected override async Task OnInitializedAsync()
     {
        

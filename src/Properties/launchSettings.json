@@ -12,9 +12,18 @@
       "commandName": "Project",
       "launchBrowser": true,
       "environmentVariables": {
-        "ASPNETCORE_ENVIRONMENT": "Development"
+        "ASPNETCORE_ENVIRONMENT": "Development",
+        "POSTGRES_CONNECTIONSTRING": "Host=127.0.0.1;Port=35433;Database=fundsmanager;Username=rw_dev;Password=rw_dev",
+        "BITCOIN_NETWORK": "REGTEST",
+        "NBXPLORER_URI": "http://127.0.0.1:32838",
+        "NBXPLORER_BTCRPCUSER": "polaruser",
+        "NBXPLORER_BTCRPCPASSWORD": "polarpass",
+        "NBXPLORER_BTCRPCURL": "http://127.0.0.1:18443/",
+        "NBXPLORER_BTCNODEENDPOINT": "127.0.0.1:19444",
+        "DEFAULT_DERIVATION_PATH": "m/48'/1'/1'"
       },
       "applicationUrl": "https://localhost:443;http://localhost:38080",
+
       "dotnetRunMessages": true
     },
     "IIS Express": {
