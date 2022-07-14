@@ -1,156 +1,141 @@
 ﻿@page "/create-channel"
-@using FundsManager.Data.Repositories.Interfaces
-@using Blazorise.Extensions
 @using NBitcoin
 
-<PageTitle>Create Channel</PageTitle>
+<PageTitle>Create Channel Request</PageTitle>
 
-<h1>Open Channel</h1>
+<h1>Create Channel Request</h1>
 <p></p>
-<Fields>
-    <Field>
-        <Validation Validator="@ValidationRule.IsAlphanumeric">
-            <TextEdit @bind-Text="@nodeName">
-                <Feedback>
-                    <ValidationNone>Please Insert the key of a Lighting Node</ValidationNone>
-                    <ValidationError>Enter a valid key</ValidationError>
-                </Feedback>
-            </TextEdit>
-        </Validation>
-        <Button Color="Color.Secondary" Clicked="@FetchNodeInfo" style="position: absolute; right: 0;">Search</Button>
-    </Field>
-</Fields>
-<br />
-<Div hidden="@hideRemainingFields" Position="Position.Relative">
-    <Fields Flex="Flex.JustifyContent.Start">
+<Form>
+    <Fields Flex="Flex.JustifyContent.Center">
         <Field>
-            <FieldLabel>Node Found: @selectedNodeName</FieldLabel>
-        </Field>
-        <br />
-        <br />
-    </Fields>
-    <Fields Flex="Flex.JustifyContent.Start">
-        <Field>
-            <FieldLabel>Please select the source of the funds</FieldLabel>
-        </Field>
-        <br />
-        <br />        
-    <DropdownList TItem="Wallet" TValue="string"
-                      Data="@walletsPerNode.Values"
-                      TextField="@((item) => item.Name)"
-                      ValueField="@((item) => item.Id.ToString())"
-                      @bind-SelectedValue="@selectedWallet"
-                      Color="Color.Primary"
-                      MaxMenuHeight="200px"
-                      >
-            @(selectedWallet.IsNullOrEmpty() ? "Select item" : walletsPerNode[Int32.Parse(selectedWallet)].Name)
-        </DropdownList>
-    </Fields>
-    <br />
-    <br />
-    <Fields hidden="@(selectedWallet.IsNullOrEmpty())">
-        <Field>
-            <FieldLabel>Please select the Amount</FieldLabel>
-            <Validation Validator="@IsValidDecimal">
-                <NumericEdit disabled="@(selectedWallet.IsNullOrEmpty())" TValue="decimal?" @bind-Text=@amount placeholder="Select the amount">
-                    <Feedback>
-                        <ValidationNone>Please enter the amount in Satoshis</ValidationNone>
-                        <ValidationError>Enter a valid number</ValidationError>
-                    </Feedback>
-                </NumericEdit>
+            <Validation Validator="@ValidationRule.IsAlphanumeric">
+                <FieldLabel>Destination Node</FieldLabel>
+                <TextEdit @bind-Text="@_destNodeName">
+                    <FieldHelp>@(_selectedDestNode==null ? "Node Not found" : $"Found Node: {_selectedDestNode.Name} - {_selectedDestNode.Description}") </FieldHelp>
+                </TextEdit>
             </Validation>
         </Field>
     </Fields>
-    <Fields hidden="@(selectedWallet.IsNullOrEmpty())">
-        <br />
-        <br />
-        <Button Flex="Flex.JustifyContent.Center" Color="Color.Secondary" Clicked="@CreateChannelRequest">Create Channel</Button>
+    <Fields>
+        <Field Flex="Flex.JustifyContent.End">
+             <Button Color="Color.Primary" Clicked="@SearchNode">Search</Button>
+        </Field>
     </Fields>
-</Div>
+    <br />
+    <br />
+    <Fields>
+        <Field>
+            <FieldLabel>Source Node</FieldLabel>
+            <DropdownList TItem="Node" TValue="Node"
+                          Data="@_manageableNodes"
+                          TextField="@((item) => item.Name)"
+                          ValueField="@((item) => item)"
+                          @bind-SelectedValue="@_selectedSourceNode"
+                          Color="Color.Primary"
+                          MaxMenuHeight="200px">
+                @(_selectedSourceNode == null ? "Select Node" : _selectedSourceNode.Name)
+            </DropdownList>
+        </Field>
+        <Field>
+            <FieldLabel>Source of the funds</FieldLabel>
+            <DropdownList TItem="Wallet" TValue="Wallet"
+                          Data="@_allWallets"
+                          TextField="@((item) => item.Name)"
+                          ValueField="@((item) => item)"
+                          @bind-SelectedValue="@_selectedWallet"
+                          Color="Color.Primary"
+                          MaxMenuHeight="200px">
+                @(_selectedWallet == null ? "Select Wallet" : _selectedWallet.Name)
+            </DropdownList>
+        </Field>
+    </Fields>
+    <Fields>
+        <Field>
+            <FieldLabel>Channel Amount</FieldLabel>
+            <NumericEdit TValue="long?" @bind-Value=@_amount placeholder="amount in Satoshis"/>
+        </Field>
+    </Fields>
+    <br />
+    <br />
+    <Fields>
+        <Field>
+            <Button Flex="Flex.JustifyContent.End" Disabled=@(_selectedDestNode == null) Type="ButtonType.Submit" PreventDefaultOnSubmit Color="Color.Primary" Clicked="@CreateChannelRequest">Create Channel</Button>
+        </Field>
+    </Fields>
+</Form>
 @inject INodeRepository NodeRepository
+@inject IWalletRepository WalletRepository
 @inject IChannelOperationRequestRepository ChannelOperationRequestRepository
+@inject IToastService ToastService;
+@inject NavigationManager NavigationManager
 @code{
-    string? nodeName;
-    decimal? amount;
-    string selectedWallet;
-    bool hideRemainingFields = true;
-    string? selectedNodeName;
-    Dictionary<int, Wallet> walletsPerNode = new();
+    private string? _destNodeName;
+    private long? _amount;
+    private List<Node>? _manageableNodes;
+    private List<Wallet>? _allWallets;
+    private Node? _selectedSourceNode;
+    private Node? _selectedDestNode;
+    private Wallet? _selectedWallet;
+    [CascadingParameter]
+    private ApplicationUser? LoggedUser { get; set; }
 
-    static void IsValidDecimal( ValidatorEventArgs e )
+
+    protected override async Task OnInitializedAsync()
     {
-        if ( Blazorise.Utilities.Converters.TryChangeType<decimal>( e.Value, out var result ) )
+        if (LoggedUser == null)
         {
-            if ( result > 0 )
+            NavigationManager.NavigateTo("error");
+        }
+        _manageableNodes = await NodeRepository.GetAllManaged();
+        _allWallets = await WalletRepository.GetAll();
+        await base.OnInitializedAsync();
+    }
+
+    private async Task SearchNode()
+    {
+        _selectedDestNode = null;
+        if (_destNodeName != null)
+        {
+            Node? foundNode = await NodeRepository.GetByPubkey(_destNodeName);
+            if (foundNode != null)
             {
-                e.Status = ValidationStatus.Success;
-                return;
+                _selectedDestNode = foundNode;
             }
         }
-        e.Status = ValidationStatus.Error;
     }
-    
-    private async Task FetchNodeInfo()
+
+    private async Task CreateChannelRequest()
     {
-        walletsPerNode.Clear();
-        selectedWallet = String.Empty;
-        amount = Decimal.Zero;
-        
-        Node? foundNode = await NodeRepository.GetByPubkey(nodeName);
-        if (foundNode != null)
+        // TODO Sanitise inputs
+        if (_amount != null && _selectedWallet != null && LoggedUser != null &&
+            _selectedSourceNode != null && _selectedDestNode != null)
         {
-            selectedNodeName = foundNode.Name;
-            hideRemainingFields = false;
+            ChannelOperationRequest request = new()
+            {
+                SatsAmount = new Money(_amount.Value, MoneyUnit.BTC).Satoshi,
+                RequestType = OperationRequestType.Open,
+                Description = "Created by user via Funds Manager",
+                WalletId = _selectedWallet.Id,
+                Status = ChannelOperationRequestStatus.Pending,
+                UserId = LoggedUser.Id,
+                SourceNodeId = _selectedSourceNode.Id,
+                DestNodeId = _selectedDestNode.Id
+            };
             
-            // Continue reading at your own peril
-            var usersInNode = foundNode.Users;
-            if (usersInNode.Count > 0)
+            var createChannelResult = await ChannelOperationRequestRepository.AddAsync(request);
+            if (createChannelResult.Item1)
             {
-                foreach (var user  in usersInNode)
-                {
-                    var keysPerUser = user.Keys;
-                    if (keysPerUser.Count > 0)
-                    {
-                        foreach (var key  in keysPerUser)
-                        {
-                            var walletsPerKey = key.Wallets;
-                            if (walletsPerKey.Count > 0)
-                            {
-                                foreach (var wallet  in walletsPerKey)
-                                {
-                                    walletsPerNode.Add(wallet.Id, wallet);
-                                }
-                            }
-                        }
-                    }
-                }
+                ToastService.ShowSuccess("Open channel request created!");
             }
-        } else
-        {
-            hideRemainingFields = true;
-        }
-
-    }
-
-    private Task CreateChannelRequest()
-    {
-        // TODO Validations / signatures
-        
-        // TODO Fill all the appropriate fields
-        ChannelOperationRequest request = new ChannelOperationRequest();
-        request.SatsAmount = new Money(amount.Value, MoneyUnit.BTC).Satoshi;
-        request.RequestType = OperationRequestType.Open;
-        request.Description = "Created by user via Funds Manager";
-        request.Wallet = walletsPerNode[Int32.Parse(selectedWallet)];
-        if (ChannelOperationRequestRepository.AddAsync(request).IsCompletedSuccessfully)
-        {
-            // TODO Decide what to display in this case
+            else
+            {
+                ToastService.ShowError("Open channel request failed!");
+            }
         }
         else
         {
-            // TODO Capture, Filter and display error message
-        } 
-        return Task.CompletedTask;
+            ToastService.ShowError("Some fields were not properly filled");
 
+        }
     }
 }
