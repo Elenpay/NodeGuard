@@ -45,7 +45,7 @@
                 <DisplayTemplate>
                     @if (!string.IsNullOrWhiteSpace(context.XPUB) && context.XPUB.Length > 40)
                     {
-                        @($"{context.XPUB.Substring(0, context.XPUB.Length / 2).Truncate(15, Truncator.FixedLength, TruncateFrom.Right)}{context.XPUB.Substring(context.XPUB.Length / 2 + 1, 20).Truncate(15, Truncator.FixedLength, TruncateFrom.Left)}")
+                        @(context.GetTruncatedXPUBString())
 
                     }
                     else

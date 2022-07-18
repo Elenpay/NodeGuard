@@ -139,6 +139,7 @@ namespace FundsManager.Data
                 }
 
                 InternalWallet? internalWallet = null;
+                Key? internalWalletKey = null;
                 if (!applicationDbContext.InternalWallets.Any())
                 {
                     //Default Internal Wallet
@@ -157,10 +158,22 @@ namespace FundsManager.Data
                     applicationDbContext.SaveChanges();
 
                     logger.LogInformation("Internal wallet setup, seed:{}", internalWallet.MnemonicString);
+
+                    internalWalletKey =
+                        new Key
+                        {
+                            Name = "FundsManager Co-signing Key",
+                            XPUB = internalWallet.GetXPUB(nbXplorerNetwork),
+                            IsFundsManagerPrivateKey = true
+                        };
+
+                    var _ = Task.Run(() => keyRepository.AddAsync(internalWalletKey)).Result;
                 }
                 else
                 {
                     internalWallet = applicationDbContext.InternalWallets.First();
+                    //The last one by id
+                    internalWalletKey = Task.Run(() => keyRepository.GetCurrentInternalWalletKey()).Result;
                 }
 
                 if (!applicationDbContext.Wallets.Any())
@@ -211,12 +224,7 @@ namespace FundsManager.Data
                                 XPUB = wallet2DerivationScheme.ToString()
                                 //XPUB = wallet2.DerivationScheme.ToString()
                             },
-                            new Key
-                            {
-                                Name = "FundsManager Key",
-                                XPUB = internalWallet.GetXPUB(nbXplorerNetwork),
-                                IsFundsManagerPrivateKey = true
-                            }
+                            internalWalletKey
                         },
                         Name = "Test wallet",
                         WalletAddressType = WalletAddressType.NativeSegwit,

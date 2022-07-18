@@ -1,4 +1,6 @@
-﻿namespace FundsManager.Data.Models
+﻿using Humanizer;
+
+namespace FundsManager.Data.Models
 {
     public class Key : Entity
     {
@@ -26,5 +28,10 @@
 
         #endregion Relationships
 
+        public string GetTruncatedXPUBString()
+        {
+            return
+                $"{XPUB.Substring(0, XPUB.Length / 2).Truncate(15, Truncator.FixedLength, TruncateFrom.Right)}{XPUB.Substring(XPUB.Length / 2 + 1, 20).Truncate(15, Truncator.FixedLength, TruncateFrom.Left)}";
+        }
     }
 }

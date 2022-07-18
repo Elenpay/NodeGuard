@@ -8,7 +8,7 @@ public interface IApplicationUserRepository
 
     Task<ApplicationUser?> GetById(string id);
 
-    Task<List<ApplicationUser>> GetAll();
+    Task<List<ApplicationUser>> GetAll(bool includeBanned = false);
 
     Task<(bool, string?)> AddAsync(ApplicationUser type);
 
@@ -19,4 +19,6 @@ public interface IApplicationUserRepository
     (bool, string?) RemoveRange(List<ApplicationUser> types);
 
     (bool, string?) Update(ApplicationUser type);
+
+    Task<List<ApplicationUser>> GetUsersInRole(ApplicationUserRole applicationUserRole);
 }

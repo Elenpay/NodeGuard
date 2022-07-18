@@ -1,5 +1,6 @@
 ﻿using FundsManager.Data.Models;
 using FundsManager.Data.Repositories.Interfaces;
+using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
 
 namespace FundsManager.Data.Repositories
@@ -9,14 +10,17 @@ namespace FundsManager.Data.Repositories
         private readonly IRepository<ApplicationUser> _repository;
         private readonly ILogger<ApplicationUserRepository> _logger;
         private readonly IDbContextFactory<ApplicationDbContext> _dbContextFactory;
+        private readonly UserManager<ApplicationUser> _userManager;
 
         public ApplicationUserRepository(IRepository<ApplicationUser> repository,
             ILogger<ApplicationUserRepository> logger,
-            IDbContextFactory<ApplicationDbContext> dbContextFactory)
+            IDbContextFactory<ApplicationDbContext> dbContextFactory,
+            UserManager<ApplicationUser> userManager)
         {
             _repository = repository;
             _logger = logger;
             _dbContextFactory = dbContextFactory;
+            _userManager = userManager;
         }
 
         public async Task<ApplicationUser?> GetByUsername(string username)
@@ -37,6 +41,13 @@ namespace FundsManager.Data.Repositories
             }
         }
 
+        public async Task<List<ApplicationUser>> GetUsersInRole(ApplicationUserRole applicationUserRole)
+        {
+            var result = (await _userManager.GetUsersInRoleAsync(applicationUserRole.ToString("G"))).ToList();
+
+            return result;
+        }
+
         public async Task<ApplicationUser?> GetById(string id)
         {
             await using var applicationDbContext = await _dbContextFactory.CreateDbContextAsync();
@@ -46,11 +57,20 @@ namespace FundsManager.Data.Repositories
                 .FirstOrDefaultAsync(x => x.Id == id);
         }
 
-        public async Task<List<ApplicationUser>> GetAll()
+        public async Task<List<ApplicationUser>> GetAll(bool includeBanned = false)
         {
             await using var applicationDbContext = await _dbContextFactory.CreateDbContextAsync();
 
-            var result = await applicationDbContext.ApplicationUsers.Include(user => user.Keys).ToListAsync();
+            var result = new List<ApplicationUser>();
+            if (includeBanned)
+            {
+                result = await applicationDbContext.ApplicationUsers.Include(user => user.Keys).ToListAsync();
+            }
+            else
+            {
+                result = await applicationDbContext.ApplicationUsers.Include(user => user.Keys).Where(x => x.LockoutEnd <= DateTimeOffset.UtcNow).ToListAsync();
+            }
+
             return result;
         }
 

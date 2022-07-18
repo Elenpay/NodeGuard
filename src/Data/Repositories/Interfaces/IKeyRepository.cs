@@ -19,4 +19,10 @@ public interface IKeyRepository
     (bool, string?) Update(Key type);
 
     Task<List<Key>> GetUserKeys(ApplicationUser applicationUser);
+
+    /// <summary>
+    /// Gets the current internal wallet key (Newest based on its id)
+    /// </summary>
+    /// <returns></returns>
+    Task<Key> GetCurrentInternalWalletKey();
 }

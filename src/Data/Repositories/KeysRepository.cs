@@ -102,5 +102,15 @@ namespace FundsManager.Data.Repositories
 
             return result;
         }
+
+        public async Task<Key> GetCurrentInternalWalletKey()
+        {
+            await using var applicationDbContext = _dbContextFactory.CreateDbContext();
+
+            var result = await applicationDbContext.Keys.OrderByDescending(x => x.Id).Where(x => x.IsFundsManagerPrivateKey)
+                .FirstOrDefaultAsync();
+
+            return result;
+        }
     }
 }
