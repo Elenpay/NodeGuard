@@ -33,6 +33,31 @@ namespace FundsManager.Data.Repositories
             return await applicationDbContext.ChannelOperationRequests.ToListAsync();
         }
 
+        public async Task<List<ChannelOperationRequest>> GetPendingRequestsByUser(string userId)
+        {
+            await using var applicationDbContext = await _dbContextFactory.CreateDbContextAsync();
+
+            return await applicationDbContext.ChannelOperationRequests
+                .Where(request => request.UserId == userId)
+                .Include(request => request.Wallet)
+                .Include(request => request.DestNode)
+                .Include(request => request.ChannelOperationRequestSignatures)
+                .ToListAsync();
+        }
+        
+        public async Task<List<ChannelOperationRequest>> GetUnsignedPendingRequestsByUser(string userId)
+        {
+            await using var applicationDbContext = await _dbContextFactory.CreateDbContextAsync();
+
+            return await applicationDbContext.ChannelOperationRequests
+                .Where(request => request.UserId == userId && 
+                                  request.ChannelOperationRequestSignatures.All(signature => signature.UserSignerId != userId))
+                .Include(request => request.Wallet)
+                .Include(request => request.DestNode)
+                .Include(request => request.ChannelOperationRequestSignatures)
+                .ToListAsync();
+        }
+        
         public async Task<(bool, string?)> AddAsync(ChannelOperationRequest type)
         {
             await using var applicationDbContext = await _dbContextFactory.CreateDbContextAsync();

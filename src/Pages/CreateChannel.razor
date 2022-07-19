@@ -88,7 +88,6 @@
         }
         _manageableNodes = await NodeRepository.GetAllManaged();
         _allWallets = await WalletRepository.GetAll();
-        await base.OnInitializedAsync();
     }
 
     private async Task SearchNode()
