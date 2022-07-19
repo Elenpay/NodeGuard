@@ -95,10 +95,22 @@ namespace FundsManager.Data
                         NormalizedEmail = adminUsername.ToUpper(),
                     };
                     _ = Task.Run(() => userManager.CreateAsync(adminUser, "Pass9299a8s.asa9")).Result;
+                    _ = Task.Run(() => userManager.AddToRoleAsync(adminUser, ApplicationUserRole.Superadmin.ToString())).Result;
+
+                    var financeUsername = "finance@clovrlabs.com";
+
+                    var financeUser = new ApplicationUser
+                    {
+                        NormalizedUserName = financeUsername.ToUpper(),
+                        UserName = financeUsername,
+                        EmailConfirmed = true,
+                        Email = financeUsername,
+                        NormalizedEmail = financeUsername.ToUpper(),
+                    };
+                    _ = Task.Run(() => userManager.CreateAsync(financeUser, "Pass9299a8s.asa9")).Result;
+                    _ = Task.Run(() => userManager.AddToRoleAsync(financeUser, ApplicationUserRole.TrustedFinanceUser.ToString())).Result;
                 }
-
-                //TODO Roles
-
+                
                 //Testing node from Polar (ALICE) LND 0.14.3 -> check devnetwork.zip polar file
                 var nodes = Task.Run(() => nodeRepository.GetAll()).Result;
 
@@ -318,6 +330,7 @@ namespace FundsManager.Data
                     NormalizedName = trustedFinanceUser.ToString("G").ToUpper()
                 });
             }
+            applicationDbContext.SaveChanges();
         }
 
         private static NewTransactionEvent WaitNbxplorerNotification(LongPollingNotificationSession evts, DerivationStrategyBase derivationStrategy)

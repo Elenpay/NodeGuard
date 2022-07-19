@@ -13,7 +13,7 @@
 
         #region Relationships
 
-        public int ChannelOpenRequestId { get; set; }
+        public int ChannelOperationRequestId { get; set; }
         public ChannelOperationRequest ChannelOperationRequest { get; set; }
 
         public string? UserSignerId { get; set; }
