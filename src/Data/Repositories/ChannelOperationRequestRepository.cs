@@ -40,6 +40,7 @@ namespace FundsManager.Data.Repositories
             return await applicationDbContext.ChannelOperationRequests
                 .Where(request => request.UserId == userId)
                 .Include(request => request.Wallet)
+                .Include(request => request.SourceNode)
                 .Include(request => request.DestNode)
                 .Include(request => request.ChannelOperationRequestSignatures)
                 .ToListAsync();
@@ -52,6 +53,7 @@ namespace FundsManager.Data.Repositories
             return await applicationDbContext.ChannelOperationRequests
                 .Where(request => request.UserId == userId && 
                                   request.ChannelOperationRequestSignatures.All(signature => signature.UserSignerId != userId))
+                .Include(request => request.SourceNode)
                 .Include(request => request.Wallet)
                 .Include(request => request.DestNode)
                 .Include(request => request.ChannelOperationRequestSignatures)
