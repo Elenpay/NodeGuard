@@ -14,12 +14,13 @@
           Striped="true">
     <ChildContent>
         <DataGridColumn TItem="ChannelOperationRequest" Field="@nameof(ChannelOperationRequest.Id)" Caption="#" Sortable="false" Displayable="true"/>
+        <DataGridColumn TItem="ChannelOperationRequest" Field="SourceNode.Name" Caption="Source Node" Sortable="false" Displayable="true"/>
         <DataGridColumn TItem="ChannelOperationRequest" Field="DestNode.Name" Caption="Remote Node" Sortable="false" Displayable="true"/>
         <DataGridColumn TItem="ChannelOperationRequest" Field="Wallet.Name" Caption="Source of Funds" Sortable="false" Displayable="true"/>
         <DataGridColumn TItem="ChannelOperationRequest" Field="@nameof(ChannelOperationRequest.Amount)" Caption="Value" Sortable="false" Displayable="true">
             <DisplayTemplate>
                 @{
-                    @($"{context.Amount} {context.AmountCryptoUnit}")
+                    @($"{context.Amount} Sats")
                 }
             </DisplayTemplate>
         </DataGridColumn>
@@ -32,6 +33,7 @@
                 }
             </DisplayTemplate>
         </DataGridColumn>
+        <DataGridColumn TItem="ChannelOperationRequest" Field="@nameof(ChannelOperationRequest.Status)" Caption="Status" Sortable="false" Displayable="true"/>
         <DataGridCommandColumn TItem="ChannelOperationRequest" Caption="Actions" Displayable="true">
             <NewCommandTemplate>
                 <Button Color="Color.Primary" hidden ></Button>
@@ -68,12 +70,13 @@
           Striped="true">
     <ChildContent>
         <DataGridColumn TItem="ChannelOperationRequest" Field="@nameof(ChannelOperationRequest.Id)" Caption="#" Sortable="false" Displayable="true"/>
+        <DataGridColumn TItem="ChannelOperationRequest" Field="SourceNode.Name" Caption="Source Node" Sortable="false" Displayable="true"/>
         <DataGridColumn TItem="ChannelOperationRequest" Field="DestNode.Name" Caption="Remote Node" Sortable="false" Displayable="true"/>
         <DataGridColumn TItem="ChannelOperationRequest" Field="Wallet.Name" Caption="Source of Funds" Sortable="false" Displayable="true"/>
         <DataGridColumn TItem="ChannelOperationRequest" Field="@nameof(ChannelOperationRequest.Amount)" Caption="Value" Sortable="false" Displayable="true">
             <DisplayTemplate>
                 @{
-                    @($"{context.Amount} {context.AmountCryptoUnit}")
+                    @($"{context.Amount} Sats")
                 }
             </DisplayTemplate>
         </DataGridColumn>
@@ -86,6 +89,7 @@
                 }
             </DisplayTemplate>
         </DataGridColumn>
+        <DataGridColumn TItem="ChannelOperationRequest" Field="@nameof(ChannelOperationRequest.Status)" Caption="Status" Sortable="false" Displayable="true"/>
     </ChildContent>
     <EmptyTemplate>
         <div class="box">
@@ -126,11 +130,14 @@
 
 @inject IChannelOperationRequestRepository ChannelOperationRequestRepository
 @inject IChannelOperationRequestSignatureRepository ChannelOperationRequestSignatureRepository
+@inject IToastService ToastService;
 @code {
     private List<ChannelOperationRequest>? _channelRequests;
     private List<ChannelOperationRequest>? _allRequests;
+    private List<ChannelOperationRequest>? _allUserRequest;
     private ChannelOperationRequest? _selectedRequest;
     private bool _hideApprove;
+    private bool _modalVisible;
     private string? _psbt;
 
     [CascadingParameter]
@@ -143,25 +150,40 @@
     {
         if (LoggedUser != null)
         {
-            _channelRequests = await ChannelOperationRequestRepository.GetUnsignedPendingRequestsByUser(LoggedUser.Id);
-            _allRequests = await ChannelOperationRequestRepository.GetPendingRequestsByUser(LoggedUser.Id);
+            await FetchRequests();
             if (ClaimsPrincipal != null && !ClaimsPrincipal.IsInRole(ApplicationUserRole.TrustedFinanceUser.ToString()))
             {
                 _hideApprove = true;
             }
         }
-        
     }
 
+    private async Task FetchRequests()
+    {
+        if (LoggedUser != null)
+        {
+            _channelRequests = await ChannelOperationRequestRepository.GetUnsignedPendingRequestsByUser(LoggedUser.Id);
+            _allUserRequest = await ChannelOperationRequestRepository.GetPendingRequestsByUser(LoggedUser.Id);
+            _allRequests = new List<ChannelOperationRequest>();
+            foreach (var userRequest in _allUserRequest)
+            {
+                if (_channelRequests.All(req => req.Id != userRequest.Id))
+                {
+                    _allRequests.Add(userRequest);
+                }
+            }
+        }
+    }
+    
     private static bool RequestPendingFilter(ChannelOperationRequest req)
     {
         return req.Status.Equals(ChannelOperationRequestStatus.Pending);
     }
 
-    private bool _modalVisible;
     private Task ShowModal()
     {
         _modalVisible = true;
+        _psbt = String.Empty;
         return Task.CompletedTask;
     }
 
@@ -173,15 +195,24 @@
 
     private async Task ApproveRequest()
     {
-        ChannelOperationRequestSignature signature = new()
+        if (_selectedRequest == null || _psbt == null || LoggedUser == null)
         {
-            ChannelOperationRequestId = _selectedRequest.Id,
-            PSBT = _psbt,
-            UserSignerId = LoggedUser.Id
-        };
-        await ChannelOperationRequestSignatureRepository.AddAsync(signature);
-        _channelRequests = await ChannelOperationRequestRepository.GetUnsignedPendingRequestsByUser(LoggedUser.Id);
-        _allRequests = await ChannelOperationRequestRepository.GetPendingRequestsByUser(LoggedUser.Id);
+            ToastService.ShowError("Error: Not all fields were set");
+        }
+        else {
+            ChannelOperationRequestSignature signature = new()
+            {
+                ChannelOperationRequestId = _selectedRequest.Id,
+                PSBT = _psbt,
+                UserSignerId = LoggedUser.Id
+            };
+            await ChannelOperationRequestSignatureRepository.AddAsync(signature);
+        
+            await FetchRequests();
+
+        }
+        
         await HideModal();
+        ToastService.ShowSuccess("Request Signed");
     }
 }

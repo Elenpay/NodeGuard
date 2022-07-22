@@ -1,0 +1,175 @@
+@page "/nodes"
+@using System.Security.Claims
+<PageTitle>Active Nodes</PageTitle>
+<h3>Nodes</h3>
+
+<Row>
+    <Column ColumnSize="ColumnSize.Is12">
+        <DataGrid TItem="Node"
+                  Data="@_nodes"
+                  Editable="true"
+                  EditMode="DataGridEditMode.Form"
+                  @bind-SelectedRow="@_selectedNode"
+                  Responsive="true"
+                  ResizeMode="TableResizeMode.Columns"
+                  UseInternalEditing="true"
+                  RowInserted="OnRowInserted"
+                  RowUpdated="OnRowUpdated"
+                  RowRemoving="OnRowDeleted">
+            <DataGridColumns>
+                <DataGridCommandColumn TItem="Node">
+                    <NewCommandTemplate>
+                        <Button Color="Color.Success" Clicked="@context.Clicked">New</Button>
+                    </NewCommandTemplate>
+                    <EditCommandTemplate>
+                        <Button Color="Color.Primary" Clicked="@context.Clicked">Edit</Button>
+                    </EditCommandTemplate>
+                    <DeleteCommandTemplate>
+                        <Button Color="Color.Danger" hidden="@_hideDelete" Clicked="@context.Clicked">Delete</Button>
+                    </DeleteCommandTemplate>
+                </DataGridCommandColumn>
+                <DataGridColumn TItem="Node" Editable="true" Field="@nameof(Node.Name)" Caption="@nameof(Node.Name)" Sortable="false" />
+                <DataGridColumn TItem="Node" Editable="true" Field="@nameof(Node.PubKey)" Caption="@nameof(Node.PubKey)" Sortable="false" />
+                <DataGridColumn TItem="Node" Editable="true" Field="@nameof(Node.Description)" Caption="@nameof(Node.Description)" Sortable="false" />
+                <DataGridColumn TItem="Node" Editable="true" Field="@nameof(Node.Endpoint)" Caption="@nameof(Node.Endpoint)" Sortable="false" />
+                <DataGridNumericColumn TItem="Node" Editable="false" Field="ChannelOperationRequestsAsSource.Count" Caption="Inbound Open Channels" Sortable="false" />
+                <DataGridNumericColumn TItem="Node" Editable="false" Field="ChannelOperationRequestsAsDestination.Count" Caption="Outbound Open Channels" Sortable="false" />
+                <DataGridColumn TItem="Node" Field="@nameof(Node.CreationDatetime)" Caption="@nameof(Node.CreationDatetime)" Sortable="false" />
+                <DataGridColumn TItem="Node" Field="@nameof(Node.UpdateDatetime)" Caption="@nameof(Node.UpdateDatetime)" Sortable="false" />
+                <DataGridColumn TItem="Node" Caption="@nameof(Node.Users)" Editable="false" Sortable="false">
+                    <DisplayTemplate>
+                        <Button Color="Color.Primary" Clicked="@ShowModal">Display Users</Button>
+                    </DisplayTemplate>
+                </DataGridColumn>
+            </DataGridColumns>
+        </DataGrid>
+    </Column>
+</Row>
+<Modal @bind-Visible="@_modalVisible" >
+    <ModalContent Centered Size="ModalSize.Large">
+        <ModalHeader>
+            <ModalTitle>Users assigned to Node: @_selectedNode?.Name</ModalTitle>
+            <CloseButton />
+        </ModalHeader>
+        <ModalBody>
+           <DataGrid TItem="ApplicationUser"
+                     Data=@_selectedNode?.Users
+                     Sortable="false"
+                     ShowCaptions="true">
+               <DataGridColumn Field="@nameof(ApplicationUser.Id)" Caption="@nameof(ApplicationUser.Id)" />
+               <DataGridColumn Field="@nameof(ApplicationUser.Email)" Caption="@nameof(ApplicationUser.Email)" />
+               <DataGridColumn Field="@nameof(ApplicationUser.UserName)" Caption="@nameof(ApplicationUser.UserName)" />
+               <DataGridColumn Field="@nameof(ApplicationUser.PhoneNumber)" Caption="@nameof(ApplicationUser.PhoneNumber)" />
+           </DataGrid>
+        </ModalBody>
+        <ModalFooter>
+            <Button Color="Color.Secondary" Clicked="@HideModal">Back</Button>
+        </ModalFooter>
+    </ModalContent>
+</Modal>
+@inject INodeRepository NodeRepository
+@inject IToastService ToastService;
+@code {
+    private List<Node>? _nodes;
+    private Node? _selectedNode;
+    private bool _modalVisible;
+    private bool _hideDelete = true;
+
+    [CascadingParameter]
+    private ApplicationUser? LoggedUser { get; set; }
+
+    [CascadingParameter]
+    private ClaimsPrincipal? ClaimsPrincipal { get; set; }
+
+    protected override async Task OnInitializedAsync()
+    {
+        if (LoggedUser != null)
+        {
+            _nodes = await NodeRepository.GetAll();
+            if (ClaimsPrincipal != null && ClaimsPrincipal.IsInRole(ApplicationUserRole.Superadmin.ToString()))
+            {
+                _hideDelete = false;
+            }
+        }
+    }
+    private async Task OnRowInserted(SavedRowItem<Node, Dictionary<string, object>> arg)
+    {
+        if (arg.Item == null) 
+        {
+            ToastService.ShowError("Couldn't fetch data");
+        }
+        else
+        {
+            arg.Item.UpdateDatetime = DateTimeOffset.Now;
+            arg.Item.CreationDatetime = DateTimeOffset.Now;
+            var addResult = await NodeRepository.AddAsync(arg.Item);
+            if (addResult.Item1)
+            {
+                ToastService.ShowSuccess($"Node {arg.Item.Name} Created");
+            }
+            else
+            {
+                ToastService.ShowError("Something went wrong");
+                _nodes?.Remove(arg.Item);
+            }
+        }
+       
+        // TODO Channel Admin macaroon
+    }
+    
+    
+    private Task OnRowDeleted(CancellableRowChange<Node> node)
+    {
+        if (node.Item != null)
+        {
+            var (result, _) = NodeRepository.Remove(node.Item);
+            if (!result)
+            {
+                node.Cancel = true;
+                ToastService.ShowError("Something went wrong");
+            }
+            else
+            {
+                ToastService.ShowSuccess("Node deleted successfully");
+            }
+        }
+        return Task.CompletedTask;
+    }
+
+    
+    private Task OnRowUpdated(SavedRowItem<Node, Dictionary<string, object>> arg)
+    {
+        if (arg.Item == null)
+        {
+            ToastService.ShowError("Couldn't fetch data");
+        }
+        else
+        {
+            arg.Item.UpdateDatetime = DateTimeOffset.Now;
+            var updateResult = NodeRepository.Update(arg.Item);
+
+
+            if (updateResult.Item1)
+            {
+                ToastService.ShowSuccess($"Node {arg.Item.Name} Updated");
+            }
+            else
+            {
+                ToastService.ShowError("Something went wrong");
+            }
+        }
+        return Task.CompletedTask;
+    }
+
+    private Task ShowModal()
+    {
+        _modalVisible = true;
+        return Task.CompletedTask;
+    }
+
+    private Task HideModal()
+    {
+        _modalVisible = false;
+        return Task.CompletedTask;
+    }
+}
