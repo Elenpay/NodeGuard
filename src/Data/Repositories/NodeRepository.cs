@@ -47,8 +47,8 @@ namespace FundsManager.Data.Repositories
 
             return await applicationDbContext.Nodes
                 .Include(node => node.Users)
-                .Include(node => node.ChannelOperationRequestsAsSource)
                 .Include(node => node.ChannelOperationRequestsAsDestination)
+                    .ThenInclude(request => request.Channel)
                 .ToListAsync();
         }
         
