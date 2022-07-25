@@ -35,8 +35,11 @@
                 <DataGridNumericColumn TItem="Node" Editable="false"  Caption="Outbound Open Channels" Sortable="false">
                     <DisplayTemplate>
                         @{
-                            var activeChannelsCount = (context?.ChannelOperationRequestsAsDestination).Count(request => request.Channel != null);
-                            @($"{activeChannelsCount}")
+                            IEnumerable<int?> associatedChannels = (context?.ChannelOperationRequestsAsDestination)
+                                .Where(request => request.ChannelId != null)
+                                .Select(channel => channel.ChannelId)
+                                .Distinct();
+                            @($"{associatedChannels.Count()}")
                         }
                     </DisplayTemplate>
                 </DataGridNumericColumn>
