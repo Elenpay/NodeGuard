@@ -20,6 +20,9 @@ services:
         NBXPLORER_BTCRPCURL: http://host.docker.internal:18443/
         NBXPLORER_BTCNODEENDPOINT: host.docker.internal:19444
         DEFAULT_DERIVATION_PATH: m/48'/1'/1'
+        SENTRY_ENVIRONMENT: Development
+        SENTRY_DSN: https://6e10418190404837853e31beaefb94c4@o1066831.ingest.sentry.io/6599373
+        SENTRY_DEBUG_ENABLED: true
 
   fundsmanager_postgres:
     container_name: fundsmanager_postgres

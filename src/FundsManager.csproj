@@ -32,6 +32,8 @@
     <PackageReference Include="NSubstitute" Version="4.3.0" />
     <PackageReference Include="Microsoft.VisualStudio.Azure.Containers.Tools.Targets" Version="1.15.1" />
     <PackageReference Include="Blazorise.DataGrid" Version="1.0.5" />
+    <PackageReference Include="Sentry.AspNetCore" Version="3.20.0" />
+    <PackageReference Include="Sentry.Extensions.Logging" Version="3.20.0" />
   </ItemGroup>
 
   <ItemGroup>
@@ -44,4 +46,8 @@
     <Protobuf Include="Proto\walletkit.proto" GrpcServices="Client" />
   </ItemGroup>
 
+  <ItemGroup>
+    <None Remove="Sentry" />
+    <None Remove="Sentry.Extensions.Logging" />
+  </ItemGroup>
 </Project>
