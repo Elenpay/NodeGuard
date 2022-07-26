@@ -28,10 +28,16 @@
       <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
       <PrivateAssets>all</PrivateAssets>
     </PackageReference>
+    <PackageReference Include="Sentry.AspNetCore" Version="3.20.0" />
+    <PackageReference Include="Sentry.Extensions.Logging" Version="3.20.0" />
   </ItemGroup>
 
   <ItemGroup>
     <ProjectReference Include="..\..\src\FundsManager.csproj" />
   </ItemGroup>
 
+  <ItemGroup>
+    <None Remove="Sentry.AspNetCore" />
+    <None Remove="Sentry.Extensions.Logging" />
+  </ItemGroup>
 </Project>

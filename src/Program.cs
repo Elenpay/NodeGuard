@@ -12,6 +12,8 @@ using Lnrpc;
 using Microsoft.AspNetCore.Components.Authorization;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
+using Sentry;
+using Sentry.Extensibility;
 
 namespace FundsManager
 {
@@ -81,8 +83,22 @@ namespace FundsManager
                 .AddBootstrapProviders()
                 .AddFontAwesomeIcons();
 
-            builder.Services.AddAuthorization();
-
+            // Sentry
+            builder.Services.AddSentry();
+            builder.WebHost.UseSentry(options =>
+            {
+                options.Dsn = Environment.GetEnvironmentVariable("SENTRY_DSN");
+                options.Environment = Environment.GetEnvironmentVariable("SENTRY_ENVIRONMENT");
+                options.TracesSampleRate = 1;
+                options.SendDefaultPii = true;
+                options.AttachStacktrace = true;
+                options.MaxRequestBodySize = RequestSize.Medium;
+                options.MinimumBreadcrumbLevel = LogLevel.Debug;
+                options.MinimumEventLevel = LogLevel.Warning;
+                options.DiagnosticLevel = SentryLevel.Error;
+                options.Debug = Convert.ToBoolean(Environment.GetEnvironmentVariable("SENTRY_DEBUG_ENABLED"));
+            });
+          
             var app = builder.Build();
 
             //DbInitialisation & Migrations
@@ -112,6 +128,7 @@ namespace FundsManager
                 app.UseExceptionHandler("/Error");
                 // The default HSTS value is 30 days. You may want to change this for production scenarios, see https://aka.ms/aspnetcore-hsts.
                 app.UseHsts();
+                app.UseSentryTracing();
             }
 
             //app.UseHttpsRedirection();
