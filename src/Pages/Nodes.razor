@@ -36,8 +36,17 @@
                 </DataGridColumn>
                 <DataGridColumn TItem="Node" Editable="true" Field="@nameof(Node.Description)" Caption="@nameof(Node.Description)" Sortable="false" />
                 <DataGridColumn TItem="Node" Editable="true" Field="@nameof(Node.Endpoint)" Caption="@nameof(Node.Endpoint)" Sortable="false" />
-                <DataGridNumericColumn TItem="Node" Editable="false" Field="ChannelOperationRequestsAsSource.Count" Caption="Inbound Open Channels" Sortable="false" />
-                <DataGridNumericColumn TItem="Node" Editable="false" Field="ChannelOperationRequestsAsDestination.Count" Caption="Outbound Open Channels" Sortable="false" />
+                <DataGridNumericColumn TItem="Node" Editable="false"  Caption="Outbound Open Channels" Sortable="false">
+                    <DisplayTemplate>
+                        @{
+                            IEnumerable<int?> associatedChannels = (context?.ChannelOperationRequestsAsDestination)
+                                .Where(request => request.ChannelId != null)
+                                .Select(channel => channel.ChannelId)
+                                .Distinct();
+                            @($"{associatedChannels.Count()}")
+                        }
+                    </DisplayTemplate>
+                </DataGridNumericColumn>
                 <DataGridColumn TItem="Node" Field="@nameof(Node.CreationDatetime)" Caption="@nameof(Node.CreationDatetime)" Sortable="false" />
                 <DataGridColumn TItem="Node" Field="@nameof(Node.UpdateDatetime)" Caption="@nameof(Node.UpdateDatetime)" Sortable="false" />
                 <DataGridColumn TItem="Node" Caption="@nameof(Node.Users)" Editable="false" Sortable="false">
