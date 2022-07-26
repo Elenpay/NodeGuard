@@ -131,7 +131,7 @@
     }
     
     
-    private Task OnRowDeleted(CancellableRowChange<Node> node)
+    private async Task OnRowDeleted(CancellableRowChange<Node> node)
     {
         if (node.Item != null)
         {
@@ -146,11 +146,10 @@
                 ToastService.ShowSuccess("Node deleted successfully");
             }
         }
-        return Task.CompletedTask;
     }
 
     
-    private Task OnRowUpdated(SavedRowItem<Node, Dictionary<string, object>> arg)
+    private async Task OnRowUpdated(SavedRowItem<Node, Dictionary<string, object>> arg)
     {
         if (arg.Item == null)
         {
@@ -171,18 +170,15 @@
                 ToastService.ShowError("Something went wrong");
             }
         }
-        return Task.CompletedTask;
     }
 
-    private Task ShowModal()
+    private async Task ShowModal()
     {
         _modalVisible = true;
-        return Task.CompletedTask;
     }
 
-    private Task HideModal()
+    private async Task HideModal()
     {
         _modalVisible = false;
-        return Task.CompletedTask;
     }
 }
