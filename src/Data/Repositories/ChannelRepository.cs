@@ -28,7 +28,15 @@ namespace FundsManager.Data.Repositories
 
         public async Task<List<Channel>> GetAll()
         {
-            throw new NotImplementedException();
+            await using var applicationDbContext = await _dbContextFactory.CreateDbContextAsync();
+
+            return await applicationDbContext.Channels
+                .Include(channel => channel.ChannelOperationRequests).ThenInclude(request => request.User)
+                .Include(channel => channel.ChannelOperationRequests).ThenInclude(request => request.SourceNode)
+                .Include(channel => channel.ChannelOperationRequests).ThenInclude(request => request.Wallet)
+                .Include(channel => channel.ChannelOperationRequests).ThenInclude(request => request.DestNode)
+                .Include(channel => channel.ChannelOperationRequests).ThenInclude(request => request.ChannelOperationRequestSignatures)
+                .ToListAsync();
         }
 
         public async Task<(bool, string?)> AddAsync(Channel type)
