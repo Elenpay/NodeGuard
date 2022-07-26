@@ -19,6 +19,8 @@ services:
       NBXPLORER_BTCNODEENDPOINT: "{{ NBXPLORER_BTCNODEENDPOINT }}"
       DEFAULT_DERIVATION_PATH: "{{ DEFAULT_DERIVATION_PATH }}"
       ASPNETCORE_ENVIRONMENT: "{{ ASPNETCORE_ENVIRONMENT }}"
+      SENTRY_ENVIRONMENT: "{{ SENTRY_ENVIRONMENT }}"
+      SENTRY_DSN:  "{{ SENTRY_DSN }}"
 
   fundsmanager_postgres:
     container_name: fundsmanager_postgres

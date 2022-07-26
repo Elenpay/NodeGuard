@@ -67,7 +67,7 @@ deploy_staging:
   tags:
     - lightning_spot_runners
   script:
-    - ansible-playbook ansible/deploy_playbook.yaml -i ansible/inventory.yaml
+    - ansible-playbook ansible/deploy_playbook.yaml -i ansible/inventory.yaml -e "SENTRY_ENVIRONMENT=Staging"
 
 
 # deploy_production:
