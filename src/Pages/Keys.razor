@@ -1,0 +1,165 @@
+﻿@page "/keys"
+@using System.Security.Claims
+@using Humanizer
+
+@inject IKeyRepository KeyRepository
+@inject IToastService ToastService
+<h3>My extended public keys</h3>
+
+@attribute [Authorize(Roles = "FinanceManager")]
+
+<Row>
+    <Column ColumnSize="ColumnSize.Is12">
+        <DataGrid TItem="Key"
+                  Data="@userKeys"
+                  Editable="true"
+                  EditMode="DataGridEditMode.Form"
+                  Responsive="true"
+                  ResizeMode="TableResizeMode.Columns"
+                  UseInternalEditing="true"
+                  RowInserted="OnRowInserted"
+                  RowRemoving="OnRowRemoving"
+                  RowUpdated="OnRowUpdated"
+                  NewItemDefaultSetter="NewItemDefaultSetter">
+            <DataGridCommandColumn TItem="Key">
+                <NewCommandTemplate>
+                    <Button Color="Color.Success" Clicked="@context.Clicked">New</Button>
+                </NewCommandTemplate>
+                <EditCommandTemplate>
+                    <Button Color="Color.Primary" Clicked="@context.Clicked">Edit</Button>
+                </EditCommandTemplate>
+                <DeleteCommandTemplate>
+                @if (context.Item.Wallets != null && !context.Item.Wallets.Any())
+                {
+                    <Button Color="Color.Danger" Clicked="@context.Clicked">Delete</Button>
+
+                }
+                </DeleteCommandTemplate>
+            
+            </DataGridCommandColumn>            
+            <DataGridColumn TItem="Key" Editable="true" Field="@nameof(Key.Name)" Caption="@nameof(Key.Name)" Sortable="false" />
+            <DataGridColumn TItem="Key" Editable="true" Field="@nameof(Key.Description)" Caption="@nameof(Key.Description)" Sortable="false" />
+            <DataGridColumn TItem="Key" Editable="true" Field="@nameof(Key.IsArchived)" Caption="@nameof(Key.IsArchived).Humanize(LetterCasing.Sentence)" Sortable="false" />
+            <DataGridColumn TItem="Key" Editable="true" Field="@nameof(Key.IsCompromised)" Caption="@nameof(Key.IsCompromised).Humanize(LetterCasing.Sentence)" Sortable="false" />
+            <DataGridColumn TItem="Key" CellsEditableOnNewCommand="true" CellsEditableOnEditCommand="false" Editable="true" Field="@nameof(Key.XPUB)" Caption="@nameof(Key.XPUB).Humanize(LetterCasing.Sentence)" Sortable="false">
+                <DisplayTemplate>
+                    @if (!string.IsNullOrWhiteSpace(context.XPUB) && context.XPUB.Length > 40)
+                    {
+                        @(context.GetTruncatedXPUBString())
+
+                    }
+                    else
+                    {
+                        <p>Invalid xpub</p>
+                    }
+
+                </DisplayTemplate>
+            </DataGridColumn>
+            <DataGridColumn TItem="Key" Field="@nameof(Key.CreationDatetime)" Caption="@nameof(Key.CreationDatetime)" Sortable="false" />
+            <DataGridColumn TItem="Key" Field="@nameof(Key.UpdateDatetime)" Caption="@nameof(Key.UpdateDatetime).Humanize(LetterCasing.Sentence)" Sortable="false" />
+
+
+        </DataGrid>
+    </Column>
+</Row>
+@code {
+
+    [CascadingParameter]
+    private ApplicationUser? _loggedUser { get; set; }
+
+
+    [CascadingParameter]
+    private ClaimsPrincipal _claimsPrincipal { get; set; }
+
+    private List<Key> userKeys { get; set; } = new List<Key>();
+
+    protected override async Task OnInitializedAsync()
+    {
+        if (_loggedUser != null)
+        {
+            await GetData();
+        }
+
+
+    }
+
+    private async Task GetData()
+    {
+        
+        userKeys = await KeyRepository.GetUserKeys(_loggedUser);
+    }
+
+
+    private async Task OnRowInserted(SavedRowItem<Key, Dictionary<string, object>> arg)
+    {
+        if (arg.Item == null) return;
+
+        var addResult = await KeyRepository.AddAsync(arg.Item);
+
+        
+        if (addResult.Item1)
+        {
+            ToastService.ShowSuccess("Success");
+            await GetData();
+        }
+        else
+        {
+            ToastService.ShowError("Something went wrong");
+            userKeys.Remove(arg.Item);
+
+        }
+
+
+    }
+
+    private void NewItemDefaultSetter(Key obj)
+    {
+
+        obj.UserId = _loggedUser.Id;
+
+    }
+
+    private async Task OnRowRemoving(CancellableRowChange<Key> arg)
+    {
+        if (arg.Item != null)
+        {
+
+            var (result, message) = KeyRepository.Remove(arg.Item);
+
+            if (!result)
+            {
+
+                arg.Cancel = true;
+                ToastService.ShowError("Something went wrong");
+            }
+            else
+            {
+                ToastService.ShowSuccess("Success");
+                await GetData();
+            }
+        }
+    }
+               
+
+    private async Task OnRowUpdated(SavedRowItem<Key, Dictionary<string, object>> arg)
+    {
+        if (arg.Item == null) return;
+
+        var updateResult = KeyRepository.Update(arg.Item);
+
+        
+        if (updateResult.Item1)
+        {
+            ToastService.ShowSuccess("Success");
+        }
+        else
+        {
+            ToastService.ShowError("Something went wrong");
+
+
+        }
+
+        await GetData();
+    }
+
+}

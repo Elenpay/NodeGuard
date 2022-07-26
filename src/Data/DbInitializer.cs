@@ -1,16 +1,14 @@
 ﻿using System.Net;
 using FundsManager.Data.Models;
-using FundsManager.Data.Repositories;
 using FundsManager.Data.Repositories.Interfaces;
+using FundsManager.Helpers;
 using Microsoft.AspNetCore.Identity;
-using Microsoft.AspNetCore.Mvc.Formatters;
 using Microsoft.EntityFrameworkCore;
 using NBitcoin;
 using NBitcoin.RPC;
 using NBXplorer;
 using NBXplorer.DerivationStrategy;
 using NBXplorer.Models;
-using Newtonsoft.Json;
 using Key = FundsManager.Data.Models.Key;
 
 namespace FundsManager.Data
@@ -23,25 +21,20 @@ namespace FundsManager.Data
             var applicationDbContext = serviceProvider.GetRequiredService<ApplicationDbContext>();
             var appUserRepository = serviceProvider.GetRequiredService<IApplicationUserRepository>();
             var nodeRepository = serviceProvider.GetRequiredService<INodeRepository>();
-            var channelOperationRequestRepository = serviceProvider.GetRequiredService<IChannelOperationRequestRepository>();
+            var channelOperationRequestRepository =
+                serviceProvider.GetRequiredService<IChannelOperationRequestRepository>();
             var walletRepository = serviceProvider.GetRequiredService<IWalletRepository>();
             var keyRepository = serviceProvider.GetRequiredService<IKeyRepository>();
 
             var webHostEnvironment = serviceProvider.GetRequiredService<IWebHostEnvironment>();
             var logger = serviceProvider.GetService<ILogger<Program>>();
             //Nbxplorer setup & check
-            var network = Environment.GetEnvironmentVariable("BITCOIN_NETWORK");
             var nbxplorerUri = Environment.GetEnvironmentVariable("NBXPLORER_URI") ??
                                throw new ArgumentNullException("Environment.GetEnvironmentVariable(\"NBXPLORER_URI\")");
             var userManager = serviceProvider.GetRequiredService<UserManager<ApplicationUser>>();
+            var roleManager = serviceProvider.GetService<RoleManager<IdentityRole>>();
 
-            var nbXplorerNetwork = network switch
-            {
-                "REGTEST" => Network.RegTest,
-                "MAINNET" => Network.Main,
-                "TESTNET" => Network.TestNet,
-                _ => Network.RegTest
-            };
+            var nbXplorerNetwork = CurrentNetworkHelper.GetCurrentNetwork();
 
             var provider = new NBXplorerNetworkProvider(nbXplorerNetwork.ChainName);
             var nbxplorerClient = new ExplorerClient(provider.GetFromCryptoCode(nbXplorerNetwork.NetworkSet.CryptoCode),
@@ -62,14 +55,16 @@ namespace FundsManager.Data
                     applicationDbContext.Database.Migrate();
                     isConnected = true;
                 }
-                catch
+                catch (Exception e)
                 {
+                    logger.LogError(e, "Error while migrating");
                 }
+
                 Thread.Sleep(1_000);
             }
 
             //Roles
-            SetRoles(applicationDbContext);
+            SetRoles(roleManager);
 
             if (webHostEnvironment.IsDevelopment())
             {
@@ -83,7 +78,9 @@ namespace FundsManager.Data
                 //Users
                 var adminUsername = "admin@clovrlabs.com";
 
-                var adminUser = applicationDbContext.ApplicationUsers.FirstOrDefault(x => x.NormalizedEmail == adminUsername.ToUpper());
+                var adminUser =
+                    applicationDbContext.ApplicationUsers.FirstOrDefault(x =>
+                        x.NormalizedEmail == adminUsername.ToUpper());
                 if (adminUser == null)
                 {
                     adminUser = new ApplicationUser
@@ -95,11 +92,31 @@ namespace FundsManager.Data
                         NormalizedEmail = adminUsername.ToUpper(),
                     };
                     _ = Task.Run(() => userManager.CreateAsync(adminUser, "Pass9299a8s.asa9")).Result;
-                    _ = Task.Run(() => userManager.AddToRoleAsync(adminUser, ApplicationUserRole.Superadmin.ToString())).Result;
+                    _ = Task.Run(() => userManager.AddToRoleAsync(adminUser, ApplicationUserRole.Superadmin.ToString()))
+                        .Result;
 
-                    var financeUsername = "finance@clovrlabs.com";
+                    //We are gods with super powers
+                    var role1 = Task.Run(() =>
+                        userManager.AddToRoleAsync(adminUser, ApplicationUserRole.FinanceManager.ToString("G"))).Result;
+                    var role2 = Task.Run(() =>
+                        userManager.AddToRoleAsync(adminUser, ApplicationUserRole.NodeManager.ToString("G"))).Result;
+                    var role3 = Task.Run(() =>
+                        userManager.AddToRoleAsync(adminUser, ApplicationUserRole.Superadmin.ToString("G"))).Result;
 
-                    var financeUser = new ApplicationUser
+                    if (!role1.Succeeded || !role2.Succeeded || !role3.Succeeded)
+                    {
+                        throw new Exception("Can't set role of admin user");
+                    }
+                }
+
+                var financeUsername = "finance@clovrlabs.com";
+                var financeUser =
+                    applicationDbContext.ApplicationUsers.FirstOrDefault(x =>
+                        x.NormalizedEmail == financeUsername.ToUpper());
+
+                if (financeUser == null)
+                {
+                    financeUser = new ApplicationUser
                     {
                         NormalizedUserName = financeUsername.ToUpper(),
                         UserName = financeUsername,
@@ -108,9 +125,14 @@ namespace FundsManager.Data
                         NormalizedEmail = financeUsername.ToUpper(),
                     };
                     _ = Task.Run(() => userManager.CreateAsync(financeUser, "Pass9299a8s.asa9")).Result;
-                    _ = Task.Run(() => userManager.AddToRoleAsync(financeUser, ApplicationUserRole.TrustedFinanceUser.ToString())).Result;
+                    _ = Task.Run(() =>
+                        userManager.AddToRoleAsync(financeUser, ApplicationUserRole.FinanceManager.ToString())).Result;
                 }
-                
+
+                //TODO Nodes for regtest
+
+                //Testing node from Polar (ALICE) LND 0.15.0 -> check devnetwork.zip polar file
+
                 //Testing node from Polar (ALICE) LND 0.14.3 -> check devnetwork.zip polar file
                 var nodes = Task.Run(() => nodeRepository.GetAll()).Result;
 
@@ -129,10 +151,11 @@ namespace FundsManager.Data
                     _ = Task.Run(() => nodeRepository.AddAsync(alice)).Result;
                 }
 
-                //Testing node from Polar (CAROL) LND 0.14.3 -> check devnetwork.zip polar file
+                //Testing node from Polar (CAROL) LND 0.15.0 -> check devnetwork.zip polar file
                 var carol = new Node
                 {
-                    ChannelAdminMacaroon = "0201036c6e6402f801030a10dc64226b045d25f090b114baebcbf04c1201301a160a0761646472657373120472656164120577726974651a130a04696e666f120472656164120577726974651a170a08696e766f69636573120472656164120577726974651a210a086d616361726f6f6e120867656e6572617465120472656164120577726974651a160a076d657373616765120472656164120577726974651a170a086f6666636861696e120472656164120577726974651a160a076f6e636861696e120472656164120577726974651a140a057065657273120472656164120577726974651a180a067369676e6572120867656e657261746512047265616400000620a21b8cc8c071aa5104b706b751aede972f642537c05da31450fb4b02c6da776e",
+                    ChannelAdminMacaroon =
+                        "0201036c6e6402f801030a10dc64226b045d25f090b114baebcbf04c1201301a160a0761646472657373120472656164120577726974651a130a04696e666f120472656164120577726974651a170a08696e766f69636573120472656164120577726974651a210a086d616361726f6f6e120867656e6572617465120472656164120577726974651a160a076d657373616765120472656164120577726974651a170a086f6666636861696e120472656164120577726974651a160a076f6e636861696e120472656164120577726974651a140a057065657273120472656164120577726974651a180a067369676e6572120867656e657261746512047265616400000620a21b8cc8c071aa5104b706b751aede972f642537c05da31450fb4b02c6da776e",
                     //THIS MIGHT CHANGE ON YOUR MACHINE!!
                     Endpoint = "host.docker.internal:10003",
                     Name = "Carol",
@@ -146,6 +169,7 @@ namespace FundsManager.Data
                 }
 
                 InternalWallet? internalWallet = null;
+                Key? internalWalletKey = null;
                 if (!applicationDbContext.InternalWallets.Any())
                 {
                     //Default Internal Wallet
@@ -154,7 +178,8 @@ namespace FundsManager.Data
                     {
                         //DerivationPath = "m/48'/1'/1'", //Segwit
                         DerivationPath = Environment.GetEnvironmentVariable("DEFAULT_DERIVATION_PATH")!,
-                        MnemonicString = "middle teach digital prefer fiscal theory syrup enter crash muffin easily anxiety ill barely eagle swim volume consider dynamic unaware deputy middle into physical",
+                        MnemonicString =
+                            "middle teach digital prefer fiscal theory syrup enter crash muffin easily anxiety ill barely eagle swim volume consider dynamic unaware deputy middle into physical",
                         CreationDatetime = DateTimeOffset.Now,
                     };
 
@@ -164,10 +189,22 @@ namespace FundsManager.Data
                     applicationDbContext.SaveChanges();
 
                     logger.LogInformation("Internal wallet setup, seed:{}", internalWallet.MnemonicString);
+
+                    internalWalletKey =
+                        new Key
+                        {
+                            Name = "FundsManager Co-signing Key",
+                            XPUB = internalWallet.GetXPUB(nbXplorerNetwork),
+                            IsFundsManagerPrivateKey = true
+                        };
+
+                    var _ = Task.Run(() => keyRepository.AddAsync(internalWalletKey)).Result;
                 }
                 else
                 {
                     internalWallet = applicationDbContext.InternalWallets.First();
+                    //The last one by id
+                    internalWalletKey = Task.Run(() => keyRepository.GetCurrentInternalWalletKey()).Result;
                 }
 
                 if (!applicationDbContext.Wallets.Any())
@@ -175,10 +212,14 @@ namespace FundsManager.Data
                     //Wallets
 
                     //Individual wallets
-                    var wallet1seed = "social mango annual basic work brain economy one safe physical junk other toy valid load cook napkin maple runway island oil fan legend stem";
+                    var wallet1seed =
+                        "social mango annual basic work brain economy one safe physical junk other toy valid load cook napkin maple runway island oil fan legend stem";
 
                     var masterKey1 = new Mnemonic(wallet1seed).DeriveExtKey().GetWif(Network.RegTest);
-                    var keyPath1 = new KeyPath(Environment.GetEnvironmentVariable("DEFAULT_DERIVATION_PATH")); //https://github.com/dgarage/NBXplorer/blob/0595a87f22c142aee6a6e4a0194f75aec4717819/NBXplorer/Controllers/MainController.cs#L1141
+                    var keyPath1 =
+                        new KeyPath(
+                            Environment.GetEnvironmentVariable(
+                                "DEFAULT_DERIVATION_PATH")); //https://github.com/dgarage/NBXplorer/blob/0595a87f22c142aee6a6e4a0194f75aec4717819/NBXplorer/Controllers/MainController.cs#L1141
                     var accountKey1 = masterKey1.Derive(keyPath1);
                     var bitcoinExtPubKey1 = accountKey1.Neuter();
                     var accountKeyPath1 = new RootedKeyPath(masterKey1.GetPublicKey().GetHDFingerPrint(), keyPath1);
@@ -187,10 +228,14 @@ namespace FundsManager.Data
 
                     logger.LogInformation("Wallet 1 seed: {}", wallet1seed);
 
-                    var wallet2seed = "solar goat auto bachelor chronic input twin depth fork scale divorce fury mushroom column image sauce car public artist announce treat spend jacket physical";
+                    var wallet2seed =
+                        "solar goat auto bachelor chronic input twin depth fork scale divorce fury mushroom column image sauce car public artist announce treat spend jacket physical";
 
                     var masterKey2 = new Mnemonic(wallet2seed).DeriveExtKey().GetWif(Network.RegTest);
-                    var keyPath2 = new KeyPath(Environment.GetEnvironmentVariable("DEFAULT_DERIVATION_PATH")); //https://github.com/dgarage/NBXplorer/blob/0595a87f22c142aee6a6e4a0194f75aec4717819/NBXplorer/Controllers/MainController.cs#L1141
+                    var keyPath2 =
+                        new KeyPath(
+                            Environment.GetEnvironmentVariable(
+                                "DEFAULT_DERIVATION_PATH")); //https://github.com/dgarage/NBXplorer/blob/0595a87f22c142aee6a6e4a0194f75aec4717819/NBXplorer/Controllers/MainController.cs#L1141
                     var accountKey2 = masterKey2.Derive(keyPath2);
                     var bitcoinExtPubKey2 = accountKey2.Neuter();
                     var accountKeyPath2 = new RootedKeyPath(masterKey2.GetPublicKey().GetHDFingerPrint(), keyPath2);
@@ -218,12 +263,7 @@ namespace FundsManager.Data
                                 XPUB = wallet2DerivationScheme.ToString()
                                 //XPUB = wallet2.DerivationScheme.ToString()
                             },
-                            new Key
-                            {
-                                Name = "FundsManager Key",
-                                XPUB = internalWallet.GetXPUB(nbXplorerNetwork),
-                                IsFundsManagerPrivateKey = true
-                            }
+                            internalWalletKey
                         },
                         Name = "Test wallet",
                         WalletAddressType = WalletAddressType.NativeSegwit,
@@ -240,7 +280,7 @@ namespace FundsManager.Data
                         {
                             bitcoinExtPubKey1,
                             bitcoinExtPubKey2,
-                            new(internalWallet.GetXPUB(nbXplorerNetwork),nbXplorerNetwork),
+                            new(internalWallet.GetXPUB(nbXplorerNetwork), nbXplorerNetwork),
                         },
                         testingMultisigWallet.MofN,
                         new DerivationStrategyOptions
@@ -270,6 +310,7 @@ namespace FundsManager.Data
                     {
                         throw new Exception("The multisig wallet balance is not >= 20BTC");
                     }
+
                     applicationDbContext.Add(testingMultisigWallet);
                 }
             }
@@ -288,49 +329,56 @@ namespace FundsManager.Data
 
                     applicationDbContext.Add(internalWallet);
 
-                    logger.LogInformation("A new internal wallet seed has been generated: {}", internalWallet.MnemonicString);
+                    logger.LogInformation("A new internal wallet seed has been generated: {}",
+                        internalWallet.MnemonicString);
                 }
-            }
 
-            applicationDbContext.SaveChanges();
+                applicationDbContext.SaveChanges();
+            }
         }
 
-        private static void SetRoles(ApplicationDbContext applicationDbContext)
+        private static void SetRoles(RoleManager<IdentityRole>? roleManager)
         {
             const ApplicationUserRole nodeManager = ApplicationUserRole.NodeManager;
 
-            var roles = applicationDbContext.Roles.ToList();
+            var roles = roleManager.Roles.ToList();
             if (roles.FirstOrDefault(x => x.Name == nodeManager.ToString("G")) == null)
             {
-                applicationDbContext.Roles.Add(new IdentityRole
+                var identityRole = new IdentityRole
                 {
                     Name = nodeManager.ToString("G"),
                     NormalizedName = nodeManager.ToString("G").ToUpper()
-                });
+                };
+                var roleCreation = Task.Run(() => roleManager.CreateAsync(identityRole)).Result;
             }
 
             const ApplicationUserRole superadmin = ApplicationUserRole.Superadmin;
 
             if (roles.FirstOrDefault(x => x.Name == superadmin.ToString("G")) == null)
             {
-                applicationDbContext.Roles.Add(new IdentityRole
                 {
-                    Name = superadmin.ToString("G"),
-                    NormalizedName = superadmin.ToString("G").ToUpper()
-                });
+                    var identityRole = new IdentityRole
+                    {
+                        Name = superadmin.ToString("G"),
+                        NormalizedName = superadmin.ToString("G").ToUpper()
+                    };
+                    var roleCreation = Task.Run(() => roleManager.CreateAsync(identityRole)).Result;
+                }
             }
 
-            const ApplicationUserRole trustedFinanceUser = ApplicationUserRole.TrustedFinanceUser;
+            const ApplicationUserRole financeManager = ApplicationUserRole.FinanceManager;
 
-            if (roles.FirstOrDefault(x => x.Name == trustedFinanceUser.ToString("G")) == null)
+            if (roles.FirstOrDefault(x => x.Name == financeManager.ToString("G")) == null)
             {
-                applicationDbContext.Roles.Add(new IdentityRole
                 {
-                    Name = trustedFinanceUser.ToString("G"),
-                    NormalizedName = trustedFinanceUser.ToString("G").ToUpper()
-                });
+                    var identityRole = new IdentityRole
+                    {
+                        Name = financeManager.ToString("G"),
+                        NormalizedName = financeManager.ToString("G").ToUpper()
+                    };
+                    var roleCreation = Task.Run(() => roleManager.CreateAsync(identityRole)).Result;
+                }
             }
-            applicationDbContext.SaveChanges();
         }
 
         private static NewTransactionEvent WaitNbxplorerNotification(LongPollingNotificationSession evts, DerivationStrategyBase derivationStrategy)

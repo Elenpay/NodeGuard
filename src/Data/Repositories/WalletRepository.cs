@@ -9,21 +9,28 @@ namespace FundsManager.Data.Repositories
         private readonly IRepository<Wallet> _repository;
         private readonly ILogger<WalletRepository> _logger;
         private readonly IDbContextFactory<ApplicationDbContext> _dbContextFactory;
+        private readonly IInternalWalletRepository _internalWalletRepository;
+        private readonly IKeyRepository _keyRepository;
 
         public WalletRepository(IRepository<Wallet> repository,
             ILogger<WalletRepository> logger,
-            IDbContextFactory<ApplicationDbContext> dbContextFactory)
+            IDbContextFactory<ApplicationDbContext> dbContextFactory,
+            IInternalWalletRepository internalWalletRepository, IKeyRepository keyRepository)
         {
             _repository = repository;
             _logger = logger;
             _dbContextFactory = dbContextFactory;
+            _internalWalletRepository = internalWalletRepository;
+            _keyRepository = keyRepository;
         }
 
         public async Task<Wallet?> GetById(int id)
         {
             await using var applicationDbContext = await _dbContextFactory.CreateDbContextAsync();
 
-            return await applicationDbContext.Wallets.Include(x => x.InternalWallet).FirstOrDefaultAsync(x => x.Id == id);
+            return await applicationDbContext.Wallets.Include(x => x.InternalWallet)
+                .Include(x => x.Keys)
+                .FirstOrDefaultAsync(x => x.Id == id);
         }
 
         public async Task<List<Wallet>> GetAll()
@@ -37,7 +44,27 @@ namespace FundsManager.Data.Repositories
         {
             await using var applicationDbContext = await _dbContextFactory.CreateDbContextAsync();
 
-            return await _repository.AddAsync(type, applicationDbContext);
+            type.SetCreationDatetime();
+            type.SetUpdateDatetime();
+
+            //We add the internal wallet of the moment and its key
+            var currentInternalWallet = (await _internalWalletRepository.GetCurrentInternalWallet());
+            if (currentInternalWallet != null)
+                type.InternalWalletId = currentInternalWallet.Id;
+
+            var currentInternalWalletKey = await _keyRepository.GetCurrentInternalWalletKey();
+
+            type.Keys = new List<Key>();
+
+            var addResult = await _repository.AddAsync(type, applicationDbContext);
+
+            if (currentInternalWalletKey != null)
+                type.Keys.Add(currentInternalWalletKey);
+
+            //We need to persist before updating a m-of-n relationship
+            var updateResult = Update(type);
+
+            return (addResult.Item1 && updateResult.Item1, addResult.Item2 + updateResult.Item2);
         }
 
         public async Task<(bool, string?)> AddRangeAsync(List<Wallet> type)
@@ -64,6 +91,8 @@ namespace FundsManager.Data.Repositories
         public (bool, string?) Update(Wallet type)
         {
             using var applicationDbContext = _dbContextFactory.CreateDbContext();
+
+            type.SetUpdateDatetime();
 
             return _repository.Update(type, applicationDbContext);
         }

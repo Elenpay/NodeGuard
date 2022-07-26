@@ -151,7 +151,7 @@
         if (LoggedUser != null)
         {
             await FetchRequests();
-            if (ClaimsPrincipal != null && !ClaimsPrincipal.IsInRole(ApplicationUserRole.TrustedFinanceUser.ToString()))
+            if (ClaimsPrincipal != null && !ClaimsPrincipal.IsInRole(ApplicationUserRole.FinanceManager.ToString()))
             {
                 _hideApprove = true;
             }

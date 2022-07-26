@@ -7,12 +7,16 @@
 
 <PageTitle>FundsManager</PageTitle>
 
+
+<CascadingValue Value="_loggedUser">
+    <CascadingValue Value="_claimsPrincipal">
 <div class="page">
     <div class="sidebar">
         <NavMenu />
     </div>
 
     <main>
+
         <div class="top-row px-4 auth">
             <LoginDisplay />
         </div>
@@ -26,16 +30,14 @@
                         ShowProgressBar="true"
                         RemoveToastsOnNavigation="true" />
 
-        <CascadingValue Value="_loggedUser">
-            <CascadingValue Value="_claimsPrincipal">
                 <article class="content px-4">
                     @Body
                 </article>
-            </CascadingValue>
-        </CascadingValue>
+        
     </main>
 </div>
-
+    </CascadingValue>
+</CascadingValue>
 @code
 {
     private Task<AuthenticationState> AuthenticationStateTask { get; set; }
