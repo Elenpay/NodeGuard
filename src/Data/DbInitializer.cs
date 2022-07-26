@@ -1,17 +1,14 @@
 ﻿using System.Net;
 using FundsManager.Data.Models;
-using FundsManager.Data.Repositories;
 using FundsManager.Data.Repositories.Interfaces;
 using FundsManager.Helpers;
 using Microsoft.AspNetCore.Identity;
-using Microsoft.AspNetCore.Mvc.Formatters;
 using Microsoft.EntityFrameworkCore;
 using NBitcoin;
 using NBitcoin.RPC;
 using NBXplorer;
 using NBXplorer.DerivationStrategy;
 using NBXplorer.Models;
-using Newtonsoft.Json;
 using Key = FundsManager.Data.Models.Key;
 
 namespace FundsManager.Data
@@ -58,8 +55,9 @@ namespace FundsManager.Data
                     applicationDbContext.Database.Migrate();
                     isConnected = true;
                 }
-                catch
+                catch (Exception e)
                 {
+                    logger.LogError(e, "Error while migrating");
                 }
 
                 Thread.Sleep(1_000);
