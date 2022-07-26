@@ -1,12 +1,48 @@
-﻿<AuthorizeView>
+﻿@using System.Security.Claims
+@using Humanizer
+@using Microsoft.AspNetCore.Identity
+@inject UserManager<ApplicationUser> UserManager
+@inject NavigationManager NavigationManager
+<AuthorizeView>
     <Authorized>
+        @{
+            foreach (var role in _roles)
+            {
+                if (role == ApplicationUserRole.Superadmin.ToString("G"))
+                {
+                    <Badge Color="Color.Primary" TextColor="TextColor.White">@ApplicationUserRole.Superadmin.ToString("G").Humanize(LetterCasing.Title)</Badge>
+                }
+                else if (role == ApplicationUserRole.NodeManager.ToString("G"))
+                {
+                    <Badge Color="Color.Secondary" TextColor="TextColor.White">@ApplicationUserRole.NodeManager.ToString("G").Humanize(LetterCasing.Title)</Badge>
+                }
+                else
+                {
+                    <Badge Color="Color.Success" TextColor="TextColor.White">@ApplicationUserRole.FinanceManager.ToString("G").Humanize(LetterCasing.Title)</Badge>
+                }
+            }
+            <Button Color="Color.Info" Size="Size.Small" Clicked="@( () => NavigationManager.NavigateTo("/keys"))">My keys</Button>
+
+        }
+
         <a href="Identity/Account/Manage">Hello, @context.User.Identity?.Name!</a>
         <form method="post" action="Identity/Account/LogOut">
             <button type="submit" class="nav-link btn btn-link">Log out</button>
         </form>
     </Authorized>
     <NotAuthorized>
-        <a href="Identity/Account/Register">Register</a>
         <a href="Identity/Account/Login">Log in</a>
     </NotAuthorized>
 </AuthorizeView>
+@code
+{
+    [CascadingParameter]
+    private ApplicationUser LoggedUser { get; set; }
+
+    private List<string> _roles = new();
+
+    protected override async Task OnInitializedAsync()
+    {
+        if (LoggedUser != null) _roles = (await UserManager.GetRolesAsync(LoggedUser)).ToList();
+    }
+}

@@ -1,21 +1,375 @@
 ﻿@page "/wallets"
 @using System.Security.Claims
-
+@using FundsManager.Helpers
+@using Humanizer
 @inject IWalletRepository WalletRepository
-<h3>Wallet</h3>
+@inject IToastService ToastService
+@inject IApplicationUserRepository ApplicationUserRepository
+@inject IInternalWalletRepository InternalWalletRepository
+@inject IKeyRepository KeyRepository
+@attribute [Authorize(Roles = "NodeManager")]
 
+<h3>Funds Manager multisig wallets</h3>
+
+<Row>
+    <Column ColumnSize="ColumnSize.Is12">
+        <DataGrid TItem="Wallet"
+                  Data="@_wallets"
+                  Editable="true"
+                  EditMode="DataGridEditMode.Popup"
+                  Responsive="true"
+                  ResizeMode="TableResizeMode.Columns"
+                  UseInternalEditing="true"
+                  RowInserted="OnRowInserted"
+                  RowRemoving="OnRowRemoving"
+                  RowUpdated="OnRowUpdated"
+                  DetailRowStartsVisible="false"
+                  NewItemDefaultSetter="NewItemDefaultSetter">
+            <DataGridColumns>
+                <DataGridCommandColumn TItem="Wallet">
+                    <NewCommandTemplate>
+                        <Button Color="Color.Success" Clicked="@context.Clicked">New</Button>
+                    </NewCommandTemplate>
+                    <EditCommandTemplate>
+                        <Button Color="Color.Primary" Clicked="@context.Clicked">Edit</Button>
+                        <Button Color="Color.Info" Clicked="@(() => LoadAndOpenModal(context.Item))">Add key</Button>
+
+                    </EditCommandTemplate>
+                    <DeleteCommandTemplate>
+                        @*@<Button Color="Color.Danger" Clicked="@context.Clicked">Delete</Button>*@
+                    </DeleteCommandTemplate>
+
+                </DataGridCommandColumn>
+
+                <DataGridColumn TItem="Wallet" Editable="true" Field="@nameof(Wallet.Name)" Caption="@nameof(Wallet.Name)" Sortable="false" />
+                <DataGridColumn TItem="Wallet" Editable="true" Field="@nameof(Wallet.Description)" Caption="@nameof(Wallet.Description)" Sortable="false" />
+                <DataGridColumn TItem="Wallet" Editable="true" Field="@nameof(Wallet.IsArchived)" Caption="@nameof(Wallet.IsArchived).Humanize(LetterCasing.Sentence)" Sortable="false" />
+                <DataGridColumn TItem="Wallet" Editable="true" Field="@nameof(Wallet.IsCompromised)" Caption="@nameof(Wallet.IsCompromised).Humanize(LetterCasing.Sentence)" Sortable="false" />
+                <DataGridNumericColumn TItem="Wallet"  Editable="true" Field="@nameof(Wallet.MofN)" Caption="Treshold" Sortable="false" />
+                <DataGridColumn TItem="Wallet" Field="@nameof(Wallet.CreationDatetime)" Caption="Creation Date" Sortable="true" />
+                <DataGridColumn TItem="Wallet" Field="@nameof(Wallet.UpdateDatetime)" Caption="Update date" Sortable="true" />
+
+            </DataGridColumns>
+            <DetailRowTemplate>
+                @{
+                    var keys = (context as Wallet).Keys?.ToList() ?? new List<Key>();
+                    <ReadOnlyKeyDatagrid Keys="@keys"></ReadOnlyKeyDatagrid>
+
+                }
+            </DetailRowTemplate>
+
+        </DataGrid>
+    </Column>
+</Row>
+<Modal @ref="_modalRef">
+    <ModalContent Centered Size="ModalSize.ExtraLarge">
+        <ModalHeader>
+            <ModalTitle>Please select the key will be added this wallet</ModalTitle>
+            <CloseButton />
+        </ModalHeader>
+        <ModalBody>
+            <Field>
+                <FieldLabel>Select the Finance user(s) who will be a co-approver</FieldLabel>
+                <SelectList TItem="ApplicationUser"
+                            TValue="string"
+                            Data="@_financeManagers"
+                            TextField="@((item)=>item.UserName)"
+                            ValueField="@((item)=>item.Id)"
+                            SelectedValueChanged="@OnSelectedFinanceManager"
+                            DefaultItemText="Choose the approver" />
+
+            </Field>
+            @if (_selectedFinanceManager != null && _selectedFinanceManager.Keys.Any())
+            {
+                <Field>
+                    <FieldLabel>Select the Finance user(s) key</FieldLabel>
+                    <SelectList TItem="Key"
+                            TValue="int"
+                            Data="@_selectedFinanceManagerAvailableKeys"
+                            TextField="@((item)=> $"{item.Name}-{item.GetTruncatedXPUBString()}")"
+                            ValueField="@((item)=>item.Id)"
+                            SelectedValueChanged="@OnSelectedWalletKey"
+                            DefaultItemText="Choose the key of the manager" />
+                </Field>
+            }
+            else
+            {
+
+            }
+
+            <Field>
+                <FieldLabel>Selected keys, take into account that the FundsManager key will be always be added to your wallet by the system</FieldLabel>
+                <ReadOnlyKeyDatagrid Keys="@_selectedWalletKeysPlusInternalWalletKey"></ReadOnlyKeyDatagrid>
+
+            </Field>
+        </ModalBody>
+        <ModalFooter>
+            <Button Color="Color.Secondary" Clicked="@CloseModal">Cancel</Button>
+            <Button Color="Color.Primary" Clicked="@SaveAndCloseModal">Add</Button>
+        </ModalFooter>
+    </ModalContent>
+</Modal>
 
 @code {
 
     [CascadingParameter]
     private ApplicationUser? _loggedUser { get; set; }
 
-    
+
     [CascadingParameter]
-    private ClaimsPrincipal _claimsPrincipal {get; set; }
+    private ClaimsPrincipal _claimsPrincipal { get; set; }
+
+    private List<ApplicationUser> _financeManagers = new();
+
+    private Modal _modalRef;
+
+    private List<Wallet> _wallets = new();
+
+    private Wallet? _selectedWallet;
+
+    private ApplicationUser? _selectedFinanceManager;
+
+    private List<Key> _selectedWalletKeysPlusInternalWalletKey = new();
+    private List<Key> _selectedFinanceManagerAvailableKeys = new();
+    private Key? _selectedWalletKey;
+
     protected override async Task OnInitializedAsync()
     {
-       
+        if (_loggedUser != null)
+        {
+            await GetData();
+        }
+
+
+    }
+
+    private async Task GetData()
+    {
+
+        _wallets = await WalletRepository.GetAll();
+        var financeManagers = (await ApplicationUserRepository.GetUsersInRole(ApplicationUserRole.FinanceManager));
+        _financeManagers = financeManagers.Where(x => x.Keys.Any()).ToList();
+
+        if (_financeManagers.Any())
+            _selectedFinanceManager = financeManagers.FirstOrDefault();
+        if (_selectedFinanceManager?.Keys != null) 
+            _selectedFinanceManagerAvailableKeys = await FilterKeys(_selectedFinanceManager.Keys);
+    }
+
+
+    private async Task OnRowInserted(SavedRowItem<Wallet, Dictionary<string, object>> arg)
+    {
+        if (arg.Item == null) return;
+
+        var addResult = await WalletRepository.AddAsync(arg.Item);
+
+
+        if (addResult.Item1)
+        {
+            ToastService.ShowSuccess("Success");
+            await GetData();
+        }
+        else
+        {
+            ToastService.ShowError("Something went wrong");
+            _wallets.Remove(arg.Item);
+
+        }
+
+
+    }
+
+    private void NewItemDefaultSetter(Wallet obj)
+    {
+
+        obj.WalletAddressType = WalletAddressType.NativeSegwit;
+
+    }
+
+    private async Task OnRowRemoving(CancellableRowChange<Wallet> arg)
+    {
+        if (arg.Item != null)
+        {
+
+            var (result, message) = WalletRepository.Remove(arg.Item);
+
+            if (!result)
+            {
+
+                arg.Cancel = true;
+                ToastService.ShowError("Something went wrong");
+            }
+            else
+            {
+                ToastService.ShowSuccess("Success");
+                await GetData();
+            }
+        }
+    }
+
+
+    private async Task OnRowUpdated(SavedRowItem<Wallet, Dictionary<string, object>> arg)
+    {
+        if (arg.Item == null) return;
+
+        var updateResult = WalletRepository.Update(arg.Item);
+
+
+        if (updateResult.Item1)
+        {
+            ToastService.ShowSuccess("Success");
+        }
+        else
+        {
+            ToastService.ShowError("Something went wrong");
+        }
+
+        await GetData();
+    }
+
+    private async Task CloseModal()
+    {
+        await CleanModal();
+        await _modalRef.Close(CloseReason.UserClosing);
+    }
+
+    private async Task CleanModal()
+    {
+        _selectedWalletKeysPlusInternalWalletKey = new List<Key>();
+        _selectedFinanceManager = _financeManagers.FirstOrDefault();
+        _selectedFinanceManagerAvailableKeys = new();
+  
+        _selectedWallet = null;
+
+    }
+
+    private async Task LoadAndOpenModal(Wallet wallet)
+    {
+        await CleanModal();
+        _selectedWallet = await WalletRepository.GetById(wallet.Id);
+
+
+        if (_selectedWallet != null )
+        {
+            await GetData();
+
+            //Modal data
+            await GetModalDefaultData();
+
+
+            await _modalRef.Show();
+        }
+    }
+
+    private async Task SaveAndCloseModal()
+    {
+        if (_selectedWallet == null) return;
+
+        //Add the key
+
+        if (_selectedWalletKey != null)
+        {
+        
+            _selectedWallet.Keys = new List<Key>();
+            _selectedWallet.Keys.Add(_selectedWalletKey);
+
+            var updateResult = WalletRepository.Update(_selectedWallet);
+
+            if (updateResult.Item1)
+            {
+                ToastService.ShowSuccess("Key added");
+            }
+            else
+            {
+                ToastService.ShowError("Error while adding key...");
+                
+            }
+        }
+            
+
+        await CleanModal();
+
+        await GetData();
+
+        await _modalRef.Close(CloseReason.UserClosing);
+    }
+
+    private async Task OnSelectedFinanceManager(string applicationUserId)
+
+    {
+        if (!string.IsNullOrWhiteSpace(applicationUserId))
+        {
+            var applicationUser = await ApplicationUserRepository.GetById(applicationUserId);
+            _selectedFinanceManager = applicationUser;
+            if (_selectedFinanceManager != null && _selectedFinanceManager.Keys.Any() && _selectedWallet != null)
+            {
+                //Filter Keys
+                _selectedFinanceManagerAvailableKeys = await FilterKeys(_selectedFinanceManager.Keys);
+
+
+            }
+
+        }
+    }
+
+    private async Task<List<Key>>  FilterKeys(ICollection<Key> keys)
+    {
+        var result = new List<Key>();
+        if (_selectedWallet != null && _selectedWallet.Keys != null)
+        {
+           result = keys.Where(x => !x.IsArchived && !x.IsCompromised && !x.IsFundsManagerPrivateKey).Except(_selectedWallet.Keys)
+                .ToList();
+
+        }
+        else
+        {
+            result = keys.Where(x => !x.IsArchived && !x.IsCompromised && !x.IsFundsManagerPrivateKey)
+                .ToList();
+        }
+
+        return result;
+    }
+
+    private async Task OnSelectedWalletKey(int keyId)
+    {            
+
+        _selectedWalletKeysPlusInternalWalletKey = new List<Key>();
+
+        if (keyId > 0)
+        {
+            var selectedKey = await KeyRepository.GetById(keyId);
+
+            if (selectedKey != null)
+            {
+                _selectedWalletKey = selectedKey;
+
+                _selectedWalletKeysPlusInternalWalletKey.Add(selectedKey);
+
+            }
+         
+
+        }
+
+        await GetModalDefaultData();
+    }
+
+    private async Task GetModalDefaultData()
+    {
+        var currentInternalWalletKey = await KeyRepository.GetCurrentInternalWalletKey();
+
+        if (_selectedWallet != null)
+            _selectedWalletKeysPlusInternalWalletKey.AddRange(_selectedWallet.Keys.ToList());
+
+        //TODO What happens when the internal wallet changes? This is not correct, FUTURE FIX required
+        if (!_selectedWalletKeysPlusInternalWalletKey.Any(x => x.Id == currentInternalWalletKey.Id))
+        {
+            _selectedWalletKeysPlusInternalWalletKey.Add(currentInternalWalletKey);
+
+        }
+
     }
 
 }
+
+
+

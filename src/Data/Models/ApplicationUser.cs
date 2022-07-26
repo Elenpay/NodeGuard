@@ -4,19 +4,17 @@ namespace FundsManager.Data.Models
 {
     public enum ApplicationUserRole
     {
-        NodeManager, TrustedFinanceUser, Superadmin
+        NodeManager, FinanceManager, Superadmin
     }
+
     public class ApplicationUser : IdentityUser
     {
+        #region Relationships
 
-
-        #region Relationships 
         public ICollection<Key> Keys { get; set; }
         public ICollection<ChannelOperationRequest> ChannelOperationRequests { get; set; }
         public ICollection<Node> Nodes { get; set; }
 
-        #endregion
+        #endregion Relationships
     }
 }
-
-

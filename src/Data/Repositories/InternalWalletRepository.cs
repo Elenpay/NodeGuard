@@ -67,5 +67,14 @@ namespace FundsManager.Data.Repositories
 
             return _repository.Update(type, applicationDbContext);
         }
+
+        public async Task<InternalWallet?> GetCurrentInternalWallet()
+        {
+            using var applicationDbContext = _dbContextFactory.CreateDbContext();
+
+            var result = await applicationDbContext.InternalWallets.OrderByDescending(x => x.Id).FirstOrDefaultAsync();
+
+            return result;
+        }
     }
 }

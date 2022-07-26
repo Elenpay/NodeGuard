@@ -1,5 +1,6 @@
 ﻿using System.ComponentModel.DataAnnotations;
 using System.ComponentModel.DataAnnotations.Schema;
+using Humanizer;
 
 namespace FundsManager.Data.Models
 {
@@ -30,8 +31,15 @@ namespace FundsManager.Data.Models
 
         public ICollection<ChannelOperationRequest> ChannelOperationRequestsAsSource { get; set; }
         public ICollection<ChannelOperationRequest> ChannelOperationRequestsAsDestination { get; set; }
+
         public ICollection<ApplicationUser> Users { get; set; }
 
-        #endregion
+        #endregion Relationships
+
+        public string GetTruncatedPubKeyString()
+        {
+            return
+                $"{PubKey.Substring(0, PubKey.Length / 2).Truncate(10, Truncator.FixedLength, TruncateFrom.Right)}{PubKey.Substring(PubKey.Length / 2 + 1, 15).Truncate(10, Truncator.FixedLength, TruncateFrom.Left)}";
+        }
     }
 }

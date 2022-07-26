@@ -17,4 +17,11 @@ public interface IInternalWalletRepository
     (bool, string?) RemoveRange(List<InternalWallet> types);
 
     (bool, string?) Update(InternalWallet type);
+
+    /// <summary>
+    /// Gets the current internal wallet in use by the FundsManager (the newest based on ID)
+    /// </summary>
+    /// <returns></returns>
+    /// <returns></returns>
+    Task<InternalWallet?> GetCurrentInternalWallet();
 }
