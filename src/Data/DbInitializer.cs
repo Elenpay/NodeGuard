@@ -90,6 +90,21 @@ namespace FundsManager.Data
                         NormalizedEmail = adminUsername.ToUpper(),
                     };
                     _ = Task.Run(() => userManager.CreateAsync(adminUser, "Pass9299a8s.asa9")).Result;
+                    _ = Task.Run(() => userManager.AddToRoleAsync(adminUser, ApplicationUserRole.Superadmin.ToString())).Result;
+
+                    var financeUsername = "finance@clovrlabs.com";
+
+                    var financeUser = new ApplicationUser
+                    {
+                        NormalizedUserName = financeUsername.ToUpper(),
+                        UserName = financeUsername,
+                        EmailConfirmed = true,
+                        Email = financeUsername,
+                        NormalizedEmail = financeUsername.ToUpper(),
+                    };
+                    _ = Task.Run(() => userManager.CreateAsync(financeUser, "Pass9299a8s.asa9")).Result;
+                    _ = Task.Run(() => userManager.AddToRoleAsync(financeUser, ApplicationUserRole.TrustedFinanceUser.ToString())).Result;
+                }
 
                     //We are gods with super powers
                     var role1 = Task.Run(() => userManager.AddToRoleAsync(adminUser, ApplicationUserRole.FinanceManager.ToString("G"))).Result;
@@ -105,6 +120,8 @@ namespace FundsManager.Data
                 //TODO Nodes for regtest
 
                 //Testing node from Polar (ALICE) LND 0.15.0 -> check devnetwork.zip polar file
+                
+                //Testing node from Polar (ALICE) LND 0.14.3 -> check devnetwork.zip polar file
                 var nodes = Task.Run(() => nodeRepository.GetAll()).Result;
 
                 var alice = new Node
@@ -338,6 +355,7 @@ namespace FundsManager.Data
                     var roleCreation = Task.Run(() => roleManager.CreateAsync(identityRole)).Result;
                 }
             }
+            applicationDbContext.SaveChanges();
         }
 
         private static NewTransactionEvent WaitNbxplorerNotification(LongPollingNotificationSession evts, DerivationStrategyBase derivationStrategy)

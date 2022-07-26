@@ -7,6 +7,7 @@ public interface INodeRepository
     Task<Node?> GetById(int id);
     Task<Node?> GetByPubkey(string key);
     Task<List<Node>> GetAll();
+    Task<List<Node>> GetAllManaged();
     Task<(bool, string?)> AddAsync(Node type);
     Task<(bool, string?)> AddRangeAsync(List<Node> type);
     (bool, string?) Remove(Node type);

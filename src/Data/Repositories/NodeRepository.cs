@@ -1,5 +1,4 @@
-﻿using System.Security.Cryptography.X509Certificates;
-using FundsManager.Data.Models;
+﻿using FundsManager.Data.Models;
 using FundsManager.Data.Repositories.Interfaces;
 using Microsoft.EntityFrameworkCore;
 
@@ -38,7 +37,7 @@ namespace FundsManager.Data.Repositories
             return await applicationDbContext.Nodes
                 .Include(node => node.Users)
                 .ThenInclude(user => user.Keys)
-                .ThenInclude(key => key.Wallets)
+                .ThenInclude(keyObj => keyObj.Wallets)
                 .FirstOrDefaultAsync(x => x.PubKey == key);
         }
 
@@ -46,7 +45,18 @@ namespace FundsManager.Data.Repositories
         {
             await using var applicationDbContext = await _dbContextFactory.CreateDbContextAsync();
 
-            return await applicationDbContext.Nodes.ToListAsync();
+            return await applicationDbContext.Nodes
+                .Include(node => node.Users)
+                .Include(node => node.ChannelOperationRequestsAsSource)
+                .Include(node => node.ChannelOperationRequestsAsDestination)
+                .ToListAsync();
+        }
+        
+        public async Task<List<Node>> GetAllManaged()
+        {
+            await using var applicationDbContext = await _dbContextFactory.CreateDbContextAsync();
+
+            return await applicationDbContext.Nodes.Where(node => node.Endpoint != null).ToListAsync();
         }
 
         public async Task<(bool, string?)> AddAsync(Node type)
