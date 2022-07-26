@@ -45,9 +45,9 @@
                 <DataGridColumn TItem="Wallet" Editable="true" Field="@nameof(Wallet.Description)" Caption="@nameof(Wallet.Description)" Sortable="false" />
                 <DataGridColumn TItem="Wallet" Editable="true" Field="@nameof(Wallet.IsArchived)" Caption="@nameof(Wallet.IsArchived).Humanize(LetterCasing.Sentence)" Sortable="false" />
                 <DataGridColumn TItem="Wallet" Editable="true" Field="@nameof(Wallet.IsCompromised)" Caption="@nameof(Wallet.IsCompromised).Humanize(LetterCasing.Sentence)" Sortable="false" />
-                <DataGridNumericColumn TItem="Wallet" Editable="true" Field="@nameof(Wallet.MofN)" Caption="@nameof(Wallet.MofN).Humanize(LetterCasing.Sentence)" Sortable="false" />
-                <DataGridColumn TItem="Wallet" Field="@nameof(Wallet.CreationDatetime)" Caption="@nameof(Wallet.CreationDatetime)" Sortable="false" />
-                <DataGridColumn TItem="Wallet" Field="@nameof(Wallet.UpdateDatetime)" Caption="@nameof(Wallet.UpdateDatetime).Humanize(LetterCasing.Sentence)" Sortable="false" />
+                <DataGridNumericColumn TItem="Wallet"  Editable="true" Field="@nameof(Wallet.MofN)" Caption="Treshold" Sortable="false" />
+                <DataGridColumn TItem="Wallet" Field="@nameof(Wallet.CreationDatetime)" Caption="Creation Date" Sortable="true" />
+                <DataGridColumn TItem="Wallet" Field="@nameof(Wallet.UpdateDatetime)" Caption="Update date" Sortable="true" />
 
             </DataGridColumns>
             <DetailRowTemplate>
