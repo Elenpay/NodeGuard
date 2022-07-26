@@ -19,5 +19,10 @@ namespace FundsManager.Data.Models
         {
             CreationDatetime = DateTimeOffset.UtcNow;
         }
+
+        public override string ToString()
+        {
+            return $"{Id}";
+        }
     }
 }

@@ -16,16 +16,16 @@ namespace FundsManager.Data.Models
         /// </summary>
         public string Endpoint { get; set; }
 
-
         #region Relationships
 
         public ICollection<ChannelOperationRequest> ChannelOperationRequestsAsSource { get; set; }
         public ICollection<ChannelOperationRequest> ChannelOperationRequestsAsDestination { get; set; }
+
         public ICollection<ApplicationUser> Users { get; set; }
         /// <summary>
         /// Macaroon with channel admin permissions
         /// </summary>
 
-        #endregion
+        #endregion Relationships
     }
 }
