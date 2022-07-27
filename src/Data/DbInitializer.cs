@@ -76,13 +76,10 @@ namespace FundsManager.Data
                     nbXplorerNetwork);
                 var factory = new DerivationStrategyFactory(nbXplorerNetwork);
                 //Users
-                var adminUsername = "admin@clovrlabs.com";
-
-                var adminUser =
-                    applicationDbContext.ApplicationUsers.FirstOrDefault(x =>
-                        x.NormalizedEmail == adminUsername.ToUpper());
-                if (adminUser == null)
+                ApplicationUser? adminUser = null;
+                if (!applicationDbContext.ApplicationUsers.Any())
                 {
+                    var adminUsername = "admin@clovrlabs.com";
                     adminUser = new ApplicationUser
                     {
                         NormalizedUserName = adminUsername.ToUpper(),
@@ -92,8 +89,6 @@ namespace FundsManager.Data
                         NormalizedEmail = adminUsername.ToUpper(),
                     };
                     _ = Task.Run(() => userManager.CreateAsync(adminUser, "Pass9299a8s.asa9")).Result;
-                    _ = Task.Run(() => userManager.AddToRoleAsync(adminUser, ApplicationUserRole.Superadmin.ToString()))
-                        .Result;
 
                     //We are gods with super powers
                     var role1 = Task.Run(() =>
@@ -107,28 +102,48 @@ namespace FundsManager.Data
                     {
                         throw new Exception("Can't set role of admin user");
                     }
-                }
 
-                var financeUsername = "finance@clovrlabs.com";
-                var financeUser =
-                    applicationDbContext.ApplicationUsers.FirstOrDefault(x =>
-                        x.NormalizedEmail == financeUsername.ToUpper());
 
-                if (financeUser == null)
-                {
-                    financeUser = new ApplicationUser
+                    var nodeFellaUsername = "nodemanager@clovrlabs.com";
+                    var nodeFella = applicationDbContext.ApplicationUsers.FirstOrDefault(x =>
+                        x.NormalizedEmail == nodeFellaUsername.ToUpper());
+                    if (nodeFella == null)
                     {
-                        NormalizedUserName = financeUsername.ToUpper(),
-                        UserName = financeUsername,
-                        EmailConfirmed = true,
-                        Email = financeUsername,
-                        NormalizedEmail = financeUsername.ToUpper(),
-                    };
-                    _ = Task.Run(() => userManager.CreateAsync(financeUser, "Pass9299a8s.asa9")).Result;
-                    _ = Task.Run(() =>
-                        userManager.AddToRoleAsync(financeUser, ApplicationUserRole.FinanceManager.ToString())).Result;
-                }
+                        nodeFella = new ApplicationUser
+                        {
+                            NormalizedUserName = nodeFellaUsername.ToUpper(),
+                            UserName = nodeFellaUsername,
+                            EmailConfirmed = true,
+                            Email = nodeFellaUsername,
+                            NormalizedEmail = nodeFellaUsername.ToUpper(),
+                        };
+                        _ = Task.Run(() => userManager.CreateAsync(nodeFella, "Pass9299a8s.asa9")).Result;
+                        _ = Task.Run(() =>
+                                userManager.AddToRoleAsync(nodeFella, ApplicationUserRole.NodeManager.ToString("G")))
+                            .Result;
+                    }
 
+                    var financeUsername = "finance@clovrlabs.com";
+                    var financeUser =
+                        applicationDbContext.ApplicationUsers.FirstOrDefault(x =>
+                            x.NormalizedEmail == financeUsername.ToUpper());
+
+                    if (financeUser == null)
+                    {
+                        financeUser = new ApplicationUser
+                        {
+                            NormalizedUserName = financeUsername.ToUpper(),
+                            UserName = financeUsername,
+                            EmailConfirmed = true,
+                            Email = financeUsername,
+                            NormalizedEmail = financeUsername.ToUpper(),
+                        };
+                        _ = Task.Run(() => userManager.CreateAsync(financeUser, "Pass9299a8s.asa9")).Result;
+                        _ = Task.Run(() =>
+                                userManager.AddToRoleAsync(financeUser, ApplicationUserRole.FinanceManager.ToString()))
+                            .Result;
+                    }
+                }
                 //TODO Nodes for regtest
 
                 //Testing node from Polar (ALICE) LND 0.15.0 -> check devnetwork.zip polar file
@@ -197,8 +212,6 @@ namespace FundsManager.Data
                             XPUB = internalWallet.GetXPUB(nbXplorerNetwork),
                             IsFundsManagerPrivateKey = true
                         };
-
-                    var _ = Task.Run(() => keyRepository.AddAsync(internalWalletKey)).Result;
                 }
                 else
                 {
@@ -207,7 +220,7 @@ namespace FundsManager.Data
                     internalWalletKey = Task.Run(() => keyRepository.GetCurrentInternalWalletKey()).Result;
                 }
 
-                if (!applicationDbContext.Wallets.Any())
+                if (!applicationDbContext.Wallets.Any() && adminUser != null)
                 {
                     //Wallets
 
@@ -333,8 +346,8 @@ namespace FundsManager.Data
                         internalWallet.MnemonicString);
                 }
 
-                applicationDbContext.SaveChanges();
             }
+            applicationDbContext.SaveChanges();
         }
 
         private static void SetRoles(RoleManager<IdentityRole>? roleManager)

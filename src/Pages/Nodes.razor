@@ -1,5 +1,7 @@
 @page "/nodes"
 @using System.Security.Claims
+@attribute [Authorize(Roles = "NodeManager, Superadmin")]
+
 <PageTitle>Active Nodes</PageTitle>
 <h3>Nodes</h3>
 

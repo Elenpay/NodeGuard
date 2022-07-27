@@ -7,7 +7,7 @@
 @inject IApplicationUserRepository ApplicationUserRepository
 @inject IInternalWalletRepository InternalWalletRepository
 @inject IKeyRepository KeyRepository
-@attribute [Authorize(Roles = "NodeManager")]
+@attribute [Authorize(Roles = "NodeManager, Superadmin")]
 
 <h3>Funds Manager multisig wallets</h3>
 
