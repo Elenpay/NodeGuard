@@ -9,12 +9,12 @@ using NBXplorer;
 using NBXplorer.DerivationStrategy;
 using NBXplorer.Models;
 using System.Security.Cryptography;
+using FundsManager.Helpers;
 using Channel = FundsManager.Data.Models.Channel;
-using Key = FundsManager.Data.Models.Key;
 
 namespace FundsManager.Services
 {
-    public interface ILndService
+    public interface ILightningService
     {
         /// <summary>
         /// Opens a channel based on a presigned psbt with inputs, this method waits for I/O on the blockchain, therefore it can last its execution for minutes
@@ -42,16 +42,32 @@ namespace FundsManager.Services
         /// <param name="forceClose"></param>
         /// <returns></returns>
         public Task<bool> CloseChannel(ChannelOperationRequest channelOperationRequest, Node sourceNode, bool forceClose = false);
+
+        /// <summary>
+        /// Gets the wallet balance
+        /// </summary>
+        /// <param name="wallet"></param>
+        /// <returns></returns>
+        public Task<GetBalanceResponse?> GetWalletBalance(Wallet wallet);
+
+        /// <summary>
+        /// Gets the wallet balance
+        /// </summary>
+        /// <param name="wallet"></param>
+        /// <param name="derivationFeature"></param>
+        /// <returns></returns>
+        public Task<BitcoinAddress?> GetUnusedAddress(Wallet wallet,
+            NBXplorer.DerivationStrategy.DerivationFeature derivationFeature);
     }
 
     /// <summary>d
-    public class LndService : ILndService
+    public class LightningService : ILightningService
     {
-        private readonly ILogger<LndService> _logger;
+        private readonly ILogger<LightningService> _logger;
         private readonly IChannelRepository _channelRepository;
         private readonly IChannelOperationRequestRepository _channelOperationRequestRepository;
 
-        public LndService(ILogger<LndService> logger, IChannelRepository channelRepository,
+        public LightningService(ILogger<LightningService> logger, IChannelRepository channelRepository,
             IChannelOperationRequestRepository channelOperationRequestRepository)
         {
             _logger = logger;
@@ -96,7 +112,7 @@ namespace FundsManager.Services
 
             var pendingChannelIdHex = Convert.ToHexString(pendingChannelId);
 
-            var (network, nbxplorerClient) = GenerateNetwork();
+            var (network, nbxplorerClient) = GenerateNetwork(_logger);
             var txBuilder = network.CreateTransactionBuilder();
 
             //Derivation strategy for the multisig address based on its wallet
@@ -400,7 +416,7 @@ namespace FundsManager.Services
                 return null;
             }
 
-            var (nbXplorerNetwork, nbxplorerClient) = GenerateNetwork();
+            var (nbXplorerNetwork, nbxplorerClient) = GenerateNetwork(_logger);
 
             if (!(await nbxplorerClient.GetStatusAsync()).IsFullySynched)
             {
@@ -496,30 +512,19 @@ namespace FundsManager.Services
         {
             if (channelOperationRequest == null) throw new ArgumentNullException(nameof(channelOperationRequest));
 
-            var bitcoinExtPubKeys = channelOperationRequest?.Wallet?.Keys.Select(x => new BitcoinExtPubKey(x.XPUB,
-                    nbXplorerNetwork))
-                .ToList();
+            var walletKeys = channelOperationRequest?.Wallet?.Keys;
 
-            if (bitcoinExtPubKeys == null || !bitcoinExtPubKeys.Any())
+            if (channelOperationRequest.Wallet != null)
             {
-                _logger.LogError("No XPUBs for the wallet found");
-                return (null, null);
+                var multiSigDerivationStrategy = channelOperationRequest.Wallet.GetDerivationStrategy();
+
+                var internalWalletXPUB = new BitcoinExtPubKey(channelOperationRequest.Wallet.InternalWallet.GetXPUB(nbXplorerNetwork), nbXplorerNetwork);
+                var internalWalletDerivationStrategy = new DirectDerivationStrategy(internalWalletXPUB, true);
+
+                return (multiSigDerivationStrategy, internalWalletDerivationStrategy);
             }
 
-            var factory = new DerivationStrategyFactory(nbXplorerNetwork);
-
-            var multiSigDerivationStrategy
-                = factory.CreateMultiSigDerivationStrategy(bitcoinExtPubKeys.ToArray(),
-                channelOperationRequest!.Wallet.MofN,
-                new DerivationStrategyOptions
-                {
-                    ScriptPubKeyType = ScriptPubKeyType.Segwit
-                });
-
-            var internalWalletXPUB = new BitcoinExtPubKey(channelOperationRequest.Wallet.InternalWallet.GetXPUB(nbXplorerNetwork), nbXplorerNetwork);
-            var internalWalletDerivationStrategy = new DirectDerivationStrategy(internalWalletXPUB, true);
-
-            return (multiSigDerivationStrategy, internalWalletDerivationStrategy);
+            return (null, null);
         }
 
         /// <summary>
@@ -527,26 +532,14 @@ namespace FundsManager.Services
         /// </summary>
         /// <returns></returns>
         /// <exception cref="ArgumentNullException"></exception>
-        private (Network nbXplorerNetwork, ExplorerClient nbxplorerClient) GenerateNetwork()
+        public static (Network nbXplorerNetwork, ExplorerClient nbxplorerClient) GenerateNetwork(ILogger logger)
         {
-            var network = Environment.GetEnvironmentVariable("BITCOIN_NETWORK");
             var nbxplorerUri = Environment.GetEnvironmentVariable("NBXPLORER_URI") ??
                                throw new ArgumentNullException("Environment.GetEnvironmentVariable(\"NBXPLORER_URI\")");
 
-            if (network == null)
-            {
-                _logger.LogError("Bitcoin network not set");
-            }
-
             //Nbxplorer api client
 
-            var nbXplorerNetwork = network switch
-            {
-                "REGTEST" => Network.RegTest,
-                "MAINNET" => Network.Main,
-                "TESTNET" => Network.TestNet,
-                _ => Network.RegTest
-            };
+            var nbXplorerNetwork = CurrentNetworkHelper.GetCurrentNetwork();
 
             var provider = new NBXplorerNetworkProvider(nbXplorerNetwork.ChainName);
             var nbxplorerClient = new ExplorerClient(provider.GetFromCryptoCode(nbXplorerNetwork.NetworkSet.CryptoCode),
@@ -730,6 +723,44 @@ namespace FundsManager.Services
                     channelOperationRequest.Id);
                 result = false;
             }
+
+            return result;
+        }
+
+        public async Task<GetBalanceResponse?> GetWalletBalance(Wallet wallet)
+        {
+            if (wallet == null) throw new ArgumentNullException(nameof(wallet));
+            var client = GenerateNetwork(_logger);
+            GetBalanceResponse? getBalanceResponse = null;
+            try
+            {
+                getBalanceResponse = await client.nbxplorerClient.GetBalanceAsync(wallet.GetDerivationStrategy());
+            }
+            catch (Exception e)
+            {
+                _logger.LogError(e, "Error while getting wallet balance for wallet:{}", wallet.Id);
+            }
+
+            return getBalanceResponse;
+        }
+
+        public async Task<BitcoinAddress?> GetUnusedAddress(Wallet wallet,
+            DerivationFeature derivationFeature)
+        {
+            if (wallet == null) throw new ArgumentNullException(nameof(wallet));
+
+            var client = GenerateNetwork(_logger);
+            KeyPathInformation? keyPathInformation = null;
+            try
+            {
+                keyPathInformation = await client.nbxplorerClient.GetUnusedAsync(wallet.GetDerivationStrategy(), derivationFeature);
+            }
+            catch (Exception e)
+            {
+                _logger.LogError(e, "Error while getting wallet balance for wallet:{}", wallet.Id);
+            }
+
+            var result = keyPathInformation?.Address ?? null;
 
             return result;
         }
