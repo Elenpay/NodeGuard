@@ -92,8 +92,6 @@ namespace FundsManager.Data
                         NormalizedEmail = adminUsername.ToUpper(),
                     };
                     _ = Task.Run(() => userManager.CreateAsync(adminUser, "Pass9299a8s.asa9")).Result;
-                    _ = Task.Run(() => userManager.AddToRoleAsync(adminUser, ApplicationUserRole.Superadmin.ToString()))
-                        .Result;
 
                     //We are gods with super powers
                     var role1 = Task.Run(() =>
@@ -197,14 +195,12 @@ namespace FundsManager.Data
                             XPUB = internalWallet.GetXPUB(nbXplorerNetwork),
                             IsFundsManagerPrivateKey = true
                         };
-
-                    var _ = Task.Run(() => keyRepository.AddAsync(internalWalletKey)).Result;
                 }
                 else
                 {
                     internalWallet = applicationDbContext.InternalWallets.First();
                     //The last one by id
-                    internalWalletKey = Task.Run(() => keyRepository.GetCurrentInternalWalletKey()).Result;
+                    //internalWalletKey = Task.Run(() => keyRepository.GetCurrentInternalWalletKey()).Result;
                 }
 
                 if (!applicationDbContext.Wallets.Any())
@@ -267,7 +263,9 @@ namespace FundsManager.Data
                         },
                         Name = "Test wallet",
                         WalletAddressType = WalletAddressType.NativeSegwit,
-                        InternalWalletId = internalWallet.Id
+                        InternalWalletId = internalWallet.Id,
+                        IsFinalised = true,
+                        CreationDatetime = DateTimeOffset.Now
                     };
 
                     //Now we fund a multisig address of that wallet with the miner (polar)
@@ -332,9 +330,9 @@ namespace FundsManager.Data
                     logger.LogInformation("A new internal wallet seed has been generated: {}",
                         internalWallet.MnemonicString);
                 }
-
-                applicationDbContext.SaveChanges();
             }
+
+            applicationDbContext.SaveChanges();
         }
 
         private static void SetRoles(RoleManager<IdentityRole>? roleManager)

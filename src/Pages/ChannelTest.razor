@@ -2,6 +2,7 @@
 
 @using NBitcoin
 @using NBXplorer
+@using NSubstitute
 @using Transaction = NBitcoin.Transaction
 @inject INodeRepository NodeRepository
 @inject IWalletRepository WalletRepository
@@ -14,24 +15,69 @@
 
 <PageTitle>Channel testing</PageTitle>
 
-<h1>Open channel from Alice to Carol (20000 sats)</h1>
+<h3>Channel open tester</h3>
 
-<button class="btn btn-primary" @onclick="GeneratePSBT">Generate PSBT</button>
-<p>Template PSBT</p>
-<MemoEdit @bind-Text="@templatePSBTString" Rows="3"></MemoEdit>
-<p>Signed with Key 1 PSBT</p>
-@*<FileEdit Changed="@OnPSBT1FileUploadEnded"></FileEdit>*@
-<MemoEdit Text="@_psbtSign1String" TextChanged="OnPSBT1TextChanged" Rows="4"></MemoEdit>
-<p>Signed with Key 2 PSBT</p>
-@*<FileEdit Changed="@OnPSBT2FileUploadEnded"></FileEdit>*@
-<MemoEdit Text="@_psbtSign2String" TextChanged="OnPSBT2TextChanged" Rows="4"></MemoEdit>
-<button class="btn btn-primary" @onclick="CombinePSBT">Combine</button>
+    <Field>
+        <FieldLabel>Source node</FieldLabel>
+        <SelectList TItem="Node"
+                    TValue="int"
+                    Data="@_managedNodes"
+                    TextField="@((item) => item.Name)"
+                    ValueField="@((item) => item.Id)"
+                    SelectedValueChanged="@OnSelectedSourceNode"
+                    DefaultItemText="Choose the source node" />
+    </Field>
+    <Field>
+        <FieldLabel>
+            Destination Node
+        </FieldLabel>
+        <SelectList TItem="Node"
+                    TValue="int"
+                    Data="@_destinationNodes"
+                    TextField="@((item) => item.Name)"
+                    ValueField="@((item) => item.Id)"
+                    SelectedValueChanged="@OnSelectedDestinationNode"
+                    DefaultItemText="Choose the destination node" />
+    </Field>
+    <Field>
+        <FieldLabel>
+            Channel capacity (Sats)
+        </FieldLabel>
+        <NumericEdit TValue="long" @bind-Value="_satsAmount"></NumericEdit>
+    </Field>
+    <Field>
+        <button class="btn btn-primary" @onclick="GeneratePSBT">Generate PSBT</button>
+    </Field>
+    <Field>
+        <FieldLabel>
+            Template PSBT
+        </FieldLabel>
+        <MemoEdit @bind-Text="@templatePSBTString" Rows="3"></MemoEdit>
+    </Field>
+    <Field>
+        <FieldLabel>Signed with Key 1 PSBT</FieldLabel>
+        <MemoEdit Text="@_psbtSign1String" TextChanged="OnPSBT1TextChanged" Rows="4"></MemoEdit>
+    </Field>
 
-<p>Combined PSBT</p>
-<MemoEdit Text="@_combinedPsbtString" TextChanged="OnCombinedPSBTChanged" Rows="6"></MemoEdit>
-<button class="btn btn-primary" @onclick="OpenChannelRequest">Open channel</button>
-<button class="btn btn-danger" @onclick="CloseChannelRequest">Close channel</button>
+    <Field >
+        <FieldLabel>Signed with Key 2 PSBT</FieldLabel>
+        <MemoEdit Text="@_psbtSign2String" TextChanged="OnPSBT2TextChanged" Rows="4"></MemoEdit>
+    </Field>
+    
+    <Field>
+        <FieldLabel>Combine PSBT</FieldLabel>
+        <button class="btn btn-primary" @onclick="CombinePSBT">Combine</button>
 
+    </Field>
+    <Field>
+        <FieldLabel>Combined PSBT</FieldLabel>
+        <MemoEdit Text="@_combinedPsbtString" TextChanged="OnCombinedPSBTChanged" Rows="6"></MemoEdit>
+    </Field>
+   
+    <Field>
+        <button class="btn btn-primary" @onclick="OpenChannelRequest">Open channel</button>
+        <button class="btn btn-danger" @onclick="CloseChannelRequest">Close channel (last opened)</button>
+    </Field>
 
 @code {
 
@@ -49,49 +95,65 @@
 
     private int? _lastChannelId;
 
+    private List<Node> _managedNodes;
+    private List<Node> _destinationNodes;
+
+    private Node? _sourceNode;
+    private Node? _destinationNode;
+
+    private long _satsAmount = 20000;
+
+    protected override async Task OnInitializedAsync()
+    {
+        var nodes = await NodeRepository.GetAll();
+
+        _managedNodes = nodes.Where(x => x.IsManaged).ToList();
+        _destinationNodes = nodes;
+    }
+
     private async Task OpenChannelRequest()
     {
         var nodes = await NodeRepository.GetAll();
 
-        var carol = nodes.FirstOrDefault(x => x.Name == "Carol");
-        var alice = nodes.FirstOrDefault(x => x.Name == "Alice");
-        var defaultWallet = (await WalletRepository.GetAll()).First();
-        var channelOperationRequest = await ChannelOperationRequest(defaultWallet, carol, alice);
-
-        if (_combinedPsbt != null)
+            var defaultWallet = (await WalletRepository.GetAll()).First();
+        if (_sourceNode != null && _destinationNode != null)
         {
-            //Hack to prevent PK issue -> this would not happen on a normal UI
-            var temp = channelOperationRequest.Wallet;
+            var channelOperationRequest = await ChannelOperationRequest(defaultWallet, _sourceNode, _destinationNode);
 
-            channelOperationRequest.Wallet = null;
-
-
-            var result = await ChannelOperationRequestRepository.AddAsync(channelOperationRequest);
-
-            channelOperationRequest.Wallet = temp;
-            if (result.Item1)
+            if (_combinedPsbt != null)
             {
-                var channelresult = await LightningService.OpenChannel(channelOperationRequest, alice, carol, _combinedPsbt);
+                //Hack to prevent PK issue -> this would not happen on a normal UI
+                var temp = channelOperationRequest.Wallet;
 
-                if (channelresult)
+                channelOperationRequest.Wallet = null;
+
+
+                var result = await ChannelOperationRequestRepository.AddAsync(channelOperationRequest);
+
+                channelOperationRequest.Wallet = temp;
+                if (result.Item1)
                 {
-                    toastService.ShowSuccess("Channel created!");
-                    _lastChannelId = channelOperationRequest.ChannelId;
-                }
-                else
-                {
-                    toastService.ShowError("Channel creation failed!");
+                    var channelresult = await LightningService.OpenChannel(channelOperationRequest, _sourceNode, _destinationNode, _combinedPsbt);
+
+                    if (channelresult)
+                    {
+                        toastService.ShowSuccess("Channel created!");
+                        _lastChannelId = channelOperationRequest.ChannelId;
+                    }
+                    else
+                    {
+                        toastService.ShowError("Channel creation failed!");
+                    }
+
+
                 }
 
 
             }
-
-
         }
-
     }
 
-    private async Task<ChannelOperationRequest> ChannelOperationRequest(Wallet defaultWallet, Node? carol, Node? alice)
+    private async Task<ChannelOperationRequest> ChannelOperationRequest(Wallet defaultWallet, Node? source, Node? destination)
     {
         var user = (await ApplicationUserRepository.GetAll()).First();
         var channelOperationRequest = new ChannelOperationRequest
@@ -102,8 +164,8 @@
                 Wallet = defaultWallet,
                 WalletId = defaultWallet.Id,
 
-                DestNodeId = carol.Id,
-                SourceNodeId = alice.Id,
+                DestNodeId = source.Id,
+                SourceNodeId = destination.Id,
                 UserId = user.Id,
                 //User = user
             };
@@ -119,7 +181,7 @@
 
         var channelOperationRequest = new ChannelOperationRequest
             {
-                SatsAmount = 200000,
+                SatsAmount = _satsAmount,
                 RequestType = OperationRequestType.Open,
                 WalletId = defaultWallet.Id,
                 Wallet = defaultWallet,
@@ -133,45 +195,14 @@
         StateHasChanged();
     }
 
-    private async Task OnPSBT1FileUploadEnded(FileChangedEventArgs arg)
-    {
-        var fileEntry = arg.Files.FirstOrDefault();
-        if (fileEntry != null)
-        {
-            using MemoryStream ms = new MemoryStream();
-            await fileEntry.OpenReadStream().CopyToAsync(ms);
-
-            var bytes = ms.ToArray();
-
-            _psbtSign1 = PSBT.Load(bytes, Network.RegTest);
-
-            _psbtSign1String = _psbtSign1.ToBase64();
-        }
-
-
-    }
-
-    private async Task OnPSBT2FileUploadEnded(FileChangedEventArgs arg)
-    {
-
-        var fileEntry = arg.Files.FirstOrDefault();
-        if (fileEntry != null)
-        {
-            using var reader = new StreamReader(fileEntry.OpenReadStream());
-            var hexOrBase64 = await reader.ReadToEndAsync();
-
-            _psbtSign2String = hexOrBase64;
-            _psbtSign2 = PSBT.Parse(hexOrBase64, Network.RegTest);
-        }
-
-    }
-
     private async Task CombinePSBT()
     {
         if (_psbtSign1 != null && _psbtSign2 != null)
         {
             _combinedPsbt = _psbtSign1.Combine(_psbtSign2);
             _combinedPsbtString = _combinedPsbt.ToBase64();
+
+            toastService.ShowSuccess("PSBT Combined");
 
         }
     }
@@ -279,6 +310,17 @@
 
     }
 
+
+    private async Task OnSelectedSourceNode(int arg)
+    {
+        _sourceNode = _managedNodes.FirstOrDefault(x => x.Id == arg);
+
+    }
+    private async Task OnSelectedDestinationNode(int arg)
+    {
+        _destinationNode = _destinationNodes.FirstOrDefault(x => x.Id == arg);
+
+    }
 
 }
 
