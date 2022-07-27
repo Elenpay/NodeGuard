@@ -55,7 +55,11 @@
                       
                     </EditCommandTemplate>
                     <DeleteCommandTemplate>
-                        @*@<Button Color="Color.Danger" Clicked="@context.Clicked">Delete</Button>*@
+                        @if (!context.Item.IsFinalised)
+                        {
+                            <Button Color="Color.Danger" Clicked="@context.Clicked">Delete</Button>
+                        }
+                        @*TODO Archive features*@
                     </DeleteCommandTemplate>
 
                 </DataGridCommandColumn>
