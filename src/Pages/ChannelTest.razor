@@ -4,7 +4,7 @@
 @using NBXplorer
 @inject INodeRepository NodeRepository
 @inject IWalletRepository WalletRepository
-@inject ILndService LndService
+@inject ILightningService LightningService
 @inject IChannelOperationRequestRepository ChannelOperationRequestRepository
 @inject IInternalWalletRepository InternalWalletRepository
 @inject IApplicationUserRepository ApplicationUserRepository
@@ -70,7 +70,7 @@
             channelOperationRequest.Wallet = temp;
             if (result.Item1)
             {
-                var channelresult = await LndService.OpenChannel(channelOperationRequest, alice, carol, _combinedPsbt);
+                var channelresult = await LightningService.OpenChannel(channelOperationRequest, alice, carol, _combinedPsbt);
 
                 if (channelresult)
                 {
@@ -126,7 +126,7 @@
             };
 
 
-        templatePSBT = await LndService.GenerateTemplatePSBT(channelOperationRequest);
+        templatePSBT = await LightningService.GenerateTemplatePSBT(channelOperationRequest);
         templatePSBTString = templatePSBT.ToBase64();
 
         StateHasChanged();
@@ -260,7 +260,7 @@
 
             if (result.Item1)
             {
-                var channelresult = await LndService.CloseChannel(channelOperationRequest, alice, false);
+                var channelresult = await LightningService.CloseChannel(channelOperationRequest, alice, false);
 
                 if (channelresult)
                 {

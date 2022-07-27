@@ -1,6 +1,8 @@
 ﻿using FundsManager.Data.Models;
 using FundsManager.Data.Repositories.Interfaces;
+using FundsManager.Services;
 using Microsoft.EntityFrameworkCore;
+using NBXplorer.Models;
 
 namespace FundsManager.Data.Repositories
 {
@@ -64,6 +66,20 @@ namespace FundsManager.Data.Repositories
             //We need to persist before updating a m-of-n relationship
             var updateResult = Update(type);
 
+            //We tell nbxplorer to track this
+
+            var (_, client) = LightningService.GenerateNetwork(_logger);
+
+            try
+            {
+                await client.TrackAsync(type.GetDerivationStrategy());
+            }
+            catch (Exception e)
+            {
+                _logger.LogError(e, "Error while setting nbxplorer tracking on wallet:{}", type.Id);
+                return (false, "Error while setting nbxplorer tracking on wallet");
+            }
+
             return (addResult.Item1 && updateResult.Item1, addResult.Item2 + updateResult.Item2);
         }
 
@@ -95,6 +111,40 @@ namespace FundsManager.Data.Repositories
             type.SetUpdateDatetime();
 
             return _repository.Update(type, applicationDbContext);
+        }
+
+        public async Task<(bool, string?)> FinaliseWallet(Wallet selectedWalletToFinalise)
+        {
+            if (selectedWalletToFinalise == null) throw new ArgumentNullException(nameof(selectedWalletToFinalise));
+            await using var applicationDbContext = _dbContextFactory.CreateDbContext();
+
+            (bool, string?) result = (true, null);
+
+            selectedWalletToFinalise.IsFinalised = true;
+            try
+            {
+                var (_, nbxplorerClient) = LightningService.GenerateNetwork(_logger);
+
+                await nbxplorerClient.TrackAsync(selectedWalletToFinalise.GetDerivationStrategy());
+
+                selectedWalletToFinalise.Keys = null;
+                selectedWalletToFinalise.ChannelOperationRequestsAsSource = null;
+
+                var updateResult = Update(selectedWalletToFinalise);
+
+                if (updateResult.Item1 == false)
+                {
+                    result = (false, "Error while finalising wallet");
+                }
+            }
+            catch (Exception e)
+            {
+                _logger.LogError(e, "Error while finalising wallet:{}", selectedWalletToFinalise.Id);
+
+                result = (false, "Error while finalising wallet");
+            }
+
+            return result;
         }
     }
 }
