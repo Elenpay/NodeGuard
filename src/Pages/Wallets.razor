@@ -1,15 +1,19 @@
-﻿@page "/wallets"
+@page "/wallets"
 @using System.Security.Claims
 @using FundsManager.Helpers
 @using Humanizer
+@using NBitcoin
+@using NBXplorer.DerivationStrategy
+@using Key = FundsManager.Data.Models.Key
 @inject IWalletRepository WalletRepository
 @inject IToastService ToastService
 @inject IApplicationUserRepository ApplicationUserRepository
 @inject IInternalWalletRepository InternalWalletRepository
 @inject IKeyRepository KeyRepository
+@inject ILightningService LightningService
 @attribute [Authorize(Roles = "NodeManager, Superadmin")]
 
-<h3>Funds Manager multisig wallets</h3>
+<h3>Treasury multisig wallets</h3>
 
 <Row>
     <Column ColumnSize="ColumnSize.Is12">
@@ -24,7 +28,11 @@
                   RowRemoving="OnRowRemoving"
                   RowUpdated="OnRowUpdated"
                   DetailRowStartsVisible="false"
-                  NewItemDefaultSetter="NewItemDefaultSetter">
+                  NewItemDefaultSetter="NewItemDefaultSetter"
+                  ShowPager="true"
+                  ShowPageSizes="true"
+                  PageSize="25"
+                  Filterable="true">
             <DataGridColumns>
                 <DataGridCommandColumn TItem="Wallet">
                     <NewCommandTemplate>
@@ -32,20 +40,49 @@
                     </NewCommandTemplate>
                     <EditCommandTemplate>
                         <Button Color="Color.Primary" Clicked="@context.Clicked">Edit</Button>
-                        <Button Color="Color.Info" Clicked="@(() => LoadAndOpenModal(context.Item))">Add key</Button>
 
+                        @if (context.Item.IsFinalised)
+                        {
+                            <Button Color="Color.Secondary" Clicked="@(() => LoadAndOpenTextModalBalance(context.Item))">Balance</Button>
+                            <Button Color="Color.Secondary" Clicked="@(() => LoadAndOpenModalTextModalUnusedAddress(context.Item))">Get address</Button>
+                        }
+                        else
+                        {
+                            <Button Color="Color.Info" Clicked="@(() => LoadAndOpenModal(context.Item))">Add key</Button>
+                            <Button Color="Color.Warning" Clicked="@(() => LoadAndOpenFinaliseTextModal(context.Item))">Finalise</Button>
+
+                        }
+                      
                     </EditCommandTemplate>
                     <DeleteCommandTemplate>
-                        @*@<Button Color="Color.Danger" Clicked="@context.Clicked">Delete</Button>*@
+                        @if (!context.Item.IsFinalised)
+                        {
+                            <Button Color="Color.Danger" Clicked="@context.Clicked">Delete</Button>
+                        }
+                        @*TODO Archive features*@
                     </DeleteCommandTemplate>
 
                 </DataGridCommandColumn>
 
                 <DataGridColumn TItem="Wallet" Editable="true" Field="@nameof(Wallet.Name)" Caption="@nameof(Wallet.Name)" Sortable="false" />
                 <DataGridColumn TItem="Wallet" Editable="true" Field="@nameof(Wallet.Description)" Caption="@nameof(Wallet.Description)" Sortable="false" />
-                <DataGridColumn TItem="Wallet" Editable="true" Field="@nameof(Wallet.IsArchived)" Caption="@nameof(Wallet.IsArchived).Humanize(LetterCasing.Sentence)" Sortable="false" />
-                <DataGridColumn TItem="Wallet" Editable="true" Field="@nameof(Wallet.IsCompromised)" Caption="@nameof(Wallet.IsCompromised).Humanize(LetterCasing.Sentence)" Sortable="false" />
-                <DataGridNumericColumn TItem="Wallet"  Editable="true" Field="@nameof(Wallet.MofN)" Caption="Treshold" Sortable="false" />
+                <DataGridColumn TItem="Wallet" Editable="false" Field="@nameof(Wallet.IsFinalised)" Caption="Finalised" Sortable="false" />
+                <DataGridColumn TItem="Wallet" Editable="true" Field="@nameof(Wallet.IsArchived)" Caption="Archived" Sortable="false" />
+                <DataGridColumn TItem="Wallet" Editable="true" Field="@nameof(Wallet.IsCompromised)" Caption="Compromised" Sortable="false" />
+                <DataGridNumericColumn TItem="Wallet" Decimals="0" Editable="true" Field="@nameof(Wallet.MofN)" Caption="Threshold" Sortable="false">
+                    <EditTemplate>
+                        @if (!context.Item.IsFinalised)
+                        {
+                            <NumericEdit TValue="int" Value="@((int)context.CellValue)" ValueChanged="(value) => {context.CellValue = value; }" ></NumericEdit>
+
+                        }
+                        else
+                        {
+                            <NumericEdit TValue="int" Value="@((int)context.CellValue)" ValueChanged="(value) => {context.CellValue = value; }" Disabled="true" ></NumericEdit>
+
+                        }
+                    </EditTemplate>
+                </DataGridNumericColumn>
                 <DataGridColumn TItem="Wallet" Field="@nameof(Wallet.CreationDatetime)" Caption="Creation Date" Sortable="true" />
                 <DataGridColumn TItem="Wallet" Field="@nameof(Wallet.UpdateDatetime)" Caption="Update date" Sortable="true" />
 
@@ -79,28 +116,36 @@
                             DefaultItemText="Choose the approver" />
 
             </Field>
-            @if (_selectedFinanceManager != null && _selectedFinanceManager.Keys.Any())
+            @if (_selectedFinanceManager != null && _selectedFinanceManagerAvailableKeys.Any())
             {
                 <Field>
                     <FieldLabel>Select the Finance user(s) key</FieldLabel>
                     <SelectList TItem="Key"
-                            TValue="int"
-                            Data="@_selectedFinanceManagerAvailableKeys"
-                            TextField="@((item)=> $"{item.Name}-{item.GetTruncatedXPUBString()}")"
-                            ValueField="@((item)=>item.Id)"
-                            SelectedValueChanged="@OnSelectedWalletKey"
-                            DefaultItemText="Choose the key of the manager" />
+                                TValue="int"
+                                Data="@_selectedFinanceManagerAvailableKeys"
+                                TextField="@((item)=> $"{item.Name}-{item.GetTruncatedXPUBString()}")"
+                                ValueField="@((item)=>item.Id)"
+                                SelectedValueChanged="@OnSelectedWalletKey"
+                                DefaultItemText="Choose the key of the manager" />
                 </Field>
             }
             else
             {
-
+                <Alert Color="Color.Warning" Visible>
+                    <AlertMessage>No keys found!</AlertMessage>
+                    <AlertDescription>No keys are available for this Finance Manager, either are archived/compromised or already used.</AlertDescription>
+                    
+                </Alert>
+                
             }
 
             <Field>
-                <FieldLabel>Selected keys, take into account that the FundsManager key will be always be added to your wallet by the system</FieldLabel>
+                <Alert Color="Color.Info" Visible>
+                    <AlertMessage>Selected keys!</AlertMessage>
+                    <AlertDescription>Take into account that the FundsManager key will be always be added to your wallet by the system</AlertDescription>
+                    
+                </Alert>
                 <ReadOnlyKeyDatagrid Keys="@_selectedWalletKeysPlusInternalWalletKey"></ReadOnlyKeyDatagrid>
-
             </Field>
         </ModalBody>
         <ModalFooter>
@@ -110,6 +155,36 @@
     </ModalContent>
 </Modal>
 
+<Modal @ref="_textModalRef">
+    <ModalContent Centered Size="ModalSize.Large">
+        <ModalHeader>
+            <ModalTitle>@_textModalTitle</ModalTitle>
+            <CloseButton />
+        </ModalHeader>
+        <ModalBody>
+            <p>@_textModalContent</p>
+        </ModalBody>
+        <ModalFooter>
+            <Button Color="Color.Secondary" Clicked="@CloseTextModal">Close</Button>
+        </ModalFooter>
+    </ModalContent>
+</Modal>
+<Modal @ref="_finaliseModalRef">
+    <ModalContent Centered Size="ModalSize.Default">
+        <ModalHeader>
+            <ModalTitle>Do you want to finalise this wallet?</ModalTitle>
+            <CloseButton />
+        </ModalHeader>
+        <ModalBody>
+            <p>If you confirm to finalise this wallet, it will become a ready-to-use wallet for the system but at the same time you won't be allowed to update it in terms of keys, thresholds and other configuration parameters</p>
+        </ModalBody>
+        <ModalFooter>
+            <Button Color="Color.Secondary" Clicked="@CloseAndCleanFinaliseModal">Close</Button>
+            <Button Color="Color.Primary" Clicked="@FinaliseWallet">Finalise</Button>
+
+        </ModalFooter>
+    </ModalContent>
+</Modal>
 @code {
 
     [CascadingParameter]
@@ -132,6 +207,13 @@
     private List<Key> _selectedWalletKeysPlusInternalWalletKey = new();
     private List<Key> _selectedFinanceManagerAvailableKeys = new();
     private Key? _selectedWalletKey;
+
+    private Modal _textModalRef;
+    private string _textModalTitle = string.Empty;
+    private string _textModalContent = string.Empty;
+
+    private Modal _finaliseModalRef;
+    private Wallet? _selectedWalletToFinalise;
 
     protected override async Task OnInitializedAsync()
     {
@@ -366,6 +448,105 @@
             _selectedWalletKeysPlusInternalWalletKey.Add(currentInternalWalletKey);
 
         }
+
+    }
+
+    private async Task CleanTextModal()
+    {
+        _textModalContent = string.Empty;
+        _textModalTitle = string.Empty;
+    }
+
+    private async Task CloseTextModal()
+    {
+        await CleanTextModal();
+        
+        await _textModalRef.Close(CloseReason.UserClosing);
+    }
+
+    private async Task LoadAndOpenTextModalBalance(Wallet wallet)
+    {
+        await CleanTextModal();
+        if (wallet != null)
+        {
+            var balance = await LightningService.GetWalletBalance(wallet);
+
+            if (balance != null)
+            {
+                _textModalTitle = $"Wallet: {wallet.Name} On-chain Balance";
+                _textModalContent = $"Confirmed: {((Money) balance.Confirmed).ToUnit(MoneyUnit.BTC)} BTC Unconfirmed: {((Money) balance.Unconfirmed).ToUnit(MoneyUnit.BTC)} BTC";
+
+                await _textModalRef.Show();
+            }
+            else
+            {
+                ToastService.ShowError("Error while getting the wallet on-chain balance");
+            }
+        }
+       
+
+    }
+
+    private async Task LoadAndOpenModalTextModalUnusedAddress(Wallet wallet)
+    {
+        
+        await CleanTextModal();
+        if (wallet != null)
+        {
+            var bitcoinAddress = await LightningService.GetUnusedAddress(wallet, DerivationFeature.Deposit);
+
+            if (bitcoinAddress != null)
+            {
+                _textModalTitle = $"Unused BTC Address for funding this wallet";
+                _textModalContent = bitcoinAddress.ToString();
+                await _textModalRef.Show();
+            }
+            else
+            {
+                ToastService.ShowError("Error while getting the wallet on-chain balance");
+            }
+        }
+    }
+
+    private async Task LoadAndOpenFinaliseTextModal(Wallet wallet)
+    {
+
+        _selectedWalletToFinalise = wallet;
+
+        await _finaliseModalRef.Show();
+
+    }
+
+    private async Task FinaliseWallet()
+    {
+        if (_selectedWalletToFinalise == null || _selectedWalletToFinalise.IsFinalised)
+            return;
+
+        
+        var result = await WalletRepository.FinaliseWallet(_selectedWalletToFinalise);
+
+        if (result.Item1)
+        {
+            ToastService.ShowSuccess("Success");
+        }
+        else
+        {
+            ToastService.ShowError("Error while marking wallet as finalised");
+
+        }
+
+        _selectedWalletToFinalise = null;
+
+        _finaliseModalRef.Close(CloseReason.UserClosing);
+
+        await GetData();
+    }
+
+    private async Task CloseAndCleanFinaliseModal()
+    {
+        
+        _selectedWalletToFinalise = null;
+        await _finaliseModalRef.Close(CloseReason.UserClosing);
 
     }
 

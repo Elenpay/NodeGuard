@@ -217,7 +217,7 @@ namespace FundsManager.Data
                 {
                     internalWallet = applicationDbContext.InternalWallets.First();
                     //The last one by id
-                    internalWalletKey = Task.Run(() => keyRepository.GetCurrentInternalWalletKey()).Result;
+                    //internalWalletKey = Task.Run(() => keyRepository.GetCurrentInternalWalletKey()).Result;
                 }
 
                 if (!applicationDbContext.Wallets.Any() && adminUser != null)
@@ -280,7 +280,9 @@ namespace FundsManager.Data
                         },
                         Name = "Test wallet",
                         WalletAddressType = WalletAddressType.NativeSegwit,
-                        InternalWalletId = internalWallet.Id
+                        InternalWalletId = internalWallet.Id,
+                        IsFinalised = true,
+                        CreationDatetime = DateTimeOffset.Now
                     };
 
                     //Now we fund a multisig address of that wallet with the miner (polar)
@@ -345,8 +347,8 @@ namespace FundsManager.Data
                     logger.LogInformation("A new internal wallet seed has been generated: {}",
                         internalWallet.MnemonicString);
                 }
-
             }
+
             applicationDbContext.SaveChanges();
         }
 

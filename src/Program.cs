@@ -21,7 +21,7 @@ namespace FundsManager
     {
         public static void Main(string[] args)
         {
-            //AppContext.SetSwitch("Npgsql.EnableLegacyTimestampBehavior", true);
+            AppContext.SetSwitch("Npgsql.EnableLegacyTimestampBehavior", true);
 
             var builder = WebApplication.CreateBuilder(args);
 
@@ -54,7 +54,7 @@ namespace FundsManager
             builder.Services.AddBlazoredToast();
 
             //Service DI
-            builder.Services.AddTransient<ILndService, LndService>();
+            builder.Services.AddTransient<ILightningService, LightningService>();
 
             //DbContext
             var connectionString = Environment.GetEnvironmentVariable("POSTGRES_CONNECTIONSTRING") ?? "Host=localhost;Port=35433;Database=fundsmanager;Username=rw_dev;Password=rw_dev";
