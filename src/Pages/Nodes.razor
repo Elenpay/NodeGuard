@@ -1,7 +1,8 @@
 @page "/nodes"
 @using System.Security.Claims
-@attribute [Authorize(Roles = "NodeManager, Superadmin")]
+@using System.Threading
 
+@attribute [Authorize(Roles = "FinanceManager, NodeManager, Superadmin")]
 <PageTitle>Active Nodes</PageTitle>
 <h3>Nodes</h3>
 
@@ -9,7 +10,7 @@
     <Column ColumnSize="ColumnSize.Is12">
         <DataGrid TItem="Node"
                   Data="@_nodes"
-                  Editable="true"
+                  Editable="@_editable"
                   EditMode="DataGridEditMode.Form"
                   @bind-SelectedRow="@_selectedNode"
                   Responsive="true"
@@ -33,7 +34,11 @@
                 <DataGridColumn TItem="Node" Editable="true" Field="@nameof(Node.Name)" Caption="@nameof(Node.Name)" Sortable="false" />
                 <DataGridColumn TItem="Node" Editable="true" Field="@nameof(Node.PubKey)" Caption="@nameof(Node.PubKey)" Sortable="false">
                     <DisplayTemplate>
-                        @context.GetTruncatedPubKeyString()
+                        @context.GetTruncatedPubKeyString()&nbsp;
+                        @{State state = new("Copy", "oi oi-clipboard");}
+                        <Button class="btn btn-primary" @onclick="@(() => CopyToClipboard(context.PubKey))" disabled=@state.IsDisabled>
+                            <i class="@state.ClassName"></i> @state.Text
+                        </Button>
                     </DisplayTemplate>
                 </DataGridColumn>
                 <DataGridColumn TItem="Node" Editable="true" Field="@nameof(Node.Description)" Caption="@nameof(Node.Description)" Sortable="false" />
@@ -72,9 +77,7 @@
                      Sortable="false"
                      ShowCaptions="true">
                <DataGridColumn Field="@nameof(ApplicationUser.Id)" Caption="@nameof(ApplicationUser.Id)" />
-               <DataGridColumn Field="@nameof(ApplicationUser.Email)" Caption="@nameof(ApplicationUser.Email)" />
                <DataGridColumn Field="@nameof(ApplicationUser.UserName)" Caption="@nameof(ApplicationUser.UserName)" />
-               <DataGridColumn Field="@nameof(ApplicationUser.PhoneNumber)" Caption="@nameof(ApplicationUser.PhoneNumber)" />
            </DataGrid>
         </ModalBody>
         <ModalFooter>
@@ -84,11 +87,16 @@
 </Modal>
 @inject INodeRepository NodeRepository
 @inject IToastService ToastService;
+@inject ClipboardService ClipboardService
+@implements IDisposable
 @code {
     private List<Node>? _nodes;
     private Node? _selectedNode;
     private bool _modalVisible;
     private bool _hideDelete = true;
+    private bool _editable;
+    
+    CancellationTokenSource cts = new();
 
     [CascadingParameter]
     private ApplicationUser? LoggedUser { get; set; }
@@ -101,8 +109,12 @@
         if (LoggedUser != null)
         {
             _nodes = await NodeRepository.GetAll();
+            // Add button for copy key (js interop passing the content of the strings)
+            // https://www.meziantou.net/copying-text-to-clipboard-in-a-blazor-application.htm
+            
             if (ClaimsPrincipal != null && ClaimsPrincipal.IsInRole(ApplicationUserRole.Superadmin.ToString()))
             {
+                _editable = true;
                 _hideDelete = false;
             }
         }
@@ -133,7 +145,7 @@
     }
     
     
-    private async Task OnRowDeleted(CancellableRowChange<Node> node)
+    private void OnRowDeleted(CancellableRowChange<Node> node)
     {
         if (node.Item != null)
         {
@@ -151,7 +163,7 @@
     }
 
     
-    private async Task OnRowUpdated(SavedRowItem<Node, Dictionary<string, object>> arg)
+    private void OnRowUpdated(SavedRowItem<Node, Dictionary<string, object>> arg)
     {
         if (arg.Item == null)
         {
@@ -174,13 +186,28 @@
         }
     }
 
-    private async Task ShowModal()
+    private void ShowModal()
     {
         _modalVisible = true;
     }
 
-    private async Task HideModal()
+    private void HideModal()
     {
         _modalVisible = false;
     }
+    
+    private async Task CopyToClipboard(String pubkey)
+    {
+        await ClipboardService.WriteTextAsync(pubkey);
+        ToastService.ShowSuccess("Copied to clipboard");
+    }
+    
+    public void Dispose()
+    {
+        cts.Cancel(); // Cancel Task.Delay
+        cts.Dispose();
+    }
+
+    record State(string Text, string ClassName, bool IsDisabled = false);
+
 }
