@@ -1,5 +1,6 @@
 ﻿@page "/create-channel"
 @using NBitcoin
+@attribute [Authorize(Roles = "NodeManager, Superadmin")]
 
 <PageTitle>Create Channel Request</PageTitle>
 

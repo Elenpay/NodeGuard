@@ -1,5 +1,6 @@
 ﻿@page "/pending-requests"
 @using System.Security.Claims
+@attribute [Authorize(Roles = "FinanceManager, Superadmin")]
 
 <PageTitle>Pending Requests</PageTitle>
 <h1>Awaiting My signature</h1>

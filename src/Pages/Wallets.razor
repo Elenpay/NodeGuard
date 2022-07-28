@@ -1,4 +1,4 @@
-﻿@page "/wallets"
+@page "/wallets"
 @using System.Security.Claims
 @using FundsManager.Helpers
 @using Humanizer
@@ -11,7 +11,7 @@
 @inject IInternalWalletRepository InternalWalletRepository
 @inject IKeyRepository KeyRepository
 @inject ILightningService LightningService
-@attribute [Authorize(Roles = "NodeManager")]
+@attribute [Authorize(Roles = "NodeManager, Superadmin")]
 
 <h3>Treasury multisig wallets</h3>
 

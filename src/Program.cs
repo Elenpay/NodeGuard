@@ -37,6 +37,7 @@ namespace FundsManager
 
             //Dependency Injection
             builder.Services.AddScoped<AuthenticationStateProvider, RevalidatingIdentityAuthenticationStateProvider<ApplicationUser>>();
+            builder.Services.AddScoped<ClipboardService>();
 
             //Repos DI
             builder.Services.AddTransient(typeof(IRepository<>), typeof(Repository<>));
