@@ -253,6 +253,7 @@ namespace FundsManager.Services
                                 //We get the UTXO keyPath / derivation path from nbxplorer
 
                                 var UTXOs = await nbxplorerClient.GetUTXOsAsync(derivationStrategyBase);
+                                UTXOs.RemoveDuplicateUTXOs();
 
                                 var OutpointKeyPathDictionary = UTXOs.Confirmed.UTXOs.ToDictionary(x => x.Outpoint, x => x.KeyPath);
 
@@ -558,6 +559,7 @@ namespace FundsManager.Services
             DerivationStrategyBase derivationStrategy)
         {
             var utxoChanges = await nbxplorerClient.GetUTXOsAsync(derivationStrategy);
+            utxoChanges.RemoveDuplicateUTXOs();
 
             if (utxoChanges == null || !utxoChanges.Confirmed.UTXOs.Any())
             {
