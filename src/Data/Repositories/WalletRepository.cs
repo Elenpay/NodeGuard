@@ -2,7 +2,6 @@
 using FundsManager.Data.Repositories.Interfaces;
 using FundsManager.Services;
 using Microsoft.EntityFrameworkCore;
-using NBXplorer.Models;
 
 namespace FundsManager.Data.Repositories
 {
@@ -42,6 +41,17 @@ namespace FundsManager.Data.Repositories
             return await applicationDbContext.Wallets.Include(x => x.InternalWallet).Include(x => x.Keys).ToListAsync();
         }
 
+        public async Task<List<Wallet>> GetAvailableWallets()
+        {
+            await using var applicationDbContext = await _dbContextFactory.CreateDbContextAsync();
+
+            return await applicationDbContext.Wallets
+                .Where(wallet => !wallet.IsArchived && !wallet.IsCompromised && wallet.IsFinalised)
+                .Include(x => x.InternalWallet)
+                .Include(x => x.Keys)
+                .ToListAsync();
+        }
+        
         public async Task<(bool, string?)> AddAsync(Wallet type)
         {
             await using var applicationDbContext = await _dbContextFactory.CreateDbContextAsync();
