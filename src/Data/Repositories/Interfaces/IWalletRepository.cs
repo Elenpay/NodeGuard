@@ -8,6 +8,12 @@ public interface IWalletRepository
 
     Task<List<Wallet>> GetAll();
 
+    /// <summary>
+    /// Obtains all wallets that are Finalised and not in a compromised or archived state
+    /// </summary>
+    /// <returns> List of available wallets</returns>
+    Task<List<Wallet>> GetAvailableWallets();
+
     Task<(bool, string?)> AddAsync(Wallet type);
 
     Task<(bool, string?)> AddRangeAsync(List<Wallet> type);

@@ -7,55 +7,45 @@
 <h1>Create Channel Request</h1>
 <p></p>
 <Form>
-    <Fields Flex="Flex.JustifyContent.Center">
-        <Field>
-            <Validation Validator="@ValidationRule.IsAlphanumeric">
-                <FieldLabel>Destination Node</FieldLabel>
-                <TextEdit @bind-Text="@_destNodeName">
-                    <FieldHelp>@(_selectedDestNode==null ? "Node Not found" : $"Found Node: {_selectedDestNode.Name} - {_selectedDestNode.Description}") </FieldHelp>
-                </TextEdit>
-            </Validation>
-        </Field>
-    </Fields>
-    <Fields>
-        <Field Flex="Flex.JustifyContent.End">
-             <Button Color="Color.Primary" Clicked="@SearchNode">Search</Button>
-        </Field>
-    </Fields>
-    <br />
-    <br />
-    <Fields>
-        <Field>
-            <FieldLabel>Source Node</FieldLabel>
-            <DropdownList TItem="Node" TValue="Node"
-                          Data="@_manageableNodes"
-                          TextField="@((item) => item.Name)"
-                          ValueField="@((item) => item)"
-                          @bind-SelectedValue="@_selectedSourceNode"
-                          Color="Color.Primary"
-                          MaxMenuHeight="200px">
-                @(_selectedSourceNode == null ? "Select Node" : _selectedSourceNode.Name)
-            </DropdownList>
-        </Field>
-        <Field>
-            <FieldLabel>Source of the funds</FieldLabel>
-            <DropdownList TItem="Wallet" TValue="Wallet"
-                          Data="@_allWallets"
-                          TextField="@((item) => item.Name)"
-                          ValueField="@((item) => item)"
-                          @bind-SelectedValue="@_selectedWallet"
-                          Color="Color.Primary"
-                          MaxMenuHeight="200px">
-                @(_selectedWallet == null ? "Select Wallet" : _selectedWallet.Name)
-            </DropdownList>
-        </Field>
-    </Fields>
-    <Fields>
-        <Field>
-            <FieldLabel>Channel Amount</FieldLabel>
-            <NumericEdit TValue="long?" @bind-Value=@_amount placeholder="amount in Satoshis"/>
-        </Field>
-    </Fields>
+    <Field>
+        <Validation Validator="@ValidationRule.IsAlphanumeric">
+            <Addons>
+                <Addon AddonType="AddonType.Body">
+                    <TextEdit @bind-Text="@_destNodeName" Placeholder="Type the destination Node public key" />
+                </Addon>
+                <Addon AddonType="AddonType.End">
+                <Button Color="Color.Primary" Clicked="@SearchNode">Search</Button>
+                </Addon>
+            </Addons>
+            <FieldHelp>@(_selectedDestNode==null ? "Node Not found" : $"Found Node: {_selectedDestNode.Name}") </FieldHelp>
+        </Validation>
+    </Field>
+    <Field>
+        <FieldLabel>Source node</FieldLabel>
+        <SelectList TItem="Node"
+                    TValue="int"
+                    Data="@_manageableNodes"
+                    TextField="@((item) => item.Name)"
+                    ValueField="@((item) => item.Id)"
+                    SelectedValueChanged="@OnSelectedSourceNode"
+                    DefaultItemText="Choose the source node" />
+    </Field>
+    <Field>
+        <FieldLabel>
+            Destination Node
+        </FieldLabel>
+        <SelectList TItem="Wallet"
+                    TValue="int"
+                    Data="@_allWallets"
+                    TextField="@((item) => item.Name)"
+                    ValueField="@((item) => item.Id)"
+                    SelectedValueChanged="@OnSelectedWallet"
+                    DefaultItemText="Choose the wallet as the source of funds" />
+    </Field>
+    <Field>
+        <FieldLabel>Channel Amount</FieldLabel>
+        <NumericEdit TValue="long?" @bind-Value=@_amount placeholder="amount in Satoshis"/>
+    </Field>
     <br />
     <br />
     <Fields>
@@ -74,9 +64,9 @@
     private long? _amount;
     private List<Node>? _manageableNodes;
     private List<Wallet>? _allWallets;
-    private Node? _selectedSourceNode;
+    private int _selectedSourceNodeId;
     private Node? _selectedDestNode;
-    private Wallet? _selectedWallet;
+    private int _selectedWalletId;
     [CascadingParameter]
     private ApplicationUser? LoggedUser { get; set; }
 
@@ -87,8 +77,11 @@
         {
             NavigationManager.NavigateTo("error");
         }
-        _manageableNodes = await NodeRepository.GetAllManaged();
-        _allWallets = await WalletRepository.GetAll();
+        else
+        {
+            _manageableNodes = await NodeRepository.GetAllManagedByUser(LoggedUser.Id);
+            _allWallets = await WalletRepository.GetAvailableWallets();
+        }
     }
 
     private async Task SearchNode()
@@ -100,25 +93,38 @@
             if (foundNode != null)
             {
                 _selectedDestNode = foundNode;
+                // Refresh the list of available source nodes and take out the one selected
+                _manageableNodes = await NodeRepository.GetAllManagedByUser(LoggedUser?.Id!);
+                _manageableNodes = _manageableNodes.Where(node => node.Id != _selectedDestNode.Id).ToList();
             }
         }
     }
 
+    private void OnSelectedSourceNode(int nodeId)
+    {
+        _selectedSourceNodeId = nodeId;
+
+    }
+    private void OnSelectedWallet(int walletId)
+    {
+        _selectedWalletId = walletId;
+    }
+    
     private async Task CreateChannelRequest()
     {
         // TODO Sanitise inputs
-        if (_amount != null && _selectedWallet != null && LoggedUser != null &&
-            _selectedSourceNode != null && _selectedDestNode != null)
+        if (_amount != null && _amount > 0 && _selectedWalletId > 0 && LoggedUser != null &&
+            _selectedSourceNodeId > 0 && _selectedDestNode != null)
         {
             ChannelOperationRequest request = new()
             {
                 SatsAmount = new Money(_amount.Value, MoneyUnit.BTC).Satoshi,
                 RequestType = OperationRequestType.Open,
                 Description = "Created by user via Funds Manager",
-                WalletId = _selectedWallet.Id,
+                WalletId = _selectedWalletId,
                 Status = ChannelOperationRequestStatus.Pending,
                 UserId = LoggedUser.Id,
-                SourceNodeId = _selectedSourceNode.Id,
+                SourceNodeId = _selectedSourceNodeId,
                 DestNodeId = _selectedDestNode.Id
             };
             
