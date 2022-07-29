@@ -52,11 +52,13 @@ namespace FundsManager.Data.Repositories
                 .ToListAsync();
         }
         
-        public async Task<List<Node>> GetAllManaged()
+        public async Task<List<Node>> GetAllManagedByUser(string userId)
         {
             await using var applicationDbContext = await _dbContextFactory.CreateDbContextAsync();
 
-            return await applicationDbContext.Nodes.Where(node => node.Endpoint != null).ToListAsync();
+            return await applicationDbContext.Nodes
+                .Where(node => node.Endpoint != null && node.Users.Any(user => user.Id == userId))
+                .ToListAsync();
         }
 
         public async Task<(bool, string?)> AddAsync(Node type)

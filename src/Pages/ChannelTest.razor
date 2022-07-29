@@ -41,6 +41,18 @@
     </Field>
     <Field>
         <FieldLabel>
+            Source wallet
+        </FieldLabel>
+        <SelectList TItem="Wallet"
+                    TValue="int"
+                    Data="@_wallets"
+                    TextField="@((item) => item.Name)"
+                    ValueField="@((item) => item.Id)"
+                    SelectedValueChanged="@OnSelectedWallet"
+                    DefaultItemText="Choose the source wallet" />
+    </Field>
+    <Field>
+        <FieldLabel>
             Channel capacity (Sats)
         </FieldLabel>
         <NumericEdit TValue="long" @bind-Value="_satsAmount"></NumericEdit>
@@ -101,6 +113,9 @@
     private Node? _sourceNode;
     private Node? _destinationNode;
 
+    private List<Wallet> _wallets  = new List<Wallet>();
+    private Wallet? _selectedWallet;
+
     private long _satsAmount = 20000;
 
     protected override async Task OnInitializedAsync()
@@ -109,16 +124,20 @@
 
         _managedNodes = nodes.Where(x => x.IsManaged).ToList();
         _destinationNodes = nodes;
+
+
+        _wallets = (await WalletRepository.GetAll());
+        _selectedWallet = _wallets.FirstOrDefault();
     }
 
     private async Task OpenChannelRequest()
     {
         var nodes = await NodeRepository.GetAll();
 
-            var defaultWallet = (await WalletRepository.GetAll()).First();
+             
         if (_sourceNode != null && _destinationNode != null)
         {
-            var channelOperationRequest = await ChannelOperationRequest(defaultWallet, _sourceNode, _destinationNode);
+            var channelOperationRequest = await ChannelOperationRequest(_selectedWallet, _sourceNode, _destinationNode);
 
             if (_combinedPsbt != null)
             {
@@ -158,7 +177,7 @@
         var user = (await ApplicationUserRepository.GetAll()).First();
         var channelOperationRequest = new ChannelOperationRequest
             {
-                SatsAmount = 20000,
+                SatsAmount = _satsAmount,
                 RequestType = OperationRequestType.Open,
                 Status = ChannelOperationRequestStatus.Pending,
                 Wallet = defaultWallet,
@@ -177,22 +196,29 @@
         var nbXplorerNetwork = Network.RegTest;
         var provider = new NBXplorerNetworkProvider(nbXplorerNetwork.ChainName);
 
-        var defaultWallet = (await WalletRepository.GetAll()).First();
 
         var channelOperationRequest = new ChannelOperationRequest
             {
                 SatsAmount = _satsAmount,
                 RequestType = OperationRequestType.Open,
-                WalletId = defaultWallet.Id,
-                Wallet = defaultWallet,
+                WalletId = _selectedWallet.Id,
+                Wallet = _selectedWallet,
                 Status = ChannelOperationRequestStatus.Pending,
             };
 
 
         templatePSBT = await LightningService.GenerateTemplatePSBT(channelOperationRequest);
-        templatePSBTString = templatePSBT.ToBase64();
 
-        StateHasChanged();
+        if (templatePSBT == null)
+        {
+            toastService.ShowError("Error while generating PSBT, check console");
+        }
+        else
+        {
+            templatePSBTString = templatePSBT.ToBase64();
+        }
+        
+
     }
 
     private async Task CombinePSBT()
@@ -320,6 +346,12 @@
     {
         _destinationNode = _destinationNodes.FirstOrDefault(x => x.Id == arg);
 
+    }
+     
+
+    private async Task OnSelectedWallet(int arg)
+    {
+        _selectedWallet = _wallets.FirstOrDefault(x => x.Id == arg);
     }
 
 }
