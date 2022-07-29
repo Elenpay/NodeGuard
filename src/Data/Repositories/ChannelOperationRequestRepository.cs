@@ -38,7 +38,7 @@ namespace FundsManager.Data.Repositories
             await using var applicationDbContext = await _dbContextFactory.CreateDbContextAsync();
 
             return await applicationDbContext.ChannelOperationRequests
-                .Where(request => request.UserId == userId)
+                .Where(request => request.Wallet.Keys.Any(key => key.User != null && key.User.Id == userId))
                 .Include(request => request.Wallet)
                 .Include(request => request.SourceNode)
                 .Include(request => request.DestNode)
@@ -51,8 +51,8 @@ namespace FundsManager.Data.Repositories
             await using var applicationDbContext = await _dbContextFactory.CreateDbContextAsync();
 
             return await applicationDbContext.ChannelOperationRequests
-                .Where(request => request.UserId == userId && 
-                                  request.ChannelOperationRequestSignatures.All(signature => signature.UserSignerId != userId))
+                .Where(request => request.Wallet.Keys.Any(key => key.User != null && key.User.Id == userId) && 
+                                                                 request.ChannelOperationRequestSignatures.All(signature => signature.UserSignerId != userId))
                 .Include(request => request.SourceNode)
                 .Include(request => request.Wallet)
                 .Include(request => request.DestNode)
