@@ -11,7 +11,7 @@
         <DataGrid TItem="Node"
                   Data="@_nodes"
                   Editable="@_editable"
-                  EditMode="DataGridEditMode.Form"
+                  EditMode="DataGridEditMode.Popup"
                   @bind-SelectedRow="@_selectedNode"
                   Responsive="true"
                   ResizeMode="TableResizeMode.Columns"
@@ -42,21 +42,22 @@
                     </DisplayTemplate>
                 </DataGridColumn>
                 <DataGridColumn TItem="Node" Editable="true" Field="@nameof(Node.Description)" Caption="@nameof(Node.Description)" Sortable="false" />
+                <DataGridColumn TItem="Node" Editable="true" Field="@nameof(Node.ChannelAdminMacaroon)" Caption="@nameof(Node.ChannelAdminMacaroon)" CellsEditableOnNewCommand="true" CellsEditableOnEditCommand="false" Displayable="false" Sortable="false"/>
                 <DataGridColumn TItem="Node" Editable="true" Field="@nameof(Node.Endpoint)" Caption="@nameof(Node.Endpoint)" Sortable="false" />
                 <DataGridNumericColumn TItem="Node" Editable="false"  Caption="Outbound Open Channels" Sortable="false">
                     <DisplayTemplate>
                         @{
-                            IEnumerable<int?> associatedChannels = (context?.ChannelOperationRequestsAsDestination)
+                            IEnumerable<int?> associatedChannels = context?.ChannelOperationRequestsAsDestination?
                                 .Where(request => request.ChannelId != null)
                                 .Select(channel => channel.ChannelId)
                                 .Distinct();
-                            @($"{associatedChannels.Count()}")
+                            @($"{associatedChannels?.Count()}")
                         }
                     </DisplayTemplate>
                 </DataGridNumericColumn>
                 <DataGridColumn TItem="Node" Field="@nameof(Node.CreationDatetime)" Caption="@nameof(Node.CreationDatetime)" Sortable="false" />
                 <DataGridColumn TItem="Node" Field="@nameof(Node.UpdateDatetime)" Caption="@nameof(Node.UpdateDatetime)" Sortable="false" />
-                <DataGridColumn TItem="Node" Caption="@nameof(Node.Users)" Editable="false" Sortable="false">
+                <DataGridColumn TItem="Node" Caption="@nameof(Node.Users)" Editable="false" CellsEditableOnEditCommand="false" Sortable="false">
                     <DisplayTemplate>
                         <Button Color="Color.Primary" Clicked="@ShowModal">Display Users</Button>
                     </DisplayTemplate>
@@ -133,6 +134,8 @@
             if (addResult.Item1)
             {
                 ToastService.ShowSuccess($"Node {arg.Item.Name} Created");
+                _nodes = await NodeRepository.GetAll();
+
             }
             else
             {
@@ -140,12 +143,10 @@
                 _nodes?.Remove(arg.Item);
             }
         }
-       
-        // TODO Channel Admin macaroon
     }
     
     
-    private void OnRowDeleted(CancellableRowChange<Node> node)
+    private async Task OnRowDeleted(CancellableRowChange<Node> node)
     {
         if (node.Item != null)
         {
@@ -158,6 +159,8 @@
             else
             {
                 ToastService.ShowSuccess("Node deleted successfully");
+                _nodes = await NodeRepository.GetAll();
+
             }
         }
     }
