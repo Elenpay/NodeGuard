@@ -21,6 +21,8 @@ services:
       ASPNETCORE_ENVIRONMENT: "{{ ASPNETCORE_ENVIRONMENT }}"
       SENTRY_ENVIRONMENT: "{{ SENTRY_ENVIRONMENT }}"
       SENTRY_DSN:  "{{ SENTRY_DSN }}"
+    volumes:
+      fundsmanager_data_keys_dir:/root/.aspnet/DataProtection-Keys
 
   fundsmanager_postgres:
     container_name: fundsmanager_postgres
@@ -40,3 +42,4 @@ services:
 
 volumes:
   fundsmanager_postgres_data:
+    fundsmanager_data_keys_dir:
