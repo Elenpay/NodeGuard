@@ -92,7 +92,10 @@ namespace FundsManager.Data.Repositories
         public (bool, string?) Update(Node type)
         {
             using var applicationDbContext = _dbContextFactory.CreateDbContext();
-
+            type.SetUpdateDatetime();
+            type.Users?.Clear();
+            type.ChannelOperationRequestsAsSource?.Clear();
+            type.ChannelOperationRequestsAsDestination?.Clear();
             return _repository.Update(type, applicationDbContext);
         }
     }
