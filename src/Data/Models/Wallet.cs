@@ -63,7 +63,7 @@ namespace FundsManager.Data.Models
                     {
                         return new BitcoinExtPubKey(x.XPUB,
                             currentNetwork);
-                    })
+                    }).OrderBy(x => x.ExtPubKey.PubKey)
                     .ToList();
 
                 if (bitcoinExtPubKeys == null || !bitcoinExtPubKeys.Any())
