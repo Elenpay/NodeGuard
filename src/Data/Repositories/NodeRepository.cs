@@ -51,7 +51,18 @@ namespace FundsManager.Data.Repositories
                     .ThenInclude(request => request.Channel)
                 .ToListAsync();
         }
-        
+
+        public async Task<List<Node>> GetAllManagedByFundsManager()
+        {
+            await using var applicationDbContext = await _dbContextFactory.CreateDbContextAsync();
+
+            var resultAsync = await applicationDbContext.Nodes
+                .Where(node => node.Endpoint != null)
+                .ToListAsync();
+
+            return resultAsync;
+        }
+
         public async Task<List<Node>> GetAllManagedByUser(string userId)
         {
             await using var applicationDbContext = await _dbContextFactory.CreateDbContextAsync();
@@ -100,4 +111,3 @@ namespace FundsManager.Data.Repositories
         }
     }
 }
-

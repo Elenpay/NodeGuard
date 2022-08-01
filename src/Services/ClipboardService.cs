@@ -3,7 +3,7 @@ namespace FundsManager.Services;
 using System.Threading.Tasks;
 using Microsoft.JSInterop;
 
-public sealed class ClipboardService
+public class ClipboardService
 {
     private readonly IJSRuntime _jsRuntime;
 

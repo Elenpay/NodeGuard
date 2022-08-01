@@ -152,16 +152,17 @@
                 channelOperationRequest.Wallet = temp;
                 if (result.Item1)
                 {
-                    var channelresult = await LightningService.OpenChannel(channelOperationRequest, _sourceNode, _destinationNode, _combinedPsbt);
+                    var channelresult = false;
+                    await LightningService.OpenChannel(channelOperationRequest, _combinedPsbt);
 
                     if (channelresult)
                     {
-                        toastService.ShowSuccess("Channel created!");
+                        toastService.ShowSuccess("Channel negotiation submitted!");
                         _lastChannelId = channelOperationRequest.ChannelId;
                     }
                     else
                     {
-                        toastService.ShowError("Channel creation failed!");
+                        toastService.ShowError("Channel negotiation failed!");
                     }
 
 

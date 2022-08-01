@@ -20,11 +20,9 @@ namespace FundsManager.Services
         /// Opens a channel based on a presigned psbt with inputs, this method waits for I/O on the blockchain, therefore it can last its execution for minutes
         /// </summary>
         /// <param name="channelOperationRequest"></param>
-        /// <param name="source"></param>
-        /// <param name="destination"></param>
         /// <param name="presignedPSBT"></param>
         /// <returns></returns>
-        public Task<bool> OpenChannel(ChannelOperationRequest channelOperationRequest, Node source, Node destination, PSBT presignedPSBT);
+        public Task OpenChannel(ChannelOperationRequest channelOperationRequest, PSBT presignedPSBT);
 
         /// <summary>
         /// Generates a template PSBT with Sighash_NONE and some UTXOs from the wallet related to the request without signing
@@ -58,6 +56,13 @@ namespace FundsManager.Services
         /// <returns></returns>
         public Task<BitcoinAddress?> GetUnusedAddress(Wallet wallet,
             NBXplorer.DerivationStrategy.DerivationFeature derivationFeature);
+
+        /// <summary>
+        /// Gets the info about a node in the lightning network graph
+        /// </summary>
+        /// <param name="pubkey"></param>
+        /// <returns></returns>
+        public Task<LightningNode?> GetNodeInfo(string pubkey);
     }
 
     /// <summary>d
@@ -66,28 +71,36 @@ namespace FundsManager.Services
         private readonly ILogger<LightningService> _logger;
         private readonly IChannelRepository _channelRepository;
         private readonly IChannelOperationRequestRepository _channelOperationRequestRepository;
+        private readonly INodeRepository _nodeRepository;
 
         public LightningService(ILogger<LightningService> logger, IChannelRepository channelRepository,
-            IChannelOperationRequestRepository channelOperationRequestRepository)
+            IChannelOperationRequestRepository channelOperationRequestRepository, INodeRepository nodeRepository)
         {
             _logger = logger;
             _channelRepository = channelRepository;
             _channelOperationRequestRepository = channelOperationRequestRepository;
+            _nodeRepository = nodeRepository;
         }
 
-        public async Task<bool> OpenChannel(ChannelOperationRequest channelOperationRequest, Node source,
-            Node destination, PSBT presignedPSBT)
+        public async Task OpenChannel(ChannelOperationRequest channelOperationRequest, PSBT presignedPSBT)
         {
             if (channelOperationRequest == null) throw new ArgumentNullException(nameof(channelOperationRequest));
-            if (source == null) throw new ArgumentNullException(nameof(source));
-            if (destination == null) throw new ArgumentNullException(nameof(destination));
 
             if (channelOperationRequest.RequestType != OperationRequestType.Open)
-                return false;
-
-            if (source.Id == destination.Id)
             {
-                return false;
+                const string aNodeCannotOpenAChannelToHimself = "A node cannot open a channel to himself.";
+                _logger.LogError(aNodeCannotOpenAChannelToHimself);
+                throw new ArgumentException(aNodeCannotOpenAChannelToHimself);
+            }
+
+            var source = channelOperationRequest.SourceNode;
+            var destination = channelOperationRequest.DestNode;
+
+            if (source.PubKey == destination?.PubKey)
+            {
+                const string aNodeCannotOpenAChannelToHimself = "A node cannot open a channel to himself.";
+                _logger.LogError(aNodeCannotOpenAChannelToHimself);
+                throw new ArgumentException(aNodeCannotOpenAChannelToHimself);
             }
 
             //Setup of grpc lnd api client (Lightning.proto)
@@ -113,14 +126,20 @@ namespace FundsManager.Services
             var pendingChannelIdHex = Convert.ToHexString(pendingChannelId);
 
             var (network, nbxplorerClient) = GenerateNetwork(_logger);
-            var txBuilder = network.CreateTransactionBuilder();
 
             //Derivation strategy for the multisig address based on its wallet
             var (derivationStrategyBase, internalWalletDerivationStrategy) = GetDerivationStrategy(channelOperationRequest, network);
 
-            var closeAddress = await nbxplorerClient.GetUnusedAsync(derivationStrategyBase, DerivationFeature.Deposit, 0, true);
+            if (derivationStrategyBase == null)
+            {
+                var derivationNull = $"Derivation scheme not found for wallet:{channelOperationRequest.Wallet.Id}";
+                _logger.LogError("");
 
-            //TODO Log user approver
+                throw new ArgumentException(
+                    derivationNull);
+            }
+
+            var closeAddress = await nbxplorerClient.GetUnusedAsync(derivationStrategyBase, DerivationFeature.Deposit, 0, true);
 
             _logger.LogInformation("Channel open request for  request id:{} from node:{} to node:{}",
                 channelOperationRequest.Id,
@@ -264,11 +283,14 @@ namespace FundsManager.Services
 
                                 if (!txInKeyPathDictionary.Any())
                                 {
-                                    _logger.LogError("Error, keypaths for the UTXOs used in this tx are not found");
+                                    const string errorKeypathsForTheUtxosUsedInThisTxAreNotFound = "Error, keypaths for the UTXOs used in this tx are not found";
+
+                                    _logger.LogError(errorKeypathsForTheUtxosUsedInThisTxAreNotFound);
 
                                     CancelPendingChannel(source, client, pendingChannelId);
 
-                                    return false;
+                                    throw new ArgumentException(
+                                        errorKeypathsForTheUtxosUsedInThisTxAreNotFound);
                                 }
 
                                 var privateKeysForUsedUTXOs = txInKeyPathDictionary.ToDictionary(x => x.Key.PrevOut, x =>
@@ -294,11 +316,13 @@ namespace FundsManager.Services
                                 if (partialSigsCountAfterSignature == 0 ||
                                     partialSigsCountAfterSignature <= partialSigsCount)
                                 {
-                                    _logger.LogError("Invalid expected number of partial signatures after signing for the channel operation request:{}", channelOperationRequest.Id);
+                                    var invalidNoOfPartialSignatures = $"Invalid expected number of partial signatures after signing for the channel operation request:{channelOperationRequest.Id}";
+                                    _logger.LogError(invalidNoOfPartialSignatures);
 
                                     CancelPendingChannel(source, client, pendingChannelId);
 
-                                    return false;
+                                    throw new ArgumentException(
+                                        invalidNoOfPartialSignatures);
                                 }
 
                                 //Sanity check
@@ -325,6 +349,8 @@ namespace FundsManager.Services
                                     //PSBT marked as verified so time to finalize the PSBT and broadcast the tx
 
                                     var finalizedPSBT = changeFixedPSBT.Finalize();
+
+                                    //TODO Save the PSBT in the ChannelOperationRequest collection of PSBTs
 
                                     var fundingStateStepResp = await client.FundingStateStepAsync(new FundingTransitionMsg
                                     {
@@ -362,9 +388,8 @@ namespace FundsManager.Services
                 result = false;
 
                 CancelPendingChannel(source, client, pendingChannelId);
+                throw;
             }
-
-            return result;
         }
 
         /// <summary>
@@ -426,7 +451,7 @@ namespace FundsManager.Services
             }
 
             //UTXOs -> they need to be tracked first on nbxplorer to get results!!
-            var (derivationStrategy, _) = GetDerivationStrategy(channelOperationRequest, nbXplorerNetwork);
+            var derivationStrategy = channelOperationRequest.Wallet.GetDerivationStrategy();
 
             if (derivationStrategy == null)
             {
@@ -763,6 +788,52 @@ namespace FundsManager.Services
             }
 
             var result = keyPathInformation?.Address ?? null;
+
+            return result;
+        }
+
+        public async Task<LightningNode?> GetNodeInfo(string pubkey)
+        {
+            if (string.IsNullOrWhiteSpace(pubkey))
+                throw new ArgumentException("Value cannot be null or whitespace.", nameof(pubkey));
+
+            LightningNode? result = null;
+
+            var node = (await _nodeRepository.GetAllManagedByFundsManager()).FirstOrDefault();
+            if (node == null)
+                node = (await _nodeRepository.GetAllManagedByFundsManager()).LastOrDefault();
+
+            if (node == null)
+            {
+                _logger.LogError("No managed node found on the system");
+                return result;
+            }
+
+            using var grpcChannel = GrpcChannel.ForAddress($"https://{node.Endpoint}",
+                new GrpcChannelOptions
+                {
+                    HttpHandler = new HttpClientHandler
+                    {
+                        ServerCertificateCustomValidationCallback =
+                            HttpClientHandler.DangerousAcceptAnyServerCertificateValidator
+                    }
+                });
+
+            var client = new Lightning.LightningClient(grpcChannel);
+            try
+            {
+                var nodeInfo = await client.GetNodeInfoAsync(new NodeInfoRequest
+                {
+                    PubKey = pubkey,
+                    IncludeChannels = false
+                }, new Metadata { { "macaroon", node.ChannelAdminMacaroon } });
+
+                result = nodeInfo?.Node;
+            }
+            catch (Exception e)
+            {
+                _logger.LogError(e, "Error while obtaining node info for node with pubkey:{}", pubkey);
+            }
 
             return result;
         }

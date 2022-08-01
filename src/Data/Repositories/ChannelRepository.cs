@@ -35,7 +35,7 @@ namespace FundsManager.Data.Repositories
                 .Include(channel => channel.ChannelOperationRequests).ThenInclude(request => request.SourceNode)
                 .Include(channel => channel.ChannelOperationRequests).ThenInclude(request => request.Wallet)
                 .Include(channel => channel.ChannelOperationRequests).ThenInclude(request => request.DestNode)
-                .Include(channel => channel.ChannelOperationRequests).ThenInclude(request => request.ChannelOperationRequestSignatures)
+                .Include(channel => channel.ChannelOperationRequests).ThenInclude(request => request.ChannelOperationRequestPsbts)
                 .ToListAsync();
         }
 
@@ -59,7 +59,7 @@ namespace FundsManager.Data.Repositories
 
             return _repository.Remove(type, applicationDbContext);
         }
-        
+
         public async Task<(bool, string?)> SafeRemove(Channel type)
         {
             await using var applicationDbContext = await _dbContextFactory.CreateDbContextAsync();
@@ -79,20 +79,20 @@ namespace FundsManager.Data.Repositories
                 closeRequest.WalletId = openRequest.WalletId;
                 closeRequest.SourceNodeId = openRequest.SourceNodeId;
                 closeRequest.DestNodeId = openRequest.DestNodeId;
-                closeRequest.AmountCryptoUnit =  openRequest.AmountCryptoUnit;
-                closeRequest.SatsAmount =  openRequest.SatsAmount;
-                closeRequest.UserId =  openRequest.UserId;
+                closeRequest.AmountCryptoUnit = openRequest.AmountCryptoUnit;
+                closeRequest.SatsAmount = openRequest.SatsAmount;
+                closeRequest.UserId = openRequest.UserId;
             }
             else
             {
                 _logger.LogWarning("Could not find a opening request operation for this channel Some of the fields will be not set");
             }
-            
+
             await applicationDbContext.ChannelOperationRequests.AddAsync(closeRequest);
             var createCloseRequestRowsChanged = applicationDbContext.SaveChanges() > 0;
 
             // TODO attempt closing channel in LND
-            
+
             // Once confirmed, we set the channel to close status
             Channel? channelToBeClosed = applicationDbContext.Channels.FirstOrDefault(c => c.Id == type.Id);
             var updateChannelResultRowsChanged = false;
@@ -103,10 +103,10 @@ namespace FundsManager.Data.Repositories
                 applicationDbContext.Channels.Update(channelToBeClosed);
                 updateChannelResultRowsChanged = applicationDbContext.SaveChanges() > 0;
             }
-            
+
             if (!createCloseRequestRowsChanged || !updateChannelResultRowsChanged)
                 return (false, "Something went wrong");
-            
+
             transaction.Commit();
             return (true, "Operation Completed Successfully");
         }
@@ -126,4 +126,3 @@ namespace FundsManager.Data.Repositories
         }
     }
 }
-
