@@ -59,6 +59,57 @@ namespace FundsManager.Data.Repositories
 
             return _repository.Remove(type, applicationDbContext);
         }
+        
+        public async Task<(bool, string?)> SafeRemove(Channel type)
+        {
+            await using var applicationDbContext = await _dbContextFactory.CreateDbContextAsync();
+            await using var transaction = await applicationDbContext.Database.BeginTransactionAsync();
+            ChannelOperationRequest? openRequest = applicationDbContext.ChannelOperationRequests.FirstOrDefault(request => request.ChannelId == type.Id);
+            ChannelOperationRequest closeRequest = new ChannelOperationRequest()
+            {
+                ChannelId = type.Id,
+                RequestType = OperationRequestType.Close,
+                CreationDatetime = DateTimeOffset.Now,
+                UpdateDatetime = DateTimeOffset.Now,
+                Status = ChannelOperationRequestStatus.Approved, // Close operations are pre-approved by default
+                Description = "Close Channel Operation for Channel " + type.Id
+            };
+            if (openRequest != null)
+            {
+                closeRequest.WalletId = openRequest.WalletId;
+                closeRequest.SourceNodeId = openRequest.SourceNodeId;
+                closeRequest.DestNodeId = openRequest.DestNodeId;
+                closeRequest.AmountCryptoUnit =  openRequest.AmountCryptoUnit;
+                closeRequest.SatsAmount =  openRequest.SatsAmount;
+                closeRequest.UserId =  openRequest.UserId;
+            }
+            else
+            {
+                _logger.LogWarning("Could not find a opening request operation for this channel Some of the fields will be not set");
+            }
+            
+            await applicationDbContext.ChannelOperationRequests.AddAsync(closeRequest);
+            var createCloseRequestRowsChanged = applicationDbContext.SaveChanges() > 0;
+
+            // TODO attempt closing channel in LND
+            
+            // Once confirmed, we set the channel to close status
+            Channel? channelToBeClosed = applicationDbContext.Channels.FirstOrDefault(c => c.Id == type.Id);
+            var updateChannelResultRowsChanged = false;
+            if (channelToBeClosed != null)
+            {
+                channelToBeClosed.Status = Channel.ChannelStatus.Closed;
+                channelToBeClosed.UpdateDatetime = DateTimeOffset.Now;
+                applicationDbContext.Channels.Update(channelToBeClosed);
+                updateChannelResultRowsChanged = applicationDbContext.SaveChanges() > 0;
+            }
+            
+            if (!createCloseRequestRowsChanged || !updateChannelResultRowsChanged)
+                return (false, "Something went wrong");
+            
+            transaction.Commit();
+            return (true, "Operation Completed Successfully");
+        }
 
         public (bool, string?) RemoveRange(List<Channel> types)
         {

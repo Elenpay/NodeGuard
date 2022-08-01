@@ -9,17 +9,31 @@
         <DataGrid TItem="Channel"
                   Data="@_channels"
                   @bind-SelectedRow="@_selectedChannel"
-                  Responsive="true"
+                  Editable
+                  EditMode=DataGridEditMode.Inline
+                  Responsive
                   ResizeMode="TableResizeMode.Columns"
-                  UseInternalEditing="true">
+                  RowRemoving="OnRowDeleted">
             <DataGridColumns>
+                <DataGridCommandColumn TItem="Channel">
+                    <NewCommandTemplate>
+                        <Button Color="Color.Success" hidden Clicked="@context.Clicked">New</Button>
+                    </NewCommandTemplate>
+                    <EditCommandTemplate>
+                        <Button Color="Color.Primary" hidden Clicked="@context.Clicked">Edit</Button>
+                    </EditCommandTemplate>
+                    <DeleteCommandTemplate>
+                        <Button Color="Color.Danger" hidden="@_hideDelete" Disabled="@(context.Item.Status == Channel.ChannelStatus.Closed)" Clicked="@context.Clicked">Delete</Button>
+                    </DeleteCommandTemplate>
+                </DataGridCommandColumn>
                 <DataGridColumn TItem="Channel" Field="@nameof(Channel.ChannelId)" Caption="@nameof(Channel.ChannelId)" Sortable="false" />
+                <DataGridColumn TItem="Channel" Field="@nameof(Channel.Status)" Caption="@nameof(Channel.Status)" Sortable="false"/>
                 <DataGridColumn TItem="Channel" Field="@nameof(Channel.FundingTx)" Caption="@nameof(Channel.FundingTx)" Sortable="false" />
                 <DataGridNumericColumn TItem="Channel" Field="@nameof(Channel.SatsAmount)" Caption="@nameof(Channel.SatsAmount)" Sortable="false" />
                 <DataGridColumn TItem="Channel" Field="@nameof(Channel.BtcCloseAddress)" Caption="@nameof(Channel.BtcCloseAddress)" Sortable="false" />
                 <DataGridNumericColumn TItem="Channel" Field="@nameof(Channel.FundingTxOutputIndex)" Caption="@nameof(Channel.FundingTxOutputIndex)" Sortable="false" />
                 <DataGridColumn TItem="Channel" Field="@nameof(Channel.CreationDatetime)" Caption="@nameof(Channel.CreationDatetime)" Sortable="false" />
-                <DataGridColumn TItem="Channel" Field="@nameof(Channel.UpdateDatetime)" Caption="@nameof(Node.UpdateDatetime)" Sortable="false" />
+                <DataGridColumn TItem="Channel" Field="@nameof(Channel.UpdateDatetime)" Caption="@nameof(Channel.UpdateDatetime)" Sortable="false" />
                 <DataGridColumn TItem="Channel" Caption="Related Operation Requests" Sortable="false">
                     <DisplayTemplate>
                         <Button Color="Color.Primary" Clicked="@ShowModal">See</Button>
@@ -30,7 +44,7 @@
     </Column>
 </Row>
 <Modal @bind-Visible="@_modalVisible">
-    <ModalContent Centered Size="ModalSize.Large">
+    <ModalContent Centered Size="ModalSize.ExtraLarge">
         <ModalHeader>
             <ModalTitle>Users assigned to Channel: @_selectedChannel?.ChannelId</ModalTitle>
             <CloseButton />
@@ -40,8 +54,9 @@
                      Data=@_selectedChannel?.ChannelOperationRequests
                      Sortable="false"
                      ShowCaptions="true">
-               <DataGridColumn Field="@nameof(ChannelOperationRequest.Id)" Caption="@nameof(ApplicationUser.Id)" />
+               <DataGridColumn Field="@nameof(ChannelOperationRequest.Id)" Caption="@nameof(ChannelOperationRequest.Id)" />
                <DataGridColumn Field="@nameof(ChannelOperationRequest.User)" Caption="Created By" />
+               <DataGridColumn Field="@nameof(ChannelOperationRequest.RequestType)" Caption="@nameof(ChannelOperationRequest.RequestType)" />
                <DataGridColumn TItem="ChannelOperationRequest" Field="SourceNode.Name" Caption="Source Node" Sortable="false" Displayable="true"/>
                <DataGridColumn TItem="ChannelOperationRequest" Field="DestNode.Name" Caption="Remote Node" Sortable="false" Displayable="true"/>
                <DataGridColumn TItem="ChannelOperationRequest" Field="Wallet.Name" Caption="Source of Funds" Sortable="false" Displayable="true"/>
@@ -52,7 +67,7 @@
                        }
                    </DisplayTemplate>
                </DataGridColumn>
-               <DataGridColumn TItem="ChannelOperationRequest" Field="@nameof(ChannelOperationRequest.WalletId)" Caption="Signatures Collected" Sortable="false" Displayable="true">
+               <DataGridColumn TItem="ChannelOperationRequest" Caption="Signatures Collected" Sortable="false" Displayable="true">
                    <DisplayTemplate>
                        @{
                            var signaturesCollected = context?.ChannelOperationRequestSignatures?.Count ?? 0;
@@ -72,10 +87,12 @@
     </ModalContent>
 </Modal>
 @inject IChannelRepository ChannelRepository
+@inject IToastService ToastService;
 @code {
     private List<Channel>? _channels;
     private Channel? _selectedChannel;
     private bool _modalVisible;
+    private bool _hideDelete = true;
 
     [CascadingParameter]
     private ApplicationUser? LoggedUser { get; set; }
@@ -88,18 +105,42 @@
         if (LoggedUser != null)
         {
             _channels = await ChannelRepository.GetAll();
+            if (ClaimsPrincipal != null && (ClaimsPrincipal.IsInRole(ApplicationUserRole.NodeManager.ToString()) || ClaimsPrincipal.IsInRole(ApplicationUserRole.Superadmin.ToString())))
+            {
+                _hideDelete = false;
+            }
         }
     }
 
-    private Task ShowModal()
+    private async Task OnRowDeleted(CancellableRowChange<Channel> channel)
+    {
+        if (channel.Item != null)
+        {
+            var result = ChannelRepository.SafeRemove(channel.Item);
+            if (!result.Result.Item1)
+            {
+                channel.Cancel = true;
+                ToastService.ShowError("Something went wrong");
+            }
+            else
+            {
+                ToastService.ShowSuccess("Channel deleted successfully");
+                _channels = await ChannelRepository.GetAll();
+            }
+        }
+        else
+        {
+            ToastService.ShowError("Something went wrong. Please refresh the page");
+        }
+    }
+    
+    private void ShowModal()
     {
         _modalVisible = true;
-        return Task.CompletedTask;
     }
 
-    private Task HideModal()
+    private void HideModal()
     {
         _modalVisible = false;
-        return Task.CompletedTask;
     }
 }
