@@ -117,9 +117,9 @@ namespace FundsManager.Data.Repositories
         public (bool, string?) Update(Wallet type)
         {
             using var applicationDbContext = _dbContextFactory.CreateDbContext();
-
             type.SetUpdateDatetime();
-
+            type.Keys?.Clear();
+            type.ChannelOperationRequestsAsSource?.Clear();
             return _repository.Update(type, applicationDbContext);
         }
 
