@@ -9,7 +9,9 @@ using NBXplorer;
 using NBXplorer.DerivationStrategy;
 using NBXplorer.Models;
 using System.Security.Cryptography;
+using FundsManager.Data;
 using FundsManager.Helpers;
+using Microsoft.EntityFrameworkCore;
 using Channel = FundsManager.Data.Models.Channel;
 
 namespace FundsManager.Services
@@ -39,7 +41,7 @@ namespace FundsManager.Services
         /// <param name="channelOperationRequest"></param>
         /// <param name="forceClose"></param>
         /// <returns></returns>
-        public Task<bool> CloseChannel(ChannelOperationRequest channelOperationRequest, Node sourceNode, bool forceClose = false);
+        public Task<bool> CloseChannel(ChannelOperationRequest channelOperationRequest, bool forceClose = false);
 
         /// <summary>
         /// Gets the wallet balance
@@ -69,17 +71,19 @@ namespace FundsManager.Services
     public class LightningService : ILightningService
     {
         private readonly ILogger<LightningService> _logger;
-        private readonly IChannelRepository _channelRepository;
         private readonly IChannelOperationRequestRepository _channelOperationRequestRepository;
         private readonly INodeRepository _nodeRepository;
+        private readonly IDbContextFactory<ApplicationDbContext> _dbContextFactory;
 
-        public LightningService(ILogger<LightningService> logger, IChannelRepository channelRepository,
-            IChannelOperationRequestRepository channelOperationRequestRepository, INodeRepository nodeRepository)
+        public LightningService(ILogger<LightningService> logger,
+            IChannelOperationRequestRepository channelOperationRequestRepository,
+            INodeRepository nodeRepository,
+            IDbContextFactory<ApplicationDbContext> dbContextFactory)
         {
             _logger = logger;
-            _channelRepository = channelRepository;
             _channelOperationRequestRepository = channelOperationRequestRepository;
             _nodeRepository = nodeRepository;
+            _dbContextFactory = dbContextFactory;
         }
 
         public async Task OpenChannel(ChannelOperationRequest channelOperationRequest, PSBT presignedPSBT)
@@ -92,6 +96,8 @@ namespace FundsManager.Services
                 _logger.LogError(aNodeCannotOpenAChannelToHimself);
                 throw new ArgumentException(aNodeCannotOpenAChannelToHimself);
             }
+
+            await using var context = await _dbContextFactory.CreateDbContextAsync();
 
             var source = channelOperationRequest.SourceNode;
             var destination = channelOperationRequest.DestNode;
@@ -133,13 +139,22 @@ namespace FundsManager.Services
             if (derivationStrategyBase == null)
             {
                 var derivationNull = $"Derivation scheme not found for wallet:{channelOperationRequest.Wallet.Id}";
-                _logger.LogError("");
+                _logger.LogError(derivationNull);
 
                 throw new ArgumentException(
                     derivationNull);
             }
 
             var closeAddress = await nbxplorerClient.GetUnusedAsync(derivationStrategyBase, DerivationFeature.Deposit, 0, true);
+
+            if (closeAddress == null)
+            {
+                var closeAddressNull = $"Closing address was null for an operation on wallet:{channelOperationRequest.Wallet.Id}";
+                _logger.LogError(closeAddressNull);
+
+                throw new ArgumentException(
+                    closeAddressNull);
+            }
 
             _logger.LogInformation("Channel open request for  request id:{} from node:{} to node:{}",
                 channelOperationRequest.Id,
@@ -210,17 +225,20 @@ namespace FundsManager.Services
                                 UpdateDatetime = DateTimeOffset.Now,
                             };
 
-                            var addChannelResult = await _channelRepository.AddAsync(channel);
+                            await context.AddAsync(channel);
 
-                            if (addChannelResult.Item1 == false)
+                            var addChannelResult = (await context.SaveChangesAsync()) > 0;
+
+                            if (addChannelResult == false)
                             {
                                 _logger.LogError(
                                     "Channel for channel operation request id:{} could not be created, reason:{}",
                                     channelOperationRequest.Id,
-                                    addChannelResult.Item2);
+                                    "Could not persist to db");
                             }
 
                             channelOperationRequest.ChannelId = channel.Id;
+                            channelOperationRequest.DestNode = null;
 
                             var channelUpdate = _channelOperationRequestRepository.Update(channelOperationRequest);
 
@@ -350,7 +368,26 @@ namespace FundsManager.Services
 
                                     var finalizedPSBT = changeFixedPSBT.Finalize();
 
-                                    //TODO Save the PSBT in the ChannelOperationRequest collection of PSBTs
+                                    //Saving the PSBT in the ChannelOperationRequest collection of PSBTs
+
+                                    channelOperationRequest = await _channelOperationRequestRepository.GetById(channelOperationRequest.Id);
+
+                                    if (channelOperationRequest?.ChannelOperationRequestPsbts != null)
+                                    {
+                                        channelOperationRequest.ChannelOperationRequestPsbts.Add(new ChannelOperationRequestPSBT
+                                        {
+                                            IsFinalisedPSBT = true,
+                                            CreationDatetime = DateTimeOffset.Now,
+                                            PSBT = finalizedPSBT.ToBase64(),
+                                        });
+
+                                        var psbtUpdate = _channelOperationRequestRepository.Update(channelOperationRequest);
+
+                                        if (!psbtUpdate.Item1)
+                                        {
+                                            _logger.LogError("Error while saving the finalised PSBT for channel operation request with id:{}", channelOperationRequest.Id);
+                                        }
+                                    }
 
                                     var fundingStateStepResp = await client.FundingStateStepAsync(new FundingTransitionMsg
                                     {
@@ -627,30 +664,27 @@ namespace FundsManager.Services
             return coins;
         }
 
-        public async Task<bool> CloseChannel(ChannelOperationRequest channelOperationRequest, Node sourceNode, bool forceClose = false)
+        public async Task<bool> CloseChannel(ChannelOperationRequest channelOperationRequest, bool forceClose = false)
         {
             if (channelOperationRequest == null) throw new ArgumentNullException(nameof(channelOperationRequest));
 
             if (channelOperationRequest.RequestType != OperationRequestType.Close)
                 return false;
 
-            //TODO Lock method to approved status only (?)
-
             var result = true;
 
             _logger.LogInformation("Channel close request for request id:{}",
                 channelOperationRequest.Id);
-
+            await using var context = await _dbContextFactory.CreateDbContextAsync();
             try
             {
                 if (channelOperationRequest.ChannelId != null)
                 {
-                    var channel = await _channelRepository.GetById(
-                        channelOperationRequest.ChannelId.Value);
+                    var channel = context.Channels.SingleOrDefault(x => x.Id == channelOperationRequest.ChannelId);
 
-                    if (channel != null)
+                    if (channel != null && channelOperationRequest.SourceNode.ChannelAdminMacaroon != null)
                     {
-                        using var grpcChannel = GrpcChannel.ForAddress($"https://{sourceNode.Endpoint}",
+                        using var grpcChannel = GrpcChannel.ForAddress($"https://{channelOperationRequest.SourceNode.Endpoint}",
                             new GrpcChannelOptions
                             {
                                 HttpHandler = new HttpClientHandler
@@ -707,32 +741,43 @@ namespace FundsManager.Services
 
                                 case CloseStatusUpdate.UpdateOneofCase.ChanClose:
 
-                                    if (response.ChanClose.Success)
+                                    //TODO Review why chanclose.success it is false for confirmed closings of channels
+                                    var chanCloseClosingTxid = Convert.ToHexString(response.ChanClose.ClosingTxid.ToByteArray().Reverse().ToArray()).ToLower();
+                                    _logger.LogInformation(
+                                        "Channel close request in status:{} for channel operation request:{} for channel:{} closing txId:{}",
+                                        ChannelOperationRequestStatus.OnChainConfirmed,
+                                        channelOperationRequest.Id,
+                                        channel.Id,
+                                        chanCloseClosingTxid);
+
+                                    channelOperationRequest.Status =
+                                        ChannelOperationRequestStatus.OnChainConfirmed;
+
+                                    var onChainConfirmedUpdate = _channelOperationRequestRepository.Update(channelOperationRequest);
+
+                                    if (onChainConfirmedUpdate.Item1 == false)
                                     {
-                                        var chanCloseClosingTxid = Convert.ToHexString(response.ChanClose.ClosingTxid.ToByteArray().Reverse().ToArray()).ToLower();
-                                        ;
-                                        _logger.LogInformation(
-                                            "Channel close request in status:{} for channel operation request:{} for channel:{} closing txId:{}",
-                                            ChannelOperationRequestStatus.OnChainConfirmed,
+                                        _logger.LogError(
+                                            "Error while updating channel operation request id:{} to status:{}",
                                             channelOperationRequest.Id,
-                                            channel.Id,
-                                            chanCloseClosingTxid);
-
-                                        channelOperationRequest.Status =
-                                            ChannelOperationRequestStatus.OnChainConfirmed;
-
-                                        var onChainConfirmedUpdate = _channelOperationRequestRepository.Update(channelOperationRequest);
-
-                                        if (onChainConfirmedUpdate.Item1 == false)
-                                        {
-                                            _logger.LogError(
-                                                "Error while updating channel operation request id:{} to status:{}",
-                                                channelOperationRequest.Id,
-                                                ChannelOperationRequestStatus.OnChainConfirmationPending);
-                                        }
-
-                                        result = true;
+                                            ChannelOperationRequestStatus.OnChainConfirmationPending);
                                     }
+
+                                    channel.Status = Channel.ChannelStatus.Closed;
+
+                                    //Null to avoid creation of entities
+                                    channel.ChannelOperationRequests = null;
+
+                                    context.Update(channel);
+
+                                    var closedChannelUpdateResult = await context.SaveChangesAsync() > 0;
+
+                                    if (!closedChannelUpdateResult)
+                                    {
+                                        _logger.LogError("Error while setting to closed status a closed channel with id:{}", channel.Id);
+                                    }
+
+                                    result = true;
 
                                     break;
 

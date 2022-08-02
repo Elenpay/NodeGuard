@@ -27,7 +27,7 @@ namespace FundsManager.Data.Repositories
                 .Include(node => node.Users)
                 .ThenInclude(user => user.Keys)
                 .ThenInclude(key => key.Wallets)
-                .FirstOrDefaultAsync(x => x.Id == id);
+                .SingleOrDefaultAsync(x => x.Id == id);
         }
 
         public async Task<Node?> GetByPubkey(string key)
@@ -38,7 +38,7 @@ namespace FundsManager.Data.Repositories
                 .Include(node => node.Users)
                 .ThenInclude(user => user.Keys)
                 .ThenInclude(keyObj => keyObj.Wallets)
-                .FirstOrDefaultAsync(x => x.PubKey == key);
+                .SingleOrDefaultAsync(x => x.PubKey == key);
         }
 
         public async Task<List<Node>> GetAll()
@@ -75,6 +75,8 @@ namespace FundsManager.Data.Repositories
         public async Task<(bool, string?)> AddAsync(Node type)
         {
             await using var applicationDbContext = await _dbContextFactory.CreateDbContextAsync();
+
+            type.SetCreationDatetime();
 
             return await _repository.AddAsync(type, applicationDbContext);
         }

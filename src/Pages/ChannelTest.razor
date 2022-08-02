@@ -149,7 +149,7 @@
 
                 var result = await ChannelOperationRequestRepository.AddAsync(channelOperationRequest);
 
-                channelOperationRequest.Wallet = temp;
+                channelOperationRequest = await ChannelOperationRequestRepository.GetById(channelOperationRequest.Id);
                 if (result.Item1)
                 {
                     var channelresult = false;
@@ -319,7 +319,7 @@
 
             if (result.Item1)
             {
-                var channelresult = await LightningService.CloseChannel(channelOperationRequest, alice, false);
+                var channelresult = await LightningService.CloseChannel(channelOperationRequest, false);
 
                 if (channelresult)
                 {

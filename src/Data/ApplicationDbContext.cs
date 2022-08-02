@@ -26,6 +26,8 @@ namespace FundsManager.Data
                 .HasOne(cor => cor.DestNode)
                 .WithMany(node => node.ChannelOperationRequestsAsDestination)
                 .HasForeignKey(cor => cor.DestNodeId);
+
+            modelBuilder.Entity<Node>().HasIndex(x => x.PubKey).IsUnique();
             base.OnModelCreating(modelBuilder);
         }
 

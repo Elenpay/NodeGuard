@@ -132,11 +132,26 @@
             </Fields>
         </ModalBody>
         <ModalFooter>
-            <Button Color="Color.Secondary" Clicked="@HideModal">Cancel Operation</Button>
-            <Button Color="Color.Primary" Clicked="@ApproveRequest">Approve</Button>
+            <Button Color="Color.Secondary" Clicked="@HideModal">Cancel</Button>
+            <Button Color="Color.Primary" Clicked="@ApproveRequest">
+               Approve
+            </Button>
             
 
         </ModalFooter>
+    </ModalContent>
+</Modal>
+<Modal @ref="_channelSpinner">
+    <ModalContent Centered>
+        <ModalHeader>
+            <ModalTitle>Waiting for the channel to be confirmed within 3 blocks...</ModalTitle>
+            <CloseButton />
+        </ModalHeader>
+        <ModalBody>
+            <SpinKit Centered="true" Size="50px" Type="SpinKitType.Circle" />
+        </ModalBody>
+        <ModalFooter
+            ></ModalFooter>
     </ModalContent>
 </Modal>
 
@@ -145,7 +160,7 @@
 @inject IChannelOperationRequestPSBTRepository ChannelOperationRequestPsbtRepository
 @inject IToastService ToastService;
 @inject ILightningService LightningService;
-                                                              @inject ClipboardService ClipboardService
+@inject ClipboardService ClipboardService
 @code {
     private List<ChannelOperationRequest>? _channelRequests;
     private List<ChannelOperationRequest>? _allRequests;
@@ -155,6 +170,7 @@
     private bool _modalVisible;
     private string? _psbt;
     private string? _templatePSBT;
+    private Modal _channelSpinner;
 
     [CascadingParameter]
     private ApplicationUser? LoggedUser { get; set; }
@@ -220,6 +236,8 @@
 
     private async Task ApproveRequest()
     {
+        await HideModal();
+
         if (_selectedRequest == null || _psbt == null || LoggedUser == null)
         {
             ToastService.ShowError("Error: Not all fields were set");
@@ -244,11 +262,12 @@
                     && _selectedRequest.AreAllRequiredSignaturesCollected 
                     && PSBT.TryParse(_psbt, CurrentNetworkHelper.GetCurrentNetwork(), out var parsedPSBT))
                 {
-                    //TODO We have a I/O issue here, a channel can wait several blocks to be confirmed so we can't block here forever
-                    //TODO This shall be a job and monitored on a different level
+                    //TODO We have a I/O issue here, a channel can wait several blocks to be confirmed so the notification will appear in a undetermined time on the UI
                     var failedOpenChannelRequest = false;
                     try
-                    {
+                    {  
+                       
+                        await _channelSpinner.Show();
                         await LightningService.OpenChannel(_selectedRequest, parsedPSBT);
                     }
                     catch
@@ -256,6 +275,7 @@
                         failedOpenChannelRequest = true;
                     }
 
+                    await _channelSpinner.Close(CloseReason.UserClosing);
                     if (failedOpenChannelRequest)
                     {
                         ToastService.ShowError("Error while requesting to open the channel, please contact a superadmin for troubleshooting");
@@ -263,8 +283,9 @@
                     }
                     else
                     {
-                        ToastService.ShowSuccess("Channel funded and waiting for on-chain confirmation");
+                        ToastService.ShowSuccess("Channel created");
                     }
+
                 }
             }
             else
@@ -274,10 +295,11 @@
             }
         
             await FetchRequests();
+            await _channelSpinner.Close(CloseReason.UserClosing);
 
         }
         
-        await HideModal();
+      
     }
 
     private async Task CopyPSBTToClipboard()
