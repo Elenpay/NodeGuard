@@ -121,9 +121,8 @@
                
             </Alert>
             <Fields Flex="Flex.JustifyContent.Center">
-
                 <Field>
-                    <Validation Validator="@ValidationRule.IsAlphanumeric">
+                    <Validation Validator="@ValidationRule.IsNotEmpty">
                         <FieldLabel>To sign this operation, please paste here your PSBT in base64 string</FieldLabel>
                         <MemoEdit Rows="4" @bind-Text="@_psbt">
                             <FieldHelp>Paste here the long string</FieldHelp>

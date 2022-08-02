@@ -23,7 +23,7 @@ namespace FundsManager.Data.Repositories
         {
             await using var applicationDbContext = await _dbContextFactory.CreateDbContextAsync();
 
-            return await applicationDbContext.OperationRequestPsbts.FirstOrDefaultAsync(x => x.Id == id);
+            return await applicationDbContext.ChannelOperationRequestPSBTs.FirstOrDefaultAsync(x => x.Id == id);
         }
 
         public async Task<List<ChannelOperationRequestPSBT>> GetAll()

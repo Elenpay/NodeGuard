@@ -39,7 +39,7 @@ namespace FundsManager.Data
 
         public DbSet<ChannelOperationRequest> ChannelOperationRequests { get; set; }
 
-        public DbSet<ChannelOperationRequestPSBT> OperationRequestPsbts { get; set; }
+        public DbSet<ChannelOperationRequestPSBT> ChannelOperationRequestPSBTs { get; set; }
 
         public DbSet<Channel> Channels { get; set; }
 
