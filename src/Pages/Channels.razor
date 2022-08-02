@@ -23,7 +23,7 @@
                         <Button Color="Color.Primary" hidden Clicked="@context.Clicked">Edit</Button>
                     </EditCommandTemplate>
                     <DeleteCommandTemplate>
-                        <Button Color="Color.Danger" hidden="@_hideDelete" Disabled="@(context.Item.Status == Channel.ChannelStatus.Closed)" Clicked="@context.Clicked">Delete</Button>
+                        <Button Color="Color.Danger" hidden="@_hideDelete" Disabled="@(context.Item.Status == Channel.ChannelStatus.Closed)" Clicked="@context.Clicked">Close</Button>
                     </DeleteCommandTemplate>
                 </DataGridCommandColumn>
                 <DataGridColumn TItem="Channel" Field="@nameof(Channel.ChannelId)" Caption="@nameof(Channel.ChannelId)" Sortable="false" />
@@ -70,7 +70,7 @@
                <DataGridColumn TItem="ChannelOperationRequest" Caption="Signatures Collected" Sortable="false" Displayable="true">
                    <DisplayTemplate>
                        @{
-                           var signaturesCollected = context?.ChannelOperationRequestSignatures?.Count ?? 0;
+                           var signaturesCollected = context.NumberOfSignaturesCollected + 1 ;
                            var signaturesRequired = context?.Wallet?.MofN ?? 0;
                            @($"{signaturesCollected} out of {signaturesRequired}")
                        }
@@ -116,15 +116,15 @@
     {
         if (channel.Item != null)
         {
-            var result = ChannelRepository.SafeRemove(channel.Item);
-            if (!result.Result.Item1)
+            var result =await ChannelRepository.SafeRemove(channel.Item);
+            if (!result.Item1)
             {
                 channel.Cancel = true;
                 ToastService.ShowError("Something went wrong");
             }
             else
             {
-                ToastService.ShowSuccess("Channel deleted successfully");
+                ToastService.ShowSuccess("Channel closed successfully");
                 _channels = await ChannelRepository.GetAll();
             }
         }

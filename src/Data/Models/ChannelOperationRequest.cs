@@ -63,7 +63,7 @@ namespace FundsManager.Data.Models
 
         #region Relationships
 
-        public ICollection<ChannelOperationRequestSignature> ChannelOperationRequestSignatures { get; set; }
+        public ICollection<ChannelOperationRequestPSBT> ChannelOperationRequestPsbts { get; set; }
 
         public int WalletId { get; set; }
         public Wallet Wallet { get; set; }
@@ -80,5 +80,39 @@ namespace FundsManager.Data.Models
         public bool IsChannelPrivate { get; set; }
 
         #endregion Relationships
+
+        /// <summary>
+        /// Checks if all the threshold signatures are collected, including the internal wallet key (even if not signed yet)
+        /// </summary>
+        [NotMapped]
+        public bool AreAllRequiredSignaturesCollected => CheckSignatures();
+
+        [NotMapped]
+        public int NumberOfSignaturesCollected => ChannelOperationRequestPsbts == null ? 0 : ChannelOperationRequestPsbts.Count(x =>
+                                    !x.IsFinalisedPSBT && !x.IsTemplatePSBT && !x.IsInternalWalletPSBT);
+
+        /// <summary>
+        /// Check that the number of signatures (not finalised psbt nor internal wallet psbt or template psbt are gathered and increases by one to count on the internal wallet signature
+        /// </summary>
+        /// <returns></returns>
+        private bool CheckSignatures()
+        {
+            var result = false;
+
+            if (ChannelOperationRequestPsbts != null && ChannelOperationRequestPsbts.Any())
+            {
+                var userPSBTsCount = NumberOfSignaturesCollected;
+
+                //We add the internal Wallet signature
+                userPSBTsCount++;
+
+                if (userPSBTsCount == Wallet.MofN)
+                {
+                    result = true;
+                }
+            }
+
+            return result;
+        }
     }
 }

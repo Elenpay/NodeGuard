@@ -18,16 +18,17 @@ namespace FundsManager.Data
 
         protected override void OnModelCreating(ModelBuilder modelBuilder)
         {
-        modelBuilder.Entity<ChannelOperationRequest>()
-                .HasOne(cor => cor.SourceNode)
-                .WithMany(node => node.ChannelOperationRequestsAsSource)
-                .HasForeignKey(cor => cor.SourceNodeId);
+            modelBuilder.Entity<ChannelOperationRequest>()
+                    .HasOne(cor => cor.SourceNode)
+                    .WithMany(node => node.ChannelOperationRequestsAsSource)
+                    .HasForeignKey(cor => cor.SourceNodeId);
             modelBuilder.Entity<ChannelOperationRequest>()
                 .HasOne(cor => cor.DestNode)
                 .WithMany(node => node.ChannelOperationRequestsAsDestination)
                 .HasForeignKey(cor => cor.DestNodeId);
-            base.OnModelCreating(modelBuilder);
 
+            modelBuilder.Entity<Node>().HasIndex(x => x.PubKey).IsUnique();
+            base.OnModelCreating(modelBuilder);
         }
 
         public DbSet<ApplicationUser> ApplicationUsers { get; set; }
@@ -40,11 +41,10 @@ namespace FundsManager.Data
 
         public DbSet<ChannelOperationRequest> ChannelOperationRequests { get; set; }
 
-        public DbSet<ChannelOperationRequestSignature> ChannelOperationRequestSignatures { get; set; }
+        public DbSet<ChannelOperationRequestPSBT> ChannelOperationRequestPSBTs { get; set; }
 
         public DbSet<Channel> Channels { get; set; }
 
         public DbSet<InternalWallet> InternalWallets { get; set; }
-
     }
 }

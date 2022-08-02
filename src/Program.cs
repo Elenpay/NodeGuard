@@ -43,7 +43,7 @@ namespace FundsManager
             builder.Services.AddTransient(typeof(IRepository<>), typeof(Repository<>));
             builder.Services.AddTransient<IApplicationUserRepository, ApplicationUserRepository>();
             builder.Services.AddTransient<IChannelOperationRequestRepository, ChannelOperationRequestRepository>();
-            builder.Services.AddTransient<IChannelOperationRequestSignatureRepository, ChannelOperationRequestSignatureRepository>();
+            builder.Services.AddTransient<IChannelOperationRequestPSBTRepository, ChannelOperationRequestPSBTRepository>();
             builder.Services.AddTransient<IChannelRepository, ChannelRepository>();
             builder.Services.AddTransient<IKeyRepository, KeyRepository>();
             builder.Services.AddTransient<INodeRepository, NodeRepository>();
@@ -99,7 +99,7 @@ namespace FundsManager
                 options.DiagnosticLevel = SentryLevel.Error;
                 options.Debug = Convert.ToBoolean(Environment.GetEnvironmentVariable("SENTRY_DEBUG_ENABLED"));
             });
-          
+
             var app = builder.Build();
 
             //DbInitialisation & Migrations

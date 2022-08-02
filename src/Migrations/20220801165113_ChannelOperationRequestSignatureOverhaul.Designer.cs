@@ -3,6 +3,7 @@ using System;
 using FundsManager.Data;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 
@@ -11,13 +12,14 @@ using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 namespace FundsManager.Migrations
 {
     [DbContext(typeof(ApplicationDbContext))]
-    partial class ApplicationDbContextModelSnapshot : ModelSnapshot
+    [Migration("20220801165113_ChannelOperationRequestSignatureOverhaul")]
+    partial class ChannelOperationRequestSignatureOverhaul
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
-                .HasAnnotation("ProductVersion", "6.0.7")
+                .HasAnnotation("ProductVersion", "6.0.6")
                 .HasAnnotation("Relational:MaxIdentifierLength", 63);
 
             NpgsqlModelBuilderExtensions.UseIdentityByDefaultColumns(modelBuilder);
@@ -177,7 +179,7 @@ namespace FundsManager.Migrations
 
                     b.HasIndex("UserSignerId");
 
-                    b.ToTable("ChannelOperationRequestPSBTs");
+                    b.ToTable("OperationRequestPsbts");
                 });
 
             modelBuilder.Entity("FundsManager.Data.Models.InternalWallet", b =>
@@ -283,9 +285,6 @@ namespace FundsManager.Migrations
                         .HasColumnType("timestamp with time zone");
 
                     b.HasKey("Id");
-
-                    b.HasIndex("PubKey")
-                        .IsUnique();
 
                     b.ToTable("Nodes");
                 });
@@ -621,7 +620,7 @@ namespace FundsManager.Migrations
             modelBuilder.Entity("FundsManager.Data.Models.ChannelOperationRequestPSBT", b =>
                 {
                     b.HasOne("FundsManager.Data.Models.ChannelOperationRequest", "ChannelOperationRequest")
-                        .WithMany("ChannelOperationRequestPsbts")
+                        .WithMany("ChannelOperationRequestSignatures")
                         .HasForeignKey("ChannelOperationRequestId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
@@ -728,7 +727,7 @@ namespace FundsManager.Migrations
 
             modelBuilder.Entity("FundsManager.Data.Models.ChannelOperationRequest", b =>
                 {
-                    b.Navigation("ChannelOperationRequestPsbts");
+                    b.Navigation("ChannelOperationRequestSignatures");
                 });
 
             modelBuilder.Entity("FundsManager.Data.Models.Node", b =>

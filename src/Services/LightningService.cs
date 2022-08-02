@@ -9,7 +9,9 @@ using NBXplorer;
 using NBXplorer.DerivationStrategy;
 using NBXplorer.Models;
 using System.Security.Cryptography;
+using FundsManager.Data;
 using FundsManager.Helpers;
+using Microsoft.EntityFrameworkCore;
 using Channel = FundsManager.Data.Models.Channel;
 
 namespace FundsManager.Services
@@ -20,11 +22,9 @@ namespace FundsManager.Services
         /// Opens a channel based on a presigned psbt with inputs, this method waits for I/O on the blockchain, therefore it can last its execution for minutes
         /// </summary>
         /// <param name="channelOperationRequest"></param>
-        /// <param name="source"></param>
-        /// <param name="destination"></param>
         /// <param name="presignedPSBT"></param>
         /// <returns></returns>
-        public Task<bool> OpenChannel(ChannelOperationRequest channelOperationRequest, Node source, Node destination, PSBT presignedPSBT);
+        public Task OpenChannel(ChannelOperationRequest channelOperationRequest, PSBT presignedPSBT);
 
         /// <summary>
         /// Generates a template PSBT with Sighash_NONE and some UTXOs from the wallet related to the request without signing
@@ -41,7 +41,7 @@ namespace FundsManager.Services
         /// <param name="channelOperationRequest"></param>
         /// <param name="forceClose"></param>
         /// <returns></returns>
-        public Task<bool> CloseChannel(ChannelOperationRequest channelOperationRequest, Node sourceNode, bool forceClose = false);
+        public Task<bool> CloseChannel(ChannelOperationRequest channelOperationRequest, bool forceClose = false);
 
         /// <summary>
         /// Gets the wallet balance
@@ -58,36 +58,55 @@ namespace FundsManager.Services
         /// <returns></returns>
         public Task<BitcoinAddress?> GetUnusedAddress(Wallet wallet,
             NBXplorer.DerivationStrategy.DerivationFeature derivationFeature);
+
+        /// <summary>
+        /// Gets the info about a node in the lightning network graph
+        /// </summary>
+        /// <param name="pubkey"></param>
+        /// <returns></returns>
+        public Task<LightningNode?> GetNodeInfo(string pubkey);
     }
 
     /// <summary>d
     public class LightningService : ILightningService
     {
         private readonly ILogger<LightningService> _logger;
-        private readonly IChannelRepository _channelRepository;
         private readonly IChannelOperationRequestRepository _channelOperationRequestRepository;
+        private readonly INodeRepository _nodeRepository;
+        private readonly IDbContextFactory<ApplicationDbContext> _dbContextFactory;
 
-        public LightningService(ILogger<LightningService> logger, IChannelRepository channelRepository,
-            IChannelOperationRequestRepository channelOperationRequestRepository)
+        public LightningService(ILogger<LightningService> logger,
+            IChannelOperationRequestRepository channelOperationRequestRepository,
+            INodeRepository nodeRepository,
+            IDbContextFactory<ApplicationDbContext> dbContextFactory)
         {
             _logger = logger;
-            _channelRepository = channelRepository;
             _channelOperationRequestRepository = channelOperationRequestRepository;
+            _nodeRepository = nodeRepository;
+            _dbContextFactory = dbContextFactory;
         }
 
-        public async Task<bool> OpenChannel(ChannelOperationRequest channelOperationRequest, Node source,
-            Node destination, PSBT presignedPSBT)
+        public async Task OpenChannel(ChannelOperationRequest channelOperationRequest, PSBT presignedPSBT)
         {
             if (channelOperationRequest == null) throw new ArgumentNullException(nameof(channelOperationRequest));
-            if (source == null) throw new ArgumentNullException(nameof(source));
-            if (destination == null) throw new ArgumentNullException(nameof(destination));
 
             if (channelOperationRequest.RequestType != OperationRequestType.Open)
-                return false;
-
-            if (source.Id == destination.Id)
             {
-                return false;
+                const string aNodeCannotOpenAChannelToHimself = "A node cannot open a channel to himself.";
+                _logger.LogError(aNodeCannotOpenAChannelToHimself);
+                throw new ArgumentException(aNodeCannotOpenAChannelToHimself);
+            }
+
+            await using var context = await _dbContextFactory.CreateDbContextAsync();
+
+            var source = channelOperationRequest.SourceNode;
+            var destination = channelOperationRequest.DestNode;
+
+            if (source.PubKey == destination?.PubKey)
+            {
+                const string aNodeCannotOpenAChannelToHimself = "A node cannot open a channel to himself.";
+                _logger.LogError(aNodeCannotOpenAChannelToHimself);
+                throw new ArgumentException(aNodeCannotOpenAChannelToHimself);
             }
 
             //Setup of grpc lnd api client (Lightning.proto)
@@ -113,14 +132,29 @@ namespace FundsManager.Services
             var pendingChannelIdHex = Convert.ToHexString(pendingChannelId);
 
             var (network, nbxplorerClient) = GenerateNetwork(_logger);
-            var txBuilder = network.CreateTransactionBuilder();
 
             //Derivation strategy for the multisig address based on its wallet
             var (derivationStrategyBase, internalWalletDerivationStrategy) = GetDerivationStrategy(channelOperationRequest, network);
 
+            if (derivationStrategyBase == null)
+            {
+                var derivationNull = $"Derivation scheme not found for wallet:{channelOperationRequest.Wallet.Id}";
+                _logger.LogError(derivationNull);
+
+                throw new ArgumentException(
+                    derivationNull);
+            }
+
             var closeAddress = await nbxplorerClient.GetUnusedAsync(derivationStrategyBase, DerivationFeature.Deposit, 0, true);
 
-            //TODO Log user approver
+            if (closeAddress == null)
+            {
+                var closeAddressNull = $"Closing address was null for an operation on wallet:{channelOperationRequest.Wallet.Id}";
+                _logger.LogError(closeAddressNull);
+
+                throw new ArgumentException(
+                    closeAddressNull);
+            }
 
             _logger.LogInformation("Channel open request for  request id:{} from node:{} to node:{}",
                 channelOperationRequest.Id,
@@ -191,17 +225,20 @@ namespace FundsManager.Services
                                 UpdateDatetime = DateTimeOffset.Now,
                             };
 
-                            var addChannelResult = await _channelRepository.AddAsync(channel);
+                            await context.AddAsync(channel);
 
-                            if (addChannelResult.Item1 == false)
+                            var addChannelResult = (await context.SaveChangesAsync()) > 0;
+
+                            if (addChannelResult == false)
                             {
                                 _logger.LogError(
                                     "Channel for channel operation request id:{} could not be created, reason:{}",
                                     channelOperationRequest.Id,
-                                    addChannelResult.Item2);
+                                    "Could not persist to db");
                             }
 
                             channelOperationRequest.ChannelId = channel.Id;
+                            channelOperationRequest.DestNode = null;
 
                             var channelUpdate = _channelOperationRequestRepository.Update(channelOperationRequest);
 
@@ -264,11 +301,14 @@ namespace FundsManager.Services
 
                                 if (!txInKeyPathDictionary.Any())
                                 {
-                                    _logger.LogError("Error, keypaths for the UTXOs used in this tx are not found");
+                                    const string errorKeypathsForTheUtxosUsedInThisTxAreNotFound = "Error, keypaths for the UTXOs used in this tx are not found";
+
+                                    _logger.LogError(errorKeypathsForTheUtxosUsedInThisTxAreNotFound);
 
                                     CancelPendingChannel(source, client, pendingChannelId);
 
-                                    return false;
+                                    throw new ArgumentException(
+                                        errorKeypathsForTheUtxosUsedInThisTxAreNotFound);
                                 }
 
                                 var privateKeysForUsedUTXOs = txInKeyPathDictionary.ToDictionary(x => x.Key.PrevOut, x =>
@@ -294,11 +334,13 @@ namespace FundsManager.Services
                                 if (partialSigsCountAfterSignature == 0 ||
                                     partialSigsCountAfterSignature <= partialSigsCount)
                                 {
-                                    _logger.LogError("Invalid expected number of partial signatures after signing for the channel operation request:{}", channelOperationRequest.Id);
+                                    var invalidNoOfPartialSignatures = $"Invalid expected number of partial signatures after signing for the channel operation request:{channelOperationRequest.Id}";
+                                    _logger.LogError(invalidNoOfPartialSignatures);
 
                                     CancelPendingChannel(source, client, pendingChannelId);
 
-                                    return false;
+                                    throw new ArgumentException(
+                                        invalidNoOfPartialSignatures);
                                 }
 
                                 //Sanity check
@@ -325,6 +367,27 @@ namespace FundsManager.Services
                                     //PSBT marked as verified so time to finalize the PSBT and broadcast the tx
 
                                     var finalizedPSBT = changeFixedPSBT.Finalize();
+
+                                    //Saving the PSBT in the ChannelOperationRequest collection of PSBTs
+
+                                    channelOperationRequest = await _channelOperationRequestRepository.GetById(channelOperationRequest.Id);
+
+                                    if (channelOperationRequest?.ChannelOperationRequestPsbts != null)
+                                    {
+                                        channelOperationRequest.ChannelOperationRequestPsbts.Add(new ChannelOperationRequestPSBT
+                                        {
+                                            IsFinalisedPSBT = true,
+                                            CreationDatetime = DateTimeOffset.Now,
+                                            PSBT = finalizedPSBT.ToBase64(),
+                                        });
+
+                                        var psbtUpdate = _channelOperationRequestRepository.Update(channelOperationRequest);
+
+                                        if (!psbtUpdate.Item1)
+                                        {
+                                            _logger.LogError("Error while saving the finalised PSBT for channel operation request with id:{}", channelOperationRequest.Id);
+                                        }
+                                    }
 
                                     var fundingStateStepResp = await client.FundingStateStepAsync(new FundingTransitionMsg
                                     {
@@ -362,9 +425,8 @@ namespace FundsManager.Services
                 result = false;
 
                 CancelPendingChannel(source, client, pendingChannelId);
+                throw;
             }
-
-            return result;
         }
 
         /// <summary>
@@ -426,7 +488,7 @@ namespace FundsManager.Services
             }
 
             //UTXOs -> they need to be tracked first on nbxplorer to get results!!
-            var (derivationStrategy, _) = GetDerivationStrategy(channelOperationRequest, nbXplorerNetwork);
+            var derivationStrategy = channelOperationRequest.Wallet.GetDerivationStrategy();
 
             if (derivationStrategy == null)
             {
@@ -602,30 +664,27 @@ namespace FundsManager.Services
             return coins;
         }
 
-        public async Task<bool> CloseChannel(ChannelOperationRequest channelOperationRequest, Node sourceNode, bool forceClose = false)
+        public async Task<bool> CloseChannel(ChannelOperationRequest channelOperationRequest, bool forceClose = false)
         {
             if (channelOperationRequest == null) throw new ArgumentNullException(nameof(channelOperationRequest));
 
             if (channelOperationRequest.RequestType != OperationRequestType.Close)
                 return false;
 
-            //TODO Lock method to approved status only (?)
-
             var result = true;
 
             _logger.LogInformation("Channel close request for request id:{}",
                 channelOperationRequest.Id);
-
+            await using var context = await _dbContextFactory.CreateDbContextAsync();
             try
             {
                 if (channelOperationRequest.ChannelId != null)
                 {
-                    var channel = await _channelRepository.GetById(
-                        channelOperationRequest.ChannelId.Value);
+                    var channel = context.Channels.SingleOrDefault(x => x.Id == channelOperationRequest.ChannelId);
 
-                    if (channel != null)
+                    if (channel != null && channelOperationRequest.SourceNode.ChannelAdminMacaroon != null)
                     {
-                        using var grpcChannel = GrpcChannel.ForAddress($"https://{sourceNode.Endpoint}",
+                        using var grpcChannel = GrpcChannel.ForAddress($"https://{channelOperationRequest.SourceNode.Endpoint}",
                             new GrpcChannelOptions
                             {
                                 HttpHandler = new HttpClientHandler
@@ -682,32 +741,43 @@ namespace FundsManager.Services
 
                                 case CloseStatusUpdate.UpdateOneofCase.ChanClose:
 
-                                    if (response.ChanClose.Success)
+                                    //TODO Review why chanclose.success it is false for confirmed closings of channels
+                                    var chanCloseClosingTxid = Convert.ToHexString(response.ChanClose.ClosingTxid.ToByteArray().Reverse().ToArray()).ToLower();
+                                    _logger.LogInformation(
+                                        "Channel close request in status:{} for channel operation request:{} for channel:{} closing txId:{}",
+                                        ChannelOperationRequestStatus.OnChainConfirmed,
+                                        channelOperationRequest.Id,
+                                        channel.Id,
+                                        chanCloseClosingTxid);
+
+                                    channelOperationRequest.Status =
+                                        ChannelOperationRequestStatus.OnChainConfirmed;
+
+                                    var onChainConfirmedUpdate = _channelOperationRequestRepository.Update(channelOperationRequest);
+
+                                    if (onChainConfirmedUpdate.Item1 == false)
                                     {
-                                        var chanCloseClosingTxid = Convert.ToHexString(response.ChanClose.ClosingTxid.ToByteArray().Reverse().ToArray()).ToLower();
-                                        ;
-                                        _logger.LogInformation(
-                                            "Channel close request in status:{} for channel operation request:{} for channel:{} closing txId:{}",
-                                            ChannelOperationRequestStatus.OnChainConfirmed,
+                                        _logger.LogError(
+                                            "Error while updating channel operation request id:{} to status:{}",
                                             channelOperationRequest.Id,
-                                            channel.Id,
-                                            chanCloseClosingTxid);
-
-                                        channelOperationRequest.Status =
-                                            ChannelOperationRequestStatus.OnChainConfirmed;
-
-                                        var onChainConfirmedUpdate = _channelOperationRequestRepository.Update(channelOperationRequest);
-
-                                        if (onChainConfirmedUpdate.Item1 == false)
-                                        {
-                                            _logger.LogError(
-                                                "Error while updating channel operation request id:{} to status:{}",
-                                                channelOperationRequest.Id,
-                                                ChannelOperationRequestStatus.OnChainConfirmationPending);
-                                        }
-
-                                        result = true;
+                                            ChannelOperationRequestStatus.OnChainConfirmationPending);
                                     }
+
+                                    channel.Status = Channel.ChannelStatus.Closed;
+
+                                    //Null to avoid creation of entities
+                                    channel.ChannelOperationRequests = null;
+
+                                    context.Update(channel);
+
+                                    var closedChannelUpdateResult = await context.SaveChangesAsync() > 0;
+
+                                    if (!closedChannelUpdateResult)
+                                    {
+                                        _logger.LogError("Error while setting to closed status a closed channel with id:{}", channel.Id);
+                                    }
+
+                                    result = true;
 
                                     break;
 
@@ -763,6 +833,52 @@ namespace FundsManager.Services
             }
 
             var result = keyPathInformation?.Address ?? null;
+
+            return result;
+        }
+
+        public async Task<LightningNode?> GetNodeInfo(string pubkey)
+        {
+            if (string.IsNullOrWhiteSpace(pubkey))
+                throw new ArgumentException("Value cannot be null or whitespace.", nameof(pubkey));
+
+            LightningNode? result = null;
+
+            var node = (await _nodeRepository.GetAllManagedByFundsManager()).FirstOrDefault();
+            if (node == null)
+                node = (await _nodeRepository.GetAllManagedByFundsManager()).LastOrDefault();
+
+            if (node == null)
+            {
+                _logger.LogError("No managed node found on the system");
+                return result;
+            }
+
+            using var grpcChannel = GrpcChannel.ForAddress($"https://{node.Endpoint}",
+                new GrpcChannelOptions
+                {
+                    HttpHandler = new HttpClientHandler
+                    {
+                        ServerCertificateCustomValidationCallback =
+                            HttpClientHandler.DangerousAcceptAnyServerCertificateValidator
+                    }
+                });
+
+            var client = new Lightning.LightningClient(grpcChannel);
+            try
+            {
+                var nodeInfo = await client.GetNodeInfoAsync(new NodeInfoRequest
+                {
+                    PubKey = pubkey,
+                    IncludeChannels = false
+                }, new Metadata { { "macaroon", node.ChannelAdminMacaroon } });
+
+                result = nodeInfo?.Node;
+            }
+            catch (Exception e)
+            {
+                _logger.LogError(e, "Error while obtaining node info for node with pubkey:{}", pubkey);
+            }
 
             return result;
         }

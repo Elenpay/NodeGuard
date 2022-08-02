@@ -1,5 +1,6 @@
 ﻿using FundsManager.Data.Models;
 using FundsManager.Data.Repositories.Interfaces;
+using FundsManager.Services;
 using Microsoft.EntityFrameworkCore;
 
 namespace FundsManager.Data.Repositories
@@ -9,14 +10,21 @@ namespace FundsManager.Data.Repositories
         private readonly IRepository<Channel> _repository;
         private readonly ILogger<ChannelRepository> _logger;
         private readonly IDbContextFactory<ApplicationDbContext> _dbContextFactory;
+        private readonly ILightningService _lightningService;
+        private readonly IChannelOperationRequestRepository _channelOperationRequestRepository;
 
         public ChannelRepository(IRepository<Channel> repository,
             ILogger<ChannelRepository> logger,
-            IDbContextFactory<ApplicationDbContext> dbContextFactory)
+            IDbContextFactory<ApplicationDbContext> dbContextFactory,
+            ILightningService lightningService,
+            IChannelOperationRequestRepository channelOperationRequestRepository
+            )
         {
             _repository = repository;
             _logger = logger;
             _dbContextFactory = dbContextFactory;
+            _lightningService = lightningService;
+            _channelOperationRequestRepository = channelOperationRequestRepository;
         }
 
         public async Task<Channel?> GetById(int id)
@@ -35,7 +43,7 @@ namespace FundsManager.Data.Repositories
                 .Include(channel => channel.ChannelOperationRequests).ThenInclude(request => request.SourceNode)
                 .Include(channel => channel.ChannelOperationRequests).ThenInclude(request => request.Wallet)
                 .Include(channel => channel.ChannelOperationRequests).ThenInclude(request => request.DestNode)
-                .Include(channel => channel.ChannelOperationRequests).ThenInclude(request => request.ChannelOperationRequestSignatures)
+                .Include(channel => channel.ChannelOperationRequests).ThenInclude(request => request.ChannelOperationRequestPsbts)
                 .ToListAsync();
         }
 
@@ -59,56 +67,55 @@ namespace FundsManager.Data.Repositories
 
             return _repository.Remove(type, applicationDbContext);
         }
-        
-        public async Task<(bool, string?)> SafeRemove(Channel type)
+
+        public async Task<(bool, string?)> SafeRemove(Channel type, bool forceClose = false)
         {
             await using var applicationDbContext = await _dbContextFactory.CreateDbContextAsync();
-            await using var transaction = await applicationDbContext.Database.BeginTransactionAsync();
-            ChannelOperationRequest? openRequest = applicationDbContext.ChannelOperationRequests.FirstOrDefault(request => request.ChannelId == type.Id);
-            ChannelOperationRequest closeRequest = new ChannelOperationRequest()
+            var openRequest = applicationDbContext.ChannelOperationRequests.Include(x => x.SourceNode).SingleOrDefault(request => request.ChannelId == type.Id);
+            var closeRequest = new ChannelOperationRequest
             {
                 ChannelId = type.Id,
                 RequestType = OperationRequestType.Close,
                 CreationDatetime = DateTimeOffset.Now,
                 UpdateDatetime = DateTimeOffset.Now,
                 Status = ChannelOperationRequestStatus.Approved, // Close operations are pre-approved by default
-                Description = "Close Channel Operation for Channel " + type.Id
+                Description = "Close Channel Operation for Channel " + type.Id,
             };
             if (openRequest != null)
             {
                 closeRequest.WalletId = openRequest.WalletId;
                 closeRequest.SourceNodeId = openRequest.SourceNodeId;
+
                 closeRequest.DestNodeId = openRequest.DestNodeId;
-                closeRequest.AmountCryptoUnit =  openRequest.AmountCryptoUnit;
-                closeRequest.SatsAmount =  openRequest.SatsAmount;
-                closeRequest.UserId =  openRequest.UserId;
+                closeRequest.AmountCryptoUnit = openRequest.AmountCryptoUnit;
+                closeRequest.SatsAmount = openRequest.SatsAmount;
+                closeRequest.UserId = openRequest.UserId;
             }
             else
             {
                 _logger.LogWarning("Could not find a opening request operation for this channel Some of the fields will be not set");
             }
-            
-            await applicationDbContext.ChannelOperationRequests.AddAsync(closeRequest);
-            var createCloseRequestRowsChanged = applicationDbContext.SaveChanges() > 0;
 
-            // TODO attempt closing channel in LND
-            
-            // Once confirmed, we set the channel to close status
-            Channel? channelToBeClosed = applicationDbContext.Channels.FirstOrDefault(c => c.Id == type.Id);
-            var updateChannelResultRowsChanged = false;
-            if (channelToBeClosed != null)
+            var closeRequestAddResult = await _channelOperationRequestRepository.AddAsync(closeRequest);
+
+            if (!closeRequestAddResult.Item1)
             {
-                channelToBeClosed.Status = Channel.ChannelStatus.Closed;
-                channelToBeClosed.UpdateDatetime = DateTimeOffset.Now;
-                applicationDbContext.Channels.Update(channelToBeClosed);
-                updateChannelResultRowsChanged = applicationDbContext.SaveChanges() > 0;
+                _logger.LogError("Error while saving close request for channel with id:{}", type.Id);
+                return (false, closeRequestAddResult.Item2);
             }
-            
-            if (!createCloseRequestRowsChanged || !updateChannelResultRowsChanged)
-                return (false, "Something went wrong");
-            
-            transaction.Commit();
-            return (true, "Operation Completed Successfully");
+
+            closeRequest = await _channelOperationRequestRepository.GetById(closeRequest.Id);
+
+            //LND Closing has to be done with a proxy service avoid cycles in the dependency injection
+            var closeResult = await _lightningService.CloseChannel(closeRequest, forceClose);
+
+            if (!closeResult)
+            {
+                _logger.LogError("Channel with id:{} could not be closed", closeRequest.Channel.Id);
+                return (false, "Channel could not be closed");
+            }
+
+            return (true, null);
         }
 
         public (bool, string?) RemoveRange(List<Channel> types)
@@ -126,4 +133,3 @@ namespace FundsManager.Data.Repositories
         }
     }
 }
-

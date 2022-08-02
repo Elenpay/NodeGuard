@@ -1,13 +1,14 @@
 ﻿@page "/pending-requests"
 @using System.Security.Claims
+@using FundsManager.Helpers
+@using NBitcoin
 @attribute [Authorize(Roles = "FinanceManager, Superadmin")]
 
 <PageTitle>Pending Requests</PageTitle>
-<h1>Awaiting My signature</h1>
+<h3>Requests awaiting my signature</h3>
 <br />
 <DataGrid TItem="ChannelOperationRequest"
           Data="@_channelRequests"
-          @bind-SelectedRow="@_selectedRequest"
           CustomFilter="@RequestPendingFilter"
           ShowPager="true"
           ShowPageSizes="true"
@@ -28,7 +29,7 @@
         <DataGridColumn TItem="ChannelOperationRequest" Field="@nameof(ChannelOperationRequest.WalletId)" Caption="Signatures Collected" Sortable="false" Displayable="true">
             <DisplayTemplate>
                 @{
-                    var signaturesCollected = context.ChannelOperationRequestSignatures?.Count;
+                    var signaturesCollected = context.NumberOfSignaturesCollected + 1;
                     var signaturesRequired = context.Wallet?.MofN ?? 0;
                     @($"{signaturesCollected} out of {signaturesRequired}")
                 }
@@ -40,7 +41,7 @@
                 <Button Color="Color.Primary" hidden ></Button>
             </NewCommandTemplate>
             <EditCommandTemplate>
-                <Button Color="Color.Primary" hidden=@_hideApprove Clicked="@ShowModal">Approve</Button>
+                <Button Color="Color.Primary" hidden=@_hideApprove Clicked="@(()=> ShowModal(context.Item))">Approve</Button>
             </EditCommandTemplate>
             <DeleteCommandTemplate>
                 <Button Color="Color.Primary" hidden ></Button>
@@ -60,11 +61,10 @@
 </DataGrid>
 <br />
 <br />
-<h1>All Pending Requests</h1>
+<h3>All Pending Requests</h3>
 <br />
 <DataGrid TItem="ChannelOperationRequest"
           Data="@_allRequests"
-          @bind-SelectedRow="@_selectedRequest"
           CustomFilter="@RequestPendingFilter"
           ShowPager="true"
           ShowPageSizes="true"
@@ -84,7 +84,7 @@
         <DataGridColumn TItem="ChannelOperationRequest" Field="@nameof(ChannelOperationRequest.WalletId)" Caption="Signatures Collected" Sortable="false" Displayable="true">
             <DisplayTemplate>
                 @{
-                    var signaturesCollected = context?.ChannelOperationRequestSignatures?.Count ?? 0;
+                    var signaturesCollected = context.NumberOfSignaturesCollected + 1;
                     var signaturesRequired = context?.Wallet?.MofN ?? 0;
                     @($"{signaturesCollected} out of {signaturesRequired}")
                 }
@@ -112,28 +112,55 @@
             <CloseButton />
         </ModalHeader>
         <ModalBody>
+            <Alert Color="Color.Warning" Visible>
+                <AlertMessage>Please sign the following PSBT with your Software/Hardware wallet  <Button Color="Color.Primary" Clicked="CopyPSBTToClipboard">
+                    <i class="oi oi-clipboard"></i> 
+                </Button>
+                </AlertMessage>
+                <MemoEdit Rows="4" @bind-Text="_templatePSBT" Disabled="true"></MemoEdit>
+               
+            </Alert>
             <Fields Flex="Flex.JustifyContent.Center">
                 <Field>
-                    <Validation Validator="@ValidationRule.IsAlphanumeric">
-                        <FieldLabel>To sign this operation, please paste here your PSBT</FieldLabel>
-                        <TextEdit @bind-Text="@_psbt">
+                    <Validation Validator="@ValidationRule.IsNotEmpty">
+                        <FieldLabel>To sign this operation, please paste here your PSBT in base64 string</FieldLabel>
+                        <MemoEdit Rows="4" @bind-Text="@_psbt">
                             <FieldHelp>Paste here the long string</FieldHelp>
-                        </TextEdit>
+                        </MemoEdit>
                     </Validation>
                 </Field>
             </Fields>
         </ModalBody>
         <ModalFooter>
-            <Button Color="Color.Secondary" Clicked="@HideModal">Cancel Operation</Button>
-            <Button Color="Color.Primary" Clicked="@ApproveRequest">Approve</Button>
+            <Button Color="Color.Secondary" Clicked="@HideModal">Cancel</Button>
+            <Button Color="Color.Primary" Clicked="@ApproveRequest">
+               Approve
+            </Button>
+            
+
         </ModalFooter>
+    </ModalContent>
+</Modal>
+<Modal @ref="_channelSpinner">
+    <ModalContent Centered>
+        <ModalHeader>
+            <ModalTitle>Waiting for the channel to be confirmed within 3 blocks...</ModalTitle>
+            <CloseButton />
+        </ModalHeader>
+        <ModalBody>
+            <SpinKit Centered="true" Size="50px" Type="SpinKitType.Circle" />
+        </ModalBody>
+        <ModalFooter
+            ></ModalFooter>
     </ModalContent>
 </Modal>
 
 
 @inject IChannelOperationRequestRepository ChannelOperationRequestRepository
-@inject IChannelOperationRequestSignatureRepository ChannelOperationRequestSignatureRepository
+@inject IChannelOperationRequestPSBTRepository ChannelOperationRequestPsbtRepository
 @inject IToastService ToastService;
+@inject ILightningService LightningService;
+@inject ClipboardService ClipboardService
 @code {
     private List<ChannelOperationRequest>? _channelRequests;
     private List<ChannelOperationRequest>? _allRequests;
@@ -142,6 +169,8 @@
     private bool _hideApprove;
     private bool _modalVisible;
     private string? _psbt;
+    private string? _templatePSBT;
+    private Modal _channelSpinner;
 
     [CascadingParameter]
     private ApplicationUser? LoggedUser { get; set; }
@@ -183,37 +212,100 @@
         return req.Status.Equals(ChannelOperationRequestStatus.Pending);
     }
 
-    private async Task ShowModal()
+    private async Task ShowModal(ChannelOperationRequest channelOperationRequest)
     {
-        _modalVisible = true;
-        _psbt = String.Empty;
+        _selectedRequest = channelOperationRequest;
+        _psbt = string.Empty;
+        if (_selectedRequest != null) {
+
+            _templatePSBT = (await LightningService.GenerateTemplatePSBT(_selectedRequest))?.ToBase64();
+
+            //TODO Review Saving of PSBT template, but what about concurrency of UTXO?
+
+            _modalVisible = true;
+
+        }
     }
 
     private async Task HideModal()
     {
         _modalVisible = false;
+        _templatePSBT = null;
+
     }
 
     private async Task ApproveRequest()
     {
+        await HideModal();
+
         if (_selectedRequest == null || _psbt == null || LoggedUser == null)
         {
             ToastService.ShowError("Error: Not all fields were set");
         }
         else {
-            ChannelOperationRequestSignature signature = new()
+            ChannelOperationRequestPSBT psbt = new()
             {
                 ChannelOperationRequestId = _selectedRequest.Id,
                 PSBT = _psbt,
-                UserSignerId = LoggedUser.Id
+                UserSignerId = LoggedUser.Id,
+                
             };
-            await ChannelOperationRequestSignatureRepository.AddAsync(signature);
+            var addResult = await ChannelOperationRequestPsbtRepository.AddAsync(psbt);
+
+            if (addResult.Item1)
+            {
+                ToastService.ShowSuccess("Signature collected");
+
+                _selectedRequest = await ChannelOperationRequestRepository.GetById(_selectedRequest.Id);
+
+                if (_selectedRequest != null 
+                    && _selectedRequest.AreAllRequiredSignaturesCollected 
+                    && PSBT.TryParse(_psbt, CurrentNetworkHelper.GetCurrentNetwork(), out var parsedPSBT))
+                {
+                    //TODO We have a I/O issue here, a channel can wait several blocks to be confirmed so the notification will appear in a undetermined time on the UI
+                    var failedOpenChannelRequest = false;
+                    try
+                    {  
+                       
+                        await _channelSpinner.Show();
+                        await LightningService.OpenChannel(_selectedRequest, parsedPSBT);
+                    }
+                    catch
+                    {
+                        failedOpenChannelRequest = true;
+                    }
+
+                    await _channelSpinner.Close(CloseReason.UserClosing);
+                    if (failedOpenChannelRequest)
+                    {
+                        ToastService.ShowError("Error while requesting to open the channel, please contact a superadmin for troubleshooting");
+
+                    }
+                    else
+                    {
+                        ToastService.ShowSuccess("Channel created");
+                    }
+
+                }
+            }
+            else
+            {
+                ToastService.ShowSuccess("Error while saving the signature");
+
+            }
         
             await FetchRequests();
+            await _channelSpinner.Close(CloseReason.UserClosing);
 
         }
         
-        await HideModal();
-        ToastService.ShowSuccess("Request Signed");
+      
     }
+
+    private async Task CopyPSBTToClipboard()
+    {
+        await ClipboardService.WriteTextAsync(_templatePSBT); 
+        ToastService.ShowSuccess("PSBT copied");
+    }
+
 }
