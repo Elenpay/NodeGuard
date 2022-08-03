@@ -48,8 +48,8 @@
                         }
                         else
                         {
-                            <Button Color="Color.Info" Clicked="@(() => LoadAndOpenModal(context.Item))">Add key</Button>
-                            <Button Color="Color.Warning" Clicked="@(() => LoadAndOpenFinaliseTextModal(context.Item))">Finalise</Button>
+                            <Button Color="Color.Info" Disabled="@(context.Item.Keys != null && context.Item.Keys.Count >= context.Item.MofN)" Clicked="@(() => LoadAndOpenModal(context.Item))">Add key</Button>
+                            <Button Color="Color.Warning" Disabled="@(context.Item.Keys != null && context.Item.Keys.Count < context.Item.MofN)" Clicked="@(() => LoadAndOpenFinaliseTextModal(context.Item))">Finalise</Button>
 
                         }
                       
@@ -355,7 +355,7 @@
             _selectedWallet.Keys = new List<Key>();
             _selectedWallet.Keys.Add(_selectedWalletKey);
 
-            var updateResult = WalletRepository.Update(_selectedWallet);
+            var updateResult = WalletRepository.Update(_selectedWallet, true);
 
             if (updateResult.Item1)
             {

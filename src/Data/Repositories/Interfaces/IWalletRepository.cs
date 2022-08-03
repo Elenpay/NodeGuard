@@ -22,7 +22,7 @@ public interface IWalletRepository
 
     (bool, string?) RemoveRange(List<Wallet> types);
 
-    (bool, string?) Update(Wallet type);
+    (bool, string?) Update(Wallet type, bool includeKeysUpdate = false);
 
     /// <summary>
     /// Enables the tracking of this wallet and locks the edition of its parameters other than name and description

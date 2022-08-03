@@ -14,6 +14,7 @@ namespace FundsManager.Data.Repositories.Interfaces
         /// </summary>
         /// <returns>T</returns>
         public Task<T> GetById(ApplicationDbContext applicationDbContext);
+
         /// <summary>
         /// Gets all the entities in <see cref="IRepository{T}"></see>
         /// </summary>
@@ -52,7 +53,8 @@ namespace FundsManager.Data.Repositories.Interfaces
         /// Updates an existing entity of <see cref="IRepository{T}"></see>
         /// </summary>
         /// <param name="type"></param>
+        /// <param name="applicationDbContext"></param>
         /// <returns>A tuple (bool, string). The bool represents the call success and the string any possible message.</returns>
-        public (bool, string?) Update(T type, ApplicationDbContext applicationDbContext);
+        public (bool, string) Update(T type, ApplicationDbContext applicationDbContext);
     }
 }
