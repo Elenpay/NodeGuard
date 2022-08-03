@@ -51,7 +51,7 @@ namespace FundsManager.Data.Repositories
                 .Include(x => x.Keys)
                 .ToListAsync();
         }
-        
+
         public async Task<(bool, string?)> AddAsync(Wallet type)
         {
             await using var applicationDbContext = await _dbContextFactory.CreateDbContextAsync();
@@ -59,38 +59,39 @@ namespace FundsManager.Data.Repositories
             type.SetCreationDatetime();
             type.SetUpdateDatetime();
 
-            //We add the internal wallet of the moment and its key
-            var currentInternalWallet = (await _internalWalletRepository.GetCurrentInternalWallet());
-            if (currentInternalWallet != null)
-                type.InternalWalletId = currentInternalWallet.Id;
-
-            var currentInternalWalletKey = await _keyRepository.GetCurrentInternalWalletKey();
-
-            type.Keys = new List<Key>();
-
-            var addResult = await _repository.AddAsync(type, applicationDbContext);
-
-            if (currentInternalWalletKey != null)
-                type.Keys.Add(currentInternalWalletKey);
-
-            //We need to persist before updating a m-of-n relationship
-            var updateResult = Update(type);
-
-            //We tell nbxplorer to track this
-
-            var (_, client) = LightningService.GenerateNetwork(_logger);
-
             try
             {
-                await client.TrackAsync(type.GetDerivationStrategy());
+                await using var transaction = await applicationDbContext.Database.BeginTransactionAsync();
+
+                //We add the internal wallet of the moment and its key
+                var currentInternalWallet = (await _internalWalletRepository.GetCurrentInternalWallet());
+                if (currentInternalWallet != null)
+                    type.InternalWalletId = currentInternalWallet.Id;
+
+                var currentInternalWalletKey = await _keyRepository.GetCurrentInternalWalletKey();
+
+                type.Keys = new List<Key>();
+
+                var addResult = await _repository.AddAsync(type, applicationDbContext);
+
+                if (currentInternalWalletKey != null)
+                    type.Keys.Add(currentInternalWalletKey);
+
+                //We need to persist before updating a m-of-n relationship
+                applicationDbContext.Update(type);
+                await applicationDbContext.SaveChangesAsync();
+
+                transaction.Commit();
             }
             catch (Exception e)
             {
-                _logger.LogError(e, "Error while setting nbxplorer tracking on wallet:{}", type.Id);
-                return (false, "Error while setting nbxplorer tracking on wallet");
+                const string errorWhileAddingOnRepository = "Error while adding on repository";
+                _logger.LogError(e, errorWhileAddingOnRepository);
+
+                return (false, errorWhileAddingOnRepository);
             }
 
-            return (addResult.Item1 && updateResult.Item1, addResult.Item2 + updateResult.Item2);
+            return (true, null);
         }
 
         public async Task<(bool, string?)> AddRangeAsync(List<Wallet> type)
@@ -114,11 +115,14 @@ namespace FundsManager.Data.Repositories
             return _repository.RemoveRange(types, applicationDbContext);
         }
 
-        public (bool, string?) Update(Wallet type)
+        public (bool, string?) Update(Wallet type, bool includeKeysUpdate = false)
         {
             using var applicationDbContext = _dbContextFactory.CreateDbContext();
+
             type.SetUpdateDatetime();
-            type.Keys?.Clear();
+            if (!includeKeysUpdate)
+                type.Keys?.Clear();
+
             type.ChannelOperationRequestsAsSource?.Clear();
             return _repository.Update(type, applicationDbContext);
         }
@@ -130,12 +134,23 @@ namespace FundsManager.Data.Repositories
 
             (bool, string?) result = (true, null);
 
+            if (selectedWalletToFinalise.Keys.Count < selectedWalletToFinalise.MofN)
+            {
+                return (false, "Invalid number of keys for the given threshold");
+            }
+
             selectedWalletToFinalise.IsFinalised = true;
             try
             {
                 var (_, nbxplorerClient) = LightningService.GenerateNetwork(_logger);
 
-                await nbxplorerClient.TrackAsync(selectedWalletToFinalise.GetDerivationStrategy());
+                var derivationStrategyBase = selectedWalletToFinalise.GetDerivationStrategy();
+                if (derivationStrategyBase == null)
+                {
+                    return (false, "Error while getting the derivation scheme");
+                }
+
+                await nbxplorerClient.TrackAsync(derivationStrategyBase);
 
                 selectedWalletToFinalise.Keys = null;
                 selectedWalletToFinalise.ChannelOperationRequestsAsSource = null;

@@ -62,7 +62,7 @@ namespace FundsManager.Data.Repositories
             return (rowsChanged, null);
         }
 
-        public (bool, string?) Update(T type, ApplicationDbContext applicationDbContext)
+        public (bool, string) Update(T type, ApplicationDbContext applicationDbContext)
         {
             if (type == null) throw new ArgumentNullException(nameof(type));
 
