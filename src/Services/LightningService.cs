@@ -223,6 +223,7 @@ namespace FundsManager.Services
                                 BtcCloseAddress = closeAddress?.Address.ToString(),
                                 SatsAmount = channelOperationRequest.SatsAmount,
                                 UpdateDatetime = DateTimeOffset.Now,
+                                Status = Channel.ChannelStatus.Open
                             };
 
                             await context.AddAsync(channel);

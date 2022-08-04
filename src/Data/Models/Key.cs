@@ -28,12 +28,6 @@ namespace FundsManager.Data.Models
 
         #endregion Relationships
 
-        public string GetTruncatedXPUBString()
-        {
-            return
-                $"{XPUB.Substring(0, XPUB.Length / 2).Truncate(15, Truncator.FixedLength, TruncateFrom.Right)}{XPUB.Substring(XPUB.Length / 2 + 1, 20).Truncate(15, Truncator.FixedLength, TruncateFrom.Left)}";
-        }
-
         public override bool Equals(object? obj)
         {
             if (ReferenceEquals(null, obj)) return false;

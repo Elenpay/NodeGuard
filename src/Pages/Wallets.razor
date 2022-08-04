@@ -123,7 +123,7 @@
                     <SelectList TItem="Key"
                                 TValue="int"
                                 Data="@_selectedFinanceManagerAvailableKeys"
-                                TextField="@((item)=> $"{item.Name}-{item.GetTruncatedXPUBString()}")"
+                                TextField="@((item)=> $"{item.Name}-{StringHelper.TruncateHeadAndTail(item.XPUB,10)}")"
                                 ValueField="@((item)=>item.Id)"
                                 SelectedValueChanged="@OnSelectedWalletKey"
                                 DefaultItemText="Choose the key of the manager" />

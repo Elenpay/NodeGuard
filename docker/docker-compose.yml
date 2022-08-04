@@ -23,6 +23,10 @@ services:
         SENTRY_ENVIRONMENT: Development
         SENTRY_DSN: ""
         SENTRY_DEBUG_ENABLED: "true"
+        Logging__LogLevel__Microsoft: Warning
+        IS_DEV_ENVIRONMENT: true
+    volumes:
+        - fundsmanager_data_keys_dir:/root/.aspnet/DataProtection-Keys
 
   fundsmanager_postgres:
     container_name: fundsmanager_postgres
@@ -67,3 +71,4 @@ volumes:
     fundsmanager_postgres_data:
     bitcoin_datadir: 
     nbxplorer_datadir: 
+    fundsmanager_data_keys_dir:

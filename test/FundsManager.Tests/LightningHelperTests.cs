@@ -8,7 +8,7 @@ using NBXplorer.Models;
 
 namespace FundsManager.Tests
 {
-    public class LightningHelperTest
+    public class LightningHelperTests
     {
         [Fact]
         public void UTXODuplicateTest_Duplicated()

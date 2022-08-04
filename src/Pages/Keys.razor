@@ -1,5 +1,6 @@
 ﻿@page "/keys"
 @using System.Security.Claims
+@using FundsManager.Helpers
 @using Humanizer
 
 @inject IKeyRepository KeyRepository
@@ -13,7 +14,7 @@
         <DataGrid TItem="Key"
                   Data="@userKeys"
                   Editable="true"
-                  EditMode="DataGridEditMode.Form"
+                  EditMode="DataGridEditMode.Popup"
                   Responsive="true"
                   ResizeMode="TableResizeMode.Columns"
                   UseInternalEditing="true"
@@ -39,14 +40,16 @@
             </DataGridCommandColumn>            
             <DataGridColumn TItem="Key" Editable="true" Field="@nameof(Key.Name)" Caption="@nameof(Key.Name)" Sortable="false" />
             <DataGridColumn TItem="Key" Editable="true" Field="@nameof(Key.Description)" Caption="@nameof(Key.Description)" Sortable="false" />
-            <DataGridColumn TItem="Key" Editable="true" Field="@nameof(Key.IsArchived)" Caption="@nameof(Key.IsArchived).Humanize(LetterCasing.Sentence)" Sortable="false" />
+            <DataGridColumn TItem="Key" Editable="true" Field="@nameof(Key.IsArchived)" Caption="Archived" Sortable="false" />
             <DataGridColumn TItem="Key" Editable="true" Field="@nameof(Key.IsCompromised)" Caption="@nameof(Key.IsCompromised).Humanize(LetterCasing.Sentence)" Sortable="false" />
             <DataGridColumn TItem="Key" CellsEditableOnNewCommand="true" CellsEditableOnEditCommand="false" Editable="true" Field="@nameof(Key.XPUB)" Caption="@nameof(Key.XPUB).Humanize(LetterCasing.Sentence)" Sortable="false">
                 <DisplayTemplate>
                     @if (!string.IsNullOrWhiteSpace(context.XPUB) && context.XPUB.Length > 40)
                     {
-                        @(context.GetTruncatedXPUBString())
-
+                        @StringHelper.TruncateHeadAndTail(context.XPUB,10);
+                        <Button Color="Color.Primary" Clicked="@(()=> CopyStrToClipboard(context.XPUB))">
+                            <i class="oi oi-clipboard"></i> 
+                        </Button>
                     }
                     else
                     {
@@ -55,7 +58,7 @@
 
                 </DisplayTemplate>
             </DataGridColumn>
-            <DataGridColumn TItem="Key" Field="@nameof(Key.CreationDatetime)" Caption="@nameof(Key.CreationDatetime)" Sortable="false" />
+            <DataGridColumn TItem="Key" Field="@nameof(Key.CreationDatetime)" Caption="@nameof(Key.CreationDatetime).Humanize(LetterCasing.Sentence)" Sortable="false" />
             <DataGridColumn TItem="Key" Field="@nameof(Key.UpdateDatetime)" Caption="@nameof(Key.UpdateDatetime).Humanize(LetterCasing.Sentence)" Sortable="false" />
 
 
@@ -160,6 +163,12 @@
         }
 
         await GetData();
+    }
+
+    private async Task CopyStrToClipboard(string arg)
+    {
+        await ClipboardService.WriteTextAsync(arg); 
+        ToastService.ShowSuccess("Tex    copied");
     }
 
 }

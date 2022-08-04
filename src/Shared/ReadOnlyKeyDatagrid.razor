@@ -1,6 +1,7 @@
 ﻿@using Humanizer
 
 
+
 @if (Keys != null && Keys.Any())
 {
     <DataGrid TItem="Key"
@@ -11,14 +12,13 @@
               responsive>
         <DataGridColumn TItem="Key" Editable="false" Field="@nameof(Key.Name)" Caption="@nameof(Key.Name)" Sortable="false" />
         <DataGridColumn TItem="Key" Editable="false" Field="@nameof(Key.Description)" Caption="@nameof(Key.Description)" Sortable="false" />
-        <DataGridColumn TItem="Key" Editable="false" Field="@nameof(Key.IsArchived)" Caption="@nameof(Key.IsArchived).Humanize(LetterCasing.Sentence)" Sortable="false" />
-        <DataGridColumn TItem="Key" Editable="false" Field="@nameof(Key.IsCompromised)" Caption="@nameof(Key.IsCompromised).Humanize(LetterCasing.Sentence)" Sortable="false" />
+        <DataGridColumn TItem="Key" Editable="false" Field="@nameof(Key.IsArchived)" Caption="Archived" Sortable="false" />
+        <DataGridColumn TItem="Key" Editable="false" Field="@nameof(Key.IsCompromised)" Caption="Compromised" Sortable="false" />
         <DataGridColumn TItem="Key" CellsEditableOnNewCommand="true" CellsEditableOnEditCommand="false" Editable="false" Field="@nameof(Key.XPUB)" Caption="@nameof(Key.XPUB).Humanize(LetterCasing.Sentence)" Sortable="false">
             <DisplayTemplate Context="keyContext">
                 @if (!string.IsNullOrWhiteSpace(keyContext.XPUB) && keyContext.XPUB.Length > 40)
                 {
-                    @(keyContext.GetTruncatedXPUBString())
-
+                    @StringHelper.TruncateHeadAndTail(keyContext.XPUB,10);
                 }
                 else
                 {
@@ -27,8 +27,6 @@
 
             </DisplayTemplate>
         </DataGridColumn>
-        <DataGridColumn TItem="Key" Field="@nameof(Key.CreationDatetime)" Caption="@nameof(Key.CreationDatetime)" Sortable="false" />
-        <DataGridColumn TItem="Key" Field="@nameof(Key.UpdateDatetime)" Caption="@nameof(Key.UpdateDatetime).Humanize(LetterCasing.Sentence)" Sortable="false" />
     </DataGrid>
 
 }
