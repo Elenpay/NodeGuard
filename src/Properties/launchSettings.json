@@ -20,7 +20,8 @@
         "NBXPLORER_BTCRPCPASSWORD": "polarpass",
         "NBXPLORER_BTCRPCURL": "http://127.0.0.1:18443/",
         "NBXPLORER_BTCNODEENDPOINT": "127.0.0.1:19444",
-        "DEFAULT_DERIVATION_PATH": "m/48'/1'/1'"
+        "DEFAULT_DERIVATION_PATH": "m/48'/1'/1'",
+        "IS_DEV_ENVIRONMENT": "true"
       },
       "applicationUrl": "https://localhost:443;http://localhost:38080",
 

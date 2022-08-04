@@ -122,7 +122,26 @@ namespace FundsManager.Data
                             .Result;
                     }
 
-                    var financeUsername = "finance@clovrlabs.com";
+                    var nodeFellaUsername1 = "nodemanager1@clovrlabs.com";
+                    var nodeFella1 = applicationDbContext.ApplicationUsers.FirstOrDefault(x =>
+                        x.NormalizedEmail == nodeFellaUsername1.ToUpper());
+                    if (nodeFella1 == null)
+                    {
+                        nodeFella1 = new ApplicationUser
+                        {
+                            NormalizedUserName = nodeFellaUsername1.ToUpper(),
+                            UserName = nodeFellaUsername1,
+                            EmailConfirmed = true,
+                            Email = nodeFellaUsername1,
+                            NormalizedEmail = nodeFellaUsername1.ToUpper(),
+                        };
+                        _ = Task.Run(() => userManager.CreateAsync(nodeFella1, "Pass9299a8s.asa9")).Result;
+                        _ = Task.Run(() =>
+                                userManager.AddToRoleAsync(nodeFella1, ApplicationUserRole.NodeManager.ToString("G")))
+                            .Result;
+                    }
+
+                    var financeUsername = "financemanager@clovrlabs.com";
                     var financeUser =
                         applicationDbContext.ApplicationUsers.FirstOrDefault(x =>
                             x.NormalizedEmail == financeUsername.ToUpper());
@@ -142,11 +161,32 @@ namespace FundsManager.Data
                                 userManager.AddToRoleAsync(financeUser, ApplicationUserRole.FinanceManager.ToString()))
                             .Result;
                     }
+
+                    var financeManager1 = "financemanager1@clovrlabs.com";
+                    var financeUser1 =
+                        applicationDbContext.ApplicationUsers.FirstOrDefault(x =>
+                            x.NormalizedEmail == financeManager1.ToUpper());
+
+                    if (financeUser1 == null)
+                    {
+                        financeUser1 = new ApplicationUser
+                        {
+                            NormalizedUserName = financeManager1.ToUpper(),
+                            UserName = financeManager1,
+                            EmailConfirmed = true,
+                            Email = financeManager1,
+                            NormalizedEmail = financeManager1.ToUpper(),
+                        };
+                        _ = Task.Run(() => userManager.CreateAsync(financeUser1, "Pass9299a8s.asa9")).Result;
+                        _ = Task.Run(() =>
+                                userManager.AddToRoleAsync(financeUser1, ApplicationUserRole.FinanceManager.ToString()))
+                            .Result;
+                    }
                 }
 
                 var nodes = Task.Run(() => nodeRepository.GetAll()).Result;
 
-                if (!nodes.Any())
+                if (!nodes.Any() && Environment.GetEnvironmentVariable("IS_DEV_ENVIRONMENT") != null)
                 {
                     //Testing node from Polar (ALICE) LND 0.15.0 -> check devnetwork.zip polar file
 

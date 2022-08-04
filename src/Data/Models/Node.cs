@@ -11,6 +11,7 @@ namespace FundsManager.Data.Models
         public string Name { get; set; }
 
         public string? Description { get; set; }
+
         /// <summary>
         /// Macaroon with channel admin permissions
         /// </summary>
@@ -26,7 +27,7 @@ namespace FundsManager.Data.Models
         /// </summary>
         [NotMapped]
         public bool IsManaged => Endpoint != null;
-        
+
         #region Relationships
 
         public ICollection<ChannelOperationRequest> ChannelOperationRequestsAsSource { get; set; }
@@ -35,11 +36,5 @@ namespace FundsManager.Data.Models
         public ICollection<ApplicationUser> Users { get; set; }
 
         #endregion Relationships
-
-        public string GetTruncatedPubKeyString()
-        {
-            return
-                $"{PubKey.Substring(0, PubKey.Length / 2).Truncate(10, Truncator.FixedLength, TruncateFrom.Right)}{PubKey.Substring(PubKey.Length / 2 + 1, 15).Truncate(10, Truncator.FixedLength, TruncateFrom.Left)}";
-        }
     }
 }

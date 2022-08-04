@@ -34,15 +34,15 @@
                 <DataGridColumn TItem="Node" Editable="true" Field="@nameof(Node.Name)" Caption="@nameof(Node.Name)" Sortable="false" />
                 <DataGridColumn TItem="Node" Editable="true" Field="@nameof(Node.PubKey)" Caption="@nameof(Node.PubKey)" Sortable="false">
                     <DisplayTemplate>
-                        @context.GetTruncatedPubKeyString()&nbsp;
+                        @StringHelper.TruncateHeadAndTail(context.PubKey,10)&nbsp;
                         @{State state = new("Copy", "oi oi-clipboard");}
                         <Button class="btn btn-primary" @onclick="@(() => CopyToClipboard(context.PubKey))" disabled=@state.IsDisabled>
-                            <i class="@state.ClassName"></i> @state.Text
+                            <i class="@state.ClassName"></i>
                         </Button>
                     </DisplayTemplate>
                 </DataGridColumn>
                 <DataGridColumn TItem="Node" Editable="true" Field="@nameof(Node.Description)" Caption="@nameof(Node.Description)" Sortable="false" />
-                <DataGridColumn TItem="Node" Editable="true" Field="@nameof(Node.ChannelAdminMacaroon)" Caption="@nameof(Node.ChannelAdminMacaroon)" CellsEditableOnNewCommand="true" CellsEditableOnEditCommand="false" Displayable="false" Sortable="false"/>
+                <DataGridColumn TItem="Node" Editable="true" Field="@nameof(Node.ChannelAdminMacaroon)" Caption="Macaroon" CellsEditableOnNewCommand="true" CellsEditableOnEditCommand="false" Displayable="false" Sortable="false"/>
                 <DataGridColumn TItem="Node" Editable="true" Field="@nameof(Node.Endpoint)" Caption="@nameof(Node.Endpoint)" Sortable="false" />
                 <DataGridNumericColumn TItem="Node" Editable="false"  Caption="Outbound Open Channels" Sortable="false">
                     <DisplayTemplate>
