@@ -285,9 +285,6 @@ namespace FundsManager.Services
                                 var totalFees = presignedPSBT.GetFee();
                                 channelfundingTx.Outputs[0].Value = totalIn - totalOut - totalFees;
 
-                                await nbxplorerClient.GetUnusedAsync(
-                                    internalWalletDerivationStrategy, DerivationFeature.Deposit);
-
                                 //We get the UTXO keyPath / derivation path from nbxplorer
 
                                 var UTXOs = await nbxplorerClient.GetUTXOsAsync(derivationStrategyBase);
@@ -826,7 +823,7 @@ namespace FundsManager.Services
             KeyPathInformation? keyPathInformation = null;
             try
             {
-                keyPathInformation = await client.nbxplorerClient.GetUnusedAsync(wallet.GetDerivationStrategy(), derivationFeature);
+                keyPathInformation = await client.nbxplorerClient.GetUnusedAsync(wallet.GetDerivationStrategy(), derivationFeature, reserve: true);
             }
             catch (Exception e)
             {
