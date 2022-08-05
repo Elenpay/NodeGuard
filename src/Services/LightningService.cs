@@ -1,4 +1,4 @@
-﻿using FundsManager.Data.Models;
+using FundsManager.Data.Models;
 using FundsManager.Data.Repositories.Interfaces;
 using Google.Protobuf;
 using Grpc.Core;
@@ -721,7 +721,7 @@ namespace FundsManager.Services
 
                                     _logger.LogInformation(
                                         "Channel close request in status:{} for channel operation request:{} for channel:{} closing txId:{}",
-                                        ChannelOperationRequestStatus.OnChainConfirmed,
+                                        ChannelOperationRequestStatus.OnChainConfirmationPending,
                                         channelOperationRequest.Id,
                                         channel.Id,
                                         closePendingTxid);
@@ -758,7 +758,7 @@ namespace FundsManager.Services
                                         _logger.LogError(
                                             "Error while updating channel operation request id:{} to status:{}",
                                             channelOperationRequest.Id,
-                                            ChannelOperationRequestStatus.OnChainConfirmationPending);
+                                            ChannelOperationRequestStatus.OnChainConfirmed);
                                     }
 
                                     channel.Status = Channel.ChannelStatus.Closed;
