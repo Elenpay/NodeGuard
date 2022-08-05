@@ -22,7 +22,7 @@
         <DataGridColumn TItem="ChannelOperationRequest" Field="@nameof(ChannelOperationRequest.Amount)" Caption="Capacity" Sortable="false" Displayable="true">
             <DisplayTemplate>
                 @{
-                    @($"{context.Amount} Sats")
+                    @($"{context.Amount} BTC")
                 }
             </DisplayTemplate>
         </DataGridColumn>
