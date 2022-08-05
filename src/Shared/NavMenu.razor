@@ -16,36 +16,45 @@
                 <span class="oi oi-home" aria-hidden="true"></span> Home
             </NavLink>
         </div>
-        <div class="nav-item px-3">
-            <NavLink class="nav-link" href="wallets">
-                <span class="oi oi-plus" aria-hidden="true"></span> Wallets
-            </NavLink>
-        </div>
-        
+
+        <AuthorizeView Roles="Superadmin,NodeManager" >
+            <div class="nav-item px-3">
+                <NavLink class="nav-link" href="wallets">
+                    <span class="oi oi-plus" aria-hidden="true"></span> Wallets
+                </NavLink>
+            </div>
+        </AuthorizeView >
         @if (WebHostEnvironment.IsDevelopment())
         {
+            <AuthorizeView Roles="Superadmin">
             <div class="nav-item px-3">
                 <NavLink class="nav-link" href="channeltest">
                     <span class="oi oi-plus" aria-hidden="true"></span> Creation Tester
                 </NavLink>
             </div>
+            </AuthorizeView>
         }
+        <AuthorizeView Roles="Superadmin,NodeManager">
+            <div class="nav-item px-3">
+                <NavLink class="nav-link" href="create-channel">
+                    <span class="oi oi-plus" aria-hidden="true"></span> Submit request
+                </NavLink>
        
-        <div class="nav-item px-3">
-            <NavLink class="nav-link" href="create-channel">
-                <span class="oi oi-plus" aria-hidden="true"></span> Create Channel
-            </NavLink>
-        </div>
-        <div class="nav-item px-3">
-            <NavLink class="nav-link" href="pending-requests">
-                <span class="oi oi-plus" aria-hidden="true"></span> Pending Operations
-            </NavLink>
-        </div>
-        <div class="nav-item px-3">
-            <NavLink class="nav-link" href="nodes">
-                <span class="oi oi-plus" aria-hidden="true"></span> Nodes
-            </NavLink>
-        </div>
+            </div>
+        </AuthorizeView>
+        
+        <AuthorizeView Roles="Superadmin,FinanceManager">
+            <div class="nav-item px-3">
+                <NavLink class="nav-link" href="pending-requests">
+                    <span class="oi oi-plus" aria-hidden="true"></span> Pending Operations
+                </NavLink>
+            </div>
+        </AuthorizeView>
+          <div class="nav-item px-3">
+                <NavLink class="nav-link" href="nodes">
+                    <span class="oi oi-plus" aria-hidden="true"></span> Nodes
+                </NavLink>
+            </div>
         <div class="nav-item px-3">
             <NavLink class="nav-link" href="channels">
                 <span class="oi oi-plus" aria-hidden="true"></span> Channels
