@@ -1,5 +1,6 @@
 ﻿using FundsManager.Helpers;
 using NBitcoin;
+using NBitcoin.Scripting;
 using NBXplorer.DerivationStrategy;
 
 namespace FundsManager.Data.Models
@@ -63,7 +64,7 @@ namespace FundsManager.Data.Models
                     {
                         return new BitcoinExtPubKey(x.XPUB,
                             currentNetwork);
-                    }).OrderBy(x => x.ExtPubKey.PubKey)
+                    }).OrderBy(x => x.ExtPubKey.PubKey) //This is to match sortedmulti() lexicographical sort
                     .ToList();
 
                 if (bitcoinExtPubKeys == null || !bitcoinExtPubKeys.Any())
