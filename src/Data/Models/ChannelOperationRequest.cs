@@ -89,7 +89,12 @@ namespace FundsManager.Data.Models
 
         [NotMapped]
         public int NumberOfSignaturesCollected => ChannelOperationRequestPsbts == null ? 0 : ChannelOperationRequestPsbts.Count(x =>
-                                    !x.IsFinalisedPSBT && !x.IsTemplatePSBT && !x.IsInternalWalletPSBT);
+                                                                    !x.IsFinalisedPSBT && !x.IsTemplatePSBT && !x.IsInternalWalletPSBT);
+
+        /// <summary>
+        /// This is the JobId provided by Hangfire of the job executing this request.
+        /// </summary>
+        public string? JobId { get; set; }
 
         /// <summary>
         /// Check that the number of signatures (not finalised psbt nor internal wallet psbt or template psbt are gathered and increases by one to count on the internal wallet signature

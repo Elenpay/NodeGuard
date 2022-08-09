@@ -1,6 +1,7 @@
 ﻿@page "/pending-requests"
 @using System.Security.Claims
 @using FundsManager.Helpers
+@using Hangfire
 @using NBitcoin
 @attribute [Authorize(Roles = "FinanceManager, Superadmin")]
 
@@ -158,8 +159,9 @@
 
 @inject IChannelOperationRequestRepository ChannelOperationRequestRepository
 @inject IChannelOperationRequestPSBTRepository ChannelOperationRequestPsbtRepository
-@inject IToastService ToastService;
-@inject ILightningService LightningService;
+@inject IToastService ToastService
+@inject ILightningService LightningService
+@inject IBackgroundJobClient  BackgroundJobClient
 @inject ClipboardService ClipboardService
 @code {
     private List<ChannelOperationRequest>? _channelRequests;
@@ -260,15 +262,19 @@
 
                 if (_selectedRequest != null 
                     && _selectedRequest.AreAllRequiredSignaturesCollected 
-                    && PSBT.TryParse(_psbt, CurrentNetworkHelper.GetCurrentNetwork(), out var parsedPSBT))
+                    && PSBT.TryParse(_psbt, CurrentNetworkHelper.GetCurrentNetwork(), out _))
                 {
-                    //TODO We have a I/O issue here, a channel can wait several blocks to be confirmed so the notification will appear in a undetermined time on the UI
                     var failedOpenChannelRequest = false;
                     try
                     {  
-                       
+                       //TODO Async notifications when the channel has opened -> event / notifications system
                         await _channelSpinner.Show();
-                        await LightningService.OpenChannel(_selectedRequest, parsedPSBT);
+
+                        var jobId = BackgroundJobClient.Enqueue<ILightningService>(service => service.OpenChannel(_selectedRequest, _psbt));
+
+                        _selectedRequest.JobId = jobId;
+
+                        var jobUpdateResult = ChannelOperationRequestRepository.Update(_selectedRequest);
                     }
                     catch
                     {
@@ -283,7 +289,7 @@
                     }
                     else
                     {
-                        ToastService.ShowSuccess("Channel created");
+                        ToastService.ShowSuccess("Channel opening job created");
                     }
 
                 }

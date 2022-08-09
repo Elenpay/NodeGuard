@@ -153,7 +153,7 @@
                 if (result.Item1)
                 {
                     var channelresult = false;
-                    await LightningService.OpenChannel(channelOperationRequest, _combinedPsbt);
+                    await LightningService.OpenChannel(channelOperationRequest, _combinedPsbt.ToBase64());
 
                     if (channelresult)
                     {
@@ -319,16 +319,8 @@
 
             if (result.Item1)
             {
-                var channelresult = await LightningService.CloseChannel(channelOperationRequest, false);
-
-                if (channelresult)
-                {
-                    toastService.ShowSuccess("Channel closed!");
-                }
-                else
-                {
-                    toastService.ShowError("Channel closing failed!");
-                }
+                await LightningService.CloseChannel(channelOperationRequest, false);
+                
             }
 
         }

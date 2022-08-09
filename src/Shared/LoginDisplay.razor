@@ -5,6 +5,8 @@
 @inject NavigationManager NavigationManager
 <AuthorizeView>
     <Authorized>
+        <a class="navbar-brand" href="">👷‍Work in Progress👷‍♀️</a>
+
         @{
             foreach (var role in _roles)
             {
@@ -21,7 +23,7 @@
                     <Badge Color="Color.Success" TextColor="TextColor.White">@ApplicationUserRole.FinanceManager.ToString("G").Humanize(LetterCasing.Title)</Badge>
                 }
             }
-            <Button Color="Color.Info" Size="Size.Small" Clicked="@( () => NavigationManager.NavigateTo("/keys"))">My keys</Button>
+            <Button Color="Color.Info" Size="Size.Small" Clicked="@(() => NavigationManager.NavigateTo("/keys"))">My keys</Button>
 
         }
 
