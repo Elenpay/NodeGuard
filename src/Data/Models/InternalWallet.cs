@@ -1,6 +1,8 @@
 ﻿using System;
 using System.ComponentModel.DataAnnotations.Schema;
 using NBitcoin;
+using Newtonsoft.Json;
+
 namespace FundsManager.Data.Models
 {
     /// <summary>
@@ -15,7 +17,7 @@ namespace FundsManager.Data.Models
         public string DerivationPath { get; set; }
 
         /// <summary>
-        /// 4 Words mnemonic
+        /// 24 Words mnemonic
         /// </summary>
         public string MnemonicString { get; set; }
 
@@ -31,7 +33,6 @@ namespace FundsManager.Data.Models
                 return null;
             }
             return new Mnemonic(MnemonicString).DeriveExtKey().GetWif(network).ToWif();
-
         }
 
         /// <summary>
@@ -53,7 +54,6 @@ namespace FundsManager.Data.Models
 
             var walletDerivationScheme = bitcoinExtPubKey.ToWif();
 
-
             return walletDerivationScheme;
         }
 
@@ -65,4 +65,3 @@ namespace FundsManager.Data.Models
         }
     }
 }
-

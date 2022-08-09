@@ -22,9 +22,9 @@ namespace FundsManager.Services
         /// Opens a channel based on a presigned psbt with inputs, this method waits for I/O on the blockchain, therefore it can last its execution for minutes
         /// </summary>
         /// <param name="channelOperationRequest"></param>
-        /// <param name="presignedPSBT"></param>
+        /// <param name="presignedPSBTbase64"></param>
         /// <returns></returns>
-        public Task OpenChannel(ChannelOperationRequest channelOperationRequest, PSBT presignedPSBT);
+        public Task OpenChannel(ChannelOperationRequest channelOperationRequest, string presignedPSBTbase64);
 
         /// <summary>
         /// Generates a template PSBT with Sighash_NONE and some UTXOs from the wallet related to the request without signing
@@ -41,7 +41,7 @@ namespace FundsManager.Services
         /// <param name="channelOperationRequest"></param>
         /// <param name="forceClose"></param>
         /// <returns></returns>
-        public Task<bool> CloseChannel(ChannelOperationRequest channelOperationRequest, bool forceClose = false);
+        public Task CloseChannel(ChannelOperationRequest channelOperationRequest, bool forceClose = false);
 
         /// <summary>
         /// Gets the wallet balance
@@ -86,9 +86,18 @@ namespace FundsManager.Services
             _dbContextFactory = dbContextFactory;
         }
 
-        public async Task OpenChannel(ChannelOperationRequest channelOperationRequest, PSBT presignedPSBT)
+        public async Task OpenChannel(ChannelOperationRequest channelOperationRequest, string? presignedPSBTbase64)
         {
             if (channelOperationRequest == null) throw new ArgumentNullException(nameof(channelOperationRequest));
+            if (string.IsNullOrWhiteSpace(presignedPSBTbase64))
+                throw new ArgumentException("Value cannot be null or whitespace.", nameof(presignedPSBTbase64));
+
+            if (!PSBT.TryParse(presignedPSBTbase64, CurrentNetworkHelper.GetCurrentNetwork(), out var presignedPSBT))
+            {
+                const string thePresignedPsbtCouldNotBeParsed = "The presigned PSBT could not be parsed";
+                _logger.LogError(thePresignedPsbtCouldNotBeParsed);
+                throw new ArgumentException(thePresignedPsbtCouldNotBeParsed, nameof(presignedPSBTbase64));
+            };
 
             if (channelOperationRequest.RequestType != OperationRequestType.Open)
             {
@@ -662,14 +671,12 @@ namespace FundsManager.Services
             return coins;
         }
 
-        public async Task<bool> CloseChannel(ChannelOperationRequest channelOperationRequest, bool forceClose = false)
+        public async Task CloseChannel(ChannelOperationRequest channelOperationRequest, bool forceClose = false)
         {
             if (channelOperationRequest == null) throw new ArgumentNullException(nameof(channelOperationRequest));
 
             if (channelOperationRequest.RequestType != OperationRequestType.Close)
-                return false;
-
-            var result = true;
+                throw new ArgumentException("Channel Operation Request type is not of type Close");
 
             _logger.LogInformation("Channel close request for request id:{}",
                 channelOperationRequest.Id);
@@ -775,8 +782,6 @@ namespace FundsManager.Services
                                         _logger.LogError("Error while setting to closed status a closed channel with id:{}", channel.Id);
                                     }
 
-                                    result = true;
-
                                     break;
 
                                 default:
@@ -791,10 +796,8 @@ namespace FundsManager.Services
                 _logger.LogError(e,
                     "Channel close request failed for channel operation request:{}",
                     channelOperationRequest.Id);
-                result = false;
+                throw;
             }
-
-            return result;
         }
 
         public async Task<GetBalanceResponse?> GetWalletBalance(Wallet wallet)

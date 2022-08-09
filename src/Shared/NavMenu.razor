@@ -34,6 +34,13 @@
             </div>
             </AuthorizeView>
         }
+        <AuthorizeView Roles="Superadmin">
+            <div class="nav-item px-3">
+                <NavLink class="nav-link" href="hangfire">
+                    <span class="oi oi-task" aria-hidden="true"></span> Hangfire
+                </NavLink>
+            </div>
+        </AuthorizeView>
         <AuthorizeView Roles="Superadmin,NodeManager">
             <div class="nav-item px-3">
                 <NavLink class="nav-link" href="create-channel">

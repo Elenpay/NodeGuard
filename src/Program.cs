@@ -8,10 +8,14 @@ using FundsManager.Data.Models;
 using FundsManager.Data.Repositories;
 using FundsManager.Data.Repositories.Interfaces;
 using FundsManager.Services;
+using Hangfire;
+using Hangfire.Dashboard;
+using Hangfire.PostgreSql;
 using Lnrpc;
 using Microsoft.AspNetCore.Components.Authorization;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
+using Newtonsoft.Json;
 using Sentry;
 using Sentry.Extensibility;
 
@@ -28,7 +32,8 @@ namespace FundsManager
             // Add services to the container.
 
             builder.Services.AddDatabaseDeveloperPageExceptionFilter();
-            builder.Services.AddDefaultIdentity<ApplicationUser>(options => options.SignIn.RequireConfirmedAccount = false)
+            builder.Services
+                .AddDefaultIdentity<ApplicationUser>(options => options.SignIn.RequireConfirmedAccount = false)
                 .AddRoles<IdentityRole>()
                 .AddRoleManager<RoleManager<IdentityRole>>()
                 .AddEntityFrameworkStores<ApplicationDbContext>();
@@ -36,13 +41,16 @@ namespace FundsManager
             builder.Services.AddServerSideBlazor().AddCircuitOptions(options => { options.DetailedErrors = true; });
 
             //Dependency Injection
-            builder.Services.AddScoped<AuthenticationStateProvider, RevalidatingIdentityAuthenticationStateProvider<ApplicationUser>>();
+            builder.Services
+                .AddScoped<AuthenticationStateProvider,
+                    RevalidatingIdentityAuthenticationStateProvider<ApplicationUser>>();
             builder.Services.AddScoped<ClipboardService>();
             //Repos DI
             builder.Services.AddTransient(typeof(IRepository<>), typeof(Repository<>));
             builder.Services.AddTransient<IApplicationUserRepository, ApplicationUserRepository>();
             builder.Services.AddTransient<IChannelOperationRequestRepository, ChannelOperationRequestRepository>();
-            builder.Services.AddTransient<IChannelOperationRequestPSBTRepository, ChannelOperationRequestPSBTRepository>();
+            builder.Services
+                .AddTransient<IChannelOperationRequestPSBTRepository, ChannelOperationRequestPSBTRepository>();
             builder.Services.AddTransient<IChannelRepository, ChannelRepository>();
             builder.Services.AddTransient<IKeyRepository, KeyRepository>();
             builder.Services.AddTransient<INodeRepository, NodeRepository>();
@@ -56,7 +64,8 @@ namespace FundsManager
             builder.Services.AddTransient<ILightningService, LightningService>();
 
             //DbContext
-            var connectionString = Environment.GetEnvironmentVariable("POSTGRES_CONNECTIONSTRING") ?? "Host=localhost;Port=35433;Database=fundsmanager;Username=rw_dev;Password=rw_dev";
+            var connectionString = Environment.GetEnvironmentVariable("POSTGRES_CONNECTIONSTRING") ??
+                                   "Host=localhost;Port=35433;Database=fundsmanager;Username=rw_dev;Password=rw_dev";
             builder.Services.AddDbContext<ApplicationDbContext>(options =>
             {
                 //options.EnableSensitiveDataLogging();
@@ -76,12 +85,22 @@ namespace FundsManager
             //Blazorise
 
             builder.Services
-                .AddBlazorise(options =>
-                {
-                    options.Immediate = true;
-                })
+                .AddBlazorise(options => { options.Immediate = true; })
                 .AddBootstrapProviders()
                 .AddFontAwesomeIcons();
+
+            //Hangfire Job system
+
+            builder.Services.AddHangfire(config =>
+            {
+                config.UseSerializerSettings(new JsonSerializerSettings()
+                {
+                    ReferenceLoopHandling = ReferenceLoopHandling.Ignore,
+                });
+                config.UsePostgreSqlStorage(connectionString);
+            });
+
+            builder.Services.AddHangfireServer();
 
             // Sentry
             builder.Services.AddSentry();
@@ -144,7 +163,26 @@ namespace FundsManager
             app.MapBlazorHub();
             app.MapFallbackToPage("/_Host");
 
+            //Hangfire
+            app.UseHangfireDashboard("/hangfire", new DashboardOptions
+            {
+                Authorization = new[] { new MyAuthorizationFilter() }
+            });
+
             app.Run();
+        }
+
+        public class MyAuthorizationFilter : IDashboardAuthorizationFilter
+        {
+            public bool Authorize(DashboardContext context)
+            {
+                var httpContext = context.GetHttpContext();
+
+                // Allow server admins
+                return httpContext.User.Identity != null &&
+                       httpContext.User.Identity.IsAuthenticated &&
+                       httpContext.User.IsInRole("Superadmin");
+            }
         }
     }
 }

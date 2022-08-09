@@ -1,6 +1,7 @@
 ﻿using FundsManager.Data.Models;
 using FundsManager.Data.Repositories.Interfaces;
 using FundsManager.Services;
+using Hangfire;
 using Microsoft.EntityFrameworkCore;
 
 namespace FundsManager.Data.Repositories
@@ -12,12 +13,13 @@ namespace FundsManager.Data.Repositories
         private readonly IDbContextFactory<ApplicationDbContext> _dbContextFactory;
         private readonly ILightningService _lightningService;
         private readonly IChannelOperationRequestRepository _channelOperationRequestRepository;
+        private readonly IBackgroundJobClient _backgroundJobClient;
 
         public ChannelRepository(IRepository<Channel> repository,
             ILogger<ChannelRepository> logger,
             IDbContextFactory<ApplicationDbContext> dbContextFactory,
             ILightningService lightningService,
-            IChannelOperationRequestRepository channelOperationRequestRepository
+            IChannelOperationRequestRepository channelOperationRequestRepository, IBackgroundJobClient backgroundJobClient
             )
         {
             _repository = repository;
@@ -25,6 +27,7 @@ namespace FundsManager.Data.Repositories
             _dbContextFactory = dbContextFactory;
             _lightningService = lightningService;
             _channelOperationRequestRepository = channelOperationRequestRepository;
+            _backgroundJobClient = backgroundJobClient;
         }
 
         public async Task<Channel?> GetById(int id)
@@ -106,13 +109,17 @@ namespace FundsManager.Data.Repositories
 
             closeRequest = await _channelOperationRequestRepository.GetById(closeRequest.Id);
 
-            //LND Closing has to be done with a proxy service avoid cycles in the dependency injection
-            var closeResult = await _lightningService.CloseChannel(closeRequest, forceClose);
+            if (closeRequest == null) return (false, null);
 
-            if (!closeResult)
+            var jobId = _backgroundJobClient.Enqueue<ILightningService>(service => service.CloseChannel(closeRequest, forceClose));
+
+            closeRequest.JobId = jobId;
+
+            var jobUpdateResult = _channelOperationRequestRepository.Update(closeRequest);
+            if (!jobUpdateResult.Item1)
             {
-                _logger.LogError("Channel with id:{} could not be closed", closeRequest.Channel.Id);
-                return (false, "Channel could not be closed");
+                _logger.LogError("Error while updating the JobId for the close request with id:{}",
+                    closeRequest.Id);
             }
 
             return (true, null);
