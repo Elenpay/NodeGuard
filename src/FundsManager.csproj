@@ -12,6 +12,7 @@
 
 
   <ItemGroup>
+    <PackageReference Include="AutoMapper.Extensions.Microsoft.DependencyInjection" Version="11.0.0" />
     <PackageReference Include="Blazored.Toast" Version="3.2.2" />
     <PackageReference Include="Blazorise.Bootstrap" Version="1.0.6" />
     <PackageReference Include="Blazorise.Components" Version="1.0.6" />

@@ -202,7 +202,7 @@
     private async Task CopyToClipboard(String pubkey)
     {
         await ClipboardService.WriteTextAsync(pubkey);
-        ToastService.ShowSuccess("Copied to clipboard");
+        ToastService.ShowSuccess("Text copied");
     }
     
     public void Dispose()

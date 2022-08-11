@@ -308,7 +308,7 @@ namespace FundsManager.Services
 
                                 if (!txInKeyPathDictionary.Any())
                                 {
-                                    const string errorKeypathsForTheUtxosUsedInThisTxAreNotFound = "Error, keypaths for the UTXOs used in this tx are not found";
+                                    const string errorKeypathsForTheUtxosUsedInThisTxAreNotFound = "Error, keypaths for the UTXOs used in this tx are not found, probably this UTXO is already used as input of another transaction";
 
                                     _logger.LogError(errorKeypathsForTheUtxosUsedInThisTxAreNotFound);
 
@@ -475,14 +475,14 @@ namespace FundsManager.Services
 
             if (channelOperationRequest.RequestType != OperationRequestType.Open)
             {
-                _logger.LogWarning("PSBT Generation cancelled, operation type is not open");
+                _logger.LogError("PSBT Generation cancelled, operation type is not open");
 
                 return null;
             }
 
             if (channelOperationRequest.Status != ChannelOperationRequestStatus.Pending)
             {
-                _logger.LogWarning("PSBT Generation cancelled, operation is not in pending state");
+                _logger.LogError("PSBT Generation cancelled, operation is not in pending state");
                 return null;
             }
 
