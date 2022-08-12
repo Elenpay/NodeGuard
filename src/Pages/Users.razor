@@ -25,6 +25,8 @@
                     </NewCommandTemplate>
                     <EditCommandTemplate>
                         <Button Color="Color.Primary" Clicked="@(()=>OnEditInvoked(context.Item,context.Clicked))">Edit</Button>
+                        <Button Color="Color.Primary" Clicked="@(()=>OnResetLinkClicked(context.Item))">Set password link</Button>
+
                     </EditCommandTemplate>
                     <DeleteCommandTemplate>
                         @*Button Color="Color.Danger" Clicked="@context.Clicked">Delete</Button>*@
@@ -261,6 +263,29 @@
         _selectedManagedNodes = new List<int>(user.Nodes.Select(x => x.Id));
 
         await contextClicked.InvokeAsync();
+    }
+    
+    private async Task CopyStrToClipboard(string arg)
+    {
+        await ClipboardService.WriteTextAsync(arg); 
+        ToastService.ShowSuccess("Text copied");
+    }
+
+    private async Task OnResetLinkClicked(ApplicationUser contextItem)
+    {
+        var link = await ApplicationUserRepository.GetUserPasswordMagicLink(contextItem);
+
+        if (link != null)
+        {
+            await ClipboardService.WriteTextAsync(link); 
+            ToastService.ShowSuccess("Text copied");
+        }
+        else
+        {
+            ToastService.ShowError("Something went wrong");
+
+        }
+       
     }
 
 }

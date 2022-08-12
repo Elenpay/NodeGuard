@@ -38,4 +38,11 @@ public interface IApplicationUserRepository
     /// <param name="applicationUser"></param>
     /// <returns></returns>
     Task<(bool, string?)> ClearNodes(ApplicationUser applicationUser);
+
+    /// <summary>
+    /// Generates a full url to set the user's password by a magic link
+    /// </summary>
+    /// <param name="applicationUser"></param>
+    /// <returns></returns>
+    Task<string?> GetUserPasswordMagicLink(ApplicationUser applicationUser);
 }

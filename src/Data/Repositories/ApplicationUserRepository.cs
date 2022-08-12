@@ -1,9 +1,13 @@
-﻿using AutoMapper;
+﻿using System.Text;
+using AutoMapper;
 using FundsManager.Data.Models;
 using FundsManager.Data.Repositories.Interfaces;
 using Humanizer;
 using Microsoft.AspNetCore.Identity;
+using Microsoft.AspNetCore.Identity.EntityFrameworkCore;
+using Microsoft.AspNetCore.WebUtilities;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Options;
 
 namespace FundsManager.Data.Repositories
 {
@@ -13,16 +17,18 @@ namespace FundsManager.Data.Repositories
         private readonly ILogger<ApplicationUserRepository> _logger;
         private readonly IDbContextFactory<ApplicationDbContext> _dbContextFactory;
         private readonly IMapper _mapper;
+        private readonly UserManager<ApplicationUser> _userManager;
 
         public ApplicationUserRepository(IRepository<ApplicationUser> repository,
             ILogger<ApplicationUserRepository> logger,
             IDbContextFactory<ApplicationDbContext> dbContextFactory,
-            IMapper mapper)
+            IMapper mapper, UserManager<ApplicationUser> userManager)
         {
             _repository = repository;
             _logger = logger;
             _dbContextFactory = dbContextFactory;
             _mapper = mapper;
+            _userManager = userManager;
         }
 
         public async Task<ApplicationUser?> GetByUsername(string username)
@@ -140,6 +146,30 @@ namespace FundsManager.Data.Repositories
             return result;
         }
 
+        public async Task<string?> GetUserPasswordMagicLink(ApplicationUser applicationUser)
+        {
+            await using var applicationDbContext = await _dbContextFactory.CreateDbContextAsync();
+
+            var token = await _userManager.GeneratePasswordResetTokenAsync(applicationUser);
+
+            var tokenBase64 = WebEncoders.Base64UrlEncode(Encoding.UTF8.GetBytes(token));
+            var appEndpoint = $"{Environment.GetEnvironmentVariable("APP_ENDPOINT")}/Identity/Account/ResetPassword";
+            if (appEndpoint == null)
+            {
+                _logger.LogError("APP_ENDPOINT env var not found");
+                return null;
+            }
+
+            IDictionary<string, string?> keyValuePairs = new Dictionary<string, string?>
+            {
+                {"code", tokenBase64}
+            };
+
+            var url = QueryHelpers.AddQueryString(appEndpoint, keyValuePairs);
+
+            return url;
+        }
+
         public async Task<(bool, string?)> UpdateUserRoles(IReadOnlyList<ApplicationUserRole> selectedRoles, ApplicationUser user)
         {
             await using var applicationDbContext = await _dbContextFactory.CreateDbContextAsync();
@@ -231,8 +261,12 @@ namespace FundsManager.Data.Repositories
             await using var applicationDbContext = await _dbContextFactory.CreateDbContextAsync();
 
             type.NormalizedUserName = type.UserName.ToUpper();
-            //TODO Password setup email
-            return await _repository.AddAsync(type, applicationDbContext);
+
+            var userStore = new UserStore<ApplicationUser>(applicationDbContext);
+
+            var identityResult = await userStore.CreateAsync(type);
+
+            return (identityResult.Succeeded, identityResult.Errors.Humanize());
         }
 
         public async Task<(bool, string?)> AddRangeAsync(List<ApplicationUser> type)
