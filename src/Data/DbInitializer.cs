@@ -79,7 +79,7 @@ namespace FundsManager.Data
                 ApplicationUser? adminUser = null;
                 if (!applicationDbContext.ApplicationUsers.Any())
                 {
-                    var adminUsername = "admin@clovrlabs.com";
+                    var adminUsername = "admin";
                     adminUser = new ApplicationUser
                     {
                         NormalizedUserName = adminUsername.ToUpper(),
@@ -103,7 +103,7 @@ namespace FundsManager.Data
                         throw new Exception("Can't set role of admin user");
                     }
 
-                    var nodeFellaUsername = "nodemanager@clovrlabs.com";
+                    var nodeFellaUsername = "nodemanager";
                     var nodeFella = applicationDbContext.ApplicationUsers.FirstOrDefault(x =>
                         x.NormalizedEmail == nodeFellaUsername.ToUpper());
                     if (nodeFella == null)
@@ -122,7 +122,7 @@ namespace FundsManager.Data
                             .Result;
                     }
 
-                    var nodeFellaUsername1 = "nodemanager1@clovrlabs.com";
+                    var nodeFellaUsername1 = "nodemanager1";
                     var nodeFella1 = applicationDbContext.ApplicationUsers.FirstOrDefault(x =>
                         x.NormalizedEmail == nodeFellaUsername1.ToUpper());
                     if (nodeFella1 == null)
@@ -141,7 +141,7 @@ namespace FundsManager.Data
                             .Result;
                     }
 
-                    var financeUsername = "financemanager@clovrlabs.com";
+                    var financeUsername = "financemanager";
                     var financeUser =
                         applicationDbContext.ApplicationUsers.FirstOrDefault(x =>
                             x.NormalizedEmail == financeUsername.ToUpper());
@@ -162,7 +162,7 @@ namespace FundsManager.Data
                             .Result;
                     }
 
-                    var financeManager1 = "financemanager1@clovrlabs.com";
+                    var financeManager1 = "financemanager1";
                     var financeUser1 =
                         applicationDbContext.ApplicationUsers.FirstOrDefault(x =>
                             x.NormalizedEmail == financeManager1.ToUpper());

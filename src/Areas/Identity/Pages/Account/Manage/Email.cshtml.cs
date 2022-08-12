@@ -89,52 +89,55 @@ namespace FundsManager.Areas.Identity.Pages.Account.Manage
 
         public async Task<IActionResult> OnGetAsync()
         {
-            var user = await _userManager.GetUserAsync(User);
-            if (user == null)
-            {
-                return NotFound($"Unable to load user with ID '{_userManager.GetUserId(User)}'.");
-            }
+            return NotFound();
+            //var user = await _userManager.GetUserAsync(User);
+            //if (user == null)
+            //{
+            //    return NotFound($"Unable to load user with ID '{_userManager.GetUserId(User)}'.");
+            //}
 
-            await LoadAsync(user);
-            return Page();
+            //await LoadAsync(user);
+            //return Page();
         }
 
         public async Task<IActionResult> OnPostChangeEmailAsync()
         {
-            var user = await _userManager.GetUserAsync(User);
-            if (user == null)
-            {
-                return NotFound($"Unable to load user with ID '{_userManager.GetUserId(User)}'.");
-            }
+            return NotFound();
 
-            if (!ModelState.IsValid)
-            {
-                await LoadAsync(user);
-                return Page();
-            }
+            //var user = await _userManager.GetUserAsync(User);
+            //if (user == null)
+            //{
+            //    return NotFound($"Unable to load user with ID '{_userManager.GetUserId(User)}'.");
+            //}
 
-            var email = await _userManager.GetEmailAsync(user);
-            if (Input.NewEmail != email)
-            {
-                var userId = await _userManager.GetUserIdAsync(user);
-                var code = await _userManager.GenerateChangeEmailTokenAsync(user, Input.NewEmail);
-                code = WebEncoders.Base64UrlEncode(Encoding.UTF8.GetBytes(code));
-                var callbackUrl = Url.Page(
-                    "/Account/ConfirmEmailChange",
-                    pageHandler: null,
-                    values: new { area = "Identity", userId = userId, email = Input.NewEmail, code = code },
-                    protocol: Request.Scheme);
-                await _emailSender.SendEmailAsync(
-                    Input.NewEmail,
-                    "Confirm your email",
-                    $"Please confirm your account by <a href='{HtmlEncoder.Default.Encode(callbackUrl)}'>clicking here</a>.");
+            //if (!ModelState.IsValid)
+            //{
+            //    await LoadAsync(user);
+            //    return Page();
+            //}
 
-                StatusMessage = "Confirmation link to change email sent. Please check your email.";
-                return RedirectToPage();
-            }
+            //var email = await _userManager.GetEmailAsync(user);
+            //if (Input.NewEmail != email)
+            //{
+            //    var userId = await _userManager.GetUserIdAsync(user);
+            //    var code = await _userManager.GenerateChangeEmailTokenAsync(user, Input.NewEmail);
+            //    code = WebEncoders.Base64UrlEncode(Encoding.UTF8.GetBytes(code));
+            //    var callbackUrl = Url.Page(
+            //        "/Account/ConfirmEmailChange",
+            //        pageHandler: null,
+            //        values: new { area = "Identity", userId = userId, email = Input.NewEmail, code = code },
+            //        protocol: Request.Scheme);
+            //    await _emailSender.SendEmailAsync(
+            //        Input.NewEmail,
+            //        "Confirm your email",
+            //        $"Please confirm your account by <a href='{HtmlEncoder.Default.Encode(callbackUrl)}'>clicking here</a>.");
 
-            StatusMessage = "Your email is unchanged.";
-            return RedirectToPage();
+            //    StatusMessage = "Confirmation link to change email sent. Please check your email.";
+            //    return RedirectToPage();
+            //}
+
+            //StatusMessage = "Your email is unchanged.";
+            //return RedirectToPage();
         }
 
         public async Task<IActionResult> OnPostSendVerificationEmailAsync()

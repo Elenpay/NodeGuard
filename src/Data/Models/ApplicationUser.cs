@@ -1,7 +1,10 @@
-﻿using Microsoft.AspNetCore.Identity;
+﻿using System.Text.Json.Serialization;
+using Microsoft.AspNetCore.Identity;
 
 namespace FundsManager.Data.Models
 {
+    [Flags]
+    [JsonConverter(typeof(JsonStringEnumConverter))]
     public enum ApplicationUserRole
     {
         NodeManager, FinanceManager, Superadmin

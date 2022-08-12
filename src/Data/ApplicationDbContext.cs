@@ -28,6 +28,8 @@ namespace FundsManager.Data
                 .HasForeignKey(cor => cor.DestNodeId);
 
             modelBuilder.Entity<Node>().HasIndex(x => x.PubKey).IsUnique();
+            modelBuilder.Entity<ApplicationUser>().HasIndex(x => x.NormalizedUserName).IsUnique();
+
             base.OnModelCreating(modelBuilder);
         }
 

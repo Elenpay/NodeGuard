@@ -3,6 +3,7 @@ using Blazorise;
 using Blazorise.Bootstrap;
 using Blazorise.Icons.FontAwesome;
 using FundsManager.Areas.Identity;
+using FundsManager.Automapper;
 using FundsManager.Data;
 using FundsManager.Data.Models;
 using FundsManager.Data.Repositories;
@@ -33,10 +34,14 @@ namespace FundsManager
 
             builder.Services.AddDatabaseDeveloperPageExceptionFilter();
             builder.Services
-                .AddDefaultIdentity<ApplicationUser>(options => options.SignIn.RequireConfirmedAccount = false)
+                .AddDefaultIdentity<ApplicationUser>(options =>
+                {
+                    options.SignIn.RequireConfirmedAccount = false;
+                })
                 .AddRoles<IdentityRole>()
                 .AddRoleManager<RoleManager<IdentityRole>>()
-                .AddEntityFrameworkStores<ApplicationDbContext>();
+                .AddEntityFrameworkStores<ApplicationDbContext>()
+                .AddDefaultTokenProviders();
             builder.Services.AddRazorPages();
             builder.Services.AddServerSideBlazor().AddCircuitOptions(options => { options.DetailedErrors = true; });
 
@@ -77,8 +82,8 @@ namespace FundsManager
             builder.Services.AddDbContextFactory<ApplicationDbContext>(
                 options =>
                 {
-                    //options.EnableSensitiveDataLogging();
-                    //options.EnableDetailedErrors();
+                    options.EnableSensitiveDataLogging();
+                    options.EnableDetailedErrors();
                     options.UseNpgsql(connectionString);
                 }, ServiceLifetime.Transient);
 
@@ -101,6 +106,9 @@ namespace FundsManager
             });
 
             builder.Services.AddHangfireServer();
+
+            //Automapper
+            builder.Services.AddAutoMapper(typeof(MapperProfile));
 
             // Sentry
             builder.Services.AddSentry();

@@ -13,6 +13,7 @@
     CI_BUILD_TOKEN: "{{ lookup('env','CI_BUILD_TOKEN') }}"
     SENTRY_ENVIRONMENT: PASSED_BY_CLI
     SENTRY_DSN: https://6e10418190404837853e31beaefb94c4@o1066831.ingest.sentry.io/6599373
+    APP_ENDPOINT: https://fm-staging.elenpay.tech
   hosts: 
    - btcpay-staging
   tasks:
