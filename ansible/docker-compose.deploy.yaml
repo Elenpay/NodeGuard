@@ -22,6 +22,7 @@ services:
       SENTRY_ENVIRONMENT: "{{ SENTRY_ENVIRONMENT }}"
       SENTRY_DSN:  "{{ SENTRY_DSN }}"
       Logging__LogLevel__Microsoft: Warning
+      FUNDSMANAGER_ENDPOINT: "{{ FUNDSMANAGER_ENDPOINT }}"
     volumes:
       - fundsmanager_data_keys_dir:/root/.aspnet/DataProtection-Keys
 
