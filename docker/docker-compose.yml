@@ -24,7 +24,7 @@ services:
         SENTRY_DSN: ""
         SENTRY_DEBUG_ENABLED: "true"
         Logging__LogLevel__Microsoft: Warning
-        IS_DEV_ENVIRONMENT: true
+        IS_DEV_ENVIRONMENT: "true"
         FUNDSMANAGER_ENDPOINT: http://localhost:50052
     volumes:
         - fundsmanager_data_keys_dir:/root/.aspnet/DataProtection-Keys

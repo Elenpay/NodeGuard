@@ -170,6 +170,38 @@ namespace FundsManager.Data.Repositories
             return url;
         }
 
+        public async Task<(bool, string?)> LockUser(ApplicationUser applicationUser)
+        {
+            await using var applicationDbContext = await _dbContextFactory.CreateDbContextAsync();
+
+            applicationUser = _mapper.Map<ApplicationUser, ApplicationUser>(applicationUser);
+
+            applicationUser.LockoutEnabled = true;
+            applicationUser.LockoutEnd = DateTimeOffset.MaxValue; //Banned until the eternity 🔥
+
+            //We sign him out of the app
+
+            applicationUser.SecurityStamp = Guid.NewGuid().ToString();
+
+            var updateResult = Update(applicationUser);
+
+            return updateResult;
+        }
+
+        public async Task<(bool, string?)> UnlockUser(ApplicationUser applicationUser)
+        {
+            await using var applicationDbContext = await _dbContextFactory.CreateDbContextAsync();
+
+            applicationUser = _mapper.Map<ApplicationUser, ApplicationUser>(applicationUser);
+
+            applicationUser.LockoutEnabled = false;
+            applicationUser.LockoutEnd = null;
+
+            var updateResult = Update(applicationUser);
+
+            return updateResult;
+        }
+
         public async Task<(bool, string?)> UpdateUserRoles(IReadOnlyList<ApplicationUserRole> selectedRoles, ApplicationUser user)
         {
             await using var applicationDbContext = await _dbContextFactory.CreateDbContextAsync();
