@@ -45,4 +45,18 @@ public interface IApplicationUserRepository
     /// <param name="applicationUser"></param>
     /// <returns></returns>
     Task<string?> GetUserPasswordMagicLink(ApplicationUser applicationUser);
+
+    /// <summary>
+    /// Locks/ban user
+    /// </summary>
+    /// <param name="applicationUser"></param>
+    /// <returns></returns>
+    Task<(bool, string?)> LockUser(ApplicationUser applicationUser);
+
+    /// <summary>
+    /// Unlocks/unban user
+    /// </summary>
+    /// <param name="user"></param>
+    /// <returns></returns>
+    Task<(bool, string?)> UnlockUser(ApplicationUser user);
 }

@@ -1,4 +1,5 @@
-﻿using System.Text.Json.Serialization;
+﻿using System.ComponentModel.DataAnnotations.Schema;
+using System.Text.Json.Serialization;
 using Microsoft.AspNetCore.Identity;
 
 namespace FundsManager.Data.Models
@@ -12,6 +13,9 @@ namespace FundsManager.Data.Models
 
     public class ApplicationUser : IdentityUser
     {
+        [NotMapped]
+        public bool IsLocked => LockoutEnabled && LockoutEnd != null;
+
         #region Relationships
 
         public ICollection<Key> Keys { get; set; }
