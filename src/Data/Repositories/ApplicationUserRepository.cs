@@ -237,6 +237,19 @@ namespace FundsManager.Data.Repositories
 
                 var rowsChanged = await applicationDbContext.SaveChangesAsync() > 0;
 
+                if (rowsChanged)
+                {
+                    //We log him out of the app
+
+                    user.SecurityStamp = Guid.NewGuid().ToString();
+                    applicationDbContext.Update(user);
+                    var updateStampResult = await applicationDbContext.SaveChangesAsync() > 0;
+                    if (!updateStampResult)
+                    {
+                        _logger.LogError("Error while invalidating user security stamp, user id:{}",user.Id);
+                    }
+                }
+
                 await tx.CommitAsync();
 
                 result.Item1 = rowsChanged;
