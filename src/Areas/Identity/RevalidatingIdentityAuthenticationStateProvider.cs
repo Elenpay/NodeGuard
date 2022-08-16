@@ -23,7 +23,7 @@ namespace FundsManager.Areas.Identity
             _options = optionsAccessor.Value;
         }
 
-        protected override TimeSpan RevalidationInterval => TimeSpan.FromMinutes(30);
+        protected override TimeSpan RevalidationInterval => TimeSpan.FromMinutes(1);
 
         protected override async Task<bool> ValidateAuthenticationStateAsync(
             AuthenticationState authenticationState, CancellationToken cancellationToken)
@@ -33,7 +33,9 @@ namespace FundsManager.Areas.Identity
             try
             {
                 var userManager = scope.ServiceProvider.GetRequiredService<UserManager<TUser>>();
-                return await ValidateSecurityStampAsync(userManager, authenticationState.User);
+                var validateSecurityStampAsync = await ValidateSecurityStampAsync(userManager, authenticationState.User);
+
+                return validateSecurityStampAsync;
             }
             finally
             {

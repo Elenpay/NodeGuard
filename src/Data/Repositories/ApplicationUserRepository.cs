@@ -179,6 +179,10 @@ namespace FundsManager.Data.Repositories
             applicationUser.LockoutEnabled = true;
             applicationUser.LockoutEnd = DateTimeOffset.MaxValue; //Banned until the eternity 🔥
 
+            //We sign him out of the app
+
+            applicationUser.SecurityStamp = Guid.NewGuid().ToString();
+
             var updateResult = Update(applicationUser);
 
             return updateResult;

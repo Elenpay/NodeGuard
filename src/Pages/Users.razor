@@ -26,6 +26,16 @@
                     <EditCommandTemplate>
                         <Button Color="Color.Primary" Clicked="@(()=>OnEditInvoked(context.Item,context.Clicked))">Edit</Button>
                         <Button Color="Color.Primary" Clicked="@(()=>OnResetLinkClicked(context.Item))">Set password link</Button>
+                        @if (context.Item.IsLocked)
+                        {
+                            <Button Color="Color.Danger" Clicked="@(()=>OnUnlockUserClicked(context.Item))">Unlock</Button>
+
+                        }
+                        else
+                        {
+                            <Button Color="Color.Danger" Clicked="@(()=>OnLockUserClicked(context.Item))">Lock</Button>
+
+                        }
 
                     </EditCommandTemplate>
                     <DeleteCommandTemplate>
@@ -123,7 +133,7 @@
     private async Task GetData()
     {
 
-        _users = await ApplicationUserRepository.GetAll();
+        _users = await ApplicationUserRepository.GetAll(true);
 
         _nodesList = await NodeRepository.GetAllManagedByFundsManager();
 
@@ -287,5 +297,46 @@
         }
        
     }
+
+    private async Task OnUnlockUserClicked(ApplicationUser contextItem)
+    {
+        if (contextItem != null)
+        {
+          var lockResult= await
+            ApplicationUserRepository.UnlockUser(contextItem);
+
+            if (lockResult.Item1)
+            {
+                ToastService.ShowSuccess("User unlocked");
+            }
+            else
+            {
+                ToastService.ShowError("Something went wrong");
+
+            }
+
+            await GetData();
+        }
+    }
+
+    private async Task OnLockUserClicked(ApplicationUser contextItem)
+    {
+        if (contextItem != null)
+        {
+            var lockResult= await
+                ApplicationUserRepository.LockUser(contextItem);
+
+            if (lockResult.Item1)
+            {
+                ToastService.ShowSuccess("User locked out");
+            }
+            else
+            {
+                ToastService.ShowError("Something went wrong");
+
+            }
+
+            await GetData();
+        }    }
 
 }
