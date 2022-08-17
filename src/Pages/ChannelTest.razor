@@ -208,7 +208,7 @@
             };
 
 
-        templatePSBT = await LightningService.GenerateTemplatePSBT(channelOperationRequest);
+        var (templatePSBT,_)= await LightningService.GenerateTemplatePSBT(channelOperationRequest);
 
         if (templatePSBT == null)
         {

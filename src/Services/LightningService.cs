@@ -9,10 +9,13 @@ using NBXplorer;
 using NBXplorer.DerivationStrategy;
 using NBXplorer.Models;
 using System.Security.Cryptography;
+using AutoMapper;
 using FundsManager.Data;
 using FundsManager.Helpers;
+using Humanizer;
 using Microsoft.EntityFrameworkCore;
 using Channel = FundsManager.Data.Models.Channel;
+using UTXO = NBXplorer.Models.UTXO;
 
 namespace FundsManager.Services
 {
@@ -27,12 +30,12 @@ namespace FundsManager.Services
         public Task OpenChannel(ChannelOperationRequest channelOperationRequest, string presignedPSBTbase64);
 
         /// <summary>
-        /// Generates a template PSBT with Sighash_NONE and some UTXOs from the wallet related to the request without signing
+        /// Generates a template PSBT with Sighash_NONE and some UTXOs from the wallet related to the request without signing, also returns if there are no utxos available at the request time
         /// </summary>
         /// <param name="channelOperationRequest"></param>
         /// <param name="destinationAddress"></param>
         /// <returns></returns>
-        public Task<PSBT?> GenerateTemplatePSBT(ChannelOperationRequest channelOperationRequesd);
+        public Task<(PSBT?, bool)> GenerateTemplatePSBT(ChannelOperationRequest channelOperationRequesd);
 
         /// <summary>
         /// Based on a channel operation request of type close, requests the close of a channel to LND without acking the request.
@@ -74,16 +77,18 @@ namespace FundsManager.Services
         private readonly IChannelOperationRequestRepository _channelOperationRequestRepository;
         private readonly INodeRepository _nodeRepository;
         private readonly IDbContextFactory<ApplicationDbContext> _dbContextFactory;
+        private readonly IMapper _mapper;
 
         public LightningService(ILogger<LightningService> logger,
             IChannelOperationRequestRepository channelOperationRequestRepository,
             INodeRepository nodeRepository,
-            IDbContextFactory<ApplicationDbContext> dbContextFactory)
+            IDbContextFactory<ApplicationDbContext> dbContextFactory, IMapper mapper)
         {
             _logger = logger;
             _channelOperationRequestRepository = channelOperationRequestRepository;
             _nodeRepository = nodeRepository;
             _dbContextFactory = dbContextFactory;
+            _mapper = mapper;
         }
 
         public async Task OpenChannel(ChannelOperationRequest channelOperationRequest, string? presignedPSBTbase64)
@@ -432,6 +437,8 @@ namespace FundsManager.Services
                 result = false;
 
                 CancelPendingChannel(source, client, pendingChannelId);
+
+                //TODO Mark as failed (?)
                 throw;
             }
         }
@@ -467,23 +474,23 @@ namespace FundsManager.Services
             }
         }
 
-        public async Task<PSBT?> GenerateTemplatePSBT(ChannelOperationRequest channelOperationRequest)
+        public async Task<(PSBT?, bool)> GenerateTemplatePSBT(ChannelOperationRequest channelOperationRequest)
         {
             if (channelOperationRequest == null) throw new ArgumentNullException(nameof(channelOperationRequest));
 
-            PSBT? result = null;
+            (PSBT?, bool) result = (null, false);
 
             if (channelOperationRequest.RequestType != OperationRequestType.Open)
             {
                 _logger.LogError("PSBT Generation cancelled, operation type is not open");
 
-                return null;
+                return (null, false);
             }
 
             if (channelOperationRequest.Status != ChannelOperationRequestStatus.Pending)
             {
                 _logger.LogError("PSBT Generation cancelled, operation is not in pending state");
-                return null;
+                return (null, false);
             }
 
             var (nbXplorerNetwork, nbxplorerClient) = GenerateNetwork(_logger);
@@ -491,7 +498,7 @@ namespace FundsManager.Services
             if (!(await nbxplorerClient.GetStatusAsync()).IsFullySynched)
             {
                 _logger.LogError("Error, nbxplorer not fully synched");
-                return null;
+                return (null, false);
             }
 
             //UTXOs -> they need to be tracked first on nbxplorer to get results!!
@@ -499,10 +506,11 @@ namespace FundsManager.Services
 
             if (derivationStrategy == null)
             {
-                return null;
+                _logger.LogError("Error while getting the derivation strategy scheme for wallet:{}", channelOperationRequest.Wallet.Id);
+                return (null, false);
             }
 
-            var multisigCoins = await GetTxInputCoins(channelOperationRequest, nbxplorerClient, derivationStrategy);
+            var (multisigCoins, selectedUtxOs) = await GetTxInputCoins(channelOperationRequest, nbxplorerClient, derivationStrategy);
 
             if (multisigCoins == null || !multisigCoins.Any())
             {
@@ -511,7 +519,7 @@ namespace FundsManager.Services
                     channelOperationRequest.IsChannelPrivate,
                     channelOperationRequest.WalletId);
 
-                return null;
+                return (null, true); //true means no UTXOS
             }
 
             try
@@ -532,16 +540,29 @@ namespace FundsManager.Services
                     .SetChange(changeAddress.Address)
                     .SendEstimatedFees(feeRateResult.FeeRate);
 
-                result = builder.BuildPSBT(false);
+                result.Item1 = builder.BuildPSBT(false);
 
                 //TODO Remove hack when https://github.com/MetacoSA/NBitcoin/issues/1112 is fixed
-                result.Settings.SigningOptions = new SigningOptions(SigHash.None);
+                result.Item1.Settings.SigningOptions = new SigningOptions(SigHash.None);
             }
             catch (Exception e)
             {
                 _logger.LogError(e, "Error while generating base PSBT");
                 throw;
             }
+
+            // We "lock" the PSBT to the channel operation request by adding to its UTXOs collection for later checking
+            var utxos = selectedUtxOs.Select(x => _mapper.Map<UTXO, Data.Models.FMUTXO>(x)).ToList();
+
+            if (channelOperationRequest.Utxos != null && !channelOperationRequest.Utxos.Any()) //Only there were not UTXOs added
+            {
+                var addUTXOSOperation = await _channelOperationRequestRepository.AddUTXOs(channelOperationRequest, utxos);
+                if (!addUTXOSOperation.Item1)
+                {
+                    _logger.LogError($"Could not add the following utxos({utxos.Humanize()}) to op request:{channelOperationRequest.Id}");
+                }
+            }
+
             return result;
         }
 
@@ -624,20 +645,44 @@ namespace FundsManager.Services
         /// <param name="nbxplorerClient"></param>
         /// <param name="derivationStrategy"></param>
         /// <returns></returns>
-        private async Task<List<ScriptCoin>> GetTxInputCoins(ChannelOperationRequest channelOperationRequest, ExplorerClient nbxplorerClient,
+        private async Task<(List<ScriptCoin> coins, List<UTXO> selectedUTXOs)> GetTxInputCoins(
+            ChannelOperationRequest channelOperationRequest,
+            ExplorerClient nbxplorerClient,
             DerivationStrategyBase derivationStrategy)
         {
             var utxoChanges = await nbxplorerClient.GetUTXOsAsync(derivationStrategy);
             utxoChanges.RemoveDuplicateUTXOs();
 
-            if (utxoChanges == null || !utxoChanges.Confirmed.UTXOs.Any())
+            //Now it is time to remove from the UTXO SET those who are used in a Request with status from Pending to OnChainPending
+
+            var pendingRequests = await _channelOperationRequestRepository.GetPendingRequests();
+
+            pendingRequests.Remove(channelOperationRequest);  //The parameted request is not counted for this
+
+            var pendingUTXOs = pendingRequests.SelectMany(x => x.Utxos).ToList();
+            var availableUTXOs = new List<UTXO>();
+            foreach (var utxo in utxoChanges.Confirmed.UTXOs)
+            {
+                var fmUtxo = _mapper.Map<UTXO, FMUTXO>(utxo);
+
+                if (pendingUTXOs.Contains(fmUtxo))
+                {
+                    _logger.LogInformation("Removing UTXO:{} from UTXO set as it is locked", fmUtxo.ToString());
+                }
+                else
+                {
+                    availableUTXOs.Add(utxo);
+                }
+            }
+
+            if (!availableUTXOs.Any())
             {
                 _logger.LogError("PSBT cannot be generated, no UTXOs are available for walletId:{}",
                     channelOperationRequest.WalletId);
-                return new List<ScriptCoin>();
+                return (new List<ScriptCoin>(), new List<UTXO>());
             }
 
-            var utxosStack = new Stack<UTXO>(utxoChanges.Confirmed.UTXOs.OrderByDescending(x => x.Confirmations));
+            var utxosStack = new Stack<UTXO>(availableUTXOs.OrderByDescending(x => x.Confirmations));
 
             //FIFO Algorithm to match the amount, oldest UTXOs are first taken
 
@@ -646,9 +691,9 @@ namespace FundsManager.Services
             if (totalUTXOsConfirmedSats < channelOperationRequest.SatsAmount)
             {
                 _logger.LogError(
-                    "Error, the total UTXOs set balance for walletid:{} ({} sats) is less than the channel amount request ({}sats)",
+                    "Error, the total UTXOs set balance for walletid:{} ({} sats) is less than the channel amount request ({} sats)",
                     channelOperationRequest.WalletId, totalUTXOsConfirmedSats, channelOperationRequest.SatsAmount);
-                return new List<ScriptCoin>();
+                return (new List<ScriptCoin>(), new List<UTXO>());
             }
 
             var utxosSatsAmountAccumulator = 0M;
@@ -668,7 +713,7 @@ namespace FundsManager.Services
 
             var coins = selectedUTXOs.Select(x => x.AsCoin(derivationStrategy).ToScriptCoin(x.ScriptPubKey))
                 .ToList();
-            return coins;
+            return (coins, selectedUTXOs);
         }
 
         public async Task CloseChannel(ChannelOperationRequest channelOperationRequest, bool forceClose = false)
