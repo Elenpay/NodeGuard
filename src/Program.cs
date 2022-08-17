@@ -70,6 +70,7 @@ namespace FundsManager
             builder.Services.AddTransient<INodeRepository, NodeRepository>();
             builder.Services.AddTransient<IWalletRepository, WalletRepository>();
             builder.Services.AddTransient<IInternalWalletRepository, InternalWalletRepository>();
+            builder.Services.AddTransient<IUTXORepository, UTXORepository>();
 
             //BlazoredToast
             builder.Services.AddBlazoredToast();

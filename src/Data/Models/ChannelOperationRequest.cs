@@ -24,7 +24,7 @@ namespace FundsManager.Data.Models
         PSBTSignaturesPending = 5,
 
         /// <summary>
-        /// The operation tx is signed and waiting for onchain confirmation
+        /// The operation tx is signed and broadcast waiting for onchain confirmation
         /// </summary>
         OnChainConfirmationPending = 6,
 
@@ -40,7 +40,7 @@ namespace FundsManager.Data.Models
         Close = 2
     }
 
-    public class ChannelOperationRequest : Entity
+    public class ChannelOperationRequest : Entity, IEquatable<ChannelOperationRequest>
     {
         /// <summary>
         /// Amount in satoshis
@@ -79,6 +79,8 @@ namespace FundsManager.Data.Models
 
         public bool IsChannelPrivate { get; set; }
 
+        public List<FMUTXO> Utxos { get; set; }
+
         #endregion Relationships
 
         /// <summary>
@@ -89,7 +91,7 @@ namespace FundsManager.Data.Models
 
         [NotMapped]
         public int NumberOfSignaturesCollected => ChannelOperationRequestPsbts == null ? 0 : ChannelOperationRequestPsbts.Count(x =>
-                                                                    !x.IsFinalisedPSBT && !x.IsTemplatePSBT && !x.IsInternalWalletPSBT);
+                                                                                                                                                                                                                                                                                                                                                                                                    !x.IsFinalisedPSBT && !x.IsTemplatePSBT && !x.IsInternalWalletPSBT);
 
         /// <summary>
         /// This is the JobId provided by Hangfire of the job executing this request.
@@ -118,6 +120,36 @@ namespace FundsManager.Data.Models
             }
 
             return result;
+        }
+
+        public override bool Equals(object? obj)
+        {
+            if (ReferenceEquals(null, obj)) return false;
+            if (ReferenceEquals(this, obj)) return true;
+            if (obj.GetType() != this.GetType()) return false;
+            return Equals((ChannelOperationRequest)obj);
+        }
+
+        public bool Equals(ChannelOperationRequest? other)
+        {
+            if (ReferenceEquals(null, other)) return false;
+            if (ReferenceEquals(this, other)) return true;
+            return Id == other.Id;
+        }
+
+        public override int GetHashCode()
+        {
+            return Id;
+        }
+
+        public static bool operator ==(ChannelOperationRequest? left, ChannelOperationRequest? right)
+        {
+            return Equals(left, right);
+        }
+
+        public static bool operator !=(ChannelOperationRequest? left, ChannelOperationRequest? right)
+        {
+            return !Equals(left, right);
         }
     }
 }

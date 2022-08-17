@@ -3,6 +3,7 @@ using System;
 using FundsManager.Data;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 
@@ -11,9 +12,10 @@ using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 namespace FundsManager.Migrations
 {
     [DbContext(typeof(ApplicationDbContext))]
-    partial class ApplicationDbContextModelSnapshot : ModelSnapshot
+    [Migration("20220817160052_UTXO_UINT")]
+    partial class UTXO_UINT
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -37,7 +39,7 @@ namespace FundsManager.Migrations
                     b.ToTable("ApplicationUserNode");
                 });
 
-            modelBuilder.Entity("ChannelOperationRequestFMUTXO", b =>
+            modelBuilder.Entity("ChannelOperationRequestUTXO", b =>
                 {
                     b.Property<int>("ChannelOperationRequestsId")
                         .HasColumnType("integer");
@@ -49,7 +51,7 @@ namespace FundsManager.Migrations
 
                     b.HasIndex("UtxosId");
 
-                    b.ToTable("ChannelOperationRequestFMUTXO");
+                    b.ToTable("ChannelOperationRequestUTXO");
                 });
 
             modelBuilder.Entity("FundsManager.Data.Models.Channel", b =>
@@ -198,35 +200,6 @@ namespace FundsManager.Migrations
                     b.ToTable("ChannelOperationRequestPSBTs");
                 });
 
-            modelBuilder.Entity("FundsManager.Data.Models.FMUTXO", b =>
-                {
-                    b.Property<int>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("integer");
-
-                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
-
-                    b.Property<DateTimeOffset>("CreationDatetime")
-                        .HasColumnType("timestamp with time zone");
-
-                    b.Property<long>("OutputIndex")
-                        .HasColumnType("bigint");
-
-                    b.Property<long>("SatsAmount")
-                        .HasColumnType("bigint");
-
-                    b.Property<string>("TxId")
-                        .IsRequired()
-                        .HasColumnType("text");
-
-                    b.Property<DateTimeOffset>("UpdateDatetime")
-                        .HasColumnType("timestamp with time zone");
-
-                    b.HasKey("Id");
-
-                    b.ToTable("FMUTXOs");
-                });
-
             modelBuilder.Entity("FundsManager.Data.Models.InternalWallet", b =>
                 {
                     b.Property<int>("Id")
@@ -335,6 +308,35 @@ namespace FundsManager.Migrations
                         .IsUnique();
 
                     b.ToTable("Nodes");
+                });
+
+            modelBuilder.Entity("FundsManager.Data.Models.UTXO", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
+
+                    b.Property<DateTimeOffset>("CreationDatetime")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<long>("OutputIndex")
+                        .HasColumnType("bigint");
+
+                    b.Property<long>("SatsAmount")
+                        .HasColumnType("bigint");
+
+                    b.Property<string>("TxId")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<DateTimeOffset>("UpdateDatetime")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.HasKey("Id");
+
+                    b.ToTable("UTXOs");
                 });
 
             modelBuilder.Entity("FundsManager.Data.Models.Wallet", b =>
@@ -626,7 +628,7 @@ namespace FundsManager.Migrations
                         .IsRequired();
                 });
 
-            modelBuilder.Entity("ChannelOperationRequestFMUTXO", b =>
+            modelBuilder.Entity("ChannelOperationRequestUTXO", b =>
                 {
                     b.HasOne("FundsManager.Data.Models.ChannelOperationRequest", null)
                         .WithMany()
@@ -634,7 +636,7 @@ namespace FundsManager.Migrations
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
 
-                    b.HasOne("FundsManager.Data.Models.FMUTXO", null)
+                    b.HasOne("FundsManager.Data.Models.UTXO", null)
                         .WithMany()
                         .HasForeignKey("UtxosId")
                         .OnDelete(DeleteBehavior.Cascade)

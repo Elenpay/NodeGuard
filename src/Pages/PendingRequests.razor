@@ -219,13 +219,30 @@
         _selectedRequest = channelOperationRequest;
         _psbt = string.Empty;
         if (_selectedRequest != null) {
+            var (templatePsbt,noUtxosAvailable) = (await LightningService.GenerateTemplatePSBT(_selectedRequest));
+            if (templatePsbt != null)
+            {
+                _templatePSBT = templatePsbt.ToBase64();
 
-            _templatePSBT = (await LightningService.GenerateTemplatePSBT(_selectedRequest))?.ToBase64();
+           
 
-            //TODO Review Saving of PSBT template, but what about concurrency of UTXO?
+                _modalVisible = true;
 
-            _modalVisible = true;
+            }
+            else
+            {
+                if (noUtxosAvailable)
+                {
+                    ToastService.ShowError("No UTXOs found for this wallet, please wait for other requests to be confirmed or fund the wallet with more UTXOs");
 
+                }
+                else
+                {
+                    ToastService.ShowError("Something went wrong");
+
+                }
+            }
+            
         }
     }
 

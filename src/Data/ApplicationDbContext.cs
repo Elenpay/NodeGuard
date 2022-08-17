@@ -48,5 +48,7 @@ namespace FundsManager.Data
         public DbSet<Channel> Channels { get; set; }
 
         public DbSet<InternalWallet> InternalWallets { get; set; }
+
+        public DbSet<FMUTXO> FMUTXOs { get; set; }
     }
 }
