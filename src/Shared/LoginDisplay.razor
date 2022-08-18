@@ -21,10 +21,9 @@
                 else
                 {
                     <Badge Color="Color.Success" TextColor="TextColor.White">@ApplicationUserRole.FinanceManager.ToString("G").Humanize(LetterCasing.Title)</Badge>
+                    <Button Color="Color.Info" Size="Size.Small" Clicked="@(() => NavigationManager.NavigateTo("/keys"))">My keys</Button>
                 }
             }
-            <Button Color="Color.Info" Size="Size.Small" Clicked="@(() => NavigationManager.NavigateTo("/keys"))">My keys</Button>
-
         }
 
         <a href="Identity/Account/Manage">Hello, @context.User.Identity?.Name!</a>

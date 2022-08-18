@@ -1,7 +1,7 @@
 ﻿@page "/pending-requests"
 @using System.Security.Claims
-@using FundsManager.Helpers
 @using Hangfire
+@using Humanizer
 @using NBitcoin
 @attribute [Authorize(Roles = "FinanceManager, Superadmin")]
 
@@ -30,13 +30,20 @@
         <DataGridColumn TItem="ChannelOperationRequest" Field="@nameof(ChannelOperationRequest.WalletId)" Caption="Signatures Collected" Sortable="false" Displayable="true">
             <DisplayTemplate>
                 @{
-                    var signaturesCollected = context.NumberOfSignaturesCollected + 1;
-                    var signaturesRequired = context.Wallet?.MofN ?? 0;
-                    @($"{signaturesCollected} out of {signaturesRequired}")
+                    if (context.RequestType == OperationRequestType.Open)
+                    {
+                        var signaturesCollected = context.NumberOfSignaturesCollected + 1;
+                        var signaturesRequired = context.Wallet?.MofN ?? 0;
+                        @($"{signaturesCollected} out of {signaturesRequired}")
+                    }
+                    else
+                    {
+                        @("N/A");
+                    }
                 }
             </DisplayTemplate>
         </DataGridColumn>
-        <DataGridColumn TItem="ChannelOperationRequest" Field="@nameof(ChannelOperationRequest.Status)" Caption="Status" Sortable="false" Displayable="true"/>
+        <DataGridColumn TItem="ChannelOperationRequest" Field="@nameof(ChannelOperationRequest.Status).Humanize(LetterCasing.Sentence)" Caption="Status" Sortable="false" Displayable="true"/>
         <DataGridCommandColumn TItem="ChannelOperationRequest" Caption="Actions" Displayable="true">
             <NewCommandTemplate>
                 <Button Color="Color.Primary" hidden ></Button>
@@ -85,13 +92,20 @@
         <DataGridColumn TItem="ChannelOperationRequest" Field="@nameof(ChannelOperationRequest.WalletId)" Caption="Signatures Collected" Sortable="false" Displayable="true">
             <DisplayTemplate>
                 @{
-                    var signaturesCollected = context.NumberOfSignaturesCollected + 1;
-                    var signaturesRequired = context?.Wallet?.MofN ?? 0;
-                    @($"{signaturesCollected} out of {signaturesRequired}")
+                    if (context.RequestType == OperationRequestType.Open)
+                    {
+                        var signaturesCollected = context.NumberOfSignaturesCollected + 1;
+                        var signaturesRequired = context?.Wallet?.MofN ?? 0;
+                        @($"{signaturesCollected} out of {signaturesRequired}")
+                    }
+                    else
+                    {
+                        @("N/A");
+                    }
                 }
             </DisplayTemplate>
         </DataGridColumn>
-        <DataGridColumn TItem="ChannelOperationRequest" Field="@nameof(ChannelOperationRequest.Status)" Caption="Status" Sortable="false" Displayable="true"/>
+        <DataGridColumn TItem="ChannelOperationRequest" Field="@nameof(ChannelOperationRequest.Status).Humanize(LetterCasing.Sentence)" Caption="Status" Sortable="false" Displayable="true"/>
         <DataGridColumn TItem="ChannelOperationRequest" Field="@nameof(ChannelOperationRequest.CreationDatetime)" Caption="@nameof(ChannelOperationRequest.CreationDatetime)" Sortable="false" />
         <DataGridColumn TItem="ChannelOperationRequest" Field="@nameof(ChannelOperationRequest.UpdateDatetime)" Caption="@nameof(ChannelOperationRequest.UpdateDatetime)" Sortable="false" />
     </ChildContent>
@@ -223,9 +237,6 @@
             if (templatePsbt != null)
             {
                 _templatePSBT = templatePsbt.ToBase64();
-
-           
-
                 _modalVisible = true;
 
             }
