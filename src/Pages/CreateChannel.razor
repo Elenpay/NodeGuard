@@ -145,34 +145,40 @@
         if (_amount != null && _amount > 0 && _selectedWalletId > 0 && LoggedUser != null &&
             _selectedSourceNodeId > 0 && _selectedDestNode != null)
         {
-            ChannelOperationRequest request = new()
+            if (_selectedDestNode.Id != _selectedSourceNodeId)
             {
-                SatsAmount = _amount,
-                RequestType = OperationRequestType.Open,
-                Description = "Created by user via Funds Manager",
-                WalletId = _selectedWalletId,
-                Status = ChannelOperationRequestStatus.Pending, //TODO Reject and cancel
-                UserId = LoggedUser.Id,
-                SourceNodeId = _selectedSourceNodeId,
-                DestNodeId = _selectedDestNode.Id
-            };
-            
-            var createChannelResult = await ChannelOperationRequestRepository.AddAsync(request);
-            if (createChannelResult.Item1)
-            {
-                ToastService.ShowSuccess("Open channel request created!");
+                ChannelOperationRequest request = new()
+                {
+                    SatsAmount = _amount,
+                    RequestType = OperationRequestType.Open,
+                    Description = "Created by user via Funds Manager",
+                    WalletId = _selectedWalletId,
+                    Status = ChannelOperationRequestStatus.Pending, //TODO Reject and cancel
+                    UserId = LoggedUser.Id,
+                    SourceNodeId = _selectedSourceNodeId,
+                    DestNodeId = _selectedDestNode.Id
+                };
+
+                var createChannelResult = await ChannelOperationRequestRepository.AddAsync(request);
+                if (createChannelResult.Item1)
+                {
+                    ToastService.ShowSuccess("Open channel request created!");
+                }
+                else
+                {
+                    ToastService.ShowError("Open channel request failed!");
+                }
+
             }
             else
             {
-                ToastService.ShowError("Open channel request failed!");
+                ToastService.ShowError("The Source Node cannot be the same as the Destitation Node");
             }
         }
         else
         {
             ToastService.ShowError("Some fields were not properly filled");
-
         }
-
 
         await LoadData();
 
