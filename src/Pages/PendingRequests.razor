@@ -232,11 +232,11 @@
     {
         _selectedRequest = channelOperationRequest;
         _psbt = string.Empty;
-        if (_selectedRequest != null) {
+        if (_selectedRequest != null && !_selectedRequest.AreAllRequiredSignaturesCollected) {
             var (templatePsbt,noUtxosAvailable) = (await LightningService.GenerateTemplatePSBT(_selectedRequest));
             if (templatePsbt != null)
             {
-                _templatePSBT = templatePsbt.ToBase64();
+                _templatePSBTString = templatePsbt.ToBase64();
                 _modalVisible = true;
 
             }
