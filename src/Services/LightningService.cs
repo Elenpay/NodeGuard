@@ -548,7 +548,6 @@ namespace FundsManager.Services
             catch (Exception e)
             {
                 _logger.LogError(e, "Error while generating base PSBT");
-                throw;
             }
 
             // We "lock" the PSBT to the channel operation request by adding to its UTXOs collection for later checking
