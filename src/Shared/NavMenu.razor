@@ -24,16 +24,7 @@
                 </NavLink>
             </div>
         </AuthorizeView >
-        @if (WebHostEnvironment.IsDevelopment())
-        {
-            <AuthorizeView Roles="Superadmin">
-            <div class="nav-item px-3">
-                <NavLink class="nav-link" href="channeltest">
-                    <span class="oi oi-plus" aria-hidden="true"></span> Creation Tester
-                </NavLink>
-            </div>
-            </AuthorizeView>
-        }
+        
         <AuthorizeView Roles="Superadmin">
             <div class="nav-item px-3">
                 <NavLink class="nav-link" href="hangfire">
