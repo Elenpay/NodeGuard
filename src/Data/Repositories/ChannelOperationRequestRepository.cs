@@ -1,6 +1,7 @@
 ﻿using AutoMapper;
 using FundsManager.Data.Models;
 using FundsManager.Data.Repositories.Interfaces;
+using Humanizer;
 using Microsoft.EntityFrameworkCore;
 
 namespace FundsManager.Data.Repositories
@@ -123,28 +124,35 @@ namespace FundsManager.Data.Repositories
             if (type == null) throw new ArgumentNullException(nameof(type));
             if (utxos.Count == 0) throw new ArgumentException("Value cannot be an empty collection.", nameof(utxos));
 
-            (bool, string?) result = (false, null);
+            (bool, string?) result = (true, null);
 
-            await using var applicationDbContext = await _dbContextFactory.CreateDbContextAsync();
-
-            var request = await applicationDbContext.ChannelOperationRequests.Include(x => x.Utxos)
-                .SingleOrDefaultAsync(x => x.Id == type.Id);
-            if (request != null)
+            try
             {
-                if (!request.Utxos.Any())
+                await using var applicationDbContext = await _dbContextFactory.CreateDbContextAsync();
+
+                var request = await applicationDbContext.ChannelOperationRequests.Include(x => x.Utxos)
+                    .SingleOrDefaultAsync(x => x.Id == type.Id);
+                if (request != null)
                 {
-                    request.Utxos = utxos;
+                    if (!request.Utxos.Any())
+                    {
+                        request.Utxos = utxos;
+                    }
+                    else
+                    {
+                        request.Utxos.AddRange(utxos.Except(request.Utxos));
+                    }
+
+                    applicationDbContext.Update(request);
+
+                    await applicationDbContext.SaveChangesAsync();
                 }
-                else
-                {
-                    request.Utxos.AddRange(utxos);
-                }
+            }
+            catch (Exception e)
+            {
+                _logger.LogError(e, "Error while adding UTXOs ({}) to op request:{}", utxos.Humanize(), type.Id);
 
-                applicationDbContext.Update(request);
-
-                var rowsChanged = await applicationDbContext.SaveChangesAsync() > 0;
-
-                result.Item1 = rowsChanged;
+                result.Item1 = false;
             }
 
             return result;

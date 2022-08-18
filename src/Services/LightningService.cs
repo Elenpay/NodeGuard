@@ -554,13 +554,10 @@ namespace FundsManager.Services
             // We "lock" the PSBT to the channel operation request by adding to its UTXOs collection for later checking
             var utxos = selectedUtxOs.Select(x => _mapper.Map<UTXO, Data.Models.FMUTXO>(x)).ToList();
 
-            if (channelOperationRequest.Utxos != null && !channelOperationRequest.Utxos.Any()) //Only there were not UTXOs added
+            var addUTXOSOperation = await _channelOperationRequestRepository.AddUTXOs(channelOperationRequest, utxos);
+            if (!addUTXOSOperation.Item1)
             {
-                var addUTXOSOperation = await _channelOperationRequestRepository.AddUTXOs(channelOperationRequest, utxos);
-                if (!addUTXOSOperation.Item1)
-                {
-                    _logger.LogError($"Could not add the following utxos({utxos.Humanize()}) to op request:{channelOperationRequest.Id}");
-                }
+                _logger.LogError($"Could not add the following utxos({utxos.Humanize()}) to op request:{channelOperationRequest.Id}");
             }
 
             return result;
