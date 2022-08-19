@@ -90,7 +90,7 @@
                     <EditTemplate>
                         @if (!context.Item.IsFinalised)
                         {
-                        <Validation Validator="@ValidateTreshold">
+                        <Validation Validator="@ValidateThreshold">
                             <NumericEdit TValue="int" Value="@((int)context.CellValue)" ValueChanged="(value) => {context.CellValue = value; }">
                                 <Feedback>
                                     <ValidationError />
@@ -100,7 +100,7 @@
                         }
                         else
                         {
-                            <Validation Validator="@ValidateTreshold">
+                            <Validation Validator="@ValidateThreshold">
                                 <NumericEdit TValue="int" Value="@((int)context.CellValue)" Disabled ValueChanged="(value) => {context.CellValue = value; }">
                                     <Feedback>
                                         <ValidationError />
@@ -585,7 +585,7 @@
 
     }
 
-    private void ValidateTreshold(ValidatorEventArgs obj)
+    private void ValidateThreshold(ValidatorEventArgs obj)
     {
         obj.Status = ValidationStatus.Success;
         if (obj.Value is int threshold)
