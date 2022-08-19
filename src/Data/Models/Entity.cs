@@ -17,7 +17,7 @@ namespace FundsManager.Data.Models
 
         public virtual void SetUpdateDatetime()
         {
-            CreationDatetime = DateTimeOffset.UtcNow;
+            UpdateDatetime = DateTimeOffset.UtcNow;
         }
 
         public override string ToString()

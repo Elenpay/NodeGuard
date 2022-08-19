@@ -132,15 +132,16 @@
                     <i class="oi oi-clipboard"></i> 
                 </Button>
                 </AlertMessage>
-                <MemoEdit Rows="4" @bind-Text="_templatePSBT" Disabled="true"></MemoEdit>
+                <MemoEdit Rows="4" @bind-Text="_templatePSBTString" Disabled="true"></MemoEdit>
                
             </Alert>
             <Fields Flex="Flex.JustifyContent.Center">
                 <Field>
-                    <Validation Validator="@ValidationRule.IsNotEmpty">
+                    <Validation Validator="ValidatePSBT">
                         <FieldLabel>To sign this operation, please paste here your PSBT in base64 string</FieldLabel>
                         <MemoEdit Rows="4" @bind-Text="@_psbt">
-                            <FieldHelp>Paste here the long string</FieldHelp>
+                            <ValidationError />
+
                         </MemoEdit>
                     </Validation>
                 </Field>
@@ -148,7 +149,7 @@
         </ModalBody>
         <ModalFooter>
             <Button Color="Color.Secondary" Clicked="@HideModal">Cancel</Button>
-            <Button Color="Color.Primary" Clicked="@ApproveRequest">
+            <Button Color="Color.Primary" Disabled="_isSignedPSBTInvalid" Clicked="@ApproveRequest">
                Approve
             </Button>
             
@@ -185,7 +186,9 @@
     private bool _hideApprove;
     private bool _modalVisible;
     private string? _psbt;
-    private string? _templatePSBT;
+    private string? _templatePSBTString;
+    private bool _isSignedPSBTInvalid = true;
+
     private Modal _channelSpinner;
 
     [CascadingParameter]
@@ -232,11 +235,11 @@
     {
         _selectedRequest = channelOperationRequest;
         _psbt = string.Empty;
-        if (_selectedRequest != null) {
+        if (_selectedRequest != null && !_selectedRequest.AreAllRequiredSignaturesCollected) {
             var (templatePsbt,noUtxosAvailable) = (await LightningService.GenerateTemplatePSBT(_selectedRequest));
             if (templatePsbt != null)
             {
-                _templatePSBT = templatePsbt.ToBase64();
+                _templatePSBTString = templatePsbt.ToBase64();
                 _modalVisible = true;
 
             }
@@ -260,7 +263,8 @@
     private async Task HideModal()
     {
         _modalVisible = false;
-        _templatePSBT = null;
+        _templatePSBTString = null;
+        _isSignedPSBTInvalid = true;
 
     }
 
@@ -321,6 +325,11 @@
                     }
 
                 }
+                else
+                {
+                    ToastService.ShowError("Invalid PSBT");
+
+                }
             }
             else
             {
@@ -338,8 +347,66 @@
 
     private async Task CopyPSBTToClipboard()
     {
-        await ClipboardService.WriteTextAsync(_templatePSBT); 
+        await ClipboardService.WriteTextAsync(_templatePSBTString); 
         ToastService.ShowSuccess("PSBT copied");
+    }
+
+    private void ValidatePSBT(ValidatorEventArgs obj)
+    {
+        var psbtBase64 = (string) obj.Value;
+        //Error by default
+        obj.Status = ValidationStatus.Error;
+        obj.ErrorText = string.Empty;
+
+        if (psbtBase64 != null && PSBT.TryParse(psbtBase64, CurrentNetworkHelper.GetCurrentNetwork(), out var templatePSBT))
+        {
+            if(PSBT.TryParse(psbtBase64,CurrentNetworkHelper.GetCurrentNetwork(), out var parsedPSBT))
+            {
+                var templateInputsOutpoints = templatePSBT.Inputs.Select(x => x.PrevOut).ToList();
+                var parsedPSBTInputsOutpoints = parsedPSBT.Inputs.Select(x => x.PrevOut).ToList();
+
+                //TXID Validation
+                if (parsedPSBT.GetGlobalTransaction().GetHash() != templatePSBT.GetGlobalTransaction().GetHash())
+                {
+                    obj.ErrorText += "Invalid PSBT, the transactions id do not match. ";
+
+                }                
+                //If all the inputs are not signed this is invalid
+                else if (!parsedPSBT.Inputs.All(x => x.PartialSigs.Any())) 
+                {
+                    obj.ErrorText += "Invalid PSBT, please make sure to use SIGHASH_NONE and that every input is signed. ";
+                    obj.Status = ValidationStatus.Error;
+                }
+
+                //Sighash_NONE check
+                else if (parsedPSBT.Inputs.Any(x=> x.SighashType != SigHash.None))
+                {
+                    obj.ErrorText += "Invalid PSBT, please make sure to use SIGHASH_NONE and that every input is signed. ";
+                    obj.Status = ValidationStatus.Error;
+                }
+                //If the inputs outpoints (utxos) are not the same to the template invalidate it
+                else if (templateInputsOutpoints.Union(parsedPSBTInputsOutpoints).Count() != templateInputsOutpoints.Count())
+                {
+                    obj.ErrorText += "Invalid PSBT, the UTXOs do not match ";
+                    obj.Status = ValidationStatus.Error;
+                }
+                else
+                {
+                    //It looks good
+                    _isSignedPSBTInvalid = false;
+                    obj.Status = ValidationStatus.Success;
+                }
+            }else
+            {
+                obj.ErrorText = "Invalid PSBT, it could not be parsed";
+            }
+        }
+        else
+        {
+            obj.ErrorText = "Invalid template PSBT, it could not be parsed";
+        }
+
+       
     }
 
 }
