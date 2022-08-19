@@ -32,7 +32,9 @@
                   ShowPager="true"
                   ShowPageSizes="true"
                   PageSize="25"
-                  Filterable="true">
+                  Filterable="true"
+                  UseValidation="true"
+                  Row>
             <DataGridColumns>
                 <DataGridCommandColumn TItem="Wallet">
                     <NewCommandTemplate>
@@ -40,18 +42,6 @@
                     </NewCommandTemplate>
                     <EditCommandTemplate>
                         <Button Color="Color.Primary" Clicked="@context.Clicked">Edit</Button>
-
-                        @if (context.Item.IsFinalised)
-                        {
-                            <Button Color="Color.Secondary" Clicked="@(() => LoadAndOpenTextModalBalance(context.Item))">Balance</Button>
-                            <Button Color="Color.Secondary" Clicked="@(() => LoadAndOpenModalTextModalUnusedAddress(context.Item))">Get address</Button>
-                        }
-                        else
-                        {
-                            <Button Color="Color.Info" Disabled="@(context.Item.Keys != null && context.Item.Keys.Count >= context.Item.MofN)" Clicked="@(() => LoadAndOpenModal(context.Item))">Add key</Button>
-                            <Button Color="Color.Warning" Disabled="@(context.Item.Keys != null && context.Item.Keys.Count < context.Item.MofN)" Clicked="@(() => LoadAndOpenFinaliseTextModal(context.Item))">Finalise</Button>
-
-                        }
                       
                     </EditCommandTemplate>
                     <DeleteCommandTemplate>
@@ -63,28 +53,73 @@
                     </DeleteCommandTemplate>
 
                 </DataGridCommandColumn>
-
-                <DataGridColumn TItem="Wallet" Editable="true" Field="@nameof(Wallet.Name)" Caption="@nameof(Wallet.Name)" Sortable="false" />
-                <DataGridColumn TItem="Wallet" Editable="true" Field="@nameof(Wallet.Description)" Caption="@nameof(Wallet.Description)" Sortable="false" />
-                <DataGridColumn TItem="Wallet" Editable="false" Field="@nameof(Wallet.IsFinalised)" Caption="Finalised" Sortable="false" />
-                <DataGridColumn TItem="Wallet" Editable="true" Field="@nameof(Wallet.IsArchived)" Caption="Archived" Sortable="false" />
-                <DataGridColumn TItem="Wallet" Editable="true" Field="@nameof(Wallet.IsCompromised)" Caption="Compromised" Sortable="false" />
-                <DataGridNumericColumn TItem="Wallet" Decimals="0" Editable="true" Field="@nameof(Wallet.MofN)" Caption="Threshold" Sortable="false">
-                    <EditTemplate>
-                        @if (!context.Item.IsFinalised)
+                <DataGridColumn TItem="Wallet" Filterable="false" ShowCaption="false" Sortable="false">
+                    <DisplayTemplate>
+                        @if (context.IsFinalised)
                         {
-                            <NumericEdit TValue="int" Value="@((int)context.CellValue)" ValueChanged="(value) => {context.CellValue = value; }" ></NumericEdit>
-
+                            <Button Color="Color.Secondary" Clicked="@(() => LoadAndOpenTextModalBalance(context))">Balance</Button>
                         }
                         else
                         {
-                            <NumericEdit TValue="int" Value="@((int)context.CellValue)" ValueChanged="(value) => {context.CellValue = value; }" Disabled="true" ></NumericEdit>
+                            <Button Color="Color.Info" Disabled="@(context.Keys != null && context.Keys.Count >= context.MofN)" Clicked="@(() => LoadAndOpenModal(context))">Add key</Button>
 
+                        }
+                        
+                    </DisplayTemplate>
+                </DataGridColumn> 
+                <DataGridColumn TItem="Wallet" Filterable="false" ShowCaption="false" Sortable="false">
+                    <DisplayTemplate>
+                        @if (context.IsFinalised)
+                        {
+                            <Button Color="Color.Secondary" Clicked="@(() => LoadAndOpenModalTextModalUnusedAddress(context))">Get address</Button>
+                        }
+                        else
+                        {
+                            <Button Color="Color.Warning" Disabled="@(context.Keys != null && context.Keys.Count < context.MofN)" Clicked="@(() => LoadAndOpenFinaliseTextModal(context))">Finalise</Button>
+                        }
+                        
+                    </DisplayTemplate>
+                </DataGridColumn>
+
+                <DataGridColumn TItem="Wallet" Editable="true" Validator="ValidationRule.IsNotEmpty" Field="@nameof(Wallet.Name)" Caption="@nameof(Wallet.Name)" Sortable="false" />
+                <DataGridColumn TItem="Wallet" Editable="true" Field="@nameof(Wallet.Description)" Caption="@nameof(Wallet.Description)" Sortable="false" />
+                <DataGridColumn TItem="Wallet" Editable="false" Field="@nameof(Wallet.IsFinalised)" Caption="Finalised" Sortable="false" />
+                <DataGridColumn TItem="Wallet" Editable="true" CellsEditableOnNewCommand="false" Field="@nameof(Wallet.IsArchived)" Caption="Archived" Sortable="false" />
+                <DataGridColumn TItem="Wallet" Editable="true" CellsEditableOnNewCommand="false" Field="@nameof(Wallet.IsCompromised)" Caption="Compromised" Sortable="false" />
+                <DataGridNumericColumn TItem="Wallet" Decimals="0" Editable="true"  Field="@nameof(Wallet.MofN)" Caption="Threshold" Sortable="false">
+                    <EditTemplate>
+                        @if (!context.Item.IsFinalised)
+                        {
+                        <Validation Validator="@ValidateTreshold">
+                            <NumericEdit TValue="int" Value="@((int)context.CellValue)" ValueChanged="(value) => {context.CellValue = value; }">
+                                <Feedback>
+                                    <ValidationError />
+                                </Feedback>
+                            </NumericEdit>                         
+                        </Validation>
+                        }
+                        else
+                        {
+                            <Validation Validator="@ValidateTreshold">
+                                <NumericEdit TValue="int" Value="@((int)context.CellValue)" Disabled ValueChanged="(value) => {context.CellValue = value; }">
+                                    <Feedback>
+                                        <ValidationError />
+                                    </Feedback>
+                                </NumericEdit>                         
+                            </Validation>
                         }
                     </EditTemplate>
                 </DataGridNumericColumn>
-                <DataGridColumn TItem="Wallet" Field="@nameof(Wallet.CreationDatetime)" Caption="Creation Date" Sortable="true" />
-                <DataGridColumn TItem="Wallet" Field="@nameof(Wallet.UpdateDatetime)" Caption="Update date" Sortable="true" />
+                <DataGridColumn TItem="Wallet" Field="@nameof(Wallet.CreationDatetime)" Caption="Creation Date" Sortable="true">
+                    <DisplayTemplate>
+                        @context.CreationDatetime.Humanize()
+                    </DisplayTemplate>
+                </DataGridColumn>
+                <DataGridColumn TItem="Wallet" Field="@nameof(Wallet.UpdateDatetime)" Caption="Update date" Sortable="true">
+                    <DisplayTemplate>
+                        @context.UpdateDatetime.Humanize()
+                    </DisplayTemplate>
+                </DataGridColumn>
 
             </DataGridColumns>
             <DetailRowTemplate>
@@ -548,6 +583,20 @@
         _selectedWalletToFinalise = null;
         await _finaliseModalRef.Close(CloseReason.UserClosing);
 
+    }
+
+    private void ValidateTreshold(ValidatorEventArgs obj)
+    {
+        obj.Status = ValidationStatus.Success;
+        if (obj.Value is int threshold)
+        {
+            if (threshold < 2 || threshold > 5)
+            {
+                obj.ErrorText = "The threshold should be minimum 2 and maximum 5";
+                obj.Status = ValidationStatus.Error;
+            }
+
+        }
     }
 
 }
