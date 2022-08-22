@@ -1,10 +1,10 @@
-﻿@page "/create-channel"
+﻿@page "/requests"
 @using NBitcoin
 @attribute [Authorize(Roles = "NodeManager, Superadmin")]
 
-<PageTitle>Create Channel Request</PageTitle>
+<PageTitle>Submit Channel Operation Request</PageTitle>
 
-<h3>Submit channel operation request</h3>
+<h3>Submit channel opening request</h3>
 <Row>
     <Column ColumnSize="ColumnSize.Is12">
         <Form>
@@ -141,10 +141,10 @@
     
     private async Task CreateChannelRequest()
     {
-        // TODO Sanitise inputs
         if (_amount != null && _amount > 0 && _selectedWalletId > 0 && LoggedUser != null &&
             _selectedSourceNodeId > 0 && _selectedDestNode != null)
         {
+
             if (_selectedDestNode.Id != _selectedSourceNodeId)
             {
                 ChannelOperationRequest request = new()
@@ -166,7 +166,7 @@
                 }
                 else
                 {
-                    ToastService.ShowError("Open channel request failed!");
+                    ToastService.ShowError(createChannelResult.Item2);
                 }
 
             }
@@ -182,7 +182,7 @@
 
         await LoadData();
 
-        await ClearData();
+        //await ClearData();
 
     }
 

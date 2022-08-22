@@ -81,8 +81,19 @@ namespace FundsManager.Data.Repositories
         {
             await using var applicationDbContext = await _dbContextFactory.CreateDbContextAsync();
 
-            //We add a empty signature which will be the placeholder of the internal wallet key
+            //Check for avoiding duplicate request
+            var existingRequest = await applicationDbContext.ChannelOperationRequests.Where(x =>
+                x.SourceNodeId == type.SourceNodeId
+                && x.DestNodeId == type.DestNodeId).ToListAsync();
 
+            if (existingRequest.Any(x => x.Status == ChannelOperationRequestStatus.OnChainConfirmationPending ||
+                                         x.Status == ChannelOperationRequestStatus.Pending ||
+                                         x.Status == ChannelOperationRequestStatus.PSBTSignaturesPending
+                ))
+            {
+                return (false,
+                    "Error, a channel operation request with the same source and destination node is in pending status, wait for that request to finalise before submitting a new request");
+            }
             var valueTuple = await _repository.AddAsync(type, applicationDbContext);
 
             return valueTuple;
