@@ -11,7 +11,7 @@
 @inject IInternalWalletRepository InternalWalletRepository
 @inject IKeyRepository KeyRepository
 @inject ILightningService LightningService
-@attribute [Authorize(Roles = "NodeManager, Superadmin")]
+@attribute [Authorize(Roles = "NodeManager, FinanceManager, Superadmin")]
 
 <h3>Treasury multisig wallets</h3>
 
@@ -19,7 +19,7 @@
     <Column ColumnSize="ColumnSize.Is12">
         <DataGrid TItem="Wallet"
                   Data="@_wallets"
-                  Editable="true"
+                  Editable="@_isFinanceManager"
                   EditMode="DataGridEditMode.Popup"
                   Responsive="true"
                   ResizeMode="TableResizeMode.Columns"
@@ -42,7 +42,6 @@
                     </NewCommandTemplate>
                     <EditCommandTemplate>
                         <Button Color="Color.Primary" Clicked="@context.Clicked">Edit</Button>
-                      
                     </EditCommandTemplate>
                     <DeleteCommandTemplate>
                         @if (!context.Item.IsFinalised)
@@ -250,14 +249,18 @@
     private Modal _finaliseModalRef;
     private Wallet? _selectedWalletToFinalise;
 
+    private bool _isFinanceManager = false; 
+
     protected override async Task OnInitializedAsync()
     {
         if (LoggedUser != null)
         {
+            if (ClaimsPrincipal.IsInRole(ApplicationUserRole.FinanceManager.ToString()))
+            {
+                _isFinanceManager = true;
+            }
             await GetData();
         }
-
-
     }
 
     private async Task GetData()
