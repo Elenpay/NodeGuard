@@ -12,20 +12,20 @@ services:
     ports:
         - "35433:5432"
     environment:
-        POSTGRES_CONNECTIONSTRING: Host=127.0.0.1;Port=5432;Database=fundsmanager;Username=rw_dev;Password=rw_dev
         BITCOIN_NETWORK: REGTEST
-        NBXPLORER_URI: http://nbxplorer:32838
-        NBXPLORER_BTCRPCUSER: "polaruser"
+        DEFAULT_DERIVATION_PATH: m/48'/1'/1'
+        FUNDSMANAGER_ENDPOINT: http://localhost:50052
+        IS_DEV_ENVIRONMENT: "true"
+        Logging__LogLevel__Microsoft: Warning
+        NBXPLORER_BTCNODEENDPOINT: host.docker.internal:19444
         NBXPLORER_BTCRPCPASSWORD: "polarpass"
         NBXPLORER_BTCRPCURL: http://host.docker.internal:18443/
-        NBXPLORER_BTCNODEENDPOINT: host.docker.internal:19444
-        DEFAULT_DERIVATION_PATH: m/48'/1'/1'
-        SENTRY_ENVIRONMENT: Development
-        SENTRY_DSN: ""
+        NBXPLORER_BTCRPCUSER: "polaruser"
+        NBXPLORER_URI: http://nbxplorer:32838
+        POSTGRES_CONNECTIONSTRING: Host=127.0.0.1;Port=5432;Database=fundsmanager;Username=rw_dev;Password=rw_dev
         SENTRY_DEBUG_ENABLED: "true"
-        Logging__LogLevel__Microsoft: Warning
-        IS_DEV_ENVIRONMENT: "true"
-        FUNDSMANAGER_ENDPOINT: http://localhost:50052
+        SENTRY_DSN: ""
+        SENTRY_ENVIRONMENT: Development
     volumes:
         - fundsmanager_data_keys_dir:/root/.aspnet/DataProtection-Keys
 

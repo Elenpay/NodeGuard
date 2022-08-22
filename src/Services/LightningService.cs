@@ -213,6 +213,7 @@ namespace FundsManager.Services
                                 channelOperationRequest.Id, pendingChannelIdHex);
 
                             channelOperationRequest.Status = ChannelOperationRequestStatus.OnChainConfirmationPending;
+                            channelOperationRequest.TxId = Convert.ToString(response.ChanPending.Txid.ToByteArray());;
                             _channelOperationRequestRepository.Update(channelOperationRequest);
 
                             break;
@@ -774,8 +775,8 @@ namespace FundsManager.Services
                                         channel.Id,
                                         closePendingTxid);
 
-                                    channelOperationRequest.Status =
-                                        ChannelOperationRequestStatus.OnChainConfirmationPending;
+                                    channelOperationRequest.Status = ChannelOperationRequestStatus.OnChainConfirmationPending;
+                                    channelOperationRequest.TxId = Convert.ToString(response.ClosePending.Txid.ToByteArray());
 
                                     var onChainPendingUpdate = _channelOperationRequestRepository.Update(channelOperationRequest);
 

@@ -61,6 +61,11 @@ namespace FundsManager.Data.Models
 
         public OperationRequestType RequestType { get; set; }
 
+        /// <summary>
+        /// Transaction Id once received from the LightningService 
+        /// </summary>
+        public string? TxId { get; set; }
+
         #region Relationships
 
         public ICollection<ChannelOperationRequestPSBT> ChannelOperationRequestPsbts { get; set; }

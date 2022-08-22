@@ -1,5 +1,6 @@
 ﻿@page "/pending-requests"
 @using System.Security.Claims
+@using Blazorise.Extensions
 @using Hangfire
 @using Humanizer
 @using NBitcoin
@@ -108,6 +109,14 @@
         <DataGridColumn TItem="ChannelOperationRequest" Field="@nameof(ChannelOperationRequest.Status).Humanize(LetterCasing.Sentence)" Caption="Status" Sortable="false" Displayable="true"/>
         <DataGridColumn TItem="ChannelOperationRequest" Field="@nameof(ChannelOperationRequest.CreationDatetime)" Caption="@nameof(ChannelOperationRequest.CreationDatetime)" Sortable="false" />
         <DataGridColumn TItem="ChannelOperationRequest" Field="@nameof(ChannelOperationRequest.UpdateDatetime)" Caption="@nameof(ChannelOperationRequest.UpdateDatetime)" Sortable="false" />
+        <DataGridColumn TItem="ChannelOperationRequest" Field="@nameof(ChannelOperationRequest.TxId)" Caption="Links" Sortable="false" Displayable="true">
+            <DisplayTemplate>
+                @if (mempoolUrl != null && !context.TxId.IsNullOrEmpty())
+                {
+                    <a href="@(mempoolUrl + "/tx/" + context.TxId)" target="_blank">See in Mempool</a>
+                }
+            </DisplayTemplate>
+        </DataGridColumn>
     </ChildContent>
     <EmptyTemplate>
         <div class="box">
@@ -190,6 +199,7 @@
     private bool _isSignedPSBTInvalid = true;
 
     private Modal _channelSpinner;
+    private string? mempoolUrl = Environment.GetEnvironmentVariable("MEMPOOL_ENDPOINT");
 
     [CascadingParameter]
     private ApplicationUser? LoggedUser { get; set; }
