@@ -32,6 +32,7 @@ namespace FundsManager.Data.Models
         /// The TX is fully broadcast this means that the channel has been open/closed
         /// </summary>
         OnChainConfirmed = 7
+        //TODO Failed status
     }
 
     public enum OperationRequestType

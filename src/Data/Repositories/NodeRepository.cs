@@ -69,8 +69,7 @@ namespace FundsManager.Data.Repositories
 
             return await applicationDbContext.Nodes
                 .Where(node => node.Endpoint != null
-                               //&& node.Users.Any(user => user.Id == userId) TODO Add this when the user management is added
-                               )
+                               && node.Users.Any(user => user.Id == userId))
                 .ToListAsync();
         }
 
