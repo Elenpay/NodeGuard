@@ -4,20 +4,95 @@
 @using Hangfire
 @using Humanizer
 @using NBitcoin
-@attribute [Authorize(Roles = "FinanceManager, Superadmin")]
+@attribute [Authorize(Roles = "FinanceManager, Superadmin, NodeManager")]
 
-<PageTitle>Pending Requests</PageTitle>
-<h3>Requests awaiting my signature</h3>
+<PageTitle>Channel Operation Requests</PageTitle>
+
+@if (!_hidePendingRequests)
+{
+    <h3>Requests awaiting my signature</h3>
+    <br />
+    <DataGrid TItem="ChannelOperationRequest"
+              Data="@_channelRequests"
+              CustomFilter="@RequestPendingFilter"
+              ShowPager="true"
+              ShowPageSizes="true"
+              Editable="true"
+              Striped="true">
+        <ChildContent>
+            <DataGridColumn TItem="ChannelOperationRequest" Field="@nameof(ChannelOperationRequest.Id)" Caption="#" Sortable="false" Displayable="true"/>
+            <DataGridColumn TItem="ChannelOperationRequest" Field="SourceNode.Name" Caption="Source Node" Sortable="false" Displayable="true"/>
+            <DataGridColumn TItem="ChannelOperationRequest" Field="DestNode.Name" Caption="Remote Node" Sortable="false" Displayable="true"/>
+            <DataGridColumn TItem="ChannelOperationRequest" Field="Wallet.Name" Caption="Source of Funds" Sortable="false" Displayable="true"/>
+            <DataGridColumn TItem="ChannelOperationRequest" Field="@nameof(ChannelOperationRequest.Amount)" Caption="Capacity" Sortable="false" Displayable="true">
+                <DisplayTemplate>
+                    @{
+                        @($"{context.Amount} BTC")
+                    }
+                </DisplayTemplate>
+            </DataGridColumn>
+            <DataGridColumn TItem="ChannelOperationRequest" Field="@nameof(ChannelOperationRequest.WalletId)" Caption="Signatures Collected" Sortable="false" Displayable="true">
+                <DisplayTemplate>
+                    @{
+                        if (context.RequestType == OperationRequestType.Open)
+                        {
+                            var signaturesCollected = context.NumberOfSignaturesCollected + 1;
+                            var signaturesRequired = context.Wallet?.MofN ?? 0;
+                            @($"{signaturesCollected} out of {signaturesRequired}")
+                        }
+                        else
+                        {
+                            @("N/A")
+                        }
+                    }
+                </DisplayTemplate>
+            </DataGridColumn>
+            <DataGridColumn TItem="ChannelOperationRequest" Field="@nameof(ChannelOperationRequest.Status).Humanize(LetterCasing.Sentence)" Caption="Status" Sortable="false" Displayable="true"/>
+            <DataGridCommandColumn TItem="ChannelOperationRequest" Caption="Actions" Displayable="true">
+                <NewCommandTemplate>
+                    <Button Color="Color.Primary" hidden></Button>
+                </NewCommandTemplate>
+                <EditCommandTemplate>
+                    <Button Color="Color.Primary" hidden=@_hideApprove Clicked="@(() => ShowModal(context.Item))">Approve</Button>
+                    <Button Color="Color.Danger" Clicked="@(() => OpenModalForRejectOrCancelRequest(context.Item, ChannelOperationRequestStatus.Rejected))">Reject</Button>
+                </EditCommandTemplate>
+                <DeleteCommandTemplate>
+                    <Button Color="Color.Primary" hidden></Button>
+                </DeleteCommandTemplate>
+            </DataGridCommandColumn>
+        </ChildContent>
+        <EmptyTemplate>
+            <div class="box">
+                No records were found.
+            </div>
+        </EmptyTemplate>
+        <LoadingTemplate>
+            <div class="box">
+                <progress class="progress is-small is-primary" max="100"></progress>
+            </div>
+        </LoadingTemplate>
+    </DataGrid>
+}
+<br />
+<br />
+<h3>All Requests</h3>
 <br />
 <DataGrid TItem="ChannelOperationRequest"
-          Data="@_channelRequests"
-          CustomFilter="@RequestPendingFilter"
+          Data="@_allRequests"
+          Filterable="true"
           ShowPager="true"
           ShowPageSizes="true"
-          Editable="true"
           Striped="true">
     <ChildContent>
         <DataGridColumn TItem="ChannelOperationRequest" Field="@nameof(ChannelOperationRequest.Id)" Caption="#" Sortable="false" Displayable="true"/>
+        <DataGridColumn TItem="ChannelOperationRequest" Filterable="false" Caption="Actions" Sortable="false" Displayable="true">
+            <DisplayTemplate>
+                @if (_showCancelButton && !IsStatusFinal(context.Status))
+                {
+                    <Button Color="Color.Secondary" Clicked="@(() => OpenModalForRejectOrCancelRequest(context, ChannelOperationRequestStatus.Cancelled))">Cancel</Button>
+                }
+            </DisplayTemplate>
+        </DataGridColumn> 
         <DataGridColumn TItem="ChannelOperationRequest" Field="SourceNode.Name" Caption="Source Node" Sortable="false" Displayable="true"/>
         <DataGridColumn TItem="ChannelOperationRequest" Field="DestNode.Name" Caption="Remote Node" Sortable="false" Displayable="true"/>
         <DataGridColumn TItem="ChannelOperationRequest" Field="Wallet.Name" Caption="Source of Funds" Sortable="false" Displayable="true"/>
@@ -45,70 +120,16 @@
             </DisplayTemplate>
         </DataGridColumn>
         <DataGridColumn TItem="ChannelOperationRequest" Field="@nameof(ChannelOperationRequest.Status).Humanize(LetterCasing.Sentence)" Caption="Status" Sortable="false" Displayable="true"/>
-        <DataGridCommandColumn TItem="ChannelOperationRequest" Caption="Actions" Displayable="true">
-            <NewCommandTemplate>
-                <Button Color="Color.Primary" hidden ></Button>
-            </NewCommandTemplate>
-            <EditCommandTemplate>
-                <Button Color="Color.Primary" hidden=@_hideApprove Clicked="@(()=> ShowModal(context.Item))">Approve</Button>
-            </EditCommandTemplate>
-            <DeleteCommandTemplate>
-                <Button Color="Color.Primary" hidden ></Button>
-            </DeleteCommandTemplate>
-        </DataGridCommandColumn>
-    </ChildContent>
-    <EmptyTemplate>
-        <div class="box">
-            No records were found.
-        </div>
-    </EmptyTemplate>
-    <LoadingTemplate>
-        <div class="box">
-            <progress class="progress is-small is-primary" max="100"></progress>
-        </div>
-    </LoadingTemplate>
-</DataGrid>
-<br />
-<br />
-<h3>All Pending Requests</h3>
-<br />
-<DataGrid TItem="ChannelOperationRequest"
-          Data="@_allRequests"
-          CustomFilter="@RequestPendingFilter"
-          ShowPager="true"
-          ShowPageSizes="true"
-          Striped="true">
-    <ChildContent>
-        <DataGridColumn TItem="ChannelOperationRequest" Field="@nameof(ChannelOperationRequest.Id)" Caption="#" Sortable="false" Displayable="true"/>
-        <DataGridColumn TItem="ChannelOperationRequest" Field="SourceNode.Name" Caption="Source Node" Sortable="false" Displayable="true"/>
-        <DataGridColumn TItem="ChannelOperationRequest" Field="DestNode.Name" Caption="Remote Node" Sortable="false" Displayable="true"/>
-        <DataGridColumn TItem="ChannelOperationRequest" Field="Wallet.Name" Caption="Source of Funds" Sortable="false" Displayable="true"/>
-        <DataGridColumn TItem="ChannelOperationRequest" Field="@nameof(ChannelOperationRequest.Amount)" Caption="Capacity" Sortable="false" Displayable="true">
+        <DataGridColumn TItem="ChannelOperationRequest" Field="@nameof(ChannelOperationRequest.CreationDatetime)" Caption="Creation Date" Sortable="true">
             <DisplayTemplate>
-                @{
-                    @($"{context.Amount} BTC")
-                }
+                @context.CreationDatetime.Humanize()
             </DisplayTemplate>
         </DataGridColumn>
-        <DataGridColumn TItem="ChannelOperationRequest" Field="@nameof(ChannelOperationRequest.WalletId)" Caption="Signatures Collected" Sortable="false" Displayable="true">
+        <DataGridColumn TItem="ChannelOperationRequest" Field="@nameof(ChannelOperationRequest.UpdateDatetime)" Caption="Update date" Sortable="true">
             <DisplayTemplate>
-                @{
-                    if (context.RequestType == OperationRequestType.Open)
-                    {
-                        var signaturesCollected = context.NumberOfSignaturesCollected + 1;
-                        var signaturesRequired = context?.Wallet?.MofN ?? 0;
-                        @($"{signaturesCollected} out of {signaturesRequired}")
-                    }
-                    else
-                    {
-                        @("N/A");
-                    }
-                }
+                @context.UpdateDatetime.Humanize()
             </DisplayTemplate>
         </DataGridColumn>
-        <DataGridColumn TItem="ChannelOperationRequest" Field="@nameof(ChannelOperationRequest.Status).Humanize(LetterCasing.Sentence)" Caption="Status" Sortable="false" Displayable="true"/>
-        <DataGridColumn TItem="ChannelOperationRequest" Field="@nameof(ChannelOperationRequest.CreationDatetime)" Caption="@nameof(ChannelOperationRequest.CreationDatetime)" Sortable="false" />
-        <DataGridColumn TItem="ChannelOperationRequest" Field="@nameof(ChannelOperationRequest.UpdateDatetime)" Caption="@nameof(ChannelOperationRequest.UpdateDatetime)" Sortable="false" />
         <DataGridColumn TItem="ChannelOperationRequest" Field="@nameof(ChannelOperationRequest.TxId)" Caption="Links" Sortable="false" Displayable="true">
             <DisplayTemplate>
                 @if (mempoolUrl != null && !context.TxId.IsNullOrEmpty())
@@ -137,20 +158,19 @@
         </ModalHeader>
         <ModalBody>
             <Alert Color="Color.Warning" Visible>
-                <AlertMessage>Please sign the following PSBT with your Software/Hardware wallet  <Button Color="Color.Primary" Clicked="CopyPSBTToClipboard">
-                    <i class="oi oi-clipboard"></i> 
-                </Button>
+                <AlertMessage>Please sign the following PSBT with your Software/Hardware wallet  
+                    <Button Color="Color.Primary" Clicked="CopyPSBTToClipboard">
+                        <i class="oi oi-clipboard"></i> 
+                    </Button>
                 </AlertMessage>
                 <MemoEdit Rows="4" @bind-Text="_templatePSBTString" Disabled="true"></MemoEdit>
-               
             </Alert>
             <Fields Flex="Flex.JustifyContent.Center">
                 <Field>
                     <Validation Validator="ValidatePSBT">
                         <FieldLabel>To sign this operation, please paste here your PSBT in base64 string</FieldLabel>
                         <MemoEdit Rows="4" @bind-Text="@_psbt">
-                            <ValidationError />
-
+                            <ValidationError/>
                         </MemoEdit>
                     </Validation>
                 </Field>
@@ -159,10 +179,34 @@
         <ModalFooter>
             <Button Color="Color.Secondary" Clicked="@HideModal">Cancel</Button>
             <Button Color="Color.Primary" Disabled="_isSignedPSBTInvalid" Clicked="@ApproveRequest">
-               Approve
+                Approve
             </Button>
-            
-
+        </ModalFooter>
+    </ModalContent>
+</Modal>
+<Modal @bind-Visible="@_rejectCancelModalVisible">
+    <ModalContent Centered>
+        <ModalHeader>
+            <ModalTitle>@_selectedStatusActionString operation: @_selectedRequest?.Id</ModalTitle>
+            <CloseButton />
+        </ModalHeader>
+        <ModalBody>
+            <Fields Flex="Flex.JustifyContent.Center">
+                <Field>
+                    <Validation @ref="_reasonValidation" Validator="@(_selectedStatus == ChannelOperationRequestStatus.Rejected ? ValidationRule.IsNotEmpty : ValidationRule.None)">
+                        <FieldLabel>Please type a reason before performing this operation</FieldLabel>
+                        <MemoEdit Rows="4" @bind-Text="@_cancelOrRejectReason">
+                    <ValidationError/>
+                        </MemoEdit>
+                    </Validation>
+                </Field>
+            </Fields>
+        </ModalBody>
+        <ModalFooter>
+            <Button Color="Color.Secondary" Clicked="@HideRejectOrCancelModal">Cancel</Button>
+            <Button Disabled="@(_reasonValidation?.Validate() == ValidationStatus.Error)" Color="Color.Primary" Clicked="@RejectOrCancelRequest">
+                Submit
+            </Button>
         </ModalFooter>
     </ModalContent>
 </Modal>
@@ -175,8 +219,8 @@
         <ModalBody>
             <SpinKit Centered="true" Size="50px" Type="SpinKitType.Circle" />
         </ModalBody>
-        <ModalFooter
-            ></ModalFooter>
+        <ModalFooter>
+        </ModalFooter>
     </ModalContent>
 </Modal>
 
@@ -190,13 +234,20 @@
 @code {
     private List<ChannelOperationRequest>? _channelRequests;
     private List<ChannelOperationRequest>? _allRequests;
-    private List<ChannelOperationRequest>? _allUserRequest;
     private ChannelOperationRequest? _selectedRequest;
+    private ChannelOperationRequestStatus _selectedStatus;
     private bool _hideApprove;
+    private bool _showRejectButton;
+    private bool _showCancelButton;
+    private bool _hidePendingRequests;
     private bool _modalVisible;
+    private bool _rejectCancelModalVisible;
     private string? _psbt;
     private string? _templatePSBTString;
+    private string? _cancelOrRejectReason;
+    private string? _selectedStatusActionString;
     private bool _isSignedPSBTInvalid = true;
+    private Validation? _reasonValidation;
 
     private Modal _channelSpinner;
     private string? mempoolUrl = Environment.GetEnvironmentVariable("MEMPOOL_ENDPOINT");
@@ -215,6 +266,12 @@
             if (ClaimsPrincipal != null && !ClaimsPrincipal.IsInRole(ApplicationUserRole.FinanceManager.ToString()))
             {
                 _hideApprove = true;
+                _showCancelButton = true;
+                _hidePendingRequests = true;
+            }
+            else
+            {
+                _showRejectButton = true;
             }
         }
     }
@@ -223,15 +280,12 @@
     {
         if (LoggedUser != null)
         {
-            _channelRequests = await ChannelOperationRequestRepository.GetUnsignedPendingRequestsByUser(LoggedUser.Id);
-            _allUserRequest = await ChannelOperationRequestRepository.GetPendingRequestsByUser(LoggedUser.Id);
-            _allRequests = new List<ChannelOperationRequest>();
-            foreach (var userRequest in _allUserRequest)
+            _allRequests = await ChannelOperationRequestRepository.GetAll();
+
+            if (ClaimsPrincipal != null && ClaimsPrincipal.IsInRole(ApplicationUserRole.FinanceManager.ToString()))
             {
-                if (_channelRequests.All(req => req.Id != userRequest.Id))
-                {
-                    _allRequests.Add(userRequest);
-                }
+                _channelRequests = await ChannelOperationRequestRepository.GetUnsignedPendingRequestsByUser(LoggedUser.Id);
+                _allRequests = _allRequests.Except(_channelRequests).ToList();
             }
         }
     }
@@ -241,6 +295,42 @@
         return req.Status.Equals(ChannelOperationRequestStatus.Pending);
     }
 
+    private void OpenModalForRejectOrCancelRequest(ChannelOperationRequest req, ChannelOperationRequestStatus status)
+    {
+        _selectedRequest = req;
+        _selectedStatus = status;
+        _rejectCancelModalVisible = true;
+        switch(_selectedStatus)
+        {
+            case ChannelOperationRequestStatus.Rejected: _selectedStatusActionString = "Reject"; break;
+            case ChannelOperationRequestStatus.Cancelled: _selectedStatusActionString = "Cancel"; break;
+        }
+    }
+
+    private async Task RejectOrCancelRequest()
+    {
+        if (_selectedRequest != null)
+        {
+            _selectedRequest.ClosingReason = _cancelOrRejectReason;
+            _selectedRequest.Status = _selectedStatus;
+            var jobUpdateResult = ChannelOperationRequestRepository.Update(_selectedRequest);
+            if (!jobUpdateResult.Item1)
+            {
+                ToastService.ShowError("There has been an error when updating the request");
+            }
+            else
+            {
+                ToastService.ShowSuccess("Request " + _selectedStatus);
+                await FetchRequests();
+            }
+        }
+        else
+        {
+            ToastService.ShowError("Couldn't fetch data from the request");
+        }
+        _rejectCancelModalVisible = false;
+    }
+    
     private async Task ShowModal(ChannelOperationRequest channelOperationRequest)
     {
         _selectedRequest = channelOperationRequest;
@@ -270,7 +360,13 @@
         }
     }
 
-    private async Task HideModal()
+    private void HideRejectOrCancelModal()
+    {
+        _rejectCancelModalVisible = false;
+        _cancelOrRejectReason = null;
+
+    }
+    private void HideModal()
     {
         _modalVisible = false;
         _templatePSBTString = null;
@@ -280,7 +376,7 @@
 
     private async Task ApproveRequest()
     {
-        await HideModal();
+        HideModal();
 
         if (_selectedRequest == null || _psbt == null || LoggedUser == null)
         {
@@ -359,6 +455,13 @@
     {
         await ClipboardService.WriteTextAsync(_templatePSBTString); 
         ToastService.ShowSuccess("PSBT copied");
+    }
+    
+    private bool IsStatusFinal(ChannelOperationRequestStatus status)
+    {
+        return status is ChannelOperationRequestStatus.Cancelled
+            or ChannelOperationRequestStatus.Rejected
+            or ChannelOperationRequestStatus.Approved;
     }
 
     private void ValidatePSBT(ValidatorEventArgs obj)

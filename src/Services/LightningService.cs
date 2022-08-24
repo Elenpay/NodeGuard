@@ -213,7 +213,7 @@ namespace FundsManager.Services
                                 channelOperationRequest.Id, pendingChannelIdHex);
 
                             channelOperationRequest.Status = ChannelOperationRequestStatus.OnChainConfirmationPending;
-                            channelOperationRequest.TxId = Convert.ToString(response.ChanPending.Txid.ToByteArray());;
+                            channelOperationRequest.TxId = DecodeTxId(response.ChanPending.Txid);
                             _channelOperationRequestRepository.Update(channelOperationRequest);
 
                             break;
@@ -229,11 +229,7 @@ namespace FundsManager.Services
                             {
                                 ChannelId = pendingChannelIdHex,
                                 CreationDatetime = DateTimeOffset.Now,
-                                FundingTx = Convert.ToHexString(response.ChanOpen.ChannelPoint.FundingTxidBytes
-                                        .ToByteArray()
-                                        .Reverse()//Endianness of the txidbytes is different we need to reverse
-                                        .ToArray())
-                                    .ToLower(),
+                                FundingTx = DecodeTxId(response.ChanOpen.ChannelPoint.FundingTxidBytes),
                                 FundingTxOutputIndex = response.ChanOpen.ChannelPoint.OutputIndex,
                                 BtcCloseAddress = closeAddress?.Address.ToString(),
                                 SatsAmount = channelOperationRequest.SatsAmount,
@@ -442,6 +438,15 @@ namespace FundsManager.Services
                 //TODO Mark as failed (?)
                 throw;
             }
+        }
+
+        private string DecodeTxId(ByteString TxIdBytes)
+        {
+            return Convert.ToHexString(TxIdBytes
+                    .ToByteArray()
+                    .Reverse() //Endianness of the txidbytes is different we need to reverse
+                    .ToArray())
+                .ToLower();
         }
 
         /// <summary>
@@ -766,7 +771,7 @@ namespace FundsManager.Services
                                     break;
 
                                 case CloseStatusUpdate.UpdateOneofCase.ClosePending:
-                                    var closePendingTxid = Convert.ToHexString(response.ClosePending.Txid.ToByteArray().Reverse().ToArray()).ToLower();
+                                    var closePendingTxid = DecodeTxId(response.ClosePending.Txid);
 
                                     _logger.LogInformation(
                                         "Channel close request in status:{} for channel operation request:{} for channel:{} closing txId:{}",
@@ -776,7 +781,7 @@ namespace FundsManager.Services
                                         closePendingTxid);
 
                                     channelOperationRequest.Status = ChannelOperationRequestStatus.OnChainConfirmationPending;
-                                    channelOperationRequest.TxId = Convert.ToString(response.ClosePending.Txid.ToByteArray());
+                                    channelOperationRequest.TxId = closePendingTxid;
 
                                     var onChainPendingUpdate = _channelOperationRequestRepository.Update(channelOperationRequest);
 
@@ -789,7 +794,7 @@ namespace FundsManager.Services
                                 case CloseStatusUpdate.UpdateOneofCase.ChanClose:
 
                                     //TODO Review why chanclose.success it is false for confirmed closings of channels
-                                    var chanCloseClosingTxid = Convert.ToHexString(response.ChanClose.ClosingTxid.ToByteArray().Reverse().ToArray()).ToLower();
+                                    var chanCloseClosingTxid = DecodeTxId(response.ChanClose.ClosingTxid);
                                     _logger.LogInformation(
                                         "Channel close request in status:{} for channel operation request:{} for channel:{} closing txId:{}",
                                         ChannelOperationRequestStatus.OnChainConfirmed,
