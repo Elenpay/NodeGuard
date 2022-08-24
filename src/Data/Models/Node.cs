@@ -23,6 +23,13 @@ namespace FundsManager.Data.Models
         public string? Endpoint { get; set; }
 
         /// <summary>
+        /// The wallet used on upfront_shutdown_script if the peer supports this
+        /// </summary>
+        public int? ReturningFundsMultisigWalletId { get; set; }
+
+        public Wallet? ReturningFundsMultisigWallet { get; set; }
+
+        /// <summary>
         /// Returns true if the node is managed by us. We defer this from the existence of an Endpoint
         /// </summary>
         [NotMapped]
