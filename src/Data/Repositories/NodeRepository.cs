@@ -38,6 +38,7 @@ namespace FundsManager.Data.Repositories
                 .Include(node => node.Users)
                 .ThenInclude(user => user.Keys)
                 .ThenInclude(keyObj => keyObj.Wallets)
+                .Include(x => x.ReturningFundsMultisigWallet)
                 .SingleOrDefaultAsync(x => x.PubKey == key);
         }
 
@@ -57,6 +58,7 @@ namespace FundsManager.Data.Repositories
             await using var applicationDbContext = await _dbContextFactory.CreateDbContextAsync();
 
             var resultAsync = await applicationDbContext.Nodes
+                .Include(x => x.ReturningFundsMultisigWallet)
                 .Where(node => node.Endpoint != null)
                 .ToListAsync();
 
@@ -107,6 +109,7 @@ namespace FundsManager.Data.Repositories
         {
             using var applicationDbContext = _dbContextFactory.CreateDbContext();
             type.SetUpdateDatetime();
+            //TODO Automapper
             type.Users?.Clear();
             type.ChannelOperationRequestsAsSource?.Clear();
             type.ChannelOperationRequestsAsDestination?.Clear();
