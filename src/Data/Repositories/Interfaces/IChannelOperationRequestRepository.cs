@@ -8,8 +8,6 @@ public interface IChannelOperationRequestRepository
 
     Task<List<ChannelOperationRequest>> GetAll();
 
-    Task<List<ChannelOperationRequest>> GetPendingRequestsByUser(string userId);
-
     Task<List<ChannelOperationRequest>> GetUnsignedPendingRequestsByUser(string userId);
 
     Task<(bool, string?)> AddAsync(ChannelOperationRequest type);

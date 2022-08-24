@@ -1,4 +1,4 @@
-﻿using AutoMapper;
+using AutoMapper;
 using FundsManager.Data.Models;
 using FundsManager.Data.Repositories.Interfaces;
 using Humanizer;
@@ -42,15 +42,7 @@ namespace FundsManager.Data.Repositories
         {
             await using var applicationDbContext = await _dbContextFactory.CreateDbContextAsync();
 
-            return await applicationDbContext.ChannelOperationRequests.ToListAsync();
-        }
-
-        public async Task<List<ChannelOperationRequest>> GetPendingRequestsByUser(string userId)
-        {
-            await using var applicationDbContext = await _dbContextFactory.CreateDbContextAsync();
-
             return await applicationDbContext.ChannelOperationRequests
-                .Where(request => request.Wallet.Keys.Any(key => key.User != null && key.User.Id == userId))
                 .Include(request => request.Wallet)
                 .Include(request => request.SourceNode)
                 .Include(request => request.DestNode)
@@ -66,7 +58,8 @@ namespace FundsManager.Data.Repositories
 
             return await applicationDbContext.ChannelOperationRequests
                 .Where(request => request.Wallet.Keys.Any(key => key.User != null && key.User.Id == userId) &&
-                request.ChannelOperationRequestPsbts.All(signature => signature.UserSignerId != userId))
+                                  request.Status == ChannelOperationRequestStatus.Pending &&
+                                  request.ChannelOperationRequestPsbts.All(signature => signature.UserSignerId != userId))
                 .Include(request => request.SourceNode)
                 .Include(request => request.Wallet).ThenInclude(x => x.InternalWallet)
                 .Include(x => x.Wallet).ThenInclude(x => x.Keys)
@@ -81,6 +74,9 @@ namespace FundsManager.Data.Repositories
         {
             await using var applicationDbContext = await _dbContextFactory.CreateDbContextAsync();
 
+            type.SetCreationDatetime();
+            type.SetUpdateDatetime();
+
             //Check for avoiding duplicate request
             var existingRequest = await applicationDbContext.ChannelOperationRequests.Where(x =>
                 x.SourceNodeId == type.SourceNodeId
@@ -94,6 +90,7 @@ namespace FundsManager.Data.Repositories
                 return (false,
                     "Error, a channel operation request with the same source and destination node is in pending status, wait for that request to finalise before submitting a new request");
             }
+
             var valueTuple = await _repository.AddAsync(type, applicationDbContext);
 
             return valueTuple;
@@ -126,6 +123,7 @@ namespace FundsManager.Data.Repositories
 
             //Automapper to remove collections
             var strippedType = _mapper.Map<ChannelOperationRequest, ChannelOperationRequest>(type);
+            type.SetUpdateDatetime();
 
             return _repository.Update(strippedType, applicationDbContext);
         }
