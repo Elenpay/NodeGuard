@@ -66,6 +66,11 @@ namespace FundsManager.Data.Models
         /// Transaction Id once received from the LightningService 
         /// </summary>
         public string? TxId { get; set; }
+        
+        /// <summary>
+        /// Text filled by the user upon request cancellation/rejection 
+        /// </summary>
+        public string? ClosingReason { get; set; }
 
         #region Relationships
 
