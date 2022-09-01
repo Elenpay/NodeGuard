@@ -22,7 +22,10 @@
         "NBXPLORER_BTCNODEENDPOINT": "127.0.0.1:19444",
         "DEFAULT_DERIVATION_PATH": "m/48'/1'/1'",
         "IS_DEV_ENVIRONMENT": "true",
-        "FUNDSMANAGER_ENDPOINT": "https://localhost"
+        "FUNDSMANAGER_ENDPOINT": "https://localhost",
+        "Logging__LogLevel__Microsoft": "Warning",
+        "SWEEPNODEWALLETSJOB_CRON": "*/1 * * * *",
+        "ANCHOR_CLOSINGS_MINIMUM_SATS": "100000"
       },
       "applicationUrl": "https://localhost:443;http://localhost:38080",
 

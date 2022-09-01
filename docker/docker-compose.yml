@@ -17,6 +17,7 @@ services:
         FUNDSMANAGER_ENDPOINT: http://localhost:50052
         IS_DEV_ENVIRONMENT: "true"
         Logging__LogLevel__Microsoft: Warning
+        Logging__LogLevel__Microsoft__EntityFrameworkCore: Warning
         NBXPLORER_BTCNODEENDPOINT: host.docker.internal:19444
         NBXPLORER_BTCRPCPASSWORD: "polarpass"
         NBXPLORER_BTCRPCURL: http://host.docker.internal:18443/
@@ -26,6 +27,8 @@ services:
         SENTRY_DEBUG_ENABLED: "true"
         SENTRY_DSN: ""
         SENTRY_ENVIRONMENT: Development
+        SWEEPNODEWALLETSJOB_CRON: "*/1 * * * *"  #Every minute
+        ANCHOR_CLOSINGS_MINIMUM_SATS: 100000 # Check https://github.com/lightningnetwork/lnd/issues/6505#issuecomment-1120364460 to understand, we need 100K+ sats to support anchor channel closings
     volumes:
         - fundsmanager_data_keys_dir:/root/.aspnet/DataProtection-Keys
 

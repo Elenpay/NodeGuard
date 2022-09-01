@@ -27,6 +27,8 @@ namespace FundsManager.Data.Repositories
                 .Include(node => node.Users)
                 .ThenInclude(user => user.Keys)
                 .ThenInclude(key => key.Wallets)
+                .Include(x => x.ReturningFundsMultisigWallet)
+                .ThenInclude(x => x.Keys)
                 .SingleOrDefaultAsync(x => x.Id == id);
         }
 
@@ -50,6 +52,7 @@ namespace FundsManager.Data.Repositories
                 .Include(node => node.Users)
                 .Include(node => node.ChannelOperationRequestsAsDestination)
                     .ThenInclude(request => request.Channel)
+                .Include(x=> x.ReturningFundsMultisigWallet)
                 .ToListAsync();
         }
 
@@ -59,6 +62,7 @@ namespace FundsManager.Data.Repositories
 
             var resultAsync = await applicationDbContext.Nodes
                 .Include(x => x.ReturningFundsMultisigWallet)
+                .ThenInclude(x => x.Keys)
                 .Where(node => node.Endpoint != null)
                 .ToListAsync();
 

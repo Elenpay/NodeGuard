@@ -575,7 +575,7 @@
 
         _selectedWalletToFinalise = null;
 
-        _finaliseModalRef.Close(CloseReason.UserClosing);
+        await _finaliseModalRef.Close(CloseReason.UserClosing);
 
         await GetData();
     }

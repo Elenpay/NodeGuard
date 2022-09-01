@@ -12,6 +12,7 @@ using FundsManager.Services;
 using Hangfire;
 using Hangfire.Dashboard;
 using Hangfire.PostgreSql;
+using Hangfire.Server;
 using Lnrpc;
 using Microsoft.AspNetCore.Authentication.Cookies;
 using Microsoft.AspNetCore.Components.Authorization;
@@ -20,6 +21,7 @@ using Microsoft.EntityFrameworkCore;
 using Newtonsoft.Json;
 using Sentry;
 using Sentry.Extensibility;
+using System.Configuration;
 
 namespace FundsManager
 {
@@ -106,12 +108,19 @@ namespace FundsManager
 
             //Hangfire Job system
 
-            builder.Services.AddHangfire(config =>
+            builder.Services.AddHangfire((provider, config) =>
             {
                 config.UseSerializerSettings(new JsonSerializerSettings()
                 {
                     ReferenceLoopHandling = ReferenceLoopHandling.Ignore,
                 });
+                config.UseFilter(new AutomaticRetryAttribute
+                {
+                    LogEvents = true,
+                    Attempts = 20,
+                    OnAttemptsExceeded = AttemptsExceededAction.Fail,
+                });
+
                 config.UsePostgreSqlStorage(connectionString);
             });
 
@@ -146,6 +155,23 @@ namespace FundsManager
                 try
                 {
                     DbInitializer.Initialize(servicesProvider);
+
+                    //Background job for ChannelAcceptor
+                    var bgClient = servicesProvider.GetService<IBackgroundJobClient>();
+                    var logger = servicesProvider.GetService<ILogger<Program>>();
+                    if (bgClient != null)
+                    {
+                        var jobId = bgClient.Enqueue<ILightningService>(service => service.ChannelAcceptorJob());
+                        logger?.LogInformation("Lifetime job for channel acceptor launched on jobId:{}", jobId);
+                    }
+
+                    //Recurring Jobs AKA Cron Jobs
+                    var recurringJobManager = servicesProvider.GetService<IRecurringJobManager>();
+
+                    recurringJobManager.AddOrUpdate<ILightningService>(nameof(LightningService.SweepNodeWalletsJob),
+                        x => x.SweepNodeWalletsJob(),
+                        Environment.GetEnvironmentVariable("SWEEPNODEWALLETSJOB_CRON"),
+                        TimeZoneInfo.Utc);
                 }
                 catch (Exception ex)
                 {

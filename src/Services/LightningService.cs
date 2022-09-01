@@ -12,13 +12,22 @@ using System.Security.Cryptography;
 using AutoMapper;
 using FundsManager.Data;
 using FundsManager.Helpers;
+using Hangfire;
+using Hangfire.States;
 using Humanizer;
 using Microsoft.EntityFrameworkCore;
 using Channel = FundsManager.Data.Models.Channel;
 using UTXO = NBXplorer.Models.UTXO;
 
+// ReSharper disable InconsistentNaming
+
+// ReSharper disable IdentifierTypo
+
 namespace FundsManager.Services
 {
+    /// <summary>
+    /// Service to interact with LND
+    /// </summary>
     public interface ILightningService
     {
         /// <summary>
@@ -27,6 +36,7 @@ namespace FundsManager.Services
         /// <param name="channelOperationRequest"></param>
         /// <param name="presignedPSBTbase64"></param>
         /// <returns></returns>
+        // ReSharper disable once IdentifierTypo
         public Task OpenChannel(ChannelOperationRequest channelOperationRequest, string presignedPSBTbase64);
 
         /// <summary>
@@ -35,7 +45,7 @@ namespace FundsManager.Services
         /// <param name="channelOperationRequest"></param>
         /// <param name="destinationAddress"></param>
         /// <returns></returns>
-        public Task<(PSBT?, bool)> GenerateTemplatePSBT(ChannelOperationRequest channelOperationRequesd);
+        public Task<(PSBT?, bool)> GenerateTemplatePSBT(ChannelOperationRequest channelOperationRequest);
 
         /// <summary>
         /// Based on a channel operation request of type close, requests the close of a channel to LND without acking the request.
@@ -60,7 +70,7 @@ namespace FundsManager.Services
         /// <param name="derivationFeature"></param>
         /// <returns></returns>
         public Task<BitcoinAddress?> GetUnusedAddress(Wallet wallet,
-            NBXplorer.DerivationStrategy.DerivationFeature derivationFeature);
+            DerivationFeature derivationFeature);
 
         /// <summary>
         /// Gets the info about a node in the lightning network graph
@@ -68,9 +78,39 @@ namespace FundsManager.Services
         /// <param name="pubkey"></param>
         /// <returns></returns>
         public Task<LightningNode?> GetNodeInfo(string pubkey);
+
+        /// <summary>
+        /// Job for the lifetime of the application that intercepts LND channel opening requests to the managed nodes
+        /// </summary>
+        /// <returns></returns>
+        [AutomaticRetry(LogEvents = true, Attempts = Int32.MaxValue)]
+        Task ChannelAcceptorJob();
+
+        /// <summary>
+        /// Subtask of ChannelAcceptorJob
+        /// </summary>
+        /// <param name="node"></param>
+        /// <param name="loggerFactory"></param>
+        /// <returns></returns>
+        [AutomaticRetry(LogEvents = true, Attempts = Int32.MaxValue)]
+        Task ProcessNodeChannelAcceptorJob(int nodeId);
+
+        /// <summary>
+        /// CRON Job which checks if there is any funds on the LND hot wallet and sweep them to the returning multisig wallet (if assigned) to the node.
+        /// </summary>
+        /// <returns></returns>
+        [AutomaticRetry(LogEvents = true, Attempts = 0, OnAttemptsExceeded = AttemptsExceededAction.Delete)]
+        Task SweepNodeWalletsJob();
+
+        /// <summary>
+        /// Sub-job of SweepNodeWalletsJob
+        /// </summary>
+        /// <param name="managedNodeId"></param>
+        /// <returns></returns>
+        [AutomaticRetry(LogEvents = true, Attempts = 0, OnAttemptsExceeded = AttemptsExceededAction.Delete)]
+        Task SweepNodeWalletJob(int managedNodeId);
     }
 
-    /// <summary>d
     public class LightningService : ILightningService
     {
         private readonly ILogger<LightningService> _logger;
@@ -78,17 +118,24 @@ namespace FundsManager.Services
         private readonly INodeRepository _nodeRepository;
         private readonly IDbContextFactory<ApplicationDbContext> _dbContextFactory;
         private readonly IMapper _mapper;
+        private readonly IBackgroundJobClient _backgroundJobClient;
+        private readonly IWalletRepository _walletRepository;
 
         public LightningService(ILogger<LightningService> logger,
             IChannelOperationRequestRepository channelOperationRequestRepository,
             INodeRepository nodeRepository,
-            IDbContextFactory<ApplicationDbContext> dbContextFactory, IMapper mapper)
+            IDbContextFactory<ApplicationDbContext> dbContextFactory,
+            IMapper mapper,
+            IBackgroundJobClient backgroundJobClient,
+            IWalletRepository walletRepository)
         {
             _logger = logger;
             _channelOperationRequestRepository = channelOperationRequestRepository;
             _nodeRepository = nodeRepository;
             _dbContextFactory = dbContextFactory;
             _mapper = mapper;
+            _backgroundJobClient = backgroundJobClient;
+            _walletRepository = walletRepository;
         }
 
         public async Task OpenChannel(ChannelOperationRequest channelOperationRequest, string? presignedPSBTbase64)
@@ -102,7 +149,7 @@ namespace FundsManager.Services
                 const string thePresignedPsbtCouldNotBeParsed = "The presigned PSBT could not be parsed";
                 _logger.LogError(thePresignedPsbtCouldNotBeParsed);
                 throw new ArgumentException(thePresignedPsbtCouldNotBeParsed, nameof(presignedPSBTbase64));
-            };
+            }
 
             if (channelOperationRequest.RequestType != OperationRequestType.Open)
             {
@@ -115,6 +162,10 @@ namespace FundsManager.Services
 
             var source = channelOperationRequest.SourceNode;
             var destination = channelOperationRequest.DestNode;
+            if (source == null || destination == null)
+            {
+                throw new ArgumentException("Source or destination null", nameof(source));
+            }
 
             if (source.PubKey == destination?.PubKey)
             {
@@ -136,9 +187,6 @@ namespace FundsManager.Services
 
             var client = new Lightning.LightningClient(grpcChannel);
 
-            //TODO Return a human-readable error string for the UI
-            var result = false;
-
             //32 bytes of secure randomness for the pending channel id (lnd)
 
             var pendingChannelId = RandomNumberGenerator.GetBytes(32);
@@ -148,7 +196,8 @@ namespace FundsManager.Services
             var (network, nbxplorerClient) = GenerateNetwork(_logger);
 
             //Derivation strategy for the multisig address based on its wallet
-            var (derivationStrategyBase, internalWalletDerivationStrategy) = GetDerivationStrategy(channelOperationRequest, network);
+            var (derivationStrategyBase, _) =
+                GetDerivationStrategy(channelOperationRequest, network);
 
             if (derivationStrategyBase == null)
             {
@@ -159,11 +208,13 @@ namespace FundsManager.Services
                     derivationNull);
             }
 
-            var closeAddress = await nbxplorerClient.GetUnusedAsync(derivationStrategyBase, DerivationFeature.Deposit, 0, true);
+            var closeAddress =
+                await nbxplorerClient.GetUnusedAsync(derivationStrategyBase, DerivationFeature.Deposit, 0, true);
 
             if (closeAddress == null)
             {
-                var closeAddressNull = $"Closing address was null for an operation on wallet:{channelOperationRequest.Wallet.Id}";
+                var closeAddressNull =
+                    $"Closing address was null for an operation on wallet:{channelOperationRequest.Wallet.Id}";
                 _logger.LogError(closeAddressNull);
 
                 throw new ArgumentException(
@@ -173,7 +224,7 @@ namespace FundsManager.Services
             _logger.LogInformation("Channel open request for  request id:{} from node:{} to node:{}",
                 channelOperationRequest.Id,
                 source.Name,
-                destination.Name);
+                destination?.Name);
             try
             {
                 //We prepare the request (shim) with the base PSBT we had presigned with the UTXOs to fund the channel
@@ -189,7 +240,7 @@ namespace FundsManager.Services
                         }
                     },
                     LocalFundingAmount = channelOperationRequest.SatsAmount,
-                    CloseAddress = closeAddress?.Address.ToString(),
+                    CloseAddress = closeAddress.Address.ToString(),
                     Private = channelOperationRequest.IsChannelPrivate,
                     NodePubkey = ByteString.CopyFrom(Convert.FromHexString(destination.PubKey)),
                 };
@@ -209,7 +260,8 @@ namespace FundsManager.Services
                         case OpenStatusUpdate.UpdateOneofCase.ChanPending:
                             //Channel funding tx on mempool and pending status on lnd
 
-                            _logger.LogInformation("Channel pending for channel operation request id:{} for pending channel id:{}",
+                            _logger.LogInformation(
+                                "Channel pending for channel operation request id:{} for pending channel id:{}",
                                 channelOperationRequest.Id, pendingChannelIdHex);
 
                             channelOperationRequest.Status = ChannelOperationRequestStatus.OnChainConfirmationPending;
@@ -219,7 +271,8 @@ namespace FundsManager.Services
                             break;
 
                         case OpenStatusUpdate.UpdateOneofCase.ChanOpen:
-                            _logger.LogInformation("Channel opened for channel operation request request id:{} channel point:{}",
+                            _logger.LogInformation(
+                                "Channel opened for channel operation request request id:{} channel point:{}",
                                 channelOperationRequest.Id, response.ChanOpen.ChannelPoint.ToString());
 
                             channelOperationRequest.Status = ChannelOperationRequestStatus.OnChainConfirmed;
@@ -262,8 +315,6 @@ namespace FundsManager.Services
                                     channelUpdate.Item2);
                             }
 
-                            result = true;
-
                             break;
 
                         case OpenStatusUpdate.UpdateOneofCase.PsbtFund:
@@ -301,7 +352,8 @@ namespace FundsManager.Services
                                 var UTXOs = await nbxplorerClient.GetUTXOsAsync(derivationStrategyBase);
                                 UTXOs.RemoveDuplicateUTXOs();
 
-                                var OutpointKeyPathDictionary = UTXOs.Confirmed.UTXOs.ToDictionary(x => x.Outpoint, x => x.KeyPath);
+                                var OutpointKeyPathDictionary =
+                                    UTXOs.Confirmed.UTXOs.ToDictionary(x => x.Outpoint, x => x.KeyPath);
 
                                 var txInKeyPathDictionary =
                                     channelfundingTx.Inputs.Where(x => OutpointKeyPathDictionary.ContainsKey(x.PrevOut))
@@ -310,7 +362,8 @@ namespace FundsManager.Services
 
                                 if (!txInKeyPathDictionary.Any())
                                 {
-                                    const string errorKeypathsForTheUtxosUsedInThisTxAreNotFound = "Error, keypaths for the UTXOs used in this tx are not found, probably this UTXO is already used as input of another transaction";
+                                    const string errorKeypathsForTheUtxosUsedInThisTxAreNotFound =
+                                        "Error, keypaths for the UTXOs used in this tx are not found, probably this UTXO is already used as input of another transaction";
 
                                     _logger.LogError(errorKeypathsForTheUtxosUsedInThisTxAreNotFound);
 
@@ -320,9 +373,10 @@ namespace FundsManager.Services
                                         errorKeypathsForTheUtxosUsedInThisTxAreNotFound);
                                 }
 
-                                var privateKeysForUsedUTXOs = txInKeyPathDictionary.ToDictionary(x => x.Key.PrevOut, x =>
-                                    channelOperationRequest.Wallet.InternalWallet.GetAccountKey(network)
-                                        .Derive(x.Value).PrivateKey);
+                                var privateKeysForUsedUTXOs = txInKeyPathDictionary.ToDictionary(x => x.Key.PrevOut,
+                                    x =>
+                                        channelOperationRequest.Wallet.InternalWallet.GetAccountKey(network)
+                                            .Derive(x.Value).PrivateKey);
 
                                 //We merge fundedPSBT with the other PSBT with the change fixed
 
@@ -337,13 +391,16 @@ namespace FundsManager.Services
                                         input.Sign(key);
                                     }
                                 }
+
                                 //We check that the partial signatures number has changed, otherwise finalize inmediately
-                                var partialSigsCountAfterSignature = changeFixedPSBT.Inputs.Sum(x => x.PartialSigs.Count);
+                                var partialSigsCountAfterSignature =
+                                    changeFixedPSBT.Inputs.Sum(x => x.PartialSigs.Count);
 
                                 if (partialSigsCountAfterSignature == 0 ||
                                     partialSigsCountAfterSignature <= partialSigsCount)
                                 {
-                                    var invalidNoOfPartialSignatures = $"Invalid expected number of partial signatures after signing for the channel operation request:{channelOperationRequest.Id}";
+                                    var invalidNoOfPartialSignatures =
+                                        $"Invalid expected number of partial signatures after signing for the channel operation request:{channelOperationRequest.Id}";
                                     _logger.LogError(invalidNoOfPartialSignatures);
 
                                     CancelPendingChannel(source, client, pendingChannelId);
@@ -364,14 +421,15 @@ namespace FundsManager.Services
                                 {
                                     //We tell lnd to verify the psbt
                                     client.FundingStateStep(
-                                         new FundingTransitionMsg
-                                         {
-                                             PsbtVerify = new FundingPsbtVerify
-                                             {
-                                                 FundedPsbt = ByteString.CopyFrom(Convert.FromHexString(changeFixedPSBT.ToHex())),
-                                                 PendingChanId = ByteString.CopyFrom(pendingChannelId)
-                                             }
-                                         }, new Metadata { { "macaroon", source.ChannelAdminMacaroon } });
+                                        new FundingTransitionMsg
+                                        {
+                                            PsbtVerify = new FundingPsbtVerify
+                                            {
+                                                FundedPsbt =
+                                                    ByteString.CopyFrom(Convert.FromHexString(changeFixedPSBT.ToHex())),
+                                                PendingChanId = ByteString.CopyFrom(pendingChannelId)
+                                            }
+                                        }, new Metadata { { "macaroon", source.ChannelAdminMacaroon } });
 
                                     //PSBT marked as verified so time to finalize the PSBT and broadcast the tx
 
@@ -379,34 +437,41 @@ namespace FundsManager.Services
 
                                     //Saving the PSBT in the ChannelOperationRequest collection of PSBTs
 
-                                    channelOperationRequest = await _channelOperationRequestRepository.GetById(channelOperationRequest.Id);
+                                    channelOperationRequest =
+                                        await _channelOperationRequestRepository.GetById(channelOperationRequest.Id) ?? throw new InvalidOperationException();
 
                                     if (channelOperationRequest?.ChannelOperationRequestPsbts != null)
                                     {
-                                        channelOperationRequest.ChannelOperationRequestPsbts.Add(new ChannelOperationRequestPSBT
-                                        {
-                                            IsFinalisedPSBT = true,
-                                            CreationDatetime = DateTimeOffset.Now,
-                                            PSBT = finalizedPSBT.ToBase64(),
-                                        });
+                                        channelOperationRequest.ChannelOperationRequestPsbts.Add(
+                                            new ChannelOperationRequestPSBT
+                                            {
+                                                IsFinalisedPSBT = true,
+                                                CreationDatetime = DateTimeOffset.Now,
+                                                PSBT = finalizedPSBT.ToBase64(),
+                                            });
 
-                                        var psbtUpdate = _channelOperationRequestRepository.Update(channelOperationRequest);
+                                        var psbtUpdate =
+                                            _channelOperationRequestRepository.Update(channelOperationRequest);
 
                                         if (!psbtUpdate.Item1)
                                         {
-                                            _logger.LogError("Error while saving the finalised PSBT for channel operation request with id:{}", channelOperationRequest.Id);
+                                            _logger.LogError(
+                                                "Error while saving the finalised PSBT for channel operation request with id:{}",
+                                                channelOperationRequest.Id);
                                         }
                                     }
 
-                                    var fundingStateStepResp = await client.FundingStateStepAsync(new FundingTransitionMsg
-                                    {
-                                        PsbtFinalize = new FundingPsbtFinalize
+                                    var fundingStateStepResp = await client.FundingStateStepAsync(
+                                        new FundingTransitionMsg
                                         {
-                                            PendingChanId = ByteString.CopyFrom(pendingChannelId),
-                                            //FinalRawTx = ByteString.CopyFrom(Convert.FromHexString(finalTxHex)),
-                                            SignedPsbt = ByteString.CopyFrom(Convert.FromHexString(finalizedPSBT.ToHex()))
-                                        },
-                                    }, new Metadata { { "macaroon", source.ChannelAdminMacaroon } });
+                                            PsbtFinalize = new FundingPsbtFinalize
+                                            {
+                                                PendingChanId = ByteString.CopyFrom(pendingChannelId),
+                                                //FinalRawTx = ByteString.CopyFrom(Convert.FromHexString(finalTxHex)),
+                                                SignedPsbt =
+                                                    ByteString.CopyFrom(Convert.FromHexString(finalizedPSBT.ToHex()))
+                                            },
+                                        }, new Metadata { { "macaroon", source.ChannelAdminMacaroon } });
                                 }
                                 else
                                 {
@@ -417,9 +482,7 @@ namespace FundsManager.Services
                             {
                                 CancelPendingChannel(source, client, pendingChannelId);
                             }
-                            break;
 
-                        default:
                             break;
                     }
                 }
@@ -431,7 +494,6 @@ namespace FundsManager.Services
                     channelOperationRequest.Id,
                     source.Name,
                     destination.Name);
-                result = false;
 
                 CancelPendingChannel(source, client, pendingChannelId);
 
@@ -470,13 +532,14 @@ namespace FundsManager.Services
                     {
                         ShimCancel = cancelRequest,
                     },
-                            new Metadata { { "macaroon", source.ChannelAdminMacaroon } }
-                        );
+                        new Metadata { { "macaroon", source.ChannelAdminMacaroon } }
+                    );
                 }
             }
             catch (Exception e)
             {
-                _logger.LogError(e, "Error while cancelling pending channel with id:{} (hex)", Convert.ToHexString(pendingChannelId));
+                _logger.LogError(e, "Error while cancelling pending channel with id:{} (hex)",
+                    Convert.ToHexString(pendingChannelId));
             }
         }
 
@@ -512,11 +575,13 @@ namespace FundsManager.Services
 
             if (derivationStrategy == null)
             {
-                _logger.LogError("Error while getting the derivation strategy scheme for wallet:{}", channelOperationRequest.Wallet.Id);
+                _logger.LogError("Error while getting the derivation strategy scheme for wallet:{}",
+                    channelOperationRequest.Wallet.Id);
                 return (null, false);
             }
 
-            var (multisigCoins, selectedUtxOs) = await GetTxInputCoins(channelOperationRequest, nbxplorerClient, derivationStrategy);
+            var (multisigCoins, selectedUtxOs) =
+                await GetTxInputCoins(channelOperationRequest, nbxplorerClient, derivationStrategy);
 
             if (multisigCoins == null || !multisigCoins.Any())
             {
@@ -557,12 +622,13 @@ namespace FundsManager.Services
             }
 
             // We "lock" the PSBT to the channel operation request by adding to its UTXOs collection for later checking
-            var utxos = selectedUtxOs.Select(x => _mapper.Map<UTXO, Data.Models.FMUTXO>(x)).ToList();
+            var utxos = selectedUtxOs.Select(x => _mapper.Map<UTXO, FMUTXO>(x)).ToList();
 
             var addUTXOSOperation = await _channelOperationRequestRepository.AddUTXOs(channelOperationRequest, utxos);
             if (!addUTXOSOperation.Item1)
             {
-                _logger.LogError($"Could not add the following utxos({utxos.Humanize()}) to op request:{channelOperationRequest.Id}");
+                _logger.LogError(
+                    $"Could not add the following utxos({utxos.Humanize()}) to op request:{channelOperationRequest.Id}");
             }
 
             return result;
@@ -574,7 +640,8 @@ namespace FundsManager.Services
         /// <param name="nbXplorerNetwork"></param>
         /// <param name="nbxplorerClient"></param>
         /// <returns></returns>
-        private static async Task<GetFeeRateResult> GetFeeRateResult(Network nbXplorerNetwork, ExplorerClient nbxplorerClient)
+        private static async Task<GetFeeRateResult> GetFeeRateResult(Network nbXplorerNetwork,
+            ExplorerClient nbxplorerClient)
         {
             GetFeeRateResult feeRateResult;
             if (nbXplorerNetwork == Network.RegTest)
@@ -600,18 +667,19 @@ namespace FundsManager.Services
         /// <param name="nbXplorerNetwork"></param>
         /// <returns></returns>
         /// <exception cref="ArgumentNullException"></exception>
-        private (DerivationStrategyBase?, DerivationStrategyBase?) GetDerivationStrategy(ChannelOperationRequest channelOperationRequest,
+        private (DerivationStrategyBase?, DerivationStrategyBase?) GetDerivationStrategy(
+            ChannelOperationRequest channelOperationRequest,
             Network nbXplorerNetwork)
         {
             if (channelOperationRequest == null) throw new ArgumentNullException(nameof(channelOperationRequest));
-
-            var walletKeys = channelOperationRequest?.Wallet?.Keys;
 
             if (channelOperationRequest.Wallet != null)
             {
                 var multiSigDerivationStrategy = channelOperationRequest.Wallet.GetDerivationStrategy();
 
-                var internalWalletXPUB = new BitcoinExtPubKey(channelOperationRequest.Wallet.InternalWallet.GetXPUB(nbXplorerNetwork), nbXplorerNetwork);
+                var internalWalletXPUB =
+                    new BitcoinExtPubKey(channelOperationRequest.Wallet.InternalWallet.GetXPUB(nbXplorerNetwork),
+                        nbXplorerNetwork);
                 var internalWalletDerivationStrategy = new DirectDerivationStrategy(internalWalletXPUB, true);
 
                 return (multiSigDerivationStrategy, internalWalletDerivationStrategy);
@@ -659,7 +727,7 @@ namespace FundsManager.Services
 
             var pendingRequests = await _channelOperationRequestRepository.GetPendingRequests();
 
-            pendingRequests.Remove(channelOperationRequest);  //The parameted request is not counted for this
+            pendingRequests.Remove(channelOperationRequest); //The parameted request is not counted for this
 
             var pendingUTXOs = pendingRequests.SelectMany(x => x.Utxos).ToList();
             var availableUTXOs = new List<UTXO>();
@@ -736,7 +804,8 @@ namespace FundsManager.Services
 
                     if (channel != null && channelOperationRequest.SourceNode.ChannelAdminMacaroon != null)
                     {
-                        using var grpcChannel = GrpcChannel.ForAddress($"https://{channelOperationRequest.SourceNode.Endpoint}",
+                        using var grpcChannel = GrpcChannel.ForAddress(
+                            $"https://{channelOperationRequest.SourceNode.Endpoint}",
                             new GrpcChannelOptions
                             {
                                 HttpHandler = new HttpClientHandler
@@ -783,12 +852,17 @@ namespace FundsManager.Services
                                     channelOperationRequest.Status = ChannelOperationRequestStatus.OnChainConfirmationPending;
                                     channelOperationRequest.TxId = closePendingTxid;
 
-                                    var onChainPendingUpdate = _channelOperationRequestRepository.Update(channelOperationRequest);
+                                    var onChainPendingUpdate =
+                                        _channelOperationRequestRepository.Update(channelOperationRequest);
 
                                     if (onChainPendingUpdate.Item1 == false)
                                     {
-                                        _logger.LogError("Error while updating channel operation request id:{} to status:{}", channelOperationRequest.Id, ChannelOperationRequestStatus.OnChainConfirmationPending);
+                                        _logger.LogError(
+                                            "Error while updating channel operation request id:{} to status:{}",
+                                            channelOperationRequest.Id,
+                                            ChannelOperationRequestStatus.OnChainConfirmationPending);
                                     }
+
                                     break;
 
                                 case CloseStatusUpdate.UpdateOneofCase.ChanClose:
@@ -805,7 +879,8 @@ namespace FundsManager.Services
                                     channelOperationRequest.Status =
                                         ChannelOperationRequestStatus.OnChainConfirmed;
 
-                                    var onChainConfirmedUpdate = _channelOperationRequestRepository.Update(channelOperationRequest);
+                                    var onChainConfirmedUpdate =
+                                        _channelOperationRequestRepository.Update(channelOperationRequest);
 
                                     if (onChainConfirmedUpdate.Item1 == false)
                                     {
@@ -826,7 +901,9 @@ namespace FundsManager.Services
 
                                     if (!closedChannelUpdateResult)
                                     {
-                                        _logger.LogError("Error while setting to closed status a closed channel with id:{}", channel.Id);
+                                        _logger.LogError(
+                                            "Error while setting to closed status a closed channel with id:{}",
+                                            channel.Id);
                                     }
 
                                     break;
@@ -873,7 +950,8 @@ namespace FundsManager.Services
             KeyPathInformation? keyPathInformation = null;
             try
             {
-                keyPathInformation = await client.nbxplorerClient.GetUnusedAsync(wallet.GetDerivationStrategy(), derivationFeature, reserve: true);
+                keyPathInformation = await client.nbxplorerClient.GetUnusedAsync(wallet.GetDerivationStrategy(),
+                    derivationFeature, reserve: true);
             }
             catch (Exception e)
             {
@@ -929,6 +1007,487 @@ namespace FundsManager.Services
             }
 
             return result;
+        }
+
+        public async Task ChannelAcceptorJob()
+        {
+            _logger.LogInformation("Starting ChannelAcceptorJob... ");
+            try
+            {
+                var managedNodes = await _nodeRepository.GetAllManagedByFundsManager();
+
+                DeleteOldChannelAcceptorJobs();
+
+                foreach (var managedNode in managedNodes)
+                {
+                    if (managedNode.ChannelAdminMacaroon != null)
+                    {
+                        _backgroundJobClient.Enqueue<ILightningService>(x =>
+                            x.ProcessNodeChannelAcceptorJob(managedNode.Id));
+                    }
+                }
+            }
+            catch (Exception e)
+            {
+                _logger.LogError(e, "Error on {}", nameof(ChannelAcceptorJob));
+                throw;
+            }
+
+            _logger.LogInformation("ChannelAcceptorJob ended");
+        }
+
+        public async Task ProcessNodeChannelAcceptorJob(int nodeId)
+        {
+            if (nodeId <= 0) throw new ArgumentOutOfRangeException(nameof(nodeId));
+
+            var loggerFactory = LoggerFactory.Create(logging =>
+            {
+                logging.AddConsole();
+                logging.SetMinimumLevel(LogLevel.Warning);
+                logging.AddFilter("Grpc", LogLevel.Warning);
+            });
+
+            #region Local Functions
+
+            async Task AcceptChannelOpeningRequest(
+                AsyncDuplexStreamingCall<ChannelAcceptResponse, ChannelAcceptRequest> resultAcceptor,
+                Node node, ChannelAcceptRequest response)
+            {
+                var openerNodePubKey = Convert.ToHexString(response.NodePubkey.ToByteArray()).ToLower();
+                var capacity = response.FundingAmt;
+                _logger.LogInformation(
+                    "Accepting channel opening request from external node:{} to managed node:{} with capacity:{} with no returning address",
+                    openerNodePubKey, node.Name, capacity);
+                await resultAcceptor.RequestStream.WriteAsync(new ChannelAcceptResponse
+                {
+                    Accept = true,
+                    PendingChanId = response.PendingChanId
+                });
+            }
+
+            async Task AcceptChannelOpeningRequestWithUpfrontShutdown(ExplorerClient explorerClient,
+                Wallet returningMultisigWallet,
+                AsyncDuplexStreamingCall<ChannelAcceptResponse, ChannelAcceptRequest> asyncDuplexStreamingCall, Node node, ChannelAcceptRequest? response)
+            {
+                if (response != null)
+                {
+                    var openerNodePubKey = Convert.ToHexString(response.NodePubkey.ToByteArray()).ToLower();
+                    var capacity = response.FundingAmt;
+
+                    var address = await explorerClient.GetUnusedAsync(returningMultisigWallet.GetDerivationStrategy(),
+                        DerivationFeature.Deposit, 0, false); //Reserve is false to avoid DoS
+
+                    if (address != null)
+                    {
+                        _logger.LogInformation(
+                            "Accepting channel opening request from external node:{} to managed node:{} with capacity:{} with returning address:{}",
+                            openerNodePubKey, node.Name, capacity, address.Address.ToString());
+                        await asyncDuplexStreamingCall.RequestStream.WriteAsync(new ChannelAcceptResponse
+                        {
+                            Accept = true,
+                            PendingChanId = response.PendingChanId,
+                            UpfrontShutdown = address.Address.ToString()
+                        });
+                    }
+                    else
+                    {
+                        _logger.LogError("Could not find an address for wallet:{} for a returning address",
+                            returningMultisigWallet.Id);
+                        //Just accept..
+                        await AcceptChannelOpeningRequest(asyncDuplexStreamingCall, node, response);
+                    }
+                }
+            }
+
+            #endregion Local Functions
+
+            var node = await _nodeRepository.GetById(nodeId);
+
+            if (node == null)
+            {
+                _logger.LogInformation("The node:{} is no longer ready to be supported hangfire jobs", node);
+                return;
+            }
+
+            try
+            {
+                _logger.LogInformation("Starting {} on node:{}", nameof(ProcessNodeChannelAcceptorJob), node.Name);
+
+                using var grpcChannel = GrpcChannel.ForAddress($"https://{node.Endpoint}",
+                    new GrpcChannelOptions
+                    {
+                        HttpHandler = new HttpClientHandler
+                        {
+                            ServerCertificateCustomValidationCallback =
+                                HttpClientHandler.DangerousAcceptAnyServerCertificateValidator
+                        },
+                        LoggerFactory = loggerFactory,
+                    });
+
+                var client = new Lightning.LightningClient(grpcChannel);
+
+                if (!string.IsNullOrEmpty(node.ChannelAdminMacaroon))
+                {
+                    var resultAcceptor = client.ChannelAcceptor(new Metadata
+                    {
+                        {
+                            "macaroon", node.ChannelAdminMacaroon
+                        }
+                    });
+
+                    await foreach (var response in resultAcceptor.ResponseStream.ReadAllAsync())
+                    {
+                        //If the node is null means it is no longer on the system, exit the job
+                        node = await _nodeRepository.GetById(nodeId);
+                        if (node == null)
+                        {
+                            _logger.LogInformation("The node:{} is no longer ready to be supported hangfire jobs", nodeId);
+                            //Just accept..
+                            await resultAcceptor.RequestStream.CompleteAsync(); // Closing the stream
+                            return;
+                        }
+
+                        //We get the peers to check if they have feature flags 4 / 5 for option_upfront_shutdown_script
+                        var peers = await client.ListPeersAsync(new ListPeersRequest(), new Metadata
+                            {
+                                {
+                                    "macaroon", node.ChannelAdminMacaroon ?? throw new InvalidOperationException()
+                                }
+                            });
+                        var openerNodePubKey = Convert.ToHexString(response.NodePubkey.ToByteArray()).ToLower();
+                        var peer = peers.Peers.SingleOrDefault(x => x.PubKey == openerNodePubKey);
+
+                        if (peer != null)
+                        {
+                            //Lets see if option_upfront_shutdown_script is enabled
+                            if (peer.Features.ContainsKey(4) ||
+                                peer.Features
+                                    .ContainsKey(
+                                        5)) // 4/5 from bolt9 / bolt2 https://github.com/lightning/bolts/blob/master/09-features.md
+                            {
+                                var (_, nbxplorerClient) = GenerateNetwork(_logger);
+
+                                //Lets find the node's assigned multisig wallet
+                                var returningMultisigWallet = node.ReturningFundsMultisigWallet;
+
+                                if (returningMultisigWallet != null)
+                                {
+                                    await AcceptChannelOpeningRequestWithUpfrontShutdown(nbxplorerClient,
+                                        returningMultisigWallet, resultAcceptor, node, response);
+                                }
+                                else
+                                {
+                                    //The node does not have a wallet assigned, lets pick the oldest.
+
+                                    var wallet = (await _walletRepository.GetAvailableWallets()).FirstOrDefault();
+
+                                    if (wallet != null)
+                                    {
+                                        //Wallet found
+                                        await AcceptChannelOpeningRequestWithUpfrontShutdown(nbxplorerClient,
+                                            wallet, resultAcceptor, node, response);
+
+                                        node.ReturningFundsMultisigWalletId = wallet.Id;
+
+                                        //We assign the node's returning wallet
+                                        var updateResult = _nodeRepository.Update(node);
+
+                                        if (updateResult.Item1 == false)
+                                        {
+                                            _logger.LogError(
+                                                "Error while adding returning node wallet with id:{} to node:{}",
+                                                wallet.Id, node.Id);
+                                        }
+                                    }
+                                    else
+                                    {
+                                        _logger.LogError("No wallets available in the system for {}",
+                                            nameof(ChannelAcceptorJob));
+                                        //Just accept..
+                                        await AcceptChannelOpeningRequest(resultAcceptor, node, response);
+                                    }
+                                }
+                            }
+                        }
+                        else
+                        {
+                            //option_upfront_shutdown_script is not enabled, just accept
+                            await AcceptChannelOpeningRequest(resultAcceptor, node, response);
+                        }
+                    }
+
+                    //We shouldn't have reached here, custom hack to throw exception to make the job fail
+                    var statusCode = resultAcceptor.GetStatus().StatusCode;
+                    if (statusCode != StatusCode.OK)
+                    {
+                        await resultAcceptor.RequestStream.CompleteAsync();
+
+                        var errorMessage =
+                            $"ChannelAcceptor grpc call has exited with statusCode:{statusCode} for node:{node.Name}, detail:{resultAcceptor.GetStatus().Detail}";
+
+                        _logger.LogError(errorMessage);
+                        throw new RpcException(resultAcceptor.GetStatus(), errorMessage);
+                    }
+                }
+                else
+                {
+                    _logger.LogError("Invalid macaroon for node:{}", node.Name);
+                }
+            }
+            catch (Exception e)
+            {
+                _logger.LogError(e, "Error on {}", nameof(ProcessNodeChannelAcceptorJob));
+                throw;
+            }
+        }
+
+        /// <summary>
+        /// Deletes the old jobs of method ChannelAcceptorJob including ProcessNodeChannelAcceptorJob from hangfire
+        /// </summary>
+        private void DeleteOldChannelAcceptorJobs()
+        {
+            var api = JobStorage.Current.GetMonitoringApi();
+
+            var processingJobs = api.ProcessingJobs(0, int.MaxValue)
+                .Where(x => x.Value.Job.ToString() == "ILightningService.ChannelAcceptorJob" ||
+                            x.Value.Job.ToString() == "ILightningService.ProcessNodeChannelAcceptorJob")
+                .OrderBy(x => x.Value.StartedAt);
+
+            if (processingJobs != null && processingJobs.Any())
+            {
+                var currentJob = processingJobs.LastOrDefault(x => x.Value.Job.ToString() == "ILightningService.ChannelAcceptorJob");
+
+                _logger.LogInformation("ChannelAcceptorJob and ProcessNodeChannelAcceptorJob stale jobs found, pruning old jobs.");
+
+                //We delete all except the last one
+                foreach (var processingJob in processingJobs)
+                {
+                    if (processingJob.Key != currentJob.Key)
+                    {
+                        var stateChanged =
+                            _backgroundJobClient.ChangeState(processingJob.Key, new DeletedState());
+
+                        if (stateChanged == false)
+                        {
+                            _logger.LogError("Error while deleting old {} job method with id:{}", nameof(ChannelAcceptorJob),
+                                processingJob.Key);
+                        }
+                        else
+                        {
+                            _logger.LogInformation("Pruning old {} job method with id:{}", processingJob.Value.Job.ToString(),
+                                processingJob.Key);
+                        }
+                    }
+                }
+            }
+        }
+
+        public async Task SweepNodeWalletsJob()
+        {
+            _logger.LogInformation("Starting {}... ", nameof(SweepNodeWalletsJob));
+            try
+            {
+                var managedNodes = await _nodeRepository.GetAllManagedByFundsManager();
+
+                foreach (var managedNode in managedNodes.Where(managedNode => managedNode.ChannelAdminMacaroon != null))
+                {
+                    _backgroundJobClient.Enqueue<ILightningService>(x =>
+                        x.SweepNodeWalletJob(managedNode.Id));
+                }
+            }
+            catch (Exception e)
+            {
+                _logger.LogError(e, "Error on {}", nameof(SweepNodeWalletsJob));
+                throw;
+            }
+
+            _logger.LogInformation("{} ended", nameof(SweepNodeWalletsJob));
+        }
+
+        public async Task SweepNodeWalletJob(int managedNodeId)
+        {
+            _logger.LogInformation("Starting {}... on node:{}", nameof(SweepNodeWalletsJob), managedNodeId);
+
+            var requiredAnchorChannelClosingAmount = long.Parse(Environment.GetEnvironmentVariable("ANCHOR_CLOSINGS_MINIMUM_SATS")); // Check https://github.com/lightningnetwork/lnd/issues/6505#issuecomment-1120364460 to understand, we need 100K+ to support anchor channel closings
+
+            var (_, nbxplorerClient) = GenerateNetwork(_logger);
+
+            #region Local functions
+
+            async Task SweepFunds(Node node, Wallet wallet, Lightning.LightningClient lightningClient,
+                ExplorerClient explorerClient, List<Utxo> utxos)
+            {
+                if (node == null) throw new ArgumentNullException(nameof(node));
+                if (wallet == null) throw new ArgumentNullException(nameof(wallet));
+                if (lightningClient == null) throw new ArgumentNullException(nameof(lightningClient));
+                if (explorerClient == null) throw new ArgumentNullException(nameof(explorerClient));
+
+                var returningAddress = await explorerClient.GetUnusedAsync(wallet.GetDerivationStrategy(),
+                    DerivationFeature.Deposit,
+                    0,
+                    false);//Reserve is false since this is a cron job and we wan't to avoid massive reserves
+
+                var lndChangeAddress = await lightningClient.NewAddressAsync(new NewAddressRequest
+                {
+                    Type = AddressType.UnusedWitnessPubkeyHash
+                },
+                    new Metadata
+                    {
+                        {
+                            "macaroon", node.ChannelAdminMacaroon
+                        }
+                    });
+                var totalSatsAvailable = utxos.Sum(x => x.AmountSat);
+
+                if (returningAddress != null && lndChangeAddress != null && utxos.Any() && totalSatsAvailable > requiredAnchorChannelClosingAmount)
+                {
+                    var sweepedFundsAmount = (totalSatsAvailable - requiredAnchorChannelClosingAmount); // We should let requiredAnchorChannelClosingAmount sats as a UTXO in  in the hot wallet for channel closings
+                    var sendManyResponse = await lightningClient.SendManyAsync(new SendManyRequest()
+                    {
+                        AddrToAmount =
+                        {
+                            {returningAddress.Address.ToString(), sweepedFundsAmount}, //Sweeped funds
+                            {lndChangeAddress.Address, requiredAnchorChannelClosingAmount},
+                        },
+                        MinConfs = 1,
+                        Label = $"Hot wallet Sweep tx on {DateTime.UtcNow.ToString("O")} to walletId:{wallet.Id}",
+                        SpendUnconfirmed = false,
+                        TargetConf = 1 // 1 for now TODO Maybe this can be set as a global env var for all the Target blocks of the FM..
+                    },
+                        new Metadata
+                        {
+                            {
+                                "macaroon", node.ChannelAdminMacaroon
+                            }
+                        });
+
+                    _logger.LogInformation("Utxos swept out for nodeId:{} on txid:{} with returnAddress:{}",
+                        node.Id,
+                        sendManyResponse.Txid,
+                        returningAddress.Address);
+                }
+                else
+                {
+                    var reason = returningAddress == null
+                        ? "Returning address not found / null"
+                        :
+                        lndChangeAddress == null
+                            ? "LND returning address not found / null"
+                            :
+                            !utxos.Any()
+                                ? "No UTXOs found to fund the sweep tx"
+                                :
+                                totalSatsAvailable > requiredAnchorChannelClosingAmount
+                                    ?
+                                    "Total sats available is less than the required to have for channel closing amounts, ignoring tx" : string.Empty;
+
+
+                    _logger.LogError("Error while funding sweep transaction reason:{}", reason);
+                }
+            }
+
+            #endregion Local functions
+
+            var node = await _nodeRepository.GetById(managedNodeId);
+            if (node == null)
+            {
+                _logger.LogError("{} failed on node with id:{} reason: node not found",
+                    nameof(SweepNodeWalletsJob),
+                    managedNodeId);
+                throw new ArgumentException("node not found", nameof(node));
+            }
+
+            var loggerFactory = LoggerFactory.Create(logging =>
+            {
+                logging.AddConsole();
+                logging.SetMinimumLevel(LogLevel.Warning);
+                logging.AddFilter("Grpc", LogLevel.Warning);
+            });
+
+            try
+            {
+                using var grpcChannel = GrpcChannel.ForAddress($"https://{node.Endpoint}",
+                    new GrpcChannelOptions
+                    {
+                        HttpHandler = new HttpClientHandler
+                        {
+                            ServerCertificateCustomValidationCallback =
+                                HttpClientHandler.DangerousAcceptAnyServerCertificateValidator
+                        },
+                        LoggerFactory = loggerFactory,
+                    });
+
+                var client = new Lightning.LightningClient(grpcChannel);
+
+                var unspentResponse = await client.ListUnspentAsync(new ListUnspentRequest { MinConfs = 1, MaxConfs = Int32.MaxValue }, new Metadata
+                {
+                    {
+                        "macaroon", node.ChannelAdminMacaroon ?? throw new InvalidOperationException()
+                    }
+                });
+
+                if (unspentResponse.Utxos.Any()
+                    && unspentResponse.Utxos.Any(x => x.AmountSat >= 100_000) //At least 1 UTXO with 100K according to  https://github.com/lightningnetwork/lnd/issues/6505#issuecomment-1120364460
+                    )
+                {
+                    if (node.ReturningFundsMultisigWallet == null)
+                    {
+                        //No returning multisig, let's assign the oldest
+
+                        var wallet = (await _walletRepository.GetAvailableWallets()).FirstOrDefault();
+
+                        if (wallet != null)
+                        {
+                            //Existing Wallet found
+                            await SweepFunds(node, wallet, client, nbxplorerClient, unspentResponse.Utxos.ToList());
+
+                            node.ReturningFundsMultisigWalletId = wallet.Id;
+
+                            //We assign the node's returning wallet
+                            var updateResult = _nodeRepository.Update(node);
+
+                            if (updateResult.Item1 == false)
+                            {
+                                _logger.LogError(
+                                    "Error while adding returning node wallet with id:{} to node:{}",
+                                    wallet.Id, node.Name);
+                            }
+                        }
+                        else
+                        {
+                            //Wallet not found
+                            _logger.LogError("No wallets available in the system to perform the {} on node:{}",
+                                nameof(SweepNodeWalletJob),
+                                node.Name);
+
+                            throw new ArgumentException("No wallets available in the system", nameof(wallet));
+                        }
+                    }
+                    else
+                    {
+                        //Returning wallet found
+                        await SweepFunds(node, node.ReturningFundsMultisigWallet, client, nbxplorerClient, unspentResponse.Utxos.ToList());
+                    }
+                }
+            }
+            catch (Exception e)
+            {
+                if (e.Message.Contains("insufficient input to create sweep tx"))
+                {
+                    //This means that the utxo is not big enough for it to be transacted, so it is a warn
+                    _logger.LogWarning("Insufficient UTXOs to fund a sweep tx on node:{}", node.Name);
+                }
+                else if (e.Message.Contains("insufficient funds available to construct transaction"))
+                {
+                    _logger.LogWarning("Insufficient funds to fund a sweep tx on node:{}", node.Name);
+                }
+                else
+                {
+                    _logger.LogError(e, "Error on {}", nameof(SweepNodeWalletJob));
+                    throw;
+                }
+            }
+            _logger.LogInformation("{} ended on node:{}", nameof(SweepNodeWalletJob), node.Name);
         }
     }
 }
