@@ -80,7 +80,7 @@ namespace FundsManager.Data.Repositories
             //Check for avoiding duplicate request
             var existingRequest = await applicationDbContext.ChannelOperationRequests.Where(x =>
                 x.SourceNodeId == type.SourceNodeId
-                && x.DestNodeId == type.DestNodeId).ToListAsync();
+                && x.DestNodeId == type.DestNodeId && x.RequestType == type.RequestType).ToListAsync();
 
             if (existingRequest.Any(x => x.Status == ChannelOperationRequestStatus.OnChainConfirmationPending ||
                                          x.Status == ChannelOperationRequestStatus.Pending ||
