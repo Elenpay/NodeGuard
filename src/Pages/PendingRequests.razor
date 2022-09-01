@@ -87,7 +87,7 @@
         <DataGridColumn TItem="ChannelOperationRequest" Field="@nameof(ChannelOperationRequest.Id)" Caption="#" Sortable="false" Displayable="true"/>
         <DataGridColumn TItem="ChannelOperationRequest" Filterable="false" Caption="Actions" Sortable="false" Displayable="true">
             <DisplayTemplate>
-                @if (_showCancelButton && !IsStatusFinal(context.Status))
+                @if (_showCancelButton && IsStatusCancellable(context.Status))
                 {
                     <Button Color="Color.Secondary" Clicked="@(() => OpenModalForRejectOrCancelRequest(context, ChannelOperationRequestStatus.Cancelled))">Cancel</Button>
                 }
@@ -457,10 +457,9 @@
         ToastService.ShowSuccess("PSBT copied");
     }
     
-    private bool IsStatusFinal(ChannelOperationRequestStatus status)
+    private bool IsStatusCancellable(ChannelOperationRequestStatus status)
     {
-        return status is ChannelOperationRequestStatus.Cancelled
-            or ChannelOperationRequestStatus.Rejected
+        return status is ChannelOperationRequestStatus.Pending
             or ChannelOperationRequestStatus.Approved;
     }
 
