@@ -74,7 +74,7 @@ namespace FundsManager.Data.Repositories
         public async Task<(bool, string?)> SafeRemove(Channel type, bool forceClose = false)
         {
             await using var applicationDbContext = await _dbContextFactory.CreateDbContextAsync();
-            var openRequest = applicationDbContext.ChannelOperationRequests.Include(x => x.SourceNode).SingleOrDefault(request => request.ChannelId == type.Id);
+            var openRequest = applicationDbContext.ChannelOperationRequests.Include(x => x.SourceNode).SingleOrDefault(request => request.ChannelId == type.Id && request.RequestType == OperationRequestType.Open);
             var closeRequest = new ChannelOperationRequest
             {
                 ChannelId = type.Id,
