@@ -1,6 +1,7 @@
 @page "/nodes"
 @using System.Security.Claims
 @using System.Threading
+@using Humanizer
 
 @attribute [Authorize(Roles = "FinanceManager, NodeManager, Superadmin")]
 <PageTitle>Active Nodes</PageTitle>
@@ -18,7 +19,8 @@
                   UseInternalEditing="true"
                   RowInserted="OnRowInserted"
                   RowUpdated="OnRowUpdated"
-                  RowRemoving="OnRowDeleted">
+                  RowRemoving="OnRowDeleted"
+                  UseValidation="true">
             <DataGridColumns>
                 <DataGridCommandColumn TItem="Node">
                     <NewCommandTemplate>
@@ -31,8 +33,8 @@
                         <Button Color="Color.Danger" hidden="@_hideDelete" Clicked="@context.Clicked">Delete</Button>
                     </DeleteCommandTemplate>
                 </DataGridCommandColumn>
-                <DataGridColumn TItem="Node" Editable="true" Field="@nameof(Node.Name)" Caption="@nameof(Node.Name)" Sortable="false" />
-                <DataGridColumn TItem="Node" Editable="true" Field="@nameof(Node.PubKey)" Caption="@nameof(Node.PubKey)" Sortable="false">
+                <DataGridColumn TItem="Node" Editable="true" Field="@nameof(Node.Name)" Validator="ValidationRule.IsNotEmpty" Caption="@nameof(Node.Name)" Sortable="false" />
+                <DataGridColumn TItem="Node" Editable="true" Field="@nameof(Node.PubKey)" Validator="ValidationRule.IsNotEmpty" Caption="@nameof(Node.PubKey)" Sortable="false">
                     <DisplayTemplate>
                         @StringHelper.TruncateHeadAndTail(context.PubKey,10)&nbsp;
                         @{State state = new("Copy", "oi oi-clipboard");}
@@ -42,8 +44,8 @@
                     </DisplayTemplate>
                 </DataGridColumn>
                 <DataGridColumn TItem="Node" Editable="true" Field="@nameof(Node.Description)" Caption="@nameof(Node.Description)" Sortable="false" />
-                <DataGridColumn TItem="Node" Editable="true" Field="@nameof(Node.ChannelAdminMacaroon)" Caption="Macaroon" CellsEditableOnNewCommand="true" CellsEditableOnEditCommand="false" Displayable="false" Sortable="false"/>
-                <DataGridColumn TItem="Node" Editable="true" Field="@nameof(Node.Endpoint)" Caption="@nameof(Node.Endpoint)" Sortable="false" />
+                <DataGridColumn TItem="Node" Editable="true" Field="@nameof(Node.ChannelAdminMacaroon)" Validator="ValidationRule.IsNotEmpty" Caption="Macaroon" CellsEditableOnNewCommand="true" CellsEditableOnEditCommand="false" Displayable="false" Sortable="false" />
+                <DataGridColumn TItem="Node" Editable="true" Field="@nameof(Node.Endpoint)" Validator="ValidationRule.IsNotEmpty" Caption="@nameof(Node.Endpoint)" Sortable="false" />
                 <DataGridNumericColumn TItem="Node" Editable="false"  Caption="Outbound Open Channels" Sortable="false">
                     <DisplayTemplate>
                         @{
@@ -55,8 +57,48 @@
                         }
                     </DisplayTemplate>
                 </DataGridNumericColumn>
-                <DataGridColumn TItem="Node" Field="@nameof(Node.CreationDatetime)" Caption="@nameof(Node.CreationDatetime)" Sortable="false" />
-                <DataGridColumn TItem="Node" Field="@nameof(Node.UpdateDatetime)" Caption="@nameof(Node.UpdateDatetime)" Sortable="false" />
+                <DataGridColumn TItem="Node" Editable="true" Field="@nameof(Node.ReturningFundsMultisigWalletId)" Caption="Returning funds wallet" Sortable="false">
+                    <DisplayTemplate>
+                        @if (context.ReturningFundsMultisigWallet != null)
+                        {
+                            @context.ReturningFundsMultisigWallet.Name
+                        }
+                    </DisplayTemplate>
+                    <EditTemplate>
+                        @if (context.CellValue == null)
+                        {
+                            <SelectList TItem="Wallet"
+                                        TValue="int"
+                                        Data="@_availableWallets"
+                                        TextField="@((item) => item.Name)"
+                                        ValueField="@((item) => item.Id)"
+                                        SelectedValueChanged="(id) => context.CellValue = id"
+                                        DefaultItemText="Choose the returning funds wallet"/>
+                        }
+                        else
+                        {
+                            <SelectList TItem="Wallet"
+                                        TValue="int"
+                                        Data="@_availableWallets"
+                                        TextField="@((item) => item.Name)"
+                                        ValueField="@((item) => item.Id)"
+                                        SelectedValue="(int) context.CellValue"
+                                        SelectedValueChanged="(id) => context.CellValue = id"/>
+                        }
+                      
+                    </EditTemplate>
+                </DataGridColumn>
+
+                <DataGridColumn TItem="Node" Field="@nameof(Node.CreationDatetime)" Caption="Creation Date" Sortable="false">
+                    <DisplayTemplate>
+                        @context.CreationDatetime.Humanize()
+                    </DisplayTemplate>
+                </DataGridColumn>
+                <DataGridColumn TItem="Node" Field="@nameof(Node.UpdateDatetime)" Caption="Update date" Sortable="false">
+                    <DisplayTemplate>
+                        @context.UpdateDatetime.Humanize()
+                    </DisplayTemplate>
+                </DataGridColumn>
                 <DataGridColumn TItem="Node" Caption="@nameof(Node.Users)" Editable="false" CellsEditableOnEditCommand="false" Sortable="false">
                     <DisplayTemplate>
                         <Button Color="Color.Primary" Clicked="@ShowModal">Display Users</Button>
@@ -89,6 +131,7 @@
 @inject INodeRepository NodeRepository
 @inject IToastService ToastService;
 @inject ClipboardService ClipboardService
+@inject IWalletRepository WalletRepository
 @implements IDisposable
 @code {
     private List<Node>? _nodes;
@@ -96,6 +139,7 @@
     private bool _modalVisible;
     private bool _hideDelete = true;
     private bool _editable;
+    private List<Wallet> _availableWallets = new List<Wallet>();
     
     CancellationTokenSource cts = new();
 
@@ -109,7 +153,7 @@
     {
         if (LoggedUser != null)
         {
-            _nodes = await NodeRepository.GetAll();
+            await GetData();
             // Add button for copy key (js interop passing the content of the strings)
             // https://www.meziantou.net/copying-text-to-clipboard-in-a-blazor-application.htm
             
@@ -120,6 +164,13 @@
             }
         }
     }
+
+    private async Task GetData()
+    {
+        _nodes = await NodeRepository.GetAll();
+        _availableWallets = await WalletRepository.GetAvailableWallets();
+    }
+
     private async Task OnRowInserted(SavedRowItem<Node, Dictionary<string, object>> arg)
     {
         if (arg.Item == null) 
@@ -143,6 +194,8 @@
                 _nodes?.Remove(arg.Item);
             }
         }
+
+        await GetData();
     }
     
     
@@ -163,10 +216,13 @@
 
             }
         }
+
+        await GetData();
+
     }
 
     
-    private void OnRowUpdated(SavedRowItem<Node, Dictionary<string, object>> arg)
+    private async Task OnRowUpdated(SavedRowItem<Node, Dictionary<string, object>> arg)
     {
         if (arg.Item == null)
         {
@@ -187,6 +243,8 @@
                 ToastService.ShowError("Something went wrong");
             }
         }
+
+        await GetData();
     }
 
     private void ShowModal()

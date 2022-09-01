@@ -24,6 +24,7 @@ services:
       POSTGRES_CONNECTIONSTRING: "{{ POSTGRES_CONNECTIONSTRING }}"
       SENTRY_DSN:  "{{ SENTRY_DSN }}"
       SENTRY_ENVIRONMENT: "{{ SENTRY_ENVIRONMENT }}"
+      SWEEPNODEWALLETSJOB_CRON: "{{ SWEEPNODEWALLETSJOB_CRON }}"
     volumes:
       - fundsmanager_data_keys_dir:/root/.aspnet/DataProtection-Keys
 
