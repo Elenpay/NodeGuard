@@ -14,7 +14,6 @@
                   EditMode=DataGridEditMode.Inline
                   Responsive
                   ResizeMode="TableResizeMode.Columns"
-                  RowRemoving="OnRowDeleted"
                   ShowPager="true"
                   ShowPageSizes="true"
                   PageSize="25"
@@ -28,7 +27,7 @@
                         <Button Color="Color.Primary" hidden Clicked="@context.Clicked">Edit</Button>
                     </EditCommandTemplate>
                     <DeleteCommandTemplate>
-                        <Button Color="Color.Danger" hidden="@_hideDelete" Disabled="@(context.Item.Status == Channel.ChannelStatus.Closed)" Clicked="@context.Clicked">Close</Button>
+                        <Button Color="Color.Danger" hidden="@_hideDelete" Disabled="@(context.Item.Status == Channel.ChannelStatus.Closed)" Clicked="()=>ShowConfirmedClose(context.Item)">Close</Button>
                     </DeleteCommandTemplate>
                 </DataGridCommandColumn>
                 <DataGridColumn TItem="Channel" Field="@nameof(Channel.Status)" Caption="@nameof(Channel.Status)" Sortable="false">
@@ -117,29 +116,15 @@
     </ModalContent>
 </Modal>
 
-<Modal @ref="_channelSpinner">
-    <ModalContent Centered>
-        <ModalHeader>
-            <ModalTitle>Waiting for the channel to be confirmed as closed within 1 blocks...</ModalTitle>
-            <CloseButton />
-        </ModalHeader>
-        <ModalBody>
-            <SpinKit Centered="true" Size="50px" Type="SpinKitType.Circle" />
-        </ModalBody>
-        <ModalFooter
-        ></ModalFooter>
-    </ModalContent>
-</Modal>
-
 @inject IChannelRepository ChannelRepository
 @inject IToastService ToastService
 @inject ClipboardService ClipboardService
+@inject IMessageService MessageService
 @code {
     private List<Channel>? _channels;
     private Channel? _selectedChannel;
     private bool _modalVisible;
     private bool _hideDelete = true;
-    private Modal _channelSpinner;
 
     [CascadingParameter]
     private ApplicationUser? LoggedUser { get; set; }
@@ -159,33 +144,33 @@
         }
     }
 
-    private async Task OnRowDeleted(CancellableRowChange<Channel> channel)
+    private async Task ShowConfirmedClose(Channel channel)
     {
-        if (channel.Item != null)
-        {
-            await _channelSpinner.Show();
-            var result =await ChannelRepository.SafeRemove(channel.Item);
-
-            await _channelSpinner.Close(CloseReason.UserClosing);
-            if (!result.Item1)
+            if ( await MessageService.Confirm( "Are you sure you want to close this channel?", "Confirmation" ) )
             {
-                channel.Cancel = true;
-                ToastService.ShowError("Something went wrong");
-            }
-            else
-            {
-                ToastService.ShowSuccess("Channel closed successfully");
-                _channels = await ChannelRepository.GetAll();
-            }
-        }
-        else
-        {
-            ToastService.ShowError("Something went wrong. Please refresh the page");
-        }
+                if (channel != null)
+                {
+                    var result =await ChannelRepository.SafeRemove(channel);
 
-       
+                    if (!result.Item1)
+                    {
+                      
+                        ToastService.ShowError("Something went wrong");
+                    }
+                    else
+                    {
+                        ToastService.ShowSuccess("Channel closed successfully");
+                        _channels = await ChannelRepository.GetAll();
+                    }
+                }
+                else
+                {
+                    ToastService.ShowError("Something went wrong. Please refresh the page");
+                }
 
-    }
+            }
+           
+        }
     
     private void ShowModal()
     {
