@@ -39,4 +39,14 @@ dotnet tool install -g dotnet-ef
     cd src && dotnet ef migrations remove
     ```
 
+## Developing on linux
+
+
+Start all the dependencies in docker-compose by running:
+```bash
+cd docker
+unzip ../devnetwork.polar.zip "volumes/*"
+docker-compose -f docker-compose.dev-environment.yml up -d
+```
+Then, start the vscode launch configuration `Launch against running docker-compose env`
 

@@ -36,6 +36,40 @@
             }
         },
         {
+            "name": "Launch against running docker-compose env",
+            "type": "coreclr",
+            "request": "launch",
+            "preLaunchTask": "build",
+            // If you have changed target frameworks, make sure to update the program path.
+            "program": "${workspaceFolder}/src/bin/Debug/net6.0/FundsManager.dll",
+            "args": [],
+            "cwd": "${workspaceFolder}/src",
+            "stopAtEntry": false,
+            // Enable launching a web browser when ASP.NET Core starts. For more information: https://aka.ms/VSCode-CS-LaunchJson-WebBrowser
+            "serverReadyAction": {
+                "action": "openExternally",
+                "pattern": "\\bNow listening on:\\s+(https?://\\S+)"
+            },
+            "env": {
+                "ASPNETCORE_ENVIRONMENT": "Development",
+                "POSTGRES_CONNECTIONSTRING": "Host=127.0.0.1;Port=5432;Database=fundsmanager;Username=rw_dev;Password=rw_dev",
+                "BITCOIN_NETWORK": "REGTEST",
+                "NBXPLORER_URI": "http://localhost:32838",
+                "NBXPLORER_BTCRPCUSER": "polaruser",
+                "NBXPLORER_BTCRPCPASSWORD": "polarpass",
+                "NBXPLORER_BTCRPCURL": "http://localhost:18443/",
+                "NBXPLORER_BTCNODEENDPOINT": "localhost:19444",
+                "ASPNETCORE_URLS": "http://localhost:5001",
+                "DEFAULT_DERIVATION_PATH": "m/48'/1'/0'/2'",
+                "ALICE_HOST": "localhost:10001",
+                "CAROL_HOST": "localhost:10003",
+                "ENABLE_HW_SUPPORT": "true"
+            },
+            "sourceFileMap": {
+                "/Views": "${workspaceFolder}/Views"
+            }
+        },
+        {
             "name": ".NET Core Attach",
             "type": "coreclr",
             "request": "attach"

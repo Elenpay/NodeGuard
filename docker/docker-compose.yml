@@ -29,6 +29,9 @@ services:
         SENTRY_ENVIRONMENT: Development
         SWEEPNODEWALLETSJOB_CRON: "*/1 * * * *"  #Every minute
         ANCHOR_CLOSINGS_MINIMUM_SATS: 100000 # Check https://github.com/lightningnetwork/lnd/issues/6505#issuecomment-1120364460 to understand, we need 100K+ sats to support anchor channel closings
+        ALICE_HOST: "host.docker.internal:10001" #used for dev environment
+        CAROL_HOST: "host.docker.internal:10003" #used for dev environment
+        ENABLE_HW_SUPPORT: "false" # Enables fields and features for using Hardware Wallets
     volumes:
         - fundsmanager_data_keys_dir:/root/.aspnet/DataProtection-Keys
 
