@@ -195,8 +195,7 @@ namespace FundsManager.Data
                     {
                         ChannelAdminMacaroon =
                             "0201036c6e6402f801030a108be5b2928f746a822b04a9b2848eb0321201301a160a0761646472657373120472656164120577726974651a130a04696e666f120472656164120577726974651a170a08696e766f69636573120472656164120577726974651a210a086d616361726f6f6e120867656e6572617465120472656164120577726974651a160a076d657373616765120472656164120577726974651a170a086f6666636861696e120472656164120577726974651a160a076f6e636861696e120472656164120577726974651a140a057065657273120472656164120577726974651a180a067369676e6572120867656e6572617465120472656164000006208e8b02d4bc0efd4f15a52946c5ef23f2954f8a07ed800733554a11a190cb71b4",
-                        //THIS MIGHT CHANGE ON YOUR MACHINE!!
-                        Endpoint = "host.docker.internal:10001",
+                        Endpoint = Environment.GetEnvironmentVariable("ALICE_HOST") ?? "host.docker.internal:10001",
                         Name = "Alice",
                         CreationDatetime = DateTimeOffset.UtcNow,
                         PubKey = "03b48034270e522e4033afdbe43383d66d426638927b940d09a8a7a0de4d96e807",
@@ -210,8 +209,7 @@ namespace FundsManager.Data
                     {
                         ChannelAdminMacaroon =
                             "0201036c6e6402f801030a10dc64226b045d25f090b114baebcbf04c1201301a160a0761646472657373120472656164120577726974651a130a04696e666f120472656164120577726974651a170a08696e766f69636573120472656164120577726974651a210a086d616361726f6f6e120867656e6572617465120472656164120577726974651a160a076d657373616765120472656164120577726974651a170a086f6666636861696e120472656164120577726974651a160a076f6e636861696e120472656164120577726974651a140a057065657273120472656164120577726974651a180a067369676e6572120867656e657261746512047265616400000620a21b8cc8c071aa5104b706b751aede972f642537c05da31450fb4b02c6da776e",
-                        //THIS MIGHT CHANGE ON YOUR MACHINE!!
-                        Endpoint = "host.docker.internal:10003",
+                        Endpoint = Environment.GetEnvironmentVariable("CAROL_HOST") ?? "host.docker.internal:10003",
                         Name = "Carol",
                         CreationDatetime = DateTimeOffset.UtcNow,
                         PubKey = "03485d8dcdd149c87553eeb80586eb2bece874d412e9f117304446ce189955d375",
@@ -253,7 +251,9 @@ namespace FundsManager.Data
                         {
                             Name = "FundsManager Co-signing Key",
                             XPUB = internalWallet.GetXPUB(nbXplorerNetwork),
-                            IsFundsManagerPrivateKey = true
+                            IsFundsManagerPrivateKey = true,
+                            Path = internalWallet.DerivationPath,
+                            MasterFingerprint = new Mnemonic(internalWallet.MnemonicString).DeriveExtKey().GetWif(Network.RegTest).GetPublicKey().GetHDFingerPrint().ToString()
                         };
                 }
                 else
@@ -309,15 +309,17 @@ namespace FundsManager.Data
                             {
                                 Name = "Key 1",
                                 UserId = adminUser.Id,
-                                XPUB = wallet1DerivationScheme.ToString()
-                                //XPUB = wallet1.DerivationScheme.ToString()
+                                XPUB = wallet1DerivationScheme.ToString(),
+                                Path = accountKeyPath1.KeyPath.ToString(),
+                                MasterFingerprint = accountKeyPath1.MasterFingerprint.ToString(),
                             },
                             new Key
                             {
                                 Name = "Key 2",
                                 UserId = adminUser.Id,
-                                XPUB = wallet2DerivationScheme.ToString()
-                                //XPUB = wallet2.DerivationScheme.ToString()
+                                XPUB = wallet2DerivationScheme.ToString(),
+                                Path = accountKeyPath1.KeyPath.ToString(),
+                                MasterFingerprint = accountKeyPath1.MasterFingerprint.ToString(),
                             },
                             internalWalletKey
                         },

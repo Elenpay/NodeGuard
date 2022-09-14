@@ -615,6 +615,42 @@ namespace FundsManager.Services
 
                 //TODO Remove hack when https://github.com/MetacoSA/NBitcoin/issues/1112 is fixed
                 result.Item1.Settings.SigningOptions = new SigningOptions(SigHash.None);
+
+                //Additional fields to support PSBT signing with a HW
+                foreach (var key in channelOperationRequest.Wallet.Keys)
+                {
+                    var bitcoinExtPubKey = new BitcoinExtPubKey(key.XPUB, nbXplorerNetwork);
+
+                    var masterFingerprint = HDFingerprint.Parse(key.MasterFingerprint);
+                    var rootedKeyPath = new RootedKeyPath(masterFingerprint, new KeyPath(key.Path));
+
+                    //Global xpubs field addition
+                    result.Item1.GlobalXPubs.Add(
+                        bitcoinExtPubKey,
+                        rootedKeyPath
+                    );
+
+                    foreach (var selectedUtxo in selectedUtxOs)
+                    {
+                        var utxoDerivationPath = KeyPath.Parse(key.Path).Derive(selectedUtxo.KeyPath);
+                        var derivedPubKey = bitcoinExtPubKey.Derive(selectedUtxo.KeyPath).GetPublicKey();
+
+                        var input = result.Item1.Inputs.FirstOrDefault(input => input?.GetCoin()?.Outpoint == selectedUtxo.Outpoint);
+                        var addressRootedKeyPath = new RootedKeyPath(masterFingerprint, utxoDerivationPath);
+                        var multisigCoin = multisigCoins.FirstOrDefault(x => x.Outpoint == selectedUtxo.Outpoint);
+
+                        if (multisigCoin != null && input != null && multisigCoin.Redeem.GetAllPubKeys().Contains(derivedPubKey))
+                        {
+                            input.AddKeyPath(derivedPubKey, addressRootedKeyPath);
+                        }
+                        else
+                        {
+                            var errorMessage = $"Invalid derived pub key for utxo:{selectedUtxo.Outpoint}";
+                            _logger.LogError(errorMessage);
+                            throw new ArgumentException(errorMessage, nameof(derivedPubKey));
+                        }
+                    }
+                }
             }
             catch (Exception e)
             {
@@ -1380,7 +1416,6 @@ namespace FundsManager.Services
                                 totalSatsAvailable > requiredAnchorChannelClosingAmount
                                     ?
                                     "Total sats available is less than the required to have for channel closing amounts, ignoring tx" : string.Empty;
-
 
                     _logger.LogError("Error while funding sweep transaction reason:{}", reason);
                 }

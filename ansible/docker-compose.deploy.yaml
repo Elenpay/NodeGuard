@@ -25,6 +25,8 @@ services:
       SENTRY_DSN:  "{{ SENTRY_DSN }}"
       SENTRY_ENVIRONMENT: "{{ SENTRY_ENVIRONMENT }}"
       SWEEPNODEWALLETSJOB_CRON: "{{ SWEEPNODEWALLETSJOB_CRON }}"
+      ENABLE_HW_SUPPORT: "false" # Enables fields and features for using Hardware Wallets
+
     volumes:
       - fundsmanager_data_keys_dir:/root/.aspnet/DataProtection-Keys
 

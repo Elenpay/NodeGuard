@@ -25,7 +25,10 @@
         "FUNDSMANAGER_ENDPOINT": "https://localhost",
         "Logging__LogLevel__Microsoft": "Warning",
         "SWEEPNODEWALLETSJOB_CRON": "*/1 * * * *",
-        "ANCHOR_CLOSINGS_MINIMUM_SATS": "100000"
+        "ANCHOR_CLOSINGS_MINIMUM_SATS": "100000",
+        "ALICE_HOST": "host.docker.internal:10001",
+        "CAROL_HOST": "host.docker.internal:10003",
+        "ENABLE_HW_SUPPORT": "false"
       },
       "applicationUrl": "https://localhost:443;http://localhost:38080",
 

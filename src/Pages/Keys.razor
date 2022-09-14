@@ -42,6 +42,11 @@
             <DataGridColumn TItem="Key" Editable="true" Field="@nameof(Key.Description)" Caption="@nameof(Key.Description)" Sortable="false" />
             <DataGridColumn TItem="Key" Editable="true" Field="@nameof(Key.IsArchived)" Caption="Archived" Sortable="false" />
             <DataGridColumn TItem="Key" Editable="true" Field="@nameof(Key.IsCompromised)" Caption="@nameof(Key.IsCompromised).Humanize(LetterCasing.Sentence)" Sortable="false" />
+            @if (Environment.GetEnvironmentVariable("ENABLE_HW_SUPPORT") != "false")
+            {
+                <DataGridColumn TItem="Key" Editable="true" Field="@nameof(Key.Path)" Caption="@nameof(Key.Path)" Sortable="false" />
+                <DataGridColumn TItem="Key" Editable="true" Field="@nameof(Key.MasterFingerprint)" Caption="@nameof(Key.MasterFingerprint).Humanize(LetterCasing.Sentence)" Sortable="false" />
+            }
             <DataGridColumn TItem="Key" CellsEditableOnNewCommand="true" CellsEditableOnEditCommand="false" Editable="true" Field="@nameof(Key.XPUB)" Caption="@nameof(Key.XPUB).Humanize(LetterCasing.Sentence)" Sortable="false">
                 <DisplayTemplate>
                     @if (!string.IsNullOrWhiteSpace(context.XPUB) && context.XPUB.Length > 40)
