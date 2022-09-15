@@ -144,7 +144,7 @@ namespace FundsManager.Data
                     var financeUsername = "financemanager";
                     var financeUser =
                         applicationDbContext.ApplicationUsers.FirstOrDefault(x =>
-                            x.NormalizedEmail == financeUsername.ToUpper());
+                        x.NormalizedEmail == financeUsername.ToUpper());
 
                     if (financeUser == null)
                     {
@@ -309,7 +309,7 @@ namespace FundsManager.Data
                             {
                                 Name = "Key 1",
                                 UserId = adminUser.Id,
-                                XPUB = wallet1DerivationScheme.ToString(),
+                                XPUB = wallet1DerivationScheme,
                                 Path = accountKeyPath1.KeyPath.ToString(),
                                 MasterFingerprint = accountKeyPath1.MasterFingerprint.ToString(),
                             },
@@ -317,9 +317,9 @@ namespace FundsManager.Data
                             {
                                 Name = "Key 2",
                                 UserId = adminUser.Id,
-                                XPUB = wallet2DerivationScheme.ToString(),
-                                Path = accountKeyPath1.KeyPath.ToString(),
-                                MasterFingerprint = accountKeyPath1.MasterFingerprint.ToString(),
+                                XPUB = wallet2DerivationScheme,
+                                Path = accountKeyPath2.KeyPath.ToString(),
+                                MasterFingerprint = accountKeyPath2.MasterFingerprint.ToString(),
                             },
                             internalWalletKey
                         },
