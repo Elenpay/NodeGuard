@@ -614,7 +614,10 @@ namespace FundsManager.Services
                 result.Item1 = builder.BuildPSBT(false);
 
                 //TODO Remove hack when https://github.com/MetacoSA/NBitcoin/issues/1112 is fixed
-                result.Item1.Settings.SigningOptions = new SigningOptions(SigHash.None);
+                foreach (var input in result.Item1.Inputs)
+                {
+                    input.SighashType = SigHash.None;
+                }
 
                 //Additional fields to support PSBT signing with a HW
                 foreach (var key in channelOperationRequest.Wallet.Keys)
