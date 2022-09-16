@@ -12,8 +12,8 @@ using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 namespace FundsManager.Migrations
 {
     [DbContext(typeof(ApplicationDbContext))]
-    [Migration("20220907064054_keysExtraColumns")]
-    partial class keysExtraColumns
+    [Migration("20220916115623_KeysExtraFields")]
+    partial class KeysExtraFields
     {
         protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
@@ -284,6 +284,10 @@ namespace FundsManager.Migrations
 
                     b.Property<bool>("IsFundsManagerPrivateKey")
                         .HasColumnType("boolean");
+
+                    b.Property<string>("MasterFingerprint")
+                        .IsRequired()
+                        .HasColumnType("text");
 
                     b.Property<string>("Name")
                         .IsRequired()
