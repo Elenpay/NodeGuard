@@ -14,12 +14,12 @@ namespace FundsManager.Data.Models
 
         public bool IsCompromised { get; set; }
 
-        public string MasterFingerprint { get; set; }
+        public string? MasterFingerprint { get; set; }
 
         /// <summary>
         /// Derivation Path (e.g.
         /// </summary>
-        public string Path { get; set; }
+        public string? Path { get; set; }
 
         #region Relationships
 
