@@ -283,6 +283,10 @@ namespace FundsManager.Migrations
                     b.Property<bool>("IsFundsManagerPrivateKey")
                         .HasColumnType("boolean");
 
+                    b.Property<string>("MasterFingerprint")
+                        .IsRequired()
+                        .HasColumnType("text");
+
                     b.Property<string>("Name")
                         .IsRequired()
                         .HasColumnType("text");
