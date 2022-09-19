@@ -20,6 +20,7 @@ namespace FundsManager.Automapper
             CreateMap<Node, Node>()
                 .ForMember(x => x.ChannelOperationRequestsAsDestination, opt => opt.Ignore())
                 .ForMember(x => x.ChannelOperationRequestsAsSource, opt => opt.Ignore())
+                .ForMember(x => x.ReturningFundsMultisigWallet, opt => opt.Ignore())
                 .ForMember(x => x.Users, opt => opt.Ignore());
 
             CreateMap<ChannelOperationRequest, ChannelOperationRequest>()
