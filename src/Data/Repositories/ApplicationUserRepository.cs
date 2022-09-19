@@ -7,7 +7,6 @@ using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Identity.EntityFrameworkCore;
 using Microsoft.AspNetCore.WebUtilities;
 using Microsoft.EntityFrameworkCore;
-using Microsoft.Extensions.Options;
 
 namespace FundsManager.Data.Repositories
 {
@@ -246,7 +245,7 @@ namespace FundsManager.Data.Repositories
                     var updateStampResult = await applicationDbContext.SaveChangesAsync() > 0;
                     if (!updateStampResult)
                     {
-                        _logger.LogError("Error while invalidating user security stamp, user id:{}",user.Id);
+                        _logger.LogError("Error while invalidating user security stamp, user id:{}", user.Id);
                     }
                 }
 
