@@ -26,7 +26,7 @@ services:
       SENTRY_ENVIRONMENT: "{{ SENTRY_ENVIRONMENT }}"
       SWEEPNODEWALLETSJOB_CRON: "{{ SWEEPNODEWALLETSJOB_CRON }}"
       ENABLE_HW_SUPPORT: "false" # Enables fields and features for using Hardware Wallets
-
+      ANCHOR_CLOSINGS_MINIMUM_SATS: "{{ ANCHOR_CLOSINGS_MINIMUM_SATS }}" # Check https://github.com/lightningnetwork/lnd/issues/6505#issuecomment-1120364460 to understand, we need 100K+ sats to support anchor channel closings
     volumes:
       - fundsmanager_data_keys_dir:/root/.aspnet/DataProtection-Keys
 
