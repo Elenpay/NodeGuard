@@ -17,14 +17,14 @@
             </NavLink>
         </div>
 
-        <AuthorizeView Roles="Superadmin,NodeManager" >
+        <AuthorizeView Roles="Superadmin,NodeManager,FinanceManager">
             <div class="nav-item px-3">
                 <NavLink class="nav-link" href="wallets">
                     <span class="oi oi-plus" aria-hidden="true"></span> Wallets
                 </NavLink>
             </div>
-        </AuthorizeView >
-        
+        </AuthorizeView>
+
         <AuthorizeView Roles="Superadmin">
             <div class="nav-item px-3">
                 <NavLink class="nav-link" href="hangfire">
@@ -42,22 +42,27 @@
                 <NavLink class="nav-link" href="new-request">
                     <span class="oi oi-plus" aria-hidden="true"></span> New Request
                 </NavLink>
-       
+
             </div>
         </AuthorizeView>
-        
+      
         <AuthorizeView Roles="Superadmin,FinanceManager,NodeManager">
             <div class="nav-item px-3">
                 <NavLink class="nav-link" href="pending-requests">
                     <span class="oi oi-plus" aria-hidden="true"></span> Pending Operations
                 </NavLink>
             </div>
-        </AuthorizeView>
-          <div class="nav-item px-3">
-                <NavLink class="nav-link" href="nodes">
-                    <span class="oi oi-plus" aria-hidden="true"></span> Nodes
+            <div class="nav-item px-3">
+                <NavLink class="nav-link" href="withdrawals">
+                    <span class="oi oi-plus" aria-hidden="true"></span> Withdrawals
                 </NavLink>
             </div>
+        </AuthorizeView>
+        <div class="nav-item px-3">
+            <NavLink class="nav-link" href="nodes">
+                <span class="oi oi-plus" aria-hidden="true"></span> Nodes
+            </NavLink>
+        </div>
         <div class="nav-item px-3">
             <NavLink class="nav-link" href="channels">
                 <span class="oi oi-plus" aria-hidden="true"></span> Channels

@@ -47,7 +47,11 @@
                     }
                 </DisplayTemplate>
             </DataGridColumn>
-            <DataGridColumn TItem="ChannelOperationRequest" Field="@nameof(ChannelOperationRequest.Status).Humanize(LetterCasing.Sentence)" Caption="Status" Sortable="false" Displayable="true"/>
+            <DataGridColumn TItem="ChannelOperationRequest" Field="@nameof(ChannelOperationRequest.Status).Humanize(LetterCasing.Sentence)" Caption="Status" Sortable="false" Displayable="true">
+                <DisplayTemplate>
+                    @context?.Status.Humanize()
+                </DisplayTemplate>
+            </DataGridColumn>
             <DataGridCommandColumn TItem="ChannelOperationRequest" Caption="Actions" Displayable="true">
                 <NewCommandTemplate>
                     <Button Color="Color.Primary" hidden></Button>
@@ -150,45 +154,13 @@
         </div>
     </LoadingTemplate>
 </DataGrid>
-<Modal @bind-Visible="@_modalVisible">
-    <ModalContent Centered>
-        <ModalHeader>
-            <ModalTitle>Sign Operation: @_selectedRequest?.Id</ModalTitle>
-            <CloseButton />
-        </ModalHeader>
-        <ModalBody>
-            <Alert Color="Color.Warning" Visible>
-                <AlertMessage>Please sign the following PSBT with your Software/Hardware wallet  
-                    <Button Color="Color.Primary" Clicked="CopyPSBTToClipboard">
-                        <i class="oi oi-clipboard"></i> 
-                    </Button>
-                </AlertMessage>
-                <MemoEdit Rows="4" @bind-Text="_templatePSBTString" Disabled="true"></MemoEdit>
-            </Alert>
-            <Fields Flex="Flex.JustifyContent.Center">
-                <Field>
-                    <Validation Validator="ValidatePSBT">
-                        <FieldLabel>To sign this operation, please paste here your PSBT in base64 string</FieldLabel>
-                        <MemoEdit Rows="4" @bind-Text="@_psbt">
-                            <ValidationError/>
-                        </MemoEdit>
-                    </Validation>
-                </Field>
-            </Fields>
-        </ModalBody>
-        <ModalFooter>
-            <Button Color="Color.Secondary" Clicked="@HideModal">Cancel</Button>
-            <Button Color="Color.Primary" Disabled="_isSignedPSBTInvalid" Clicked="@ApproveRequest">
-                Approve
-            </Button>
-        </ModalFooter>
-    </ModalContent>
-</Modal>
+<PSBTSign @ref="_psbtSignRef" ApproveRequestDelegate="async ()=> await ApproveRequest()"  SigHashMode="SigHash.None"RequestId="_selectedRequest?.Id" TemplatePsbtString="@_templatePSBTString" SignedPSBT="@_psbt"></PSBTSign>
 <Modal @bind-Visible="@_rejectCancelModalVisible">
+
     <ModalContent Centered>
         <ModalHeader>
             <ModalTitle>@_selectedStatusActionString operation: @_selectedRequest?.Id</ModalTitle>
-            <CloseButton />
+            <CloseButton/>
         </ModalHeader>
         <ModalBody>
             <Fields Flex="Flex.JustifyContent.Center">
@@ -196,7 +168,7 @@
                     <Validation @ref="_reasonValidation" Validator="@(_selectedStatus == ChannelOperationRequestStatus.Rejected ? ValidationRule.IsNotEmpty : ValidationRule.None)">
                         <FieldLabel>Please type a reason before performing this operation</FieldLabel>
                         <MemoEdit Rows="4" @bind-Text="@_cancelOrRejectReason">
-                    <ValidationError/>
+                            <ValidationError/>
                         </MemoEdit>
                     </Validation>
                 </Field>
@@ -210,27 +182,13 @@
         </ModalFooter>
     </ModalContent>
 </Modal>
-<Modal @ref="_channelSpinner">
-    <ModalContent Centered>
-        <ModalHeader>
-            <ModalTitle>Waiting for the channel to be confirmed within 3 blocks...</ModalTitle>
-            <CloseButton />
-        </ModalHeader>
-        <ModalBody>
-            <SpinKit Centered="true" Size="50px" Type="SpinKitType.Circle" />
-        </ModalBody>
-        <ModalFooter>
-        </ModalFooter>
-    </ModalContent>
-</Modal>
-
 
 @inject IChannelOperationRequestRepository ChannelOperationRequestRepository
 @inject IChannelOperationRequestPSBTRepository ChannelOperationRequestPsbtRepository
 @inject IToastService ToastService
 @inject ILightningService LightningService
 @inject IBackgroundJobClient  BackgroundJobClient
-@inject ClipboardService ClipboardService
+
 @code {
     private List<ChannelOperationRequest>? _channelRequests;
     private List<ChannelOperationRequest>? _allRequests;
@@ -249,8 +207,9 @@
     private bool _isSignedPSBTInvalid = true;
     private Validation? _reasonValidation;
 
-    private Modal _channelSpinner;
     private string? mempoolUrl = Environment.GetEnvironmentVariable("MEMPOOL_ENDPOINT");
+
+    private PSBTSign? _psbtSignRef;
 
     [CascadingParameter]
     private ApplicationUser? LoggedUser { get; set; }
@@ -292,7 +251,7 @@
     
     private static bool RequestPendingFilter(ChannelOperationRequest req)
     {
-        return req.Status.Equals(ChannelOperationRequestStatus.Pending);
+        return req.Status.Equals(ChannelOperationRequestStatus.Pending) || req.Status == ChannelOperationRequestStatus.PSBTSignaturesPending;
     }
 
     private void OpenModalForRejectOrCancelRequest(ChannelOperationRequest req, ChannelOperationRequestStatus status)
@@ -340,7 +299,7 @@
             if (templatePsbt != null)
             {
                 _templatePSBTString = templatePsbt.ToBase64();
-                _modalVisible = true;
+                await _psbtSignRef.ShowModal();
 
             }
             else
@@ -366,31 +325,25 @@
         _cancelOrRejectReason = null;
 
     }
-    private void HideModal()
-    {
-        _modalVisible = false;
-        _templatePSBTString = null;
-        _isSignedPSBTInvalid = true;
 
-    }
 
     private async Task ApproveRequest()
     {
-        HideModal();
+        _psbtSignRef?.HideModal();
 
-        if (_selectedRequest == null || _psbt == null || LoggedUser == null)
+        if (_selectedRequest == null || string.IsNullOrEmpty(_psbtSignRef.SignedPSBT) || LoggedUser == null)
         {
             ToastService.ShowError("Error: Not all fields were set");
         }
         else {
-            ChannelOperationRequestPSBT psbt = new()
+            ChannelOperationRequestPSBT channelOperationRequestPsbt = new()
             {
                 ChannelOperationRequestId = _selectedRequest.Id,
-                PSBT = _psbt,
+                PSBT = _psbtSignRef.SignedPSBT,
                 UserSignerId = LoggedUser.Id,
                 
             };
-            var addResult = await ChannelOperationRequestPsbtRepository.AddAsync(psbt);
+            var addResult = await ChannelOperationRequestPsbtRepository.AddAsync(channelOperationRequestPsbt);
 
             if (addResult.Item1)
             {
@@ -399,16 +352,14 @@
                 _selectedRequest = await ChannelOperationRequestRepository.GetById(_selectedRequest.Id);
 
                 if (_selectedRequest != null 
-                    && _selectedRequest.AreAllRequiredSignaturesCollected 
-                    && PSBT.TryParse(_psbt, CurrentNetworkHelper.GetCurrentNetwork(), out _))
+                    && _selectedRequest.AreAllRequiredSignaturesCollected)
                 {
                     var failedOpenChannelRequest = false;
                     try
                     {  
                        //TODO Async notifications when the channel has opened -> event / notifications system
-                        await _channelSpinner.Show();
-
-                        var jobId = BackgroundJobClient.Enqueue<ILightningService>(service => service.OpenChannel(_selectedRequest, _psbt));
+                        var jobId = BackgroundJobClient.Enqueue<ILightningService>(service => 
+                            service.OpenChannel(_selectedRequest));
 
                         _selectedRequest.JobId = jobId;
 
@@ -419,7 +370,6 @@
                         failedOpenChannelRequest = true;
                     }
 
-                    await _channelSpinner.Close(CloseReason.UserClosing);
                     if (failedOpenChannelRequest)
                     {
                         ToastService.ShowError("Error while requesting to open the channel, please contact a superadmin for troubleshooting");
@@ -444,18 +394,14 @@
             }
         
             await FetchRequests();
-            await _channelSpinner.Close(CloseReason.UserClosing);
+            await _psbtSignRef.HideModal();
 
         }
         
       
     }
 
-    private async Task CopyPSBTToClipboard()
-    {
-        await ClipboardService.WriteTextAsync(_templatePSBTString); 
-        ToastService.ShowSuccess("PSBT copied");
-    }
+  
     
     private bool IsStatusCancellable(ChannelOperationRequestStatus status)
     {
@@ -463,62 +409,5 @@
             or ChannelOperationRequestStatus.Approved;
     }
 
-    private void ValidatePSBT(ValidatorEventArgs obj)
-    {
-        var psbtBase64 = (string) obj.Value;
-        //Error by default
-        obj.Status = ValidationStatus.Error;
-        obj.ErrorText = string.Empty;
-
-        if (psbtBase64 != null && PSBT.TryParse(psbtBase64, CurrentNetworkHelper.GetCurrentNetwork(), out var templatePSBT))
-        {
-            if(PSBT.TryParse(psbtBase64,CurrentNetworkHelper.GetCurrentNetwork(), out var parsedPSBT))
-            {
-                var templateInputsOutpoints = templatePSBT.Inputs.Select(x => x.PrevOut).ToList();
-                var parsedPSBTInputsOutpoints = parsedPSBT.Inputs.Select(x => x.PrevOut).ToList();
-
-                //TXID Validation
-                if (parsedPSBT.GetGlobalTransaction().GetHash() != templatePSBT.GetGlobalTransaction().GetHash())
-                {
-                    obj.ErrorText += "Invalid PSBT, the transactions id do not match. ";
-
-                }                
-                //If all the inputs are not signed this is invalid
-                else if (!parsedPSBT.Inputs.All(x => x.PartialSigs.Any())) 
-                {
-                    obj.ErrorText += "Invalid PSBT, please make sure to use SIGHASH_NONE and that every input is signed. ";
-                    obj.Status = ValidationStatus.Error;
-                }
-
-                //Sighash_NONE check
-                else if (parsedPSBT.Inputs.Any(x=> x.SighashType != SigHash.None))
-                {
-                    obj.ErrorText += "Invalid PSBT, please make sure to use SIGHASH_NONE and that every input is signed. ";
-                    obj.Status = ValidationStatus.Error;
-                }
-                //If the inputs outpoints (utxos) are not the same to the template invalidate it
-                else if (templateInputsOutpoints.Union(parsedPSBTInputsOutpoints).Count() != templateInputsOutpoints.Count())
-                {
-                    obj.ErrorText += "Invalid PSBT, the UTXOs do not match ";
-                    obj.Status = ValidationStatus.Error;
-                }
-                else
-                {
-                    //It looks good
-                    _isSignedPSBTInvalid = false;
-                    obj.Status = ValidationStatus.Success;
-                }
-            }else
-            {
-                obj.ErrorText = "Invalid PSBT, it could not be parsed";
-            }
-        }
-        else
-        {
-            obj.ErrorText = "Invalid template PSBT, it could not be parsed";
-        }
-
-       
-    }
-
+   
 }

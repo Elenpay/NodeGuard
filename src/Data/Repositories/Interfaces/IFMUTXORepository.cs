@@ -2,7 +2,7 @@
 
 namespace FundsManager.Data.Repositories.Interfaces;
 
-public interface IUTXORepository
+public interface IFMUTXORepository
 {
     Task<FMUTXO?> GetById(int id);
 
@@ -17,4 +17,11 @@ public interface IUTXORepository
     (bool, string?) RemoveRange(List<FMUTXO> types);
 
     (bool, string?) Update(FMUTXO type);
+
+    /// <summary>
+    /// Gets the current list of UTXOs locked on requests ChannelOperationRequest / WalletWithdrawalRequest by passing its id if wants to remove it from the resulting set
+    /// </summary>
+    /// <returns></returns>
+    Task<List<FMUTXO>> GetLockedUTXOs(int? ignoredWalletWithdrawalRequestId = null,
+        int? ignoredChannelOperationRequestId = null);
 }

@@ -32,6 +32,8 @@ services:
         ALICE_HOST: "host.docker.internal:10001" #used for dev environment
         CAROL_HOST: "host.docker.internal:10003" #used for dev environment
         ENABLE_HW_SUPPORT: "false" # Enables fields and features for using Hardware Wallets
+        MINIMUM_WITHDRAWAL_BTC_AMOUNT: 0.001
+        MONITOR_WITHDRAWALS_CRON: "*/1 * * * *" # Every Minute
     volumes:
         - fundsmanager_data_keys_dir:/root/.aspnet/DataProtection-Keys
 

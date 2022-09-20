@@ -12,16 +12,12 @@ using FundsManager.Services;
 using Hangfire;
 using Hangfire.Dashboard;
 using Hangfire.PostgreSql;
-using Hangfire.Server;
-using Lnrpc;
-using Microsoft.AspNetCore.Authentication.Cookies;
 using Microsoft.AspNetCore.Components.Authorization;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
 using Newtonsoft.Json;
 using Sentry;
 using Sentry.Extensibility;
-using System.Configuration;
 
 namespace FundsManager
 {
@@ -60,7 +56,7 @@ namespace FundsManager
             builder.Services
                 .AddScoped<AuthenticationStateProvider,
                     RevalidatingIdentityAuthenticationStateProvider<ApplicationUser>>();
-            builder.Services.AddScoped<ClipboardService>();
+            builder.Services.AddTransient<ClipboardService>();
             //Repos DI
             builder.Services.AddTransient(typeof(IRepository<>), typeof(Repository<>));
             builder.Services.AddTransient<IApplicationUserRepository, ApplicationUserRepository>();
@@ -72,13 +68,16 @@ namespace FundsManager
             builder.Services.AddTransient<INodeRepository, NodeRepository>();
             builder.Services.AddTransient<IWalletRepository, WalletRepository>();
             builder.Services.AddTransient<IInternalWalletRepository, InternalWalletRepository>();
-            builder.Services.AddTransient<IUTXORepository, UTXORepository>();
+            builder.Services.AddTransient<IFMUTXORepository, FUTXORepository>();
+            builder.Services.AddTransient<IWalletWithdrawalRequestPsbtRepository, WalletWithdrawalRequestPsbtRepository>();
+            builder.Services.AddTransient<IWalletWithdrawalRequestRepository, WalletWithdrawalRequestRepository>();
 
             //BlazoredToast
             builder.Services.AddBlazoredToast();
 
             //Service DI
             builder.Services.AddTransient<ILightningService, LightningService>();
+            builder.Services.AddTransient<IBitcoinService, BitcoinService>();
 
             //DbContext
             var connectionString = Environment.GetEnvironmentVariable("POSTGRES_CONNECTIONSTRING") ??
@@ -96,7 +95,11 @@ namespace FundsManager
                 {
                     options.EnableSensitiveDataLogging();
                     options.EnableDetailedErrors();
-                    options.UseNpgsql(connectionString);
+                    options.UseNpgsql(connectionString, options =>
+                    {
+                        options.UseQuerySplittingBehavior(QuerySplittingBehavior
+                            .SingleQuery); // Slower but integrity is ensured
+                    });
                 }, ServiceLifetime.Transient);
 
             //Blazorise
@@ -171,6 +174,11 @@ namespace FundsManager
                     recurringJobManager.AddOrUpdate<ILightningService>(nameof(LightningService.SweepNodeWalletsJob),
                         x => x.SweepNodeWalletsJob(),
                         Environment.GetEnvironmentVariable("SWEEPNODEWALLETSJOB_CRON"),
+                        TimeZoneInfo.Utc);
+
+                    recurringJobManager.AddOrUpdate<IBitcoinService>(nameof(BitcoinService.MonitorWithdrawals),
+                        x => x.MonitorWithdrawals(),
+                        Environment.GetEnvironmentVariable("MONITOR_WITHDRAWALS_CRON"),
                         TimeZoneInfo.Utc);
                 }
                 catch (Exception ex)

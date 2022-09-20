@@ -46,6 +46,10 @@ namespace FundsManager.Data
 
         public DbSet<ChannelOperationRequestPSBT> ChannelOperationRequestPSBTs { get; set; }
 
+        public DbSet<WalletWithdrawalRequest> WalletWithdrawalRequests { get; set; }
+
+        public DbSet<WalletWithdrawalRequestPSBT> WalletWithdrawalRequestPSBTs { get; set; }
+
         public DbSet<Channel> Channels { get; set; }
 
         public DbSet<InternalWallet> InternalWallets { get; set; }

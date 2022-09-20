@@ -58,7 +58,7 @@ namespace FundsManager.Data.Repositories
 
             return await applicationDbContext.ChannelOperationRequests
                 .Where(request => request.Wallet.Keys.Any(key => key.User != null && key.User.Id == userId) &&
-                                  request.Status == ChannelOperationRequestStatus.Pending &&
+                                  (request.Status == ChannelOperationRequestStatus.Pending || request.Status == ChannelOperationRequestStatus.PSBTSignaturesPending) &&
                                   request.ChannelOperationRequestPsbts.All(signature => signature.UserSignerId != userId))
                 .Include(request => request.SourceNode)
                 .Include(request => request.Wallet).ThenInclude(x => x.InternalWallet)

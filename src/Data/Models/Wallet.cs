@@ -1,6 +1,6 @@
-﻿using FundsManager.Helpers;
+﻿using System.ComponentModel.DataAnnotations.Schema;
+using FundsManager.Helpers;
 using NBitcoin;
-using NBitcoin.Scripting;
 using NBXplorer.DerivationStrategy;
 
 namespace FundsManager.Data.Models
@@ -34,6 +34,8 @@ namespace FundsManager.Data.Models
         public bool IsFinalised { get; set; }
 
         public WalletAddressType WalletAddressType { get; set; }
+
+        [NotMapped] public bool RequiresInternalWalletSigning => Keys != null ? Keys.Count == MofN : false;
 
         #region Relationships
 

@@ -1,6 +1,4 @@
-﻿using Humanizer;
-
-namespace FundsManager.Data.Models
+﻿namespace FundsManager.Data.Models
 {
     public class Key : Entity, IEquatable<Key>
     {

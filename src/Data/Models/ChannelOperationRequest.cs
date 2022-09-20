@@ -19,7 +19,7 @@ namespace FundsManager.Data.Models
         Pending = 4,
 
         /// <summary>
-        /// Approved and waiting for PSBT signatures filling, only for OperationRequestType = Open
+        /// Approved by at least one approver and waiting for PSBT signatures filling
         /// </summary>
         PSBTSignaturesPending = 5,
 
@@ -31,8 +31,12 @@ namespace FundsManager.Data.Models
         /// <summary>
         /// The TX is fully broadcast this means that the channel has been open/closed
         /// </summary>
-        OnChainConfirmed = 7
-        //TODO Failed status
+        OnChainConfirmed = 7,
+
+        /// <summary>
+        /// The process failed in background
+        /// </summary>
+        Failed = 8
     }
 
     public enum OperationRequestType
@@ -63,12 +67,12 @@ namespace FundsManager.Data.Models
         public OperationRequestType RequestType { get; set; }
 
         /// <summary>
-        /// Transaction Id once received from the LightningService 
+        /// Transaction Id once received from the LightningService
         /// </summary>
         public string? TxId { get; set; }
-        
+
         /// <summary>
-        /// Text filled by the user upon request cancellation/rejection 
+        /// Text filled by the user upon request cancellation/rejection
         /// </summary>
         public string? ClosingReason { get; set; }
 
@@ -102,7 +106,7 @@ namespace FundsManager.Data.Models
 
         [NotMapped]
         public int NumberOfSignaturesCollected => ChannelOperationRequestPsbts == null ? 0 : ChannelOperationRequestPsbts.Count(x =>
-                                                                                                                                                                                                                                                                                                                                                                                                            !x.IsFinalisedPSBT && !x.IsTemplatePSBT && !x.IsInternalWalletPSBT);
+                                                                                                                                                                                                                                                                                                                                                                                                                                                            !x.IsFinalisedPSBT && !x.IsTemplatePSBT && !x.IsInternalWalletPSBT);
 
         /// <summary>
         /// This is the JobId provided by Hangfire of the job executing this request.

@@ -4,9 +4,10 @@ FundsManager is a web-app to control, audit and manage the governance of a Light
 
 ## Getting started
 
-1. Open FundsManager.sln with Visual Studio
-2. Set startup project to docker-compose
-3. Run
+1. Run polar regtest network with Polar, import devnetwork.polar.zip (in the root of this repo) and start it
+2. Open FundsManager.sln with Visual Studio
+3. Set startup project to docker-compose
+4. Run
 
 ## Requirements
 
@@ -14,10 +15,8 @@ FundsManager is a web-app to control, audit and manage the governance of a Light
 - Docker desktop
 - Dotnet SDK 6+
 - Dotnet-ef global tool
-- Polar
+-  [Polar Lightning](https://lightningpolar.com/)
 
-## Test network
-- Import network file to Polar from devnetwork.zip (on the root of this repo)
 
 ## Migrations
 

@@ -1,7 +1,4 @@
-﻿using System.Collections.Generic;
-using System.Threading.Tasks;
-
-namespace FundsManager.Data.Repositories.Interfaces
+﻿namespace FundsManager.Data.Repositories.Interfaces
 {
     /// <summary>
     /// Interface of a base Repository implementation

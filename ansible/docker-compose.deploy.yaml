@@ -25,6 +25,10 @@ services:
       SENTRY_DSN:  "{{ SENTRY_DSN }}"
       SENTRY_ENVIRONMENT: "{{ SENTRY_ENVIRONMENT }}"
       SWEEPNODEWALLETSJOB_CRON: "{{ SWEEPNODEWALLETSJOB_CRON }}"
+      ANCHOR_CLOSINGS_MINIMUM_SATS: "{{ ANCHOR_CLOSINGS_MINIMUM_SATS }}" # Check https://github.com/lightningnetwork/lnd/issues/6505#issuecomment-1120364460 to understand, we need 100K+ sats to support anchor channel closings
+      MINIMUM_WITHDRAWAL_BTC_AMOUNT: "{{ MINIMUM_WITHDRAWAL_BTC_AMOUNT }}"
+      TRANSACTION_CONFIRMATION_MINIMUM_BLOCKS: "{{TRANSACTION_CONFIRMATION_MINIMUM_BLOCKS }}"  #Used to mark withdrawals txs as OnChainConfirmed when the confirmations are >= the number here
+      MONITOR_WITHDRAWALS_CRON: "{{MONITOR_WITHDRAWALS_CRON }}" #Monitoring job for withdrawals tx
       ENABLE_HW_SUPPORT: "false" # Enables fields and features for using Hardware Wallets
 
     volumes:

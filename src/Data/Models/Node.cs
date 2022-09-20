@@ -1,6 +1,4 @@
-﻿using System.ComponentModel.DataAnnotations;
-using System.ComponentModel.DataAnnotations.Schema;
-using Humanizer;
+﻿using System.ComponentModel.DataAnnotations.Schema;
 
 namespace FundsManager.Data.Models
 {

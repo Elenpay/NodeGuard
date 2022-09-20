@@ -1,0 +1,143 @@
+﻿@using NBitcoin
+<Modal @ref="_modalRef">
+    <ModalContent Centered>
+        <ModalHeader>
+            <ModalTitle>Sign Operation: @(RequestId?? 0)</ModalTitle>
+            <CloseButton />
+        </ModalHeader>
+        <ModalBody>
+            <Alert Color="Color.Warning" Visible>
+                <AlertMessage>
+                    Please sign the following PSBT with your Software/Hardware wallet
+                    <Button Color="Color.Primary" Clicked="CopyPSBTToClipboard">
+                        <i class="oi oi-clipboard"></i>
+                    </Button>
+                </AlertMessage>
+                <MemoEdit Rows="4" @bind-Text="@TemplatePsbtString" Disabled="true"></MemoEdit>
+            </Alert>
+            <Fields Flex="Flex.JustifyContent.Center">
+                <Field>
+                    <Validation Validator="ValidatePSBT">
+                        <FieldLabel>To sign this operation, please paste here your PSBT in base64 string</FieldLabel>
+                        <MemoEdit Rows="4" @bind-Text="@SignedPSBT">
+                            <ValidationError />
+                        </MemoEdit>
+                    </Validation>
+                </Field>
+            </Fields>
+        </ModalBody>
+        <ModalFooter>
+            <Button Color="Color.Secondary" Clicked="@HideModal">Cancel</Button>
+            <Button Color="Color.Primary" Disabled="_isSignedPSBTInvalid" Clicked="@ApproveRequestDelegate">
+                Approve
+            </Button>
+        </ModalFooter>
+    </ModalContent>
+</Modal>
+
+@code {
+
+    [Inject]
+    public IToastService ToastService { get; set; }
+
+    [Parameter]
+    public int? RequestId { get; set; }
+
+    [Parameter]
+    public string TemplatePsbtString { get; set; }
+
+    [Parameter]
+    public Action ApproveRequestDelegate { get; set; }
+
+    [Parameter] 
+    public  string? SignedPSBT { get; set; }
+
+    [Parameter]
+    public SigHash SigHashMode { get; set; } = SigHash.All;
+
+    private bool _isSignedPSBTInvalid = true;
+    private Modal? _modalRef;
+
+    private async Task CopyPSBTToClipboard()
+    {
+        await ClipboardService.WriteTextAsync(TemplatePsbtString); 
+        ToastService.ShowSuccess("PSBT copied");
+    }
+
+    public async Task ShowModal()
+    {
+        if (_modalRef != null)
+            await _modalRef.Show();
+    }
+
+    public async Task HideModal()
+    {
+        TemplatePsbtString = null;
+        _isSignedPSBTInvalid = true;
+
+        if (_modalRef != null) 
+            await _modalRef.Close(CloseReason.UserClosing);
+    }
+
+    private void ValidatePSBT(ValidatorEventArgs obj)
+    {
+        var psbtBase64 = (string)obj.Value;
+        //Error by default
+        obj.Status = ValidationStatus.Error;
+        obj.ErrorText = string.Empty;
+
+        if (psbtBase64 != null && PSBT.TryParse(psbtBase64, CurrentNetworkHelper.GetCurrentNetwork(), out var templatePSBT))
+        {
+            if (PSBT.TryParse(psbtBase64, CurrentNetworkHelper.GetCurrentNetwork(), out var parsedPSBT))
+            {
+                var templateInputsOutpoints = templatePSBT.Inputs.Select(x => x.PrevOut).ToList();
+                var parsedPSBTInputsOutpoints = parsedPSBT.Inputs.Select(x => x.PrevOut).ToList();
+
+                //TXID Validation
+                if (parsedPSBT.GetGlobalTransaction().GetHash() != templatePSBT.GetGlobalTransaction().GetHash())
+                {
+                    obj.ErrorText += "Invalid PSBT, the transactions id do not match. ";
+
+                }
+                //If all the inputs are not signed this is invalid
+                else if (!parsedPSBT.Inputs.All(x => x.PartialSigs.Any()))
+                {
+                    obj.ErrorText += $"Invalid PSBT, please make sure to use Sighash: {SigHashMode} and that every input is signed. ";
+                    obj.Status = ValidationStatus.Error;
+                }
+
+                //Sighash check
+                else if (!parsedPSBT.Inputs.Any(x => x.PartialSigs.All(y=> y.Value.SigHash == SigHashMode)))
+                {
+                    obj.ErrorText += $"Invalid PSBT, please make sure to use Sighash: {SigHashMode} and that every input is signed. ";
+                    obj.Status = ValidationStatus.Error;
+                }
+                //If the inputs outpoints (utxos) are not the same to the template invalidate it
+                else if (templateInputsOutpoints.Union(parsedPSBTInputsOutpoints).Count() != templateInputsOutpoints.Count())
+                {
+                    obj.ErrorText += "Invalid PSBT, the UTXOs do not match ";
+                    obj.Status = ValidationStatus.Error;
+                }
+                else
+                {
+                    //It looks good
+                    _isSignedPSBTInvalid = false;
+                    obj.Status = ValidationStatus.Success;
+                }
+            }
+            else
+            {
+                obj.ErrorText = "Invalid PSBT, it could not be parsed";
+            }
+        }
+        else
+        {
+            obj.ErrorText = "Invalid template PSBT, it could not be parsed";
+        }
+
+
+    }
+
+    
+
+}

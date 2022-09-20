@@ -1,7 +1,4 @@
-﻿using System;
-using System.ComponentModel.DataAnnotations.Schema;
-using NBitcoin;
-using Newtonsoft.Json;
+﻿using NBitcoin;
 
 namespace FundsManager.Data.Models
 {
