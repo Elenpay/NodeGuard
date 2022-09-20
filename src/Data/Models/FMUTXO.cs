@@ -15,6 +15,8 @@
 
         public List<ChannelOperationRequest> ChannelOperationRequests { get; set; }
 
+        public List<WalletWithdrawalRequest> WalletWithdrawalRequests { get; set; }
+
         #endregion Relationships
 
         public override string ToString()

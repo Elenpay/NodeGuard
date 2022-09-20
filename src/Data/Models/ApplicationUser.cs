@@ -21,6 +21,7 @@ namespace FundsManager.Data.Models
         public ICollection<Key> Keys { get; set; }
         public ICollection<ChannelOperationRequest> ChannelOperationRequests { get; set; }
         public ICollection<Node> Nodes { get; set; }
+        public ICollection<WalletWithdrawalRequest> WalletWithdrawalRequests { get; set; }
 
         #endregion Relationships
     }

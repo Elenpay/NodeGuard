@@ -1,6 +1,6 @@
 ﻿using FundsManager.Data.Models;
 using FundsManager.Data.Repositories.Interfaces;
-using FundsManager.Services;
+using FundsManager.Helpers;
 using Microsoft.EntityFrameworkCore;
 
 namespace FundsManager.Data.Repositories
@@ -142,7 +142,7 @@ namespace FundsManager.Data.Repositories
             selectedWalletToFinalise.IsFinalised = true;
             try
             {
-                var (_, nbxplorerClient) = LightningService.GenerateNetwork(_logger);
+                var (_, nbxplorerClient) = LightningHelper.GenerateNetwork();
 
                 var derivationStrategyBase = selectedWalletToFinalise.GetDerivationStrategy();
                 if (derivationStrategyBase == null)

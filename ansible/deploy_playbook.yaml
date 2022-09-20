@@ -17,7 +17,9 @@
     SENTRY_ENVIRONMENT: PASSED_BY_CLI
     SWEEPNODEWALLETSJOB_CRON: "*/1 * * * *" # Every Minute
     ANCHOR_CLOSINGS_MINIMUM_SATS: 100000 # Check https://github.com/lightningnetwork/lnd/issues/6505#issuecomment-1120364460 to understand, we need 100K to support anchor channel closings
-
+    MINIMUM_WITHDRAWAL_BTC_AMOUNT: 0.001
+    TRANSACTION_CONFIRMATION_MINIMUM_BLOCKS: 6
+    MONITOR_WITHDRAWALS_CRON: "*/1 * * * *" # Every Minute
   hosts: 
    - btcpay-staging
   tasks:

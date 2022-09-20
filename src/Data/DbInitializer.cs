@@ -77,6 +77,7 @@ namespace FundsManager.Data
                 var factory = new DerivationStrategyFactory(nbXplorerNetwork);
                 //Users
                 ApplicationUser? adminUser = null;
+                ApplicationUser? financeUser = null;
                 if (!applicationDbContext.ApplicationUsers.Any())
                 {
                     var adminUsername = "admin";
@@ -142,7 +143,7 @@ namespace FundsManager.Data
                     }
 
                     var financeUsername = "financemanager";
-                    var financeUser =
+                    financeUser =
                         applicationDbContext.ApplicationUsers.FirstOrDefault(x =>
                         x.NormalizedEmail == financeUsername.ToUpper());
 
@@ -316,7 +317,7 @@ namespace FundsManager.Data
                             new Key
                             {
                                 Name = "Key 2",
-                                UserId = adminUser.Id,
+                                UserId =financeUser.Id,
                                 XPUB = wallet2DerivationScheme,
                                 Path = accountKeyPath2.KeyPath.ToString(),
                                 MasterFingerprint = accountKeyPath2.MasterFingerprint.ToString(),
