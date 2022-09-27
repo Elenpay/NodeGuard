@@ -12,7 +12,8 @@
 {
     <Field Flex="Flex.JustifyContent.Between">
         <h3>Requests awaiting my signature</h3>
-        <Button Color="Color.Success" Clicked="() => datagridRef.New()">New</Button>
+        <Button Color="Color.Success" Clicked="async () => await datagridRef.New()">New</Button>
+        @*Recoger el task que crea el datagrid new*@
     </Field>
     <br />
     <DataGrid TItem="ChannelOperationRequest"
@@ -20,11 +21,13 @@
               Data="@_channelRequests"
               CustomFilter="@RequestPendingFilter"
               EditMode="DataGridEditMode.Popup"
-              RowInserted="CreateChannelRequest"
               ShowPager="true"
               ShowPageSizes="true"
               Editable="true"
               Striped="true">
+        <PopupTitleTemplate>
+            <h2>Create Channel Request</h2>
+        </PopupTitleTemplate>
         <ChildContent>
             <DataGridColumn TItem="ChannelOperationRequest" Field="@nameof(ChannelOperationRequest.Id)" Caption="#" Sortable="false" Displayable="true" />
             <DataGridColumn TItem="ChannelOperationRequest" Field="SourceNode.Name" Caption="Source Node" Sortable="false" Displayable="true" PopupFieldColumnSize="ColumnSize.Is12" Editable="true" Validator="ValidationRule.IsSelected">
@@ -125,16 +128,19 @@
                 </DisplayTemplate>
             </DataGridColumn>
             <DataGridCommandColumn TItem="ChannelOperationRequest" Caption="Actions" Displayable="true">
-                <NewCommandTemplate>
-                    <Button Color="Color.Success" Clicked="@context.Clicked">New</Button>
-                </NewCommandTemplate>
                 <EditCommandTemplate>
                     <Button Color="Color.Primary" hidden=@_hideApprove Clicked="@(() => ShowModal(context.Item))">Approve</Button>
                     <Button Color="Color.Danger" Clicked="@(() => OpenModalForRejectOrCancelRequest(context.Item, ChannelOperationRequestStatus.Rejected))">Reject</Button>
                 </EditCommandTemplate>
+                <NewCommandTemplate>
+                    <Button hidden/>
+                </NewCommandTemplate>
                 <DeleteCommandTemplate>
                     <Button Color="Color.Primary" hidden></Button>
                 </DeleteCommandTemplate>
+                <SaveCommandTemplate>
+                    <Button Color="Color.Primary" Clicked="@(async () => await CreateChannelRequest())">Save</Button>
+                </SaveCommandTemplate>
             </DataGridCommandColumn>
         </ChildContent>
         <EmptyTemplate>
@@ -290,6 +296,7 @@
     private int _selectedWalletId;
     private string? _destNodeName;
     private long _amount = 20000L;
+    private Task _popupTask;
 
     private string? mempoolUrl = Environment.GetEnvironmentVariable("MEMPOOL_ENDPOINT");
 
@@ -394,11 +401,8 @@
         }
     }
 
-    private async Task CreateChannelRequest(SavedRowItem<ChannelOperationRequest, Dictionary<string, object>> arg)
+    private async Task CreateChannelRequest()
     {
-        if (arg.Item == null) return;
-        
-
         if (_amount != null && _amount >= 20000 && _selectedWalletId > 0 && LoggedUser != null &&
             _selectedSourceNodeId > 0 && _selectedDestNode != null)
         {
@@ -422,6 +426,7 @@
                 if (createChannelResult.Item1)
                 {
                     ToastService.ShowSuccess("Open channel request created!");
+                    await datagridRef.Edit(null);
                 }
                 else
                 {
@@ -440,6 +445,7 @@
         }
 
         await LoadData();
+        await FetchRequests();
     }
 
     private void NewItemDefaultSetter(ChannelOperationRequest obj)
