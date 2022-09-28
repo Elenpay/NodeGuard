@@ -1,342 +1,628 @@
-﻿<PageTitle>User Management</PageTitle>
-<h3>User and role management</h3>
+﻿@page "/channel-requests"
+@using System.Security.Claims
+@using Blazorise.Extensions
+@using Hangfire
+@using Humanizer
+@using NBitcoin
+@attribute [Authorize(Roles = "FinanceManager, Superadmin, NodeManager")]
 
-<Row>
-    <Column ColumnSize="ColumnSize.Is12">
-        <DataGrid TItem="ApplicationUser"
-                  Data="@_users"
-                  Editable="true"
-                  EditMode="DataGridEditMode.Popup"
-                  Responsive="true"
-                  ResizeMode="TableResizeMode.Columns"
-                  UseInternalEditing="true"
-                  RowInserted="OnRowInserted"
-                  RowRemoving="OnRowRemoving"
-                  RowUpdated="OnRowUpdated"
-                  NewItemDefaultSetter="NewItemDefaultSetter"
-                  ShowPager="true"
-                  ShowPageSizes="true"
-                  PageSize="25"
-                  Filterable="false">
-            <DataGridColumns>
-                <DataGridCommandColumn TItem="ApplicationUser">
-                    <NewCommandTemplate>
-                        <Button Color="Color.Success" Clicked="@context.Clicked">New</Button>
-                    </NewCommandTemplate>
-                    <EditCommandTemplate>
-                        <Button Color="Color.Primary" Clicked="@(()=>OnEditInvoked(context.Item,context.Clicked))">Edit</Button>
-                        <Button Color="Color.Primary" Clicked="@(()=>OnResetLinkClicked(context.Item))">Set password link</Button>
-                        @if (context.Item.IsLocked)
+<PageTitle>Channel Operation Requests</PageTitle>
+
+@if (!_hidePendingRequests)
+{
+    <Field Flex="Flex.JustifyContent.Between">
+        <h3>Requests awaiting my signature</h3>
+        <Button Color="Color.Success" Clicked="async () => await datagridRef.New()">New</Button>
+        @*Recoger el task que crea el datagrid new*@
+    </Field>
+    <br />
+    <DataGrid TItem="ChannelOperationRequest"
+              @ref="datagridRef"
+              Data="@_channelRequests"
+              CustomFilter="@RequestPendingFilter"
+              EditMode="DataGridEditMode.Popup"
+              ShowPager="true"
+              ShowPageSizes="true"
+              Editable="true"
+              Striped="true">
+        <PopupTitleTemplate>
+            <h2>Create Channel Request</h2>
+        </PopupTitleTemplate>
+        <ChildContent>
+            <DataGridColumn TItem="ChannelOperationRequest" Field="@nameof(ChannelOperationRequest.Id)" Caption="#" Sortable="false" Displayable="true" />
+            <DataGridColumn TItem="ChannelOperationRequest" Field="SourceNode.Name" Caption="Source Node" Sortable="false" Displayable="true" PopupFieldColumnSize="ColumnSize.Is12" Editable="true" Validator="ValidationRule.IsSelected">
+                <EditTemplate>
+                    <SelectList TItem="Node"
+                                TValue="int"
+                                Data="@_manageableNodes"
+                                TextField="@((item) => item.Name)"
+                                ValueField="@((item) => item.Id)"
+                                SelectedValueChanged="@OnSelectedSourceNode"
+                                DefaultItemText="Choose the source node" />
+                </EditTemplate>
+            </DataGridColumn>
+            <DataGridColumn TItem="ChannelOperationRequest" Field="DestNode.Name" Caption="Remote Node" Sortable="false" Displayable="true" PopupFieldColumnSize="ColumnSize.Is12" Editable="true"
+                            Validator="ValidationRule.IsAlphanumeric">
+                <EditTemplate>
+                    <Addons>
+                        <Addon AddonType="AddonType.Body">
+                            <TextEdit @bind-Text="@_destNodeName" Placeholder="Type the destination Node public key" />
+                        </Addon>
+                        <Addon AddonType="AddonType.End">
+                            <Button Color="Color.Primary" Clicked="@SearchNode">Search</Button>
+                        </Addon>
+                    </Addons>
+                    <FieldHelp>@(_selectedDestNode==null ? "Node Not found" : $"Found Node: {_selectedDestNode.Name}") </FieldHelp>
+                </EditTemplate>
+            </DataGridColumn>
+            <DataGridColumn TItem="ChannelOperationRequest" Field="Wallet.Name" Caption="Source of Funds" Sortable="false" Displayable="true" PopupFieldColumnSize="ColumnSize.Is12" Editable="true">
+                <DisplayTemplate>
+                    @if (context.Wallet != null)
+                    {
+                        @($"{context.Wallet.Name} ({context.Wallet.MofN}-of-{context.Wallet.Keys.Count})")
+                    }
+                </DisplayTemplate>
+                <EditTemplate>
+                    <Validation Validator="@ValidationRule.IsSelected">
+                        @if (context.CellValue == null || (int)context.CellValue == 0)
                         {
-                            <Button Color="Color.Danger" Clicked="@(()=>OnUnlockUserClicked(context.Item))">Unlock</Button>
-
+                            <SelectList TItem="Wallet"
+                                        TValue="int"
+                                        Data="@_allWallets"
+                                        TextField="@((item) => item.Name)"
+                                        ValueField="@((item) => item.Id)"
+                                        SelectedValueChanged="(id) => OnSelectedWallet(id)"
+                                        DefaultItemText="Choose the wallet">
+                                <Feedback>
+                                    <ValidationError />
+                                </Feedback>
+                            </SelectList>
                         }
                         else
                         {
-                            <Button Color="Color.Danger" Clicked="@(()=>OnLockUserClicked(context.Item))">Lock</Button>
-
+                            <SelectList TItem="Wallet"
+                                        TValue="int"
+                                        Data="@_allWallets"
+                                        TextField="@((item) => item.Name)"
+                                        ValueField="@((item) => item.Id)"
+                                        SelectedValueChanged="(id) => OnSelectedWallet(id)"
+                                        SelectedValue="(int) context.CellValue">
+                                <Feedback>
+                                    <ValidationError />
+                                </Feedback>
+                            </SelectList>
                         }
-
-                    </EditCommandTemplate>
-                    <DeleteCommandTemplate>
-                        @*Button Color="Color.Danger" Clicked="@context.Clicked">Delete</Button>*@
-                    </DeleteCommandTemplate>
-
-                </DataGridCommandColumn>
-
-                <DataGridColumn TItem="ApplicationUser" Editable="true" Field="@nameof(ApplicationUser.UserName)" Caption="Username" Sortable="false" />
-                <DataGridColumn TItem="ApplicationUser" Editable="true"  Caption="Roles" Sortable="false">
-                    <DisplayTemplate>
-                        @{
-                            
-                            <span>@(GetUserRolesString(context))</span>
+                    </Validation>
+                </EditTemplate>
+            </DataGridColumn>
+            <DataGridColumn TItem="ChannelOperationRequest" Field="@nameof(ChannelOperationRequest.Amount)" Caption="Capacity" Sortable="false" Displayable="true" PopupFieldColumnSize="ColumnSize.Is12" Editable="true">
+                <DisplayTemplate>
+                    @{
+                        @($"{context.Amount} BTC")
+                    }
+                </DisplayTemplate>
+                <EditTemplate>
+                    <NumericEdit TValue="long" Min="20000L" @bind-Value="@_amount" />
+                    <FieldHelp>Amount in Satoshis. Minimum 20.000.</FieldHelp>
+                </EditTemplate>
+            </DataGridColumn>
+            <DataGridColumn TItem="ChannelOperationRequest" Field="@nameof(ChannelOperationRequest.WalletId)" Caption="Signatures Collected" Sortable="false" Displayable="true">
+                <DisplayTemplate>
+                    @{
+                        if (context.RequestType == OperationRequestType.Open)
+                        {
+                            var signaturesCollected = context.NumberOfSignaturesCollected + 1;
+                            var signaturesRequired = context.Wallet?.MofN ?? 0;
+                            @($"{signaturesCollected} out of {signaturesRequired}")
                         }
-                        
-                    </DisplayTemplate>
-                    <EditTemplate>
-                        <Select Multiple="true" TValue="ApplicationUserRole" @bind-SelectedValues="_selectedRoles">
-                            
-                            @foreach (var role in availableRoles)
-                            {
-                                <SelectItem Value="role">@role.Humanize()</SelectItem>
-
-                            }
-                        </Select>
-                        
-                    </EditTemplate>
-                </DataGridColumn>
-                <DataGridColumn TItem="ApplicationUser" Editable="true" Field="@nameof(ApplicationUser.Nodes)" Caption="Managed nodes" Sortable="false">
-                    <DisplayTemplate>
-                        @{
-                            <span>@context?.Nodes?.Select(x=> x.Name).Humanize()</span>
+                        else
+                        {
+                            @("N/A")
                         }
-                        
-                    </DisplayTemplate>
-                    
-                    <EditTemplate>
-                        <Select Multiple="true" TValue="int" @bind-SelectedValues="_selectedManagedNodes">
-                            
-                            @foreach (var node in _nodesList)
-                            {
-                                <SelectItem Value="node.Id">@node.Name</SelectItem>
+                    }
+                </DisplayTemplate>
+            </DataGridColumn>
+            <DataGridColumn TItem="ChannelOperationRequest" Field="@nameof(ChannelOperationRequest.Status).Humanize(LetterCasing.Sentence)" Caption="Status" Sortable="false" Displayable="true">
+                <DisplayTemplate>
+                    @context?.Status.Humanize()
+                </DisplayTemplate>
+            </DataGridColumn>
+            <DataGridCommandColumn TItem="ChannelOperationRequest" Caption="Actions" Displayable="true">
+                <EditCommandTemplate>
+                    <Button Color="Color.Primary" hidden=@_hideApprove Clicked="@(() => ShowModal(context.Item))">Approve</Button>
+                    <Button Color="Color.Danger" Clicked="@(() => OpenModalForRejectOrCancelRequest(context.Item, ChannelOperationRequestStatus.Rejected))">Reject</Button>
+                </EditCommandTemplate>
+                <NewCommandTemplate>
+                    <Button hidden/>
+                </NewCommandTemplate>
+                <DeleteCommandTemplate>
+                    <Button Color="Color.Primary" hidden></Button>
+                </DeleteCommandTemplate>
+                <SaveCommandTemplate>
+                    <Button Color="Color.Primary" Clicked="@(async () => await CreateChannelRequest())">Save</Button>
+                </SaveCommandTemplate>
+            </DataGridCommandColumn>
+        </ChildContent>
+        <EmptyTemplate>
+            <div class="box">
+                No records were found.
+            </div>
+        </EmptyTemplate>
+        <LoadingTemplate>
+            <div class="box">
+                <progress class="progress is-small is-primary" max="100"></progress>
+            </div>
+        </LoadingTemplate>
+    </DataGrid>
+}
+<br />
+<br />
+<h3>All Requests</h3>
+<br />
+<DataGrid TItem="ChannelOperationRequest"
+          Data="@_allRequests"
+          Filterable="true"
+          ShowPager="true"
+          ShowPageSizes="true"
+          Striped="true">
+    <ChildContent>
+        <DataGridColumn TItem="ChannelOperationRequest" Field="@nameof(ChannelOperationRequest.Id)" Caption="#" Sortable="false" Displayable="true"/>
+        <DataGridColumn TItem="ChannelOperationRequest" Filterable="false" Caption="Actions" Sortable="false" Displayable="true">
+            <DisplayTemplate>
+                @if (_showCancelButton && IsStatusCancellable(context.Status))
+                {
+                    <Button Color="Color.Secondary" Clicked="@(() => OpenModalForRejectOrCancelRequest(context, ChannelOperationRequestStatus.Cancelled))">Cancel</Button>
+                }
+            </DisplayTemplate>
+        </DataGridColumn> 
+        <DataGridColumn TItem="ChannelOperationRequest" Field="SourceNode.Name" Caption="Source Node" Sortable="false" Displayable="true"/>
+        <DataGridColumn TItem="ChannelOperationRequest" Field="DestNode.Name" Caption="Remote Node" Sortable="false" Displayable="true"/>
+        <DataGridColumn TItem="ChannelOperationRequest" Field="Wallet.Name" Caption="Source of Funds" Sortable="false" Displayable="true"/>
+        <DataGridColumn TItem="ChannelOperationRequest" Field="@nameof(ChannelOperationRequest.Amount)" Caption="Capacity" Sortable="false" Displayable="true">
+            <DisplayTemplate>
+                @{
+                    @($"{context.Amount} BTC")
+                }
+            </DisplayTemplate>
+        </DataGridColumn>
+        <DataGridColumn TItem="ChannelOperationRequest" Field="@nameof(ChannelOperationRequest.WalletId)" Caption="Signatures Collected" Sortable="false" Displayable="true">
+            <DisplayTemplate>
+                @{
+                    if (context.RequestType == OperationRequestType.Open)
+                    {
+                        var signaturesCollected = context.NumberOfSignaturesCollected + 1;
+                        var signaturesRequired = context.Wallet?.MofN ?? 0;
+                        @($"{signaturesCollected} out of {signaturesRequired}")
+                    }
+                    else
+                    {
+                        @("N/A");
+                    }
+                }
+            </DisplayTemplate>
+        </DataGridColumn>
+        <DataGridColumn TItem="ChannelOperationRequest" Field="@nameof(ChannelOperationRequest.Status).Humanize(LetterCasing.Sentence)" Caption="Status" Sortable="false" Displayable="true"/>
+        <DataGridColumn TItem="ChannelOperationRequest" Field="@nameof(ChannelOperationRequest.CreationDatetime)" Caption="Creation Date" Sortable="true">
+            <DisplayTemplate>
+                @context.CreationDatetime.Humanize()
+            </DisplayTemplate>
+        </DataGridColumn>
+        <DataGridColumn TItem="ChannelOperationRequest" Field="@nameof(ChannelOperationRequest.UpdateDatetime)" Caption="Update date" Sortable="true">
+            <DisplayTemplate>
+                @context.UpdateDatetime.Humanize()
+            </DisplayTemplate>
+        </DataGridColumn>
+        <DataGridColumn TItem="ChannelOperationRequest" Field="@nameof(ChannelOperationRequest.TxId)" Caption="Links" Sortable="false" Displayable="true">
+            <DisplayTemplate>
+                @if (mempoolUrl != null && !context.TxId.IsNullOrEmpty())
+                {
+                    <a href="@(mempoolUrl + "/tx/" + context.TxId)" target="_blank">See in Mempool</a>
+                }
+            </DisplayTemplate>
+        </DataGridColumn>
+    </ChildContent>
+    <EmptyTemplate>
+        <div class="box">
+            No records were found.
+        </div>
+    </EmptyTemplate>
+    <LoadingTemplate>
+        <div class="box">
+            <progress class="progress is-small is-primary" max="100"></progress>
+        </div>
+    </LoadingTemplate>
+</DataGrid>
+<PSBTSign @ref="_psbtSignRef" ApproveRequestDelegate="async ()=> await ApproveRequest()"  SigHashMode="SigHash.None"RequestId="_selectedRequest?.Id" TemplatePsbtString="@_templatePSBTString" SignedPSBT="@_psbt"></PSBTSign>
+<Modal @bind-Visible="@_rejectCancelModalVisible">
 
-                            }
-                        </Select>
-                        
-                    </EditTemplate>
-                </DataGridColumn>
-            
-            </DataGridColumns>
-           
-        </DataGrid>
-    </Column>
-</Row>
+    <ModalContent Centered>
+        <ModalHeader>
+            <ModalTitle>@_selectedStatusActionString operation: @_selectedRequest?.Id</ModalTitle>
+            <CloseButton/>
+        </ModalHeader>
+        <ModalBody>
+            <Fields Flex="Flex.JustifyContent.Center">
+                <Field>
+                    <Validation @ref="_reasonValidation" Validator="@(_selectedStatus == ChannelOperationRequestStatus.Rejected ? ValidationRule.IsNotEmpty : ValidationRule.None)">
+                        <FieldLabel>Please type a reason before performing this operation</FieldLabel>
+                        <MemoEdit Rows="4" @bind-Text="@_cancelOrRejectReason">
+                            <ValidationError/>
+                        </MemoEdit>
+                    </Validation>
+                </Field>
+            </Fields>
+        </ModalBody>
+        <ModalFooter>
+            <Button Color="Color.Secondary" Clicked="@HideRejectOrCancelModal">Cancel</Button>
+            <Button Disabled="@(_reasonValidation?.Validate() == ValidationStatus.Error)" Color="Color.Primary" Clicked="@RejectOrCancelRequest">
+                Submit
+            </Button>
+        </ModalFooter>
+    </ModalContent>
+</Modal>
 
-@page "/users"
-@using System.Security.Claims
-@using Humanizer
-@using Microsoft.AspNetCore.Identity
-@inject IApplicationUserRepository ApplicationUserRepository
-@inject UserManager<ApplicationUser> UserManager
+@inject IChannelOperationRequestRepository ChannelOperationRequestRepository
+@inject IChannelOperationRequestPSBTRepository ChannelOperationRequestPsbtRepository
 @inject IToastService ToastService
+@inject ILightningService LightningService
+@inject IBackgroundJobClient  BackgroundJobClient
+@inject IWalletRepository WalletRepository
 @inject INodeRepository NodeRepository
-@inject IDbContextFactory<ApplicationDbContext> DbContextFactory
-@attribute [Authorize(Roles = "Superadmin")]
+
 @code {
-    private List<ApplicationUser> _users = new();
-    
+    private List<ChannelOperationRequest>? _channelRequests;
+    private List<ChannelOperationRequest>? _allRequests;
+    private ChannelOperationRequest? _selectedRequest;
+    private ChannelOperationRequestStatus _selectedStatus;
+    private bool _hideApprove;
+    private bool _showRejectButton;
+    private bool _showCancelButton;
+    private bool _hidePendingRequests;
+    private bool _modalVisible;
+    private bool _rejectCancelModalVisible;
+    private string? _psbt;
+    private string? _templatePSBTString;
+    private string? _cancelOrRejectReason;
+    private string? _selectedStatusActionString;
+    private bool _isSignedPSBTInvalid = true;
+    private Validation? _reasonValidation;
+
+    // New Request integration
+    private List<Wallet> _allWallets = new List<Wallet>();
+    protected DataGrid<ChannelOperationRequest> datagridRef;
+    private List<Node>? _manageableNodes;
+    private int _selectedSourceNodeId;
+    private Node? _selectedDestNode;
+    private int _selectedWalletId;
+    private string? _destNodeName;
+    private long _amount = 20000L;
+    private Task _popupTask;
+
+    private string? mempoolUrl = Environment.GetEnvironmentVariable("MEMPOOL_ENDPOINT");
+
+    private PSBTSign? _psbtSignRef;
+
     [CascadingParameter]
     private ApplicationUser? LoggedUser { get; set; }
 
     [CascadingParameter]
-    private ClaimsPrincipal? ClaimsPrincipal { get; set; }
-
-    private IReadOnlyList<ApplicationUserRole> _selectedRoles = new List<ApplicationUserRole> {};
-    
-    private List<ApplicationUserRole> availableRoles = Enum.GetValues(typeof(ApplicationUserRole)).Cast<ApplicationUserRole>().ToList();
-
-    private List<Node> _nodesList = new();
-
-    private IReadOnlyList<int> _selectedManagedNodes = new List<int> {};
-
+    private ClaimsPrincipal? ClaimsPrincipal {get; set; }
 
     protected override async Task OnInitializedAsync()
     {
         if (LoggedUser != null)
         {
-            await GetData();
-        }
-
-
-    }
-
-    private async Task GetData()
-    {
-
-        _users = await ApplicationUserRepository.GetAll(true);
-
-        _nodesList = await NodeRepository.GetAllManagedByFundsManager();
-
-    }
-
-    private async Task OnRowInserted(SavedRowItem<ApplicationUser, Dictionary<string, object>> arg)
-    {
-        if (arg.Item == null) return;
-
-        if (!_selectedRoles.Any())
-        {
-            ToastService.ShowError("Please select at least one role for the user.");
-            _users.Remove(arg.Item);
-            return;
-        }
-
-        var addResult = await ApplicationUserRepository.AddAsync(arg.Item);
-
-        if (addResult.Item1)
-        {
-            //Nodes
-            arg.Item.Nodes = new List<Node>();
-            foreach (var selectedManagedNode in _selectedManagedNodes)
+            await FetchRequests();
+            await LoadData();
+            if (ClaimsPrincipal != null && !ClaimsPrincipal.IsInRole(ApplicationUserRole.FinanceManager.ToString()))
             {
-                var node= await NodeRepository.GetById(selectedManagedNode);
-                node = Mapper.Map<Node, Node>(node);
-                arg.Item.Nodes.Add(node);
-            }
-
-
-            var updateResult = ApplicationUserRepository.Update(arg.Item);
-        
-            //Roles
-            var updateUserRoles = await ApplicationUserRepository.UpdateUserRoles(_selectedRoles,arg.Item);
-            if (updateResult.Item1 && updateUserRoles.Item1)
-            {
-                ToastService.ShowSuccess("Success");
-                await GetData();
+                _hideApprove = true;
+                _showCancelButton = true;
+                _hidePendingRequests = true;
             }
             else
             {
-                ToastService.ShowError("Something went wrong");
-                _users.Remove(arg.Item);
-
+                _showRejectButton = true;
             }
-
-        }
-     
-        else
-        {
-            ToastService.ShowError("Something went wrong");
-            _users.Remove(arg.Item);
-
         }
     }
 
-    private async Task OnRowRemoving(CancellableRowChange<ApplicationUser> arg)
+
+    private async Task FetchRequests()
     {
-        if (arg.Item != null)
+        if (LoggedUser != null)
         {
+            _allRequests = await ChannelOperationRequestRepository.GetAll();
 
-            var (result, message) = ApplicationUserRepository.Remove(arg.Item);
+            if (ClaimsPrincipal != null && ClaimsPrincipal.IsInRole(ApplicationUserRole.FinanceManager.ToString()))
+            {
+                _channelRequests = await ChannelOperationRequestRepository.GetUnsignedPendingRequestsByUser(LoggedUser.Id);
+                _allRequests = _allRequests.Except(_channelRequests).ToList();
+            }
+        }
+    }
 
-            if (!result)
+    #region New Request Integration
+
+    private async Task LoadData()
+    {
+        if (LoggedUser != null)
+        {
+            _manageableNodes = await NodeRepository.GetAllManagedByUser(LoggedUser.Id);
+            _allWallets = await WalletRepository.GetAvailableWallets();
+        }
+    }
+
+    private void OnSelectedSourceNode(int nodeId)
+    {
+        _selectedSourceNodeId = nodeId;
+
+    }
+
+    private void OnSelectedWallet(int walletId)
+    {
+
+        _selectedWalletId = walletId;
+    }
+
+    private async Task SearchNode()
+    {
+        _selectedDestNode = null;
+        if (!string.IsNullOrWhiteSpace(_destNodeName))
+        {
+            var foundNode = await LightningService.GetNodeInfo(_destNodeName);
+            if (foundNode != null)
             {
 
-                arg.Cancel = true;
-                ToastService.ShowError("Something went wrong");
+                _selectedDestNode = (await NodeRepository.GetByPubkey(_destNodeName));
+
+                //if not found we create it..
+                if (_selectedDestNode == null)
+                {
+                    _selectedDestNode = new Node
+                    {
+                        Name = foundNode.Alias,
+                        PubKey = _destNodeName,
+
+                    };
+
+                    var nodeAddResult = await NodeRepository.AddAsync(_selectedDestNode);
+
+                    if (nodeAddResult.Item1)
+                    {
+                        _selectedDestNode = await NodeRepository.GetByPubkey(_selectedDestNode.PubKey);
+                    }
+                }
+
+                // Refresh the list of available source nodes and take out the one selected
+                _manageableNodes = await NodeRepository.GetAllManagedByUser(LoggedUser?.Id!);
+                _manageableNodes = _manageableNodes.Where(node => node.Id != _selectedDestNode.Id).ToList();
+            }
+        }
+    }
+
+    private async Task CreateChannelRequest()
+    {
+        if (_amount != null && _amount >= 20000 && _selectedWalletId > 0 && LoggedUser != null &&
+            _selectedSourceNodeId > 0 && _selectedDestNode != null)
+        {
+            if (_selectedDestNode.Id != _selectedSourceNodeId)
+            {
+                ChannelOperationRequest request = new()
+                {
+                    SatsAmount = _amount,
+                    RequestType = OperationRequestType.Open,
+                    Description = "Created by user via Funds Manager",
+                    WalletId = _selectedWalletId,
+                    Status = ChannelOperationRequestStatus.Pending, //TODO Reject and cancel
+                    UserId = LoggedUser.Id,
+                    SourceNodeId = _selectedSourceNodeId,
+                    DestNodeId = _selectedDestNode.Id,
+                    CreationDatetime = DateTimeOffset.Now,
+                    UpdateDatetime = DateTimeOffset.Now
+                };
+
+                var createChannelResult = await ChannelOperationRequestRepository.AddAsync(request);
+                if (createChannelResult.Item1)
+                {
+                    ToastService.ShowSuccess("Open channel request created!");
+                    await datagridRef.Edit(null);
+                }
+                else
+                {
+                    ToastService.ShowError(createChannelResult.Item2);
+                }
+
             }
             else
             {
-                ToastService.ShowSuccess("Success");
-                await GetData();
+                ToastService.ShowError("The Source Node cannot be the same as the Destitation Node");
             }
-        }
-    }
-
-    private async Task OnRowUpdated(SavedRowItem<ApplicationUser, Dictionary<string, object>> arg)
-    {
-        if (arg.Item == null) return;
-        //nodes
-
-        var clearResult = await ApplicationUserRepository.ClearNodes(arg.Item);
-
-        foreach (var selectedManagedNode in _selectedManagedNodes)
-        {
-            var node= await NodeRepository.GetById(selectedManagedNode);
-
-            node = Mapper.Map<Node, Node>(node);
-            
-            arg.Item.Nodes.Add(node);
-        }
-
-
-        var updateResult2 = ApplicationUserRepository.Update(arg.Item);
-        
-        //Roles
-        var updateUserRoles = await ApplicationUserRepository.UpdateUserRoles(_selectedRoles,arg.Item);
-
-        if (updateResult2.Item1 && clearResult.Item1 && updateUserRoles.Item1)
-        {
-            ToastService.ShowSuccess("Success");
-        }
-        else
-        {
-            ToastService.ShowError("Something went wrong");
-        }
-
-        await GetData();
-    }
-
-    private void NewItemDefaultSetter(ApplicationUser obj)
-    {
-        obj.EmailConfirmed = true;
-        _selectedRoles = new List<ApplicationUserRole>();
-        _selectedManagedNodes = new List<int>();
-    }
-
-
-    private string GetUserRolesString(ApplicationUser context)
-    {
-        var result = string.Empty;
-        if (context != null)
-        {
-            result  = ApplicationUserRepository.GetUserRoles(context).Humanize();
-        }
-
-        return result;
-    }
-
-
-    private async Task OnEditInvoked(ApplicationUser user, EventCallback contextClicked)
-    {
-        var userRoles = ApplicationUserRepository.GetUserRoles(user) ;
-        _selectedRoles = userRoles;
-
-        _selectedManagedNodes = new List<int>(user.Nodes.Select(x => x.Id));
-
-        await contextClicked.InvokeAsync();
-    }
-    
-    private async Task CopyStrToClipboard(string arg)
-    {
-        await ClipboardService.WriteTextAsync(arg); 
-        ToastService.ShowSuccess("Text copied");
-    }
-
-    private async Task OnResetLinkClicked(ApplicationUser contextItem)
-    {
-        var link = await ApplicationUserRepository.GetUserPasswordMagicLink(contextItem);
-
-        if (link != null)
-        {
-            await ClipboardService.WriteTextAsync(link); 
-            ToastService.ShowSuccess("Text copied");
         }
         else
         {
-            ToastService.ShowError("Something went wrong");
-
+            ToastService.ShowError("Some fields were not properly filled");
         }
-       
+
+        await LoadData();
+        await FetchRequests();
     }
 
-    private async Task OnUnlockUserClicked(ApplicationUser contextItem)
+    private void NewItemDefaultSetter(ChannelOperationRequest obj)
     {
-        if (contextItem != null)
+        if (LoggedUser != null)
         {
-          var lockResult= await
-            ApplicationUserRepository.UnlockUser(contextItem);
-
-            if (lockResult.Item1)
-            {
-                ToastService.ShowSuccess("User unlocked");
-            }
-            else
-            {
-                ToastService.ShowError("Something went wrong");
-
-            }
-
-            await GetData();
+            obj.RequestType = OperationRequestType.Open;
+            obj.Description = "Created by user via Funds Manager";
+            obj.Status = ChannelOperationRequestStatus.Pending;
+            obj.UserId = LoggedUser.Id;
+            obj.CreationDatetime = DateTimeOffset.Now;
+            obj.UpdateDatetime = DateTimeOffset.Now;
         }
     }
 
-    private async Task OnLockUserClicked(ApplicationUser contextItem)
-    {
-        if (contextItem != null)
-        {
-            var lockResult= await
-                ApplicationUserRepository.LockUser(contextItem);
+    #endregion
 
-            if (lockResult.Item1)
+
+    private static bool RequestPendingFilter(ChannelOperationRequest req)
+    {
+        return req.Status.Equals(ChannelOperationRequestStatus.Pending) || req.Status == ChannelOperationRequestStatus.PSBTSignaturesPending;
+    }
+
+    private void OpenModalForRejectOrCancelRequest(ChannelOperationRequest req, ChannelOperationRequestStatus status)
+    {
+        _selectedRequest = req;
+        _selectedStatus = status;
+        _rejectCancelModalVisible = true;
+        switch(_selectedStatus)
+        {
+            case ChannelOperationRequestStatus.Rejected: _selectedStatusActionString = "Reject"; break;
+            case ChannelOperationRequestStatus.Cancelled: _selectedStatusActionString = "Cancel"; break;
+        }
+    }
+
+    private async Task RejectOrCancelRequest()
+    {
+        if (_selectedRequest != null)
+        {
+            _selectedRequest.ClosingReason = _cancelOrRejectReason;
+            _selectedRequest.Status = _selectedStatus;
+            var jobUpdateResult = ChannelOperationRequestRepository.Update(_selectedRequest);
+            if (!jobUpdateResult.Item1)
             {
-                ToastService.ShowSuccess("User locked out");
+                ToastService.ShowError("There has been an error when updating the request");
             }
             else
             {
-                ToastService.ShowError("Something went wrong");
+                ToastService.ShowSuccess("Request " + _selectedStatus);
+                await FetchRequests();
+            }
+        }
+        else
+        {
+            ToastService.ShowError("Couldn't fetch data from the request");
+        }
+        _rejectCancelModalVisible = false;
+    }
+
+    private async Task ShowModal(ChannelOperationRequest channelOperationRequest)
+    {
+        _selectedRequest = channelOperationRequest;
+        _psbt = string.Empty;
+        if (_selectedRequest != null && !_selectedRequest.AreAllRequiredSignaturesCollected) {
+            var (templatePsbt,noUtxosAvailable) = (await LightningService.GenerateTemplatePSBT(_selectedRequest));
+            if (templatePsbt != null)
+            {
+                _templatePSBTString = templatePsbt.ToBase64();
+                await _psbtSignRef.ShowModal();
+
+            }
+            else
+            {
+                if (noUtxosAvailable)
+                {
+                    ToastService.ShowError("No UTXOs found for this wallet, please wait for other requests to be confirmed or fund the wallet with more UTXOs");
+
+                }
+                else
+                {
+                    ToastService.ShowError("Something went wrong");
+
+                }
+            }
+
+        }
+    }
+
+    private void HideRejectOrCancelModal()
+    {
+        _rejectCancelModalVisible = false;
+        _cancelOrRejectReason = null;
+
+    }
+
+
+    private async Task ApproveRequest()
+    {
+        _psbtSignRef?.HideModal();
+
+        if (_selectedRequest == null || string.IsNullOrEmpty(_psbtSignRef.SignedPSBT) || LoggedUser == null)
+        {
+            ToastService.ShowError("Error: Not all fields were set");
+        }
+        else {
+            ChannelOperationRequestPSBT channelOperationRequestPsbt = new()
+            {
+                ChannelOperationRequestId = _selectedRequest.Id,
+                PSBT = _psbtSignRef.SignedPSBT,
+                UserSignerId = LoggedUser.Id,
+
+            };
+            var addResult = await ChannelOperationRequestPsbtRepository.AddAsync(channelOperationRequestPsbt);
+
+            if (addResult.Item1)
+            {
+                ToastService.ShowSuccess("Signature collected");
+
+                _selectedRequest = await ChannelOperationRequestRepository.GetById(_selectedRequest.Id);
+
+                if (_selectedRequest != null
+                    && _selectedRequest.AreAllRequiredSignaturesCollected)
+                {
+                    var failedOpenChannelRequest = false;
+                    try
+                    {
+                        //TODO Async notifications when the channel has opened -> event / notifications system
+                        var jobId = BackgroundJobClient.Enqueue<ILightningService>(service =>
+                            service.OpenChannel(_selectedRequest));
+
+                        _selectedRequest.JobId = jobId;
+
+                        var jobUpdateResult = ChannelOperationRequestRepository.Update(_selectedRequest);
+                    }
+                    catch
+                    {
+                        failedOpenChannelRequest = true;
+                    }
+
+                    if (failedOpenChannelRequest)
+                    {
+                        ToastService.ShowError("Error while requesting to open the channel, please contact a superadmin for troubleshooting");
+
+                    }
+                    else
+                    {
+                        ToastService.ShowSuccess("Channel opening job created");
+                    }
+
+                }
+                else
+                {
+                    ToastService.ShowError("Invalid PSBT");
+
+                }
+            }
+            else
+            {
+                ToastService.ShowSuccess("Error while saving the signature");
 
             }
 
-            await GetData();
-        }    }
+            await FetchRequests();
+            await _psbtSignRef.HideModal();
+
+        }
+
+
+    }
+
+
+
+    private bool IsStatusCancellable(ChannelOperationRequestStatus status)
+    {
+        return status is ChannelOperationRequestStatus.Pending
+            or ChannelOperationRequestStatus.Approved;
+    }
+
 
 }
