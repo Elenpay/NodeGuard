@@ -1,0 +1,342 @@
+﻿<PageTitle>User Management</PageTitle>
+<h3>User and role management</h3>
+
+<Row>
+    <Column ColumnSize="ColumnSize.Is12">
+        <DataGrid TItem="ApplicationUser"
+                  Data="@_users"
+                  Editable="true"
+                  EditMode="DataGridEditMode.Popup"
+                  Responsive="true"
+                  ResizeMode="TableResizeMode.Columns"
+                  UseInternalEditing="true"
+                  RowInserted="OnRowInserted"
+                  RowRemoving="OnRowRemoving"
+                  RowUpdated="OnRowUpdated"
+                  NewItemDefaultSetter="NewItemDefaultSetter"
+                  ShowPager="true"
+                  ShowPageSizes="true"
+                  PageSize="25"
+                  Filterable="false">
+            <DataGridColumns>
+                <DataGridCommandColumn TItem="ApplicationUser">
+                    <NewCommandTemplate>
+                        <Button Color="Color.Success" Clicked="@context.Clicked">New</Button>
+                    </NewCommandTemplate>
+                    <EditCommandTemplate>
+                        <Button Color="Color.Primary" Clicked="@(()=>OnEditInvoked(context.Item,context.Clicked))">Edit</Button>
+                        <Button Color="Color.Primary" Clicked="@(()=>OnResetLinkClicked(context.Item))">Set password link</Button>
+                        @if (context.Item.IsLocked)
+                        {
+                            <Button Color="Color.Danger" Clicked="@(()=>OnUnlockUserClicked(context.Item))">Unlock</Button>
+
+                        }
+                        else
+                        {
+                            <Button Color="Color.Danger" Clicked="@(()=>OnLockUserClicked(context.Item))">Lock</Button>
+
+                        }
+
+                    </EditCommandTemplate>
+                    <DeleteCommandTemplate>
+                        @*Button Color="Color.Danger" Clicked="@context.Clicked">Delete</Button>*@
+                    </DeleteCommandTemplate>
+
+                </DataGridCommandColumn>
+
+                <DataGridColumn TItem="ApplicationUser" Editable="true" Field="@nameof(ApplicationUser.UserName)" Caption="Username" Sortable="false" />
+                <DataGridColumn TItem="ApplicationUser" Editable="true"  Caption="Roles" Sortable="false">
+                    <DisplayTemplate>
+                        @{
+                            
+                            <span>@(GetUserRolesString(context))</span>
+                        }
+                        
+                    </DisplayTemplate>
+                    <EditTemplate>
+                        <Select Multiple="true" TValue="ApplicationUserRole" @bind-SelectedValues="_selectedRoles">
+                            
+                            @foreach (var role in availableRoles)
+                            {
+                                <SelectItem Value="role">@role.Humanize()</SelectItem>
+
+                            }
+                        </Select>
+                        
+                    </EditTemplate>
+                </DataGridColumn>
+                <DataGridColumn TItem="ApplicationUser" Editable="true" Field="@nameof(ApplicationUser.Nodes)" Caption="Managed nodes" Sortable="false">
+                    <DisplayTemplate>
+                        @{
+                            <span>@context?.Nodes?.Select(x=> x.Name).Humanize()</span>
+                        }
+                        
+                    </DisplayTemplate>
+                    
+                    <EditTemplate>
+                        <Select Multiple="true" TValue="int" @bind-SelectedValues="_selectedManagedNodes">
+                            
+                            @foreach (var node in _nodesList)
+                            {
+                                <SelectItem Value="node.Id">@node.Name</SelectItem>
+
+                            }
+                        </Select>
+                        
+                    </EditTemplate>
+                </DataGridColumn>
+            
+            </DataGridColumns>
+           
+        </DataGrid>
+    </Column>
+</Row>
+
+@page "/users"
+@using System.Security.Claims
+@using Humanizer
+@using Microsoft.AspNetCore.Identity
+@inject IApplicationUserRepository ApplicationUserRepository
+@inject UserManager<ApplicationUser> UserManager
+@inject IToastService ToastService
+@inject INodeRepository NodeRepository
+@inject IDbContextFactory<ApplicationDbContext> DbContextFactory
+@attribute [Authorize(Roles = "Superadmin")]
+@code {
+    private List<ApplicationUser> _users = new();
+    
+    [CascadingParameter]
+    private ApplicationUser? LoggedUser { get; set; }
+
+    [CascadingParameter]
+    private ClaimsPrincipal? ClaimsPrincipal { get; set; }
+
+    private IReadOnlyList<ApplicationUserRole> _selectedRoles = new List<ApplicationUserRole> {};
+    
+    private List<ApplicationUserRole> availableRoles = Enum.GetValues(typeof(ApplicationUserRole)).Cast<ApplicationUserRole>().ToList();
+
+    private List<Node> _nodesList = new();
+
+    private IReadOnlyList<int> _selectedManagedNodes = new List<int> {};
+
+
+    protected override async Task OnInitializedAsync()
+    {
+        if (LoggedUser != null)
+        {
+            await GetData();
+        }
+
+
+    }
+
+    private async Task GetData()
+    {
+
+        _users = await ApplicationUserRepository.GetAll(true);
+
+        _nodesList = await NodeRepository.GetAllManagedByFundsManager();
+
+    }
+
+    private async Task OnRowInserted(SavedRowItem<ApplicationUser, Dictionary<string, object>> arg)
+    {
+        if (arg.Item == null) return;
+
+        if (!_selectedRoles.Any())
+        {
+            ToastService.ShowError("Please select at least one role for the user.");
+            _users.Remove(arg.Item);
+            return;
+        }
+
+        var addResult = await ApplicationUserRepository.AddAsync(arg.Item);
+
+        if (addResult.Item1)
+        {
+            //Nodes
+            arg.Item.Nodes = new List<Node>();
+            foreach (var selectedManagedNode in _selectedManagedNodes)
+            {
+                var node= await NodeRepository.GetById(selectedManagedNode);
+                node = Mapper.Map<Node, Node>(node);
+                arg.Item.Nodes.Add(node);
+            }
+
+
+            var updateResult = ApplicationUserRepository.Update(arg.Item);
+        
+            //Roles
+            var updateUserRoles = await ApplicationUserRepository.UpdateUserRoles(_selectedRoles,arg.Item);
+            if (updateResult.Item1 && updateUserRoles.Item1)
+            {
+                ToastService.ShowSuccess("Success");
+                await GetData();
+            }
+            else
+            {
+                ToastService.ShowError("Something went wrong");
+                _users.Remove(arg.Item);
+
+            }
+
+        }
+     
+        else
+        {
+            ToastService.ShowError("Something went wrong");
+            _users.Remove(arg.Item);
+
+        }
+    }
+
+    private async Task OnRowRemoving(CancellableRowChange<ApplicationUser> arg)
+    {
+        if (arg.Item != null)
+        {
+
+            var (result, message) = ApplicationUserRepository.Remove(arg.Item);
+
+            if (!result)
+            {
+
+                arg.Cancel = true;
+                ToastService.ShowError("Something went wrong");
+            }
+            else
+            {
+                ToastService.ShowSuccess("Success");
+                await GetData();
+            }
+        }
+    }
+
+    private async Task OnRowUpdated(SavedRowItem<ApplicationUser, Dictionary<string, object>> arg)
+    {
+        if (arg.Item == null) return;
+        //nodes
+
+        var clearResult = await ApplicationUserRepository.ClearNodes(arg.Item);
+
+        foreach (var selectedManagedNode in _selectedManagedNodes)
+        {
+            var node= await NodeRepository.GetById(selectedManagedNode);
+
+            node = Mapper.Map<Node, Node>(node);
+            
+            arg.Item.Nodes.Add(node);
+        }
+
+
+        var updateResult2 = ApplicationUserRepository.Update(arg.Item);
+        
+        //Roles
+        var updateUserRoles = await ApplicationUserRepository.UpdateUserRoles(_selectedRoles,arg.Item);
+
+        if (updateResult2.Item1 && clearResult.Item1 && updateUserRoles.Item1)
+        {
+            ToastService.ShowSuccess("Success");
+        }
+        else
+        {
+            ToastService.ShowError("Something went wrong");
+        }
+
+        await GetData();
+    }
+
+    private void NewItemDefaultSetter(ApplicationUser obj)
+    {
+        obj.EmailConfirmed = true;
+        _selectedRoles = new List<ApplicationUserRole>();
+        _selectedManagedNodes = new List<int>();
+    }
+
+
+    private string GetUserRolesString(ApplicationUser context)
+    {
+        var result = string.Empty;
+        if (context != null)
+        {
+            result  = ApplicationUserRepository.GetUserRoles(context).Humanize();
+        }
+
+        return result;
+    }
+
+
+    private async Task OnEditInvoked(ApplicationUser user, EventCallback contextClicked)
+    {
+        var userRoles = ApplicationUserRepository.GetUserRoles(user) ;
+        _selectedRoles = userRoles;
+
+        _selectedManagedNodes = new List<int>(user.Nodes.Select(x => x.Id));
+
+        await contextClicked.InvokeAsync();
+    }
+    
+    private async Task CopyStrToClipboard(string arg)
+    {
+        await ClipboardService.WriteTextAsync(arg); 
+        ToastService.ShowSuccess("Text copied");
+    }
+
+    private async Task OnResetLinkClicked(ApplicationUser contextItem)
+    {
+        var link = await ApplicationUserRepository.GetUserPasswordMagicLink(contextItem);
+
+        if (link != null)
+        {
+            await ClipboardService.WriteTextAsync(link); 
+            ToastService.ShowSuccess("Text copied");
+        }
+        else
+        {
+            ToastService.ShowError("Something went wrong");
+
+        }
+       
+    }
+
+    private async Task OnUnlockUserClicked(ApplicationUser contextItem)
+    {
+        if (contextItem != null)
+        {
+          var lockResult= await
+            ApplicationUserRepository.UnlockUser(contextItem);
+
+            if (lockResult.Item1)
+            {
+                ToastService.ShowSuccess("User unlocked");
+            }
+            else
+            {
+                ToastService.ShowError("Something went wrong");
+
+            }
+
+            await GetData();
+        }
+    }
+
+    private async Task OnLockUserClicked(ApplicationUser contextItem)
+    {
+        if (contextItem != null)
+        {
+            var lockResult= await
+                ApplicationUserRepository.LockUser(contextItem);
+
+            if (lockResult.Item1)
+            {
+                ToastService.ShowSuccess("User locked out");
+            }
+            else
+            {
+                ToastService.ShowError("Something went wrong");
+
+            }
+
+            await GetData();
+        }    }
+
+}
