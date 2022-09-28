@@ -13,7 +13,6 @@
     <Field Flex="Flex.JustifyContent.Between">
         <h3>Requests awaiting my signature</h3>
         <Button Color="Color.Success" Clicked="async () => await datagridRef.New()">New</Button>
-        @*Recoger el task que crea el datagrid new*@
     </Field>
     <br />
     <DataGrid TItem="ChannelOperationRequest"
@@ -181,7 +180,7 @@
         <DataGridColumn TItem="ChannelOperationRequest" Field="@nameof(ChannelOperationRequest.Amount)" Caption="Capacity" Sortable="false" Displayable="true">
             <DisplayTemplate>
                 @{
-                    @($"{context.Amount} BTC")
+                    @($"{new Money(_amount, MoneyUnit.Satoshi).ToDecimal(MoneyUnit.BTC)} BTC")
                 }
             </DisplayTemplate>
         </DataGridColumn>
