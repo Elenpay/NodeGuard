@@ -402,7 +402,7 @@
 
     private async Task CreateChannelRequest()
     {
-        if (_amount != null && _amount >= 20000 && _selectedWalletId > 0 && LoggedUser != null &&
+        if (_amount >= 20000 && _selectedWalletId > 0 && LoggedUser != null &&
             _selectedSourceNodeId > 0 && _selectedDestNode != null)
         {
             if (_selectedDestNode.Id != _selectedSourceNodeId)
@@ -445,19 +445,6 @@
 
         await LoadData();
         await FetchRequests();
-    }
-
-    private void NewItemDefaultSetter(ChannelOperationRequest obj)
-    {
-        if (LoggedUser != null)
-        {
-            obj.RequestType = OperationRequestType.Open;
-            obj.Description = "Created by user via Funds Manager";
-            obj.Status = ChannelOperationRequestStatus.Pending;
-            obj.UserId = LoggedUser.Id;
-            obj.CreationDatetime = DateTimeOffset.Now;
-            obj.UpdateDatetime = DateTimeOffset.Now;
-        }
     }
 
     #endregion
