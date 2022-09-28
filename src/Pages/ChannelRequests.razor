@@ -180,7 +180,7 @@
         <DataGridColumn TItem="ChannelOperationRequest" Field="@nameof(ChannelOperationRequest.Amount)" Caption="Capacity" Sortable="false" Displayable="true">
             <DisplayTemplate>
                 @{
-                    @($"{new Money(_amount, MoneyUnit.Satoshi).ToDecimal(MoneyUnit.BTC)} BTC")
+                    @($"{context.Amount} BTC")
                 }
             </DisplayTemplate>
         </DataGridColumn>
