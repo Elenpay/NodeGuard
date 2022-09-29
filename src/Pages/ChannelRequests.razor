@@ -416,9 +416,7 @@
                     Status = ChannelOperationRequestStatus.Pending, //TODO Reject and cancel
                     UserId = LoggedUser.Id,
                     SourceNodeId = _selectedSourceNodeId,
-                    DestNodeId = _selectedDestNode.Id,
-                    CreationDatetime = DateTimeOffset.Now,
-                    UpdateDatetime = DateTimeOffset.Now
+                    DestNodeId = _selectedDestNode.Id
                 };
 
                 var createChannelResult = await ChannelOperationRequestRepository.AddAsync(request);
