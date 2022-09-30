@@ -1,4 +1,11 @@
-﻿<PageTitle>User Management</PageTitle>
+﻿@using Humanizer
+@using Microsoft.AspNetCore.Identity
+@using System.Security.Claims
+@using Blazorise.Extensions
+@using Blazorise
+@using Blazorise.DataGrid
+@using Microsoft.AspNetCore.Components.Web
+<PageTitle>User Management</PageTitle>
 <h3>User and role management</h3>
 
 <Row>
@@ -17,7 +24,13 @@
                   ShowPager="true"
                   ShowPageSizes="true"
                   PageSize="25"
-                  Filterable="false">
+                  Filterable="false"
+                  ShowValidationFeedback="true"
+                  ShowValidationsSummary="false"
+                  UseValidation="true">
+            <PopupTitleTemplate>
+                <h2>@(context.EditState) user</h2>
+            </PopupTitleTemplate>
             <DataGridColumns>
                 <DataGridCommandColumn TItem="ApplicationUser">
                     <NewCommandTemplate>
@@ -44,7 +57,17 @@
 
                 </DataGridCommandColumn>
 
-                <DataGridColumn TItem="ApplicationUser" Editable="true" Field="@nameof(ApplicationUser.UserName)" Caption="Username" Sortable="false" />
+                <DataGridColumn TItem="ApplicationUser" Editable="true" Field="@nameof(ApplicationUser.UserName)" Caption="Username" Sortable="false">
+                    <EditTemplate>
+                        <Validation Validator="@ValidationHelper.ValidateName">
+                            <TextEdit Text="@((string)context.CellValue)" TextChanged="(text) => { context.CellValue = text; }">
+                                <Feedback>
+                                    <ValidationError/>
+                                </Feedback>
+                            </TextEdit>
+                        </Validation>
+                    </EditTemplate>
+                </DataGridColumn>
                 <DataGridColumn TItem="ApplicationUser" Editable="true"  Caption="Roles" Sortable="false">
                     <DisplayTemplate>
                         @{
@@ -54,14 +77,22 @@
                         
                     </DisplayTemplate>
                     <EditTemplate>
-                        <Select Multiple="true" TValue="ApplicationUserRole" @bind-SelectedValues="_selectedRoles">
-                            
-                            @foreach (var role in availableRoles)
-                            {
-                                <SelectItem Value="role">@role.Humanize()</SelectItem>
+                        <Validation Validator="@ValidateRole">
+                            <Select Multiple="true" TValue="ApplicationUserRole" @bind-SelectedValues="_selectedRoles" SelectedValueChanged="(role) => { context.CellValue = role; }">
+                                <ChildContent>
+                                    @foreach (var role in availableRoles)
+                                    {
+                                        <SelectItem Value="role">@role.Humanize()</SelectItem>
 
-                            }
-                        </Select>
+                                    }
+                                </ChildContent>
+                                <Feedback>
+                                    <ValidationError/>
+                                </Feedback>
+                            </Select>
+                        </Validation>
+                        
+                        
                         
                     </EditTemplate>
                 </DataGridColumn>
@@ -94,6 +125,7 @@
 
 @page "/users"
 @using System.Security.Claims
+@using Blazorise.Extensions
 @using Humanizer
 @using Microsoft.AspNetCore.Identity
 @inject IApplicationUserRepository ApplicationUserRepository
@@ -338,5 +370,15 @@
 
             await GetData();
         }    }
+
+    private void ValidateRole(ValidatorEventArgs obj)
+    {
+        obj.Status = ValidationStatus.Success;
+        if (((IReadOnlyList<ApplicationUserRole>)obj.Value).IsNullOrEmpty())
+        {
+            obj.ErrorText = "At least one role must be selected";
+            obj.Status = ValidationStatus.Error;
+        }
+    }
 
 }
