@@ -18,4 +18,14 @@ public static class ValidationHelper
             obj.Status = ValidationStatus.Error;
         }
     }
+
+    public static void ValidateAmount(ValidatorEventArgs obj)
+    {
+        obj.Status = ValidationStatus.Success;
+        if (((long)obj.Value) < 20000)
+        {
+            obj.ErrorText = "The amount must be greater than 20.000";
+            obj.Status = ValidationStatus.Error;
+        }
+    }
 }
