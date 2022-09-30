@@ -44,7 +44,13 @@
             </Field>
             <Field>
                 <FieldLabel>Channel Amount (Satoshis)</FieldLabel>
-                <NumericEdit TValue="long" Min="20000L" @bind-Value="@_amount" />
+                <Validation Validator="ValidationHelper.ValidateAmount">
+                    <NumericEdit TValue="long" @bind-Value="@_amount">
+                        <Feedback>
+                            <ValidationError/>
+                        </Feedback>
+                    </NumericEdit>
+                </Validation>
             </Field>
             <br />
             <br />
@@ -140,7 +146,7 @@
     
     private async Task CreateChannelRequest()
     {
-        if (_amount != null && _amount > 0 && _selectedWalletId > 0 && LoggedUser != null &&
+        if (_amount > 20000 && _selectedWalletId > 0 && LoggedUser != null &&
             _selectedSourceNodeId > 0 && _selectedDestNode != null)
         {
 
@@ -164,6 +170,7 @@
                 if (createChannelResult.Item1)
                 {
                     ToastService.ShowSuccess("Open channel request created!");
+                    await ClearData();
                 }
                 else
                 {
