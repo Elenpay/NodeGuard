@@ -1,4 +1,6 @@
 using Blazorise;
+using FundsManager.Data.Models;
+using FundsManager.Data.Repositories;
 
 namespace FundsManager.Helpers;
 
@@ -16,6 +18,26 @@ public static class ValidationHelper
         {
             obj.ErrorText = "The name cannot be empty";
             obj.Status = ValidationStatus.Error;
+        }
+    }
+    
+    public static void ValidateUsername(ValidatorEventArgs obj, List<ApplicationUser> users)
+    {
+        obj.Status = ValidationStatus.Success;
+        if (string.IsNullOrWhiteSpace((string)obj.Value))
+        {
+            obj.ErrorText = "The Username cannot be empty";
+            obj.Status = ValidationStatus.Error;
+            return;
+        }
+        foreach (ApplicationUser user in users)
+        {
+            if (user.UserName.Equals(obj.Value))
+            {
+                obj.ErrorText = "A user with the same username already exists";
+                obj.Status = ValidationStatus.Error;
+                return;
+            }
         }
     }
 

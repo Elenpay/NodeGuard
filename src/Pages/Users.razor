@@ -59,7 +59,7 @@
 
                 <DataGridColumn TItem="ApplicationUser" Editable="true" Field="@nameof(ApplicationUser.UserName)" Caption="Username" Sortable="false">
                     <EditTemplate>
-                        <Validation Validator="@ValidationHelper.ValidateName">
+                        <Validation Validator="(ValidatorEventArgs obj) => @ValidationHelper.ValidateUserName(obj, _users)">
                             <TextEdit Text="@((string)context.CellValue)" TextChanged="(text) => { context.CellValue = text; }">
                                 <Feedback>
                                     <ValidationError/>
