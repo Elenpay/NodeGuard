@@ -146,7 +146,7 @@
     
     private async Task CreateChannelRequest()
     {
-        if (_amount > 20000 && _selectedWalletId > 0 && LoggedUser != null &&
+        if (_amount >= 20000 && _selectedWalletId > 0 && LoggedUser != null &&
             _selectedSourceNodeId > 0 && _selectedDestNode != null)
         {
 

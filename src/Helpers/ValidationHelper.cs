@@ -12,7 +12,7 @@ public static class ValidationHelper
     public static void ValidateName(ValidatorEventArgs obj)
     {
         obj.Status = ValidationStatus.Success;
-        if (obj.Value == null || ((string)obj.Value).Trim() == "")
+        if (string.IsNullOrWhiteSpace((string)obj.Value))
         {
             obj.ErrorText = "The name cannot be empty";
             obj.Status = ValidationStatus.Error;
