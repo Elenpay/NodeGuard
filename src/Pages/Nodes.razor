@@ -21,6 +21,9 @@
                   RowUpdated="OnRowUpdated"
                   RowRemoving="OnRowDeleted"
                   UseValidation="true">
+            <PopupTitleTemplate>
+                <h2>@(context.EditState) node</h2>
+            </PopupTitleTemplate>
             <DataGridColumns>
                 <DataGridCommandColumn TItem="Node">
                     <NewCommandTemplate>
@@ -33,20 +36,20 @@
                         <Button Color="Color.Danger" hidden="@_hideDelete" Clicked="@context.Clicked">Delete</Button>
                     </DeleteCommandTemplate>
                 </DataGridCommandColumn>
-                <DataGridColumn TItem="Node" Editable="true" Field="@nameof(Node.Name)" Validator="ValidationRule.IsNotEmpty" Caption="@nameof(Node.Name)" Sortable="false" />
+                <DataGridColumn TItem="Node" Editable="true" Field="@nameof(Node.Name)" Validator="ValidationHelper.ValidateName" Caption="@nameof(Node.Name)" Sortable="false"/>
                 <DataGridColumn TItem="Node" Editable="true" Field="@nameof(Node.PubKey)" Validator="ValidationRule.IsNotEmpty" Caption="@nameof(Node.PubKey)" Sortable="false">
                     <DisplayTemplate>
-                        @StringHelper.TruncateHeadAndTail(context.PubKey,10)&nbsp;
+                        @StringHelper.TruncateHeadAndTail(context.PubKey, 10)&nbsp;
                         @{State state = new("Copy", "oi oi-clipboard");}
                         <Button class="btn btn-primary" @onclick="@(() => CopyToClipboard(context.PubKey))" disabled=@state.IsDisabled>
                             <i class="@state.ClassName"></i>
                         </Button>
                     </DisplayTemplate>
                 </DataGridColumn>
-                <DataGridColumn TItem="Node" Editable="true" Field="@nameof(Node.Description)" Caption="@nameof(Node.Description)" Sortable="false" />
-                <DataGridColumn TItem="Node" Editable="true" Field="@nameof(Node.ChannelAdminMacaroon)" Validator="ValidationRule.IsNotEmpty" Caption="Macaroon" CellsEditableOnNewCommand="true" CellsEditableOnEditCommand="false" Displayable="false" Sortable="false" />
-                <DataGridColumn TItem="Node" Editable="true" Field="@nameof(Node.Endpoint)" Validator="ValidationRule.IsNotEmpty" Caption="@nameof(Node.Endpoint)" Sortable="false" />
-                <DataGridNumericColumn TItem="Node" Editable="false"  Caption="Outbound Open Channels" Sortable="false">
+                <DataGridColumn TItem="Node" Editable="true" Field="@nameof(Node.Description)" Caption="@nameof(Node.Description)" Sortable="false"/>
+                <DataGridColumn TItem="Node" Editable="true" Field="@nameof(Node.ChannelAdminMacaroon)" Validator="ValidationRule.IsNotEmpty" Caption="Macaroon" CellsEditableOnNewCommand="true" CellsEditableOnEditCommand="false" Displayable="false" Sortable="false"/>
+                <DataGridColumn TItem="Node" Editable="true" Field="@nameof(Node.Endpoint)" Validator="ValidationRule.IsNotEmpty" Caption="@nameof(Node.Endpoint)" Sortable="false"/>
+                <DataGridNumericColumn TItem="Node" Editable="false" Caption="Outbound Open Channels" Sortable="false">
                     <DisplayTemplate>
                         @{
                             IEnumerable<int?> associatedChannels = context?.ChannelOperationRequestsAsDestination?
@@ -82,10 +85,10 @@
                                         Data="@_availableWallets"
                                         TextField="@((item) => item.Name)"
                                         ValueField="@((item) => item.Id)"
-                                        SelectedValue="(int) context.CellValue"
+                                        SelectedValue="(int)context.CellValue"
                                         SelectedValueChanged="(id) => context.CellValue = id"/>
                         }
-                      
+
                     </EditTemplate>
                 </DataGridColumn>
 
@@ -140,7 +143,7 @@
     private bool _hideDelete = true;
     private bool _editable;
     private List<Wallet> _availableWallets = new List<Wallet>();
-    
+
     CancellationTokenSource cts = new();
 
     [CascadingParameter]
@@ -156,7 +159,7 @@
             await GetData();
             // Add button for copy key (js interop passing the content of the strings)
             // https://www.meziantou.net/copying-text-to-clipboard-in-a-blazor-application.htm
-            
+
             if (ClaimsPrincipal != null && ClaimsPrincipal.IsInRole(ApplicationUserRole.Superadmin.ToString()))
             {
                 _editable = true;
@@ -173,7 +176,7 @@
 
     private async Task OnRowInserted(SavedRowItem<Node, Dictionary<string, object>> arg)
     {
-        if (arg.Item == null) 
+        if (arg.Item == null)
         {
             ToastService.ShowError("Couldn't fetch data");
         }
@@ -197,8 +200,8 @@
 
         await GetData();
     }
-    
-    
+
+
     private async Task OnRowDeleted(CancellableRowChange<Node> node)
     {
         if (node.Item != null)
@@ -221,7 +224,7 @@
 
     }
 
-    
+
     private async Task OnRowUpdated(SavedRowItem<Node, Dictionary<string, object>> arg)
     {
         if (arg.Item == null)
@@ -256,13 +259,13 @@
     {
         _modalVisible = false;
     }
-    
+
     private async Task CopyToClipboard(String pubkey)
     {
         await ClipboardService.WriteTextAsync(pubkey);
         ToastService.ShowSuccess("Text copied");
     }
-    
+
     public void Dispose()
     {
         cts.Cancel(); // Cancel Task.Delay
@@ -270,5 +273,26 @@
     }
 
     record State(string Text, string ClassName, bool IsDisabled = false);
+
+    private async void ValidatePubKey(ValidatorEventArgs obj)
+    {
+        obj.Status = ValidationStatus.Success;
+        if (string.IsNullOrWhiteSpace((string)obj.Value))
+        {
+            obj.ErrorText = "The PubKey cannot be empty";
+            obj.Status = ValidationStatus.Error;
+            return;
+        }
+        obj.Status = ValidationStatus.Success;
+        List<Node> list = await NodeRepository.GetAll();
+        foreach (Node node in list)
+        {
+            if (node.PubKey.Equals(obj.Value))
+            {
+                obj.ErrorText = "A node with the same pubkey already exists";
+                obj.Status = ValidationStatus.Error;
+            }
+        }
+    }
 
 }
