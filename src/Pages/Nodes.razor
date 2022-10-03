@@ -37,7 +37,7 @@
                     </DeleteCommandTemplate>
                 </DataGridCommandColumn>
                 <DataGridColumn TItem="Node" Editable="true" Field="@nameof(Node.Name)" Validator="ValidationHelper.ValidateName" Caption="@nameof(Node.Name)" Sortable="false"/>
-                <DataGridColumn TItem="Node" Editable="true" Field="@nameof(Node.PubKey)" Validator="ValidationRule.IsNotEmpty" Caption="@nameof(Node.PubKey)" Sortable="false">
+                <DataGridColumn TItem="Node" Editable="true" Field="@nameof(Node.PubKey)" Validator="(ValidatorEventArgs obj) => ValidationHelper.ValidatePubKey(obj, _nodes)" Caption="@nameof(Node.PubKey)" Sortable="false">
                     <DisplayTemplate>
                         @StringHelper.TruncateHeadAndTail(context.PubKey, 10)&nbsp;
                         @{State state = new("Copy", "oi oi-clipboard");}
@@ -273,26 +273,5 @@
     }
 
     record State(string Text, string ClassName, bool IsDisabled = false);
-
-    private async void ValidatePubKey(ValidatorEventArgs obj)
-    {
-        obj.Status = ValidationStatus.Success;
-        if (string.IsNullOrWhiteSpace((string)obj.Value))
-        {
-            obj.ErrorText = "The PubKey cannot be empty";
-            obj.Status = ValidationStatus.Error;
-            return;
-        }
-        obj.Status = ValidationStatus.Success;
-        List<Node> list = await NodeRepository.GetAll();
-        foreach (Node node in list)
-        {
-            if (node.PubKey.Equals(obj.Value))
-            {
-                obj.ErrorText = "A node with the same pubkey already exists";
-                obj.Status = ValidationStatus.Error;
-            }
-        }
-    }
 
 }

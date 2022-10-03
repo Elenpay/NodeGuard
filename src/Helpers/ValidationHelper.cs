@@ -61,4 +61,25 @@ public static class ValidationHelper
         }
 
     }
+
+    public static void ValidatePubKey(ValidatorEventArgs obj, List<Node> nodes)
+    {
+        obj.Status = ValidationStatus.Success;
+        if (string.IsNullOrWhiteSpace((string)obj.Value))
+        {
+            obj.ErrorText = "The PubKey cannot be empty";
+            obj.Status = ValidationStatus.Error;
+            return;
+        }
+        obj.Status = ValidationStatus.Success;
+        foreach (Node node in nodes)
+        {
+            if (node.PubKey.Equals(obj.Value))
+            {
+                obj.ErrorText = "A node with the same pubkey already exists";
+                obj.Status = ValidationStatus.Error;
+                return;
+            }
+        }
+    }
 }
