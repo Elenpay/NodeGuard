@@ -31,6 +31,9 @@
                   ShowValidationFeedback="true"
                   ShowValidationsSummary="false"
                   UseValidation="true">
+                <PopupTitleTemplate>
+                    <h2>@(context.EditState) withdrawal</h2>
+                </PopupTitleTemplate>
                 <DataGridColumns>
                     <DataGridCommandColumn TItem="WalletWithdrawalRequest">
                         <NewCommandTemplate>
@@ -165,14 +168,21 @@
                         }
                     </DisplayTemplate>
                     <EditTemplate>
-                        <Validation AsyncValidator="ValidateAmount">
-                            <NumericEdit  TValue="decimal" Disabled="_isAmountDisabled" Value="@((decimal)context.CellValue)" ValueChanged="(value) => {context.CellValue = value; }">
-                                <Feedback>
-                                    <ValidationError />
-                                </Feedback>
-                            </NumericEdit>                         
-                        </Validation>
-                    </EditTemplate>
+                        @if (!_isAmountDisabled)
+                        {
+                            <Validation AsyncValidator="ValidateAmount">
+                                <NumericEdit TValue="decimal" Disabled="_isAmountDisabled" Value="@((decimal)context.CellValue)" ValueChanged="(value) => { context.CellValue = value; }">
+                                    <Feedback>
+                                        <ValidationError />
+                                    </Feedback>
+                                </NumericEdit>
+                            </Validation>
+                        }
+                        else
+                        {
+                            <NumericEdit TValue="decimal" Disabled="_isAmountDisabled" Value="@((decimal)context.CellValue)" ValueChanged="(value) => { context.CellValue = value; }"/>
+                        }
+                        </EditTemplate>
                 </DataGridColumn>
 
                     <DataGridColumn TItem="WalletWithdrawalRequest" Field="@nameof(WalletWithdrawalRequest.WalletId)" Caption="Signatures Collected" Sortable="false" Displayable="true">
@@ -680,7 +690,7 @@
         var environmentVariable = Environment.GetEnvironmentVariable("MINIMUM_WITHDRAWAL_BTC_AMOUNT") ?? throw new InvalidOperationException();
 
         var minimum = decimal.Parse(environmentVariable, NumberStyles.AllowDecimalPoint, CultureInfo.InvariantCulture);
-        if (amount <= minimum && !_isAmountDisabled)
+        if (amount < minimum && !_isAmountDisabled)
         {
             arg1.Status = ValidationStatus.Error;
             arg1.ErrorText = $"Error, the minimum amount to withdraw is at least {minimum} BTC";
