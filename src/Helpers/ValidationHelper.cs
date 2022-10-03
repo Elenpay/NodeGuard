@@ -28,4 +28,15 @@ public static class ValidationHelper
             obj.Status = ValidationStatus.Error;
         }
     }
+
+    public static void ValidateXPUB(ValidatorEventArgs obj)
+    {
+        obj.Status = ValidationStatus.Success;
+        if (string.IsNullOrWhiteSpace((string)obj.Value))
+        {
+            obj.ErrorText = "The XPUB field cannot be empty";
+            obj.Status = ValidationStatus.Error;
+        }
+
+    }
 }
