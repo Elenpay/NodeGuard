@@ -29,17 +29,6 @@
         </PopupTitleTemplate>
         <ChildContent>
             <DataGridColumn TItem="ChannelOperationRequest" Field="@nameof(ChannelOperationRequest.Id)" Caption="#" Sortable="false" Displayable="true" />
-            <DataGridColumn TItem="ChannelOperationRequest" Field="SourceNode.Name" Caption="Source Node" Sortable="false" Displayable="true" PopupFieldColumnSize="ColumnSize.Is12" Editable="true" Validator="ValidationRule.IsSelected">
-                <EditTemplate>
-                    <SelectList TItem="Node"
-                                TValue="int"
-                                Data="@_manageableNodes"
-                                TextField="@((item) => item.Name)"
-                                ValueField="@((item) => item.Id)"
-                                SelectedValueChanged="@OnSelectedSourceNode"
-                                DefaultItemText="Choose the source node" />
-                </EditTemplate>
-            </DataGridColumn>
             <DataGridColumn TItem="ChannelOperationRequest" Field="DestNode.Name" Caption="Remote Node" Sortable="false" Displayable="true" PopupFieldColumnSize="ColumnSize.Is12" Editable="true"
                             Validator="ValidationRule.IsAlphanumeric">
                 <EditTemplate>
@@ -52,6 +41,17 @@
                         </Addon>
                     </Addons>
                     <FieldHelp>@(_selectedDestNode==null ? "Node Not found" : $"Found Node: {_selectedDestNode.Name}") </FieldHelp>
+                </EditTemplate>
+            </DataGridColumn>
+            <DataGridColumn TItem="ChannelOperationRequest" Field="SourceNode.Name" Caption="Source Node" Sortable="false" Displayable="true" PopupFieldColumnSize="ColumnSize.Is12" Editable="true" Validator="ValidationRule.IsSelected">
+                <EditTemplate>
+                    <SelectList TItem="Node"
+                                TValue="int"
+                                Data="@_manageableNodes"
+                                TextField="@((item) => item.Name)"
+                                ValueField="@((item) => item.Id)"
+                                SelectedValueChanged="@OnSelectedSourceNode"
+                                DefaultItemText="Choose the source node" />
                 </EditTemplate>
             </DataGridColumn>
             <DataGridColumn TItem="ChannelOperationRequest" Field="Wallet.Name" Caption="Source of Funds" Sortable="false" Displayable="true" PopupFieldColumnSize="ColumnSize.Is12" Editable="true">
