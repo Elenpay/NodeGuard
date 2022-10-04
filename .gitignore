@@ -1,5 +1,6 @@
 docker/bin/
 .vs/
+.idea/
 docker/obj/
 src/bin/
 src/obj/
