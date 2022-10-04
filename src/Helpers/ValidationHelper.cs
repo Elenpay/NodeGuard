@@ -30,15 +30,13 @@ public static class ValidationHelper
             obj.Status = ValidationStatus.Error;
             return;
         }
-        foreach (ApplicationUser user in users)
+        if (users.Any(user => user.UserName.Equals(obj.Value)))
         {
-            if (user.UserName.Equals(obj.Value))
-            {
-                obj.ErrorText = "A user with the same username already exists";
-                obj.Status = ValidationStatus.Error;
-                return;
-            }
+            obj.ErrorText = "A user with the same username already exists";
+            obj.Status = ValidationStatus.Error;
+            return;
         }
+        
     }
 
     public static void ValidateAmount(ValidatorEventArgs obj)
@@ -71,15 +69,11 @@ public static class ValidationHelper
             obj.Status = ValidationStatus.Error;
             return;
         }
-        obj.Status = ValidationStatus.Success;
-        foreach (Node node in nodes)
+        if (nodes.Any(node => node.PubKey.Equals(obj.Value)))
         {
-            if (node.PubKey.Equals(obj.Value))
-            {
-                obj.ErrorText = "A node with the same pubkey already exists";
-                obj.Status = ValidationStatus.Error;
-                return;
-            }
+            obj.ErrorText = "A node with the same pubkey already exists";
+            obj.Status = ValidationStatus.Error;
+            return;
         }
     }
 }
