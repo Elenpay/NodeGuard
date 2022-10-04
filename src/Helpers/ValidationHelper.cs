@@ -1,3 +1,4 @@
+using System.Globalization;
 using Blazorise;
 using FundsManager.Data.Models;
 using FundsManager.Data.Repositories;
@@ -42,7 +43,9 @@ public static class ValidationHelper
     public static void ValidateAmount(ValidatorEventArgs obj)
     {
         obj.Status = ValidationStatus.Success;
-        if (((long)obj.Value) < 20000)
+        string environmentVariable = Environment.GetEnvironmentVariable("MINIMUM_WITHDRAWAL_BTC_AMOUNT") ?? throw new InvalidOperationException();;
+        long minimum = long.Parse(environmentVariable, NumberStyles.AllowDecimalPoint, CultureInfo.InvariantCulture);
+        if (((long)obj.Value) < minimum)
         {
             obj.ErrorText = "The amount must be greater than 20.000";
             obj.Status = ValidationStatus.Error;
