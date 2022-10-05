@@ -21,51 +21,55 @@
                   RowRemoving="OnRowRemoving"
                   RowUpdated="OnRowUpdated"
                   NewItemDefaultSetter="NewItemDefaultSetter">
-            <DataGridCommandColumn TItem="Key">
-                <NewCommandTemplate>
-                    <Button Color="Color.Success" Clicked="@context.Clicked">New</Button>
-                </NewCommandTemplate>
-                <EditCommandTemplate>
-                    <Button Color="Color.Primary" Clicked="@context.Clicked">Edit</Button>
-                </EditCommandTemplate>
-                <DeleteCommandTemplate>
-                @if (context.Item.Wallets != null && !context.Item.Wallets.Any())
-                {
-                    <Button Color="Color.Danger" Clicked="@context.Clicked">Delete</Button>
-
-                }
-                </DeleteCommandTemplate>
             
-            </DataGridCommandColumn>            
-            <DataGridColumn TItem="Key" Editable="true" Field="@nameof(Key.Name)" Caption="@nameof(Key.Name)" Sortable="false" />
-            <DataGridColumn TItem="Key" Editable="true" Field="@nameof(Key.Description)" Caption="@nameof(Key.Description)" Sortable="false" />
-            <DataGridColumn TItem="Key" Editable="true" Field="@nameof(Key.IsArchived)" Caption="Archived" Sortable="false" />
-            <DataGridColumn TItem="Key" Editable="true" Field="@nameof(Key.IsCompromised)" Caption="@nameof(Key.IsCompromised).Humanize(LetterCasing.Sentence)" Sortable="false" />
-            @if (Environment.GetEnvironmentVariable("ENABLE_HW_SUPPORT") != "false")
-            {
-                <DataGridColumn TItem="Key" Editable="true" Field="@nameof(Key.Path)" Caption="@nameof(Key.Path)" Sortable="false" />
-                <DataGridColumn TItem="Key" Editable="true" Field="@nameof(Key.MasterFingerprint)" Caption="@nameof(Key.MasterFingerprint).Humanize(LetterCasing.Sentence)" Sortable="false" />
-            }
-            <DataGridColumn TItem="Key" CellsEditableOnNewCommand="true" CellsEditableOnEditCommand="false" Editable="true" Field="@nameof(Key.XPUB)" Caption="@nameof(Key.XPUB).Humanize(LetterCasing.Sentence)" Sortable="false">
-                <DisplayTemplate>
-                    @if (!string.IsNullOrWhiteSpace(context.XPUB) && context.XPUB.Length > 40)
-                    {
-                        @StringHelper.TruncateHeadAndTail(context.XPUB,10);
-                        <Button Color="Color.Primary" Clicked="@(()=> CopyStrToClipboard(context.XPUB))">
-                            <i class="oi oi-clipboard"></i> 
-                        </Button>
-                    }
-                    else
-                    {
-                        <p>Invalid xpub</p>
-                    }
+            <PopupTitleTemplate>
+                <h2>@(context.EditState) keys</h2>
+            </PopupTitleTemplate>
+            <ChildContent>
+                <DataGridCommandColumn TItem="Key">
+                    <NewCommandTemplate>
+                        <Button Color="Color.Success" Clicked="@context.Clicked">New</Button>
+                    </NewCommandTemplate>
+                    <EditCommandTemplate>
+                        <Button Color="Color.Primary" Clicked="@context.Clicked">Edit</Button>
+                    </EditCommandTemplate>
+                    <DeleteCommandTemplate>
+                        @if (context.Item.Wallets != null && !context.Item.Wallets.Any())
+                        {
+                            <Button Color="Color.Danger" Clicked="@context.Clicked">Delete</Button>
 
-                </DisplayTemplate>
-            </DataGridColumn>
-            <DataGridColumn TItem="Key" Field="@nameof(Key.CreationDatetime)" Caption="@nameof(Key.CreationDatetime).Humanize(LetterCasing.Sentence)" Sortable="false" />
-            <DataGridColumn TItem="Key" Field="@nameof(Key.UpdateDatetime)" Caption="@nameof(Key.UpdateDatetime).Humanize(LetterCasing.Sentence)" Sortable="false" />
+                        }
+                    </DeleteCommandTemplate>
 
+                </DataGridCommandColumn>
+                <DataGridColumn TItem="Key" Editable="true" Field="@nameof(Key.Name)" Caption="@nameof(Key.Name)" Sortable="false" Validator="@ValidationHelper.ValidateName"/>
+                <DataGridColumn TItem="Key" Editable="true" Field="@nameof(Key.Description)" Caption="@nameof(Key.Description)" Sortable="false"/>
+                <DataGridColumn TItem="Key" Editable="true" Field="@nameof(Key.IsArchived)" Caption="Archived" Sortable="false"/>
+                <DataGridColumn TItem="Key" Editable="true" Field="@nameof(Key.IsCompromised)" Caption="@nameof(Key.IsCompromised).Humanize(LetterCasing.Sentence)" Sortable="false"/>
+                @if (Environment.GetEnvironmentVariable("ENABLE_HW_SUPPORT") != "false")
+                {
+                    <DataGridColumn TItem="Key" Editable="true" Field="@nameof(Key.Path)" Caption="@nameof(Key.Path)" Sortable="false"/>
+                    <DataGridColumn TItem="Key" Editable="true" Field="@nameof(Key.MasterFingerprint)" Caption="@nameof(Key.MasterFingerprint).Humanize(LetterCasing.Sentence)" Sortable="false"/>
+                }
+                <DataGridColumn TItem="Key" CellsEditableOnNewCommand="true" CellsEditableOnEditCommand="false" Editable="true" Field="@nameof(Key.XPUB)" Caption="@nameof(Key.XPUB).Humanize(LetterCasing.Sentence)" Sortable="false" Validator="@ValidationHelper.ValidateXPUB">
+                    <DisplayTemplate>
+                        @if (!string.IsNullOrWhiteSpace(context.XPUB) && context.XPUB.Length > 40)
+                        {
+                            @StringHelper.TruncateHeadAndTail(context.XPUB, 10);
+                            <Button Color="Color.Primary" Clicked="@(() => CopyStrToClipboard(context.XPUB))">
+                                <i class="oi oi-clipboard"></i>
+                            </Button>
+                        }
+                        else
+                        {
+                            <p>Invalid xpub</p>
+                        }
 
+                    </DisplayTemplate>
+                </DataGridColumn>
+                <DataGridColumn TItem="Key" Field="@nameof(Key.CreationDatetime)" Caption="@nameof(Key.CreationDatetime).Humanize(LetterCasing.Sentence)" Sortable="false"/>
+                <DataGridColumn TItem="Key" Field="@nameof(Key.UpdateDatetime)" Caption="@nameof(Key.UpdateDatetime).Humanize(LetterCasing.Sentence)" Sortable="false"/>
+            </ChildContent>
         </DataGrid>
     </Column>
 </Row>
