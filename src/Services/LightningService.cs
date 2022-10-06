@@ -498,18 +498,18 @@ namespace FundsManager.Services
 
                                         if (channelOperationRequest.ChannelOperationRequestPsbts != null)
                                         {
-                                            channelOperationRequest.ChannelOperationRequestPsbts.Add(
-                                                new ChannelOperationRequestPSBT
-                                                {
-                                                    IsFinalisedPSBT = true,
-                                                    CreationDatetime = DateTimeOffset.Now,
-                                                    PSBT = finalizedPSBT.ToBase64(),
-                                                });
+                                            var finalizedChannelOperationRequestPsbt = new ChannelOperationRequestPSBT
+                                            {
+                                                IsFinalisedPSBT = true,
+                                                CreationDatetime = DateTimeOffset.Now,
+                                                PSBT = finalizedPSBT.ToBase64(),
+                                                ChannelOperationRequestId = channelOperationRequest.Id
+                                            };
 
-                                            var psbtUpdate =
-                                                _channelOperationRequestRepository.Update(channelOperationRequest);
+                                            var finalisedPSBTAdd = await
+                                                _channelOperationRequestPsbtRepository.AddAsync(finalizedChannelOperationRequestPsbt);
 
-                                            if (!psbtUpdate.Item1)
+                                            if (!finalisedPSBTAdd.Item1)
                                             {
                                                 _logger.LogError(
                                                     "Error while saving the finalised PSBT for channel operation request with id:{}",
