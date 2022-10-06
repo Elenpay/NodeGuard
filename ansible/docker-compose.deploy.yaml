@@ -32,6 +32,12 @@ services:
       MONITOR_WITHDRAWALS_CRON: "{{MONITOR_WITHDRAWALS_CRON }}" #Monitoring job for withdrawals tx
       ENABLE_HW_SUPPORT: "false" # Enables fields and features for using Hardware Wallets
       ANCHOR_CLOSINGS_MINIMUM_SATS: "{{ ANCHOR_CLOSINGS_MINIMUM_SATS }}" # Check https://github.com/lightningnetwork/lnd/issues/6505#issuecomment-1120364460 to understand, we need 100K+ sats to support anchor channel closings
+      ENABLE_REMOTE_FM_SIGNER: "true"
+      AWS_ACCESS_KEY_ID: "{{ AWS_ACCESS_KEY_ID }}"
+      AWS_SECRET_ACCESS_KEY: "{{ AWS_SECRET_ACCESS_KEY }}"
+      AWS_REGION: "{{ AWS_REGION }}"
+      AWS_KMS_KEY_ID: "{{ AWS_KMS_KEY_ID }}"
+      FM_SIGNER_ENDPOINT: "{{ FM_SIGNER_ENDPOINT }}"
     volumes:
       - fundsmanager_data_keys_dir:/root/.aspnet/DataProtection-Keys
 

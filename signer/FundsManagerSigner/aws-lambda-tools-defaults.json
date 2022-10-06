@@ -1,0 +1,27 @@
+
+{
+    "Information" : [
+        "This file provides default values for the deployment wizard inside Visual Studio and the AWS Lambda commands added to the .NET Core CLI.",
+        "To learn more about the Lambda commands with the .NET Core CLI execute the following command at the command line in the project root directory.",
+        "dotnet lambda help",
+        "All the command line options for the Lambda command can be specified in this file."
+    ],
+    "profile"     : "default",
+    "region"      : "eu-west-1",
+    "configuration" : "Release",
+    "package-type"  : "Image",
+    "function-memory-size" : 256,
+    "function-timeout"     : 30,
+    "image-command"        : "FundsManagerSigner::FundsManagerSigner.Function::FunctionHandler",
+    "docker-host-build-output-dir" : "./bin/Release/lambda-publish",
+    "function-name"                : "SignPSBT",
+    "function-description"         : "Lambda function to sign PSBTs based on AWS KMS Encryption",
+    "function-role"                : "arn:aws:iam::302583825662:role/lambda_exec_FundsManagerSigner-1",
+    "function-architecture"        : "x86_64",
+    "function-subnets"             : "",
+    "function-security-groups"     : "",
+    "tracing-mode"                 : "PassThrough",
+    "environment-variables"        : "\"ed0210c8\"=\"{\"EncryptedSeedphrase\":\"AQICAHheBtxW\\u002B2iTBvvhvmRXaxaScHh6up1/VWCRSMlopexrdwE1C/ylXBL5pmjJ3P/UG7XnAAABBzCCAQMGCSqGSIb3DQEHBqCB9TCB8gIBADCB7AYJKoZIhvcNAQcBMB4GCWCGSAFlAwQBLjARBAxPlkxPX65p7aRcXykCARCAgb4En2Bb/nWQ6m4i3JDP\\u002BKGjaGDAVF4LR6\\u002B2Ljl7orp6pfZbCCxK6e89OBpJWi7elQM670vD/SWkYSZ9MUWUshU8n7NyBJZuZgBhtaH6j6yDhgHtBv7cwJngv0d72QEaTrH2YqLCVuoddEKEpB13ezfkf56230QD134kcJze4fITQGA6sXxQ0x\\u002BWjKOeYltpB\\u002BShk4\\u002BkaNja42ZM0MMjyrMOmQtXCkgdoTUVi6twiqU\\u002Bqr8mQEEq0aNdZzlLCI/v\",\"AwsKmsKeyId\":\"mrk-cec3e3ef59bc4616a6f44da60bfea0ba\"}\"",
+    "dockerfile"                   : "Dockerfile",
+    "image-tag"                    : "fundsmanagersigner:latest"
+}
