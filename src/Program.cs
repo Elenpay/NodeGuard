@@ -86,7 +86,11 @@ namespace FundsManager
             {
                 //options.EnableSensitiveDataLogging();
                 //options.EnableDetailedErrors();
-                options.UseNpgsql(connectionString);
+                options.UseNpgsql(connectionString, options =>
+                    {
+                        options.UseQuerySplittingBehavior(QuerySplittingBehavior
+                            .SingleQuery); // Slower but integrity is ensured
+                    });
             }, ServiceLifetime.Transient);
 
             //DBContextFactory
