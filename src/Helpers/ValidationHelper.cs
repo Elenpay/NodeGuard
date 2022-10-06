@@ -22,7 +22,7 @@ public static class ValidationHelper
         }
     }
     
-    public static void ValidateUsername(ValidatorEventArgs obj, List<ApplicationUser> users)
+    public static void ValidateUsername(ValidatorEventArgs obj, List<ApplicationUser> users, string currentUserId)
     {
         obj.Status = ValidationStatus.Success;
         if (string.IsNullOrWhiteSpace((string)obj.Value))
@@ -31,7 +31,7 @@ public static class ValidationHelper
             obj.Status = ValidationStatus.Error;
             return;
         }
-        if (users.Any(user => user.UserName.Equals(obj.Value)))
+        if (users.Any(user => user.UserName.Equals(obj.Value) && currentUserId != user.Id))
         {
             obj.ErrorText = "A user with the same username already exists";
             obj.Status = ValidationStatus.Error;
