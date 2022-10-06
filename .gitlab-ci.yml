@@ -67,7 +67,7 @@ deploy_staging:
   tags:
     - lightning_spot_runners
   script:
-    - ansible-playbook ansible/deploy_playbook.yaml -i ansible/inventory.yaml -e "SENTRY_ENVIRONMENT=Staging"
+    - ansible-playbook ansible/deploy_playbook.yaml -i ansible/inventory.yaml -e "SENTRY_ENVIRONMENT=Staging" -e "AWS_ACCESS_KEY_ID=$AWS_ACCESS_KEY_ID_STAGING" -e "AWS_SECRET_ACCESS_KEY=$AWS_SECRET_ACCESS_KEY_STAGING" -e "AWS_KMS_KEY_ID=$AWS_KMS_KEY_ID_STAGING" -e "FM_SIGNER_ENDPOINT=$FM_SIGNER_ENDPOINT_STAGING"
 
 
 # deploy_production:
