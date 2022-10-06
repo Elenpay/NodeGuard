@@ -79,4 +79,30 @@ public static class ValidationHelper
             return;
         }
     }
+
+    public static void validateDestNode(ValidatorEventArgs obj, Node? destNode)
+    {
+        obj.Status = ValidationStatus.Success;
+        if (destNode == null)
+        {
+            obj.ErrorText = "Select a proper destination node";
+            obj.Status = ValidationStatus.Error;
+        }
+    }
+
+    public static void validateExistingCannel(ValidatorEventArgs obj, List<ChannelOperationRequest> channels, Node? destNode, int sourceNodeId)
+    {
+        obj.Status = ValidationStatus.Success;
+        if (destNode == null || sourceNodeId == 0)
+        {
+            obj.Status = ValidationStatus.Error;
+            return;
+        }
+
+        if (channels.Any(channel => (channel.DestNode.Equals(destNode) && channel.SourceNodeId == sourceNodeId)))
+        {
+            obj.ErrorText = "A channel request with the same source node and destination node already exists";
+            obj.Status = ValidationStatus.Error;
+        }
+    }
 }
