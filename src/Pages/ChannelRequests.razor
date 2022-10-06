@@ -38,14 +38,12 @@
                         <Addons>
                             <Addon AddonType="AddonType.Body">
                                 <TextEdit @bind-Text="@_destNodeName" Placeholder="Type the destination Node public key">
-                                    <Feedback>
-                                        <ValidationError/>
-                                    </Feedback>
                                 </TextEdit>
                             </Addon>
                             <Addon AddonType="AddonType.End">
                                 <Button Color="Color.Primary" Clicked="@SearchNode">Search</Button>
                             </Addon>
+                            <ValidationError/>
                         </Addons>
                         <FieldHelp>@(_selectedDestNode == null ? "Node Not found" : $"Found Node: {_selectedDestNode.Name}") </FieldHelp>
                     </Validation>
