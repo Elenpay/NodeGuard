@@ -1,4 +1,5 @@
-﻿using FundsManager.Data.Models;
+﻿using AutoMapper;
+using FundsManager.Data.Models;
 using FundsManager.Data.Repositories.Interfaces;
 using FundsManager.Services;
 using Hangfire;
@@ -11,30 +12,30 @@ namespace FundsManager.Data.Repositories
         private readonly IRepository<Channel> _repository;
         private readonly ILogger<ChannelRepository> _logger;
         private readonly IDbContextFactory<ApplicationDbContext> _dbContextFactory;
-        private readonly ILightningService _lightningService;
         private readonly IChannelOperationRequestRepository _channelOperationRequestRepository;
         private readonly IBackgroundJobClient _backgroundJobClient;
+        private readonly IMapper _mapper;
 
         public ChannelRepository(IRepository<Channel> repository,
             ILogger<ChannelRepository> logger,
             IDbContextFactory<ApplicationDbContext> dbContextFactory,
-            ILightningService lightningService,
-            IChannelOperationRequestRepository channelOperationRequestRepository, IBackgroundJobClient backgroundJobClient
+            IChannelOperationRequestRepository channelOperationRequestRepository, IBackgroundJobClient backgroundJobClient,
+            IMapper _mapper
             )
         {
             _repository = repository;
             _logger = logger;
             _dbContextFactory = dbContextFactory;
-            _lightningService = lightningService;
             _channelOperationRequestRepository = channelOperationRequestRepository;
             _backgroundJobClient = backgroundJobClient;
+            this._mapper = _mapper;
         }
 
         public async Task<Channel?> GetById(int id)
         {
             await using var applicationDbContext = await _dbContextFactory.CreateDbContextAsync();
 
-            return await applicationDbContext.Channels.FirstOrDefaultAsync(x => x.Id == id);
+            return await applicationDbContext.Channels.Include(x => x.ChannelOperationRequests).FirstOrDefaultAsync(x => x.Id == id);
         }
 
         public async Task<List<Channel>> GetAll()
@@ -135,6 +136,9 @@ namespace FundsManager.Data.Repositories
         public (bool, string?) Update(Channel type)
         {
             using var applicationDbContext = _dbContextFactory.CreateDbContext();
+
+            //Automapper to avoid creation of entities
+            type = _mapper.Map<Channel, Channel>(type);
 
             return _repository.Update(type, applicationDbContext);
         }

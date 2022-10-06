@@ -127,6 +127,7 @@ namespace FundsManager.Services
         private readonly IWalletRepository _walletRepository;
         private readonly IFMUTXORepository _ifmutxoRepository;
         private readonly IChannelOperationRequestPSBTRepository _channelOperationRequestPsbtRepository;
+        private readonly IChannelRepository _channelRepository;
 
         public LightningService(ILogger<LightningService> logger,
             IChannelOperationRequestRepository channelOperationRequestRepository,
@@ -136,7 +137,8 @@ namespace FundsManager.Services
             IBackgroundJobClient backgroundJobClient,
             IWalletRepository walletRepository,
             IFMUTXORepository ifmutxoRepository,
-            IChannelOperationRequestPSBTRepository channelOperationRequestPsbtRepository)
+            IChannelOperationRequestPSBTRepository channelOperationRequestPsbtRepository,
+            IChannelRepository channelRepository)
         {
             _logger = logger;
             _channelOperationRequestRepository = channelOperationRequestRepository;
@@ -147,6 +149,7 @@ namespace FundsManager.Services
             _walletRepository = walletRepository;
             _ifmutxoRepository = ifmutxoRepository;
             _channelOperationRequestPsbtRepository = channelOperationRequestPsbtRepository;
+            _channelRepository = channelRepository;
         }
 
         /// <summary>
@@ -910,12 +913,12 @@ namespace FundsManager.Services
 
             _logger.LogInformation("Channel close request for request id:{}",
                 channelOperationRequest.Id);
-            await using var context = await _dbContextFactory.CreateDbContextAsync();
+
             try
             {
                 if (channelOperationRequest.ChannelId != null)
                 {
-                    var channel = context.Channels.SingleOrDefault(x => x.Id == channelOperationRequest.ChannelId);
+                    var channel = await _channelRepository.GetById((int)channelOperationRequest.ChannelId);
 
                     if (channel != null && channelOperationRequest.SourceNode.ChannelAdminMacaroon != null)
                     {
@@ -1007,14 +1010,9 @@ namespace FundsManager.Services
 
                                     channel.Status = Channel.ChannelStatus.Closed;
 
-                                    //Automapper to avoid creation of entities
-                                    channel = _mapper.Map<Channel, Channel>(channel);
+                                    var updateChannelResult = _channelRepository.Update(channel);
 
-                                    context.Update(channel);
-
-                                    var closedChannelUpdateResult = await context.SaveChangesAsync() > 0;
-
-                                    if (!closedChannelUpdateResult)
+                                    if (!updateChannelResult.Item1)
                                     {
                                         _logger.LogError(
                                             "Error while setting to closed status a closed channel with id:{}",
@@ -1032,10 +1030,35 @@ namespace FundsManager.Services
             }
             catch (Exception e)
             {
-                _logger.LogError(e,
-                    "Channel close request failed for channel operation request:{}",
-                    channelOperationRequest.Id);
-                throw;
+                if (e.Message.Contains("channel not found"))
+                {
+                    //We mark it as closed as it no longer exists
+                    if (channelOperationRequest.ChannelId != null)
+                    {
+                        var channel = await _channelRepository.GetById((int)channelOperationRequest.ChannelId);
+                        if (channel != null)
+                        {
+                            channel.Status = Channel.ChannelStatus.Closed;
+
+                            _channelRepository.Update(channel);
+                            _logger.LogInformation("Setting channel with id:{} to closed as it no longer exists",
+                                channel.Id);
+
+                            //It does not exists, probably was on-chain confirmed
+                            //TODO Might be worth in the future check it onchain ?
+                            channelOperationRequest.Status = ChannelOperationRequestStatus.OnChainConfirmed;
+
+                            _channelOperationRequestRepository.Update(channelOperationRequest);
+                        }
+                    }
+                }
+                else
+                {
+                    _logger.LogError(e,
+                        "Channel close request failed for channel operation request:{}",
+                        channelOperationRequest.Id);
+                    throw;
+                }
             }
         }
 
