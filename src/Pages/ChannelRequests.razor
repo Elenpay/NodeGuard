@@ -21,6 +21,8 @@
               CustomFilter="@RequestPendingFilter"
               EditMode="DataGridEditMode.Popup"
               ShowPager="true"
+              UseValidation="true"
+              UseInternalEditing="true"
               ShowPageSizes="true"
               Editable="true"
               Striped="true">
@@ -28,30 +30,42 @@
             <h2>Create Channel Request</h2>
         </PopupTitleTemplate>
         <ChildContent>
-            <DataGridColumn TItem="ChannelOperationRequest" Field="@nameof(ChannelOperationRequest.Id)" Caption="#" Sortable="false" Displayable="true" />
+            <DataGridColumn TItem="ChannelOperationRequest" Field="@nameof(ChannelOperationRequest.Id)" Caption="#" Sortable="false" Displayable="true"/>
             <DataGridColumn TItem="ChannelOperationRequest" Field="DestNode.Name" Caption="Remote Node" Sortable="false" Displayable="true" PopupFieldColumnSize="ColumnSize.Is12" Editable="true"
                             Validator="ValidationRule.IsAlphanumeric">
                 <EditTemplate>
-                    <Addons>
-                        <Addon AddonType="AddonType.Body">
-                            <TextEdit @bind-Text="@_destNodeName" Placeholder="Type the destination Node public key" />
-                        </Addon>
-                        <Addon AddonType="AddonType.End">
-                            <Button Color="Color.Primary" Clicked="@SearchNode">Search</Button>
-                        </Addon>
-                    </Addons>
-                    <FieldHelp>@(_selectedDestNode==null ? "Node Not found" : $"Found Node: {_selectedDestNode.Name}") </FieldHelp>
+                    <Validation Validator="@((ValidatorEventArgs obj) => ValidationHelper.validateDestNode(obj, _selectedDestNode))" @ref="_destNodeValidation">
+                        <Addons>
+                            <Addon AddonType="AddonType.Body">
+                                <TextEdit @bind-Text="@_destNodeName" Placeholder="Type the destination Node public key">
+                                    <Feedback>
+                                        <ValidationError/>
+                                    </Feedback>
+                                </TextEdit>
+                            </Addon>
+                            <Addon AddonType="AddonType.End">
+                                <Button Color="Color.Primary" Clicked="@SearchNode">Search</Button>
+                            </Addon>
+                        </Addons>
+                        <FieldHelp>@(_selectedDestNode == null ? "Node Not found" : $"Found Node: {_selectedDestNode.Name}") </FieldHelp>
+                    </Validation>
                 </EditTemplate>
             </DataGridColumn>
-            <DataGridColumn TItem="ChannelOperationRequest" Field="SourceNode.Name" Caption="Source Node" Sortable="false" Displayable="true" PopupFieldColumnSize="ColumnSize.Is12" Editable="true" Validator="ValidationRule.IsSelected">
+            <DataGridColumn TItem="ChannelOperationRequest" Field="SourceNode.Name" Caption="Source Node" Sortable="false" Displayable="true" PopupFieldColumnSize="ColumnSize.Is12" Editable="true">
                 <EditTemplate>
-                    <SelectList TItem="Node"
-                                TValue="int"
-                                Data="@_manageableNodes"
-                                TextField="@((item) => item.Name)"
-                                ValueField="@((item) => item.Id)"
-                                SelectedValueChanged="@OnSelectedSourceNode"
-                                DefaultItemText="Choose the source node" />
+                    <Validation Validator="ValidationRule.IsSelected" @ref="_sourceNodeValidation">
+                        <SelectList TItem="Node"
+                                    TValue="int"
+                                    Data="@_manageableNodes"
+                                    TextField="@((item) => item.Name)"
+                                    ValueField="@((item) => item.Id)"
+                                    SelectedValueChanged="@OnSelectedSourceNode"
+                                    DefaultItemText="Choose the source node">
+                            <Feedback>
+                                <ValidationError/>
+                            </Feedback>
+                        </SelectList>
+                    </Validation>
                 </EditTemplate>
             </DataGridColumn>
             <DataGridColumn TItem="ChannelOperationRequest" Field="Wallet.Name" Caption="Source of Funds" Sortable="false" Displayable="true" PopupFieldColumnSize="ColumnSize.Is12" Editable="true">
@@ -62,7 +76,7 @@
                     }
                 </DisplayTemplate>
                 <EditTemplate>
-                    <Validation Validator="@ValidationRule.IsSelected">
+                    <Validation Validator="@ValidationRule.IsSelected" @ref="_walletValidation">
                         @if (context.CellValue == null || (int)context.CellValue == 0)
                         {
                             <SelectList TItem="Wallet"
@@ -73,7 +87,7 @@
                                         SelectedValueChanged="(id) => OnSelectedWallet(id)"
                                         DefaultItemText="Choose the wallet">
                                 <Feedback>
-                                    <ValidationError />
+                                    <ValidationError/>
                                 </Feedback>
                             </SelectList>
                         }
@@ -85,9 +99,9 @@
                                         TextField="@((item) => item.Name)"
                                         ValueField="@((item) => item.Id)"
                                         SelectedValueChanged="(id) => OnSelectedWallet(id)"
-                                        SelectedValue="(int) context.CellValue">
+                                        SelectedValue="(int)context.CellValue">
                                 <Feedback>
-                                    <ValidationError />
+                                    <ValidationError/>
                                 </Feedback>
                             </SelectList>
                         }
@@ -101,8 +115,14 @@
                     }
                 </DisplayTemplate>
                 <EditTemplate>
-                    <NumericEdit TValue="long" Min="20000L" @bind-Value="@_amount" />
-                    <FieldHelp>Amount in Satoshis. Minimum 20.000.</FieldHelp>
+                    <Validation Validator="ValidationHelper.ValidateChannelCapacity" @ref="_capacityValidation">
+                        <NumericEdit TValue="long" @bind-Value="@_amount">
+                            <Feedback>
+                                <ValidationError/>
+                            </Feedback>
+                        </NumericEdit>
+                        <FieldHelp>Amount in Satoshis. Minimum 20.000.</FieldHelp>
+                    </Validation>
                 </EditTemplate>
             </DataGridColumn>
             <DataGridColumn TItem="ChannelOperationRequest" Field="@nameof(ChannelOperationRequest.WalletId)" Caption="Signatures Collected" Sortable="false" Displayable="true">
@@ -295,7 +315,14 @@
     private int _selectedWalletId;
     private string? _destNodeName;
     private long _amount = 20000L;
-    private Task _popupTask;
+
+    //Validation
+    private Validation _walletValidation;
+    private Validation _sourceNodeValidation;
+    private Validation _destNodeValidation;
+    private Validation _capacityValidation;
+    private Validation _existingChannelValidation;
+
 
     private string? mempoolUrl = Environment.GetEnvironmentVariable("MEMPOOL_ENDPOINT");
 
@@ -402,8 +429,10 @@
 
     private async Task CreateChannelRequest()
     {
-        if (_amount >= 20000 && _selectedWalletId > 0 && LoggedUser != null &&
-            _selectedSourceNodeId > 0 && _selectedDestNode != null)
+        if ((int)_destNodeValidation.Validate() == 1 &&
+            (int)_sourceNodeValidation.Validate() == 1 &&
+            (int)_walletValidation.Validate() == 1 &&
+            (int)_capacityValidation.Validate() == 1)
         {
             if (_selectedDestNode.Id != _selectedSourceNodeId)
             {
@@ -428,6 +457,9 @@
                 else
                 {
                     ToastService.ShowError(createChannelResult.Item2);
+                    await datagridRef.Edit(null);
+                    _destNodeName = "";
+                    _selectedDestNode = null;
                 }
 
             }
@@ -436,13 +468,10 @@
                 ToastService.ShowError("The Source Node cannot be the same as the Destitation Node");
             }
         }
-        else
-        {
-            ToastService.ShowError("Some fields were not properly filled");
-        }
 
         await LoadData();
         await FetchRequests();
+
     }
 
     #endregion
