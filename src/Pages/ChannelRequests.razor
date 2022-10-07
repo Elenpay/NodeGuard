@@ -25,6 +25,7 @@
               UseInternalEditing="true"
               ShowPageSizes="true"
               Editable="true"
+              ShowValidationsSummary="true"
               Striped="true">
         <PopupTitleTemplate>
             <h2>Create Channel Request</h2>
@@ -319,7 +320,6 @@
     private Validation _sourceNodeValidation;
     private Validation _destNodeValidation;
     private Validation _capacityValidation;
-    private Validation _existingChannelValidation;
 
 
     private string? mempoolUrl = Environment.GetEnvironmentVariable("MEMPOOL_ENDPOINT");
@@ -421,6 +421,7 @@
                 // Refresh the list of available source nodes and take out the one selected
                 _manageableNodes = await NodeRepository.GetAllManagedByUser(LoggedUser?.Id!);
                 _manageableNodes = _manageableNodes.Where(node => node.Id != _selectedDestNode.Id).ToList();
+                _destNodeValidation.Clear();
             }
         }
     }
@@ -464,6 +465,9 @@
             else
             {
                 ToastService.ShowError("The Source Node cannot be the same as the Destitation Node");
+                await datagridRef.Edit(null);
+                _destNodeName = "";
+                _selectedDestNode = null;
             }
         }
 
