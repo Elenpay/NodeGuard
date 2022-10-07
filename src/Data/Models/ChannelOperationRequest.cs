@@ -56,12 +56,9 @@ namespace FundsManager.Data.Models
         /// Calculated property to convert to btc
         /// </summary>
         [NotMapped]
-        private decimal _amount => new Money(SatsAmount, MoneyUnit.Satoshi).ToDecimal(MoneyUnit.BTC);
-
-        [NotMapped]
         public decimal Amount
         {
-            get => _amount;
+            get => new Money(SatsAmount, MoneyUnit.Satoshi).ToDecimal(MoneyUnit.BTC);
             set
             {
             }
