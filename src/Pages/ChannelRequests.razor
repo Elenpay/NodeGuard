@@ -373,6 +373,10 @@
         if (LoggedUser != null)
         {
             _manageableNodes = await NodeRepository.GetAllManagedByUser(LoggedUser.Id);
+            if (_selectedDestNode != null)
+            {
+                _manageableNodes = _manageableNodes.Where(node => node.Id != _selectedDestNode.Id).ToList();
+            }
             _allWallets = await WalletRepository.GetAvailableWallets();
         }
     }
