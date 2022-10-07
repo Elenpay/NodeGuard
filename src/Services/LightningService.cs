@@ -1528,7 +1528,7 @@ namespace FundsManager.Services
                                 !utxos.Any()
                                     ? "No UTXOs found to fund the sweep tx"
                                     :
-                                    totalSatsAvailable > requiredAnchorChannelClosingAmount
+                                    totalSatsAvailable <= requiredAnchorChannelClosingAmount
                                         ?
                                         "Total sats available is less than the required to have for channel closing amounts, ignoring tx" : string.Empty;
 
