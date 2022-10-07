@@ -35,6 +35,7 @@ services:
         MINIMUM_WITHDRAWAL_BTC_AMOUNT: 0.001
         MINIMUM_CHANNEL_CAPACITY_SATS: 20000
         MONITOR_WITHDRAWALS_CRON: "*/1 * * * *" # Every Minute
+        ENABLE_REMOTE_FM_SIGNER: "false" #Changes the way of signing, instead of a auto-generated internal wallet, the FM will sign with a remote signer function on AWS Lambda
     volumes:
         - fundsmanager_data_keys_dir:/root/.aspnet/DataProtection-Keys
 

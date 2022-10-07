@@ -9,6 +9,10 @@ Project("{E53339B2-1760-4266-BCC7-CA923CBCF16C}") = "docker-compose", "docker\do
 EndProject
 Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "FundsManager.Tests", "test\FundsManager.Tests\FundsManager.Tests.csproj", "{0950DC2F-CEEB-4FF1-AE32-2A64661AFA9F}"
 EndProject
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "FundsManagerSigner", "signer\FundsManagerSigner\FundsManagerSigner.csproj", "{5925D5EA-17B3-43DC-A0DE-E818A40E98F8}"
+EndProject
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "FundsManagerSigner.Tests", "signer\FundsManagerSigner.Tests\FundsManagerSigner.Tests.csproj", "{29641D0C-270C-4A09-A6B8-587FA538CA8A}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -27,6 +31,14 @@ Global
 		{0950DC2F-CEEB-4FF1-AE32-2A64661AFA9F}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{0950DC2F-CEEB-4FF1-AE32-2A64661AFA9F}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{0950DC2F-CEEB-4FF1-AE32-2A64661AFA9F}.Release|Any CPU.Build.0 = Release|Any CPU
+		{5925D5EA-17B3-43DC-A0DE-E818A40E98F8}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{5925D5EA-17B3-43DC-A0DE-E818A40E98F8}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{5925D5EA-17B3-43DC-A0DE-E818A40E98F8}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{5925D5EA-17B3-43DC-A0DE-E818A40E98F8}.Release|Any CPU.Build.0 = Release|Any CPU
+		{29641D0C-270C-4A09-A6B8-587FA538CA8A}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{29641D0C-270C-4A09-A6B8-587FA538CA8A}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{29641D0C-270C-4A09-A6B8-587FA538CA8A}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{29641D0C-270C-4A09-A6B8-587FA538CA8A}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE

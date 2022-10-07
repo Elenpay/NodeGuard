@@ -240,8 +240,6 @@ namespace FundsManager.Data
                         CreationDatetime = DateTimeOffset.Now,
                     };
 
-                    var masterPrivateKey = internalWallet.GetMasterPrivateKey(nbXplorerNetwork);
-
                     applicationDbContext.Add(internalWallet);
                     applicationDbContext.SaveChanges();
 

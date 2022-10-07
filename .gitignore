@@ -2,13 +2,15 @@ docker/bin/
 .vs/
 .idea/
 docker/obj/
-src/bin/
-src/obj/
-test/FundsManager.Tests/obj/
-test/FundsManager.Tests/bin/
+**/bin/
+**/obj/
 FundsManager.sln.DotSettings.user
 src/FundsManager.csproj.user
 
 # Files created by Polar runs
 devnetwork.polar/
 docker/volumes
+FundsManagerSigner.Tests/bin/
+FundsManagerSigner.Tests/obj/
+FundsManagerSigner/bin/
+FundsManagerSigner/obj/

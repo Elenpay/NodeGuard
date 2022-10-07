@@ -1,3 +1,4 @@
+using System.Net;
 using FundsManager.Data.Models;
 using FundsManager.Data.Repositories.Interfaces;
 using Google.Protobuf;
@@ -9,6 +10,10 @@ using NBXplorer;
 using NBXplorer.DerivationStrategy;
 using NBXplorer.Models;
 using System.Security.Cryptography;
+using System.Text;
+using System.Text.Json;
+using Amazon;
+using Amazon.Runtime;
 using AutoMapper;
 using FundsManager.Data;
 using FundsManager.Helpers;
@@ -19,6 +24,7 @@ using Microsoft.EntityFrameworkCore;
 using AddressType = Lnrpc.AddressType;
 using Channel = FundsManager.Data.Models.Channel;
 using ListUnspentRequest = Lnrpc.ListUnspentRequest;
+using Transaction = NBitcoin.Transaction;
 using UTXO = NBXplorer.Models.UTXO;
 
 // ReSharper disable InconsistentNaming
@@ -121,6 +127,7 @@ namespace FundsManager.Services
         private readonly IWalletRepository _walletRepository;
         private readonly IFMUTXORepository _ifmutxoRepository;
         private readonly IChannelOperationRequestPSBTRepository _channelOperationRequestPsbtRepository;
+        private readonly IChannelRepository _channelRepository;
 
         public LightningService(ILogger<LightningService> logger,
             IChannelOperationRequestRepository channelOperationRequestRepository,
@@ -130,7 +137,8 @@ namespace FundsManager.Services
             IBackgroundJobClient backgroundJobClient,
             IWalletRepository walletRepository,
             IFMUTXORepository ifmutxoRepository,
-            IChannelOperationRequestPSBTRepository channelOperationRequestPsbtRepository)
+            IChannelOperationRequestPSBTRepository channelOperationRequestPsbtRepository,
+            IChannelRepository channelRepository)
         {
             _logger = logger;
             _channelOperationRequestRepository = channelOperationRequestRepository;
@@ -141,7 +149,22 @@ namespace FundsManager.Services
             _walletRepository = walletRepository;
             _ifmutxoRepository = ifmutxoRepository;
             _channelOperationRequestPsbtRepository = channelOperationRequestPsbtRepository;
+            _channelRepository = channelRepository;
         }
+
+        /// <summary>
+        /// Record used to match AWS SignPSBT function input
+        /// </summary>
+        /// <param name="Psbt"></param>
+        /// <param name="EnforcedSighash"></param>
+        /// <param name="Network"></param>
+        /// <param name="AwsKmsKeyId"></param>
+        public record Input(string Psbt, SigHash? EnforcedSighash, string Network, string AwsKmsKeyId);
+        /// <summary>
+        /// Record used to match AWS SignPSBT funciton output
+        /// </summary>
+        /// <param name="Psbt"></param>
+        public record Output(string? Psbt);
 
         public async Task OpenChannel(ChannelOperationRequest channelOperationRequest)
         {
@@ -364,71 +387,90 @@ namespace FundsManager.Services
                                     var totalFees = combinedPSBT.GetFee();
                                     channelfundingTx.Outputs[0].Value = totalIn - totalOut - totalFees;
 
-                                    //We get the UTXO keyPath / derivation path from nbxplorer
-
-                                    var UTXOs = await nbxplorerClient.GetUTXOsAsync(derivationStrategyBase);
-                                    UTXOs.RemoveDuplicateUTXOs();
-
-                                    var OutpointKeyPathDictionary =
-                                        UTXOs.Confirmed.UTXOs.ToDictionary(x => x.Outpoint, x => x.KeyPath);
-
-                                    var txInKeyPathDictionary =
-                                        channelfundingTx.Inputs.Where(x => OutpointKeyPathDictionary.ContainsKey(x.PrevOut))
-                                            .ToDictionary(x => x,
-                                                x => OutpointKeyPathDictionary[x.PrevOut]);
-
-                                    if (!txInKeyPathDictionary.Any())
-                                    {
-                                        const string errorKeypathsForTheUtxosUsedInThisTxAreNotFound =
-                                            "Error, keypaths for the UTXOs used in this tx are not found, probably this UTXO is already used as input of another transaction";
-
-                                        _logger.LogError(errorKeypathsForTheUtxosUsedInThisTxAreNotFound);
-
-                                        CancelPendingChannel(source, client, pendingChannelId);
-
-                                        throw new ArgumentException(
-                                            errorKeypathsForTheUtxosUsedInThisTxAreNotFound);
-                                    }
-
-                                    var privateKeysForUsedUTXOs = txInKeyPathDictionary.ToDictionary(x => x.Key.PrevOut,
-                                        x =>
-                                            channelOperationRequest.Wallet.InternalWallet.GetAccountKey(network)
-                                                .Derive(x.Value).PrivateKey);
-
-                                    //We merge fundedPSBT with the other PSBT with the change fixed
+                                    //We merge changeFixedPSBT with the other PSBT with the change fixed
 
                                     var changeFixedPSBT = channelfundingTx.CreatePSBT(network).UpdateFrom(fundedPSBT);
-
-                                    //We need to SIGHASH_ALL all inputs/outputs as fundsmanager to protect the tx from tampering by adding a signature
                                     var partialSigsCount = changeFixedPSBT.Inputs.Sum(x => x.PartialSigs.Count);
-                                    foreach (var input in changeFixedPSBT.Inputs)
+                                    //We check the way the fundsmanager signs, with the remoteFundsManagerSigner or by itself.
+                                    var isFMSignerEnabled =
+                                        Environment.GetEnvironmentVariable("ENABLE_REMOTE_FM_SIGNER").ToUpper() == "true".ToUpper();
+
+                                    PSBT? fmSignedPSBT = null;
+                                    if (isFMSignerEnabled)
                                     {
-                                        if (privateKeysForUsedUTXOs.TryGetValue(input.PrevOut, out var key))
+                                        var region = Environment.GetEnvironmentVariable("AWS_REGION");
+                                        //AWS Call to lambda function
+                                        var credentials = new ImmutableCredentials(
+                                            Environment.GetEnvironmentVariable("AWS_ACCESS_KEY_ID"),
+                                            Environment.GetEnvironmentVariable("AWS_SECRET_ACCESS_KEY"),
+                                            null);
+
+                                        var requestPayload = new Input(changeFixedPSBT.ToBase64(), SigHash.All,
+                                            CurrentNetworkHelper.GetCurrentNetwork().ToString(),
+                                            Environment.GetEnvironmentVariable("AWS_KMS_KEY_ID") ??
+                                            throw new InvalidOperationException());
+
+                                        var serializedPayload = JsonSerializer.Serialize(requestPayload);
+                                        using var httpClient = new HttpClient();
+                                        //We use a special lib for IAM Auth to AWS
+                                        var signLambdaResponse = await httpClient.PostAsync(
+                                            Environment.GetEnvironmentVariable("FM_SIGNER_ENDPOINT"),
+                                            new StringContent(serializedPayload,
+                                                Encoding.UTF8,
+                                                "application/json"),
+                                            regionName: region,
+                                            serviceName: "lambda",
+                                            credentials: credentials);
+
+                                        if (signLambdaResponse.StatusCode != HttpStatusCode.OK)
                                         {
-                                            input.Sign(key);
+                                            var errorWhileSignignPsbtWithAwsLambdaFunctionStatus =
+                                                $"Error while signing PSBT with AWS Lambda function,status code:{signLambdaResponse.StatusCode} error:{signLambdaResponse.ReasonPhrase}";
+                                            _logger.LogError(errorWhileSignignPsbtWithAwsLambdaFunctionStatus);
+                                            throw new Exception(errorWhileSignignPsbtWithAwsLambdaFunctionStatus);
+                                        }
+
+                                        var json = JsonSerializer.Deserialize<Output>(signLambdaResponse.Content.ReadAsStream());
+
+                                        if (!PSBT.TryParse(json.Psbt, CurrentNetworkHelper.GetCurrentNetwork(),
+                                                out fmSignedPSBT))
+                                        {
+                                            var errorWhileParsingPsbt = "Error while parsing PSBT signed from AWS Remote FundsManagerSigner";
+                                            _logger.LogError(errorWhileParsingPsbt);
+                                            throw new Exception(errorWhileParsingPsbt);
                                         }
                                     }
+                                    else
+                                    {
+                                        fmSignedPSBT = await SignPSBT(channelOperationRequest,
+                                            nbxplorerClient,
+                                            derivationStrategyBase,
+                                            channelfundingTx,
+                                            source,
+                                            client,
+                                            pendingChannelId,
+                                            network,
+                                            changeFixedPSBT);
+                                    }
 
-                                    //We check that the partial signatures number has changed, otherwise end inmediately
+                                    //We check that the partial signatures number has changed, otherwise finalize inmediately
                                     var partialSigsCountAfterSignature =
-                                        changeFixedPSBT.Inputs.Sum(x => x.PartialSigs.Count);
+                                        fmSignedPSBT.Inputs.Sum(x => x.PartialSigs.Count);
 
                                     if (partialSigsCountAfterSignature == 0 ||
                                         partialSigsCountAfterSignature <= partialSigsCount)
                                     {
                                         var invalidNoOfPartialSignatures =
-                                            $"Invalid expected number of partial signatures after signing for the channel operation request:{channelOperationRequest.Id}";
+                                            $"Invalid expected number of partial signatures after signing the PSBT";
+
                                         _logger.LogError(invalidNoOfPartialSignatures);
-
-                                        CancelPendingChannel(source, client, pendingChannelId);
-
                                         throw new ArgumentException(
                                             invalidNoOfPartialSignatures);
                                     }
 
                                     //PSBT marked as verified so time to finalize the PSBT and broadcast the tx
 
-                                    var finalizedPSBT = changeFixedPSBT.Finalize();
+                                    var finalizedPSBT = fmSignedPSBT.Finalize();
 
                                     //Sanity check
                                     finalizedPSBT.AssertSanity();
@@ -459,18 +501,18 @@ namespace FundsManager.Services
 
                                         if (channelOperationRequest.ChannelOperationRequestPsbts != null)
                                         {
-                                            channelOperationRequest.ChannelOperationRequestPsbts.Add(
-                                                new ChannelOperationRequestPSBT
-                                                {
-                                                    IsFinalisedPSBT = true,
-                                                    CreationDatetime = DateTimeOffset.Now,
-                                                    PSBT = finalizedPSBT.ToBase64(),
-                                                });
+                                            var finalizedChannelOperationRequestPsbt = new ChannelOperationRequestPSBT
+                                            {
+                                                IsFinalisedPSBT = true,
+                                                CreationDatetime = DateTimeOffset.Now,
+                                                PSBT = finalizedPSBT.ToBase64(),
+                                                ChannelOperationRequestId = channelOperationRequest.Id
+                                            };
 
-                                            var psbtUpdate =
-                                                _channelOperationRequestRepository.Update(channelOperationRequest);
+                                            var finalisedPSBTAdd = await
+                                                _channelOperationRequestPsbtRepository.AddAsync(finalizedChannelOperationRequestPsbt);
 
-                                            if (!psbtUpdate.Item1)
+                                            if (!finalisedPSBTAdd.Item1)
                                             {
                                                 _logger.LogError(
                                                     "Error while saving the finalised PSBT for channel operation request with id:{}",
@@ -518,6 +560,85 @@ namespace FundsManager.Services
                 //TODO Mark as failed (?)
                 throw;
             }
+        }
+
+        /// <summary>
+        /// Aux method when the fundsmanager is the one in change of signing the PSBTs
+        /// </summary>
+        /// <param name="channelOperationRequest"></param>
+        /// <param name="nbxplorerClient"></param>
+        /// <param name="derivationStrategyBase"></param>
+        /// <param name="channelfundingTx"></param>
+        /// <param name="source"></param>
+        /// <param name="client"></param>
+        /// <param name="pendingChannelId"></param>
+        /// <param name="network"></param>
+        /// <param name="changeFixedPSBT"></param>
+        /// <returns></returns>
+        /// <exception cref="ArgumentException"></exception>
+        private async Task<PSBT> SignPSBT(ChannelOperationRequest channelOperationRequest, ExplorerClient nbxplorerClient,
+            DerivationStrategyBase derivationStrategyBase, Transaction channelfundingTx, Node source, Lightning.LightningClient client,
+            byte[] pendingChannelId, Network network, PSBT changeFixedPSBT)
+        {
+            //We get the UTXO keyPath / derivation path from nbxplorer
+
+            var UTXOs = await nbxplorerClient.GetUTXOsAsync(derivationStrategyBase);
+            UTXOs.RemoveDuplicateUTXOs();
+
+            var OutpointKeyPathDictionary =
+                UTXOs.Confirmed.UTXOs.ToDictionary(x => x.Outpoint, x => x.KeyPath);
+
+            var txInKeyPathDictionary =
+                channelfundingTx.Inputs.Where(x => OutpointKeyPathDictionary.ContainsKey(x.PrevOut))
+                    .ToDictionary(x => x,
+                        x => OutpointKeyPathDictionary[x.PrevOut]);
+
+            if (!txInKeyPathDictionary.Any())
+            {
+                const string errorKeypathsForTheUtxosUsedInThisTxAreNotFound =
+                    "Error, keypaths for the UTXOs used in this tx are not found, probably this UTXO is already used as input of another transaction";
+
+                _logger.LogError(errorKeypathsForTheUtxosUsedInThisTxAreNotFound);
+
+                CancelPendingChannel(source, client, pendingChannelId);
+
+                throw new ArgumentException(
+                    errorKeypathsForTheUtxosUsedInThisTxAreNotFound);
+            }
+
+            var privateKeysForUsedUTXOs = txInKeyPathDictionary.ToDictionary(x => x.Key.PrevOut,
+                x =>
+                    channelOperationRequest.Wallet.InternalWallet.GetAccountKey(network)
+                        .Derive(x.Value).PrivateKey);
+
+            //We need to SIGHASH_ALL all inputs/outputs as fundsmanager to protect the tx from tampering by adding a signature
+            var partialSigsCount = changeFixedPSBT.Inputs.Sum(x => x.PartialSigs.Count);
+            foreach (var input in changeFixedPSBT.Inputs)
+            {
+                if (privateKeysForUsedUTXOs.TryGetValue(input.PrevOut, out var key))
+                {
+                    input.Sign(key);
+                }
+            }
+
+            //We check that the partial signatures number has changed, otherwise finalize inmediately
+            var partialSigsCountAfterSignature =
+                changeFixedPSBT.Inputs.Sum(x => x.PartialSigs.Count);
+
+            if (partialSigsCountAfterSignature == 0 ||
+                partialSigsCountAfterSignature <= partialSigsCount)
+            {
+                var invalidNoOfPartialSignatures =
+                    $"Invalid expected number of partial signatures after signing for the channel operation request:{channelOperationRequest.Id}";
+                _logger.LogError(invalidNoOfPartialSignatures);
+
+                CancelPendingChannel(source, client, pendingChannelId);
+
+                throw new ArgumentException(
+                    invalidNoOfPartialSignatures);
+            }
+
+            return changeFixedPSBT;
         }
 
         /// <summary>
@@ -792,12 +913,12 @@ namespace FundsManager.Services
 
             _logger.LogInformation("Channel close request for request id:{}",
                 channelOperationRequest.Id);
-            await using var context = await _dbContextFactory.CreateDbContextAsync();
+
             try
             {
                 if (channelOperationRequest.ChannelId != null)
                 {
-                    var channel = context.Channels.SingleOrDefault(x => x.Id == channelOperationRequest.ChannelId);
+                    var channel = await _channelRepository.GetById((int)channelOperationRequest.ChannelId);
 
                     if (channel != null && channelOperationRequest.SourceNode.ChannelAdminMacaroon != null)
                     {
@@ -889,14 +1010,9 @@ namespace FundsManager.Services
 
                                     channel.Status = Channel.ChannelStatus.Closed;
 
-                                    //Automapper to avoid creation of entities
-                                    channel = _mapper.Map<Channel, Channel>(channel);
+                                    var updateChannelResult = _channelRepository.Update(channel);
 
-                                    context.Update(channel);
-
-                                    var closedChannelUpdateResult = await context.SaveChangesAsync() > 0;
-
-                                    if (!closedChannelUpdateResult)
+                                    if (!updateChannelResult.Item1)
                                     {
                                         _logger.LogError(
                                             "Error while setting to closed status a closed channel with id:{}",
@@ -914,10 +1030,35 @@ namespace FundsManager.Services
             }
             catch (Exception e)
             {
-                _logger.LogError(e,
-                    "Channel close request failed for channel operation request:{}",
-                    channelOperationRequest.Id);
-                throw;
+                if (e.Message.Contains("channel not found"))
+                {
+                    //We mark it as closed as it no longer exists
+                    if (channelOperationRequest.ChannelId != null)
+                    {
+                        var channel = await _channelRepository.GetById((int)channelOperationRequest.ChannelId);
+                        if (channel != null)
+                        {
+                            channel.Status = Channel.ChannelStatus.Closed;
+
+                            _channelRepository.Update(channel);
+                            _logger.LogInformation("Setting channel with id:{} to closed as it no longer exists",
+                                channel.Id);
+
+                            //It does not exists, probably was on-chain confirmed
+                            //TODO Might be worth in the future check it onchain ?
+                            channelOperationRequest.Status = ChannelOperationRequestStatus.OnChainConfirmed;
+
+                            _channelOperationRequestRepository.Update(channelOperationRequest);
+                        }
+                    }
+                }
+                else
+                {
+                    _logger.LogError(e,
+                        "Channel close request failed for channel operation request:{}",
+                        channelOperationRequest.Id);
+                    throw;
+                }
             }
         }
 
