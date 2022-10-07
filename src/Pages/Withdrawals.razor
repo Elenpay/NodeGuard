@@ -142,16 +142,16 @@
                     </DataGridColumn>
                     <DataGridColumn TItem="WalletWithdrawalRequest" PopupFieldColumnSize="ColumnSize.Is6" Field="@nameof(WalletWithdrawalRequest.WithdrawAllFunds)" Caption="@nameof(WalletWithdrawalRequest.WithdrawAllFunds).Humanize(LetterCasing.Sentence)" Editable="true" Displayable="false">
                         <EditTemplate>
-                           
+                    
                             <Check TValue="bool" Checked="@((bool) context.CellValue)" CheckedChanged="(value) => {context.CellValue = value; _isAmountDisabled = value;}"> </Check>
-
-
+                    
+                    
                         </EditTemplate>
                     </DataGridColumn>
-                    <DataGridColumn TItem="WalletWithdrawalRequest" PopupFieldColumnSize="ColumnSize.Is6" Field="@nameof(WalletWithdrawalRequest.WithdrawAllFunds)" Caption="Wallet Balance" Editable="true" Displayable="false">
+                    <DataGridColumn PopupFieldColumnSize="ColumnSize.Is6" Caption="Wallet Balance" Editable="true" Displayable="false">
                         <EditTemplate>
                             @if (_selectedRequestWalletBalance != null)
-
+                    
                             {
                                 <p>@_selectedRequestWalletBalance BTC</p>
                             }
@@ -752,5 +752,4 @@
         }
        
     }
-
 }
