@@ -170,7 +170,7 @@
                     <EditTemplate>
                         @if (!_isAmountDisabled)
                         {
-                            <Validation AsyncValidator="ValidateAmount">
+                            <Validation Validator="args => ValidationHelper.ValidateWithdrawalAmount(args, _isAmountDisabled)">
                                 <NumericEdit TValue="decimal" Disabled="_isAmountDisabled" Value="@((decimal)context.CellValue)" ValueChanged="(value) => { context.CellValue = value; }">
                                     <Feedback>
                                         <ValidationError />
@@ -677,23 +677,6 @@
             await GetData();
             StateHasChanged();
 
-        }
-    }
-
-
-    private async Task ValidateAmount(ValidatorEventArgs arg1, CancellationToken arg2)
-    {
-        var amount = (decimal)arg1.Value;
-
-        arg1.Status = ValidationStatus.Success;
-
-        var environmentVariable = Environment.GetEnvironmentVariable("MINIMUM_WITHDRAWAL_BTC_AMOUNT") ?? throw new InvalidOperationException();
-
-        var minimum = decimal.Parse(environmentVariable, NumberStyles.AllowDecimalPoint, CultureInfo.InvariantCulture);
-        if (amount < minimum && !_isAmountDisabled)
-        {
-            arg1.Status = ValidationStatus.Error;
-            arg1.ErrorText = $"Error, the minimum amount to withdraw is at least {minimum} BTC";
         }
     }
 

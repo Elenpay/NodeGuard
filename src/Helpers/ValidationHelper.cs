@@ -40,15 +40,31 @@ public static class ValidationHelper
         
     }
 
-    public static void ValidateAmount(ValidatorEventArgs obj)
+    public static void ValidateChannelCapacity(ValidatorEventArgs obj)
     {
         obj.Status = ValidationStatus.Success;
-        string environmentVariable = Environment.GetEnvironmentVariable("MINIMUM_WITHDRAWAL_BTC_AMOUNT") ?? throw new InvalidOperationException();;
+        string environmentVariable = Environment.GetEnvironmentVariable("MINIMUM_CHANNEL_CAPACITY_SATS") ?? throw new InvalidOperationException();;
         long minimum = long.Parse(environmentVariable, NumberStyles.AllowDecimalPoint, CultureInfo.InvariantCulture);
         if (((long)obj.Value) < minimum)
         {
             obj.ErrorText = "The amount must be greater than 20.000";
             obj.Status = ValidationStatus.Error;
+        }
+    }
+
+    public static void ValidateWithdrawalAmount(ValidatorEventArgs obj, Boolean isAmountDisabled)
+    {
+        var amount = (decimal)obj.Value;
+
+        obj.Status = ValidationStatus.Success;
+
+        var environmentVariable = Environment.GetEnvironmentVariable("MINIMUM_WITHDRAWAL_BTC_AMOUNT") ?? throw new InvalidOperationException();
+
+        var minimum = decimal.Parse(environmentVariable, NumberStyles.AllowDecimalPoint, CultureInfo.InvariantCulture);
+        if (amount < minimum && !isAmountDisabled)
+        {
+            obj.Status = ValidationStatus.Error;
+            obj.ErrorText = $"Error, the minimum amount to withdraw is at least {minimum} BTC";
         }
     }
 
@@ -77,6 +93,16 @@ public static class ValidationHelper
             obj.ErrorText = "A node with the same pubkey already exists";
             obj.Status = ValidationStatus.Error;
             return;
+        }
+    }
+
+    public static void validateDestNode(ValidatorEventArgs obj, Node? destNode)
+    {
+        obj.Status = ValidationStatus.Success;
+        if (destNode == null)
+        {
+            obj.ErrorText = "Select a proper destination node";
+            obj.Status = ValidationStatus.Error;
         }
     }
 }
