@@ -130,7 +130,7 @@ namespace FundsManager
 
                 //config.UsePostgreSqlStorage(connectionString);
                 var mssqlConnectionString = Environment.GetEnvironmentVariable("MSSQL_CONNECTIONSTRING");
-                config.UseSqlServerStorage(connectionString);
+                config.UseSqlServerStorage(mssqlConnectionString);
             });
 
             builder.Services.AddHangfireServer();
