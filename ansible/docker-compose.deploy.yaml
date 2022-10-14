@@ -37,7 +37,7 @@ services:
       AWS_REGION: "{{ AWS_REGION }}"
       AWS_KMS_KEY_ID: "{{ AWS_KMS_KEY_ID }}"
       FM_SIGNER_ENDPOINT: "{{ FM_SIGNER_ENDPOINT }}"
-      MSSQL_CONNECTIONSTRING: "Server=localhost;Database=master;User=sa;Password=rw_dev;"
+      MSSQL_CONNECTIONSTRING: "Server=localhost;Database=master;User=sa;Password=S3cur3P@ssW0rd!;"
 
     volumes:
       - fundsmanager_data_keys_dir:/root/.aspnet/DataProtection-Keys
@@ -65,7 +65,7 @@ services:
     network_mode: service:fundsmanager
     environment:
       ACCEPT_EULA: Y
-      MSSQL_SA_PASSWORD: rw_dev
+      MSSQL_SA_PASSWORD: S3cur3P@ssW0rd!
       TZ: Europe/Madrid
     volumes:
       - fundsmanager_mssql_data:/var/opt/mssql
