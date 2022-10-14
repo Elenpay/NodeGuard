@@ -128,7 +128,9 @@ namespace FundsManager
                     OnAttemptsExceeded = AttemptsExceededAction.Fail,
                 });
 
-                config.UsePostgreSqlStorage(connectionString);
+                //config.UsePostgreSqlStorage(connectionString);
+                var mssqlConnectionString = Environment.GetEnvironmentVariable("MSSQL_CONNECTIONSTRING");
+                config.UseSqlServerStorage(connectionString);
             });
 
             builder.Services.AddHangfireServer();
