@@ -146,8 +146,17 @@ services:
       - '10003:10009'
       - '9737:9735'
 
+  redis:
+    hostname: redis
+    image: redis:7-bullseye
+    restart: always
+    command: redis-server --save 60 1 --bind 0.0.0.0
+    volumes:
+        - redis_data:/data      
+
 volumes:
     fundsmanager_postgres_data:
     bitcoin_datadir: 
     nbxplorer_datadir: 
     fundsmanager_data_keys_dir:
+    redis_data:
