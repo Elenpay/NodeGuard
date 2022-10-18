@@ -58,6 +58,17 @@ services:
     volumes:
       - fundsmanager_postgres_data:/var/lib/postgresql/data
 
+
+
+  redis:
+    hostname: redis
+    image: redis:7-bullseye
+    restart: always
+    command: redis-server --save 60 1 --bind 0.0.0.0
+    volumes:
+        - redis_data:/data
+
 volumes:
   fundsmanager_postgres_data:
   fundsmanager_data_keys_dir:
+  redis_data:
