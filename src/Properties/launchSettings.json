@@ -33,8 +33,8 @@
         "MINIMUM_CHANNEL_CAPACITY_SATS": "20000",
         "MEMPOOL_ENDPOINT": "https://mempool-staging.elenpay.tech",
         "TRANSACTION_CONFIRMATION_MINIMUM_BLOCKS": "6",
-        "MONITOR_WITHDRAWALS_CRON": "*/1 * * * *" 
-        "REDIS_CONNECTIONSTRING": "host.docker.internal",
+        "MONITOR_WITHDRAWALS_CRON": "*/1 * * * *" ,
+        "REDIS_CONNECTIONSTRING": "host.docker.internal"
       },
       "applicationUrl": "https://localhost:443;http://localhost:38080",
 
