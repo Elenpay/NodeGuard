@@ -128,9 +128,8 @@ namespace FundsManager
                     OnAttemptsExceeded = AttemptsExceededAction.Fail,
                 });
 
-                //config.UsePostgreSqlStorage(connectionString);
-                var mssqlConnectionString = Environment.GetEnvironmentVariable("MSSQL_CONNECTIONSTRING");
-                config.UseSqlServerStorage(mssqlConnectionString);
+                config.UseRedisStorage(Environment.GetEnvironmentVariable("REDIS_CONNECTIONSTRING") ??
+                                       throw new ArgumentException("Redis env var not set"));
             });
 
             builder.Services.AddHangfireServer();
