@@ -28,8 +28,8 @@
       <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
       <PrivateAssets>all</PrivateAssets>
     </PackageReference>
-    <PackageReference Include="Sentry.AspNetCore" Version="3.21.0" />
-    <PackageReference Include="Sentry.Extensions.Logging" Version="3.21.0" />
+    <PackageReference Include="Sentry.AspNetCore" Version="3.22.0" />
+    <PackageReference Include="Sentry.Extensions.Logging" Version="3.22.0" />
   </ItemGroup>
 
   <ItemGroup>
