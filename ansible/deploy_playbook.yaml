@@ -15,7 +15,7 @@
     NBXPLORER_URI: http://172.17.0.1:32838
     SENTRY_DSN: https://6e10418190404837853e31beaefb94c4@o1066831.ingest.sentry.io/6599373
     SENTRY_ENVIRONMENT: PASSED_BY_CLI
-    SWEEPNODEWALLETSJOB_CRON: 0 */1 * * * ?" # Every Minute
+    SWEEPNODEWALLETSJOB_CRON: "0 */1 * * * ?" # Every Minute
     ANCHOR_CLOSINGS_MINIMUM_SATS: 100000 # Check https://github.com/lightningnetwork/lnd/issues/6505#issuecomment-1120364460 to understand, we need 100K to support anchor channel closings
     AWS_ACCESS_KEY_ID: PASSED_BY_CLI
     AWS_SECRET_ACCESS_KEY: PASSED_BY_CLI
@@ -25,7 +25,7 @@
     MINIMUM_WITHDRAWAL_BTC_AMOUNT: 0.001
     MINIMUM_CHANNEL_CAPACITY_SATS: 20000
     TRANSACTION_CONFIRMATION_MINIMUM_BLOCKS: 6
-    MONITOR_WITHDRAWALS_CRON: 0 */1 * * * ?" # Every Minute
+    MONITOR_WITHDRAWALS_CRON: "0 */1 * * * ?" # Every Minute
   hosts: 
    - btcpay-staging
   tasks:
