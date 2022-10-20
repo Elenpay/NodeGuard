@@ -38,6 +38,8 @@ services:
       AWS_KMS_KEY_ID: "{{ AWS_KMS_KEY_ID }}"
       FM_SIGNER_ENDPOINT: "{{ FM_SIGNER_ENDPOINT }}"
       REDIS_CONNECTIONSTRING: "redis"
+      COINGECKO_ENDPOINT: "{{ COINGECKO_ENDPOINT }}"
+      COINGECKO_KEY: "{{ COINGECKO_KEY }}"
 
     volumes:
       - fundsmanager_data_keys_dir:/root/.aspnet/DataProtection-Keys
