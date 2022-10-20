@@ -66,5 +66,6 @@
   <ItemGroup>
     <None Remove="Sentry" />
     <None Remove="Sentry.Extensions.Logging" />
+    <None Remove="RestSharp" />
   </ItemGroup>
 </Project>
