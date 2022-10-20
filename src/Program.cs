@@ -8,6 +8,7 @@ using FundsManager.Data;
 using FundsManager.Data.Models;
 using FundsManager.Data.Repositories;
 using FundsManager.Data.Repositories.Interfaces;
+using FundsManager.Jobs;
 using FundsManager.Services;
 using Hangfire;
 using Hangfire.Dashboard;
@@ -16,6 +17,8 @@ using Microsoft.AspNetCore.Components.Authorization;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
 using Newtonsoft.Json;
+using OpenTelemetry.Trace;
+using Quartz;
 using Sentry;
 using Sentry.Extensibility;
 
@@ -113,6 +116,86 @@ namespace FundsManager
                 .AddBootstrapProviders()
                 .AddFontAwesomeIcons();
 
+            ////Quartz Job System
+            // Add OpenTelemetry and Quartz instrumentation
+            builder.Services.AddOpenTelemetryTracing(x =>
+            {
+                x.AddQuartzInstrumentation();
+                //TODO Add datadog exporter
+                //x.AddJaegerExporter(config =>
+                //{
+                //    // Configure Jaeger
+                //    config.AgentHost = "host.docker.internal";
+                //    config.AgentPort = 6831;
+                //});
+            });
+            builder.Services.AddQuartz(q =>
+            {
+                //Right now we are using in-memory storage
+
+                //q.UsePersistentStore(options =>
+                //{
+                //    options.UseProperties = true;
+                //    options.UseJsonSerializer();
+
+                //    options.UsePostgres(Environment.GetEnvironmentVariable("POSTGRES_CONNECTIONSTRING"));
+                //});
+
+                //This allows DI in jobs
+                q.UseMicrosoftDependencyInjectionJobFactory();
+
+                //Sweep Job
+                q.AddJob<SweepAllNodesWalletsJob>(opts =>
+                {
+                    opts.DisallowConcurrentExecution();
+                    opts.WithIdentity(nameof(SweepAllNodesWalletsJob));
+                });
+
+                q.AddTrigger(opts =>
+                {
+                    opts.ForJob(nameof(SweepAllNodesWalletsJob)).WithIdentity($"{nameof(SweepAllNodesWalletsJob)}Trigger")
+                        .StartNow().WithSimpleSchedule(scheduleBuilder =>
+                        {
+                            scheduleBuilder.WithIntervalInMinutes(1).RepeatForever();
+                        });
+                });
+
+                //Monitor Withdrawals Job
+                q.AddJob<MonitorWithdrawalsJob>(opts =>
+                {
+                    opts.DisallowConcurrentExecution();
+                    opts.WithIdentity(nameof(MonitorWithdrawalsJob));
+                });
+
+                q.AddTrigger(opts =>
+                {
+                    opts.ForJob(nameof(MonitorWithdrawalsJob)).WithIdentity($"{nameof(MonitorWithdrawalsJob)}Trigger")
+                        .StartNow().WithCronSchedule(Environment.GetEnvironmentVariable("MONITOR_WITHDRAWALS_CRON"));
+                });
+
+                // ChannelAcceptorJob
+
+                q.AddJob<ChannelAcceptorJob>(opts =>
+                {
+                    opts.DisallowConcurrentExecution();
+                    opts.WithIdentity(nameof(ChannelAcceptorJob));
+                });
+
+                q.AddTrigger(opts =>
+                {
+                    opts.ForJob(nameof(ChannelAcceptorJob)).WithIdentity($"{nameof(ChannelAcceptorJob)}Trigger")
+                        .StartNow();
+                });
+            });
+
+            // ASP.NET Core hosting
+            builder.Services.AddQuartzServer(options =>
+            {
+                // when shutting down we want jobs to complete gracefully
+                options.WaitForJobsToComplete = true;
+                options.AwaitApplicationStarted = true;
+            });
+
             //Hangfire Job system
 
             builder.Services.AddHangfire((provider, config) =>
@@ -163,28 +246,6 @@ namespace FundsManager
                 try
                 {
                     DbInitializer.Initialize(servicesProvider);
-
-                    //Background job for ChannelAcceptor
-                    var bgClient = servicesProvider.GetService<IBackgroundJobClient>();
-                    var logger = servicesProvider.GetService<ILogger<Program>>();
-                    if (bgClient != null)
-                    {
-                        var jobId = bgClient.Enqueue<ILightningService>(service => service.ChannelAcceptorJob());
-                        logger?.LogInformation("Lifetime job for channel acceptor launched on jobId:{}", jobId);
-                    }
-
-                    //Recurring Jobs AKA Cron Jobs
-                    var recurringJobManager = servicesProvider.GetService<IRecurringJobManager>();
-
-                    recurringJobManager.AddOrUpdate<ILightningService>(nameof(LightningService.SweepNodeWalletsJob),
-                        x => x.SweepNodeWalletsJob(),
-                        Environment.GetEnvironmentVariable("SWEEPNODEWALLETSJOB_CRON"),
-                        TimeZoneInfo.Utc);
-
-                    recurringJobManager.AddOrUpdate<IBitcoinService>(nameof(BitcoinService.MonitorWithdrawals),
-                        x => x.MonitorWithdrawals(),
-                        Environment.GetEnvironmentVariable("MONITOR_WITHDRAWALS_CRON"),
-                        TimeZoneInfo.Utc);
                 }
                 catch (Exception ex)
                 {

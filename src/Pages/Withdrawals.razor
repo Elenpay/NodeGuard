@@ -154,9 +154,8 @@
                     <DataGridColumn PopupFieldColumnSize="ColumnSize.Is6" Caption="Wallet Balance" Editable="true" Displayable="false">
                         <EditTemplate>
                             @if (_selectedRequestWalletBalance != null)
-                    
                             {
-                                <p>@_selectedRequestWalletBalance BTC</p>
+                                <p>@($"{_selectedRequestWalletBalance} BTC ({Math.Round(PriceConversionHelper.SatToUsdConversion((decimal)_selectedRequestWalletBalance, _btcPrice), 2)} USD)")</p>
                             }
                         </EditTemplate>
                     </DataGridColumn>
@@ -164,7 +163,7 @@
                 <DataGridColumn TItem="WalletWithdrawalRequest" PopupFieldColumnSize="ColumnSize.Is12" Editable="true" Displayable="true" Field="@nameof(WalletWithdrawalRequest.Amount)" Caption="Amount (BTC)" Sortable="false" >
                     <DisplayTemplate>
                         @{
-                            @($"{context.Amount} BTC")
+                            @($"{context.Amount} BTC ({Math.Round(PriceConversionHelper.BtcToUsdConversion(context.Amount, _btcPrice), 2)} USD)")
                         }
                     </DisplayTemplate>
                     <EditTemplate>
@@ -176,6 +175,11 @@
                                         <ValidationError />
                                     </Feedback>
                                 </NumericEdit>
+                                <FieldHelp>
+
+                                    @($"Current amount: {Math.Round(PriceConversionHelper.BtcToUsdConversion((decimal)context.CellValue, _btcPrice), 2)} USD")
+
+                                </FieldHelp>
                             </Validation>
                         }
                         else
@@ -295,7 +299,7 @@
                 <DataGridColumn TItem="WalletWithdrawalRequest" Editable="true"  Field="@nameof(WalletWithdrawalRequest.Amount)" Caption="Amount (BTC)" Sortable="false" Displayable="true">
                     <DisplayTemplate>
                         @{
-                                @($"{context.Amount} BTC")
+                            @($"{context.Amount} BTC ({Math.Round(PriceConversionHelper.BtcToUsdConversion(context.Amount, _btcPrice), 2)} USD)")
                         }
                     </DisplayTemplate>
                    
@@ -423,9 +427,16 @@
     private Validation? _rejectCancelValidation;
     private bool _isAmountDisabled;
     private decimal? _selectedRequestWalletBalance;
+
+    private decimal _btcPrice;
     
     protected override async Task OnInitializedAsync()
     {
+        _btcPrice = PriceConversionHelper.GetBtcToUsdPrice();
+        if (_btcPrice == 0)
+        {
+            ToastService.ShowError("Bitcoin price in USD could not be retrieved.");
+        }
         if (LoggedUser != null)
         {
             if (ClaimsPrincipal.IsInRole(ApplicationUserRole.FinanceManager.ToString()))
