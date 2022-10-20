@@ -26,6 +26,8 @@
     MINIMUM_CHANNEL_CAPACITY_SATS: 20000
     TRANSACTION_CONFIRMATION_MINIMUM_BLOCKS: 6
     MONITOR_WITHDRAWALS_CRON: "0 */1 * * * ?" # Every Minute
+    COINGECKO_ENDPOINT: "{{ lookup('env','COINGECKO_ENDPOINT') }}"
+    COINGECKO_KEY: "{{ lookup('env','COINGECKO_KEY') }}"
   hosts: 
    - btcpay-staging
   tasks:
