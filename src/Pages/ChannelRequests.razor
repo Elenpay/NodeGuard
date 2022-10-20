@@ -292,6 +292,7 @@
 @inject IBackgroundJobClient  BackgroundJobClient
 @inject IWalletRepository WalletRepository
 @inject INodeRepository NodeRepository
+@inject NavigationManager uriHelper;
 
 @code {
     private List<ChannelOperationRequest>? _channelRequests;
@@ -641,6 +642,7 @@
 
             await FetchRequests();
             await _psbtSignRef.HideModal();
+            StateHasChanged();
 
         }
     
