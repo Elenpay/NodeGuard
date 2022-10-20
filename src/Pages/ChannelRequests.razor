@@ -286,6 +286,7 @@
 @inject IBackgroundJobClient  BackgroundJobClient
 @inject IWalletRepository WalletRepository
 @inject INodeRepository NodeRepository
+@inject NavigationManager uriHelper;
 
 @code {
     private List<ChannelOperationRequest>? _channelRequests;
@@ -477,7 +478,6 @@
 
         await LoadData();
         await FetchRequests();
-
     }
 
     #endregion
@@ -629,6 +629,7 @@
 
             await FetchRequests();
             await _psbtSignRef.HideModal();
+            uriHelper.NavigateTo(uriHelper.Uri, forceLoad: true);
 
         }
 
