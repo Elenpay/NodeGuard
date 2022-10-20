@@ -34,6 +34,7 @@ services:
         ENABLE_HW_SUPPORT: "false" # Enables fields and features for using Hardware Wallets
         MINIMUM_WITHDRAWAL_BTC_AMOUNT: 0.001
         MINIMUM_CHANNEL_CAPACITY_SATS: 20000
+        COINGECKO_ENDPOINT: https://pro-api.coingecko.com/api/v3/coins/markets?vs_currency=usd&ids=bitcoin
         MONITOR_WITHDRAWALS_CRON: "*/1 * * * *" # Every Minute
         ENABLE_REMOTE_FM_SIGNER: "false" #Changes the way of signing, instead of a auto-generated internal wallet, the FM will sign with a remote signer function on AWS Lambda
         MSSQL_CONNECTIONSTRING: "Server=localhost;Database=master;User=sa;Password=rw_dev;"
@@ -56,9 +57,8 @@ services:
 
   nbxplorer:
     restart: unless-stopped
-    image: nicolasdorier/nbxplorer:2.3.26
+    image: nicolasdorier/nbxplorer:2.3.40
     hostname: nbxplorer
-    platform: linux/amd64
     ports:
     - "32838:32838"
     environment:

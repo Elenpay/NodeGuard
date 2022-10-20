@@ -11,6 +11,7 @@
     "FundsManager": {
       "commandName": "Project",
       "launchBrowser": true,
+      "applicationUrl": "https://localhost:443;http://localhost:38080",
       "environmentVariables": {
         "ASPNETCORE_ENVIRONMENT": "Development",
         "POSTGRES_CONNECTIONSTRING": "Host=127.0.0.1;Port=35433;Database=fundsmanager;Username=rw_dev;Password=rw_dev",

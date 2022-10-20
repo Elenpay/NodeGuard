@@ -111,6 +111,7 @@
                 <DisplayTemplate>
                     @{
                         @($"{context.Amount} BTC")
+                        @($" ({Math.Round(PriceConversionHelper.BtcToUsdConversion(context.Amount, _btcPrice), 2)} USD)")
                     }
                 </DisplayTemplate>
                 <EditTemplate>
@@ -120,7 +121,11 @@
                                 <ValidationError/>
                             </Feedback>
                         </NumericEdit>
-                        <FieldHelp>Amount in Satoshis. Minimum 20.000.</FieldHelp>
+                        <FieldHelp>
+                            @{
+                                @($"Amount in Satoshis. Minimum 20.000. Current amount: {Math.Round(PriceConversionHelper.SatToUsdConversion(_amount, _btcPrice), 2)} USD")
+                            }
+                        </FieldHelp>
                     </Validation>
                 </EditTemplate>
             </DataGridColumn>
@@ -200,6 +205,7 @@
             <DisplayTemplate>
                 @{
                     @($"{context.Amount} BTC")
+                    @($" ({Math.Round(PriceConversionHelper.BtcToUsdConversion(context.Amount, _btcPrice), 2)} USD)")
                 }
             </DisplayTemplate>
         </DataGridColumn>
@@ -321,6 +327,7 @@
     private Validation _destNodeValidation;
     private Validation _capacityValidation;
 
+    private decimal _btcPrice;
 
     private string? mempoolUrl = Environment.GetEnvironmentVariable("MEMPOOL_ENDPOINT");
 
@@ -336,6 +343,11 @@
     {
         if (LoggedUser != null)
         {
+            _btcPrice = PriceConversionHelper.GetBtcToUsdPrice();
+            if (_btcPrice == 0)
+            {
+                ToastService.ShowError("Bitcoin price in USD could not be retrieved.");
+            }
             await FetchRequests();
             await LoadData();
             if (ClaimsPrincipal != null && !ClaimsPrincipal.IsInRole(ApplicationUserRole.FinanceManager.ToString()))
@@ -476,7 +488,7 @@
         }
 
         await LoadData();
-        await FetchRequests();
+        await FetchRequests(); 
 
     }
 
@@ -631,17 +643,14 @@
             await _psbtSignRef.HideModal();
 
         }
-
+    
 
     }
-
-
 
     private bool IsStatusCancellable(ChannelOperationRequestStatus status)
     {
         return status is ChannelOperationRequestStatus.Pending
             or ChannelOperationRequestStatus.Approved;
     }
-
 
 }
