@@ -475,7 +475,6 @@ namespace FundsManager.Services
         /// Background job that checks the status of the txIds to update the withdrawal status
         /// </summary>
         /// <returns></returns>
-        [AutomaticRetry(LogEvents = true, Attempts = 0, OnAttemptsExceeded = AttemptsExceededAction.Delete)]
         Task MonitorWithdrawals();
     }
 }
