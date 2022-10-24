@@ -1,6 +1,7 @@
 using AutoMapper;
 using FundsManager.Data.Models;
 using FundsManager.Data.Repositories.Interfaces;
+using FundsManager.Services;
 using Humanizer;
 using Microsoft.EntityFrameworkCore;
 
@@ -12,15 +13,17 @@ namespace FundsManager.Data.Repositories
         private readonly ILogger<ChannelOperationRequestRepository> _logger;
         private readonly IDbContextFactory<ApplicationDbContext> _dbContextFactory;
         private readonly IMapper _mapper;
+        private readonly NotificationService _notificationService;
 
         public ChannelOperationRequestRepository(IRepository<ChannelOperationRequest> repository,
             ILogger<ChannelOperationRequestRepository> logger,
-            IDbContextFactory<ApplicationDbContext> dbContextFactory, IMapper mapper)
+            IDbContextFactory<ApplicationDbContext> dbContextFactory, IMapper mapper, NotificationService notificationService)
         {
             _repository = repository;
             _logger = logger;
             _dbContextFactory = dbContextFactory;
             _mapper = mapper;
+            _notificationService = notificationService;
         }
 
         public async Task<ChannelOperationRequest?> GetById(int id)
@@ -92,7 +95,7 @@ namespace FundsManager.Data.Repositories
             }
 
             var valueTuple = await _repository.AddAsync(type, applicationDbContext);
-
+            await _notificationService.NotifyRequestSigners(type.WalletId, "/channel-requests");
             return valueTuple;
         }
 

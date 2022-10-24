@@ -19,6 +19,18 @@
     <link href="_content/Blazorise.SpinKit/blazorise.spinkit.css" rel="stylesheet" />
     @*blazorise*@
     <component type="typeof(HeadOutlet)" render-mode="ServerPrerendered" />
+    <script src="https://cdn.onesignal.com/sdks/OneSignalSDK.js" async=""></script>
+    <script>
+      window.OneSignal = window.OneSignal || [];
+      OneSignal.push(function() {
+        OneSignal.init({
+          appId: "@Environment.GetEnvironmentVariable("PUSH_NOTIFICATIONS_ONESIGNAL_APP_ID")",
+        });
+      });
+      function associateNotificationUser(userId){
+          OneSignal.setExternalUserId(userId);
+      }
+    </script>
 </head>
 <body>
     @RenderBody()

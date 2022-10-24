@@ -2,8 +2,9 @@
 @using Blazored.Toast.Configuration
 @using System.Security.Claims
 @inject AuthenticationStateProvider AuthenticationStateProvider
-@inject NavigationManager NavigationManager
 @inject IApplicationUserRepository ApplicationUserRepository
+@inject IJSRuntime JsRuntime
+@inject NavigationManager NavigationManager
 
 <PageTitle>FundsManager</PageTitle>
 
@@ -61,10 +62,15 @@
             if (_claimsPrincipal?.Identity != null && _claimsPrincipal.Identity.IsAuthenticated)
             {
                 if (_claimsPrincipal.Identity.Name != null) _loggedUser = await ApplicationUserRepository.GetByUsername(_claimsPrincipal.Identity.Name);
+                if (_loggedUser?.Id != null) LinkNotificationsUser(_loggedUser.Id);
             }
         }
 
+    }
 
+    protected void LinkNotificationsUser(String userId)
+    {
+        JsRuntime.InvokeAsync<string>("associateNotificationUser", userId);
     }
 
 }

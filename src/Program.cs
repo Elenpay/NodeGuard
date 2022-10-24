@@ -59,7 +59,6 @@ namespace FundsManager
             builder.Services
                 .AddScoped<AuthenticationStateProvider,
                     RevalidatingIdentityAuthenticationStateProvider<ApplicationUser>>();
-            builder.Services.AddTransient<ClipboardService>();
             //Repos DI
             builder.Services.AddTransient(typeof(IRepository<>), typeof(Repository<>));
             builder.Services.AddTransient<IApplicationUserRepository, ApplicationUserRepository>();
@@ -79,8 +78,10 @@ namespace FundsManager
             builder.Services.AddBlazoredToast();
 
             //Service DI
+            builder.Services.AddTransient<ClipboardService>();
             builder.Services.AddTransient<ILightningService, LightningService>();
             builder.Services.AddTransient<IBitcoinService, BitcoinService>();
+            builder.Services.AddTransient<NotificationService, NotificationService>();
 
             //DbContext
             var connectionString = Environment.GetEnvironmentVariable("POSTGRES_CONNECTIONSTRING") ??
