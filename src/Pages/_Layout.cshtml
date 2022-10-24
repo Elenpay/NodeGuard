@@ -21,15 +21,18 @@
     <component type="typeof(HeadOutlet)" render-mode="ServerPrerendered" />
     <script src="https://cdn.onesignal.com/sdks/OneSignalSDK.js" async=""></script>
     <script>
-      window.OneSignal = window.OneSignal || [];
-      OneSignal.push(function() {
-        OneSignal.init({
-          appId: "@Environment.GetEnvironmentVariable("PUSH_NOTIFICATIONS_ONESIGNAL_APP_ID")",
+    if ("@Environment.GetEnvironmentVariable("PUSH_NOTIFICATIONS_ONESIGNAL_ENABLED")" === "true")
+    {  
+        window.OneSignal = window.OneSignal || [];
+        OneSignal.push(function() {
+            OneSignal.init({
+                appId: "@Environment.GetEnvironmentVariable("PUSH_NOTIFICATIONS_ONESIGNAL_APP_ID")",
+            });
         });
-      });
-      function associateNotificationUser(userId){
-          OneSignal.setExternalUserId(userId);
-      }
+        function associateNotificationUser(userId){
+            OneSignal.setExternalUserId(userId);
+        }
+    }
     </script>
 </head>
 <body>

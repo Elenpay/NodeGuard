@@ -29,14 +29,17 @@ public class NotificationService
 
 	public async Task NotifyRequestSigners(int walletId, string sourcePage)
 	{
-		await using var applicationDbContext = await _dbContextFactory.CreateDbContextAsync();
-		String notificationReturnUrl = _notificationReturnUrl + sourcePage;
-		List<String> notifiableUsersString = applicationDbContext.ApplicationUsers
-			.Where(user => user.Keys.Any(key => key.Wallets.Any(wallet => wallet.Id == walletId)))
-			.Select(user => user.Id)
-			.ToList();
-		_logger.LogInformation("Sending notifications to the following Ids: {UsersString}", notifiableUsersString);
-		await SendNotification("You have something to approve", notifiableUsersString, notificationReturnUrl);
+		if (Convert.ToBoolean(Environment.GetEnvironmentVariable("PUSH_NOTIFICATIONS_ONESIGNAL_ENABLED")))
+		{
+			await using var applicationDbContext = await _dbContextFactory.CreateDbContextAsync();
+			String notificationReturnUrl = _notificationReturnUrl + sourcePage;
+			List<String> notifiableUsersString = applicationDbContext.ApplicationUsers
+				.Where(user => user.Keys.Any(key => key.Wallets.Any(wallet => wallet.Id == walletId)))
+				.Select(user => user.Id)
+				.ToList();
+			_logger.LogInformation("Sending notifications to the following Ids: {UsersString}", notifiableUsersString);
+			await SendNotification("You have something to approve", notifiableUsersString, notificationReturnUrl);
+		}
 	}
 	
 	private async Task SendNotification(String message, List<String> recipientList, String returnUrl)

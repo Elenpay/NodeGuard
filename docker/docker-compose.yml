@@ -25,8 +25,9 @@ services:
         NBXPLORER_URI: http://nbxplorer:32838
         POSTGRES_CONNECTIONSTRING: Host=127.0.0.1;Port=5432;Database=fundsmanager;Username=rw_dev;Password=rw_dev
         PUSH_NOTIFICATIONS_ONESIGNAL_API_BASE_PATH: "https://onesignal.com/api/v1"
-        PUSH_NOTIFICATIONS_ONESIGNAL_API_TOKEN: "NDcxNDRjZTMtYTMxMy00MmU4LWFlYTgtZTNjNTMzNGFiNzE1"
         PUSH_NOTIFICATIONS_ONESIGNAL_APP_ID: "88695835-1513-4f3d-8104-ce8089447d11"
+        PUSH_NOTIFICATIONS_ONESIGNAL_API_TOKEN: "NDcxNDRjZTMtYTMxMy00MmU4LWFlYTgtZTNjNTMzNGFiNzE1"
+        PUSH_NOTIFICATIONS_ONESIGNAL_ENABLED: "false" # true/false case sensitive  
         SENTRY_DEBUG_ENABLED: "true"
         SENTRY_DSN: ""
         SENTRY_ENVIRONMENT: Development
