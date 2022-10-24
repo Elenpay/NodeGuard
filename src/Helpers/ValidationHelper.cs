@@ -1,7 +1,6 @@
 using System.Globalization;
 using Blazorise;
 using FundsManager.Data.Models;
-using FundsManager.Data.Repositories;
 
 namespace FundsManager.Helpers;
 
@@ -100,6 +99,16 @@ public static class ValidationHelper
     {
         obj.Status = ValidationStatus.Success;
         if (destNode == null)
+        {
+            obj.ErrorText = "Select a proper destination node";
+            obj.Status = ValidationStatus.Error;
+        }
+    }
+
+    public static void validateMaxDecimal(ValidatorEventArgs obj)
+    {
+        obj.Status = ValidationStatus.Success;
+        if ((decimal)obj.Value > 21000000)
         {
             obj.ErrorText = "Select a proper destination node";
             obj.Status = ValidationStatus.Error;
