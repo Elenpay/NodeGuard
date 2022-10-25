@@ -170,21 +170,20 @@
                         @if (!_isAmountDisabled)
                         {
                             <Validation Validator="args => ValidationHelper.ValidateWithdrawalAmount(args, _isAmountDisabled)">
-                                <NumericEdit TValue="decimal" Disabled="_isAmountDisabled" Value="@((decimal)context.CellValue)" ValueChanged="(value) => { context.CellValue = value; }" Max="Decimal.MaxValue" Min="Decimal.Zero">
+                                <NumericPicker TValue="decimal" Disabled="_isAmountDisabled" Value="@((decimal)context.CellValue)" ValueChanged="(value) => { context.CellValue = value; }" CurrencySymbol="₿ " Max="21000000" MinMaxLimitsOverride="NumericMinMaxLimitsOverride.Ceiling" Decimals="8">
                                     <Feedback>
                                         <ValidationError />
                                     </Feedback>
-                                </NumericEdit>
+                                </NumericPicker>
                                 <FieldHelp>
 
                                     @($"Current amount: {Math.Round(PriceConversionHelper.BtcToUsdConversion((decimal)context.CellValue, _btcPrice), 2)} USD")
-
                                 </FieldHelp>
                             </Validation>
                         }
                         else
                         {
-                            <NumericEdit TValue="decimal" Disabled="_isAmountDisabled" Value="@((decimal)context.CellValue)" ValueChanged="(value) => { context.CellValue = value; }"/>
+                            <NumericPicker TValue="decimal" Disabled="_isAmountDisabled" Value="@((decimal)context.CellValue)" ValueChanged="(value) => { context.CellValue = value; }" CurrencySymbol="SAT "/>
                         }
                         </EditTemplate>
                 </DataGridColumn>
