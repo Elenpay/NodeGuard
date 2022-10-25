@@ -79,7 +79,7 @@ public static class ValidationHelper
 
     }
 
-    public static void ValidatePubKey(ValidatorEventArgs obj, List<Node> nodes)
+    public static void ValidatePubKey(ValidatorEventArgs obj, List<Node> nodes, string currentPubKey)
     {
         obj.Status = ValidationStatus.Success;
         if (string.IsNullOrWhiteSpace((string)obj.Value))
@@ -88,7 +88,7 @@ public static class ValidationHelper
             obj.Status = ValidationStatus.Error;
             return;
         }
-        if (nodes.Any(node => node.PubKey.Equals(obj.Value)))
+        if (nodes.Any(node => node.PubKey.Equals(obj.Value) && currentPubKey != node.PubKey))
         {
             obj.ErrorText = "A node with the same pubkey already exists";
             obj.Status = ValidationStatus.Error;
