@@ -170,7 +170,7 @@
                         @if (!_isAmountDisabled)
                         {
                             <Validation Validator="args => ValidationHelper.ValidateWithdrawalAmount(args, _isAmountDisabled)">
-                                <NumericPicker TValue="decimal" Disabled="_isAmountDisabled" Value="@((decimal)context.CellValue)" ValueChanged="(value) => { context.CellValue = value; }" CurrencySymbol="₿ " Max="21000000" MinMaxLimitsOverride="NumericMinMaxLimitsOverride.Ceiling" Decimals="8">
+                                <NumericPicker TValue="decimal" Disabled="_isAmountDisabled" Value="@((decimal)context.CellValue)" ValueChanged="(value) => { context.CellValue = value; }" CurrencySymbol="₿ " Max="@(decimal.Parse(Environment.GetEnvironmentVariable("MAX_BTC") ?? throw new InvalidOperationException(), NumberStyles.AllowDecimalPoint, CultureInfo.InvariantCulture))" MinMaxLimitsOverride="NumericMinMaxLimitsOverride.Ceiling" Decimals="8">
                                     <Feedback>
                                         <ValidationError />
                                     </Feedback>
