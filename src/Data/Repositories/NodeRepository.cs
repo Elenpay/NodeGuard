@@ -15,12 +15,12 @@ namespace FundsManager.Data.Repositories
         public NodeRepository(IRepository<Node> repository,
             ILogger<NodeRepository> logger,
             IDbContextFactory<ApplicationDbContext> dbContextFactory,
-            IMapper _mapper)
+            IMapper mapper)
         {
             _repository = repository;
             _logger = logger;
             _dbContextFactory = dbContextFactory;
-            this._mapper = _mapper;
+            this._mapper = mapper;
         }
 
         public async Task<Node?> GetById(int id)
