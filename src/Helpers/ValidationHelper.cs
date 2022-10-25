@@ -42,7 +42,7 @@ public static class ValidationHelper
     public static void ValidateChannelCapacity(ValidatorEventArgs obj)
     {
         obj.Status = ValidationStatus.Success;
-        string environmentVariable = Environment.GetEnvironmentVariable("MINIMUM_CHANNEL_CAPACITY_SATS") ?? throw new InvalidOperationException();;
+        string environmentVariable = Environment.GetEnvironmentVariable("MINIMUM_CHANNEL_CAPACITY_SATS") ?? throw new InvalidOperationException();
         long minimum = long.Parse(environmentVariable, NumberStyles.AllowDecimalPoint, CultureInfo.InvariantCulture);
         if (((long)obj.Value) < minimum)
         {
