@@ -108,7 +108,11 @@ public static class ValidationHelper
     public static void validateMaxDecimal(ValidatorEventArgs obj)
     {
         obj.Status = ValidationStatus.Success;
-        if ((decimal)obj.Value > 21000000)
+        
+        var environmentVariable = Environment.GetEnvironmentVariable("MAX_BTC") ?? throw new InvalidOperationException();
+        var max = decimal.Parse(environmentVariable, NumberStyles.AllowDecimalPoint, CultureInfo.InvariantCulture);
+        
+        if ((decimal)obj.Value > max)
         {
             obj.ErrorText = "Select a proper destination node";
             obj.Status = ValidationStatus.Error;
