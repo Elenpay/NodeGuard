@@ -170,7 +170,7 @@
                         @if (!_isAmountDisabled)
                         {
                             <Validation Validator="args => ValidationHelper.ValidateWithdrawalAmount(args, _isAmountDisabled)">
-                                <NumericPicker TValue="decimal" Disabled="_isAmountDisabled" Value="@((decimal)context.CellValue)" ValueChanged="(value) => { context.CellValue = value; }" CurrencySymbol="₿ " Max="@(decimal.Parse(Environment.GetEnvironmentVariable("MAX_BTC") ?? throw new InvalidOperationException(), NumberStyles.AllowDecimalPoint, CultureInfo.InvariantCulture))" MinMaxLimitsOverride="NumericMinMaxLimitsOverride.Ceiling" Decimals="8">
+                                <NumericPicker TValue="decimal" Disabled="_isAmountDisabled" Value="@((decimal)context.CellValue)" ValueChanged="(value) => { context.CellValue = value; }" CurrencySymbol="₿ " Max="@(MAX_BTC)" MinMaxLimitsOverride="NumericMinMaxLimitsOverride.Ceiling" Decimals="8">
                                     <Feedback>
                                         <ValidationError />
                                     </Feedback>
@@ -427,6 +427,8 @@
     private bool _isAmountDisabled;
     private decimal? _selectedRequestWalletBalance;
 
+    private decimal MAX_BTC;
+
     private decimal _btcPrice;
     
     protected override async Task OnInitializedAsync()
@@ -436,6 +438,16 @@
         {
             ToastService.ShowError("Bitcoin price in USD could not be retrieved.");
         }
+        
+        try
+        {
+            MAX_BTC = decimal.Parse(Environment.GetEnvironmentVariable("MAX_BTC") ?? throw new InvalidOperationException(), NumberStyles.AllowDecimalPoint, CultureInfo.InvariantCulture);
+        }
+        catch (Exception e)
+        {
+            ToastService.ShowError("Getting maximum of Bitcoins for withdrawal has failed");
+        }
+        
         if (LoggedUser != null)
         {
             if (ClaimsPrincipal.IsInRole(ApplicationUserRole.FinanceManager.ToString()))
