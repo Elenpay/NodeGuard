@@ -20,7 +20,7 @@ namespace FundsManager.Data.Repositories
             ILogger<ChannelRepository> logger,
             IDbContextFactory<ApplicationDbContext> dbContextFactory,
             IChannelOperationRequestRepository channelOperationRequestRepository, IBackgroundJobClient backgroundJobClient,
-            IMapper _mapper
+            IMapper mapper
             )
         {
             _repository = repository;
@@ -28,7 +28,7 @@ namespace FundsManager.Data.Repositories
             _dbContextFactory = dbContextFactory;
             _channelOperationRequestRepository = channelOperationRequestRepository;
             _backgroundJobClient = backgroundJobClient;
-            this._mapper = _mapper;
+            this._mapper = mapper;
         }
 
         public async Task<Channel?> GetById(int id)

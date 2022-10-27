@@ -7,6 +7,7 @@
     FUNDSMANAGER_ENDPOINT: https://fm-staging.elenpay.tech
     FUNDSMANAGER_IMAGE_TAG: develop
     POSTGRES_CONNECTIONSTRING: Host=fundsmanager_postgres;Port=5432;Database=fundsmanager;Username=rw_dev;Password=rw_dev
+    MAX_BTC: "{{ lookup('env','MAX_BTC') }}"
     MEMPOOL_ENDPOINT: "https://mempool-staging.elenpay.tech"
     NBXPLORER_BTCNODEENDPOINT: 10.8.0.10:18444
     NBXPLORER_BTCRPCPASSWORD: "{{ lookup('env','BITCOIND_PASSWORD_STAGING') }}"
