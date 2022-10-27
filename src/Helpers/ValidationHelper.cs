@@ -1,7 +1,6 @@
 using System.Globalization;
 using Blazorise;
 using FundsManager.Data.Models;
-using FundsManager.Data.Repositories;
 
 namespace FundsManager.Helpers;
 
@@ -43,7 +42,7 @@ public static class ValidationHelper
     public static void ValidateChannelCapacity(ValidatorEventArgs obj)
     {
         obj.Status = ValidationStatus.Success;
-        string environmentVariable = Environment.GetEnvironmentVariable("MINIMUM_CHANNEL_CAPACITY_SATS") ?? throw new InvalidOperationException();;
+        string environmentVariable = Environment.GetEnvironmentVariable("MINIMUM_CHANNEL_CAPACITY_SATS") ?? throw new InvalidOperationException();
         long minimum = long.Parse(environmentVariable, NumberStyles.AllowDecimalPoint, CultureInfo.InvariantCulture);
         if (((long)obj.Value) < minimum)
         {
@@ -100,6 +99,20 @@ public static class ValidationHelper
     {
         obj.Status = ValidationStatus.Success;
         if (destNode == null)
+        {
+            obj.ErrorText = "Select a proper destination node";
+            obj.Status = ValidationStatus.Error;
+        }
+    }
+
+    public static void validateMaxDecimal(ValidatorEventArgs obj)
+    {
+        obj.Status = ValidationStatus.Success;
+        
+        var environmentVariable = Environment.GetEnvironmentVariable("MAX_BTC") ?? throw new InvalidOperationException();
+        var max = decimal.Parse(environmentVariable, NumberStyles.AllowDecimalPoint, CultureInfo.InvariantCulture);
+        
+        if ((decimal)obj.Value > max)
         {
             obj.ErrorText = "Select a proper destination node";
             obj.Status = ValidationStatus.Error;
