@@ -38,7 +38,7 @@ public class NotificationService
 				.Select(user => user.Id)
 				.ToList();
 			_logger.LogInformation("Sending notifications to the following Ids: {UsersString}", notifiableUsersString);
-			await SendNotification("You have something to approve", notifiableUsersString, notificationReturnUrl);
+			await SendNotification("There is a pending item awaiting approval. Click here to continue", notifiableUsersString, notificationReturnUrl);
 		}
 	}
 	
