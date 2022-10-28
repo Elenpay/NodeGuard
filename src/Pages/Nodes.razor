@@ -37,7 +37,7 @@
                     </DeleteCommandTemplate>
                 </DataGridCommandColumn>
                 <DataGridColumn TItem="Node" Editable="true" Field="@nameof(Node.Name)" Validator="ValidationHelper.ValidateName" Caption="@nameof(Node.Name)" Sortable="false"/>
-                <DataGridColumn TItem="Node" Editable="true" Field="@nameof(Node.PubKey)" Validator="(ValidatorEventArgs obj) => ValidationHelper.ValidatePubKey(obj, _nodes)" Caption="@nameof(Node.PubKey)" Sortable="false">
+                <DataGridColumn TItem="Node" Editable="true" Field="@nameof(Node.PubKey)" Caption="@nameof(Node.PubKey)" Sortable="false">
                     <DisplayTemplate>
                         @StringHelper.TruncateHeadAndTail(context.PubKey, 10)&nbsp;
                         @{State state = new("Copy", "oi oi-clipboard");}
@@ -45,6 +45,15 @@
                             <i class="@state.ClassName"></i>
                         </Button>
                     </DisplayTemplate>
+                    <EditTemplate>
+                        <Validation Validator="@((ValidatorEventArgs obj) => @ValidationHelper.ValidatePubKey(obj, _nodes, context.Item.PubKey))">
+                            <TextEdit Text="@((string)context.CellValue)" TextChanged="(text) => { context.CellValue = text; }">
+                                <Feedback>
+                                    <ValidationError/>
+                                </Feedback>
+                            </TextEdit>
+                        </Validation>
+                    </EditTemplate>
                 </DataGridColumn>
                 <DataGridColumn TItem="Node" Editable="true" Field="@nameof(Node.Description)" Caption="@nameof(Node.Description)" Sortable="false"/>
                 <DataGridColumn TItem="Node" Editable="true" Field="@nameof(Node.ChannelAdminMacaroon)" Validator="ValidationRule.IsNotEmpty" Caption="Macaroon" CellsEditableOnNewCommand="true" CellsEditableOnEditCommand="false" Displayable="false" Sortable="false"/>

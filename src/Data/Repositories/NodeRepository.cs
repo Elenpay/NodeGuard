@@ -1,4 +1,5 @@
-﻿using FundsManager.Data.Models;
+﻿using AutoMapper;
+using FundsManager.Data.Models;
 using FundsManager.Data.Repositories.Interfaces;
 using Microsoft.EntityFrameworkCore;
 
@@ -9,14 +10,17 @@ namespace FundsManager.Data.Repositories
         private readonly IRepository<Node> _repository;
         private readonly ILogger<NodeRepository> _logger;
         private readonly IDbContextFactory<ApplicationDbContext> _dbContextFactory;
+        private readonly IMapper _mapper; 
 
         public NodeRepository(IRepository<Node> repository,
             ILogger<NodeRepository> logger,
-            IDbContextFactory<ApplicationDbContext> dbContextFactory)
+            IDbContextFactory<ApplicationDbContext> dbContextFactory,
+            IMapper mapper)
         {
             _repository = repository;
             _logger = logger;
             _dbContextFactory = dbContextFactory;
+            this._mapper = mapper;
         }
 
         public async Task<Node?> GetById(int id)
@@ -113,10 +117,13 @@ namespace FundsManager.Data.Repositories
         {
             using var applicationDbContext = _dbContextFactory.CreateDbContext();
             type.SetUpdateDatetime();
-            //TODO Automapper
+            
             type.Users?.Clear();
             type.ChannelOperationRequestsAsSource?.Clear();
             type.ChannelOperationRequestsAsDestination?.Clear();
+
+            type = _mapper.Map<Node, Node>(type);
+            
             return _repository.Update(type, applicationDbContext);
         }
     }

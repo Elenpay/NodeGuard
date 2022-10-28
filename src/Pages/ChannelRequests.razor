@@ -116,11 +116,11 @@
                 </DisplayTemplate>
                 <EditTemplate>
                     <Validation Validator="ValidationHelper.ValidateChannelCapacity" @ref="_capacityValidation">
-                        <NumericEdit TValue="long" @bind-Value="@_amount">
+                        <NumericPicker TValue="long" @bind-Value="@_amount" CurrencySymbol="SATS ">
                             <Feedback>
                                 <ValidationError/>
                             </Feedback>
-                        </NumericEdit>
+                        </NumericPicker>
                         <FieldHelp>
                             @{
                                 @($"Amount in Satoshis. Minimum 20.000. Current amount: {Math.Round(PriceConversionHelper.SatToUsdConversion(_amount, _btcPrice), 2)} USD")
