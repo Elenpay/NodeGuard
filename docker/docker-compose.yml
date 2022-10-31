@@ -25,6 +25,10 @@ services:
         NBXPLORER_BTCRPCUSER: "polaruser"
         NBXPLORER_URI: http://nbxplorer:32838
         POSTGRES_CONNECTIONSTRING: Host=127.0.0.1;Port=5432;Database=fundsmanager;Username=rw_dev;Password=rw_dev
+        PUSH_NOTIFICATIONS_ONESIGNAL_API_BASE_PATH: "https://onesignal.com/api/v1"
+        PUSH_NOTIFICATIONS_ONESIGNAL_APP_ID: "93800910-9a17-46c7-a3a0-175b68c7aea0"
+        PUSH_NOTIFICATIONS_ONESIGNAL_API_TOKEN: "YTAxMGUwOWYtMTJlMC00MTQwLTg4MWUtMzZhNGQyYTBhMjYw"
+        PUSH_NOTIFICATIONS_ONESIGNAL_ENABLED: "false" # true/false case sensitive  
         SENTRY_DEBUG_ENABLED: "true"
         SENTRY_DSN: ""
         SENTRY_ENVIRONMENT: Development
