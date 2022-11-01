@@ -19,7 +19,6 @@
                   UseInternalEditing="true"
                   RowInserted="OnRowInserted"
                   RowUpdated="OnRowUpdated"
-                  RowRemoving="OnRowDeleted"
                   UseValidation="true">
             <PopupTitleTemplate>
                 <h2>@(context.EditState) node</h2>
@@ -33,7 +32,7 @@
                         <Button Color="Color.Primary" Clicked="@context.Clicked">Edit</Button>
                     </EditCommandTemplate>
                     <DeleteCommandTemplate>
-                        <Button Color="Color.Danger" hidden="@_hideDelete" Clicked="@context.Clicked">Delete</Button>
+                        <Button Color="Color.Danger" hidden="@_hideDelete" Clicked="@(()=> ShowDeleteDialog(context.Item))">Delete</Button>
                     </DeleteCommandTemplate>
                 </DataGridCommandColumn>
                 <DataGridColumn TItem="Node" Editable="true" Field="@nameof(Node.Name)" Validator="ValidationHelper.ValidateName" Caption="@nameof(Node.Name)" Sortable="false"/>
@@ -143,6 +142,7 @@
 @inject INodeRepository NodeRepository
 @inject IToastService ToastService;
 @inject ClipboardService ClipboardService
+@inject IMessageService MessageService
 @inject IWalletRepository WalletRepository
 @implements IDisposable
 @code {
@@ -210,30 +210,6 @@
         await GetData();
     }
 
-
-    private async Task OnRowDeleted(CancellableRowChange<Node> node)
-    {
-        if (node.Item != null)
-        {
-            var (result, _) = NodeRepository.Remove(node.Item);
-            if (!result)
-            {
-                node.Cancel = true;
-                ToastService.ShowError("Something went wrong");
-            }
-            else
-            {
-                ToastService.ShowSuccess("Node deleted successfully");
-                _nodes = await NodeRepository.GetAll();
-
-            }
-        }
-
-        await GetData();
-
-    }
-
-
     private async Task OnRowUpdated(SavedRowItem<Node, Dictionary<string, object>> arg)
     {
         if (arg.Item == null)
@@ -279,6 +255,30 @@
     {
         cts.Cancel(); // Cancel Task.Delay
         cts.Dispose();
+    }
+    
+    private async Task ShowDeleteDialog(Node node)
+    {
+        if (await MessageService.Confirm($"Are you sure you want to delete { node.Name }?", "Confirmation"))
+        {
+            if (node != null)
+            {
+                var (result, _) = NodeRepository.Remove(node);
+                if (!result)
+                {
+                    ToastService.ShowError($"{node.Name} could not be deleted");
+                }
+                else
+                {
+                    ToastService.ShowSuccess($"{node.Name} deleted successfully");
+                    _nodes = await NodeRepository.GetAll();
+
+                }
+            }
+        }
+
+        await GetData();
+
     }
 
     record State(string Text, string ClassName, bool IsDisabled = false);
