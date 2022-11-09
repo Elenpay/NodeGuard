@@ -1,6 +1,7 @@
 stages:
   # - integration_tests
   - build
+  - release
   - deploy_staging
   # - deploy_production
 image: docker:stable
@@ -48,6 +49,17 @@ build:
         - "src/**/*"
         - "FundsManager.sln"
         - ".gitlab-ci.yml"
+
+release:
+  stage: release
+  tags:
+    - lightning_spot_runners
+  script:
+    - docker login -u gitlab-ci-token -p $CI_BUILD_TOKEN registry.gitlab.com
+    - docker build -t ${CI_REGISTRY_IMAGE}:$CI_COMMIT_REF_NAME -f ./src/Dockerfile .
+    - docker push ${CI_REGISTRY_IMAGE}:$CI_COMMIT_REF_NAME
+  only:
+    - tags
 
 deploy_staging:
   image: quay.io/ansible/ansible-runner:latest
