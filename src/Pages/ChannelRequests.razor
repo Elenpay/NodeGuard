@@ -153,7 +153,20 @@
             <DataGridCommandColumn TItem="ChannelOperationRequest" Caption="Actions" Displayable="true">
                 <EditCommandTemplate>
                     <Button Color="Color.Primary" hidden=@_hideApprove Clicked="@(() => ShowModal(context.Item))">Approve</Button>
-                    <Button Color="Color.Danger" Clicked="@(() => OpenModalForRejectOrCancelRequest(context.Item, ChannelOperationRequestStatus.Rejected))">Reject</Button>
+                    @{
+                        if (LoggedUser.Id == context.Item.UserId)
+                        {
+                            <Button Color="Color.Danger" Clicked="@(() => OpenModalForRejectOrCancelRequest(context.Item, ChannelOperationRequestStatus.Cancelled))">
+                                Cancel
+                            </Button>
+                        }
+                        else
+                        {
+                            <Button Color="Color.Danger" Clicked="@(() => OpenModalForRejectOrCancelRequest(context.Item, ChannelOperationRequestStatus.Rejected))">
+                                Reject
+                            </Button>
+                        }
+                    }
                 </EditCommandTemplate>
                 <NewCommandTemplate>
                     <Button hidden/>
@@ -190,14 +203,6 @@
           Striped="true">
     <ChildContent>
         <DataGridColumn TItem="ChannelOperationRequest" Field="@nameof(ChannelOperationRequest.Id)" Caption="#" Sortable="false" Displayable="true"/>
-        <DataGridColumn TItem="ChannelOperationRequest" Filterable="false" Caption="Actions" Sortable="false" Displayable="true">
-            <DisplayTemplate>
-                @if (_showCancelButton && IsStatusCancellable(context.Status))
-                {
-                    <Button Color="Color.Secondary" Clicked="@(() => OpenModalForRejectOrCancelRequest(context, ChannelOperationRequestStatus.Cancelled))">Cancel</Button>
-                }
-            </DisplayTemplate>
-        </DataGridColumn> 
         <DataGridColumn TItem="ChannelOperationRequest" Field="SourceNode.Name" Caption="Source Node" Sortable="false" Displayable="true"/>
         <DataGridColumn TItem="ChannelOperationRequest" Field="DestNode.Name" Caption="Remote Node" Sortable="false" Displayable="true"/>
         <DataGridColumn TItem="ChannelOperationRequest" Field="Wallet.Name" Caption="Source of Funds" Sortable="false" Displayable="true"/>
