@@ -57,6 +57,8 @@
 
   <ItemGroup>
     <Folder Include="Migrations\" />
+    <Folder Include="wwwroot\lib\" />
+    <Folder Include="wwwroot\js\" />
   </ItemGroup>
 
   <ItemGroup>
@@ -71,5 +73,9 @@
     <None Remove="RestSharp" />
     <None Remove="OneSignalApi" />
     <None Include="wwwroot\scripts\OneSignalSDKWorker.js" />
+  </ItemGroup>
+  <ItemGroup>
+    <Content Remove="wwwroot\lib\" />
+    <Content Remove="wwwroot\js\" />
   </ItemGroup>
 </Project>
