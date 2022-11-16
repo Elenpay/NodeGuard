@@ -2,7 +2,7 @@
 
 
 
-@if (Keys != null && Keys.Any())
+@if (Keys != null && Keys.Any(key => key != null))
 {
     <DataGrid TItem="Key"
               Data="Keys"
@@ -10,21 +10,21 @@
               ShowCaptions="true"
               Editable="false"
               responsive>
-        <DataGridColumn TItem="Key" Editable="false" Field="@nameof(Key.Name)" Caption="@nameof(Key.Name)" Sortable="false" />
-        <DataGridColumn TItem="Key" Editable="false" Field="@nameof(Key.Description)" Caption="@nameof(Key.Description)" Sortable="false" />
+
+        <DataGridColumn TItem="Key" Editable="false" Field="@nameof(Key.Name)" Caption="@nameof(Key.Name)" Sortable="false"/>
+        <DataGridColumn TItem="Key" Editable="false" Field="@nameof(Key.Description)" Caption="@nameof(Key.Description)" Sortable="false"/>
         <DataGridColumn TItem="Key" Editable="false" Field="@nameof(Key.IsArchived)" Caption="Archived" Sortable="false" />
         <DataGridColumn TItem="Key" Editable="false" Field="@nameof(Key.IsCompromised)" Caption="Compromised" Sortable="false" />
         <DataGridColumn TItem="Key" CellsEditableOnNewCommand="true" CellsEditableOnEditCommand="false" Editable="false" Field="@nameof(Key.XPUB)" Caption="@nameof(Key.XPUB).Humanize(LetterCasing.Sentence)" Sortable="false">
             <DisplayTemplate Context="keyContext">
                 @if (!string.IsNullOrWhiteSpace(keyContext.XPUB) && keyContext.XPUB.Length > 40)
                 {
-                    @StringHelper.TruncateHeadAndTail(keyContext.XPUB,10);
+                    @StringHelper.TruncateHeadAndTail(keyContext.XPUB, 10);
                 }
                 else
                 {
                     <p>Invalid xpub</p>
                 }
-
             </DisplayTemplate>
         </DataGridColumn>
     </DataGrid>
