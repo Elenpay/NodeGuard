@@ -117,14 +117,29 @@ Example (json-like structure of key-value, `ed0210c8` is the master fingerprint 
   "AwsKmsKeyId": "mrk-cec3e3ef59bc4616a6f44da60bfea0ba"
 }}
 ```
-## Developing on linux
 
+## Developing
 
+### Visual Studio
+Launch the FundsManager Docker VS task
+Launch The FundsManager VS task
+
+### Rider/IntelliJ
+Import and start `devnetwork.polar.zip` in polar
+Launch the FundsManager Docker NOVS task
+Launch The FundsManager NOVS task
+
+### Visual Studio Code
+Import and start `devnetwork.polar.zip` in polar
+Start docker compose from terminal (see below)
+Then, start the vscode launch configuration `Launch against running docker-compose env (DEV)`
+Navigate to http://localhost:38080/
+
+### Starting docker compose from terminal
 Start all the dependencies in docker-compose by running:
 ```bash
 cd docker
-unzip ../devnetwork.polar.zip "volumes/*"
-docker-compose -f docker-compose.dev-environment.yml up -d
+docker-compose -f docker-compose.dev-novs.yml up -d
 ```
-Then, start the vscode launch configuration `Launch against running docker-compose env`
+
 
