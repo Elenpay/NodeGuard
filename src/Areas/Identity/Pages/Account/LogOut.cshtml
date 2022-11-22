@@ -13,4 +13,14 @@
 
         return Redirect("~/");
     }
+
+     public async Task<IActionResult> OnGet()
+     {
+         if (SignInManager.IsSignedIn(User))
+         {
+             await SignInManager.SignOutAsync();
+         }
+
+         return Redirect("~/");
+     }
 }
