@@ -29,7 +29,7 @@
             <ChildContent>
                 <DataGridCommandColumn TItem="Key">
                     <NewCommandTemplate>
-                        <Button Color="Color.Success" Clicked="@context.Clicked" Block>New</Button>
+                        <Button Color="Color.Success" TextColor="TextColor.Light" Clicked="@context.Clicked" Block>New</Button>
                     </NewCommandTemplate>
                     <EditCommandTemplate>
                         <Button Color="Color.Primary" Clicked="@context.Clicked" Size="Size.Small" Block>Edit</Button>
@@ -37,7 +37,7 @@
                     <DeleteCommandTemplate>
                         @if (context.Item.Wallets != null && !context.Item.Wallets.Any())
                         {
-                            <Button Color="Color.Danger" Clicked="@context.Clicked">Delete</Button>
+                            <Button Color="Color.Danger" Clicked="@context.Clicked" Size="Size.Small" Block>Delete</Button>
 
                         }
                     </DeleteCommandTemplate>

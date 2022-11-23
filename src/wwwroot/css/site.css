@@ -159,3 +159,76 @@ a, .btn-link {
     background-color: #e9ecef;
     color: #18D1BB;
 }
+
+/* Login, 2FA auth and Recovery code auth screens */
+.login-title {
+    color: #18D1BB;
+}
+
+.login-bg {
+    background: linear-gradient(135deg, #5749db 0%, #000000 75%);
+}
+
+.login-box {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    width: 400px;
+    padding: 40px;
+    transform: translate(-50%, -50%);
+    background: rgba(0,0,0,.5);
+    box-sizing: border-box;
+    box-shadow: 0 15px 25px rgba(0,0,0,.6);
+    border-radius: 10px;
+}
+
+.login-box .user-box {
+    position: relative;
+}
+
+.login-box .user-box input {
+    width: 100%;
+    font-size: 16px;
+    color: #fff;
+    margin-bottom: 30px;
+    border: none;
+    border-bottom: 1px solid #fff;
+    outline: none;
+    background: transparent;
+}
+
+.login-box .user-box label {
+    position: absolute;
+    top:0;
+    left: 0;
+    padding: 10px 0;
+    font-size: 16px;
+    color: #fff;
+    pointer-events: none;
+    transition: .5s;
+}
+
+.login-box .user-box input:focus ~ label,
+.login-box .user-box input:valid ~ label {
+    top: -20px;
+    left: 0;
+    color: #07F2B1;
+    font-size: 12px;
+}
+
+.btn-login {
+    background: linear-gradient(90deg, #07F2B1 00%, #18D1BB 20%, #3B77E2 40%, #6145F1 60%, #9733EF 80%);
+    color: white;
+    border: none;
+    outline: none;
+}
+
+.btn-login:hover {
+    opacity: 90%;
+}
+
+.validation-text {
+    color: #9733EF !important;
+    font-size: 10px;
+    margin-top: 5px;
+}
