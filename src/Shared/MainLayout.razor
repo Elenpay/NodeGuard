@@ -1,18 +1,17 @@
 ﻿@inherits LayoutComponentBase
 @using Blazored.Toast.Configuration
 @using System.Security.Claims
-@using System.Timers
 @inject AuthenticationStateProvider AuthenticationStateProvider
 @inject IApplicationUserRepository ApplicationUserRepository
 @inject IJSRuntime JsRuntime
 @inject NavigationManager NavigationManager
 
-<PageTitle>FundsManager</PageTitle>
+<PageTitle>NodeGuard</PageTitle>
 
 
 <CascadingValue Value="_loggedUser">
     <CascadingValue Value="_claimsPrincipal">
-<div class="page" @onmousemove="ResetTimer">
+<div class="page">
     <div class="sidebar">
         <NavMenu />
     </div>
@@ -45,8 +44,6 @@
     private Task<AuthenticationState> AuthenticationStateTask { get; set; }
     private ApplicationUser? _loggedUser;
     private ClaimsPrincipal _claimsPrincipal;
-    private Timer? inactivityTimer;
-
 
     protected override async Task OnInitializedAsync()
     {
@@ -69,10 +66,6 @@
             }
         }
 
-        Int32 timeout = Int32.Parse(@Environment.GetEnvironmentVariable("SESSION_TIMEOUT_MILLISECONDS") ?? "3600000");
-        inactivityTimer = new Timer(timeout);
-        inactivityTimer.Elapsed += LogoutUser;
-        inactivityTimer.AutoReset = false;
     }
 
     protected void LinkNotificationsUser(String userId)
@@ -80,15 +73,4 @@
         JsRuntime.InvokeAsync<string>("associateNotificationUser", userId);
     }
 
-    [JSInvokable]
-    protected void ResetTimer()
-    {
-        inactivityTimer?.Stop();
-        inactivityTimer?.Start();
-    }
-
-    protected void LogoutUser(Object? source, System.Timers.ElapsedEventArgs e)
-    {
-        NavigationManager.NavigateTo("/Identity/Account/Logout", true);
-    }
 }
