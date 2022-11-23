@@ -4,7 +4,7 @@
 
 @inject IKeyRepository KeyRepository
 @inject IToastService ToastService
-<h3>My extended public keys</h3>
+<h3 class="custom-primary">My extended public keys</h3>
 
 @attribute [Authorize(Roles = "FinanceManager")]
 
@@ -29,10 +29,10 @@
             <ChildContent>
                 <DataGridCommandColumn TItem="Key">
                     <NewCommandTemplate>
-                        <Button Color="Color.Success" Clicked="@context.Clicked">New</Button>
+                        <Button Color="Color.Success" Clicked="@context.Clicked" Block>New</Button>
                     </NewCommandTemplate>
                     <EditCommandTemplate>
-                        <Button Color="Color.Primary" Clicked="@context.Clicked">Edit</Button>
+                        <Button Color="Color.Primary" Clicked="@context.Clicked" Size="Size.Small" Block>Edit</Button>
                     </EditCommandTemplate>
                     <DeleteCommandTemplate>
                         @if (context.Item.Wallets != null && !context.Item.Wallets.Any())
@@ -56,8 +56,9 @@
                     <DisplayTemplate>
                         @if (!string.IsNullOrWhiteSpace(context.XPUB) && context.XPUB.Length > 40)
                         {
-                            @StringHelper.TruncateHeadAndTail(context.XPUB, 10);
-                            <Button Color="Color.Primary" Clicked="@(() => CopyStrToClipboard(context.XPUB))">
+                            @StringHelper.TruncateHeadAndTail(context.XPUB, 6);
+                            <span>&nbsp</span>
+                            <Button Color="Color.Primary" Clicked="@(() => CopyStrToClipboard(context.XPUB))" Size="Size.Small" Outline>
                                 <i class="oi oi-clipboard"></i>
                             </Button>
                         }

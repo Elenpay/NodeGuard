@@ -5,30 +5,29 @@
 @inject NavigationManager NavigationManager
 <AuthorizeView>
     <Authorized>
-        <a class="navbar-brand" href="">👷‍Work in Progress👷‍♀️</a>
 
         @{
             foreach (var role in _roles)
             {
                 if (role == ApplicationUserRole.Superadmin.ToString("G"))
                 {
-                    <Badge Color="Color.Primary" TextColor="TextColor.White">@ApplicationUserRole.Superadmin.ToString("G").Humanize(LetterCasing.Title)</Badge>
+                    <h6 class="badge badge-super ">@ApplicationUserRole.Superadmin.ToString("G").Humanize(LetterCasing.Title)</h6>
                 }
                 else if (role == ApplicationUserRole.NodeManager.ToString("G"))
                 {
-                    <Badge Color="Color.Secondary" TextColor="TextColor.White">@ApplicationUserRole.NodeManager.ToString("G").Humanize(LetterCasing.Title)</Badge>
+                    <h6 class="badge badge-node">@ApplicationUserRole.NodeManager.ToString("G").Humanize(LetterCasing.Title)</h6>
                 }
                 else
                 {
-                    <Badge Color="Color.Success" TextColor="TextColor.White">@ApplicationUserRole.FinanceManager.ToString("G").Humanize(LetterCasing.Title)</Badge>
+                    <h6 class="badge badge-finance">@ApplicationUserRole.FinanceManager.ToString("G").Humanize(LetterCasing.Title)</h6>
                     <Button Color="Color.Info" Size="Size.Small" Clicked="@(() => NavigationManager.NavigateTo("/keys"))">My keys</Button>
                 }
             }
         }
 
-        <a href="Identity/Account/Manage">Hello, @context.User.Identity?.Name!</a>
+        <a href="Identity/Account/Manage" class="hello">Hello, @context.User.Identity?.Name!</a>
         <form method="post" action="Identity/Account/LogOut">
-            <button type="submit" class="nav-link btn btn-link">Log out</button>
+            <button type="submit" class="nav-link btn btn-link btn-logout">Log out</button>
         </form>
     </Authorized>
     <NotAuthorized>

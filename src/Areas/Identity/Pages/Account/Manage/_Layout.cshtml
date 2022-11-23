@@ -9,20 +9,32 @@
     }
 }
 
-<h1>Manage your account</h1>
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+    <link href="~/css/bootstrap/bootstrap.min.css" rel="stylesheet" />
+    <link href="~/css/site.css" rel="stylesheet" asp-append-version="true" />
+</head>
 
-<div>
-    <h2>Change your account settings</h2>
-    <hr />
-    <div class="row">
+<main class="w-full d-flex flex-column">
+    <div class="text-center">
+        <h1 class="my-5 text-white rounded p-4 bg-elenpay">Account Settings</h1>
+    </div>
+    
+    <section class="d-flex flex-row row gx-5 justify-content-center">
         <div class="col-md-3">
             <partial name="_ManageNav" />
         </div>
-        <div class="col-md-9">
+        <div class="col-md-5">
             @RenderBody()
         </div>
-    </div>
-</div>
+    </section>
+
+    <section class="d-flex justify-content-center ">
+        <a href="/" class="custom-violet back-link ">← Back Home</a>
+    </section>
+
+</main>
 
 @section Scripts {
     @RenderSection("Scripts", required: false)

@@ -1,0 +1,40 @@
+.badge {
+    padding: 0.5rem;
+    margin-right: 0.8rem;
+    margin-top: 0.55rem;
+}
+
+.badge-node {
+    color: #18D1BB;
+    border: 1px solid #18D1BB;
+}
+
+.badge-super {
+    color: #3B77E2;
+    border: 1px solid #3B77E2;
+}
+
+.badge-finance {
+    color: #6145F1 ;
+    border: 1px solid #6145F1;
+}
+
+.hello {
+    color: #9733EF;
+}
+
+.hello:hover{
+    text-decoration: underline;
+    text-decoration-color: #9733EF;
+}
+
+.btn-logout {
+    font-weight: bolder;
+    color: #9733EF;
+}
+
+.btn-logout:hover {
+    color: #9733EF !important;
+    text-decoration: underline;
+    text-decoration-color: #9733EF;
+}

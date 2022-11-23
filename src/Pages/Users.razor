@@ -6,7 +6,7 @@
 @using Blazorise.DataGrid
 @using Microsoft.AspNetCore.Components.Web
 <PageTitle>User Management</PageTitle>
-<h3>User and role management</h3>
+<h3 class="custom-primary">User and role management</h3>
 
 <Row>
     <Column ColumnSize="ColumnSize.Is12">
@@ -37,18 +37,20 @@
                         <Button Color="Color.Success" Clicked="@context.Clicked">New</Button>
                     </NewCommandTemplate>
                     <EditCommandTemplate>
-                        <Button Color="Color.Primary" Clicked="@(()=>OnEditInvoked(context.Item,context.Clicked))">Edit</Button>
-                        <Button Color="Color.Primary" Clicked="@(()=>OnResetLinkClicked(context.Item))">Set password link</Button>
-                        @if (context.Item.IsLocked)
-                        {
-                            <Button Color="Color.Danger" Clicked="@(()=>OnUnlockUserClicked(context.Item))">Unlock</Button>
+                        <Buttons>
+                            <Button Color="Color.Primary" Clicked="@(()=>OnEditInvoked(context.Item,context.Clicked))">Edit</Button>
+                            <Button Color="Color.Primary" Clicked="@(()=>OnResetLinkClicked(context.Item))">Set password link</Button>
+                            @if (context.Item.IsLocked)
+                            {
+                                <Button Color="Color.Danger" Clicked="@(()=>OnUnlockUserClicked(context.Item))">Unlock</Button>
 
-                        }
-                        else
-                        {
-                            <Button Color="Color.Danger" Clicked="@(()=>OnLockUserClicked(context.Item))">Lock</Button>
+                            }
+                            else
+                            {
+                                <Button Color="Color.Danger" Clicked="@(()=>OnLockUserClicked(context.Item))">Lock</Button>
 
-                        }
+                            }
+                        </Buttons>
 
                     </EditCommandTemplate>
                     <DeleteCommandTemplate>
