@@ -13,7 +13,7 @@
 @inject ILightningService LightningService
 @attribute [Authorize(Roles = "NodeManager, FinanceManager, Superadmin")]
 
-<h3>Treasury multisig wallets</h3>
+<h3 class="custom-primary">Treasury Multisig Wallets</h3>
 
 <Row>
     <Column ColumnSize="ColumnSize.Is12">
@@ -40,10 +40,10 @@
             <DataGridColumns>
                 <DataGridCommandColumn TItem="Wallet">
                     <NewCommandTemplate>
-                        <Button Color="Color.Success" Clicked="@context.Clicked">New</Button>
+                        <Button Color="Color.Success" Clicked="@context.Clicked" Block>New</Button>
                     </NewCommandTemplate>
                     <EditCommandTemplate>
-                        <Button Color="Color.Primary" Clicked="@context.Clicked">Edit</Button>
+                        <Button Color="Color.Primary" Clicked="@context.Clicked" Block>Edit</Button>
                     </EditCommandTemplate>
                     <DeleteCommandTemplate>
                         @if (!context.Item.IsFinalised)
@@ -68,15 +68,15 @@
 
                     </DisplayTemplate>
                 </DataGridColumn>
-                <DataGridColumn TItem="Wallet" Filterable="false" ShowCaption="false" Sortable="false">
+                <DataGridColumn TItem="Wallet" Filterable="false" ShowCaption="false" Sortable="false"  Width="140px">
                     <DisplayTemplate>
                         @if (context.IsFinalised)
                         {
-                            <Button Color="Color.Secondary" Clicked="@(() => LoadAndOpenModalTextModalUnusedAddress(context))">Get address</Button>
+                            <Button Color="Color.Secondary" Clicked="@(() => LoadAndOpenModalTextModalUnusedAddress(context))" Block>Get address</Button>
                         }
                         else
                         {
-                            <Button Color="Color.Warning" Disabled="@(context.Keys != null && context.Keys.Count < context.MofN)" Clicked="@(() => LoadAndOpenFinaliseTextModal(context))">Finalise</Button>
+                            <Button Color="Color.Warning" Disabled="@(context.Keys != null && context.Keys.Count < context.MofN)" Clicked="@(() => LoadAndOpenFinaliseTextModal(context))" Block>Finalise</Button>
                         }
 
                     </DisplayTemplate>

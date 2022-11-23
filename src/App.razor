@@ -14,3 +14,27 @@
     <MessageAlert />
 
 </CascadingAuthenticationState>
+
+<Blazorise.ThemeProvider Theme="@theme">
+    <Router AppAssembly="typeof(App).Assembly">
+        <Found>...</Found>
+        <NotFound>...</NotFound>
+    </Router>
+</Blazorise.ThemeProvider>
+@code{
+    private Theme theme = new Theme
+    {
+        ColorOptions = new ThemeColorOptions
+        {
+            Primary = "#6145F1",
+            Secondary = "#3B77E2",
+            Success = "#18D1BB",
+            Danger = "#9733EF",
+            Warning = "#DDA448",
+            Info = "#3B77E2",
+            Light = "#ffffff",
+            Dark = "#000000",
+            Link = "",
+        }
+    };
+}

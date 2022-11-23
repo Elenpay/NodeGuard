@@ -8,7 +8,7 @@
 }
 
 .navbar-brand {
-    font-size: 1.1rem;
+    font-size: 1.5rem;
 }
 
 .oi {
@@ -19,7 +19,7 @@
 }
 
 .nav-item {
-    font-size: 0.9rem;
+    font-size: 1rem;
     padding-bottom: 0.5rem;
 }
 
@@ -32,7 +32,7 @@
     }
 
     .nav-item ::deep a {
-        color: #d7d7d7;
+        color: #07F2B1;
         border-radius: 4px;
         height: 3rem;
         display: flex;
@@ -42,12 +42,12 @@
 
 .nav-item ::deep a.active {
     background-color: rgba(255,255,255,0.25);
-    color: white;
+    color: #18D1BB;
 }
 
 .nav-item ::deep a:hover {
     background-color: rgba(255,255,255,0.1);
-    color: white;
+    color: #18D1BB;
 }
 
 @media (min-width: 641px) {

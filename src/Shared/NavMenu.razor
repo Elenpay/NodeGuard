@@ -13,14 +13,14 @@
     <nav class="flex-column">
         <div class="nav-item px-3">
             <NavLink class="nav-link" href="" Match="NavLinkMatch.All">
-                <span class="oi oi-home" aria-hidden="true"></span> Home
+                <span class="oi oi-home " aria-hidden="true"></span> Home
             </NavLink>
         </div>
 
         <AuthorizeView Roles="Superadmin,NodeManager,FinanceManager">
             <div class="nav-item px-3">
                 <NavLink class="nav-link" href="wallets">
-                    <span class="oi oi-plus" aria-hidden="true"></span> Wallets
+                    <span class="oi oi-briefcase " aria-hidden="true"></span> Wallets
                 </NavLink>
             </div>
         </AuthorizeView>
@@ -28,12 +28,12 @@
         <AuthorizeView Roles="Superadmin">
             <div class="nav-item px-3">
                 <NavLink class="nav-link" href="hangfire">
-                    <span class="oi oi-task" aria-hidden="true"></span> Hangfire
+                    <span class="oi oi-graph" aria-hidden="true"></span> Hangfire
                 </NavLink>
             </div>
             <div class="nav-item px-3">
                 <NavLink class="nav-link" href="users">
-                    <span class="oi oi-task" aria-hidden="true"></span> Users
+                    <span class="oi oi-people" aria-hidden="true"></span> Users
                 </NavLink>
             </div>
         </AuthorizeView>
@@ -41,7 +41,7 @@
         <AuthorizeView Roles="Superadmin,FinanceManager,NodeManager">
             <div class="nav-item px-3">
                 <NavLink class="nav-link" href="channel-requests">
-                    <span class="oi oi-plus" aria-hidden="true"></span> Channel Requests
+                    <span class="oi oi-bell" aria-hidden="true"></span> Channel Requests
                 </NavLink>
             </div>
             <div class="nav-item px-3">
@@ -52,12 +52,12 @@
         </AuthorizeView>
         <div class="nav-item px-3">
             <NavLink class="nav-link" href="nodes">
-                <span class="oi oi-plus" aria-hidden="true"></span> Nodes
+                <span class="oi oi-layers" aria-hidden="true"></span> Nodes
             </NavLink>
         </div>
         <div class="nav-item px-3">
             <NavLink class="nav-link" href="channels">
-                <span class="oi oi-plus" aria-hidden="true"></span> Channels
+                <span class="oi oi-transfer" aria-hidden="true"></span> Channels
             </NavLink>
         </div>
     </nav>

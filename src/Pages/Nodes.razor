@@ -5,7 +5,7 @@
 
 @attribute [Authorize(Roles = "FinanceManager, NodeManager, Superadmin")]
 <PageTitle>Active Nodes</PageTitle>
-<h3>Nodes</h3>
+<h3 class="custom-primary">Nodes</h3>
 
 <Row>
     <Column ColumnSize="ColumnSize.Is12">
@@ -24,23 +24,23 @@
                 <h2>@(context.EditState) node</h2>
             </PopupTitleTemplate>
             <DataGridColumns>
-                <DataGridCommandColumn TItem="Node">
+                <DataGridCommandColumn TItem="Node" Width="120px">
                     <NewCommandTemplate>
-                        <Button Color="Color.Success" Clicked="@context.Clicked">New</Button>
+                        <Button Color="Color.Success" Clicked="@context.Clicked" Block>New</Button>
                     </NewCommandTemplate>
                     <EditCommandTemplate>
-                        <Button Color="Color.Primary" Clicked="@context.Clicked">Edit</Button>
+                        <Button Color="Color.Primary" Clicked="@context.Clicked" Size="Size.Small" Block>Edit</Button>
                     </EditCommandTemplate>
                     <DeleteCommandTemplate>
-                        <Button Color="Color.Danger" hidden="@_hideDelete" Clicked="@(()=> ShowDeleteDialog(context.Item))">Delete</Button>
+                        <Button Color="Color.Danger" hidden="@_hideDelete" Clicked="@(()=> ShowDeleteDialog(context.Item))" Size="Size.Small" Block>Delete</Button>
                     </DeleteCommandTemplate>
                 </DataGridCommandColumn>
                 <DataGridColumn TItem="Node" Editable="true" Field="@nameof(Node.Name)" Validator="ValidationHelper.ValidateName" Caption="@nameof(Node.Name)" Sortable="false"/>
-                <DataGridColumn TItem="Node" Editable="true" Field="@nameof(Node.PubKey)" Caption="@nameof(Node.PubKey)" Sortable="false">
+                <DataGridColumn TItem="Node" Editable="true" Field="@nameof(Node.PubKey)" Caption="@nameof(Node.PubKey)" Sortable="false" Width="220px">
                     <DisplayTemplate>
-                        @StringHelper.TruncateHeadAndTail(context.PubKey, 10)&nbsp;
+                        @StringHelper.TruncateHeadAndTail(context.PubKey, 6)&nbsp;
                         @{State state = new("Copy", "oi oi-clipboard");}
-                        <Button class="btn btn-primary" @onclick="@(() => CopyToClipboard(context.PubKey))" disabled=@state.IsDisabled>
+                        <Button Color="Color.Primary" Size="Size.Small" Outline @onclick="@(() => CopyToClipboard(context.PubKey))" disabled=@state.IsDisabled>
                             <i class="@state.ClassName"></i>
                         </Button>
                     </DisplayTemplate>
@@ -112,7 +112,7 @@
                 </DataGridColumn>
                 <DataGridColumn TItem="Node" Caption="@nameof(Node.Users)" Editable="false" CellsEditableOnEditCommand="false" Sortable="false">
                     <DisplayTemplate>
-                        <Button Color="Color.Primary" Clicked="@ShowModal">Display Users</Button>
+                        <Button Color="Color.Primary" Clicked="@ShowModal" Block>Display Users</Button>
                     </DisplayTemplate>
                 </DataGridColumn>
             </DataGridColumns>
