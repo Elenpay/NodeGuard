@@ -8,6 +8,7 @@
 <Row>
     <Column ColumnSize="ColumnSize.Is12">
         <DataGrid TItem="Channel"
+                  @ref="_channelsDataGridRef"
                   Data="@_channels"
                   @bind-SelectedRow="@_selectedChannel"
                   Editable
@@ -27,7 +28,7 @@
                         <Button Color="Color.Primary" hidden Clicked="@context.Clicked">Edit</Button>
                     </EditCommandTemplate>
                     <DeleteCommandTemplate>
-                        <Button Color="Color.Danger" hidden="@_hideDelete" Disabled="@(context.Item.Status == Channel.ChannelStatus.Closed)" Clicked="()=>ShowConfirmedClose(context.Item)">Close</Button>
+                        <Button Color="Color.Danger" hidden="@_hideDelete" Disabled="@(context.Item.Status == Channel.ChannelStatus.Closed || context.Item.ChannelOperationRequests.Last().RequestType == OperationRequestType.Close)" Clicked="()=>ShowConfirmedClose(context.Item)">Close</Button>
                     </DeleteCommandTemplate>
                 </DataGridCommandColumn>
                 <DataGridColumn TItem="Channel" Field="@nameof(Channel.Status)" Caption="@nameof(Channel.Status)" Sortable="false">
@@ -126,6 +127,7 @@
     private Channel? _selectedChannel;
     private bool _modalVisible;
     private bool _hideDelete = true;
+    private DataGrid<Channel> _channelsDataGridRef;
 
     [CascadingParameter]
     private ApplicationUser? LoggedUser { get; set; }
@@ -154,32 +156,33 @@
 
     private async Task ShowConfirmedClose(Channel channel)
     {
-            if ( await MessageService.Confirm( "Are you sure you want to close this channel?", "Confirmation" ) )
+        if ( await MessageService.Confirm( "Are you sure you want to close this channel?", "Confirmation" ) )
+        {
+            if (channel != null)
             {
-                if (channel != null)
-                {
-                    var result =await ChannelRepository.SafeRemove(channel);
+                var result =await ChannelRepository.SafeRemove(channel);
 
-                    if (!result.Item1)
-                    {
-                      
-                        ToastService.ShowError("Something went wrong");
-                    }
-                    else
-                    {
-                        ToastService.ShowSuccess("Channel closed successfully");
-                        _channels = await ChannelRepository.GetAll();
-                    }
+                if (!result.Item1)
+                {
+
+                    ToastService.ShowError("Something went wrong");
                 }
                 else
                 {
-                    ToastService.ShowError("Something went wrong. Please refresh the page");
+                    ToastService.ShowSuccess("Channel closed successfully");
+                    _channels = await ChannelRepository.GetAll();
+                    _channelsDataGridRef.Dispose();
                 }
-
             }
-           
+            else
+            {
+                ToastService.ShowError("Something went wrong. Please refresh the page");
+            }
+
         }
-    
+
+    }
+
     private void ShowModal()
     {
         _modalVisible = true;
@@ -192,8 +195,7 @@
 
     private async Task CopyStrToClipboard(string arg)
     {
-        await ClipboardService.WriteTextAsync(arg); 
+        await ClipboardService.WriteTextAsync(arg);
         ToastService.ShowSuccess("Text copied");
     }
-
 }
