@@ -61,39 +61,5 @@ release:
   only:
     - tags
 
-deploy_staging:
-  image: quay.io/ansible/ansible-runner:latest
-  rules:
-    - if: '$CI_COMMIT_REF_NAME == "develop" &&  $CI_PIPELINE_SOURCE != "merge_request_event"'
-      changes:
-        - "src/**/*"
-        - "FundsManager.sln"
-        - "ansible/**/*"
-        - ".gitlab-ci.yml"
-  before_script:
-    - eval $(ssh-agent -s)
-    - echo "$SSH_PRIVATE_KEY_STAGING" | tr -d '\r' | ssh-add -
-    - mkdir -p ~/.ssh
-    - chmod 700 ~/.ssh
-  stage: deploy_staging
-  tags:
-    - lightning_spot_runners
-  script:
-    - ansible-playbook ansible/deploy_playbook.yaml -i ansible/inventory.yaml -e "SENTRY_ENVIRONMENT=Staging" -e "AWS_ACCESS_KEY_ID=$AWS_ACCESS_KEY_ID_STAGING" -e "AWS_SECRET_ACCESS_KEY=$AWS_SECRET_ACCESS_KEY_STAGING" -e "AWS_KMS_KEY_ID=$AWS_KMS_KEY_ID_STAGING" -e "FM_SIGNER_ENDPOINT=$FM_SIGNER_ENDPOINT_STAGING" -e "PUSH_NOTIFICATIONS_ONESIGNAL_APP_ID=$PUSH_NOTIFICATIONS_ONESIGNAL_APP_ID_STAGING" -e "PUSH_NOTIFICATIONS_ONESIGNAL_API_TOKEN=$PUSH_NOTIFICATIONS_ONESIGNAL_API_TOKEN_STAGING"
 
-
-# deploy_production:
-#   image: quay.io/ansible/ansible-runner:latest
-#   rules:
-#     - if: '$CI_COMMIT_TAG =~ /^([0-9]+)\.([0-9]+)\.([0-9]+)$/ '
-#   before_script:
-#     - eval $(ssh-agent -s)
-#     - echo "$SSH_PRIVATE_KEY_PRODUCTION" | tr -d '\r' | ssh-add -
-#     - mkdir -p ~/.ssh
-#     - chmod 700 ~/.ssh
-#   stage: deploy_production
-#   tags:
-#     - lightning_spot_runners
-#   script:
-#     - ansible-playbook ansible/deploy_playbook.yaml -i ansible/inventory.yaml -e "BITCOIND_P2PPORT=$BITCOIND_P2PPORT_PRODUCTION BITCOIND_RPCPORT=$BITCOIND_RPCPORT_PRODUCTION SENTRY_DSN=$SENTRY_DSN SENTRY_ENVIRONMENT=production CI_BUILD_TOKEN=$CI_BUILD_TOKEN BTCPAY_IMAGE_TAG=main ANSIBLE_HOST_TARGET=btcpay-production BITCOIND_SERVER=$BITCOIND_SERVER_PRODUCTION DB_HOSTNAME=$DB_HOSTNAME_PRODUCTION BTCPAY_POSTGRES='$BTCPAY_POSTGRES_PRODUCTION' BTCPAY_NETWORK=$BTCPAY_NETWORK_PRODUCTION BITCOIND_RPCUSER=$BITCOIND_RPCUSER_PRODUCTION BITCOIND_PASSWORD=$BITCOIND_PASSWORD_PRODUCTION"
 
