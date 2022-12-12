@@ -12,15 +12,17 @@ using FundsManager.Jobs;
 using FundsManager.Services;
 using Hangfire;
 using Hangfire.Dashboard;
-using Hangfire.PostgreSql;
 using Microsoft.AspNetCore.Components.Authorization;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
 using Newtonsoft.Json;
-using OpenTelemetry.Trace;
 using Quartz;
 using Sentry;
 using Sentry.Extensibility;
+using OpenTelemetry.Trace;
+using OpenTelemetry.Resources;
+using OpenTelemetry.Metrics;
+using OpenTelemetry.Exporter;
 
 namespace FundsManager
 {
@@ -117,19 +119,6 @@ namespace FundsManager
                 .AddBootstrapProviders()
                 .AddFontAwesomeIcons();
 
-            ////Quartz Job System
-            // Add OpenTelemetry and Quartz instrumentation
-            builder.Services.AddOpenTelemetryTracing(x =>
-            {
-                x.AddQuartzInstrumentation();
-                //TODO Add datadog exporter
-                //x.AddJaegerExporter(config =>
-                //{
-                //    // Configure Jaeger
-                //    config.AgentHost = "host.docker.internal";
-                //    config.AgentPort = 6831;
-                //});
-            });
             builder.Services.AddQuartz(q =>
             {
                 //Right now we are using in-memory storage
@@ -236,6 +225,55 @@ namespace FundsManager
                 options.DiagnosticLevel = SentryLevel.Error;
                 options.Debug = Convert.ToBoolean(Environment.GetEnvironmentVariable("SENTRY_DEBUG_ENABLED"));
             });
+
+            //We need to expand the env-var with %ENV_VAR% for K8S
+            var otelCollectorEndpointToBeExpanded = Environment.GetEnvironmentVariable("OTEL_EXPORTER_OTLP_ENDPOINT");
+            if (otelCollectorEndpointToBeExpanded != null)
+            {
+                var otelCollectorEndpoint = Environment.ExpandEnvironmentVariables(otelCollectorEndpointToBeExpanded);
+
+                if (!string.IsNullOrEmpty(otelCollectorEndpoint))
+                {
+                    var p = Environment.GetEnvironmentVariable("OTEL_RESOURCE_ATTRIBUTES");
+                    // logger.LogInformation($"Setting up OTEL to: {otelCollectorEndpoint}");
+                    builder.Services
+                        .AddOpenTelemetryTracing((builder) => builder
+                            // Configure the resource attribute `service.name` to MyServiceName
+                            //.SetResourceBuilder(ResourceBuilder.CreateDefault().AddService("BtcPayServer"))
+                            .SetResourceBuilder(ResourceBuilder.CreateEmpty().AddEnvironmentVariableDetector())
+                            // Add tracing of the AspNetCore instrumentation library
+                            .AddAspNetCoreInstrumentation()
+                            .AddOtlpExporter(options =>
+                            {
+                                options.Protocol = OtlpExportProtocol.Grpc;
+                                options.ExportProcessorType = OpenTelemetry.ExportProcessorType.Batch;
+                                options.Endpoint = new Uri(otelCollectorEndpoint);
+                            })
+                            .AddEntityFrameworkCoreInstrumentation()
+                            .AddHangfireInstrumentation(options =>
+                            {
+                                options.RecordException = true;
+                            })
+                            .AddQuartzInstrumentation()
+                    );
+
+                    builder.Services
+                        .AddOpenTelemetryMetrics(builder => builder
+                            // Configure the resource attribute `service.name` to MyServiceName
+                            //.SetResourceBuilder(ResourceBuilder.CreateDefault().AddService("BtcPayServer"))
+                            // Add metrics from the AspNetCore instrumentation library
+                            .SetResourceBuilder(ResourceBuilder.CreateEmpty().AddEnvironmentVariableDetector())
+                            .AddAspNetCoreInstrumentation()
+                            .AddRuntimeInstrumentation()
+                            .AddOtlpExporter(options =>
+                            {
+                                options.Protocol = OtlpExportProtocol.Grpc;
+                                options.ExportProcessorType = OpenTelemetry.ExportProcessorType.Batch;
+                                options.Endpoint = new Uri(otelCollectorEndpoint);
+                            })
+                    );
+                }
+            }
 
             var app = builder.Build();
 

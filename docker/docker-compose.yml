@@ -5,13 +5,13 @@ services:
     container_name: fundsmanager
     hostname: fundsmanager
     restart: always
-    image: fundsmanager
     build:
       context: ..
       dockerfile: src/Dockerfile
     ports:
         - "35433:5432"
     environment:
+        ASPNETCORE_ENVIRONMENT: Development
         BITCOIN_NETWORK: REGTEST
         DEFAULT_DERIVATION_PATH: m/48'/1'/1'
         FUNDSMANAGER_ENDPOINT: http://localhost:50052
@@ -45,6 +45,7 @@ services:
         ENABLE_REMOTE_FM_SIGNER: "false" #Changes the way of signing, instead of a auto-generated internal wallet, the FM will sign with a remote signer function on AWS Lambda
         MSSQL_CONNECTIONSTRING: "Server=localhost;Database=master;User=sa;Password=rw_dev;"
         REDIS_CONNECTIONSTRING: "redis"
+        #OTEL_COLLECTOR_ENDPOINT: http://host.docker.internal:4318 #gRPC endpoint for OTel collector (optional)
       
     volumes:
         - fundsmanager_data_keys_dir:/root/.aspnet/DataProtection-Keys
