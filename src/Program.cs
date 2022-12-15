@@ -234,8 +234,10 @@ namespace FundsManager
 
                 if (!string.IsNullOrEmpty(otelCollectorEndpoint))
                 {
-                    var p = Environment.GetEnvironmentVariable("OTEL_RESOURCE_ATTRIBUTES");
-                    // logger.LogInformation($"Setting up OTEL to: {otelCollectorEndpoint}");
+                    const string otelResourceAttributes = "OTEL_RESOURCE_ATTRIBUTES";
+                    var expandedResourceAttributes = Environment.ExpandEnvironmentVariables(Environment.GetEnvironmentVariable(otelResourceAttributes));
+                    Environment.SetEnvironmentVariable(otelResourceAttributes, expandedResourceAttributes);
+                    
                     builder.Services
                         .AddOpenTelemetryTracing((builder) => builder
                             // Configure the resource attribute `service.name` to MyServiceName
