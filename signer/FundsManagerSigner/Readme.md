@@ -92,3 +92,18 @@ Deploy function to AWS Lambda
 cd "FundsManagerSigner/src/FundsManagerSigner"
 dotnet lambda deploy-function
 ```
+
+## Using CI + AWS ECR
+
+This repo now provides CI to build this image (if changes overt this repo).
+The image can lately be pulled and manually pushed to AWS ECR:
+```
+docker login registry.gitlab.com/clovrlabs/lightningnetwork/
+docker pull registry.gitlab.com/clovrlabs/lightningnetwork/fundsigner:develop
+
+docker tag registry.gitlab.com/clovrlabs/lightningnetwork/fundsigner:develop 839166930136.dkr.ecr.eu-central-1.amazonaws.com/fundsmanagersigner:latest
+
+aws ecr get-login-password --region eu-central-1 | docker login --username AWS --password-stdin 839166930136.dkr.ecr.eu-central-1.amazonaws.com
+
+docker push 839166930136.dkr.ecr.eu-central-1.amazonaws.com/fundsmanagersigner:latest
+```
