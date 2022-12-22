@@ -10,12 +10,9 @@ using FundsManager.Data.Repositories;
 using FundsManager.Data.Repositories.Interfaces;
 using FundsManager.Jobs;
 using FundsManager.Services;
-using Hangfire;
-using Hangfire.Dashboard;
 using Microsoft.AspNetCore.Components.Authorization;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
-using Newtonsoft.Json;
 using Quartz;
 using Sentry;
 using Sentry.Extensibility;
@@ -137,14 +134,13 @@ namespace FundsManager
             builder.Services.AddQuartz(q =>
             {
                 //Right now we are using in-memory storage
+                q.UsePersistentStore(options =>
+                {
+                   options.UseProperties = true;
+                   options.UseJsonSerializer();
 
-                //q.UsePersistentStore(options =>
-                //{
-                //    options.UseProperties = true;
-                //    options.UseJsonSerializer();
-
-                //    options.UsePostgres(Environment.GetEnvironmentVariable("POSTGRES_CONNECTIONSTRING"));
-                //});
+                   options.UsePostgres(Environment.GetEnvironmentVariable("POSTGRES_CONNECTIONSTRING"));
+                });
 
                 //This allows DI in jobs
                 q.UseMicrosoftDependencyInjectionJobFactory();
@@ -201,27 +197,6 @@ namespace FundsManager
                 options.AwaitApplicationStarted = true;
             });
 
-            //Hangfire Job system
-
-            builder.Services.AddHangfire((provider, config) =>
-            {
-                config.UseSerializerSettings(new JsonSerializerSettings()
-                {
-                    ReferenceLoopHandling = ReferenceLoopHandling.Ignore,
-                });
-                config.UseFilter(new AutomaticRetryAttribute
-                {
-                    LogEvents = true,
-                    Attempts = 20,
-                    OnAttemptsExceeded = AttemptsExceededAction.Fail,
-                });
-
-                config.UseRedisStorage(Environment.GetEnvironmentVariable("REDIS_CONNECTIONSTRING") ??
-                                       throw new ArgumentException("Redis env var not set"));
-            });
-
-            builder.Services.AddHangfireServer();
-
             //Automapper
             builder.Services.AddAutoMapper(typeof(MapperProfile));
 
@@ -251,10 +226,6 @@ namespace FundsManager
                                 options.Endpoint = new Uri(otelCollectorEndpoint);
                             })
                             .AddEntityFrameworkCoreInstrumentation()
-                            .AddHangfireInstrumentation(options =>
-                            {
-                                options.RecordException = true;
-                            })
                             .AddQuartzInstrumentation()
                     );
 
@@ -320,26 +291,7 @@ namespace FundsManager
             app.MapBlazorHub();
             app.MapFallbackToPage("/_Host");
 
-            //Hangfire
-            app.UseHangfireDashboard("/hangfire", new DashboardOptions
-            {
-                Authorization = new[] { new MyAuthorizationFilter() }
-            });
-
             app.Run();
-        }
-
-        public class MyAuthorizationFilter : IDashboardAuthorizationFilter
-        {
-            public bool Authorize(DashboardContext context)
-            {
-                var httpContext = context.GetHttpContext();
-
-                // Allow server admins
-                return httpContext.User.Identity != null &&
-                       httpContext.User.Identity.IsAuthenticated &&
-                       httpContext.User.IsInRole("Superadmin");
-            }
         }
     }
 }

@@ -2,7 +2,6 @@
 using FundsManager.Data.Models;
 using FundsManager.Data.Repositories.Interfaces;
 using FundsManager.Helpers;
-using Hangfire;
 using Humanizer;
 using NBitcoin;
 using NBXplorer.DerivationStrategy;

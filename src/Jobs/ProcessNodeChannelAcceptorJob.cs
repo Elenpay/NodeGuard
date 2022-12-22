@@ -95,7 +95,7 @@ public class ProcessNodeChannelAcceptorJob : IJob
 
         if (node == null)
         {
-            _logger.LogInformation("The node:{} is no longer ready to be supported hangfire jobs", node);
+            _logger.LogInformation("The node:{} is no longer ready to be supported quartz jobs", node);
             return;
         }
 
@@ -131,7 +131,7 @@ public class ProcessNodeChannelAcceptorJob : IJob
                     node = await _nodeRepository.GetById(managedNodeId);
                     if (node == null)
                     {
-                        _logger.LogInformation("The node:{} is no longer ready to be supported hangfire jobs", managedNodeId);
+                        _logger.LogInformation("The node:{} is no longer ready to be supported quartz jobs", managedNodeId);
                         //Just accept..
                         await resultAcceptor.RequestStream.CompleteAsync(); // Closing the stream
                         return;

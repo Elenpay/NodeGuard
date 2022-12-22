@@ -26,7 +26,7 @@ public static class PriceConversionHelper
         try
         {
             JsonDocument document = JsonDocument.Parse(response.Content);
-            btcPrice = document.RootElement[0].GetProperty("current_price").GetDecimal();
+            btcPrice = document.RootElement.GetProperty("current_price").GetDecimal();
         }
         catch (Exception e)
         {

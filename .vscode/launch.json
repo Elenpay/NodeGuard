@@ -58,7 +58,7 @@
                 "NBXPLORER_URI": "http://127.0.0.1:32838",
                 "NBXPLORER_BTCRPCUSER": "polaruser",
                 "NBXPLORER_BTCRPCPASSWORD": "polarpass",
-                "NBXPLORER_BTCRPCURL": "http://127.0.0.1:18443/",
+                "NBXPLORER_BTCRPCURL": "http://127.0.0.1:18445/",
                 "NBXPLORER_BTCNODEENDPOINT": "127.0.0.1:19444",
                 "PUSH_NOTIFICATIONS_ONESIGNAL_API_BASE_PATH": "https://onesignal.com/api/v1",
                 "PUSH_NOTIFICATIONS_ONESIGNAL_APP_ID": "88695835-1513-4f3d-8104-ce8089447d11",
