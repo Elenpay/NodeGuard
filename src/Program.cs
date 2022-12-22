@@ -23,6 +23,10 @@ using OpenTelemetry.Trace;
 using OpenTelemetry.Resources;
 using OpenTelemetry.Metrics;
 using OpenTelemetry.Exporter;
+using Serilog;
+using Serilog.Events;
+using Serilog.Formatting.Json;
+using FundsManager.Helpers;
 
 namespace FundsManager
 {
@@ -33,6 +37,17 @@ namespace FundsManager
             AppContext.SetSwitch("Npgsql.EnableLegacyTimestampBehavior", true);
 
             var builder = WebApplication.CreateBuilder(args);
+
+            Log.Logger = new LoggerConfiguration()
+                .ReadFrom.Configuration(builder.Configuration)
+                .MinimumLevel.Override("Microsoft", LogEventLevel.Warning)
+                .MinimumLevel.Override("System", LogEventLevel.Warning)
+                .Enrich.With(new DatadogLogEnricher())
+                .WriteTo.Console(new JsonFormatter())
+                .CreateLogger();
+
+            builder.Logging.ClearProviders();
+            builder.Logging.AddSerilog(Log.Logger);
 
             // Add services to the container.
 
