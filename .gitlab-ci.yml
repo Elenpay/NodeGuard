@@ -61,5 +61,27 @@ release:
   only:
     - tags
 
+build_signer:
+  stage: build
+  tags:
+    - lightning_spot_runners
+  script:
+    - docker login -u gitlab-ci-token -p $CI_BUILD_TOKEN registry.gitlab.com
+    - docker build -t registry.gitlab.com/clovrlabs/lightningnetwork/fundsigner:$CI_COMMIT_REF_NAME -f ./signer/FundsManagerSigner/Dockerfile .
+    - docker push registry.gitlab.com/clovrlabs/lightningnetwork/fundsigner:$CI_COMMIT_REF_NAME
+  rules:
+    - if: '($CI_COMMIT_REF_NAME == "main" && $CI_COMMIT_TAG =~ "^([0-9]+)\.([0-9]+)\.([0-9]+)$") || $CI_COMMIT_REF_NAME == "develop" &&  $CI_PIPELINE_SOURCE != "merge_request_event"' 
+      changes:
+        - "signer/FundsManagerSigner"
 
+# release_signer:
+#   stage: release
+#   tags:
+#     - lightning_spot_runners
+#   script:
+#     - docker login -u gitlab-ci-token -p $CI_BUILD_TOKEN registry.gitlab.com
+#    - docker build -t registry.gitlab.com/clovrlabs/lightningnetwork/fundsigner:$CI_COMMIT_REF_NAME -f ./signer/FundsManagerSigner/Dockerfile .
+#    - docker push registry.gitlab.com/clovrlabs/lightningnetwork/fundsigner:$CI_COMMIT_REF_NAME
+#   only:
+#     - tags
 
