@@ -13,11 +13,11 @@ namespace FundsManager.Jobs;
 [DisallowConcurrentExecution]
 public class SweepNodeWalletsJob : IJob
 {
-    private readonly ILogger<ChannelAcceptorJob> _logger;
+    private readonly ILogger<SweepNodeWalletsJob> _logger;
     private readonly INodeRepository _nodeRepository;
     private readonly IWalletRepository _walletRepository;
 
-    public SweepNodeWalletsJob(ILogger<ChannelAcceptorJob> logger,
+    public SweepNodeWalletsJob(ILogger<SweepNodeWalletsJob> logger,
         INodeRepository _nodeRepository,
         IWalletRepository walletRepository)
     {

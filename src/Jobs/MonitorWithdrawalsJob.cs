@@ -18,10 +18,10 @@ namespace FundsManager.Jobs;
 [DisallowConcurrentExecution]
 public class MonitorWithdrawalsJob : IJob
 {
-    private readonly ILogger<ChannelAcceptorJob> _logger;
+    private readonly ILogger<MonitorWithdrawalsJob> _logger;
     private readonly IWalletWithdrawalRequestRepository _walletWithdrawalRequestRepository;
 
-    public MonitorWithdrawalsJob(ILogger<ChannelAcceptorJob> logger,
+    public MonitorWithdrawalsJob(ILogger<MonitorWithdrawalsJob> logger,
         IWalletWithdrawalRequestRepository walletWithdrawalRequestRepository)
     {
         _logger = logger;

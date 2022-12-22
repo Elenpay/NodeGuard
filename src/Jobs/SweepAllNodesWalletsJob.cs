@@ -8,11 +8,11 @@ namespace FundsManager.Jobs
     /// </summary>
     public class SweepAllNodesWalletsJob : IJob
     {
-        private readonly ILogger<ChannelAcceptorJob> _logger;
+        private readonly ILogger<SweepAllNodesWalletsJob> _logger;
         private readonly ISchedulerFactory _schedulerFactory;
         private readonly INodeRepository _nodeRepository;
 
-        public SweepAllNodesWalletsJob(ILogger<ChannelAcceptorJob> logger,
+        public SweepAllNodesWalletsJob(ILogger<SweepAllNodesWalletsJob> logger,
             ISchedulerFactory schedulerFactory,
             INodeRepository nodeRepository)
         {
