@@ -467,7 +467,6 @@ namespace FundsManager.Services
         /// </summary>
         /// <param name="walletWithdrawalRequest"></param>
         /// <returns></returns>
-        [AutomaticRetry(LogEvents = true, Attempts = 10, OnAttemptsExceeded = AttemptsExceededAction.Fail)]
         Task PerformWithdrawal(WalletWithdrawalRequest walletWithdrawalRequest);
 
         /// <summary>

@@ -136,10 +136,10 @@ namespace FundsManager
                 //Right now we are using in-memory storage
                 q.UsePersistentStore(options =>
                 {
-                   options.UseProperties = true;
-                   options.UseJsonSerializer();
-
-                   options.UsePostgres(Environment.GetEnvironmentVariable("POSTGRES_CONNECTIONSTRING"));
+                    options.UseProperties = true;
+                    options.RetryInterval = TimeSpan.FromSeconds(15);
+                    options.UsePostgres(connectionString);
+                    options.UseJsonSerializer();
                 });
 
                 //This allows DI in jobs
