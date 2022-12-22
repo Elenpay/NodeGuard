@@ -170,6 +170,7 @@ namespace FundsManager
 
                 q.AddTrigger(opts =>
                 {
+                    var cronExpression = Environment.GetEnvironmentVariable("MONITOR_WITHDRAWALS_CRON") ?? "0 */1 * * * ?";
                     opts.ForJob(nameof(MonitorWithdrawalsJob)).WithIdentity($"{nameof(MonitorWithdrawalsJob)}Trigger")
                         .StartNow().WithCronSchedule(Environment.GetEnvironmentVariable("MONITOR_WITHDRAWALS_CRON") ?? "10 0/5 * * * ?");
                 });

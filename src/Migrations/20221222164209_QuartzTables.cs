@@ -4,7 +4,7 @@
 
 namespace FundsManager.Migrations
 {
-    public partial class quartzJobPersistence : Migration
+    public partial class QuartzTables : Migration
     {
         protected override void Up(MigrationBuilder migrationBuilder)
         {
