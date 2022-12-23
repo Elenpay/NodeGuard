@@ -10,7 +10,7 @@ public interface IApplicationUserRepository
 
     Task<List<ApplicationUser>> GetAll(bool includeBanned = false);
 
-    Task<(bool, string?)> AddAsync(ApplicationUser type);
+    Task<(bool, string?)> AddAsync(ApplicationUser type, string? password = null);
 
     Task<(bool, string?)> AddRangeAsync(List<ApplicationUser> type);
 
@@ -59,4 +59,11 @@ public interface IApplicationUserRepository
     /// <param name="user"></param>
     /// <returns></returns>
     Task<(bool, string?)> UnlockUser(ApplicationUser user);
+
+    /// <summary>
+    /// Creates a new user with the provided password with superadmin role
+    /// </summary>
+    /// <param name="username"></param>
+    /// <param name="confirmationPassword"></param>
+    Task<(bool,string?)> CreateSuperAdmin(string username, string confirmationPassword);
 }

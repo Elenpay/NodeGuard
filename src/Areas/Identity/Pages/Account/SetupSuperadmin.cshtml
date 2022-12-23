@@ -1,0 +1,66 @@
+@page
+@model SetupSuperadminModel
+
+@{
+    ViewData["Title"] = "Setup";
+}
+
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+    <link href="~/css/bootstrap/bootstrap.min.css" rel="stylesheet" />
+    <link href="~/css/site.css" rel="stylesheet" asp-append-version="true" />
+</head>
+
+<main class="login-bg">
+<div class="row">
+    <div class="col-md-6 login-box">
+        <section>
+            <form id="account" method="post">
+                <h1 class="text-center pb-4 login-title" >NodeGuard</h1>
+                <h5 class="text-white text-center" >Setup a default Superadmin account </h5>
+                <hr />
+                <div asp-validation-summary="ModelOnly" class="text-danger"></div>
+                <div class="form-floating user-box">
+                    <input asp-for="Input.Username" class="form-control" autocomplete="username" aria-required="true" />
+                    <label asp-for="Input.Username" class="form-label"></label>
+                    <span asp-validation-for="Input.Username" class="text-danger validation-text"></span>
+                </div>
+
+                <div class="form-floating user-box">
+                    <input asp-for="Input.Password" class="form-control" autocomplete="current-password" aria-required="true" />
+                    <label asp-for="Input.Password" class="form-label"></label>
+                    <span asp-validation-for="Input.Password" class="text-danger"></span>
+                </div>
+                <div class="form-floating user-box">
+                    <input asp-for="Input.ConfirmationPassword" class="form-control" autocomplete="current-password" aria-required="true"/>
+                    <label asp-for="Input.ConfirmationPassword" class="form-label"></label>
+                    <span asp-validation-for="Input.ConfirmationPassword" class="text-danger"></span>
+                </div>
+                <div>
+                    <button id="login-submit" type="submit" class="mb-4 w-100 btn-login btn-lg">Create user</button>
+                </div>
+           
+            </form>
+        </section>
+    </div>
+  
+</div>
+</main>
+
+@section Scripts {
+    <partial name="_ValidationScriptsPartial" />
+}
+
+<style>
+html {
+  height: 100%;
+}
+
+body {
+    font-family: 'Baloo Da 2', cursive;
+    margin:0;
+    padding:0;
+    background: linear-gradient(135deg, #5749db 0%, #000000 75%);
+}
+</style>

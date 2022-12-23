@@ -29,9 +29,6 @@ services:
         PUSH_NOTIFICATIONS_ONESIGNAL_APP_ID: "93800910-9a17-46c7-a3a0-175b68c7aea0"
         PUSH_NOTIFICATIONS_ONESIGNAL_API_TOKEN: "YTAxMGUwOWYtMTJlMC00MTQwLTg4MWUtMzZhNGQyYTBhMjYw"
         PUSH_NOTIFICATIONS_ONESIGNAL_ENABLED: "false" # true/false case sensitive  
-        SENTRY_DEBUG_ENABLED: "true"
-        SENTRY_DSN: ""
-        SENTRY_ENVIRONMENT: Development
         SWEEPNODEWALLETSJOB_CRON: "0 */1 * * * ?"  #Every minute
         ANCHOR_CLOSINGS_MINIMUM_SATS: 100000 # Check https://github.com/lightningnetwork/lnd/issues/6505#issuecomment-1120364460 to understand, we need 100K+ sats to support anchor channel closings
         ALICE_HOST: "host.docker.internal:10001" #used for dev environment
