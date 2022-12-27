@@ -1,0 +1,132 @@
+@page "/setup-internal-wallet"
+@using System.Text.RegularExpressions
+
+<h3>Internal wallet setup</h3>
+@attribute [Authorize(Roles = "Superadmin")]
+
+<Row>
+
+    @if (_isRemoteSignerModeEnabled && _internalWallet != null && string.IsNullOrWhiteSpace(_internalWallet.XPUB))
+    {
+        <Validation @ref="validator" AsyncValidator="ValidateXPUB">
+            <Field>
+                <FieldLabel>XPUB</FieldLabel>
+                <FieldHelp>Paste a XPUB of a internal wallet generated in a secure way by your team</FieldHelp>
+                <FieldBody>
+                    <MemoEdit @bind-Text="@_externalWalletXPUB" Rows="4">
+                        <Feedback>
+                            <ValidationNone>Enter a valid xpub</ValidationNone>
+                            <ValidationSuccess>Valid XPUB</ValidationSuccess>
+                            <ValidationError>Invalid XPUB</ValidationError>
+                        </Feedback>
+                    </MemoEdit>
+                    <Button Color="Color.Info" Clicked="SetXPUB">Save</Button>
+                </FieldBody>
+            </Field>
+        </Validation>
+    }
+    else
+    {
+        @if (_internalWallet != null)
+        {
+                <Field>
+                    <FieldLabel>Internal wallet seed phrase (Mnemonic)</FieldLabel>
+                    <FieldHelp>
+                        Please write down the seed phrase and store it securely. You will need it to recover your internal wallet.
+                    </FieldHelp>
+                    <FieldBody>
+                        <MemoEdit @bind-Text="@_internalWallet.MnemonicString" Rows="10">
+                           
+                        </MemoEdit>
+                    </FieldBody>
+                </Field>
+        }
+        else
+        {
+            <p> Error, the internal wallet is not generated</p>
+        }
+    }
+</Row>
+
+@code {
+
+    [Inject]
+    public IInternalWalletRepository InternalWalletRepository { get; set; }
+
+    [Inject]
+    public NavigationManager NavigationManager { get; set; }
+
+    [Inject]
+    public IToastService ToastService { get; set; }
+
+    private InternalWallet? _internalWallet;
+
+    private bool _isRemoteSignerModeEnabled = false;
+
+    private string? _externalWalletXPUB;
+    private Validation validator;
+
+    protected override async Task OnInitializedAsync()
+    {
+        _isRemoteSignerModeEnabled = Environment.GetEnvironmentVariable("ENABLE_REMOTE_SIGNER") != null;
+    //Get Current internal wallet
+        _internalWallet = await InternalWalletRepository.GetCurrentInternalWallet();
+
+    //If internal wallet is generated and has xpub or mnemonic then redirect to main page
+        if (_internalWallet != null && (!string.IsNullOrWhiteSpace(_internalWallet.XPUB)|| !string.IsNullOrWhiteSpace(_internalWallet.MnemonicString)))
+        {
+            NavigationManager.NavigateTo("/");
+        }
+
+    //If there is no internal wallet, create one only if the remote signer is not enabled
+        if (_internalWallet == null)
+        {
+            if (_isRemoteSignerModeEnabled)
+            {
+                _internalWallet = await InternalWalletRepository.GenerateNewInternalWallet(generateReadOnlyWallet: true);
+            }
+            else
+            {
+                _internalWallet = await InternalWalletRepository.GenerateNewInternalWallet(generateReadOnlyWallet: false);
+            }
+            
+            StateHasChanged();
+        }
+    }
+
+    private async Task ValidateXPUB(ValidatorEventArgs arg1, CancellationToken arg2)
+    {
+        arg1.Status = ValidationStatus.Success;
+
+
+        if (arg1.Value != null && !ValidationHelper.ValidateXPUB(arg1.Value.ToString()))
+        {
+            arg1.Status = ValidationStatus.Error;
+            arg1.ErrorText = "Invalid XPUB";
+        }
+        else if (string.IsNullOrWhiteSpace(arg1.Value?.ToString()))
+        {
+            arg1.Status = ValidationStatus.Error;
+            arg1.ErrorText = "XPUB is required";
+        }
+    }
+
+    private async Task SetXPUB()
+    {
+        if (await validator.ValidateAsync() == ValidationStatus.Success)
+        {
+            _internalWallet.XPUB = _externalWalletXPUB;
+            var updateResult = InternalWalletRepository.Update(_internalWallet);
+            if (updateResult.Item1)
+            {
+                ToastService.ShowSuccess("Internal wallet setup completed");
+                NavigationManager.NavigateTo("/");
+            }
+            else
+            {
+                ToastService.ShowError("Something went wrong");
+            }
+        }
+    }
+
+}

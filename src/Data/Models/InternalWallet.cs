@@ -16,7 +16,12 @@ namespace FundsManager.Data.Models
         /// <summary>
         /// 24 Words mnemonic
         /// </summary>
-        public string MnemonicString { get; set; }
+        public string? MnemonicString { get; set; }
+        
+        /// <summary>
+        /// XPUB in the case the Mnemonic is not set (Remote signer mode)
+        /// </summary>
+        public string? XPUB { get; set; }
 
         /// <summary>
         /// Returns the master private key (xprv..tprv)
@@ -44,14 +49,21 @@ namespace FundsManager.Data.Models
                 return null;
             }
 
-            var masterKey = new Mnemonic(MnemonicString).DeriveExtKey().GetWif(network);
-            var keyPath = new KeyPath(DerivationPath); //https://github.com/dgarage/NBXplorer/blob/0595a87fc14aee6a6e4a0194f75aec4717819/NBXplorer/Controllers/MainController.cs#L1141
-            var accountKey = masterKey.Derive(keyPath);
-            var bitcoinExtPubKey = accountKey.Neuter();
+            if (MnemonicString != null)
+            {
+                var masterKey = new Mnemonic(MnemonicString).DeriveExtKey().GetWif(network);
+                var keyPath = new KeyPath(DerivationPath); //https://github.com/dgarage/NBXplorer/blob/0595a87fc14aee6a6e4a0194f75aec4717819/NBXplorer/Controllers/MainController.cs#L1141
+                var accountKey = masterKey.Derive(keyPath);
+                var bitcoinExtPubKey = accountKey.Neuter();
 
-            var walletDerivationScheme = bitcoinExtPubKey.ToWif();
+                var walletDerivationScheme = bitcoinExtPubKey.ToWif();
 
-            return walletDerivationScheme;
+                return walletDerivationScheme;
+            }
+            else
+            {
+                return XPUB;
+            }
         }
 
         public BitcoinExtKey GetAccountKey(Network network)

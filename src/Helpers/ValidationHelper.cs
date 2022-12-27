@@ -1,4 +1,5 @@
 using System.Globalization;
+using System.Text.RegularExpressions;
 using Blazorise;
 using FundsManager.Data.Models;
 
@@ -117,5 +118,21 @@ public static class ValidationHelper
             obj.ErrorText = "Select a proper destination node";
             obj.Status = ValidationStatus.Error;
         }
+    }
+
+    /// <summary>
+    /// Validated a xpub expect header and lenght size
+    /// </summary>
+    /// <param name="xpub"></param>
+    public static bool ValidateXPUB(string xpub)
+    {
+        var regex = new Regex("^([xyYzZtuUvV]pub[1-9A-HJ-NP-Za-km-z]{79,108})$");
+
+        var result = false;
+
+        if (!string.IsNullOrWhiteSpace(xpub))
+            result = regex.IsMatch(xpub);
+
+        return result;
     }
 }

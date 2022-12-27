@@ -364,7 +364,7 @@ namespace FundsManager.Services
                                     var partialSigsCount = changeFixedPSBT.Inputs.Sum(x => x.PartialSigs.Count);
                                     //We check the way the fundsmanager signs, with the remoteFundsManagerSigner or by itself.
                                     var isFMSignerEnabled =
-                                        Environment.GetEnvironmentVariable("ENABLE_REMOTE_FM_SIGNER").ToUpper() == "true".ToUpper();
+                                        Environment.GetEnvironmentVariable("ENABLE_REMOTE_SIGNER").ToUpper() == "true".ToUpper();
 
                                     PSBT? fmSignedPSBT = null;
                                     if (isFMSignerEnabled)
