@@ -102,7 +102,7 @@ namespace FundsManager
 
             //DbContext
             var connectionString = Environment.GetEnvironmentVariable("POSTGRES_CONNECTIONSTRING") ??
-                                   "Host=localhost;Port=35433;Database=fundsmanager;Username=rw_dev;Password=rw_dev";
+                                   "Host=localhost;Port=5432;Database=fundsmanager;Username=rw_dev;Password=rw_dev";
             builder.Services.AddDbContext<ApplicationDbContext>(options =>
             {
                 //options.EnableSensitiveDataLogging();
@@ -175,7 +175,7 @@ namespace FundsManager
                 q.AddTrigger(opts =>
                 {
                     opts.ForJob(nameof(MonitorWithdrawalsJob)).WithIdentity($"{nameof(MonitorWithdrawalsJob)}Trigger")
-                        .StartNow().WithCronSchedule(Environment.GetEnvironmentVariable("MONITOR_WITHDRAWALS_CRON"));
+                        .StartNow().WithCronSchedule(Environment.GetEnvironmentVariable("MONITOR_WITHDRAWALS_CRON") ?? "10 0/5 * * * ?");
                 });
 
                 // ChannelAcceptorJob
@@ -224,22 +224,6 @@ namespace FundsManager
 
             //Automapper
             builder.Services.AddAutoMapper(typeof(MapperProfile));
-
-            // Sentry
-            builder.Services.AddSentry();
-            builder.WebHost.UseSentry(options =>
-            {
-                options.Dsn = Environment.GetEnvironmentVariable("SENTRY_DSN");
-                options.Environment = Environment.GetEnvironmentVariable("SENTRY_ENVIRONMENT");
-                options.TracesSampleRate = 1;
-                options.SendDefaultPii = true;
-                options.AttachStacktrace = true;
-                options.MaxRequestBodySize = RequestSize.Medium;
-                options.MinimumBreadcrumbLevel = LogLevel.Debug;
-                options.MinimumEventLevel = LogLevel.Warning;
-                options.DiagnosticLevel = SentryLevel.Error;
-                options.Debug = Convert.ToBoolean(Environment.GetEnvironmentVariable("SENTRY_DEBUG_ENABLED"));
-            });
 
             //We need to expand the env-var with %ENV_VAR% for K8S
             var otelCollectorEndpointToBeExpanded = Environment.GetEnvironmentVariable("OTEL_EXPORTER_OTLP_ENDPOINT");
@@ -321,7 +305,6 @@ namespace FundsManager
                 app.UseExceptionHandler("/Error");
                 // The default HSTS value is 30 days. You may want to change this for production scenarios, see https://aka.ms/aspnetcore-hsts.
                 app.UseHsts();
-                app.UseSentryTracing();
             }
 
             //app.UseHttpsRedirection();

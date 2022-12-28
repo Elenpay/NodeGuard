@@ -84,8 +84,16 @@ namespace FundsManager.Areas.Identity.Pages.Account
             public bool RememberMe { get; set; }
         }
 
-        public async Task OnGetAsync(string returnUrl = null)
+        public async Task<IActionResult> OnGetAsync(string returnUrl = null)
         {
+            //If there are no ApplicationUsers in the db, redirect to SetupSuperadmin page to create the new superadmin
+            
+            if (! _signInManager.UserManager.Users.Any())
+            {
+                return RedirectToPage("./SetupSuperadmin");
+            }
+           
+            
             if (!string.IsNullOrEmpty(ErrorMessage))
             {
                 ModelState.AddModelError(string.Empty, ErrorMessage);
@@ -99,6 +107,8 @@ namespace FundsManager.Areas.Identity.Pages.Account
             ExternalLogins = (await _signInManager.GetExternalAuthenticationSchemesAsync()).ToList();
 
             ReturnUrl = returnUrl;
+
+            return Page();
         }
 
         public async Task<IActionResult> OnPostAsync(string returnUrl = null)

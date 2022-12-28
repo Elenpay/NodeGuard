@@ -24,4 +24,11 @@ public interface IInternalWalletRepository
     /// <returns></returns>
     /// <returns></returns>
     Task<InternalWallet?> GetCurrentInternalWallet();
+
+    /// <summary>
+    /// Generates a new internal wallet
+    /// </summary>
+    /// <param name="generateReadOnlyWallet"> Indicates if the wallet is read-only and the seedphrase should not be generated here</param>
+    /// <returns></returns>
+    Task<InternalWallet> GenerateNewInternalWallet(bool generateReadOnlyWallet = false);
 }

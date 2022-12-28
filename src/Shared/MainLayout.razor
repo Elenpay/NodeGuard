@@ -2,10 +2,12 @@
 @using Blazored.Toast.Configuration
 @using System.Security.Claims
 @using System.Timers
+@using Humanizer
 @inject AuthenticationStateProvider AuthenticationStateProvider
 @inject IApplicationUserRepository ApplicationUserRepository
 @inject IJSRuntime JsRuntime
 @inject NavigationManager NavigationManager
+@inject IInternalWalletRepository InternalWalletRepository
 
 <PageTitle>NodeGuard</PageTitle>
 
@@ -65,6 +67,18 @@
             {
                 if (_claimsPrincipal.Identity.Name != null) _loggedUser = await ApplicationUserRepository.GetByUsername(_claimsPrincipal.Identity.Name);
                 if (_loggedUser?.Id != null) LinkNotificationsUser(_loggedUser.Id);
+                //Get current internal wallet
+                var internalWallet = await InternalWalletRepository.GetCurrentInternalWallet();
+        
+                
+                //If the internal wallet does not exist
+                var remoteSignerEnabled = Environment.GetEnvironmentVariable("ENABLE_REMOTE_SIGNER") != null;
+                if (internalWallet == null || (remoteSignerEnabled && string.IsNullOrWhiteSpace(internalWallet.XPUB)))
+                {
+                   //Navigate to Setup Internal Wallet
+                    NavigationManager.NavigateTo("/setup-internal-wallet", false);
+                    
+                }
             }
         }
 

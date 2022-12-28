@@ -365,22 +365,7 @@ namespace FundsManager.Data
             }
             else
             {
-                if (!applicationDbContext.InternalWallets.Any())
-                {
-                    //Default Internal Wallet, for production we generate a whole random new Mnemonic
-
-                    var internalWallet = new InternalWallet
-                    {
-                        DerivationPath = Environment.GetEnvironmentVariable("DEFAULT_DERIVATION_PATH"),
-                        MnemonicString = new Mnemonic(Wordlist.English).ToString(),
-                        CreationDatetime = DateTimeOffset.Now,
-                    };
-
-                    applicationDbContext.Add(internalWallet);
-
-                    logger.LogInformation("A new internal wallet seed has been generated: {}",
-                        internalWallet.MnemonicString);
-                }
+                
             }
 
             applicationDbContext.SaveChanges();
