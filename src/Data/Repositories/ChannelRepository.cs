@@ -112,7 +112,7 @@ namespace FundsManager.Data.Repositories
 
             if (closeRequest == null) return (false, null);
 
-            IScheduler scheduler = await _schedulerFactory.GetScheduler(); 
+            var scheduler = await _schedulerFactory.GetScheduler(); 
             
             var map = new JobDataMap();
             map.Put("closeRequest", closeRequest);
