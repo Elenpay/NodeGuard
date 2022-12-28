@@ -201,6 +201,43 @@ namespace FundsManager.Data.Repositories
             return updateResult;
         }
 
+        public async Task<(bool, string?)> CreateSuperAdmin(string username, string confirmationPassword)
+        {
+            if (string.IsNullOrWhiteSpace(username))
+                throw new ArgumentException("Value cannot be null or whitespace.", nameof(username));
+            if (string.IsNullOrWhiteSpace(confirmationPassword))
+                throw new ArgumentException("Value cannot be null or whitespace.", nameof(confirmationPassword));
+            
+            var superadminAddResult = await AddAsync(new ApplicationUser
+            {
+                UserName =  username,
+                NormalizedUserName = username.ToUpper(),
+            }, confirmationPassword);
+            
+            if (!superadminAddResult.Item1)
+            {
+                var message = $"Error while creating superadmin user:{username}";
+                _logger.LogError(message);
+                return (false, message);
+            }
+            
+            var superadmin = await GetByUsername(username);
+            if (superadmin != null)
+            {
+                var selectedRoles = new List<ApplicationUserRole>{ApplicationUserRole.Superadmin};
+                
+                var addRole = await UpdateUserRoles( selectedRoles, superadmin);
+                if (!addRole.Item1)
+                {
+                    var message = $"Error while adding superadmin role to user:{username}";
+                    _logger.LogError(message);
+                    return (false, message);
+                }
+            }
+
+            return (true, null);
+        }
+
         public async Task<(bool, string?)> UpdateUserRoles(IReadOnlyList<ApplicationUserRole> selectedRoles, ApplicationUser user)
         {
             await using var applicationDbContext = await _dbContextFactory.CreateDbContextAsync();
@@ -300,13 +337,21 @@ namespace FundsManager.Data.Repositories
             return result;
         }
 
-        public async Task<(bool, string?)> AddAsync(ApplicationUser type)
+        public async Task<(bool, string?)> AddAsync(ApplicationUser type, string? password = null)
         {
             await using var applicationDbContext = await _dbContextFactory.CreateDbContextAsync();
 
             type.NormalizedUserName = type.UserName.ToUpper();
 
             var userStore = new UserStore<ApplicationUser>(applicationDbContext);
+
+            if (password != null)
+            {
+                //Hash the password
+                var passwordHasher = new PasswordHasher<ApplicationUser>();
+                type.PasswordHash = passwordHasher.HashPassword(type, password);
+                
+            }
 
             var identityResult = await userStore.CreateAsync(type);
 

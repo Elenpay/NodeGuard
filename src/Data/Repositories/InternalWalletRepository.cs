@@ -1,6 +1,7 @@
 ﻿using FundsManager.Data.Models;
 using FundsManager.Data.Repositories.Interfaces;
 using Microsoft.EntityFrameworkCore;
+using NBitcoin;
 
 namespace FundsManager.Data.Repositories
 {
@@ -75,6 +76,32 @@ namespace FundsManager.Data.Repositories
             var result = await applicationDbContext.InternalWallets.OrderByDescending(x => x.Id).FirstOrDefaultAsync();
 
             return result;
+        }
+
+        public async Task<InternalWallet> GenerateNewInternalWallet(bool generateReadOnlyWallet = false)
+        {
+            await using var applicationDbContext = _dbContextFactory.CreateDbContext();
+
+            var internalWallet = new InternalWallet
+            {
+                DerivationPath = Environment.GetEnvironmentVariable("DEFAULT_DERIVATION_PATH"),
+                MnemonicString = generateReadOnlyWallet ? null :  new Mnemonic(Wordlist.English).ToString(),
+                CreationDatetime = DateTimeOffset.Now,
+            };
+
+            applicationDbContext.Add(internalWallet);
+
+            //Check that the rows are saved when calling SaveChangesAsync
+            var rowsSaved = await applicationDbContext.SaveChangesAsync() > 0;
+
+            if (!rowsSaved)
+            {
+                const string errorSavingTheInternalWallet = "Error saving the internal wallet";
+                throw new Exception(errorSavingTheInternalWallet);
+            }
+
+            _logger.LogInformation("A new internal wallet has been generated, read only:{generateReadOnlyWallet}", generateReadOnlyWallet);
+            return internalWallet;
         }
     }
 }

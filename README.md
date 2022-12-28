@@ -44,9 +44,9 @@ The fundsmanager has two modes of signing transactions as as Trusted coordinator
 1. Embedded (legacy) signing withing the fundsmanager, less secure but easier to manage
 2. Use a remote signing function (AWS Lambda function with public URL) to sign with a AWS KMS encrypted seedphrase that only the function can decrypt. Bear in mind that the AWS KMS symmetric encryption private key is never exposed and it is managed by AWS KMS.
 
-To enable mode #1 set env var as follows `ENABLE_REMOTE_FM_SIGNER = false`, otherwise in case you want mode #2 you need a lambda function deployed with the C# Project in `src/signer/FundsManagerSigner` with a public function URL and a AWS KMS Symmetric encryption key. Then set up the following env vars as in this example (json-like):
+To enable mode #1 set env var as follows `ENABLE_REMOTE_SIGNER = false`, otherwise in case you want mode #2 you need a lambda function deployed with the C# Project in `src/signer/FundsManagerSigner` with a public function URL and a AWS KMS Symmetric encryption key. Then set up the following env vars as in this example (json-like):
 ```
-"ENABLE_REMOTE_FM_SIGNER": "true",
+"ENABLE_REMOTE_SIGNER": "true",
 "AWS_ACCESS_KEY_ID": "********",
 "AWS_SECRET_ACCESS_KEY": "********",
 "AWS_REGION": "eu-west-1",
