@@ -17,8 +17,6 @@ using Amazon.Runtime;
 using AutoMapper;
 using FundsManager.Data;
 using FundsManager.Helpers;
-using Hangfire;
-using Hangfire.States;
 using Humanizer;
 using Microsoft.EntityFrameworkCore;
 using AddressType = Lnrpc.AddressType;
@@ -94,7 +92,6 @@ namespace FundsManager.Services
         private readonly INodeRepository _nodeRepository;
         private readonly IDbContextFactory<ApplicationDbContext> _dbContextFactory;
         private readonly IMapper _mapper;
-        private readonly IBackgroundJobClient _backgroundJobClient;
         private readonly IWalletRepository _walletRepository;
         private readonly IFMUTXORepository _ifmutxoRepository;
         private readonly IChannelOperationRequestPSBTRepository _channelOperationRequestPsbtRepository;
@@ -105,7 +102,6 @@ namespace FundsManager.Services
             INodeRepository nodeRepository,
             IDbContextFactory<ApplicationDbContext> dbContextFactory,
             IMapper mapper,
-            IBackgroundJobClient backgroundJobClient,
             IWalletRepository walletRepository,
             IFMUTXORepository ifmutxoRepository,
             IChannelOperationRequestPSBTRepository channelOperationRequestPsbtRepository,
@@ -116,7 +112,6 @@ namespace FundsManager.Services
             _nodeRepository = nodeRepository;
             _dbContextFactory = dbContextFactory;
             _mapper = mapper;
-            _backgroundJobClient = backgroundJobClient;
             _walletRepository = walletRepository;
             _ifmutxoRepository = ifmutxoRepository;
             _channelOperationRequestPsbtRepository = channelOperationRequestPsbtRepository;
@@ -364,7 +359,7 @@ namespace FundsManager.Services
                                     var partialSigsCount = changeFixedPSBT.Inputs.Sum(x => x.PartialSigs.Count);
                                     //We check the way the fundsmanager signs, with the remoteFundsManagerSigner or by itself.
                                     var isFMSignerEnabled =
-                                        Environment.GetEnvironmentVariable("ENABLE_REMOTE_SIGNER").ToUpper() == "true".ToUpper();
+                                        Environment.GetEnvironmentVariable("ENABLE_REMOTE_SIGNER")?.ToUpper() == "true".ToUpper();
 
                                     PSBT? fmSignedPSBT = null;
                                     if (isFMSignerEnabled)

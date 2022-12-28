@@ -25,8 +25,14 @@ public static class PriceConversionHelper
 
         try
         {
+            // If response fails, it returns an object with status error
             JsonDocument document = JsonDocument.Parse(response.Content);
-            btcPrice = document.RootElement[0].GetProperty("current_price").GetDecimal();
+            var valueType = document.RootElement.GetType();
+            if (valueType.IsArray) {
+                btcPrice = document.RootElement[0].GetProperty("current_price").GetDecimal();
+            } else {
+                btcPrice = 0;
+            }
         }
         catch (Exception e)
         {

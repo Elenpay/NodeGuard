@@ -86,7 +86,7 @@ namespace FundsManager.Data.Models
                     !x.IsTemplatePSBT && !x.IsFinalisedPSBT && !x.IsInternalWalletPSBT);
 
         /// <summary>
-        /// This is the JobId provided by Hangfire of the job executing this request.
+        /// This is the JobId provided by Quartz of the job executing this request.
         /// </summary>
         public string? JobId { get; set; }
 

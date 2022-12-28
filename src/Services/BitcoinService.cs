@@ -2,7 +2,6 @@
 using FundsManager.Data.Models;
 using FundsManager.Data.Repositories.Interfaces;
 using FundsManager.Helpers;
-using Hangfire;
 using Humanizer;
 using NBitcoin;
 using NBXplorer.DerivationStrategy;
@@ -468,7 +467,6 @@ namespace FundsManager.Services
         /// </summary>
         /// <param name="walletWithdrawalRequest"></param>
         /// <returns></returns>
-        [AutomaticRetry(LogEvents = true, Attempts = 10, OnAttemptsExceeded = AttemptsExceededAction.Fail)]
         Task PerformWithdrawal(WalletWithdrawalRequest walletWithdrawalRequest);
 
         /// <summary>

@@ -1,8 +1,8 @@
 ﻿using AutoMapper;
 using FundsManager.Data.Models;
 using FundsManager.Data.Repositories.Interfaces;
-using FundsManager.Services;
-using Hangfire;
+using FundsManager.Jobs;
+using Quartz;
 using Microsoft.EntityFrameworkCore;
 
 namespace FundsManager.Data.Repositories
@@ -13,13 +13,13 @@ namespace FundsManager.Data.Repositories
         private readonly ILogger<ChannelRepository> _logger;
         private readonly IDbContextFactory<ApplicationDbContext> _dbContextFactory;
         private readonly IChannelOperationRequestRepository _channelOperationRequestRepository;
-        private readonly IBackgroundJobClient _backgroundJobClient;
+        private readonly ISchedulerFactory _schedulerFactory;
         private readonly IMapper _mapper;
 
         public ChannelRepository(IRepository<Channel> repository,
             ILogger<ChannelRepository> logger,
             IDbContextFactory<ApplicationDbContext> dbContextFactory,
-            IChannelOperationRequestRepository channelOperationRequestRepository, IBackgroundJobClient backgroundJobClient,
+            IChannelOperationRequestRepository channelOperationRequestRepository, ISchedulerFactory schedulerFactory,
             IMapper mapper
             )
         {
@@ -27,7 +27,7 @@ namespace FundsManager.Data.Repositories
             _logger = logger;
             _dbContextFactory = dbContextFactory;
             _channelOperationRequestRepository = channelOperationRequestRepository;
-            _backgroundJobClient = backgroundJobClient;
+            _schedulerFactory = schedulerFactory;
             this._mapper = mapper;
         }
 
@@ -112,9 +112,31 @@ namespace FundsManager.Data.Repositories
 
             if (closeRequest == null) return (false, null);
 
-            var jobId = _backgroundJobClient.Enqueue<ILightningService>(service => service.CloseChannel(closeRequest, forceClose));
+            var scheduler = await _schedulerFactory.GetScheduler(); 
+            
+            var map = new JobDataMap();
+            map.Put("closeRequest", closeRequest);
+            map.Put("forceClose", forceClose);
+            
+            var job = JobBuilder.Create<ChannelCloseJob>()
+                    .DisallowConcurrentExecution()
+                    .SetJobData(map)
+                    .WithIdentity(nameof(ChannelCloseJob))
+                    .Build();
+            
+            var trigger = TriggerBuilder.Create()
+                .WithIdentity($"{nameof(ChannelCloseJob)}Trigger")
+                .StartNow()
+                .WithSimpleSchedule(opts =>
+                    opts
+                        .WithIntervalInSeconds(10)
+                        .WithRepeatCount(20))
+                .Build();
 
-            closeRequest.JobId = jobId;
+            await scheduler.ScheduleJob(job, trigger);
+
+            // TODO: Check job id
+            closeRequest.JobId = job.Key.ToString();
 
             var jobUpdateResult = _channelOperationRequestRepository.Update(closeRequest);
             if (!jobUpdateResult.Item1)
