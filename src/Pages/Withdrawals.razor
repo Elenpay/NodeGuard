@@ -657,28 +657,13 @@
             
                                 var map = new JobDataMap();
                                 map.Put("withdrawalRequest", _selectedRequest);
-                                
-                                var job = JobBuilder.Create<PerformWithdrawalJob>()
-                                        .DisallowConcurrentExecution()
-                                        .SetJobData(map)
-                                        .WithIdentity(nameof(PerformWithdrawalJob))
-                                        .Build();
-                                
-                                var trigger = TriggerBuilder.Create()
-                                    .WithIdentity($"{nameof(PerformWithdrawalJob)}Trigger")
-                                    .StartNow()
-                                    .WithSimpleSchedule(opts =>
-                                        opts
-                                            .WithIntervalInSeconds(10)
-                                            .WithRepeatCount(20))
-                                    .Build();
-
-                                await scheduler.ScheduleJob(job, trigger);
+                                var job = RetriableJob.Create<PerformWithdrawalJob>(map);
+                                await scheduler.ScheduleJob(job.Job, job.Trigger);
 
                                 if (_selectedRequest != null)
                                 {
                                     // TODO: Check job id
-                                    _selectedRequest.JobId = job.Key.ToString();;
+                                    _selectedRequest.JobId = job.Job.Key.ToString();;
 
                                     WalletWithdrawalRequestRepository.Update(_selectedRequest);
                                 }

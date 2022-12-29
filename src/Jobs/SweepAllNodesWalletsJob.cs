@@ -1,4 +1,5 @@
 ﻿using FundsManager.Data.Repositories.Interfaces;
+using FundsManager.Helpers;
 using Quartz;
 
 namespace FundsManager.Jobs
@@ -28,20 +29,13 @@ namespace FundsManager.Jobs
             {
                 var managedNodes = await _nodeRepository.GetAllManagedByFundsManager();
 
+                var scheduler = await _schedulerFactory.GetScheduler();
                 foreach (var managedNode in managedNodes.Where(managedNode => managedNode.ChannelAdminMacaroon != null))
                 {
-                    var job = JobBuilder.Create<SweepNodeWalletsJob>()
-                        .WithIdentity($"{nameof(SweepNodeWalletsJob)}-{managedNode.Id}")
-                        .SetJobData(new JobDataMap(new Dictionary<string, string> { { "managedNodeId", managedNode.Id.ToString() } }))
-                        .Build();
-
-                    var trigger = TriggerBuilder.Create()
-                        .WithIdentity($"{nameof(SweepNodeWalletsJob)}Trigger-{managedNode.Id}")
-                        .StartNow()
-                        .Build();
-
-                    var scheduler = await _schedulerFactory.GetScheduler();
-                    await scheduler.ScheduleJob(job, trigger);
+                    var map = new JobDataMap();
+                    map.Put("managedNodeId", managedNode.Id.ToString());
+                    var job = SimpleJob.Create<SweepNodeWalletsJob>(map, managedNode.Id.ToString());
+                    await scheduler.ScheduleJob(job.Job, job.Trigger);
                 }
             }
             catch (Exception e)

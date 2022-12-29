@@ -1,4 +1,5 @@
 ﻿using FundsManager.Data.Repositories.Interfaces;
+using FundsManager.Helpers;
 using Quartz;
 
 namespace FundsManager.Jobs;
@@ -30,22 +31,15 @@ public class ChannelAcceptorJob : IJob
         {
             var managedNodes = await _nodeRepository.GetAllManagedByFundsManager();
 
+            var scheduler = await _schedulerFactory.GetScheduler();
             foreach (var managedNode in managedNodes)
             {
                 if (managedNode.ChannelAdminMacaroon != null)
                 {
-                    var job = JobBuilder.Create<ProcessNodeChannelAcceptorJob>()
-                        .WithIdentity($"{nameof(ProcessNodeChannelAcceptorJob)}-{managedNode.Id}")
-                        .SetJobData(new JobDataMap(new Dictionary<string, string> { { "managedNodeId", managedNode.Id.ToString() } }))
-                        .Build();
-
-                    var trigger = TriggerBuilder.Create()
-                        .WithIdentity($"{nameof(ProcessNodeChannelAcceptorJob)}Trigger-{managedNode.Id}")
-                        .StartNow()
-                        .Build();
-
-                    var scheduler = await _schedulerFactory.GetScheduler();
-                    await scheduler.ScheduleJob(job, trigger);
+                    var map = new JobDataMap();
+                    map.Put("managedNodeId", managedNode.Id.ToString());
+                    var job = SimpleJob.Create<ProcessNodeChannelAcceptorJob>(map, managedNode.Id.ToString());
+                    await scheduler.ScheduleJob(job.Job, job.Trigger);
                 }
             }
         }
