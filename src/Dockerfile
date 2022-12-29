@@ -20,4 +20,5 @@ RUN dotnet publish "FundsManager.csproj" -c Release -o /app/publish
 FROM base AS final
 WORKDIR /app
 COPY --from=publish /app/publish .
+COPY src/Migrations/*.sql Migrations/
 ENTRYPOINT ["dotnet", "FundsManager.dll"]
