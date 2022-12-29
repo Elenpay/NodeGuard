@@ -209,7 +209,7 @@ namespace FundsManager.Services
                     closeAddressNull);
             }
 
-            _logger.LogInformation("Channel open request for  request id:{} from node:{} to node:{}",
+            _logger.LogInformation("Channel open request for  request id: {RequestId} from node: {SourceNodeName} to node: {DestinationNodeName}",
                 channelOperationRequest.Id,
                 source.Name,
                 destination.Name);
@@ -267,7 +267,7 @@ namespace FundsManager.Services
                                 //Channel funding tx on mempool and pending status on lnd
 
                                 _logger.LogInformation(
-                                    "Channel pending for channel operation request id:{} for pending channel id:{}",
+                                    "Channel pending for channel operation request id: {RequestId} for pending channel id: {ChannelId}",
                                     channelOperationRequest.Id, pendingChannelIdHex);
 
                                 channelOperationRequest.Status = ChannelOperationRequestStatus.OnChainConfirmationPending;
@@ -278,7 +278,7 @@ namespace FundsManager.Services
 
                             case OpenStatusUpdate.UpdateOneofCase.ChanOpen:
                                 _logger.LogInformation(
-                                    "Channel opened for channel operation request request id:{} channel point:{}",
+                                    "Channel opened for channel operation request request id: {RequestId}, channel point: {ChannelPoint}",
                                     channelOperationRequest.Id, response.ChanOpen.ChannelPoint.ToString());
 
                                 channelOperationRequest.Status = ChannelOperationRequestStatus.OnChainConfirmed;
@@ -303,7 +303,7 @@ namespace FundsManager.Services
                                 if (addChannelResult == false)
                                 {
                                     _logger.LogError(
-                                        "Channel for channel operation request id:{} could not be created, reason:{}",
+                                        "Channel for channel operation request id: {RequestId} could not be created, reason: {Reason}",
                                         channelOperationRequest.Id,
                                         "Could not persist to db");
                                 }
@@ -316,7 +316,7 @@ namespace FundsManager.Services
                                 if (channelUpdate.Item1 == false)
                                 {
                                     _logger.LogError(
-                                        "Could not assign channel id to channel operation request:{} reason:{}",
+                                        "Could not assign channel id to channel operation request: {RequestId} reason: {Reason}",
                                         channelOperationRequest.Id,
                                         channelUpdate.Item2);
                                 }
@@ -481,7 +481,7 @@ namespace FundsManager.Services
                                             if (!finalisedPSBTAdd.Item1)
                                             {
                                                 _logger.LogError(
-                                                    "Error while saving the finalised PSBT for channel operation request with id:{}",
+                                                    "Error while saving the finalised PSBT for channel operation request with id: {RequestId}",
                                                     channelOperationRequest.Id);
                                             }
                                         }
@@ -516,7 +516,7 @@ namespace FundsManager.Services
             catch (Exception e)
             {
                 _logger.LogError(e,
-                    "Channel open request failed for channel operation request:{} from node:{} to node:{}",
+                    "Channel open request failed for channel operation request: {RequestId} from node: {SourceNodeName} to node: {DestinationNodeName}",
                     channelOperationRequest.Id,
                     source.Name,
                     destination.Name);
@@ -637,7 +637,7 @@ namespace FundsManager.Services
             }
             catch (Exception e)
             {
-                _logger.LogError(e, "Error while cancelling pending channel with id:{} (hex)",
+                _logger.LogError(e, "Error while cancelling pending channel with id: {ChannelId} (hex)",
                     Convert.ToHexString(pendingChannelId));
             }
         }
@@ -684,7 +684,7 @@ namespace FundsManager.Services
 
             if (derivationStrategy == null)
             {
-                _logger.LogError("Error while getting the derivation strategy scheme for wallet:{}",
+                _logger.LogError("Error while getting the derivation strategy scheme for wallet: {WalletId}",
                     channelOperationRequest.Wallet.Id);
                 return (null, false);
             }
@@ -707,7 +707,7 @@ namespace FundsManager.Services
                 {
                     //We mark the request as failed since we would need to invalidate existing PSBTs
                     _logger.LogError(
-                        "Marking the channel operation request:{} as failed since the original UTXOs are no longer valid",
+                        "Marking the channel operation request: {RequestId} as failed since the original UTXOs are no longer valid",
                         channelOperationRequest.Id);
 
                     channelOperationRequest.Status = ChannelOperationRequestStatus.Failed;
@@ -716,7 +716,7 @@ namespace FundsManager.Services
 
                     if (!updateResult.Item1)
                     {
-                        _logger.LogError("Error while updating withdrawal request:{}", channelOperationRequest.Id);
+                        _logger.LogError("Error while updating withdrawal request: {RequestId}", channelOperationRequest.Id);
                     }
 
                     return (null, false);
@@ -729,8 +729,9 @@ namespace FundsManager.Services
             if (multisigCoins == null || !multisigCoins.Any())
             {
                 _logger.LogError(
-                    "Cannot generate base template PSBT for channel operation request:{}, no UTXOs found for the wallet:{}",
-                    channelOperationRequest.IsChannelPrivate,
+                    "Cannot generate base template PSBT for {Visibility} channel operation request: {RequestId}, no UTXOs found for the wallet: {WalletId}",
+                    channelOperationRequest.Id,
+                    channelOperationRequest.IsChannelPrivate ? "private" : "public",
                     channelOperationRequest.WalletId);
 
                 return (null, true); //true means no UTXOS
@@ -747,7 +748,7 @@ namespace FundsManager.Services
                 var changeAddress = await nbxplorerClient.GetUnusedAsync(derivationStrategy, DerivationFeature.Change);
                 if (changeAddress == null)
                 {
-                    _logger.LogError("Change address was not found for wallet:{}", channelOperationRequest.Wallet.Id);
+                    _logger.LogError("Change address was not found for wallet: {WalletId}", channelOperationRequest.Wallet.Id);
                     return (null, false);
                 }
 
@@ -835,7 +836,7 @@ namespace FundsManager.Services
 
                 if (addPsbtResult.Item1 == false)
                 {
-                    _logger.LogError("Error while saving template PSBT to channel operation request:{}", channelOperationRequest.Id);
+                    _logger.LogError("Error while saving template PSBT to channel operation request: {RequestId}", channelOperationRequest.Id);
                 }
             }
 
@@ -877,7 +878,7 @@ namespace FundsManager.Services
             if (channelOperationRequest.RequestType != OperationRequestType.Close)
                 throw new ArgumentException("Channel Operation Request type is not of type Close");
 
-            _logger.LogInformation("Channel close request for request id:{}",
+            _logger.LogInformation("Channel close request for request id: {RequestId}",
                 channelOperationRequest.Id);
 
             try
@@ -912,7 +913,7 @@ namespace FundsManager.Services
                             Force = forceClose,
                         }, new Metadata { { "macaroon", channelOperationRequest.SourceNode.ChannelAdminMacaroon } });
 
-                        _logger.LogInformation("Channel close request:{} triggered",
+                        _logger.LogInformation("Channel close request: {RequestId} triggered",
                             channelOperationRequest.Id);
 
                         //This is is I/O bounded to the blockchain block time
@@ -927,8 +928,8 @@ namespace FundsManager.Services
                                     var closePendingTxid = LightningHelper.DecodeTxId(response.ClosePending.Txid);
 
                                     _logger.LogInformation(
-                                        "Channel close request in status:{} for channel operation request:{} for channel:{} closing txId:{}",
-                                        ChannelOperationRequestStatus.OnChainConfirmationPending,
+                                        "Channel close request in status: {RequestStatus} for channel operation request: {RequestId} for channel: {ChannelId} closing txId: {TxId}",
+                                        nameof(ChannelOperationRequestStatus.OnChainConfirmationPending),
                                         channelOperationRequest.Id,
                                         channel.Id,
                                         closePendingTxid);
@@ -942,9 +943,9 @@ namespace FundsManager.Services
                                     if (onChainPendingUpdate.Item1 == false)
                                     {
                                         _logger.LogError(
-                                            "Error while updating channel operation request id:{} to status:{}",
+                                            "Error while updating channel operation request id: {RequestId} to status: {RequestStatus}",
                                             channelOperationRequest.Id,
-                                            ChannelOperationRequestStatus.OnChainConfirmationPending);
+                                            nameof(ChannelOperationRequestStatus.OnChainConfirmationPending));
                                     }
 
                                     break;
@@ -954,8 +955,8 @@ namespace FundsManager.Services
                                     //TODO Review why chanclose.success it is false for confirmed closings of channels
                                     var chanCloseClosingTxid = LightningHelper.DecodeTxId(response.ChanClose.ClosingTxid);
                                     _logger.LogInformation(
-                                        "Channel close request in status:{} for channel operation request:{} for channel:{} closing txId:{}",
-                                        ChannelOperationRequestStatus.OnChainConfirmed,
+                                        "Channel close request in status: {RequestStatus} for channel operation request: {RequestId} for channel: {ChannelId} closing txId: {TxId}",
+                                        nameof(ChannelOperationRequestStatus.OnChainConfirmed),
                                         channelOperationRequest.Id,
                                         channel.Id,
                                         chanCloseClosingTxid);
@@ -969,9 +970,9 @@ namespace FundsManager.Services
                                     if (onChainConfirmedUpdate.Item1 == false)
                                     {
                                         _logger.LogError(
-                                            "Error while updating channel operation request id:{} to status:{}",
+                                            "Error while updating channel operation request id: {RequestId} to status: {RequestStatus}",
                                             channelOperationRequest.Id,
-                                            ChannelOperationRequestStatus.OnChainConfirmed);
+                                            nameof(ChannelOperationRequestStatus.OnChainConfirmed));
                                     }
 
                                     channel.Status = Channel.ChannelStatus.Closed;
@@ -981,7 +982,7 @@ namespace FundsManager.Services
                                     if (!updateChannelResult.Item1)
                                     {
                                         _logger.LogError(
-                                            "Error while setting to closed status a closed channel with id:{}",
+                                            "Error while setting to closed status a closed channel with id: {ChannelId}",
                                             channel.Id);
                                     }
 
@@ -1007,7 +1008,7 @@ namespace FundsManager.Services
                             channel.Status = Channel.ChannelStatus.Closed;
 
                             _channelRepository.Update(channel);
-                            _logger.LogInformation("Setting channel with id:{} to closed as it no longer exists",
+                            _logger.LogInformation("Setting channel with id: {ChannelId} to closed as it no longer exists",
                                 channel.Id);
 
                             //It does not exists, probably was on-chain confirmed
@@ -1021,7 +1022,7 @@ namespace FundsManager.Services
                 else
                 {
                     _logger.LogError(e,
-                        "Channel close request failed for channel operation request:{}",
+                        "Channel close request failed for channel operation request: {RequestId}",
                         channelOperationRequest.Id);
                     throw;
                 }
@@ -1039,7 +1040,7 @@ namespace FundsManager.Services
             }
             catch (Exception e)
             {
-                _logger.LogError(e, "Error while getting wallet balance for wallet:{}", wallet.Id);
+                _logger.LogError(e, "Error while getting wallet balance for wallet: {WalletId}", wallet.Id);
             }
 
             return getBalanceResponse;
@@ -1059,7 +1060,7 @@ namespace FundsManager.Services
             }
             catch (Exception e)
             {
-                _logger.LogError(e, "Error while getting wallet balance for wallet:{}", wallet.Id);
+                _logger.LogError(e, "Error while getting wallet balance for wallet: {WalletId}", wallet.Id);
             }
 
             var result = keyPathInformation?.Address ?? null;
@@ -1110,7 +1111,7 @@ namespace FundsManager.Services
             }
             catch (Exception e)
             {
-                _logger.LogError(e, "Error while obtaining node info for node with pubkey:{}", pubkey);
+                _logger.LogError(e, "Error while obtaining node info for node with pubkey: {PubKey}", pubkey);
             }
 
             return result;

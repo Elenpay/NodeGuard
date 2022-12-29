@@ -56,20 +56,20 @@ public class MonitorWithdrawalsJob : IJob
 
                         if (!updateResult.Item1)
                         {
-                            _logger.LogError("Error while updating wallet withdrawal:{} status:{}",
+                            _logger.LogError("Error while updating wallet withdrawal: {RequestId}, status: {RequestStatus}",
                                 walletWithdrawalRequest.Id,
                                 walletWithdrawalRequest.Status);
                         }
                         else
                         {
-                            _logger.LogInformation("Updating wallet withdrawal:{} to status:{}",
+                            _logger.LogInformation("Updating wallet withdrawal: {RequestId} to status: {RequestStatus}",
                                 walletWithdrawalRequest.Id, walletWithdrawalRequest.Status);
                         }
                     }
                 }
                 catch (Exception e)
                 {
-                    _logger.LogError(e, "Error while monitoring TxId:{}", walletWithdrawalRequest.TxId);
+                    _logger.LogError(e, "Error while monitoring TxId: {TxId}", walletWithdrawalRequest.TxId);
 
                     throw new JobExecutionException(e, false);
                 }

@@ -164,7 +164,7 @@ namespace FundsManager.Data.Repositories
             }
             catch (Exception e)
             {
-                _logger.LogError(e, "Error while finalising wallet:{}", selectedWalletToFinalise.Id);
+                _logger.LogError(e, "Error while finalising wallet: {WalletId}", selectedWalletToFinalise.Id);
 
                 result = (false, "Error while finalising wallet");
             }

@@ -75,7 +75,7 @@ namespace FundsManager.Services
 
             if (derivationStrategy == null)
             {
-                _logger.LogError("Error while getting the derivation strategy scheme for wallet:{}",
+                _logger.LogError("Error while getting the derivation strategy scheme for wallet: {WalletId}",
                     walletWithdrawalRequest.Wallet.Id);
                 return (null, false);
             }
@@ -99,7 +99,7 @@ namespace FundsManager.Services
                 {
                     //We mark the request as failed since we would need to invalidate existing PSBTs
                     _logger.LogError(
-                        "Marking the withdrawal request:{} as failed since the original UTXOs are no longer valid",
+                        "Marking the withdrawal request: {RequestId} as failed since the original UTXOs are no longer valid",
                         walletWithdrawalRequest.Id);
 
                     walletWithdrawalRequest.Status = WalletWithdrawalRequestStatus.Failed;
@@ -108,7 +108,7 @@ namespace FundsManager.Services
 
                     if (!updateResult.Item1)
                     {
-                        _logger.LogError("Error while updating withdrawal request:{}", walletWithdrawalRequest.Id);
+                        _logger.LogError("Error while updating withdrawal request: {RequestId}", walletWithdrawalRequest.Id);
                     }
 
                     return (null, false);
@@ -143,7 +143,7 @@ namespace FundsManager.Services
             if (scriptCoins == null || !scriptCoins.Any())
             {
                 _logger.LogError(
-                    "Cannot generate base template PSBT for withdrawal request:{}, no UTXOs found for the wallet:{}",
+                    "Cannot generate base template PSBT for withdrawal request: {RequestId}, no UTXOs found for the wallet: {WalletId}",
                     walletWithdrawalRequest.Id, walletWithdrawalRequest.Wallet.Id);
 
                 return (null, true); //true means no UTXOS
@@ -161,7 +161,7 @@ namespace FundsManager.Services
 
                 if (changeAddress == null)
                 {
-                    _logger.LogError("Change address was not found for wallet:{}", walletWithdrawalRequest.Wallet.Id);
+                    _logger.LogError("Change address was not found for wallet: {WalletId}", walletWithdrawalRequest.Wallet.Id);
                     return (null, false);
                 }
 
@@ -220,7 +220,7 @@ namespace FundsManager.Services
 
                 if (addPsbtResult.Item1 == false)
                 {
-                    _logger.LogError("Error while saving template PSBT to wallet withdrawal request:{}", walletWithdrawalRequest.Id);
+                    _logger.LogError("Error while saving template PSBT to wallet withdrawal request: {RequestId}", walletWithdrawalRequest.Id);
                 }
             }
 
@@ -233,7 +233,7 @@ namespace FundsManager.Services
 
             if (walletWithdrawalRequest.Status != WalletWithdrawalRequestStatus.PSBTSignaturesPending)
             {
-                _logger.LogError("Invalid status for broadcasting the tx from wallet withdrawal request:{} status:{}",
+                _logger.LogError("Invalid status for broadcasting the tx from wallet withdrawal request: {RequestId}, status: {RequestStatus}",
                     walletWithdrawalRequest.Id,
                     walletWithdrawalRequest.Status);
 
@@ -341,7 +341,7 @@ namespace FundsManager.Services
                 var transactionCheckResult = tx.Check();
                 if (transactionCheckResult != TransactionCheckResult.Success)
                 {
-                    _logger.LogError("Invalid tx check reason:{}", transactionCheckResult.Humanize());
+                    _logger.LogError("Invalid tx check reason: {Reason}", transactionCheckResult.Humanize());
                 }
 
                 var node = (await _nodeRepository.GetAllManagedByFundsManager()).FirstOrDefault();
@@ -354,7 +354,7 @@ namespace FundsManager.Services
                     throw new ArgumentException(noManagedFoundFoundForWithdrawalRequestId, nameof(node));
                 }
 
-                _logger.LogInformation("Publishing tx for withdrawal request id:{} by node:{} txId:{}",
+                _logger.LogInformation("Publishing tx for withdrawal request id: {RequestId} by node: {NodeName} txId: {TxId}",
                     walletWithdrawalRequest.Id,
                     node.Name,
                     tx.GetHash().ToString());
@@ -364,7 +364,7 @@ namespace FundsManager.Services
 
                 if (!broadcastAsyncResult.Success)
                 {
-                    _logger.LogError("Failed TX broadcast for withdrawal request id:{} rpcCode:{}, rpcCodeMessage:{}, rpcMessage:{}",
+                    _logger.LogError("Failed TX broadcast for withdrawal request id: {RequestId} rpcCode: {Code}, rpcCodeMessage: {CodeMessage}, rpcMessage: {Message}",
                         walletWithdrawalRequest.Id,
                         broadcastAsyncResult.RPCCode,
                         broadcastAsyncResult.RPCCodeMessage,
@@ -379,7 +379,7 @@ namespace FundsManager.Services
 
                 if (updateTxIdResult.Item1 != true)
                 {
-                    _logger.LogError("Error while updating the txId of withdrawal request:{}", walletWithdrawalRequest.Id);
+                    _logger.LogError("Error while updating the txId of withdrawal request: {RequestId}", walletWithdrawalRequest.Id);
                 }
 
                 //We track the destination address
@@ -391,7 +391,7 @@ namespace FundsManager.Services
             }
             catch (Exception e)
             {
-                _logger.LogError(e, "Error while publishing withdrawal request id:{}", walletWithdrawalRequest.Id);
+                _logger.LogError(e, "Error while publishing withdrawal request id: {RequestId}", walletWithdrawalRequest.Id);
                 throw;
             }
         }
@@ -424,20 +424,20 @@ namespace FundsManager.Services
 
                             if (!updateResult.Item1)
                             {
-                                _logger.LogError("Error while updating wallet withdrawal:{} status:{}",
+                                _logger.LogError("Error while updating wallet withdrawal: {RequestId}, status: {RequestStatus}",
                                     walletWithdrawalRequest.Id,
                                     walletWithdrawalRequest.Status);
                             }
                             else
                             {
-                                _logger.LogInformation("Updating wallet withdrawal:{} to status:{}",
+                                _logger.LogInformation("Updating wallet withdrawal: {RequestId} to status: {RequestStatus}",
                                     walletWithdrawalRequest.Id, walletWithdrawalRequest.Status);
                             }
                         }
                     }
                     catch (Exception e)
                     {
-                        _logger.LogError(e, "Error while monitoring TxId:{}", walletWithdrawalRequest.TxId);
+                        _logger.LogError(e, "Error while monitoring TxId: {TxId}", walletWithdrawalRequest.TxId);
                     }
                 }
             }

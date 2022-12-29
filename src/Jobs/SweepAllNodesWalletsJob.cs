@@ -23,7 +23,7 @@ namespace FundsManager.Jobs
 
         public async Task Execute(IJobExecutionContext context)
         {
-            _logger.LogInformation("Starting {}... ", nameof(SweepAllNodesWalletsJob));
+            _logger.LogInformation("Starting {JobName}... ", nameof(SweepAllNodesWalletsJob));
             try
             {
                 var managedNodes = await _nodeRepository.GetAllManagedByFundsManager();
@@ -46,11 +46,11 @@ namespace FundsManager.Jobs
             }
             catch (Exception e)
             {
-                _logger.LogError(e, "Error on {}", nameof(SweepAllNodesWalletsJob));
+                _logger.LogError(e, "Error on {JobName}", nameof(SweepAllNodesWalletsJob));
                 throw new JobExecutionException(e);
             }
 
-            _logger.LogInformation("{} ended", nameof(SweepAllNodesWalletsJob));
+            _logger.LogInformation("{JobName} ended", nameof(SweepAllNodesWalletsJob));
         }
     }
 }

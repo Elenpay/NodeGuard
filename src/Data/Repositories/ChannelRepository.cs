@@ -104,7 +104,7 @@ namespace FundsManager.Data.Repositories
 
             if (!closeRequestAddResult.Item1)
             {
-                _logger.LogError("Error while saving close request for channel with id:{}", type.Id);
+                _logger.LogError("Error while saving close request for channel with id: {RequestId}", type.Id);
                 return (false, closeRequestAddResult.Item2);
             }
 
@@ -141,7 +141,7 @@ namespace FundsManager.Data.Repositories
             var jobUpdateResult = _channelOperationRequestRepository.Update(closeRequest);
             if (!jobUpdateResult.Item1)
             {
-                _logger.LogError("Error while updating the JobId for the close request with id:{}",
+                _logger.LogError("Error while updating the JobId for the close request with id: {RequestId}",
                     closeRequest.Id);
             }
 
