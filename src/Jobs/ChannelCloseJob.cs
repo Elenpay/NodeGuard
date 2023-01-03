@@ -14,12 +14,14 @@ public class ChannelCloseJob : IJob
 {
     private readonly ILogger<ChannelCloseJob> _logger;
     private readonly ILightningService _lightningService;
+    private readonly IChannelOperationRequestRepository _channelOperationRequestRepository;
 
 
-    public ChannelCloseJob(ILogger<ChannelCloseJob> logger, ILightningService lightningService)
+    public ChannelCloseJob(ILogger<ChannelCloseJob> logger, ILightningService lightningService, IChannelOperationRequestRepository channelOperationRequestRepository)
     {
         _logger = logger;
         _lightningService = lightningService;
+        _channelOperationRequestRepository = channelOperationRequestRepository;
     }
 
     public async Task Execute(IJobExecutionContext context)
@@ -31,9 +33,9 @@ public class ChannelCloseJob : IJob
             token.ThrowIfCancellationRequested();
 
             var data = context.JobDetail.JobDataMap;
-            var closeRequest = data.Get("closeRequest") as ChannelOperationRequest;
+            var closeRequestId = data.GetInt("closeRequestId");
             var forceClose = data.GetBoolean("forceClose");
-
+            var closeRequest = await _channelOperationRequestRepository.GetById(closeRequestId);
             await _lightningService.CloseChannel(closeRequest, forceClose);
 
             var schedule = context.Scheduler.DeleteJob(context.JobDetail.Key, token);

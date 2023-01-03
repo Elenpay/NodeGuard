@@ -116,7 +116,7 @@ namespace FundsManager.Data.Repositories
             var scheduler = await _schedulerFactory.GetScheduler(); 
             
             var map = new JobDataMap();
-            map.Put("closeRequest", closeRequest);
+            map.Put("closeRequestId", closeRequest.Id);
             map.Put("forceClose", forceClose);
             var job = RetriableJob.Create<ChannelCloseJob>(map);
             await scheduler.ScheduleJob(job.Job, job.Trigger);
