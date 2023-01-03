@@ -243,7 +243,7 @@ namespace FundsManager.Data
                     applicationDbContext.Add(internalWallet);
                     applicationDbContext.SaveChanges();
 
-                    logger.LogInformation("Internal wallet setup, seed:{}", internalWallet.MnemonicString);
+                    logger.LogInformation("Internal wallet setup, seed: {MnemonicString}", internalWallet.MnemonicString);
 
                     internalWalletKey =
                         new Key
@@ -281,7 +281,7 @@ namespace FundsManager.Data
 
                     var wallet1DerivationScheme = bitcoinExtPubKey1.ToWif();
 
-                    logger.LogInformation("Wallet 1 seed: {}", wallet1seed);
+                    logger.LogInformation("Wallet 1 seed: {MnemonicString}", wallet1seed);
 
                     var wallet2seed =
                         "solar goat auto bachelor chronic input twin depth fork scale divorce fury mushroom column image sauce car public artist announce treat spend jacket physical";
@@ -297,7 +297,7 @@ namespace FundsManager.Data
 
                     var wallet2DerivationScheme = bitcoinExtPubKey2.ToWif();
 
-                    logger.LogInformation("Wallet 2 seed: {}", wallet2seed);
+                    logger.LogInformation("Wallet 2 seed: {MnemonicString}", wallet2seed);
 
                     var testingMultisigWallet = new Wallet
                     {

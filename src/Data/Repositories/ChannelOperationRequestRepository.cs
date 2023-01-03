@@ -162,7 +162,7 @@ namespace FundsManager.Data.Repositories
             }
             catch (Exception e)
             {
-                _logger.LogError(e, "Error while adding UTXOs ({}) to op request:{}", utxos.Humanize(), type.Id);
+                _logger.LogError(e, "Error while adding UTXOs ({Utxos}) to op request: {RequestId}", utxos.Humanize(), type.Id);
 
                 result.Item1 = false;
             }

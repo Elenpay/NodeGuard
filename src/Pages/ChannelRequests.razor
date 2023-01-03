@@ -1,9 +1,10 @@
 ﻿@page "/channel-requests"
 @using System.Security.Claims
 @using Blazorise.Extensions
-@using Hangfire
+@using Quartz
 @using Humanizer
 @using NBitcoin
+@using FundsManager.Jobs
 @attribute [Authorize(Roles = "FinanceManager, Superadmin, NodeManager")]
 
 <PageTitle>Channel Operation Requests</PageTitle>
@@ -294,7 +295,7 @@
 @inject IChannelOperationRequestPSBTRepository ChannelOperationRequestPsbtRepository
 @inject IToastService ToastService
 @inject ILightningService LightningService
-@inject IBackgroundJobClient  BackgroundJobClient
+@inject ISchedulerFactory  SchedulerFactory
 @inject IWalletRepository WalletRepository
 @inject INodeRepository NodeRepository
 @inject NavigationManager uriHelper;
@@ -610,10 +611,15 @@
                     try
                     {
                         //TODO Async notifications when the channel has opened -> event / notifications system
-                        var jobId = BackgroundJobClient.Enqueue<ILightningService>(service =>
-                            service.OpenChannel(_selectedRequest));
+                        IScheduler scheduler = await SchedulerFactory.GetScheduler(); 
+            
+                        var map = new JobDataMap();
+                        map.Put("openRequest", _selectedRequest);
+                        var job = RetriableJob.Create<ChannelOpenJob>(map);
+                        await scheduler.ScheduleJob(job.Job, job.Trigger);
 
-                        _selectedRequest.JobId = jobId;
+                        // TODO: Check job id
+                        _selectedRequest.JobId = job.Job.Key.ToString();
 
                         var jobUpdateResult = ChannelOperationRequestRepository.Update(_selectedRequest);
                     }

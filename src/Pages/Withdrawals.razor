@@ -1,9 +1,10 @@
 ﻿@page "/withdrawals"
 @using Humanizer
 @using System.Security.Claims
-@using Hangfire
+@using Quartz
 @using NBitcoin
 @using System.Globalization
+@using FundsManager.Jobs
 
 @inject IToastService ToastService
 @attribute [Authorize(Roles = "SuperAdmin,NodeManager,FinanceManager")]
@@ -399,7 +400,7 @@
     private IBitcoinService BitcoinService { get; set; }
 
     [Inject]
-    private IBackgroundJobClient BackgroundJobClient { get; set; }
+    private ISchedulerFactory SchedulerFactory { get; set; }
 
     [CascadingParameter]
     private ApplicationUser? LoggedUser { get; set; }
@@ -652,12 +653,17 @@
                             if (_selectedRequest != null)
                             {
 
-                                var jobId = BackgroundJobClient.Enqueue<IBitcoinService>(service
-                                    => service.PerformWithdrawal(_selectedRequest));
+                                IScheduler scheduler = await SchedulerFactory.GetScheduler(); 
+            
+                                var map = new JobDataMap();
+                                map.Put("withdrawalRequest", _selectedRequest);
+                                var job = RetriableJob.Create<PerformWithdrawalJob>(map);
+                                await scheduler.ScheduleJob(job.Job, job.Trigger);
 
                                 if (_selectedRequest != null)
                                 {
-                                    _selectedRequest.JobId = jobId;
+                                    // TODO: Check job id
+                                    _selectedRequest.JobId = job.Job.Key.ToString();;
 
                                     WalletWithdrawalRequestRepository.Update(_selectedRequest);
                                 }

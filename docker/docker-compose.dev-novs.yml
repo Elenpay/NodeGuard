@@ -31,7 +31,7 @@ services:
       NBXPLORER_CHAINS: "btc"
       NBXPLORER_BTCRPCUSER: "polaruser"
       NBXPLORER_BTCRPCPASSWORD: "polarpass"
-      NBXPLORER_BTCRPCURL: http://host.docker.internal:18445/
+      NBXPLORER_BTCRPCURL: http://host.docker.internal:18443/
       NBXPLORER_BTCNODEENDPOINT: host.docker.internal:19444
     command: ["--noauth"]
     volumes:

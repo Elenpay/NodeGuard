@@ -282,7 +282,7 @@ namespace FundsManager.Data.Repositories
                     var updateStampResult = await applicationDbContext.SaveChangesAsync() > 0;
                     if (!updateStampResult)
                     {
-                        _logger.LogError("Error while invalidating user security stamp, user id:{}", user.Id);
+                        _logger.LogError("Error while invalidating user security stamp, user id: {UserId}", user.Id);
                     }
                 }
 
@@ -292,13 +292,13 @@ namespace FundsManager.Data.Repositories
 
                 if (!result.Item1)
                 {
-                    _logger.LogError("Error while updating user roles, user Id:{}", user.Id);
+                    _logger.LogError("Error while updating user roles, user Id: {UserId}", user.Id);
                     result.Item2 = "Error while updating user roles";
                 }
             }
             catch (Exception e)
             {
-                _logger.LogError(e, "Error while updating user roles, user Id:{}", user.Id);
+                _logger.LogError(e, "Error while updating user roles, user Id: {UserId}", user.Id);
             }
 
             return result;

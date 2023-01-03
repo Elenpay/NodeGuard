@@ -46,7 +46,7 @@ public class ProcessNodeChannelAcceptorJob : IJob
             var openerNodePubKey = Convert.ToHexString(response.NodePubkey.ToByteArray()).ToLower();
             var capacity = response.FundingAmt;
             _logger.LogInformation(
-                "Accepting channel opening request from external node:{} to managed node:{} with capacity:{} with no returning address",
+                "Accepting channel opening request from external node: {PubKey} to managed node: {NodeName}, with capacity: {Capacity} and no returning address",
                 openerNodePubKey, node.Name, capacity);
             await resultAcceptor.RequestStream.WriteAsync(new ChannelAcceptResponse
             {
@@ -70,7 +70,7 @@ public class ProcessNodeChannelAcceptorJob : IJob
                 if (address != null)
                 {
                     _logger.LogInformation(
-                        "Accepting channel opening request from external node:{} to managed node:{} with capacity:{} with returning address:{}",
+                        "Accepting channel opening request from external node: {PubKey} to managed node: {NodeName}, with capacity: {Capacity} and returning address: {Address}",
                         openerNodePubKey, node.Name, capacity, address.Address.ToString());
                     await asyncDuplexStreamingCall.RequestStream.WriteAsync(new ChannelAcceptResponse
                     {
@@ -81,7 +81,7 @@ public class ProcessNodeChannelAcceptorJob : IJob
                 }
                 else
                 {
-                    _logger.LogError("Could not find an address for wallet:{} for a returning address",
+                    _logger.LogError("Could not find an address for wallet: {WalletId} for a returning address",
                         returningMultisigWallet.Id);
                     //Just accept..
                     await AcceptChannelOpeningRequest(asyncDuplexStreamingCall, node, response);
@@ -95,13 +95,13 @@ public class ProcessNodeChannelAcceptorJob : IJob
 
         if (node == null)
         {
-            _logger.LogInformation("The node:{} is no longer ready to be supported hangfire jobs", node);
+            _logger.LogInformation("The node: {@Node} is no longer ready to be supported quartz jobs", node);
             return;
         }
 
         try
         {
-            _logger.LogInformation("Starting {} on node:{}", nameof(ProcessNodeChannelAcceptorJob), node.Name);
+            _logger.LogInformation("Starting {JobName} on node: {NodeName}", nameof(ProcessNodeChannelAcceptorJob), node.Name);
 
             using var grpcChannel = GrpcChannel.ForAddress($"https://{node.Endpoint}",
                 new GrpcChannelOptions
@@ -131,7 +131,7 @@ public class ProcessNodeChannelAcceptorJob : IJob
                     node = await _nodeRepository.GetById(managedNodeId);
                     if (node == null)
                     {
-                        _logger.LogInformation("The node:{} is no longer ready to be supported hangfire jobs", managedNodeId);
+                        _logger.LogInformation("The node: {NodeId} is no longer ready to be supported quartz jobs", managedNodeId);
                         //Just accept..
                         await resultAcceptor.RequestStream.CompleteAsync(); // Closing the stream
                         return;
@@ -185,13 +185,13 @@ public class ProcessNodeChannelAcceptorJob : IJob
                                     if (updateResult.Item1 == false)
                                     {
                                         _logger.LogError(
-                                            "Error while adding returning node wallet with id:{} to node:{}",
+                                            "Error while adding returning node wallet with id: {WalletId} to node: {NodeId}",
                                             wallet.Id, node.Id);
                                     }
                                 }
                                 else
                                 {
-                                    _logger.LogError("No wallets available in the system for {}",
+                                    _logger.LogError("No wallets available in the system for {JobName}",
                                         nameof(ChannelAcceptorJob));
                                     //Just accept..
                                     await AcceptChannelOpeningRequest(resultAcceptor, node, response);
@@ -221,12 +221,12 @@ public class ProcessNodeChannelAcceptorJob : IJob
             }
             else
             {
-                _logger.LogError("Invalid macaroon for node:{}", node.Name);
+                _logger.LogError("Invalid macaroon for node: {NodeName}", node.Name);
             }
         }
         catch (Exception e)
         {
-            _logger.LogError(e, "Error on {}", nameof(ProcessNodeChannelAcceptorJob));
+            _logger.LogError(e, "Error on {JobName}", nameof(ProcessNodeChannelAcceptorJob));
             throw new JobExecutionException(e, true);
         }
     }
