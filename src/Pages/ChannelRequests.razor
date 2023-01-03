@@ -615,26 +615,11 @@
             
                         var map = new JobDataMap();
                         map.Put("openRequest", _selectedRequest);
-                        
-                        var job = JobBuilder.Create<ChannelOpenJob>()
-                                .DisallowConcurrentExecution()
-                                .SetJobData(map)
-                                .WithIdentity(nameof(ChannelOpenJob))
-                                .Build();
-                        
-                        var trigger = TriggerBuilder.Create()
-                            .WithIdentity($"{nameof(ChannelOpenJob)}Trigger")
-                            .StartNow()
-                            .WithSimpleSchedule(opts =>
-                                opts
-                                    .WithIntervalInSeconds(10)
-                                    .WithRepeatCount(20))
-                            .Build();
-
-                        await scheduler.ScheduleJob(job, trigger);
+                        var job = RetriableJob.Create<ChannelOpenJob>(map);
+                        await scheduler.ScheduleJob(job.Job, job.Trigger);
 
                         // TODO: Check job id
-                        _selectedRequest.JobId = job.Key.ToString();
+                        _selectedRequest.JobId = job.Job.Key.ToString();
 
                         var jobUpdateResult = ChannelOperationRequestRepository.Update(_selectedRequest);
                     }

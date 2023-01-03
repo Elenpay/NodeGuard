@@ -2,6 +2,7 @@
 using FundsManager.Data.Models;
 using FundsManager.Data.Repositories.Interfaces;
 using FundsManager.Jobs;
+using FundsManager.Helpers;
 using Quartz;
 using Microsoft.EntityFrameworkCore;
 
@@ -117,26 +118,11 @@ namespace FundsManager.Data.Repositories
             var map = new JobDataMap();
             map.Put("closeRequest", closeRequest);
             map.Put("forceClose", forceClose);
-            
-            var job = JobBuilder.Create<ChannelCloseJob>()
-                    .DisallowConcurrentExecution()
-                    .SetJobData(map)
-                    .WithIdentity(nameof(ChannelCloseJob))
-                    .Build();
-            
-            var trigger = TriggerBuilder.Create()
-                .WithIdentity($"{nameof(ChannelCloseJob)}Trigger")
-                .StartNow()
-                .WithSimpleSchedule(opts =>
-                    opts
-                        .WithIntervalInSeconds(10)
-                        .WithRepeatCount(20))
-                .Build();
-
-            await scheduler.ScheduleJob(job, trigger);
+            var job = RetriableJob.Create<ChannelCloseJob>(map);
+            await scheduler.ScheduleJob(job.Job, job.Trigger);
 
             // TODO: Check job id
-            closeRequest.JobId = job.Key.ToString();
+            closeRequest.JobId = job.Job.Key.ToString();
 
             var jobUpdateResult = _channelOperationRequestRepository.Update(closeRequest);
             if (!jobUpdateResult.Item1)
