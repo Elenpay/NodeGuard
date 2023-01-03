@@ -136,7 +136,7 @@ namespace FundsManager
                 //Right now we are using in-memory storage
                 q.UsePersistentStore(options =>
                 {
-                    options.UseProperties = true;
+                    options.UseProperties = false;
                     options.RetryInterval = TimeSpan.FromSeconds(15);
                     options.UsePostgres(connectionString);
                     options.UseJsonSerializer();
