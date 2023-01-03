@@ -71,7 +71,7 @@ public class Function
                     //We search for a fingerprint that can be used as a key for getting the config (env-var)
                     //Ideally, only fingerprints of the FundsManager signer wallet are set as env vars
                     var derivationPath = psbtInput.HDKeyPaths.Values.SingleOrDefault(x =>
-                        Environment.GetEnvironmentVariable(x.MasterFingerprint.ToString()) != null);
+                        Environment.GetEnvironmentVariable($"MF_{x.MasterFingerprint.ToString()}") != null);
 
                     if (derivationPath == null)
                     {
@@ -82,7 +82,8 @@ public class Function
 
                     var inputPSBTMasterFingerPrint = derivationPath.MasterFingerprint;
 
-                    var configJson = Environment.GetEnvironmentVariable(inputPSBTMasterFingerPrint.ToString());
+                    var masterFingerPrint = $"MF_{inputPSBTMasterFingerPrint}";
+                    var configJson = Environment.GetEnvironmentVariable(masterFingerPrint);
 
                     var config = JsonSerializer.Deserialize<SignPSBTConfig>(configJson);
 
