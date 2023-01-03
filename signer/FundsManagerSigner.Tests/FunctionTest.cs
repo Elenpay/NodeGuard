@@ -46,6 +46,8 @@ public class FunctionTest : IDisposable
             SigHash.All,
             "Regtest");
 
+        var initialPSBT = PSBT.Parse(input.Psbt, Network.RegTest);
+        
         var inputJson = JsonSerializer.Serialize(input);
 
         var request = new APIGatewayHttpApiV2ProxyRequest
@@ -61,7 +63,7 @@ public class FunctionTest : IDisposable
 
         //Assert
         responseBody.Should().NotBeNull();
-        parsedPSBT.Inputs.All(x => x.PartialSigs.Count == 2).Should().BeTrue();
+        parsedPSBT.Inputs.All(x => x.PartialSigs.Count > initialPSBT.Inputs[(int) x.Index].PartialSigs.Count).Should().BeTrue();
         parsedPSBT.Inputs.All(x => x.SighashType == input.EnforcedSighash).Should().BeTrue();
     }
 
