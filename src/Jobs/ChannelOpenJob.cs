@@ -24,7 +24,7 @@ public class ChannelOpenJob : IJob
 
     public async Task Execute(IJobExecutionContext context)
     {
-        _logger.LogInformation("Starting {}... ", nameof(ChannelOpenJob));
+        _logger.LogInformation("Starting {JobName}... ", nameof(ChannelOpenJob));
         try
         {
             var token = context.CancellationToken;
@@ -39,10 +39,10 @@ public class ChannelOpenJob : IJob
         }
         catch (Exception e)
         {
-            _logger.LogError(e, "Error on {}", nameof(ChannelOpenJob));
+            _logger.LogError(e, "Error on {JobName}", nameof(ChannelOpenJob));
             throw new JobExecutionException(e, false);
         }
 
-        _logger.LogInformation("{} ended", nameof(ChannelOpenJob));
+        _logger.LogInformation("{JobName} ended", nameof(ChannelOpenJob));
     }
 }

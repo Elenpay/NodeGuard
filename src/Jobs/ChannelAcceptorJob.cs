@@ -26,7 +26,7 @@ public class ChannelAcceptorJob : IJob
 
     public async Task Execute(IJobExecutionContext context)
     {
-        _logger.LogInformation("Starting ChannelAcceptorJob... ");
+        _logger.LogInformation("Starting {JobName}... ", nameof(ChannelAcceptorJob));
         try
         {
             var managedNodes = await _nodeRepository.GetAllManagedByFundsManager();
@@ -45,10 +45,10 @@ public class ChannelAcceptorJob : IJob
         }
         catch (Exception e)
         {
-            _logger.LogError(e, "Error on {}", nameof(ChannelAcceptorJob));
+            _logger.LogError(e, "Error on {JobName}", nameof(ChannelAcceptorJob));
             throw new JobExecutionException(e, true);
         }
 
-        _logger.LogInformation("ChannelAcceptorJob ended");
+        _logger.LogInformation("{JobName} ended", nameof(ChannelAcceptorJob));
     }
 }

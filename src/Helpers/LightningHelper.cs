@@ -71,7 +71,7 @@ namespace FundsManager.Helpers
 
                 if (lockedUTXOs.Contains(fmUtxo))
                 {
-                    logger.LogInformation("Removing UTXO:{} from UTXO set as it is locked", fmUtxo.ToString());
+                    logger.LogInformation("Removing UTXO: {Utxo} from UTXO set as it is locked", fmUtxo.ToString());
                 }
                 else
                 {
@@ -81,7 +81,7 @@ namespace FundsManager.Helpers
 
             if (!availableUTXOs.Any())
             {
-                logger.LogError("The PSBT cannot be generated, no UTXOs are available for walletId:{}",
+                logger.LogError("The PSBT cannot be generated, no UTXOs are available for walletId: {WalletId}",
                     wallet.Id);
                 return (coins, selectedUTXOs);
             }
@@ -95,7 +95,7 @@ namespace FundsManager.Helpers
             if (totalUTXOsConfirmedSats < satsAmount)
             {
                 logger.LogError(
-                    "Error, the total UTXOs set balance for walletid:{} ({} sats) is less than the amount in the request ({} sats)",
+                    "Error, the total UTXOs set balance for walletid: {WalletId} ({AvailableSats} sats) is less than the amount in the request ({RequestedSats} sats)",
                     wallet.Id, totalUTXOsConfirmedSats, satsAmount);
                 return (coins, selectedUTXOs);
             }

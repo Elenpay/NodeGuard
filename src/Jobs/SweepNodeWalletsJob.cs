@@ -31,7 +31,7 @@ public class SweepNodeWalletsJob : IJob
         var managedNodeId = context.JobDetail.JobDataMap.GetIntValueFromString("managedNodeId");
         if (managedNodeId <= 0) throw new JobExecutionException(new Exception("Invalid managedNodeId"), false);
 
-        _logger.LogInformation("Starting {}... on node:{}", nameof(SweepNodeWalletsJob), managedNodeId);
+        _logger.LogInformation("Starting {JobName}... on node: {NodeId}", nameof(SweepNodeWalletsJob), managedNodeId);
 
         var requiredAnchorChannelClosingAmount =
             long.Parse(Environment.GetEnvironmentVariable("ANCHOR_CLOSINGS_MINIMUM_SATS") ??
@@ -90,7 +90,7 @@ public class SweepNodeWalletsJob : IJob
                             }
                         });
 
-                    _logger.LogInformation("Utxos swept out for nodeId:{} on txid:{} with returnAddress:{}",
+                    _logger.LogInformation("Utxos swept out for nodeId: {NodeId} on txid: {TxId} with returnAddress: {Address}",
                         node.Id,
                         sendManyResponse.Txid,
                         returningAddress.Address);
@@ -112,7 +112,7 @@ public class SweepNodeWalletsJob : IJob
                                     ?
                                     "Total sats available is less than the required to have for channel closing amounts, ignoring tx" : string.Empty;
 
-                    _logger.LogError("Error while funding sweep transaction reason:{}", reason);
+                    _logger.LogError("Error while funding sweep transaction reason: {Reason}", reason);
                 }
             }
         }
@@ -122,7 +122,7 @@ public class SweepNodeWalletsJob : IJob
         var node = await _nodeRepository.GetById(managedNodeId);
         if (node == null)
         {
-            _logger.LogError("{} failed on node with id:{} reason: node not found",
+            _logger.LogError("{JobName} failed on node with id: {NodeId}, reason: node not found",
                 nameof(SweepNodeWalletsJob),
                 managedNodeId);
             throw new ArgumentException("node not found", nameof(node));
@@ -175,14 +175,14 @@ public class SweepNodeWalletsJob : IJob
                         if (updateResult.Item1 == false)
                         {
                             _logger.LogError(
-                                "Error while adding returning node wallet with id:{} to node:{}",
+                                "Error while adding returning node wallet with id: {WalletId} to node: {NodeName}",
                                 wallet.Id, node.Name);
                         }
                     }
                     else
                     {
                         //Wallet not found
-                        _logger.LogError("No wallets available in the system to perform the {} on node:{}",
+                        _logger.LogError("No wallets available in the system to perform the {JobName} on node: {NodeName}",
                             nameof(SweepAllNodesWalletsJob),
                             node.Name);
 
@@ -201,18 +201,18 @@ public class SweepNodeWalletsJob : IJob
             if (e.Message.Contains("insufficient input to create sweep tx"))
             {
                 //This means that the utxo is not big enough for it to be transacted, so it is a warn
-                _logger.LogInformation("Insufficient UTXOs to fund a sweep tx on node:{}", node.Name);
+                _logger.LogInformation("Insufficient UTXOs to fund a sweep tx on node: {NodeName}", node.Name);
             }
             else if (e.Message.Contains("insufficient funds available to construct transaction"))
             {
-                _logger.LogInformation("Insufficient funds to fund a sweep tx on node:{}", node.Name);
+                _logger.LogInformation("Insufficient funds to fund a sweep tx on node: {NodeName}", node.Name);
             }
             else
             {
-                _logger.LogError(e, "Error on {}", nameof(SweepNodeWalletsJob));
+                _logger.LogError(e, "Error on {JobName}", nameof(SweepNodeWalletsJob));
                 throw new JobExecutionException(e);
             }
         }
-        _logger.LogInformation("{} ended on node:{}", nameof(SweepNodeWalletsJob), node.Name);
+        _logger.LogInformation("{JobName} ended on node: {NodeName}", nameof(SweepNodeWalletsJob), node.Name);
     }
 }

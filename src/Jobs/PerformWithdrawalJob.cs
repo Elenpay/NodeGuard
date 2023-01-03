@@ -24,7 +24,7 @@ public class PerformWithdrawalJob : IJob
 
     public async Task Execute(IJobExecutionContext context)
     {
-        _logger.LogInformation("Starting {}... ", nameof(PerformWithdrawalJob));
+        _logger.LogInformation("Starting {JobName}... ", nameof(PerformWithdrawalJob));
         try
         {
             var token = context.CancellationToken;
@@ -38,10 +38,10 @@ public class PerformWithdrawalJob : IJob
         }
         catch (Exception e)
         {
-            _logger.LogError(e, "Error on {}", nameof(PerformWithdrawalJob));
+            _logger.LogError(e, "Error on {JobName}", nameof(PerformWithdrawalJob));
             throw new JobExecutionException(e, false);
         }
 
-        _logger.LogInformation("{} ended", nameof(PerformWithdrawalJob));
+        _logger.LogInformation("{JobName} ended", nameof(PerformWithdrawalJob));
     }
 }
