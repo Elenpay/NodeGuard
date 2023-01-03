@@ -1,9 +1,8 @@
 stages:
-  # - integration_tests
-  - build
-  - release
-  - deploy_staging
-  # - deploy_production
+  - build-staging
+  - build-release
+  - build-signer-staging
+  - build-signer-release
 image: docker:stable
 variables:
   DOCKER_DRIVER: overlay2
@@ -13,56 +12,35 @@ variables:
 
 services:
   - docker:dind
-# integration_tests:
-#   stage: integration_tests
-#   tags:
-#     - lightning_spot_runners
-#   image: docker/compose:latest
-#   rules:
-#     - if: '$CI_COMMIT_REF_NAME != "develop" && $CI_COMMIT_REF_NAME != "main" &&  $CI_PIPELINE_SOURCE == "merge_request_event"'
-#       changes:
-#         - "src/**/*"
-#         - "FundsManager.sln"
-#         - ".gitlab-ci.yml"
 
-#   script:
-#     - mkdir /tmp/polar
-#     - unzip ./btcpayserver-clovr.polar.zip -d /tmp/polar
-#     - mkdir ./test/volumes
-#     - cp -r /tmp/polar/volumes ./test/
-#     - cd test
-#     - chown 1000:1000 ./volumes -R
-#     - docker login -u gitlab-ci-token -p $CI_BUILD_TOKEN registry.gitlab.com
-#     - docker-compose up --exit-code-from integrationtestsrunner
-
-build:
-  stage: build
+build-staging:
+  stage: build-staging
   tags:
     - lightning_spot_runners
   script:
     - docker login -u gitlab-ci-token -p $CI_BUILD_TOKEN registry.gitlab.com
-    - docker build -t registry.gitlab.com/clovrlabs/lightningnetwork/fundsmanager:$CI_COMMIT_REF_NAME -f ./src/Dockerfile .
-    - docker push registry.gitlab.com/clovrlabs/lightningnetwork/fundsmanager:$CI_COMMIT_REF_NAME
+    - docker build -t $CI_REGISTRY_IMAGE:$CI_COMMIT_REF_NAME -f ./src/Dockerfile .
+    - docker push $CI_REGISTRY_IMAGE:$CI_COMMIT_REF_NAME
   rules:
-    - if: '($CI_COMMIT_REF_NAME == "main" && $CI_COMMIT_TAG =~ "^([0-9]+)\.([0-9]+)\.([0-9]+)$") || $CI_COMMIT_REF_NAME == "develop" &&  $CI_PIPELINE_SOURCE != "merge_request_event"' 
+    - if: '$CI_COMMIT_REF_NAME == "develop" &&  $CI_PIPELINE_SOURCE != "merge_request_event"'
       changes:
         - "src/**/*"
         - "FundsManager.sln"
         - ".gitlab-ci.yml"
 
-release:
-  stage: release
+build-release:
+  stage: build-release
   tags:
     - lightning_spot_runners
   script:
     - docker login -u gitlab-ci-token -p $CI_BUILD_TOKEN registry.gitlab.com
-    - docker build -t ${CI_REGISTRY_IMAGE}:$CI_COMMIT_REF_NAME -f ./src/Dockerfile .
-    - docker push ${CI_REGISTRY_IMAGE}:$CI_COMMIT_REF_NAME
+    - docker build -t $CI_REGISTRY_IMAGE:$CI_COMMIT_REF_NAME -f ./src/Dockerfile .
+    - docker push $CI_REGISTRY_IMAGE:$CI_COMMIT_REF_NAME
   only:
     - tags
 
-build_signer:
-  stage: build
+build-signer-staging:
+  stage: build-signer-staging
   tags:
     - lightning_spot_runners
   script:
@@ -70,18 +48,17 @@ build_signer:
     - docker build -t registry.gitlab.com/clovrlabs/lightningnetwork/fundsigner:$CI_COMMIT_REF_NAME -f ./signer/FundsManagerSigner/Dockerfile .
     - docker push registry.gitlab.com/clovrlabs/lightningnetwork/fundsigner:$CI_COMMIT_REF_NAME
   rules:
-    - if: '($CI_COMMIT_REF_NAME == "main" && $CI_COMMIT_TAG =~ "^([0-9]+)\.([0-9]+)\.([0-9]+)$") || $CI_COMMIT_REF_NAME == "develop" &&  $CI_PIPELINE_SOURCE != "merge_request_event"' 
+    - if: '$CI_COMMIT_REF_NAME == "develop" &&  $CI_PIPELINE_SOURCE != "merge_request_event"' 
       changes:
-        - "signer/FundsManagerSigner"
+        - "signer/**/*"
 
-# release_signer:
-#   stage: release
-#   tags:
-#     - lightning_spot_runners
-#   script:
-#     - docker login -u gitlab-ci-token -p $CI_BUILD_TOKEN registry.gitlab.com
-#    - docker build -t registry.gitlab.com/clovrlabs/lightningnetwork/fundsigner:$CI_COMMIT_REF_NAME -f ./signer/FundsManagerSigner/Dockerfile .
-#    - docker push registry.gitlab.com/clovrlabs/lightningnetwork/fundsigner:$CI_COMMIT_REF_NAME
-#   only:
-#     - tags
-
+build-signer-release:
+  stage: build-signer-release
+  tags:
+    - lightning_spot_runners
+  script:
+    - docker login -u gitlab-ci-token -p $CI_BUILD_TOKEN registry.gitlab.com
+    - docker build -t registry.gitlab.com/clovrlabs/lightningnetwork/fundsigner:$CI_COMMIT_REF_NAME -f ./signer/FundsManagerSigner/Dockerfile .
+    - docker push registry.gitlab.com/clovrlabs/lightningnetwork/fundsigner:$CI_COMMIT_REF_NAME
+  only:
+    - tags
