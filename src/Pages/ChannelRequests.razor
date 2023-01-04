@@ -615,7 +615,7 @@
             
                         var map = new JobDataMap();
                         map.Put("openRequestId", _selectedRequest.Id);
-                        var job = RetriableJob.Create<ChannelOpenJob>(map);
+                        var job = RetriableJob.Create<ChannelOpenJob>(map, _selectedRequest.Id.ToString());
                         await scheduler.ScheduleJob(job.Job, job.Trigger);
 
                         // TODO: Check job id

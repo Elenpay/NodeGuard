@@ -657,7 +657,7 @@
             
                                 var map = new JobDataMap();
                                 map.Put("withdrawalRequestId", _selectedRequest.Id);
-                                var job = RetriableJob.Create<PerformWithdrawalJob>(map);
+                                var job = RetriableJob.Create<PerformWithdrawalJob>(map, _selectedRequest.Id.ToString());
                                 await scheduler.ScheduleJob(job.Job, job.Trigger);
 
                                 if (_selectedRequest != null)
