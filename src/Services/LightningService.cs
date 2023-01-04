@@ -380,7 +380,7 @@ namespace FundsManager.Services
                                         using var httpClient = new HttpClient();
                                         //We use a special lib for IAM Auth to AWS
                                         var signLambdaResponse = await httpClient.PostAsync(
-                                            Environment.GetEnvironmentVariable("FM_SIGNER_ENDPOINT"),
+                                            Environment.GetEnvironmentVariable("REMOTE_SIGNER_ENDPOINT"),
                                             new StringContent(serializedPayload,
                                                 Encoding.UTF8,
                                                 "application/json"),

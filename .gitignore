@@ -10,7 +10,3 @@ src/FundsManager.csproj.user
 # Files created by Polar runs
 devnetwork.polar/
 docker/volumes
-FundsManagerSigner.Tests/bin/
-FundsManagerSigner.Tests/obj/
-FundsManagerSigner/bin/
-FundsManagerSigner/obj/

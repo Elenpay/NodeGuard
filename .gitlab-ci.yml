@@ -1,8 +1,6 @@
 stages:
   - build-staging
   - build-release
-  - build-signer-staging
-  - build-signer-release
 image: docker:stable
 variables:
   DOCKER_DRIVER: overlay2
@@ -39,27 +37,4 @@ build-release:
   only:
     - tags
 
-build-signer-staging:
-  stage: build-signer-staging
-  tags:
-    - lightning_spot_runners
-  script:
-    - docker login -u gitlab-ci-token -p $CI_BUILD_TOKEN registry.gitlab.com
-    - docker build -t registry.gitlab.com/clovrlabs/lightningnetwork/fundsigner:$CI_COMMIT_REF_NAME -f ./signer/FundsManagerSigner/Dockerfile ./signer/FundsManagerSigner
-    - docker push registry.gitlab.com/clovrlabs/lightningnetwork/fundsigner:$CI_COMMIT_REF_NAME
-  rules:
-    - if: '$CI_COMMIT_REF_NAME == "develop" &&  $CI_PIPELINE_SOURCE != "merge_request_event"' 
-      changes:
-        - "signer/**/*"
-        - ".gitlab-ci.yml"
 
-build-signer-release:
-  stage: build-signer-release
-  tags:
-    - lightning_spot_runners
-  script:
-    - docker login -u gitlab-ci-token -p $CI_BUILD_TOKEN registry.gitlab.com
-    - docker build -t registry.gitlab.com/clovrlabs/lightningnetwork/fundsigner:$CI_COMMIT_REF_NAME -f ./signer/FundsManagerSigner/Dockerfile ./signer/FundsManagerSigner
-    - docker push registry.gitlab.com/clovrlabs/lightningnetwork/fundsigner:$CI_COMMIT_REF_NAME
-  only:
-    - tags
