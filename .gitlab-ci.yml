@@ -58,7 +58,7 @@ build-signer-release:
     - lightning_spot_runners
   script:
     - docker login -u gitlab-ci-token -p $CI_BUILD_TOKEN registry.gitlab.com
-    - docker build -t registry.gitlab.com/clovrlabs/lightningnetwork/fundsigner:$CI_COMMIT_REF_NAME -f ./signer/FundsManagerSigner/Dockerfile .
+    - docker build -t registry.gitlab.com/clovrlabs/lightningnetwork/fundsigner:$CI_COMMIT_REF_NAME -f ./signer/FundsManagerSigner/Dockerfile ./signer/FundsManagerSigner
     - docker push registry.gitlab.com/clovrlabs/lightningnetwork/fundsigner:$CI_COMMIT_REF_NAME
   only:
     - tags
