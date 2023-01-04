@@ -51,6 +51,7 @@ build-signer-staging:
     - if: '$CI_COMMIT_REF_NAME == "develop" &&  $CI_PIPELINE_SOURCE != "merge_request_event"' 
       changes:
         - "signer/**/*"
+        - ".gitlab-ci.yml"
 
 build-signer-release:
   stage: build-signer-release
