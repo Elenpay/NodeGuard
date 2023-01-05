@@ -1,6 +1,6 @@
 using FundsManager.Data.Repositories.Interfaces;
-using FundsManager.Data.Models;
 using FundsManager.Services;
+using FundsManager.Helpers;
 using Quartz;
 
 namespace FundsManager.Jobs;
@@ -27,17 +27,18 @@ public class ChannelOpenJob : IJob
     public async Task Execute(IJobExecutionContext context)
     {
         _logger.LogInformation("Starting {JobName}... ", nameof(ChannelOpenJob));
-        try
-        {
+        try {
             var token = context.CancellationToken;
             token.ThrowIfCancellationRequested();
+            
+            await JobRescheduler.SetNextInterval(context);
 
             var data = context.JobDetail.JobDataMap;
             var openRequestId = data.GetInt("openRequestId");
             var openRequest = await _channelOperationRequestRepository.GetById(openRequestId);
             await _lightningService.OpenChannel(openRequest);
 
-            var schedule = context.Scheduler.DeleteJob(context.JobDetail.Key, token);
+            await context.Scheduler.DeleteJob(context.JobDetail.Key, token);
         }
         catch (Exception e)
         {
