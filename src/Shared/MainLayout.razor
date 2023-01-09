@@ -14,7 +14,7 @@
 
 <CascadingValue Value="_loggedUser">
     <CascadingValue Value="_claimsPrincipal">
-<div class="page" @onclick="ResetTimer">
+<div class="page">
     <div class="sidebar">
         <NavMenu />
     </div>
@@ -82,11 +82,17 @@
             }
         }
 
+        LinkInactiveUserLogout();
+    }
+
+    protected void LinkInactiveUserLogout()
+    {
+        JsRuntime.InvokeAsync<string>("logoutInactiveUser", DotNetObjectReference.Create(this));
         Int32 timeout = Int32.Parse(@Environment.GetEnvironmentVariable("SESSION_TIMEOUT_MILLISECONDS") ?? "3600000");
         inactivityTimer = new Timer(timeout);
         inactivityTimer.Elapsed += LogoutUser;
         inactivityTimer.AutoReset = false;
-
+        inactivityTimer.Start();
     }
 
     protected void LinkNotificationsUser(String userId)
@@ -95,7 +101,7 @@
     }
 
     [JSInvokable]
-    protected void ResetTimer()
+    public void ResetTimer()
     {
         inactivityTimer?.Stop();
         inactivityTimer?.Start();

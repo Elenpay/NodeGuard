@@ -33,6 +33,10 @@
             OneSignal.setExternalUserId(userId);
         }
     }
+
+    function logoutInactiveUser(dotnethelper) {
+        document.onclick = () => dotnethelper.invokeMethodAsync("ResetTimer");
+    }
     </script>
 </head>
 <body>
