@@ -127,9 +127,12 @@ namespace FundsManager.Data.Repositories
                     UpdateDatetime = DateTimeOffset.Now,
                     Name = "Internal wallet",
                     XPUB = internalWallet.XPUB,
-                    MasterFingerprint = internalWallet.MasterFingerprint
+                    MasterFingerprint = internalWallet.MasterFingerprint,
+                    //Derivation path
+                    Path = Environment.GetEnvironmentVariable("DEFAULT_DERIVATION_PATH") ?? throw new ArgumentException("DEFAULT_DERIVATION_PATH is not set"),
 
                 };
+                
             }
 
             return result;
