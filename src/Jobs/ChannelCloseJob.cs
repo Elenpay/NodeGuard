@@ -29,18 +29,14 @@ public class ChannelCloseJob : IJob
         _logger.LogInformation("Starting {JobName}... ", nameof(ChannelCloseJob));
         try
         {
-            var token = context.CancellationToken;
-            token.ThrowIfCancellationRequested();
-
-            await RetriableJobRescheduler.SetNextInterval(context);
-
-            var data = context.JobDetail.JobDataMap;
-            var closeRequestId = data.GetInt("closeRequestId");
-            var forceClose = data.GetBoolean("forceClose");
-            var closeRequest = await _channelOperationRequestRepository.GetById(closeRequestId);
-            await _lightningService.CloseChannel(closeRequest, forceClose);
-
-            var schedule = context.Scheduler.DeleteJob(context.JobDetail.Key, token);
+            await RetriableJob.Execute(context, async () =>
+            {
+                var data = context.JobDetail.JobDataMap;
+                var closeRequestId = data.GetInt("closeRequestId");
+                var forceClose = data.GetBoolean("forceClose");
+                var closeRequest = await _channelOperationRequestRepository.GetById(closeRequestId);
+                await _lightningService.CloseChannel(closeRequest, forceClose);
+            });
         }
         catch (Exception e)
         {

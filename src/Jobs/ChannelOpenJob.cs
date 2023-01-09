@@ -27,18 +27,15 @@ public class ChannelOpenJob : IJob
     public async Task Execute(IJobExecutionContext context)
     {
         _logger.LogInformation("Starting {JobName}... ", nameof(ChannelOpenJob));
-        try {
-            var token = context.CancellationToken;
-            token.ThrowIfCancellationRequested();
-            
-            await RetriableJobRescheduler.SetNextInterval(context);
-
-            var data = context.JobDetail.JobDataMap;
-            var openRequestId = data.GetInt("openRequestId");
-            var openRequest = await _channelOperationRequestRepository.GetById(openRequestId);
-            await _lightningService.OpenChannel(openRequest);
-
-            await context.Scheduler.DeleteJob(context.JobDetail.Key, token);
+        try
+        {
+            await RetriableJob.Execute(context, async () =>
+            {
+                var data = context.JobDetail.JobDataMap;
+                var openRequestId = data.GetInt("openRequestId");
+                var openRequest = await _channelOperationRequestRepository.GetById(openRequestId);
+                await _lightningService.OpenChannel(openRequest);
+            });
         }
         catch (Exception e)
         {

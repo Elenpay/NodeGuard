@@ -30,7 +30,7 @@ public class SimpleJob
 public class RetriableJob
 {
     /// <summary>
-    /// Creates a job that can be retried if failed. Used in conjuntion with RetriablaJobScheduler
+    /// Creates a job that can be retried if failed. Used in conjuntion with Execute method
     /// </summary>
     /// <param name="data">The data you want to have access to inside the Job</param>
     /// <param name="identitySuffix">A suffix to identify a specific job, triggered from the same class</param>
@@ -69,6 +69,42 @@ public class RetriableJob
             .Select<string, int>(s => int.Parse(s))
             .ToArray();
     }
+
+    /// <summary>
+    /// Call this function at the start of your Retriable job to schedule the next interval in the array.
+    /// </summary>
+    /// <param name="context">The execution context of the job</param>
+    /// <param name="f">The action you want to perform inside the job</param>
+    public static async Task Execute(IJobExecutionContext context, Func<Task> f)
+    {
+        var token = context.CancellationToken;
+        token.ThrowIfCancellationRequested();
+
+        var data = context.JobDetail.JobDataMap;
+        var intervals = data.Get("intervalListInMinutes") as int[];
+        if (intervals == null)
+        {
+            throw new Exception("No interval list found, make sure you're using the RetriableJob class");
+        };
+
+        var trigger = context.Trigger as SimpleTriggerImpl;
+
+        if (trigger!.TimesTriggered >= intervals.Length)
+        {
+            return;
+        }
+
+        var repeatInterval = intervals[trigger!.TimesTriggered - 1];
+
+        var prevTriggerTime = trigger.GetPreviousFireTimeUtc();
+        trigger.SetNextFireTimeUtc(prevTriggerTime!.Value.AddMinutes(repeatInterval));
+
+        await context.Scheduler.RescheduleJob(context.Trigger.Key, trigger);
+
+        await f();
+
+        var schedule = context.Scheduler.DeleteJob(context.JobDetail.Key, token);
+    }
 }
 
 public class JobAndTrigger
@@ -88,35 +124,5 @@ public class JobAndTrigger
         }
         Job = job;
         Trigger = trigger;
-    }
-}
-
-public class RetriableJobRescheduler
-{
-    /// <summary>
-    /// Call this function at the start of your Retriable job to schedule the next interval in the array.
-    /// </summary>
-    /// <param name="context">The execution context of the job</param>
-    public static async Task SetNextInterval(IJobExecutionContext context)
-    {
-        var data = context.JobDetail.JobDataMap;
-        var intervals = data.Get("intervalListInMinutes") as int[];
-        if (intervals == null)
-        {
-            throw new Exception("No interval list found, make sure you're using the RetriableJob class");
-        };
-
-        var trigger = context.Trigger as SimpleTriggerImpl;
-
-        if (trigger!.TimesTriggered >= intervals.Length) {
-            return;
-        }
-
-        var repeatInterval =  intervals[trigger!.TimesTriggered - 1];
-
-        var prevTriggerTime = trigger.GetPreviousFireTimeUtc();
-        trigger.SetNextFireTimeUtc(prevTriggerTime!.Value.AddMinutes(repeatInterval));
-        
-        await context.Scheduler.RescheduleJob(context.Trigger.Key, trigger);
     }
 }
