@@ -71,7 +71,7 @@ public class RetriableJob
     }
 
     /// <summary>
-    /// Call this function at the start of your Retriable job to schedule the next interval in the array.
+    /// Call this function inside your Job's Execute method to set up retries and execute your action.
     /// </summary>
     /// <param name="context">The execution context of the job</param>
     /// <param name="f">The action you want to perform inside the job</param>
