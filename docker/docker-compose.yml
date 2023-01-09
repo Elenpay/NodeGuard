@@ -18,7 +18,7 @@ services:
         IS_DEV_ENVIRONMENT: "true"
         Logging__LogLevel__Microsoft: Warning
         Logging__LogLevel__Microsoft__EntityFrameworkCore: Warning
-        MAX_BTC: 21000000
+        MAXIMUM_WITHDRAWAL_BTC_AMOUNT: 21000000
         NBXPLORER_BTCNODEENDPOINT: host.docker.internal:19444
         NBXPLORER_BTCRPCPASSWORD: "polarpass"
         NBXPLORER_BTCRPCURL: http://host.docker.internal:18443/
