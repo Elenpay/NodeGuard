@@ -616,7 +616,7 @@
                         var map = new JobDataMap();
                         map.Put("openRequestId", _selectedRequest.Id);
                         
-                        var retryList = RetriableJob.ParseRetryListFromEnvironmenVariable("JOB_RETRY_LIST_CHANNEL_OPEN");
+                        var retryList = RetriableJob.ParseRetryListFromEnvironmenVariable("JOB_RETRY_INTEVAL_LIST_IN_MINUTES");
                         var job = RetriableJob.Create<ChannelOpenJob>(map, _selectedRequest.Id.ToString(), retryList);
                         await scheduler.ScheduleJob(job.Job, job.Trigger);
 

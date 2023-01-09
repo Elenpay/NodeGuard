@@ -75,7 +75,7 @@ public class RetriableJob
     /// </summary>
     /// <param name="context">The execution context of the job</param>
     /// <param name="f">The action you want to perform inside the job</param>
-    public static async Task Execute(IJobExecutionContext context, Func<Task> f)
+    public static async Task Execute(IJobExecutionContext context, Func<Task> callback)
     {
         var token = context.CancellationToken;
         token.ThrowIfCancellationRequested();
@@ -101,7 +101,7 @@ public class RetriableJob
 
         await context.Scheduler.RescheduleJob(context.Trigger.Key, trigger);
 
-        await f();
+        await callback();
 
         var schedule = context.Scheduler.DeleteJob(context.JobDetail.Key, token);
     }
