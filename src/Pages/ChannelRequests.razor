@@ -614,8 +614,8 @@
                         IScheduler scheduler = await SchedulerFactory.GetScheduler(); 
             
                         var map = new JobDataMap();
-                        map.Put("openRequest", _selectedRequest);
-                        var job = RetriableJob.Create<ChannelOpenJob>(map);
+                        map.Put("openRequestId", _selectedRequest.Id);
+                        var job = RetriableJob.Create<ChannelOpenJob>(map, _selectedRequest.Id.ToString());
                         await scheduler.ScheduleJob(job.Job, job.Trigger);
 
                         // TODO: Check job id

@@ -656,8 +656,8 @@
                                 IScheduler scheduler = await SchedulerFactory.GetScheduler(); 
             
                                 var map = new JobDataMap();
-                                map.Put("withdrawalRequest", _selectedRequest);
-                                var job = RetriableJob.Create<PerformWithdrawalJob>(map);
+                                map.Put("withdrawalRequestId", _selectedRequest.Id);
+                                var job = RetriableJob.Create<PerformWithdrawalJob>(map, _selectedRequest.Id.ToString());
                                 await scheduler.ScheduleJob(job.Job, job.Trigger);
 
                                 if (_selectedRequest != null)
