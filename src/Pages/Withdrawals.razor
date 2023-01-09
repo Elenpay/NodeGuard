@@ -171,7 +171,7 @@
                         @if (!_isAmountDisabled)
                         {
                             <Validation Validator="args => ValidationHelper.ValidateWithdrawalAmount(args, _isAmountDisabled)">
-                                <NumericPicker TValue="decimal" Disabled="_isAmountDisabled" Value="@((decimal)context.CellValue)" ValueChanged="(value) => { context.CellValue = value; }" CurrencySymbol="₿ " Max="@(MAX_BTC)" MinMaxLimitsOverride="NumericMinMaxLimitsOverride.Ceiling" Decimals="8">
+                                <NumericPicker TValue="decimal" Disabled="_isAmountDisabled" Value="@((decimal)context.CellValue)" ValueChanged="(value) => { context.CellValue = value; }" CurrencySymbol="₿ " Max="@(_maxWithdrawal)" Min="_minWithdrawal" Decimals="8">
                                     <Feedback>
                                         <ValidationError />
                                     </Feedback>
@@ -428,7 +428,8 @@
     private bool _isAmountDisabled;
     private decimal? _selectedRequestWalletBalance;
 
-    private decimal MAX_BTC;
+    private decimal _maxWithdrawal;
+    private decimal _minWithdrawal;
 
     private decimal _btcPrice;
     
@@ -442,7 +443,10 @@
         
         try
         {
-            MAX_BTC = decimal.Parse(Environment.GetEnvironmentVariable("MAX_BTC") ?? throw new InvalidOperationException(), NumberStyles.AllowDecimalPoint, CultureInfo.InvariantCulture);
+            _maxWithdrawal = decimal.Parse(Environment.GetEnvironmentVariable("MAXIMUM_WITHDRAWAL_BTC_AMOUNT") ?? throw new InvalidOperationException(), NumberStyles.AllowDecimalPoint, CultureInfo.InvariantCulture);
+            _minWithdrawal = decimal.Parse(Environment.GetEnvironmentVariable("MINIMUM_WITHDRAWAL_BTC_AMOUNT") ?? throw new InvalidOperationException(), NumberStyles.AllowDecimalPoint, CultureInfo.InvariantCulture);
+            if (_maxWithdrawal == 0) _maxWithdrawal = 21000000;
+            if (_minWithdrawal == 0) _minWithdrawal = 0;
         }
         catch (Exception e)
         {
