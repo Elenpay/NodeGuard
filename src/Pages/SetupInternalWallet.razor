@@ -6,7 +6,7 @@
 
 <Row>
     <Column Flex="Flex.AlignContent.Center.JustifyContent.Center">
-        @if (_isRemoteSignerModeEnabled && _internalWallet != null && string.IsNullOrWhiteSpace(_internalWallet.XPUB))
+        @if (_isRemoteSignerModeEnabled && _internalWallet != null && (string.IsNullOrWhiteSpace(_internalWallet.XPUB) || string.IsNullOrWhiteSpace(_internalWallet.MasterFingerprint)))
         {
             <Fields>
                 <Validations @ref="validationsRef">
@@ -100,7 +100,8 @@
         _internalWallet = await InternalWalletRepository.GetCurrentInternalWallet();
 
     //If internal wallet is generated and has xpub or mnemonic then redirect to main page
-        if (_internalWallet != null && (!string.IsNullOrWhiteSpace(_internalWallet.XPUB) && !string.IsNullOrWhiteSpace(_internalWallet.MasterFingerprint) || !string.IsNullOrWhiteSpace(_internalWallet.MnemonicString)))
+        var isIWalletWellFormed = !string.IsNullOrWhiteSpace(_internalWallet.XPUB) && !string.IsNullOrWhiteSpace(_internalWallet.MasterFingerprint);
+        if (_internalWallet != null && (isIWalletWellFormed|| !string.IsNullOrWhiteSpace(_internalWallet.MnemonicString)))
         {
             NavigationManager.NavigateTo("/");
         }
