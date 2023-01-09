@@ -3,6 +3,7 @@
 using System.Text.Json;
 using NBitcoin;
 using RestSharp;
+using Serilog;
 
 namespace FundsManager.Helpers;
 
@@ -25,18 +26,19 @@ public static class PriceConversionHelper
 
         try
         {
-            // If response fails, it returns an object with status error
-            JsonDocument document = JsonDocument.Parse(response.Content);
-            var valueType = document.RootElement.GetType();
-            if (valueType.IsArray) {
+            if (response.IsSuccessful)
+            {
+                JsonDocument document = JsonDocument.Parse(response.Content);
                 btcPrice = document.RootElement[0].GetProperty("current_price").GetDecimal();
-            } else {
-                btcPrice = 0;
+            }
+            else
+            {
+                throw new Exception("Bitcoin price could not be retrieved");
             }
         }
         catch (Exception e)
         {
-            Console.WriteLine(e);
+            Log.Logger.Error(e.Message);
             btcPrice = 0;
         }
         

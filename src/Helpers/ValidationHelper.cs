@@ -66,7 +66,6 @@ public static class ValidationHelper
         if (environmentVariableMax == null) maximum = 21_000_000;
         else maximum = decimal.Parse(environmentVariableMax, NumberStyles.AllowDecimalPoint, CultureInfo.InvariantCulture);
 
-
         if (amount < minimum && !isAmountDisabled)
         {
             obj.Status = ValidationStatus.Error;
