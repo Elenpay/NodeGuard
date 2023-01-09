@@ -66,7 +66,7 @@ namespace FundsManager.Data
             //Roles
             SetRoles(roleManager);
 
-            if (webHostEnvironment.IsDevelopment())
+            if (webHostEnvironment.IsDevelopment() && Environment.GetEnvironmentVariable("ENABLE_REMOTE_SIGNER") == null)
             {
                 //Miner setup
                 var rpcuser = Environment.GetEnvironmentVariable("NBXPLORER_BTCRPCUSER");
@@ -250,7 +250,7 @@ namespace FundsManager.Data
                         {
                             Name = "FundsManager Co-signing Key",
                             XPUB = internalWallet.GetXPUB(nbXplorerNetwork),
-                            IsFundsManagerPrivateKey = true,
+                            InternalWalletId = internalWallet.Id,
                             Path = internalWallet.DerivationPath,
                             MasterFingerprint = new Mnemonic(internalWallet.MnemonicString).DeriveExtKey().GetWif(Network.RegTest).GetPublicKey().GetHDFingerPrint().ToString()
                         };

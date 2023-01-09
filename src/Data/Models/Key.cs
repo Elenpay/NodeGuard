@@ -27,9 +27,10 @@
         public ICollection<Wallet> Wallets { get; set; }
 
         /// <summary>
-        /// Indicates if the key comes from a internal wallet managed by the fundsmanager
+        /// The internal wallet where this key belongs (if it were a internal wallet key)
         /// </summary>
-        public bool IsFundsManagerPrivateKey { get; set; }
+        public int? InternalWalletId { get; set; }
+        public InternalWallet? InternalWallet { get; set; }
 
         #endregion Relationships
 

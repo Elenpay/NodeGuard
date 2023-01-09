@@ -5,30 +5,54 @@
 @attribute [Authorize(Roles = "Superadmin")]
 
 <Row>
-
-    @if (_isRemoteSignerModeEnabled && _internalWallet != null && string.IsNullOrWhiteSpace(_internalWallet.XPUB))
-    {
-        <Validation @ref="validator" AsyncValidator="ValidateXPUB">
-            <Field>
-                <FieldLabel>XPUB</FieldLabel>
-                <FieldHelp>Paste a XPUB of a internal wallet generated in a secure way by your team</FieldHelp>
-                <FieldBody>
-                    <MemoEdit @bind-Text="@_externalWalletXPUB" Rows="4">
-                        <Feedback>
-                            <ValidationNone>Enter a valid xpub</ValidationNone>
-                            <ValidationSuccess>Valid XPUB</ValidationSuccess>
-                            <ValidationError>Invalid XPUB</ValidationError>
-                        </Feedback>
-                    </MemoEdit>
-                    <Button Color="Color.Info" Clicked="SetXPUB">Save</Button>
-                </FieldBody>
-            </Field>
-        </Validation>
-    }
-    else
-    {
-        @if (_internalWallet != null)
+    <Column Flex="Flex.AlignContent.Center.JustifyContent.Center">
+        @if (_isRemoteSignerModeEnabled && _internalWallet != null && string.IsNullOrWhiteSpace(_internalWallet.XPUB))
         {
+            <Fields>
+                <Validations @ref="validationsRef">
+                    <Column ColumnSize="ColumnSize.Is12" >
+                        <Validation AsyncValidator="ValidateXPUB">
+                            <Field>
+                                <FieldLabel>XPUB</FieldLabel>
+                                <FieldHelp>Paste a XPUB of a internal wallet generated in a secure way by your team</FieldHelp>
+                                <FieldBody>
+                                    <MemoEdit @bind-Text="@_externalWalletXPUB" Rows="4">
+                                        <Feedback>
+                                            <ValidationNone>Enter a valid xpub</ValidationNone>
+                                            <ValidationSuccess>Valid XPUB</ValidationSuccess>
+                                            <ValidationError>Invalid XPUB</ValidationError>
+                                        </Feedback>
+                                    </MemoEdit>
+                                </FieldBody>
+                            </Field>
+                        </Validation>
+                    </Column>
+                    <Column ColumnSize="ColumnSize.Is12" >
+                        <Validation Validator="ValidationRule.IsNotEmpty">
+
+                            <Field>
+                                <FieldLabel>Master fingerprint</FieldLabel>
+                                <FieldHelp>Master HD Fingerprint of the wallet related to this XPUB</FieldHelp>
+                                <FieldBody>
+                                    <TextEdit @bind-Text="@_externalWalletMasterFingerprint">
+                                        <Feedback>
+                                            <ValidationNone>Enter a valid fingerprint</ValidationNone>
+                                            <ValidationSuccess>Valid fingerprint</ValidationSuccess>
+                                            <ValidationError>Invalid fingerprint</ValidationError>
+                                        </Feedback>
+                                    </TextEdit>
+                                    <Button Color="Color.Info" Clicked="Save">Save</Button>
+                                </FieldBody>
+                            </Field>
+                        </Validation>
+                    </Column>
+                </Validations>
+            </Fields>
+        }
+        else
+        {
+            @if (_internalWallet != null)
+            {
                 <Field>
                     <FieldLabel>Internal wallet seed phrase (Mnemonic)</FieldLabel>
                     <FieldHelp>
@@ -36,16 +60,18 @@
                     </FieldHelp>
                     <FieldBody>
                         <MemoEdit @bind-Text="@_internalWallet.MnemonicString" Rows="10">
-                           
+
                         </MemoEdit>
                     </FieldBody>
                 </Field>
+            }
+            else
+            {
+                <p> Error, the internal wallet is not generated</p>
+            }
         }
-        else
-        {
-            <p> Error, the internal wallet is not generated</p>
-        }
-    }
+    </Column>
+
 </Row>
 
 @code {
@@ -62,9 +88,10 @@
     private InternalWallet? _internalWallet;
 
     private bool _isRemoteSignerModeEnabled = false;
+    private string? _externalWalletMasterFingerprint;
 
     private string? _externalWalletXPUB;
-    private Validation validator;
+    private Validations validationsRef;
 
     protected override async Task OnInitializedAsync()
     {
@@ -73,7 +100,7 @@
         _internalWallet = await InternalWalletRepository.GetCurrentInternalWallet();
 
     //If internal wallet is generated and has xpub or mnemonic then redirect to main page
-        if (_internalWallet != null && (!string.IsNullOrWhiteSpace(_internalWallet.XPUB)|| !string.IsNullOrWhiteSpace(_internalWallet.MnemonicString)))
+        if (_internalWallet != null && (!string.IsNullOrWhiteSpace(_internalWallet.XPUB) && !string.IsNullOrWhiteSpace(_internalWallet.MasterFingerprint) || !string.IsNullOrWhiteSpace(_internalWallet.MnemonicString)))
         {
             NavigationManager.NavigateTo("/");
         }
@@ -89,7 +116,7 @@
             {
                 _internalWallet = await InternalWalletRepository.GenerateNewInternalWallet(generateReadOnlyWallet: false);
             }
-            
+
             StateHasChanged();
         }
     }
@@ -111,11 +138,13 @@
         }
     }
 
-    private async Task SetXPUB()
+    private async Task Save()
     {
-        if (await validator.ValidateAsync() == ValidationStatus.Success)
+        if (await validationsRef.ValidateAll())
         {
             _internalWallet.XPUB = _externalWalletXPUB;
+            _internalWallet.MasterFingerprint = _externalWalletMasterFingerprint;
+
             var updateResult = InternalWalletRepository.Update(_internalWallet);
             if (updateResult.Item1)
             {

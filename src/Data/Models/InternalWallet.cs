@@ -23,6 +23,8 @@ namespace FundsManager.Data.Models
         /// </summary>
         public string? XPUB { get; set; }
 
+        public string? MasterFingerprint { get; set; }
+
         /// <summary>
         /// Returns the master private key (xprv..tprv)
         /// </summary>
@@ -55,6 +57,7 @@ namespace FundsManager.Data.Models
                 var keyPath = new KeyPath(DerivationPath); //https://github.com/dgarage/NBXplorer/blob/0595a87fc14aee6a6e4a0194f75aec4717819/NBXplorer/Controllers/MainController.cs#L1141
                 var accountKey = masterKey.Derive(keyPath);
                 var bitcoinExtPubKey = accountKey.Neuter();
+                var fp = bitcoinExtPubKey.GetPublicKey().GetHDFingerPrint();
 
                 var walletDerivationScheme = bitcoinExtPubKey.ToWif();
 

@@ -12,14 +12,17 @@ namespace FundsManager.Data.Repositories
         private readonly IRepository<Key> _repository;
         private readonly ILogger<KeyRepository> _logger;
         private readonly IDbContextFactory<ApplicationDbContext> _dbContextFactory;
+        private readonly IInternalWalletRepository _internalWalletRepository;
 
         public KeyRepository(IRepository<Key> repository,
             ILogger<KeyRepository> logger,
-            IDbContextFactory<ApplicationDbContext> dbContextFactory)
+            IDbContextFactory<ApplicationDbContext> dbContextFactory,
+            IInternalWalletRepository internalWalletRepository)
         {
             _repository = repository;
             _logger = logger;
             _dbContextFactory = dbContextFactory;
+            _internalWalletRepository = internalWalletRepository;
         }
 
         public async Task<Key?> GetById(int id)
@@ -107,8 +110,27 @@ namespace FundsManager.Data.Repositories
         {
             await using var applicationDbContext = _dbContextFactory.CreateDbContext();
 
-            var result = await applicationDbContext.Keys.OrderByDescending(x => x.Id).Where(x => x.IsFundsManagerPrivateKey)
-                .FirstOrDefaultAsync();
+            var internalWallet = await _internalWalletRepository.GetCurrentInternalWallet();
+
+            if (internalWallet == null)
+                return null;
+
+            var result = await applicationDbContext.Keys.OrderByDescending(x => x.Id).SingleOrDefaultAsync(x=> x.InternalWalletId == internalWallet.Id);
+            
+            //If they key does not exist we should create it
+            if (result == null)
+            {
+                result = new Key
+                {
+                    CreationDatetime = DateTimeOffset.Now,
+                    InternalWalletId = internalWallet.Id,
+                    UpdateDatetime = DateTimeOffset.Now,
+                    Name = "Internal wallet",
+                    XPUB = internalWallet.XPUB,
+                    MasterFingerprint = internalWallet.MasterFingerprint
+
+                };
+            }
 
             return result;
         }
