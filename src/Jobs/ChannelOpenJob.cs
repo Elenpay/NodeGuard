@@ -31,7 +31,7 @@ public class ChannelOpenJob : IJob
             var token = context.CancellationToken;
             token.ThrowIfCancellationRequested();
             
-            await JobRescheduler.SetNextInterval(context);
+            await RetriableJobRescheduler.SetNextInterval(context);
 
             var data = context.JobDetail.JobDataMap;
             var openRequestId = data.GetInt("openRequestId");

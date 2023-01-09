@@ -32,7 +32,7 @@ public class PerformWithdrawalJob : IJob
             var token = context.CancellationToken;
             token.ThrowIfCancellationRequested();
 
-            await JobRescheduler.SetNextInterval(context);
+            await RetriableJobRescheduler.SetNextInterval(context);
 
             var data = context.JobDetail.JobDataMap;
             var withdrawalRequestId = data.GetInt("withdrawalRequestId");
