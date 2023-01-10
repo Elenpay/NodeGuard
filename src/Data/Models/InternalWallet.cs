@@ -1,4 +1,5 @@
-﻿using NBitcoin;
+﻿using FundsManager.Helpers;
+using NBitcoin;
 
 namespace FundsManager.Data.Models
 {
@@ -8,6 +9,7 @@ namespace FundsManager.Data.Models
     /// </summary>
     public class InternalWallet : Entity
     {
+
         /// <summary>
         /// Derivation path of the wallet
         /// </summary>
@@ -17,11 +19,18 @@ namespace FundsManager.Data.Models
         /// 24 Words mnemonic
         /// </summary>
         public string? MnemonicString { get; set; }
-        
+
         /// <summary>
         /// XPUB in the case the Mnemonic is not set (Remote signer mode)
         /// </summary>
-        public string? XPUB { get; set; }
+        public string? XPUB
+        {
+            get => GetXPUB();
+            set => _xpub = value;
+        }
+        private string? _xpub;
+
+        public string? MasterFingerprint { get; set; }
 
         /// <summary>
         /// Returns the master private key (xprv..tprv)
@@ -40,16 +49,12 @@ namespace FundsManager.Data.Models
         /// <summary>
         /// Returns the xpub/tpub as nbxplorer uses
         /// </summary>
-        /// <param name="network"></param>
         /// <returns></returns>
-		public string? GetXPUB(Network network)
+		private string? GetXPUB()
         {
-            if (string.IsNullOrWhiteSpace(DerivationPath) || string.IsNullOrWhiteSpace(MnemonicString))
-            {
-                return null;
-            }
 
-            if (MnemonicString != null)
+            var network = CurrentNetworkHelper.GetCurrentNetwork();
+            if(!string.IsNullOrWhiteSpace(MnemonicString))
             {
                 var masterKey = new Mnemonic(MnemonicString).DeriveExtKey().GetWif(network);
                 var keyPath = new KeyPath(DerivationPath); //https://github.com/dgarage/NBXplorer/blob/0595a87fc14aee6a6e4a0194f75aec4717819/NBXplorer/Controllers/MainController.cs#L1141
@@ -60,10 +65,8 @@ namespace FundsManager.Data.Models
 
                 return walletDerivationScheme;
             }
-            else
-            {
-                return XPUB;
-            }
+
+            return _xpub;
         }
 
         public BitcoinExtKey GetAccountKey(Network network)

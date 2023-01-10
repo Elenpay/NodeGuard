@@ -58,13 +58,24 @@ public static class ValidationHelper
 
         obj.Status = ValidationStatus.Success;
 
-        var environmentVariable = Environment.GetEnvironmentVariable("MINIMUM_WITHDRAWAL_BTC_AMOUNT") ?? throw new InvalidOperationException();
+        var environmentVariableMin = Environment.GetEnvironmentVariable("MINIMUM_WITHDRAWAL_BTC_AMOUNT");
+        var environmentVariableMax = Environment.GetEnvironmentVariable("MAXIMUM_WITHDRAWAL_BTC_AMOUNT");
+        decimal minimum, maximum;
+        if (environmentVariableMin == null) minimum = 0.0m;
+        else minimum = decimal.Parse(environmentVariableMin, NumberStyles.AllowDecimalPoint, CultureInfo.InvariantCulture);
+        if (environmentVariableMax == null) maximum = 21_000_000;
+        else maximum = decimal.Parse(environmentVariableMax, NumberStyles.AllowDecimalPoint, CultureInfo.InvariantCulture);
 
-        var minimum = decimal.Parse(environmentVariable, NumberStyles.AllowDecimalPoint, CultureInfo.InvariantCulture);
         if (amount < minimum && !isAmountDisabled)
         {
             obj.Status = ValidationStatus.Error;
             obj.ErrorText = $"Error, the minimum amount to withdraw is at least {minimum} BTC";
+        }
+
+        if (amount > maximum && !isAmountDisabled)
+        {
+            obj.Status = ValidationStatus.Error;
+            obj.ErrorText = $"Error, the maximum amount to withdraw is {maximum} BTC";
         }
     }
 
@@ -100,20 +111,6 @@ public static class ValidationHelper
     {
         obj.Status = ValidationStatus.Success;
         if (destNode == null)
-        {
-            obj.ErrorText = "Select a proper destination node";
-            obj.Status = ValidationStatus.Error;
-        }
-    }
-
-    public static void validateMaxDecimal(ValidatorEventArgs obj)
-    {
-        obj.Status = ValidationStatus.Success;
-        
-        var environmentVariable = Environment.GetEnvironmentVariable("MAX_BTC") ?? throw new InvalidOperationException();
-        var max = decimal.Parse(environmentVariable, NumberStyles.AllowDecimalPoint, CultureInfo.InvariantCulture);
-        
-        if ((decimal)obj.Value > max)
         {
             obj.ErrorText = "Select a proper destination node";
             obj.Status = ValidationStatus.Error;
