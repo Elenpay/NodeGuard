@@ -658,7 +658,7 @@
                                 var map = new JobDataMap();
                                 map.Put("withdrawalRequestId", _selectedRequest.Id);
 
-                                var retryList = RetriableJob.ParseRetryListFromEnvironmenVariable("JOB_RETRY_INTEVAL_LIST_IN_MINUTES");
+                                var retryList = RetriableJob.ParseRetryListFromEnvironmenVariable("JOB_RETRY_INTERVAL_LIST_IN_MINUTES");
                                 var job = RetriableJob.Create<PerformWithdrawalJob>(map, _selectedRequest.Id.ToString(), retryList);
                                 await scheduler.ScheduleJob(job.Job, job.Trigger);
 
