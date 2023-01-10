@@ -187,7 +187,7 @@
 
             <Field>
                 <Alert Color="Color.Info" Visible>
-                    <AlertMessage>Selected keys!</AlertMessage>
+                    <AlertMessage>Below you will find the key that form this wallet</AlertMessage>
                     <AlertDescription>Take into account that the NodeGuard key will be always be added to your wallet by the system</AlertDescription>
                     
                 </Alert>
@@ -456,13 +456,13 @@
         var result = new List<Key>();
         if (_selectedWallet != null && _selectedWallet.Keys != null)
         {
-           result = keys.Where(x => !x.IsArchived && !x.IsCompromised && !x.IsFundsManagerPrivateKey).Except(_selectedWallet.Keys)
+           result = keys.Where(x => !x.IsArchived && !x.IsCompromised && x.InternalWalletId == null).Except(_selectedWallet.Keys)
                 .ToList();
 
         }
         else
         {
-            result = keys.Where(x => !x.IsArchived && !x.IsCompromised && !x.IsFundsManagerPrivateKey)
+            result = keys.Where(x => !x.IsArchived && !x.IsCompromised && x.InternalWalletId == null)
                 .ToList();
         }
 
