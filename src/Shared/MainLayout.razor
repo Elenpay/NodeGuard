@@ -73,7 +73,8 @@
                 
                 //If the internal wallet does not exist
                 var remoteSignerEnabled = Environment.GetEnvironmentVariable("ENABLE_REMOTE_SIGNER") != null;
-                if (internalWallet == null || (remoteSignerEnabled && string.IsNullOrWhiteSpace(internalWallet.XPUB)))
+                if (internalWallet == null || (remoteSignerEnabled 
+                                               && (string.IsNullOrWhiteSpace(internalWallet.XPUB) || string.IsNullOrWhiteSpace(internalWallet.MasterFingerprint))))
                 {
                    //Navigate to Setup Internal Wallet
                     NavigationManager.NavigateTo("/setup-internal-wallet", false);

@@ -1,6 +1,6 @@
 using FundsManager.Data.Repositories.Interfaces;
-using FundsManager.Data.Models;
 using FundsManager.Services;
+using FundsManager.Helpers;
 using Quartz;
 
 namespace FundsManager.Jobs;
@@ -29,15 +29,13 @@ public class PerformWithdrawalJob : IJob
         _logger.LogInformation("Starting {JobName}... ", nameof(PerformWithdrawalJob));
         try
         {
-            var token = context.CancellationToken;
-            token.ThrowIfCancellationRequested();
-
-            var data = context.JobDetail.JobDataMap;
-            var withdrawalRequestId = data.GetInt("withdrawalRequestId");
-            var withdrawalRequest = await _walletWithdrawalRequestRepository.GetById(withdrawalRequestId);
-            await _bitcoinService.PerformWithdrawal(withdrawalRequest);
-
-            var schedule = context.Scheduler.DeleteJob(context.JobDetail.Key, token);
+            await RetriableJob.Execute(context, async () =>
+            {
+                var data = context.JobDetail.JobDataMap;
+                var withdrawalRequestId = data.GetInt("withdrawalRequestId");
+                var withdrawalRequest = await _walletWithdrawalRequestRepository.GetById(withdrawalRequestId);
+                await _bitcoinService.PerformWithdrawal(withdrawalRequest);
+            });
         }
         catch (Exception e)
         {
