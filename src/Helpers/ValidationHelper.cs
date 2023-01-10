@@ -58,11 +58,14 @@ public static class ValidationHelper
 
         obj.Status = ValidationStatus.Success;
 
-        var environmentVariableMin = Environment.GetEnvironmentVariable("MINIMUM_WITHDRAWAL_BTC_AMOUNT") ?? 0.0m;
-        var environmentVariableMax = Environment.GetEnvironmentVariable("MAXIMUM_WITHDRAWAL_BTC_AMOUNT") ?? 21_000_000m;
-        var minimum = decimal.Parse(environmentVariableMin, NumberStyles.AllowDecimalPoint, CultureInfo.InvariantCulture);
-        var maximum = decimal.Parse(environmentVariableMax, NumberStyles.AllowDecimalPoint, CultureInfo.InvariantCulture);
-        
+        var environmentVariableMin = Environment.GetEnvironmentVariable("MINIMUM_WITHDRAWAL_BTC_AMOUNT");
+        var environmentVariableMax = Environment.GetEnvironmentVariable("MAXIMUM_WITHDRAWAL_BTC_AMOUNT");
+        decimal minimum, maximum;
+        if (environmentVariableMin == null) minimum = 0.0;
+        else minimum = decimal.Parse(environmentVariableMin, NumberStyles.AllowDecimalPoint, CultureInfo.InvariantCulture);
+        if (environmentVariableMax == null) maximum = 21_000_000;
+        else maximum = decimal.Parse(environmentVariableMax, NumberStyles.AllowDecimalPoint, CultureInfo.InvariantCulture);
+
         if (amount < minimum && !isAmountDisabled)
         {
             obj.Status = ValidationStatus.Error;
