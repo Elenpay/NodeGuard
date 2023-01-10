@@ -440,19 +440,14 @@
         {
             ToastService.ShowError("Bitcoin price in USD could not be retrieved.");
         }
-        
-        try
-        {
-            _maxWithdrawal = decimal.Parse(Environment.GetEnvironmentVariable("MAXIMUM_WITHDRAWAL_BTC_AMOUNT") ?? throw new InvalidOperationException(), NumberStyles.AllowDecimalPoint, CultureInfo.InvariantCulture);
-            _minWithdrawal = decimal.Parse(Environment.GetEnvironmentVariable("MINIMUM_WITHDRAWAL_BTC_AMOUNT") ?? throw new InvalidOperationException(), NumberStyles.AllowDecimalPoint, CultureInfo.InvariantCulture);
-            if (_maxWithdrawal == 0) _maxWithdrawal = 21000000;
-            if (_minWithdrawal == 0) _minWithdrawal = 0;
-        }
-        catch (Exception e)
-        {
-            ToastService.ShowError("Getting maximum of Bitcoins for withdrawal has failed");
-        }
-        
+
+        var environmentVariableMin = Environment.GetEnvironmentVariable("MINIMUM_WITHDRAWAL_BTC_AMOUNT");
+        var environmentVariableMax = Environment.GetEnvironmentVariable("MAXIMUM_WITHDRAWAL_BTC_AMOUNT");
+        if (environmentVariableMin == null) _minWithdrawal = 0.0m;
+        else _minWithdrawal = decimal.Parse(environmentVariableMin, NumberStyles.AllowDecimalPoint, CultureInfo.InvariantCulture);
+        if (environmentVariableMax == null) _maxWithdrawal = 21_000_000;
+        else _maxWithdrawal = decimal.Parse(environmentVariableMax, NumberStyles.AllowDecimalPoint, CultureInfo.InvariantCulture);
+
         if (LoggedUser != null)
         {
             if (ClaimsPrincipal.IsInRole(ApplicationUserRole.FinanceManager.ToString()))
@@ -632,12 +627,12 @@
         else
         {
             WalletWithdrawalRequestPSBT walletWithdrawalRequestPsbt = new()
-                {
-                    WalletWithdrawalRequestId = _selectedRequest.Id,
-                    PSBT = _psbtSignRef.SignedPSBT,
-                    SignerId = LoggedUser.Id,
+            {
+                WalletWithdrawalRequestId = _selectedRequest.Id,
+                PSBT = _psbtSignRef.SignedPSBT,
+                SignerId = LoggedUser.Id,
 
-                };
+            };
             var addResult = await WalletWithdrawalRequestPsbtRepository.AddAsync(walletWithdrawalRequestPsbt);
 
             if (addResult.Item1)
@@ -657,8 +652,8 @@
                             if (_selectedRequest != null)
                             {
 
-                                IScheduler scheduler = await SchedulerFactory.GetScheduler(); 
-            
+                                IScheduler scheduler = await SchedulerFactory.GetScheduler();
+
                                 var map = new JobDataMap();
                                 map.Put("withdrawalRequestId", _selectedRequest.Id);
                                 var job = RetriableJob.Create<PerformWithdrawalJob>(map, _selectedRequest.Id.ToString());
@@ -720,7 +715,7 @@
 
     private async Task RejectOrCancel()
     {
-        if ((_rejectCancelStatus == WalletWithdrawalRequestStatus.Cancelled || _rejectCancelStatus == WalletWithdrawalRequestStatus.Rejected) 
+        if ((_rejectCancelStatus == WalletWithdrawalRequestStatus.Cancelled || _rejectCancelStatus == WalletWithdrawalRequestStatus.Rejected)
             && _selectedRequest != null)
         {
             _selectedRequest.RejectCancelDescription = _cancelOrRejectReason;
@@ -728,14 +723,14 @@
 
             var updateResult = WalletWithdrawalRequestRepository.Update(_selectedRequest);
 
-             if (updateResult.Item1 == false)
+            if (updateResult.Item1 == false)
             {
                 ToastService.ShowError("Something went wrong");
             }
 
-            
+
             await HideRejectCancelModal();
-            
+
         }
     }
 
@@ -745,7 +740,7 @@
         _rejectCancelStatus = null;
         _selectedRequest = null;
         _cancelOrRejectReason = null;
-        
+
         await GetData();
         if (_rejectCancelModalRef != null)
             await _rejectCancelModalRef.Close(CloseReason.UserClosing);
@@ -775,6 +770,6 @@
 
             _selectedRequestWalletBalance = balance;
         }
-       
+
     }
 }
