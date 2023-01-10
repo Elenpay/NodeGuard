@@ -46,7 +46,7 @@ public class ChannelAcceptorJob : IJob
         catch (Exception e)
         {
             _logger.LogError(e, "Error on {JobName}", nameof(ChannelAcceptorJob));
-            throw new JobExecutionException(e, true);
+            throw new JobExecutionException(e, false);
         }
 
         _logger.LogInformation("{JobName} ended", nameof(ChannelAcceptorJob));
