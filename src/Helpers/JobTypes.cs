@@ -88,7 +88,7 @@ public class RetriableJob
         };
 
         var trigger = context.Trigger as SimpleTriggerImpl;
-        
+
         if (trigger!.TimesTriggered <= intervals.Length)
         {
             var repeatInterval = intervals[trigger!.TimesTriggered - 1];
