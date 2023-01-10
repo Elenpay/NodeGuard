@@ -249,7 +249,7 @@ namespace FundsManager.Data
                         new Key
                         {
                             Name = "FundsManager Co-signing Key",
-                            XPUB = internalWallet.GetXPUB(nbXplorerNetwork),
+                            XPUB = internalWallet.XPUB,
                             InternalWalletId = internalWallet.Id,
                             Path = internalWallet.DerivationPath,
                             MasterFingerprint = new Mnemonic(internalWallet.MnemonicString).DeriveExtKey().GetWif(Network.RegTest).GetPublicKey().GetHDFingerPrint().ToString()

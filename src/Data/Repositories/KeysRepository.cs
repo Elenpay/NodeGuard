@@ -126,7 +126,7 @@ namespace FundsManager.Data.Repositories
                     InternalWalletId = internalWallet.Id,
                     UpdateDatetime = DateTimeOffset.Now,
                     Name = "Internal wallet",
-                    XPUB = internalWallet.GetXPUB(CurrentNetworkHelper.GetCurrentNetwork()),
+                    XPUB = internalWallet.XPUB,
                     MasterFingerprint = internalWallet.MasterFingerprint,
                     //Derivation path
                     Path = Environment.GetEnvironmentVariable("DEFAULT_DERIVATION_PATH") ?? throw new ArgumentException("DEFAULT_DERIVATION_PATH is not set"),
