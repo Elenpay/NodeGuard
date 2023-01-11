@@ -89,21 +89,19 @@ public class RetriableJob
 
         var trigger = context.Trigger as SimpleTriggerImpl;
 
-        if (trigger!.TimesTriggered >= intervals.Length)
+        if (trigger!.TimesTriggered <= intervals.Length)
         {
-            return;
+            var repeatInterval = intervals[trigger!.TimesTriggered - 1];
+            
+            var prevTriggerTime = trigger.GetPreviousFireTimeUtc();
+            trigger.SetNextFireTimeUtc(prevTriggerTime!.Value.AddMinutes(repeatInterval));
+            
+            await context.Scheduler.RescheduleJob(context.Trigger.Key, trigger);
         }
-
-        var repeatInterval = intervals[trigger!.TimesTriggered - 1];
-
-        var prevTriggerTime = trigger.GetPreviousFireTimeUtc();
-        trigger.SetNextFireTimeUtc(prevTriggerTime!.Value.AddMinutes(repeatInterval));
-
-        await context.Scheduler.RescheduleJob(context.Trigger.Key, trigger);
 
         await callback();
 
-        var schedule = context.Scheduler.DeleteJob(context.JobDetail.Key, token);
+        await context.Scheduler.DeleteJob(context.JobDetail.Key, token);
     }
 }
 
