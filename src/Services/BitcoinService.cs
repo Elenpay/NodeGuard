@@ -305,7 +305,7 @@ namespace FundsManager.Services
                 if (!finalisedPSBT.CanExtractTransaction())
                 {
                     var cannotFinalisedCombinedPsbtForWithdrawalRequestId =
-                        $"Cannot finalised combined PSBT for withdrawal request id:{walletWithdrawalRequest.Id}";
+                        $"Cannot finalise combined PSBT for withdrawal request id:{walletWithdrawalRequest.Id}";
                     _logger.LogError(cannotFinalisedCombinedPsbtForWithdrawalRequestId);
 
                     throw new ArgumentException(cannotFinalisedCombinedPsbtForWithdrawalRequestId,
