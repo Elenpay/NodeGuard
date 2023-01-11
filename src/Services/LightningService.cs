@@ -249,11 +249,74 @@ namespace FundsManager.Services
                     NodePubkey = ByteString.CopyFrom(Convert.FromHexString(destination.PubKey)),
                 };
 
+                //Prior to opening the channel, we add the remote node as a peer
+                var remoteNodeInfo = await GetNodeInfo(channelOperationRequest.DestNode?.PubKey);
+                if (remoteNodeInfo == null)
+                {
+                    _logger.LogError("Error, remote node with {Pubkey} not found",
+                        channelOperationRequest.DestNode?.PubKey);
+                    throw new InvalidOperationException();
+                }
+
+                //For now, we only rely on pure tcp IPV4 connections
+                var addr = remoteNodeInfo.Addresses.FirstOrDefault(x => x.Network == "tcp").Addr;
+                
+                if(addr == null)
+                {
+                    _logger.LogError("Error, remote node with {Pubkey} has no tcp IPV4 address",
+                        channelOperationRequest.DestNode?.PubKey);
+                    throw new InvalidOperationException();
+                }
+                var isPeerAlreadyConnected = false;
+
+                ConnectPeerResponse connectPeerResponse = null;
+                try
+                {
+                    connectPeerResponse = await client.ConnectPeerAsync(new ConnectPeerRequest
+                    {
+                        Addr = new LightningAddress {Host = addr, Pubkey = remoteNodeInfo.PubKey},
+                        Perm = true
+                    }, new Metadata
+                    {
+                        {"macaroon", source.ChannelAdminMacaroon}
+                    });
+                }
+                //We avoid to stop the method if the peer is already connected
+                catch (RpcException e)
+                {
+                    if (!e.Message.Contains("already connected to peer"))
+                    {
+                        throw;
+                    }
+                    else
+                    {
+                        isPeerAlreadyConnected = true;
+                    }
+                }
+
+                if (connectPeerResponse != null || isPeerAlreadyConnected)
+                {
+                    if (isPeerAlreadyConnected)
+                    {
+                        _logger.LogInformation("Peer: {Pubkey} already connected", remoteNodeInfo.PubKey);
+                    }
+                    else
+                    {
+                        _logger.LogInformation("Peer connected to {Pubkey}", remoteNodeInfo.PubKey);
+                    }
+                }
+                else
+                {
+                    _logger.LogError("Error, peer not connected to {Pubkey} on address: {address}",
+                        remoteNodeInfo.PubKey, addr);
+                    throw new InvalidOperationException();
+                }
+
                 //We launch a openstatusupdate stream for all the events when calling OpenChannel api method from LND
                 if (source.ChannelAdminMacaroon != null)
                 {
                     var openStatusUpdateStream = client.OpenChannel(openChannelRequest,
-                        new Metadata { { "macaroon", source.ChannelAdminMacaroon } }
+                        new Metadata {{"macaroon", source.ChannelAdminMacaroon}}
                     );
 
                     await foreach (var response in openStatusUpdateStream.ResponseStream.ReadAllAsync())
