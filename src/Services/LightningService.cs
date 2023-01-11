@@ -96,6 +96,7 @@ namespace FundsManager.Services
         private readonly IFMUTXORepository _ifmutxoRepository;
         private readonly IChannelOperationRequestPSBTRepository _channelOperationRequestPsbtRepository;
         private readonly IChannelRepository _channelRepository;
+        private readonly IRemoteSignerService _remoteSignerService;
 
         public LightningService(ILogger<LightningService> logger,
             IChannelOperationRequestRepository channelOperationRequestRepository,
@@ -105,7 +106,9 @@ namespace FundsManager.Services
             IWalletRepository walletRepository,
             IFMUTXORepository ifmutxoRepository,
             IChannelOperationRequestPSBTRepository channelOperationRequestPsbtRepository,
-            IChannelRepository channelRepository)
+            IChannelRepository channelRepository,
+            IRemoteSignerService remoteSignerService)
+        
         {
             _logger = logger;
             _channelOperationRequestRepository = channelOperationRequestRepository;
@@ -116,6 +119,7 @@ namespace FundsManager.Services
             _ifmutxoRepository = ifmutxoRepository;
             _channelOperationRequestPsbtRepository = channelOperationRequestPsbtRepository;
             _channelRepository = channelRepository;
+            _remoteSignerService = remoteSignerService;
         }
 
         /// <summary>
@@ -421,57 +425,24 @@ namespace FundsManager.Services
                                     var changeFixedPSBT = channelfundingTx.CreatePSBT(network).UpdateFrom(fundedPSBT);
                                     var partialSigsCount = changeFixedPSBT.Inputs.Sum(x => x.PartialSigs.Count);
                                     //We check the way the fundsmanager signs, with the remoteFundsManagerSigner or by itself.
-                                    var isFMSignerEnabled =
-                                        Environment.GetEnvironmentVariable("ENABLE_REMOTE_SIGNER")?.ToUpper() == "true".ToUpper();
+                                    var isRemoteSignerEnabled =
+                                        Environment.GetEnvironmentVariable("ENABLE_REMOTE_SIGNER") != null;
 
-                                    PSBT? fmSignedPSBT = null;
-                                    if (isFMSignerEnabled)
+                                    PSBT? finalSignedPSBT = null;
+                                    if (isRemoteSignerEnabled)
                                     {
-                                        var region = Environment.GetEnvironmentVariable("AWS_REGION");
-                                        //AWS Call to lambda function
-                                        var credentials = new ImmutableCredentials(
-                                            Environment.GetEnvironmentVariable("AWS_ACCESS_KEY_ID"),
-                                            Environment.GetEnvironmentVariable("AWS_SECRET_ACCESS_KEY"),
-                                            null);
-
-                                        var requestPayload = new Input(changeFixedPSBT.ToBase64(), SigHash.All,
-                                            CurrentNetworkHelper.GetCurrentNetwork().ToString(),
-                                            Environment.GetEnvironmentVariable("AWS_KMS_KEY_ID") ??
-                                            throw new InvalidOperationException());
-
-                                        var serializedPayload = JsonSerializer.Serialize(requestPayload);
-                                        using var httpClient = new HttpClient();
-                                        //We use a special lib for IAM Auth to AWS
-                                        var signLambdaResponse = await httpClient.PostAsync(
-                                            Environment.GetEnvironmentVariable("REMOTE_SIGNER_ENDPOINT"),
-                                            new StringContent(serializedPayload,
-                                                Encoding.UTF8,
-                                                "application/json"),
-                                            regionName: region,
-                                            serviceName: "lambda",
-                                            credentials: credentials);
-
-                                        if (signLambdaResponse.StatusCode != HttpStatusCode.OK)
+                                        finalSignedPSBT = await _remoteSignerService.Sign(changeFixedPSBT);
+                                        if (finalSignedPSBT == null)
                                         {
-                                            var errorWhileSignignPsbtWithAwsLambdaFunctionStatus =
-                                                $"Error while signing PSBT with AWS Lambda function,status code:{signLambdaResponse.StatusCode} error:{signLambdaResponse.ReasonPhrase}";
-                                            _logger.LogError(errorWhileSignignPsbtWithAwsLambdaFunctionStatus);
-                                            throw new Exception(errorWhileSignignPsbtWithAwsLambdaFunctionStatus);
-                                        }
-
-                                        var json = JsonSerializer.Deserialize<Output>(signLambdaResponse.Content.ReadAsStream());
-
-                                        if (!PSBT.TryParse(json.Psbt, CurrentNetworkHelper.GetCurrentNetwork(),
-                                                out fmSignedPSBT))
-                                        {
-                                            var errorWhileParsingPsbt = "Error while parsing PSBT signed from AWS Remote FundsManagerSigner";
-                                            _logger.LogError(errorWhileParsingPsbt);
-                                            throw new Exception(errorWhileParsingPsbt);
+                                            const string errorMessage = "The signed PSBT was null, something went wrong while signing with the remote signer";
+                                            _logger.LogError(errorMessage);
+                                            throw new Exception(
+                                                errorMessage);
                                         }
                                     }
                                     else
                                     {
-                                        fmSignedPSBT = await SignPSBT(channelOperationRequest,
+                                        finalSignedPSBT = await SignPSBT(channelOperationRequest,
                                             nbxplorerClient,
                                             derivationStrategyBase,
                                             channelfundingTx,
@@ -480,11 +451,19 @@ namespace FundsManager.Services
                                             pendingChannelId,
                                             network,
                                             changeFixedPSBT);
+                                        
+                                        if (finalSignedPSBT == null)
+                                        {
+                                            const string errorMessage = "The signed PSBT was null, something went wrong while signing with the embedded signer";
+                                            _logger.LogError(errorMessage);
+                                            throw new Exception(
+                                                errorMessage);
+                                        }
                                     }
 
                                     //We check that the partial signatures number has changed, otherwise finalize inmediately
                                     var partialSigsCountAfterSignature =
-                                        fmSignedPSBT.Inputs.Sum(x => x.PartialSigs.Count);
+                                        finalSignedPSBT.Inputs.Sum(x => x.PartialSigs.Count);
 
                                     if (partialSigsCountAfterSignature == 0 ||
                                         partialSigsCountAfterSignature <= partialSigsCount)
@@ -496,10 +475,26 @@ namespace FundsManager.Services
                                         throw new ArgumentException(
                                             invalidNoOfPartialSignatures);
                                     }
+                                    
+                                    //We store the final signed PSBT without being finalized for debugging purposes
+                                    var signedChannelOperationRequestPsbt = new ChannelOperationRequestPSBT
+                                    {
+                                        ChannelOperationRequestId = channelOperationRequest.Id,
+                                        PSBT = finalSignedPSBT.ToBase64(),
+                                        CreationDatetime = DateTimeOffset.Now,
+                                        IsInternalWalletPSBT = true
+                                    };
 
-                                    //PSBT marked as verified so time to finalize the PSBT and broadcast the tx
+                                    var addResult = await _channelOperationRequestPsbtRepository.AddAsync(signedChannelOperationRequestPsbt);
 
-                                    var finalizedPSBT = fmSignedPSBT.Finalize();
+                                    if (!addResult.Item1)
+                                    {
+                                        _logger.LogError("Could not store the signed PSBT for channel operation request id: {RequestId} reason: {Reason}", channelOperationRequest.Id, addResult.Item2);
+                                    }
+
+                                    //Time to finalize the PSBT and broadcast the tx
+
+                                    var finalizedPSBT = finalSignedPSBT.Finalize();
 
                                     //Sanity check
                                     finalizedPSBT.AssertSanity();
@@ -590,6 +585,8 @@ namespace FundsManager.Services
                 throw;
             }
         }
+
+       
 
         /// <summary>
         /// Aux method when the fundsmanager is the one in change of signing the PSBTs
