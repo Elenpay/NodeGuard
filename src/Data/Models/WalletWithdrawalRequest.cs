@@ -76,7 +76,7 @@ namespace FundsManager.Data.Models
         /// Checks if all the threshold signatures are collected, including the internal wallet key (even if not signed yet)
         /// </summary>
         [NotMapped]
-        public bool AreAllRequiredSignaturesCollected => CheckSignatures();
+        public bool AreAllRequiredHumanSignaturesCollected => CheckSignatures();
 
         [NotMapped]
         public int NumberOfSignaturesCollected =>
@@ -105,15 +105,15 @@ namespace FundsManager.Data.Models
 
             if (WalletWithdrawalRequestPSBTs != null && WalletWithdrawalRequestPSBTs.Any())
             {
-                var userPSBTsCount = NumberOfSignaturesCollected;
+                var numberOfSignaturesCollected = NumberOfSignaturesCollected;
 
                 //We add the internal Wallet signature
                 if (Wallet.RequiresInternalWalletSigning)
                 {
-                    userPSBTsCount++;
+                    numberOfSignaturesCollected++;
                 }
 
-                if (userPSBTsCount == Wallet.MofN)
+                if (numberOfSignaturesCollected == Wallet.MofN)
                 {
                     result = true;
                 }
