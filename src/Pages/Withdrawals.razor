@@ -55,7 +55,7 @@
                             @*TODO Cancel / Reject  *@
 
                             @if (context.Wallet != null && context.Wallet.Keys != null && context.Wallet.Keys.Any(x => x.UserId == LoggedUser?.Id)
-                                 && !context.AreAllRequiredSignaturesCollected
+                                 && !context.AreAllRequiredHumanSignaturesCollected
                                  && context.WalletWithdrawalRequestPSBTs.All(x => x.SignerId != LoggedUser?.Id))
                             {
                                 <Button Color="Color.Success" Clicked="()=> ShowApprovalModal(context)">Approve</Button>
@@ -645,7 +645,7 @@
                 if (_selectedRequest != null
                    && PSBT.TryParse(walletWithdrawalRequestPsbt.PSBT, CurrentNetworkHelper.GetCurrentNetwork(), out _))
                 {
-                    if (_selectedRequest.AreAllRequiredSignaturesCollected)
+                    if (_selectedRequest.AreAllRequiredHumanSignaturesCollected)
                     {
                         var failedWithdrawalRequest = false;
                         try

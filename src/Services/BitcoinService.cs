@@ -277,7 +277,7 @@ namespace FundsManager.Services
 
                 PSBT? signedCombinedPSBT = null;
                 //Check if the NodeGuard Internal Wallet needs to sign on his own
-                if (!walletWithdrawalRequest.AreAllRequiredSignaturesCollected &&
+                if (walletWithdrawalRequest.AreAllRequiredHumanSignaturesCollected &&
                     walletWithdrawalRequest.Wallet.RequiresInternalWalletSigning)
                 {
                     //Remote signer
@@ -290,6 +290,12 @@ namespace FundsManager.Services
                         signedCombinedPSBT = await SignPSBTWithEmbeddedSigner(walletWithdrawalRequest, nbxplorerClient,
                             derivationStrategyBase, combinedPSBT, network);
                     }
+                    
+                }
+                else
+                {
+                    //In this case, the combined PSBT is considered as the signed one
+                    signedCombinedPSBT = combinedPSBT;
                 }
 
                 if (signedCombinedPSBT == null)
