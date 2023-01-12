@@ -30,7 +30,7 @@ public class RemoteSignerServiceService : IRemoteSignerService
         try
         {
             //Check if ENABLE_REMOTE_SIGNER is set 
-            if (Environment.GetEnvironmentVariable("ENABLE_REMOTE_SIGNER") != null)
+            if (Environment.GetEnvironmentVariable("ENABLE_REMOTE_SIGNER") == null)
             {
                 _logger.LogWarning("Remote signer is disabled but was called");
                 return null;
