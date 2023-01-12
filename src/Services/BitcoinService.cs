@@ -23,6 +23,7 @@ using FundsManager.Data.Repositories.Interfaces;
 using FundsManager.Helpers;
 using Humanizer;
 using NBitcoin;
+using NBXplorer;
 using NBXplorer.DerivationStrategy;
 using NBXplorer.Models;
 
@@ -42,13 +43,15 @@ namespace FundsManager.Services
         private readonly IWalletWithdrawalRequestRepository _walletWithdrawalRequestRepository;
         private readonly IWalletWithdrawalRequestPsbtRepository _walletWithdrawalRequestPsbtRepository;
         private readonly INodeRepository _nodeRepository;
+        private readonly IRemoteSignerService _remoteSignerService;
 
         public BitcoinService(ILogger<BitcoinService> logger,
             IFMUTXORepository fmutxoRepository,
             IMapper mapper,
             IWalletWithdrawalRequestRepository walletWithdrawalRequestRepository,
             IWalletWithdrawalRequestPsbtRepository walletWithdrawalRequestPsbtRepository,
-            INodeRepository nodeRepository)
+            INodeRepository nodeRepository,
+            IRemoteSignerService remoteSignerService)
         {
             _logger = logger;
             _fmutxoRepository = fmutxoRepository;
@@ -56,6 +59,7 @@ namespace FundsManager.Services
             _walletWithdrawalRequestRepository = walletWithdrawalRequestRepository;
             _walletWithdrawalRequestPsbtRepository = walletWithdrawalRequestPsbtRepository;
             _nodeRepository = nodeRepository;
+            _remoteSignerService = remoteSignerService;
         }
 
         public async Task<(decimal, long)> GetWalletConfirmedBalance(Wallet wallet)
@@ -65,7 +69,7 @@ namespace FundsManager.Services
             var (_, explorerClient) = LightningHelper.GenerateNetwork();
 
             var balance = await explorerClient.GetBalanceAsync(wallet.GetDerivationStrategy());
-            var confirmedBalanceMoney = (Money)balance.Confirmed;
+            var confirmedBalanceMoney = (Money) balance.Confirmed;
 
             return (confirmedBalanceMoney.ToUnit(MoneyUnit.BTC), confirmedBalanceMoney.Satoshi);
         }
@@ -127,7 +131,8 @@ namespace FundsManager.Services
 
                     if (!updateResult.Item1)
                     {
-                        _logger.LogError("Error while updating withdrawal request: {RequestId}", walletWithdrawalRequest.Id);
+                        _logger.LogError("Error while updating withdrawal request: {RequestId}",
+                            walletWithdrawalRequest.Id);
                     }
 
                     return (null, false);
@@ -137,14 +142,15 @@ namespace FundsManager.Services
             var utxoChanges = await nbxplorerClient.GetUTXOsAsync(derivationStrategy);
             utxoChanges.RemoveDuplicateUTXOs();
 
-            var lockedUtxOs = await _fmutxoRepository.GetLockedUTXOs(ignoredWalletWithdrawalRequestId: walletWithdrawalRequest.Id);
+            var lockedUtxOs =
+                await _fmutxoRepository.GetLockedUTXOs(ignoredWalletWithdrawalRequestId: walletWithdrawalRequest.Id);
 
             //If the request is a full funds withdrawal, calculate the amount to the existing balance
             if (walletWithdrawalRequest.WithdrawAllFunds)
             {
                 var balanceResponse = await nbxplorerClient.GetBalanceAsync(derivationStrategy);
 
-                walletWithdrawalRequest.Amount = ((Money)balanceResponse.Confirmed).ToUnit(MoneyUnit.BTC);
+                walletWithdrawalRequest.Amount = ((Money) balanceResponse.Confirmed).ToUnit(MoneyUnit.BTC);
 
                 var update = _walletWithdrawalRequestRepository.Update(walletWithdrawalRequest);
                 if (!update.Item1)
@@ -180,7 +186,8 @@ namespace FundsManager.Services
 
                 if (changeAddress == null)
                 {
-                    _logger.LogError("Change address was not found for wallet: {WalletId}", walletWithdrawalRequest.Wallet.Id);
+                    _logger.LogError("Change address was not found for wallet: {WalletId}",
+                        walletWithdrawalRequest.Wallet.Id);
                     return (null, false);
                 }
 
@@ -191,7 +198,6 @@ namespace FundsManager.Services
                 var destination = BitcoinAddress.Create(walletWithdrawalRequest.DestinationAddress, nbXplorerNetwork);
 
                 builder.SetSigningOptions(SigHash.All)
-
                     .SetChange(changeAddress.Address)
                     .SendEstimatedFees(feeRateResult.FeeRate);
 
@@ -239,7 +245,8 @@ namespace FundsManager.Services
 
                 if (addPsbtResult.Item1 == false)
                 {
-                    _logger.LogError("Error while saving template PSBT to wallet withdrawal request: {RequestId}", walletWithdrawalRequest.Id);
+                    _logger.LogError("Error while saving template PSBT to wallet withdrawal request: {RequestId}",
+                        walletWithdrawalRequest.Id);
                 }
             }
 
@@ -252,7 +259,8 @@ namespace FundsManager.Services
 
             if (walletWithdrawalRequest.Status != WalletWithdrawalRequestStatus.PSBTSignaturesPending)
             {
-                _logger.LogError("Invalid status for broadcasting the tx from wallet withdrawal request: {RequestId}, status: {RequestStatus}",
+                _logger.LogError(
+                    "Invalid status for broadcasting the tx from wallet withdrawal request: {RequestId}, status: {RequestStatus}",
                     walletWithdrawalRequest.Id,
                     walletWithdrawalRequest.Status);
 
@@ -260,7 +268,8 @@ namespace FundsManager.Services
             }
 
             //Update
-            walletWithdrawalRequest = await _walletWithdrawalRequestRepository.GetById(walletWithdrawalRequest.Id) ?? throw new InvalidOperationException();
+            walletWithdrawalRequest = await _walletWithdrawalRequestRepository.GetById(walletWithdrawalRequest.Id) ??
+                                      throw new InvalidOperationException();
 
             var signedPSBTStrings = walletWithdrawalRequest.WalletWithdrawalRequestPSBTs.Where(x =>
                     !x.IsFinalisedPSBT && !x.IsInternalWalletPSBT && !x.IsTemplatePSBT)
@@ -283,72 +292,39 @@ namespace FundsManager.Services
 
                 var derivationStrategyBase = walletWithdrawalRequest.Wallet.GetDerivationStrategy();
 
-                //Check if the FundsManager Internal Wallet needs to sign on his own
+                var isRemoteSignerEnabled = Environment.GetEnvironmentVariable("ENABLE_REMOTE_SIGNER") != null;
+
+                PSBT? signedCombinedPSBT = null;
+                //Check if the NodeGuard Internal Wallet needs to sign on his own
                 if (!walletWithdrawalRequest.AreAllRequiredSignaturesCollected &&
                     walletWithdrawalRequest.Wallet.RequiresInternalWalletSigning)
                 {
-                    var UTXOs = await nbxplorerClient.GetUTXOsAsync(derivationStrategyBase);
-                    UTXOs.RemoveDuplicateUTXOs();
-
-                    var OutpointKeyPathDictionary =
-                        UTXOs.Confirmed.UTXOs.ToDictionary(x => x.Outpoint, x => x.KeyPath);
-
-                    var txInKeyPathDictionary =
-                        combinedPSBT.Inputs.Where(x => OutpointKeyPathDictionary.ContainsKey(x.PrevOut))
-                            .ToDictionary(x => x,
-                                x => OutpointKeyPathDictionary[x.PrevOut]);
-
-                    if (!txInKeyPathDictionary.Any())
+                    //Remote signer
+                    if (isRemoteSignerEnabled)
                     {
-                        const string errorKeypathsForTheUtxosUsedInThisTxAreNotFound =
-                            "Error, keypaths for the UTXOs used in this tx are not found, probably this UTXO is already used as input of another transaction";
-
-                        _logger.LogError(errorKeypathsForTheUtxosUsedInThisTxAreNotFound);
-
-                        throw new ArgumentException(
-                            errorKeypathsForTheUtxosUsedInThisTxAreNotFound);
+                        signedCombinedPSBT = await _remoteSignerService.Sign(combinedPSBT);
                     }
-
-                    var privateKeysForUsedUTXOs = txInKeyPathDictionary.ToDictionary(x => x.Key.PrevOut,
-                        x =>
-                            walletWithdrawalRequest.Wallet.InternalWallet.GetAccountKey(network)
-                                .Derive(x.Value).PrivateKey);
-
-                    //We need to SIGHASH_ALL all inputs/outputs as fundsmanager to protect the tx from tampering by adding a signature
-                    var partialSigsCount = combinedPSBT.Inputs.Sum(x => x.PartialSigs.Count);
-                    foreach (var input in combinedPSBT.Inputs)
+                    else
                     {
-                        if (privateKeysForUsedUTXOs.TryGetValue(input.PrevOut, out var key))
-                        {
-                            input.Sign(key);
-                        }
-                    }
-
-                    //We check that the partial signatures number has changed, otherwise end inmediately
-                    var partialSigsCountAfterSignature =
-                        combinedPSBT.Inputs.Sum(x => x.PartialSigs.Count);
-
-                    if (partialSigsCountAfterSignature == 0 ||
-                        partialSigsCountAfterSignature <= partialSigsCount)
-                    {
-                        var invalidNoOfPartialSignatures =
-                            $"Invalid expected number of partial signatures after signing for the wallet withdrawal request:{walletWithdrawalRequest.Id}";
-                        _logger.LogError(invalidNoOfPartialSignatures);
-
-                        throw new ArgumentException(
-                            invalidNoOfPartialSignatures);
+                        signedCombinedPSBT = await SignPSBTWithEmbeddedSigner(walletWithdrawalRequest, nbxplorerClient,
+                            derivationStrategyBase, combinedPSBT, network);
                     }
                 }
 
+                if (signedCombinedPSBT == null)
+                {
+                    throw new InvalidOperationException("Signed combined PSBT is null");
+                }
+
                 //PSBT finalisation
-                var finalisedPSBT = combinedPSBT.Finalize();
+                var finalisedPSBT = signedCombinedPSBT.Finalize();
 
                 finalisedPSBT.AssertSanity();
 
                 if (!finalisedPSBT.CanExtractTransaction())
                 {
                     var cannotFinalisedCombinedPsbtForWithdrawalRequestId =
-                        $"Cannot finalised combined PSBT for withdrawal request id:{walletWithdrawalRequest.Id}";
+                        $"Cannot finalise combined PSBT for withdrawal request id:{walletWithdrawalRequest.Id}";
                     _logger.LogError(cannotFinalisedCombinedPsbtForWithdrawalRequestId);
 
                     throw new ArgumentException(cannotFinalisedCombinedPsbtForWithdrawalRequestId,
@@ -373,7 +349,8 @@ namespace FundsManager.Services
                     throw new ArgumentException(noManagedFoundFoundForWithdrawalRequestId, nameof(node));
                 }
 
-                _logger.LogInformation("Publishing tx for withdrawal request id: {RequestId} by node: {NodeName} txId: {TxId}",
+                _logger.LogInformation(
+                    "Publishing tx for withdrawal request id: {RequestId} by node: {NodeName} txId: {TxId}",
                     walletWithdrawalRequest.Id,
                     node.Name,
                     tx.GetHash().ToString());
@@ -383,7 +360,8 @@ namespace FundsManager.Services
 
                 if (!broadcastAsyncResult.Success)
                 {
-                    _logger.LogError("Failed TX broadcast for withdrawal request id: {RequestId} rpcCode: {Code}, rpcCodeMessage: {CodeMessage}, rpcMessage: {Message}",
+                    _logger.LogError(
+                        "Failed TX broadcast for withdrawal request id: {RequestId} rpcCode: {Code}, rpcCodeMessage: {CodeMessage}, rpcMessage: {Message}",
                         walletWithdrawalRequest.Id,
                         broadcastAsyncResult.RPCCode,
                         broadcastAsyncResult.RPCCodeMessage,
@@ -398,7 +376,8 @@ namespace FundsManager.Services
 
                 if (updateTxIdResult.Item1 != true)
                 {
-                    _logger.LogError("Error while updating the txId of withdrawal request: {RequestId}", walletWithdrawalRequest.Id);
+                    _logger.LogError("Error while updating the txId of withdrawal request: {RequestId}",
+                        walletWithdrawalRequest.Id);
                 }
 
                 //We track the destination address
@@ -410,9 +389,78 @@ namespace FundsManager.Services
             }
             catch (Exception e)
             {
-                _logger.LogError(e, "Error while publishing withdrawal request id: {RequestId}", walletWithdrawalRequest.Id);
+                _logger.LogError(e, "Error while publishing withdrawal request id: {RequestId}",
+                    walletWithdrawalRequest.Id);
                 throw;
             }
+        }
+
+        /// <summary>
+        /// Signs with a embedded signer and updates the PSBTs while checking that the number of partial signatures is correct
+        /// </summary>
+        /// <param name="walletWithdrawalRequest"></param>
+        /// <param name="nbxplorerClient"></param>
+        /// <param name="derivationStrategyBase"></param>
+        /// <param name="combinedPSBT"></param>
+        /// <param name="network"></param>
+        /// <exception cref="ArgumentException"></exception>
+        private async Task<PSBT> SignPSBTWithEmbeddedSigner(WalletWithdrawalRequest walletWithdrawalRequest,
+            ExplorerClient nbxplorerClient, DerivationStrategyBase? derivationStrategyBase, PSBT combinedPSBT,
+            Network network)
+        {
+            var UTXOs = await nbxplorerClient.GetUTXOsAsync(derivationStrategyBase);
+            UTXOs.RemoveDuplicateUTXOs();
+
+            var OutpointKeyPathDictionary =
+                UTXOs.Confirmed.UTXOs.ToDictionary(x => x.Outpoint, x => x.KeyPath);
+
+            var txInKeyPathDictionary =
+                combinedPSBT.Inputs.Where(x => OutpointKeyPathDictionary.ContainsKey(x.PrevOut))
+                    .ToDictionary(x => x,
+                        x => OutpointKeyPathDictionary[x.PrevOut]);
+
+            if (!txInKeyPathDictionary.Any())
+            {
+                const string errorKeypathsForTheUtxosUsedInThisTxAreNotFound =
+                    "Error, keypaths for the UTXOs used in this tx are not found, probably this UTXO is already used as input of another transaction";
+
+                _logger.LogError(errorKeypathsForTheUtxosUsedInThisTxAreNotFound);
+
+                throw new ArgumentException(
+                    errorKeypathsForTheUtxosUsedInThisTxAreNotFound);
+            }
+
+            var privateKeysForUsedUTXOs = txInKeyPathDictionary.ToDictionary(x => x.Key.PrevOut,
+                x =>
+                    walletWithdrawalRequest.Wallet.InternalWallet.GetAccountKey(network)
+                        .Derive(x.Value).PrivateKey);
+
+            //We need to SIGHASH_ALL all inputs/outputs as fundsmanager to protect the tx from tampering by adding a signature
+            var partialSigsCount = combinedPSBT.Inputs.Sum(x => x.PartialSigs.Count);
+            foreach (var input in combinedPSBT.Inputs)
+            {
+                if (privateKeysForUsedUTXOs.TryGetValue(input.PrevOut, out var key))
+                {
+                    input.Sign(key);
+                }
+            }
+
+            //We check that the partial signatures number has changed, otherwise end inmediately
+            var partialSigsCountAfterSignature =
+                combinedPSBT.Inputs.Sum(x => x.PartialSigs.Count);
+
+            if (partialSigsCountAfterSignature == 0 ||
+                partialSigsCountAfterSignature <= partialSigsCount)
+            {
+                var invalidNoOfPartialSignatures =
+                    $"Invalid expected number of partial signatures after signing for the wallet withdrawal request:{walletWithdrawalRequest.Id}";
+                _logger.LogError(invalidNoOfPartialSignatures);
+
+                throw new ArgumentException(
+                    invalidNoOfPartialSignatures);
+            }
+
+            return combinedPSBT;
         }
 
         public async Task MonitorWithdrawals()
@@ -429,7 +477,8 @@ namespace FundsManager.Services
                         //Let's check if the minimum amount of confirmations are established
                         var (network, nbxplorerclient) = LightningHelper.GenerateNetwork();
 
-                        var getTxResult = await nbxplorerclient.GetTransactionAsync(uint256.Parse(walletWithdrawalRequest.TxId));
+                        var getTxResult =
+                            await nbxplorerclient.GetTransactionAsync(uint256.Parse(walletWithdrawalRequest.TxId));
 
                         var confirmationBlocks =
                             int.Parse(Environment.GetEnvironmentVariable("TRANSACTION_CONFIRMATION_MINIMUM_BLOCKS") ??
@@ -443,13 +492,15 @@ namespace FundsManager.Services
 
                             if (!updateResult.Item1)
                             {
-                                _logger.LogError("Error while updating wallet withdrawal: {RequestId}, status: {RequestStatus}",
+                                _logger.LogError(
+                                    "Error while updating wallet withdrawal: {RequestId}, status: {RequestStatus}",
                                     walletWithdrawalRequest.Id,
                                     walletWithdrawalRequest.Status);
                             }
                             else
                             {
-                                _logger.LogInformation("Updating wallet withdrawal: {RequestId} to status: {RequestStatus}",
+                                _logger.LogInformation(
+                                    "Updating wallet withdrawal: {RequestId} to status: {RequestStatus}",
                                     walletWithdrawalRequest.Id, walletWithdrawalRequest.Status);
                             }
                         }

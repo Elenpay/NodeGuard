@@ -449,6 +449,8 @@
 
     private decimal _maxWithdrawal;
     private decimal _minWithdrawal;
+    private const decimal DefaultMin = 0.0m;
+    private const decimal DefaultMax = 21_000_000;
 
     private decimal _btcPrice;
     
@@ -459,19 +461,14 @@
         {
             ToastService.ShowError("Bitcoin price in USD could not be retrieved.");
         }
-        
-        try
-        {
-            _maxWithdrawal = decimal.Parse(Environment.GetEnvironmentVariable("MAXIMUM_WITHDRAWAL_BTC_AMOUNT") ?? throw new InvalidOperationException(), NumberStyles.AllowDecimalPoint, CultureInfo.InvariantCulture);
-            _minWithdrawal = decimal.Parse(Environment.GetEnvironmentVariable("MINIMUM_WITHDRAWAL_BTC_AMOUNT") ?? throw new InvalidOperationException(), NumberStyles.AllowDecimalPoint, CultureInfo.InvariantCulture);
-            if (_maxWithdrawal == 0) _maxWithdrawal = 21000000;
-            if (_minWithdrawal == 0) _minWithdrawal = 0;
-        }
-        catch (Exception e)
-        {
-            ToastService.ShowError("Getting maximum of Bitcoins for withdrawal has failed");
-        }
-        
+
+        var environmentVariableMin = Environment.GetEnvironmentVariable("MINIMUM_WITHDRAWAL_BTC_AMOUNT");
+        var environmentVariableMax = Environment.GetEnvironmentVariable("MAXIMUM_WITHDRAWAL_BTC_AMOUNT");
+        if (environmentVariableMin == null) _minWithdrawal = DefaultMin;
+        else _minWithdrawal = decimal.Parse(environmentVariableMin, NumberStyles.AllowDecimalPoint, CultureInfo.InvariantCulture);
+        if (environmentVariableMax == null) _maxWithdrawal = DefaultMax;
+        else _maxWithdrawal = decimal.Parse(environmentVariableMax, NumberStyles.AllowDecimalPoint, CultureInfo.InvariantCulture);
+
         if (LoggedUser != null)
         {
             if (ClaimsPrincipal.IsInRole(ApplicationUserRole.FinanceManager.ToString()))

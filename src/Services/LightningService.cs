@@ -115,6 +115,7 @@ namespace FundsManager.Services
         private readonly IFMUTXORepository _ifmutxoRepository;
         private readonly IChannelOperationRequestPSBTRepository _channelOperationRequestPsbtRepository;
         private readonly IChannelRepository _channelRepository;
+        private readonly IRemoteSignerService _remoteSignerService;
 
         public LightningService(ILogger<LightningService> logger,
             IChannelOperationRequestRepository channelOperationRequestRepository,
@@ -124,7 +125,9 @@ namespace FundsManager.Services
             IWalletRepository walletRepository,
             IFMUTXORepository ifmutxoRepository,
             IChannelOperationRequestPSBTRepository channelOperationRequestPsbtRepository,
-            IChannelRepository channelRepository)
+            IChannelRepository channelRepository,
+            IRemoteSignerService remoteSignerService)
+        
         {
             _logger = logger;
             _channelOperationRequestRepository = channelOperationRequestRepository;
@@ -135,6 +138,7 @@ namespace FundsManager.Services
             _ifmutxoRepository = ifmutxoRepository;
             _channelOperationRequestPsbtRepository = channelOperationRequestPsbtRepository;
             _channelRepository = channelRepository;
+            _remoteSignerService = remoteSignerService;
         }
 
         /// <summary>
@@ -268,11 +272,74 @@ namespace FundsManager.Services
                     NodePubkey = ByteString.CopyFrom(Convert.FromHexString(destination.PubKey)),
                 };
 
+                //Prior to opening the channel, we add the remote node as a peer
+                var remoteNodeInfo = await GetNodeInfo(channelOperationRequest.DestNode?.PubKey);
+                if (remoteNodeInfo == null)
+                {
+                    _logger.LogError("Error, remote node with {Pubkey} not found",
+                        channelOperationRequest.DestNode?.PubKey);
+                    throw new InvalidOperationException();
+                }
+
+                //For now, we only rely on pure tcp IPV4 connections
+                var addr = remoteNodeInfo.Addresses.FirstOrDefault(x => x.Network == "tcp").Addr;
+                
+                if(addr == null)
+                {
+                    _logger.LogError("Error, remote node with {Pubkey} has no tcp IPV4 address",
+                        channelOperationRequest.DestNode?.PubKey);
+                    throw new InvalidOperationException();
+                }
+                var isPeerAlreadyConnected = false;
+
+                ConnectPeerResponse connectPeerResponse = null;
+                try
+                {
+                    connectPeerResponse = await client.ConnectPeerAsync(new ConnectPeerRequest
+                    {
+                        Addr = new LightningAddress {Host = addr, Pubkey = remoteNodeInfo.PubKey},
+                        Perm = true
+                    }, new Metadata
+                    {
+                        {"macaroon", source.ChannelAdminMacaroon}
+                    });
+                }
+                //We avoid to stop the method if the peer is already connected
+                catch (RpcException e)
+                {
+                    if (!e.Message.Contains("already connected to peer"))
+                    {
+                        throw;
+                    }
+                    else
+                    {
+                        isPeerAlreadyConnected = true;
+                    }
+                }
+
+                if (connectPeerResponse != null || isPeerAlreadyConnected)
+                {
+                    if (isPeerAlreadyConnected)
+                    {
+                        _logger.LogInformation("Peer: {Pubkey} already connected", remoteNodeInfo.PubKey);
+                    }
+                    else
+                    {
+                        _logger.LogInformation("Peer connected to {Pubkey}", remoteNodeInfo.PubKey);
+                    }
+                }
+                else
+                {
+                    _logger.LogError("Error, peer not connected to {Pubkey} on address: {address}",
+                        remoteNodeInfo.PubKey, addr);
+                    throw new InvalidOperationException();
+                }
+
                 //We launch a openstatusupdate stream for all the events when calling OpenChannel api method from LND
                 if (source.ChannelAdminMacaroon != null)
                 {
                     var openStatusUpdateStream = client.OpenChannel(openChannelRequest,
-                        new Metadata { { "macaroon", source.ChannelAdminMacaroon } }
+                        new Metadata {{"macaroon", source.ChannelAdminMacaroon}}
                     );
 
                     await foreach (var response in openStatusUpdateStream.ResponseStream.ReadAllAsync())
@@ -377,57 +444,24 @@ namespace FundsManager.Services
                                     var changeFixedPSBT = channelfundingTx.CreatePSBT(network).UpdateFrom(fundedPSBT);
                                     var partialSigsCount = changeFixedPSBT.Inputs.Sum(x => x.PartialSigs.Count);
                                     //We check the way the fundsmanager signs, with the remoteFundsManagerSigner or by itself.
-                                    var isFMSignerEnabled =
-                                        Environment.GetEnvironmentVariable("ENABLE_REMOTE_SIGNER")?.ToUpper() == "true".ToUpper();
+                                    var isRemoteSignerEnabled =
+                                        Environment.GetEnvironmentVariable("ENABLE_REMOTE_SIGNER") != null;
 
-                                    PSBT? fmSignedPSBT = null;
-                                    if (isFMSignerEnabled)
+                                    PSBT? finalSignedPSBT = null;
+                                    if (isRemoteSignerEnabled)
                                     {
-                                        var region = Environment.GetEnvironmentVariable("AWS_REGION");
-                                        //AWS Call to lambda function
-                                        var credentials = new ImmutableCredentials(
-                                            Environment.GetEnvironmentVariable("AWS_ACCESS_KEY_ID"),
-                                            Environment.GetEnvironmentVariable("AWS_SECRET_ACCESS_KEY"),
-                                            null);
-
-                                        var requestPayload = new Input(changeFixedPSBT.ToBase64(), SigHash.All,
-                                            CurrentNetworkHelper.GetCurrentNetwork().ToString(),
-                                            Environment.GetEnvironmentVariable("AWS_KMS_KEY_ID") ??
-                                            throw new InvalidOperationException());
-
-                                        var serializedPayload = JsonSerializer.Serialize(requestPayload);
-                                        using var httpClient = new HttpClient();
-                                        //We use a special lib for IAM Auth to AWS
-                                        var signLambdaResponse = await httpClient.PostAsync(
-                                            Environment.GetEnvironmentVariable("REMOTE_SIGNER_ENDPOINT"),
-                                            new StringContent(serializedPayload,
-                                                Encoding.UTF8,
-                                                "application/json"),
-                                            regionName: region,
-                                            serviceName: "lambda",
-                                            credentials: credentials);
-
-                                        if (signLambdaResponse.StatusCode != HttpStatusCode.OK)
+                                        finalSignedPSBT = await _remoteSignerService.Sign(changeFixedPSBT);
+                                        if (finalSignedPSBT == null)
                                         {
-                                            var errorWhileSignignPsbtWithAwsLambdaFunctionStatus =
-                                                $"Error while signing PSBT with AWS Lambda function,status code:{signLambdaResponse.StatusCode} error:{signLambdaResponse.ReasonPhrase}";
-                                            _logger.LogError(errorWhileSignignPsbtWithAwsLambdaFunctionStatus);
-                                            throw new Exception(errorWhileSignignPsbtWithAwsLambdaFunctionStatus);
-                                        }
-
-                                        var json = JsonSerializer.Deserialize<Output>(signLambdaResponse.Content.ReadAsStream());
-
-                                        if (!PSBT.TryParse(json.Psbt, CurrentNetworkHelper.GetCurrentNetwork(),
-                                                out fmSignedPSBT))
-                                        {
-                                            var errorWhileParsingPsbt = "Error while parsing PSBT signed from AWS Remote FundsManagerSigner";
-                                            _logger.LogError(errorWhileParsingPsbt);
-                                            throw new Exception(errorWhileParsingPsbt);
+                                            const string errorMessage = "The signed PSBT was null, something went wrong while signing with the remote signer";
+                                            _logger.LogError(errorMessage);
+                                            throw new Exception(
+                                                errorMessage);
                                         }
                                     }
                                     else
                                     {
-                                        fmSignedPSBT = await SignPSBT(channelOperationRequest,
+                                        finalSignedPSBT = await SignPSBT(channelOperationRequest,
                                             nbxplorerClient,
                                             derivationStrategyBase,
                                             channelfundingTx,
@@ -436,11 +470,19 @@ namespace FundsManager.Services
                                             pendingChannelId,
                                             network,
                                             changeFixedPSBT);
+                                        
+                                        if (finalSignedPSBT == null)
+                                        {
+                                            const string errorMessage = "The signed PSBT was null, something went wrong while signing with the embedded signer";
+                                            _logger.LogError(errorMessage);
+                                            throw new Exception(
+                                                errorMessage);
+                                        }
                                     }
 
                                     //We check that the partial signatures number has changed, otherwise finalize inmediately
                                     var partialSigsCountAfterSignature =
-                                        fmSignedPSBT.Inputs.Sum(x => x.PartialSigs.Count);
+                                        finalSignedPSBT.Inputs.Sum(x => x.PartialSigs.Count);
 
                                     if (partialSigsCountAfterSignature == 0 ||
                                         partialSigsCountAfterSignature <= partialSigsCount)
@@ -452,10 +494,26 @@ namespace FundsManager.Services
                                         throw new ArgumentException(
                                             invalidNoOfPartialSignatures);
                                     }
+                                    
+                                    //We store the final signed PSBT without being finalized for debugging purposes
+                                    var signedChannelOperationRequestPsbt = new ChannelOperationRequestPSBT
+                                    {
+                                        ChannelOperationRequestId = channelOperationRequest.Id,
+                                        PSBT = finalSignedPSBT.ToBase64(),
+                                        CreationDatetime = DateTimeOffset.Now,
+                                        IsInternalWalletPSBT = true
+                                    };
 
-                                    //PSBT marked as verified so time to finalize the PSBT and broadcast the tx
+                                    var addResult = await _channelOperationRequestPsbtRepository.AddAsync(signedChannelOperationRequestPsbt);
 
-                                    var finalizedPSBT = fmSignedPSBT.Finalize();
+                                    if (!addResult.Item1)
+                                    {
+                                        _logger.LogError("Could not store the signed PSBT for channel operation request id: {RequestId} reason: {Reason}", channelOperationRequest.Id, addResult.Item2);
+                                    }
+
+                                    //Time to finalize the PSBT and broadcast the tx
+
+                                    var finalizedPSBT = finalSignedPSBT.Finalize();
 
                                     //Sanity check
                                     finalizedPSBT.AssertSanity();
@@ -546,6 +604,8 @@ namespace FundsManager.Services
                 throw;
             }
         }
+
+       
 
         /// <summary>
         /// Aux method when the fundsmanager is the one in change of signing the PSBTs
