@@ -1,7 +1,9 @@
 using FundsManager.Data.Repositories.Interfaces;
 using FundsManager.Services;
 using FundsManager.Helpers;
+using FundsManager.Data.Models;
 using Quartz;
+using Quartz.Impl.Triggers;
 
 namespace FundsManager.Jobs;
 
@@ -27,12 +29,12 @@ public class ChannelCloseJob : IJob
     public async Task Execute(IJobExecutionContext context)
     {
         _logger.LogInformation("Starting {JobName}... ", nameof(ChannelCloseJob));
+        var data = context.JobDetail.JobDataMap;
+        var closeRequestId = data.GetInt("closeRequestId");
         try
         {
             await RetriableJob.Execute(context, async () =>
             {
-                var data = context.JobDetail.JobDataMap;
-                var closeRequestId = data.GetInt("closeRequestId");
                 var forceClose = data.GetBoolean("forceClose");
                 var closeRequest = await _channelOperationRequestRepository.GetById(closeRequestId);
                 await _lightningService.CloseChannel(closeRequest, forceClose);
@@ -40,6 +42,13 @@ public class ChannelCloseJob : IJob
         }
         catch (Exception e)
         {
+            await RetriableJob.OnFail(context, async () =>
+            {
+                var request = await _channelOperationRequestRepository.GetById(closeRequestId);
+                request.Status = ChannelOperationRequestStatus.Failed;
+                _channelOperationRequestRepository.Update(request);
+            });
+
             _logger.LogError(e, "Error on {JobName}", nameof(ChannelCloseJob));
             throw new JobExecutionException(e, false);
         }

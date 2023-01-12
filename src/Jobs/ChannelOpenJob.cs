@@ -1,7 +1,9 @@
 using FundsManager.Data.Repositories.Interfaces;
 using FundsManager.Services;
 using FundsManager.Helpers;
+using FundsManager.Data.Models;
 using Quartz;
+using Quartz.Impl.Triggers;
 
 namespace FundsManager.Jobs;
 
@@ -27,18 +29,25 @@ public class ChannelOpenJob : IJob
     public async Task Execute(IJobExecutionContext context)
     {
         _logger.LogInformation("Starting {JobName}... ", nameof(ChannelOpenJob));
+        var data = context.JobDetail.JobDataMap;
+        var openRequestId = data.GetInt("openRequestId");
         try
         {
             await RetriableJob.Execute(context, async () =>
             {
-                var data = context.JobDetail.JobDataMap;
-                var openRequestId = data.GetInt("openRequestId");
                 var openRequest = await _channelOperationRequestRepository.GetById(openRequestId);
                 await _lightningService.OpenChannel(openRequest);
             });
         }
         catch (Exception e)
         {
+            await RetriableJob.OnFail(context, async () =>
+            {
+                var request = await _channelOperationRequestRepository.GetById(openRequestId);
+                request.Status = ChannelOperationRequestStatus.Failed;
+                _channelOperationRequestRepository.Update(request);
+            });
+
             _logger.LogError(e, "Error on {JobName}", nameof(ChannelOpenJob));
             throw new JobExecutionException(e, false);
         }

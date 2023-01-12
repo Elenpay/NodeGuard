@@ -1,7 +1,9 @@
 using FundsManager.Data.Repositories.Interfaces;
 using FundsManager.Services;
 using FundsManager.Helpers;
+using FundsManager.Data.Models;
 using Quartz;
+using Quartz.Impl.Triggers;
 
 namespace FundsManager.Jobs;
 
@@ -27,18 +29,25 @@ public class PerformWithdrawalJob : IJob
     public async Task Execute(IJobExecutionContext context)
     {
         _logger.LogInformation("Starting {JobName}... ", nameof(PerformWithdrawalJob));
+        var data = context.JobDetail.JobDataMap;
+        var withdrawalRequestId = data.GetInt("withdrawalRequestId");
         try
         {
             await RetriableJob.Execute(context, async () =>
             {
-                var data = context.JobDetail.JobDataMap;
-                var withdrawalRequestId = data.GetInt("withdrawalRequestId");
                 var withdrawalRequest = await _walletWithdrawalRequestRepository.GetById(withdrawalRequestId);
                 await _bitcoinService.PerformWithdrawal(withdrawalRequest);
             });
         }
         catch (Exception e)
         {
+            await RetriableJob.OnFail(context, async () =>
+            {
+                var request = await _walletWithdrawalRequestRepository.GetById(withdrawalRequestId);
+                request.Status = WalletWithdrawalRequestStatus.Failed;
+                _walletWithdrawalRequestRepository.Update(request);
+            });
+
             _logger.LogError(e, "Error on {JobName}", nameof(PerformWithdrawalJob));
             throw new JobExecutionException(e, false);
         }

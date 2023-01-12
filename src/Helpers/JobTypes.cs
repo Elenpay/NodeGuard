@@ -74,7 +74,7 @@ public class RetriableJob
     /// Call this function inside your Job's Execute method to set up retries and execute your action.
     /// </summary>
     /// <param name="context">The execution context of the job</param>
-    /// <param name="f">The action you want to perform inside the job</param>
+    /// <param name="callback">The action you want to perform inside the job</param>
     public static async Task Execute(IJobExecutionContext context, Func<Task> callback)
     {
         var token = context.CancellationToken;
@@ -92,16 +92,39 @@ public class RetriableJob
         if (trigger!.TimesTriggered <= intervals.Length)
         {
             var repeatInterval = intervals[trigger!.TimesTriggered - 1];
-            
+
             var prevTriggerTime = trigger.GetPreviousFireTimeUtc();
             trigger.SetNextFireTimeUtc(prevTriggerTime!.Value.AddMinutes(repeatInterval));
-            
+
             await context.Scheduler.RescheduleJob(context.Trigger.Key, trigger);
         }
 
         await callback();
 
         await context.Scheduler.DeleteJob(context.JobDetail.Key, token);
+    }
+
+    /// <summary>
+    /// Call this function inside your Job's Execute method, in the catch scope to perform an action after avery attempt failed.
+    /// </summary>
+    /// <param name="context">The execution context of the job</param>
+    /// <param name="callback">The action you want to perform after the fail attempts</param>
+    public static async Task OnFail(IJobExecutionContext context, Func<Task> callback)
+    {
+        var data = context.JobDetail.JobDataMap;
+        var intervals = data.Get("intervalListInMinutes") as int[];
+        if (intervals == null)
+        {
+            throw new Exception("No interval list found, make sure you're using the RetriableJob class");
+        };
+
+        var trigger = context.Trigger as SimpleTriggerImpl;
+
+        Console.WriteLine($"ChannelOpenJob-{trigger!.TimesTriggered} {intervals.Length}");
+        if (trigger!.TimesTriggered > intervals.Length)
+        {
+            await callback();
+        }
     }
 }
 
