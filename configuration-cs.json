@@ -1,0 +1,8 @@
+{
+  "headerFile": "./license-header.txt",
+  "style": "SlashStar",
+  "includes": ["src/**/*.cs"],
+  "data": {
+    "Owner": "The original author or authors"
+  }
+}
