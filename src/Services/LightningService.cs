@@ -830,7 +830,7 @@ namespace FundsManager.Services
                 }
 
                 //Additional fields to support PSBT signing with a HW or the Remote Signer 
-                LightningHelper.SetGlobalXPUBMetadata(_logger,channelOperationRequest.Wallet.Keys, result, selectedUtxOs, multisigCoins);
+                LightningHelper.AddDerivationData(_logger,channelOperationRequest.Wallet.Keys, result, selectedUtxOs, multisigCoins);
             }
             catch (Exception e)
             {

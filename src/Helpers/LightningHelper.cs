@@ -22,7 +22,7 @@ namespace FundsManager.Helpers
         }
         
         /// <summary>
-        /// Helper that adds global xpubs fields in the PSBT to allow hardware wallets or the remote signer to find the right key to sign
+        /// Helper that adds global xpubs fields and derivation paths in the PSBT inputs to allow hardware wallets or the remote signer to find the right key to sign
         /// </summary>
         /// <param name="logger"></param>
         /// <param name="keys"></param>
@@ -30,7 +30,7 @@ namespace FundsManager.Helpers
         /// <param name="selectedUtxOs"></param>
         /// <param name="multisigCoins"></param>
         /// <exception cref="ArgumentException"></exception>
-        public static void SetGlobalXPUBMetadata(ILogger logger, IEnumerable<Key> keys , (PSBT?, bool) result, List<UTXO> selectedUtxOs,
+        public static void AddDerivationData(ILogger logger, IEnumerable<Key> keys , (PSBT?, bool) result, List<UTXO> selectedUtxOs,
             List<ScriptCoin> multisigCoins)
         {
             if (logger == null) throw new ArgumentNullException(nameof(logger));
