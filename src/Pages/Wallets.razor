@@ -62,7 +62,7 @@
                         }
                         else
                         {
-                            <Button Color="Color.Info" Disabled="@(context.Keys != null && context.Keys.Count >= context.MofN)" Clicked="@(() => LoadAndOpenModal(context))">Add key</Button>
+                            <Button Color="Color.Info" Disabled="@(context.Keys != null && context.Keys.Count > context.MofN)" Clicked="@(() => LoadAndOpenModal(context))">Add key</Button>
 
                         }
 

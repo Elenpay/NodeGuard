@@ -108,7 +108,7 @@ namespace FundsManager.Data.Models
         /// Checks if all the threshold signatures are collected, including the internal wallet key (even if not signed yet)
         /// </summary>
         [NotMapped]
-        public bool AreAllRequiredSignaturesCollected => CheckSignatures();
+        public bool AreAllRequiredHumanSignaturesCollected => CheckSignatures();
 
         [NotMapped]
         public int NumberOfSignaturesCollected => ChannelOperationRequestPsbts == null ? 0 : ChannelOperationRequestPsbts.Count(x =>
