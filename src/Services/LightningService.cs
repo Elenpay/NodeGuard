@@ -21,6 +21,7 @@ using Humanizer;
 using Microsoft.EntityFrameworkCore;
 using AddressType = Lnrpc.AddressType;
 using Channel = FundsManager.Data.Models.Channel;
+using Key = FundsManager.Data.Models.Key;
 using ListUnspentRequest = Lnrpc.ListUnspentRequest;
 using Transaction = NBitcoin.Transaction;
 using UTXO = NBXplorer.Models.UTXO;
@@ -822,47 +823,14 @@ namespace FundsManager.Services
 
                 result.Item1 = builder.BuildPSBT(false);
 
-                //TODO Remove hack when https://github.com/MetacoSA/NBitcoin/issues/1112 is fixed
+                //Hack, see https://github.com/MetacoSA/NBitcoin/issues/1112 for details
                 foreach (var input in result.Item1.Inputs)
                 {
                     input.SighashType = SigHash.None;
                 }
 
-                //Additional fields to support PSBT signing with a HW
-                foreach (var key in channelOperationRequest.Wallet.Keys)
-                {
-                    var bitcoinExtPubKey = new BitcoinExtPubKey(key.XPUB, nbXplorerNetwork);
-
-                    var masterFingerprint = HDFingerprint.Parse(key.MasterFingerprint);
-                    var rootedKeyPath = new RootedKeyPath(masterFingerprint, new KeyPath(key.Path));
-
-                    //Global xpubs field addition
-                    result.Item1.GlobalXPubs.Add(
-                        bitcoinExtPubKey,
-                        rootedKeyPath
-                    );
-
-                    foreach (var selectedUtxo in selectedUtxOs)
-                    {
-                        var utxoDerivationPath = KeyPath.Parse(key.Path).Derive(selectedUtxo.KeyPath);
-                        var derivedPubKey = bitcoinExtPubKey.Derive(selectedUtxo.KeyPath).GetPublicKey();
-
-                        var input = result.Item1.Inputs.FirstOrDefault(input => input?.GetCoin()?.Outpoint == selectedUtxo.Outpoint);
-                        var addressRootedKeyPath = new RootedKeyPath(masterFingerprint, utxoDerivationPath);
-                        var multisigCoin = multisigCoins.FirstOrDefault(x => x.Outpoint == selectedUtxo.Outpoint);
-
-                        if (multisigCoin != null && input != null && multisigCoin.Redeem.GetAllPubKeys().Contains(derivedPubKey))
-                        {
-                            input.AddKeyPath(derivedPubKey, addressRootedKeyPath);
-                        }
-                        else
-                        {
-                            var errorMessage = $"Invalid derived pub key for utxo:{selectedUtxo.Outpoint}";
-                            _logger.LogError(errorMessage);
-                            throw new ArgumentException(errorMessage, nameof(derivedPubKey));
-                        }
-                    }
-                }
+                //Additional fields to support PSBT signing with a HW or the Remote Signer 
+                LightningHelper.SetGlobalXPUBMetadata(_logger,channelOperationRequest.Wallet.Keys, result, selectedUtxOs, multisigCoins);
             }
             catch (Exception e)
             {
@@ -880,7 +848,6 @@ namespace FundsManager.Services
             }
 
             // The template PSBT is saved for later reuse
-
             if (result.Item1 != null)
             {
                 var psbt = new ChannelOperationRequestPSBT
@@ -903,6 +870,7 @@ namespace FundsManager.Services
             return result;
         }
 
+      
         /// <summary>
         /// Gets UTXOs confirmed from the wallet of the request
         /// </summary>
