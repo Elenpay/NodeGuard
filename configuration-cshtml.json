@@ -1,8 +1,0 @@
-{
-  "headerFile": "./license-header.txt",
-  "style": "xml",
-  "includes": ["src/**/*.cshtml"],
-  "data": {
-    "Owner": "The original author or authors"
-  }
-}
