@@ -284,7 +284,7 @@
             </Fields>
         </ModalBody>
         <ModalFooter>
-            <Button Color="Color.Secondary" Clicked="@HideRejectOrCancelModal">Cancel</Button>
+            <Button Color="Color.Secondary" Clicked="@ResetChannelCancelModal">Cancel</Button>
             <Button Disabled="@(_reasonValidation?.Validate() == ValidationStatus.Error)" Color="Color.Primary" Clicked="@RejectOrCancelRequest">
                 Submit
             </Button>
@@ -582,12 +582,6 @@
 
         }
     }
-
-    private void HideRejectOrCancelModal()
-    {
-        ResetChannelCancelModal(); 
-    }
-
 
     private async Task ApproveRequest()
     {
