@@ -30,7 +30,7 @@ namespace FundsManager.Helpers
         /// <param name="selectedUtxOs"></param>
         /// <param name="multisigCoins"></param>
         /// <exception cref="ArgumentException"></exception>
-        public static void AddDerivationData(ILogger logger, IEnumerable<Key> keys , (PSBT?, bool) result, List<UTXO> selectedUtxOs,
+        public static (PSBT?, bool) AddDerivationData(ILogger logger, IEnumerable<Key> keys , (PSBT?, bool) result, List<UTXO> selectedUtxOs,
             List<ScriptCoin> multisigCoins)
         {
             if (logger == null) throw new ArgumentNullException(nameof(logger));
@@ -41,8 +41,9 @@ namespace FundsManager.Helpers
             var nbXplorerNetwork = CurrentNetworkHelper.GetCurrentNetwork();
             foreach (var key in keys)
             {
+                if (string.IsNullOrWhiteSpace(key.MasterFingerprint) || string.IsNullOrWhiteSpace(key.XPUB)) continue;
+                
                 var bitcoinExtPubKey = new BitcoinExtPubKey(key.XPUB, nbXplorerNetwork);
-
                 var masterFingerprint = HDFingerprint.Parse(key.MasterFingerprint);
                 var rootedKeyPath = new RootedKeyPath(masterFingerprint, new KeyPath(key.Path));
 
@@ -74,6 +75,8 @@ namespace FundsManager.Helpers
                     }
                 }
             }
+
+            return result;
         }
 
 
