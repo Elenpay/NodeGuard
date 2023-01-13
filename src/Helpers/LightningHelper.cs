@@ -41,8 +41,9 @@ namespace FundsManager.Helpers
             var nbXplorerNetwork = CurrentNetworkHelper.GetCurrentNetwork();
             foreach (var key in keys)
             {
+                if (string.IsNullOrWhiteSpace(key.MasterFingerprint) || string.IsNullOrWhiteSpace(key.XPUB)) continue;
+                
                 var bitcoinExtPubKey = new BitcoinExtPubKey(key.XPUB, nbXplorerNetwork);
-
                 var masterFingerprint = HDFingerprint.Parse(key.MasterFingerprint);
                 var rootedKeyPath = new RootedKeyPath(masterFingerprint, new KeyPath(key.Path));
 
