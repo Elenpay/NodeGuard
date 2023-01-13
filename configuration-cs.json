@@ -1,7 +1,8 @@
 {
   "headerFile": "./license-header.txt",
   "style": "SlashStar",
-  "includes": ["src/**/*.cs"],
+  "includes": ["src/**/*.cs", "test/**/*.cs"],
+  "excludes": ["src/Areas/Identity/Pages/**/*"],
   "data": {
     "Owner": "The original author or authors"
   }

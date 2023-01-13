@@ -17,8 +17,6 @@
  *
  */
 
-
-
 using System.Text.Json;
 using NBitcoin;
 using RestSharp;
