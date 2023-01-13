@@ -327,7 +327,7 @@
     private Node? _selectedDestNode;
     private int _selectedWalletId;
     private string? _destNodeName;
-    private long _amount;
+    private long _amount = Constants.MINIMUM_CHANNEL_CAPACITY_SATS;
 
     //Validation
     private Validation _walletValidation;
@@ -356,7 +356,6 @@
             {
                 ToastService.ShowError("Bitcoin price in USD could not be retrieved.");
             }
-            await ResetChannelRequestRejectModal();
             await FetchRequests();
             await LoadData();
             if (ClaimsPrincipal != null && !ClaimsPrincipal.IsInRole(ApplicationUserRole.FinanceManager.ToString()))
@@ -377,7 +376,7 @@
         if (datagridRef != null) await datagridRef.Edit(null);
         _destNodeName = "";
         _selectedDestNode = null;
-        _amount = 20000L;
+        _amount = Constants.MINIMUM_CHANNEL_CAPACITY_SATS;
     }
 
     private void ResetChannelCancelModal()
