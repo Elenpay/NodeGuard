@@ -27,7 +27,8 @@
               ShowPageSizes="true"
               Editable="true"
               ShowValidationsSummary="true"
-              Striped="true">
+              Striped="true"
+              PopupClosing="OnChannelRequestRejectModalClosing">
         <PopupTitleTemplate>
             <h2>Create Channel Request</h2>
         </PopupTitleTemplate>
@@ -320,13 +321,13 @@
 
     // New Request integration
     private List<Wallet> _allWallets = new List<Wallet>();
-    protected DataGrid<ChannelOperationRequest> datagridRef;
+    protected DataGrid<ChannelOperationRequest>? datagridRef;
     private List<Node>? _manageableNodes;
     private int _selectedSourceNodeId;
     private Node? _selectedDestNode;
     private int _selectedWalletId;
     private string? _destNodeName;
-    private long _amount = 20000L;
+    private long _amount;
 
     //Validation
     private Validation _walletValidation;
@@ -355,6 +356,7 @@
             {
                 ToastService.ShowError("Bitcoin price in USD could not be retrieved.");
             }
+            await ResetChannelRequestRejectModal();
             await FetchRequests();
             await LoadData();
             if (ClaimsPrincipal != null && !ClaimsPrincipal.IsInRole(ApplicationUserRole.FinanceManager.ToString()))
@@ -370,6 +372,19 @@
         }
     }
 
+    private async Task ResetChannelRequestRejectModal()
+    {
+        if (datagridRef != null) await datagridRef.Edit(null);
+        _destNodeName = "";
+        _selectedDestNode = null;
+        _amount = 20000L;
+    }
+
+    private void ResetChannelCancelModal()
+    {
+        _rejectCancelModalVisible = false;
+        _cancelOrRejectReason = null;
+    }
 
     private async Task FetchRequests()
     {
@@ -474,29 +489,20 @@
                 if (createChannelResult.Item1)
                 {
                     ToastService.ShowSuccess("Open channel request created!");
-                    await datagridRef.Edit(null);
                 }
                 else
                 {
                     ToastService.ShowError(createChannelResult.Item2);
-                    await datagridRef.Edit(null);
-                    _destNodeName = "";
-                    _selectedDestNode = null;
                 }
-
             }
             else
             {
                 ToastService.ShowError("The Source Node cannot be the same as the Destitation Node");
-                await datagridRef.Edit(null);
-                _destNodeName = "";
-                _selectedDestNode = null;
             }
         }
-
+        await ResetChannelRequestRejectModal();
         await LoadData();
         await FetchRequests(); 
-
     }
 
     #endregion
@@ -505,6 +511,11 @@
     private static bool RequestPendingFilter(ChannelOperationRequest req)
     {
         return req.Status.Equals(ChannelOperationRequestStatus.Pending) || req.Status == ChannelOperationRequestStatus.PSBTSignaturesPending;
+    }
+
+    private Task OnChannelRequestRejectModalClosing(ModalClosingEventArgs args)
+    {
+        return ResetChannelRequestRejectModal();
     }
 
     private void OpenModalForRejectOrCancelRequest(ChannelOperationRequest req, ChannelOperationRequestStatus status)
@@ -540,7 +551,7 @@
         {
             ToastService.ShowError("Couldn't fetch data from the request");
         }
-        _rejectCancelModalVisible = false;
+        ResetChannelCancelModal();
     }
 
     private async Task ShowModal(ChannelOperationRequest channelOperationRequest)
@@ -574,9 +585,7 @@
 
     private void HideRejectOrCancelModal()
     {
-        _rejectCancelModalVisible = false;
-        _cancelOrRejectReason = null;
-
+        ResetChannelCancelModal(); 
     }
 
 
@@ -607,7 +616,6 @@
                 if (_selectedRequest != null
                     && _selectedRequest.AreAllRequiredHumanSignaturesCollected)
                 {
-                    var failedOpenChannelRequest = false;
                     try
                     {
                         //TODO Async notifications when the channel has opened -> event / notifications system
@@ -624,22 +632,12 @@
                         _selectedRequest.JobId = job.Job.Key.ToString();
 
                         var jobUpdateResult = ChannelOperationRequestRepository.Update(_selectedRequest);
+                        ToastService.ShowSuccess("Channel opening job created");
                     }
                     catch
                     {
-                        failedOpenChannelRequest = true;
-                    }
-
-                    if (failedOpenChannelRequest)
-                    {
                         ToastService.ShowError("Error while requesting to open the channel, please contact a superadmin for troubleshooting");
-
                     }
-                    else
-                    {
-                        ToastService.ShowSuccess("Channel opening job created");
-                    }
-
                 }
                 else
                 {
