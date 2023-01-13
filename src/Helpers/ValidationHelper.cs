@@ -21,6 +21,7 @@ using System.Globalization;
 using System.Text.RegularExpressions;
 using Blazorise;
 using FundsManager.Data.Models;
+using FundsManager.Helpers;
 
 namespace FundsManager.Helpers;
 
@@ -62,9 +63,7 @@ public static class ValidationHelper
     public static void ValidateChannelCapacity(ValidatorEventArgs obj)
     {
         obj.Status = ValidationStatus.Success;
-        string environmentVariable = Environment.GetEnvironmentVariable("MINIMUM_CHANNEL_CAPACITY_SATS") ?? throw new InvalidOperationException();
-        long minimum = long.Parse(environmentVariable, NumberStyles.AllowDecimalPoint, CultureInfo.InvariantCulture);
-        if (((long)obj.Value) < minimum)
+        if (((long)obj.Value) < Constants.MINIMUM_CHANNEL_CAPACITY_SATS)
         {
             obj.ErrorText = "The amount must be greater than 20.000";
             obj.Status = ValidationStatus.Error;
