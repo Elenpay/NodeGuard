@@ -195,7 +195,7 @@ namespace FundsManager.Services
                 result.Item1 = builder.BuildPSBT(false);
                 
                 //Additional fields to support PSBT signing with a HW or the Remote Signer 
-                LightningHelper.AddDerivationData(_logger,walletWithdrawalRequest.Wallet.Keys, result, selectedUTXOs, scriptCoins);
+                result = LightningHelper.AddDerivationData(_logger,walletWithdrawalRequest.Wallet.Keys, result, selectedUTXOs, scriptCoins);
             }
             catch (Exception e)
             {

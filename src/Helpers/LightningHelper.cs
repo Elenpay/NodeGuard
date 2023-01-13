@@ -30,7 +30,7 @@ namespace FundsManager.Helpers
         /// <param name="selectedUtxOs"></param>
         /// <param name="multisigCoins"></param>
         /// <exception cref="ArgumentException"></exception>
-        public static void AddDerivationData(ILogger logger, IEnumerable<Key> keys , (PSBT?, bool) result, List<UTXO> selectedUtxOs,
+        public static (PSBT?, bool) AddDerivationData(ILogger logger, IEnumerable<Key> keys , (PSBT?, bool) result, List<UTXO> selectedUtxOs,
             List<ScriptCoin> multisigCoins)
         {
             if (logger == null) throw new ArgumentNullException(nameof(logger));
@@ -74,6 +74,8 @@ namespace FundsManager.Helpers
                     }
                 }
             }
+
+            return result;
         }
 
 
