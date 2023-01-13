@@ -1,9 +1,11 @@
 ﻿using AutoMapper;
 using FundsManager.Data.Models;
+using FundsManager.Services;
 using Google.Protobuf;
 using NBitcoin;
 using NBXplorer;
 using NBXplorer.Models;
+using Key = FundsManager.Data.Models.Key;
 
 namespace FundsManager.Helpers
 {
@@ -18,6 +20,62 @@ namespace FundsManager.Helpers
             utxoChanges.Confirmed.UTXOs = utxoChanges.Confirmed.UTXOs.DistinctBy(x => x.Outpoint).ToList();
             utxoChanges.Unconfirmed.UTXOs = utxoChanges.Unconfirmed.UTXOs.DistinctBy(x => x.Outpoint).ToList();
         }
+        
+        /// <summary>
+        /// Helper that adds global xpubs fields and derivation paths in the PSBT inputs to allow hardware wallets or the remote signer to find the right key to sign
+        /// </summary>
+        /// <param name="logger"></param>
+        /// <param name="keys"></param>
+        /// <param name="result"></param>
+        /// <param name="selectedUtxOs"></param>
+        /// <param name="multisigCoins"></param>
+        /// <exception cref="ArgumentException"></exception>
+        public static void AddDerivationData(ILogger logger, IEnumerable<Key> keys , (PSBT?, bool) result, List<UTXO> selectedUtxOs,
+            List<ScriptCoin> multisigCoins)
+        {
+            if (logger == null) throw new ArgumentNullException(nameof(logger));
+            if (keys == null) throw new ArgumentNullException(nameof(keys));
+            if (selectedUtxOs == null) throw new ArgumentNullException(nameof(selectedUtxOs));
+            if (multisigCoins == null) throw new ArgumentNullException(nameof(multisigCoins));
+            
+            var nbXplorerNetwork = CurrentNetworkHelper.GetCurrentNetwork();
+            foreach (var key in keys)
+            {
+                var bitcoinExtPubKey = new BitcoinExtPubKey(key.XPUB, nbXplorerNetwork);
+
+                var masterFingerprint = HDFingerprint.Parse(key.MasterFingerprint);
+                var rootedKeyPath = new RootedKeyPath(masterFingerprint, new KeyPath(key.Path));
+
+                //Global xpubs field addition
+                result.Item1.GlobalXPubs.Add(
+                    bitcoinExtPubKey,
+                    rootedKeyPath
+                );
+
+                foreach (var selectedUtxo in selectedUtxOs)
+                {
+                    var utxoDerivationPath = KeyPath.Parse(key.Path).Derive(selectedUtxo.KeyPath);
+                    var derivedPubKey = bitcoinExtPubKey.Derive(selectedUtxo.KeyPath).GetPublicKey();
+
+                    var input = result.Item1.Inputs.FirstOrDefault(input =>
+                        input?.GetCoin()?.Outpoint == selectedUtxo.Outpoint);
+                    var addressRootedKeyPath = new RootedKeyPath(masterFingerprint, utxoDerivationPath);
+                    var multisigCoin = multisigCoins.FirstOrDefault(x => x.Outpoint == selectedUtxo.Outpoint);
+
+                    if (multisigCoin != null && input != null && multisigCoin.Redeem.GetAllPubKeys().Contains(derivedPubKey))
+                    {
+                        input.AddKeyPath(derivedPubKey, addressRootedKeyPath);
+                    }
+                    else
+                    {
+                        var errorMessage = $"Invalid derived pub key for utxo:{selectedUtxo.Outpoint}";
+                        logger.LogError(errorMessage);
+                        throw new ArgumentException(errorMessage, nameof(derivedPubKey));
+                    }
+                }
+            }
+        }
+
 
         /// <summary>
         /// Generates the ExplorerClient for using nbxplorer based on a bitcoin networy type
