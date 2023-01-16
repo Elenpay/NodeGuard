@@ -444,12 +444,10 @@ namespace FundsManager.Services
 
                                     var changeFixedPSBT = channelfundingTx.CreatePSBT(network).UpdateFrom(fundedPSBT);
                                     var partialSigsCount = changeFixedPSBT.Inputs.Sum(x => x.PartialSigs.Count);
-                                    //We check the way the fundsmanager signs, with the remoteFundsManagerSigner or by itself.
-                                    var isRemoteSignerEnabled =
-                                        Environment.GetEnvironmentVariable("ENABLE_REMOTE_SIGNER") != null;
 
                                     PSBT? finalSignedPSBT = null;
-                                    if (isRemoteSignerEnabled)
+                                    //We check the way the fundsmanager signs, with the remoteFundsManagerSigner or by itself.
+                                    if (Constants.ENABLE_REMOTE_SIGNER)
                                     {
                                         finalSignedPSBT = await _remoteSignerService.Sign(changeFixedPSBT);
                                         if (finalSignedPSBT == null)

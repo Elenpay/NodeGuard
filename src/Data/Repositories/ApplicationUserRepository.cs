@@ -171,12 +171,13 @@ namespace FundsManager.Data.Repositories
             var token = await _userManager.GeneratePasswordResetTokenAsync(applicationUser);
 
             var tokenBase64 = WebEncoders.Base64UrlEncode(Encoding.UTF8.GetBytes(token));
-            var appEndpoint = $"{Environment.GetEnvironmentVariable("FUNDSMANAGER_ENDPOINT")}/Identity/Account/ResetPassword";
-            if (appEndpoint == null)
+            
+            if (Constants.FUNDSMANAGER_ENDPOINT == null)
             {
                 _logger.LogError("FUNDSMANAGER_ENDPOINT env var not found");
                 return null;
             }
+            var appEndpoint = $"{Constants.FUNDSMANAGER_ENDPOINT}/Identity/Account/ResetPassword";
 
             IDictionary<string, string?> keyValuePairs = new Dictionary<string, string?>
             {

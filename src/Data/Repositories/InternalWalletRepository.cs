@@ -103,7 +103,7 @@ namespace FundsManager.Data.Repositories
 
             var internalWallet = new InternalWallet
             {
-                DerivationPath = Environment.GetEnvironmentVariable("DEFAULT_DERIVATION_PATH"),
+                DerivationPath = Constants.DEFAULT_DERIVATION_PATH,
                 MnemonicString = generateReadOnlyWallet ? null :  new Mnemonic(Wordlist.English).ToString(),
                 CreationDatetime = DateTimeOffset.Now,
             };

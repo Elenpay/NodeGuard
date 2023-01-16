@@ -95,7 +95,7 @@
 
     protected override async Task OnInitializedAsync()
     {
-        _isRemoteSignerModeEnabled = Environment.GetEnvironmentVariable("ENABLE_REMOTE_SIGNER") != null;
+        _isRemoteSignerModeEnabled = Constants.ENABLE_REMOTE_SIGNER;
     //Get Current internal wallet
         _internalWallet = await InternalWalletRepository.GetCurrentInternalWallet();
 

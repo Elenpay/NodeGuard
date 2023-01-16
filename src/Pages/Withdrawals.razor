@@ -413,7 +413,7 @@
     private List<Wallet> _availableWallets = new List<Wallet>();
     private List<WalletWithdrawalRequest> _allRequests = new List<WalletWithdrawalRequest>();
 
-    private string? mempoolUrl = Environment.GetEnvironmentVariable("MEMPOOL_ENDPOINT");
+    private string? mempoolUrl = Constants.MEMPOOL_ENDPOINT;
     private bool _isFinanceManager;
 
     private WalletWithdrawalRequest? _selectedRequest;
@@ -428,11 +428,8 @@
     private bool _isAmountDisabled;
     private decimal? _selectedRequestWalletBalance;
 
-    private decimal _maxWithdrawal;
-    private decimal _minWithdrawal;
-    private const decimal DefaultMin = 0.0m;
-    private const decimal DefaultMax = 21_000_000;
-
+    private decimal _maxWithdrawal = Constants.MAXIMUM_WITHDRAWAL_BTC_AMOUNT;
+    private decimal _minWithdrawal = Constants.MINIMUM_WITHDRAWAL_BTC_AMOUNT;
     private decimal _btcPrice;
     
     protected override async Task OnInitializedAsync()
@@ -442,13 +439,6 @@
         {
             ToastService.ShowError("Bitcoin price in USD could not be retrieved.");
         }
-
-        var environmentVariableMin = Environment.GetEnvironmentVariable("MINIMUM_WITHDRAWAL_BTC_AMOUNT");
-        var environmentVariableMax = Environment.GetEnvironmentVariable("MAXIMUM_WITHDRAWAL_BTC_AMOUNT");
-        if (environmentVariableMin == null) _minWithdrawal = DefaultMin;
-        else _minWithdrawal = decimal.Parse(environmentVariableMin, NumberStyles.AllowDecimalPoint, CultureInfo.InvariantCulture);
-        if (environmentVariableMax == null) _maxWithdrawal = DefaultMax;
-        else _maxWithdrawal = decimal.Parse(environmentVariableMax, NumberStyles.AllowDecimalPoint, CultureInfo.InvariantCulture);
 
         if (LoggedUser != null)
         {
@@ -659,7 +649,7 @@
                                 var map = new JobDataMap();
                                 map.Put("withdrawalRequestId", _selectedRequest.Id);
 
-                                var retryList = RetriableJob.ParseRetryListFromEnvironmenVariable("JOB_RETRY_INTERVAL_LIST_IN_MINUTES");
+                                var retryList = RetriableJob.ParseRetryListFromString(Constants.JOB_RETRY_INTERVAL_LIST_IN_MINUTES);
                                 var job = RetriableJob.Create<PerformWithdrawalJob>(map, _selectedRequest.Id.ToString(), retryList);
                                 await scheduler.ScheduleJob(job.Job, job.Trigger);
 

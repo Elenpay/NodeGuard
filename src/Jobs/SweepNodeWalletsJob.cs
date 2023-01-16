@@ -52,9 +52,8 @@ public class SweepNodeWalletsJob : IJob
 
         _logger.LogInformation("Starting {JobName}... on node: {NodeId}", nameof(SweepNodeWalletsJob), managedNodeId);
 
-        var requiredAnchorChannelClosingAmount =
-            long.Parse(Environment.GetEnvironmentVariable("ANCHOR_CLOSINGS_MINIMUM_SATS") ??
-                       throw new InvalidOperationException()); // Check https://github.com/lightningnetwork/lnd/issues/6505#issuecomment-1120364460 to understand, we need 100K+ to support anchor channel closings
+        var requiredAnchorChannelClosingAmount = Constants.ANCHOR_CLOSINGS_MINIMUM_SATS;
+            
 
         var (_, nbxplorerClient) = LightningHelper.GenerateNetwork();
 

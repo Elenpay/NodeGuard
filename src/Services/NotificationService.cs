@@ -37,18 +37,18 @@ public class NotificationService
 	{
 		_logger = logger;
 		_dbContextFactory = dbContextFactory;
-		_oneSignalApiId = Environment.GetEnvironmentVariable("PUSH_NOTIFICATIONS_ONESIGNAL_APP_ID") ?? throw new InvalidOperationException();
-		_notificationReturnUrl = Environment.GetEnvironmentVariable("FUNDSMANAGER_ENDPOINT") ?? throw new InvalidOperationException();
+		_oneSignalApiId = Constants.PUSH_NOTIFICATIONS_ONESIGNAL_APP_ID;
+		_notificationReturnUrl = Constants.FUNDSMANAGER_ENDPOINT;
 		
 		var appConfig = new Configuration();
-		appConfig.BasePath = Environment.GetEnvironmentVariable("PUSH_NOTIFICATIONS_ONESIGNAL_API_BASE_PATH");
-		appConfig.AccessToken = Environment.GetEnvironmentVariable("PUSH_NOTIFICATIONS_ONESIGNAL_API_TOKEN");
+		appConfig.BasePath = Constants.PUSH_NOTIFICATIONS_ONESIGNAL_API_BASE_PATH;
+		appConfig.AccessToken = Constants.PUSH_NOTIFICATIONS_ONESIGNAL_API_TOKEN;
 		_appInstance = new DefaultApi(appConfig);
 	}
 
 	public async Task NotifyRequestSigners(int walletId, string sourcePage)
 	{
-		if (Convert.ToBoolean(Environment.GetEnvironmentVariable("PUSH_NOTIFICATIONS_ONESIGNAL_ENABLED")))
+		if (Constants.PUSH_NOTIFICATIONS_ONESIGNAL_ENABLED)
 		{
 			await using var applicationDbContext = await _dbContextFactory.CreateDbContextAsync();
 			String notificationReturnUrl = _notificationReturnUrl + sourcePage;

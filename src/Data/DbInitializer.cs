@@ -48,8 +48,6 @@ namespace FundsManager.Data
             var webHostEnvironment = serviceProvider.GetRequiredService<IWebHostEnvironment>();
             var logger = serviceProvider.GetService<ILogger<Program>>();
             //Nbxplorer setup & check
-            var nbxplorerUri = Environment.GetEnvironmentVariable("NBXPLORER_URI") ??
-                               throw new ArgumentNullException("Environment.GetEnvironmentVariable(\"NBXPLORER_URI\")");
             var userManager = serviceProvider.GetRequiredService<UserManager<ApplicationUser>>();
             var roleManager = serviceProvider.GetService<RoleManager<IdentityRole>>();
 
@@ -57,7 +55,7 @@ namespace FundsManager.Data
 
             var provider = new NBXplorerNetworkProvider(nbXplorerNetwork.ChainName);
             var nbxplorerClient = new ExplorerClient(provider.GetFromCryptoCode(nbXplorerNetwork.NetworkSet.CryptoCode),
-                new Uri(nbxplorerUri));
+                new Uri(Constants.NBXPLORER_URI));
 
             while (!nbxplorerClient.GetStatus().IsFullySynched)
             {
@@ -85,13 +83,10 @@ namespace FundsManager.Data
             //Roles
             SetRoles(roleManager);
 
-            if (webHostEnvironment.IsDevelopment() && Environment.GetEnvironmentVariable("ENABLE_REMOTE_SIGNER") == null)
+            if (webHostEnvironment.IsDevelopment() && !Constants.ENABLE_REMOTE_SIGNER)
             {
                 //Miner setup
-                var rpcuser = Environment.GetEnvironmentVariable("NBXPLORER_BTCRPCUSER");
-                var rpcpassword = Environment.GetEnvironmentVariable("NBXPLORER_BTCRPCPASSWORD");
-                var rpcuri = Environment.GetEnvironmentVariable("NBXPLORER_BTCRPCURL");
-                var minerRPC = new RPCClient(new NetworkCredential(rpcuser, rpcpassword), new Uri(rpcuri!),
+                var minerRPC = new RPCClient(new NetworkCredential(Constants.NBXPLORER_BTCRPCUSER, Constants.NBXPLORER_BTCRPCPASSWORD), new Uri(Constants.NBXPLORER_BTCRPCURL!),
                     nbXplorerNetwork);
                 var factory = new DerivationStrategyFactory(nbXplorerNetwork);
                 //Users
@@ -206,7 +201,7 @@ namespace FundsManager.Data
 
                 var nodes = Task.Run(() => nodeRepository.GetAll()).Result;
 
-                if (!nodes.Any() && Environment.GetEnvironmentVariable("IS_DEV_ENVIRONMENT") != null)
+                if (!nodes.Any() && Constants.IS_DEV_ENVIRONMENT)
                 {
                     //Testing node from Polar (ALICE) LND 0.15.0 -> check devnetwork.zip polar file
 
@@ -215,7 +210,7 @@ namespace FundsManager.Data
                     {
                         ChannelAdminMacaroon =
                             "0201036c6e6402f801030a108be5b2928f746a822b04a9b2848eb0321201301a160a0761646472657373120472656164120577726974651a130a04696e666f120472656164120577726974651a170a08696e766f69636573120472656164120577726974651a210a086d616361726f6f6e120867656e6572617465120472656164120577726974651a160a076d657373616765120472656164120577726974651a170a086f6666636861696e120472656164120577726974651a160a076f6e636861696e120472656164120577726974651a140a057065657273120472656164120577726974651a180a067369676e6572120867656e6572617465120472656164000006208e8b02d4bc0efd4f15a52946c5ef23f2954f8a07ed800733554a11a190cb71b4",
-                        Endpoint = Environment.GetEnvironmentVariable("ALICE_HOST") ?? "host.docker.internal:10001",
+                        Endpoint = Constants.ALICE_HOST, 
                         Name = "Alice",
                         CreationDatetime = DateTimeOffset.UtcNow,
                         PubKey = "03b48034270e522e4033afdbe43383d66d426638927b940d09a8a7a0de4d96e807",
@@ -229,7 +224,7 @@ namespace FundsManager.Data
                     {
                         ChannelAdminMacaroon =
                             "0201036c6e6402f801030a10dc64226b045d25f090b114baebcbf04c1201301a160a0761646472657373120472656164120577726974651a130a04696e666f120472656164120577726974651a170a08696e766f69636573120472656164120577726974651a210a086d616361726f6f6e120867656e6572617465120472656164120577726974651a160a076d657373616765120472656164120577726974651a170a086f6666636861696e120472656164120577726974651a160a076f6e636861696e120472656164120577726974651a140a057065657273120472656164120577726974651a180a067369676e6572120867656e657261746512047265616400000620a21b8cc8c071aa5104b706b751aede972f642537c05da31450fb4b02c6da776e",
-                        Endpoint = Environment.GetEnvironmentVariable("CAROL_HOST") ?? "host.docker.internal:10003",
+                        Endpoint = Constants.CAROL_HOST,
                         Name = "Carol",
                         CreationDatetime = DateTimeOffset.UtcNow,
                         PubKey = "03485d8dcdd149c87553eeb80586eb2bece874d412e9f117304446ce189955d375",
@@ -253,7 +248,7 @@ namespace FundsManager.Data
                     internalWallet = new InternalWallet
                     {
                         //DerivationPath = "m/48'/1'/1'", //Segwit
-                        DerivationPath = Environment.GetEnvironmentVariable("DEFAULT_DERIVATION_PATH")!,
+                        DerivationPath = Constants.DEFAULT_DERIVATION_PATH,
                         MnemonicString =
                             "middle teach digital prefer fiscal theory syrup enter crash muffin easily anxiety ill barely eagle swim volume consider dynamic unaware deputy middle into physical",
                         CreationDatetime = DateTimeOffset.Now,
@@ -291,9 +286,7 @@ namespace FundsManager.Data
 
                     var masterKey1 = new Mnemonic(wallet1seed).DeriveExtKey().GetWif(Network.RegTest);
                     var keyPath1 =
-                        new KeyPath(
-                            Environment.GetEnvironmentVariable(
-                                "DEFAULT_DERIVATION_PATH")); //https://github.com/dgarage/NBXplorer/blob/0595a87f22c142aee6a6e4a0194f75aec4717819/NBXplorer/Controllers/MainController.cs#L1141
+                        new KeyPath(Constants.DEFAULT_DERIVATION_PATH); //https://github.com/dgarage/NBXplorer/blob/0595a87f22c142aee6a6e4a0194f75aec4717819/NBXplorer/Controllers/MainController.cs#L1141
                     var accountKey1 = masterKey1.Derive(keyPath1);
                     var bitcoinExtPubKey1 = accountKey1.Neuter();
                     var accountKeyPath1 = new RootedKeyPath(masterKey1.GetPublicKey().GetHDFingerPrint(), keyPath1);
@@ -307,9 +300,7 @@ namespace FundsManager.Data
 
                     var masterKey2 = new Mnemonic(wallet2seed).DeriveExtKey().GetWif(Network.RegTest);
                     var keyPath2 =
-                        new KeyPath(
-                            Environment.GetEnvironmentVariable(
-                                "DEFAULT_DERIVATION_PATH")); //https://github.com/dgarage/NBXplorer/blob/0595a87f22c142aee6a6e4a0194f75aec4717819/NBXplorer/Controllers/MainController.cs#L1141
+                        new KeyPath(Constants.DEFAULT_DERIVATION_PATH); //https://github.com/dgarage/NBXplorer/blob/0595a87f22c142aee6a6e4a0194f75aec4717819/NBXplorer/Controllers/MainController.cs#L1141
                     var accountKey2 = masterKey2.Derive(keyPath2);
                     var bitcoinExtPubKey2 = accountKey2.Neuter();
                     var accountKeyPath2 = new RootedKeyPath(masterKey2.GetPublicKey().GetHDFingerPrint(), keyPath2);

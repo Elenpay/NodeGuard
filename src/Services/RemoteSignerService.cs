@@ -68,7 +68,7 @@ public class RemoteSignerServiceService : IRemoteSignerService
         try
         {
             //Check if ENABLE_REMOTE_SIGNER is set 
-            if (Environment.GetEnvironmentVariable("ENABLE_REMOTE_SIGNER") == null)
+            if (Constants.ENABLE_REMOTE_SIGNER)
             {
                 _logger.LogWarning("Remote signer is disabled but was called");
                 return null;
@@ -76,23 +76,17 @@ public class RemoteSignerServiceService : IRemoteSignerService
 
             if (psbt == null) throw new ArgumentNullException(nameof(psbt));
 
-            var region = Environment.GetEnvironmentVariable("AWS_REGION") ??
-                         throw new ArgumentException("AWS_REGION is not set");
-
+            var region = Constants.AWS_REGION!; 
             //AWS Call to lambda function
-            var awsAccessKeyId = Environment.GetEnvironmentVariable("AWS_ACCESS_KEY_ID") ??
-                                 throw new ArgumentException("AWS_ACCESS_KEY_ID is not set");
-
-            var awsSecretAccessKey = Environment.GetEnvironmentVariable("AWS_SECRET_ACCESS_KEY") ??
-                                     throw new ArgumentException("AWS_SECRET_ACCESS_KEY is not set");
+            var awsAccessKeyId = Constants.AWS_ACCESS_KEY_ID; 
+            var awsSecretAccessKey = Constants.AWS_SECRET_ACCESS_KEY;
 
             var credentials = new ImmutableCredentials(
                 awsAccessKeyId,
                 awsSecretAccessKey,
                 null);
 
-            var awsKmsKeyId = Environment.GetEnvironmentVariable("AWS_KMS_KEY_ID") ??
-                              throw new ArgumentException("AWS_KMS_KEY_ID is not set");
+            var awsKmsKeyId = Constants.AWS_KMS_KEY_ID; 
 
             var requestPayload = new LightningService.Input(psbt.ToBase64(), SigHash.All,
                 CurrentNetworkHelper.GetCurrentNetwork().ToString(),
@@ -104,11 +98,8 @@ public class RemoteSignerServiceService : IRemoteSignerService
             using var httpClient = new HttpClient();
 
             //We use a special lib for IAM Auth to AWS
-            var signerEndpoint = Environment.GetEnvironmentVariable("REMOTE_SIGNER_ENDPOINT") ??
-                                 throw new ArgumentException("REMOTE_SIGNER_ENDPOINT is not set");
-
             var signLambdaResponse = await httpClient.PostAsync(
-                signerEndpoint,
+                Constants.REMOTE_SIGNER_ENDPOINT!,
                 new StringContent(serializedPayload,
                     Encoding.UTF8,
                     "application/json"),

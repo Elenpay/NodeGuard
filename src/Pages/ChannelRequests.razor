@@ -337,7 +337,7 @@
 
     private decimal _btcPrice;
 
-    private string? mempoolUrl = Environment.GetEnvironmentVariable("MEMPOOL_ENDPOINT");
+    private string? mempoolUrl = Constants.MEMPOOL_ENDPOINT;
 
     private PSBTSign? _psbtSignRef;
 
@@ -617,7 +617,7 @@
                         var map = new JobDataMap();
                         map.Put("openRequestId", _selectedRequest.Id);
                         
-                        var retryList = RetriableJob.ParseRetryListFromEnvironmenVariable("JOB_RETRY_INTERVAL_LIST_IN_MINUTES");
+                        var retryList = RetriableJob.ParseRetryListFromString(Constants.JOB_RETRY_INTERVAL_LIST_IN_MINUTES);
                         var job = RetriableJob.Create<ChannelOpenJob>(map, _selectedRequest.Id.ToString(), retryList);
                         await scheduler.ScheduleJob(job.Job, job.Trigger);
 

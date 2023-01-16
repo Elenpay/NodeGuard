@@ -29,7 +29,7 @@ namespace FundsManager.Helpers
         /// <returns></returns>
         public static Network GetCurrentNetwork()
         {
-            var network = Environment.GetEnvironmentVariable("BITCOIN_NETWORK")?.ToUpper();
+            var network = Constants.BITCOIN_NETWORK?.ToUpper();
 
             var result = network switch
             {
