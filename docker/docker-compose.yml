@@ -39,7 +39,7 @@ services:
         COINGECKO_ENDPOINT: https://pro-api.coingecko.com/api/v3/coins/markets?vs_currency=usd&ids=bitcoin
         COINGECKO_KEY: "TBD" #PLEASE FILL IT WITH YOUR OWN
         MONITOR_WITHDRAWALS_CRON: "0 */1 * * * ?" # Every Minute
-        ENABLE_REMOTE_SIGNER: "false" #Changes the way of signing, instead of a auto-generated internal wallet, NodeGuard will sign with a remote signer function on AWS Lambda
+        # ENABLE_REMOTE_SIGNER: "false" #Changes the way of signing, instead of a auto-generated internal wallet, NodeGuard will sign with a remote signer function on AWS Lambda
         MSSQL_CONNECTIONSTRING: "Server=localhost;Database=master;User=sa;Password=rw_dev;"
         REDIS_CONNECTIONSTRING: "redis"
         #OTEL_COLLECTOR_ENDPOINT: http://host.docker.internal:4318 #gRPC endpoint for OTel collector (optional)
