@@ -49,7 +49,12 @@ namespace FundsManager.Data.Models
         }
         private string? _xpub;
 
-        public string? MasterFingerprint { get; set; }
+        public string? MasterFingerprint
+        {
+            get => GetMasterFingerprint();
+            set => _masterFingerprint = value;
+        }
+        private string? _masterFingerprint;
 
         /// <summary>
         /// Returns the master private key (xprv..tprv)
@@ -86,6 +91,19 @@ namespace FundsManager.Data.Models
             }
 
             return _xpub;
+        }
+        
+        private string? GetMasterFingerprint()
+        {
+            var network = CurrentNetworkHelper.GetCurrentNetwork();
+            if (!string.IsNullOrWhiteSpace(MnemonicString))
+            {
+                var masterFingerprint = new Mnemonic(MnemonicString).DeriveExtKey().GetWif(network).GetPublicKey()
+                    .GetHDFingerPrint().ToString();
+                return masterFingerprint;
+            }
+
+            return _masterFingerprint; 
         }
 
         public BitcoinExtKey GetAccountKey(Network network)
