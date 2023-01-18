@@ -118,13 +118,11 @@ namespace FundsManager
             builder.Services.AddTransient<NotificationService, NotificationService>();
 
             //DbContext
-            var connectionString = Environment.GetEnvironmentVariable("POSTGRES_CONNECTIONSTRING") ??
-                                   "Host=localhost;Port=5432;Database=fundsmanager;Username=rw_dev;Password=rw_dev";
             builder.Services.AddDbContext<ApplicationDbContext>(options =>
             {
                 //options.EnableSensitiveDataLogging();
                 //options.EnableDetailedErrors();
-                options.UseNpgsql(connectionString, options =>
+                options.UseNpgsql(Constants.POSTGRES_CONNECTIONSTRING, options =>
                     {
                         options.UseQuerySplittingBehavior(QuerySplittingBehavior
                             .SingleQuery); // Slower but integrity is ensured
@@ -137,7 +135,7 @@ namespace FundsManager
                 {
                     options.EnableSensitiveDataLogging();
                     options.EnableDetailedErrors();
-                    options.UseNpgsql(connectionString, options =>
+                    options.UseNpgsql(Constants.POSTGRES_CONNECTIONSTRING, options =>
                     {
                         options.UseQuerySplittingBehavior(QuerySplittingBehavior
                             .SingleQuery); // Slower but integrity is ensured
@@ -158,7 +156,7 @@ namespace FundsManager
                 {
                     options.UseProperties = false;
                     options.RetryInterval = TimeSpan.FromSeconds(15);
-                    options.UsePostgres(connectionString);
+                    options.UsePostgres(Constants.POSTGRES_CONNECTIONSTRING);
                     options.UseJsonSerializer();
                 });
 
@@ -190,9 +188,8 @@ namespace FundsManager
 
                 q.AddTrigger(opts =>
                 {
-                    var cronExpression = Environment.GetEnvironmentVariable("MONITOR_WITHDRAWALS_CRON") ?? "0 */1 * * * ?";
                     opts.ForJob(nameof(MonitorWithdrawalsJob)).WithIdentity($"{nameof(MonitorWithdrawalsJob)}Trigger")
-                        .StartNow().WithCronSchedule(Environment.GetEnvironmentVariable("MONITOR_WITHDRAWALS_CRON") ?? "10 0/5 * * * ?");
+                        .StartNow().WithCronSchedule(Constants.MONITOR_WITHDRAWALS_CRON);
                 });
 
                 // ChannelAcceptorJob
@@ -221,18 +218,8 @@ namespace FundsManager
             //Automapper
             builder.Services.AddAutoMapper(typeof(MapperProfile));
 
-            //We need to expand the env-var with %ENV_VAR% for K8S
-            var otelCollectorEndpointToBeExpanded = Environment.GetEnvironmentVariable("OTEL_EXPORTER_OTLP_ENDPOINT");
-            if (otelCollectorEndpointToBeExpanded != null)
+            if (Constants.OTEL_EXPORTER_ENDPOINT != null)
             {
-                var otelCollectorEndpoint = Environment.ExpandEnvironmentVariables(otelCollectorEndpointToBeExpanded);
-
-                if (!string.IsNullOrEmpty(otelCollectorEndpoint))
-                {
-                    const string otelResourceAttributes = "OTEL_RESOURCE_ATTRIBUTES";
-                    var expandedResourceAttributes = Environment.ExpandEnvironmentVariables(Environment.GetEnvironmentVariable(otelResourceAttributes));
-                    Environment.SetEnvironmentVariable(otelResourceAttributes, expandedResourceAttributes);
-                    
                     builder.Services
                         .AddOpenTelemetryTracing((builder) => builder
                             // Configure the resource attribute `service.name` to MyServiceName
@@ -244,7 +231,7 @@ namespace FundsManager
                             {
                                 options.Protocol = OtlpExportProtocol.Grpc;
                                 options.ExportProcessorType = OpenTelemetry.ExportProcessorType.Batch;
-                                options.Endpoint = new Uri(otelCollectorEndpoint);
+                                options.Endpoint = new Uri(Constants.OTEL_EXPORTER_ENDPOINT);
                             })
                             .AddEntityFrameworkCoreInstrumentation()
                             .AddQuartzInstrumentation()
@@ -262,10 +249,9 @@ namespace FundsManager
                             {
                                 options.Protocol = OtlpExportProtocol.Grpc;
                                 options.ExportProcessorType = OpenTelemetry.ExportProcessorType.Batch;
-                                options.Endpoint = new Uri(otelCollectorEndpoint);
+                                options.Endpoint = new Uri(Constants.OTEL_EXPORTER_ENDPOINT);
                             })
                     );
-                }
             }
 
             var app = builder.Build();

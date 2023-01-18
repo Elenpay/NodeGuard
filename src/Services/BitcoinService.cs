@@ -295,15 +295,13 @@ namespace FundsManager.Services
 
                 var derivationStrategyBase = walletWithdrawalRequest.Wallet.GetDerivationStrategy();
 
-                var isRemoteSignerEnabled = Environment.GetEnvironmentVariable("ENABLE_REMOTE_SIGNER") != null;
-
                 PSBT? signedCombinedPSBT = null;
                 //Check if the NodeGuard Internal Wallet needs to sign on his own
                 if (walletWithdrawalRequest.AreAllRequiredHumanSignaturesCollected &&
                     walletWithdrawalRequest.Wallet.RequiresInternalWalletSigning)
                 {
                     //Remote signer
-                    if (isRemoteSignerEnabled)
+                    if (Constants.ENABLE_REMOTE_SIGNER)
                     {
                         signedCombinedPSBT = await _remoteSignerService.Sign(combinedPSBT);
                     }
@@ -489,11 +487,7 @@ namespace FundsManager.Services
                         var getTxResult =
                             await nbxplorerclient.GetTransactionAsync(uint256.Parse(walletWithdrawalRequest.TxId));
 
-                        var confirmationBlocks =
-                            int.Parse(Environment.GetEnvironmentVariable("TRANSACTION_CONFIRMATION_MINIMUM_BLOCKS") ??
-                                      throw new InvalidOperationException());
-
-                        if (getTxResult.Confirmations >= confirmationBlocks)
+                        if (getTxResult.Confirmations >= Constants.TRANSACTION_CONFIRMATION_MINIMUM_BLOCKS)
                         {
                             walletWithdrawalRequest.Status = WalletWithdrawalRequestStatus.OnChainConfirmed;
 

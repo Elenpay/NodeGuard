@@ -148,7 +148,7 @@ namespace FundsManager.Data.Repositories
                     XPUB = internalWallet.XPUB,
                     MasterFingerprint = internalWallet.MasterFingerprint,
                     //Derivation path
-                    Path = Environment.GetEnvironmentVariable("DEFAULT_DERIVATION_PATH") ?? throw new ArgumentException("DEFAULT_DERIVATION_PATH is not set"),
+                    Path = Constants.DEFAULT_DERIVATION_PATH,
 
                 };
                 

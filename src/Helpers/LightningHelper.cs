@@ -106,16 +106,12 @@ namespace FundsManager.Helpers
         /// <exception cref="ArgumentNullException"></exception>
         public static (Network nbXplorerNetwork, ExplorerClient nbxplorerClient) GenerateNetwork()
         {
-            var nbxplorerUri = Environment.GetEnvironmentVariable("NBXPLORER_URI") ??
-                               throw new ArgumentNullException("Environment.GetEnvironmentVariable(\"NBXPLORER_URI\")");
-
             //Nbxplorer api client
-
             var nbXplorerNetwork = CurrentNetworkHelper.GetCurrentNetwork();
 
             var provider = new NBXplorerNetworkProvider(nbXplorerNetwork.ChainName);
             var nbxplorerClient = new ExplorerClient(provider.GetFromCryptoCode(nbXplorerNetwork.NetworkSet.CryptoCode),
-                new Uri(nbxplorerUri));
+                new Uri(Constants.NBXPLORER_URI));
             return (nbXplorerNetwork, nbxplorerClient);
         }
 

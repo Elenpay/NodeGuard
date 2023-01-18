@@ -63,11 +63,7 @@ public class MonitorWithdrawalsJob : IJob
 
                     var getTxResult = await nbxplorerclient.GetTransactionAsync(uint256.Parse(walletWithdrawalRequest.TxId));
 
-                    var confirmationBlocks =
-                        int.Parse(Environment.GetEnvironmentVariable("TRANSACTION_CONFIRMATION_MINIMUM_BLOCKS") ??
-                                  throw new InvalidOperationException());
-
-                    if (getTxResult.Confirmations >= confirmationBlocks)
+                    if (getTxResult.Confirmations >= Constants.TRANSACTION_CONFIRMATION_MINIMUM_BLOCKS)
                     {
                         walletWithdrawalRequest.Status = WalletWithdrawalRequestStatus.OnChainConfirmed;
 

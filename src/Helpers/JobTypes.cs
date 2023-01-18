@@ -80,9 +80,8 @@ public class RetriableJob
         return new JobAndTrigger(job, trigger);
     }
 
-    public static int[]? ParseRetryListFromEnvironmenVariable(string variable)
+    public static int[]? ParseRetryListFromString(string? retryListAsString)
     {
-        var retryListAsString = Environment.GetEnvironmentVariable(variable);
         return retryListAsString?
             .Split(",")
             .Select<string, int>(s => int.Parse(s))
