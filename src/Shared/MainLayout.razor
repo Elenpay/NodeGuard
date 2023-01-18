@@ -72,8 +72,8 @@
         
                 
                 //If the internal wallet does not exist
-                if (internalWallet == null || (Constants.ENABLE_REMOTE_SIGNER 
-                                               && (string.IsNullOrWhiteSpace(internalWallet.XPUB) || string.IsNullOrWhiteSpace(internalWallet.MasterFingerprint))))
+                if (internalWallet == null || (Constants.ENABLE_REMOTE_SIGNER && string.IsNullOrWhiteSpace(internalWallet.XPUB) 
+                                               && string.IsNullOrWhiteSpace(internalWallet.MasterFingerprint)))
                 {
                    //Navigate to Setup Internal Wallet
                     NavigationManager.NavigateTo("/setup-internal-wallet", false);
