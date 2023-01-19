@@ -32,7 +32,7 @@ namespace FundsManager.Data.Models
     /// <summary>
     /// Multisig wallet
     /// </summary>
-    public class Wallet : Entity
+    public class Wallet : EntityWithCreatedBy
     {
         public string Name { get; set; }
 

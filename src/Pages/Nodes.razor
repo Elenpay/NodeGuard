@@ -179,8 +179,18 @@
 
     private async Task GetData()
     {
+        if (LoggedUser == null) return;
+
         _nodes = await NodeRepository.GetAll();
-        _availableWallets = await WalletRepository.GetAvailableWallets();
+
+        if (ClaimsPrincipal != null && ClaimsPrincipal.IsInRole(ApplicationUserRole.Superadmin.ToString()))
+        {
+            _availableWallets = await WalletRepository.GetAvailableWallets();
+        }
+        else
+        {
+            _availableWallets = await WalletRepository.GetAvailableWalletsFromUser(LoggedUser.Id);
+        }
     }
 
     private async Task OnRowInserted(SavedRowItem<Node, Dictionary<string, object>> arg)

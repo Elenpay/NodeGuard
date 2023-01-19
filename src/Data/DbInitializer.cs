@@ -345,7 +345,8 @@ namespace FundsManager.Data
                         WalletAddressType = WalletAddressType.NativeSegwit,
                         InternalWalletId = internalWallet.Id,
                         IsFinalised = true,
-                        CreationDatetime = DateTimeOffset.Now
+                        CreationDatetime = DateTimeOffset.Now,
+                        CreatedBy = adminUser.Id
                     };
 
                     //Now we fund a multisig address of that wallet with the miner (polar)

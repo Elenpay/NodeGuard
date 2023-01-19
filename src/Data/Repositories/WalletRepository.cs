@@ -17,7 +17,7 @@
  *
  */
 
-﻿using FundsManager.Data.Models;
+using FundsManager.Data.Models;
 using FundsManager.Data.Repositories.Interfaces;
 using FundsManager.Helpers;
 using Microsoft.EntityFrameworkCore;
@@ -57,7 +57,36 @@ namespace FundsManager.Data.Repositories
         {
             await using var applicationDbContext = await _dbContextFactory.CreateDbContextAsync();
 
-            return await applicationDbContext.Wallets.Include(x => x.InternalWallet).Include(x => x.Keys).ToListAsync();
+            return await applicationDbContext
+                .Wallets
+                .Include(x => x.InternalWallet)
+                .Include(x => x.Keys)
+                .ToListAsync();
+        }
+
+        public async Task<List<Wallet>> GetAllWalletsFromUser(string userId)
+        {
+            await using var applicationDbContext = await _dbContextFactory.CreateDbContextAsync();
+
+            return await applicationDbContext
+                .Wallets
+                .Include(x => x.InternalWallet)
+                .Include(x => x.Keys)
+                .Where(x => x.Keys.Any(k => k.UserId == userId) || x.CreatedBy == userId)
+                .ToListAsync();
+        }
+
+        public async Task<List<Wallet>> GetAvailableWalletsFromUser(string userId)
+        {
+            await using var applicationDbContext = await _dbContextFactory.CreateDbContextAsync();
+
+            return await applicationDbContext
+                .Wallets
+                .Where(wallet => !wallet.IsArchived && !wallet.IsCompromised && wallet.IsFinalised)
+                .Include(x => x.InternalWallet)
+                .Include(x => x.Keys)
+                .Where(x => x.Keys.Any(k => k.UserId == userId) || x.CreatedBy == userId)
+                .ToListAsync();
         }
 
         public async Task<List<Wallet>> GetAvailableWallets()
@@ -71,13 +100,14 @@ namespace FundsManager.Data.Repositories
                 .ToListAsync();
         }
 
-        public async Task<(bool, string?)> AddAsync(Wallet type)
+        public async Task<(bool, string?)> AddAsync(Wallet type, string userId)
         {
             await using var applicationDbContext = await _dbContextFactory.CreateDbContextAsync();
 
             type.SetCreationDatetime();
             type.SetUpdateDatetime();
-
+            type.SetUpCreatedBy(userId);
+            
             try
             {
                 await using var transaction = await applicationDbContext.Database.BeginTransactionAsync();

@@ -4,7 +4,6 @@
 @using NBitcoin
 @using NBXplorer.DerivationStrategy
 @using Key = FundsManager.Data.Models.Key
-@using Helpers
 @inject IWalletRepository WalletRepository
 @inject IToastService ToastService
 @inject IApplicationUserRepository ApplicationUserRepository
@@ -284,8 +283,17 @@
 
     private async Task GetData()
     {
+        if (LoggedUser == null) return;
 
-        _wallets = await WalletRepository.GetAll();
+        if (ClaimsPrincipal != null && ClaimsPrincipal.IsInRole(ApplicationUserRole.Superadmin.ToString()))
+        {
+            _wallets = await WalletRepository.GetAll();
+        }
+        else
+        {
+            _wallets = await WalletRepository.GetAllWalletsFromUser(LoggedUser.Id);
+        }
+
         var financeManagers = (await ApplicationUserRepository.GetUsersInRole(ApplicationUserRole.FinanceManager));
         _financeManagers = financeManagers.Where(x => x.Keys.Any()).ToList();
 
@@ -298,9 +306,9 @@
 
     private async Task OnRowInserted(SavedRowItem<Wallet, Dictionary<string, object>> arg)
     {
-        if (arg.Item == null) return;
+        if (arg.Item == null || LoggedUser == null) return;
 
-        var addResult = await WalletRepository.AddAsync(arg.Item);
+        var addResult = await WalletRepository.AddAsync(arg.Item, LoggedUser.Id);
 
 
         if (addResult.Item1)

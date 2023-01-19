@@ -403,14 +403,21 @@
 
     private async Task LoadData()
     {
-        if (LoggedUser != null)
+        if (LoggedUser == null) return;
+
+        _manageableNodes = await NodeRepository.GetAllManagedByUser(LoggedUser.Id);
+        if (_selectedDestNode != null)
         {
-            _manageableNodes = await NodeRepository.GetAllManagedByUser(LoggedUser.Id);
-            if (_selectedDestNode != null)
-            {
-                _manageableNodes = _manageableNodes.Where(node => node.Id != _selectedDestNode.Id).ToList();
-            }
+            _manageableNodes = _manageableNodes.Where(node => node.Id != _selectedDestNode.Id).ToList();
+        }
+
+        if (ClaimsPrincipal != null && ClaimsPrincipal.IsInRole(ApplicationUserRole.Superadmin.ToString()))
+        {
             _allWallets = await WalletRepository.GetAvailableWallets();
+        }
+        else
+        {
+            _allWallets = await WalletRepository.GetAvailableWalletsFromUser(LoggedUser.Id);
         }
     }
 

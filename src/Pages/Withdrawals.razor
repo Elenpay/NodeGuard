@@ -462,12 +462,20 @@
 
     private async Task GetData()
     {
-        if (LoggedUser?.Id != null)
-            _userPendingRequests = await WalletWithdrawalRequestRepository.GetUnsignedPendingRequestsByUser(LoggedUser?.Id);
+        if (LoggedUser == null) return;
+
+        _userPendingRequests = await WalletWithdrawalRequestRepository.GetUnsignedPendingRequestsByUser(LoggedUser.Id);
 
         _allRequests = (await WalletWithdrawalRequestRepository.GetAll()).Except(_userPendingRequests).ToList();
 
-        _availableWallets = await WalletRepository.GetAvailableWallets();
+        if (ClaimsPrincipal != null && ClaimsPrincipal.IsInRole(ApplicationUserRole.Superadmin.ToString()))
+        {
+            _availableWallets = await WalletRepository.GetAvailableWallets();
+        }
+        else
+        {
+            _availableWallets = await WalletRepository.GetAvailableWalletsFromUser(LoggedUser.Id);
+        }
     }
 
     private async Task OnRowInserted(SavedRowItem<WalletWithdrawalRequest, Dictionary<string, object>> arg)

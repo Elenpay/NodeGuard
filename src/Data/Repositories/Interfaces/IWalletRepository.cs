@@ -17,7 +17,7 @@
  *
  */
 
-﻿using FundsManager.Data.Models;
+using FundsManager.Data.Models;
 
 namespace FundsManager.Data.Repositories.Interfaces;
 
@@ -25,7 +25,23 @@ public interface IWalletRepository
 {
     Task<Wallet?> GetById(int id);
 
+    /// <summary>
+    /// Obtains all wallets
+    /// </summary>
+    /// <returns> List of wallets</returns>
     Task<List<Wallet>> GetAll();
+
+    /// <summary>
+    /// Obtains all wallets from a specific user
+    /// </summary>
+    /// <returns> List of wallets from the user</returns>
+    Task<List<Wallet>> GetAllWalletsFromUser(string userId);
+
+    /// <summary>
+    /// Obtains all wallets that are Finalised and not in a compromised or archived state from a specific user
+    /// </summary>
+    /// <returns> List of available wallets from the user</returns>
+    Task<List<Wallet>> GetAvailableWalletsFromUser(string userId);
 
     /// <summary>
     /// Obtains all wallets that are Finalised and not in a compromised or archived state
@@ -33,7 +49,7 @@ public interface IWalletRepository
     /// <returns> List of available wallets</returns>
     Task<List<Wallet>> GetAvailableWallets();
 
-    Task<(bool, string?)> AddAsync(Wallet type);
+    Task<(bool, string?)> AddAsync(Wallet type, string userId);
 
     Task<(bool, string?)> AddRangeAsync(List<Wallet> type);
 
