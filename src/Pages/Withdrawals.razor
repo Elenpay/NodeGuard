@@ -156,7 +156,7 @@
                         <EditTemplate>
                             @if (_selectedRequestWalletBalance != null)
                             {
-                                <p>@($"{_selectedRequestWalletBalance} BTC ({Math.Round(PriceConversionHelper.SatToUsdConversion((decimal)_selectedRequestWalletBalance, _btcPrice), 2)} USD)")</p>
+                                <p>@($"{_selectedRequestWalletBalance} BTC ({Math.Round(PriceConversionHelper.BtcToUsdConversion((decimal)_selectedRequestWalletBalance, _btcPrice), 2)} USD)")</p>
                             }
                         </EditTemplate>
                     </DataGridColumn>
