@@ -9,11 +9,18 @@
 
 <PageTitle>Channel Operation Requests</PageTitle>
 
-@if (!_hidePendingRequests)
+@if (_isFinanceManager || _isNodeManager)
 {
     <Field Flex="Flex.JustifyContent.Between">
+    @if (_isFinanceManager)
+    {
         <h3>Requests awaiting my signature</h3>
+    }
+    else if (_isNodeManager)
+    {
+        <h3>Requests awaiting signatyre by a Finance Manager</h3>
         <Button Color="Color.Success" TextColor="TextColor.Light" Clicked="async () => await datagridRef.New()">New</Button>
+    }   
     </Field>
     <br />
     <DataGrid TItem="ChannelOperationRequest"
@@ -25,7 +32,7 @@
               UseValidation="true"
               UseInternalEditing="true"
               ShowPageSizes="true"
-              Editable="true"
+              Editable="_isFinanceManager"
               ShowValidationsSummary="true"
               Striped="true"
               PopupClosing="OnChannelRequestRejectModalClosing">
@@ -154,9 +161,9 @@
             </DataGridColumn>
             <DataGridCommandColumn TItem="ChannelOperationRequest" Caption="Actions" Displayable="true">
                 <EditCommandTemplate>
-                    <Button Color="Color.Primary" hidden=@_hideApprove Clicked="@(() => ShowModal(context.Item))">Approve</Button>
+                    <Button Color="Color.Primary" hidden=@_isNodeManager Clicked="@(() => ShowModal(context.Item))">Approve</Button>
                     @{
-                        if (LoggedUser.Id == context.Item.UserId)
+                        if (LoggedUser?.Id == context.Item.UserId)
                         {
                             <Button Color="Color.Danger" Clicked="@(() => OpenModalForRejectOrCancelRequest(context.Item, ChannelOperationRequestStatus.Cancelled))">
                                 Cancel
@@ -263,34 +270,24 @@
         </div>
     </LoadingTemplate>
 </DataGrid>
-<PSBTSign @ref="_psbtSignRef" ApproveRequestDelegate="async ()=> await ApproveRequest()"  SigHashMode="SigHash.None"RequestId="_selectedRequest?.Id" TemplatePsbtString="@_templatePSBTString" SignedPSBT="@_psbt"></PSBTSign>
-<Modal @bind-Visible="@_rejectCancelModalVisible">
 
-    <ModalContent Centered>
-        <ModalHeader>
-            <ModalTitle>@_selectedStatusActionString operation: @_selectedRequest?.Id</ModalTitle>
-            <CloseButton/>
-        </ModalHeader>
-        <ModalBody>
-            <Fields Flex="Flex.JustifyContent.Center">
-                <Field>
-                    <Validation @ref="_reasonValidation" Validator="@(_selectedStatus == ChannelOperationRequestStatus.Rejected ? ValidationRule.IsNotEmpty : ValidationRule.None)">
-                        <FieldLabel>Please type a reason before performing this operation</FieldLabel>
-                        <MemoEdit Rows="4" @bind-Text="@_cancelOrRejectReason">
-                            <ValidationError/>
-                        </MemoEdit>
-                    </Validation>
-                </Field>
-            </Fields>
-        </ModalBody>
-        <ModalFooter>
-            <Button Color="Color.Secondary" Clicked="@ResetChannelCancelModal">Cancel</Button>
-            <Button Disabled="@(_reasonValidation?.Validate() == ValidationStatus.Error)" Color="Color.Primary" Clicked="@RejectOrCancelRequest">
-                Submit
-            </Button>
-        </ModalFooter>
-    </ModalContent>
-</Modal>
+<PSBTSign 
+    @ref="_psbtSignRef"
+    ApproveRequestDelegate="async ()=> await ApproveRequest()"  
+    SigHashMode="SigHash.None"
+    RequestId="_selectedRequest?.Id" 
+    TemplatePsbtString="@_templatePSBTString" 
+    SignedPSBT="@_psbt"
+/>
+
+<CancelOrRejectPopup
+    @ref=@_rejectCancelModalRef
+    Title='@(_selectedStatusActionString+" operation: "+_selectedRequest?.Id)'
+    Reason="@_cancelOrRejectReason"
+    Validator="@RejectReasonValidator"
+    OnCancel="@ResetChannelCancelModal"
+    OnSubmit="@RejectOrCancelRequest"
+/>
 
 @inject IChannelOperationRequestRepository ChannelOperationRequestRepository
 @inject IChannelOperationRequestPSBTRepository ChannelOperationRequestPsbtRepository
@@ -306,18 +303,13 @@
     private List<ChannelOperationRequest>? _allRequests;
     private ChannelOperationRequest? _selectedRequest;
     private ChannelOperationRequestStatus _selectedStatus;
-    private bool _hideApprove;
-    private bool _showRejectButton;
-    private bool _showCancelButton;
-    private bool _hidePendingRequests;
-    private bool _modalVisible;
-    private bool _rejectCancelModalVisible;
     private string? _psbt;
     private string? _templatePSBTString;
     private string? _cancelOrRejectReason;
+    private CancelOrRejectPopup _rejectCancelModalRef;
     private string? _selectedStatusActionString;
-    private bool _isSignedPSBTInvalid = true;
-    private Validation? _reasonValidation;
+    private bool _isFinanceManager = false;
+    private bool _isNodeManager = false;
 
     // New Request integration
     private List<Wallet> _allWallets = new List<Wallet>();
@@ -330,10 +322,10 @@
     private long _amount = Constants.MINIMUM_CHANNEL_CAPACITY_SATS;
 
     //Validation
-    private Validation _walletValidation;
-    private Validation _sourceNodeValidation;
-    private Validation _destNodeValidation;
-    private Validation _capacityValidation;
+    private Validation? _walletValidation;
+    private Validation? _sourceNodeValidation;
+    private Validation? _destNodeValidation;
+    private Validation? _capacityValidation;
 
     private decimal _btcPrice;
 
@@ -349,53 +341,44 @@
 
     protected override async Task OnInitializedAsync()
     {
-        if (LoggedUser != null)
+        if (LoggedUser == null) return;
+        
+        _isFinanceManager = ClaimsPrincipal != null && ClaimsPrincipal.IsInRole(ApplicationUserRole.FinanceManager.ToString());
+        _isNodeManager = ClaimsPrincipal != null && ClaimsPrincipal.IsInRole(ApplicationUserRole.NodeManager.ToString());
+
+        _btcPrice = PriceConversionHelper.GetBtcToUsdPrice();
+        if (_btcPrice == 0)
         {
-            _btcPrice = PriceConversionHelper.GetBtcToUsdPrice();
-            if (_btcPrice == 0)
-            {
-                ToastService.ShowError("Bitcoin price in USD could not be retrieved.");
-            }
-            await FetchRequests();
-            await LoadData();
-            if (ClaimsPrincipal != null && !ClaimsPrincipal.IsInRole(ApplicationUserRole.FinanceManager.ToString()))
-            {
-                _hideApprove = true;
-                _showCancelButton = true;
-                _hidePendingRequests = true;
-            }
-            else
-            {
-                _showRejectButton = true;
-            }
+            ToastService.ShowError("Bitcoin price in USD could not be retrieved.");
         }
+        await FetchRequests();
+        await LoadData();
     }
 
     private async Task ResetChannelRequestRejectModal()
     {
-        if (datagridRef != null) await datagridRef.Edit(null);
+        await datagridRef.Cancel();
         _destNodeName = "";
         _selectedDestNode = null;
         _amount = Constants.MINIMUM_CHANNEL_CAPACITY_SATS;
     }
 
-    private void ResetChannelCancelModal()
+    private async void ResetChannelCancelModal()
     {
-        _rejectCancelModalVisible = false;
         _cancelOrRejectReason = null;
+        await _rejectCancelModalRef.CloseModal();
     }
 
     private async Task FetchRequests()
     {
-        if (LoggedUser != null)
-        {
-            _allRequests = await ChannelOperationRequestRepository.GetAll();
+        if (LoggedUser == null) return;
+        
+        _allRequests = await ChannelOperationRequestRepository.GetAll();
 
-            if (ClaimsPrincipal != null && ClaimsPrincipal.IsInRole(ApplicationUserRole.FinanceManager.ToString()))
-            {
-                _channelRequests = await ChannelOperationRequestRepository.GetUnsignedPendingRequestsByUser(LoggedUser.Id);
-                _allRequests = _allRequests.Except(_channelRequests).ToList();
-            }
+        if (_isFinanceManager || _isNodeManager)
+        {
+            _channelRequests = await ChannelOperationRequestRepository.GetPendingRequests();
+            _allRequests = _allRequests.Except(_channelRequests).ToList();
         }
     }
 
@@ -405,7 +388,7 @@
     {
         if (LoggedUser != null)
         {
-            _manageableNodes = await NodeRepository.GetAllManagedByUser(LoggedUser.Id);
+            _manageableNodes = await NodeRepository.GetAll();
             if (_selectedDestNode != null)
             {
                 _manageableNodes = _manageableNodes.Where(node => node.Id != _selectedDestNode.Id).ToList();
@@ -456,8 +439,8 @@
                 }
 
                 // Refresh the list of available source nodes and take out the one selected
-                _manageableNodes = await NodeRepository.GetAllManagedByUser(LoggedUser?.Id!);
-                _manageableNodes = _manageableNodes.Where(node => node.Id != _selectedDestNode.Id).ToList();
+                _manageableNodes = await NodeRepository.GetAll();
+                _manageableNodes = _manageableNodes.Where(node => node.Id != _selectedDestNode?.Id).ToList();
                 _destNodeValidation.Clear();
             }
         }
@@ -465,12 +448,13 @@
 
     private async Task CreateChannelRequest()
     {
-        if ((int)_destNodeValidation.Validate() == 1 &&
-            (int)_sourceNodeValidation.Validate() == 1 &&
-            (int)_walletValidation.Validate() == 1 &&
-            (int)_capacityValidation.Validate() == 1)
+        if (LoggedUser == null) return;
+
+        Validation?[] validators = {_destNodeValidation, _sourceNodeValidation, _walletValidation, _capacityValidation};
+
+        if (validators.All(v => v != null && (int)v.Validate() == 1))
         {
-            if (_selectedDestNode.Id != _selectedSourceNodeId)
+            if (_selectedDestNode?.Id != _selectedSourceNodeId)
             {
                 ChannelOperationRequest request = new()
                 {
@@ -481,7 +465,7 @@
                     Status = ChannelOperationRequestStatus.Pending, //TODO Reject and cancel
                     UserId = LoggedUser.Id,
                     SourceNodeId = _selectedSourceNodeId,
-                    DestNodeId = _selectedDestNode.Id
+                    DestNodeId = _selectedDestNode?.Id
                 };
 
                 var createChannelResult = await ChannelOperationRequestRepository.AddAsync(request);
@@ -498,8 +482,8 @@
             {
                 ToastService.ShowError("The Source Node cannot be the same as the Destitation Node");
             }
+            await ResetChannelRequestRejectModal();
         }
-        await ResetChannelRequestRejectModal();
         await LoadData();
         await FetchRequests(); 
     }
@@ -517,16 +501,16 @@
         return ResetChannelRequestRejectModal();
     }
 
-    private void OpenModalForRejectOrCancelRequest(ChannelOperationRequest req, ChannelOperationRequestStatus status)
+    private async void OpenModalForRejectOrCancelRequest(ChannelOperationRequest req, ChannelOperationRequestStatus status)
     {
         _selectedRequest = req;
         _selectedStatus = status;
-        _rejectCancelModalVisible = true;
         switch(_selectedStatus)
         {
             case ChannelOperationRequestStatus.Rejected: _selectedStatusActionString = "Reject"; break;
             case ChannelOperationRequestStatus.Cancelled: _selectedStatusActionString = "Cancel"; break;
         }
+        await _rejectCancelModalRef.ShowModal();
     }
 
     private async Task RejectOrCancelRequest()
@@ -586,7 +570,7 @@
     {
         _psbtSignRef?.HideModal();
 
-        if (_selectedRequest == null || string.IsNullOrEmpty(_psbtSignRef.SignedPSBT) || LoggedUser == null)
+        if (_selectedRequest == null || string.IsNullOrEmpty(_psbtSignRef?.SignedPSBT) || LoggedUser == null)
         {
             ToastService.ShowError("Error: Not all fields were set");
         }
@@ -659,4 +643,15 @@
             or ChannelOperationRequestStatus.Approved;
     }
 
+    private void RejectReasonValidator(ValidatorEventArgs e)
+    {
+        if (_selectedStatus == ChannelOperationRequestStatus.Rejected)
+        {
+            ValidationRule.IsNotEmpty(e);
+        }
+        else
+        {
+            ValidationRule.None(e);
+        }
+    }
 }

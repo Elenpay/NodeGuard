@@ -1,0 +1,56 @@
+<Modal @ref="@_modalRef">
+    <ModalContent Centered>
+        <ModalHeader>
+            <ModalTitle>@Title</ModalTitle>
+            <CloseButton />
+        </ModalHeader>
+        <ModalBody>
+            <Fields Flex="Flex.JustifyContent.Center">
+                <Field>
+                    <Validation @ref="_reasonValidation" Validator="@Validator">
+                        <FieldLabel>Please type a reason before performing this operation</FieldLabel>
+                        <MemoEdit Rows="4" @bind-Text="@Reason">
+                            <ValidationError />
+                        </MemoEdit>
+                    </Validation>
+                </Field>
+            </Fields>
+        </ModalBody>
+        <ModalFooter>
+            <Button Color="Color.Secondary" Clicked="@OnCancel">Cancel</Button>
+            <Button Disabled="@(_reasonValidation?.Validate() == ValidationStatus.Error)" Color="Color.Primary"
+                Clicked="@OnSubmit">
+                Submit
+            </Button>
+        </ModalFooter>
+    </ModalContent>
+</Modal>
+
+@code {
+    [Parameter, EditorRequired]
+    public string Title { get; set; } = "";
+
+    [Parameter, EditorRequired]
+    public string Reason { get; set; } = "";
+
+    public Modal? _modalRef { get; set; }
+    private Validation? _reasonValidation;
+
+    [Parameter, EditorRequired]
+    public Action<ValidatorEventArgs> Validator { get; set; } = ValidationRule.None;
+
+    [Parameter, EditorRequired]
+    public EventCallback OnCancel { get; set; }
+    [Parameter, EditorRequired]
+    public EventCallback OnSubmit { get; set; }
+
+    public async Task CloseModal()
+    {
+        await _modalRef.Close(CloseReason.UserClosing);
+    }
+
+    public async Task ShowModal()
+    {
+        await _modalRef.Show();
+    }
+}

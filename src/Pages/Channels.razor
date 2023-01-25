@@ -147,7 +147,7 @@
         if (LoggedUser != null)
         {
             _channels = await ChannelRepository.GetAll();
-            if (ClaimsPrincipal != null && (ClaimsPrincipal.IsInRole(ApplicationUserRole.NodeManager.ToString()) || ClaimsPrincipal.IsInRole(ApplicationUserRole.Superadmin.ToString())))
+            if (ClaimsPrincipal != null && ClaimsPrincipal.IsInRole(ApplicationUserRole.NodeManager.ToString()))
             {
                 _hideDelete = false;
             }

@@ -197,7 +197,7 @@ namespace FundsManager.Data.Repositories
                 .Where(request => request.Status == ChannelOperationRequestStatus.OnChainConfirmationPending
                                   || request.Status == ChannelOperationRequestStatus.Pending
                                   || request.Status == ChannelOperationRequestStatus.PSBTSignaturesPending)
-                .Include(request => request.Wallet)
+                .Include(request => request.Wallet).ThenInclude(x => x.Keys)
                 .Include(request => request.SourceNode)
                 .Include(request => request.DestNode)
                 .Include(request => request.ChannelOperationRequestPsbts)

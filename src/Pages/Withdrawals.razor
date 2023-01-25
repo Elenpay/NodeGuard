@@ -3,11 +3,8 @@
 @using System.Security.Claims
 @using Quartz
 @using NBitcoin
-@using System.Globalization
 @using FundsManager.Jobs
-
-@inject IToastService ToastService
-@attribute [Authorize(Roles = "SuperAdmin,NodeManager,FinanceManager")]
+@attribute [Authorize(Roles = "Superadmin,NodeManager,FinanceManager")]
 
 <Row>
     @if (_isFinanceManager)
@@ -355,59 +352,40 @@
     </Column>
 
 </Row>
-<PSBTSign @ref="_psbtSignRef" SignedPSBT="@_signedPSBT" RequestId="_selectedRequest?.Id" SigHashMode="SigHash.All"
-          TemplatePsbtString="@_templatePsbtString" ApproveRequestDelegate="ApproveRequestDelegate"></PSBTSign>
-<Modal @ref="_rejectCancelModalRef">
 
-    <ModalContent Centered>
-        <ModalHeader>
-            <ModalTitle>Wallet withdrawal: @_selectedRequest?.Id</ModalTitle>
-            <CloseButton />
-        </ModalHeader>
-        <ModalBody>
-            <Fields Flex="Flex.JustifyContent.Center">
-                <Field>
-                    <Validation @ref="_rejectCancelValidation" Validator="@(_rejectCancelStatus == WalletWithdrawalRequestStatus.Rejected ? ValidationRule.IsNotEmpty : ValidationRule.None)">
-                        <FieldLabel>Please type a reason before performing this operation</FieldLabel>
-                        <MemoEdit Rows="2" @bind-Text="@_cancelOrRejectReason">
-                            <ValidationError />
-                        </MemoEdit>
-                    </Validation>
-                </Field>
-            </Fields>
-        </ModalBody>
-        <ModalFooter>
-            <Button Color="Color.Secondary" Clicked="@HideRejectCancelModal">Cancel</Button>
-            <Button Disabled="@(_rejectCancelValidation?.Validate() == ValidationStatus.Error)" Color="Color.Primary" Clicked="RejectOrCancel">
-                Submit
-            </Button>
-        </ModalFooter>
-    </ModalContent>
-</Modal>
+<PSBTSign 
+    @ref="_psbtSignRef" 
+    SignedPSBT="@_signedPSBT" 
+    RequestId="_selectedRequest?.Id" 
+    SigHashMode="SigHash.All"
+    TemplatePsbtString="@_templatePsbtString" 
+    ApproveRequestDelegate="ApproveRequestDelegate"
+/>
+
+<CancelOrRejectPopup
+    @ref="@_rejectCancelModalRef"
+    Title='@("Wallet withdrawal:"+_selectedRequest?.Id)'
+    Reason="@_cancelOrRejectReason"
+    Validator="@RejectReasonValidator"
+    OnCancel="@HideRejectCancelModal"
+    OnSubmit="@RejectOrCancel"
+/>
+
+@inject IToastService ToastService
+@inject IWalletWithdrawalRequestRepository WalletWithdrawalRequestRepository
+@inject IWalletWithdrawalRequestPsbtRepository WalletWithdrawalRequestPsbtRepository
+@inject IWalletRepository WalletRepository
+@inject IBitcoinService BitcoinService
+@inject ISchedulerFactory SchedulerFactory
 
 
 @code {
-    [Inject]
-    private IWalletWithdrawalRequestRepository WalletWithdrawalRequestRepository { get; set; }
-
-    [Inject]
-    private IWalletWithdrawalRequestPsbtRepository WalletWithdrawalRequestPsbtRepository { get; set; }
-
-    [Inject]
-    private IWalletRepository WalletRepository { get; set; }
-
-    [Inject]
-    private IBitcoinService BitcoinService { get; set; }
-
-    [Inject]
-    private ISchedulerFactory SchedulerFactory { get; set; }
-
     [CascadingParameter]
     private ApplicationUser? LoggedUser { get; set; }
 
 
     [CascadingParameter]
-    private ClaimsPrincipal ClaimsPrincipal { get; set; }
+    private ClaimsPrincipal? ClaimsPrincipal { get; set; }
 
     private List<WalletWithdrawalRequest> _userPendingRequests = new List<WalletWithdrawalRequest>();
     private List<Wallet> _availableWallets = new List<Wallet>();
@@ -418,13 +396,12 @@
 
     private WalletWithdrawalRequest? _selectedRequest;
     private PSBTSign? _psbtSignRef;
-    private string? _signedPSBT;
+    private string _signedPSBT;
     private string? _templatePsbtString;
 
     private string? _cancelOrRejectReason;
-    private Modal? _rejectCancelModalRef;
+    private CancelOrRejectPopup? _rejectCancelModalRef;
     private WalletWithdrawalRequestStatus? _rejectCancelStatus = WalletWithdrawalRequestStatus.Rejected;
-    private Validation? _rejectCancelValidation;
     private bool _isAmountDisabled;
     private decimal? _selectedRequestWalletBalance;
 
@@ -434,26 +411,22 @@
     
     protected override async Task OnInitializedAsync()
     {
+        if (LoggedUser == null) return;
+
         _btcPrice = PriceConversionHelper.GetBtcToUsdPrice();
         if (_btcPrice == 0)
         {
             ToastService.ShowError("Bitcoin price in USD could not be retrieved.");
         }
 
-        if (LoggedUser != null)
-        {
-            if (ClaimsPrincipal.IsInRole(ApplicationUserRole.FinanceManager.ToString()))
-            {
-                _isFinanceManager = true;
-            }
-            await GetData();
-        }
+        _isFinanceManager = ClaimsPrincipal != null && ClaimsPrincipal.IsInRole(ApplicationUserRole.FinanceManager.ToString());
+        await GetData();
     }
 
     private async Task GetData()
     {
         if (LoggedUser?.Id != null)
-            _userPendingRequests = await WalletWithdrawalRequestRepository.GetUnsignedPendingRequestsByUser(LoggedUser?.Id);
+            _userPendingRequests = await WalletWithdrawalRequestRepository.GetUnsignedPendingRequestsByUser(LoggedUser.Id);
 
         _allRequests = (await WalletWithdrawalRequestRepository.GetAll()).Except(_userPendingRequests).ToList();
 
@@ -554,7 +527,7 @@
 
         try
         {
-            BitcoinAddress.Create(str, CurrentNetworkHelper.GetCurrentNetwork());
+            BitcoinAddress.Create(str!, CurrentNetworkHelper.GetCurrentNetwork());
         }
         catch (Exception)
         {
@@ -736,8 +709,7 @@
         _cancelOrRejectReason = null;
         
         await GetData();
-        if (_rejectCancelModalRef != null)
-            await _rejectCancelModalRef.Close(CloseReason.UserClosing);
+        await _rejectCancelModalRef.CloseModal();
     }
 
     private async Task ShowRejectCancelModal(WalletWithdrawalRequest walletWithdrawalRequest, WalletWithdrawalRequestStatus walletWithdrawalRequestStatus)
@@ -745,10 +717,7 @@
         _rejectCancelStatus = walletWithdrawalRequestStatus;
         _selectedRequest = walletWithdrawalRequest;
 
-        if (_rejectCancelModalRef != null)
-            await _rejectCancelModalRef.Show();
-
-
+        await _rejectCancelModalRef.ShowModal();
     }
 
 
@@ -764,6 +733,17 @@
 
             _selectedRequestWalletBalance = balance;
         }
-       
+    }
+
+    private void RejectReasonValidator(ValidatorEventArgs e)
+    {
+        if (_rejectCancelStatus == WalletWithdrawalRequestStatus.Rejected)
+        {
+            ValidationRule.IsNotEmpty(e);
+        }
+        else
+        {
+            ValidationRule.None(e);
+        }
     }
 }
