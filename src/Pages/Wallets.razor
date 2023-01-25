@@ -4,7 +4,6 @@
 @using NBitcoin
 @using NBXplorer.DerivationStrategy
 @using Key = FundsManager.Data.Models.Key
-@using Helpers
 @inject IWalletRepository WalletRepository
 @inject IToastService ToastService
 @inject IApplicationUserRepository ApplicationUserRepository
@@ -284,8 +283,14 @@
 
     private async Task GetData()
     {
-
-        _wallets = await WalletRepository.GetAll();
+        if (ClaimsPrincipal != null && ClaimsPrincipal.IsInRole(ApplicationUserRole.FinanceManager.ToString()))
+        {
+            _wallets = await WalletRepository.GetAll();
+        }
+        else
+        {
+           _wallets = await WalletRepository.GetAvailableWallets(); 
+        }
         var financeManagers = (await ApplicationUserRepository.GetUsersInRole(ApplicationUserRole.FinanceManager));
         _financeManagers = financeManagers.Where(x => x.Keys.Any()).ToList();
 
