@@ -194,8 +194,7 @@ namespace FundsManager.Data.Repositories
             await using var applicationDbContext = await _dbContextFactory.CreateDbContextAsync();
 
             return await applicationDbContext.ChannelOperationRequests
-                .Where(request => request.Status == ChannelOperationRequestStatus.OnChainConfirmationPending
-                                  || request.Status == ChannelOperationRequestStatus.Pending
+                .Where(request => request.Status == ChannelOperationRequestStatus.Pending
                                   || request.Status == ChannelOperationRequestStatus.PSBTSignaturesPending)
                 .Include(request => request.Wallet).ThenInclude(x => x.Keys)
                 .Include(request => request.SourceNode)

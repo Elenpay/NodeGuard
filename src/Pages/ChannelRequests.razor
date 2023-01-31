@@ -19,8 +19,12 @@
     else if (_isNodeManager)
     {
         <h3>Requests awaiting signature by a Finance Manager</h3>
+    }
+
+    @if (_isNodeManager) // Admin can be node manager and finance manager
+    {
         <Button Color="Color.Success" TextColor="TextColor.Light" Clicked="async () => await datagridRef.New()">New</Button>
-    }   
+    }
     </Field>
     <br />
     <DataGrid TItem="ChannelOperationRequest"
@@ -357,7 +361,7 @@
 
     private async Task ResetChannelRequestRejectModal()
     {
-        await datagridRef.Cancel();
+        await datagridRef.Edit(null);
         _destNodeName = "";
         _selectedDestNode = null;
         _amount = Constants.MINIMUM_CHANNEL_CAPACITY_SATS;
@@ -375,11 +379,15 @@
         
         _allRequests = await ChannelOperationRequestRepository.GetAll();
 
-        if (_isFinanceManager || _isNodeManager)
+        if (_isFinanceManager)
+        {
+            _channelRequests = await ChannelOperationRequestRepository.GetUnsignedPendingRequestsByUser(LoggedUser.Id);
+        }
+        else if (_isNodeManager)
         {
             _channelRequests = await ChannelOperationRequestRepository.GetPendingRequests();
-            _allRequests = _allRequests.Except(_channelRequests).ToList();
         }
+        _allRequests = _allRequests.Except(_channelRequests ?? new List<ChannelOperationRequest>()).ToList();
     }
 
     #region New Request Integration
