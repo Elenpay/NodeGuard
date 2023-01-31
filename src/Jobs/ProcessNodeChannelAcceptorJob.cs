@@ -246,7 +246,7 @@ public class ProcessNodeChannelAcceptorJob : IJob
         catch (Exception e)
         {
             _logger.LogError(e, "Error on {JobName}", nameof(ProcessNodeChannelAcceptorJob));
-            throw new JobExecutionException(e, false);
+            throw new JobExecutionException(e, true);
         }
     }
 }
