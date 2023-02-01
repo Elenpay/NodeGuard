@@ -24,6 +24,7 @@ services:
         NBXPLORER_BTCRPCURL: http://host.docker.internal:18443/
         NBXPLORER_BTCRPCUSER: "polaruser"
         NBXPLORER_URI: http://nbxplorer:32838
+        TRANSACTION_CONFIRMATION_MINIMUM_BLOCKS: "6"
         POSTGRES_CONNECTIONSTRING: Host=127.0.0.1;Port=5432;Database=fundsmanager;Username=rw_dev;Password=rw_dev
         PUSH_NOTIFICATIONS_ONESIGNAL_API_BASE_PATH: "https://onesignal.com/api/v1"
         PUSH_NOTIFICATIONS_ONESIGNAL_APP_ID: "93800910-9a17-46c7-a3a0-175b68c7aea0"
