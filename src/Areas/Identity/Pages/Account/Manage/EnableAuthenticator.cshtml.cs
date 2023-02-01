@@ -155,8 +155,8 @@ namespace FundsManager.Areas.Identity.Pages.Account.Manage
 
             SharedKey = FormatKey(unformattedKey);
 
-            var email = await _userManager.GetEmailAsync(user);
-            AuthenticatorUri = GenerateQrCodeUri(email, unformattedKey);
+            var userName = await _userManager.GetUserNameAsync(user);
+            AuthenticatorUri = GenerateQrCodeUri(userName, unformattedKey);
         }
 
         private string FormatKey(string unformattedKey)
