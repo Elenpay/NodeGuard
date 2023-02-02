@@ -26,6 +26,7 @@ using Lnrpc;
 using NBXplorer;
 using NBXplorer.DerivationStrategy;
 using Quartz;
+ using Unmockable;
 
 namespace FundsManager.Jobs;
 
@@ -60,17 +61,18 @@ public class SweepNodeWalletsJob : IJob
         #region Local functions
 
         async Task SweepFunds(Node node, Wallet wallet, Lightning.LightningClient lightningClient,
-            ExplorerClient explorerClient, List<Utxo> utxos)
+            IUnmockable<ExplorerClient> explorerClient, List<Utxo> utxos)
         {
             if (node == null) throw new ArgumentNullException(nameof(node));
             if (wallet == null) throw new ArgumentNullException(nameof(wallet));
             if (lightningClient == null) throw new ArgumentNullException(nameof(lightningClient));
             if (explorerClient == null) throw new ArgumentNullException(nameof(explorerClient));
 
-            var returningAddress = await explorerClient.GetUnusedAsync(wallet.GetDerivationStrategy(),
+            var returningAddress = await explorerClient.Execute(x => x.GetUnusedAsync(wallet.GetDerivationStrategy(),
                 DerivationFeature.Deposit,
                 0,
-                false);//Reserve is false since this is a cron job and we wan't to avoid massive reserves
+                false, //Reserve is false since this is a cron job and we wan't to avoid massive reserves 
+                default));
 
             if (node.ChannelAdminMacaroon != null)
             {

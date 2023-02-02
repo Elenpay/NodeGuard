@@ -26,6 +26,7 @@ using Lnrpc;
 using NBXplorer;
 using NBXplorer.DerivationStrategy;
 using Quartz;
+ using Unmockable;
 
 namespace FundsManager.Jobs;
 
@@ -74,7 +75,7 @@ public class ProcessNodeChannelAcceptorJob : IJob
             });
         }
 
-        async Task AcceptChannelOpeningRequestWithUpfrontShutdown(ExplorerClient explorerClient,
+        async Task AcceptChannelOpeningRequestWithUpfrontShutdown(IUnmockable<ExplorerClient> explorerClient,
             Wallet returningMultisigWallet,
             AsyncDuplexStreamingCall<ChannelAcceptResponse, ChannelAcceptRequest> asyncDuplexStreamingCall, Node node, ChannelAcceptRequest? response)
         {
@@ -83,8 +84,8 @@ public class ProcessNodeChannelAcceptorJob : IJob
                 var openerNodePubKey = Convert.ToHexString(response.NodePubkey.ToByteArray()).ToLower();
                 var capacity = response.FundingAmt;
 
-                var address = await explorerClient.GetUnusedAsync(returningMultisigWallet.GetDerivationStrategy(),
-                    DerivationFeature.Deposit, 0, false); //Reserve is false to avoid DoS
+                var address = await explorerClient.Execute(x => x.GetUnusedAsync(returningMultisigWallet.GetDerivationStrategy(),
+                    DerivationFeature.Deposit, 0, false, default)); //Reserve is false to avoid DoS
 
                 if (address != null)
                 {
