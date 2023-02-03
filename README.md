@@ -1,15 +1,25 @@
-# FundsManager
+# NodeGuard
 
-FundsManager is a web-app to control, audit and manage the governance of a Lightning Network node
+Treasury management is a key component of the operational management of a lightning node. Having a lightning node with a lot of funds can become a cumbersome task when you need to operate at a scale with proper security mechanisms, however, lightning channels need liquidity from a Bitcoin treasury. In this context, a bitcoin treasury is a way of describing the source of funds required to enable the operations of a lightning service provider such as ours. We identified in this process that we would like to reduce the threat surface to the maximum extent possible, remember the mantra, not your keys, not your coins. And this is what we wanted, having a way to open lightning channels without real access to the private keys for node operators. This way, no technical members would have access to the private keys, and the lightning nodes on-chain funds in hot wallets would be the minimum as possible (this is subject to the lightning implementation you might use). In this use case, Node Operators want to sleep at night without having to worry about managing the private keys of a bitcoin treasury with a decent amount of funds. So based on the principle of least privilege (PoLP), we decided to split this responsibility by developing NodeGuard, a treasury management solution for lightning nodes. NodeGuard is a web application written in ASP.NET Core Blazor to provide an easy and intuitive UI for non-technical fellows who manage a Bitcoin treasury in lightning nodes.
 
-## Getting started
+Current features of NodeGuard are the following:
+
+- Funding and opening of a lightning channel through read-only(no private key access) multisig wallets
+- Asynchronous approval process based on Role-based Access Control (RBAC) and multisig wallets.
+- Automatic sweeping of funds in lightning nodes to avoid having funds on the node hot wallets
+- Channel creation interception with returning address to multisig wallets to avoid having funds on hot wallets
+- In-browser notification systems for channel approvals
+- Optional remote signing through AWS Lambda functions for channel funding transactions, separating the NodeGuard keys from the actual software
+- Two-factor authentication
+
+# Dev environment quickstart
 
 1. Run polar regtest network with Polar, import devnetwork.polar.zip (in the root of this repo) and start it
-2. Open FundsManager.sln with Visual Studio or your favourite IDE
+2. Open FundsManager.sln with Visual Studio or your favourite IDE/EDITOR
 3. Set startup project to docker-compose
 4. Run
 
-## Requirements
+##Requirements
 
 - VS Code / Visual Studio
 - Docker desktop
