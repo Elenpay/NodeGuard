@@ -68,7 +68,7 @@ public class RemoteSignerServiceService : IRemoteSignerService
         try
         {
             //Check if ENABLE_REMOTE_SIGNER is set 
-            if (Constants.ENABLE_REMOTE_SIGNER)
+            if (!Constants.ENABLE_REMOTE_SIGNER)
             {
                 _logger.LogWarning("Remote signer is disabled but was called");
                 return null;
