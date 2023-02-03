@@ -13,8 +13,6 @@ services:
 
 build-staging:
   stage: build-staging
-  tags:
-    - lightning_spot_runners
   script:
     - docker login -u gitlab-ci-token -p $CI_BUILD_TOKEN registry.gitlab.com
     - docker build -t $CI_REGISTRY_IMAGE:$CI_COMMIT_REF_NAME -f ./src/Dockerfile .
@@ -28,8 +26,6 @@ build-staging:
 
 build-release:
   stage: build-release
-  tags:
-    - lightning_spot_runners
   script:
     - docker login -u gitlab-ci-token -p $CI_BUILD_TOKEN registry.gitlab.com
     - docker build -t $CI_REGISTRY_IMAGE:$CI_COMMIT_REF_NAME -f ./src/Dockerfile .
