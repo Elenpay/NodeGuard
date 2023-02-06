@@ -40,10 +40,17 @@
         public string? BtcCloseAddress { get; set; }
 
         public ChannelStatus Status { get; set; }
+        
+        /// <summary>
+        /// Bool to indicate if this channel's liquidity should be automatically managed
+        /// </summary>
+        public bool IsAutomatedLiquidityEnabled { get; set; }
 
         #region Relationships
 
         public ICollection<ChannelOperationRequest> ChannelOperationRequests { get; set; }
+        
+        public ICollection<LiquidityRule> LiquidityRules { get; set; }
 
         #endregion
 
