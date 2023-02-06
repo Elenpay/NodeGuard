@@ -17,7 +17,7 @@
  *
  */
 
- using FundsManager.Data.Models;
+﻿using FundsManager.Data.Models;
 
 namespace FundsManager.Data.Repositories.Interfaces;
 
