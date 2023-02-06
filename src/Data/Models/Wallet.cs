@@ -17,7 +17,7 @@
  *
  */
 
- using System.ComponentModel.DataAnnotations.Schema;
+﻿using System.ComponentModel.DataAnnotations.Schema;
 using FundsManager.Helpers;
 using NBitcoin;
 using NBXplorer.DerivationStrategy;

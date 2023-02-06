@@ -17,7 +17,7 @@
  *
  */
 
-﻿using AutoMapper;
+using AutoMapper;
 using FundsManager.Data.Models;
 using FundsManager.Data.Repositories.Interfaces;
 using FundsManager.Helpers;
@@ -26,7 +26,7 @@ using NBitcoin;
 using NBXplorer;
 using NBXplorer.DerivationStrategy;
 using NBXplorer.Models;
- using Unmockable;
+using Unmockable;
 
 // ReSharper disable All
 
@@ -215,7 +215,7 @@ namespace FundsManager.Services
                 result.Item1 = builder.BuildPSBT(false);
                 
                 //Additional fields to support PSBT signing with a HW or the Remote Signer 
-                result = LightningHelper.AddDerivationData(_logger,walletWithdrawalRequest.Wallet.Keys, result, selectedUTXOs, scriptCoins);
+                result = LightningHelper.AddDerivationData(walletWithdrawalRequest.Wallet.Keys, result, selectedUTXOs, scriptCoins, _logger);
             }
             catch (Exception e)
             {

@@ -389,11 +389,9 @@ namespace FundsManager.Services
                                             nbxplorerClient,
                                             derivationStrategyBase,
                                             channelfundingTx,
-                                            source,
-                                            client,
-                                            pendingChannelId,
                                             network,
-                                            changeFixedPSBT);
+                                            changeFixedPSBT,
+                                            _logger);
                                         
                                         if (finalSignedPSBT == null)
                                         {
@@ -404,21 +402,6 @@ namespace FundsManager.Services
                                         }
                                     }
 
-                                    //We check that the partial signatures number has changed, otherwise finalize inmediately
-                                    var partialSigsCountAfterSignature =
-                                        finalSignedPSBT.Inputs.Sum(x => x.PartialSigs.Count);
-
-                                    if (partialSigsCountAfterSignature == 0 ||
-                                        partialSigsCountAfterSignature <= partialSigsCount)
-                                    {
-                                        var invalidNoOfPartialSignatures =
-                                            $"Invalid expected number of partial signatures after signing the PSBT";
-
-                                        _logger.LogError(invalidNoOfPartialSignatures);
-                                        throw new ArgumentException(
-                                            invalidNoOfPartialSignatures);
-                                    }
-                                    
                                     //We store the final signed PSBT without being finalized for debugging purposes
                                     var signedChannelOperationRequestPsbt = new ChannelOperationRequestPSBT
                                     {
@@ -544,7 +527,7 @@ namespace FundsManager.Services
                     HttpClientHandler.DangerousAcceptAnyServerCertificateValidator
             };
 
-            using var grpcChannel = GrpcChannel.ForAddress($"https://{endpoint}",
+            var grpcChannel = GrpcChannel.ForAddress($"https://{endpoint}",
                 new GrpcChannelOptions { HttpHandler = httpHandler });
 
             return new Lightning.LightningClient(grpcChannel).Wrap();
@@ -632,7 +615,7 @@ namespace FundsManager.Services
 
             throw new ArgumentException(aNodeCannotOpenAChannelToItself);
         }
-        
+
         /// <summary>
         /// Aux method when the fundsmanager is the one in change of signing the PSBTs
         /// </summary>
@@ -647,9 +630,10 @@ namespace FundsManager.Services
         /// <param name="changeFixedPSBT"></param>
         /// <returns></returns>
         /// <exception cref="ArgumentException"></exception>
-        private async Task<PSBT> SignPSBT(ChannelOperationRequest channelOperationRequest, IUnmockable<ExplorerClient> nbxplorerClient,
-            DerivationStrategyBase derivationStrategyBase, Transaction channelfundingTx, Node source, IUnmockable<Lightning.LightningClient> client,
-            byte[] pendingChannelId, Network network, PSBT changeFixedPSBT)
+        public static Func<ChannelOperationRequest, IUnmockable<ExplorerClient>, DerivationStrategyBase, Transaction, Network, PSBT, ILogger?, Task<PSBT>> SignPSBT = async (
+                channelOperationRequest, nbxplorerClient,
+                derivationStrategyBase, channelfundingTx, network, changeFixedPSBT, logger)
+            =>
         {
             //We get the UTXO keyPath / derivation path from nbxplorer
 
@@ -669,9 +653,7 @@ namespace FundsManager.Services
                 const string errorKeypathsForTheUtxosUsedInThisTxAreNotFound =
                     "Error, keypaths for the UTXOs used in this tx are not found, probably this UTXO is already used as input of another transaction";
 
-                _logger.LogError(errorKeypathsForTheUtxosUsedInThisTxAreNotFound);
-
-                CancelPendingChannel(source, client, pendingChannelId);
+                logger?.LogError(errorKeypathsForTheUtxosUsedInThisTxAreNotFound);
 
                 throw new ArgumentException(
                     errorKeypathsForTheUtxosUsedInThisTxAreNotFound);
@@ -701,16 +683,14 @@ namespace FundsManager.Services
             {
                 var invalidNoOfPartialSignatures =
                     $"Invalid expected number of partial signatures after signing for the channel operation request:{channelOperationRequest.Id}";
-                _logger.LogError(invalidNoOfPartialSignatures);
-
-                CancelPendingChannel(source, client, pendingChannelId);
+                logger?.LogError(invalidNoOfPartialSignatures);
 
                 throw new ArgumentException(
                     invalidNoOfPartialSignatures);
             }
 
             return changeFixedPSBT;
-        }
+        };
 
         /// <summary>
         /// Cancels a pending channel from LND PSBT-based funding of channels
@@ -873,7 +853,7 @@ namespace FundsManager.Services
                 }
 
                 //Additional fields to support PSBT signing with a HW or the Remote Signer 
-                result = LightningHelper.AddDerivationData(_logger,channelOperationRequest.Wallet.Keys, result, selectedUtxOs, multisigCoins);
+                result = LightningHelper.AddDerivationData(channelOperationRequest.Wallet.Keys, result, selectedUtxOs, multisigCoins, _logger);
             }
             catch (Exception e)
             {

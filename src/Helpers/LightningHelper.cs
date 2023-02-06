@@ -17,7 +17,7 @@
  *
  */
 
- using AutoMapper;
+using AutoMapper;
 using FundsManager.Data.Models;
 using Google.Protobuf;
 using NBitcoin;
@@ -49,10 +49,9 @@ namespace FundsManager.Helpers
         /// <param name="selectedUtxOs"></param>
         /// <param name="multisigCoins"></param>
         /// <exception cref="ArgumentException"></exception>
-        public static (PSBT?, bool) AddDerivationData(ILogger logger, IEnumerable<Key> keys , (PSBT?, bool) result, List<UTXO> selectedUtxOs,
-            List<ScriptCoin> multisigCoins)
+        public static (PSBT?, bool) AddDerivationData(IEnumerable<Key> keys , (PSBT?, bool) result, List<UTXO> selectedUtxOs,
+            List<ScriptCoin> multisigCoins, ILogger? logger = null)
         {
-            if (logger == null) throw new ArgumentNullException(nameof(logger));
             if (keys == null) throw new ArgumentNullException(nameof(keys));
             if (selectedUtxOs == null) throw new ArgumentNullException(nameof(selectedUtxOs));
             if (multisigCoins == null) throw new ArgumentNullException(nameof(multisigCoins));
@@ -89,7 +88,7 @@ namespace FundsManager.Helpers
                     else
                     {
                         var errorMessage = $"Invalid derived pub key for utxo:{selectedUtxo.Outpoint}";
-                        logger.LogError(errorMessage);
+                        logger?.LogError(errorMessage);
                         throw new ArgumentException(errorMessage, nameof(derivedPubKey));
                     }
                 }
@@ -260,7 +259,7 @@ namespace FundsManager.Helpers
 
             return combinedPSBT;
         }
-
+        
         /// <summary>
         /// Helper for decoding bytestring-based LND representation of TxIds
         /// </summary>

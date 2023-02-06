@@ -101,6 +101,7 @@ public class CreateWallet
                 },
             Name = "Test wallet",
             WalletAddressType = WalletAddressType.NativeSegwit,
+            InternalWallet = internalWallet,
             InternalWalletId = internalWallet.Id,
             IsFinalised = true,
             CreationDatetime = DateTimeOffset.Now

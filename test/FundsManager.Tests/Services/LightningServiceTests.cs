@@ -16,6 +16,9 @@
  * along with this program.  If not, see http://www.gnu.org/licenses/.
  *
  */
+
+using AutoFixture;
+using AutoMapper;
 using Microsoft.Extensions.Logging;
 using FundsManager.Data;
 using FundsManager.Data.Models;
@@ -25,6 +28,7 @@ using NBXplorer;
 using NBXplorer.Models;
 using FluentAssertions;
 using FundsManager.Helpers;
+using Google.Protobuf;
 using Lnrpc;
 using NBitcoin;
 using NBXplorer.DerivationStrategy;
@@ -37,9 +41,9 @@ namespace FundsManager.Services
     public class LightningServiceTests
     {
         ILogger<LightningService> logger = new Mock<ILogger<LightningService>>().Object;
-
+    
         [Fact]
-        public async void CheckArgumentsAreValid_ArgumentNull()
+        public void CheckArgumentsAreValid_ArgumentNull()
         {
             // Act
             var act = () => LightningService.CheckArgumentsAreValid(null, OperationRequestType.Open);
@@ -51,7 +55,7 @@ namespace FundsManager.Services
         }
 
         [Fact]
-        public async void CheckArgumentsAreValid_RequestTypeNotOpen()
+        public void CheckArgumentsAreValid_RequestTypeNotOpen()
         {
             // Arrange
             var operationRequest = new ChannelOperationRequest
@@ -96,7 +100,7 @@ namespace FundsManager.Services
         }
 
         [Fact]
-        public async void CheckNodesAreValid_SourceNodeNull()
+        public void CheckNodesAreValid_SourceNodeNull()
         {
             // Arrange
             var operationRequest = new ChannelOperationRequest
@@ -115,7 +119,7 @@ namespace FundsManager.Services
         }
 
         [Fact]
-        public async void CheckNodesAreValid_DestinationNodeNull()
+        public void CheckNodesAreValid_DestinationNodeNull()
         {
             // Arrange
             var operationRequest = new ChannelOperationRequest
@@ -134,7 +138,7 @@ namespace FundsManager.Services
         }
         
         [Fact]
-        public async void CheckNodesAreValid_MacaroonNotSet()
+        public void CheckNodesAreValid_MacaroonNotSet()
         {
             // Arrange
             var operationRequest = new ChannelOperationRequest
@@ -154,7 +158,7 @@ namespace FundsManager.Services
         }
 
         [Fact]
-        public async void CheckNodesAreValid_NodesAreValid()
+        public void CheckNodesAreValid_NodesAreValid()
         {
             // Arrange
             var operationRequest = new ChannelOperationRequest
@@ -182,7 +186,7 @@ namespace FundsManager.Services
         }
 
         [Fact]
-        public async void CheckNodesAreValid_SourceEqualsDestination()
+        public void CheckNodesAreValid_SourceEqualsDestination()
         {
             // Arrange
             var node = new Node
@@ -208,7 +212,7 @@ namespace FundsManager.Services
         }
 
         [Fact]
-        public async void GetDerivationStrategyBase_NoDerivationScheme()
+        public void GetDerivationStrategyBase_NoDerivationScheme()
         {
             // Arrange
             var operationRequest = new ChannelOperationRequest
@@ -226,7 +230,7 @@ namespace FundsManager.Services
         }
    
         [Fact]
-        public async void GetDerivationStrategyBase_DerivationSchemeExists()
+        public void GetDerivationStrategyBase_DerivationSchemeExists()
         {
             // Arrange
             Environment.SetEnvironmentVariable("DEFAULT_DERIVATION_PATH", "m/48'/1'/1'");
@@ -302,7 +306,7 @@ namespace FundsManager.Services
         }
         
         [Fact]
-        public async void GetCombinedPsbt_NoCombinedPSBT()
+        public void GetCombinedPsbt_NoCombinedPSBT()
         {
             // Arrange
             var operationRequest = new ChannelOperationRequest()
@@ -320,7 +324,7 @@ namespace FundsManager.Services
         }
         
         [Fact]
-        public async void GetCombinedPsbt_CombinedPSBTExists()
+        public void GetCombinedPsbt_CombinedPSBTExists()
         {
             // Arrange
             var channelOpReqPsbts = new List<ChannelOperationRequestPSBT>();
@@ -354,7 +358,7 @@ namespace FundsManager.Services
         }
         
         [Fact]
-        public async void CreateLightningClient_ReturnsLightningClient()
+        public void CreateLightningClient_ReturnsLightningClient()
         {
             // Act
             var result = LightningService.CreateLightningClient("10.0.0.1");
@@ -370,22 +374,31 @@ namespace FundsManager.Services
             Environment.SetEnvironmentVariable("DEFAULT_DERIVATION_PATH", "m/48'/1'/1'");
             Environment.SetEnvironmentVariable("NBXPLORER_URI", "http://10.0.0.2:38762");
             var dbContextFactory = new Mock<IDbContextFactory<ApplicationDbContext>>();
+            
+            var options = new DbContextOptionsBuilder<ApplicationDbContext>()
+                .UseInMemoryDatabase(databaseName: "ChannelOpenDb")
+                .Options;
+            var context = new ApplicationDbContext(options);
+            dbContextFactory.Setup(x => x.CreateDbContextAsync(default)).ReturnsAsync(context);
             var channelOperationRequestRepository = new Mock<IChannelOperationRequestRepository>();
             var nodeRepository = new Mock<INodeRepository>();
            
             var channelOpReqPsbts = new List<ChannelOperationRequestPSBT>();
+            var psbt =
+                "cHNidP8BAF4BAAAAAY2SvXNoGcttP+4LFeTIdsPXuJWUF3XjjJ6F6hqBrO7wAAAAAAD/////AehANXcAAAAAIgAgg+aofANl6wKKByTgFl5yBnqUK8f7sn4ULhAAIJb1C0cAAAAATwEENYfPAy8RJCyAAAAB/DvuQjoBjOttImoGYyiO0Pte4PqdeQqzcNAw4Ecw5sgDgI4uHNSCvdBxlpQ8WoEz0WmvhgIra7A4F3FkTsB0RNcQH8zk3jAAAIABAACAAQAAgE8BBDWHzwNWrAP0gAAAAfkIrkpmsP+hqxS1WvDOSPKnAiXLkBCQLWkBr5C5Po+BAlGvFeBbuLfqwYlbP19H/+/s2DIaAu8iKY+J0KIDffBgEGDzoLMwAACAAQAAgAEAAIBPAQQ1h88DfblGjYAAAAH1InDHaHo6+zUe9PG5owwQ87bTkhcGg66pSIwTmhHJmAMiI4UjOOpn+/2Nw1KrJiXnmid2RiEja/HAITCQ00ienxDtAhDIMAAAgAEAAIABAACAAAEBK2RDNXcAAAAAIgAguNLINpkV//IIFd1ti2ig15+6mPOhNWykV0mwsneO9FcBAwQCAAAAAQVpUiEDJ0KjWjE9mM+OzBPgqobBDCvXwdbEERr2wUJD2ruduAYhA4E0C5IanGt26wU7pzZoyLG+FhLBa8k8HdwR/2T0uCpKIQPdbg/RGEZcyAU+sjVNkti/8LzgNP3puKHGjP/73jrTdlOuIgYDJ0KjWjE9mM+OzBPgqobBDCvXwdbEERr2wUJD2ruduAYYH8zk3jAAAIABAACAAQAAgAEAAAAAAAAAIgYDgTQLkhqca3brBTunNmjIsb4WEsFryTwd3BH/ZPS4KkoY7QIQyDAAAIABAACAAQAAgAEAAAAAAAAAIgYD3W4P0RhGXMgFPrI1TZLYv/C84DT96bihxoz/+94603YYYPOgszAAAIABAACAAQAAgAEAAAAAAAAAAAA=";
             channelOpReqPsbts.Add(new ChannelOperationRequestPSBT()
             {
-                PSBT = "cHNidP8BAF4BAAAAAdz1PWN8JtwrX5q7aREhJbCmD0I/Xn/m84Znzoo0gPXfAQAAAAD/////AeRcqQAAAAAAIgAgmXpf0mpyCEyKLRK/kCrOwYZpkA3QmJHS6iSocRyj7G4AAAAATwEENYfPAy8RJCyAAAAB/DvuQjoBjOttImoGYyiO0Pte4PqdeQqzcNAw4Ecw5sgDgI4uHNSCvdBxlpQ8WoEz0WmvhgIra7A4F3FkTsB0RNcQH8zk3jAAAIABAACAAQAAgE8BBDWHzwNWrAP0gAAAAfkIrkpmsP+hqxS1WvDOSPKnAiXLkBCQLWkBr5C5Po+BAlGvFeBbuLfqwYlbP19H/+/s2DIaAu8iKY+J0KIDffBgEGDzoLMwAACAAQAAgAEAAIBPAQQ1h88DfblGjYAAAAH1InDHaHo6+zUe9PG5owwQ87bTkhcGg66pSIwTmhHJmAMiI4UjOOpn+/2Nw1KrJiXnmid2RiEja/HAITCQ00ienxDtAhDIMAAAgAEAAIABAACAAAEBK2BfqQAAAAAAIgAgVJ3hH2Yg78qcgDmp32ctQUv4oJjoMN3ec6mS0WQX25wBAwQCAAAAAQVpUiECDLxYLw6kodDiOHpRGyavsn3GStmnKi2POJgO1JpkJvAhA50d97FlqJDgPv5UO5W0ngY2C7pY0RIZfxntgg2EDZz7IQPL2Ji2egSgcGTHSj/xC/woKvb/Y0UYit/rjnrxqcih6VOuIgYCDLxYLw6kodDiOHpRGyavsn3GStmnKi2POJgO1JpkJvAYYPOgszAAAIABAACAAQAAgAAAAADHAAAAIgYDnR33sWWokOA+/lQ7lbSeBjYLuljREhl/Ge2CDYQNnPsYH8zk3jAAAIABAACAAQAAgAAAAADHAAAAIgYDy9iYtnoEoHBkx0o/8Qv8KCr2/2NFGIrf64568anIoekY7QIQyDAAAIABAACAAQAAgAAAAADHAAAAAAA="
+                PSBT = psbt,
             });
-
+            
             var destinationNode = new Node()
             {
                 PubKey = "03485d8dcdd149c87553eeb80586eb2bece874d412e9f117304446ce189955d375",
                 ChannelAdminMacaroon = "def",
                 Endpoint = "10.0.0.2"
             };
-            
+
+            var wallet = CreateWallet.CreateTestWallet();
             var operationRequest = new ChannelOperationRequest
             {
                 RequestType = OperationRequestType.Open,
@@ -396,8 +409,8 @@ namespace FundsManager.Services
                     Endpoint = "10.0.0.1"
                 },
                 DestNode = destinationNode,
-                Wallet = CreateWallet.CreateTestWallet(),
-                ChannelOperationRequestPsbts = channelOpReqPsbts
+                Wallet = wallet,
+                ChannelOperationRequestPsbts = channelOpReqPsbts,
             };
             
             channelOperationRequestRepository
@@ -430,7 +443,7 @@ namespace FundsManager.Services
                     null,
                     Arg.Ignore<CancellationToken>()
                     ))
-                .Returns(MockHelpers.CreateUnaryCall(
+                .Returns(MockHelpers.CreateAsyncUnaryCall(
                         new NodeInfo()
                         {
                             Node = new LightningNode()
@@ -452,14 +465,103 @@ namespace FundsManager.Services
                     null,
                     Arg.Ignore<CancellationToken>()
                 ))
-                .Returns(MockHelpers.CreateUnaryCall(new ConnectPeerResponse()));
-            var lightningService = new LightningService(logger, channelOperationRequestRepository.Object, nodeRepository.Object, dbContextFactory.Object, null, null, null, null, null, null);
+                .Returns(MockHelpers.CreateAsyncUnaryCall(new ConnectPeerResponse()));
 
+            var noneUpdate = new OpenStatusUpdate();
+            var chanPendingUpdate = new OpenStatusUpdate
+            {
+                ChanPending = new PendingUpdate()
+            };
+            var chanOpenUpdate = new OpenStatusUpdate
+            {
+                ChanOpen = new ChannelOpenUpdate()
+                {
+                    ChannelPoint = new ChannelPoint()
+                }
+            };
+            var psbt2 =
+                "cHNidP8BAF4BAAAAAY2SvXNoGcttP+4LFeTIdsPXuJWUF3XjjJ6F6hqBrO7wAAAAAAD/////AehANXcAAAAAIgAgg+aofANl6wKKByTgFl5yBnqUK8f7sn4ULhAAIJb1C0cAAAAATwEENYfPAy8RJCyAAAAB/DvuQjoBjOttImoGYyiO0Pte4PqdeQqzcNAw4Ecw5sgDgI4uHNSCvdBxlpQ8WoEz0WmvhgIra7A4F3FkTsB0RNcQH8zk3jAAAIABAACAAQAAgE8BBDWHzwNWrAP0gAAAAfkIrkpmsP+hqxS1WvDOSPKnAiXLkBCQLWkBr5C5Po+BAlGvFeBbuLfqwYlbP19H/+/s2DIaAu8iKY+J0KIDffBgEGDzoLMwAACAAQAAgAEAAIBPAQQ1h88DfblGjYAAAAH1InDHaHo6+zUe9PG5owwQ87bTkhcGg66pSIwTmhHJmAMiI4UjOOpn+/2Nw1KrJiXnmid2RiEja/HAITCQ00ienxDtAhDIMAAAgAEAAIABAACAAAEBK2RDNXcAAAAAIgAguNLINpkV//IIFd1ti2ig15+6mPOhNWykV0mwsneO9FciAgMnQqNaMT2Yz47ME+CqhsEMK9fB1sQRGvbBQkPau524BkcwRAIgDyqyP4zAWCDmH1AU1oTR7+xC7qigIyxNL1PH/OsNB4cCIFPySCKzpvXsmSoB7XlhDWf+96DmZC+jRck5Eo/+hw14AgEDBAIAAAABBWlSIQMnQqNaMT2Yz47ME+CqhsEMK9fB1sQRGvbBQkPau524BiEDgTQLkhqca3brBTunNmjIsb4WEsFryTwd3BH/ZPS4KkohA91uD9EYRlzIBT6yNU2S2L/wvOA0/em4ocaM//veOtN2U64iBgMnQqNaMT2Yz47ME+CqhsEMK9fB1sQRGvbBQkPau524BhgfzOTeMAAAgAEAAIABAACAAQAAAAAAAAAiBgOBNAuSGpxrdusFO6c2aMixvhYSwWvJPB3cEf9k9LgqShjtAhDIMAAAgAEAAIABAACAAQAAAAAAAAAiBgPdbg/RGEZcyAU+sjVNkti/8LzgNP3puKHGjP/73jrTdhhg86CzMAAAgAEAAIABAACAAQAAAAAAAAAAAA==";
+            var psbtFundUpdate = new OpenStatusUpdate
+            {
+                PsbtFund = new ReadyForPsbtFunding()
+                {
+                    Psbt = ByteString.FromBase64(psbt2)
+                }
+            };
+            lightningClient
+                .Setup(x => x.OpenChannel(
+                    Arg.Ignore<OpenChannelRequest>(),
+                    Arg.Ignore<Metadata>(),
+                    null,
+                    Arg.Ignore<CancellationToken>()
+                ))
+                .Returns(MockHelpers.CreateAsyncServerStreamingCall(
+                    new List<OpenStatusUpdate>()
+                    {
+                        noneUpdate,
+                        chanPendingUpdate,
+                        psbtFundUpdate,
+                        chanOpenUpdate
+                    }));
+
+            channelOperationRequestRepository
+                .Setup(x => x.Update(It.IsAny<ChannelOperationRequest>()))
+                .Returns((true, ""));
+
+            var psbt3 = "cHNidP8BAIkBAAAAAYPmRU9UfOb7jPxzNbVTsZHVsj/vIRBCItB7L0L8sxLhAAAAAAD/////AiyiNHcAAAAAIgAgU9+5n7rk7vLG5T/1ayQ8XHRllAmukKFB/lVCj6HYCp0gTgAAAAAAACIAIAjA2QfEQoCuNRq9fovDi71fO4wPu9U0KS7hbkX+YHKiAAAAAAABASvI8jR3AAAAACIAIJffgj8CDyfDGIRCy1ydaXmsoDphWy2Wd68mRGjxQ1RXAQcAAQj8BABHMEQCIClOzdLaGSnwhiNgaCrNIaLOgTePaJchHw6iStN/otXwAiB4wz5Zi8OHMrZnC3uul9sP5O6PDbmnHe45QGrAoZmN/QJHMEQCIAg0m3d7SlNkN7Azuoa2Zo0/uEpMVWW0T4Et8mBgbMAPAiBtjA4gj2zjEf8AUBL+ZkWWbwXLzHUwvOHILrpGRmdUDAFpUiECWxgQF6MCi5XmifnPoWwG/WNb5ri4Jn8OAP/yDdj8h6YhAwezdUNwfq5E79kVGVbgkZPLL1y/Vr9VRZ5scZsZEfImIQMzdluf+gycXqYHZth1NVXJ3DBc4xW+0/ziWD7b3krnB1OuAAAA";
+            var finalizedPsbt = PSBT.Parse(psbt3, Network.RegTest);
+            // var channelfundingTx = fundedPsbt.GetGlobalTransaction();
+            // var input = channelfundingTx.Inputs.FirstOrDefault();
+            // var utxoChanges = new UTXOChanges();
+            // var key = wallet.Keys.FirstOrDefault();
+            // var fixture = new Fixture();
+            // var utxoList = new List<UTXO>()
+            // {
+            //     new UTXO()
+            //     {
+            //         Value = new Money(10),
+            //         Outpoint = input.PrevOut,
+            //         Index = fixture.Create<int>(),
+            //         ScriptPubKey = new Script(),
+            //         KeyPath = new KeyPath(key.Path) 
+            //     }
+            // };
+            //
+            // utxoChanges.Confirmed = new UTXOChange() { UTXOs = utxoList };
+            // explorerClient
+            //     .Setup(x => x.GetUTXOsAsync(Arg.Ignore<DerivationStrategyBase>(), Arg.Ignore<CancellationToken>()))
+            //     .Returns(utxoChanges);
+             
+            LightningService.SignPSBT = (_, _, _, _, _, _, _) => Task.FromResult(finalizedPsbt);
+
+            var channelOperationRequestPsbtRepository = new Mock<IChannelOperationRequestPSBTRepository>();
+            channelOperationRequestPsbtRepository
+                .Setup(x => x.AddAsync(It.IsAny<ChannelOperationRequestPSBT>()))
+                .ReturnsAsync((true, ""));
+
+            lightningClient
+                .Setup(x => x.FundingStateStep(
+                    Arg.Ignore<FundingTransitionMsg>(),
+                    Arg.Ignore<Metadata>(),
+                    null,
+                    default))
+                .Returns(new FundingStateStepResp());
+            
+            lightningClient
+                .Setup(x => x.FundingStateStepAsync(
+                    Arg.Ignore<FundingTransitionMsg>(),
+                    Arg.Ignore<Metadata>(),
+                    null,
+                    default))
+                .Returns(MockHelpers.CreateAsyncUnaryCall(new FundingStateStepResp()));
+            
+            var lightningService = new LightningService(logger, channelOperationRequestRepository.Object, nodeRepository.Object, dbContextFactory.Object, null, null, null, channelOperationRequestPsbtRepository.Object, null, null);
+            
             // Act
             var act = async () => await lightningService.OpenChannel(operationRequest);
             
             // Assert
-            await act.Should().ThrowAsync<SetupNotFoundException>();
-        } 
+            await act.Should().NotThrowAsync();
+        }
     }
 }

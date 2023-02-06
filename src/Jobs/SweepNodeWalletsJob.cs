@@ -17,7 +17,7 @@
  *
  */
 
-﻿using FundsManager.Data.Models;
+using FundsManager.Data.Models;
 using FundsManager.Data.Repositories.Interfaces;
 using FundsManager.Helpers;
 using Grpc.Core;
@@ -26,7 +26,7 @@ using Lnrpc;
 using NBXplorer;
 using NBXplorer.DerivationStrategy;
 using Quartz;
- using Unmockable;
+using Unmockable;
 
 namespace FundsManager.Jobs;
 
