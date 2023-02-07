@@ -384,11 +384,10 @@ namespace FundsManager.Services
             var nodeRepository = new Mock<INodeRepository>();
            
             var channelOpReqPsbts = new List<ChannelOperationRequestPSBT>();
-            var psbt =
-                "cHNidP8BAF4BAAAAAY2SvXNoGcttP+4LFeTIdsPXuJWUF3XjjJ6F6hqBrO7wAAAAAAD/////AehANXcAAAAAIgAgg+aofANl6wKKByTgFl5yBnqUK8f7sn4ULhAAIJb1C0cAAAAATwEENYfPAy8RJCyAAAAB/DvuQjoBjOttImoGYyiO0Pte4PqdeQqzcNAw4Ecw5sgDgI4uHNSCvdBxlpQ8WoEz0WmvhgIra7A4F3FkTsB0RNcQH8zk3jAAAIABAACAAQAAgE8BBDWHzwNWrAP0gAAAAfkIrkpmsP+hqxS1WvDOSPKnAiXLkBCQLWkBr5C5Po+BAlGvFeBbuLfqwYlbP19H/+/s2DIaAu8iKY+J0KIDffBgEGDzoLMwAACAAQAAgAEAAIBPAQQ1h88DfblGjYAAAAH1InDHaHo6+zUe9PG5owwQ87bTkhcGg66pSIwTmhHJmAMiI4UjOOpn+/2Nw1KrJiXnmid2RiEja/HAITCQ00ienxDtAhDIMAAAgAEAAIABAACAAAEBK2RDNXcAAAAAIgAguNLINpkV//IIFd1ti2ig15+6mPOhNWykV0mwsneO9FcBAwQCAAAAAQVpUiEDJ0KjWjE9mM+OzBPgqobBDCvXwdbEERr2wUJD2ruduAYhA4E0C5IanGt26wU7pzZoyLG+FhLBa8k8HdwR/2T0uCpKIQPdbg/RGEZcyAU+sjVNkti/8LzgNP3puKHGjP/73jrTdlOuIgYDJ0KjWjE9mM+OzBPgqobBDCvXwdbEERr2wUJD2ruduAYYH8zk3jAAAIABAACAAQAAgAEAAAAAAAAAIgYDgTQLkhqca3brBTunNmjIsb4WEsFryTwd3BH/ZPS4KkoY7QIQyDAAAIABAACAAQAAgAEAAAAAAAAAIgYD3W4P0RhGXMgFPrI1TZLYv/C84DT96bihxoz/+94603YYYPOgszAAAIABAACAAQAAgAEAAAAAAAAAAAA=";
+            var userSignedPSBT = "cHNidP8BAF4BAAAAAexSK/NStWhBu7utoQ5D5FNqMhhdhA34/nEgMU0XjbJlAAAAAAD/////AYSRNXcAAAAAIgAguNLINpkV//IIFd1ti2ig15+6mPOhNWykV0mwsneO9FcAAAAATwEENYfPAy8RJCyAAAAB/DvuQjoBjOttImoGYyiO0Pte4PqdeQqzcNAw4Ecw5sgDgI4uHNSCvdBxlpQ8WoEz0WmvhgIra7A4F3FkTsB0RNcQH8zk3jAAAIABAACAAQAAgE8BBDWHzwNWrAP0gAAAAfkIrkpmsP+hqxS1WvDOSPKnAiXLkBCQLWkBr5C5Po+BAlGvFeBbuLfqwYlbP19H/+/s2DIaAu8iKY+J0KIDffBgEGDzoLMwAACAAQAAgAEAAIBPAQQ1h88DfblGjYAAAAH1InDHaHo6+zUe9PG5owwQ87bTkhcGg66pSIwTmhHJmAMiI4UjOOpn+/2Nw1KrJiXnmid2RiEja/HAITCQ00ienxDtAhDIMAAAgAEAAIABAACAAAEBKwCUNXcAAAAAIgAgs1MYpDJWIIGz/LeRwb5D/c1wgjKmSotvf8QyY3nsEMQiAgLYVMVgz+bATgvrRDQbanlASVXtiUwPt9yCgkQfv2kssUcwRAIgLWbNccdr2EVATngtvTKY4H71ihdlTx65jsLnb7l/YLMCIDcxNFGRQcJ9NS+naFO+MRgWUnuoGWmjfPUnL7bs8Li9AgEDBAIAAAABBWlSIQLYVMVgz+bATgvrRDQbanlASVXtiUwPt9yCgkQfv2kssSEDAmf/CxGXSG9xiPljcG/e5CXFnnukFn0pJ64Q9U2aNL8hAxpTd/JawX43QWk3yFK6wOPpsRK931hHnT2R2BYwsouPU64iBgLYVMVgz+bATgvrRDQbanlASVXtiUwPt9yCgkQfv2kssRgfzOTeMAAAgAEAAIABAACAAAAAAAAAAAAiBgMCZ/8LEZdIb3GI+WNwb97kJcWee6QWfSknrhD1TZo0vxhg86CzMAAAgAEAAIABAACAAAAAAAAAAAAiBgMaU3fyWsF+N0FpN8hSusDj6bESvd9YR509kdgWMLKLjxjtAhDIMAAAgAEAAIABAACAAAAAAAAAAAAAAA==";
             channelOpReqPsbts.Add(new ChannelOperationRequestPSBT()
             {
-                PSBT = psbt,
+                PSBT = userSignedPSBT,
             });
             
             var destinationNode = new Node()
@@ -479,13 +478,12 @@ namespace FundsManager.Services
                     ChannelPoint = new ChannelPoint()
                 }
             };
-            var psbt2 =
-                "cHNidP8BAF4BAAAAAY2SvXNoGcttP+4LFeTIdsPXuJWUF3XjjJ6F6hqBrO7wAAAAAAD/////AehANXcAAAAAIgAgg+aofANl6wKKByTgFl5yBnqUK8f7sn4ULhAAIJb1C0cAAAAATwEENYfPAy8RJCyAAAAB/DvuQjoBjOttImoGYyiO0Pte4PqdeQqzcNAw4Ecw5sgDgI4uHNSCvdBxlpQ8WoEz0WmvhgIra7A4F3FkTsB0RNcQH8zk3jAAAIABAACAAQAAgE8BBDWHzwNWrAP0gAAAAfkIrkpmsP+hqxS1WvDOSPKnAiXLkBCQLWkBr5C5Po+BAlGvFeBbuLfqwYlbP19H/+/s2DIaAu8iKY+J0KIDffBgEGDzoLMwAACAAQAAgAEAAIBPAQQ1h88DfblGjYAAAAH1InDHaHo6+zUe9PG5owwQ87bTkhcGg66pSIwTmhHJmAMiI4UjOOpn+/2Nw1KrJiXnmid2RiEja/HAITCQ00ienxDtAhDIMAAAgAEAAIABAACAAAEBK2RDNXcAAAAAIgAguNLINpkV//IIFd1ti2ig15+6mPOhNWykV0mwsneO9FciAgMnQqNaMT2Yz47ME+CqhsEMK9fB1sQRGvbBQkPau524BkcwRAIgDyqyP4zAWCDmH1AU1oTR7+xC7qigIyxNL1PH/OsNB4cCIFPySCKzpvXsmSoB7XlhDWf+96DmZC+jRck5Eo/+hw14AgEDBAIAAAABBWlSIQMnQqNaMT2Yz47ME+CqhsEMK9fB1sQRGvbBQkPau524BiEDgTQLkhqca3brBTunNmjIsb4WEsFryTwd3BH/ZPS4KkohA91uD9EYRlzIBT6yNU2S2L/wvOA0/em4ocaM//veOtN2U64iBgMnQqNaMT2Yz47ME+CqhsEMK9fB1sQRGvbBQkPau524BhgfzOTeMAAAgAEAAIABAACAAQAAAAAAAAAiBgOBNAuSGpxrdusFO6c2aMixvhYSwWvJPB3cEf9k9LgqShjtAhDIMAAAgAEAAIABAACAAQAAAAAAAAAiBgPdbg/RGEZcyAU+sjVNkti/8LzgNP3puKHGjP/73jrTdhhg86CzMAAAgAEAAIABAACAAQAAAAAAAAAAAA==";
+            
             var psbtFundUpdate = new OpenStatusUpdate
             {
                 PsbtFund = new ReadyForPsbtFunding()
                 {
-                    Psbt = ByteString.FromBase64(psbt2)
+                    Psbt = ByteString.FromBase64(userSignedPSBT)
                 }
             };
             lightningClient
@@ -508,31 +506,26 @@ namespace FundsManager.Services
                 .Setup(x => x.Update(It.IsAny<ChannelOperationRequest>()))
                 .Returns((true, ""));
 
-            var psbt3 = "cHNidP8BAIkBAAAAAYPmRU9UfOb7jPxzNbVTsZHVsj/vIRBCItB7L0L8sxLhAAAAAAD/////AiyiNHcAAAAAIgAgU9+5n7rk7vLG5T/1ayQ8XHRllAmukKFB/lVCj6HYCp0gTgAAAAAAACIAIAjA2QfEQoCuNRq9fovDi71fO4wPu9U0KS7hbkX+YHKiAAAAAAABASvI8jR3AAAAACIAIJffgj8CDyfDGIRCy1ydaXmsoDphWy2Wd68mRGjxQ1RXAQcAAQj8BABHMEQCIClOzdLaGSnwhiNgaCrNIaLOgTePaJchHw6iStN/otXwAiB4wz5Zi8OHMrZnC3uul9sP5O6PDbmnHe45QGrAoZmN/QJHMEQCIAg0m3d7SlNkN7Azuoa2Zo0/uEpMVWW0T4Et8mBgbMAPAiBtjA4gj2zjEf8AUBL+ZkWWbwXLzHUwvOHILrpGRmdUDAFpUiECWxgQF6MCi5XmifnPoWwG/WNb5ri4Jn8OAP/yDdj8h6YhAwezdUNwfq5E79kVGVbgkZPLL1y/Vr9VRZ5scZsZEfImIQMzdluf+gycXqYHZth1NVXJ3DBc4xW+0/ziWD7b3krnB1OuAAAA";
-            var finalizedPsbt = PSBT.Parse(psbt3, Network.RegTest);
-            // var channelfundingTx = fundedPsbt.GetGlobalTransaction();
-            // var input = channelfundingTx.Inputs.FirstOrDefault();
-            // var utxoChanges = new UTXOChanges();
-            // var key = wallet.Keys.FirstOrDefault();
-            // var fixture = new Fixture();
-            // var utxoList = new List<UTXO>()
-            // {
-            //     new UTXO()
-            //     {
-            //         Value = new Money(10),
-            //         Outpoint = input.PrevOut,
-            //         Index = fixture.Create<int>(),
-            //         ScriptPubKey = new Script(),
-            //         KeyPath = new KeyPath(key.Path) 
-            //     }
-            // };
-            //
-            // utxoChanges.Confirmed = new UTXOChange() { UTXOs = utxoList };
-            // explorerClient
-            //     .Setup(x => x.GetUTXOsAsync(Arg.Ignore<DerivationStrategyBase>(), Arg.Ignore<CancellationToken>()))
-            //     .Returns(utxoChanges);
+            var userSignedPsbtParsed = PSBT.Parse(userSignedPSBT, Network.RegTest);
+            var utxoChanges = new UTXOChanges();
+            var input = userSignedPsbtParsed.Inputs[0];
+            var utxoList = new List<UTXO>()
+            {
+                new UTXO()
+                {  
+                    Outpoint = input.PrevOut, 
+                    Index = 0,
+                    ScriptPubKey = input.WitnessUtxo.ScriptPubKey, 
+                    KeyPath = new KeyPath("0/0"),
+                },
+            };
+            
+            utxoChanges.Confirmed = new UTXOChange() { UTXOs = utxoList };
+            explorerClient
+                .Setup(x => x.GetUTXOsAsync(Arg.Ignore<DerivationStrategyBase>(), Arg.Ignore<CancellationToken>()))
+                .Returns(utxoChanges);
              
-            LightningService.SignPSBT = (_, _, _, _, _, _, _) => Task.FromResult(finalizedPsbt);
+            // LightningService.SignPSBT = (_, _, _, _, _, _, _) => Task.FromResult(finalizedPsbt);
 
             var channelOperationRequestPsbtRepository = new Mock<IChannelOperationRequestPSBTRepository>();
             channelOperationRequestPsbtRepository

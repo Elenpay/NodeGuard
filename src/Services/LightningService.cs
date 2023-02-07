@@ -368,7 +368,6 @@ namespace FundsManager.Services
                                     //We merge changeFixedPSBT with the other PSBT with the change fixed
 
                                     var changeFixedPSBT = channelfundingTx.CreatePSBT(network).UpdateFrom(fundedPSBT);
-                                    var partialSigsCount = changeFixedPSBT.Inputs.Sum(x => x.PartialSigs.Count);
 
                                     PSBT? finalSignedPSBT = null;
                                     //We check the way the fundsmanager signs, with the remoteFundsManagerSigner or by itself.
@@ -630,10 +629,10 @@ namespace FundsManager.Services
         /// <param name="changeFixedPSBT"></param>
         /// <returns></returns>
         /// <exception cref="ArgumentException"></exception>
-        public static Func<ChannelOperationRequest, IUnmockable<ExplorerClient>, DerivationStrategyBase, Transaction, Network, PSBT, ILogger?, Task<PSBT>> SignPSBT = async (
-                channelOperationRequest, nbxplorerClient,
-                derivationStrategyBase, channelfundingTx, network, changeFixedPSBT, logger)
-            =>
+        public static async Task<PSBT> SignPSBT(
+                ChannelOperationRequest channelOperationRequest, IUnmockable<ExplorerClient> nbxplorerClient,
+                DerivationStrategyBase derivationStrategyBase, Transaction channelfundingTx, Network network, PSBT changeFixedPSBT, ILogger? logger = null)
+            
         {
             //We get the UTXO keyPath / derivation path from nbxplorer
 
@@ -690,7 +689,7 @@ namespace FundsManager.Services
             }
 
             return changeFixedPSBT;
-        };
+        }
 
         /// <summary>
         /// Cancels a pending channel from LND PSBT-based funding of channels
