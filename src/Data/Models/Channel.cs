@@ -51,6 +51,9 @@
         public ICollection<ChannelOperationRequest> ChannelOperationRequests { get; set; }
         
         public ICollection<LiquidityRule> LiquidityRules { get; set; }
+        
+        public int NodeId { get; set; }
+        public Node Node { get; set; }
 
         #endregion
 

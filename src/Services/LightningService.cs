@@ -380,7 +380,8 @@ namespace FundsManager.Services
                                     BtcCloseAddress = closeAddress?.Address.ToString(),
                                     SatsAmount = channelOperationRequest.SatsAmount,
                                     UpdateDatetime = DateTimeOffset.Now,
-                                    Status = Channel.ChannelStatus.Open
+                                    Status = Channel.ChannelStatus.Open,
+                                    NodeId = channelOperationRequest.SourceNode.Id
                                 };
 
                                 await context.AddAsync(channel);
