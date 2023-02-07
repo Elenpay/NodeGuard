@@ -11,4 +11,11 @@ public interface ILiquidityRuleRepository
     (bool, string?) Remove(LiquidityRule type);
     (bool, string?) RemoveRange(List<LiquidityRule> types);
     (bool, string?) Update(LiquidityRule type);
+    
+    /// <summary>
+    /// Gets all the liquidity rules for a given node
+    /// </summary>
+    /// <param name="nodePubKey"></param>
+    /// <returns></returns>
+    Task<ICollection<LiquidityRule>> GetByNodePubKey(string nodePubKey);
 }

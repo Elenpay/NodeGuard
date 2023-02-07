@@ -92,4 +92,21 @@ public class LiquidityRuleRepository : ILiquidityRuleRepository
 
         return _repository.Update(type, applicationDbContext);
     }
+
+    public async Task<ICollection<LiquidityRule>> GetByNodePubKey(string nodePubKey)
+    {
+        if (string.IsNullOrWhiteSpace(nodePubKey))
+            throw new ArgumentException("Value cannot be null or whitespace.", nameof(nodePubKey));
+        
+        using var applicationDbContext = await _dbContextFactory.CreateDbContextAsync();
+
+        var result = applicationDbContext.LiquidityRules
+            .Include(x=> x.Node)
+            .Include(x=> x.Wallet)
+            .ThenInclude(x=> x.InternalWallet)
+            .Include(x=> x.Channel)
+            .Where(x=> x.Node.PubKey == nodePubKey).ToList();
+        
+        return result;
+    }
 }

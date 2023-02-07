@@ -1,0 +1,41 @@
+syntax = "proto3";
+
+package nodeguard;
+
+
+service NodeGuardService {
+  /*
+  
+  Returns the liquidity rules associated to a node and its channels
+  */
+  rpc GetLiquidityRules(GetLiquidityRulesRequest) returns (GetLiquidityRulesResponse);
+      
+  /*
+  Returns a new unused BTC Address of a given wallet
+  */
+  rpc GetNewWalletAddress(GetNewWalletAddressRequest) returns (GetNewWalletAddressResponse);
+}
+
+message GetLiquidityRulesRequest {
+  string node_pubkey = 1;
+}
+
+message GetLiquidityRulesResponse {
+  repeated LiquidityRule liquidity_rules = 1;
+}
+
+message LiquidityRule {
+  string channel_id = 1;
+  string node_pubkey = 2;
+  int32 wallet_id = 3;
+  float minimum_local_balance = 4;
+  float minimum_remote_balance = 5;
+}
+
+message GetNewWalletAddressRequest {
+  int32 wallet_id = 1;
+}
+
+message GetNewWalletAddressResponse {
+  string address = 1;
+}

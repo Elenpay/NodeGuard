@@ -43,6 +43,7 @@ using Serilog;
 using Serilog.Events;
 using Serilog.Formatting.Json;
 using FundsManager.Helpers;
+using FundsManager.rpc;
 
 namespace FundsManager
 {
@@ -254,6 +255,8 @@ namespace FundsManager
                             })
                     );
             }
+            
+          
 
             var app = builder.Build();
 
@@ -298,6 +301,10 @@ namespace FundsManager
             app.MapControllers();
             app.MapBlazorHub();
             app.MapFallbackToPage("/_Host");
+            
+            //Grpc services
+            //TODO Auth in the future, DAPR(?)
+            app.MapGrpcService<NodeGuardService>();
 
             app.Run();
         }
