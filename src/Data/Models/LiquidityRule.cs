@@ -34,6 +34,9 @@ public class LiquidityRule: Entity
     public int WalletId { get; set; }
     public Wallet Wallet { get; set; }
     
+    public int NodeId { get; set; }
+    public Node Node { get; set; }
+    
     //TODO Discuss about a liquidity rule at node level
 
     #endregion
