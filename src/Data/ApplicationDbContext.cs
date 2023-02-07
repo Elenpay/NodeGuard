@@ -14,7 +14,6 @@
  *
  * You should have received a copy of the GNU Affero General Public License
  * along with this program.  If not, see http://www.gnu.org/licenses/.
- *
  */
 
 ﻿using FundsManager.Data.Models;
@@ -78,5 +77,7 @@ namespace FundsManager.Data
         public DbSet<InternalWallet> InternalWallets { get; set; }
 
         public DbSet<FMUTXO> FMUTXOs { get; set; }
+        
+        public DbSet<LiquidityRule> LiquidityRules { get; set; }
     }
 }

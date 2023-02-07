@@ -3,4 +3,6 @@ add-license-cs:
     headache --configuration ./configuration-cs.json
 add-migration name:
     cd src && dotnet ef migrations add {{name}}
+remove-migration:
+    cd src && dotnet ef migrations remove
     
