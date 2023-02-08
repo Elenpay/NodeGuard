@@ -169,7 +169,7 @@ namespace FundsManager.Data.Repositories
                     return (false, "Error while getting the derivation scheme");
                 }
 
-                await nbxplorerClient.TrackAsync(derivationStrategyBase);
+                await nbxplorerClient.Execute(x => x.TrackAsync(derivationStrategyBase, default));
 
                 selectedWalletToFinalise.Keys = null;
                 selectedWalletToFinalise.ChannelOperationRequestsAsSource = null;

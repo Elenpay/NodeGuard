@@ -165,7 +165,7 @@
             </DataGridColumn>
             <DataGridCommandColumn TItem="ChannelOperationRequest" Caption="Actions" Displayable="true">
                 <EditCommandTemplate>
-                    <Button Color="Color.Primary" hidden=@_isNodeManager Clicked="@(() => ShowModal(context.Item))">Approve</Button>
+                    <Button Color="Color.Primary" hidden=@(!_isFinanceManager) Clicked="@(() => ShowModal(context.Item))">Approve</Button>
                     @{
                         if (LoggedUser?.Id == context.Item.UserId)
                         {
