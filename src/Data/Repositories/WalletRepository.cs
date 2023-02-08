@@ -21,6 +21,8 @@
 using FundsManager.Data.Repositories.Interfaces;
 using FundsManager.Helpers;
 using Microsoft.EntityFrameworkCore;
+ using NBitcoin;
+ using Key = FundsManager.Data.Models.Key;
 
 namespace FundsManager.Data.Repositories
 {
@@ -134,18 +136,45 @@ namespace FundsManager.Data.Repositories
             return _repository.RemoveRange(types, applicationDbContext);
         }
 
-        public (bool, string?) Update(Wallet type, bool includeKeysUpdate = false)
-        {
+        public async Task<(bool, string?)> Update(Wallet type, bool includeKeysUpdate = false)
+        { 
             using var applicationDbContext = _dbContextFactory.CreateDbContext();
+            var wallet = await applicationDbContext.Wallets.Include(w => w.Keys).FirstOrDefaultAsync(x => x.Id == type.Id);
 
             type.SetUpdateDatetime();
-            if (!includeKeysUpdate)
-                type.Keys?.Clear();
 
-            type.ChannelOperationRequestsAsSource?.Clear();
-            return _repository.Update(type, applicationDbContext);
+            applicationDbContext.Entry(wallet).CurrentValues.SetValues(type);
+            
+            if (type.IsHotWallet && type.Keys.Count > 1)
+            {
+                var userKeys = wallet.Keys.Where(k => k.UserId != null);
+                foreach (var key in userKeys)
+                {
+                    wallet.Keys.Remove(key);
+                }
+                 
+            } else if (!includeKeysUpdate)
+                wallet.Keys?.Clear();
+            
+            wallet.ChannelOperationRequestsAsSource?.Clear();
+            return _repository.Update(wallet, applicationDbContext);
         }
 
+        public async Task<string> GetNextSubderivationPath()
+        {
+            await using var applicationDbContext = _dbContextFactory.CreateDbContext();
+
+            var lastWallet = applicationDbContext.Wallets.OrderBy(w => w.Id).LastOrDefault(w => w.IsFinalised && w.IsHotWallet);
+            
+            if (lastWallet == null) return "0'/0'";
+            
+            if (lastWallet.InternalWalletSubDerivationPath == null)
+                throw new InvalidOperationException("A finalized hot wallet has no subderivation path");
+            
+            var subderivationPath = KeyPath.Parse(lastWallet.InternalWalletSubDerivationPath);
+            return subderivationPath.Increment().ToString();
+        }
+        
         public async Task<(bool, string?)> FinaliseWallet(Wallet selectedWalletToFinalise)
         {
             if (selectedWalletToFinalise == null) throw new ArgumentNullException(nameof(selectedWalletToFinalise));
@@ -174,7 +203,12 @@ namespace FundsManager.Data.Repositories
                 selectedWalletToFinalise.Keys = null;
                 selectedWalletToFinalise.ChannelOperationRequestsAsSource = null;
 
-                var updateResult = Update(selectedWalletToFinalise);
+                if (selectedWalletToFinalise.IsHotWallet)
+                {
+                    selectedWalletToFinalise.InternalWalletSubDerivationPath = await GetNextSubderivationPath();
+                }
+
+                var updateResult = await Update(selectedWalletToFinalise);
 
                 if (updateResult.Item1 == false)
                 {

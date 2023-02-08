@@ -36,7 +36,7 @@
                   UseValidation="true"
                   PopupClosing="async (_) => { IsHotWallet = false; }">
             <PopupTitleTemplate>
-                <h2>@(context.EditState) @(context.Item.IsHotWallet ? "Hot" : "Cold") wallet</h2>
+                <h2>@(context.EditState) wallet</h2>
             </PopupTitleTemplate>
             <DataGridColumns>
                 <DataGridCommandColumn TItem="Wallet">
@@ -90,15 +90,15 @@
                     </EditTemplate>
                 </DataGridColumn>
                 <DataGridColumn TItem="Wallet" Editable="true" Field="@nameof(Wallet.Description)" Caption="@nameof(Wallet.Description)" Sortable="false"/>
-                <DataGridColumn TItem="Wallet" Editable="true" CellsEditableOnEditCommand="false" Field="@nameof(Wallet.IsHotWallet)" Caption="Hot Wallet" Sortable="true">
+                <DataGridColumn TItem="Wallet" Editable="true" Field="@nameof(Wallet.IsHotWallet)" Caption="Hot Wallet" Sortable="true">
                     <EditTemplate>
-                        <Check TValue="bool" Disabled="@(context.Item.IsFinalised)" Checked="@((bool)context.CellValue)" CheckedChanged="(value) => { context.CellValue = value; IsHotWallet = value; }"/>
+                        <Check TValue="bool" Disabled="@(context.Item.IsFinalised)" Checked="@((bool)context.CellValue)" CheckedChanged="(value) => OnCheckedChanged(context, value)"/>
                     </EditTemplate>
                 </DataGridColumn>
                 <DataGridColumn TItem="Wallet" Editable="false" Field="@nameof(Wallet.IsFinalised)" Caption="Finalised" Sortable="false"/>
                 <DataGridColumn TItem="Wallet" Editable="true" CellsEditableOnNewCommand="false" Field="@nameof(Wallet.IsArchived)" Caption="Archived" Sortable="false"/>
                 <DataGridColumn TItem="Wallet" Editable="true" CellsEditableOnNewCommand="false" Field="@nameof(Wallet.IsCompromised)" Caption="Compromised" Sortable="false"/> 
-                <DataGridNumericColumn TItem="Wallet" Decimals="0" Editable="true" CellsEditableOnEditCommand="false" Field="@nameof(Wallet.MofN)" Caption="Threshold" Sortable="false">
+                <DataGridNumericColumn TItem="Wallet" Decimals="0" Editable="true" Field="@nameof(Wallet.MofN)" Caption="Threshold" Sortable="false">
                     <EditTemplate>
                         <Validation Validator="@ValidateThreshold">
                             <NumericEdit TValue="int" Value="@(IsHotWallet ? 1 : (int)context.CellValue)" Disabled="@(context.Item.IsFinalised || IsHotWallet)" ValueChanged="(value) => { context.CellValue = value; }">
@@ -292,8 +292,9 @@
     private async Task OnRowInserted(SavedRowItem<Wallet, Dictionary<string, object>> arg)
     {
         if (arg.Item == null) return;
-
-        if (IsHotWallet) arg.Item.MofN = 1;
+        
+        arg.Item.IsHotWallet = IsHotWallet;
+        if (arg.Item.IsHotWallet) arg.Item.MofN = 1;
         
         var addResult = await WalletRepository.AddAsync(arg.Item);
 
@@ -343,7 +344,10 @@
     {
         if (arg.Item == null) return;
 
-        var updateResult = WalletRepository.Update(arg.Item);
+        arg.Item.IsHotWallet = IsHotWallet;
+        if (arg.Item.IsHotWallet) arg.Item.MofN = 1;
+        
+        var updateResult = await WalletRepository.Update(arg.Item);
 
         if (updateResult.Item1)
         {
@@ -402,7 +406,7 @@
             _selectedWallet.Keys = new List<Key>();
             _selectedWallet.Keys.Add(_selectedWalletKey);
 
-            var updateResult = WalletRepository.Update(_selectedWallet, true);
+            var updateResult = await WalletRepository.Update(_selectedWallet, true);
 
             if (updateResult.Item1)
             {
@@ -610,6 +614,12 @@
             }
 
         }
+    }
+
+    private void OnCheckedChanged(CellEditContext<Wallet> context, bool value)
+    {
+        context.CellValue = value;
+        IsHotWallet = value;
     }
 }
 
