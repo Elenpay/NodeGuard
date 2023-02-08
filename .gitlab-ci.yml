@@ -39,7 +39,7 @@ build-release:
     - tags
 
 test:
-  image: "mcr.microsoft.com/dotnet/core/sdk:6.0"
+  image: "mcr.microsoft.com/dotnet/sdk:6.0"
   stage: unit-test
   variables:
     test_path: "$project/test/$project.Tests"
