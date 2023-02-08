@@ -44,4 +44,9 @@ test:
     test_path: "$project/test/$project.Tests"
   script:
     - "dotnet test"
-
+#  rules:
+#    - if: '$CI_COMMIT_REF_NAME == "develop" &&  $CI_PIPELINE_SOURCE != "merge_request_event"'
+#      changes:
+#        - "test/**/*"
+#        - "FundsManager.Tests.sln"
+#        - ".gitlab-ci.yml"
