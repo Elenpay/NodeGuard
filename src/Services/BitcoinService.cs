@@ -17,7 +17,7 @@
  *
  */
 
-﻿using AutoMapper;
+using AutoMapper;
 using FundsManager.Data.Models;
 using FundsManager.Data.Repositories.Interfaces;
 using FundsManager.Helpers;
@@ -26,6 +26,7 @@ using NBitcoin;
 using NBXplorer;
 using NBXplorer.DerivationStrategy;
 using NBXplorer.Models;
+using Unmockable;
 
 // ReSharper disable All
 
@@ -68,7 +69,7 @@ namespace FundsManager.Services
 
             var (_, explorerClient) = LightningHelper.GenerateNetwork();
 
-            var balance = await explorerClient.GetBalanceAsync(wallet.GetDerivationStrategy());
+            var balance = await explorerClient.Execute(x => x.GetBalanceAsync(wallet.GetDerivationStrategy(), default));
             var confirmedBalanceMoney = (Money) balance.Confirmed;
 
             return (confirmedBalanceMoney.ToUnit(MoneyUnit.BTC), confirmedBalanceMoney.Satoshi);
@@ -88,7 +89,7 @@ namespace FundsManager.Services
 
             var (nbXplorerNetwork, nbxplorerClient) = LightningHelper.GenerateNetwork();
 
-            if (!(await nbxplorerClient.GetStatusAsync()).IsFullySynched)
+            if (!(await nbxplorerClient.Execute(x => x.GetStatusAsync(default))).IsFullySynched)
             {
                 _logger.LogError("Error, nbxplorer not fully synched");
                 return (null, false);
@@ -112,7 +113,7 @@ namespace FundsManager.Services
             if (templatePSBT != null && PSBT.TryParse(templatePSBT.PSBT, CurrentNetworkHelper.GetCurrentNetwork(),
                     out var parsedTemplatePSBT))
             {
-                var currentUtxos = await nbxplorerClient.GetUTXOsAsync(derivationStrategy);
+                var currentUtxos = await nbxplorerClient.Execute(x => x.GetUTXOsAsync(derivationStrategy, default));
                 if (parsedTemplatePSBT.Inputs.All(
                         x => currentUtxos.Confirmed.UTXOs.Select(x => x.Outpoint).Contains(x.PrevOut)))
                 {
@@ -139,7 +140,7 @@ namespace FundsManager.Services
                 }
             }
 
-            var utxoChanges = await nbxplorerClient.GetUTXOsAsync(derivationStrategy);
+            var utxoChanges = await nbxplorerClient.Execute(x => x.GetUTXOsAsync(derivationStrategy, default));
             utxoChanges.RemoveDuplicateUTXOs();
 
             var lockedUtxOs =
@@ -148,7 +149,7 @@ namespace FundsManager.Services
             //If the request is a full funds withdrawal, calculate the amount to the existing balance
             if (walletWithdrawalRequest.WithdrawAllFunds)
             {
-                var balanceResponse = await nbxplorerClient.GetBalanceAsync(derivationStrategy);
+                var balanceResponse = await nbxplorerClient.Execute(x => x.GetBalanceAsync(derivationStrategy, default));
 
                 walletWithdrawalRequest.Amount = ((Money) balanceResponse.Confirmed).ToUnit(MoneyUnit.BTC);
 
@@ -182,7 +183,7 @@ namespace FundsManager.Services
 
                 var feeRateResult = await LightningHelper.GetFeeRateResult(nbXplorerNetwork, nbxplorerClient);
 
-                var changeAddress = await nbxplorerClient.GetUnusedAsync(derivationStrategy, DerivationFeature.Change);
+                var changeAddress = await nbxplorerClient.Execute(x => x.GetUnusedAsync(derivationStrategy, DerivationFeature.Change, 0, false, default));
 
                 if (changeAddress == null)
                 {
@@ -214,7 +215,7 @@ namespace FundsManager.Services
                 result.Item1 = builder.BuildPSBT(false);
                 
                 //Additional fields to support PSBT signing with a HW or the Remote Signer 
-                result = LightningHelper.AddDerivationData(_logger,walletWithdrawalRequest.Wallet.Keys, result, selectedUTXOs, scriptCoins);
+                result = LightningHelper.AddDerivationData(walletWithdrawalRequest.Wallet.Keys, result, selectedUTXOs, scriptCoins, _logger);
             }
             catch (Exception e)
             {
@@ -363,7 +364,7 @@ namespace FundsManager.Services
                     tx.GetHash().ToString());
 
                 //TODO Review why LND gives EOF, nbxplorer works flawlessly
-                var broadcastAsyncResult = await nbxplorerClient.BroadcastAsync(tx);
+                var broadcastAsyncResult = await nbxplorerClient.Execute(x => x.BroadcastAsync(tx, default));
 
                 if (!broadcastAsyncResult.Success)
                 {
@@ -392,7 +393,7 @@ namespace FundsManager.Services
                     walletWithdrawalRequest.DestinationAddress,
                     CurrentNetworkHelper.GetCurrentNetwork()));
 
-                await nbxplorerClient.TrackAsync(trackedSourceAddress);
+                await nbxplorerClient.Execute(x => x.TrackAsync(trackedSourceAddress, default));
             }
             catch (Exception e)
             {
@@ -412,10 +413,10 @@ namespace FundsManager.Services
         /// <param name="network"></param>
         /// <exception cref="ArgumentException"></exception>
         private async Task<PSBT> SignPSBTWithEmbeddedSigner(WalletWithdrawalRequest walletWithdrawalRequest,
-            ExplorerClient nbxplorerClient, DerivationStrategyBase? derivationStrategyBase, PSBT combinedPSBT,
+            IUnmockable<ExplorerClient> nbxplorerClient, DerivationStrategyBase? derivationStrategyBase, PSBT combinedPSBT,
             Network network)
         {
-            var UTXOs = await nbxplorerClient.GetUTXOsAsync(derivationStrategyBase);
+            var UTXOs = await nbxplorerClient.Execute(x => x.GetUTXOsAsync(derivationStrategyBase, default));
             UTXOs.RemoveDuplicateUTXOs();
 
             var OutpointKeyPathDictionary =
@@ -485,7 +486,7 @@ namespace FundsManager.Services
                         var (network, nbxplorerclient) = LightningHelper.GenerateNetwork();
 
                         var getTxResult =
-                            await nbxplorerclient.GetTransactionAsync(uint256.Parse(walletWithdrawalRequest.TxId));
+                            await nbxplorerclient.Execute(x => x.GetTransactionAsync(uint256.Parse(walletWithdrawalRequest.TxId), default));
 
                         if (getTxResult.Confirmations >= Constants.TRANSACTION_CONFIRMATION_MINIMUM_BLOCKS)
                         {

@@ -53,6 +53,8 @@
     <PackageReference Include="Blazorise.SpinKit" Version="1.1.5" />
     <PackageReference Include="RestSharp" Version="106.13.0" />
     <PackageReference Include="Serilog.AspNetCore" Version="6.1.0" />
+    <PackageReference Include="Unmockable" Version="3.0.120" />
+    <PackageReference Include="Unmockable.Wrap" Version="3.0.120" />
   </ItemGroup>
 
   <ItemGroup>
