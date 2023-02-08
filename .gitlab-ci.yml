@@ -39,11 +39,16 @@ build-release:
     - tags
 
 test:
+  image: "mcr.microsoft.com/dotnet/core/sdk:6.0"
   stage: unit-test
   variables:
     test_path: "$project/test/$project.Tests"
   script:
-    - "dotnet test"
+    - cd tests/$PROJECT_NAME.Test
+    - dotnet test --test-adapter-path:. --logger:"LogFilePath=../../UnitTestResult.xml"
+  artifacts:
+    paths:
+      - ./UnitTestResult.xml
 #  rules:
 #    - if: '$CI_COMMIT_REF_NAME == "develop" &&  $CI_PIPELINE_SOURCE != "merge_request_event"'
 #      changes:
