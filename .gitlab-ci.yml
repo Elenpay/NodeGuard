@@ -1,6 +1,7 @@
 stages:
   - build-staging
   - build-release
+  - unit-test
 image: docker:stable
 variables:
   DOCKER_DRIVER: overlay2
@@ -37,4 +38,11 @@ build-release:
   only:
     - tags
 
+test:
+  stage: unit-test
+  variables:
+    test_path: "$project/test/$project.Tests"
+  script:
+    - "cd $test_path"
+    - "dotnet test"
 
