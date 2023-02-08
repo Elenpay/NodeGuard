@@ -44,7 +44,7 @@ test:
   variables:
     test_path: "$project/test/$project.Tests"
   script:
-    - cd tests/$PROJECT_NAME.Test
+    - cd test/FundsManager.Tests
     - dotnet test --test-adapter-path:. --logger:"LogFilePath=../../UnitTestResult.xml"
   artifacts:
     paths:
