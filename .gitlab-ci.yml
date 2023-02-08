@@ -43,6 +43,5 @@ test:
   variables:
     test_path: "$project/test/$project.Tests"
   script:
-    - "cd $test_path"
     - "dotnet test"
 

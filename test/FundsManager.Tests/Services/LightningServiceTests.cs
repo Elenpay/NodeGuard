@@ -233,7 +233,6 @@ namespace FundsManager.Services
         public void GetDerivationStrategyBase_DerivationSchemeExists()
         {
             // Arrange
-            Environment.SetEnvironmentVariable("DEFAULT_DERIVATION_PATH", "m/48'/1'/1'");
             var operationRequest = new ChannelOperationRequest
             {
                 Wallet = CreateWallet.CreateTestWallet() 
@@ -250,7 +249,6 @@ namespace FundsManager.Services
         public async void GetCloseAddress_NoCloseAddress()
         {
             // Arrange
-            Environment.SetEnvironmentVariable("DEFAULT_DERIVATION_PATH", "m/48'/1'/1'");
             var operationRequest = new ChannelOperationRequest
             {
                 Wallet = CreateWallet.CreateTestWallet()
@@ -280,7 +278,6 @@ namespace FundsManager.Services
         public async void GetCloseAddress_CloseAddressExists()
         {
             // Arrange
-            Environment.SetEnvironmentVariable("DEFAULT_DERIVATION_PATH", "m/48'/1'/1'");
             var operationRequest = new ChannelOperationRequest
             {
                 Wallet = CreateWallet.CreateTestWallet()
@@ -371,7 +368,6 @@ namespace FundsManager.Services
         public async void OpenChannel_Success()
         {
             // Arrange
-            Environment.SetEnvironmentVariable("DEFAULT_DERIVATION_PATH", "m/48'/1'/1'");
             Environment.SetEnvironmentVariable("NBXPLORER_URI", "http://10.0.0.2:38762");
             var dbContextFactory = new Mock<IDbContextFactory<ApplicationDbContext>>();
             

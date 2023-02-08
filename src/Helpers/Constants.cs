@@ -72,7 +72,7 @@ public class Constants
     {
         // If it is a command from ef or a test, ignore the empty env variables
         var command = Assembly.GetEntryAssembly()?.GetName().Name?.ToLowerInvariant();
-        var ignoreMissingVar = command == "ef" || (command != null && command.Contains("test"));
+        var ignoreMissingVar = command == "ef" || (command != null && command.Contains("test"));
 
         var envVariable = Environment.GetEnvironmentVariable(envVariableName);
         if (!ignoreMissingVar && envVariable == null) {

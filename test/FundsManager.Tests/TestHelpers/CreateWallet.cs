@@ -37,7 +37,7 @@ public class CreateWallet
     {
         var internalWallet = new InternalWallet
         {
-            DerivationPath = Constants.DEFAULT_DERIVATION_PATH,
+            DerivationPath = "m/48'/1'/1'",
             MnemonicString =
                             "middle teach digital prefer fiscal theory syrup enter crash muffin easily anxiety ill barely eagle swim volume consider dynamic unaware deputy middle into physical",
             CreationDatetime = DateTimeOffset.Now,
@@ -57,7 +57,7 @@ public class CreateWallet
 
         var masterKey1 = new Mnemonic(wallet1seed).DeriveExtKey().GetWif(Network.RegTest);
         var keyPath1 =
-            new KeyPath(Constants.DEFAULT_DERIVATION_PATH); //https://github.com/dgarage/NBXplorer/blob/0595a87f22c142aee6a6e4a0194f75aec4717819/NBXplorer/Controllers/MainController.cs#L1141
+            new KeyPath("m/48'/1'/1'"); //https://github.com/dgarage/NBXplorer/blob/0595a87f22c142aee6a6e4a0194f75aec4717819/NBXplorer/Controllers/MainController.cs#L1141
         var accountKey1 = masterKey1.Derive(keyPath1);
         var bitcoinExtPubKey1 = accountKey1.Neuter();
         var accountKeyPath1 = new RootedKeyPath(masterKey1.GetPublicKey().GetHDFingerPrint(), keyPath1);
@@ -69,7 +69,7 @@ public class CreateWallet
 
         var masterKey2 = new Mnemonic(wallet2seed).DeriveExtKey().GetWif(Network.RegTest);
         var keyPath2 =
-            new KeyPath(Constants.DEFAULT_DERIVATION_PATH); //https://github.com/dgarage/NBXplorer/blob/0595a87f22c142aee6a6e4a0194f75aec4717819/NBXplorer/Controllers/MainController.cs#L1141
+            new KeyPath("m/48'/1'/1'"); //https://github.com/dgarage/NBXplorer/blob/0595a87f22c142aee6a6e4a0194f75aec4717819/NBXplorer/Controllers/MainController.cs#L1141
         var accountKey2 = masterKey2.Derive(keyPath2);
         var bitcoinExtPubKey2 = accountKey2.Neuter();
         var accountKeyPath2 = new RootedKeyPath(masterKey2.GetPublicKey().GetHDFingerPrint(), keyPath2);
