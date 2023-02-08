@@ -1,5 +1,6 @@
 using AutoMapper;
 using FundsManager.Data.Repositories;
+using FundsManager.Data.Repositories.Interfaces;
 using FundsManager.Helpers;
 using Google.Protobuf.Collections;
 using Grpc.Core;
@@ -16,12 +17,12 @@ public class NodeGuardService : Nodeguard.NodeGuardService.NodeGuardServiceBase
 {
     private readonly ILogger<NodeGuardService> _logger;
     private readonly ILiquidityRuleRepository _liquidityRuleRepository;
-    private readonly WalletRepository _walletRepository;
+    private readonly IWalletRepository _walletRepository;
     private readonly IMapper _mapper;
 
     public NodeGuardService(ILogger<NodeGuardService> logger,
-        LiquidityRuleRepository liquidityRuleRepository,
-        WalletRepository walletRepository,
+        ILiquidityRuleRepository liquidityRuleRepository,
+        IWalletRepository walletRepository,
         IMapper mapper)
     {
         _logger = logger;
