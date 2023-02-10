@@ -14,6 +14,7 @@
     <PackageReference Include="FluentAssertions" Version="6.7.0" />
     <PackageReference Include="Grpc.Core.Api" Version="2.50.0" />
     <PackageReference Include="Grpc.Core.Testing" Version="2.46.6" />
+    <PackageReference Include="Microsoft.EntityFrameworkCore.InMemory" Version="7.0.2" />
     <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.3.2" />
     <PackageReference Include="Moq" Version="4.18.4" />
     <PackageReference Include="NBitcoin.TestFramework" Version="3.0.13" />
@@ -22,6 +23,8 @@
       <PrivateAssets>all</PrivateAssets>
       <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
     </PackageReference>
+    <PackageReference Include="Unmockable" Version="3.0.120" />
+    <PackageReference Include="Unmockable.Intercept" Version="3.0.120" />
     <PackageReference Include="xunit" Version="2.4.2" />
     <PackageReference Include="xunit.runner.visualstudio" Version="2.4.5">
       <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>

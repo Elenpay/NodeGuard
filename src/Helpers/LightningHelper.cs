@@ -17,14 +17,14 @@
  *
  */
 
-﻿using AutoMapper;
+using AutoMapper;
 using FundsManager.Data.Models;
-using FundsManager.Services;
 using Google.Protobuf;
 using NBitcoin;
 using NBXplorer;
 using NBXplorer.Models;
 using Key = FundsManager.Data.Models.Key;
+using Unmockable;
 
 namespace FundsManager.Helpers
 {
@@ -49,10 +49,9 @@ namespace FundsManager.Helpers
         /// <param name="selectedUtxOs"></param>
         /// <param name="multisigCoins"></param>
         /// <exception cref="ArgumentException"></exception>
-        public static (PSBT?, bool) AddDerivationData(ILogger logger, IEnumerable<Key> keys , (PSBT?, bool) result, List<UTXO> selectedUtxOs,
-            List<ScriptCoin> multisigCoins)
+        public static (PSBT?, bool) AddDerivationData(IEnumerable<Key> keys , (PSBT?, bool) result, List<UTXO> selectedUtxOs,
+            List<ScriptCoin> multisigCoins, ILogger? logger = null)
         {
-            if (logger == null) throw new ArgumentNullException(nameof(logger));
             if (keys == null) throw new ArgumentNullException(nameof(keys));
             if (selectedUtxOs == null) throw new ArgumentNullException(nameof(selectedUtxOs));
             if (multisigCoins == null) throw new ArgumentNullException(nameof(multisigCoins));
@@ -89,7 +88,7 @@ namespace FundsManager.Helpers
                     else
                     {
                         var errorMessage = $"Invalid derived pub key for utxo:{selectedUtxo.Outpoint}";
-                        logger.LogError(errorMessage);
+                        logger?.LogError(errorMessage);
                         throw new ArgumentException(errorMessage, nameof(derivedPubKey));
                     }
                 }
@@ -104,16 +103,18 @@ namespace FundsManager.Helpers
         /// </summary>
         /// <returns></returns>
         /// <exception cref="ArgumentNullException"></exception>
-        public static (Network nbXplorerNetwork, ExplorerClient nbxplorerClient) GenerateNetwork()
-        {
-            //Nbxplorer api client
-            var nbXplorerNetwork = CurrentNetworkHelper.GetCurrentNetwork();
+        public static Func<(Network nbXplorerNetwork, IUnmockable<ExplorerClient> nbxplorerClient)> GenerateNetwork =
+            () =>
+            {
+                //Nbxplorer api client
+                var nbXplorerNetwork = CurrentNetworkHelper.GetCurrentNetwork();
 
-            var provider = new NBXplorerNetworkProvider(nbXplorerNetwork.ChainName);
-            var nbxplorerClient = new ExplorerClient(provider.GetFromCryptoCode(nbXplorerNetwork.NetworkSet.CryptoCode),
-                new Uri(Constants.NBXPLORER_URI));
-            return (nbXplorerNetwork, nbxplorerClient);
-        }
+                var provider = new NBXplorerNetworkProvider(nbXplorerNetwork.ChainName);
+                var nbxplorerClient = new ExplorerClient(
+                    provider.GetFromCryptoCode(nbXplorerNetwork.NetworkSet.CryptoCode),
+                    new Uri(Constants.NBXPLORER_URI));
+                return (nbXplorerNetwork, nbxplorerClient.Wrap());
+            };
 
         /// <summary>
         /// Helper to select coins from a wallet for requests (Withdrawals, ChannelOperationRequest). FIFO is the coin selection
@@ -210,7 +211,7 @@ namespace FundsManager.Helpers
         /// <param name="nbxplorerClient"></param>
         /// <returns></returns>
         public static async Task<GetFeeRateResult> GetFeeRateResult(Network nbXplorerNetwork,
-            ExplorerClient nbxplorerClient)
+            IUnmockable<ExplorerClient> nbxplorerClient)
         {
             GetFeeRateResult feeRateResult;
             if (nbXplorerNetwork == Network.RegTest)
@@ -224,7 +225,7 @@ namespace FundsManager.Helpers
             else
             {
                 //TODO Maybe the block confirmation count can be a parameter.
-                feeRateResult = await nbxplorerClient.GetFeeRateAsync(1); //To be confirmed in 1 block
+                feeRateResult = await nbxplorerClient.Execute(x => x.GetFeeRateAsync(1, default)); //To be confirmed in 1 block
             }
 
             return feeRateResult;
@@ -234,9 +235,10 @@ namespace FundsManager.Helpers
         /// Combines a list of PSBTs strings
         /// </summary>
         /// <param name="signedPsbts"></param>
-        /// <param name="combinedPSBT"></param>
+        /// <param name="logger"></param>
+        /// <optional name="logger"></optional>
         /// <returns>A combined PSBT or null if error.</returns>
-        public static PSBT? CombinePSBTs(IEnumerable<string> signedPsbts, ILogger logger)
+        public static PSBT? CombinePSBTs(IEnumerable<string> signedPsbts, ILogger? logger = null)
         {
             PSBT? combinedPSBT = null;
             try
@@ -251,13 +253,13 @@ namespace FundsManager.Helpers
             }
             catch (Exception e)
             {
-                logger.LogError(e, "Error while combining PSBTs");
+                logger?.LogError(e, "Error while combining PSBTs");
                 combinedPSBT = null;
             }
 
             return combinedPSBT;
         }
-
+        
         /// <summary>
         /// Helper for decoding bytestring-based LND representation of TxIds
         /// </summary>

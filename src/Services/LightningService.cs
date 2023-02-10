@@ -17,7 +17,6 @@
  *
  */
 
-using System.Net;
 using FundsManager.Data.Models;
 using FundsManager.Data.Repositories.Interfaces;
 using Google.Protobuf;
@@ -29,21 +28,15 @@ using NBXplorer;
 using NBXplorer.DerivationStrategy;
 using NBXplorer.Models;
 using System.Security.Cryptography;
-using System.Text;
-using System.Text.Json;
-using Amazon;
-using Amazon.Runtime;
 using AutoMapper;
 using FundsManager.Data;
 using FundsManager.Helpers;
 using Humanizer;
 using Microsoft.EntityFrameworkCore;
-using AddressType = Lnrpc.AddressType;
 using Channel = FundsManager.Data.Models.Channel;
-using Key = FundsManager.Data.Models.Key;
-using ListUnspentRequest = Lnrpc.ListUnspentRequest;
 using Transaction = NBitcoin.Transaction;
 using UTXO = NBXplorer.Models.UTXO;
+using Unmockable;
 
 // ReSharper disable InconsistentNaming
 
@@ -158,101 +151,33 @@ namespace FundsManager.Services
 
         public async Task OpenChannel(ChannelOperationRequest channelOperationRequest)
         {
-            if (channelOperationRequest == null) throw new ArgumentNullException(nameof(channelOperationRequest));
-
-            if (channelOperationRequest.RequestType != OperationRequestType.Open)
-            {
-                const string aNodeCannotOpenAChannelToHimself = "A node cannot open a channel to himself.";
-                _logger.LogError(aNodeCannotOpenAChannelToHimself);
-                throw new ArgumentException(aNodeCannotOpenAChannelToHimself);
-            }
-
-            //Update
-            channelOperationRequest = await _channelOperationRequestRepository.GetById(channelOperationRequest.Id) ?? throw new InvalidOperationException();
-
             await using var context = await _dbContextFactory.CreateDbContextAsync();
+            
+            CheckArgumentsAreValid(channelOperationRequest, OperationRequestType.Open, _logger);
 
-            var source = channelOperationRequest.SourceNode;
-            var destination = channelOperationRequest.DestNode;
+            channelOperationRequest = await _channelOperationRequestRepository.GetById(channelOperationRequest.Id) ??
+                                      throw new InvalidOperationException("ChannelOperationRequest not found");
 
-            if (source == null || destination == null)
-            {
-                throw new ArgumentException("Source or destination null", nameof(source));
-            }
-
-            if (source.PubKey == destination.PubKey)
-            {
-                const string aNodeCannotOpenAChannelToHimself = "A node cannot open a channel to himself.";
-                _logger.LogError(aNodeCannotOpenAChannelToHimself);
-                throw new ArgumentException(aNodeCannotOpenAChannelToHimself);
-            }
-
-            //Setup of grpc lnd api client (Lightning.proto)
-            //Hack to allow self-signed https grpc calls
-            var httpHandler = new HttpClientHandler
-            {
-                ServerCertificateCustomValidationCallback =
-                    HttpClientHandler.DangerousAcceptAnyServerCertificateValidator
-            };
-
-            using var grpcChannel = GrpcChannel.ForAddress($"https://{source.Endpoint}",
-                new GrpcChannelOptions { HttpHandler = httpHandler });
-
-            var client = new Lightning.LightningClient(grpcChannel);
-
-            //32 bytes of secure randomness for the pending channel id (lnd)
-
-            var pendingChannelId = RandomNumberGenerator.GetBytes(32);
-
-            var pendingChannelIdHex = Convert.ToHexString(pendingChannelId);
+            var (source, destination) = CheckNodesAreValid(channelOperationRequest, _logger);
+            var derivationStrategyBase = GetDerivationStrategyBase(channelOperationRequest, _logger);
+ 
+            var client = CreateLightningClient(source.Endpoint);
 
             var (network, nbxplorerClient) = LightningHelper.GenerateNetwork();
 
-            //Derivation strategy for the multisig address based on its wallet
-            var derivationStrategyBase = channelOperationRequest.Wallet.GetDerivationStrategy();
-
-            if (derivationStrategyBase == null)
-            {
-                var derivationNull = $"Derivation scheme not found for wallet:{channelOperationRequest.Wallet.Id}";
-                _logger.LogError(derivationNull);
-
-                throw new ArgumentException(
-                    derivationNull);
-            }
-
-            var closeAddress =
-                await nbxplorerClient.GetUnusedAsync(derivationStrategyBase, DerivationFeature.Deposit, 0, true);
-
-            if (closeAddress == null)
-            {
-                var closeAddressNull =
-                    $"Closing address was null for an operation on wallet:{channelOperationRequest.Wallet.Id}";
-                _logger.LogError(closeAddressNull);
-
-                throw new ArgumentException(
-                    closeAddressNull);
-            }
+            var closeAddress = await GetCloseAddress(channelOperationRequest, derivationStrategyBase, nbxplorerClient, _logger);
 
             _logger.LogInformation("Channel open request for  request id: {RequestId} from node: {SourceNodeName} to node: {DestinationNodeName}",
                 channelOperationRequest.Id,
                 source.Name,
                 destination.Name);
 
-            //PSBT Combine
-            var signedPsbts = channelOperationRequest.ChannelOperationRequestPsbts.Where(x =>
-                    !x.IsFinalisedPSBT && !x.IsInternalWalletPSBT && !x.IsTemplatePSBT)
-                .Select(x => x.PSBT);
+            var combinedPSBT = GetCombinedPsbt(channelOperationRequest, _logger);
 
-            var combinedPSBT = LightningHelper.CombinePSBTs(signedPsbts, _logger);
-
-            if (combinedPSBT == null)
-            {
-                var invalidPsbtNullToBeUsedForTheRequest = $"Invalid PSBT(null) to be used for the channel op request:{channelOperationRequest.Id}";
-                _logger.LogError(invalidPsbtNullToBeUsedForTheRequest);
-
-                throw new ArgumentException(invalidPsbtNullToBeUsedForTheRequest, nameof(combinedPSBT));
-            }
-
+            //32 bytes of secure randomness for the pending channel id (lnd)
+            var pendingChannelId = RandomNumberGenerator.GetBytes(32);
+            var pendingChannelIdHex = Convert.ToHexString(pendingChannelId);
+            
             try
             {
                 //We prepare the request (shim) with the base PSBT we had presigned with the UTXOs to fund the channel
@@ -296,14 +221,14 @@ namespace FundsManager.Services
                 ConnectPeerResponse connectPeerResponse = null;
                 try
                 {
-                    connectPeerResponse = await client.ConnectPeerAsync(new ConnectPeerRequest
+                    connectPeerResponse = await client.Execute(x => x.ConnectPeerAsync(new ConnectPeerRequest
                     {
                         Addr = new LightningAddress {Host = addr, Pubkey = remoteNodeInfo.PubKey},
                         Perm = true
                     }, new Metadata
                     {
                         {"macaroon", source.ChannelAdminMacaroon}
-                    });
+                    }, null, default));
                 }
                 //We avoid to stop the method if the peer is already connected
                 catch (RpcException e)
@@ -339,9 +264,9 @@ namespace FundsManager.Services
                 //We launch a openstatusupdate stream for all the events when calling OpenChannel api method from LND
                 if (source.ChannelAdminMacaroon != null)
                 {
-                    var openStatusUpdateStream = client.OpenChannel(openChannelRequest,
-                        new Metadata {{"macaroon", source.ChannelAdminMacaroon}}
-                    );
+                    var openStatusUpdateStream = client.Execute(x => x.OpenChannel(openChannelRequest,
+                        new Metadata {{"macaroon", source.ChannelAdminMacaroon}}, null, default
+                    ));
 
                     await foreach (var response in openStatusUpdateStream.ResponseStream.ReadAllAsync())
                     {
@@ -444,7 +369,6 @@ namespace FundsManager.Services
                                     //We merge changeFixedPSBT with the other PSBT with the change fixed
 
                                     var changeFixedPSBT = channelfundingTx.CreatePSBT(network).UpdateFrom(fundedPSBT);
-                                    var partialSigsCount = changeFixedPSBT.Inputs.Sum(x => x.PartialSigs.Count);
 
                                     PSBT? finalSignedPSBT = null;
                                     //We check the way the fundsmanager signs, with the remoteFundsManagerSigner or by itself.
@@ -465,11 +389,9 @@ namespace FundsManager.Services
                                             nbxplorerClient,
                                             derivationStrategyBase,
                                             channelfundingTx,
-                                            source,
-                                            client,
-                                            pendingChannelId,
                                             network,
-                                            changeFixedPSBT);
+                                            changeFixedPSBT,
+                                            _logger);
                                         
                                         if (finalSignedPSBT == null)
                                         {
@@ -480,21 +402,6 @@ namespace FundsManager.Services
                                         }
                                     }
 
-                                    //We check that the partial signatures number has changed, otherwise finalize inmediately
-                                    var partialSigsCountAfterSignature =
-                                        finalSignedPSBT.Inputs.Sum(x => x.PartialSigs.Count);
-
-                                    if (partialSigsCountAfterSignature == 0 ||
-                                        partialSigsCountAfterSignature <= partialSigsCount)
-                                    {
-                                        var invalidNoOfPartialSignatures =
-                                            $"Invalid expected number of partial signatures after signing the PSBT";
-
-                                        _logger.LogError(invalidNoOfPartialSignatures);
-                                        throw new ArgumentException(
-                                            invalidNoOfPartialSignatures);
-                                    }
-                                    
                                     //We store the final signed PSBT without being finalized for debugging purposes
                                     var signedChannelOperationRequestPsbt = new ChannelOperationRequestPSBT
                                     {
@@ -526,7 +433,7 @@ namespace FundsManager.Services
                                     if (checkTx == TransactionCheckResult.Success)
                                     {
                                         //We tell lnd to verify the psbt
-                                        client.FundingStateStep(
+                                        client.Execute(x => x.FundingStateStep(
                                             new FundingTransitionMsg
                                             {
                                                 PsbtVerify = new FundingPsbtVerify
@@ -535,7 +442,7 @@ namespace FundsManager.Services
                                                         ByteString.CopyFrom(Convert.FromHexString(finalizedPSBT.ToHex())),
                                                     PendingChanId = ByteString.CopyFrom(pendingChannelId)
                                                 }
-                                            }, new Metadata { { "macaroon", source.ChannelAdminMacaroon } });
+                                            }, new Metadata { { "macaroon", source.ChannelAdminMacaroon } }, null, default));
 
                                         //Saving the PSBT in the ChannelOperationRequest collection of PSBTs
 
@@ -563,7 +470,7 @@ namespace FundsManager.Services
                                             }
                                         }
 
-                                        var fundingStateStepResp = await client.FundingStateStepAsync(
+                                        var fundingStateStepResp = await client.Execute(x => x.FundingStateStepAsync(
                                             new FundingTransitionMsg
                                             {
                                                 PsbtFinalize = new FundingPsbtFinalize
@@ -573,7 +480,7 @@ namespace FundsManager.Services
                                                     SignedPsbt =
                                                         ByteString.CopyFrom(Convert.FromHexString(finalizedPSBT.ToHex()))
                                                 },
-                                            }, new Metadata { { "macaroon", source.ChannelAdminMacaroon } });
+                                            }, new Metadata { { "macaroon", source.ChannelAdminMacaroon } }, null, default));
                                     }
                                     else
                                     {
@@ -605,7 +512,109 @@ namespace FundsManager.Services
             }
         }
 
-       
+        public static Func<string?, IUnmockable<Lightning.LightningClient>> CreateLightningClient = (endpoint) =>
+        {
+            if (string.IsNullOrWhiteSpace(endpoint))
+            {
+                throw new ArgumentException("Endpoint cannot be null");
+            }
+
+            //Setup of grpc lnd api client (Lightning.proto)
+            //Hack to allow self-signed https grpc calls
+            var httpHandler = new HttpClientHandler
+            {
+                ServerCertificateCustomValidationCallback =
+                    HttpClientHandler.DangerousAcceptAnyServerCertificateValidator
+            };
+
+            var grpcChannel = GrpcChannel.ForAddress($"https://{endpoint}",
+                new GrpcChannelOptions { HttpHandler = httpHandler });
+
+            return new Lightning.LightningClient(grpcChannel).Wrap();
+        };
+
+        public static PSBT GetCombinedPsbt(ChannelOperationRequest channelOperationRequest, ILogger? _logger = null)
+        {
+            //PSBT Combine
+            var signedPsbts = channelOperationRequest.ChannelOperationRequestPsbts.Where(x =>
+                    !x.IsFinalisedPSBT && !x.IsInternalWalletPSBT && !x.IsTemplatePSBT);
+            var signedPsbts2 = signedPsbts.Select(x => x.PSBT);
+
+            var combinedPSBT = LightningHelper.CombinePSBTs(signedPsbts2, _logger);
+
+            if (combinedPSBT != null) return combinedPSBT;
+            
+            var invalidPsbtNullToBeUsedForTheRequest = $"Invalid PSBT(null) to be used for the channel op request:{channelOperationRequest.Id}";
+            _logger?.LogError(invalidPsbtNullToBeUsedForTheRequest);
+
+            throw new ArgumentException(invalidPsbtNullToBeUsedForTheRequest, nameof(combinedPSBT));
+        }
+        
+        public static async Task<KeyPathInformation?> GetCloseAddress(ChannelOperationRequest channelOperationRequest,
+            DerivationStrategyBase derivationStrategyBase, IUnmockable<ExplorerClient> nbxplorerClient, ILogger? _logger = null)
+        {
+            var closeAddress =
+                await nbxplorerClient.Execute(x => 
+                    x.GetUnusedAsync(derivationStrategyBase, DerivationFeature.Deposit, 0, true, default));
+
+            if (closeAddress != null) return closeAddress;
+            
+            var closeAddressNull =  $"Closing address was null for an operation on wallet:{channelOperationRequest.Wallet.Id}";
+            _logger?.LogError(closeAddressNull);
+
+            throw new ArgumentException(closeAddressNull);
+        }
+
+        public static DerivationStrategyBase GetDerivationStrategyBase(ChannelOperationRequest channelOperationRequest, ILogger? _logger = null)
+        {
+            //Derivation strategy for the multisig address based on its wallet
+            var derivationStrategyBase = channelOperationRequest.Wallet.GetDerivationStrategy();
+
+            if (derivationStrategyBase != null) return derivationStrategyBase;
+            
+            var derivationNull = $"Derivation scheme not found for wallet:{channelOperationRequest.Wallet.Id}";
+            
+            _logger?.LogError(derivationNull);
+
+            throw new ArgumentException(derivationNull);
+        }
+        
+        public static void CheckArgumentsAreValid(ChannelOperationRequest channelOperationRequest, OperationRequestType requestype, ILogger? _logger = null)
+        {
+            if (channelOperationRequest == null) throw new ArgumentNullException(nameof(channelOperationRequest));
+
+            if (channelOperationRequest.RequestType == requestype) return;
+            
+            string requestInvalid = $"Invalid request. Requested ${channelOperationRequest.RequestType.ToString()} on ${requestype.ToString()} method";
+
+            _logger?.LogError(requestInvalid);
+
+            throw new ArgumentOutOfRangeException(requestInvalid);
+        }
+        
+        public static (Node, Node) CheckNodesAreValid(ChannelOperationRequest channelOperationRequest, ILogger? _logger = null)
+        {
+            var source = channelOperationRequest.SourceNode;
+            var destination = channelOperationRequest.DestNode;
+
+            if (source == null || destination == null)
+            {
+                throw new ArgumentException("Source or destination null", nameof(source));
+            }
+            
+            if (source.ChannelAdminMacaroon == null)
+            {
+                throw new UnauthorizedAccessException("Macaroon not set for source channel");
+            }
+
+            if (source.PubKey != destination.PubKey) return (source, destination);
+            
+            const string aNodeCannotOpenAChannelToItself = "A node cannot open a channel to itself.";
+
+            _logger?.LogError(aNodeCannotOpenAChannelToItself);
+
+            throw new ArgumentException(aNodeCannotOpenAChannelToItself);
+        }
 
         /// <summary>
         /// Aux method when the fundsmanager is the one in change of signing the PSBTs
@@ -621,13 +630,14 @@ namespace FundsManager.Services
         /// <param name="changeFixedPSBT"></param>
         /// <returns></returns>
         /// <exception cref="ArgumentException"></exception>
-        private async Task<PSBT> SignPSBT(ChannelOperationRequest channelOperationRequest, ExplorerClient nbxplorerClient,
-            DerivationStrategyBase derivationStrategyBase, Transaction channelfundingTx, Node source, Lightning.LightningClient client,
-            byte[] pendingChannelId, Network network, PSBT changeFixedPSBT)
+        public static async Task<PSBT> SignPSBT(
+                ChannelOperationRequest channelOperationRequest, IUnmockable<ExplorerClient> nbxplorerClient,
+                DerivationStrategyBase derivationStrategyBase, Transaction channelfundingTx, Network network, PSBT changeFixedPSBT, ILogger? logger = null)
+            
         {
             //We get the UTXO keyPath / derivation path from nbxplorer
 
-            var UTXOs = await nbxplorerClient.GetUTXOsAsync(derivationStrategyBase);
+            var UTXOs = await nbxplorerClient.Execute(x => x.GetUTXOsAsync(derivationStrategyBase, default));
             UTXOs.RemoveDuplicateUTXOs();
 
             var OutpointKeyPathDictionary =
@@ -643,9 +653,7 @@ namespace FundsManager.Services
                 const string errorKeypathsForTheUtxosUsedInThisTxAreNotFound =
                     "Error, keypaths for the UTXOs used in this tx are not found, probably this UTXO is already used as input of another transaction";
 
-                _logger.LogError(errorKeypathsForTheUtxosUsedInThisTxAreNotFound);
-
-                CancelPendingChannel(source, client, pendingChannelId);
+                logger?.LogError(errorKeypathsForTheUtxosUsedInThisTxAreNotFound);
 
                 throw new ArgumentException(
                     errorKeypathsForTheUtxosUsedInThisTxAreNotFound);
@@ -675,9 +683,7 @@ namespace FundsManager.Services
             {
                 var invalidNoOfPartialSignatures =
                     $"Invalid expected number of partial signatures after signing for the channel operation request:{channelOperationRequest.Id}";
-                _logger.LogError(invalidNoOfPartialSignatures);
-
-                CancelPendingChannel(source, client, pendingChannelId);
+                logger?.LogError(invalidNoOfPartialSignatures);
 
                 throw new ArgumentException(
                     invalidNoOfPartialSignatures);
@@ -692,7 +698,7 @@ namespace FundsManager.Services
         /// <param name="source"></param>
         /// <param name="client"></param>
         /// <param name="pendingChannelId"></param>
-        private void CancelPendingChannel(Node source, Lightning.LightningClient client, byte[] pendingChannelId)
+        private void CancelPendingChannel(Node source, IUnmockable<Lightning.LightningClient> client, byte[] pendingChannelId)
         {
             try
             {
@@ -705,12 +711,11 @@ namespace FundsManager.Services
 
                     if (source.ChannelAdminMacaroon != null)
                     {
-                        var cancelResult = client.FundingStateStep(new FundingTransitionMsg
+                        var cancelResult = client.Execute(x => x.FundingStateStep(new FundingTransitionMsg
                         {
                             ShimCancel = cancelRequest,
                         },
-                            new Metadata { { "macaroon", source.ChannelAdminMacaroon } }
-                        );
+                            new Metadata { { "macaroon", source.ChannelAdminMacaroon } }, null, default));
                     }
                 }
             }
@@ -755,7 +760,7 @@ namespace FundsManager.Services
             //UTXOs -> they need to be tracked first on nbxplorer to get results!!
             var derivationStrategy = channelOperationRequest.Wallet.GetDerivationStrategy();
 
-            if (!(await nbxplorerClient.GetStatusAsync()).IsFullySynched)
+            if (!(await nbxplorerClient.Execute(x => x.GetStatusAsync(default))).IsFullySynched)
             {
                 _logger.LogError("Error, nbxplorer not fully synched");
                 return (null, false);
@@ -776,7 +781,7 @@ namespace FundsManager.Services
             if (templatePSBT != null && PSBT.TryParse(templatePSBT.PSBT, CurrentNetworkHelper.GetCurrentNetwork(),
                     out var parsedTemplatePSBT))
             {
-                var currentUtxos = await nbxplorerClient.GetUTXOsAsync(derivationStrategy);
+                var currentUtxos = await nbxplorerClient.Execute(x => x.GetUTXOsAsync(derivationStrategy, default));
                 if (parsedTemplatePSBT.Inputs.All(
                         x => currentUtxos.Confirmed.UTXOs.Select(x => x.Outpoint).Contains(x.PrevOut)))
                 {
@@ -824,7 +829,7 @@ namespace FundsManager.Services
 
                 var feeRateResult = await LightningHelper.GetFeeRateResult(nbXplorerNetwork, nbxplorerClient);
 
-                var changeAddress = await nbxplorerClient.GetUnusedAsync(derivationStrategy, DerivationFeature.Change);
+                var changeAddress = await nbxplorerClient.Execute(x => x.GetUnusedAsync(derivationStrategy, DerivationFeature.Change, 0, false, default));
                 if (changeAddress == null)
                 {
                     _logger.LogError("Change address was not found for wallet: {WalletId}", channelOperationRequest.Wallet.Id);
@@ -848,7 +853,7 @@ namespace FundsManager.Services
                 }
 
                 //Additional fields to support PSBT signing with a HW or the Remote Signer 
-                result = LightningHelper.AddDerivationData(_logger,channelOperationRequest.Wallet.Keys, result, selectedUtxOs, multisigCoins);
+                result = LightningHelper.AddDerivationData(channelOperationRequest.Wallet.Keys, result, selectedUtxOs, multisigCoins, _logger);
             }
             catch (Exception e)
             {
@@ -898,10 +903,10 @@ namespace FundsManager.Services
         /// <returns></returns>
         private async Task<(List<ScriptCoin> coins, List<UTXO> selectedUTXOs)> GetTxInputCoins(
             ChannelOperationRequest channelOperationRequest,
-            ExplorerClient nbxplorerClient,
+            IUnmockable<ExplorerClient> nbxplorerClient,
             DerivationStrategyBase derivationStrategy)
         {
-            var utxoChanges = await nbxplorerClient.GetUTXOsAsync(derivationStrategy);
+            var utxoChanges = await nbxplorerClient.Execute(x => x.GetUTXOsAsync(derivationStrategy, default));
             utxoChanges.RemoveDuplicateUTXOs();
 
             var satsAmount = channelOperationRequest.SatsAmount;
@@ -919,10 +924,7 @@ namespace FundsManager.Services
 
         public async Task CloseChannel(ChannelOperationRequest channelOperationRequest, bool forceClose = false)
         {
-            if (channelOperationRequest == null) throw new ArgumentNullException(nameof(channelOperationRequest));
-
-            if (channelOperationRequest.RequestType != OperationRequestType.Close)
-                throw new ArgumentException("Channel Operation Request type is not of type Close");
+            CheckArgumentsAreValid(channelOperationRequest, OperationRequestType.Close, _logger);
 
             _logger.LogInformation("Channel close request for request id: {RequestId}",
                 channelOperationRequest.Id);
@@ -935,21 +937,12 @@ namespace FundsManager.Services
 
                     if (channel != null && channelOperationRequest.SourceNode.ChannelAdminMacaroon != null)
                     {
-                        using var grpcChannel = GrpcChannel.ForAddress(
-                            $"https://{channelOperationRequest.SourceNode.Endpoint}",
-                            new GrpcChannelOptions
-                            {
-                                HttpHandler = new HttpClientHandler
-                                {
-                                    ServerCertificateCustomValidationCallback =
-                                        HttpClientHandler.DangerousAcceptAnyServerCertificateValidator
-                                }
-                            });
 
-                        var client = new Lightning.LightningClient(grpcChannel);
+
+                        var client = CreateLightningClient(channelOperationRequest.SourceNode.Endpoint);
 
                         //Time to close the channel
-                        var closeChannelResult = client.CloseChannel(new CloseChannelRequest
+                        var closeChannelResult = client.Execute(x => x.CloseChannel(new CloseChannelRequest
                         {
                             ChannelPoint = new ChannelPoint
                             {
@@ -957,7 +950,7 @@ namespace FundsManager.Services
                                 OutputIndex = channel.FundingTxOutputIndex
                             },
                             Force = forceClose,
-                        }, new Metadata { { "macaroon", channelOperationRequest.SourceNode.ChannelAdminMacaroon } });
+                        }, new Metadata { { "macaroon", channelOperationRequest.SourceNode.ChannelAdminMacaroon } }, null, default));
 
                         _logger.LogInformation("Channel close request: {RequestId} triggered",
                             channelOperationRequest.Id);
@@ -1082,7 +1075,7 @@ namespace FundsManager.Services
             GetBalanceResponse? getBalanceResponse = null;
             try
             {
-                getBalanceResponse = await client.nbxplorerClient.GetBalanceAsync(wallet.GetDerivationStrategy());
+                getBalanceResponse = await client.nbxplorerClient.Execute(x => x.GetBalanceAsync(wallet.GetDerivationStrategy(), default));
             }
             catch (Exception e)
             {
@@ -1101,8 +1094,8 @@ namespace FundsManager.Services
             KeyPathInformation? keyPathInformation = null;
             try
             {
-                keyPathInformation = await client.nbxplorerClient.GetUnusedAsync(wallet.GetDerivationStrategy(),
-                    derivationFeature, reserve: true);
+                keyPathInformation = await client.nbxplorerClient.Execute(x => x.GetUnusedAsync(wallet.GetDerivationStrategy(),
+                    derivationFeature, default, true, default));
             }
             catch (Exception e)
             {
@@ -1131,26 +1124,18 @@ namespace FundsManager.Services
                 return result;
             }
 
-            using var grpcChannel = GrpcChannel.ForAddress($"https://{node.Endpoint}",
-                new GrpcChannelOptions
-                {
-                    HttpHandler = new HttpClientHandler
-                    {
-                        ServerCertificateCustomValidationCallback =
-                            HttpClientHandler.DangerousAcceptAnyServerCertificateValidator
-                    }
-                });
 
-            var client = new Lightning.LightningClient(grpcChannel);
+
+            var client = CreateLightningClient(node.Endpoint);
             try
             {
                 if (node.ChannelAdminMacaroon != null)
                 {
-                    var nodeInfo = await client.GetNodeInfoAsync(new NodeInfoRequest
+                    var nodeInfo = await client.Execute(x => x.GetNodeInfoAsync(new NodeInfoRequest
                     {
                         PubKey = pubkey,
                         IncludeChannels = false
-                    }, new Metadata { { "macaroon", node.ChannelAdminMacaroon } });
+                    }, new Metadata { { "macaroon", node.ChannelAdminMacaroon } }, null, default));
 
                     result = nodeInfo?.Node;
                 }
