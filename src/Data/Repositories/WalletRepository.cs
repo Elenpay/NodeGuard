@@ -19,8 +19,8 @@
 
 ﻿using FundsManager.Data.Models;
 using FundsManager.Data.Repositories.Interfaces;
-using FundsManager.Helpers;
-using Microsoft.EntityFrameworkCore;
+ using FundsManager.Services;
+ using Microsoft.EntityFrameworkCore;
 
 namespace FundsManager.Data.Repositories
 {
@@ -31,17 +31,21 @@ namespace FundsManager.Data.Repositories
         private readonly IDbContextFactory<ApplicationDbContext> _dbContextFactory;
         private readonly IInternalWalletRepository _internalWalletRepository;
         private readonly IKeyRepository _keyRepository;
+        private readonly INBXplorerService _nbXplorerService;
 
         public WalletRepository(IRepository<Wallet> repository,
             ILogger<WalletRepository> logger,
             IDbContextFactory<ApplicationDbContext> dbContextFactory,
-            IInternalWalletRepository internalWalletRepository, IKeyRepository keyRepository)
+            IInternalWalletRepository internalWalletRepository, IKeyRepository keyRepository,
+            INBXplorerService nbXplorerService
+                )
         {
             _repository = repository;
             _logger = logger;
             _dbContextFactory = dbContextFactory;
             _internalWalletRepository = internalWalletRepository;
             _keyRepository = keyRepository;
+            _nbXplorerService = nbXplorerService;
         }
 
         public async Task<Wallet?> GetById(int id)
@@ -161,7 +165,7 @@ namespace FundsManager.Data.Repositories
             selectedWalletToFinalise.IsFinalised = true;
             try
             {
-                var (_, nbxplorerClient) = LightningHelper.GenerateNetwork();
+                
 
                 var derivationStrategyBase = selectedWalletToFinalise.GetDerivationStrategy();
                 if (derivationStrategyBase == null)
@@ -169,7 +173,7 @@ namespace FundsManager.Data.Repositories
                     return (false, "Error while getting the derivation scheme");
                 }
 
-                await nbxplorerClient.Execute(x => x.TrackAsync(derivationStrategyBase, default));
+                await _nbXplorerService.TrackAsync(derivationStrategyBase, default);
 
                 selectedWalletToFinalise.Keys = null;
                 selectedWalletToFinalise.ChannelOperationRequestsAsSource = null;

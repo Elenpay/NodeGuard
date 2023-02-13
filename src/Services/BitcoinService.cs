@@ -45,6 +45,7 @@ namespace FundsManager.Services
         private readonly IWalletWithdrawalRequestPsbtRepository _walletWithdrawalRequestPsbtRepository;
         private readonly INodeRepository _nodeRepository;
         private readonly IRemoteSignerService _remoteSignerService;
+        private readonly INBXplorerService _nbXplorerService;
 
         public BitcoinService(ILogger<BitcoinService> logger,
             IFMUTXORepository fmutxoRepository,
@@ -52,7 +53,9 @@ namespace FundsManager.Services
             IWalletWithdrawalRequestRepository walletWithdrawalRequestRepository,
             IWalletWithdrawalRequestPsbtRepository walletWithdrawalRequestPsbtRepository,
             INodeRepository nodeRepository,
-            IRemoteSignerService remoteSignerService)
+            IRemoteSignerService remoteSignerService,
+            INBXplorerService nbXplorerService
+            )
         {
             _logger = logger;
             _fmutxoRepository = fmutxoRepository;
@@ -61,15 +64,14 @@ namespace FundsManager.Services
             _walletWithdrawalRequestPsbtRepository = walletWithdrawalRequestPsbtRepository;
             _nodeRepository = nodeRepository;
             _remoteSignerService = remoteSignerService;
+            _nbXplorerService = nbXplorerService;
         }
 
         public async Task<(decimal, long)> GetWalletConfirmedBalance(Wallet wallet)
         {
             if (wallet == null) throw new ArgumentNullException(nameof(wallet));
 
-            var (_, explorerClient) = LightningHelper.GenerateNetwork();
-
-            var balance = await explorerClient.Execute(x => x.GetBalanceAsync(wallet.GetDerivationStrategy(), default));
+            var balance = await _nbXplorerService.GetBalanceAsync(wallet.GetDerivationStrategy(), default);
             var confirmedBalanceMoney = (Money) balance.Confirmed;
 
             return (confirmedBalanceMoney.ToUnit(MoneyUnit.BTC), confirmedBalanceMoney.Satoshi);
@@ -87,9 +89,9 @@ namespace FundsManager.Services
                 return (null, false);
             }
 
-            var (nbXplorerNetwork, nbxplorerClient) = LightningHelper.GenerateNetwork();
 
-            if (!(await nbxplorerClient.Execute(x => x.GetStatusAsync(default))).IsFullySynched)
+            var isFullySynched = (await _nbXplorerService.GetStatusAsync()).IsFullySynched;
+            if (!isFullySynched)
             {
                 _logger.LogError("Error, nbxplorer not fully synched");
                 return (null, false);
@@ -113,7 +115,7 @@ namespace FundsManager.Services
             if (templatePSBT != null && PSBT.TryParse(templatePSBT.PSBT, CurrentNetworkHelper.GetCurrentNetwork(),
                     out var parsedTemplatePSBT))
             {
-                var currentUtxos = await nbxplorerClient.Execute(x => x.GetUTXOsAsync(derivationStrategy, default));
+                var currentUtxos = await _nbXplorerService.GetUTXOsAsync(derivationStrategy);
                 if (parsedTemplatePSBT.Inputs.All(
                         x => currentUtxos.Confirmed.UTXOs.Select(x => x.Outpoint).Contains(x.PrevOut)))
                 {
@@ -140,7 +142,7 @@ namespace FundsManager.Services
                 }
             }
 
-            var utxoChanges = await nbxplorerClient.Execute(x => x.GetUTXOsAsync(derivationStrategy, default));
+            var utxoChanges = await _nbXplorerService.GetUTXOsAsync(derivationStrategy);
             utxoChanges.RemoveDuplicateUTXOs();
 
             var lockedUtxOs =
@@ -149,7 +151,7 @@ namespace FundsManager.Services
             //If the request is a full funds withdrawal, calculate the amount to the existing balance
             if (walletWithdrawalRequest.WithdrawAllFunds)
             {
-                var balanceResponse = await nbxplorerClient.Execute(x => x.GetBalanceAsync(derivationStrategy, default));
+                var balanceResponse = await _nbXplorerService.GetBalanceAsync(derivationStrategy);
 
                 walletWithdrawalRequest.Amount = ((Money) balanceResponse.Confirmed).ToUnit(MoneyUnit.BTC);
 
@@ -175,15 +177,17 @@ namespace FundsManager.Services
                 return (null, true); //true means no UTXOS
             }
 
+            var nbXplorerNetwork = CurrentNetworkHelper.GetCurrentNetwork();
+
             try
             {
                 //We got enough inputs to fund the TX so time to build the PSBT
 
                 var txBuilder = nbXplorerNetwork.CreateTransactionBuilder();
 
-                var feeRateResult = await LightningHelper.GetFeeRateResult(nbXplorerNetwork, nbxplorerClient);
+                var feeRateResult = await LightningHelper.GetFeeRateResult(nbXplorerNetwork, _nbXplorerService);
 
-                var changeAddress = await nbxplorerClient.Execute(x => x.GetUnusedAsync(derivationStrategy, DerivationFeature.Change, 0, false, default));
+                var changeAddress = await _nbXplorerService.GetUnusedAsync(derivationStrategy, DerivationFeature.Change, 0, false, default);
 
                 if (changeAddress == null)
                 {
@@ -292,7 +296,6 @@ namespace FundsManager.Services
                     throw new ArgumentException(invalidPsbtNullToBeUsedForTheRequest, nameof(combinedPSBT));
                 }
 
-                var (network, nbxplorerClient) = LightningHelper.GenerateNetwork();
 
                 var derivationStrategyBase = walletWithdrawalRequest.Wallet.GetDerivationStrategy();
 
@@ -308,8 +311,8 @@ namespace FundsManager.Services
                     }
                     else
                     {
-                        signedCombinedPSBT = await SignPSBTWithEmbeddedSigner(walletWithdrawalRequest, nbxplorerClient,
-                            derivationStrategyBase, combinedPSBT, network);
+                        signedCombinedPSBT = await SignPSBTWithEmbeddedSigner(walletWithdrawalRequest, _nbXplorerService,
+                            derivationStrategyBase, combinedPSBT, CurrentNetworkHelper.GetCurrentNetwork());
                     }
                     
                 }
@@ -364,7 +367,7 @@ namespace FundsManager.Services
                     tx.GetHash().ToString());
 
                 //TODO Review why LND gives EOF, nbxplorer works flawlessly
-                var broadcastAsyncResult = await nbxplorerClient.Execute(x => x.BroadcastAsync(tx, default));
+                var broadcastAsyncResult = await _nbXplorerService.BroadcastAsync(tx, default);
 
                 if (!broadcastAsyncResult.Success)
                 {
@@ -393,7 +396,7 @@ namespace FundsManager.Services
                     walletWithdrawalRequest.DestinationAddress,
                     CurrentNetworkHelper.GetCurrentNetwork()));
 
-                await nbxplorerClient.Execute(x => x.TrackAsync(trackedSourceAddress, default));
+                await _nbXplorerService.TrackAsync(trackedSourceAddress, default);
             }
             catch (Exception e)
             {
@@ -413,10 +416,10 @@ namespace FundsManager.Services
         /// <param name="network"></param>
         /// <exception cref="ArgumentException"></exception>
         private async Task<PSBT> SignPSBTWithEmbeddedSigner(WalletWithdrawalRequest walletWithdrawalRequest,
-            IUnmockable<ExplorerClient> nbxplorerClient, DerivationStrategyBase? derivationStrategyBase, PSBT combinedPSBT,
+            INBXplorerService nbXplorerService, DerivationStrategyBase? derivationStrategyBase, PSBT combinedPSBT,
             Network network)
         {
-            var UTXOs = await nbxplorerClient.Execute(x => x.GetUTXOsAsync(derivationStrategyBase, default));
+            var UTXOs = await nbXplorerService.GetUTXOsAsync(derivationStrategyBase, default);
             UTXOs.RemoveDuplicateUTXOs();
 
             var OutpointKeyPathDictionary =
@@ -483,10 +486,8 @@ namespace FundsManager.Services
                     try
                     {
                         //Let's check if the minimum amount of confirmations are established
-                        var (network, nbxplorerclient) = LightningHelper.GenerateNetwork();
 
-                        var getTxResult =
-                            await nbxplorerclient.Execute(x => x.GetTransactionAsync(uint256.Parse(walletWithdrawalRequest.TxId), default));
+                        var getTxResult = await _nbXplorerService.GetTransactionAsync(uint256.Parse(walletWithdrawalRequest.TxId), default);
 
                         if (getTxResult.Confirmations >= Constants.TRANSACTION_CONFIRMATION_MINIMUM_BLOCKS)
                         {
@@ -530,7 +531,7 @@ namespace FundsManager.Services
         Task<(decimal, long)> GetWalletConfirmedBalance(Wallet wallet);
 
         /// <summary>
-        /// Generates a template PSBT for others approvers to sign for wallet withdrawal requests, the fundsmanager will sign here if required(n==m)
+        /// Generates a template PSBT for others approvers to sign for wallet withdrawal requests, nodeguard will sign here if required(n==m)
         /// </summary>
         /// <param name="walletWithdrawalRequest"></param>
         /// <returns>A PSBT and a boolean indicating if there was enough utxos available</returns>

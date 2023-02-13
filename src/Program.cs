@@ -33,8 +33,6 @@ using Microsoft.AspNetCore.Components.Authorization;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
 using Quartz;
-using Sentry;
-using Sentry.Extensibility;
 using OpenTelemetry.Trace;
 using OpenTelemetry.Resources;
 using OpenTelemetry.Metrics;
@@ -118,6 +116,7 @@ namespace FundsManager
             builder.Services.AddTransient<ILightningService, LightningService>();
             builder.Services.AddTransient<IBitcoinService, BitcoinService>();
             builder.Services.AddTransient<NotificationService, NotificationService>();
+            builder.Services.AddTransient<INBXplorerService, NBXplorerService>();
 
             //DbContext
             builder.Services.AddDbContext<ApplicationDbContext>(options =>

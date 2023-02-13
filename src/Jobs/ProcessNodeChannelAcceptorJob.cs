@@ -20,6 +20,7 @@
 using FundsManager.Data.Models;
 using FundsManager.Data.Repositories.Interfaces;
 using FundsManager.Helpers;
+using FundsManager.Services;
 using Grpc.Core;
 using Grpc.Net.Client;
 using Lnrpc;
@@ -38,14 +39,18 @@ public class ProcessNodeChannelAcceptorJob : IJob
 {
     private readonly INodeRepository _nodeRepository;
     private readonly IWalletRepository _walletRepository;
+    private readonly INBXplorerService _nBXplorerService;
     private readonly ILogger<ProcessNodeChannelAcceptorJob> _logger;
 
     public ProcessNodeChannelAcceptorJob(ILogger<ProcessNodeChannelAcceptorJob> logger,
         INodeRepository nodeRepository,
-        IWalletRepository walletRepository)
+        IWalletRepository walletRepository,
+        INBXplorerService nBXplorerService
+        )
     {
         _nodeRepository = nodeRepository;
         _walletRepository = walletRepository;
+        _nBXplorerService = nBXplorerService;
         _logger = logger;
     }
 
@@ -75,7 +80,7 @@ public class ProcessNodeChannelAcceptorJob : IJob
             });
         }
 
-        async Task AcceptChannelOpeningRequestWithUpfrontShutdown(IUnmockable<ExplorerClient> explorerClient,
+        async Task AcceptChannelOpeningRequestWithUpfrontShutdown(INBXplorerService nbXplorerService,
             Wallet returningMultisigWallet,
             AsyncDuplexStreamingCall<ChannelAcceptResponse, ChannelAcceptRequest> asyncDuplexStreamingCall, Node node, ChannelAcceptRequest? response)
         {
@@ -84,8 +89,8 @@ public class ProcessNodeChannelAcceptorJob : IJob
                 var openerNodePubKey = Convert.ToHexString(response.NodePubkey.ToByteArray()).ToLower();
                 var capacity = response.FundingAmt;
 
-                var address = await explorerClient.Execute(x => x.GetUnusedAsync(returningMultisigWallet.GetDerivationStrategy(),
-                    DerivationFeature.Deposit, 0, false, default)); //Reserve is false to avoid DoS
+                var address = await  _nBXplorerService.GetUnusedAsync(returningMultisigWallet.GetDerivationStrategy(),
+                    DerivationFeature.Deposit, 0, false, default); //Reserve is false to avoid DoS
 
                 if (address != null)
                 {
@@ -175,14 +180,13 @@ public class ProcessNodeChannelAcceptorJob : IJob
                                 .ContainsKey(
                                     5)) // 4/5 from bolt9 / bolt2 https://github.com/lightning/bolts/blob/master/09-features.md
                         {
-                            var (_, nbxplorerClient) = LightningHelper.GenerateNetwork();
 
                             //Lets find the node's assigned multisig wallet
                             var returningMultisigWallet = node.ReturningFundsMultisigWallet;
 
                             if (returningMultisigWallet != null)
                             {
-                                await AcceptChannelOpeningRequestWithUpfrontShutdown(nbxplorerClient,
+                                await AcceptChannelOpeningRequestWithUpfrontShutdown(_nBXplorerService,
                                     returningMultisigWallet, resultAcceptor, node, response);
                             }
                             else
@@ -194,7 +198,7 @@ public class ProcessNodeChannelAcceptorJob : IJob
                                 if (wallet != null)
                                 {
                                     //Wallet found
-                                    await AcceptChannelOpeningRequestWithUpfrontShutdown(nbxplorerClient,
+                                    await AcceptChannelOpeningRequestWithUpfrontShutdown(_nBXplorerService,
                                         wallet, resultAcceptor, node, response);
 
                                     node.ReturningFundsMultisigWalletId = wallet.Id;
