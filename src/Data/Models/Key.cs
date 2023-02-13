@@ -17,7 +17,7 @@
  *
  */
 
-﻿namespace FundsManager.Data.Models
+namespace FundsManager.Data.Models
 {
     public class Key : Entity, IEquatable<Key>
     {
@@ -81,6 +81,28 @@
         public static bool operator !=(Key? left, Key? right)
         {
             return !Equals(left, right);
+        }
+        
+        private sealed class CheckEquality: IEqualityComparer<Key>
+        {
+            public bool Equals(Key? b1, Key? b2)
+            {
+                if (b1 == null || b2 == null) throw new ArgumentException("Compared keys can't be null");
+                return b1.Id == b2.Id;
+            }
+
+            public int GetHashCode(Key obj)
+            {
+                throw new NotImplementedException();
+            }
+        }
+        
+        private static readonly IEqualityComparer<Key> RadiusCenterComparerInstance
+            = new CheckEquality();
+
+        public static bool Contains(ICollection<Key> source, Key? key) 
+        {
+            return source.Contains(key, new CheckEquality()!);
         }
     }
 }

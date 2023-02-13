@@ -17,7 +17,7 @@
  *
  */
 
-﻿using FundsManager.Data.Models;
+using FundsManager.Data.Models;
 using FundsManager.Data.Repositories.Interfaces;
 using FundsManager.Helpers;
 using Microsoft.EntityFrameworkCore;
@@ -136,25 +136,34 @@ namespace FundsManager.Data.Repositories
             return _repository.RemoveRange(types, applicationDbContext);
         }
 
-        public async Task<(bool, string?)> Update(Wallet type, bool includeKeysUpdate = false)
+        public async Task<(bool, string?)> Update(Wallet type)
         { 
             using var applicationDbContext = _dbContextFactory.CreateDbContext();
             var wallet = await applicationDbContext.Wallets.Include(w => w.Keys).FirstOrDefaultAsync(x => x.Id == type.Id);
 
             type.SetUpdateDatetime();
 
+            bool wasHotWallet = wallet.IsHotWallet;
             applicationDbContext.Entry(wallet).CurrentValues.SetValues(type);
             
-            if (type.IsHotWallet && type.Keys.Count > 1)
+            if (!wasHotWallet && type.IsHotWallet)
             {
-                var userKeys = wallet.Keys.Where(k => k.UserId != null);
+                var userKeys = wallet.Keys.Where(k => !string.IsNullOrEmpty(k.UserId));
                 foreach (var key in userKeys)
                 {
                     wallet.Keys.Remove(key);
                 }
-                 
-            } else if (!includeKeysUpdate)
-                wallet.Keys?.Clear();
+            } 
+            else
+            {
+                foreach (var key in type.Keys)
+                {
+                    if (!Key.Contains(wallet.Keys, key))
+                    {
+                        wallet.Keys.Add(key);
+                    }
+                }
+            }
             
             wallet.ChannelOperationRequestsAsSource?.Clear();
             return _repository.Update(wallet, applicationDbContext);
@@ -200,8 +209,8 @@ namespace FundsManager.Data.Repositories
 
                 await nbxplorerClient.Execute(x => x.TrackAsync(derivationStrategyBase, default));
 
-                selectedWalletToFinalise.Keys = null;
-                selectedWalletToFinalise.ChannelOperationRequestsAsSource = null;
+                selectedWalletToFinalise.Keys?.Clear();
+                selectedWalletToFinalise.ChannelOperationRequestsAsSource?.Clear();
 
                 if (selectedWalletToFinalise.IsHotWallet)
                 {
