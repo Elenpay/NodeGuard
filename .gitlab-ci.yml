@@ -41,7 +41,7 @@ test:
     test_path: "$project/test/$project.Tests"
   script:
     - cd test/FundsManager.Tests
-    - dotnet test --logger:"xunit;LogFilePath=./UnitTestResult.xml"
+    - dotnet test --logger:"xunit;LogFilePath=../../UnitTestResult.xml"
   artifacts:
     paths:
       - ./UnitTestResult.xml
