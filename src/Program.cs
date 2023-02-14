@@ -42,6 +42,7 @@ using Serilog.Events;
 using Serilog.Formatting.Json;
 using FundsManager.Helpers;
 using FundsManager.Rpc;
+using Microsoft.AspNetCore.Server.Kestrel.Core;
 
 namespace FundsManager
 {
@@ -129,6 +130,17 @@ namespace FundsManager
                             .SingleQuery); // Slower but integrity is ensured
                     });
             }, ServiceLifetime.Transient);
+            
+            //gRPC
+            builder.Services.AddGrpc();
+            builder.WebHost.ConfigureKestrel(options =>
+            {
+                // Setup a HTTP/2 endpoint without TLS.
+                options.ListenLocalhost(50051, o => o.Protocols =
+                    HttpProtocols.Http2);
+                options.ListenLocalhost(38080, o => o.Protocols =
+                    HttpProtocols.Http1);
+            });
 
             //DBContextFactory
             builder.Services.AddDbContextFactory<ApplicationDbContext>(
@@ -254,6 +266,7 @@ namespace FundsManager
                             })
                     );
             }
+            
             
           
 

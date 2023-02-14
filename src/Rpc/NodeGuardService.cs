@@ -14,10 +14,21 @@ using LiquidityRule = Nodeguard.LiquidityRule;
 
 namespace FundsManager.Rpc;
 
+public interface INodeGuardService
+{
+    Task<GetLiquidityRulesResponse> GetLiquidityRules(GetLiquidityRulesRequest request,
+        ServerCallContext context);
+
+    Task<GetNewWalletAddressResponse> GetNewWalletAddress(GetNewWalletAddressRequest request,
+        ServerCallContext context);
+
+    Task<RequestWithdrawalResponse> RequestWithdrawal(RequestWithdrawalRequest request, ServerCallContext context);
+}
+
 /// <summary>
 /// gRPC Server implementation of the NodeGuard API
 /// </summary>
-public class NodeGuardService : Nodeguard.NodeGuardService.NodeGuardServiceBase
+public class NodeGuardService : Nodeguard.NodeGuardService.NodeGuardServiceBase, INodeGuardService
 {
     private readonly ILogger<NodeGuardService> _logger;
     private readonly ILiquidityRuleRepository _liquidityRuleRepository;
