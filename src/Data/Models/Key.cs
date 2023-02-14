@@ -97,12 +97,11 @@ namespace FundsManager.Data.Models
             }
         }
         
-        private static readonly IEqualityComparer<Key> RadiusCenterComparerInstance
-            = new CheckEquality();
+        private static readonly IEqualityComparer<Key> Comparer = new CheckEquality();
 
         public static bool Contains(ICollection<Key> source, Key? key) 
         {
-            return source.Contains(key, new CheckEquality()!);
+            return source.Contains(key, Comparer!);
         }
     }
 }

@@ -173,11 +173,11 @@ namespace FundsManager.Data.Repositories
         {
             await using var applicationDbContext = _dbContextFactory.CreateDbContext();
 
-            var lastWallet = applicationDbContext.Wallets.OrderBy(w => w.Id).LastOrDefault(w => w.IsFinalised && w.IsHotWallet);
+            var lastWallet = applicationDbContext.Wallets.OrderBy(w => w.Id).LastOrDefault(w => w.IsFinalised);
             
-            if (lastWallet == null) return "0'/0'";
+            if (lastWallet == null) return "0";
             
-            if (lastWallet.InternalWalletSubDerivationPath == null)
+            if (string.IsNullOrEmpty(lastWallet.InternalWalletSubDerivationPath))
                 throw new InvalidOperationException("A finalized hot wallet has no subderivation path");
             
             var subderivationPath = KeyPath.Parse(lastWallet.InternalWalletSubDerivationPath);
@@ -201,6 +201,8 @@ namespace FundsManager.Data.Repositories
             {
                 var (_, nbxplorerClient) = LightningHelper.GenerateNetwork();
 
+                selectedWalletToFinalise.InternalWalletSubDerivationPath = await GetNextSubderivationPath();
+                
                 var derivationStrategyBase = selectedWalletToFinalise.GetDerivationStrategy();
                 if (derivationStrategyBase == null)
                 {
@@ -209,14 +211,7 @@ namespace FundsManager.Data.Repositories
 
                 await nbxplorerClient.Execute(x => x.TrackAsync(derivationStrategyBase, default));
 
-                selectedWalletToFinalise.Keys?.Clear();
-                selectedWalletToFinalise.ChannelOperationRequestsAsSource?.Clear();
-
-                if (selectedWalletToFinalise.IsHotWallet)
-                {
-                    selectedWalletToFinalise.InternalWalletSubDerivationPath = await GetNextSubderivationPath();
-                }
-
+                
                 var updateResult = await Update(selectedWalletToFinalise);
 
                 if (updateResult.Item1 == false)

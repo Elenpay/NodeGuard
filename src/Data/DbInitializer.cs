@@ -17,7 +17,7 @@
  *
  */
 
-﻿using System.Net;
+using System.Net;
 using FundsManager.Data.Models;
 using FundsManager.Data.Repositories.Interfaces;
 using FundsManager.Helpers;
@@ -336,7 +336,8 @@ namespace FundsManager.Data
                         WalletAddressType = WalletAddressType.NativeSegwit,
                         InternalWalletId = internalWallet.Id,
                         IsFinalised = true,
-                        CreationDatetime = DateTimeOffset.Now
+                        CreationDatetime = DateTimeOffset.Now,
+                        InternalWalletSubDerivationPath = "0"
                     };
 
                     //Now we fund a multisig address of that wallet with the miner (polar)

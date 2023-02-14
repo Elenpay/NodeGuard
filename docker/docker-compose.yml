@@ -13,7 +13,7 @@ services:
     environment:
         ASPNETCORE_ENVIRONMENT: Development
         BITCOIN_NETWORK: REGTEST
-        DEFAULT_DERIVATION_PATH: m/48'/1'/1'
+        DEFAULT_DERIVATION_PATH: m/48'/1'
         FUNDSMANAGER_ENDPOINT: http://localhost:50052
         IS_DEV_ENVIRONMENT: "true"
         Logging__LogLevel__Microsoft: Warning

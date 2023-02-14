@@ -105,13 +105,16 @@ namespace FundsManager.Data.Models
         {
             DerivationStrategyBase result = null;
             var currentNetwork = CurrentNetworkHelper.GetCurrentNetwork();
-
             if (Keys != null && Keys.Any())
             {
                 var bitcoinExtPubKeys = Keys.Select(x =>
                     {
-                        return new BitcoinExtPubKey(x.XPUB,
-                            currentNetwork);
+                        if (x.InternalWalletId != null)
+                        {
+                            var keyPath = KeyPath.Parse(InternalWalletSubDerivationPath);
+                            return new BitcoinExtPubKey(x.XPUB, currentNetwork).Derive(keyPath);
+                        }
+                        return new BitcoinExtPubKey(x.XPUB, currentNetwork);
                     }).OrderBy(x => x.ExtPubKey.PubKey) //This is to match sortedmulti() lexicographical sort
                     .ToList();
 
