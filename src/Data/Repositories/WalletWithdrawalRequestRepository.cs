@@ -23,6 +23,7 @@ using FundsManager.Data.Repositories.Interfaces;
 using FundsManager.Services;
 using Humanizer;
 using Microsoft.EntityFrameworkCore;
+using NBitcoin;
 
 namespace FundsManager.Data.Repositories
 {
@@ -33,18 +34,22 @@ namespace FundsManager.Data.Repositories
         private readonly IDbContextFactory<ApplicationDbContext> _dbContextFactory;
         private readonly IMapper _mapper;
         private readonly NotificationService _notificationService;
+        private readonly INBXplorerService _nBXplorerService;
 
         public WalletWithdrawalRequestRepository(IRepository<WalletWithdrawalRequest> repository,
             ILogger<WalletWithdrawalRequestRepository> logger,
             IDbContextFactory<ApplicationDbContext> dbContextFactory, 
             IMapper mapper, 
-            NotificationService notificationService)
+            NotificationService notificationService,
+            INBXplorerService nBXplorerService
+            )
         {
             _repository = repository;
             _logger = logger;
             _dbContextFactory = dbContextFactory;
             _mapper = mapper;
             _notificationService = notificationService;
+            _nBXplorerService = nBXplorerService;
         }
 
         public async Task<WalletWithdrawalRequest?> GetById(int id)
@@ -96,6 +101,18 @@ namespace FundsManager.Data.Repositories
 
             type.SetCreationDatetime();
             type.SetUpdateDatetime();
+            
+            //Verify that the wallet has enough funds calling nbxplorer
+
+            var balance = await _nBXplorerService.GetBalanceAsync(type.Wallet.GetDerivationStrategy(), default);
+
+            var requestMoneyAmount = new Money(type.Amount, MoneyUnit.BTC);
+            
+            if ((Money) balance.Confirmed < requestMoneyAmount)
+            {
+                return (false, $"The wallet {type.Wallet.Name} does not have enough funds to complete this withdrawal request. The wallet has {balance.Confirmed} BTC and the withdrawal request is for {requestMoneyAmount} BTC.");
+            }
+            
 
             var valueTuple = await _repository.AddAsync(type, applicationDbContext);
             await _notificationService.NotifyRequestSigners(type.WalletId, "/withdrawals");

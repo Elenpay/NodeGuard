@@ -41,7 +41,7 @@ using Serilog;
 using Serilog.Events;
 using Serilog.Formatting.Json;
 using FundsManager.Helpers;
-using FundsManager.rpc;
+using FundsManager.Rpc;
 
 namespace FundsManager
 {

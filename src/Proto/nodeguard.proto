@@ -2,6 +2,7 @@ syntax = "proto3";
 
 package nodeguard;
 
+option go_package = "./nodeguard";
 
 service NodeGuardService {
   /*
@@ -9,11 +10,16 @@ service NodeGuardService {
   Returns the liquidity rules associated to a node and its channels
   */
   rpc GetLiquidityRules(GetLiquidityRulesRequest) returns (GetLiquidityRulesResponse);
-      
+
   /*
   Returns a new unused BTC Address of a given wallet
   */
   rpc GetNewWalletAddress(GetNewWalletAddressRequest) returns (GetNewWalletAddressResponse);
+
+  /*
+    Withdraws funds from a given wallet to a given address
+    */
+  rpc RequestWithdrawal(RequestWithdrawalRequest) returns (RequestWithdrawalResponse);
 }
 
 message GetLiquidityRulesRequest {
@@ -25,7 +31,7 @@ message GetLiquidityRulesResponse {
 }
 
 message LiquidityRule {
-  string channel_id = 1;
+  uint64 channel_id = 1;
   string node_pubkey = 2;
   int32 wallet_id = 3;
   float minimum_local_balance = 4;
@@ -38,4 +44,18 @@ message GetNewWalletAddressRequest {
 
 message GetNewWalletAddressResponse {
   string address = 1;
+}
+
+message RequestWithdrawalRequest {
+  int32 wallet_id = 1;
+  string address = 2;
+  // Amount in satoshis
+  int64 amount = 3;
+  string description = 4;
+}
+
+message RequestWithdrawalResponse {
+  //  optionalTransaction ID of the withdrawal
+  string txid = 1;
+  bool is_hot_wallet = 2;
 }
