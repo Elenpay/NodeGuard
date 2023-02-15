@@ -148,6 +148,15 @@ public class NodeGuardService : Nodeguard.NodeGuardService.NodeGuardServiceBase,
         
             //Save withdrawal request
             var withdrawalSaved = await _walletWithdrawalRequestRepository.AddAsync(withdrawalRequest);
+            
+            if(!withdrawalSaved.Item1)
+            {
+                _logger.LogError("Error saving withdrawal request for wallet with id {walletId}", request.WalletId);
+                throw new RpcException(new Status(StatusCode.Internal, "Error saving withdrawal request for wallet"));
+            }
+            
+            //Update to refresh from db
+            withdrawalRequest = await _walletWithdrawalRequestRepository.GetById(withdrawalRequest.Id);
 
             if (!withdrawalSaved.Item1)
             {

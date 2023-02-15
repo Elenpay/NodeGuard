@@ -63,8 +63,11 @@ public class NBXplorerService : INBXplorerService
     )
   {
     var client = await LightningHelper.CreateNBExplorerClient();
+
+    var keyPathInformation = await client.GetUnusedAsync(strategy, feature, skip, reserve, cancellation);
     
-    return await client.GetUnusedAsync(strategy, feature, skip, reserve, cancellation);
+    
+    return keyPathInformation;
   }
 
   public async Task<GetBalanceResponse> GetBalanceAsync(DerivationStrategyBase userDerivationScheme, CancellationToken cancellation = default)
