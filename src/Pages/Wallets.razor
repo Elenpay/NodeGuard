@@ -343,7 +343,7 @@
 
         if (arg.Item.IsHotWallet) arg.Item.MofN = 1;
         
-        var updateResult = await WalletRepository.Update(arg.Item);
+        var updateResult = WalletRepository.Update(arg.Item);
 
         if (updateResult.Item1)
         {
@@ -406,7 +406,7 @@
             
             _selectedWallet.Keys.Add(_selectedWalletKey);
 
-            var updateResult = await WalletRepository.Update(_selectedWallet);
+            var updateResult = WalletRepository.Update(_selectedWallet);
 
             if (updateResult.Item1)
             {

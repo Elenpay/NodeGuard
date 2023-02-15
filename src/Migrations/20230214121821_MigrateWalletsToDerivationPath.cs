@@ -33,7 +33,7 @@ namespace FundsManager.Migrations
                 column: "InternalWalletSubDerivationPath",
                 unique: true);
             migrationBuilder.Sql("UPDATE \"InternalWallets\" SET \"DerivationPath\" = 'm/48''/1'''");
-            migrationBuilder.Sql("UPDATE \"Wallets\" SET \"InternalWalletSubDerivationPath\" = '1'");
+            migrationBuilder.Sql("UPDATE \"Wallets\" SET \"InternalWalletSubDerivationPath\" = 'm/48''/1''/1'");
         }
 
         protected override void Down(MigrationBuilder migrationBuilder)

@@ -337,7 +337,7 @@ namespace FundsManager.Data
                         InternalWalletId = internalWallet.Id,
                         IsFinalised = true,
                         CreationDatetime = DateTimeOffset.Now,
-                        InternalWalletSubDerivationPath = "0"
+                        InternalWalletSubDerivationPath = "m/48'/1'/0"
                     };
 
                     //Now we fund a multisig address of that wallet with the miner (polar)

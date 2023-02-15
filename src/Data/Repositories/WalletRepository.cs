@@ -136,14 +136,14 @@ namespace FundsManager.Data.Repositories
             return _repository.RemoveRange(types, applicationDbContext);
         }
 
-        public async Task<(bool, string?)> Update(Wallet type)
+        public (bool, string?) Update(Wallet type)
         { 
             using var applicationDbContext = _dbContextFactory.CreateDbContext();
-            var wallet = await applicationDbContext.Wallets.Include(w => w.Keys).FirstOrDefaultAsync(x => x.Id == type.Id);
+            var wallet = applicationDbContext.Wallets.Include(w => w.Keys).FirstOrDefault(x => x.Id == type.Id);
 
             type.SetUpdateDatetime();
 
-            bool wasHotWallet = wallet.IsHotWallet;
+            var wasHotWallet = wallet.IsHotWallet;
             applicationDbContext.Entry(wallet).CurrentValues.SetValues(type);
             
             if (!wasHotWallet && type.IsHotWallet)
@@ -174,14 +174,15 @@ namespace FundsManager.Data.Repositories
             await using var applicationDbContext = _dbContextFactory.CreateDbContext();
 
             var lastWallet = applicationDbContext.Wallets.OrderBy(w => w.Id).LastOrDefault(w => w.IsFinalised);
+            var internalWallet = applicationDbContext.InternalWallets.FirstOrDefault()!;
             
-            if (lastWallet == null) return "0";
+            if (lastWallet == null) return $"{internalWallet.DerivationPath}/0";
             
             if (string.IsNullOrEmpty(lastWallet.InternalWalletSubDerivationPath))
                 throw new InvalidOperationException("A finalized hot wallet has no subderivation path");
             
             var subderivationPath = KeyPath.Parse(lastWallet.InternalWalletSubDerivationPath);
-            return subderivationPath.Increment().ToString();
+            return $"m/{subderivationPath.Increment()}";
         }
         
         public async Task<(bool, string?)> FinaliseWallet(Wallet selectedWalletToFinalise)
@@ -212,7 +213,7 @@ namespace FundsManager.Data.Repositories
                 await nbxplorerClient.Execute(x => x.TrackAsync(derivationStrategyBase, default));
 
                 
-                var updateResult = await Update(selectedWalletToFinalise);
+                var updateResult = Update(selectedWalletToFinalise);
 
                 if (updateResult.Item1 == false)
                 {

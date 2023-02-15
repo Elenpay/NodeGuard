@@ -40,10 +40,18 @@ public class WalletRepositoryTests
     [Fact]
     public async void GetNextSubderivationPath_ReturnsDefault()
     {
-        var dbContextFactory = SetupDbContextFactory(); 
+        var dbContextFactory = SetupDbContextFactory();
+        var context = dbContextFactory.Object.CreateDbContext();
+        
+        context.InternalWallets.Add(new InternalWallet()
+        {
+            DerivationPath = "m/48'/1'"
+        });
+        context.SaveChanges();
+        
         var walletRepository = new WalletRepository(null, null, dbContextFactory.Object, null, null);
         var result = await walletRepository.GetNextSubderivationPath();
-        result.Should().Be("0");
+        result.Should().Be("m/48'/1'/0");
    }
     
     [Fact]
@@ -79,12 +87,12 @@ public class WalletRepositoryTests
             Name = "TestWallet",
             IsFinalised = true, 
             IsHotWallet = true,
-            InternalWalletSubDerivationPath = "0"
+            InternalWalletSubDerivationPath = "m/48'/1'/0"
         });
         context.SaveChanges();
         
         var walletRepository = new WalletRepository(null, null, dbContextFactory.Object, null, null);
         var result = await walletRepository.GetNextSubderivationPath();
-        result.Should().Be("1");
+        result.Should().Be("m/48'/1'/1");
     }
 }
