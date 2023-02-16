@@ -51,7 +51,7 @@ public class WalletRepositoryTests
         });
         context.SaveChanges();
         
-        var walletRepository = new WalletRepository(null, null, dbContextFactory.Object, null, null);
+        var walletRepository = new WalletRepository(null, null, dbContextFactory.Object, null, null, null);
         var result = await walletRepository.GetNextSubderivationPath();
         result.Should().Be("m/48'/1'/0");
    }
@@ -70,7 +70,7 @@ public class WalletRepositoryTests
         });
         context.SaveChanges();
         
-        var walletRepository = new WalletRepository(null, null, dbContextFactory.Object, null, null);
+        var walletRepository = new WalletRepository(null, null, dbContextFactory.Object, null, null, null);
         var act = () => walletRepository.GetNextSubderivationPath();
         await act
             .Should()
@@ -97,7 +97,7 @@ public class WalletRepositoryTests
         });
         context.SaveChanges();
         
-        var walletRepository = new WalletRepository(null, null, dbContextFactory.Object, null, null);
+        var walletRepository = new WalletRepository(null, null, dbContextFactory.Object, null, null, null);
         var result = await walletRepository.GetNextSubderivationPath();
         result.Should().Be("m/48'/1'/1");
     }
@@ -127,7 +127,7 @@ public class WalletRepositoryTests
         });
         context.SaveChanges();
 
-        var walletRepository = new WalletRepository(null, null, dbContextFactory.Object, null, null);
+        var walletRepository = new WalletRepository(null, null, dbContextFactory.Object, null, null, null);
         var result = await walletRepository.GetNextSubderivationPath();
         result.Should().Be("m/48'/1'/1");
     }
@@ -158,7 +158,7 @@ public class WalletRepositoryTests
         });
         context.SaveChanges();
 
-        var walletRepository = new WalletRepository(null, null, dbContextFactory.Object, null, null);
+        var walletRepository = new WalletRepository(null, null, dbContextFactory.Object, null, null, null);
         var result = await walletRepository.GetNextSubderivationPath();
         result.Should().Be("m/48'/1'/1");
     }

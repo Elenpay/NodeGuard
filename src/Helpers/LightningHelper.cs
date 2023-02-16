@@ -19,6 +19,7 @@
 
 using AutoMapper;
 using FundsManager.Data.Models;
+using FundsManager.Services;
 using Google.Protobuf;
 using NBitcoin;
 using NBXplorer;
