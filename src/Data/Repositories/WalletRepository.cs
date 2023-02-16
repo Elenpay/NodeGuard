@@ -17,10 +17,12 @@
  *
  */
 
-﻿using FundsManager.Data.Models;
+using FundsManager.Data.Models;
 using FundsManager.Data.Repositories.Interfaces;
 using FundsManager.Helpers;
 using Microsoft.EntityFrameworkCore;
+ using NBitcoin;
+ using Key = FundsManager.Data.Models.Key;
 
 namespace FundsManager.Data.Repositories
 {
@@ -134,18 +136,66 @@ namespace FundsManager.Data.Repositories
             return _repository.RemoveRange(types, applicationDbContext);
         }
 
-        public (bool, string?) Update(Wallet type, bool includeKeysUpdate = false)
-        {
+        public (bool, string?) Update(Wallet type)
+        { 
             using var applicationDbContext = _dbContextFactory.CreateDbContext();
+            var wallet = applicationDbContext.Wallets.Include(w => w.Keys).FirstOrDefault(x => x.Id == type.Id);
 
             type.SetUpdateDatetime();
-            if (!includeKeysUpdate)
-                type.Keys?.Clear();
 
-            type.ChannelOperationRequestsAsSource?.Clear();
-            return _repository.Update(type, applicationDbContext);
+            var wasHotWallet = wallet.IsHotWallet;
+            applicationDbContext.Entry(wallet).CurrentValues.SetValues(type);
+            
+            if (!wasHotWallet && type.IsHotWallet)
+            {
+                var userKeys = wallet.Keys.Where(k => !string.IsNullOrEmpty(k.UserId));
+                foreach (var key in userKeys)
+                {
+                    wallet.Keys.Remove(key);
+                }
+            } 
+            else
+            {
+                foreach (var key in type.Keys)
+                {
+                    if (!Key.Contains(wallet.Keys, key))
+                    {
+                        wallet.Keys.Add(key);
+                    }
+                }
+            }
+            
+            wallet.ChannelOperationRequestsAsSource?.Clear();
+            return _repository.Update(wallet, applicationDbContext);
         }
 
+        public async Task<string> GetNextSubderivationPath()
+        {
+            await using var applicationDbContext = _dbContextFactory.CreateDbContext();
+
+            var internalWallet = applicationDbContext.InternalWallets.FirstOrDefault()!;
+            bool IsNextWallet(Wallet wallet)
+            {
+                if (!wallet.IsFinalised) return false;
+                if (string.IsNullOrEmpty(wallet.InternalWalletSubDerivationPath))
+                    throw new InvalidOperationException("A finalized hot wallet has no subderivation path");
+                return wallet.InternalWalletSubDerivationPath.Contains(internalWallet.DerivationPath);
+            };
+            
+            var lastWallet = applicationDbContext.Wallets
+                .OrderBy(w => w.Id)
+                .Where(IsNextWallet)
+                .LastOrDefault();
+            
+            if (lastWallet == null) return $"{internalWallet.DerivationPath}/0";
+            
+            if (string.IsNullOrEmpty(lastWallet.InternalWalletSubDerivationPath))
+                throw new InvalidOperationException("A finalized hot wallet has no subderivation path");
+            
+            var subderivationPath = KeyPath.Parse(lastWallet.InternalWalletSubDerivationPath);
+            return $"m/{subderivationPath.Increment()}";
+        }
+        
         public async Task<(bool, string?)> FinaliseWallet(Wallet selectedWalletToFinalise)
         {
             if (selectedWalletToFinalise == null) throw new ArgumentNullException(nameof(selectedWalletToFinalise));
@@ -163,6 +213,8 @@ namespace FundsManager.Data.Repositories
             {
                 var (_, nbxplorerClient) = LightningHelper.GenerateNetwork();
 
+                selectedWalletToFinalise.InternalWalletSubDerivationPath = await GetNextSubderivationPath();
+                
                 var derivationStrategyBase = selectedWalletToFinalise.GetDerivationStrategy();
                 if (derivationStrategyBase == null)
                 {
@@ -170,9 +222,6 @@ namespace FundsManager.Data.Repositories
                 }
 
                 await nbxplorerClient.Execute(x => x.TrackAsync(derivationStrategyBase, default));
-
-                selectedWalletToFinalise.Keys = null;
-                selectedWalletToFinalise.ChannelOperationRequestsAsSource = null;
 
                 var updateResult = Update(selectedWalletToFinalise);
 

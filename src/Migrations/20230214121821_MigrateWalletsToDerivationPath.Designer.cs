@@ -3,6 +3,7 @@ using System;
 using FundsManager.Data;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 
@@ -11,9 +12,10 @@ using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 namespace FundsManager.Migrations
 {
     [DbContext(typeof(ApplicationDbContext))]
-    partial class ApplicationDbContextModelSnapshot : ModelSnapshot
+    [Migration("20230214121821_MigrateWalletsToDerivationPath")]
+    partial class MigrateWalletsToDerivationPath
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -448,9 +450,6 @@ namespace FundsManager.Migrations
                     b.Property<int>("InternalWalletId")
                         .HasColumnType("integer");
 
-                    b.Property<string>("InternalWalletMasterFingerprint")
-                        .HasColumnType("text");
-
                     b.Property<string>("InternalWalletSubDerivationPath")
                         .HasColumnType("text");
 
@@ -486,7 +485,7 @@ namespace FundsManager.Migrations
 
                     b.HasIndex("InternalWalletId");
 
-                    b.HasIndex("InternalWalletSubDerivationPath", "InternalWalletMasterFingerprint")
+                    b.HasIndex("InternalWalletSubDerivationPath")
                         .IsUnique();
 
                     b.ToTable("Wallets");
@@ -530,6 +529,7 @@ namespace FundsManager.Migrations
                         .HasColumnType("timestamp with time zone");
 
                     b.Property<string>("UserRequestorId")
+                        .IsRequired()
                         .HasColumnType("text");
 
                     b.Property<int>("WalletId")
@@ -995,7 +995,9 @@ namespace FundsManager.Migrations
                 {
                     b.HasOne("FundsManager.Data.Models.ApplicationUser", "UserRequestor")
                         .WithMany("WalletWithdrawalRequests")
-                        .HasForeignKey("UserRequestorId");
+                        .HasForeignKey("UserRequestorId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
 
                     b.HasOne("FundsManager.Data.Models.Wallet", "Wallet")
                         .WithMany()
