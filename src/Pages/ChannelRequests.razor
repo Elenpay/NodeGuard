@@ -209,6 +209,7 @@
 <h3>All Requests</h3>
 <br />
 <DataGrid TItem="ChannelOperationRequest"
+          @ref="@_allRequestsDatagrid"
           Data="@_allRequests"
           Filterable="true"
           ShowPager="true"
@@ -293,6 +294,15 @@
     OnSubmit="@RejectOrCancelRequest"
 />
 
+<ConfirmationModal
+    @ref="_confirmationModal"
+    Title="Are you sure?"
+    Body="You selected a hot wallet. This means that the system will automatically use the funds in it without the need of manual approval. \nAre you sure you want to perform this operation?"
+    OkLabel="Yes, I am sure"
+    OnCancel="@CloseConfirmationModal"
+    OnSubmit="@SubmitConfirmationModal"
+/>
+
 @inject IChannelOperationRequestRepository ChannelOperationRequestRepository
 @inject IChannelOperationRequestPSBTRepository ChannelOperationRequestPsbtRepository
 @inject IToastService ToastService
@@ -314,10 +324,12 @@
     private string? _selectedStatusActionString;
     private bool _isFinanceManager = false;
     private bool _isNodeManager = false;
+    private ConfirmationModal _confirmationModal;
 
     // New Request integration
     private List<Wallet> _allWallets = new List<Wallet>();
     protected DataGrid<ChannelOperationRequest>? datagridRef;
+    protected DataGrid<ChannelOperationRequest>? _allRequestsDatagrid;
     private List<Node>? _manageableNodes;
     private int _selectedSourceNodeId;
     private Node? _selectedDestNode;
@@ -464,7 +476,7 @@
         {
             if (_selectedDestNode?.Id != _selectedSourceNodeId)
             {
-                ChannelOperationRequest request = new()
+                var request = new ChannelOperationRequest()
                 {
                     SatsAmount = _amount,
                     RequestType = OperationRequestType.Open,
@@ -476,7 +488,18 @@
                     DestNodeId = _selectedDestNode?.Id
                 };
 
+                var selectedWallet = await WalletRepository.GetById(_selectedWalletId);
+                if (selectedWallet.IsHotWallet)
+                {
+                    _selectedRequest = request;
+                    await datagridRef.Edit(null);
+                    await _confirmationModal.ShowModal();
+
+                    return;
+                }
+
                 var createChannelResult = await ChannelOperationRequestRepository.AddAsync(request);
+
                 if (createChannelResult.Item1)
                 {
                     ToastService.ShowSuccess("Open channel request created!");
@@ -601,28 +624,7 @@
                 if (_selectedRequest != null
                     && _selectedRequest.AreAllRequiredHumanSignaturesCollected)
                 {
-                    try
-                    {
-                        //TODO Async notifications when the channel has opened -> event / notifications system
-                        IScheduler scheduler = await SchedulerFactory.GetScheduler(); 
-            
-                        var map = new JobDataMap();
-                        map.Put("openRequestId", _selectedRequest.Id);
-                        
-                        var retryList = RetriableJob.ParseRetryListFromString(Constants.JOB_RETRY_INTERVAL_LIST_IN_MINUTES);
-                        var job = RetriableJob.Create<ChannelOpenJob>(map, _selectedRequest.Id.ToString(), retryList);
-                        await scheduler.ScheduleJob(job.Job, job.Trigger);
-
-                        // TODO: Check job id
-                        _selectedRequest.JobId = job.Job.Key.ToString();
-
-                        var jobUpdateResult = ChannelOperationRequestRepository.Update(_selectedRequest);
-                        ToastService.ShowSuccess("Channel opening job created");
-                    }
-                    catch
-                    {
-                        ToastService.ShowError("Error while requesting to open the channel, please contact a superadmin for troubleshooting");
-                    }
+                    await CreateJob();
                 }
                 else
                 {
@@ -632,7 +634,7 @@
             }
             else
             {
-                ToastService.ShowSuccess("Error while saving the signature");
+                ToastService.ShowError("Error while saving the signature");
 
             }
 
@@ -662,4 +664,107 @@
             ValidationRule.None(e);
         }
     }
-}
+
+    private async void CloseConfirmationModal()
+    {
+        await _confirmationModal.CloseModal();
+    }
+
+    private async void SubmitConfirmationModal()
+    {
+        if (_selectedRequest != null)
+        {
+            var createChannelResult = await ChannelOperationRequestRepository.AddAsync(_selectedRequest);
+            if (createChannelResult.Item1)
+            {
+                ToastService.ShowSuccess("Open channel request created!");
+            }
+            else
+            {
+                ToastService.ShowError(createChannelResult.Item2);
+                await _confirmationModal.CloseModal();
+                return;
+            }
+
+            var (templatePsbt, noUtxosAvailable) = (await LightningService.GenerateTemplatePSBT(_selectedRequest));
+            string stringPsbt;
+            if (templatePsbt == null)
+            {
+                if (noUtxosAvailable)
+                {
+                    ToastService.ShowError("No UTXOs found for this wallet, please wait for other requests to be confirmed or fund the wallet with more UTXOs");
+                }
+                else
+                {
+                    ToastService.ShowError("Something went wrong");
+                }
+                _selectedRequest.Status = ChannelOperationRequestStatus.Failed;
+                ChannelOperationRequestRepository.Update(_selectedRequest);
+                await _confirmationModal.CloseModal();
+                await FetchRequests();
+                StateHasChanged();
+                return;
+            }
+
+            ChannelOperationRequestPSBT channelOperationRequestPSBT = new()
+            {
+                ChannelOperationRequestId = _selectedRequest.Id,
+                PSBT = templatePsbt.ToBase64(),
+                UserSignerId = null,
+            };
+            var addResult = await ChannelOperationRequestPsbtRepository.AddAsync(channelOperationRequestPSBT);
+            if (addResult.Item1)
+            {
+                ToastService.ShowSuccess("Signature collected");
+
+                _selectedRequest = await ChannelOperationRequestRepository.GetById(_selectedRequest.Id);
+
+                if (_selectedRequest != null
+                    && _selectedRequest.AreAllRequiredHumanSignaturesCollected)
+                {
+                    await CreateJob();
+                }
+                else
+                {
+                    ToastService.ShowError("Invalid PSBT");
+                }
+            }
+            else
+            {
+                ToastService.ShowError("Error while saving the signature");
+            }
+           
+            await FetchRequests();
+            _allRequestsDatagrid.Dispose();
+            StateHasChanged();
+            _confirmationModal.CloseModal();
+        }
+    }
+
+    private async Task CreateJob()
+    {
+        try
+        {
+            //TODO Async notifications when the channel has opened -> event / notifications system
+            IScheduler scheduler = await SchedulerFactory.GetScheduler();
+
+            var map = new JobDataMap();
+            map.Put("openRequestId", _selectedRequest.Id);
+
+            var retryList = RetriableJob.ParseRetryListFromString(Constants.JOB_RETRY_INTERVAL_LIST_IN_MINUTES);
+            var job = RetriableJob.Create<ChannelOpenJob>(map, _selectedRequest.Id.ToString(), retryList);
+            await scheduler.ScheduleJob(job.Job, job.Trigger);
+
+            // TODO: Check job id
+            _selectedRequest.JobId = job.Job.Key.ToString();
+
+            var jobUpdateResult = ChannelOperationRequestRepository.Update(_selectedRequest);
+            ToastService.ShowSuccess("Channel opening job created");
+        }
+        catch
+        {
+            ToastService.ShowError("Error while requesting to open the channel, please contact a superadmin for troubleshooting");
+        }
+    }
+
+    }
