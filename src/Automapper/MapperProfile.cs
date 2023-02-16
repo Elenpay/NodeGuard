@@ -65,6 +65,13 @@ namespace FundsManager.Automapper
                 .ForMember(x => x.TxId, opt => opt.MapFrom(x => x.Outpoint.Hash.ToString()))
                 .ForMember(x => x.OutputIndex, opt => opt.MapFrom(x => x.Outpoint.N))
                 .ForMember(x => x.SatsAmount, opt => opt.MapFrom(x => ((Money)x.Value).Satoshi));
+
+            CreateMap<LiquidityRule, Nodeguard.LiquidityRule>()
+                .ForMember(x => x.MinimumLocalBalance, opt => opt.MapFrom(x => x.MinimumLocalBalance))
+                .ForMember(x => x.MinimumRemoteBalance, opt => opt.MapFrom(x => x.MinimumRemoteBalance))
+                .ForMember(x => x.ChannelId, opt => opt.MapFrom(x => x.ChannelId))
+                .ForMember(x => x.WalletId, opt => opt.MapFrom(x => x.WalletId))
+                .ForMember(x => x.NodePubkey, opt => opt.MapFrom(x => x.Node.PubKey));
         }
     }
 }

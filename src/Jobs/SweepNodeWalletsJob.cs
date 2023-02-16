@@ -20,6 +20,7 @@
 using FundsManager.Data.Models;
 using FundsManager.Data.Repositories.Interfaces;
 using FundsManager.Helpers;
+using FundsManager.Services;
 using Grpc.Core;
 using Grpc.Net.Client;
 using Lnrpc;
@@ -36,14 +37,18 @@ public class SweepNodeWalletsJob : IJob
     private readonly ILogger<SweepNodeWalletsJob> _logger;
     private readonly INodeRepository _nodeRepository;
     private readonly IWalletRepository _walletRepository;
+    private readonly INBXplorerService _nbXplorerService;
 
     public SweepNodeWalletsJob(ILogger<SweepNodeWalletsJob> logger,
         INodeRepository _nodeRepository,
-        IWalletRepository walletRepository)
+        IWalletRepository walletRepository,
+        INBXplorerService nbXplorerService
+    )
     {
         _logger = logger;
         this._nodeRepository = _nodeRepository;
         _walletRepository = walletRepository;
+        _nbXplorerService = nbXplorerService;
     }
 
     public async Task Execute(IJobExecutionContext context)
@@ -56,23 +61,21 @@ public class SweepNodeWalletsJob : IJob
         var requiredAnchorChannelClosingAmount = Constants.ANCHOR_CLOSINGS_MINIMUM_SATS;
             
 
-        var (_, nbxplorerClient) = LightningHelper.GenerateNetwork();
 
         #region Local functions
 
-        async Task SweepFunds(Node node, Wallet wallet, Lightning.LightningClient lightningClient,
-            IUnmockable<ExplorerClient> explorerClient, List<Utxo> utxos)
+        async Task SweepFunds(Node node, Wallet wallet, Lightning.LightningClient lightningClient
+            ,List<Utxo> utxos)
         {
             if (node == null) throw new ArgumentNullException(nameof(node));
             if (wallet == null) throw new ArgumentNullException(nameof(wallet));
             if (lightningClient == null) throw new ArgumentNullException(nameof(lightningClient));
-            if (explorerClient == null) throw new ArgumentNullException(nameof(explorerClient));
 
-            var returningAddress = await explorerClient.Execute(x => x.GetUnusedAsync(wallet.GetDerivationStrategy(),
+            var returningAddress = await _nbXplorerService.GetUnusedAsync(wallet.GetDerivationStrategy(),
                 DerivationFeature.Deposit,
                 0,
                 false, //Reserve is false since this is a cron job and we wan't to avoid massive reserves 
-                default));
+                default);
 
             if (node.ChannelAdminMacaroon != null)
             {
@@ -185,7 +188,7 @@ public class SweepNodeWalletsJob : IJob
                     if (wallet != null)
                     {
                         //Existing Wallet found
-                        await SweepFunds(node, wallet, client, nbxplorerClient, unspentResponse.Utxos.ToList());
+                        await SweepFunds(node, wallet, client, unspentResponse.Utxos.ToList());
 
                         node.ReturningFundsMultisigWalletId = wallet.Id;
 
@@ -212,7 +215,7 @@ public class SweepNodeWalletsJob : IJob
                 else
                 {
                     //Returning wallet found
-                    await SweepFunds(node, node.ReturningFundsMultisigWallet, client, nbxplorerClient, unspentResponse.Utxos.ToList());
+                    await SweepFunds(node, node.ReturningFundsMultisigWallet, client, unspentResponse.Utxos.ToList());
                 }
             }
         }
