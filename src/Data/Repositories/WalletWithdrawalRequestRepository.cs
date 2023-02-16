@@ -103,8 +103,26 @@ namespace FundsManager.Data.Repositories
             type.SetUpdateDatetime();
             
             //Verify that the wallet has enough funds calling nbxplorer
+            var wallet = await applicationDbContext.Wallets.Include(x=> x.Keys).SingleOrDefaultAsync(x => x.Id == type.WalletId);
+            
+            if (wallet == null)
+            {
+                return (false, "The wallet could not be found.");
+            }
 
-            var balance = await _nBXplorerService.GetBalanceAsync(type.Wallet.GetDerivationStrategy(), default);
+            var derivationStrategyBase = wallet.GetDerivationStrategy();
+            
+            if (derivationStrategyBase == null)
+            {
+                return (false, "The wallet does not have a derivation strategy.");
+            }
+            
+            var balance = await _nBXplorerService.GetBalanceAsync(derivationStrategyBase, default);
+
+            if (balance == null)
+            {
+                return (false, "Balance could not be retrieved from the wallet.");
+            }
 
             var requestMoneyAmount = new Money(type.Amount, MoneyUnit.BTC);
             
