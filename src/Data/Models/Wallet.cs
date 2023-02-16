@@ -65,6 +65,14 @@ namespace FundsManager.Data.Models
         public string? InternalWalletSubDerivationPath { get; set; }
         
         /// <summary>
+        /// This field is a copy of the column by the same name in the InternalWallet model.
+        /// It is used as a way to make the relationship (InternalWalletSubDerivationPath,MasterFingerprint) unique.
+        /// If a private key is compromised and we have to change the internal wallet,
+        /// this field will allow us to start derivation paths from 0 again since the MasterFingerprint will be different
+        /// </summary>
+        public string? InternalWalletMasterFingerprint { get; set; }
+        
+        /// <summary>
         /// This is a optional field that you can used to link wallets with externally-generated IDs (e.g. a wallet belongs to a btcpayserver store)
         /// </summary>
         public string? ReferenceId { get; set; }
@@ -97,13 +105,16 @@ namespace FundsManager.Data.Models
         {
             DerivationStrategyBase result = null;
             var currentNetwork = CurrentNetworkHelper.GetCurrentNetwork();
-
             if (Keys != null && Keys.Any())
             {
                 var bitcoinExtPubKeys = Keys.Select(x =>
                     {
-                        return new BitcoinExtPubKey(x.XPUB,
-                            currentNetwork);
+                        if (x.InternalWalletId != null)
+                        {
+                            var keyPath = KeyPath.Parse(InternalWalletSubDerivationPath);
+                            return new BitcoinExtPubKey(x.XPUB, currentNetwork).Derive(keyPath.Indexes[2]);
+                        }
+                        return new BitcoinExtPubKey(x.XPUB, currentNetwork);
                     }).OrderBy(x => x.ExtPubKey.PubKey) //This is to match sortedmulti() lexicographical sort
                     .ToList();
 

@@ -17,7 +17,7 @@
  *
  */
 
-﻿using FundsManager.Data.Models;
+using FundsManager.Data.Models;
 
 namespace FundsManager.Data.Repositories.Interfaces;
 
@@ -41,7 +41,7 @@ public interface IWalletRepository
 
     (bool, string?) RemoveRange(List<Wallet> types);
 
-    (bool, string?) Update(Wallet type, bool includeKeysUpdate = false);
+    (bool, string?) Update(Wallet type);
 
     /// <summary>
     /// Enables the tracking of this wallet and locks the edition of its parameters other than name and description

@@ -136,7 +136,7 @@ public class Constants
 
             AWS_KMS_KEY_ID = GetEnvironmentalVariableOrThrowIfNotTesting("AWS_KMS_KEY_ID", "if ENABLE_REMOTE_SIGNER is set, AWS_KMS_KEY_ID");
 
-            AWS_KMS_KEY_ID = GetEnvironmentalVariableOrThrowIfNotTesting("REMOTE_SIGNER_ENDPOINT", "if ENABLE_REMOTE_SIGNER is set, REMOTE_SIGNER_ENDPOINT");
+            REMOTE_SIGNER_ENDPOINT = GetEnvironmentalVariableOrThrowIfNotTesting("REMOTE_SIGNER_ENDPOINT", "if ENABLE_REMOTE_SIGNER is set, REMOTE_SIGNER_ENDPOINT");
         }
 
         

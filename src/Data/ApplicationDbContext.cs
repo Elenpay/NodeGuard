@@ -16,7 +16,7 @@
  * along with this program.  If not, see http://www.gnu.org/licenses/.
  */
 
-﻿using FundsManager.Data.Models;
+using FundsManager.Data.Models;
 using Microsoft.AspNetCore.Identity.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore;
 
@@ -47,6 +47,7 @@ namespace FundsManager.Data
 
             modelBuilder.Entity<Node>().HasIndex(x => x.PubKey).IsUnique();
             modelBuilder.Entity<Node>().HasIndex(x => x.Name).IsUnique();
+            modelBuilder.Entity<Wallet>().HasIndex(x => new {x.InternalWalletSubDerivationPath, x.InternalWalletMasterFingerprint}).IsUnique();
             
             //There should be only one Liquidity Rule per Channel
             modelBuilder.Entity<LiquidityRule>().HasIndex(x => x.ChannelId).IsUnique();

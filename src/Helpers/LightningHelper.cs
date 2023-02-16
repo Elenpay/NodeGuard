@@ -19,12 +19,12 @@
 
 using AutoMapper;
 using FundsManager.Data.Models;
-using FundsManager.Services;
 using Google.Protobuf;
 using NBitcoin;
 using NBXplorer;
 using NBXplorer.Models;
 using Key = FundsManager.Data.Models.Key;
+using Unmockable;
 
 namespace FundsManager.Helpers
 {
@@ -49,8 +49,7 @@ namespace FundsManager.Helpers
         /// <param name="selectedUtxOs"></param>
         /// <param name="multisigCoins"></param>
         /// <exception cref="ArgumentException"></exception>
-        public static (PSBT?, bool) AddDerivationData(IEnumerable<Key> keys, (PSBT?, bool) result,
-            List<UTXO> selectedUtxOs,
+        public static (PSBT?, bool) AddDerivationData(IEnumerable<Key> keys , (PSBT?, bool) result, List<UTXO> selectedUtxOs,
             List<ScriptCoin> multisigCoins, ILogger? logger = null)
         {
             if (keys == null) throw new ArgumentNullException(nameof(keys));
@@ -262,7 +261,7 @@ namespace FundsManager.Helpers
 
             return combinedPSBT;
         }
-
+        
         /// <summary>
         /// Helper for decoding bytestring-based LND representation of TxIds
         /// </summary>

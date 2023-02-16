@@ -17,19 +17,24 @@
  *
  */
 
+using AutoFixture;
+using AutoMapper;
 using Microsoft.Extensions.Logging;
 using FundsManager.Data;
 using FundsManager.Data.Models;
 using FundsManager.Data.Repositories.Interfaces;
 using FundsManager.TestHelpers;
+using NBXplorer;
 using NBXplorer.Models;
 using FluentAssertions;
+using FundsManager.Helpers;
 using Google.Protobuf;
 using Lnrpc;
 using NBitcoin;
 using NBXplorer.DerivationStrategy;
 using Grpc.Core;
 using Microsoft.EntityFrameworkCore;
+using Unmockable.Exceptions;
 
 namespace FundsManager.Services
 {
@@ -278,7 +283,6 @@ namespace FundsManager.Services
             {
                 Wallet = CreateWallet.CreateTestWallet()
             };
-
 
             var nbXplorerMock = GetNBXplorerServiceFullyMocked(new UTXOChanges());
 

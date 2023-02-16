@@ -89,7 +89,6 @@ namespace FundsManager.Services
                 return (null, false);
             }
 
-
             var isFullySynched = (await _nbXplorerService.GetStatusAsync()).IsFullySynched;
             if (!isFullySynched)
             {

@@ -58,7 +58,6 @@ public class MonitorWithdrawalsJob : IJob
                 {
                     //Let's check if the minimum amount of confirmations are established
                 
-
                     var getTxResult = await _nbXplorerService.GetTransactionAsync(uint256.Parse(walletWithdrawalRequest.TxId), default);
 
                     if (getTxResult.Confirmations >= Constants.TRANSACTION_CONFIRMATION_MINIMUM_BLOCKS)
