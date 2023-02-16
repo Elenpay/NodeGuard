@@ -223,7 +223,6 @@ namespace FundsManager.Data.Repositories
 
                 await nbxplorerClient.Execute(x => x.TrackAsync(derivationStrategyBase, default));
 
-                
                 var updateResult = Update(selectedWalletToFinalise);
 
                 if (updateResult.Item1 == false)
