@@ -112,7 +112,7 @@ namespace FundsManager.Data.Models
                         if (x.InternalWalletId != null)
                         {
                             var keyPath = KeyPath.Parse(InternalWalletSubDerivationPath);
-                            return new BitcoinExtPubKey(x.XPUB, currentNetwork).Derive(keyPath.Indexes[2]);
+                            return new BitcoinExtPubKey(x.XPUB, currentNetwork).Derive(keyPath.Indexes.Last());
                         }
                         return new BitcoinExtPubKey(x.XPUB, currentNetwork);
                     }).OrderBy(x => x.ExtPubKey.PubKey) //This is to match sortedmulti() lexicographical sort
