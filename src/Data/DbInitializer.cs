@@ -253,7 +253,9 @@ namespace FundsManager.Data
                             "middle teach digital prefer fiscal theory syrup enter crash muffin easily anxiety ill barely eagle swim volume consider dynamic unaware deputy middle into physical",
                         CreationDatetime = DateTimeOffset.Now,
                     };
-
+                    // force the saving of the master fingerprint
+                    internalWallet.MasterFingerprint = internalWallet.MasterFingerprint;
+                    
                     applicationDbContext.Add(internalWallet);
                     applicationDbContext.SaveChanges();
 
@@ -337,7 +339,8 @@ namespace FundsManager.Data
                         InternalWalletId = internalWallet.Id,
                         IsFinalised = true,
                         CreationDatetime = DateTimeOffset.Now,
-                        InternalWalletSubDerivationPath = "m/48'/1'/0"
+                        InternalWalletSubDerivationPath = "m/48'/1'/0",
+                        InternalWalletMasterFingerprint = internalWallet.MasterFingerprint
                     };
 
                     //Now we fund a multisig address of that wallet with the miner (polar)

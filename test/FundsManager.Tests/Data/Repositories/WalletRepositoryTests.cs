@@ -26,11 +26,13 @@ namespace FundsManager.Data.Repositories;
 
 public class WalletRepositoryTests
 {
+    private readonly Random _random = new();
+    
     private Mock<IDbContextFactory<ApplicationDbContext>> SetupDbContextFactory()
     {
         var dbContextFactory = new Mock<IDbContextFactory<ApplicationDbContext>>();
         var options = new DbContextOptionsBuilder<ApplicationDbContext>()
-            .UseInMemoryDatabase(databaseName: "WalletRepositoryTest")
+            .UseInMemoryDatabase(databaseName: "WalletRepositoryTest" + _random.Next())
             .Options;
         var context = new ApplicationDbContext(options);
         dbContextFactory.Setup(x => x.CreateDbContext()).Returns(context);
@@ -82,6 +84,10 @@ public class WalletRepositoryTests
         var dbContextFactory = SetupDbContextFactory();
         
         var context = dbContextFactory.Object.CreateDbContext();
+        context.InternalWallets.Add(new InternalWallet()
+        {
+            DerivationPath = "m/48'/1'"
+        });
         context.Wallets.Add(new Wallet()
         {
             Name = "TestWallet",
@@ -91,6 +97,67 @@ public class WalletRepositoryTests
         });
         context.SaveChanges();
         
+        var walletRepository = new WalletRepository(null, null, dbContextFactory.Object, null, null);
+        var result = await walletRepository.GetNextSubderivationPath();
+        result.Should().Be("m/48'/1'/1");
+    }
+
+    [Fact]
+    public async void GetNextSubderivationPath_DoesntReturnNotFinalisedWallet()
+    {
+        var dbContextFactory = SetupDbContextFactory();
+
+        var context = dbContextFactory.Object.CreateDbContext();
+        context.InternalWallets.Add(new InternalWallet()
+        {
+            DerivationPath = "m/48'/1'"
+        });
+        context.Wallets.Add(new Wallet()
+        {
+            Name = "TestWallet",
+            IsFinalised = true,
+            IsHotWallet = true,
+            InternalWalletSubDerivationPath = "m/48'/1'/0"
+        });
+        context.Wallets.Add(new Wallet()
+        {
+            Name = "NotFinalised",
+            IsFinalised = false,
+            IsHotWallet = true,
+        });
+        context.SaveChanges();
+
+        var walletRepository = new WalletRepository(null, null, dbContextFactory.Object, null, null);
+        var result = await walletRepository.GetNextSubderivationPath();
+        result.Should().Be("m/48'/1'/1");
+    }
+    
+    [Fact]
+    public async void GetNextSubderivationPath_ReturnsSubderivedWallet()
+    {
+        var dbContextFactory = SetupDbContextFactory();
+
+        var context = dbContextFactory.Object.CreateDbContext();
+        context.InternalWallets.Add(new InternalWallet()
+        {
+            DerivationPath = "m/48'/1'"
+        });
+        context.Wallets.Add(new Wallet()
+        {
+            Name = "TestWallet1",
+            IsFinalised = true,
+            IsHotWallet = true,
+            InternalWalletSubDerivationPath = "m/48'/1'/0"
+        });
+        context.Wallets.Add(new Wallet()
+        {
+            Name = "TestWallet2",
+            IsFinalised = true,
+            IsHotWallet = true,
+            InternalWalletSubDerivationPath = "m/48'/2'/0"
+        });
+        context.SaveChanges();
+
         var walletRepository = new WalletRepository(null, null, dbContextFactory.Object, null, null);
         var result = await walletRepository.GetNextSubderivationPath();
         result.Should().Be("m/48'/1'/1");

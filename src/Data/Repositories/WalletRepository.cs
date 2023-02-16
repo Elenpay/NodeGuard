@@ -173,8 +173,19 @@ namespace FundsManager.Data.Repositories
         {
             await using var applicationDbContext = _dbContextFactory.CreateDbContext();
 
-            var lastWallet = applicationDbContext.Wallets.OrderBy(w => w.Id).LastOrDefault(w => w.IsFinalised);
             var internalWallet = applicationDbContext.InternalWallets.FirstOrDefault()!;
+            bool IsNextWallet(Wallet wallet)
+            {
+                if (!wallet.IsFinalised) return false;
+                if (string.IsNullOrEmpty(wallet.InternalWalletSubDerivationPath))
+                    throw new InvalidOperationException("A finalized hot wallet has no subderivation path");
+                return wallet.InternalWalletSubDerivationPath.Contains(internalWallet.DerivationPath);
+            };
+            
+            var lastWallet = applicationDbContext.Wallets
+                .OrderBy(w => w.Id)
+                .Where(IsNextWallet)
+                .LastOrDefault();
             
             if (lastWallet == null) return $"{internalWallet.DerivationPath}/0";
             

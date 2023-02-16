@@ -47,7 +47,7 @@ namespace FundsManager.Data
 
             modelBuilder.Entity<Node>().HasIndex(x => x.PubKey).IsUnique();
             modelBuilder.Entity<Node>().HasIndex(x => x.Name).IsUnique();
-            modelBuilder.Entity<Wallet>().HasIndex(x => x.InternalWalletSubDerivationPath).IsUnique();
+            modelBuilder.Entity<Wallet>().HasIndex(x => new {x.InternalWalletSubDerivationPath, x.InternalWalletMasterFingerprint}).IsUnique();
             
             //There should be only one Liquidity Rule per Channel
             modelBuilder.Entity<LiquidityRule>().HasIndex(x => x.ChannelId).IsUnique();
