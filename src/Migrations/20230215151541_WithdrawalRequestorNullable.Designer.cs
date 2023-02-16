@@ -3,6 +3,7 @@ using System;
 using FundsManager.Data;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 
@@ -11,9 +12,10 @@ using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 namespace FundsManager.Migrations
 {
     [DbContext(typeof(ApplicationDbContext))]
-    partial class ApplicationDbContextModelSnapshot : ModelSnapshot
+    [Migration("20230215151541_WithdrawalRequestorNullable")]
+    partial class WithdrawalRequestorNullable
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -447,9 +449,6 @@ namespace FundsManager.Migrations
 
                     b.Property<int>("InternalWalletId")
                         .HasColumnType("integer");
-
-                    b.Property<string>("InternalWalletMasterFingerprint")
-                        .HasColumnType("text");
 
                     b.Property<string>("InternalWalletSubDerivationPath")
                         .HasColumnType("text");

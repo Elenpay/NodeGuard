@@ -107,6 +107,7 @@ namespace FundsManager
             builder.Services.AddTransient<IWalletWithdrawalRequestPsbtRepository, WalletWithdrawalRequestPsbtRepository>();
             builder.Services.AddTransient<IWalletWithdrawalRequestRepository, WalletWithdrawalRequestRepository>();
             builder.Services.AddTransient<IRemoteSignerService, RemoteSignerServiceService>();
+            builder.Services.AddTransient<ILiquidityRuleRepository, LiquidityRuleRepository>();
 
             //BlazoredToast
             builder.Services.AddBlazoredToast();

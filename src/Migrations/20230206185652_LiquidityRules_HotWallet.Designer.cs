@@ -3,6 +3,7 @@ using System;
 using FundsManager.Data;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 
@@ -11,9 +12,10 @@ using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 namespace FundsManager.Migrations
 {
     [DbContext(typeof(ApplicationDbContext))]
-    partial class ApplicationDbContextModelSnapshot : ModelSnapshot
+    [Migration("20230206185652_LiquidityRules_HotWallet")]
+    partial class LiquidityRules_HotWallet
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -94,9 +96,6 @@ namespace FundsManager.Migrations
                     b.Property<bool>("IsAutomatedLiquidityEnabled")
                         .HasColumnType("boolean");
 
-                    b.Property<int>("NodeId")
-                        .HasColumnType("integer");
-
                     b.Property<long>("SatsAmount")
                         .HasColumnType("bigint");
 
@@ -107,8 +106,6 @@ namespace FundsManager.Migrations
                         .HasColumnType("timestamp with time zone");
 
                     b.HasKey("Id");
-
-                    b.HasIndex("NodeId");
 
                     b.ToTable("Channels");
                 });
@@ -363,9 +360,6 @@ namespace FundsManager.Migrations
                     b.Property<decimal?>("MinimumRemoteBalance")
                         .HasColumnType("numeric");
 
-                    b.Property<int>("NodeId")
-                        .HasColumnType("integer");
-
                     b.Property<DateTimeOffset>("UpdateDatetime")
                         .HasColumnType("timestamp with time zone");
 
@@ -377,11 +371,9 @@ namespace FundsManager.Migrations
                     b.HasIndex("ChannelId")
                         .IsUnique();
 
-                    b.HasIndex("NodeId");
-
                     b.HasIndex("WalletId");
 
-                    b.ToTable("LiquidityRules");
+                    b.ToTable("LiquidityRule");
                 });
 
             modelBuilder.Entity("FundsManager.Data.Models.Node", b =>
@@ -447,9 +439,6 @@ namespace FundsManager.Migrations
 
                     b.Property<int>("InternalWalletId")
                         .HasColumnType("integer");
-
-                    b.Property<string>("InternalWalletMasterFingerprint")
-                        .HasColumnType("text");
 
                     b.Property<string>("InternalWalletSubDerivationPath")
                         .HasColumnType("text");
@@ -527,6 +516,7 @@ namespace FundsManager.Migrations
                         .HasColumnType("timestamp with time zone");
 
                     b.Property<string>("UserRequestorId")
+                        .IsRequired()
                         .HasColumnType("text");
 
                     b.Property<int>("WalletId")
@@ -859,17 +849,6 @@ namespace FundsManager.Migrations
                         .IsRequired();
                 });
 
-            modelBuilder.Entity("FundsManager.Data.Models.Channel", b =>
-                {
-                    b.HasOne("FundsManager.Data.Models.Node", "Node")
-                        .WithMany()
-                        .HasForeignKey("NodeId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
-
-                    b.Navigation("Node");
-                });
-
             modelBuilder.Entity("FundsManager.Data.Models.ChannelOperationRequest", b =>
                 {
                     b.HasOne("FundsManager.Data.Models.Channel", "Channel")
@@ -949,12 +928,6 @@ namespace FundsManager.Migrations
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
 
-                    b.HasOne("FundsManager.Data.Models.Node", "Node")
-                        .WithMany()
-                        .HasForeignKey("NodeId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
-
                     b.HasOne("FundsManager.Data.Models.Wallet", "Wallet")
                         .WithMany("LiquidityRules")
                         .HasForeignKey("WalletId")
@@ -962,8 +935,6 @@ namespace FundsManager.Migrations
                         .IsRequired();
 
                     b.Navigation("Channel");
-
-                    b.Navigation("Node");
 
                     b.Navigation("Wallet");
                 });
@@ -992,7 +963,9 @@ namespace FundsManager.Migrations
                 {
                     b.HasOne("FundsManager.Data.Models.ApplicationUser", "UserRequestor")
                         .WithMany("WalletWithdrawalRequests")
-                        .HasForeignKey("UserRequestorId");
+                        .HasForeignKey("UserRequestorId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
 
                     b.HasOne("FundsManager.Data.Models.Wallet", "Wallet")
                         .WithMany()
