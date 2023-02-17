@@ -23,6 +23,9 @@ public interface INodeGuardService
         ServerCallContext context);
 
     Task<RequestWithdrawalResponse> RequestWithdrawal(RequestWithdrawalRequest request, ServerCallContext context);
+
+    Task<GetAvailableWalletsResponse>
+        GetAvailableWallets(GetAvailableWalletsRequest request, ServerCallContext context);
 }
 
 /// <summary>
@@ -203,7 +206,33 @@ public class NodeGuardService : Nodeguard.NodeGuardService.NodeGuardServiceBase,
             _logger.LogError(e, "Error requesting withdrawal for wallet with id {walletId}", request.WalletId);
             throw new RpcException(new Status(StatusCode.Internal, e.Message));
         }
-        
-
+    }
+    
+    public override async Task<GetAvailableWalletsResponse> GetAvailableWallets(GetAvailableWalletsRequest request,
+        ServerCallContext context)
+    {
+        try
+        {
+            var wallets = await _walletRepository.GetAvailableWallets();
+            var result = new GetAvailableWalletsResponse()
+            {
+                Wallets = {wallets.Select(w => new Nodeguard.Wallet()
+                {
+                    Id = w.Id,
+                    Name = w.Name,
+                    IsHotWallet = w.IsHotWallet,
+                    AccountKeySettings = { w.Keys.Select(k => new Nodeguard.AccountKeySettings()
+                    {
+                        Xpub = k.XPUB,
+                    }) }
+                }).ToList()}
+            };
+            return result;
+        }
+        catch (Exception e)
+        {
+            _logger.LogError(e, "Error getting available wallets");
+            throw new RpcException(new Status(StatusCode.Internal, e.Message));
+        }
     }
 }
