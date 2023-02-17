@@ -662,11 +662,33 @@ namespace FundsManager.Services
                     errorKeypathsForTheUtxosUsedInThisTxAreNotFound);
             }
 
-            var privateKeysForUsedUTXOs = txInKeyPathDictionary.ToDictionary(x => x.Key.PrevOut,
-                x =>
-                    channelOperationRequest.Wallet.InternalWallet.GetAccountKey(network)
+
+            Dictionary<NBitcoin.OutPoint,NBitcoin.Key> privateKeysForUsedUTXOs;
+            if (channelOperationRequest.Wallet.IsHotWallet)
+            {
+                try
+                {
+                    privateKeysForUsedUTXOs = txInKeyPathDictionary.ToDictionary(x => x.Key.PrevOut, x => channelOperationRequest.Wallet.InternalWallet.GetAccountKey(network)
                         .Derive(UInt32.Parse(channelOperationRequest.Wallet.InternalWalletSubDerivationPath))
-                        .Derive(x.Value).PrivateKey);
+                        .Derive(x.Value)
+                        .PrivateKey);
+                }
+                catch (Exception e)
+                {
+                    var errorParsingSubderivationPath =
+                        $"Invalid Internal Wallet Subderivation Path for wallet:{channelOperationRequest.WalletId}";
+                    logger?.LogError(errorParsingSubderivationPath);
+
+                    throw new ArgumentException(
+                        errorParsingSubderivationPath);
+                }
+            }
+            else
+            {
+                privateKeysForUsedUTXOs = txInKeyPathDictionary.ToDictionary(x => x.Key.PrevOut, x => channelOperationRequest.Wallet.InternalWallet.GetAccountKey(network)
+                    .Derive(x.Value)
+                    .PrivateKey);
+            }
 
             //We need to SIGHASH_ALL all inputs/outputs as fundsmanager to protect the tx from tampering by adding a signature
             var partialSigsCount = changeFixedPSBT.Inputs.Sum(x => x.PartialSigs.Count);

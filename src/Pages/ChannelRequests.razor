@@ -494,7 +494,7 @@
                     _selectedRequest = request;
                     await datagridRef.Edit(null);
                     await _confirmationModal.ShowModal();
-
+                    await ResetChannelRequestRejectModal();
                     return;
                 }
 
@@ -687,7 +687,6 @@
             }
 
             var (templatePsbt, noUtxosAvailable) = (await LightningService.GenerateTemplatePSBT(_selectedRequest));
-            string stringPsbt;
             if (templatePsbt == null)
             {
                 if (noUtxosAvailable)
