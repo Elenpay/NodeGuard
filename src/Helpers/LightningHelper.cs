@@ -79,9 +79,8 @@ namespace FundsManager.Helpers
                     PubKey derivedPubKey;
                     if (key.InternalWalletId != null)
                     {
-                        KeyPath keyPath = new KeyPath(subderivationPath + "/" + selectedUtxo.KeyPath.ToString());
-                        utxoDerivationPath = KeyPath.Parse(key.Path).Derive(keyPath);
-                        derivedPubKey = bitcoinExtPubKey.Derive(keyPath).GetPublicKey();
+                        utxoDerivationPath = KeyPath.Parse(key.Path).Derive(subderivationPath).Derive(selectedUtxo.KeyPath);
+                        derivedPubKey = bitcoinExtPubKey.Derive(new KeyPath(subderivationPath)).Derive(selectedUtxo.KeyPath).GetPublicKey();
                     }
                     else
                     {
