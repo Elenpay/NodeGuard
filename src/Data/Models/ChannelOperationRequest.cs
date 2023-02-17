@@ -151,14 +151,14 @@ namespace FundsManager.Data.Models
                 var userPSBTsCount = NumberOfSignaturesCollected;
 
                 //We add the internal Wallet signature
-                userPSBTsCount++;
+                if(!Wallet.IsHotWallet) userPSBTsCount++;
 
                 if (userPSBTsCount == Wallet.MofN)
                 {
                     result = true;
                 }
             }
-
+            
             return result;
         }
 
