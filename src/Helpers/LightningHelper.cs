@@ -51,11 +51,12 @@ namespace FundsManager.Helpers
         /// <param name="multisigCoins"></param>
         /// <exception cref="ArgumentException"></exception>
         public static (PSBT?, bool) AddDerivationData(IEnumerable<Key> keys , (PSBT?, bool) result, List<UTXO> selectedUtxOs,
-            List<ScriptCoin> multisigCoins, ILogger? logger = null)
+            List<ScriptCoin> multisigCoins, ILogger? logger = null, string subderivationPath = "")
         {
             if (keys == null) throw new ArgumentNullException(nameof(keys));
             if (selectedUtxOs == null) throw new ArgumentNullException(nameof(selectedUtxOs));
             if (multisigCoins == null) throw new ArgumentNullException(nameof(multisigCoins));
+            if (subderivationPath == null) throw new ArgumentNullException(nameof(subderivationPath));
 
             var nbXplorerNetwork = CurrentNetworkHelper.GetCurrentNetwork();
             foreach (var key in keys)
@@ -74,8 +75,19 @@ namespace FundsManager.Helpers
 
                 foreach (var selectedUtxo in selectedUtxOs)
                 {
-                    var utxoDerivationPath = KeyPath.Parse(key.Path).Derive(selectedUtxo.KeyPath);
-                    var derivedPubKey = bitcoinExtPubKey.Derive(selectedUtxo.KeyPath).GetPublicKey();
+                    KeyPath? utxoDerivationPath;
+                    PubKey derivedPubKey;
+                    if (key.InternalWalletId != null)
+                    {
+                        KeyPath keyPath = new KeyPath(subderivationPath + "/" + selectedUtxo.KeyPath.ToString());
+                        utxoDerivationPath = KeyPath.Parse(key.Path).Derive(keyPath);
+                        derivedPubKey = bitcoinExtPubKey.Derive(keyPath).GetPublicKey();
+                    }
+                    else
+                    {
+                        utxoDerivationPath = KeyPath.Parse(key.Path).Derive(selectedUtxo.KeyPath);
+                        derivedPubKey = bitcoinExtPubKey.Derive(selectedUtxo.KeyPath).GetPublicKey();
+                    }
 
                     var input = result.Item1.Inputs.FirstOrDefault(input =>
                         input?.GetCoin()?.Outpoint == selectedUtxo.Outpoint);
