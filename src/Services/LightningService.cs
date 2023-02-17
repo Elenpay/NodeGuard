@@ -665,6 +665,7 @@ namespace FundsManager.Services
             var privateKeysForUsedUTXOs = txInKeyPathDictionary.ToDictionary(x => x.Key.PrevOut,
                 x =>
                     channelOperationRequest.Wallet.InternalWallet.GetAccountKey(network)
+                        .Derive(UInt32.Parse(channelOperationRequest.Wallet.InternalWalletSubDerivationPath))
                         .Derive(x.Value).PrivateKey);
 
             //We need to SIGHASH_ALL all inputs/outputs as fundsmanager to protect the tx from tampering by adding a signature
@@ -858,7 +859,7 @@ namespace FundsManager.Services
                 }
 
                 //Additional fields to support PSBT signing with a HW or the Remote Signer 
-                result = LightningHelper.AddDerivationData(channelOperationRequest.Wallet.Keys, result, selectedUtxOs, multisigCoins, _logger);
+                result = LightningHelper.AddDerivationData(channelOperationRequest.Wallet.Keys, result, selectedUtxOs, multisigCoins, _logger, channelOperationRequest.Wallet.InternalWalletSubDerivationPath);
             }
             catch (Exception e)
             {
