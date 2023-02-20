@@ -665,12 +665,12 @@
         }
     }
 
-    private async void CloseConfirmationModal()
+    private async Task CloseConfirmationModal()
     {
         await _confirmationModal.CloseModal();
     }
 
-    private async void SubmitConfirmationModal()
+    private async Task SubmitConfirmationModal()
     {
         if (_selectedRequest != null)
         {
@@ -705,7 +705,7 @@
                 return;
             }
 
-            ChannelOperationRequestPSBT channelOperationRequestPSBT = new()
+            var channelOperationRequestPSBT = new ChannelOperationRequestPSBT()
             {
                 ChannelOperationRequestId = _selectedRequest.Id,
                 PSBT = templatePsbt.ToBase64(),

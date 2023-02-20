@@ -192,13 +192,13 @@ namespace FundsManager.Data.Repositories
                 .Where(IsNextWallet)
                 .LastOrDefault();
             
-            if (lastWallet == null) return $"{internalWallet.DerivationPath}/0";
+            if (lastWallet == null) return "0";
             
             if (string.IsNullOrEmpty(lastWallet.InternalWalletSubDerivationPath))
                 throw new InvalidOperationException("A finalized hot wallet has no subderivation path");
             
             var subderivationPath = KeyPath.Parse(lastWallet.InternalWalletSubDerivationPath);
-            return $"m/{subderivationPath.Increment()}";
+            return $"{subderivationPath.Increment()}";
         }
         
         public async Task<(bool, string?)> FinaliseWallet(Wallet selectedWalletToFinalise)
