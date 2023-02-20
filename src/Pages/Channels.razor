@@ -35,7 +35,7 @@
                         <Button Color="Color.Primary" Clicked="@(() => ShowChannelManagementModal(context))">Manage</Button>
                     </DisplayTemplate>
                 </DataGridColumn>
-                <DataGridColumn TItem="Channel" Caption="Requests related" Sortable="false">
+                <DataGridColumn TItem="Channel" Caption="Requests related" Filterable="false" Sortable="false">
                     <DisplayTemplate>
                         <Button Color="Color.Primary" Clicked="@ShowModal">See</Button>
                     </DisplayTemplate>
@@ -128,7 +128,7 @@
     {
         <ModalContent Centered Scrollable Size="ModalSize.ExtraLarge">
             <ModalHeader>
-                <ModalTitle>Manage channel @_selectedChannel.FundingTx:@_selectedChannel.FundingTxOutputIndex </ModalTitle>
+                <ModalTitle>Manage channel: @_selectedChannel.FundingTx</ModalTitle>
                 <CloseButton/>
             </ModalHeader>
             <ModalBody>
