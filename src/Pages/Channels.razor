@@ -10,7 +10,6 @@
         <DataGrid TItem="Channel"
                   @ref="_channelsDataGridRef"
                   Data="@_channels"
-                  @bind-SelectedRow="@_selectedChannel"
                   Editable
                   EditMode=DataGridEditMode.Inline
                   Responsive
@@ -33,7 +32,7 @@
                 </DataGridCommandColumn>
                  <DataGridColumn TItem="Channel" Caption="" Sortable="false">
                                     <DisplayTemplate>
-                                        <Button Color="Color.Primary" Clicked="@ShowChannelManagementModal">Manage</Button>
+                                        <Button Color="Color.Primary" Clicked="@(() => ShowChannelManagementModal(context))">Manage</Button>
                                     </DisplayTemplate>
                                 </DataGridColumn>
                  <DataGridColumn TItem="Channel" Caption="Requests related" Sortable="false">
@@ -135,7 +134,7 @@
             <ModalBody>
                 <Field>
                     <FieldLabel>Enable automated liquidity management</FieldLabel>
-                    <Check TValue="bool" @bind-Value="_selectedChannel.IsAutomatedLiquidityEnabled"></Check>
+                    <Check TValue="bool" Checked="@_selectedChannel.IsAutomatedLiquidityEnabled" CheckedChanged="OnEnableLiquidityMgnmtChanged"></Check>
 
                 </Field>
 
@@ -146,7 +145,7 @@
                     <Field>
                         <FieldLabel>Minimum local balance</FieldLabel>
                         <FieldHelp>Balance % that will fire a reverse swap if the channel balance goes below this percent</FieldHelp>
-                        <NumericEdit TValue="decimal?" @bind-Value="_currentLiquidityRule.MinimumLocalBalance">
+                        <NumericEdit TValue="decimal?" Min="0M" Max="100M" @bind-Value="_currentLiquidityRule.MinimumLocalBalance">
                             <Feedback>
                                 <ValidationNone></ValidationNone>
                                 <ValidationSuccess></ValidationSuccess>
@@ -157,7 +156,7 @@
                     <Field>
                         <FieldLabel>Minimum Remote balance</FieldLabel>
                         <FieldHelp>Balance % that will fire a swap if the channel balance goes above this percent</FieldHelp>
-                        <NumericEdit TValue="decimal?" @bind-Value="_currentLiquidityRule.MinimumLocalBalance">
+                        <NumericEdit TValue="decimal?" Min="0M" Max="100M" @bind-Value="_currentLiquidityRule.MinimumRemoteBalance">
                             <Feedback>
                                 <ValidationNone></ValidationNone>
                                 <ValidationSuccess></ValidationSuccess>
@@ -182,7 +181,7 @@
             </ModalBody>
             <ModalFooter>
                 <Button Color="Color.Secondary" Clicked="@CloseChannelManagementModal">Cancel</Button>
-                <Button Color="Color.Primary" Clicked="@SaveAndCloseChannelManagementModal">Add</Button>
+                <Button Color="Color.Primary" Clicked="@SaveAndCloseChannelManagementModal">Save</Button>
             </ModalFooter>
         </ModalContent>
     }
@@ -329,14 +328,40 @@
         _currentLiquidityRule = new LiquidityRule();
     }
 
-    private async Task ShowChannelManagementModal()
+    private async Task ShowChannelManagementModal(Channel channel)
     {
         await ClearManagementModal();
+
+        _selectedChannel = channel;
         
         //If there is a liquidity rule for this channel, we load it, the first one
-        _currentLiquidityRule = _selectedChannel?.LiquidityRules.FirstOrDefault() ?? new LiquidityRule();
+        _currentLiquidityRule = _selectedChannel?.LiquidityRules.FirstOrDefault() ?? new LiquidityRule
+        {
+            MinimumLocalBalance = 20,
+            MinimumRemoteBalance = 80,
+            ChannelId = channel.Id,
+            NodeId = channel.NodeId
+            
+        };
         
         await _channelLiquidityModal?.Show();
+    }
+
+    private async Task OnEnableLiquidityMgnmtChanged(bool obj)
+    {
+        _selectedChannel.IsAutomatedLiquidityEnabled = obj;
+
+        var updateResult = ChannelRepository.Update(_selectedChannel);
+        
+        if (!updateResult.Item1)
+        {
+            ToastService.ShowError("Something went wrong");
+        }
+        else
+        {
+            ToastService.ShowSuccess("Channel updated successfully");
+        }
+        
     }
 
 }

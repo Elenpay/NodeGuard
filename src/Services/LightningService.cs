@@ -787,7 +787,7 @@ namespace FundsManager.Services
 
             var nbXplorerServiceGetStatusAsync = await _nbXplorerService.GetStatusAsync(default);
             
-            if (nbXplorerServiceGetStatusAsync.IsFullySynched)
+            if (!nbXplorerServiceGetStatusAsync.IsFullySynched)
             {
                 _logger.LogError("Error, nbxplorer not fully synched");
                 return (null, false);
