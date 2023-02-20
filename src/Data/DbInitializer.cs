@@ -339,7 +339,7 @@ namespace FundsManager.Data
                         InternalWalletId = internalWallet.Id,
                         IsFinalised = true,
                         CreationDatetime = DateTimeOffset.Now,
-                        InternalWalletSubDerivationPath = "m/48'/1'/0",
+                        InternalWalletSubDerivationPath = "0",
                         InternalWalletMasterFingerprint = internalWallet.MasterFingerprint
                     };
 

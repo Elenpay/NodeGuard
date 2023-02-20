@@ -77,17 +77,9 @@ namespace FundsManager.Helpers
                 {
                     KeyPath? utxoDerivationPath;
                     PubKey derivedPubKey;
-                    if (key.InternalWalletId != null)
-                    {
-                        utxoDerivationPath = KeyPath.Parse(key.Path).Derive(subderivationPath).Derive(selectedUtxo.KeyPath);
-                        derivedPubKey = bitcoinExtPubKey.Derive(new KeyPath(subderivationPath)).Derive(selectedUtxo.KeyPath).GetPublicKey();
-                    }
-                    else
-                    {
-                        utxoDerivationPath = KeyPath.Parse(key.Path).Derive(selectedUtxo.KeyPath);
-                        derivedPubKey = bitcoinExtPubKey.Derive(selectedUtxo.KeyPath).GetPublicKey();
-                    }
-
+                    utxoDerivationPath = KeyPath.Parse(key.Path).Derive(selectedUtxo.KeyPath);
+                    derivedPubKey = bitcoinExtPubKey.Derive(selectedUtxo.KeyPath).GetPublicKey();
+                    
                     var input = result.Item1.Inputs.FirstOrDefault(input =>
                         input?.GetCoin()?.Outpoint == selectedUtxo.Outpoint);
                     var addressRootedKeyPath = new RootedKeyPath(masterFingerprint, utxoDerivationPath);
