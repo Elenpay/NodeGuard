@@ -36,6 +36,7 @@ message LiquidityRule {
   int32 wallet_id = 3;
   float minimum_local_balance = 4;
   float minimum_remote_balance = 5;
+  float rebalance_target = 6;
 }
 
 message GetNewWalletAddressRequest {

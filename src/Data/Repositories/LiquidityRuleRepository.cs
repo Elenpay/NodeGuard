@@ -16,6 +16,7 @@
  * along with this program.  If not, see http://www.gnu.org/licenses/.
  */
 
+using AutoMapper;
 using FundsManager.Data.Models;
 using FundsManager.Data.Repositories.Interfaces;
 using Microsoft.EntityFrameworkCore;
@@ -27,14 +28,17 @@ public class LiquidityRuleRepository : ILiquidityRuleRepository
     private readonly IRepository<LiquidityRule> _repository;
     private readonly ILogger<LiquidityRuleRepository> _logger;
     private readonly IDbContextFactory<ApplicationDbContext> _dbContextFactory;
+    private readonly IMapper _mapper;
 
     public LiquidityRuleRepository(IRepository<LiquidityRule> repository,
         ILogger<LiquidityRuleRepository> logger,
-        IDbContextFactory<ApplicationDbContext> dbContextFactory)
+        IDbContextFactory<ApplicationDbContext> dbContextFactory,
+        IMapper mapper)
     {
         _repository = repository;
         _logger = logger;
         _dbContextFactory = dbContextFactory;
+        _mapper = mapper;
     }
 
     public async Task<LiquidityRule?> GetById(int id)
@@ -89,6 +93,8 @@ public class LiquidityRuleRepository : ILiquidityRuleRepository
         type.SetCreationDatetime();
         type.SetUpdateDatetime();
 
+        type = _mapper.Map<LiquidityRule>(type);
+
 
         return _repository.Update(type, applicationDbContext);
     }
@@ -105,7 +111,7 @@ public class LiquidityRuleRepository : ILiquidityRuleRepository
             .Include(x=> x.Wallet)
             .ThenInclude(x=> x.InternalWallet)
             .Include(x=> x.Channel)
-            .Where(x=> x.Node.PubKey == nodePubKey).ToList();
+            .Where(x=> x.Node.PubKey == nodePubKey && x.Channel.IsAutomatedLiquidityEnabled).ToList();
         
         return result;
     }

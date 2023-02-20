@@ -30,16 +30,16 @@
                         <Button Color="Color.Danger" hidden="@_hideDelete" Disabled="@(context.Item.Status == Channel.ChannelStatus.Closed || context.Item.ChannelOperationRequests.Last().RequestType == OperationRequestType.Close)" Clicked="() => ShowConfirmedClose(context.Item)">Close</Button>
                     </DeleteCommandTemplate>
                 </DataGridCommandColumn>
-                 <DataGridColumn TItem="Channel" Caption="" Sortable="false">
-                                    <DisplayTemplate>
-                                        <Button Color="Color.Primary" Clicked="@(() => ShowChannelManagementModal(context))">Manage</Button>
-                                    </DisplayTemplate>
-                                </DataGridColumn>
-                 <DataGridColumn TItem="Channel" Caption="Requests related" Sortable="false">
-                                    <DisplayTemplate>
-                                        <Button Color="Color.Primary" Clicked="@ShowModal">See</Button>
-                                    </DisplayTemplate>
-                                </DataGridColumn>
+                <DataGridColumn TItem="Channel" Caption=""  Filterable="false" Sortable="false">
+                    <DisplayTemplate>
+                        <Button Color="Color.Primary" Clicked="@(() => ShowChannelManagementModal(context))">Manage</Button>
+                    </DisplayTemplate>
+                </DataGridColumn>
+                <DataGridColumn TItem="Channel" Caption="Requests related" Sortable="false">
+                    <DisplayTemplate>
+                        <Button Color="Color.Primary" Clicked="@ShowModal">See</Button>
+                    </DisplayTemplate>
+                </DataGridColumn>
                 <DataGridColumn TItem="Channel" Field="@nameof(Channel.Status)" Caption="@nameof(Channel.Status)" Sortable="false">
                     <DisplayTemplate>
                         @context.Status.ToString("G")
@@ -73,7 +73,7 @@
                 </DataGridColumn>
                 <DataGridColumn TItem="Channel" Field="@nameof(Channel.CreationDatetime)" Caption="@nameof(Channel.CreationDatetime).Humanize(LetterCasing.Sentence)" Sortable="false"/>
                 <DataGridColumn TItem="Channel" Field="@nameof(Channel.UpdateDatetime)" Caption="@nameof(Channel.UpdateDatetime).Humanize(LetterCasing.Sentence)" Sortable="false"/>
-               
+
             </DataGridColumns>
         </DataGrid>
     </Column>
@@ -128,7 +128,7 @@
     {
         <ModalContent Centered Scrollable Size="ModalSize.ExtraLarge">
             <ModalHeader>
-                <ModalTitle>Liquidity management for channel: @_selectedChannel.ChannelId </ModalTitle>
+                <ModalTitle>Manage channel @_selectedChannel.FundingTx:@_selectedChannel.FundingTxOutputIndex </ModalTitle>
                 <CloseButton/>
             </ModalHeader>
             <ModalBody>
@@ -142,39 +142,60 @@
                 {
                     <Validations @ref="_channelManagementValidationsRef">
 
-                    <Field>
-                        <FieldLabel>Minimum local balance</FieldLabel>
-                        <FieldHelp>Balance % that will fire a reverse swap if the channel balance goes below this percent</FieldHelp>
-                        <NumericEdit TValue="decimal?" Min="0M" Max="100M" @bind-Value="_currentLiquidityRule.MinimumLocalBalance">
-                            <Feedback>
-                                <ValidationNone></ValidationNone>
-                                <ValidationSuccess></ValidationSuccess>
-                                <ValidationError>The number should be between 0 and 100 and less than minimum remote balance</ValidationError>
-                            </Feedback>
-                        </NumericEdit>
-                    </Field>
-                    <Field>
-                        <FieldLabel>Minimum Remote balance</FieldLabel>
-                        <FieldHelp>Balance % that will fire a swap if the channel balance goes above this percent</FieldHelp>
-                        <NumericEdit TValue="decimal?" Min="0M" Max="100M" @bind-Value="_currentLiquidityRule.MinimumRemoteBalance">
-                            <Feedback>
-                                <ValidationNone></ValidationNone>
-                                <ValidationSuccess></ValidationSuccess>
-                                <ValidationError>The number should be between 0 and 100 and bigger than minimum local balance</ValidationError>
-                            </Feedback>
-                        </NumericEdit>
-                    </Field>
+                        <Field>
+                            <Validation AsyncValidator="ValidateLocalBalance">
+                                <FieldLabel>Minimum local balance</FieldLabel>
+                                <FieldHelp>Balance % that will fire a reverse swap if the channel balance goes below this percent (0 means optional)</FieldHelp>
+                                <NumericEdit TValue="decimal?" Min="0M" Max="100M" @bind-Value="_currentLiquidityRule.MinimumLocalBalance">
+                                    <Feedback>
+                                        <ValidationError>The number should be between 0 and 100 and less than minimum remote balance</ValidationError>
+                                    </Feedback>
+                                </NumericEdit>
+                            </Validation>
+                        </Field>
 
-                    <Field>
-                        <FieldLabel>Wallet to use in Swaps operations</FieldLabel>
-                        <SelectList TItem="Wallet"
-                                    TValue="int"
-                                    Data="@_availableWallets"
-                                    TextField="@((item) => item.Name)"
-                                    ValueField="@((item) => item.Id)"
-                                    SelectedValueChanged="@OnSelectedWalletChanged"
-                                    DefaultItemText="Choose the wallet to fund/receive swap amounts"/>
-                    </Field>
+                        <Field>
+                            <Validation AsyncValidator="ValidateRemoteBalance">
+                                <FieldLabel>Minimum remote balance</FieldLabel>
+                                <FieldHelp>Balance % that will fire a swap if the channel balance goes above this percent (0 means optional)</FieldHelp>
+                                <NumericEdit TValue="decimal?" Min="0M" Max="100M" @bind-Value="_currentLiquidityRule.MinimumRemoteBalance">
+                                    <Feedback>
+                                        <ValidationError>The number should be between 0 and 100 and bigger than minimum local balance</ValidationError>
+                                    </Feedback>
+                                </NumericEdit>
+                            </Validation>
+                        </Field>
+                        <Field>
+                            <Validation AsyncValidator="ValidateTargetBalance">
+                                <FieldLabel>Target balance</FieldLabel>
+                                <FieldHelp>Desired target balance % after a swap operation is performed</FieldHelp>
+                                <NumericEdit TValue="decimal?" Min="0M" Max="100M" @bind-Value="_currentLiquidityRule.RebalanceTarget">
+                                    <Feedback>
+                                        <ValidationError>The number should be between 0 and 100 and in between minimum local and remote balance (0 means optional)</ValidationError>
+                                    </Feedback>
+                                </NumericEdit>
+                            </Validation>
+                        </Field>
+
+
+                        <Field>
+                            <Validation Validator="ValidationRule.IsSelected">
+                                <FieldLabel>Wallet to use in Swaps operations</FieldLabel>
+                                <SelectList TItem="Wallet"
+                                            TValue="int"
+                                            Data="@_availableWallets"
+                                            SelectedValue="_currentLiquidityRule.WalletId"
+                                            TextField="@((item) => item.Name)"
+                                            ValueField="@((item) => item.Id)"
+                                            SelectedValueChanged="@OnSelectedWalletChanged"
+                                            DefaultItemText="Choose the wallet to fund/receive swap amounts">
+                                    <Feedback>
+                                        <ValidationError>A wallet for swaps operation must be selected as target/origin of funds</ValidationError>
+                                    </Feedback>
+                                </SelectList>
+                            </Validation>
+                        </Field>
+
                     </Validations>
                 }
 
@@ -294,34 +315,53 @@
 
     private async Task SaveAndCloseChannelManagementModal()
     {
-        //TODO Validation
-        
-        //Save the channel
-        var updateResult = ChannelRepository.Update(_selectedChannel);
-        if (!updateResult.Item1)
+        if (await _channelManagementValidationsRef.ValidateAll())
         {
-            ToastService.ShowError("Something went wrong");
-        }
-        else
-        {
-            ToastService.ShowSuccess("Channel updated successfully");
-            
-        }
-        
-        //Save the liquidity rule
-        var liquidityRuleResult = await LiquidityRuleRepository.AddAsync(_currentLiquidityRule);
-        if (!liquidityRuleResult.Item1)
-        {
-            ToastService.ShowError("Something went wrong");
-        }
-        else
-        {
-            ToastService.ShowSuccess("Liquidity rule added successfully");
-        }
+    //Save the channel
+            var updateResult = ChannelRepository.Update(_selectedChannel);
+            if (!updateResult.Item1)
+            {
+                ToastService.ShowError("Something went wrong");
+            }
+            else
+            {
+                ToastService.ShowSuccess("Channel updated successfully");
+            }
 
-        await CloseChannelManagementModal();
+    //Save the liquidity rule if the liquidity rule id is below or equal zero
+            if (_currentLiquidityRule.Id <= 0)
+            {
+                var liquidityRuleResult = await LiquidityRuleRepository.AddAsync(_currentLiquidityRule);
+                if (!liquidityRuleResult.Item1)
+                {
+                    ToastService.ShowError("Something went wrong");
+                }
+                else
+                {
+                    ToastService.ShowSuccess("Liquidity rule added successfully");
+                }
+            }
+            else
+            {
+                var liquidityRuleResult = LiquidityRuleRepository.Update(_currentLiquidityRule);
+                if (!liquidityRuleResult.Item1)
+                {
+                    ToastService.ShowError("Something went wrong");
+                }
+                else
+                {
+                    ToastService.ShowSuccess("Liquidity rule updated successfully");
+                }
+            }
+
+            await CloseChannelManagementModal();
+        }
+        else
+        {
+            ToastService.ShowError("Please fix the errors");
+        }
     }
-    
+
     private async Task ClearManagementModal()
     {
         _selectedChannel = null;
@@ -333,17 +373,17 @@
         await ClearManagementModal();
 
         _selectedChannel = channel;
-        
-        //If there is a liquidity rule for this channel, we load it, the first one
+
+    //If there is a liquidity rule for this channel, we load it, the first one
         _currentLiquidityRule = _selectedChannel?.LiquidityRules.FirstOrDefault() ?? new LiquidityRule
         {
             MinimumLocalBalance = 20,
             MinimumRemoteBalance = 80,
+            RebalanceTarget = 50,
             ChannelId = channel.Id,
             NodeId = channel.NodeId
-            
         };
-        
+
         await _channelLiquidityModal?.Show();
     }
 
@@ -352,7 +392,7 @@
         _selectedChannel.IsAutomatedLiquidityEnabled = obj;
 
         var updateResult = ChannelRepository.Update(_selectedChannel);
-        
+
         if (!updateResult.Item1)
         {
             ToastService.ShowError("Something went wrong");
@@ -361,7 +401,102 @@
         {
             ToastService.ShowSuccess("Channel updated successfully");
         }
-        
+    }
+
+    private async Task ValidateTargetBalance(ValidatorEventArgs arg1, CancellationToken arg2)
+    {
+    //Default validation status
+        arg1.Status = ValidationStatus.Success;
+
+    //If the value is 0 is valid
+        if (_currentLiquidityRule.RebalanceTarget == 0)
+        {
+            return;
+        }
+    //Check that the target balance is between 0 and 100
+        if (_currentLiquidityRule.RebalanceTarget < 0 || _currentLiquidityRule.RebalanceTarget > 100)
+        {
+            arg1.Status = ValidationStatus.Error;
+            arg1.ErrorText = "Target balance must be between 0 and 100";
+        }
+
+
+    //Check that the rebalancetarget of the current liquidity rule is between the mininum local and minimum remote balance
+        if (_currentLiquidityRule.RebalanceTarget < _currentLiquidityRule.MinimumLocalBalance ||
+            _currentLiquidityRule.RebalanceTarget > _currentLiquidityRule.MinimumRemoteBalance)
+        {
+            arg1.Status = ValidationStatus.Error;
+            arg1.ErrorText = "Rebalance target must be between the minimum local and minimum remote balance";
+        }
+    }
+
+    private async Task ValidateRemoteBalance(ValidatorEventArgs arg1, CancellationToken arg2)
+    {
+    //Default validation status
+        arg1.Status = ValidationStatus.Success;
+
+    //If the minimum local balance is 0 this cannot be 0
+        if (_currentLiquidityRule.MinimumLocalBalance == 0 && _currentLiquidityRule.MinimumRemoteBalance == 0)
+        {
+            arg1.Status = ValidationStatus.Error;
+            arg1.ErrorText = "Minimum remote balance cannot be 0 if the minimum local balance is 0";
+        }
+
+    //If the value is 0 is valid
+        if (_currentLiquidityRule.MinimumRemoteBalance == 0)
+        {
+            return;
+        }
+
+
+    //Check that the minimum remote balance is between 0 and 100
+        if (_currentLiquidityRule.MinimumRemoteBalance < 0 || _currentLiquidityRule.MinimumRemoteBalance > 100)
+        {
+            arg1.Status = ValidationStatus.Error;
+            arg1.ErrorText = "Minimum remote balance must be between 0 and 100";
+        }
+
+
+    //Check that the Minimum remote balance must be greater than the minimum local balance
+        if (_currentLiquidityRule.MinimumRemoteBalance <= _currentLiquidityRule.MinimumLocalBalance)
+        {
+            arg1.Status = ValidationStatus.Error;
+            arg1.ErrorText = "Minimum remote balance must be greater than the minimum local balance";
+        }
+    }
+
+    private async Task ValidateLocalBalance(ValidatorEventArgs arg1, CancellationToken arg2)
+    {
+    //Default validation status
+        arg1.Status = ValidationStatus.Success;
+    //If the minimum remote balance is 0 this cannot be 0
+        if (_currentLiquidityRule.MinimumLocalBalance == 0 && _currentLiquidityRule.MinimumRemoteBalance == 0)
+        {
+            arg1.Status = ValidationStatus.Error;
+            arg1.ErrorText = "Minimum local balance cannot be 0 if the minimum remote balance is 0";
+        }
+
+    //If the value is 0 is valid
+        if (_currentLiquidityRule.MinimumRemoteBalance == 0)
+        {
+            return;
+        }
+
+
+    //Check that the balance is between 0 and 100
+
+        if (_currentLiquidityRule.MinimumLocalBalance < 0 || _currentLiquidityRule.MinimumLocalBalance > 100)
+        {
+            arg1.Status = ValidationStatus.Error;
+            arg1.ErrorText = "Minimum local balance must be between 0 and 100";
+        }
+
+    //Check that the Minimum local balance must be less than the minimum remote balance
+        if (_currentLiquidityRule.MinimumLocalBalance >= _currentLiquidityRule.MinimumRemoteBalance)
+        {
+            arg1.Status = ValidationStatus.Error;
+            arg1.ErrorText = "Minimum local balance must be less than the minimum remote balance";
+        }
     }
 
 }
