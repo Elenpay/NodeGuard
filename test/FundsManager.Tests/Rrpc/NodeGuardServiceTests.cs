@@ -2,6 +2,7 @@ using FluentAssertions;
 using FundsManager.Data;
 using FundsManager.Data.Models;
 using FundsManager.Data.Repositories;
+using Grpc.Core;
 using Microsoft.EntityFrameworkCore;
 using Nodeguard;
 using Quartz;
@@ -12,7 +13,7 @@ namespace FundsManager.Rpc;
 public class NodeGuardServiceTests
 {
     private readonly Random _random = new();
-    
+
     private (Mock<IDbContextFactory<ApplicationDbContext>>, ApplicationDbContext) SetupDbContextFactory()
     {
         var dbContextFactory = new Mock<IDbContextFactory<ApplicationDbContext>>();
@@ -24,7 +25,7 @@ public class NodeGuardServiceTests
         dbContextFactory.Setup(x => x.CreateDbContextAsync(default)).ReturnsAsync(context);
         return (dbContextFactory, context);
     }
-    
+
     [Fact]
     public async void GetAvailableWallets_ReturnsAllWallets()
     {
@@ -52,16 +53,16 @@ public class NodeGuardServiceTests
             Keys = new List<Key>()
         });
         context.SaveChanges();
-        
+
         var walletRepository = new WalletRepository(null, null, dbContextFactory.Object, null, null, null);
 
         var request = new GetAvailableWalletsRequest();
-        var nodeGuardService = new NodeGuardService(null, null,walletRepository,null,null,null,null, scheduleFactory.Object);
+        var nodeGuardService = new NodeGuardService(null, null, walletRepository, null, null, null, null, scheduleFactory.Object);
         var result = await nodeGuardService.GetAvailableWallets(request, null);
-        
+
         result.Wallets.ToList().Count().Should().Be(2);
-    } 
-    
+    }
+
     [Fact]
     public async void GetAvailableWallets_ReturnsTypeHot()
     {
@@ -89,20 +90,20 @@ public class NodeGuardServiceTests
             Keys = new List<Key>()
         });
         context.SaveChanges();
-        
+
         var walletRepository = new WalletRepository(null, null, dbContextFactory.Object, null, null, null);
 
         var request = new GetAvailableWalletsRequest()
         {
             WalletType = WALLET_TYPE.Hot
         };
-        var nodeGuardService = new NodeGuardService(null, null,walletRepository,null,null,null,null, scheduleFactory.Object);
+        var nodeGuardService = new NodeGuardService(null, null, walletRepository, null, null, null, null, scheduleFactory.Object);
         var result = await nodeGuardService.GetAvailableWallets(request, null);
-        
+
         result.Wallets.ToList().Count().Should().Be(1);
         result.Wallets.ToList().FirstOrDefault()!.IsHotWallet.Should().Be(true);
-    } 
-    
+    }
+
     [Fact]
     public async void GetAvailableWallets_ReturnsTypeCold()
     {
@@ -130,20 +131,20 @@ public class NodeGuardServiceTests
             Keys = new List<Key>()
         });
         context.SaveChanges();
-        
+
         var walletRepository = new WalletRepository(null, null, dbContextFactory.Object, null, null, null);
 
         var request = new GetAvailableWalletsRequest()
         {
             WalletType = WALLET_TYPE.Cold
         };
-        var nodeGuardService = new NodeGuardService(null, null,walletRepository,null,null,null,null, scheduleFactory.Object);
+        var nodeGuardService = new NodeGuardService(null, null, walletRepository, null, null, null, null, scheduleFactory.Object);
         var result = await nodeGuardService.GetAvailableWallets(request, null);
-        
+
         result.Wallets.ToList().Count().Should().Be(1);
         result.Wallets.ToList().FirstOrDefault()!.IsHotWallet.Should().Be(false);
     }
-    
+
     [Fact]
     public async void GetAvailableWallets_ReturnsIds()
     {
@@ -182,18 +183,38 @@ public class NodeGuardServiceTests
             Keys = new List<Key>()
         });
         context.SaveChanges();
-        
+
         var walletRepository = new WalletRepository(null, null, dbContextFactory.Object, null, null, null);
 
         var request = new GetAvailableWalletsRequest()
         {
             Id = { 1, 3 }
         };
-        var nodeGuardService = new NodeGuardService(null, null,walletRepository,null,null,null,null, scheduleFactory.Object);
+        var nodeGuardService = new NodeGuardService(null, null, walletRepository, null, null, null, null, scheduleFactory.Object);
         var result = await nodeGuardService.GetAvailableWallets(request, null);
-        
+
         result.Wallets.ToList().Count().Should().Be(2);
         result.Wallets.ToList().FirstOrDefault()!.Id.Should().Be(1);
         result.Wallets.ToList().LastOrDefault()!.Id.Should().Be(3);
+    }
+
+    [Fact]
+    public async void GetAvailableWallets_CantPassTwoFilters()
+    {
+        var (dbContextFactory, context) = SetupDbContextFactory();
+        var scheduleFactory = new Mock<ISchedulerFactory>();
+
+        var request = new GetAvailableWalletsRequest()
+        {
+            WalletType = WALLET_TYPE.Hot,
+            Id = { 1, 3 }
+        };
+        var nodeGuardService = new NodeGuardService(null, null, null, null, null, null, null, scheduleFactory.Object);
+        var act = () => nodeGuardService.GetAvailableWallets(request, null);
+
+        await act
+            .Should()
+            .ThrowAsync<RpcException>()
+            .WithMessage("Status(StatusCode=\"Internal\", Detail=\"You can't select wallets by type and id at the same time\")");
     }
 }

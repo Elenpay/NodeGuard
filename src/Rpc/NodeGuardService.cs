@@ -210,11 +210,15 @@ public class NodeGuardService : Nodeguard.NodeGuardService.NodeGuardServiceBase,
         {
             List<Wallet> wallets;
             var ids = request.Id?.ToList();
+            if (request.WalletType != 0 && ids?.Count > 0)
+            {
+                throw new InvalidOperationException("You can't select wallets by type and id at the same time");
+            }
             if (request.WalletType != 0)
             {
                 wallets = await _walletRepository.GetAvailableByType(request.WalletType);
             } 
-            else if (ids != null && ids.Count > 0)
+            else if (ids?.Count > 0)
             {
                 wallets = await _walletRepository.GetAvailableByIds(ids);
             }
@@ -245,7 +249,7 @@ public class NodeGuardService : Nodeguard.NodeGuardService.NodeGuardServiceBase,
         }
         catch (Exception e)
         {
-            _logger.LogError(e, "Error getting available wallets");
+            _logger?.LogError(e, "Error getting available wallets");
             throw new RpcException(new Status(StatusCode.Internal, e.Message));
         }
     }
