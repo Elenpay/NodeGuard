@@ -669,6 +669,7 @@ namespace FundsManager.Services
                 try
                 {
                     privateKeysForUsedUTXOs = txInKeyPathDictionary.ToDictionary(x => x.Key.PrevOut, x => channelOperationRequest.Wallet.InternalWallet.GetAccountKey(network)
+                        .Derive(UInt32.Parse(channelOperationRequest.Wallet.InternalWalletSubDerivationPath))
                         .Derive(x.Value)
                         .PrivateKey);
                 }
