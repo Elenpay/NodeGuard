@@ -11,6 +11,7 @@ using NBXplorer.DerivationStrategy;
 using Nodeguard;
 using Quartz;
 using LiquidityRule = Nodeguard.LiquidityRule;
+using Wallet = FundsManager.Data.Models.Wallet;
 
 namespace FundsManager.Rpc;
 
@@ -207,7 +208,20 @@ public class NodeGuardService : Nodeguard.NodeGuardService.NodeGuardServiceBase,
     {
         try
         {
-            var wallets = await _walletRepository.GetAvailableWallets();
+            List<Wallet> wallets;
+            var ids = request.Id?.ToList();
+            if (request.WalletType != 0)
+            {
+                wallets = await _walletRepository.GetAvailableByType(request.WalletType);
+            } 
+            else if (ids != null && ids.Count > 0)
+            {
+                wallets = await _walletRepository.GetAvailableByIds(ids);
+            }
+            else
+            {
+                wallets = await _walletRepository.GetAvailableWallets();
+            }
             var result = new GetAvailableWalletsResponse()
             {
                 Wallets =

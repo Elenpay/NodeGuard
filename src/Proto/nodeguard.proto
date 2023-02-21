@@ -65,7 +65,16 @@ message RequestWithdrawalResponse {
   bool is_hot_wallet = 2;
 }
 
-message GetAvailableWalletsRequest {}
+enum WALLET_TYPE {
+  BOTH = 0;
+  HOT = 1;
+  COLD = 2;
+}
+
+message GetAvailableWalletsRequest {
+  repeated int32 id = 1;
+  optional WALLET_TYPE wallet_type = 2;
+}
 
 message AccountKeySettings  {
   string xpub = 1;

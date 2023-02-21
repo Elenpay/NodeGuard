@@ -17,7 +17,8 @@
  *
  */
 
-using FundsManager.Data.Models;
+using Nodeguard;
+using Wallet = FundsManager.Data.Models.Wallet;
 
 namespace FundsManager.Data.Repositories.Interfaces;
 
@@ -26,6 +27,10 @@ public interface IWalletRepository
     Task<Wallet?> GetById(int id);
 
     Task<List<Wallet>> GetAll();
+    
+    Task<List<Wallet>> GetAvailableByType(WALLET_TYPE type);
+    
+    Task<List<Wallet>> GetAvailableByIds(List<int> ids);
 
     /// <summary>
     /// Obtains all wallets that are Finalised and not in a compromised or archived state
