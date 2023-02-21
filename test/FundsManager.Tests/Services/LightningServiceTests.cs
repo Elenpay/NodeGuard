@@ -472,11 +472,12 @@ namespace FundsManager.Services
             {
                 ChanPending = new PendingUpdate()
             };
+            var channelPoint = new ChannelPoint{ FundingTxidBytes = ByteString.CopyFromUtf8("e59fa8edcd772213239daef2834d9021d1aecc591d605b426ae32c4bec5fdd7d"), OutputIndex = 1};
             var chanOpenUpdate = new OpenStatusUpdate
             {
                 ChanOpen = new ChannelOpenUpdate()
                 {
-                    ChannelPoint = new ChannelPoint()
+                    ChannelPoint = channelPoint
                 }
             };
 
@@ -546,6 +547,30 @@ namespace FundsManager.Services
                     null,
                     default))
                 .Returns(MockHelpers.CreateAsyncUnaryCall(new FundingStateStepResp()));
+            
+            //Mock List channels async
+            var listChannelsResponse = new ListChannelsResponse
+            {
+                Channels = {new Lnrpc.Channel
+                    {
+                        Active = true,
+                        RemotePubkey = "03b48034270e522e4033afdbe43383d66d426638927b940d09a8a7a0de4d96e807",
+                        ChannelPoint = $"{LightningHelper.DecodeTxId(channelPoint.FundingTxidBytes)}:{channelPoint.OutputIndex}",
+                        ChanId = 124,
+                        Capacity = 1000,
+                        LocalBalance = 100,
+                        RemoteBalance = 900
+                    }
+                }
+            };
+            
+            lightningClient
+                .Setup(x => x.ListChannelsAsync(
+                    Arg.Ignore<ListChannelsRequest>(),
+                    Arg.Ignore<Metadata>(),
+                    null,
+                    default))
+                .Returns(MockHelpers.CreateAsyncUnaryCall(listChannelsResponse));
 
             var lightningService = new LightningService(_logger,
                 channelOperationRequestRepository.Object,
