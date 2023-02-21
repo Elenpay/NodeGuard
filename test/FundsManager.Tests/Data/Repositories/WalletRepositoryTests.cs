@@ -47,13 +47,13 @@ public class WalletRepositoryTests
         
         context.InternalWallets.Add(new InternalWallet()
         {
-            DerivationPath = "m/48'/1'"
+            DerivationPath = "48'/1'"
         });
         context.SaveChanges();
         
         var walletRepository = new WalletRepository(null, null, dbContextFactory.Object, null, null, null);
         var result = await walletRepository.GetNextSubderivationPath();
-        result.Should().Be("m/48'/1'/0");
+        result.Should().Be("0");
    }
     
     [Fact]
@@ -86,20 +86,20 @@ public class WalletRepositoryTests
         var context = dbContextFactory.Object.CreateDbContext();
         context.InternalWallets.Add(new InternalWallet()
         {
-            DerivationPath = "m/48'/1'"
+            DerivationPath = "48'/1'"
         });
         context.Wallets.Add(new Wallet()
         {
             Name = "TestWallet",
             IsFinalised = true, 
             IsHotWallet = true,
-            InternalWalletSubDerivationPath = "m/48'/1'/0"
+            InternalWalletSubDerivationPath = "0"
         });
         context.SaveChanges();
         
         var walletRepository = new WalletRepository(null, null, dbContextFactory.Object, null, null, null);
         var result = await walletRepository.GetNextSubderivationPath();
-        result.Should().Be("m/48'/1'/1");
+        result.Should().Be("1");
     }
 
     [Fact]
@@ -110,26 +110,27 @@ public class WalletRepositoryTests
         var context = dbContextFactory.Object.CreateDbContext();
         context.InternalWallets.Add(new InternalWallet()
         {
-            DerivationPath = "m/48'/1'"
+            DerivationPath = "48'/1'"
         });
         context.Wallets.Add(new Wallet()
         {
             Name = "TestWallet",
             IsFinalised = true,
             IsHotWallet = true,
-            InternalWalletSubDerivationPath = "m/48'/1'/0"
+            InternalWalletSubDerivationPath = "0"
         });
         context.Wallets.Add(new Wallet()
         {
             Name = "NotFinalised",
             IsFinalised = false,
             IsHotWallet = true,
+            InternalWalletSubDerivationPath = "1"
         });
         context.SaveChanges();
 
         var walletRepository = new WalletRepository(null, null, dbContextFactory.Object, null, null, null);
         var result = await walletRepository.GetNextSubderivationPath();
-        result.Should().Be("m/48'/1'/1");
+        result.Should().Be("1");
     }
     
     [Fact]
@@ -140,26 +141,27 @@ public class WalletRepositoryTests
         var context = dbContextFactory.Object.CreateDbContext();
         context.InternalWallets.Add(new InternalWallet()
         {
-            DerivationPath = "m/48'/1'"
+            DerivationPath = "48'/1'"
         });
         context.Wallets.Add(new Wallet()
         {
             Name = "TestWallet1",
             IsFinalised = true,
             IsHotWallet = true,
-            InternalWalletSubDerivationPath = "m/48'/1'/0"
+            IsCompromised = true,
+            InternalWalletSubDerivationPath = "0"
         });
         context.Wallets.Add(new Wallet()
         {
             Name = "TestWallet2",
             IsFinalised = true,
             IsHotWallet = true,
-            InternalWalletSubDerivationPath = "m/48'/2'/0"
+            InternalWalletSubDerivationPath = "1"
         });
         context.SaveChanges();
 
         var walletRepository = new WalletRepository(null, null, dbContextFactory.Object, null, null, null);
         var result = await walletRepository.GetNextSubderivationPath();
-        result.Should().Be("m/48'/1'/1");
+        result.Should().Be("2");
     }
 }
