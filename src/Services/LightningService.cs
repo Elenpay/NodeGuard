@@ -662,10 +662,33 @@ namespace FundsManager.Services
                     errorKeypathsForTheUtxosUsedInThisTxAreNotFound);
             }
 
-            var privateKeysForUsedUTXOs = txInKeyPathDictionary.ToDictionary(x => x.Key.PrevOut,
-                x =>
-                    channelOperationRequest.Wallet.InternalWallet.GetAccountKey(network)
-                        .Derive(x.Value).PrivateKey);
+
+            Dictionary<NBitcoin.OutPoint,NBitcoin.Key> privateKeysForUsedUTXOs;
+            if (channelOperationRequest.Wallet.IsHotWallet)
+            {
+                try
+                {
+                    privateKeysForUsedUTXOs = txInKeyPathDictionary.ToDictionary(x => x.Key.PrevOut, x => channelOperationRequest.Wallet.InternalWallet.GetAccountKey(network)
+                        .Derive(UInt32.Parse(channelOperationRequest.Wallet.InternalWalletSubDerivationPath))
+                        .Derive(x.Value)
+                        .PrivateKey);
+                }
+                catch (Exception e)
+                {
+                    var errorParsingSubderivationPath =
+                        $"Invalid Internal Wallet Subderivation Path for wallet:{channelOperationRequest.WalletId}";
+                    logger?.LogError(errorParsingSubderivationPath);
+
+                    throw new ArgumentException(
+                        errorParsingSubderivationPath);
+                }
+            }
+            else
+            {
+                privateKeysForUsedUTXOs = txInKeyPathDictionary.ToDictionary(x => x.Key.PrevOut, x => channelOperationRequest.Wallet.InternalWallet.GetAccountKey(network)
+                    .Derive(x.Value)
+                    .PrivateKey);
+            }
 
             //We need to SIGHASH_ALL all inputs/outputs as fundsmanager to protect the tx from tampering by adding a signature
             var partialSigsCount = changeFixedPSBT.Inputs.Sum(x => x.PartialSigs.Count);
@@ -764,7 +787,7 @@ namespace FundsManager.Services
 
             var nbXplorerServiceGetStatusAsync = await _nbXplorerService.GetStatusAsync(default);
             
-            if (nbXplorerServiceGetStatusAsync.IsFullySynched)
+            if (!nbXplorerServiceGetStatusAsync.IsFullySynched)
             {
                 _logger.LogError("Error, nbxplorer not fully synched");
                 return (null, false);
@@ -858,7 +881,7 @@ namespace FundsManager.Services
                 }
 
                 //Additional fields to support PSBT signing with a HW or the Remote Signer 
-                result = LightningHelper.AddDerivationData(channelOperationRequest.Wallet.Keys, result, selectedUtxOs, multisigCoins, _logger);
+                result = LightningHelper.AddDerivationData(channelOperationRequest.Wallet.Keys, result, selectedUtxOs, multisigCoins, _logger, channelOperationRequest.Wallet.InternalWalletSubDerivationPath);
             }
             catch (Exception e)
             {
