@@ -68,7 +68,7 @@ message RequestWithdrawalResponse {
 message GetAvailableWalletsRequest {}
 
 message AccountKeySettings  {
-  string xpub = 3;
+  string xpub = 1;
 }
 message Wallet  {
   int32 id = 1;
