@@ -300,11 +300,25 @@ namespace FundsManager.Services
                                 channelOperationRequest.Status = ChannelOperationRequestStatus.OnChainConfirmed;
                                 _channelOperationRequestRepository.Update(channelOperationRequest);
 
+                                var fundingTx = LightningHelper.DecodeTxId(response.ChanOpen.ChannelPoint.FundingTxidBytes);
+
+                                //Get the channels to find the channelId, not the temporary one
+                                var channels = await client.Execute(x => x.ListChannelsAsync(new ListChannelsRequest(),
+                                    new Metadata {{"macaroon", source.ChannelAdminMacaroon}}, null, default));
+                                var currentChannel = channels.Channels.SingleOrDefault(x=> x.ChannelPoint == $"{fundingTx}:{response.ChanOpen.ChannelPoint.OutputIndex}");
+
+                                if(currentChannel == null)
+                                {
+                                    _logger.LogError("Error, channel not found for channel point: {ChannelPoint}",
+                                        response.ChanOpen.ChannelPoint.ToString());
+                                    throw new InvalidOperationException();
+                                }
+
                                 var channel = new Channel
                                 {
-                                    ChannelId = pendingChannelIdHex,
+                                    ChanId = currentChannel.ChanId,
                                     CreationDatetime = DateTimeOffset.Now,
-                                    FundingTx = LightningHelper.DecodeTxId(response.ChanOpen.ChannelPoint.FundingTxidBytes),
+                                    FundingTx = fundingTx,
                                     FundingTxOutputIndex = response.ChanOpen.ChannelPoint.OutputIndex,
                                     BtcCloseAddress = closeAddress?.Address.ToString(),
                                     SatsAmount = channelOperationRequest.SatsAmount,

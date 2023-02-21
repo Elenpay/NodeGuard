@@ -76,8 +76,8 @@
 <Modal @bind-Visible="@_modalVisible">
     <ModalContent Centered Scrollable Size="ModalSize.ExtraLarge">
         <ModalHeader>
-            <ModalTitle>Users assigned to Channel: @_selectedChannel?.ChannelId</ModalTitle>
-            <CloseButton />
+            <ModalTitle>Channels requests related to Channel: @_selectedChannel?.ChanId</ModalTitle>
+            <CloseButton/>
         </ModalHeader>
         <ModalBody>
             <DataGrid TItem="ChannelOperationRequest"
