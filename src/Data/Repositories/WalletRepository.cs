@@ -17,13 +17,13 @@
  *
  */
 
-using FundsManager.Data.Models;
 using FundsManager.Data.Repositories.Interfaces;
 using FundsManager.Services;
-using FundsManager.Helpers;
 using Microsoft.EntityFrameworkCore;
 using NBitcoin;
+using Nodeguard;
 using Key = FundsManager.Data.Models.Key;
+using Wallet = FundsManager.Data.Models.Wallet;
 
 namespace FundsManager.Data.Repositories
 {
@@ -65,6 +65,30 @@ namespace FundsManager.Data.Repositories
             await using var applicationDbContext = await _dbContextFactory.CreateDbContextAsync();
 
             return await applicationDbContext.Wallets.Include(x => x.InternalWallet).Include(x => x.Keys).ToListAsync();
+        }
+        
+        public async Task<List<Wallet>> GetAvailableByType(WALLET_TYPE type)
+        {
+            await using var applicationDbContext = await _dbContextFactory.CreateDbContextAsync();
+            
+            return await applicationDbContext.Wallets
+                .Where(w => 
+                    !w.IsArchived && !w.IsCompromised && w.IsFinalised &&
+                    (type == WALLET_TYPE.Both || type == WALLET_TYPE.Cold && !w.IsHotWallet || type == WALLET_TYPE.Hot && w.IsHotWallet))
+                .Include(x => x.InternalWallet)
+                .Include(x => x.Keys)
+                .ToListAsync();
+        }
+        
+        public async Task<List<Wallet>> GetAvailableByIds(List<int> ids)
+        {
+            await using var applicationDbContext = await _dbContextFactory.CreateDbContextAsync();
+            
+            return await applicationDbContext.Wallets
+                .Where(w => !w.IsArchived && !w.IsCompromised && w.IsFinalised && ids.Contains(w.Id))
+                .Include(x => x.InternalWallet)
+                .Include(x => x.Keys)
+                .ToListAsync();
         }
 
         public async Task<List<Wallet>> GetAvailableWallets()

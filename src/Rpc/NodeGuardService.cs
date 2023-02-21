@@ -11,6 +11,7 @@ using NBXplorer.DerivationStrategy;
 using Nodeguard;
 using Quartz;
 using LiquidityRule = Nodeguard.LiquidityRule;
+using Wallet = FundsManager.Data.Models.Wallet;
 
 namespace FundsManager.Rpc;
 
@@ -23,6 +24,8 @@ public interface INodeGuardService
         ServerCallContext context);
 
     Task<RequestWithdrawalResponse> RequestWithdrawal(RequestWithdrawalRequest request, ServerCallContext context);
+
+    Task<GetAvailableWalletsResponse> GetAvailableWallets(GetAvailableWalletsRequest request, ServerCallContext context);
 }
 
 /// <summary>
@@ -48,7 +51,7 @@ public class NodeGuardService : Nodeguard.NodeGuardService.NodeGuardServiceBase,
         IBitcoinService bitcoinService,
         INBXplorerService nbXplorerService,
         ISchedulerFactory schedulerFactory
-        )
+    )
     {
         _logger = logger;
         _liquidityRuleRepository = liquidityRuleRepository;
@@ -58,7 +61,7 @@ public class NodeGuardService : Nodeguard.NodeGuardService.NodeGuardServiceBase,
         _bitcoinService = bitcoinService;
         _nbXplorerService = nbXplorerService;
         _schedulerFactory = schedulerFactory;
-        _scheduler = Task.Run(()=> _schedulerFactory.GetScheduler()).Result;
+        _scheduler = Task.Run(() => _schedulerFactory.GetScheduler()).Result;
     }
 
     public override async Task<GetLiquidityRulesResponse> GetLiquidityRules(GetLiquidityRulesRequest request,
@@ -77,7 +80,7 @@ public class NodeGuardService : Nodeguard.NodeGuardService.NodeGuardServiceBase,
             var liquidityRules = await _liquidityRuleRepository.GetByNodePubKey(request.NodePubkey);
             result = new GetLiquidityRulesResponse()
             {
-                LiquidityRules = {liquidityRules.Select(x => _mapper.Map<LiquidityRule>(x)).ToList()}
+                LiquidityRules = { liquidityRules.Select(x => _mapper.Map<LiquidityRule>(x)).ToList() }
             };
         }
         catch (Exception e)
@@ -92,20 +95,19 @@ public class NodeGuardService : Nodeguard.NodeGuardService.NodeGuardServiceBase,
     public override async Task<GetNewWalletAddressResponse> GetNewWalletAddress(GetNewWalletAddressRequest request,
         ServerCallContext context)
     {
-
         var wallet = await _walletRepository.GetById(request.WalletId);
         if (wallet == null)
         {
             _logger.LogError("Wallet with id {walletId} not found", request.WalletId);
             throw new RpcException(new Status(StatusCode.NotFound, "Wallet not found"));
         }
-        
+
         var btcAddress = await _nbXplorerService.GetUnusedAsync(wallet.GetDerivationStrategy(),
             DerivationFeature.Deposit,
             0,
             false, default);
-        
-        if(btcAddress == null)
+
+        if (btcAddress == null)
         {
             _logger.LogError("Error getting new address for wallet with id {walletId}", request.WalletId);
             throw new RpcException(new Status(StatusCode.Internal, "Error getting new address for wallet"));
@@ -115,15 +117,13 @@ public class NodeGuardService : Nodeguard.NodeGuardService.NodeGuardServiceBase,
         {
             Address = btcAddress.Address.ToString()
         };
-        
+
         return getNewWalletAddressResponse;
-
-
     }
 
-    public override async Task<RequestWithdrawalResponse> RequestWithdrawal(RequestWithdrawalRequest request, ServerCallContext context)
+    public override async Task<RequestWithdrawalResponse> RequestWithdrawal(RequestWithdrawalRequest request,
+        ServerCallContext context)
     {
-
         try
         {
             //We get the wallet
@@ -133,28 +133,27 @@ public class NodeGuardService : Nodeguard.NodeGuardService.NodeGuardServiceBase,
                 _logger.LogError("Wallet with id {walletId} not found", request.WalletId);
                 throw new RpcException(new Status(StatusCode.NotFound, "Wallet not found"));
             }
-        
+
             //Create withdrawal request
-            var amount = new Money(request.Amount,MoneyUnit.Satoshi).ToUnit(MoneyUnit.BTC);
-        
+            var amount = new Money(request.Amount, MoneyUnit.Satoshi).ToUnit(MoneyUnit.BTC);
+
             var withdrawalRequest = new WalletWithdrawalRequest()
             {
                 WalletId = request.WalletId,
                 Amount = amount,
                 DestinationAddress = request.Address,
                 Description = request.Description,
-           
             };
-        
+
             //Save withdrawal request
             var withdrawalSaved = await _walletWithdrawalRequestRepository.AddAsync(withdrawalRequest);
-            
-            if(!withdrawalSaved.Item1)
+
+            if (!withdrawalSaved.Item1)
             {
                 _logger.LogError("Error saving withdrawal request for wallet with id {walletId}", request.WalletId);
                 throw new RpcException(new Status(StatusCode.Internal, "Error saving withdrawal request for wallet"));
             }
-            
+
             //Update to refresh from db
             withdrawalRequest = await _walletWithdrawalRequestRepository.GetById(withdrawalRequest.Id);
 
@@ -163,11 +162,11 @@ public class NodeGuardService : Nodeguard.NodeGuardService.NodeGuardServiceBase,
                 _logger.LogError("Error saving withdrawal request for wallet with id {walletId}", request.WalletId);
                 throw new RpcException(new Status(StatusCode.Internal, "Error saving withdrawal request for wallet"));
             }
-        
+
             //Template PSBT generation with SIGHASH_ALL
-            var (psbt,noAvailableUTXOs) = await  _bitcoinService.GenerateTemplatePSBT(withdrawalRequest);
-        
-            if(psbt == null)
+            var (psbt, noAvailableUTXOs) = await _bitcoinService.GenerateTemplatePSBT(withdrawalRequest);
+
+            if (psbt == null)
             {
                 _logger.LogError("Error generating PSBT for wallet with id {walletId}", request.WalletId);
                 throw new RpcException(new Status(StatusCode.Internal, "Error generating PSBT for wallet"));
@@ -178,7 +177,7 @@ public class NodeGuardService : Nodeguard.NodeGuardService.NodeGuardServiceBase,
                 _logger.LogError("No available UTXOs for wallet with id {walletId}", request.WalletId);
                 throw new RpcException(new Status(StatusCode.Internal, "No available UTXOs for wallet"));
             }
-        
+
             //If the wallet is hot, we send the withdrawal request to the node
             if (wallet.IsHotWallet)
             {
@@ -194,16 +193,64 @@ public class NodeGuardService : Nodeguard.NodeGuardService.NodeGuardServiceBase,
                 IsHotWallet = wallet.IsHotWallet,
                 Txid = psbt.GetGlobalTransaction().GetHash().ToString()
             };
-            
-            return response;
 
+            return response;
         }
         catch (Exception e)
         {
             _logger.LogError(e, "Error requesting withdrawal for wallet with id {walletId}", request.WalletId);
             throw new RpcException(new Status(StatusCode.Internal, e.Message));
         }
-        
+    }
 
+    public override async Task<GetAvailableWalletsResponse> GetAvailableWallets(GetAvailableWalletsRequest request,
+        ServerCallContext context)
+    {
+        try
+        {
+            List<Wallet> wallets;
+            var ids = request.Id?.ToList();
+            if (request.WalletType != 0 && ids?.Count > 0)
+            {
+                throw new InvalidOperationException("You can't select wallets by type and id at the same time");
+            }
+            if (request.WalletType != 0)
+            {
+                wallets = await _walletRepository.GetAvailableByType(request.WalletType);
+            } 
+            else if (ids?.Count > 0)
+            {
+                wallets = await _walletRepository.GetAvailableByIds(ids);
+            }
+            else
+            {
+                wallets = await _walletRepository.GetAvailableWallets();
+            }
+            var result = new GetAvailableWalletsResponse()
+            {
+                Wallets =
+                {
+                    wallets.Select(w => new Nodeguard.Wallet()
+                    {
+                        Id = w.Id,
+                        Name = w.Name,
+                        IsHotWallet = w.IsHotWallet,
+                        AccountKeySettings =
+                        {
+                            w.Keys.Select(k => new Nodeguard.AccountKeySettings()
+                            {
+                                Xpub = k.XPUB,
+                            })
+                        }
+                    }).ToList()
+                }
+            };
+            return result;
+        }
+        catch (Exception e)
+        {
+            _logger?.LogError(e, "Error getting available wallets");
+            throw new RpcException(new Status(StatusCode.Internal, e.Message));
+        }
     }
 }

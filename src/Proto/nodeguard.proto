@@ -20,6 +20,11 @@ service NodeGuardService {
     Withdraws funds from a given wallet to a given address
     */
   rpc RequestWithdrawal(RequestWithdrawalRequest) returns (RequestWithdrawalResponse);
+  
+  /*
+    Gets a list of available wallets
+   */
+  rpc GetAvailableWallets(GetAvailableWalletsRequest) returns (GetAvailableWalletsResponse);
 }
 
 message GetLiquidityRulesRequest {
@@ -59,4 +64,28 @@ message RequestWithdrawalResponse {
   //  optionalTransaction ID of the withdrawal
   string txid = 1;
   bool is_hot_wallet = 2;
+}
+
+enum WALLET_TYPE {
+  BOTH = 0;
+  HOT = 1;
+  COLD = 2;
+}
+
+message GetAvailableWalletsRequest {
+  repeated int32 id = 1;
+  optional WALLET_TYPE wallet_type = 2;
+}
+
+message AccountKeySettings  {
+  string xpub = 1;
+}
+message Wallet  {
+  int32 id = 1;
+  string name = 2;
+  bool is_hot_wallet = 3;
+  repeated AccountKeySettings account_key_settings = 4;
+}
+message GetAvailableWalletsResponse {
+  repeated Wallet wallets = 1;
 }

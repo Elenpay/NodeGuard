@@ -30,8 +30,12 @@
         
         public string FundingTx { get; set; }
         public uint FundingTxOutputIndex { get; set; }
-        public string? ChannelId { get; set; }
 
+        /// <summary>
+        /// Final Channel id by LND
+        /// </summary>
+        public ulong ChanId { get; set; }
+        
         /// <summary>
         /// Capacity in SATS
         /// </summary>
