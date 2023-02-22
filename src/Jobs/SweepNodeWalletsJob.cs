@@ -148,9 +148,17 @@ public class SweepNodeWalletsJob : IJob
             _logger.LogError("{JobName} failed on node with id: {NodeId}, reason: node not found",
                 nameof(SweepNodeWalletsJob),
                 managedNodeId);
-            throw new ArgumentException("node not found", nameof(node));
+            await context.Scheduler.DeleteJob(context.JobDetail.Key, context.CancellationToken);
+            return;
         }
 
+        if (!node.AutosweepEnabled)
+        {
+            _logger.LogInformation("Disabling autosweep on node: {NodeId}", managedNodeId);
+            await context.Scheduler.DeleteJob(context.JobDetail.Key, context.CancellationToken);
+            return;
+        }
+        
         var loggerFactory = GRPCLoggerFactoryHelper.LoggerFactory();
 
         try

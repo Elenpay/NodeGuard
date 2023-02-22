@@ -49,12 +49,18 @@ namespace FundsManager.Jobs
                 var managedNodes = await _nodeRepository.GetAllManagedByFundsManager();
 
                 var scheduler = await _schedulerFactory.GetScheduler();
-                foreach (var managedNode in managedNodes.Where(managedNode => managedNode.ChannelAdminMacaroon != null))
+                foreach (var managedNode in managedNodes.Where(managedNode => managedNode.ChannelAdminMacaroon != null && managedNode.AutosweepEnabled))
                 {
                     var map = new JobDataMap();
                     map.Put("managedNodeId", managedNode.Id.ToString());
                     var job = SimpleJob.Create<SweepNodeWalletsJob>(map, managedNode.Id.ToString());
-                    await scheduler.ScheduleJob(job.Job, job.Trigger);
+                    
+                    var jobExists = await scheduler.CheckExists(job.Job.Key);
+                    if (!jobExists)
+                    {
+                        _logger.LogInformation("Scheduling {JobName} for {NodeId}", nameof(SweepNodeWalletsJob), managedNode.Id);
+                        await scheduler.ScheduleJob(job.Job, job.Trigger);
+                    }
                 }
             }
             catch (Exception e)

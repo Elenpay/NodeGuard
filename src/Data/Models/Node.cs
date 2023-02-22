@@ -40,6 +40,11 @@ namespace FundsManager.Data.Models
         public string? Endpoint { get; set; }
 
         /// <summary>
+        /// enable/disable autosweep
+        /// </summary>
+        public bool AutosweepEnabled { get; set; } = true;
+
+        /// <summary>
         /// The wallet used on upfront_shutdown_script if the peer supports this
         /// </summary>
         public int? ReturningFundsMultisigWalletId { get; set; }
