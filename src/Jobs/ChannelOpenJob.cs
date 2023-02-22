@@ -18,11 +18,10 @@
  */
 
 using FundsManager.Data.Repositories.Interfaces;
-using FundsManager.Services;
 using FundsManager.Helpers;
 using FundsManager.Data.Models;
+using FundsManager.Services.Interfaces;
 using Quartz;
-using Quartz.Impl.Triggers;
 
 namespace FundsManager.Jobs;
 

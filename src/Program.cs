@@ -42,6 +42,7 @@ using Serilog.Events;
 using Serilog.Formatting.Json;
 using FundsManager.Helpers;
 using FundsManager.Rpc;
+using FundsManager.Services.Interfaces;
 using Microsoft.AspNetCore.Server.Kestrel.Core;
 
 namespace FundsManager

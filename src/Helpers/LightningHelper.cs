@@ -21,11 +21,13 @@ using AutoMapper;
 using FundsManager.Data.Models;
 using FundsManager.Services;
 using Google.Protobuf;
+using Grpc.Net.Client;
+using Lnrpc;
 using NBitcoin;
 using NBXplorer;
 using NBXplorer.Models;
-using Key = FundsManager.Data.Models.Key;
 using Unmockable;
+using Key = FundsManager.Data.Models.Key;
 
 namespace FundsManager.Helpers
 {
@@ -50,7 +52,7 @@ namespace FundsManager.Helpers
         /// <param name="selectedUtxOs"></param>
         /// <param name="multisigCoins"></param>
         /// <exception cref="ArgumentException"></exception>
-        public static (PSBT?, bool) AddDerivationData(IEnumerable<Key> keys , (PSBT?, bool) result, List<UTXO> selectedUtxOs,
+        public static (PSBT?, bool) AddDerivationData(IEnumerable<Key> keys, (PSBT?, bool) result, List<UTXO> selectedUtxOs,
             List<ScriptCoin> multisigCoins, ILogger? logger = null, string subderivationPath = "")
         {
             if (keys == null) throw new ArgumentNullException(nameof(keys));
@@ -79,7 +81,7 @@ namespace FundsManager.Helpers
                     PubKey derivedPubKey;
                     utxoDerivationPath = KeyPath.Parse(key.Path).Derive(selectedUtxo.KeyPath);
                     derivedPubKey = bitcoinExtPubKey.Derive(selectedUtxo.KeyPath).GetPublicKey();
-                    
+
                     var input = result.Item1.Inputs.FirstOrDefault(input =>
                         input?.GetCoin()?.Outpoint == selectedUtxo.Outpoint);
                     var addressRootedKeyPath = new RootedKeyPath(masterFingerprint, utxoDerivationPath);
@@ -102,13 +104,33 @@ namespace FundsManager.Helpers
             return result;
         }
 
+        public static Func<string?, IUnmockable<Lightning.LightningClient>> CreateLightningClient = (endpoint) =>
+        {
+            if (string.IsNullOrWhiteSpace(endpoint))
+            {
+                throw new ArgumentException("Endpoint cannot be null");
+            }
+
+            //Setup of grpc lnd api client (Lightning.proto)
+            //Hack to allow self-signed https grpc calls
+            var httpHandler = new HttpClientHandler
+            {
+                ServerCertificateCustomValidationCallback =
+                    HttpClientHandler.DangerousAcceptAnyServerCertificateValidator
+            };
+
+            var grpcChannel = GrpcChannel.ForAddress($"https://{endpoint}",
+                new GrpcChannelOptions { HttpHandler = httpHandler });
+
+            return new Lightning.LightningClient(grpcChannel).Wrap();
+        };
 
         /// <summary>
         /// Create the ExplorerClient for using nbxplorer based the current network
         /// </summary>
         /// <returns></returns>
         /// <exception cref="ArgumentNullException"></exception>
-        public static async Task<ExplorerClient>  CreateNBExplorerClient()
+        public static async Task<ExplorerClient> CreateNBExplorerClient()
         {
             //Nbxplorer api client
             var nbXplorerNetwork = CurrentNetworkHelper.GetCurrentNetwork();
@@ -117,7 +139,7 @@ namespace FundsManager.Helpers
             var nbxplorerClient = new ExplorerClient(
                 provider.GetFromCryptoCode(nbXplorerNetwork.NetworkSet.CryptoCode),
                 new Uri(Constants.NBXPLORER_URI));
-            return  nbxplorerClient;
+            return nbxplorerClient;
         }
 
         /// <summary>
@@ -172,7 +194,7 @@ namespace FundsManager.Helpers
 
             //FIFO Algorithm to match the amount, oldest UTXOs are first taken
 
-            var totalUTXOsConfirmedSats = utxosStack.Sum(x => ((Money) x.Value).Satoshi);
+            var totalUTXOsConfirmedSats = utxosStack.Sum(x => ((Money)x.Value).Satoshi);
 
             if (totalUTXOsConfirmedSats < satsAmount)
             {
@@ -190,7 +212,7 @@ namespace FundsManager.Helpers
                 if (utxosStack.TryPop(out var utxo))
                 {
                     selectedUTXOs.Add(utxo);
-                    utxosSatsAmountAccumulator += ((Money) utxo.Value).Satoshi;
+                    utxosSatsAmountAccumulator += ((Money)utxo.Value).Satoshi;
                 }
 
                 iterations++;
@@ -216,7 +238,7 @@ namespace FundsManager.Helpers
         /// <param name="nbxplorerClient"></param>
         /// <returns></returns>
         public static async Task<GetFeeRateResult> GetFeeRateResult(Network nbXplorerNetwork,
-          INBXplorerService nbxplorerClient)
+            INBXplorerService nbxplorerClient)
         {
             GetFeeRateResult feeRateResult;
             if (nbXplorerNetwork == Network.RegTest)
@@ -265,7 +287,7 @@ namespace FundsManager.Helpers
 
             return combinedPSBT;
         }
-        
+
         /// <summary>
         /// Helper for decoding bytestring-based LND representation of TxIds
         /// </summary>

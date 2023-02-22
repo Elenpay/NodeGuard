@@ -90,5 +90,28 @@ namespace FundsManager.Tests
 
             utxoChanges.Confirmed.UTXOs.Count.Should().Be(1);
         }
+        
+        [Fact]
+        public void CreateLightningClient_EndpointIsNull()
+        {
+            // Act
+            var act = () => LightningHelper.CreateLightningClient(null);
+
+            // Assert
+            act
+                .Should()
+                .Throw<ArgumentException>()
+                .WithMessage("Endpoint cannot be null");
+        }
+
+        [Fact]
+        public void CreateLightningClient_ReturnsLightningClient()
+        {
+            // Act
+            var result = LightningHelper.CreateLightningClient("10.0.0.1");
+
+            // Assert
+            result.Should().NotBeNull();
+        }
     }
 }
