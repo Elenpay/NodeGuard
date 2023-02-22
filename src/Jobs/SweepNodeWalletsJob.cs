@@ -151,13 +151,6 @@ public class SweepNodeWalletsJob : IJob
             await context.Scheduler.DeleteJob(context.JobDetail.Key, context.CancellationToken);
             return;
         }
-
-        if (!node.AutosweepEnabled)
-        {
-            _logger.LogInformation("Disabling autosweep on node: {NodeId}", managedNodeId);
-            await context.Scheduler.DeleteJob(context.JobDetail.Key, context.CancellationToken);
-            return;
-        }
         
         var loggerFactory = GRPCLoggerFactoryHelper.LoggerFactory();
 
