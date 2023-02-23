@@ -127,7 +127,7 @@ namespace FundsManager.Data.Models
                 var numberOfSignaturesCollected = NumberOfSignaturesCollected;
 
                 //We add the internal Wallet signature
-                if (Wallet.RequiresInternalWalletSigning)
+                if (Wallet.RequiresInternalWalletSigning || Wallet.IsHotWallet)
                 {
                     numberOfSignaturesCollected++;
                 }
