@@ -233,6 +233,7 @@
     <Column ColumnSize="ColumnSize.Is12">
         <h3>Withdrawal requests</h3>
         <DataGrid TItem="WalletWithdrawalRequest"
+                  @ref="_allRequestsDatagrid"
                   Data="@_allRequests"
                   Filterable="true"
                   FilterMethod="DataGridFilterMethod.Contains"
@@ -371,6 +372,15 @@
     OnSubmit="@RejectOrCancel"
 />
 
+<ConfirmationModal
+    @ref="_confirmationModal"
+    Title="Are you sure?"
+    Body="You selected a hot wallet. This means that the system will automatically use the funds in it without the need of manual approval. Are you sure you want to perform this operation?"
+    OkLabel="Yes, I am sure"
+    OnCancel="@CloseConfirmationModal"
+    OnSubmit="@SubmitConfirmationModal"
+/>
+
 @inject IToastService ToastService
 @inject IWalletWithdrawalRequestRepository WalletWithdrawalRequestRepository
 @inject IWalletWithdrawalRequestPsbtRepository WalletWithdrawalRequestPsbtRepository
@@ -398,6 +408,10 @@
     private PSBTSign? _psbtSignRef;
     private string _signedPSBT;
     private string? _templatePsbtString;
+
+    private DataGrid<WalletWithdrawalRequest>? _allRequestsDatagrid;
+
+    private ConfirmationModal _confirmationModal;
 
     private string? _cancelOrRejectReason;
     private CancelOrRejectPopup? _rejectCancelModalRef;
@@ -439,6 +453,16 @@
         //Balance validation
         if (await ValidateBalance(arg)) return;
 
+        arg.Item.Wallet = await WalletRepository.GetById(arg.Item.WalletId);
+        if (arg.Item.Wallet.IsHotWallet)
+        {
+            await GetData();
+            _selectedRequest = arg.Item;
+            await _confirmationModal.ShowModal();
+            return;
+        }
+
+        arg.Item.Wallet = null;
         var addResult = await WalletWithdrawalRequestRepository.AddAsync(arg.Item);
 
 
@@ -616,23 +640,7 @@
                             _selectedRequest = await WalletWithdrawalRequestRepository.GetById(_selectedRequest.Id);
                             if (_selectedRequest != null)
                             {
-
-                                IScheduler scheduler = await SchedulerFactory.GetScheduler(); 
-            
-                                var map = new JobDataMap();
-                                map.Put("withdrawalRequestId", _selectedRequest.Id);
-
-                                var retryList = RetriableJob.ParseRetryListFromString(Constants.JOB_RETRY_INTERVAL_LIST_IN_MINUTES);
-                                var job = RetriableJob.Create<PerformWithdrawalJob>(map, _selectedRequest.Id.ToString(), retryList);
-                                await scheduler.ScheduleJob(job.Job, job.Trigger);
-
-                                if (_selectedRequest != null)
-                                {
-                                    // TODO: Check job id
-                                    _selectedRequest.JobId = job.Job.Key.ToString();;
-
-                                    WalletWithdrawalRequestRepository.Update(_selectedRequest);
-                                }
+                                CreateJob();
                             }
                         }
                         catch
@@ -643,7 +651,6 @@
                         if (failedWithdrawalRequest)
                         {
                             ToastService.ShowError("Error while requesting to withdraw funds, please contact a superadmin for troubleshooting");
-
                         }
                         else
                         {
@@ -652,14 +659,13 @@
                     }
                     else
                     {
-                        ToastService.ShowSuccess("Signature collected");
+                        ToastService.ShowError("Invalid PSBT");
                     }
 
                 }
                 else
                 {
                     ToastService.ShowError("Invalid PSBT");
-
                 }
             }
             else
@@ -700,8 +706,7 @@
             
         }
     }
-
-
+    
     private async Task HideRejectCancelModal()
     {
         _rejectCancelStatus = null;
@@ -719,8 +724,7 @@
 
         await _rejectCancelModalRef.ShowModal();
     }
-
-
+    
     private async Task OnSelectedWallet(CellEditContext<WalletWithdrawalRequest> context, int id)
     {
         context.CellValue = id;
@@ -746,4 +750,131 @@
             ValidationRule.None(e);
         }
     }
+    
+    private async Task CloseConfirmationModal()
+    {
+        await _confirmationModal.CloseModal();
+    }
+
+    private async Task SubmitConfirmationModal()
+    {
+        if (_selectedRequest != null)
+        {
+            _selectedRequest.Wallet = null;
+            var createWithdrawalResult = await WalletWithdrawalRequestRepository.AddAsync(_selectedRequest);
+            if (createWithdrawalResult.Item1)
+            {
+                ToastService.ShowSuccess("Withdrawal request created!");
+            }
+            else
+            {
+                ToastService.ShowError(createWithdrawalResult.Item2);
+                _selectedRequest.Status = WalletWithdrawalRequestStatus.Failed;
+                WalletWithdrawalRequestRepository.Update(_selectedRequest);
+                await _confirmationModal.CloseModal();
+                await GetData();
+                StateHasChanged();
+                return;
+            }
+
+            var (templatePSBT, noUtxosAvailable) = await BitcoinService.GenerateTemplatePSBT(_selectedRequest);
+
+            if (templatePSBT == null)
+            {
+                if (noUtxosAvailable)
+                {
+                    ToastService.ShowError("No UTXOs available for withdrawals were found for this wallet");
+                }
+                else
+                {
+                    ToastService.ShowError("Something went wrong");
+
+                }
+                _selectedRequest.Status = WalletWithdrawalRequestStatus.Failed;
+                WalletWithdrawalRequestRepository.Update(_selectedRequest);
+                await _confirmationModal.CloseModal();
+                await GetData();
+                StateHasChanged();
+                return;
+            }
+            
+            //TODO Save template PSBT (?)
+            var walletWithdrawalRequestPsbt = new WalletWithdrawalRequestPSBT()
+            {
+                WalletWithdrawalRequestId = _selectedRequest.Id,
+                PSBT = templatePSBT.ToBase64(),
+                SignerId = null,
+            };
+            var addResult = await WalletWithdrawalRequestPsbtRepository.AddAsync(walletWithdrawalRequestPsbt);
+            if (addResult.Item1)
+            {
+                ToastService.ShowSuccess("Signature collected");
+
+                _selectedRequest = await WalletWithdrawalRequestRepository.GetById(_selectedRequest.Id);
+
+                if (_selectedRequest != null
+                    && _selectedRequest.AreAllRequiredHumanSignaturesCollected)
+                {
+                    await CreateJob();
+                }
+                else
+                {
+                    ToastService.ShowError("Invalid PSBT");
+                    _selectedRequest.Status = WalletWithdrawalRequestStatus.Failed;
+                    WalletWithdrawalRequestRepository.Update(_selectedRequest);
+                    await _confirmationModal.CloseModal();
+                    await GetData();
+                    StateHasChanged();
+                    return;
+                }
+            }
+            else
+            {
+                ToastService.ShowError("Error while saving the signature");
+                _selectedRequest.Status = WalletWithdrawalRequestStatus.Failed;
+                WalletWithdrawalRequestRepository.Update(_selectedRequest);
+                await _confirmationModal.CloseModal();
+                await GetData();
+                StateHasChanged();
+                return;
+            }
+            GetData();
+            _allRequestsDatagrid.Dispose();
+            StateHasChanged();
+            _confirmationModal.CloseModal();
+        }
+    }
+
+    private async Task CreateJob()
+    {
+        try
+        {
+            IScheduler scheduler = await SchedulerFactory.GetScheduler();
+
+            var map = new JobDataMap();
+            map.Put("withdrawalRequestId", _selectedRequest.Id);
+
+            var retryList = RetriableJob.ParseRetryListFromString(Constants.JOB_RETRY_INTERVAL_LIST_IN_MINUTES);
+            var job = RetriableJob.Create<PerformWithdrawalJob>(map, _selectedRequest.Id.ToString(), retryList);
+            await scheduler.ScheduleJob(job.Job, job.Trigger);
+
+            if (_selectedRequest != null)
+            {
+                // TODO: Check job id
+                _selectedRequest.JobId = job.Job.Key.ToString();
+                WalletWithdrawalRequestRepository.Update(_selectedRequest);
+            }
+        }
+        catch
+        {
+            ToastService.ShowError("Error while requesting a withdrawal, please contact a superadmin for troubleshooting");
+            _selectedRequest.Status = WalletWithdrawalRequestStatus.Failed;
+            WalletWithdrawalRequestRepository.Update(_selectedRequest);
+            await _confirmationModal.CloseModal();
+            await GetData();
+            StateHasChanged();
+            return;
+        }
+    }
+
 }

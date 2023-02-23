@@ -81,6 +81,8 @@ namespace FundsManager.Services
         {
             if (walletWithdrawalRequest == null) throw new ArgumentNullException(nameof(walletWithdrawalRequest));
 
+            walletWithdrawalRequest = await _walletWithdrawalRequestRepository.GetById(walletWithdrawalRequest.Id);
+
             (PSBT?, bool) result = (null, false);
             if (walletWithdrawalRequest.Status != WalletWithdrawalRequestStatus.Pending
                 && walletWithdrawalRequest.Status != WalletWithdrawalRequestStatus.PSBTSignaturesPending)
@@ -218,7 +220,7 @@ namespace FundsManager.Services
                 result.Item1 = builder.BuildPSBT(false);
                 
                 //Additional fields to support PSBT signing with a HW or the Remote Signer 
-                result = LightningHelper.AddDerivationData(walletWithdrawalRequest.Wallet.Keys, result, selectedUTXOs, scriptCoins, _logger);
+                result = LightningHelper.AddDerivationData(walletWithdrawalRequest.Wallet.Keys, result, selectedUTXOs, scriptCoins, _logger, walletWithdrawalRequest.Wallet.InternalWalletSubDerivationPath);
             }
             catch (Exception e)
             {
@@ -311,7 +313,7 @@ namespace FundsManager.Services
                     else
                     {
                         signedCombinedPSBT = await SignPSBTWithEmbeddedSigner(walletWithdrawalRequest, _nbXplorerService,
-                            derivationStrategyBase, combinedPSBT, CurrentNetworkHelper.GetCurrentNetwork());
+                            derivationStrategyBase, combinedPSBT, CurrentNetworkHelper.GetCurrentNetwork(), _logger);
                     }
                     
                 }
@@ -416,7 +418,7 @@ namespace FundsManager.Services
         /// <exception cref="ArgumentException"></exception>
         private async Task<PSBT> SignPSBTWithEmbeddedSigner(WalletWithdrawalRequest walletWithdrawalRequest,
             INBXplorerService nbXplorerService, DerivationStrategyBase? derivationStrategyBase, PSBT combinedPSBT,
-            Network network)
+            Network network, ILogger? logger = null)
         {
             var UTXOs = await nbXplorerService.GetUTXOsAsync(derivationStrategyBase, default);
             UTXOs.RemoveDuplicateUTXOs();
@@ -440,10 +442,34 @@ namespace FundsManager.Services
                     errorKeypathsForTheUtxosUsedInThisTxAreNotFound);
             }
 
-            var privateKeysForUsedUTXOs = txInKeyPathDictionary.ToDictionary(x => x.Key.PrevOut,
-                x =>
-                    walletWithdrawalRequest.Wallet.InternalWallet.GetAccountKey(network)
-                        .Derive(x.Value).PrivateKey);
+            Dictionary<NBitcoin.OutPoint,NBitcoin.Key> privateKeysForUsedUTXOs;
+            if (walletWithdrawalRequest.Wallet.IsHotWallet)
+            {
+                try
+                {
+                    privateKeysForUsedUTXOs = txInKeyPathDictionary.ToDictionary(x => x.Key.PrevOut,
+                        x =>
+                            walletWithdrawalRequest.Wallet.InternalWallet.GetAccountKey(network)
+                                .Derive(UInt32.Parse(walletWithdrawalRequest.Wallet.InternalWalletSubDerivationPath))
+                                .Derive(x.Value).PrivateKey);
+                }
+                catch (Exception e)
+                {
+                    var errorParsingSubderivationPath =
+                        $"Invalid Internal Wallet Subderivation Path for wallet:{walletWithdrawalRequest.WalletId}";
+                    logger?.LogError(errorParsingSubderivationPath);
+
+                    throw new ArgumentException(
+                        errorParsingSubderivationPath);
+                }
+            }
+            else
+            {
+                privateKeysForUsedUTXOs = txInKeyPathDictionary.ToDictionary(x => x.Key.PrevOut,
+                    x =>
+                        walletWithdrawalRequest.Wallet.InternalWallet.GetAccountKey(network)
+                            .Derive(x.Value).PrivateKey);
+            }
 
             //We need to SIGHASH_ALL all inputs/outputs as fundsmanager to protect the tx from tampering by adding a signature
             var partialSigsCount = combinedPSBT.Inputs.Sum(x => x.PartialSigs.Count);
