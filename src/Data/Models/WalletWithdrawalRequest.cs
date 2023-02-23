@@ -122,12 +122,17 @@ namespace FundsManager.Data.Models
         {
             var result = false;
 
+            if (Wallet.IsHotWallet)
+            {
+                return true;
+            }
+            
             if (WalletWithdrawalRequestPSBTs != null && WalletWithdrawalRequestPSBTs.Any())
             {
                 var numberOfSignaturesCollected = NumberOfSignaturesCollected;
 
                 //We add the internal Wallet signature
-                if (Wallet.RequiresInternalWalletSigning || Wallet.IsHotWallet)
+                if (Wallet.RequiresInternalWalletSigning)
                 {
                     numberOfSignaturesCollected++;
                 }
