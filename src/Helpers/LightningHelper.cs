@@ -75,10 +75,8 @@ namespace FundsManager.Helpers
 
                 foreach (var selectedUtxo in selectedUtxOs)
                 {
-                    KeyPath? utxoDerivationPath;
-                    PubKey derivedPubKey;
-                    utxoDerivationPath = KeyPath.Parse(key.Path).Derive(subderivationPath).Derive(selectedUtxo.KeyPath);
-                    derivedPubKey = bitcoinExtPubKey.Derive(new KeyPath(subderivationPath)).Derive(selectedUtxo.KeyPath).GetPublicKey();
+                    var utxoDerivationPath = KeyPath.Parse(key.Path).Derive(subderivationPath).Derive(selectedUtxo.KeyPath);
+                    var derivedPubKey = bitcoinExtPubKey.Derive(new KeyPath(subderivationPath)).Derive(selectedUtxo.KeyPath).GetPublicKey();
                     
                     var input = result.Item1.Inputs.FirstOrDefault(input =>
                         input?.GetCoin()?.Outpoint == selectedUtxo.Outpoint);
