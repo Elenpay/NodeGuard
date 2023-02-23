@@ -191,7 +191,7 @@
                             @{
                                 if (context.Wallet != null)
                                 {
-                                    var signaturesCollected = context.NumberOfSignaturesCollected + (context.Wallet.RequiresInternalWalletSigning ? 1 : 0);
+                                    var signaturesCollected = context.NumberOfSignaturesCollected + (context.Wallet.RequiresInternalWalletSigning && !context.Wallet.IsHotWallet ? 1 : 0);
                                     var signaturesRequired = context.Wallet?.MofN ?? 0;
                                         @($"{signaturesCollected} out of {signaturesRequired}")
                                 }
@@ -307,7 +307,7 @@
                         @{
                             if (context.Wallet != null)
                             {
-                                var signaturesCollected = context.NumberOfSignaturesCollected + (context.Wallet.RequiresInternalWalletSigning ? 1 : 0);
+                                var signaturesCollected = context.NumberOfSignaturesCollected + (context.Wallet.RequiresInternalWalletSigning && !context.Wallet.IsHotWallet ? 1 : 0);
                                 var signaturesRequired = context.Wallet?.MofN ?? 0;
                                     @($"{signaturesCollected} out of {signaturesRequired}")
                             }
@@ -838,10 +838,10 @@
                 StateHasChanged();
                 return;
             }
-            GetData();
+            await GetData();
             _allRequestsDatagrid.Dispose();
             StateHasChanged();
-            _confirmationModal.CloseModal();
+            await _confirmationModal.CloseModal();
         }
     }
 
