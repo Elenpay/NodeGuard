@@ -99,7 +99,7 @@
 
                     </EditTemplate>
                 </DataGridColumn>
-
+                <DataGridColumn TItem="Node" Editable="true" Field="@nameof(Node.AutosweepEnabled)" Caption="Autosweep" Sortable="false"></DataGridColumn>
                 <DataGridColumn TItem="Node" Field="@nameof(Node.CreationDatetime)" Caption="Creation Date" Sortable="false">
                     <DisplayTemplate>
                         @context.CreationDatetime.Humanize()
@@ -179,7 +179,7 @@
 
     private async Task GetData()
     {
-        _nodes = await NodeRepository.GetAll();
+        _nodes = await NodeRepository.GetAllManagedByFundsManager();
         _availableWallets = await WalletRepository.GetAvailableWallets();
     }
 
