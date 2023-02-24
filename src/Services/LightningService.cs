@@ -943,7 +943,7 @@ namespace FundsManager.Services
         /// <param name="nbxplorerClient"></param>
         /// <param name="derivationStrategy"></param>
         /// <returns></returns>
-        private async Task<(List<ScriptCoin> coins, List<UTXO> selectedUTXOs)> GetTxInputCoins(
+        private async Task<(List<ICoin> coins, List<UTXO> selectedUTXOs)> GetTxInputCoins(
             ChannelOperationRequest channelOperationRequest,
             INBXplorerService nbXplorerService,
             DerivationStrategyBase derivationStrategy)

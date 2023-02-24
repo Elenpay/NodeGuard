@@ -50,12 +50,12 @@ namespace FundsManager.Helpers
         /// <param name="selectedUtxOs"></param>
         /// <param name="multisigCoins"></param>
         /// <exception cref="ArgumentException"></exception>
-        public static (PSBT?, bool) AddDerivationData(IEnumerable<Key> keys , (PSBT?, bool) result, List<UTXO> selectedUtxOs,
-            List<ScriptCoin> multisigCoins, ILogger? logger = null, string subderivationPath = "")
+        public static (PSBT?, bool) AddDerivationData(IEnumerable<Key> keys, (PSBT?, bool) result, List<UTXO> selectedUtxOs,
+            List<ICoin> coins, ILogger? logger = null, string subderivationPath = "")
         {
             if (keys == null) throw new ArgumentNullException(nameof(keys));
             if (selectedUtxOs == null) throw new ArgumentNullException(nameof(selectedUtxOs));
-            if (multisigCoins == null) throw new ArgumentNullException(nameof(multisigCoins));
+            if (coins == null) throw new ArgumentNullException(nameof(coins));
             if (subderivationPath == null) throw new ArgumentNullException(nameof(subderivationPath));
 
             var nbXplorerNetwork = CurrentNetworkHelper.GetCurrentNetwork();
@@ -90,10 +90,10 @@ namespace FundsManager.Helpers
                     var input = result.Item1.Inputs.FirstOrDefault(input =>
                         input?.GetCoin()?.Outpoint == selectedUtxo.Outpoint);
                     var addressRootedKeyPath = new RootedKeyPath(masterFingerprint, utxoDerivationPath);
-                    var multisigCoin = multisigCoins.FirstOrDefault(x => x.Outpoint == selectedUtxo.Outpoint);
+                    var coin = coins.FirstOrDefault(x => x.Outpoint == selectedUtxo.Outpoint);
 
-                    if (multisigCoin != null && input != null &&
-                        multisigCoin.Redeem.GetAllPubKeys().Contains(derivedPubKey))
+                    if (coin != null && input != null &&
+                        (coin as ScriptCoin).Redeem.GetAllPubKeys().Contains(derivedPubKey))
                     {
                         input.AddKeyPath(derivedPubKey, addressRootedKeyPath);
                     }
@@ -137,7 +137,7 @@ namespace FundsManager.Helpers
         /// <param name="logger"></param>
         /// <param name="mapper"></param>
         /// <returns></returns>
-        public static async Task<(List<ScriptCoin> coins, List<UTXO> selectedUTXOs)> SelectCoins(
+        public static async Task<(List<ICoin> coins, List<UTXO> selectedUTXOs)> SelectCoins(
             Wallet wallet, long satsAmount, UTXOChanges utxoChanges, List<FMUTXO> lockedUTXOs, ILogger logger,
             IMapper mapper)
         {
@@ -151,7 +151,7 @@ namespace FundsManager.Helpers
 
             var derivationStrategy = wallet.GetDerivationStrategy();
             var selectedUTXOs = new List<UTXO>();
-            var coins = new List<ScriptCoin>();
+            var coins = new List<ICoin>();
 
             var availableUTXOs = new List<UTXO>();
             foreach (var utxo in utxoChanges.Confirmed.UTXOs)
@@ -209,8 +209,15 @@ namespace FundsManager.Helpers
             }
 
             //UTXOS to Enumerable of ICOINS
-
-            coins = selectedUTXOs.Select(x => x.AsCoin(derivationStrategy).ToScriptCoin(x.ScriptPubKey))
+            coins = selectedUTXOs.Select<UTXO, ICoin>(x =>
+                {
+                    var coin = x.AsCoin(derivationStrategy);
+                    if (wallet.IsHotWallet)
+                    {
+                        return coin;
+                    }
+                    return coin.ToScriptCoin(x.ScriptPubKey);
+                })
                 .ToList();
 
             return (coins, selectedUTXOs);

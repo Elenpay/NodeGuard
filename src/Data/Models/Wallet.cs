@@ -103,7 +103,6 @@ namespace FundsManager.Data.Models
         /// <returns></returns>
         public DerivationStrategyBase? GetDerivationStrategy()
         {
-            DerivationStrategyBase result = null;
             var currentNetwork = CurrentNetworkHelper.GetCurrentNetwork();
             if (Keys != null && Keys.Any())
             {
@@ -125,7 +124,16 @@ namespace FundsManager.Data.Models
 
                 var factory = new DerivationStrategyFactory(currentNetwork);
 
-                result = factory.CreateMultiSigDerivationStrategy(bitcoinExtPubKeys.ToArray(),
+                if (IsHotWallet)
+                {
+                    return factory.CreateDirectDerivationStrategy(bitcoinExtPubKeys.FirstOrDefault(),
+                        new DerivationStrategyOptions
+                        {
+                            ScriptPubKeyType = ScriptPubKeyType.Segwit,
+                        }); 
+                }
+                
+                return factory.CreateMultiSigDerivationStrategy(bitcoinExtPubKeys.ToArray(),
                        MofN,
                         new DerivationStrategyOptions
                         {
@@ -133,7 +141,7 @@ namespace FundsManager.Data.Models
                         });
             }
 
-            return result;
+            return null;
         }
     }
 }
