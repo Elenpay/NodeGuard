@@ -49,6 +49,7 @@
       "commandName": "Project",
       "launchBrowser": true,
       "applicationUrl": "http://localhost:38080",
+      "hotReloadEnabled": true,
       "environmentVariables": {
         "ASPNETCORE_ENVIRONMENT": "Development",
         "POSTGRES_CONNECTIONSTRING": "Host=127.0.0.1;Port=5432;Database=fundsmanager;Username=rw_dev;Password=rw_dev",
