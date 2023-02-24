@@ -133,7 +133,8 @@ namespace FundsManager.Data.Repositories
             
 
             var valueTuple = await _repository.AddAsync(type, applicationDbContext);
-            await _notificationService.NotifyRequestSigners(type.WalletId, "/withdrawals");
+            if (!wallet.IsHotWallet)
+                await _notificationService.NotifyRequestSigners(type.WalletId, "/withdrawals");
 
             return valueTuple;
         }

@@ -147,7 +147,7 @@
                     @{
                         if (context.RequestType == OperationRequestType.Open)
                         {
-                            var signaturesCollected = context.NumberOfSignaturesCollected + 1;
+                            var signaturesCollected = context.NumberOfSignaturesCollected + (context.Wallet.IsHotWallet ? 0 : 1);
                             var signaturesRequired = context.Wallet?.MofN ?? 0;
                             @($"{signaturesCollected} out of {signaturesRequired}")
                         }
@@ -233,7 +233,7 @@
                 @{
                     if (context.RequestType == OperationRequestType.Open)
                     {
-                        var signaturesCollected = context.NumberOfSignaturesCollected + 1;
+                        var signaturesCollected = context.NumberOfSignaturesCollected + (context.Wallet.IsHotWallet ? 0 : 1);
                         var signaturesRequired = context.Wallet?.MofN ?? 0;
                         @($"{signaturesCollected} out of {signaturesRequired}")
                     }
@@ -297,7 +297,7 @@
 <ConfirmationModal
     @ref="_confirmationModal"
     Title="Are you sure?"
-    Body="You selected a hot wallet. This means that the system will automatically use the funds in it without the need of manual approval. \nAre you sure you want to perform this operation?"
+    Body="You selected a hot wallet. This means that the system will automatically use the funds in it without the need of manual approval. Are you sure you want to perform this operation?"
     OkLabel="Yes, I am sure"
     OnCancel="@CloseConfirmationModal"
     OnSubmit="@SubmitConfirmationModal"
