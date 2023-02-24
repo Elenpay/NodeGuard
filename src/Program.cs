@@ -33,8 +33,6 @@ using Microsoft.AspNetCore.Components.Authorization;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
 using Quartz;
-using Sentry;
-using Sentry.Extensibility;
 using OpenTelemetry.Trace;
 using OpenTelemetry.Resources;
 using OpenTelemetry.Metrics;
@@ -43,6 +41,8 @@ using Serilog;
 using Serilog.Events;
 using Serilog.Formatting.Json;
 using FundsManager.Helpers;
+using FundsManager.Rpc;
+using Microsoft.AspNetCore.Server.Kestrel.Core;
 
 namespace FundsManager
 {
@@ -107,6 +107,7 @@ namespace FundsManager
             builder.Services.AddTransient<IWalletWithdrawalRequestPsbtRepository, WalletWithdrawalRequestPsbtRepository>();
             builder.Services.AddTransient<IWalletWithdrawalRequestRepository, WalletWithdrawalRequestRepository>();
             builder.Services.AddTransient<IRemoteSignerService, RemoteSignerServiceService>();
+            builder.Services.AddTransient<ILiquidityRuleRepository, LiquidityRuleRepository>();
 
             //BlazoredToast
             builder.Services.AddBlazoredToast();
@@ -116,6 +117,7 @@ namespace FundsManager
             builder.Services.AddTransient<ILightningService, LightningService>();
             builder.Services.AddTransient<IBitcoinService, BitcoinService>();
             builder.Services.AddTransient<NotificationService, NotificationService>();
+            builder.Services.AddTransient<INBXplorerService, NBXplorerService>();
 
             //DbContext
             builder.Services.AddDbContext<ApplicationDbContext>(options =>
@@ -128,6 +130,17 @@ namespace FundsManager
                             .SingleQuery); // Slower but integrity is ensured
                     });
             }, ServiceLifetime.Transient);
+            
+            //gRPC
+            builder.Services.AddGrpc();
+            builder.WebHost.ConfigureKestrel(options =>
+            {
+                // Setup a HTTP/2 endpoint without TLS.
+                options.ListenLocalhost(50051, o => o.Protocols =
+                    HttpProtocols.Http2);
+                options.ListenLocalhost(38080, o => o.Protocols =
+                    HttpProtocols.Http1);
+            });
 
             //DBContextFactory
             builder.Services.AddDbContextFactory<ApplicationDbContext>(
@@ -253,6 +266,9 @@ namespace FundsManager
                             })
                     );
             }
+            
+            
+          
 
             var app = builder.Build();
 
@@ -297,6 +313,10 @@ namespace FundsManager
             app.MapControllers();
             app.MapBlazorHub();
             app.MapFallbackToPage("/_Host");
+            
+            //Grpc services
+            //TODO Auth in the future, DAPR(?)
+            app.MapGrpcService<NodeGuardService>();
 
             app.Run();
         }

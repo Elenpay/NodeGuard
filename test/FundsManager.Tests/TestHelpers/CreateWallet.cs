@@ -104,7 +104,8 @@ public class CreateWallet
             InternalWallet = internalWallet,
             InternalWalletId = internalWallet.Id,
             IsFinalised = true,
-            CreationDatetime = DateTimeOffset.Now
+            CreationDatetime = DateTimeOffset.Now,
+            InternalWalletSubDerivationPath = ""
         };
 
         return testingMultisigWallet;

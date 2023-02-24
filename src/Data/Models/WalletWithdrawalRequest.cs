@@ -122,6 +122,11 @@ namespace FundsManager.Data.Models
         {
             var result = false;
 
+            if (Wallet.IsHotWallet)
+            {
+                return true;
+            }
+            
             if (WalletWithdrawalRequestPSBTs != null && WalletWithdrawalRequestPSBTs.Any())
             {
                 var numberOfSignaturesCollected = NumberOfSignaturesCollected;
@@ -164,7 +169,7 @@ namespace FundsManager.Data.Models
         /// <summary>
         /// User who requested the withdrawal
         /// </summary>
-        public string UserRequestorId { get; set; }
+        public string? UserRequestorId { get; set; }
 
         public ApplicationUser UserRequestor { get; set; }
         public int WalletId { get; set; }

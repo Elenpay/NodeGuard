@@ -53,6 +53,29 @@ namespace FundsManager.Data.Models
         public bool IsFinalised { get; set; }
 
         public WalletAddressType WalletAddressType { get; set; }
+        
+        /// <summary>
+        /// Used to mark this wallet as Hot that does not require human signing (NodeGuard or its remote signer will sign the transaction)
+        /// </summary>
+        public bool IsHotWallet { get; set; }
+        
+        /// <summary>
+        /// This field is used to store the derivation path which allow to uniquely identify the wallet amongs others (Hot or Multisig)
+        /// </summary>
+        public string? InternalWalletSubDerivationPath { get; set; }
+        
+        /// <summary>
+        /// This field is a copy of the column by the same name in the InternalWallet model.
+        /// It is used as a way to make the relationship (InternalWalletSubDerivationPath,MasterFingerprint) unique.
+        /// If a private key is compromised and we have to change the internal wallet,
+        /// this field will allow us to start derivation paths from 0 again since the MasterFingerprint will be different
+        /// </summary>
+        public string? InternalWalletMasterFingerprint { get; set; }
+        
+        /// <summary>
+        /// This is a optional field that you can used to link wallets with externally-generated IDs (e.g. a wallet belongs to a btcpayserver store)
+        /// </summary>
+        public string? ReferenceId { get; set; }
 
         [NotMapped] public bool RequiresInternalWalletSigning => Keys != null ? Keys.Count == MofN : false;
 
@@ -60,6 +83,7 @@ namespace FundsManager.Data.Models
 
         public ICollection<ChannelOperationRequest> ChannelOperationRequestsAsSource { get; set; }
         public ICollection<Key> Keys { get; set; }
+        
 
         /// <summary>
         /// The internal wallet is used to co-sign with other keys of the wallet entity
@@ -67,7 +91,10 @@ namespace FundsManager.Data.Models
         public int InternalWalletId { get; set; }
 
         public InternalWallet InternalWallet { get; set; }
-
+        
+        
+        public ICollection<LiquidityRule> LiquidityRules { get; set; }
+        
         #endregion Relationships
 
         /// <summary>
@@ -78,13 +105,16 @@ namespace FundsManager.Data.Models
         {
             DerivationStrategyBase result = null;
             var currentNetwork = CurrentNetworkHelper.GetCurrentNetwork();
-
             if (Keys != null && Keys.Any())
             {
                 var bitcoinExtPubKeys = Keys.Select(x =>
                     {
-                        return new BitcoinExtPubKey(x.XPUB,
-                            currentNetwork);
+                        if (x.InternalWalletId != null)
+                        {
+                            var keyPath = KeyPath.Parse(InternalWalletSubDerivationPath);
+                            return new BitcoinExtPubKey(x.XPUB, currentNetwork).Derive(keyPath);
+                        }
+                        return new BitcoinExtPubKey(x.XPUB, currentNetwork);
                     }).OrderBy(x => x.ExtPubKey.PubKey) //This is to match sortedmulti() lexicographical sort
                     .ToList();
 

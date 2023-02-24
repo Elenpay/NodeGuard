@@ -19,6 +19,7 @@
 
 using AutoMapper;
 using FundsManager.Data.Models;
+using FundsManager.Services;
 using Google.Protobuf;
 using NBitcoin;
 using NBXplorer;
@@ -39,7 +40,7 @@ namespace FundsManager.Helpers
             utxoChanges.Confirmed.UTXOs = utxoChanges.Confirmed.UTXOs.DistinctBy(x => x.Outpoint).ToList();
             utxoChanges.Unconfirmed.UTXOs = utxoChanges.Unconfirmed.UTXOs.DistinctBy(x => x.Outpoint).ToList();
         }
-        
+
         /// <summary>
         /// Helper that adds global xpubs fields and derivation paths in the PSBT inputs to allow hardware wallets or the remote signer to find the right key to sign
         /// </summary>
@@ -50,20 +51,25 @@ namespace FundsManager.Helpers
         /// <param name="multisigCoins"></param>
         /// <exception cref="ArgumentException"></exception>
         public static (PSBT?, bool) AddDerivationData(IEnumerable<Key> keys , (PSBT?, bool) result, List<UTXO> selectedUtxOs,
-            List<ScriptCoin> multisigCoins, ILogger? logger = null)
+            List<ScriptCoin> multisigCoins, ILogger? logger = null, string subderivationPath = "")
         {
             if (keys == null) throw new ArgumentNullException(nameof(keys));
             if (selectedUtxOs == null) throw new ArgumentNullException(nameof(selectedUtxOs));
             if (multisigCoins == null) throw new ArgumentNullException(nameof(multisigCoins));
-            
+            if (subderivationPath == null) throw new ArgumentNullException(nameof(subderivationPath));
+
             var nbXplorerNetwork = CurrentNetworkHelper.GetCurrentNetwork();
             foreach (var key in keys)
             {
                 if (string.IsNullOrWhiteSpace(key.MasterFingerprint) || string.IsNullOrWhiteSpace(key.XPUB)) continue;
-                
+
                 var bitcoinExtPubKey = new BitcoinExtPubKey(key.XPUB, nbXplorerNetwork);
                 var masterFingerprint = HDFingerprint.Parse(key.MasterFingerprint);
                 var rootedKeyPath = new RootedKeyPath(masterFingerprint, new KeyPath(key.Path));
+                if (key.InternalWalletId != null)
+                {
+                    rootedKeyPath = new RootedKeyPath(masterFingerprint, new KeyPath(key.Path).Derive(subderivationPath));
+                }
 
                 //Global xpubs field addition
                 result.Item1.GlobalXPubs.Add(
@@ -75,13 +81,19 @@ namespace FundsManager.Helpers
                 {
                     var utxoDerivationPath = KeyPath.Parse(key.Path).Derive(selectedUtxo.KeyPath);
                     var derivedPubKey = bitcoinExtPubKey.Derive(selectedUtxo.KeyPath).GetPublicKey();
-
+                    if (key.InternalWalletId != null)
+                    {
+                        utxoDerivationPath = KeyPath.Parse(key.Path).Derive(subderivationPath).Derive(selectedUtxo.KeyPath);
+                        derivedPubKey = bitcoinExtPubKey.Derive(new KeyPath(subderivationPath)).Derive(selectedUtxo.KeyPath).GetPublicKey();
+                    }
+                    
                     var input = result.Item1.Inputs.FirstOrDefault(input =>
                         input?.GetCoin()?.Outpoint == selectedUtxo.Outpoint);
                     var addressRootedKeyPath = new RootedKeyPath(masterFingerprint, utxoDerivationPath);
                     var multisigCoin = multisigCoins.FirstOrDefault(x => x.Outpoint == selectedUtxo.Outpoint);
 
-                    if (multisigCoin != null && input != null && multisigCoin.Redeem.GetAllPubKeys().Contains(derivedPubKey))
+                    if (multisigCoin != null && input != null &&
+                        multisigCoin.Redeem.GetAllPubKeys().Contains(derivedPubKey))
                     {
                         input.AddKeyPath(derivedPubKey, addressRootedKeyPath);
                     }
@@ -99,22 +111,21 @@ namespace FundsManager.Helpers
 
 
         /// <summary>
-        /// Generates the ExplorerClient for using nbxplorer based on a bitcoin networy type
+        /// Create the ExplorerClient for using nbxplorer based the current network
         /// </summary>
         /// <returns></returns>
         /// <exception cref="ArgumentNullException"></exception>
-        public static Func<(Network nbXplorerNetwork, IUnmockable<ExplorerClient> nbxplorerClient)> GenerateNetwork =
-            () =>
-            {
-                //Nbxplorer api client
-                var nbXplorerNetwork = CurrentNetworkHelper.GetCurrentNetwork();
+        public static async Task<ExplorerClient>  CreateNBExplorerClient()
+        {
+            //Nbxplorer api client
+            var nbXplorerNetwork = CurrentNetworkHelper.GetCurrentNetwork();
 
-                var provider = new NBXplorerNetworkProvider(nbXplorerNetwork.ChainName);
-                var nbxplorerClient = new ExplorerClient(
-                    provider.GetFromCryptoCode(nbXplorerNetwork.NetworkSet.CryptoCode),
-                    new Uri(Constants.NBXPLORER_URI));
-                return (nbXplorerNetwork, nbxplorerClient.Wrap());
-            };
+            var provider = new NBXplorerNetworkProvider(nbXplorerNetwork.ChainName);
+            var nbxplorerClient = new ExplorerClient(
+                provider.GetFromCryptoCode(nbXplorerNetwork.NetworkSet.CryptoCode),
+                new Uri(Constants.NBXPLORER_URI));
+            return  nbxplorerClient;
+        }
 
         /// <summary>
         /// Helper to select coins from a wallet for requests (Withdrawals, ChannelOperationRequest). FIFO is the coin selection
@@ -127,7 +138,8 @@ namespace FundsManager.Helpers
         /// <param name="mapper"></param>
         /// <returns></returns>
         public static async Task<(List<ScriptCoin> coins, List<UTXO> selectedUTXOs)> SelectCoins(
-           Wallet wallet, long satsAmount, UTXOChanges utxoChanges, List<FMUTXO> lockedUTXOs, ILogger logger, IMapper mapper)
+            Wallet wallet, long satsAmount, UTXOChanges utxoChanges, List<FMUTXO> lockedUTXOs, ILogger logger,
+            IMapper mapper)
         {
             if (wallet == null) throw new ArgumentNullException(nameof(wallet));
             if (utxoChanges == null) throw new ArgumentNullException(nameof(utxoChanges));
@@ -167,7 +179,7 @@ namespace FundsManager.Helpers
 
             //FIFO Algorithm to match the amount, oldest UTXOs are first taken
 
-            var totalUTXOsConfirmedSats = utxosStack.Sum(x => ((Money)x.Value).Satoshi);
+            var totalUTXOsConfirmedSats = utxosStack.Sum(x => ((Money) x.Value).Satoshi);
 
             if (totalUTXOsConfirmedSats < satsAmount)
             {
@@ -185,7 +197,7 @@ namespace FundsManager.Helpers
                 if (utxosStack.TryPop(out var utxo))
                 {
                     selectedUTXOs.Add(utxo);
-                    utxosSatsAmountAccumulator += ((Money)utxo.Value).Satoshi;
+                    utxosSatsAmountAccumulator += ((Money) utxo.Value).Satoshi;
                 }
 
                 iterations++;
@@ -211,7 +223,7 @@ namespace FundsManager.Helpers
         /// <param name="nbxplorerClient"></param>
         /// <returns></returns>
         public static async Task<GetFeeRateResult> GetFeeRateResult(Network nbXplorerNetwork,
-            IUnmockable<ExplorerClient> nbxplorerClient)
+          INBXplorerService nbxplorerClient)
         {
             GetFeeRateResult feeRateResult;
             if (nbXplorerNetwork == Network.RegTest)
@@ -225,7 +237,8 @@ namespace FundsManager.Helpers
             else
             {
                 //TODO Maybe the block confirmation count can be a parameter.
-                feeRateResult = await nbxplorerClient.Execute(x => x.GetFeeRateAsync(1, default)); //To be confirmed in 1 block
+                feeRateResult =
+                    await nbxplorerClient.GetFeeRateAsync(1, default); //To be confirmed in 1 block
             }
 
             return feeRateResult;

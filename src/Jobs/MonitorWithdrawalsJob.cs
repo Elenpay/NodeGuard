@@ -17,16 +17,10 @@
  *
  */
 
-﻿using FundsManager.Data.Models;
-using FundsManager.Data.Repositories;
+using FundsManager.Data.Models;
 using FundsManager.Data.Repositories.Interfaces;
-using FundsManager.Helpers;
-using Grpc.Core;
-using Grpc.Net.Client;
-using Lnrpc;
+using FundsManager.Services;
 using NBitcoin;
-using NBXplorer;
-using NBXplorer.DerivationStrategy;
 using Quartz;
 
 namespace FundsManager.Jobs;
@@ -39,12 +33,16 @@ public class MonitorWithdrawalsJob : IJob
 {
     private readonly ILogger<MonitorWithdrawalsJob> _logger;
     private readonly IWalletWithdrawalRequestRepository _walletWithdrawalRequestRepository;
+    private readonly INBXplorerService _nbXplorerService;
 
     public MonitorWithdrawalsJob(ILogger<MonitorWithdrawalsJob> logger,
-        IWalletWithdrawalRequestRepository walletWithdrawalRequestRepository)
+        IWalletWithdrawalRequestRepository walletWithdrawalRequestRepository,
+        INBXplorerService nbXplorerService
+    )
     {
         _logger = logger;
         _walletWithdrawalRequestRepository = walletWithdrawalRequestRepository;
+        _nbXplorerService = nbXplorerService;
     }
 
     public async Task Execute(IJobExecutionContext context)
@@ -59,9 +57,8 @@ public class MonitorWithdrawalsJob : IJob
                 try
                 {
                     //Let's check if the minimum amount of confirmations are established
-                    var (network, nbxplorerclient) = LightningHelper.GenerateNetwork();
-
-                    var getTxResult = await nbxplorerclient.Execute(x => x.GetTransactionAsync(uint256.Parse(walletWithdrawalRequest.TxId), default));
+                
+                    var getTxResult = await _nbXplorerService.GetTransactionAsync(uint256.Parse(walletWithdrawalRequest.TxId), default);
 
                     if (getTxResult.Confirmations >= Constants.TRANSACTION_CONFIRMATION_MINIMUM_BLOCKS)
                     {
@@ -71,7 +68,8 @@ public class MonitorWithdrawalsJob : IJob
 
                         if (!updateResult.Item1)
                         {
-                            _logger.LogError("Error while updating wallet withdrawal: {RequestId}, status: {RequestStatus}",
+                            _logger.LogError(
+                                "Error while updating wallet withdrawal: {RequestId}, status: {RequestStatus}",
                                 walletWithdrawalRequest.Id,
                                 walletWithdrawalRequest.Status);
                         }

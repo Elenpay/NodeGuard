@@ -9,6 +9,8 @@
     <DockerfileContext>.</DockerfileContext>
     <DockerComposeProjectPath>..\..\docker\docker-compose.dcproj</DockerComposeProjectPath>
 	<CheckForOverflowUnderflow>true</CheckForOverflowUnderflow>
+	<Company>Elenpay</Company>
+	<Product>NodeGuard</Product>
 
   </PropertyGroup>
 
@@ -67,6 +69,7 @@
     <Protobuf Include="Proto\lightning.proto" GrpcServices="Client" />
     <Protobuf Include="Proto\signer.proto" GrpcServices="Client" />
     <Protobuf Include="Proto\walletkit.proto" GrpcServices="Client" />
+    <Protobuf Include="Proto\nodeguard.proto" GrpcServices="Server" />
   </ItemGroup>
 
   <ItemGroup>

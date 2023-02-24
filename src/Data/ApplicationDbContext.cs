@@ -14,10 +14,9 @@
  *
  * You should have received a copy of the GNU Affero General Public License
  * along with this program.  If not, see http://www.gnu.org/licenses/.
- *
  */
 
-﻿using FundsManager.Data.Models;
+using FundsManager.Data.Models;
 using Microsoft.AspNetCore.Identity.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore;
 
@@ -48,6 +47,11 @@ namespace FundsManager.Data
 
             modelBuilder.Entity<Node>().HasIndex(x => x.PubKey).IsUnique();
             modelBuilder.Entity<Node>().HasIndex(x => x.Name).IsUnique();
+            modelBuilder.Entity<Wallet>().HasIndex(x => new {x.InternalWalletSubDerivationPath, x.InternalWalletMasterFingerprint}).IsUnique();
+            
+            //There should be only one Liquidity Rule per Channel
+            modelBuilder.Entity<LiquidityRule>().HasIndex(x => x.ChannelId).IsUnique();
+            
             modelBuilder.Entity<ApplicationUser>().HasIndex(x => x.NormalizedUserName).IsUnique();
 
             base.OnModelCreating(modelBuilder);
@@ -74,5 +78,7 @@ namespace FundsManager.Data
         public DbSet<InternalWallet> InternalWallets { get; set; }
 
         public DbSet<FMUTXO> FMUTXOs { get; set; }
+        
+        public DbSet<LiquidityRule> LiquidityRules { get; set; }
     }
 }

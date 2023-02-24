@@ -52,7 +52,7 @@ public class Constants
 
     // Crons & Jobs
     public static readonly string MONITOR_WITHDRAWALS_CRON = "10 0/5 * * * ?";
-    public static readonly string? JOB_RETRY_INTERVAL_LIST_IN_MINUTES;
+    public static readonly string JOB_RETRY_INTERVAL_LIST_IN_MINUTES = "1,2,5,10,20";
 
 
     // Observability
@@ -92,8 +92,7 @@ public class Constants
         ENABLE_HW_SUPPORT = Environment.GetEnvironmentVariable("ENABLE_HW_SUPPORT") != "false"; // We default to true
 
         // Connections
-        var connectionString = Environment.GetEnvironmentVariable("POSTGRES_CONNECTIONSTRING");
-        if (connectionString != null) POSTGRES_CONNECTIONSTRING = connectionString;
+        POSTGRES_CONNECTIONSTRING =  Environment.GetEnvironmentVariable("POSTGRES_CONNECTIONSTRING") ?? POSTGRES_CONNECTIONSTRING;
 
         NBXPLORER_URI = GetEnvironmentalVariableOrThrowIfNotTesting("NBXPLORER_URI");
 
@@ -143,11 +142,11 @@ public class Constants
         
 
         // Crons & Jobs
-        var cronExpression = Environment.GetEnvironmentVariable("MONITOR_WITHDRAWALS_CRON");
-        if (cronExpression != null) MONITOR_WITHDRAWALS_CRON = cronExpression;
+        MONITOR_WITHDRAWALS_CRON = Environment.GetEnvironmentVariable("MONITOR_WITHDRAWALS_CRON") ?? MONITOR_WITHDRAWALS_CRON;
 
-        JOB_RETRY_INTERVAL_LIST_IN_MINUTES = Environment.GetEnvironmentVariable("JOB_RETRY_INTERVAL_LIST_IN_MINUTES");
+        JOB_RETRY_INTERVAL_LIST_IN_MINUTES = Environment.GetEnvironmentVariable("JOB_RETRY_INTERVAL_LIST_IN_MINUTES") ?? JOB_RETRY_INTERVAL_LIST_IN_MINUTES;
 
+        
         // Observability
         //We need to expand the env-var with %ENV_VAR% for K8S
         var otelCollectorEndpointToBeExpanded = Environment.GetEnvironmentVariable("OTEL_EXPORTER_OTLP_ENDPOINT");

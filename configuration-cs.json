@@ -1,5 +1,5 @@
 {
-  "headerFile": "./license-header.txt",
+  "headerFile": "./lic_header.txt",
   "style": "SlashStar",
   "includes": ["src/**/*.cs", "test/**/*.cs"],
   "excludes": ["src/Areas/Identity/Pages/**/*"],
