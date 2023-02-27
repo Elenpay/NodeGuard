@@ -50,23 +50,24 @@ namespace FundsManager.Helpers
         /// <param name="selectedUtxOs"></param>
         /// <param name="multisigCoins"></param>
         /// <exception cref="ArgumentException"></exception>
-        public static (PSBT?, bool) AddDerivationData(IEnumerable<Key> keys , (PSBT?, bool) result, List<UTXO> selectedUtxOs,
+        public static (PSBT?, bool) AddDerivationData(Wallet wallet , (PSBT?, bool) result, List<UTXO> selectedUtxOs,
             List<ScriptCoin> multisigCoins, ILogger? logger = null, string subderivationPath = "")
         {
-            if (keys == null) throw new ArgumentNullException(nameof(keys));
+            if (wallet == null) throw new ArgumentNullException(nameof(wallet));
+            if (wallet.Keys == null) throw new ArgumentNullException(nameof(wallet.Keys));
             if (selectedUtxOs == null) throw new ArgumentNullException(nameof(selectedUtxOs));
             if (multisigCoins == null) throw new ArgumentNullException(nameof(multisigCoins));
             if (subderivationPath == null) throw new ArgumentNullException(nameof(subderivationPath));
 
             var nbXplorerNetwork = CurrentNetworkHelper.GetCurrentNetwork();
-            foreach (var key in keys)
+            foreach (var key in wallet.Keys)
             {
                 if (string.IsNullOrWhiteSpace(key.MasterFingerprint) || string.IsNullOrWhiteSpace(key.XPUB)) continue;
 
                 var bitcoinExtPubKey = new BitcoinExtPubKey(key.XPUB, nbXplorerNetwork);
                 var masterFingerprint = HDFingerprint.Parse(key.MasterFingerprint);
                 var rootedKeyPath = new RootedKeyPath(masterFingerprint, new KeyPath(key.Path));
-                if (key.InternalWalletId != null)
+                if (wallet.IsHotWallet && key.InternalWalletId != null)
                 {
                     rootedKeyPath = new RootedKeyPath(masterFingerprint, new KeyPath(key.Path).Derive(subderivationPath));
                 }

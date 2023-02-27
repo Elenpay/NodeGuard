@@ -109,7 +109,7 @@ namespace FundsManager.Data.Models
             {
                 var bitcoinExtPubKeys = Keys.Select(x =>
                     {
-                        if (x.InternalWalletId != null)
+                        if (IsHotWallet && x.InternalWalletId != null)
                         {
                             var keyPath = KeyPath.Parse(InternalWalletSubDerivationPath);
                             return new BitcoinExtPubKey(x.XPUB, currentNetwork).Derive(keyPath);
