@@ -296,7 +296,7 @@
     private double GetPercentageBalance(Channel channel)
     {
         var result = LightningService.GetChannelBalance(channel).Result;
-        return (result.Item1.Sat / (double)(result.Item2.Sat + result.Item1.Sat)) * 100;
+        return (result.Item1 / (double)(result.Item2 + result.Item1)) * 100;
     }
 
     private async Task OnSelectedWalletChanged(int arg)

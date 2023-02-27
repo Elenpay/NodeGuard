@@ -97,7 +97,7 @@ namespace FundsManager.Services
         /// <returns></returns>
         public Task<LightningNode?> GetNodeInfo(string pubkey);
 
-        public Task<Tuple<Amount, Amount>> GetChannelBalance(Channel channel);
+        public Task<Tuple<long, long>> GetChannelBalance(Channel channel);
     }
 
     public class LightningService : ILightningService
@@ -1191,18 +1191,19 @@ namespace FundsManager.Services
             return result;
         }
 
-        public async Task<Tuple<Amount, Amount>> GetChannelBalance(Channel channel)
+        public async Task<Tuple<long, long>> GetChannelBalance(Channel channel)
         {
             var client = CreateLightningClient(channel.Node.Endpoint);
-            int channelRemoteBalance = 0;
             try
             {
-                var result = client.Execute(x => x.ChannelBalance(new ChannelBalanceRequest(), new Metadata
-                {
+                var result = client.Execute(x => x.ListChannels(new ListChannelsRequest(), 
+                    new Metadata {
                     {"macaroon", channel.Node.ChannelAdminMacaroon}
                 }, null, default));
+                
+                var chan = result.Channels.First(x => x.ChanId == channel.ChanId);
 
-                var res = new Tuple<Amount, Amount>(result.LocalBalance, result.RemoteBalance);
+                var res = new Tuple<long, long>(chan.LocalBalance, chan.RemoteBalance);
                 return res;
             }
             //We avoid to stop the method if the peer is already connected
