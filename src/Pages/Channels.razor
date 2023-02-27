@@ -90,7 +90,7 @@
     </Column>
 </Row>
 <Modal @bind-Visible="@_modalVisible">
-    <ModalContent Centered Scrollable Size="ModalSize.Small">
+    <ModalContent Centered Scrollable Size="ModalSize.ExtraLarge">
         <ModalHeader>
             <ModalTitle>Channels requests related to Channel: @_selectedChannel?.ChanId</ModalTitle>
 <CloseButton/>
@@ -294,8 +294,16 @@
 
     private double GetPercentageBalance(Channel channel)
     {
-        var result = LightningService.GetChannelBalance(channel).Result;
-        return (result.Item1 / (double)(result.Item2 + result.Item1)) * 100;
+        try
+        {
+            var result = LightningService.GetChannelBalance(channel).Result;
+            return (result.Item1 / (double)(result.Item2 + result.Item1)) * 100;
+        }
+        catch (Exception e)
+        {
+            ToastService.ShowError($"Channel balance for channel id:{channel.Id} could not be retrieved");
+            return -1;
+        }
     }
     
     private async Task OnSelectedWalletChanged(int arg)

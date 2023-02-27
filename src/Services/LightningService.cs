@@ -29,6 +29,7 @@ using NBXplorer.DerivationStrategy;
 using NBXplorer.Models;
 using System.Security.Cryptography;
 using AutoMapper;
+using Blazored.Toast.Services;
 using FundsManager.Data;
 using FundsManager.Helpers;
 using Humanizer;
@@ -1194,23 +1195,17 @@ namespace FundsManager.Services
         public async Task<Tuple<long, long>> GetChannelBalance(Channel channel)
         {
             var client = CreateLightningClient(channel.Node.Endpoint);
-            try
-            {
-                var result = client.Execute(x => x.ListChannels(new ListChannelsRequest(), 
-                    new Metadata {
-                    {"macaroon", channel.Node.ChannelAdminMacaroon}
-                }, null, default));
-                
-                var chan = result.Channels.First(x => x.ChanId == channel.ChanId);
+            var result = client.Execute(x => x.ListChannels(new ListChannelsRequest(), 
+                new Metadata {
+                {"macaroon", channel.Node.ChannelAdminMacaroon}
+            }, null, default));
+            
+            var chan = result.Channels.FirstOrDefault(x => x.ChanId == channel.ChanId);
+            if (chan == null)
+                throw new Exception("Channel not found");
 
-                var res = new Tuple<long, long>(chan.LocalBalance, chan.RemoteBalance);
-                return res;
-            }
-            //We avoid to stop the method if the peer is already connected
-            catch (RpcException e)
-            {
-                    throw e;
-            }
+            var res = new Tuple<long, long>(chan.LocalBalance, chan.RemoteBalance);
+            return res;
         }
     }
 }
