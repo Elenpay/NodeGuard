@@ -42,7 +42,8 @@
         "MONITOR_WITHDRAWALS_CRON": "0 */1 * * * ?",
         "REDIS_CONNECTIONSTRING": "host.docker.internal",
         "COINGECKO_ENDPOINT": "https://pro-api.coingecko.com/api/v3/coins/markets?vs_currency=usd&ids=bitcoin",
-        "COINGECKO_KEY": "TBD"
+        "COINGECKO_KEY": "TBD",
+        "HTTP1_LISTEN_PORT": "38080"
       }
     },
     "FundsManager NOVS": {
@@ -80,7 +81,8 @@
         "MONITOR_WITHDRAWALS_CRON": "0 */1 * * * ?",
         "REDIS_CONNECTIONSTRING": "localhost:6379,abortConnect=false,connectTimeout=30000,responseTimeout=30000",
         "COINGECKO_ENDPOINT": "https://pro-api.coingecko.com/api/v3/coins/markets?vs_currency=usd&ids=bitcoin",
-        "COINGECKO_KEY": "TBD"
+        "COINGECKO_KEY": "TBD",
+        "HTTP1_LISTEN_PORT": "38080"
       }
     },
     "IIS Express": {
