@@ -17,7 +17,7 @@
  *
  */
 
-﻿using AutoMapper;
+using AutoMapper;
 using FundsManager.Data.Models;
 using NBitcoin;
 using UTXO = NBXplorer.Models.UTXO;
@@ -44,7 +44,8 @@ namespace FundsManager.Automapper
                 .ForMember(x => x.Users, opt => opt.Ignore());
 
             CreateMap<Channel, Channel>()
-                .ForMember(x => x.ChannelOperationRequests, opt => opt.Ignore());
+                .ForMember(x => x.ChannelOperationRequests, opt => opt.Ignore())
+                .ForMember(x => x.LiquidityRules, opt => opt.Ignore());
 
             CreateMap<ChannelOperationRequest, ChannelOperationRequest>()
                 .ForMember(x => x.Utxos, opt => opt.Ignore())
@@ -64,14 +65,20 @@ namespace FundsManager.Automapper
             CreateMap<UTXO, FMUTXO>()
                 .ForMember(x => x.TxId, opt => opt.MapFrom(x => x.Outpoint.Hash.ToString()))
                 .ForMember(x => x.OutputIndex, opt => opt.MapFrom(x => x.Outpoint.N))
-                .ForMember(x => x.SatsAmount, opt => opt.MapFrom(x => ((Money)x.Value).Satoshi));
+                .ForMember(x => x.SatsAmount, opt => opt.MapFrom(x => ((Money) x.Value).Satoshi));
 
             CreateMap<LiquidityRule, Nodeguard.LiquidityRule>()
                 .ForMember(x => x.MinimumLocalBalance, opt => opt.MapFrom(x => x.MinimumLocalBalance ?? 0))
                 .ForMember(x => x.MinimumRemoteBalance, opt => opt.MapFrom(x => x.MinimumRemoteBalance ?? 0))
                 .ForMember(x => x.ChannelId, opt => opt.MapFrom(x => x.Channel.ChanId))
                 .ForMember(x => x.WalletId, opt => opt.MapFrom(x => x.WalletId))
+                .ForMember(x => x.RebalanceTarget, opt => opt.MapFrom(x => x.RebalanceTarget ?? 0))
                 .ForMember(x => x.NodePubkey, opt => opt.MapFrom(x => x.Node.PubKey));
+
+            CreateMap<LiquidityRule, LiquidityRule>()
+                .ForMember(x => x.Wallet, opt => opt.Ignore())
+                .ForMember(x => x.Channel, opt => opt.Ignore());
+            
         }
     }
 }

@@ -68,6 +68,10 @@ namespace FundsManager.Data.Repositories
                 .Include(channel => channel.ChannelOperationRequests).ThenInclude(request => request.Wallet)
                 .Include(channel => channel.ChannelOperationRequests).ThenInclude(request => request.DestNode)
                 .Include(channel => channel.ChannelOperationRequests).ThenInclude(request => request.ChannelOperationRequestPsbts)
+                .Include(x=> x.LiquidityRules)
+                .ThenInclude(x=> x.Node)
+                .Include(x=> x.LiquidityRules)
+                .ThenInclude(x=> x.Wallet)
                 .ToListAsync();
         }
 
