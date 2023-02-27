@@ -44,7 +44,8 @@ services:
         MSSQL_CONNECTIONSTRING: "Server=localhost;Database=master;User=sa;Password=rw_dev;"
         REDIS_CONNECTIONSTRING: "redis"
         #OTEL_COLLECTOR_ENDPOINT: http://host.docker.internal:4318 #gRPC endpoint for OTel collector (optional)
-      
+        HTTP1_LISTEN_PORT: 38080
+
     volumes:
         - fundsmanager_data_keys_dir:/root/.aspnet/DataProtection-Keys
 

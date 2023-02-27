@@ -61,7 +61,6 @@
                 </DataGridNumericColumn>
                 <DataGridNumericColumn TItem="Channel" Field="@nameof(Channel.SatsAmount)" Caption="Capacity (Sats)" Sortable="false"/>
                 <DataGridColumn TItem="Channel" Field="@nameof(Channel.BtcCloseAddress)" Caption="Treasury return address" Sortable="false">
-
                     <DisplayTemplate>
                         @if (context.BtcCloseAddress != null)
                         {
@@ -75,9 +74,6 @@
                 </DataGridColumn>
                 <DataGridColumn TItem="Channel" Field="@nameof(Channel.CreationDatetime)" Caption="@nameof(Channel.CreationDatetime).Humanize(LetterCasing.Sentence)" Sortable="false"/>
                 <DataGridColumn TItem="Channel" Field="@nameof(Channel.UpdateDatetime)" Caption="@nameof(Channel.UpdateDatetime).Humanize(LetterCasing.Sentence)" Sortable="false"/>
-               
-                <DataGridColumn TItem="Channel" Field="@nameof(Channel.CreationDatetime)" Caption="@nameof(Channel.CreationDatetime).Humanize(LetterCasing.Sentence)" Sortable="false" />
-                <DataGridColumn TItem="Channel" Field="@nameof(Channel.UpdateDatetime)" Caption="@nameof(Channel.UpdateDatetime).Humanize(LetterCasing.Sentence)" Sortable="false" />
                 <DataGridColumn TItem="Channel" Caption="Channel Balance">
                     <DisplayTemplate>
                         <Progress Color="Color.Primary" Value="@Convert.ToInt32(GetPercentageBalance(context))"/>
@@ -86,6 +82,9 @@
                         }</Text>
                     </DisplayTemplate>
                 </DataGridColumn>
+                <DataGridColumn TItem="Channel" Field="@nameof(Channel.CreationDatetime)" Caption="@nameof(Channel.CreationDatetime).Humanize(LetterCasing.Sentence)" Sortable="false"/>
+                <DataGridColumn TItem="Channel" Field="@nameof(Channel.UpdateDatetime)" Caption="@nameof(Channel.UpdateDatetime).Humanize(LetterCasing.Sentence)" Sortable="false"/>
+               
             </DataGridColumns>
         </DataGrid>
     </Column>
@@ -298,7 +297,7 @@
         var result = LightningService.GetChannelBalance(channel).Result;
         return (result.Item1 / (double)(result.Item2 + result.Item1)) * 100;
     }
-
+    
     private async Task OnSelectedWalletChanged(int arg)
     {
         _currentLiquidityRule.WalletId = arg;
