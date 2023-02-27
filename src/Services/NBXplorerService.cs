@@ -104,7 +104,9 @@ public class NBXplorerService : INBXplorerService
   public async Task<StatusResult> GetStatusAsync(CancellationToken cancellation = default)
   {
     var client = await LightningHelper.CreateNBExplorerClient();
+
+    var statusResult = await client.GetStatusAsync(cancellation);
     
-    return await client.GetStatusAsync(cancellation);
+    return statusResult;
   }
 }
