@@ -136,9 +136,9 @@ namespace FundsManager
             builder.WebHost.ConfigureKestrel(options =>
             {
                 // Setup a HTTP/2 endpoint without TLS.
-                options.ListenLocalhost(50051, o => o.Protocols =
+                options.ListenAnyIP(50051, o => o.Protocols =
                     HttpProtocols.Http2);
-                options.ListenLocalhost(int.Parse(Environment.GetEnvironmentVariable("HTTP1_LISTEN_PORT") ?? "80") , o => o.Protocols =
+                options.ListenAnyIP(int.Parse(Environment.GetEnvironmentVariable("HTTP1_LISTEN_PORT") ?? "80") , o => o.Protocols =
                     HttpProtocols.Http1);
             });
 
