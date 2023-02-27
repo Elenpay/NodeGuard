@@ -96,6 +96,8 @@ namespace FundsManager.Services
         /// <param name="pubkey"></param>
         /// <returns></returns>
         public Task<LightningNode?> GetNodeInfo(string pubkey);
+
+        public Task<Tuple<Amount, Amount>> GetChannelBalance(Channel channel);
     }
 
     public class LightningService : ILightningService
@@ -1187,6 +1189,27 @@ namespace FundsManager.Services
             }
 
             return result;
+        }
+
+        public async Task<Tuple<Amount, Amount>> GetChannelBalance(Channel channel)
+        {
+            var client = CreateLightningClient(channel.Node.Endpoint);
+            int channelRemoteBalance = 0;
+            try
+            {
+                var result = client.Execute(x => x.ChannelBalance(new ChannelBalanceRequest(), new Metadata
+                {
+                    {"macaroon", channel.Node.ChannelAdminMacaroon}
+                }, null, default));
+
+                var res = new Tuple<Amount, Amount>(result.LocalBalance, result.RemoteBalance);
+                return res;
+            }
+            //We avoid to stop the method if the peer is already connected
+            catch (RpcException e)
+            {
+                    throw e;
+            }
         }
     }
 }

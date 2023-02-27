@@ -1,6 +1,8 @@
 @page "/channels"
 @using System.Security.Claims
 @using Humanizer
+@using Lnrpc
+@using Channel = FundsManager.Data.Models.Channel
 @attribute [Authorize(Roles = "FinanceManager, NodeManager, Superadmin")]
 <PageTitle>Active Channels</PageTitle>
 <h3 class="custom-primary">Channels</h3>
@@ -64,6 +66,14 @@
                 </DataGridColumn>
                 <DataGridColumn TItem="Channel" Field="@nameof(Channel.CreationDatetime)" Caption="@nameof(Channel.CreationDatetime).Humanize(LetterCasing.Sentence)" Sortable="false" />
                 <DataGridColumn TItem="Channel" Field="@nameof(Channel.UpdateDatetime)" Caption="@nameof(Channel.UpdateDatetime).Humanize(LetterCasing.Sentence)" Sortable="false" />
+                <DataGridColumn TItem="Channel" Caption="Channel Balance">
+                    <DisplayTemplate>
+                        <Progress Color="Color.Primary" Value="@Convert.ToInt32(GetPercentageBalance(context))"/>
+                        <Text>@{
+                                  @($"{Math.Round(GetPercentageBalance(context), 2)}%")
+                        }</Text>
+                    </DisplayTemplate>
+                </DataGridColumn>
                 <DataGridColumn TItem="Channel" Caption="Requests" Sortable="false">
                     <DisplayTemplate>
                         <Button Color="Color.Primary" Clicked="@ShowModal">See</Button>
@@ -122,6 +132,7 @@
 @inject IToastService ToastService
 @inject ClipboardService ClipboardService
 @inject IMessageService MessageService
+@inject ILightningService LightningService
 @code {
     private List<Channel>? _channels;
     private Channel? _selectedChannel;
@@ -197,5 +208,11 @@
     {
         await ClipboardService.WriteTextAsync(arg);
         ToastService.ShowSuccess("Text copied");
+    }
+
+    private double GetPercentageBalance(Channel channel)
+    {
+        var result = LightningService.GetChannelBalance(channel).Result;
+        return (result.Item1.Sat / (double)(result.Item2.Sat + result.Item1.Sat)) * 100;
     }
 }
