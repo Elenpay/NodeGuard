@@ -127,7 +127,7 @@ public class BitcoinServiceTests
     }
 
     [Fact]
-    async void GenerateTemplatePSBT_MultisigSucceeds()
+    async void GenerateTemplatePSBT_MultiSigSucceeds()
     {
         // Arrange
         var wallet = CreateWallet.MultiSig();
@@ -194,7 +194,7 @@ public class BitcoinServiceTests
     }
 
     [Fact]
-    async void GenerateTemplatePSBT_SingleSucceeds()
+    async void GenerateTemplatePSBT_SingleSigSucceeds()
     {
         // Arrange
         var wallet = CreateWallet.SingleSig();
@@ -257,5 +257,157 @@ public class BitcoinServiceTests
         // Assert
         var psbt = PSBT.Parse("cHNidP8BAIkBAAAAAQAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA/////wD/////AkBCDwAAAAAAIgAgPaPWaBQgTxHOMVfMfpX21blroUe8KAd6w2gLRelFuiCsUYkAAAAAACIAIDx3862ZOy+vKdDZ4oysyRZX0HARoqQ9LqqK2ukxoopiAAAAAE8BBDWHzwN9uUaNAAAAAYPR/OiA1LbTzxbLPvbXvtAwckIG3g+0T1zblR/ZodaiA5zBFsigPpL8htN/KJ/Ph8SPvQA/K+mSNXTSA0hgvPNuEO0CEMgwAACAAQAAgAEAAAAAAQEfgJaYAAAAAAAWABTpOvUBMqNMfl7P81etji6x4fXrMwAAAA==", Network.RegTest);
         result.Should().BeEquivalentTo(psbt);
+    }
+
+    [Fact]
+    async void PerformWithdrawal_SingleSigSucceeds()
+    {
+        // Arrange
+        var wallet = CreateWallet.SingleSig();
+        var psbt = "cHNidP8BAIkBAAAAAQAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA/////wD/////AkBCDwAAAAAAIgAgPaPWaBQgTxHOMVfMfpX21blroUe8KAd6w2gLRelFuiCsUYkAAAAAACIAIDx3862ZOy+vKdDZ4oysyRZX0HARoqQ9LqqK2ukxoopiAAAAAE8BBDWHzwN9uUaNAAAAAYPR/OiA1LbTzxbLPvbXvtAwckIG3g+0T1zblR/ZodaiA5zBFsigPpL8htN/KJ/Ph8SPvQA/K+mSNXTSA0hgvPNuEO0CEMgwAACAAQAAgAEAAAAAAQEfgJaYAAAAAAAWABTpOvUBMqNMfl7P81etji6x4fXrMwAAAA==";
+        var walletWithdrawalRequestPSBTs = new List<WalletWithdrawalRequestPSBT>()
+        {
+            new ()
+            {
+                IsFinalisedPSBT = false,
+                IsInternalWalletPSBT = false,
+                IsTemplatePSBT = false,
+                PSBT = psbt,
+            }
+        };
+        var withdrawalRequest = new WalletWithdrawalRequest()
+        {
+            Id = 1,
+            Status = WalletWithdrawalRequestStatus.PSBTSignaturesPending,
+            Wallet = wallet,
+            WalletWithdrawalRequestPSBTs = walletWithdrawalRequestPSBTs,
+            Amount = 0.01m,
+            DestinationAddress = "bcrt1q8k3av6q5yp83rn332lx8a90k6kukhg28hs5qw7krdq95t629hgsqk6ztmf"
+        };
+        var node = new Node()
+        {
+            PubKey = "03485d8dcdd149c87553eeb80586eb2bece874d412e9f117304446ce189955d375",
+            ChannelAdminMacaroon = "def",
+            Endpoint = "10.0.0.2"
+        };
+        var walletWithdrawalRequestRepository = new Mock<IWalletWithdrawalRequestRepository>();
+        var nodeRepository = new Mock<INodeRepository>();
+        var nbXplorerService = new Mock<INBXplorerService>();
+        walletWithdrawalRequestRepository
+            .Setup((w) => w.GetById(It.IsAny<int>()))
+            .ReturnsAsync(withdrawalRequest);
+        walletWithdrawalRequestRepository
+            .Setup((w) => w.Update(It.IsAny<WalletWithdrawalRequest>()))
+            .Returns((true, null)); 
+        nbXplorerService
+            .Setup(x => x.GetUTXOsAsync(It.IsAny<DerivationStrategyBase>(), default))
+            .ReturnsAsync(new UTXOChanges()
+            {
+                Confirmed = new UTXOChange()
+                {
+                    UTXOs = new List<UTXO>()
+                    {
+                        new UTXO()
+                        {
+                            Value = new Money((long)10000000),
+                            ScriptPubKey = wallet.GetDerivationStrategy().GetDerivation(KeyPath.Parse("0/0")).ScriptPubKey,
+                            KeyPath = KeyPath.Parse("0/0")
+                        }
+                    }
+                }
+            });
+        nbXplorerService
+            .Setup(x => x.BroadcastAsync(It.IsAny<Transaction>(), default, default))
+            .ReturnsAsync(new BroadcastResult() { Success = true });
+        nodeRepository
+            .Setup(x => x.GetAllManagedByFundsManager())
+            .Returns(Task.FromResult(new List<Node>() {node}));
+        var bitcoinService = new BitcoinService(_logger, null, null, walletWithdrawalRequestRepository.Object, null, nodeRepository.Object, null, nbXplorerService.Object);
+
+        // Act
+        var act = () => bitcoinService.PerformWithdrawal(withdrawalRequest);
+
+        // Assert
+        await act.Should().NotThrowAsync();
+    }
+    
+    [Fact]
+    async void PerformWithdrawal_MultiSigSucceeds()
+    {
+        // Arrange
+        var wallet = CreateWallet.MultiSig();
+        var psbt1 = "cHNidP8BAIkBAAAAATqZB6sbll4a0AJOf+RGbdqw07G/O9FatkFr+PDJAy+EAQAAAAD/////AkBCDwAAAAAAIgAgTlHqBosTtDYNNC59Qaz2968zru/mbl0l3tylEw+bKs2YTiZ3AAAAACIAINbjv3PBr8yjQit+5PSOCXdJgwfIoJ3Hv0HMD8+di5CSAAAAAE8BBDWHzwMvESQsgAAAAfw77kI6AYzrbSJqBmMojtD7XuD6nXkKs3DQMOBHMObIA4COLhzUgr3QcZaUPFqBM9Fpr4YCK2uwOBdxZE7AdETXEB/M5N4wAACAAQAAgAEAAIBPAQQ1h88DVqwD9IAAAAH5CK5KZrD/oasUtVrwzkjypwIly5AQkC1pAa+QuT6PgQJRrxXgW7i36sGJWz9fR//v7NgyGgLvIimPidCiA33wYBBg86CzMAAAgAEAAIABAACATwEENYfPA325Ro0AAAAAgN63GqLxTu1/NyL0SV4a0Hn1n8Dzg+Wye9nbb16ZISADr+s+pcKnDcSqKHKWSl4v8Rcq80ZqG/7QObYmZUl/xUYQ7QIQyDAAAIABAACAAAAAAAABASsAlDV3AAAAACIAIAF9guNzq1T08+t+DdFQoBYxMjvBQRTYuFmw2ppaQKvfIgIDHvfaz8S4WW4LqTCUmaadde52cCEeX0/qJryg6ukbY4ZHMEQCIHwm8KI69yEdHpCjsX3ifRyh8ZVVZC0/yKzXfRfL9tLfAiB5igcDqwiqCZHtgS0LO8uaJlX6bJrHOVX4KKePXBUtpQEBBWlSIQLQRFXTSgK8hussgvnt26CIeGhzduVmAI7NgraP64MFtiEDHvfaz8S4WW4LqTCUmaadde52cCEeX0/qJryg6ukbY4YhA/dSE/9TMSUTREqX5s2YWHSe8Obyw+HSZ+xuyVTUPMUmU64iBgLQRFXTSgK8hussgvnt26CIeGhzduVmAI7NgraP64MFthhg86CzMAAAgAEAAIABAACAAAAAAAsAAAAiBgMe99rPxLhZbgupMJSZpp117nZwIR5fT+omvKDq6RtjhhgfzOTeMAAAgAEAAIABAACAAAAAAAsAAAAiBgP3UhP/UzElE0RKl+bNmFh0nvDm8sPh0mfsbslU1DzFJhjtAhDIMAAAgAEAAIAAAAAAAAAAAAsAAAAAAAA=";
+        var psbt2 = "cHNidP8BAIkBAAAAATqZB6sbll4a0AJOf+RGbdqw07G/O9FatkFr+PDJAy+EAQAAAAD/////AkBCDwAAAAAAIgAgTlHqBosTtDYNNC59Qaz2968zru/mbl0l3tylEw+bKs2YTiZ3AAAAACIAINbjv3PBr8yjQit+5PSOCXdJgwfIoJ3Hv0HMD8+di5CSAAAAAE8BBDWHzwMvESQsgAAAAfw77kI6AYzrbSJqBmMojtD7XuD6nXkKs3DQMOBHMObIA4COLhzUgr3QcZaUPFqBM9Fpr4YCK2uwOBdxZE7AdETXEB/M5N4wAACAAQAAgAEAAIBPAQQ1h88DVqwD9IAAAAH5CK5KZrD/oasUtVrwzkjypwIly5AQkC1pAa+QuT6PgQJRrxXgW7i36sGJWz9fR//v7NgyGgLvIimPidCiA33wYBBg86CzMAAAgAEAAIABAACATwEENYfPA325Ro0AAAAAgN63GqLxTu1/NyL0SV4a0Hn1n8Dzg+Wye9nbb16ZISADr+s+pcKnDcSqKHKWSl4v8Rcq80ZqG/7QObYmZUl/xUYQ7QIQyDAAAIABAACAAAAAAAABASsAlDV3AAAAACIAIAF9guNzq1T08+t+DdFQoBYxMjvBQRTYuFmw2ppaQKvfIgIC0ERV00oCvIbrLIL57dugiHhoc3blZgCOzYK2j+uDBbZHMEQCIF6mZdDgN+Q++oSO0lsvDYsTvCwxlwyGbvDAsDf8VV0RAiAKyQ9ZTd0JgB4rsSC+2aHdPjzWYU0BdeVGel8bDHwatAEBBWlSIQLQRFXTSgK8hussgvnt26CIeGhzduVmAI7NgraP64MFtiEDHvfaz8S4WW4LqTCUmaadde52cCEeX0/qJryg6ukbY4YhA/dSE/9TMSUTREqX5s2YWHSe8Obyw+HSZ+xuyVTUPMUmU64iBgLQRFXTSgK8hussgvnt26CIeGhzduVmAI7NgraP64MFthhg86CzMAAAgAEAAIABAACAAAAAAAsAAAAiBgMe99rPxLhZbgupMJSZpp117nZwIR5fT+omvKDq6RtjhhgfzOTeMAAAgAEAAIABAACAAAAAAAsAAAAiBgP3UhP/UzElE0RKl+bNmFh0nvDm8sPh0mfsbslU1DzFJhjtAhDIMAAAgAEAAIAAAAAAAAAAAAsAAAAAAAA=";
+        var walletWithdrawalRequestPSBTs = new List<WalletWithdrawalRequestPSBT>()
+        {
+            new ()
+            {
+                IsFinalisedPSBT = false,
+                IsInternalWalletPSBT = false,
+                IsTemplatePSBT = false,
+                PSBT = psbt1,
+            },
+            new ()
+            {
+                IsFinalisedPSBT = false,
+                IsInternalWalletPSBT = false,
+                IsTemplatePSBT = false,
+                PSBT = psbt2,
+            }
+        };
+        var withdrawalRequest = new WalletWithdrawalRequest()
+        {
+            Id = 1,
+            Status = WalletWithdrawalRequestStatus.PSBTSignaturesPending,
+            Wallet = wallet,
+            WalletWithdrawalRequestPSBTs = walletWithdrawalRequestPSBTs,
+            Amount = 0.01m,
+            DestinationAddress = "bcrt1q8k3av6q5yp83rn332lx8a90k6kukhg28hs5qw7krdq95t629hgsqk6ztmf"
+        };
+        var node = new Node()
+        {
+            PubKey = "03485d8dcdd149c87553eeb80586eb2bece874d412e9f117304446ce189955d375",
+            ChannelAdminMacaroon = "def",
+            Endpoint = "10.0.0.2"
+        };
+        var walletWithdrawalRequestRepository = new Mock<IWalletWithdrawalRequestRepository>();
+        var nodeRepository = new Mock<INodeRepository>();
+        var nbXplorerService = new Mock<INBXplorerService>();
+        walletWithdrawalRequestRepository
+            .Setup((w) => w.GetById(It.IsAny<int>()))
+            .ReturnsAsync(withdrawalRequest);
+        walletWithdrawalRequestRepository
+            .Setup((w) => w.Update(It.IsAny<WalletWithdrawalRequest>()))
+            .Returns((true, null)); 
+        nbXplorerService
+            .Setup(x => x.GetUTXOsAsync(It.IsAny<DerivationStrategyBase>(), default))
+            .ReturnsAsync(new UTXOChanges()
+            {
+                Confirmed = new UTXOChange()
+                {
+                    UTXOs = new List<UTXO>()
+                    {
+                        new UTXO()
+                        {
+                            Value = new Money((long)10000000),
+                            ScriptPubKey = wallet.GetDerivationStrategy().GetDerivation(KeyPath.Parse("0/0")).ScriptPubKey,
+                            KeyPath = KeyPath.Parse("0/0")
+                        }
+                    }
+                }
+            });
+        nbXplorerService
+            .Setup(x => x.BroadcastAsync(It.IsAny<Transaction>(), default, default))
+            .ReturnsAsync(new BroadcastResult() { Success = true });
+        nodeRepository
+            .Setup(x => x.GetAllManagedByFundsManager())
+            .Returns(Task.FromResult(new List<Node>() {node}));
+        var bitcoinService = new BitcoinService(_logger, null, null, walletWithdrawalRequestRepository.Object, null, nodeRepository.Object, null, nbXplorerService.Object);
+
+        // Act
+        var act = () => bitcoinService.PerformWithdrawal(withdrawalRequest);
+
+        // Assert
+        await act.Should().NotThrowAsync();
     }
 }
