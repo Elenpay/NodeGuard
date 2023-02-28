@@ -98,7 +98,7 @@ namespace FundsManager.Services
         /// <returns></returns>
         public Task<LightningNode?> GetNodeInfo(string pubkey);
 
-        public Task<Tuple<long, long>> GetChannelBalance(Channel channel);
+        public Task<(long, long)> GetChannelBalance(Channel channel);
     }
 
     public class LightningService : ILightningService
@@ -1192,7 +1192,7 @@ namespace FundsManager.Services
             return result;
         }
 
-        public async Task<Tuple<long, long>> GetChannelBalance(Channel channel)
+        public async Task<(long, long)> GetChannelBalance(Channel channel)
         {
             var client = CreateLightningClient(channel.Node.Endpoint);
             var result = client.Execute(x => x.ListChannels(new ListChannelsRequest(), 
@@ -1204,7 +1204,7 @@ namespace FundsManager.Services
             if (chan == null)
                 throw new Exception("Channel not found");
 
-            var res = new Tuple<long, long>(chan.LocalBalance, chan.RemoteBalance);
+            var res = (chan.LocalBalance, chan.RemoteBalance);
             return res;
         }
     }
