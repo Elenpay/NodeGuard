@@ -50,7 +50,7 @@ namespace FundsManager.Helpers
         /// <param name="selectedUtxOs"></param>
         /// <param name="multisigCoins"></param>
         /// <exception cref="ArgumentException"></exception>
-        public static (PSBT?, bool) AddDerivationData(IEnumerable<Key> keys, (PSBT?, bool) result, List<UTXO> selectedUtxOs,
+        public static PSBT? AddDerivationData(IEnumerable<Key> keys, PSBT? result, List<UTXO> selectedUtxOs,
             List<ICoin> coins, ILogger? logger = null, string subderivationPath = "")
         {
             if (keys == null) throw new ArgumentNullException(nameof(keys));
@@ -68,11 +68,12 @@ namespace FundsManager.Helpers
                 var rootedKeyPath = new RootedKeyPath(masterFingerprint, new KeyPath(key.Path));
                 if (key.InternalWalletId != null)
                 {
+                    bitcoinExtPubKey = new BitcoinExtPubKey(key.XPUB, nbXplorerNetwork).Derive(KeyPath.Parse(subderivationPath));
                     rootedKeyPath = new RootedKeyPath(masterFingerprint, new KeyPath(key.Path).Derive(subderivationPath));
                 }
 
                 //Global xpubs field addition
-                result.Item1.GlobalXPubs.Add(
+                result.GlobalXPubs.Add(
                     bitcoinExtPubKey,
                     rootedKeyPath
                 );
@@ -84,10 +85,9 @@ namespace FundsManager.Helpers
                     if (key.InternalWalletId != null)
                     {
                         utxoDerivationPath = KeyPath.Parse(key.Path).Derive(subderivationPath).Derive(selectedUtxo.KeyPath);
-                        derivedPubKey = bitcoinExtPubKey.Derive(new KeyPath(subderivationPath)).Derive(selectedUtxo.KeyPath).GetPublicKey();
                     }
                     
-                    var input = result.Item1.Inputs.FirstOrDefault(input =>
+                    var input = result.Inputs.FirstOrDefault(input =>
                         input?.GetCoin()?.Outpoint == selectedUtxo.Outpoint);
                     var addressRootedKeyPath = new RootedKeyPath(masterFingerprint, utxoDerivationPath);
                     var coin = coins.FirstOrDefault(x => x.Outpoint == selectedUtxo.Outpoint);
