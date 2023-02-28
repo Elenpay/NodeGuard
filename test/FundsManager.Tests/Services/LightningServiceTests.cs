@@ -35,6 +35,7 @@ using NBXplorer.DerivationStrategy;
 using Grpc.Core;
 using Microsoft.EntityFrameworkCore;
 using Unmockable.Exceptions;
+using Channel = FundsManager.Data.Models.Channel;
 
 namespace FundsManager.Services
 {
@@ -796,6 +797,92 @@ namespace FundsManager.Services
 
             // Assert
             await act.Should().NotThrowAsync();
+        }
+        
+        [Fact]
+        public async void CloseChannel_Succeeds()
+        {
+            // Arrange
+            var operationRequest = new ChannelOperationRequest
+            {
+                RequestType = OperationRequestType.Close,
+                ChannelId = 1,
+                SourceNode = new Node()
+                {
+                    PubKey = "03b48034270e522e4033afdbe43383d66d426638927b940d09a8a7a0de4d96e807",
+                    ChannelAdminMacaroon = "abc",
+                    Endpoint = "10.0.0.1"
+                },
+            };
+            
+            var options = new DbContextOptionsBuilder<ApplicationDbContext>().Options;
+            var context = new ApplicationDbContext(options);
+            var dbContextFactory = new Mock<IDbContextFactory<ApplicationDbContext>>();
+            var channelRepository = new Mock<IChannelRepository>();
+            var channelOperationRequestRepository = new Mock<IChannelOperationRequestRepository>();
+            dbContextFactory
+                .Setup(x => x.CreateDbContextAsync(default))
+                .ReturnsAsync(context);
+            channelRepository
+                .Setup(x => x.GetById(It.IsAny<int>()))
+                .ReturnsAsync(new Channel()
+                {
+                    FundingTx = "abc",
+                    FundingTxOutputIndex = 0
+                });
+            channelRepository
+                .Setup(x => x.Update(It.IsAny<Channel>()))
+                .Returns((true, null));
+            channelOperationRequestRepository
+                .Setup(x => x.Update(It.IsAny<ChannelOperationRequest>()))
+                .Returns((true, null));
+            
+            var noneUpdate = new CloseStatusUpdate();
+            var closePendingUpdate = new CloseStatusUpdate
+            {
+               ClosePending = new PendingUpdate()
+            };
+            var chanCloseUpdate = new CloseStatusUpdate
+            {
+                ChanClose = new ChannelCloseUpdate()
+                {
+                    Success = true,
+                }
+            };
+            
+            var lightningClient = Interceptor.For<Lightning.LightningClient>()
+                .Setup(x => x.CloseChannel(
+                    Arg.Ignore<CloseChannelRequest>(),
+                    Arg.Ignore<Metadata>(),
+                    null,
+                    Arg.Ignore<CancellationToken>()
+                ))
+                .Returns(MockHelpers.CreateAsyncServerStreamingCall(new List<CloseStatusUpdate>()
+                {
+                    noneUpdate,
+                    closePendingUpdate,
+                    chanCloseUpdate,
+                }));
+
+            LightningService.CreateLightningClient = (_) => lightningClient;
+            
+            var lightningService = new LightningService(_logger,
+                channelOperationRequestRepository.Object,
+                null,
+                null, 
+                null,
+                null,
+                null,
+                null,
+                channelRepository.Object,
+                null,
+                null);
+            
+            // Act
+            var act = async () => await lightningService.CloseChannel(operationRequest);
+
+            // Assert
+            await act.Should().NotThrowAsync(); 
         }
     }
 }
