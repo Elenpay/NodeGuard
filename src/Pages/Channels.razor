@@ -318,8 +318,9 @@
     {
         try
         {
-            var result = LightningService.GetChannelBalance(channel).Result;
-            return (result.Item1 / (double)(result.Item2 + result.Item1)) * 100;
+            var values = LightningService.GetChannelBalance(channel).Result;
+            var res = (values.Item2 / (double)(values.Item2 + values.Item1)) * 100;
+            return res;
         }
         catch (Exception e)
         {
@@ -356,28 +357,31 @@
             }
 
     //Save the liquidity rule if the liquidity rule id is below or equal zero
-            if (_currentLiquidityRule.Id <= 0)
+            if (_currentLiquidityRule != null)
             {
-                var liquidityRuleResult = await LiquidityRuleRepository.AddAsync(_currentLiquidityRule);
-                if (!liquidityRuleResult.Item1)
+                if (_currentLiquidityRule.Id <= 0)
                 {
-                    ToastService.ShowError("Something went wrong");
+                    var liquidityRuleResult = await LiquidityRuleRepository.AddAsync(_currentLiquidityRule);
+                    if (!liquidityRuleResult.Item1)
+                    {
+                        ToastService.ShowError("Something went wrong");
+                    }
+                    else
+                    {
+                        ToastService.ShowSuccess("Liquidity rule added successfully");
+                    }
                 }
                 else
                 {
-                    ToastService.ShowSuccess("Liquidity rule added successfully");
-                }
-            }
-            else
-            {
-                var liquidityRuleResult = LiquidityRuleRepository.Update(_currentLiquidityRule);
-                if (!liquidityRuleResult.Item1)
-                {
-                    ToastService.ShowError("Something went wrong");
-                }
-                else
-                {
-                    ToastService.ShowSuccess("Liquidity rule updated successfully");
+                    var liquidityRuleResult = LiquidityRuleRepository.Update(_currentLiquidityRule);
+                    if (!liquidityRuleResult.Item1)
+                    {
+                        ToastService.ShowError("Something went wrong");
+                    }
+                    else
+                    {
+                        ToastService.ShowSuccess("Liquidity rule updated successfully");
+                    }
                 }
             }
 
@@ -417,6 +421,8 @@
     private async Task OnEnableLiquidityMgnmtChanged(bool obj)
     {
         _selectedChannel.IsAutomatedLiquidityEnabled = obj;
+
+        if (!obj) _currentLiquidityRule = null;
 
         var updateResult = ChannelRepository.Update(_selectedChannel);
 
