@@ -29,6 +29,7 @@ using NBXplorer.DerivationStrategy;
 using NBXplorer.Models;
 using System.Security.Cryptography;
 using AutoMapper;
+using Blazored.Toast.Services;
 using FundsManager.Data;
 using FundsManager.Helpers;
 using Humanizer;
@@ -96,6 +97,8 @@ namespace FundsManager.Services
         /// <param name="pubkey"></param>
         /// <returns></returns>
         public Task<LightningNode?> GetNodeInfo(string pubkey);
+
+        public Task<(long, long)> GetChannelBalance(Channel channel);
     }
 
     public class LightningService : ILightningService
@@ -1187,6 +1190,22 @@ namespace FundsManager.Services
             }
 
             return result;
+        }
+
+        public async Task<(long, long)> GetChannelBalance(Channel channel)
+        {
+            var client = CreateLightningClient(channel.Node.Endpoint);
+            var result = client.Execute(x => x.ListChannels(new ListChannelsRequest(), 
+                new Metadata {
+                {"macaroon", channel.Node.ChannelAdminMacaroon}
+            }, null, default));
+            
+            var chan = result.Channels.FirstOrDefault(x => x.ChanId == channel.ChanId);
+            if (chan == null)
+                throw new Exception("Channel not found");
+
+            var res = (chan.LocalBalance, chan.RemoteBalance);
+            return res;
         }
     }
 }
