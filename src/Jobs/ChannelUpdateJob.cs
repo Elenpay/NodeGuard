@@ -50,8 +50,7 @@ public class ChannelUpdateJob : IJob
         try
         {
             var channel = await _channelRepository.GetById(channelId);
-            var res = await _lightningService.UpdateChannel(channel);
-            if (!res.Item1) throw new Exception(res.Item2);
+            await _lightningService.SubscribeToNode(channel.Node);
         }
         catch (Exception e)
         {
