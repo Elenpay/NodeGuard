@@ -279,22 +279,34 @@ namespace FundsManager.Services
             //Update
             walletWithdrawalRequest = await _walletWithdrawalRequestRepository.GetById(walletWithdrawalRequest.Id) ??
                                       throw new InvalidOperationException();
+            
+            PSBT? psbtToSign = null;
+            //If it is a hot wallet, we dont need to combine the PSBTs
+            if(walletWithdrawalRequest.Wallet.IsHotWallet)
+            {
+                psbtToSign = PSBT.Parse(walletWithdrawalRequest.WalletWithdrawalRequestPSBTs
+                        .Single(x => x.IsTemplatePSBT)
+                        .PSBT,
+                    CurrentNetworkHelper.GetCurrentNetwork());
+            }
+            else //If it is a cold multisig wallet, we need to combine the PSBTs
+            {
+                var signedPSBTStrings = walletWithdrawalRequest.WalletWithdrawalRequestPSBTs.Where(x =>
+                        !x.IsFinalisedPSBT && !x.IsInternalWalletPSBT && !x.IsTemplatePSBT)
+                    .Select(x => x.PSBT).ToList();
 
-            var signedPSBTStrings = walletWithdrawalRequest.WalletWithdrawalRequestPSBTs.Where(x =>
-                    !x.IsFinalisedPSBT && !x.IsInternalWalletPSBT && !x.IsTemplatePSBT)
-                .Select(x => x.PSBT).ToList();
-
-            var combinedPSBT = LightningHelper.CombinePSBTs(signedPSBTStrings, _logger);
+                psbtToSign = LightningHelper.CombinePSBTs(signedPSBTStrings, _logger);
+            }
 
             try
             {
-                if (combinedPSBT == null)
+                if (psbtToSign == null)
                 {
                     var invalidPsbtNullToBeUsedForTheRequest =
                         $"Invalid combined PSBT(null) to be used for the wallet withdrawal request:{walletWithdrawalRequest.Id}";
                     _logger.LogError(invalidPsbtNullToBeUsedForTheRequest);
 
-                    throw new ArgumentException(invalidPsbtNullToBeUsedForTheRequest, nameof(combinedPSBT));
+                    throw new ArgumentException(invalidPsbtNullToBeUsedForTheRequest, nameof(psbtToSign));
                 }
 
 
@@ -308,19 +320,19 @@ namespace FundsManager.Services
                     //Remote signer
                     if (Constants.ENABLE_REMOTE_SIGNER)
                     {
-                        signedCombinedPSBT = await _remoteSignerService.Sign(combinedPSBT);
+                        signedCombinedPSBT = await _remoteSignerService.Sign(psbtToSign);
                     }
                     else
                     {
                         signedCombinedPSBT = await SignPSBTWithEmbeddedSigner(walletWithdrawalRequest, _nbXplorerService,
-                            derivationStrategyBase, combinedPSBT, CurrentNetworkHelper.GetCurrentNetwork(), _logger);
+                            derivationStrategyBase, psbtToSign, CurrentNetworkHelper.GetCurrentNetwork(), _logger);
                     }
                     
                 }
                 else
                 {
                     //In this case, the combined PSBT is considered as the signed one
-                    signedCombinedPSBT = combinedPSBT;
+                    signedCombinedPSBT = psbtToSign;
                 }
 
                 if (signedCombinedPSBT == null)
