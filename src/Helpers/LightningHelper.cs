@@ -92,7 +92,7 @@ namespace FundsManager.Helpers
                         input?.GetCoin()?.Outpoint == selectedUtxo.Outpoint);
                     var addressRootedKeyPath = new RootedKeyPath(masterFingerprint, utxoDerivationPath);
                     var coin = coins.FirstOrDefault(x => x.Outpoint == selectedUtxo.Outpoint);
-                    
+
                     if (coin != null && input != null &&
                         (
                             wallet.IsHotWallet && (coin as Coin).ScriptPubKey == derivedPubKey.WitHash.ScriptPubKey ||
