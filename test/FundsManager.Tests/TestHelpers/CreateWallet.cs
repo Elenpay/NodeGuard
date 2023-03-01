@@ -33,11 +33,50 @@ namespace FundsManager.TestHelpers;
 
 public class CreateWallet
 {
-    public static Wallet CreateTestWallet()
+    public static Wallet SingleSig()
     {
         var internalWallet = new InternalWallet
         {
-            DerivationPath = "m/48'/1'/1'",
+            DerivationPath = "m/48'/1'",
+            MnemonicString =
+                            "middle teach digital prefer fiscal theory syrup enter crash muffin easily anxiety ill barely eagle swim volume consider dynamic unaware deputy middle into physical",
+            CreationDatetime = DateTimeOffset.Now,
+        };
+
+        var internalWalletKey = new Key
+        {
+            Name = "FundsManager Co-signing Key",
+            XPUB = internalWallet.XPUB,
+            InternalWalletId = internalWallet.Id,
+            Path = internalWallet.DerivationPath,
+            MasterFingerprint = new Mnemonic(internalWallet.MnemonicString).DeriveExtKey().GetWif(Network.RegTest).GetPublicKey().GetHDFingerPrint().ToString()
+        };
+
+        var testingMultisigWallet = new Wallet
+        {
+            IsHotWallet = true,
+            MofN = 1,
+            Keys = new List<Key>
+                {
+                    internalWalletKey
+                },
+            Name = "Test wallet",
+            WalletAddressType = WalletAddressType.NativeSegwit,
+            InternalWallet = internalWallet,
+            InternalWalletId = internalWallet.Id,
+            IsFinalised = true,
+            CreationDatetime = DateTimeOffset.Now,
+            InternalWalletSubDerivationPath = "1"
+        };
+
+        return testingMultisigWallet;
+    }
+    
+    public static Wallet MultiSig()
+    {
+        var internalWallet = new InternalWallet
+        {
+            DerivationPath = "m/48'/1'",
             MnemonicString =
                             "middle teach digital prefer fiscal theory syrup enter crash muffin easily anxiety ill barely eagle swim volume consider dynamic unaware deputy middle into physical",
             CreationDatetime = DateTimeOffset.Now,
@@ -105,7 +144,7 @@ public class CreateWallet
             InternalWalletId = internalWallet.Id,
             IsFinalised = true,
             CreationDatetime = DateTimeOffset.Now,
-            InternalWalletSubDerivationPath = ""
+            InternalWalletSubDerivationPath = "0"
         };
 
         return testingMultisigWallet;

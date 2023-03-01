@@ -17,16 +17,16 @@
  *
  */
 
+using System.Reflection;
 using AutoMapper;
 using FundsManager.Data.Models;
 using FundsManager.Data.Repositories.Interfaces;
 using FundsManager.Helpers;
 using Humanizer;
 using NBitcoin;
-using NBXplorer;
 using NBXplorer.DerivationStrategy;
 using NBXplorer.Models;
-using Unmockable;
+using NSubstitute.Exceptions;
 
 // ReSharper disable All
 
@@ -77,34 +77,32 @@ namespace FundsManager.Services
             return (confirmedBalanceMoney.ToUnit(MoneyUnit.BTC), confirmedBalanceMoney.Satoshi);
         }
 
-        public async Task<(PSBT?, bool)> GenerateTemplatePSBT(WalletWithdrawalRequest walletWithdrawalRequest)
+        public async Task<PSBT> GenerateTemplatePSBT(WalletWithdrawalRequest walletWithdrawalRequest)
         {
             if (walletWithdrawalRequest == null) throw new ArgumentNullException(nameof(walletWithdrawalRequest));
 
             walletWithdrawalRequest = await _walletWithdrawalRequestRepository.GetById(walletWithdrawalRequest.Id);
 
-            (PSBT?, bool) result = (null, false);
             if (walletWithdrawalRequest.Status != WalletWithdrawalRequestStatus.Pending
                 && walletWithdrawalRequest.Status != WalletWithdrawalRequestStatus.PSBTSignaturesPending)
             {
-                _logger.LogError("PSBT Generation cancelled, operation is not in pending state");
-                return (null, false);
+                var message = "PSBT Generation cancelled, operation is not in pending state";
+                throw new InvalidOperationException(message);
             }
 
             var isFullySynched = (await _nbXplorerService.GetStatusAsync()).IsFullySynched;
             if (!isFullySynched)
             {
                 _logger.LogError("Error, nbxplorer not fully synched");
-                return (null, false);
+                throw new NBXplorerNotFullySyncedException();
             }
 
             var derivationStrategy = walletWithdrawalRequest.Wallet.GetDerivationStrategy();
-
             if (derivationStrategy == null)
             {
-                _logger.LogError("Error while getting the derivation strategy scheme for wallet: {WalletId}",
-                    walletWithdrawalRequest.Wallet.Id);
-                return (null, false);
+                var message = $"Error while getting the derivation strategy scheme for wallet: {walletWithdrawalRequest.Wallet.Id}"; 
+                _logger.LogError(message);
+                throw new ArgumentNotFoundException(message);
             }
 
             //If there is already a PSBT as template with the inputs as still valid UTXOs we avoid generating the whole process again to
@@ -120,14 +118,14 @@ namespace FundsManager.Services
                 if (parsedTemplatePSBT.Inputs.All(
                         x => currentUtxos.Confirmed.UTXOs.Select(x => x.Outpoint).Contains(x.PrevOut)))
                 {
-                    return (parsedTemplatePSBT, false);
+                    return parsedTemplatePSBT;
                 }
                 else
                 {
                     //We mark the request as failed since we would need to invalidate existing PSBTs
-                    _logger.LogError(
-                        "Marking the withdrawal request: {RequestId} as failed since the original UTXOs are no longer valid",
+                    var message = String.Format("Marking the withdrawal request: {RequestId} as failed since the original UTXOs are no longer valid",
                         walletWithdrawalRequest.Id);
+                    _logger.LogError(message);
 
                     walletWithdrawalRequest.Status = WalletWithdrawalRequestStatus.Failed;
 
@@ -135,11 +133,13 @@ namespace FundsManager.Services
 
                     if (!updateResult.Item1)
                     {
-                        _logger.LogError("Error while updating withdrawal request: {RequestId}",
+                        message = String.Format("Error while updating withdrawal request: {RequestId}",
                             walletWithdrawalRequest.Id);
+                        _logger.LogError(message);
+                        throw new Exception(message);
                     }
 
-                    return (null, false);
+                    throw new UTXOsNoLongerValidException();
                 }
             }
 
@@ -175,11 +175,12 @@ namespace FundsManager.Services
                     "Cannot generate base template PSBT for withdrawal request: {RequestId}, no UTXOs found for the wallet: {WalletId}",
                     walletWithdrawalRequest.Id, walletWithdrawalRequest.Wallet.Id);
 
-                return (null, true); //true means no UTXOS
+                throw new NoUTXOsAvailableException();
             }
 
             var nbXplorerNetwork = CurrentNetworkHelper.GetCurrentNetwork();
 
+            PSBT? result = null;
             try
             {
                 //We got enough inputs to fund the TX so time to build the PSBT
@@ -192,9 +193,10 @@ namespace FundsManager.Services
 
                 if (changeAddress == null)
                 {
-                    _logger.LogError("Change address was not found for wallet: {WalletId}",
-                        walletWithdrawalRequest.Wallet.Id);
-                    return (null, false);
+                    var message = String.Format("Change address was not found for wallet: {WalletId}",
+                        walletWithdrawalRequest.Wallet.Id); 
+                    _logger.LogError(message);
+                    throw new ArgumentNullException(message);
                 }
 
                 var builder = txBuilder;
@@ -207,6 +209,10 @@ namespace FundsManager.Services
                     .SetChange(changeAddress.Address)
                     .SendEstimatedFees(feeRateResult.FeeRate);
 
+                // We preserve the output order when testing so the psbt doesn't change
+                var command = Assembly.GetEntryAssembly()?.GetName().Name?.ToLowerInvariant();
+                builder.ShuffleOutputs = command != "ef" && (command != null && !command.Contains("test"));;
+
                 if (walletWithdrawalRequest.WithdrawAllFunds)
                 {
                     builder.SendAll(destination);
@@ -217,7 +223,7 @@ namespace FundsManager.Services
                     builder.SendAllRemainingToChange();
                 }
 
-                result.Item1 = builder.BuildPSBT(false);
+                result = builder.BuildPSBT(false);
                 
                 //Additional fields to support PSBT signing with a HW or the Remote Signer 
                 result = LightningHelper.AddDerivationData(walletWithdrawalRequest.Wallet.Keys, result, selectedUTXOs, scriptCoins, _logger, walletWithdrawalRequest.Wallet.InternalWalletSubDerivationPath);
@@ -233,30 +239,32 @@ namespace FundsManager.Services
             var addUTXOSOperation = await _walletWithdrawalRequestRepository.AddUTXOs(walletWithdrawalRequest, utxos);
             if (!addUTXOSOperation.Item1)
             {
-                _logger.LogError(
-                    $"Could not add the following utxos({utxos.Humanize()}) to op request:{walletWithdrawalRequest.Id}");
+                var message = $"Could not add the following utxos({utxos.Humanize()}) to op request:{walletWithdrawalRequest.Id}";
+                _logger.LogError(message);
+                throw new Exception(message);
+            }
+
+            if (result == null)
+            {
+                throw new Exception("Error while generating base PSBT");    
             }
 
             // The template PSBT is saved for later reuse
-
-            if (result.Item1 != null)
+            var psbt = new WalletWithdrawalRequestPSBT
             {
-                var psbt = new WalletWithdrawalRequestPSBT
-                {
-                    WalletWithdrawalRequestId = walletWithdrawalRequest.Id,
-                    CreationDatetime = DateTimeOffset.Now,
-                    IsTemplatePSBT = true,
-                    UpdateDatetime = DateTimeOffset.Now,
-                    PSBT = result.Item1.ToBase64()
-                };
+                WalletWithdrawalRequestId = walletWithdrawalRequest.Id,
+                CreationDatetime = DateTimeOffset.Now,
+                IsTemplatePSBT = true,
+                UpdateDatetime = DateTimeOffset.Now,
+                PSBT = result.ToBase64()
+            };
 
-                var addPsbtResult = await _walletWithdrawalRequestPsbtRepository.AddAsync(psbt);
+            var addPsbtResult = await _walletWithdrawalRequestPsbtRepository.AddAsync(psbt);
 
-                if (addPsbtResult.Item1 == false)
-                {
-                    _logger.LogError("Error while saving template PSBT to wallet withdrawal request: {RequestId}",
-                        walletWithdrawalRequest.Id);
-                }
+            if (addPsbtResult.Item1 == false)
+            {
+                _logger.LogError("Error while saving template PSBT to wallet withdrawal request: {RequestId}",
+                    walletWithdrawalRequest.Id);
             }
 
             return result;
@@ -572,7 +580,7 @@ namespace FundsManager.Services
         /// </summary>
         /// <param name="walletWithdrawalRequest"></param>
         /// <returns>A PSBT and a boolean indicating if there was enough utxos available</returns>
-        Task<(PSBT?, bool)> GenerateTemplatePSBT(WalletWithdrawalRequest walletWithdrawalRequest);
+        Task<PSBT> GenerateTemplatePSBT(WalletWithdrawalRequest walletWithdrawalRequest);
 
         /// <summary>
         /// Broadcast a withdrawal request tx through nbxplorer
