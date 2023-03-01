@@ -10,3 +10,4 @@ src/FundsManager.csproj.user
 # Files created by Polar runs
 devnetwork.polar/
 docker/volumes
+.DS_Store
