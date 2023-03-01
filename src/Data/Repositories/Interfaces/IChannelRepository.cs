@@ -17,13 +17,15 @@
  *
  */
 
-﻿using FundsManager.Data.Models;
+using FundsManager.Data.Models;
 
 namespace FundsManager.Data.Repositories.Interfaces;
 
 public interface IChannelRepository
 {
     Task<Channel?> GetById(int id);
+    
+    Task<Channel?> GetByChanId(ulong chanId);
 
     Task<List<Channel>> GetAll();
 
