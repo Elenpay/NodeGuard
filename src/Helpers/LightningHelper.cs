@@ -50,16 +50,17 @@ namespace FundsManager.Helpers
         /// <param name="selectedUtxOs"></param>
         /// <param name="multisigCoins"></param>
         /// <exception cref="ArgumentException"></exception>
-        public static PSBT? AddDerivationData(IEnumerable<Key> keys, PSBT? result, List<UTXO> selectedUtxOs,
+        public static PSBT? AddDerivationData(Wallet wallet, PSBT? result, List<UTXO> selectedUtxOs,
             List<ICoin> coins, ILogger? logger = null, string subderivationPath = "")
         {
-            if (keys == null) throw new ArgumentNullException(nameof(keys));
+            if (wallet == null) throw new ArgumentNullException(nameof(wallet));
+            if (wallet.Keys == null) throw new ArgumentNullException(nameof(wallet.Keys));
             if (selectedUtxOs == null) throw new ArgumentNullException(nameof(selectedUtxOs));
             if (coins == null) throw new ArgumentNullException(nameof(coins));
             if (subderivationPath == null) throw new ArgumentNullException(nameof(subderivationPath));
 
             var nbXplorerNetwork = CurrentNetworkHelper.GetCurrentNetwork();
-            foreach (var key in keys)
+            foreach (var key in wallet.Keys)
             {
                 if (string.IsNullOrWhiteSpace(key.MasterFingerprint) || string.IsNullOrWhiteSpace(key.XPUB)) continue;
 
@@ -93,7 +94,10 @@ namespace FundsManager.Helpers
                     var coin = coins.FirstOrDefault(x => x.Outpoint == selectedUtxo.Outpoint);
 
                     if (coin != null && input != null &&
-                        (coin as ScriptCoin).Redeem.GetAllPubKeys().Contains(derivedPubKey))
+                        (
+                            wallet.IsHotWallet && (coin as Coin).ScriptPubKey == derivedPubKey.WitHash.ScriptPubKey ||
+                            !wallet.IsHotWallet && (coin as ScriptCoin).Redeem.GetAllPubKeys().Contains(derivedPubKey))
+                        )
                     {
                         input.AddKeyPath(derivedPubKey, addressRootedKeyPath);
                     }

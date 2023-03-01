@@ -99,6 +99,14 @@ namespace FundsManager.Services
         public Task<LightningNode?> GetNodeInfo(string pubkey);
 
         public Task<(long, long)> GetChannelBalance(Channel channel);
+
+        /// <summary>
+        /// Cancels a pending channel from LND PSBT-based funding of channels
+        /// </summary>
+        /// <param name="source"></param>
+        /// <param name="pendingChannelId"></param>
+        /// <param name="client"></param>
+        public void CancelPendingChannel(Node source, byte[] pendingChannelId,  IUnmockable<Lightning.LightningClient>? client = null);
     }
 
     public class LightningService : ILightningService
@@ -505,12 +513,12 @@ namespace FundsManager.Services
                                     }
                                     else
                                     {
-                                        CancelPendingChannel(source, client, pendingChannelId);
+                                        CancelPendingChannel(source, pendingChannelId, client);
                                     }
                                 }
                                 else
                                 {
-                                    CancelPendingChannel(source, client, pendingChannelId);
+                                    CancelPendingChannel(source, pendingChannelId, client);
                                 }
 
                                 break;
@@ -526,7 +534,7 @@ namespace FundsManager.Services
                     source.Name,
                     destination.Name);
 
-                CancelPendingChannel(source, client, pendingChannelId);
+                CancelPendingChannel(source, pendingChannelId, client);
 
                 //TODO Mark as failed (?)
                 throw;
@@ -732,10 +740,14 @@ namespace FundsManager.Services
         /// <param name="source"></param>
         /// <param name="client"></param>
         /// <param name="pendingChannelId"></param>
-        private void CancelPendingChannel(Node source, IUnmockable<Lightning.LightningClient> client, byte[] pendingChannelId)
+        public void CancelPendingChannel(Node source, byte[] pendingChannelId, IUnmockable<Lightning.LightningClient>? client = null)
         {
             try
             {
+                if (client == null)
+                {
+                    client = CreateLightningClient(source.Endpoint);
+                }
                 if (pendingChannelId != null)
                 {
                     var cancelRequest = new FundingShimCancel
@@ -889,7 +901,7 @@ namespace FundsManager.Services
                 }
 
                 //Additional fields to support PSBT signing with a HW or the Remote Signer 
-                var psbt = LightningHelper.AddDerivationData(channelOperationRequest.Wallet.Keys, result.Item1, selectedUtxOs, multisigCoins, _logger, channelOperationRequest.Wallet.InternalWalletSubDerivationPath);
+                var psbt = LightningHelper.AddDerivationData(channelOperationRequest.Wallet, result.Item1, selectedUtxOs, multisigCoins, _logger, channelOperationRequest.Wallet.InternalWalletSubDerivationPath);
                 result = (psbt, result.Item2);
             }
             catch (Exception e)
