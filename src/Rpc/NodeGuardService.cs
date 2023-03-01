@@ -143,6 +143,7 @@ public class NodeGuardService : Nodeguard.NodeGuardService.NodeGuardServiceBase,
                 Amount = amount,
                 DestinationAddress = request.Address,
                 Description = request.Description,
+                Status = wallet.IsHotWallet ? WalletWithdrawalRequestStatus.PSBTSignaturesPending : WalletWithdrawalRequestStatus.Pending,
             };
 
             //Save withdrawal request

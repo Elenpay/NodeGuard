@@ -77,10 +77,17 @@
                 <DataGridColumn TItem="Channel" Field="@nameof(Channel.UpdateDatetime)" Caption="@nameof(Channel.UpdateDatetime).Humanize(LetterCasing.Sentence)" Sortable="false"/>
                 <DataGridColumn TItem="Channel" Caption="Channel Balance">
                     <DisplayTemplate>
-                        <Progress Color="Color.Primary" Value="@Convert.ToInt32(await GetPercentageBalance(context))"/>
-                        <Text>@{
-                                  @($"{Math.Round(await GetPercentageBalance(context), 2)}%")
-                        }</Text>
+                        @{
+                            var balance = Task.Run(()=> GetPercentageBalance(context)).Result;
+                            var percentageBalance = Convert.ToInt32(balance);
+                            var percentageBalanceRound = Math.Round(balance, 2);
+                        }
+                        <Progress Color="Color.Primary" Value="@percentageBalance"/>
+                        <Text>
+                            @{
+                                @($"{percentageBalanceRound}%")
+                            }
+                        </Text>
                     </DisplayTemplate>
                 </DataGridColumn>
                 <DataGridColumn TItem="Channel" Field="@nameof(Channel.CreationDatetime)" Caption="@nameof(Channel.CreationDatetime).Humanize(LetterCasing.Sentence)" Sortable="false"/>
