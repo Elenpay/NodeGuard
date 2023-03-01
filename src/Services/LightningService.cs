@@ -1131,7 +1131,7 @@ namespace FundsManager.Services
             try
             {
                 keyPathInformation =await _nbXplorerService.GetUnusedAsync(wallet.GetDerivationStrategy(),
-                    derivationFeature, default, true, default);
+                    derivationFeature, default, false, default);
             }
             catch (Exception e)
             {
