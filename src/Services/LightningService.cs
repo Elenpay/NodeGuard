@@ -96,6 +96,8 @@ namespace FundsManager.Services
         /// <param name="pubkey"></param>
         /// <returns></returns>
         public Task<LightningNode?> GetNodeInfo(string pubkey);
+
+        public Task<(bool,string)> UpdateChannel(Channel channel);
     }
 
     public class LightningService : ILightningService
@@ -1187,6 +1189,21 @@ namespace FundsManager.Services
             }
 
             return result;
+        }
+
+        public async Task<(bool, string)> UpdateChannel(Channel channel)
+        {
+            var client = CreateLightningClient(channel.Node.Endpoint);
+            var result = client.Execute(x => x.ListChannels(new ListChannelsRequest(), 
+                new Metadata {
+                    {"macaroon", channel.Node.ChannelAdminMacaroon}
+                }, null, default));
+
+            var chan = result.Channels.FirstOrDefault(x => x.ChanId == channel.ChanId);
+            if (chan == null)
+                throw new Exception("Channel not found");
+            channel.Status = chan.Active ? Channel.ChannelStatus.Open : Channel.ChannelStatus.Closed;
+            return _channelRepository.Update(channel);
         }
     }
 }
