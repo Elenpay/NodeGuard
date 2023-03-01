@@ -578,27 +578,15 @@
         //PSBT Generation
         try
         {
-            var (templatePSBT, noUtxosAvailable) = await BitcoinService.GenerateTemplatePSBT(walletWithdrawalRequest);
+            var templatePSBT = await BitcoinService.GenerateTemplatePSBT(walletWithdrawalRequest);
 
             //TODO Save template PSBT (?)
-            if (templatePSBT != null)
-            {
-                _templatePsbtString = templatePSBT.ToBase64();
-                if (_psbtSignRef != null) await _psbtSignRef.ShowModal();
-            }
-            else
-            {
-                if (noUtxosAvailable)
-                {
-                    ToastService.ShowError("No UTXOs available for withdrawals were found for this wallet");
-                }
-                else
-                {
-                    ToastService.ShowError("Something went wrong");
-
-                }
-            }
-
+            _templatePsbtString = templatePSBT.ToBase64();
+            if (_psbtSignRef != null) await _psbtSignRef.ShowModal();
+        }
+        catch (NoUTXOsAvailableException)
+        {
+            ToastService.ShowError("No UTXOs available for withdrawals were found for this wallet"); 
         }
         catch (Exception)
         {
@@ -758,56 +746,46 @@
 
     private async Task SubmitConfirmationModal()
     {
+        async void CleanUp(string errorMessage)
+        {
+            ToastService.ShowError(errorMessage);
+            _selectedRequest.Status = WalletWithdrawalRequestStatus.Failed;
+            WalletWithdrawalRequestRepository.Update(_selectedRequest);
+            await _confirmationModal.CloseModal();
+            await GetData();
+            StateHasChanged(); 
+        }
+ 
         if (_selectedRequest != null)
         {
-            _selectedRequest.Wallet = null;
-            var createWithdrawalResult = await WalletWithdrawalRequestRepository.AddAsync(_selectedRequest);
-            if (createWithdrawalResult.Item1)
+            try
             {
+                _selectedRequest.Wallet = null;
+                var createWithdrawalResult = await WalletWithdrawalRequestRepository.AddAsync(_selectedRequest);
+                if (!createWithdrawalResult.Item1)
+                {
+                    throw new ShowToUserException(createWithdrawalResult.Item2);
+                }
+
                 ToastService.ShowSuccess("Withdrawal request created!");
-            }
-            else
-            {
-                ToastService.ShowError(createWithdrawalResult.Item2);
-                _selectedRequest.Status = WalletWithdrawalRequestStatus.Failed;
-                WalletWithdrawalRequestRepository.Update(_selectedRequest);
-                await _confirmationModal.CloseModal();
-                await GetData();
-                StateHasChanged();
-                return;
-            }
 
-            var (templatePSBT, noUtxosAvailable) = await BitcoinService.GenerateTemplatePSBT(_selectedRequest);
+                var templatePSBT = await BitcoinService.GenerateTemplatePSBT(_selectedRequest);
 
-            if (templatePSBT == null)
-            {
-                if (noUtxosAvailable)
+    //TODO Save template PSBT (?)
+                var walletWithdrawalRequestPsbt = new WalletWithdrawalRequestPSBT()
                 {
-                    ToastService.ShowError("No UTXOs available for withdrawals were found for this wallet");
-                }
-                else
-                {
-                    ToastService.ShowError("Something went wrong");
+                    WalletWithdrawalRequestId = _selectedRequest.Id,
+                    PSBT = templatePSBT.ToBase64(),
+                    SignerId = null,
+                };
 
+                var addResult = await WalletWithdrawalRequestPsbtRepository.AddAsync(walletWithdrawalRequestPsbt);
+
+                if (!addResult.Item1)
+                {
+                    throw new ShowToUserException("Error while saving the signature");
                 }
-                _selectedRequest.Status = WalletWithdrawalRequestStatus.Failed;
-                WalletWithdrawalRequestRepository.Update(_selectedRequest);
-                await _confirmationModal.CloseModal();
-                await GetData();
-                StateHasChanged();
-                return;
-            }
-            
-            //TODO Save template PSBT (?)
-            var walletWithdrawalRequestPsbt = new WalletWithdrawalRequestPSBT()
-            {
-                WalletWithdrawalRequestId = _selectedRequest.Id,
-                PSBT = templatePSBT.ToBase64(),
-                SignerId = null,
-            };
-            var addResult = await WalletWithdrawalRequestPsbtRepository.AddAsync(walletWithdrawalRequestPsbt);
-            if (addResult.Item1)
-            {
+
                 ToastService.ShowSuccess("Signature collected");
 
                 _selectedRequest = await WalletWithdrawalRequestRepository.GetById(_selectedRequest.Id);
@@ -819,29 +797,26 @@
                 }
                 else
                 {
-                    ToastService.ShowError("Invalid PSBT");
-                    _selectedRequest.Status = WalletWithdrawalRequestStatus.Failed;
-                    WalletWithdrawalRequestRepository.Update(_selectedRequest);
-                    await _confirmationModal.CloseModal();
-                    await GetData();
-                    StateHasChanged();
-                    return;
+                    throw new ShowToUserException("Invalid PSBT");
                 }
-            }
-            else
-            {
-                ToastService.ShowError("Error while saving the signature");
-                _selectedRequest.Status = WalletWithdrawalRequestStatus.Failed;
-                WalletWithdrawalRequestRepository.Update(_selectedRequest);
-                await _confirmationModal.CloseModal();
+
                 await GetData();
+                _allRequestsDatagrid.Dispose();
                 StateHasChanged();
-                return;
+                await _confirmationModal.CloseModal();
             }
-            await GetData();
-            _allRequestsDatagrid.Dispose();
-            StateHasChanged();
-            await _confirmationModal.CloseModal();
+            catch (NoUTXOsAvailableException e)
+            {
+                CleanUp("No UTXOs available for withdrawals were found for this wallet");
+            }
+            catch (ShowToUserException e)
+            {
+                CleanUp(e.Message);
+            }
+            catch
+            {
+                CleanUp("Something went wrong");
+            }
         }
     }
 
