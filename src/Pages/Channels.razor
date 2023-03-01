@@ -77,9 +77,9 @@
                 <DataGridColumn TItem="Channel" Field="@nameof(Channel.UpdateDatetime)" Caption="@nameof(Channel.UpdateDatetime).Humanize(LetterCasing.Sentence)" Sortable="false"/>
                 <DataGridColumn TItem="Channel" Caption="Channel Balance">
                     <DisplayTemplate>
-                        <Progress Color="Color.Primary" Value="@Convert.ToInt32(GetPercentageBalance(context))"/>
+                        <Progress Color="Color.Primary" Value="@Convert.ToInt32(await GetPercentageBalance(context))"/>
                         <Text>@{
-                                  @($"{Math.Round(GetPercentageBalance(context), 2)}%")
+                                  @($"{Math.Round(await GetPercentageBalance(context), 2)}%")
                         }</Text>
                     </DisplayTemplate>
                 </DataGridColumn>
@@ -314,11 +314,11 @@
         ToastService.ShowSuccess("Text copied");
     }
 
-    private double GetPercentageBalance(Channel channel)
+    private async Task<double> GetPercentageBalance(Channel channel)
     {
         try
         {
-            var values = LightningService.GetChannelBalance(channel).Result;
+            var values = await LightningService.GetChannelBalance(channel);
             var res = (values.Item2 / (double)(values.Item2 + values.Item1)) * 100;
             return res;
         }
