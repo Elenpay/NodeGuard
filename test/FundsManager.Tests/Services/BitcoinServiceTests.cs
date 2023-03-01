@@ -271,7 +271,7 @@ public class BitcoinServiceTests
             {
                 IsFinalisedPSBT = false,
                 IsInternalWalletPSBT = false,
-                IsTemplatePSBT = false,
+                IsTemplatePSBT = true,
                 PSBT = psbt,
             }
         };
