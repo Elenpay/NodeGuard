@@ -17,7 +17,7 @@
  *
  */
 
-﻿using System.ComponentModel.DataAnnotations.Schema;
+using System.ComponentModel.DataAnnotations.Schema;
 using FundsManager.Helpers;
 using NBitcoin;
 using NBXplorer.DerivationStrategy;
@@ -107,14 +107,8 @@ namespace FundsManager.Data.Models
             if (Keys != null && Keys.Any())
             {
                 var bitcoinExtPubKeys = Keys.Select(x =>
-                    {
-                        if (x.InternalWalletId != null)
-                        {
-                            var keyPath = KeyPath.Parse(InternalWalletSubDerivationPath);
-                            return new BitcoinExtPubKey(x.XPUB, currentNetwork).Derive(keyPath);
-                        }
-                        return new BitcoinExtPubKey(x.XPUB, currentNetwork);
-                    }).OrderBy(x => x.ExtPubKey.PubKey) //This is to match sortedmulti() lexicographical sort
+                    x.GetBitcoinExtPubKey(InternalWalletSubDerivationPath, currentNetwork))
+                    .OrderBy(x => x.ExtPubKey.PubKey) //This is to match sortedmulti() lexicographical sort
                     .ToList();
 
                 if (bitcoinExtPubKeys == null || !bitcoinExtPubKeys.Any())

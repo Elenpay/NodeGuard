@@ -64,14 +64,8 @@ namespace FundsManager.Helpers
             {
                 if (string.IsNullOrWhiteSpace(key.MasterFingerprint) || string.IsNullOrWhiteSpace(key.XPUB)) continue;
 
-                var bitcoinExtPubKey = new BitcoinExtPubKey(key.XPUB, nbXplorerNetwork);
-                var masterFingerprint = HDFingerprint.Parse(key.MasterFingerprint);
-                var rootedKeyPath = new RootedKeyPath(masterFingerprint, new KeyPath(key.Path));
-                if (key.InternalWalletId != null)
-                {
-                    bitcoinExtPubKey = new BitcoinExtPubKey(key.XPUB, nbXplorerNetwork).Derive(KeyPath.Parse(subderivationPath));
-                    rootedKeyPath = new RootedKeyPath(masterFingerprint, new KeyPath(key.Path).Derive(subderivationPath));
-                }
+                var bitcoinExtPubKey = key.GetBitcoinExtPubKey(subderivationPath, nbXplorerNetwork);
+                var rootedKeyPath = key.GetRootedKeyPath(subderivationPath);
 
                 //Global xpubs field addition
                 result.GlobalXPubs.Add(
@@ -81,16 +75,12 @@ namespace FundsManager.Helpers
 
                 foreach (var selectedUtxo in selectedUtxOs)
                 {
-                    var utxoDerivationPath = KeyPath.Parse(key.Path).Derive(selectedUtxo.KeyPath);
-                    var derivedPubKey = bitcoinExtPubKey.Derive(selectedUtxo.KeyPath).GetPublicKey();
-                    if (key.InternalWalletId != null)
-                    {
-                        utxoDerivationPath = KeyPath.Parse(key.Path).Derive(subderivationPath).Derive(selectedUtxo.KeyPath);
-                    }
+                    var utxoDerivationPath = key.DeriveUtxoKeyPath(subderivationPath, selectedUtxo.KeyPath);
+                    var derivedPubKey = key.DeriveUtxoPubKey(subderivationPath, nbXplorerNetwork, selectedUtxo.KeyPath);
+                    var addressRootedKeyPath = key.GetAddressRootedKeyPath(utxoDerivationPath);
                     
                     var input = result.Inputs.FirstOrDefault(input =>
                         input?.GetCoin()?.Outpoint == selectedUtxo.Outpoint);
-                    var addressRootedKeyPath = new RootedKeyPath(masterFingerprint, utxoDerivationPath);
                     var coin = coins.FirstOrDefault(x => x.Outpoint == selectedUtxo.Outpoint);
 
                     if (coin != null && input != null &&
