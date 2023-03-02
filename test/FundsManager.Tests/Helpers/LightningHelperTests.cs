@@ -17,11 +17,11 @@
  *
  */
 
-﻿using AutoFixture;
+using AutoFixture;
 using FluentAssertions;
 using FundsManager.Helpers;
- using FundsManager.TestHelpers;
- using NBitcoin;
+using FundsManager.TestHelpers;
+using NBitcoin;
 using NBXplorer.Models;
 
 namespace FundsManager.Tests
