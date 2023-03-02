@@ -226,7 +226,7 @@ namespace FundsManager.Services
                 result = builder.BuildPSBT(false);
                 
                 //Additional fields to support PSBT signing with a HW or the Remote Signer 
-                result = LightningHelper.AddDerivationData(walletWithdrawalRequest.Wallet, result, selectedUTXOs, scriptCoins, _logger, walletWithdrawalRequest.Wallet.InternalWalletSubDerivationPath);
+                result = LightningHelper.AddDerivationData(walletWithdrawalRequest.Wallet, result, selectedUTXOs, scriptCoins, _logger);
             }
             catch (Exception e)
             {
@@ -463,32 +463,20 @@ namespace FundsManager.Services
             }
 
             Dictionary<NBitcoin.OutPoint,NBitcoin.Key> privateKeysForUsedUTXOs;
-            if (walletWithdrawalRequest.Wallet.IsHotWallet)
-            {
-                try
-                {
-                    privateKeysForUsedUTXOs = txInKeyPathDictionary.ToDictionary(x => x.Key.PrevOut,
-                        x =>
-                            walletWithdrawalRequest.Wallet.InternalWallet.GetAccountKey(network)
-                                .Derive(UInt32.Parse(walletWithdrawalRequest.Wallet.InternalWalletSubDerivationPath))
-                                .Derive(x.Value).PrivateKey);
-                }
-                catch (Exception e)
-                {
-                    var errorParsingSubderivationPath =
-                        $"Invalid Internal Wallet Subderivation Path for wallet:{walletWithdrawalRequest.WalletId}";
-                    logger?.LogError(errorParsingSubderivationPath);
-
-                    throw new ArgumentException(
-                        errorParsingSubderivationPath);
-                }
-            }
-            else
+            try
             {
                 privateKeysForUsedUTXOs = txInKeyPathDictionary.ToDictionary(x => x.Key.PrevOut,
                     x =>
-                        walletWithdrawalRequest.Wallet.InternalWallet.GetAccountKey(network)
-                            .Derive(x.Value).PrivateKey);
+                        walletWithdrawalRequest.Wallet.DeriveUtxoPrivateKey(network, x.Value));
+            }
+            catch (Exception e)
+            {
+                var errorParsingSubderivationPath =
+                    $"Invalid Internal Wallet Subderivation Path for wallet:{walletWithdrawalRequest.WalletId}";
+                logger?.LogError(errorParsingSubderivationPath);
+
+                throw new ArgumentException(
+                    errorParsingSubderivationPath);
             }
 
             //We need to SIGHASH_ALL all inputs/outputs as fundsmanager to protect the tx from tampering by adding a signature

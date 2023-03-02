@@ -65,10 +65,10 @@ public class Constants
     public static readonly decimal MAXIMUM_WITHDRAWAL_BTC_AMOUNT = 21_000_000;
     public static readonly int TRANSACTION_CONFIRMATION_MINIMUM_BLOCKS;
     public static readonly long ANCHOR_CLOSINGS_MINIMUM_SATS;
-    public static readonly string DEFAULT_DERIVATION_PATH;
+    public static readonly string DEFAULT_DERIVATION_PATH = "48'/1'";
     public static readonly int SESSION_TIMEOUT_MILLISECONDS = 3_600_000;
 
-    private static string GetEnvironmentalVariableOrThrowIfNotTesting(string envVariableName, string? errorMessage = null)
+    private static string? GetEnvironmentalVariableOrThrowIfNotTesting(string envVariableName, string? errorMessage = null)
     {
         // If it is a command from ef or a test, ignore the empty env variables
         var command = Assembly.GetEntryAssembly()?.GetName().Name?.ToLowerInvariant();
@@ -78,7 +78,7 @@ public class Constants
         if (!ignoreMissingVar && envVariable == null) {
             throw new EnvironmentalVariableMissingException(errorMessage ?? envVariableName);
         }
-        return envVariable!;
+        return envVariable;
     }
 
     static Constants()
@@ -183,7 +183,7 @@ public class Constants
         var anchorClosingMinSats = GetEnvironmentalVariableOrThrowIfNotTesting("ANCHOR_CLOSINGS_MINIMUM_SATS");
         if (anchorClosingMinSats != null) ANCHOR_CLOSINGS_MINIMUM_SATS = long.Parse(anchorClosingMinSats); // Check https://github.com/lightningnetwork/lnd/issues/6505#issuecomment-1120364460 to understand, we need 100K+ to support anchor channel closings
 
-        DEFAULT_DERIVATION_PATH = GetEnvironmentalVariableOrThrowIfNotTesting("DEFAULT_DERIVATION_PATH");
+        DEFAULT_DERIVATION_PATH = GetEnvironmentalVariableOrThrowIfNotTesting("DEFAULT_DERIVATION_PATH") ?? DEFAULT_DERIVATION_PATH;
 
         var timeout = Environment.GetEnvironmentVariable("SESSION_TIMEOUT_MILLISECONDS");
         if (timeout != null) SESSION_TIMEOUT_MILLISECONDS = int.Parse(timeout);

@@ -17,7 +17,7 @@
  *
  */
 
-﻿using FundsManager.Data.Models;
+using FundsManager.Data.Models;
 using FundsManager.Data.Repositories.Interfaces;
 using FundsManager.Helpers;
 using Microsoft.EntityFrameworkCore;
@@ -125,7 +125,7 @@ namespace FundsManager.Data.Repositories
             return result;
         }
 
-        public async Task<Key> GetCurrentInternalWalletKey()
+        public async Task<Key> GetCurrentInternalWalletKey(string accountId)
         {
             await using var applicationDbContext = _dbContextFactory.CreateDbContext();
 
@@ -134,7 +134,9 @@ namespace FundsManager.Data.Repositories
             if (internalWallet == null)
                 return null;
 
-            var result = await applicationDbContext.Keys.OrderByDescending(x => x.Id).SingleOrDefaultAsync(x=> x.InternalWalletId == internalWallet.Id);
+            var result = await applicationDbContext.Keys
+                .OrderByDescending(x => x.Id)
+                .SingleOrDefaultAsync(x=> x.InternalWalletId == internalWallet.Id && x.Path == internalWallet.GetKeyPathForAccount(accountId));
             
             //If they key does not exist we should create it
             if (result == null)
@@ -145,11 +147,10 @@ namespace FundsManager.Data.Repositories
                     InternalWalletId = internalWallet.Id,
                     UpdateDatetime = DateTimeOffset.Now,
                     Name = "Internal wallet",
-                    XPUB = internalWallet.XPUB,
+                    XPUB = internalWallet.GetXpubForAccount(accountId),
                     MasterFingerprint = internalWallet.MasterFingerprint,
                     //Derivation path
-                    Path = Constants.DEFAULT_DERIVATION_PATH,
-
+                    Path = internalWallet.GetKeyPathForAccount(accountId),
                 };
                 
             }

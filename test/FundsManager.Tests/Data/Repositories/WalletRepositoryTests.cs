@@ -47,7 +47,7 @@ public class WalletRepositoryTests
         
         context.InternalWallets.Add(new InternalWallet()
         {
-            DerivationPath = "48'/1'"
+            DerivationPath = Constants.DEFAULT_DERIVATION_PATH
         });
         context.SaveChanges();
         
@@ -86,7 +86,7 @@ public class WalletRepositoryTests
         var context = dbContextFactory.Object.CreateDbContext();
         context.InternalWallets.Add(new InternalWallet()
         {
-            DerivationPath = "48'/1'"
+            DerivationPath = Constants.DEFAULT_DERIVATION_PATH
         });
         context.Wallets.Add(new Wallet()
         {
@@ -110,7 +110,7 @@ public class WalletRepositoryTests
         var context = dbContextFactory.Object.CreateDbContext();
         context.InternalWallets.Add(new InternalWallet()
         {
-            DerivationPath = "48'/1'"
+            DerivationPath = Constants.DEFAULT_DERIVATION_PATH
         });
         context.Wallets.Add(new Wallet()
         {
@@ -141,7 +141,7 @@ public class WalletRepositoryTests
         var context = dbContextFactory.Object.CreateDbContext();
         context.InternalWallets.Add(new InternalWallet()
         {
-            DerivationPath = "48'/1'"
+            DerivationPath = Constants.DEFAULT_DERIVATION_PATH
         });
         context.Wallets.Add(new Wallet()
         {
