@@ -16,17 +16,8 @@
  * along with this program.  If not, see http://www.gnu.org/licenses/.
  *
  */
-using System.Net;
 using FundsManager.Data.Models;
-using FundsManager.Data.Repositories.Interfaces;
-using FundsManager.Helpers;
-using Microsoft.AspNetCore.Identity;
-using Microsoft.EntityFrameworkCore;
 using NBitcoin;
-using NBitcoin.RPC;
-using NBXplorer;
-using NBXplorer.DerivationStrategy;
-using NBXplorer.Models;
 using Key = FundsManager.Data.Models.Key;
 
 namespace FundsManager.TestHelpers;
@@ -61,7 +52,7 @@ public static class CreateWallet
         }; 
     }
 
-    private static Key CreateUserKey(string keyName, string userId, string walletSeed)
+    public static Key CreateUserKey(string keyName, string userId, string walletSeed)
     {
         var masterKey1 = new Mnemonic(walletSeed).DeriveExtKey().GetWif(Network.RegTest);
         var keyPath1 =
@@ -81,81 +72,82 @@ public static class CreateWallet
         };
     }
     
-    public static Wallet SingleSig(InternalWallet internalWallet)
+    public static Wallet SingleSig(InternalWallet internalWallet, string accountId = "1")
     {
-        var internalWalletKey = CreateInternalKey(internalWallet, "1");
+        var internalWalletKey = CreateInternalKey(internalWallet, accountId);
         return new Wallet
         {
             IsHotWallet = true,
             MofN = 1,
             Keys = new List<Key> { internalWalletKey },
-            Name = "Test wallet",
+            Name = "Test Singlesig wallet",
             WalletAddressType = WalletAddressType.NativeSegwit,
             InternalWallet = internalWallet,
             InternalWalletId = internalWallet.Id,
             IsFinalised = true,
             CreationDatetime = DateTimeOffset.Now,
-            InternalWalletSubDerivationPath = "1"
+            InternalWalletSubDerivationPath = accountId,
+            InternalWalletMasterFingerprint = internalWallet.MasterFingerprint
         };
     }
-    
-    public static Wallet MultiSig(InternalWallet internalWallet, ILogger? logger = null)
+
+    public static Wallet MultiSig(InternalWallet internalWallet, string accountId = "0", string user1 = "1", string user2 = "2", ILogger? logger = null)
     {
-        var internalWalletKey = CreateInternalKey(internalWallet, "0");
-        var wallet1seed =
-                        "social mango annual basic work brain economy one safe physical junk other toy valid load cook napkin maple runway island oil fan legend stem";
-        var wallet2seed =
+        var wallet1Seed =
+            "social mango annual basic work brain economy one safe physical junk other toy valid load cook napkin maple runway island oil fan legend stem";
+        var wallet2Seed =
             "solar goat auto bachelor chronic input twin depth fork scale divorce fury mushroom column image sauce car public artist announce treat spend jacket physical";
         
-        logger?.LogInformation("Wallet 1 seed: {MnemonicString}", wallet1seed);
-        logger?.LogInformation("Wallet 2 seed: {MnemonicString}", wallet2seed);
+        logger?.LogInformation("Wallet 1 seed: {MnemonicString}", wallet1Seed);
+        logger?.LogInformation("Wallet 2 seed: {MnemonicString}", wallet2Seed);
 
+        var user1Key = CreateUserKey("Key 1", user1, wallet1Seed);
+        var user2Key = CreateUserKey("Key 2", user2, wallet2Seed);
+            
+        return MultiSig(internalWallet, accountId, user1Key, user2Key);
+    }
+
+    public static Wallet MultiSig(InternalWallet internalWallet, string accountId, Key user1Key, Key user2Key)
+    {
+        var internalWalletKey = CreateInternalKey(internalWallet, accountId);
+        var isLegacy = accountId.Contains('\'');
+        var legacyLabel = isLegacy ? "Legacy " : "";
         return new Wallet
         {
             MofN = 2,
             Keys = new List<Key>
                 {
-                    CreateUserKey("Key 1", "1", wallet1seed),
-                    CreateUserKey("Key 2", "2", wallet2seed),
+                    user1Key,
+                    user2Key,
                     internalWalletKey
                 },
-            Name = "Test wallet",
+            Name = $"Test {legacyLabel}Multisig wallet",
             WalletAddressType = WalletAddressType.NativeSegwit,
             InternalWallet = internalWallet,
             InternalWalletId = internalWallet.Id,
             IsFinalised = true,
             CreationDatetime = DateTimeOffset.Now,
-            InternalWalletSubDerivationPath = "0"
+            InternalWalletSubDerivationPath = isLegacy ? null : accountId,
+            InternalWalletMasterFingerprint = isLegacy ? null : internalWallet.MasterFingerprint
         };
     }
-    
-    public static Wallet LegacyMultiSig(InternalWallet internalWallet, ILogger? logger = null)
+
+    public static Wallet LegacyMultiSig(InternalWallet internalWallet, string accountId = "1'", string user1 = "1", string user2 = "2", ILogger? logger = null)
     {
-        var internalWalletKey = CreateInternalKey(internalWallet, "1'");
-        
-        var wallet1seed =
-                        "wrong judge easily street crazy blouse royal employ spoon split curtain food vapor amazing grow funny false rather table keen arrest wash word define";
-        var wallet2seed =
-            "air pluck stool maximum oven mimic bulb tonight boat alarm chair fresh keen course trumpet ranch envelope wealth wood holiday patrol vague put square";
-
-        logger?.LogInformation("Wallet 1 seed: {MnemonicString}", wallet1seed);
-        logger?.LogInformation("Wallet 2 seed: {MnemonicString}", wallet2seed);
-
-        return new Wallet
+        if (!accountId.Contains('\''))
         {
-            MofN = 2,
-            Keys = new List<Key>
-                {
-                    CreateUserKey("Key 1", "1", wallet1seed),
-                    CreateUserKey("Key 2", "2", wallet2seed),
-                    internalWalletKey
-                },
-            Name = "Legacy Test wallet",
-            WalletAddressType = WalletAddressType.NativeSegwit,
-            InternalWallet = internalWallet,
-            InternalWalletId = internalWallet.Id,
-            IsFinalised = true,
-            CreationDatetime = DateTimeOffset.Now,
-        };
+            throw new Exception("Account id must be hardened path");
+        }
+        return MultiSig(internalWallet, accountId, user1, user2, logger);
+    }
+
+    public static Wallet LegacyMultiSig(InternalWallet internalWallet, string accountId, Key user1Key, Key user2Key)
+    {
+        if (!accountId.Contains('\''))
+        {
+            throw new Exception("Account id must be hardened path");
+        }
+
+        return MultiSig(internalWallet, accountId, user1Key, user2Key);
     }
 }

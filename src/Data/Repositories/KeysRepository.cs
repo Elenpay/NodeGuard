@@ -136,7 +136,7 @@ namespace FundsManager.Data.Repositories
 
             var result = await applicationDbContext.Keys
                 .OrderByDescending(x => x.Id)
-                .SingleOrDefaultAsync(x=> x.InternalWalletId == internalWallet.Id && x.Path == internalWallet.GetKeyPathForAccount(accountId));
+                .SingleOrDefaultAsync(x => x.InternalWalletId == internalWallet.Id && x.Path == internalWallet.GetKeyPathForAccount(accountId));
             
             //If they key does not exist we should create it
             if (result == null)

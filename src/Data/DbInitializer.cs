@@ -199,6 +199,11 @@ namespace FundsManager.Data
                             .Result;
                     }
                 }
+                else
+                {
+                    adminUser = applicationDbContext.ApplicationUsers.FirstOrDefault(u => u.UserName == "admin");
+                    financeUser = applicationDbContext.ApplicationUsers.FirstOrDefault(u => u.UserName == "financemanager");
+                }
 
                 var nodes = Task.Run(() => nodeRepository.GetAll()).Result;
 
@@ -251,14 +256,25 @@ namespace FundsManager.Data
                     applicationDbContext.SaveChanges();
                 }
 
-                if (applicationDbContext.Wallets.Any() && adminUser != null)
+                if (!applicationDbContext.Wallets.Any() && adminUser != null)
                 {
                     //Wallets
-                    var testingLegacyMultisigWallet = CreateWallet.LegacyMultiSig(internalWallet, logger); 
-                    var testingMultisigWallet = CreateWallet.MultiSig(internalWallet, logger);
-                    var testingSinglesigWallet = CreateWallet.SingleSig(internalWallet);
+                    var wallet1Seed =
+                        "social mango annual basic work brain economy one safe physical junk other toy valid load cook napkin maple runway island oil fan legend stem";
+                    var wallet2Seed =
+                        "solar goat auto bachelor chronic input twin depth fork scale divorce fury mushroom column image sauce car public artist announce treat spend jacket physical";
+        
+                    logger?.LogInformation("Wallet 1 seed: {MnemonicString}", wallet1Seed);
+                    logger?.LogInformation("Wallet 2 seed: {MnemonicString}", wallet2Seed);
+                    
+                    var user1Key = CreateWallet.CreateUserKey("Key 1", adminUser.Id, wallet1Seed);
+                    var user2Key = CreateWallet.CreateUserKey("Key 2", financeUser.Id, wallet2Seed);
+                    
+                    var testingLegacyMultisigWallet = CreateWallet.LegacyMultiSig(internalWallet, "1'", user1Key, user2Key); 
+                    var testingMultisigWallet = CreateWallet.MultiSig(internalWallet, "0", user1Key, user2Key);
+                    var testingSinglesigWallet = CreateWallet.SingleSig(internalWallet, "1");
 
-                        //Now we fund a multisig address of that wallet with the miner (polar)
+                    //Now we fund a multisig address of that wallet with the miner (polar)
                     //We mine 10 blocks
                     minerRPC.Generate(10);
 
