@@ -33,28 +33,28 @@ public class ChannelUpdateJob : IJob
 {
     private readonly ILogger<ChannelUpdateJob> _logger;
     private readonly ILightningService _lightningService;
-    private readonly IChannelRepository _channelRepository;
+    private readonly INodeRepository _nodeRepository;
     
-    public ChannelUpdateJob(ILogger<ChannelUpdateJob> logger, ILightningService lightningService, ChannelRepository channelRepository)
+    public ChannelUpdateJob(ILogger<ChannelUpdateJob> logger, ILightningService lightningService, INodeRepository nodeRepository)
     {
         _logger = logger;
         _lightningService = lightningService;
-        _channelRepository = channelRepository;
+        _nodeRepository = nodeRepository;
     }
         
     public async Task Execute(IJobExecutionContext context)
     {
         _logger.LogInformation("Starting {JobName}... ", nameof(ChannelUpdateJob));
         var data = context.JobDetail.JobDataMap;
-        var channelId = data.GetInt("channelId");
+        var nodeId = data.GetInt("nodeId");
         try
         {
-            var channel = await _channelRepository.GetById(channelId);
-            await _lightningService.SubscribeToNode(channel.Node);
+            var node = await _nodeRepository.GetById(nodeId);
+            await _lightningService.SubscribeToNode(node);
         }
         catch (Exception e)
         {
-            _logger.LogError(e, "Error while updating channel {ChannelId}", channelId);
+            _logger.LogError(e, "Error while subscribing to node {NodeId}", nodeId);
         }
         
         _logger.LogInformation("{JobName} ended", nameof(ChannelUpdateJob));
