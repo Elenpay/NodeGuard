@@ -29,13 +29,13 @@ namespace FundsManager.Jobs;
 /// </summary>
 /// <returns></returns>
 [DisallowConcurrentExecution]
-public class ChannelUpdateJob : IJob
+public class NodeChannelSuscribeJob : IJob
 {
-    private readonly ILogger<ChannelUpdateJob> _logger;
+    private readonly ILogger<NodeChannelSuscribeJob> _logger;
     private readonly ILightningService _lightningService;
     private readonly INodeRepository _nodeRepository;
     
-    public ChannelUpdateJob(ILogger<ChannelUpdateJob> logger, ILightningService lightningService, INodeRepository nodeRepository)
+    public NodeChannelSuscribeJob(ILogger<NodeChannelSuscribeJob> logger, ILightningService lightningService, INodeRepository nodeRepository)
     {
         _logger = logger;
         _lightningService = lightningService;
@@ -44,7 +44,7 @@ public class ChannelUpdateJob : IJob
         
     public async Task Execute(IJobExecutionContext context)
     {
-        _logger.LogInformation("Starting {JobName}... ", nameof(ChannelUpdateJob));
+        _logger.LogInformation("Starting {JobName}... ", nameof(NodeChannelSuscribeJob));
         var data = context.JobDetail.JobDataMap;
         var nodeId = data.GetInt("nodeId");
         try
@@ -54,9 +54,9 @@ public class ChannelUpdateJob : IJob
         }
         catch (Exception e)
         {
-            _logger.LogError(e, "Error while subscribing to node {NodeId}", nodeId);
+            _logger.LogError(e, "Error while subscribing for the channel updates of node {NodeId}", nodeId);
         }
         
-        _logger.LogInformation("{JobName} ended", nameof(ChannelUpdateJob));
+        _logger.LogInformation("{JobName} ended", nameof(NodeChannelSuscribeJob));
     }
 }
