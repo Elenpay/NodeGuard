@@ -1216,12 +1216,21 @@ namespace FundsManager.Services
                         FundingTx = channelOpened.ChannelPoint,
                         NodeId = node.Id,
                     };  
-                    var addChannel = await _channelRepository.AddAsync(channel);
-                    if (!addChannel.Item1)
+                    var channelExists = await _channelRepository.GetByChanId(channel.ChanId);
+                    if (channelExists == null)
                     {
-                        throw new Exception(addChannel.Item2);
+                        var addChannel = await _channelRepository.AddAsync(channel);
+                        if (!addChannel.Item1)
+                        {
+                            throw new Exception(addChannel.Item2);
+                        }
+
+                        _logger.LogInformation("Channel with id: {ChannelId} added to the system", channel.Id);
                     }
-                    _logger.LogInformation("Channel with id: {ChannelId} added to the system", channel.Id);
+                    else
+                    {
+                        _logger.LogInformation("Channel with id: {ChannelId} already exists in the system", channel.Id);
+                    }
                 }
 
                 if (channelEventUpdate.ClosedChannel != null)
@@ -1240,7 +1249,6 @@ namespace FundsManager.Services
                     }
                 }
             }
-
         }
     }
 }
