@@ -1,7 +1,9 @@
 @page "/nodes"
 @using System.Security.Claims
 @using System.Threading
+@using FundsManager.Jobs
 @using Humanizer
+@using Quartz
 
 @attribute [Authorize(Roles = "FinanceManager, NodeManager, Superadmin")]
 <PageTitle>Active Nodes</PageTitle>
@@ -144,6 +146,8 @@
 @inject ClipboardService ClipboardService
 @inject IMessageService MessageService
 @inject IWalletRepository WalletRepository
+@inject ISchedulerFactory  SchedulerFactory
+@inject ILightningService LightningService
 @implements IDisposable
 @code {
     private List<Node>? _nodes;
@@ -198,6 +202,7 @@
             {
                 ToastService.ShowSuccess($"Node {arg.Item.Name} Created");
                 _nodes = await NodeRepository.GetAll();
+                CreateJob(arg.Item);
 
             }
             else
@@ -267,6 +272,10 @@
                 if (!result)
                 {
                     ToastService.ShowError($"{node.Name} could not be deleted");
+                    // IScheduler scheduler = await SchedulerFactory.GetScheduler();
+                    // scheduler.PauseJob(node.JobId.ToString());
+                    // scheduler.DeleteJob(node.JobId.ToString());
+                    
                 }
                 else
                 {
@@ -274,11 +283,36 @@
                     _nodes = await NodeRepository.GetAll();
 
                 }
+                
             }
         }
 
         await GetData();
 
+    }
+    
+    private async Task CreateJob(Node node)
+    {
+        try
+        {
+            IScheduler scheduler = await SchedulerFactory.GetScheduler();
+
+            var map = new JobDataMap();
+            map.Put("nodeId", node.Id);
+
+            var retryList = RetriableJob.ParseRetryListFromString(Constants.JOB_RETRY_INTERVAL_LIST_IN_MINUTES);
+            var job = RetriableJob.Create<NodeChannelSuscribeJob>(map, node.Id.ToString(), retryList);
+            await scheduler.ScheduleJob(job.Job, job.Trigger);
+
+            node.JobId = job.Job.Key.ToString();
+
+            var jobUpdateResult = NodeRepository.Update(node);
+            ToastService.ShowSuccess("Node subscription job created");
+        }
+        catch
+        {
+            ToastService.ShowError("Error while requesting to open the channel, please contact a superadmin for troubleshooting");
+        }
     }
 
     record State(string Text, string ClassName, bool IsDisabled = false);
