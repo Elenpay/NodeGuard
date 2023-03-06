@@ -3,6 +3,7 @@ using System;
 using FundsManager.Data;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 
@@ -11,9 +12,10 @@ using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 namespace FundsManager.Migrations
 {
     [DbContext(typeof(ApplicationDbContext))]
-    partial class ApplicationDbContextModelSnapshot : ModelSnapshot
+    [Migration("20230306090732_ChannelCreatedByNodeGuard")]
+    partial class ChannelCreatedByNodeGuard
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -87,9 +89,6 @@ namespace FundsManager.Migrations
                     b.Property<DateTimeOffset>("CreationDatetime")
                         .HasColumnType("timestamp with time zone");
 
-                    b.Property<int>("DestinationNodeId")
-                        .HasColumnType("integer");
-
                     b.Property<string>("FundingTx")
                         .IsRequired()
                         .HasColumnType("text");
@@ -100,11 +99,11 @@ namespace FundsManager.Migrations
                     b.Property<bool>("IsAutomatedLiquidityEnabled")
                         .HasColumnType("boolean");
 
+                    b.Property<int>("NodeId")
+                        .HasColumnType("integer");
+
                     b.Property<long>("SatsAmount")
                         .HasColumnType("bigint");
-
-                    b.Property<int>("SourceNodeId")
-                        .HasColumnType("integer");
 
                     b.Property<int>("Status")
                         .HasColumnType("integer");
@@ -114,9 +113,7 @@ namespace FundsManager.Migrations
 
                     b.HasKey("Id");
 
-                    b.HasIndex("DestinationNodeId");
-
-                    b.HasIndex("SourceNodeId");
+                    b.HasIndex("NodeId");
 
                     b.ToTable("Channels");
                 });
@@ -878,21 +875,13 @@ namespace FundsManager.Migrations
 
             modelBuilder.Entity("FundsManager.Data.Models.Channel", b =>
                 {
-                    b.HasOne("FundsManager.Data.Models.Node", "DestinationNode")
+                    b.HasOne("FundsManager.Data.Models.Node", "Node")
                         .WithMany()
-                        .HasForeignKey("DestinationNodeId")
+                        .HasForeignKey("NodeId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
 
-                    b.HasOne("FundsManager.Data.Models.Node", "SourceNode")
-                        .WithMany()
-                        .HasForeignKey("SourceNodeId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
-
-                    b.Navigation("DestinationNode");
-
-                    b.Navigation("SourceNode");
+                    b.Navigation("Node");
                 });
 
             modelBuilder.Entity("FundsManager.Data.Models.ChannelOperationRequest", b =>
