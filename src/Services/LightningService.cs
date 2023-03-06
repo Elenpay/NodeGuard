@@ -1215,6 +1215,7 @@ namespace FundsManager.Services
                         BtcCloseAddress = channelOpened.CloseAddress,
                         FundingTx = channelOpened.ChannelPoint,
                         NodeId = node.Id,
+                        CreatedByNodeGuard = false
                     };  
                     var channelExists = await _channelRepository.GetByChanId(channel.ChanId);
                     if (channelExists == null)

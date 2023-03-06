@@ -27,7 +27,7 @@
                         <Button Color="Color.Primary" hidden Clicked="@context.Clicked">Edit</Button>
                     </EditCommandTemplate>
                     <DeleteCommandTemplate>
-                        <Button Color="Color.Danger" hidden="@_hideDelete" Disabled="@(context.Item.Status == Channel.ChannelStatus.Closed || context.Item.ChannelOperationRequests.Last().RequestType == OperationRequestType.Close)" Clicked="() => ShowConfirmedClose(context.Item)">Close</Button>
+                        <Button Color="Color.Danger" hidden="@(_hideDelete || !context.Item.CreatedByNodeGuard)" Disabled="@(context.Item.CreatedByNodeGuard && (context.Item.Status == Channel.ChannelStatus.Closed || context.Item.ChannelOperationRequests.Last().RequestType == OperationRequestType.Close))" Clicked="() => ShowConfirmedClose(context.Item)">Close</Button>
                     </DeleteCommandTemplate>
                 </DataGridCommandColumn>
                  <DataGridColumn TItem="Channel" Caption="" Sortable="false">
@@ -61,7 +61,7 @@
                 <DataGridColumn TItem="Channel" Field="@nameof(Channel.BtcCloseAddress)" Caption="Treasury return address" Sortable="false">
 
                     <DisplayTemplate>
-                        @if (string.IsNullOrEmpty(context.BtcCloseAddress))
+                        @if (!string.IsNullOrEmpty(context.BtcCloseAddress))
                         {
                             @StringHelper.TruncateHeadAndTail(context.BtcCloseAddress, 5)
                             <Button Color="Color.Primary" Clicked="@(() => CopyStrToClipboard(context.BtcCloseAddress))">
@@ -73,6 +73,11 @@
                 </DataGridColumn>
                 <DataGridColumn TItem="Channel" Field="@nameof(Channel.CreationDatetime)" Caption="@nameof(Channel.CreationDatetime).Humanize(LetterCasing.Sentence)" Sortable="false"/>
                 <DataGridColumn TItem="Channel" Field="@nameof(Channel.UpdateDatetime)" Caption="@nameof(Channel.UpdateDatetime).Humanize(LetterCasing.Sentence)" Sortable="false"/>
+                <DataGridColumn TItem="Channel" Field="@nameof(Channel.CreatedByNodeGuard)" Caption="@nameof(Channel.CreatedByNodeGuard).Humanize(LetterCasing.Sentence)" Sortable="false">
+                    <DisplayTemplate>
+                        @(context.CreatedByNodeGuard ? "Yes" : "No")
+                    </DisplayTemplate>
+                </DataGridColumn>
                
             </DataGridColumns>
         </DataGrid>
