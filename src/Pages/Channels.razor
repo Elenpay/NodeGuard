@@ -61,7 +61,7 @@
                 <DataGridColumn TItem="Channel" Field="@nameof(Channel.BtcCloseAddress)" Caption="Treasury return address" Sortable="false">
 
                     <DisplayTemplate>
-                        @if (context.BtcCloseAddress != null)
+                        @if (string.IsNullOrEmpty(context.BtcCloseAddress))
                         {
                             @StringHelper.TruncateHeadAndTail(context.BtcCloseAddress, 5)
                             <Button Color="Color.Primary" Clicked="@(() => CopyStrToClipboard(context.BtcCloseAddress))">
