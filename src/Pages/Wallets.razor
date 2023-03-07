@@ -488,10 +488,10 @@
 
     private async Task GetModalDefaultData()
     {
-        var currentInternalWalletKey = await KeyRepository.GetCurrentInternalWalletKey();
-
         if (_selectedWallet != null)
             _selectedWalletKeysPlusInternalWalletKey.AddRange(_selectedWallet.Keys.ToList());
+        
+        var currentInternalWalletKey = await KeyRepository.GetCurrentInternalWalletKey(_selectedWallet.InternalWalletSubDerivationPath);
 
         //TODO What happens when the internal wallet changes? This is not correct, FUTURE FIX required
         if (!_selectedWalletKeysPlusInternalWalletKey.Any(x => x.Id == currentInternalWalletKey.Id))

@@ -118,7 +118,7 @@ namespace FundsManager.Data.Repositories
                 if (currentInternalWallet != null)
                     type.InternalWalletId = currentInternalWallet.Id;
 
-                var currentInternalWalletKey = await _keyRepository.GetCurrentInternalWalletKey();
+                var currentInternalWalletKey = await _keyRepository.GetCurrentInternalWalletKey(type.InternalWalletSubDerivationPath);
 
                 type.Keys = new List<Key>();
 
@@ -228,8 +228,6 @@ namespace FundsManager.Data.Repositories
             selectedWalletToFinalise.IsFinalised = true;
             try
             {
-                
-
                 selectedWalletToFinalise.InternalWalletSubDerivationPath = await GetNextSubderivationPath();
                 
                 var derivationStrategyBase = selectedWalletToFinalise.GetDerivationStrategy();

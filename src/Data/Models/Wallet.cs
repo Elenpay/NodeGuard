@@ -107,7 +107,7 @@ namespace FundsManager.Data.Models
             if (Keys != null && Keys.Any())
             {
                 var bitcoinExtPubKeys = Keys.Select(x =>
-                    x.GetBitcoinExtPubKey(InternalWalletSubDerivationPath, currentNetwork))
+                    x.GetBitcoinExtPubKey(currentNetwork))
                     .OrderBy(x => x.ExtPubKey.PubKey) //This is to match sortedmulti() lexicographical sort
                     .ToList();
 
@@ -136,6 +136,22 @@ namespace FundsManager.Data.Models
             }
 
             return null;
+        }
+       
+        public NBitcoin.Key DeriveUtxoPrivateKey(Network network, KeyPath utxoKeyPath)
+        {
+            if (InternalWalletId == null)
+            {
+                throw new InvalidOperationException("You can't derive from a user's key");
+            }
+
+            var internalKey = Keys?.FirstOrDefault(k => k.InternalWalletId != null);
+            return new Mnemonic(InternalWallet.MnemonicString)
+                .DeriveExtKey()
+                .GetWif(network)
+                .Derive(KeyPath.Parse(internalKey.Path))
+                .Derive(utxoKeyPath)
+                .PrivateKey; 
         }
     }
 }

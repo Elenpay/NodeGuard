@@ -51,21 +51,20 @@ namespace FundsManager.Helpers
         /// <param name="multisigCoins"></param>
         /// <exception cref="ArgumentException"></exception>
         public static PSBT? AddDerivationData(Wallet wallet, PSBT? result, List<UTXO> selectedUtxOs,
-            List<ICoin> coins, ILogger? logger = null, string subderivationPath = "")
+            List<ICoin> coins, ILogger? logger = null)
         {
             if (wallet == null) throw new ArgumentNullException(nameof(wallet));
             if (wallet.Keys == null) throw new ArgumentNullException(nameof(wallet.Keys));
             if (selectedUtxOs == null) throw new ArgumentNullException(nameof(selectedUtxOs));
             if (coins == null) throw new ArgumentNullException(nameof(coins));
-            if (subderivationPath == null) throw new ArgumentNullException(nameof(subderivationPath));
 
             var nbXplorerNetwork = CurrentNetworkHelper.GetCurrentNetwork();
             foreach (var key in wallet.Keys)
             {
                 if (string.IsNullOrWhiteSpace(key.MasterFingerprint) || string.IsNullOrWhiteSpace(key.XPUB)) continue;
 
-                var bitcoinExtPubKey = key.GetBitcoinExtPubKey(subderivationPath, nbXplorerNetwork);
-                var rootedKeyPath = key.GetRootedKeyPath(subderivationPath);
+                var bitcoinExtPubKey = key.GetBitcoinExtPubKey(nbXplorerNetwork);
+                var rootedKeyPath = key.GetRootedKeyPath();
 
                 //Global xpubs field addition
                 result.GlobalXPubs.Add(
@@ -75,8 +74,8 @@ namespace FundsManager.Helpers
 
                 foreach (var selectedUtxo in selectedUtxOs)
                 {
-                    var utxoDerivationPath = key.DeriveUtxoKeyPath(subderivationPath, selectedUtxo.KeyPath);
-                    var derivedPubKey = key.DeriveUtxoPubKey(subderivationPath, nbXplorerNetwork, selectedUtxo.KeyPath);
+                    var utxoDerivationPath = key.DeriveUtxoKeyPath(selectedUtxo.KeyPath);
+                    var derivedPubKey = key.DeriveUtxoPubKey(nbXplorerNetwork, selectedUtxo.KeyPath);
                     var addressRootedKeyPath = key.GetAddressRootedKeyPath(utxoDerivationPath);
                     
                     var input = result.Inputs.FirstOrDefault(input =>
