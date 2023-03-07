@@ -17,7 +17,7 @@
  *
  */
 
-﻿using Humanizer;
+using Humanizer;
 
 namespace FundsManager.Helpers
 {
@@ -49,6 +49,16 @@ namespace FundsManager.Helpers
             var result = $"{startTruncated}{endTruncated}";
 
             return result;
+        }
+
+        public static bool IsTrue(string? str)
+        {
+            if (string.IsNullOrWhiteSpace(str))
+            {
+                return false;
+            }
+            var lowerStr = str.ToLowerInvariant();
+            return lowerStr == "true" || str == "1" || lowerStr == "yes";
         }
     }
 }

@@ -46,6 +46,11 @@
         public ChannelStatus Status { get; set; }
         
         /// <summary>
+        /// Indicates if this channel was created by NodeGuard
+        /// </summary>
+        public bool CreatedByNodeGuard { get; set; }
+        
+        /// <summary>
         /// Bool to indicate if this channel's liquidity should be automatically managed
         /// </summary>
         public bool IsAutomatedLiquidityEnabled { get; set; }
