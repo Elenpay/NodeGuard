@@ -29,6 +29,7 @@ using NBXplorer.DerivationStrategy;
 using NBXplorer.Models;
 using System.Security.Cryptography;
 using AutoMapper;
+using Blazored.Toast.Services;
 using FundsManager.Data;
 using FundsManager.Data.Repositories;
 using FundsManager.Helpers;
@@ -98,6 +99,21 @@ namespace FundsManager.Services
         /// <returns></returns>
         public Task<LightningNode?> GetNodeInfo(string pubkey);
 
+        /// <summary>
+        /// Channel balance
+        /// </summary>
+        /// <param name="channel"></param>
+        /// <returns></returns>
+        public Task<(long?, long?)> GetChannelBalance(Channel channel);
+
+        /// <summary>
+        /// Cancels a pending channel from LND PSBT-based funding of channels
+        /// </summary>
+        /// <param name="source"></param>
+        /// <param name="pendingChannelId"></param>
+        /// <param name="client"></param>
+        public void CancelPendingChannel(Node source, byte[] pendingChannelId,  IUnmockable<Lightning.LightningClient>? client = null); 
+        
         public Task SubscribeToNode(Node node);
     }
 
@@ -327,7 +343,8 @@ namespace FundsManager.Services
                                     SatsAmount = channelOperationRequest.SatsAmount,
                                     UpdateDatetime = DateTimeOffset.Now,
                                     Status = Channel.ChannelStatus.Open,
-                                    NodeId = channelOperationRequest.SourceNode.Id
+                                    SourceNodeId = channelOperationRequest.SourceNode.Id,
+                                    DestinationNodeId = channelOperationRequest.DestNode.Id,
                                 };
 
                                 await context.AddAsync(channel);
@@ -505,12 +522,12 @@ namespace FundsManager.Services
                                     }
                                     else
                                     {
-                                        CancelPendingChannel(source, client, pendingChannelId);
+                                        CancelPendingChannel(source, pendingChannelId, client);
                                     }
                                 }
                                 else
                                 {
-                                    CancelPendingChannel(source, client, pendingChannelId);
+                                    CancelPendingChannel(source, pendingChannelId, client);
                                 }
 
                                 break;
@@ -526,7 +543,7 @@ namespace FundsManager.Services
                     source.Name,
                     destination.Name);
 
-                CancelPendingChannel(source, client, pendingChannelId);
+                CancelPendingChannel(source, pendingChannelId, client);
 
                 //TODO Mark as failed (?)
                 throw;
@@ -681,30 +698,21 @@ namespace FundsManager.Services
 
 
             Dictionary<NBitcoin.OutPoint,NBitcoin.Key> privateKeysForUsedUTXOs;
-            if (channelOperationRequest.Wallet.IsHotWallet)
-            {
-                try
-                {
-                    privateKeysForUsedUTXOs = txInKeyPathDictionary.ToDictionary(x => x.Key.PrevOut, x => channelOperationRequest.Wallet.InternalWallet.GetAccountKey(network)
-                        .Derive(UInt32.Parse(channelOperationRequest.Wallet.InternalWalletSubDerivationPath))
-                        .Derive(x.Value)
-                        .PrivateKey);
-                }
-                catch (Exception e)
-                {
-                    var errorParsingSubderivationPath =
-                        $"Invalid Internal Wallet Subderivation Path for wallet:{channelOperationRequest.WalletId}";
-                    logger?.LogError(errorParsingSubderivationPath);
-
-                    throw new ArgumentException(
-                        errorParsingSubderivationPath);
-                }
-            }
-            else
+            try
             {
                 privateKeysForUsedUTXOs = txInKeyPathDictionary.ToDictionary(x => x.Key.PrevOut, x => channelOperationRequest.Wallet.InternalWallet.GetAccountKey(network)
+                    .Derive(UInt32.Parse(channelOperationRequest.Wallet.InternalWalletSubDerivationPath))
                     .Derive(x.Value)
                     .PrivateKey);
+            }
+            catch (Exception e)
+            {
+                var errorParsingSubderivationPath =
+                    $"Invalid Internal Wallet Subderivation Path for wallet:{channelOperationRequest.WalletId}";
+                logger?.LogError(errorParsingSubderivationPath);
+
+                throw new ArgumentException(
+                    errorParsingSubderivationPath);
             }
 
             //We need to SIGHASH_ALL all inputs/outputs as fundsmanager to protect the tx from tampering by adding a signature
@@ -741,10 +749,14 @@ namespace FundsManager.Services
         /// <param name="source"></param>
         /// <param name="client"></param>
         /// <param name="pendingChannelId"></param>
-        private void CancelPendingChannel(Node source, IUnmockable<Lightning.LightningClient> client, byte[] pendingChannelId)
+        public void CancelPendingChannel(Node source, byte[] pendingChannelId, IUnmockable<Lightning.LightningClient>? client = null)
         {
             try
             {
+                if (client == null)
+                {
+                    client = CreateLightningClient(source.Endpoint);
+                }
                 if (pendingChannelId != null)
                 {
                     var cancelRequest = new FundingShimCancel
@@ -768,6 +780,7 @@ namespace FundsManager.Services
                     Convert.ToHexString(pendingChannelId));
             }
         }
+
 
         public async Task<(PSBT?, bool)> GenerateTemplatePSBT(ChannelOperationRequest? channelOperationRequest)
         {
@@ -898,7 +911,8 @@ namespace FundsManager.Services
                 }
 
                 //Additional fields to support PSBT signing with a HW or the Remote Signer 
-                result = LightningHelper.AddDerivationData(channelOperationRequest.Wallet.Keys, result, selectedUtxOs, multisigCoins, _logger, channelOperationRequest.Wallet.InternalWalletSubDerivationPath);
+                var psbt = LightningHelper.AddDerivationData(channelOperationRequest.Wallet, result.Item1, selectedUtxOs, multisigCoins, _logger, channelOperationRequest.Wallet.InternalWalletSubDerivationPath);
+                result = (psbt, result.Item2);
             }
             catch (Exception e)
             {
@@ -946,7 +960,7 @@ namespace FundsManager.Services
         /// <param name="nbxplorerClient"></param>
         /// <param name="derivationStrategy"></param>
         /// <returns></returns>
-        private async Task<(List<ScriptCoin> coins, List<UTXO> selectedUTXOs)> GetTxInputCoins(
+        private async Task<(List<ICoin> coins, List<UTXO> selectedUTXOs)> GetTxInputCoins(
             ChannelOperationRequest channelOperationRequest,
             INBXplorerService nbXplorerService,
             DerivationStrategyBase derivationStrategy)
@@ -1139,7 +1153,7 @@ namespace FundsManager.Services
             try
             {
                 keyPathInformation =await _nbXplorerService.GetUnusedAsync(wallet.GetDerivationStrategy(),
-                    derivationFeature, default, true, default);
+                    derivationFeature, default, false, default);
             }
             catch (Exception e)
             {
@@ -1191,6 +1205,23 @@ namespace FundsManager.Services
 
             return result;
         }
+
+        public async Task<(long?, long?)> GetChannelBalance(Channel channel)
+        {
+            var client = CreateLightningClient(channel.SourceNode.Endpoint);
+            var result = client.Execute(x => x.ListChannels(new ListChannelsRequest(), 
+                new Metadata {
+                {"macaroon", channel.SourceNode.ChannelAdminMacaroon}
+            }, null, default));
+            
+            var chan = result.Channels.FirstOrDefault(x => x.ChanId == channel.ChanId);
+            if(chan == null)
+                return (null, null);
+
+            var res = (chan.LocalBalance, chan.RemoteBalance);
+            return res;
+        }
+        
         
         public async Task SubscribeToNode(Node node)
         {
@@ -1214,9 +1245,9 @@ namespace FundsManager.Services
                         IsAutomatedLiquidityEnabled = false,
                         BtcCloseAddress = channelOpened.CloseAddress,
                         FundingTx = channelOpened.ChannelPoint,
-                        NodeId = node.Id,
                         CreatedByNodeGuard = false
                     };  
+                    // TODO Add SourceNode and DestinationNode
                     var channelExists = await _channelRepository.GetByChanId(channel.ChanId);
                     if (channelExists == null)
                     {

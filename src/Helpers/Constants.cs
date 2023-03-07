@@ -18,6 +18,7 @@
  */
 using System.Globalization;
 using System.Reflection;
+using FundsManager.Helpers;
 
 public class Constants
 {
@@ -57,9 +58,9 @@ public class Constants
 
     // Observability
     public static readonly string? OTEL_EXPORTER_ENDPOINT;
-    
+
     // Usage
-    public static readonly string BITCOIN_NETWORK; 
+    public static readonly string BITCOIN_NETWORK;
     public static readonly long MINIMUM_CHANNEL_CAPACITY_SATS = 20_000;
     public static readonly decimal MINIMUM_WITHDRAWAL_BTC_AMOUNT = 0.0m;
     public static readonly decimal MAXIMUM_WITHDRAWAL_BTC_AMOUNT = 21_000_000;
@@ -83,11 +84,11 @@ public class Constants
 
     static Constants()
     {
-        IS_DEV_ENVIRONMENT = Environment.GetEnvironmentVariable("IS_DEV_ENVIRONMENT") != null;
+        IS_DEV_ENVIRONMENT = StringHelper.IsTrue(Environment.GetEnvironmentVariable("IS_DEV_ENVIRONMENT"));
         // Features
-        ENABLE_REMOTE_SIGNER = Environment.GetEnvironmentVariable("ENABLE_REMOTE_SIGNER") != null;
+        ENABLE_REMOTE_SIGNER = StringHelper.IsTrue(Environment.GetEnvironmentVariable("ENABLE_REMOTE_SIGNER"));
 
-        PUSH_NOTIFICATIONS_ONESIGNAL_ENABLED = Environment.GetEnvironmentVariable("PUSH_NOTIFICATIONS_ONESIGNAL_ENABLED") != null;
+        PUSH_NOTIFICATIONS_ONESIGNAL_ENABLED = StringHelper.IsTrue(Environment.GetEnvironmentVariable("PUSH_NOTIFICATIONS_ONESIGNAL_ENABLED"));
 
         ENABLE_HW_SUPPORT = Environment.GetEnvironmentVariable("ENABLE_HW_SUPPORT") != "false"; // We default to true
 
@@ -105,7 +106,7 @@ public class Constants
         FUNDSMANAGER_ENDPOINT = Environment.GetEnvironmentVariable("FUNDSMANAGER_ENDPOINT");
 
         COINGECKO_ENDPOINT = Environment.GetEnvironmentVariable("COINGECKO_ENDPOINT");
-        
+
         MEMPOOL_ENDPOINT = Environment.GetEnvironmentVariable("MEMPOOL_ENDPOINT");
 
         // Credentials
@@ -139,14 +140,14 @@ public class Constants
             REMOTE_SIGNER_ENDPOINT = GetEnvironmentalVariableOrThrowIfNotTesting("REMOTE_SIGNER_ENDPOINT", "if ENABLE_REMOTE_SIGNER is set, REMOTE_SIGNER_ENDPOINT");
         }
 
-        
+
 
         // Crons & Jobs
         MONITOR_WITHDRAWALS_CRON = Environment.GetEnvironmentVariable("MONITOR_WITHDRAWALS_CRON") ?? MONITOR_WITHDRAWALS_CRON;
 
         JOB_RETRY_INTERVAL_LIST_IN_MINUTES = Environment.GetEnvironmentVariable("JOB_RETRY_INTERVAL_LIST_IN_MINUTES") ?? JOB_RETRY_INTERVAL_LIST_IN_MINUTES;
 
-        
+
         // Observability
         //We need to expand the env-var with %ENV_VAR% for K8S
         var otelCollectorEndpointToBeExpanded = Environment.GetEnvironmentVariable("OTEL_EXPORTER_OTLP_ENDPOINT");

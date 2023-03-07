@@ -61,8 +61,11 @@
         
         public ICollection<LiquidityRule> LiquidityRules { get; set; }
         
-        public int NodeId { get; set; }
-        public Node Node { get; set; }
+        public int SourceNodeId { get; set; }
+        public Node SourceNode { get; set; }
+        
+        public int DestinationNodeId { get; set; }
+        public Node DestinationNode { get; set; }
 
         #endregion
 

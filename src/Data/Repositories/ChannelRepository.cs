@@ -22,8 +22,12 @@ using FundsManager.Data.Models;
 using FundsManager.Data.Repositories.Interfaces;
 using FundsManager.Jobs;
 using FundsManager.Helpers;
-using Quartz;
+ using FundsManager.Services;
+ using Grpc.Core;
+ using Lnrpc;
+ using Quartz;
 using Microsoft.EntityFrameworkCore;
+ using Channel = FundsManager.Data.Models.Channel;
 
 namespace FundsManager.Data.Repositories
 {
@@ -181,6 +185,98 @@ namespace FundsManager.Data.Repositories
             type = _mapper.Map<Channel, Channel>(type);
 
             return _repository.Update(type, applicationDbContext);
+        }
+        
+        public async Task<ListChannelsResponse?> ListChannels(Node node)
+        {
+            //This method is here to avoid a circular dependency between the LightningService and the ChannelRepository
+            ListChannelsResponse? listChannelsResponse = null;
+            try
+            {
+                var client = LightningService.CreateLightningClient(node.Endpoint);
+                listChannelsResponse = await client.Execute(x => x.ListChannelsAsync(new ListChannelsRequest(),
+                    new Metadata
+                    {
+                        {
+                            "macaroon", node.ChannelAdminMacaroon
+                        }
+                    }, null, default));
+            }
+            catch (Exception e)
+            {
+                _logger.LogError(e, "Error while listing channels for node {NodeId}", node.Id);
+                return null;
+            }
+            
+            return listChannelsResponse;
+        }
+
+        public async Task<List<Channel>> GetAllManagedByUserNodes(string loggedUserId)
+        {
+            if (string.IsNullOrWhiteSpace(loggedUserId))
+                throw new ArgumentException("Value cannot be null or whitespace.", nameof(loggedUserId));
+            //Context
+            await using var applicationDbContext = await _dbContextFactory.CreateDbContextAsync();
+            
+            //Query
+            var channels = applicationDbContext.Channels
+            .Include(channel => channel.ChannelOperationRequests).ThenInclude(request => request.SourceNode).ThenInclude(x=> x.Users)
+            .Include(channel => channel.ChannelOperationRequests).ThenInclude(request => request.DestNode).ThenInclude(x=> x.Users)
+            .Include(channel => channel.ChannelOperationRequests).ThenInclude(request => request.Wallet)
+            .Include(channel => channel.ChannelOperationRequests).ThenInclude(request => request.ChannelOperationRequestPsbts)
+            .Include(x=> x.LiquidityRules)
+            .ThenInclude(x=> x.Node)
+            .Include(x=> x.LiquidityRules)
+            .ThenInclude(x=> x.Wallet).AsSplitQuery().ToList() //Go to memory
+            .Where(x => x.ChannelOperationRequests.Any(y => y.SourceNode.Users.Select(x => x.Id)
+                                                                .Contains(loggedUserId) ||
+                                                            y.DestNode.Users.Select(x => x.Id)
+                                                                .Contains(loggedUserId))).ToList();
+            
+            
+            return channels;
+            
+            
+
+            
+        }
+
+
+        public async Task<(bool, string?)> MarkAsClosed(Channel channel)
+        {
+            await using var applicationDbContext = await _dbContextFactory.CreateDbContextAsync();
+            
+            //check the channel exists in the node
+            var channelOperationRequest = channel.ChannelOperationRequests.FirstOrDefault();
+            
+            if (channelOperationRequest == null)
+            {
+                _logger.LogError("Error while marking as closed with id: {ChannelId}. No channel operation request found", channel.Id);
+                return (false, "No channel operation request found");
+            }
+            
+            var channels = await ListChannels(channelOperationRequest.SourceNode);
+            
+            if (channels == null)
+            {
+                _logger.LogError("Error while marking as closed with id: {ChannelId}. No channels found", channel.Id);
+                return (false, "No channels found");
+            }
+            
+            var channelFound = channels.Channels.FirstOrDefault(x => x.ChanId == channel.ChanId);
+            
+            if (channelFound != null)
+            {
+                _logger.LogError("Error while marking as closed with id: {ChannelId}. Channel was found", channel.Id);
+                return (false, "Channel was found");
+            }
+            
+            channel.Status = Channel.ChannelStatus.Closed;
+
+            var markAsClosed = _repository.Update(channel, applicationDbContext);
+            
+            return markAsClosed;
+            
         }
     }
 }

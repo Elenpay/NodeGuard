@@ -64,6 +64,7 @@ public class WalletWithdrawalRequestTests
         var request = fixture.Create<WalletWithdrawalRequest>();
         // Act
 
+        request.Wallet.IsHotWallet = false;
         request.Wallet.MofN = 2;
         
         request.WalletWithdrawalRequestPSBTs.ForEach(x=> x.IsInternalWalletPSBT = false);
@@ -88,7 +89,7 @@ public class WalletWithdrawalRequestTests
 
         var request = fixture.Create<WalletWithdrawalRequest>();
         // Act
-
+        request.Wallet.IsHotWallet = false;
         request.Wallet.MofN = 3;
         
         request.WalletWithdrawalRequestPSBTs.ForEach(x=> x.IsInternalWalletPSBT = false);

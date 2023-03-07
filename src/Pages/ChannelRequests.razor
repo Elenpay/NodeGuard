@@ -5,6 +5,7 @@
 @using Humanizer
 @using NBitcoin
 @using FundsManager.Jobs
+@using Google.Protobuf
 @attribute [Authorize(Roles = "FinanceManager, Superadmin, NodeManager")]
 
 <PageTitle>Channel Operation Requests</PageTitle>
@@ -263,6 +264,23 @@
                 }
             </DisplayTemplate>
         </DataGridColumn>
+        @if (_isNodeManager)
+        {
+            <DataGridColumn Caption="Actions">
+                <DisplayTemplate>
+                    @if (ShowActionDrowpdown(context))
+                    {
+                        <Dropdown>
+                            <DropdownToggle Color="Color.Primary">
+                            </DropdownToggle>
+                            <DropdownMenu>
+                                <DropdownItem Clicked="() => ShowMarkRequestAsFailedConfirmationModal(context)">Mark as failed</DropdownItem>
+                            </DropdownMenu>
+                        </Dropdown>
+                    }
+                </DisplayTemplate>
+            </DataGridColumn>
+        }
     </ChildContent>
     <EmptyTemplate>
         <div class="box">
@@ -295,12 +313,21 @@
 />
 
 <ConfirmationModal
-    @ref="_confirmationModal"
+    @ref="_approveOperationConfirmationModal"
     Title="Are you sure?"
     Body="You selected a hot wallet. This means that the system will automatically use the funds in it without the need of manual approval. Are you sure you want to perform this operation?"
     OkLabel="Yes, I am sure"
-    OnCancel="@CloseConfirmationModal"
-    OnSubmit="@SubmitConfirmationModal"
+    OnCancel="@ApproveOperationCloseConfirmationModal"
+    OnSubmit="@ApproveOperationSubmitConfirmationModal"
+/>
+
+<ConfirmationModal
+    @ref="_markRequestAsFailedConfirmationModal"
+    Title="Are you sure?"
+    Body="You are about to mark a request as failed. Operations pending on-chain confirmation might still go through. Are you sure you want to perform this operation?"
+    OkLabel="Yes, I am sure"
+    OnCancel="@MarkRequestAsFailedCloseConfirmationModal"
+    OnSubmit="@MarkRequestAsFailedSubmitConfirmationModal"
 />
 
 @inject IChannelOperationRequestRepository ChannelOperationRequestRepository
@@ -317,6 +344,7 @@
     private List<ChannelOperationRequest>? _allRequests;
     private ChannelOperationRequest? _selectedRequest;
     private ChannelOperationRequestStatus _selectedStatus;
+    private ChannelOperationRequest _selectedRequestForMarkingAsFailed;
     private string? _psbt;
     private string? _templatePSBTString;
     private string? _cancelOrRejectReason;
@@ -324,7 +352,8 @@
     private string? _selectedStatusActionString;
     private bool _isFinanceManager = false;
     private bool _isNodeManager = false;
-    private ConfirmationModal _confirmationModal;
+    private ConfirmationModal _approveOperationConfirmationModal;
+    private ConfirmationModal _markRequestAsFailedConfirmationModal;
 
     // New Request integration
     private List<Wallet> _allWallets = new List<Wallet>();
@@ -493,7 +522,7 @@
                 {
                     _selectedRequest = request;
                     await datagridRef.Edit(null);
-                    await _confirmationModal.ShowModal();
+                    await _approveOperationConfirmationModal.ShowModal();
                     await ResetChannelRequestRejectModal();
                     return;
                 }
@@ -665,12 +694,12 @@
         }
     }
 
-    private async Task CloseConfirmationModal()
+    private async Task ApproveOperationCloseConfirmationModal()
     {
-        await _confirmationModal.CloseModal();
+        await _approveOperationConfirmationModal.CloseModal();
     }
 
-    private async Task SubmitConfirmationModal()
+    private async Task ApproveOperationSubmitConfirmationModal()
     {
         if (_selectedRequest != null)
         {
@@ -682,7 +711,7 @@
             else
             {
                 ToastService.ShowError(createChannelResult.Item2);
-                await _confirmationModal.CloseModal();
+                await _approveOperationConfirmationModal.CloseModal();
                 return;
             }
 
@@ -699,7 +728,7 @@
                 }
                 _selectedRequest.Status = ChannelOperationRequestStatus.Failed;
                 ChannelOperationRequestRepository.Update(_selectedRequest);
-                await _confirmationModal.CloseModal();
+                await _approveOperationConfirmationModal.CloseModal();
                 await FetchRequests();
                 StateHasChanged();
                 return;
@@ -736,7 +765,7 @@
             await FetchRequests();
             _allRequestsDatagrid.Dispose();
             StateHasChanged();
-            _confirmationModal.CloseModal();
+            _approveOperationConfirmationModal.CloseModal();
         }
     }
 
@@ -766,4 +795,47 @@
         }
     }
 
+    private bool ShowActionDrowpdown(ChannelOperationRequest request)
+    {
+        return request.Status == ChannelOperationRequestStatus.OnChainConfirmationPending ||
+               request.Status == ChannelOperationRequestStatus.PSBTSignaturesPending ||
+               request.Status == ChannelOperationRequestStatus.Pending;
     }
+    
+    private async Task MarkRequestAsFailedCloseConfirmationModal()
+    {
+        _selectedRequestForMarkingAsFailed = null;
+        await _markRequestAsFailedConfirmationModal.CloseModal();
+    }
+    
+    private async Task MarkRequestAsFailedSubmitConfirmationModal()
+    {
+        try
+        {
+            var request = await ChannelOperationRequestRepository.GetById(_selectedRequestForMarkingAsFailed.Id);
+            request.Status = ChannelOperationRequestStatus.Failed;
+            var scheduler = await SchedulerFactory.GetScheduler();
+            await scheduler.DeleteJob(new JobKey($"{nameof(ChannelOpenJob)}-{request.Id}"));
+            if (!ChannelOperationRequestRepository.Update(request).Item1) throw new Exception();
+            if (request.Channel?.ChanId != null)
+            {
+                LightningService.CancelPendingChannel(request.SourceNode, ByteString.CopyFromUtf8(request.Channel?.ChanId.ToString()).ToByteArray());
+            }
+        }
+        catch (Exception? e)
+        {
+               ToastService.ShowError("Error while marking request as failed");
+        }
+        finally
+        {
+            await MarkRequestAsFailedCloseConfirmationModal();
+            await FetchRequests();
+        }
+    }
+
+    private async Task ShowMarkRequestAsFailedConfirmationModal(ChannelOperationRequest context)
+    {
+        _selectedRequestForMarkingAsFailed = context;
+        await _markRequestAsFailedConfirmationModal.ShowModal();
+    }
+}

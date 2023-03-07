@@ -143,6 +143,7 @@ public class NodeGuardService : Nodeguard.NodeGuardService.NodeGuardServiceBase,
                 Amount = amount,
                 DestinationAddress = request.Address,
                 Description = request.Description,
+                Status = wallet.IsHotWallet ? WalletWithdrawalRequestStatus.PSBTSignaturesPending : WalletWithdrawalRequestStatus.Pending,
             };
 
             //Save withdrawal request
@@ -164,19 +165,7 @@ public class NodeGuardService : Nodeguard.NodeGuardService.NodeGuardServiceBase,
             }
 
             //Template PSBT generation with SIGHASH_ALL
-            var (psbt, noAvailableUTXOs) = await _bitcoinService.GenerateTemplatePSBT(withdrawalRequest);
-
-            if (psbt == null)
-            {
-                _logger.LogError("Error generating PSBT for wallet with id {walletId}", request.WalletId);
-                throw new RpcException(new Status(StatusCode.Internal, "Error generating PSBT for wallet"));
-            }
-
-            if (noAvailableUTXOs)
-            {
-                _logger.LogError("No available UTXOs for wallet with id {walletId}", request.WalletId);
-                throw new RpcException(new Status(StatusCode.Internal, "No available UTXOs for wallet"));
-            }
+            var psbt = await _bitcoinService.GenerateTemplatePSBT(withdrawalRequest);
 
             //If the wallet is hot, we send the withdrawal request to the node
             if (wallet.IsHotWallet)
@@ -196,10 +185,15 @@ public class NodeGuardService : Nodeguard.NodeGuardService.NodeGuardServiceBase,
 
             return response;
         }
+        catch (NoUTXOsAvailableException)
+        {
+            _logger.LogError("No available UTXOs for wallet with id {walletId}", request.WalletId);
+            throw new RpcException(new Status(StatusCode.Internal, "No available UTXOs for wallet"));
+        }
         catch (Exception e)
         {
             _logger.LogError(e, "Error requesting withdrawal for wallet with id {walletId}", request.WalletId);
-            throw new RpcException(new Status(StatusCode.Internal, e.Message));
+            throw new RpcException(new Status(StatusCode.Internal, "Error requesting withdrawal for wallet"));
         }
     }
 
@@ -214,10 +208,11 @@ public class NodeGuardService : Nodeguard.NodeGuardService.NodeGuardServiceBase,
             {
                 throw new InvalidOperationException("You can't select wallets by type and id at the same time");
             }
+
             if (request.WalletType != 0)
             {
                 wallets = await _walletRepository.GetAvailableByType(request.WalletType);
-            } 
+            }
             else if (ids?.Count > 0)
             {
                 wallets = await _walletRepository.GetAvailableByIds(ids);
@@ -226,6 +221,7 @@ public class NodeGuardService : Nodeguard.NodeGuardService.NodeGuardServiceBase,
             {
                 wallets = await _walletRepository.GetAvailableWallets();
             }
+
             var result = new GetAvailableWalletsResponse()
             {
                 Wallets =

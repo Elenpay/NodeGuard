@@ -111,7 +111,7 @@ public class LiquidityRuleRepository : ILiquidityRuleRepository
             .Include(x=> x.Wallet)
             .ThenInclude(x=> x.InternalWallet)
             .Include(x=> x.Channel)
-            .Where(x=> x.Node.PubKey == nodePubKey && x.Channel.IsAutomatedLiquidityEnabled).ToList();
+            .Where(x=> x.Node.PubKey == nodePubKey && x.Channel.IsAutomatedLiquidityEnabled && x.Channel.Status != Channel.ChannelStatus.Closed).ToList();
         
         return result;
     }

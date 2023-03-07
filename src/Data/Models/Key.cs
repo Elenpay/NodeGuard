@@ -17,6 +17,8 @@
  *
  */
 
+using NBitcoin;
+
 namespace FundsManager.Data.Models
 {
     public class Key : Entity, IEquatable<Key>
@@ -102,6 +104,45 @@ namespace FundsManager.Data.Models
         public static bool Contains(ICollection<Key> source, Key? key) 
         {
             return source.Contains(key, Comparer!);
+        }
+        
+        public BitcoinExtPubKey GetBitcoinExtPubKey(string subderivationPath, Network network)
+        {
+            if (InternalWalletId != null)
+            {
+                var keyPath = KeyPath.Parse(subderivationPath);
+                return new BitcoinExtPubKey(XPUB, network).Derive(keyPath);
+            }
+            return new BitcoinExtPubKey(XPUB, network);
+        }
+
+        public RootedKeyPath GetRootedKeyPath(string subderivationPath)
+        {
+            var masterFingerprint = HDFingerprint.Parse(MasterFingerprint);
+            if (InternalWalletId != null)
+            {
+                return new RootedKeyPath(masterFingerprint, new KeyPath(Path).Derive(subderivationPath));
+            }
+            return new RootedKeyPath(masterFingerprint, new KeyPath(Path));
+        }
+
+        public KeyPath DeriveUtxoKeyPath(string subderivationPath, KeyPath utxoKeyPath)
+        {
+            if (InternalWalletId != null)
+            {
+                return KeyPath.Parse(Path).Derive(subderivationPath).Derive(utxoKeyPath);
+            }
+            return KeyPath.Parse(Path).Derive(utxoKeyPath);
+        }
+
+        public PubKey DeriveUtxoPubKey(string subderivationPath, Network network, KeyPath utxoKeyPath)
+        {
+            return GetBitcoinExtPubKey(subderivationPath, network).Derive(utxoKeyPath).GetPublicKey();
+        }
+
+        public RootedKeyPath GetAddressRootedKeyPath(KeyPath utxoKeyPath)
+        {
+            return new RootedKeyPath(HDFingerprint.Parse(MasterFingerprint), utxoKeyPath);
         }
     }
 }

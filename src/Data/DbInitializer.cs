@@ -288,7 +288,7 @@ namespace FundsManager.Data
 
                     var masterKey1 = new Mnemonic(wallet1seed).DeriveExtKey().GetWif(Network.RegTest);
                     var keyPath1 =
-                        new KeyPath(Constants.DEFAULT_DERIVATION_PATH); //https://github.com/dgarage/NBXplorer/blob/0595a87f22c142aee6a6e4a0194f75aec4717819/NBXplorer/Controllers/MainController.cs#L1141
+                        new KeyPath(Constants.DEFAULT_DERIVATION_PATH + "/1'"); //https://github.com/dgarage/NBXplorer/blob/0595a87f22c142aee6a6e4a0194f75aec4717819/NBXplorer/Controllers/MainController.cs#L1141
                     var accountKey1 = masterKey1.Derive(keyPath1);
                     var bitcoinExtPubKey1 = accountKey1.Neuter();
                     var accountKeyPath1 = new RootedKeyPath(masterKey1.GetPublicKey().GetHDFingerPrint(), keyPath1);
@@ -302,7 +302,7 @@ namespace FundsManager.Data
 
                     var masterKey2 = new Mnemonic(wallet2seed).DeriveExtKey().GetWif(Network.RegTest);
                     var keyPath2 =
-                        new KeyPath(Constants.DEFAULT_DERIVATION_PATH); //https://github.com/dgarage/NBXplorer/blob/0595a87f22c142aee6a6e4a0194f75aec4717819/NBXplorer/Controllers/MainController.cs#L1141
+                        new KeyPath(Constants.DEFAULT_DERIVATION_PATH+ "/1'"); //https://github.com/dgarage/NBXplorer/blob/0595a87f22c142aee6a6e4a0194f75aec4717819/NBXplorer/Controllers/MainController.cs#L1141
                     var accountKey2 = masterKey2.Derive(keyPath2);
                     var bitcoinExtPubKey2 = accountKey2.Neuter();
                     var accountKeyPath2 = new RootedKeyPath(masterKey2.GetPublicKey().GetHDFingerPrint(), keyPath2);
@@ -342,6 +342,23 @@ namespace FundsManager.Data
                         InternalWalletSubDerivationPath = "0",
                         InternalWalletMasterFingerprint = internalWallet.MasterFingerprint
                     };
+                    
+                    var testingSinglesigWallet = new Wallet
+                    {
+                        IsHotWallet = true,
+                        MofN = 1,
+                        Keys = new List<Key>
+                        {
+                            internalWalletKey
+                        },
+                        Name = "Hot wallet",
+                        WalletAddressType = WalletAddressType.NativeSegwit,
+                        InternalWalletId = internalWallet.Id,
+                        IsFinalised = true,
+                        CreationDatetime = DateTimeOffset.Now,
+                        InternalWalletSubDerivationPath = "1",
+                        InternalWalletMasterFingerprint = internalWallet.MasterFingerprint
+                    };
 
                     //Now we fund a multisig address of that wallet with the miner (polar)
                     //We mine 10 blocks
@@ -349,32 +366,46 @@ namespace FundsManager.Data
 
                     //2-of-3 multisig by Key 1 and Key 2 from wallet1/wallet2 and the internal wallet
 
-                    var derivationStrategy = testingMultisigWallet.GetDerivationStrategy();
+                    var multisigDerivationStrategy = testingMultisigWallet.GetDerivationStrategy();
+                    var singlesigDerivationStrategy = testingSinglesigWallet.GetDerivationStrategy();
                     //Nbxplorer tracking of the multisig derivation scheme
 
-                    nbxplorerClient.Track(derivationStrategy);
+                    nbxplorerClient.Track(multisigDerivationStrategy);
+                    nbxplorerClient.Track(singlesigDerivationStrategy);
                     var evts = nbxplorerClient.CreateLongPollingNotificationSession();
 
-                    var keyPathInformation = nbxplorerClient.GetUnused(derivationStrategy, DerivationFeature.Deposit);
-                    var multisigAddress = keyPathInformation.Address;
+                    var multisigKeyPathInformation = nbxplorerClient.GetUnused(multisigDerivationStrategy, DerivationFeature.Deposit);
+                    var singlesigKeyPathInformation = nbxplorerClient.GetUnused(singlesigDerivationStrategy, DerivationFeature.Deposit);
+                    var multisigAddress = multisigKeyPathInformation.Address;
+                    var singlesigAddress = singlesigKeyPathInformation.Address;
 
                     var multisigFundCoins = Money.Coins(20m); //20BTC
+                    var singlesigFundCoins = Money.Coins(20m); //20BTC
 
                     minerRPC.SendToAddress(multisigAddress, multisigFundCoins);
+                    minerRPC.SendToAddress(singlesigAddress, singlesigFundCoins);
 
                     //6 blocks to confirm
                     minerRPC.Generate(6);
 
-                    WaitNbxplorerNotification(evts, derivationStrategy);
+                    WaitNbxplorerNotification(evts, multisigDerivationStrategy);
+                    WaitNbxplorerNotification(evts, singlesigDerivationStrategy);
 
-                    var balance = nbxplorerClient.GetBalance(derivationStrategy);
-                    var confirmedBalance = (Money)balance.Confirmed;
-                    if (confirmedBalance.ToUnit(MoneyUnit.BTC) < 20)
+                    var multisigBalance = nbxplorerClient.GetBalance(multisigDerivationStrategy);
+                    var singleSigbalance = nbxplorerClient.GetBalance(singlesigDerivationStrategy);
+                    var multisigConfirmedBalance = (Money)multisigBalance.Confirmed;
+                    var singlesigConfirmedBalance = (Money)singleSigbalance.Confirmed;
+                    if (multisigConfirmedBalance.ToUnit(MoneyUnit.BTC) < 20)
                     {
                         throw new Exception("The multisig wallet balance is not >= 20BTC");
                     }
+                    if (singlesigConfirmedBalance.ToUnit(MoneyUnit.BTC) < 20)
+                    {
+                        throw new Exception("The singlesig wallet balance is not >= 20BTC");
+                    }
 
                     applicationDbContext.Add(testingMultisigWallet);
+                    applicationDbContext.Add(testingSinglesigWallet);
                 }
             }
             else
