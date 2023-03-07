@@ -27,7 +27,7 @@ namespace FundsManager.Migrations
                 table: "Channels",
                 type: "integer",
                 nullable: false,
-                defaultValue: 0);
+                defaultValue: 1);
 
             migrationBuilder.CreateIndex(
                 name: "IX_Channels_DestinationNodeId",
