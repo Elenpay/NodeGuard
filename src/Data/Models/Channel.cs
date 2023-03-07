@@ -46,6 +46,11 @@
         public ChannelStatus Status { get; set; }
         
         /// <summary>
+        /// Indicates if this channel was created by NodeGuard
+        /// </summary>
+        public bool CreatedByNodeGuard { get; set; }
+        
+        /// <summary>
         /// Bool to indicate if this channel's liquidity should be automatically managed
         /// </summary>
         public bool IsAutomatedLiquidityEnabled { get; set; }
@@ -56,8 +61,11 @@
         
         public ICollection<LiquidityRule> LiquidityRules { get; set; }
         
-        public int NodeId { get; set; }
-        public Node Node { get; set; }
+        public int SourceNodeId { get; set; }
+        public Node SourceNode { get; set; }
+        
+        public int DestinationNodeId { get; set; }
+        public Node DestinationNode { get; set; }
 
         #endregion
 

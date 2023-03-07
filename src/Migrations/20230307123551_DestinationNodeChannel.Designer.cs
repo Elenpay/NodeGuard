@@ -3,6 +3,7 @@ using System;
 using FundsManager.Data;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 
@@ -11,9 +12,10 @@ using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 namespace FundsManager.Migrations
 {
     [DbContext(typeof(ApplicationDbContext))]
-    partial class ApplicationDbContextModelSnapshot : ModelSnapshot
+    [Migration("20230307123551_DestinationNodeChannel")]
+    partial class DestinationNodeChannel
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -80,9 +82,6 @@ namespace FundsManager.Migrations
 
                     b.Property<decimal>("ChanId")
                         .HasColumnType("numeric(20,0)");
-
-                    b.Property<bool>("CreatedByNodeGuard")
-                        .HasColumnType("boolean");
 
                     b.Property<DateTimeOffset>("CreationDatetime")
                         .HasColumnType("timestamp with time zone");
@@ -413,9 +412,6 @@ namespace FundsManager.Migrations
                         .HasColumnType("text");
 
                     b.Property<string>("Endpoint")
-                        .HasColumnType("text");
-
-                    b.Property<string>("JobId")
                         .HasColumnType("text");
 
                     b.Property<string>("Name")

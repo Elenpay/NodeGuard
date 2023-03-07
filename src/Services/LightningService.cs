@@ -335,7 +335,8 @@ namespace FundsManager.Services
                                     SatsAmount = channelOperationRequest.SatsAmount,
                                     UpdateDatetime = DateTimeOffset.Now,
                                     Status = Channel.ChannelStatus.Open,
-                                    NodeId = channelOperationRequest.SourceNode.Id
+                                    SourceNodeId = channelOperationRequest.SourceNode.Id,
+                                    DestinationNodeId = channelOperationRequest.DestNode.Id,
                                 };
 
                                 await context.AddAsync(channel);
@@ -1198,10 +1199,10 @@ namespace FundsManager.Services
 
         public async Task<(long, long)> GetChannelBalance(Channel channel)
         {
-            var client = CreateLightningClient(channel.Node.Endpoint);
+            var client = CreateLightningClient(channel.SourceNode.Endpoint);
             var result = client.Execute(x => x.ListChannels(new ListChannelsRequest(), 
                 new Metadata {
-                {"macaroon", channel.Node.ChannelAdminMacaroon}
+                {"macaroon", channel.SourceNode.ChannelAdminMacaroon}
             }, null, default));
             
             var chan = result.Channels.FirstOrDefault(x => x.ChanId == channel.ChanId);
