@@ -64,7 +64,7 @@ services:
 
   nbxplorer:
     restart: unless-stopped
-    image: nicolasdorier/nbxplorer:2.3.40
+    image: nicolasdorier/nbxplorer:2.3.54
     hostname: nbxplorer
     ports:
     - "32838:32838"
