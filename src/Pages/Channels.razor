@@ -1,7 +1,7 @@
 @page "/channels"
 @using System.Security.Claims
 @using Humanizer
-@using Lnrpc
+@using NBitcoin
 @using Channel = FundsManager.Data.Models.Channel
 @attribute [Authorize(Roles = "FinanceManager, NodeManager, Superadmin")]
 <PageTitle>Active Channels</PageTitle>
@@ -29,38 +29,86 @@
                         <Button Color="Color.Primary" hidden Clicked="@context.Clicked">Edit</Button>
                     </EditCommandTemplate>
                     <DeleteCommandTemplate>
-                        <Button Color="Color.Danger" hidden="@_hideDelete" Disabled="@(context.Item.Status == Channel.ChannelStatus.Closed || context.Item.ChannelOperationRequests.Last().RequestType == OperationRequestType.Close)" Clicked="() => ShowConfirmedClose(context.Item)">Close</Button>
+                        <Dropdown>
+                            <DropdownToggle Color="Color.Primary">
+                            </DropdownToggle>
+                            <DropdownMenu>
+                                <DropdownItem Disabled="context.Item.Status == Channel.ChannelStatus.Closed" Clicked="@(() => ShowChannelManagementModal(context.Item))">Manage</DropdownItem>
+                                @{
+                                    var lastRequest = context.Item.ChannelOperationRequests.Last();
+                                }
+                                <DropdownItem Visibility="@(_hideDelete ? Visibility.Invisible : Visibility.Visible)" Disabled="@(context.Item.Status == Channel.ChannelStatus.Closed || (lastRequest.RequestType == OperationRequestType.Close && lastRequest.Status == ChannelOperationRequestStatus.OnChainConfirmed || lastRequest.Status == ChannelOperationRequestStatus.OnChainConfirmationPending))" Clicked="() => ShowConfirmedClose(context.Item)">Close</DropdownItem>
+                                <DropdownItem Visibility="@(_hideDelete ? Visibility.Invisible : Visibility.Visible)" Disabled="@(context.Item.Status == Channel.ChannelStatus.Closed || (lastRequest.RequestType == OperationRequestType.Close && lastRequest.Status == ChannelOperationRequestStatus.OnChainConfirmed || lastRequest.Status == ChannelOperationRequestStatus.OnChainConfirmationPending))" Clicked="() => ShowConfirmedClose(context.Item, true)">Force close</DropdownItem>
+                                <DropdownItem Visibility="@(_hideDelete ? Visibility.Invisible : Visibility.Visible)" Disabled="@(context.Item.Status == Channel.ChannelStatus.Closed || (lastRequest.RequestType == OperationRequestType.Close && lastRequest.Status == ChannelOperationRequestStatus.OnChainConfirmed || lastRequest.Status == ChannelOperationRequestStatus.OnChainConfirmationPending))" Clicked="() => MarkAsClosed(context.Item)">Mark as closed</DropdownItem>
+                                <DropdownItem Clicked="@(() => ShowModal(context.Item))">Requests</DropdownItem>
+
+                            </DropdownMenu>
+                        </Dropdown>
                     </DeleteCommandTemplate>
                 </DataGridCommandColumn>
-                <DataGridColumn TItem="Channel" Caption=""  Filterable="false" Sortable="false">
-                    <DisplayTemplate>
-                        <Button Color="Color.Primary" Clicked="@(() => ShowChannelManagementModal(context))">Manage</Button>
+                <DataGridColumn TItem="Channel" Field="@nameof(Channel.SourceNodeId)" Caption="Source node" CustomFilter="OnSourceNodeIdFilter" Filterable="true" Sortable="false">
+                    <FilterTemplate>
+                        <Select TValue="int" SelectedValue="@((int) _sourceNodeIdFilter)" SelectedValueChanged="@(value => { _sourceNodeIdFilter = value; context.TriggerFilterChange(_sourceNodeIdFilter); })">
+                            <SelectItem Value="@(0)">All</SelectItem>
+                            @foreach (var node in _nodes)
+                            {
+                                <SelectItem Value="@(node.Id)">@(node.Name)(@(StringHelper.TruncateHeadAndTail(node.PubKey, 5))</SelectItem>
+                            }
+                        </Select>
+                    </FilterTemplate>
+                <DisplayTemplate>
+                        @{
+                            var sourceNode = context.SourceNode;
+                        }
+                        @(sourceNode.Name)(@(StringHelper.TruncateHeadAndTail(sourceNode.PubKey, 5)))
                     </DisplayTemplate>
                 </DataGridColumn>
-                <DataGridColumn TItem="Channel" Caption="Requests related" Sortable="false">
+                <DataGridColumn TItem="Channel" Field="@nameof(Channel.DestinationNodeId)" Caption="Destination node" CustomFilter="OnDestinationNodeIdFilter" Filterable="true" Sortable="false">
+                    <FilterTemplate>
+                        <Select TValue="int" SelectedValue="@((int) _destinationNodeIdFilter)" SelectedValueChanged="@(value => { _destinationNodeIdFilter = value; context.TriggerFilterChange(_destinationNodeIdFilter); })">
+                            <SelectItem Value="@(0)">All</SelectItem>
+                            @foreach (var node in _nodes)
+                            {
+                                <SelectItem Value="@(node.Id)">@(node.Name)(@(StringHelper.TruncateHeadAndTail(node.PubKey, 5))</SelectItem>
+                            }
+                        </Select>
+                    </FilterTemplate>
                     <DisplayTemplate>
-                        <Button Color="Color.Primary" Clicked="@ShowModal">See</Button>
+                     
+                        @(context.DestinationNode.Name)(@(StringHelper.TruncateHeadAndTail(context.DestinationNode.PubKey, 5)))
                     </DisplayTemplate>
                 </DataGridColumn>
-                <DataGridColumn TItem="Channel" Field="@nameof(Channel.Status)" Caption="@nameof(Channel.Status)" Sortable="false">
+                <DataGridColumn TItem="Channel" Field="@nameof(Channel.Status)" Caption="@nameof(Channel.Status)" CustomFilter="OnStatusFilter" Filterable="true" Sortable="false">
+                    <FilterTemplate>
+                        <Select TValue="string" SelectedValue="@((string) _statusFilter)" SelectedValueChanged="@(value => { _statusFilter = value; context.TriggerFilterChange(_statusFilter); })">
+                            <SelectItem Value="@("")">All</SelectItem>
+                            <SelectItem Value="@(Channel.ChannelStatus.Open.Humanize())">@Channel.ChannelStatus.Open.Humanize()</SelectItem>
+                            <SelectItem Value="@(Channel.ChannelStatus.Closed.Humanize())">@Channel.ChannelStatus.Closed.Humanize()</SelectItem>
+                        </Select>
+                    </FilterTemplate>
                     <DisplayTemplate>
                         @context.Status.ToString("G")
                     </DisplayTemplate>
                 </DataGridColumn>
 
-                <DataGridColumn TItem="Channel" Field="@nameof(Channel.FundingTx)" Caption="Funding tx" Sortable="false">
+                <DataGridColumn TItem="Channel" Field="@nameof(Channel.FundingTx)" Caption="OutPoint" Filterable="false" Sortable="false">
                     <DisplayTemplate>
-                        @StringHelper.TruncateHeadAndTail(context.FundingTx, 5)
-                        <Button Color="Color.Primary" Clicked="@(() => CopyStrToClipboard(context.FundingTx))">
+                        @StringHelper.TruncateHeadAndTail(context.FundingTx, 5):@context.FundingTxOutputIndex
+                        <Button Color="Color.Primary" Clicked="@(() => CopyStrToClipboard($"{context.FundingTx}:{context.FundingTxOutputIndex}"))">
                             <i class="oi oi-clipboard"></i>
                         </Button>
                     </DisplayTemplate>
                 </DataGridColumn>
-                <DataGridNumericColumn TItem="Channel" Field="@nameof(Channel.FundingTxOutputIndex)" Caption="Funding address index" Sortable="false">
-
+                <DataGridNumericColumn TItem="Channel" Field="@nameof(Channel.SatsAmount)" Caption="Capacity (BTC)" Sortable="true">
+                    <DisplayTemplate>
+                        @{
+                            var btcAmount = new Money(context.SatsAmount, MoneyUnit.Satoshi).ToUnit(MoneyUnit.BTC);
+                            @($"{btcAmount} BTC")
+                            @($" ({Math.Round(PriceConversionHelper.BtcToUsdConversion(btcAmount, _btcPrice), 2)} USD)")
+                        }
+                    </DisplayTemplate>
                 </DataGridNumericColumn>
-                <DataGridNumericColumn TItem="Channel" Field="@nameof(Channel.SatsAmount)" Caption="Capacity (Sats)" Sortable="false"/>
-                <DataGridColumn TItem="Channel" Field="@nameof(Channel.BtcCloseAddress)" Caption="Treasury return address" Sortable="false">
+                <DataGridColumn TItem="Channel" Field="@nameof(Channel.BtcCloseAddress)" Caption="Close address" Filterable="false" Sortable="false">
 
                     <DisplayTemplate>
                         @if (context.BtcCloseAddress != null)
@@ -73,26 +121,36 @@
                     </DisplayTemplate>
 
                 </DataGridColumn>
-                <DataGridColumn TItem="Channel" Field="@nameof(Channel.CreationDatetime)" Caption="@nameof(Channel.CreationDatetime).Humanize(LetterCasing.Sentence)" Sortable="false"/>
-                <DataGridColumn TItem="Channel" Field="@nameof(Channel.UpdateDatetime)" Caption="@nameof(Channel.UpdateDatetime).Humanize(LetterCasing.Sentence)" Sortable="false"/>
                 <DataGridColumn TItem="Channel" Caption="Channel Balance">
                     <DisplayTemplate>
                         @{
-                            var balance = Task.Run(()=> GetPercentageBalance(context)).Result;
-                            var percentageBalance = Convert.ToInt32(balance);
-                            var percentageBalanceRound = Math.Round(balance, 2);
-                        }
-                        <Progress Color="Color.Primary" Value="@percentageBalance"/>
-                        <Text>
-                            @{
-                                @($"{percentageBalanceRound}%")
+                            var balance = Task.Run(() => GetPercentageBalance(context)).Result;
+                            var percentageBalance = 0;
+                            if (balance != null)
+                            {
+                                percentageBalance = Convert.ToInt32(balance);
                             }
-                        </Text>
+
+                        }
+                        @if (balance != null)
+                        {
+                            <Progress Color="Color.Primary" Value="@percentageBalance"/>
+                            <Text>
+                                @{
+                                    @($"{balance}%")
+                                }
+                            </Text>
+                        }
+                        else
+                        {
+                            <p>Not available</p>
+                        }
+
                     </DisplayTemplate>
                 </DataGridColumn>
-                <DataGridColumn TItem="Channel" Field="@nameof(Channel.CreationDatetime)" Caption="@nameof(Channel.CreationDatetime).Humanize(LetterCasing.Sentence)" Sortable="false"/>
-                <DataGridColumn TItem="Channel" Field="@nameof(Channel.UpdateDatetime)" Caption="@nameof(Channel.UpdateDatetime).Humanize(LetterCasing.Sentence)" Sortable="false"/>
-               
+                <DataGridColumn TItem="Channel" Field="@nameof(Channel.CreationDatetime)" Caption="@nameof(Channel.CreationDatetime).Humanize(LetterCasing.Sentence)" Sortable="true"/>
+                <DataGridColumn TItem="Channel" Field="@nameof(Channel.UpdateDatetime)" Caption="@nameof(Channel.UpdateDatetime).Humanize(LetterCasing.Sentence)" Sortable="true"/>
+
             </DataGridColumns>
         </DataGrid>
     </Column>
@@ -101,7 +159,7 @@
     <ModalContent Centered Scrollable Size="ModalSize.ExtraLarge">
         <ModalHeader>
             <ModalTitle>Channels requests related to Channel: @_selectedChannel?.ChanId</ModalTitle>
-<CloseButton/>
+            <CloseButton/>
         </ModalHeader>
         <ModalBody>
             <DataGrid TItem="ChannelOperationRequest"
@@ -109,11 +167,11 @@
                       Sortable="false"
                       ShowCaptions="true">
                 <DataGridColumn Field="@nameof(ChannelOperationRequest.Id)" Caption="@nameof(ChannelOperationRequest.Id)"/>
-                <DataGridColumn Field="@nameof(ChannelOperationRequest.User)" Caption="Created By"/>
-                <DataGridColumn Field="@nameof(ChannelOperationRequest.RequestType)" Caption="@nameof(ChannelOperationRequest.RequestType)"/>
+                <DataGridColumn Field="@nameof(ChannelOperationRequest.User)" Caption="Created by"/>
+                <DataGridColumn Field="@nameof(ChannelOperationRequest.RequestType)" Caption="Request type"/>
                 <DataGridColumn TItem="ChannelOperationRequest" Field="SourceNode.Name" Caption="Source Node" Sortable="false" Displayable="true"/>
                 <DataGridColumn TItem="ChannelOperationRequest" Field="DestNode.Name" Caption="Remote Node" Sortable="false" Displayable="true"/>
-                <DataGridColumn TItem="ChannelOperationRequest" Field="Wallet.Name" Caption="Source of Funds" Sortable="false" Displayable="true"/>
+                <DataGridColumn TItem="ChannelOperationRequest" Field="Wallet.Name" Caption="Wallet" Sortable="false" Displayable="true"/>
                 <DataGridColumn TItem="ChannelOperationRequest" Field="@nameof(ChannelOperationRequest.Amount)" Caption="Value" Sortable="false" Displayable="true">
                     <DisplayTemplate>
                         @{
@@ -124,16 +182,22 @@
                 </DataGridColumn>
                 <DataGridColumn TItem="ChannelOperationRequest" Caption="Signatures Collected" Sortable="false" Displayable="true">
                     <DisplayTemplate>
-                        @{
-                            var signaturesCollected = context.NumberOfSignaturesCollected + (context.Wallet.IsHotWallet ? 0 : 1) ;
+                        @if (context.RequestType == OperationRequestType.Open)
+                        {
+                            var signaturesCollected = context.NumberOfSignaturesCollected + (context.Wallet.IsHotWallet ? 0 : 1);
                             var signaturesRequired = context?.Wallet?.MofN ?? 0;
                             @($"{signaturesCollected} out of {signaturesRequired}")
                         }
+                        else
+                        {
+                            <p>N/A</p>
+                        }
+
                     </DisplayTemplate>
                 </DataGridColumn>
                 <DataGridColumn TItem="ChannelOperationRequest" Field="@nameof(ChannelOperationRequest.Status)" Caption="Status" Sortable="false" Displayable="true"/>
-                <DataGridColumn TItem="ChannelOperationRequest" Field="@nameof(ChannelOperationRequest.CreationDatetime)" Caption="@nameof(ChannelOperationRequest.CreationDatetime)" Sortable="false"/>
-                <DataGridColumn TItem="ChannelOperationRequest" Field="@nameof(ChannelOperationRequest.UpdateDatetime)" Caption="@nameof(ChannelOperationRequest.UpdateDatetime)" Sortable="false"/>
+                <DataGridColumn TItem="ChannelOperationRequest" Field="@nameof(ChannelOperationRequest.CreationDatetime)" Caption="@nameof(ChannelOperationRequest.CreationDatetime).Humanize(LetterCasing.Sentence)" Sortable="false"/>
+                <DataGridColumn TItem="ChannelOperationRequest" Field="@nameof(ChannelOperationRequest.UpdateDatetime)" Caption="@nameof(ChannelOperationRequest.UpdateDatetime).Humanize(LetterCasing.Sentence)" Sortable="false"/>
             </DataGrid>
         </ModalBody>
         <ModalFooter>
@@ -236,6 +300,7 @@
 @inject ILightningService LightningService
 @inject ILiquidityRuleRepository LiquidityRuleRepository
 @inject IWalletRepository WalletRepository
+@inject INodeRepository NodeRepository
 
 @code {
     private List<Channel>? _channels = new List<Channel>();
@@ -247,6 +312,10 @@
     private List<Wallet> _availableWallets = new List<Wallet>();
     private LiquidityRule _currentLiquidityRule = new LiquidityRule();
     private Validations _channelManagementValidationsRef;
+    private string _statusFilter = "All";
+    private int _sourceNodeIdFilter = 0;
+    private int _destinationNodeIdFilter = 0;
+    private List<Node> _nodes = new List<Node>();
 
     [CascadingParameter]
     private ApplicationUser? LoggedUser { get; set; }
@@ -276,16 +345,17 @@
     private async Task FetchData()
     {
         _availableWallets = await WalletRepository.GetAvailableWallets();
-        _channels = await ChannelRepository.GetAll();
+        _channels = await ChannelRepository.GetAllManagedByUserNodes(LoggedUser.Id);
+        _nodes = await NodeRepository.GetAllManagedByUser(LoggedUser.Id);
     }
 
-    private async Task ShowConfirmedClose(Channel channel)
+    private async Task ShowConfirmedClose(Channel channel, bool forceClose = false)
     {
-        if (await MessageService.Confirm("Are you sure you want to close this channel?", "Confirmation"))
+        if (await MessageService.Confirm($"Are you sure you want to {(forceClose ? "force " : string.Empty)}close this channel?", "Confirmation"))
         {
             if (channel != null)
             {
-                var result = await ChannelRepository.SafeRemove(channel);
+                var result = await ChannelRepository.SafeRemove(channel, forceClose);
 
                 if (!result.Item1)
                 {
@@ -305,14 +375,16 @@
         }
     }
 
-    private void ShowModal()
+    private void ShowModal(Channel channel)
     {
         _modalVisible = true;
+        _selectedChannel = channel;
     }
 
     private void HideModal()
     {
         _modalVisible = false;
+        _selectedChannel = null;
     }
 
     private async Task CopyStrToClipboard(string arg)
@@ -321,21 +393,31 @@
         ToastService.ShowSuccess("Text copied");
     }
 
-    private async Task<double> GetPercentageBalance(Channel channel)
+    private async Task<double?> GetPercentageBalance(Channel channel)
     {
         try
         {
+            double? result = null;
             var values = await LightningService.GetChannelBalance(channel);
-            var res = (values.Item2 / (double)(values.Item2 + values.Item1)) * 100;
-            return res;
+            if (values.Item1 != null && values.Item2 != null)
+            {
+                result = (values.Item2 / (double) (values.Item2 + values.Item1)) * 100;
+                result = Math.Round(result.Value, 2);
+            }
+            else
+            {
+                result = null;
+            }
+
+            return result;
         }
         catch (Exception e)
         {
             ToastService.ShowError($"Channel balance for channel id:{channel.Id} could not be retrieved");
-            return -1;
+            return null;
         }
     }
-    
+
     private async Task OnSelectedWalletChanged(int arg)
     {
         _currentLiquidityRule.WalletId = arg;
@@ -399,7 +481,7 @@
             ToastService.ShowError("Please fix the errors");
         }
     }
-    
+
     private async Task ClearManagementModal()
     {
         _selectedChannel = null;
@@ -419,7 +501,7 @@
             MinimumRemoteBalance = 80,
             RebalanceTarget = 50,
             ChannelId = channel.Id,
-            NodeId = channel.NodeId
+            NodeId = channel.SourceNodeId
         };
 
         await _channelLiquidityModal?.Show();
@@ -537,6 +619,54 @@
             arg1.Status = ValidationStatus.Error;
             arg1.ErrorText = "Minimum local balance must be less than the minimum remote balance";
         }
+    }
+
+    private bool OnStatusFilter(object itemValue, object searchValue)
+    {
+        if (searchValue is string statusFilter)
+        {
+            return statusFilter == "*" || statusFilter == itemValue?.ToString();
+        }
+
+        return true;
+    }
+
+   
+    private bool OnSourceNodeIdFilter(object itemValue, object searchValue)
+    {
+            if (searchValue is int nodeIdFilter)
+        {
+            return nodeIdFilter == 0 || nodeIdFilter == itemValue as int?;
+        }
+
+        return true;
+    }
+    
+    private bool OnDestinationNodeIdFilter(object itemValue, object searchValue)
+    {
+        if (searchValue is int nodeIdFilter)
+        {
+            return nodeIdFilter == 0 || nodeIdFilter == itemValue as int?;
+        }
+
+        return true;
+    }
+
+
+    private async Task MarkAsClosed(Channel contextItem)
+    {
+        var result = await ChannelRepository.MarkAsClosed(contextItem);
+
+        if (result.Item1)
+        {
+            ToastService.ShowSuccess("Channel marked as closed");
+        }
+        else
+        {
+            ToastService.ShowError("Something went wrong: " + result.Item2);
+        }
+
+        await FetchData();
     }
 
 }

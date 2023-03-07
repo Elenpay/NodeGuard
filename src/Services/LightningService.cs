@@ -98,7 +98,12 @@ namespace FundsManager.Services
         /// <returns></returns>
         public Task<LightningNode?> GetNodeInfo(string pubkey);
 
-        public Task<(long, long)> GetChannelBalance(Channel channel);
+        /// <summary>
+        /// Channel balance
+        /// </summary>
+        /// <param name="channel"></param>
+        /// <returns></returns>
+        public Task<(long?, long?)> GetChannelBalance(Channel channel);
 
         /// <summary>
         /// Cancels a pending channel from LND PSBT-based funding of channels
@@ -106,7 +111,8 @@ namespace FundsManager.Services
         /// <param name="source"></param>
         /// <param name="pendingChannelId"></param>
         /// <param name="client"></param>
-        public void CancelPendingChannel(Node source, byte[] pendingChannelId,  IUnmockable<Lightning.LightningClient>? client = null);
+        public void CancelPendingChannel(Node source, byte[] pendingChannelId,  IUnmockable<Lightning.LightningClient>? client = null); 
+
     }
 
     public class LightningService : ILightningService
@@ -773,6 +779,7 @@ namespace FundsManager.Services
             }
         }
 
+
         public async Task<(PSBT?, bool)> GenerateTemplatePSBT(ChannelOperationRequest? channelOperationRequest)
         {
             if (channelOperationRequest == null) throw new ArgumentNullException(nameof(channelOperationRequest));
@@ -1197,7 +1204,7 @@ namespace FundsManager.Services
             return result;
         }
 
-        public async Task<(long, long)> GetChannelBalance(Channel channel)
+        public async Task<(long?, long?)> GetChannelBalance(Channel channel)
         {
             var client = CreateLightningClient(channel.SourceNode.Endpoint);
             var result = client.Execute(x => x.ListChannels(new ListChannelsRequest(), 
@@ -1206,11 +1213,12 @@ namespace FundsManager.Services
             }, null, default));
             
             var chan = result.Channels.FirstOrDefault(x => x.ChanId == channel.ChanId);
-            if (chan == null)
-                throw new Exception("Channel not found");
+            if(chan == null)
+                return (null, null);
 
             var res = (chan.LocalBalance, chan.RemoteBalance);
             return res;
         }
+        
     }
 }
