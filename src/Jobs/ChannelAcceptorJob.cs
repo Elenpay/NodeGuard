@@ -17,7 +17,7 @@
  *
  */
 
-﻿using FundsManager.Data.Repositories.Interfaces;
+using FundsManager.Data.Repositories.Interfaces;
 using FundsManager.Helpers;
 using Quartz;
 
