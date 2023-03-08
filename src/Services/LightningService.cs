@@ -112,9 +112,7 @@ namespace FundsManager.Services
         /// <param name="source"></param>
         /// <param name="pendingChannelId"></param>
         /// <param name="client"></param>
-        public void CancelPendingChannel(Node source, byte[] pendingChannelId,  IUnmockable<Lightning.LightningClient>? client = null); 
-        
-        public Task SubscribeToNode(Node node);
+        public void CancelPendingChannel(Node source, byte[] pendingChannelId,  IUnmockable<Lightning.LightningClient>? client = null);
     }
 
     public class LightningService : ILightningService
@@ -345,6 +343,7 @@ namespace FundsManager.Services
                                     Status = Channel.ChannelStatus.Open,
                                     SourceNodeId = channelOperationRequest.SourceNode.Id,
                                     DestinationNodeId = channelOperationRequest.DestNode.Id,
+                                    CreatedByNodeGuard = true
                                 };
 
                                 await context.AddAsync(channel);
@@ -781,7 +780,6 @@ namespace FundsManager.Services
             }
         }
 
-
         public async Task<(PSBT?, bool)> GenerateTemplatePSBT(ChannelOperationRequest? channelOperationRequest)
         {
             if (channelOperationRequest == null) throw new ArgumentNullException(nameof(channelOperationRequest));
@@ -1208,7 +1206,17 @@ namespace FundsManager.Services
 
         public async Task<(long?, long?)> GetChannelBalance(Channel channel)
         {
-            var client = CreateLightningClient(channel.SourceNode.Endpoint);
+            IUnmockable<Lightning.LightningClient> client;
+            if (channel.SourceNodeId == null)
+            {
+                var destinationNode = await _nodeRepository.GetById(channel.DestinationNodeId.Value);
+                client = CreateLightningClient(destinationNode.Endpoint);
+            }
+            else
+            {
+                var sourceNode = await _nodeRepository.GetById(channel.SourceNodeId.Value);
+                client = CreateLightningClient(sourceNode.Endpoint);
+            }
             var result = client.Execute(x => x.ListChannels(new ListChannelsRequest(), 
                 new Metadata {
                 {"macaroon", channel.SourceNode.ChannelAdminMacaroon}
@@ -1220,67 +1228,6 @@ namespace FundsManager.Services
 
             var res = (chan.LocalBalance, chan.RemoteBalance);
             return res;
-        }
-        
-        
-        public async Task SubscribeToNode(Node node)
-        {
-            var client = CreateLightningClient(node.Endpoint);
-            var result = client.Execute(x => x.SubscribeChannelEvents(new ChannelEventSubscription(), 
-                new Metadata {
-                    {"macaroon", node.ChannelAdminMacaroon}
-                }, null, default));
-
-            while (await result.ResponseStream.MoveNext())
-            {
-                var channelEventUpdate = result.ResponseStream.Current;
-                if (channelEventUpdate.OpenChannel != null)
-                {
-                    var channelOpened = channelEventUpdate.OpenChannel;
-                    var channel = new Channel()
-                    {
-                        ChanId = channelOpened.ChanId,
-                        SatsAmount = channelOpened.Capacity,
-                        Status = Channel.ChannelStatus.Open,
-                        IsAutomatedLiquidityEnabled = false,
-                        BtcCloseAddress = channelOpened.CloseAddress,
-                        FundingTx = channelOpened.ChannelPoint,
-                        CreatedByNodeGuard = false
-                    };  
-                    // TODO Add SourceNode and DestinationNode
-                    var channelExists = await _channelRepository.GetByChanId(channel.ChanId);
-                    if (channelExists == null)
-                    {
-                        var addChannel = await _channelRepository.AddAsync(channel);
-                        if (!addChannel.Item1)
-                        {
-                            throw new Exception(addChannel.Item2);
-                        }
-
-                        _logger.LogInformation("Channel with id: {ChannelId} added to the system", channel.Id);
-                    }
-                    else
-                    {
-                        _logger.LogInformation("Channel with id: {ChannelId} already exists in the system", channel.Id);
-                    }
-                }
-
-                if (channelEventUpdate.ClosedChannel != null)
-                {
-                    var channelClosed = channelEventUpdate.ClosedChannel;
-                    var channel = await _channelRepository.GetByChanId(channelClosed.ChanId);
-                    if (channel == null)
-                    {
-                        throw new Exception("Channel not found");
-                    }
-                    channel.Status = Channel.ChannelStatus.Closed;
-                    var updateChannel = _channelRepository.Update(channel);
-                    if (!updateChannel.Item1)
-                    {
-                        throw new Exception(updateChannel.Item2);
-                    }
-                }
-            }
         }
     }
 }
