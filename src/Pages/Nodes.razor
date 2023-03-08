@@ -202,7 +202,7 @@
             {
                 ToastService.ShowSuccess($"Node {arg.Item.Name} Created");
                 _nodes = await NodeRepository.GetAll();
-                CreateJob(arg.Item);
+                CreateJobs(arg.Item);
 
             }
             else
@@ -291,7 +291,7 @@
 
     }
     
-    private async Task CreateJob(Node node)
+    private async Task CreateJobs(Node node)
     {
         try
         {
@@ -307,6 +307,13 @@
             node.JobId = job.Job.Key.ToString();
 
             var jobUpdateResult = NodeRepository.Update(node);
+
+            map = new JobDataMap();
+            map.Put("managedNodeId", node.Id.ToString());
+            
+            var acceptorJob = RetriableJob.Create<ProcessNodeChannelAcceptorJob>(map, node.Id.ToString(), retryList);
+            await scheduler.ScheduleJob(acceptorJob.Job, acceptorJob.Trigger);
+            
             ToastService.ShowSuccess("Node subscription job created");
         }
         catch
