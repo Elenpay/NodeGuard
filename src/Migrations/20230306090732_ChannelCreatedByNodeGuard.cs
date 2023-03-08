@@ -14,6 +14,7 @@ namespace FundsManager.Migrations
                 type: "boolean",
                 nullable: false,
                 defaultValue: true);
+            migrationBuilder.Sql("UPDATE \"Channels\" SET \"CreatedByNodeGuard\" = 'true'");
         }
 
         protected override void Down(MigrationBuilder migrationBuilder)
