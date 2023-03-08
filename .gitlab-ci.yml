@@ -21,11 +21,6 @@ build-staging:
     - docker push $CI_REGISTRY_IMAGE:$CI_COMMIT_REF_NAME
   rules:
     - if: '$CI_COMMIT_REF_NAME == "main" &&  $CI_PIPELINE_SOURCE != "merge_request_event"'
-      changes:
-        - "src/**/*"
-        - "FundsManager.sln"
-        - ".gitlab-ci.yml"
-
 build-release:
   stage: build-release
   script:
