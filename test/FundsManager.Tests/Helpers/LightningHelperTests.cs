@@ -17,7 +17,6 @@
  *
  */
 
-using AutoFixture;
 using FluentAssertions;
 using FundsManager.Data.Models;
 using FundsManager.Helpers;
@@ -35,13 +34,12 @@ namespace FundsManager.Tests
         public void UTXODuplicateTest_Duplicated()
         {
             //Arrange
-            var fixture = new Fixture();
             var utxoFixture = new UTXO
             {
                 Value = new Money(10),
-                Outpoint = fixture.Create<OutPoint>(),
-                Index = fixture.Create<int>(),
-                ScriptPubKey = fixture.Create<Script>()
+                Outpoint = new OutPoint(uint256.Parse("2cf4255a9860746bd9bb432feb4cf635dcf96435162f58ccd8283f453e0c7679"),1),
+                Index =1,
+                ScriptPubKey = new Script()
             };
 
             var utxoChanges = new UTXOChanges
@@ -66,13 +64,12 @@ namespace FundsManager.Tests
         public void UTXODuplicateTest_NoDuplicated()
         {
             //Arrange
-            var fixture = new Fixture();
             var utxoFixture = new UTXO
             {
                 Value = new Money(10),
-                Outpoint = fixture.Create<OutPoint>(),
-                Index = fixture.Create<int>(),
-                ScriptPubKey = fixture.Create<Script>()
+                Outpoint = new OutPoint(uint256.Parse("2cf4255a9860746bd9bb432feb4cf635dcf96435162f58ccd8283f453e0c7679"), 1),
+                Index =1,
+                ScriptPubKey = new Script()
             };
 
             var utxoChanges = new UTXOChanges
