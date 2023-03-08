@@ -66,24 +66,24 @@ namespace FundsManager.Data.Repositories
 
             return await applicationDbContext.Wallets.Include(x => x.InternalWallet).Include(x => x.Keys).ToListAsync();
         }
-        
+
         public async Task<List<Wallet>> GetAvailableByType(WALLET_TYPE type)
         {
             await using var applicationDbContext = await _dbContextFactory.CreateDbContextAsync();
-            
+
             return await applicationDbContext.Wallets
-                .Where(w => 
+                .Where(w =>
                     !w.IsArchived && !w.IsCompromised && w.IsFinalised &&
                     (type == WALLET_TYPE.Both || type == WALLET_TYPE.Cold && !w.IsHotWallet || type == WALLET_TYPE.Hot && w.IsHotWallet))
                 .Include(x => x.InternalWallet)
                 .Include(x => x.Keys)
                 .ToListAsync();
         }
-        
+
         public async Task<List<Wallet>> GetAvailableByIds(List<int> ids)
         {
             await using var applicationDbContext = await _dbContextFactory.CreateDbContextAsync();
-            
+
             return await applicationDbContext.Wallets
                 .Where(w => !w.IsArchived && !w.IsCompromised && w.IsFinalised && ids.Contains(w.Id))
                 .Include(x => x.InternalWallet)
@@ -116,8 +116,12 @@ namespace FundsManager.Data.Repositories
                 //We add the internal wallet of the moment and its key
                 var currentInternalWallet = (await _internalWalletRepository.GetCurrentInternalWallet());
                 if (currentInternalWallet != null)
+                {
                     type.InternalWalletId = currentInternalWallet.Id;
+                    type.InternalWalletMasterFingerprint = currentInternalWallet.MasterFingerprint;
+                }
 
+                type.InternalWalletSubDerivationPath = await GetNextSubderivationPath();
                 var currentInternalWalletKey = await _keyRepository.GetCurrentInternalWalletKey(type.InternalWalletSubDerivationPath);
 
                 type.Keys = new List<Key>();
@@ -166,7 +170,7 @@ namespace FundsManager.Data.Repositories
         }
 
         public (bool, string?) Update(Wallet type)
-        { 
+        {
             using var applicationDbContext = _dbContextFactory.CreateDbContext();
             var wallet = applicationDbContext.Wallets.Include(w => w.Keys).FirstOrDefault(x => x.Id == type.Id);
 
@@ -174,7 +178,7 @@ namespace FundsManager.Data.Repositories
 
             var wasHotWallet = wallet.IsHotWallet;
             applicationDbContext.Entry(wallet).CurrentValues.SetValues(type);
-            
+
             if (!wasHotWallet && type.IsHotWallet)
             {
                 var userKeys = wallet.Keys.Where(k => !string.IsNullOrEmpty(k.UserId));
@@ -182,7 +186,7 @@ namespace FundsManager.Data.Repositories
                 {
                     wallet.Keys.Remove(key);
                 }
-            } 
+            }
             else
             {
                 foreach (var key in type.Keys)
@@ -193,7 +197,7 @@ namespace FundsManager.Data.Repositories
                     }
                 }
             }
-            
+
             wallet.ChannelOperationRequestsAsSource?.Clear();
             return _repository.Update(wallet, applicationDbContext);
         }
@@ -203,16 +207,16 @@ namespace FundsManager.Data.Repositories
             await using var applicationDbContext = _dbContextFactory.CreateDbContext();
 
             var lastWallet = applicationDbContext.Wallets.OrderBy(w => w.Id).LastOrDefault(w => w.IsFinalised);
-            
+
             if (lastWallet == null) return "0";
-            
+
             if (string.IsNullOrEmpty(lastWallet.InternalWalletSubDerivationPath))
                 throw new InvalidOperationException("A finalized hot wallet has no subderivation path");
-            
+
             var subderivationPath = KeyPath.Parse(lastWallet.InternalWalletSubDerivationPath);
             return subderivationPath.Increment().ToString();
         }
-        
+
         public async Task<(bool, string?)> FinaliseWallet(Wallet selectedWalletToFinalise)
         {
             if (selectedWalletToFinalise == null) throw new ArgumentNullException(nameof(selectedWalletToFinalise));
@@ -228,8 +232,6 @@ namespace FundsManager.Data.Repositories
             selectedWalletToFinalise.IsFinalised = true;
             try
             {
-                selectedWalletToFinalise.InternalWalletSubDerivationPath = await GetNextSubderivationPath();
-                
                 var derivationStrategyBase = selectedWalletToFinalise.GetDerivationStrategy();
                 if (derivationStrategyBase == null)
                 {
