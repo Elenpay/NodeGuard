@@ -1,4 +1,3 @@
-using AutoFixture;
 using FluentAssertions;
 using FundsManager.Data.Models;
 
@@ -9,11 +8,26 @@ public class WalletWithdrawalRequestTests
     [Fact]
     public async Task SignatureCounter_Positive_RequiresInternalwallet()
     {
-        // Arrange
-        var fixture = new Fixture();
-        fixture.Behaviors.Add(new OmitOnRecursionBehavior());
+       
 
-        var request = fixture.Create<WalletWithdrawalRequest>();
+        var request = new WalletWithdrawalRequest
+        {
+            Wallet = new Wallet
+            {
+                Keys = new List<Key>
+                {
+                    new Key(),
+                    new Key(),
+                    new Key()
+                }
+            },
+            WalletWithdrawalRequestPSBTs = new List<WalletWithdrawalRequestPSBT>
+            {
+                new WalletWithdrawalRequestPSBT(),
+                new WalletWithdrawalRequestPSBT(),
+                new WalletWithdrawalRequestPSBT()
+            }
+        };
         // Act
 
         request.Wallet.MofN = 3;
@@ -34,10 +48,25 @@ public class WalletWithdrawalRequestTests
     public async Task SignatureCounter_Positive_NotRequiresInternalwallet()
     {
         // Arrange
-        var fixture = new Fixture();
-        fixture.Behaviors.Add(new OmitOnRecursionBehavior());
 
-        var request = fixture.Create<WalletWithdrawalRequest>();
+        var request = new WalletWithdrawalRequest
+        {
+            Wallet = new Wallet
+            {
+                Keys = new List<Key>
+                {
+                    new Key(),
+                    new Key(),
+                    new Key()
+                }
+            },
+            WalletWithdrawalRequestPSBTs = new List<WalletWithdrawalRequestPSBT>
+            {
+                new WalletWithdrawalRequestPSBT(),
+                new WalletWithdrawalRequestPSBT(),
+                new WalletWithdrawalRequestPSBT()
+            }
+        };
         // Act
 
         request.Wallet.MofN = 2;
@@ -58,10 +87,24 @@ public class WalletWithdrawalRequestTests
     public async Task SignatureCount_Negative_NotRequiresInternalWallet()
     {
         // Arrange
-        var fixture = new Fixture();
-        fixture.Behaviors.Add(new OmitOnRecursionBehavior());
-
-        var request = fixture.Create<WalletWithdrawalRequest>();
+        var request = new WalletWithdrawalRequest
+        {
+            Wallet = new Wallet
+            {
+                Keys = new List<Key>
+                {
+                    new Key(),
+                    new Key(),
+                    new Key()
+                }
+            },
+            WalletWithdrawalRequestPSBTs = new List<WalletWithdrawalRequestPSBT>
+            {
+                new WalletWithdrawalRequestPSBT(),
+                new WalletWithdrawalRequestPSBT(),
+                new WalletWithdrawalRequestPSBT()
+            }
+        };
         // Act
 
         request.Wallet.IsHotWallet = false;
@@ -84,10 +127,24 @@ public class WalletWithdrawalRequestTests
     public async Task SignatureCount_Negative_RequiresInternalWallet()
     {
         // Arrange
-        var fixture = new Fixture();
-        fixture.Behaviors.Add(new OmitOnRecursionBehavior());
-
-        var request = fixture.Create<WalletWithdrawalRequest>();
+        var request = new WalletWithdrawalRequest
+        {
+            Wallet = new Wallet
+            {
+                Keys = new List<Key>
+                {
+                    new Key(),
+                    new Key(),
+                    new Key()
+                }
+            },
+            WalletWithdrawalRequestPSBTs = new List<WalletWithdrawalRequestPSBT>
+            {
+                new WalletWithdrawalRequestPSBT(),
+                new WalletWithdrawalRequestPSBT(),
+                new WalletWithdrawalRequestPSBT()
+            }
+        };
         // Act
         request.Wallet.IsHotWallet = false;
         request.Wallet.MofN = 3;

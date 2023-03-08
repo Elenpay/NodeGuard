@@ -17,14 +17,11 @@
  *
  */
 
-using AutoFixture;
-using AutoMapper;
 using Microsoft.Extensions.Logging;
 using FundsManager.Data;
 using FundsManager.Data.Models;
 using FundsManager.Data.Repositories.Interfaces;
 using FundsManager.TestHelpers;
-using NBXplorer;
 using NBXplorer.Models;
 using FluentAssertions;
 using FundsManager.Helpers;
@@ -34,7 +31,6 @@ using NBitcoin;
 using NBXplorer.DerivationStrategy;
 using Grpc.Core;
 using Microsoft.EntityFrameworkCore;
-using Unmockable.Exceptions;
 using Channel = FundsManager.Data.Models.Channel;
 
 namespace FundsManager.Services
@@ -76,7 +72,7 @@ namespace FundsManager.Services
         }
 
         [Fact]
-        public async void OpenChannel_ChannelOperationRequestNotFound()
+        public async Task OpenChannel_ChannelOperationRequestNotFound()
         {
             // Arrange
             var dbContextFactory = new Mock<IDbContextFactory<ApplicationDbContext>>();
@@ -278,7 +274,7 @@ namespace FundsManager.Services
         }
 
         [Fact]
-        public async void GetCloseAddress_CloseAddressExists()
+        public async Task GetCloseAddress_CloseAddressExists()
         {
             // Arrange
             var operationRequest = new ChannelOperationRequest
@@ -358,7 +354,7 @@ namespace FundsManager.Services
         }
 
         [Fact]
-        public void CreateLightningClient_EndpointIsNull()
+        public async Task CreateLightningClient_EndpointIsNull()
         {
             // Act
             var act = () => LightningService.CreateLightningClient(null);
@@ -381,7 +377,7 @@ namespace FundsManager.Services
         }
         
         [Fact]
-        public async void OpenChannel_SuccessLegacyMultiSig()
+        public async Task OpenChannel_SuccessLegacyMultiSig()
         {
             // Arrange
             Environment.SetEnvironmentVariable("NBXPLORER_URI", "http://10.0.0.2:38762");
@@ -458,6 +454,7 @@ namespace FundsManager.Services
                         }
                     }));
 
+            var originalCreateLightningClient = LightningService.CreateLightningClient;
             LightningService.CreateLightningClient = (_) => lightningClient;
 
             lightningClient
@@ -588,10 +585,14 @@ namespace FundsManager.Services
 
             // Assert
             await act.Should().NotThrowAsync();
+            
+            //TODO Remove hack
+            // Cleanup
+            LightningService.CreateLightningClient = originalCreateLightningClient;
         }
 
         [Fact]
-        public async void OpenChannel_SuccessMultiSig()
+        public async Task OpenChannel_SuccessMultiSig()
         {
             // Arrange
             Environment.SetEnvironmentVariable("NBXPLORER_URI", "http://10.0.0.2:38762");
@@ -668,6 +669,7 @@ namespace FundsManager.Services
                         }
                     }));
 
+            var originalCreateLightningClient = LightningService.CreateLightningClient;
             LightningService.CreateLightningClient = (_) => lightningClient;
 
             lightningClient
@@ -798,10 +800,13 @@ namespace FundsManager.Services
 
             // Assert
             await act.Should().NotThrowAsync();
+            
+            //TODO Remove hack
+            LightningService.CreateLightningClient = originalCreateLightningClient;
         }
         
         [Fact]
-        public async void OpenChannel_SuccessSingleSig()
+        public async Task OpenChannel_SuccessSingleSig()
         {
             // Arrange
             Environment.SetEnvironmentVariable("NBXPLORER_URI", "http://10.0.0.2:38762");
@@ -878,6 +883,7 @@ namespace FundsManager.Services
                         }
                     }));
 
+            var originalCreateLightningClient = LightningService.CreateLightningClient;
             LightningService.CreateLightningClient = (_) => lightningClient;
 
             lightningClient
@@ -1008,10 +1014,13 @@ namespace FundsManager.Services
 
             // Assert
             await act.Should().NotThrowAsync();
+            
+            //TODO Remove hack
+            LightningService.CreateLightningClient = originalCreateLightningClient;
         }
         
         [Fact]
-        public async void CloseChannel_Succeeds()
+        public async Task CloseChannel_Succeeds()
         {
             // Arrange
             var operationRequest = new ChannelOperationRequest
@@ -1075,6 +1084,7 @@ namespace FundsManager.Services
                     chanCloseUpdate,
                 }));
 
+            var originalCreateLightningClient = LightningService.CreateLightningClient;
             LightningService.CreateLightningClient = (_) => lightningClient;
             
             var lightningService = new LightningService(_logger,
@@ -1094,6 +1104,9 @@ namespace FundsManager.Services
 
             // Assert
             await act.Should().NotThrowAsync(); 
+            
+            //TODO Remove hack
+            LightningService.CreateLightningClient = originalCreateLightningClient;
         }
     }
 }

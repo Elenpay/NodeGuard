@@ -19,7 +19,7 @@ public class BitcoinServiceTests
     private InternalWallet _internalWallet = CreateWallet.CreateInternalWallet();
 
     [Fact]
-    async void GenerateTemplatePSBT_NoWithdrawalRequest()
+    async Task GenerateTemplatePSBT_NoWithdrawalRequest()
     {
         // Arrange
         var bitcoinService = new BitcoinService(null, null, null, null, null, null, null, null);
@@ -40,7 +40,7 @@ public class BitcoinServiceTests
     [InlineData(WalletWithdrawalRequestStatus.Rejected)]
     [InlineData(WalletWithdrawalRequestStatus.OnChainConfirmationPending)]
     [InlineData(WalletWithdrawalRequestStatus.OnChainConfirmed)]
-    async void GenerateTemplatePSBT_RequestNotPending(WalletWithdrawalRequestStatus status)
+    async Task GenerateTemplatePSBT_RequestNotPending(WalletWithdrawalRequestStatus status)
     {
         // Arrange
         var withdrawalRequest = new WalletWithdrawalRequest()
@@ -66,7 +66,7 @@ public class BitcoinServiceTests
     }
 
     [Fact]
-    async void GenerateTemplatePSBT_NBXplorerNotFullySynced()
+    async Task GenerateTemplatePSBT_NBXplorerNotFullySynced()
     {
         // Arrange
         var withdrawalRequest = new WalletWithdrawalRequest()
@@ -96,7 +96,7 @@ public class BitcoinServiceTests
     }
 
     [Fact]
-    async void GenerateTemplatePSBT_NoDerivationStrategy()
+    async Task GenerateTemplatePSBT_NoDerivationStrategy()
     {
         // Arrange
         var withdrawalRequest = new WalletWithdrawalRequest()
@@ -128,7 +128,7 @@ public class BitcoinServiceTests
     }
     
     [Fact]
-    async void GenerateTemplatePSBT_LegacyMultiSigSucceeds()
+    async Task GenerateTemplatePSBT_LegacyMultiSigSucceeds()
     {
         // Arrange
         var wallet = CreateWallet.LegacyMultiSig(_internalWallet);
@@ -195,7 +195,7 @@ public class BitcoinServiceTests
     }
     
     [Fact]
-    async void GenerateTemplatePSBT_MultiSigSucceeds()
+    async Task GenerateTemplatePSBT_MultiSigSucceeds()
     {
         // Arrange
         var wallet = CreateWallet.MultiSig(_internalWallet);
@@ -262,7 +262,7 @@ public class BitcoinServiceTests
     }
 
     [Fact]
-    async void GenerateTemplatePSBT_SingleSigSucceeds()
+    async Task GenerateTemplatePSBT_SingleSigSucceeds()
     {
         // Arrange
         var wallet = CreateWallet.SingleSig(_internalWallet);
@@ -328,7 +328,7 @@ public class BitcoinServiceTests
     }
 
     [Fact]
-    async void PerformWithdrawal_SingleSigSucceeds()
+    async Task PerformWithdrawal_SingleSigSucceeds()
     {
         // Arrange
         var wallet = CreateWallet.SingleSig(_internalWallet);
@@ -400,7 +400,7 @@ public class BitcoinServiceTests
     }
     
     [Fact]
-    async void PerformWithdrawal_MultiSigSucceeds()
+    async Task PerformWithdrawal_MultiSigSucceeds()
     {
         // Arrange
         var wallet = CreateWallet.MultiSig(_internalWallet);
@@ -480,7 +480,7 @@ public class BitcoinServiceTests
     }
     
     [Fact]
-    async void PerformWithdrawal_LegacyMultiSigSucceeds()
+    async Task PerformWithdrawal_LegacyMultiSigSucceeds()
     {
         // Arrange
         var wallet = CreateWallet.LegacyMultiSig(_internalWallet);

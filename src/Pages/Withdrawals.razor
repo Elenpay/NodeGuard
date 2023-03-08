@@ -360,7 +360,7 @@
     RequestId="_selectedRequest?.Id" 
     SigHashMode="SigHash.All"
     TemplatePsbtString="@_templatePsbtString" 
-    ApproveRequestDelegate="ApproveRequestDelegate"
+    ApproveRequestDelegate="async ()=> await ApproveRequestDelegate()"  
 />
 
 <CancelOrRejectPopup
@@ -668,7 +668,7 @@
         }
     }
 
-    private async void ApproveRequestDelegate()
+    private async Task ApproveRequestDelegate()
     {
         if (_selectedRequest != null)
             await Approve(_selectedRequest);
@@ -746,7 +746,7 @@
 
     private async Task SubmitConfirmationModal()
     {
-        async void CleanUp(string errorMessage)
+        async Task CleanUp(string errorMessage)
         {
             ToastService.ShowError(errorMessage);
             _selectedRequest.Status = WalletWithdrawalRequestStatus.Failed;

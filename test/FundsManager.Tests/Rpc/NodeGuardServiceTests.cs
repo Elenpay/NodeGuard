@@ -17,7 +17,6 @@
  */
 
 using System.Collections.Specialized;
-using AutoFixture;
 using AutoMapper;
 using FluentAssertions;
 using FundsManager.Automapper;
@@ -43,17 +42,13 @@ namespace FundsManager.Rpc
 {
     public class NodeGuardServiceTests
     {
-        private readonly Fixture _fixture;
         private readonly Mock<ILogger<NodeGuardService>> _logger;
         private readonly IMapper _mockMapper;
 
         public NodeGuardServiceTests()
         {
             _logger = new Mock<ILogger<NodeGuardService>>();
-            _fixture = new Fixture();
-            _fixture.Behaviors.OfType<ThrowingRecursionBehavior>().ToList()
-                .ForEach(b => _fixture.Behaviors.Remove(b));
-            _fixture.Behaviors.Add(new OmitOnRecursionBehavior());
+
 
             _mockMapper = new MapperConfiguration(config => { config.AddProfile<MapperProfile>(); }).CreateMapper();
         }
@@ -67,7 +62,8 @@ namespace FundsManager.Rpc
             liquidityRuleRepository.Setup(x =>
                 x.GetByNodePubKey(It.IsAny<string>())).ReturnsAsync(new List<LiquidityRule>());
 
-            var wallet = _fixture.Create<Wallet>();
+
+            var wallet = new Wallet();
             var walletRepository = new Mock<IWalletRepository>();
 
             walletRepository.Setup(x => x.GetById(It.IsAny<int>())).ReturnsAsync(wallet);
@@ -96,13 +92,25 @@ namespace FundsManager.Rpc
             var liquidityRuleRepository = new Mock<ILiquidityRuleRepository>();
             var liquidityRules = new List<LiquidityRule>
             {
-                _fixture.Create<LiquidityRule>()
+                new LiquidityRule
+                {
+                    Id = 0,
+
+                    MinimumLocalBalance = 0.2M,
+                    MinimumRemoteBalance = 0.8M,
+                    RebalanceTarget = 0.5M,
+                    ChannelId = 1,
+                    WalletId = 1,
+                    Wallet = new Wallet(),
+                    NodeId = 0,
+                    Node = new Node{PubKey = "010101010101"}
+                }
             };
 
             liquidityRuleRepository.Setup(x =>
                 x.GetByNodePubKey(It.IsAny<string>())).ReturnsAsync(liquidityRules);
 
-            var wallet = _fixture.Create<Wallet>();
+            var wallet = new Wallet();
             var walletRepository = new Mock<IWalletRepository>();
 
             walletRepository.Setup(x => x.GetById(It.IsAny<int>())).ReturnsAsync(wallet);
@@ -113,7 +121,10 @@ namespace FundsManager.Rpc
                     _mockMapper, new Mock<IWalletWithdrawalRequestRepository>().Object,
                     new Mock<IBitcoinService>().Object, new Mock<INBXplorerService>().Object,
                     new Mock<ISchedulerFactory>().Object);
-            var getLiquidityRulesRequest = _fixture.Create<GetLiquidityRulesRequest>();
+            var getLiquidityRulesRequest = new GetLiquidityRulesRequest
+            {
+                NodePubkey = "0101010011"
+            };
             var context = TestServerCallContext.Create();
             //Act
 
@@ -137,7 +148,7 @@ namespace FundsManager.Rpc
             liquidityRuleRepository.Setup(x =>
                 x.GetByNodePubKey(It.IsAny<string>())).ThrowsAsync(new Exception("test"));
 
-            var wallet = _fixture.Create<Wallet>();
+            var wallet = new Wallet();
             var walletRepository = new Mock<IWalletRepository>();
 
             walletRepository.Setup(x => x.GetById(It.IsAny<int>())).ReturnsAsync(wallet);
@@ -148,7 +159,10 @@ namespace FundsManager.Rpc
                     _mockMapper, new Mock<IWalletWithdrawalRequestRepository>().Object,
                     new Mock<IBitcoinService>().Object, new Mock<INBXplorerService>().Object,
                     new Mock<ISchedulerFactory>().Object);
-            var getLiquidityRulesRequest = _fixture.Create<GetLiquidityRulesRequest>();
+            var getLiquidityRulesRequest = new GetLiquidityRulesRequest
+            {
+                NodePubkey = "101001010101"
+            };
             var context = TestServerCallContext.Create();
             //Act
 
@@ -160,7 +174,7 @@ namespace FundsManager.Rpc
         public async Task GetNewWalletAddress_Success()
         {
             //Arrange
-            var wallet = _fixture.Create<Wallet>();
+            var wallet = new Wallet();
             wallet.Keys = new List<Key>
             {
                 new Key
@@ -411,7 +425,7 @@ namespace FundsManager.Rpc
             out Mock<IWalletWithdrawalRequestRepository> walletWithdrawalRequestRepository,
             out ISchedulerFactory schedulerFactory)
         {
-            var wallet = _fixture.Create<Wallet>();
+            var wallet = new Wallet();
             wallet.IsHotWallet = true;
             wallet.Keys = new List<Key>
             {
@@ -473,7 +487,7 @@ namespace FundsManager.Rpc
             walletWithdrawalRequestRepository.Setup(x => x.AddAsync(It.IsAny<WalletWithdrawalRequest>()))
                 .ReturnsAsync((true, null));
 
-            var withdrawalRequestFixture = _fixture.Create<WalletWithdrawalRequest>();
+            var withdrawalRequestFixture = new WalletWithdrawalRequest{};
 
             //GetByIdMock
             walletWithdrawalRequestRepository.Setup(x => x.GetById(It.IsAny<int>()))
@@ -510,7 +524,7 @@ namespace FundsManager.Rpc
         }
 
         [Fact]
-        public async void GetAvailableWallets_ReturnsAllWallets()
+        public async Task GetAvailableWallets_ReturnsAllWallets()
         {
             var (dbContextFactory, context) = SetupDbContextFactory();
             var scheduleFactory = new Mock<ISchedulerFactory>();
@@ -548,7 +562,7 @@ namespace FundsManager.Rpc
         }
 
         [Fact]
-        public async void GetAvailableWallets_ReturnsTypeHot()
+        public async Task GetAvailableWallets_ReturnsTypeHot()
         {
             var (dbContextFactory, context) = SetupDbContextFactory();
             var scheduleFactory = new Mock<ISchedulerFactory>();
@@ -590,7 +604,7 @@ namespace FundsManager.Rpc
         }
 
         [Fact]
-        public async void GetAvailableWallets_ReturnsTypeCold()
+        public async Task GetAvailableWallets_ReturnsTypeCold()
         {
             var (dbContextFactory, context) = SetupDbContextFactory();
             var scheduleFactory = new Mock<ISchedulerFactory>();
@@ -632,7 +646,7 @@ namespace FundsManager.Rpc
         }
 
         [Fact]
-        public async void GetAvailableWallets_ReturnsIds()
+        public async Task GetAvailableWallets_ReturnsIds()
         {
             var (dbContextFactory, context) = SetupDbContextFactory();
             var scheduleFactory = new Mock<ISchedulerFactory>();
@@ -686,7 +700,7 @@ namespace FundsManager.Rpc
         }
 
         [Fact]
-        public async void GetAvailableWallets_CantPassTwoFilters()
+        public async Task GetAvailableWallets_CantPassTwoFilters()
         {
             var (dbContextFactory, context) = SetupDbContextFactory();
             var scheduleFactory = new Mock<ISchedulerFactory>();
