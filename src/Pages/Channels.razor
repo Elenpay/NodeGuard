@@ -33,13 +33,14 @@
                             <DropdownToggle Color="Color.Primary">
                             </DropdownToggle>
                             <DropdownMenu>
-                                <DropdownItem Disabled="context.Item.Status == Channel.ChannelStatus.Closed" Clicked="@(() => ShowChannelManagementModal(context.Item))">Manage</DropdownItem>
-                                @{
+                                @if (_IsUserNodeManager)
+                                {
                                     var lastRequest = context.Item.ChannelOperationRequests.Last();
+                                    <DropdownItem Disabled="context.Item.Status == Channel.ChannelStatus.Closed" Clicked="@(() => ShowChannelManagementModal(context.Item))">Manage</DropdownItem>
+                                    <DropdownItem Disabled="@(context.Item.Status == Channel.ChannelStatus.Closed || (lastRequest.RequestType == OperationRequestType.Close && lastRequest.Status == ChannelOperationRequestStatus.OnChainConfirmed || lastRequest.Status == ChannelOperationRequestStatus.OnChainConfirmationPending))" Clicked="() => ShowConfirmedClose(context.Item)">Close</DropdownItem>
+                                    <DropdownItem Disabled="@(context.Item.Status == Channel.ChannelStatus.Closed || (lastRequest.RequestType == OperationRequestType.Close && lastRequest.Status == ChannelOperationRequestStatus.OnChainConfirmed || lastRequest.Status == ChannelOperationRequestStatus.OnChainConfirmationPending))" Clicked="() => ShowConfirmedClose(context.Item, true)">Force close</DropdownItem>
+                                    <DropdownItem Disabled="@(context.Item.Status == Channel.ChannelStatus.Closed || (lastRequest.RequestType == OperationRequestType.Close && lastRequest.Status == ChannelOperationRequestStatus.OnChainConfirmed || lastRequest.Status == ChannelOperationRequestStatus.OnChainConfirmationPending))" Clicked="() => MarkAsClosed(context.Item)">Mark as closed</DropdownItem>
                                 }
-                                <DropdownItem Visibility="@(_hideDelete ? Visibility.Invisible : Visibility.Visible)" Disabled="@(context.Item.Status == Channel.ChannelStatus.Closed || (lastRequest.RequestType == OperationRequestType.Close && lastRequest.Status == ChannelOperationRequestStatus.OnChainConfirmed || lastRequest.Status == ChannelOperationRequestStatus.OnChainConfirmationPending))" Clicked="() => ShowConfirmedClose(context.Item)">Close</DropdownItem>
-                                <DropdownItem Visibility="@(_hideDelete ? Visibility.Invisible : Visibility.Visible)" Disabled="@(context.Item.Status == Channel.ChannelStatus.Closed || (lastRequest.RequestType == OperationRequestType.Close && lastRequest.Status == ChannelOperationRequestStatus.OnChainConfirmed || lastRequest.Status == ChannelOperationRequestStatus.OnChainConfirmationPending))" Clicked="() => ShowConfirmedClose(context.Item, true)">Force close</DropdownItem>
-                                <DropdownItem Visibility="@(_hideDelete ? Visibility.Invisible : Visibility.Visible)" Disabled="@(context.Item.Status == Channel.ChannelStatus.Closed || (lastRequest.RequestType == OperationRequestType.Close && lastRequest.Status == ChannelOperationRequestStatus.OnChainConfirmed || lastRequest.Status == ChannelOperationRequestStatus.OnChainConfirmationPending))" Clicked="() => MarkAsClosed(context.Item)">Mark as closed</DropdownItem>
                                 <DropdownItem Clicked="@(() => ShowModal(context.Item))">Requests</DropdownItem>
 
                             </DropdownMenu>
@@ -52,11 +53,11 @@
                             <SelectItem Value="@(0)">All</SelectItem>
                             @foreach (var node in _nodes)
                             {
-                                <SelectItem Value="@(node.Id)">@(node.Name)(@(StringHelper.TruncateHeadAndTail(node.PubKey, 5))</SelectItem>
+                                <SelectItem Value="@(node.Id)">@(node.Name)(@(StringHelper.TruncateHeadAndTail(node.PubKey, 5)))</SelectItem>
                             }
                         </Select>
                     </FilterTemplate>
-                <DisplayTemplate>
+                    <DisplayTemplate>
                         @{
                             var sourceNode = context.SourceNode;
                         }
@@ -69,12 +70,12 @@
                             <SelectItem Value="@(0)">All</SelectItem>
                             @foreach (var node in _nodes)
                             {
-                                <SelectItem Value="@(node.Id)">@(node.Name)(@(StringHelper.TruncateHeadAndTail(node.PubKey, 5))</SelectItem>
+                                <SelectItem Value="@(node.Id)">@(node.Name)(@(StringHelper.TruncateHeadAndTail(node.PubKey, 5)))</SelectItem>
                             }
                         </Select>
                     </FilterTemplate>
                     <DisplayTemplate>
-                     
+
                         @(context.DestinationNode.Name)(@(StringHelper.TruncateHeadAndTail(context.DestinationNode.PubKey, 5)))
                     </DisplayTemplate>
                 </DataGridColumn>
@@ -306,13 +307,13 @@
     private List<Channel>? _channels = new List<Channel>();
     private Channel? _selectedChannel;
     private bool _modalVisible;
-    private bool _hideDelete = true;
+    private bool _IsUserNodeManager = false;
     private DataGrid<Channel> _channelsDataGridRef;
     private Modal? _channelLiquidityModal;
     private List<Wallet> _availableWallets = new List<Wallet>();
     private LiquidityRule _currentLiquidityRule = new LiquidityRule();
     private Validations _channelManagementValidationsRef;
-    private string _statusFilter = "All";
+    private string _statusFilter = "Open";
     private int _sourceNodeIdFilter = 0;
     private int _destinationNodeIdFilter = 0;
     private List<Node> _nodes = new List<Node>();
@@ -337,7 +338,7 @@
             await FetchData();
             if (ClaimsPrincipal != null && ClaimsPrincipal.IsInRole(ApplicationUserRole.NodeManager.ToString()))
             {
-                _hideDelete = false;
+                _IsUserNodeManager = true;
             }
         }
     }
@@ -346,7 +347,8 @@
     {
         _availableWallets = await WalletRepository.GetAvailableWallets();
         _channels = await ChannelRepository.GetAllManagedByUserNodes(LoggedUser.Id);
-        _nodes = await NodeRepository.GetAllManagedByUser(LoggedUser.Id);
+        _nodes = await NodeRepository.GetAll();
+        _channelsDataGridRef.FilterData();
     }
 
     private async Task ShowConfirmedClose(Channel channel, bool forceClose = false)
@@ -364,8 +366,7 @@
                 else
                 {
                     ToastService.ShowSuccess("Channel closed successfully");
-                    _channels = await ChannelRepository.GetAll();
-                    _channelsDataGridRef.Dispose();
+                    await FetchData();
                 }
             }
             else
@@ -623,6 +624,8 @@
 
     private bool OnStatusFilter(object itemValue, object searchValue)
     {
+    //If searchValue is null, we set it to the filter initial value in the field
+        searchValue ??= _statusFilter;
         if (searchValue is string statusFilter)
         {
             return statusFilter == "*" || statusFilter == itemValue?.ToString();
@@ -631,19 +634,23 @@
         return true;
     }
 
-   
+
     private bool OnSourceNodeIdFilter(object itemValue, object searchValue)
     {
-            if (searchValue is int nodeIdFilter)
+    //If searchValue is null, we set it to the filter initial value in the field
+        searchValue ??= _sourceNodeIdFilter;
+        if (searchValue is int nodeIdFilter)
         {
             return nodeIdFilter == 0 || nodeIdFilter == itemValue as int?;
         }
 
         return true;
     }
-    
+
     private bool OnDestinationNodeIdFilter(object itemValue, object searchValue)
     {
+    //If searchValue is null, we set it to the filter initial value in the field
+        searchValue ??= _destinationNodeIdFilter;
         if (searchValue is int nodeIdFilter)
         {
             return nodeIdFilter == 0 || nodeIdFilter == itemValue as int?;
