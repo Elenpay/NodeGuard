@@ -17,7 +17,7 @@
  *
  */
 
-﻿using System.ComponentModel.DataAnnotations.Schema;
+using System.ComponentModel.DataAnnotations.Schema;
 using NBitcoin;
 
 namespace FundsManager.Data.Models
