@@ -17,8 +17,8 @@
  *
  */
 
-using AutoFixture;
 using FluentAssertions;
+using FundsManager.Data.Models;
 using FundsManager.Helpers;
 using FundsManager.TestHelpers;
 using NBitcoin;
@@ -28,17 +28,18 @@ namespace FundsManager.Tests
 {
     public class LightningHelperTests
     {
+        private InternalWallet _internalWallet = CreateWallet.CreateInternalWallet();
+
         [Fact]
         public void UTXODuplicateTest_Duplicated()
         {
             //Arrange
-            var fixture = new Fixture();
             var utxoFixture = new UTXO
             {
                 Value = new Money(10),
-                Outpoint = fixture.Create<OutPoint>(),
-                Index = fixture.Create<int>(),
-                ScriptPubKey = fixture.Create<Script>()
+                Outpoint = new OutPoint(uint256.Parse("2cf4255a9860746bd9bb432feb4cf635dcf96435162f58ccd8283f453e0c7679"),1),
+                Index =1,
+                ScriptPubKey = new Script()
             };
 
             var utxoChanges = new UTXOChanges
@@ -63,13 +64,12 @@ namespace FundsManager.Tests
         public void UTXODuplicateTest_NoDuplicated()
         {
             //Arrange
-            var fixture = new Fixture();
             var utxoFixture = new UTXO
             {
                 Value = new Money(10),
-                Outpoint = fixture.Create<OutPoint>(),
-                Index = fixture.Create<int>(),
-                ScriptPubKey = fixture.Create<Script>()
+                Outpoint = new OutPoint(uint256.Parse("2cf4255a9860746bd9bb432feb4cf635dcf96435162f58ccd8283f453e0c7679"), 1),
+                Index =1,
+                ScriptPubKey = new Script()
             };
 
             var utxoChanges = new UTXOChanges
@@ -94,7 +94,7 @@ namespace FundsManager.Tests
         public void AddDerivationData_MultisigSucceeds()
         {
             // Arrange
-            var wallet = CreateWallet.MultiSig();
+            var wallet = CreateWallet.MultiSig(_internalWallet);
 
             var utxo = new UTXO()
             {
@@ -121,7 +121,7 @@ namespace FundsManager.Tests
             var cleanPsbt = txBuilder.BuildPSBT(false);
 
             // Act
-            var result = LightningHelper.AddDerivationData(wallet, cleanPsbt, utxoList, coins, null, "0");
+            var result = LightningHelper.AddDerivationData(wallet, cleanPsbt, utxoList, coins);
 
             // Assert
             var psbt = PSBT.Parse("cHNidP8BAIkBAAAAAQAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA/////wD/////AhAnAAAAAAAAIgAgPHfzrZk7L68p0NnijKzJFlfQcBGipD0uqora6TGiimLwvAtUAgAAACIAID2j1mgUIE8RzjFXzH6V9tW5a6FHvCgHesNoC0XpRbogAAAAAE8BBDWHzwMvESQsgAAAAfw77kI6AYzrbSJqBmMojtD7XuD6nXkKs3DQMOBHMObIA4COLhzUgr3QcZaUPFqBM9Fpr4YCK2uwOBdxZE7AdETXEB/M5N4wAACAAQAAgAEAAIBPAQQ1h88DVqwD9IAAAAH5CK5KZrD/oasUtVrwzkjypwIly5AQkC1pAa+QuT6PgQJRrxXgW7i36sGJWz9fR//v7NgyGgLvIimPidCiA33wYBBg86CzMAAAgAEAAIABAACATwEENYfPA325Ro0AAAAAgN63GqLxTu1/NyL0SV4a0Hn1n8Dzg+Wye9nbb16ZISADr+s+pcKnDcSqKHKWSl4v8Rcq80ZqG/7QObYmZUl/xUYQ7QIQyDAAAIABAACAAAAAAAABASsA5AtUAgAAACIAINCp0IUCw4KZ8J/JokbAV1TBQtK4m6WLzUomP5VBhszOAQVpUiEC2FTFYM/mwE4L60Q0G2p5QElV7YlMD7fcgoJEH79pLLEhAwJn/wsRl0hvcYj5Y3Bv3uQlxZ57pBZ9KSeuEPVNmjS/IQNvzitZiz5ksZFSQuRibjPP4pwo+OWOqZLBL2x5ZrFVqVOuIgYC2FTFYM/mwE4L60Q0G2p5QElV7YlMD7fcgoJEH79pLLEYH8zk3jAAAIABAACAAQAAgAAAAAAAAAAAIgYDAmf/CxGXSG9xiPljcG/e5CXFnnukFn0pJ64Q9U2aNL8YYPOgszAAAIABAACAAQAAgAAAAAAAAAAAIgYDb84rWYs+ZLGRUkLkYm4zz+KcKPjljqmSwS9seWaxVakY7QIQyDAAAIABAACAAAAAAAAAAAAAAAAAAAAA", network);
@@ -132,7 +132,7 @@ namespace FundsManager.Tests
         public void AddDerivationData_SinglesigSucceeds()
         {
             // Arrange
-            var wallet = CreateWallet.SingleSig();
+            var wallet = CreateWallet.SingleSig(_internalWallet);
 
             var utxo = new UTXO()
             {
@@ -159,7 +159,7 @@ namespace FundsManager.Tests
             var cleanPsbt = txBuilder.BuildPSBT(false);
 
             // Act
-            var result = LightningHelper.AddDerivationData(wallet, cleanPsbt, utxoList, coins, null, "1");
+            var result = LightningHelper.AddDerivationData(wallet, cleanPsbt, utxoList, coins);
 
             // Assert
             var psbt = PSBT.Parse(  "cHNidP8BAIkBAAAAAQAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA/////wD/////AhAnAAAAAAAAIgAgPHfzrZk7L68p0NnijKzJFlfQcBGipD0uqora6TGiimLwvAtUAgAAACIAID2j1mgUIE8RzjFXzH6V9tW5a6FHvCgHesNoC0XpRbogAAAAAE8BBDWHzwN9uUaNAAAAAYPR/OiA1LbTzxbLPvbXvtAwckIG3g+0T1zblR/ZodaiA5zBFsigPpL8htN/KJ/Ph8SPvQA/K+mSNXTSA0hgvPNuEO0CEMgwAACAAQAAgAEAAAAAAQEfAOQLVAIAAAAWABTpOvUBMqNMfl7P81etji6x4fXrMyIGA3uD9HVjgF5E+eQhHp+Na6femVYpc4bCA4DmimehAdWcGO0CEMgwAACAAQAAgAEAAAAAAAAAAAAAAAAAAA==", network);

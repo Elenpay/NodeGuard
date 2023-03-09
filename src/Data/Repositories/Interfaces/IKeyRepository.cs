@@ -43,5 +43,5 @@ public interface IKeyRepository
     /// Gets the current internal wallet key (Newest based on its id)
     /// </summary>
     /// <returns></returns>
-    Task<Key> GetCurrentInternalWalletKey();
+    Task<Key> GetCurrentInternalWalletKey(string accountId);
 }

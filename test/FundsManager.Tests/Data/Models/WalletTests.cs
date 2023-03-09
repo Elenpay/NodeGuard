@@ -5,6 +5,8 @@ namespace FundsManager.Data.Models;
 
 public class WalletTests
 {
+    private InternalWallet _internalWallet = CreateWallet.CreateInternalWallet();
+
     [Fact]
     void GetDerivationStrategy_NoKeys()
     {
@@ -22,7 +24,7 @@ public class WalletTests
     void GetDerivationStrategy_SingleSigDerivationStrategy()
     {
         // Arrange
-        var wallet = CreateWallet.SingleSig(); 
+        var wallet = CreateWallet.SingleSig(_internalWallet); 
 
         // Act
         var result = wallet.GetDerivationStrategy();
@@ -37,7 +39,7 @@ public class WalletTests
     void GetDerivationStrategy_MultiSigDerivationStrategy()
     {
         // Arrange
-        var wallet = CreateWallet.MultiSig();
+        var wallet = CreateWallet.MultiSig(_internalWallet);
 
         // Act
         var result = wallet.GetDerivationStrategy();

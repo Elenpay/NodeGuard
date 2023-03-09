@@ -54,6 +54,7 @@ public class ChannelRepositoryTests
             ))
             .Returns(MockHelpers.CreateAsyncUnaryCall(listChannelsResponse));
 
+        var originalLightningClient = LightningService.CreateLightningClient;
         LightningService.CreateLightningClient = (_) => lightningClient;
         var dbContextFactory = new Mock<IDbContextFactory<ApplicationDbContext>>();
 
@@ -100,7 +101,10 @@ public class ChannelRepositoryTests
         result.Item1.Should().BeTrue();
         channel.Status.Should().Be(Channel.ChannelStatus.Closed);
         result.Item2.Should().BeNull();
-        
+
+        //TODO Remove hack
+        LightningService.CreateLightningClient = originalLightningClient;
+
 
     }
 
@@ -140,6 +144,7 @@ public class ChannelRepositoryTests
             ))
             .Returns(MockHelpers.CreateAsyncUnaryCall(listChannelsResponse));
 
+        var originalLightningClient = LightningService.CreateLightningClient;
         LightningService.CreateLightningClient = (_) => lightningClient;
         var dbContextFactory = new Mock<IDbContextFactory<ApplicationDbContext>>();
 
@@ -186,6 +191,9 @@ public class ChannelRepositoryTests
         result.Item1.Should().BeFalse();
         channel.Status.Should().Be(Channel.ChannelStatus.Open);
         result.Item2.Should().NotBeNull();
+        
+        //TODO Remove hack
+        LightningService.CreateLightningClient = originalLightningClient;
 
     }
 

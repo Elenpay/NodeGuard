@@ -21,6 +21,7 @@ using System.Net;
 using FundsManager.Data.Models;
 using FundsManager.Data.Repositories.Interfaces;
 using FundsManager.Helpers;
+using FundsManager.TestHelpers;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
 using NBitcoin;
@@ -198,6 +199,11 @@ namespace FundsManager.Data
                             .Result;
                     }
                 }
+                else
+                {
+                    adminUser = applicationDbContext.ApplicationUsers.FirstOrDefault(u => u.UserName == "admin");
+                    financeUser = applicationDbContext.ApplicationUsers.FirstOrDefault(u => u.UserName == "financemanager");
+                }
 
                 var nodes = Task.Run(() => nodeRepository.GetAll()).Result;
 
@@ -239,126 +245,34 @@ namespace FundsManager.Data
 
                     var carolUpdateResult = applicationDbContext.Update(adminUser);
                 }
-                InternalWallet? internalWallet = null;
-                Key? internalWalletKey = null;
-                if (!applicationDbContext.InternalWallets.Any())
+                
+                var internalWallet = applicationDbContext.InternalWallets.FirstOrDefault();
+                if (internalWallet == null)
                 {
                     //Default Internal Wallet
-
-                    internalWallet = new InternalWallet
-                    {
-                        //DerivationPath = "m/48'/1'/1'", //Segwit
-                        DerivationPath = Constants.DEFAULT_DERIVATION_PATH,
-                        MnemonicString =
-                            "middle teach digital prefer fiscal theory syrup enter crash muffin easily anxiety ill barely eagle swim volume consider dynamic unaware deputy middle into physical",
-                        CreationDatetime = DateTimeOffset.Now,
-                    };
-                    // force the saving of the master fingerprint
-                    internalWallet.MasterFingerprint = internalWallet.MasterFingerprint;
+                    internalWallet = CreateWallet.CreateInternalWallet(logger);
                     
                     applicationDbContext.Add(internalWallet);
                     applicationDbContext.SaveChanges();
-
-                    logger.LogInformation("Internal wallet setup, seed: {MnemonicString}", internalWallet.MnemonicString);
-
-                    internalWalletKey =
-                        new Key
-                        {
-                            Name = "FundsManager Co-signing Key",
-                            XPUB = internalWallet.XPUB,
-                            InternalWalletId = internalWallet.Id,
-                            Path = internalWallet.DerivationPath,
-                            MasterFingerprint = new Mnemonic(internalWallet.MnemonicString).DeriveExtKey().GetWif(Network.RegTest).GetPublicKey().GetHDFingerPrint().ToString()
-                        };
-                }
-                else
-                {
-                    internalWallet = applicationDbContext.InternalWallets.First();
-                    //The last one by id
-                    //internalWalletKey = Task.Run(() => keyRepository.GetCurrentInternalWalletKey()).Result;
                 }
 
                 if (!applicationDbContext.Wallets.Any() && adminUser != null)
                 {
                     //Wallets
-
-                    //Individual wallets
-                    var wallet1seed =
+                    var wallet1Seed =
                         "social mango annual basic work brain economy one safe physical junk other toy valid load cook napkin maple runway island oil fan legend stem";
-
-                    var masterKey1 = new Mnemonic(wallet1seed).DeriveExtKey().GetWif(Network.RegTest);
-                    var keyPath1 =
-                        new KeyPath(Constants.DEFAULT_DERIVATION_PATH + "/1'"); //https://github.com/dgarage/NBXplorer/blob/0595a87f22c142aee6a6e4a0194f75aec4717819/NBXplorer/Controllers/MainController.cs#L1141
-                    var accountKey1 = masterKey1.Derive(keyPath1);
-                    var bitcoinExtPubKey1 = accountKey1.Neuter();
-                    var accountKeyPath1 = new RootedKeyPath(masterKey1.GetPublicKey().GetHDFingerPrint(), keyPath1);
-
-                    var wallet1DerivationScheme = bitcoinExtPubKey1.ToWif();
-
-                    logger.LogInformation("Wallet 1 seed: {MnemonicString}", wallet1seed);
-
-                    var wallet2seed =
+                    var wallet2Seed =
                         "solar goat auto bachelor chronic input twin depth fork scale divorce fury mushroom column image sauce car public artist announce treat spend jacket physical";
-
-                    var masterKey2 = new Mnemonic(wallet2seed).DeriveExtKey().GetWif(Network.RegTest);
-                    var keyPath2 =
-                        new KeyPath(Constants.DEFAULT_DERIVATION_PATH+ "/1'"); //https://github.com/dgarage/NBXplorer/blob/0595a87f22c142aee6a6e4a0194f75aec4717819/NBXplorer/Controllers/MainController.cs#L1141
-                    var accountKey2 = masterKey2.Derive(keyPath2);
-                    var bitcoinExtPubKey2 = accountKey2.Neuter();
-                    var accountKeyPath2 = new RootedKeyPath(masterKey2.GetPublicKey().GetHDFingerPrint(), keyPath2);
-
-                    var wallet2DerivationScheme = bitcoinExtPubKey2.ToWif();
-
-                    logger.LogInformation("Wallet 2 seed: {MnemonicString}", wallet2seed);
-
-                    var testingMultisigWallet = new Wallet
-                    {
-                        MofN = 2,
-                        Keys = new List<Key>
-                        {
-                            new Key
-                            {
-                                Name = "Key 1",
-                                UserId = adminUser.Id,
-                                XPUB = wallet1DerivationScheme,
-                                Path = accountKeyPath1.KeyPath.ToString(),
-                                MasterFingerprint = accountKeyPath1.MasterFingerprint.ToString(),
-                            },
-                            new Key
-                            {
-                                Name = "Key 2",
-                                UserId =financeUser.Id,
-                                XPUB = wallet2DerivationScheme,
-                                Path = accountKeyPath2.KeyPath.ToString(),
-                                MasterFingerprint = accountKeyPath2.MasterFingerprint.ToString(),
-                            },
-                            internalWalletKey
-                        },
-                        Name = "Test wallet",
-                        WalletAddressType = WalletAddressType.NativeSegwit,
-                        InternalWalletId = internalWallet.Id,
-                        IsFinalised = true,
-                        CreationDatetime = DateTimeOffset.Now,
-                        InternalWalletSubDerivationPath = "0",
-                        InternalWalletMasterFingerprint = internalWallet.MasterFingerprint
-                    };
+        
+                    logger?.LogInformation("Wallet 1 seed: {MnemonicString}", wallet1Seed);
+                    logger?.LogInformation("Wallet 2 seed: {MnemonicString}", wallet2Seed);
                     
-                    var testingSinglesigWallet = new Wallet
-                    {
-                        IsHotWallet = true,
-                        MofN = 1,
-                        Keys = new List<Key>
-                        {
-                            internalWalletKey
-                        },
-                        Name = "Hot wallet",
-                        WalletAddressType = WalletAddressType.NativeSegwit,
-                        InternalWalletId = internalWallet.Id,
-                        IsFinalised = true,
-                        CreationDatetime = DateTimeOffset.Now,
-                        InternalWalletSubDerivationPath = "1",
-                        InternalWalletMasterFingerprint = internalWallet.MasterFingerprint
-                    };
+                    var user1Key = CreateWallet.CreateUserKey("Key 1", adminUser.Id, wallet1Seed);
+                    var user2Key = CreateWallet.CreateUserKey("Key 2", financeUser.Id, wallet2Seed);
+                    
+                    var testingLegacyMultisigWallet = CreateWallet.LegacyMultiSig(internalWallet, "1'", user1Key, user2Key); 
+                    var testingMultisigWallet = CreateWallet.MultiSig(internalWallet, "0", user1Key, user2Key);
+                    var testingSinglesigWallet = CreateWallet.SingleSig(internalWallet, "1");
 
                     //Now we fund a multisig address of that wallet with the miner (polar)
                     //We mine 10 blocks
@@ -366,35 +280,48 @@ namespace FundsManager.Data
 
                     //2-of-3 multisig by Key 1 and Key 2 from wallet1/wallet2 and the internal wallet
 
+                    var legacyMultisigDerivationStrategy = testingLegacyMultisigWallet.GetDerivationStrategy();
                     var multisigDerivationStrategy = testingMultisigWallet.GetDerivationStrategy();
                     var singlesigDerivationStrategy = testingSinglesigWallet.GetDerivationStrategy();
                     //Nbxplorer tracking of the multisig derivation scheme
 
+                    nbxplorerClient.Track(legacyMultisigDerivationStrategy);
                     nbxplorerClient.Track(multisigDerivationStrategy);
                     nbxplorerClient.Track(singlesigDerivationStrategy);
                     var evts = nbxplorerClient.CreateLongPollingNotificationSession();
 
+                    var legacyMultisigKeyPathInformation = nbxplorerClient.GetUnused(legacyMultisigDerivationStrategy, DerivationFeature.Deposit);
                     var multisigKeyPathInformation = nbxplorerClient.GetUnused(multisigDerivationStrategy, DerivationFeature.Deposit);
                     var singlesigKeyPathInformation = nbxplorerClient.GetUnused(singlesigDerivationStrategy, DerivationFeature.Deposit);
+                    var legacyMultisigAddress = legacyMultisigKeyPathInformation.Address;
                     var multisigAddress = multisigKeyPathInformation.Address;
                     var singlesigAddress = singlesigKeyPathInformation.Address;
 
+                    var legacyMultisigFundCoins = Money.Coins(20m); //20BTC
                     var multisigFundCoins = Money.Coins(20m); //20BTC
                     var singlesigFundCoins = Money.Coins(20m); //20BTC
 
+                    minerRPC.SendToAddress(legacyMultisigAddress, legacyMultisigFundCoins);
                     minerRPC.SendToAddress(multisigAddress, multisigFundCoins);
                     minerRPC.SendToAddress(singlesigAddress, singlesigFundCoins);
 
                     //6 blocks to confirm
                     minerRPC.Generate(6);
 
+                    WaitNbxplorerNotification(evts, legacyMultisigDerivationStrategy);
                     WaitNbxplorerNotification(evts, multisigDerivationStrategy);
                     WaitNbxplorerNotification(evts, singlesigDerivationStrategy);
 
+                    var legacyMultisigBalance = nbxplorerClient.GetBalance(legacyMultisigDerivationStrategy);
                     var multisigBalance = nbxplorerClient.GetBalance(multisigDerivationStrategy);
                     var singleSigbalance = nbxplorerClient.GetBalance(singlesigDerivationStrategy);
+                    var legacyMultisigConfirmedBalance = (Money)legacyMultisigBalance.Confirmed;
                     var multisigConfirmedBalance = (Money)multisigBalance.Confirmed;
                     var singlesigConfirmedBalance = (Money)singleSigbalance.Confirmed;
+                    if (legacyMultisigConfirmedBalance.ToUnit(MoneyUnit.BTC) < 20)
+                    {
+                        throw new Exception("The multisig wallet balance is not >= 20BTC");
+                    }
                     if (multisigConfirmedBalance.ToUnit(MoneyUnit.BTC) < 20)
                     {
                         throw new Exception("The multisig wallet balance is not >= 20BTC");
@@ -404,15 +331,12 @@ namespace FundsManager.Data
                         throw new Exception("The singlesig wallet balance is not >= 20BTC");
                     }
 
+                    applicationDbContext.Add(testingLegacyMultisigWallet);
                     applicationDbContext.Add(testingMultisigWallet);
                     applicationDbContext.Add(testingSinglesigWallet);
                 }
             }
-            else
-            {
                 
-            }
-
             applicationDbContext.SaveChanges();
         }
 

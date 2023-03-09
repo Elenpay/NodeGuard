@@ -40,14 +40,14 @@ public class WalletRepositoryTests
     }
     
     [Fact]
-    public async void GetNextSubderivationPath_ReturnsDefault()
+    public async Task GetNextSubderivationPath_ReturnsDefault()
     {
         var dbContextFactory = SetupDbContextFactory();
         var context = dbContextFactory.Object.CreateDbContext();
         
         context.InternalWallets.Add(new InternalWallet()
         {
-            DerivationPath = "48'/1'"
+            DerivationPath = Constants.DEFAULT_DERIVATION_PATH
         });
         context.SaveChanges();
         
@@ -57,7 +57,7 @@ public class WalletRepositoryTests
    }
     
     [Fact]
-    public async void GetNextSubderivationPath_InconsistentDbState()
+    public async Task GetNextSubderivationPath_InconsistentDbState()
     {
         var dbContextFactory = SetupDbContextFactory();
         
@@ -79,14 +79,14 @@ public class WalletRepositoryTests
     }
     
     [Fact]
-    public async void GetNextSubderivationPath_ReturnsNext()
+    public async Task GetNextSubderivationPath_ReturnsNext()
     {
         var dbContextFactory = SetupDbContextFactory();
         
         var context = dbContextFactory.Object.CreateDbContext();
         context.InternalWallets.Add(new InternalWallet()
         {
-            DerivationPath = "48'/1'"
+            DerivationPath = Constants.DEFAULT_DERIVATION_PATH
         });
         context.Wallets.Add(new Wallet()
         {
@@ -103,14 +103,14 @@ public class WalletRepositoryTests
     }
 
     [Fact]
-    public async void GetNextSubderivationPath_DoesntReturnNotFinalisedWallet()
+    public async Task GetNextSubderivationPath_DoesntReturnNotFinalisedWallet()
     {
         var dbContextFactory = SetupDbContextFactory();
 
         var context = dbContextFactory.Object.CreateDbContext();
         context.InternalWallets.Add(new InternalWallet()
         {
-            DerivationPath = "48'/1'"
+            DerivationPath = Constants.DEFAULT_DERIVATION_PATH
         });
         context.Wallets.Add(new Wallet()
         {
@@ -134,14 +134,14 @@ public class WalletRepositoryTests
     }
     
     [Fact]
-    public async void GetNextSubderivationPath_ReturnsSubderivedWallet()
+    public async Task GetNextSubderivationPath_ReturnsSubderivedWallet()
     {
         var dbContextFactory = SetupDbContextFactory();
 
         var context = dbContextFactory.Object.CreateDbContext();
         context.InternalWallets.Add(new InternalWallet()
         {
-            DerivationPath = "48'/1'"
+            DerivationPath = Constants.DEFAULT_DERIVATION_PATH
         });
         context.Wallets.Add(new Wallet()
         {

@@ -408,7 +408,7 @@
         _amount = Constants.MINIMUM_CHANNEL_CAPACITY_SATS;
     }
 
-    private async void ResetChannelCancelModal()
+    private async Task ResetChannelCancelModal()
     {
         _cancelOrRejectReason = null;
         await _rejectCancelModalRef.CloseModal();
@@ -561,7 +561,7 @@
         return ResetChannelRequestRejectModal();
     }
 
-    private async void OpenModalForRejectOrCancelRequest(ChannelOperationRequest req, ChannelOperationRequestStatus status)
+    private async Task OpenModalForRejectOrCancelRequest(ChannelOperationRequest req, ChannelOperationRequestStatus status)
     {
         _selectedRequest = req;
         _selectedStatus = status;

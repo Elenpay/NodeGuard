@@ -699,10 +699,8 @@ namespace FundsManager.Services
             Dictionary<NBitcoin.OutPoint,NBitcoin.Key> privateKeysForUsedUTXOs;
             try
             {
-                privateKeysForUsedUTXOs = txInKeyPathDictionary.ToDictionary(x => x.Key.PrevOut, x => channelOperationRequest.Wallet.InternalWallet.GetAccountKey(network)
-                    .Derive(UInt32.Parse(channelOperationRequest.Wallet.InternalWalletSubDerivationPath))
-                    .Derive(x.Value)
-                    .PrivateKey);
+                privateKeysForUsedUTXOs = txInKeyPathDictionary.ToDictionary(x => x.Key.PrevOut, x => 
+                    channelOperationRequest.Wallet.DeriveUtxoPrivateKey(network, x.Value));
             }
             catch (Exception e)
             {
@@ -909,7 +907,7 @@ namespace FundsManager.Services
                 }
 
                 //Additional fields to support PSBT signing with a HW or the Remote Signer 
-                var psbt = LightningHelper.AddDerivationData(channelOperationRequest.Wallet, result.Item1, selectedUtxOs, multisigCoins, _logger, channelOperationRequest.Wallet.InternalWalletSubDerivationPath);
+                var psbt = LightningHelper.AddDerivationData(channelOperationRequest.Wallet, result.Item1, selectedUtxOs, multisigCoins, _logger);
                 result = (psbt, result.Item2);
             }
             catch (Exception e)
