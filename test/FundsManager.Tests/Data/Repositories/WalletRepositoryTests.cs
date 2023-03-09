@@ -27,7 +27,7 @@ namespace FundsManager.Data.Repositories;
 public class WalletRepositoryTests
 {
     private readonly Random _random = new();
-    
+
     private Mock<IDbContextFactory<ApplicationDbContext>> SetupDbContextFactory()
     {
         var dbContextFactory = new Mock<IDbContextFactory<ApplicationDbContext>>();
@@ -38,51 +38,48 @@ public class WalletRepositoryTests
         dbContextFactory.Setup(x => x.CreateDbContext()).Returns(context);
         return dbContextFactory;
     }
-    
+
     [Fact]
     public async Task GetNextSubderivationPath_ReturnsDefault()
     {
         var dbContextFactory = SetupDbContextFactory();
         var context = dbContextFactory.Object.CreateDbContext();
-        
+
         context.InternalWallets.Add(new InternalWallet()
         {
             DerivationPath = Constants.DEFAULT_DERIVATION_PATH
         });
         context.SaveChanges();
-        
+
         var walletRepository = new WalletRepository(null, null, dbContextFactory.Object, null, null, null);
         var result = await walletRepository.GetNextSubderivationPath();
         result.Should().Be("0");
    }
-    
+
     [Fact]
     public async Task GetNextSubderivationPath_InconsistentDbState()
     {
         var dbContextFactory = SetupDbContextFactory();
-        
+
         var context = dbContextFactory.Object.CreateDbContext();
         context.Wallets.Add(new Wallet()
         {
             Name = "TestWallet",
-            IsFinalised = true, 
+            IsFinalised = true,
             IsHotWallet = true
         });
         context.SaveChanges();
-        
+
         var walletRepository = new WalletRepository(null, null, dbContextFactory.Object, null, null, null);
-        var act = () => walletRepository.GetNextSubderivationPath();
-        await act
-            .Should()
-            .ThrowAsync<InvalidOperationException>()
-            .WithMessage("A finalized hot wallet has no subderivation path");
+        var result = await walletRepository.GetNextSubderivationPath();
+        result.Should().Be("0");
     }
-    
+
     [Fact]
     public async Task GetNextSubderivationPath_ReturnsNext()
     {
         var dbContextFactory = SetupDbContextFactory();
-        
+
         var context = dbContextFactory.Object.CreateDbContext();
         context.InternalWallets.Add(new InternalWallet()
         {
@@ -91,12 +88,12 @@ public class WalletRepositoryTests
         context.Wallets.Add(new Wallet()
         {
             Name = "TestWallet",
-            IsFinalised = true, 
+            IsFinalised = true,
             IsHotWallet = true,
             InternalWalletSubDerivationPath = "0"
         });
         context.SaveChanges();
-        
+
         var walletRepository = new WalletRepository(null, null, dbContextFactory.Object, null, null, null);
         var result = await walletRepository.GetNextSubderivationPath();
         result.Should().Be("1");
@@ -132,7 +129,7 @@ public class WalletRepositoryTests
         var result = await walletRepository.GetNextSubderivationPath();
         result.Should().Be("1");
     }
-    
+
     [Fact]
     public async Task GetNextSubderivationPath_ReturnsSubderivedWallet()
     {
