@@ -208,10 +208,7 @@ namespace FundsManager.Data.Repositories
 
             var lastWallet = applicationDbContext.Wallets.OrderBy(w => w.Id).LastOrDefault(w => w.IsFinalised);
 
-            if (lastWallet == null) return "0";
-
-            if (string.IsNullOrEmpty(lastWallet.InternalWalletSubDerivationPath))
-                throw new InvalidOperationException("A finalized hot wallet has no subderivation path");
+            if (lastWallet == null || string.IsNullOrEmpty(lastWallet.InternalWalletSubDerivationPath)) return "0";
 
             var subderivationPath = KeyPath.Parse(lastWallet.InternalWalletSubDerivationPath);
             return subderivationPath.Increment().ToString();
