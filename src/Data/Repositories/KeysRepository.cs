@@ -137,7 +137,7 @@ namespace FundsManager.Data.Repositories
             var result = await applicationDbContext.Keys
                 .OrderByDescending(x => x.Id)
                 .SingleOrDefaultAsync(x => x.InternalWalletId == internalWallet.Id && x.Path == internalWallet.GetKeyPathForAccount(accountId));
-            
+
             //If they key does not exist we should create it
             if (result == null)
             {
@@ -146,13 +146,12 @@ namespace FundsManager.Data.Repositories
                     CreationDatetime = DateTimeOffset.Now,
                     InternalWalletId = internalWallet.Id,
                     UpdateDatetime = DateTimeOffset.Now,
-                    Name = "Internal wallet",
+                    Name = "NodeGuard Derived Co-signing Key",
                     XPUB = internalWallet.GetXpubForAccount(accountId),
                     MasterFingerprint = internalWallet.MasterFingerprint,
                     //Derivation path
                     Path = internalWallet.GetKeyPathForAccount(accountId),
                 };
-                
             }
 
             return result;
