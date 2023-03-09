@@ -57,7 +57,7 @@ public class WalletRepositoryTests
    }
 
     [Fact]
-    public async Task GetNextSubderivationPath_InconsistentDbState()
+    public async Task GetNextSubderivationPath_ReturnNextIfNoPrevSubDerivPath()
     {
         var dbContextFactory = SetupDbContextFactory();
 
