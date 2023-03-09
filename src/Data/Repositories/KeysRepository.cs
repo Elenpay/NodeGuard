@@ -146,7 +146,7 @@ namespace FundsManager.Data.Repositories
                     CreationDatetime = DateTimeOffset.Now,
                     InternalWalletId = internalWallet.Id,
                     UpdateDatetime = DateTimeOffset.Now,
-                    Name = "FundsManager Co-signing Key",
+                    Name = "NodeGuard Derived Co-signing Key",
                     XPUB = internalWallet.GetXpubForAccount(accountId),
                     MasterFingerprint = internalWallet.MasterFingerprint,
                     //Derivation path
