@@ -1205,19 +1205,14 @@ namespace FundsManager.Services
         public async Task<(long?, long?)> GetChannelBalance(Channel channel)
         {
             IUnmockable<Lightning.LightningClient> client;
-            if (channel.SourceNodeId == null)
-            {
-                var destinationNode = await _nodeRepository.GetById(channel.DestinationNodeId.Value);
-                client = CreateLightningClient(destinationNode.Endpoint);
-            }
-            else
-            {
-                var sourceNode = await _nodeRepository.GetById(channel.SourceNodeId.Value);
-                client = CreateLightningClient(sourceNode.Endpoint);
-            }
+            var destinationNode = await _nodeRepository.GetById(channel.DestinationNodeId);
+            var sourceNode = await _nodeRepository.GetById(channel.SourceNodeId);
+            var node = String.IsNullOrEmpty(sourceNode.ChannelAdminMacaroon) ? destinationNode : sourceNode;
+            
+            client = CreateLightningClient(node.Endpoint);
             var result = client.Execute(x => x.ListChannels(new ListChannelsRequest(), 
                 new Metadata {
-                {"macaroon", channel.SourceNode.ChannelAdminMacaroon}
+                {"macaroon", node.ChannelAdminMacaroon}
             }, null, default));
             
             var chan = result.Channels.FirstOrDefault(x => x.ChanId == channel.ChanId);
