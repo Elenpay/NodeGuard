@@ -34,9 +34,6 @@
                             </DropdownToggle>
                             <DropdownMenu>
                                 <DropdownItem Disabled="context.Item.Status == Channel.ChannelStatus.Closed" Clicked="@(() => ShowChannelManagementModal(context.Item))">Manage</DropdownItem>
-                                @{
-                                    var lastRequest = context.Item.ChannelOperationRequests.LastOrDefault();
-                                }
                                 <DropdownItem Visibility="@(_hideDelete ? Visibility.Invisible : Visibility.Visible)" Disabled="@(checkDisableCloseChannelButton(context.Item))" Clicked="() => ShowConfirmedClose(context.Item)">Close</DropdownItem>
                                 <DropdownItem Visibility="@(_hideDelete ? Visibility.Invisible : Visibility.Visible)" Disabled="@(checkDisableCloseChannelButton(context.Item))" Clicked="() => ShowConfirmedClose(context.Item, true)">Force close</DropdownItem>
                                 <DropdownItem Visibility="@(_hideDelete ? Visibility.Invisible : Visibility.Visible)" Disabled="@(checkDisableCloseChannelButton(context.Item))" Clicked="() => MarkAsClosed(context.Item)">Mark as closed</DropdownItem>
@@ -689,7 +686,8 @@
     {
         ChannelOperationRequest? lastRequest = channel.ChannelOperationRequests.LastOrDefault();
         if (lastRequest == null && channel.CreatedByNodeGuard == false) return false;
-        return channel.Status == Channel.ChannelStatus.Closed || (lastRequest.RequestType == OperationRequestType.Close && lastRequest.Status == ChannelOperationRequestStatus.OnChainConfirmed || lastRequest.Status == ChannelOperationRequestStatus.OnChainConfirmationPending);
+        return channel.Status == Channel.ChannelStatus.Closed|| (lastRequest.RequestType == OperationRequestType.Close
+                                                                 && lastRequest.Status == ChannelOperationRequestStatus.OnChainConfirmed
+                                                                 || lastRequest.Status == ChannelOperationRequestStatus.OnChainConfirmationPending);
     }
-
 }
