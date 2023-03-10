@@ -22,8 +22,10 @@ using FundsManager.Data.Repositories.Interfaces;
 using FundsManager.Services;
 using Grpc.Core;
 using Lnrpc;
+using NBitcoin.Protocol;
 using Quartz;
 using Channel = FundsManager.Data.Models.Channel;
+using Node = FundsManager.Data.Models.Node;
 
 namespace FundsManager.Jobs;
 
@@ -70,6 +72,10 @@ public class NodeChannelSuscribeJob : IJob
 
                     if (channelEventUpdate.OpenChannel != null)
                     {
+                        if (String.IsNullOrEmpty(channelEventUpdate.OpenChannel.CloseAddress))
+                        {
+                            throw new Exception("Close address is empty");
+                        }
                         var channelOpened = channelEventUpdate.OpenChannel;
                         var channel = new Channel()
                         {
@@ -81,19 +87,33 @@ public class NodeChannelSuscribeJob : IJob
                             FundingTx = channelOpened.ChannelPoint,
                             CreatedByNodeGuard = false,
                             CreationDatetime = DateTimeOffset.Now,
-                            UpdateDatetime = DateTimeOffset.Now
+                            UpdateDatetime = DateTimeOffset.Now,
                         };
+
                         var remoteNode = await _nodeRepository.GetByPubkey(channelOpened.RemotePubkey);
-                        if (channelOpened.Initiator)
+                        if (remoteNode == null)
                         {
-                            channel.SourceNodeId = node.Id;
-                            channel.DestinationNodeId = remoteNode == null ? 1 : remoteNode.Id;
+                            var foundNode = await _lightningService.GetNodeInfo(channelOpened.RemotePubkey);
+                            if (foundNode == null)
+                            {
+                                throw new Exception("Node info not found");
+                            }
+                            
+                            remoteNode = new Node()
+                            {
+                                Name = foundNode.Alias,
+                                PubKey = foundNode.PubKey,
+                            };
+                            var addNode = await _nodeRepository.AddAsync(remoteNode);
+                            if (!addNode.Item1)
+                            {
+                                throw new Exception(addNode.Item2);
+                            }
                         }
-                        else
-                        {
-                            channel.SourceNodeId = remoteNode == null ? 1 : remoteNode.Id;
-                            channel.DestinationNodeId = node.Id;
-                        }
+                        
+                        remoteNode = await _nodeRepository.GetByPubkey(channelOpened.RemotePubkey);
+                        channel.SourceNodeId = channelOpened.Initiator ? node.Id : remoteNode.Id;
+                        channel.DestinationNodeId = channelOpened.Initiator ? remoteNode.Id : node.Id;
                         
                         var channelExists = await _channelRepository.GetByChanId(channel.ChanId);
                         if (channelExists == null)
@@ -119,14 +139,16 @@ public class NodeChannelSuscribeJob : IJob
                         var channel = await _channelRepository.GetByChanId(channelClosed.ChanId);
                         if (channel == null)
                         {
-                            throw new Exception("Channel not found");
+                            _logger.LogInformation("Channel with chanId: {ChanId} not found in the system", channelClosed.ChanId);
                         }
-
-                        channel.Status = Channel.ChannelStatus.Closed;
-                        var updateChannel = _channelRepository.Update(channel);
-                        if (!updateChannel.Item1)
+                        else
                         {
-                            throw new Exception(updateChannel.Item2);
+                            channel.Status = Channel.ChannelStatus.Closed;
+                            var updateChannel = _channelRepository.Update(channel);
+                            if (!updateChannel.Item1)
+                            {
+                                throw new Exception(updateChannel.Item2);
+                            }
                         }
                     }
                 }
