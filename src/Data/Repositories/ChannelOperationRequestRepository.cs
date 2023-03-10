@@ -114,7 +114,10 @@ namespace FundsManager.Data.Repositories
             }
 
             var valueTuple = await _repository.AddAsync(type, applicationDbContext);
-            await _notificationService.NotifyRequestSigners(type.WalletId, "/channel-requests");
+            if (type.WalletId.HasValue)
+            {
+                await _notificationService.NotifyRequestSigners(type.WalletId.Value, "/channel-requests");
+            }
             return valueTuple;
         }
 
