@@ -437,7 +437,7 @@
     {
         if (LoggedUser != null)
         {
-            _manageableNodes = await NodeRepository.GetAll();
+            _manageableNodes = await NodeRepository.GetAllManagedByUser(LoggedUser.Id);
             if (_selectedDestNode != null)
             {
                 _manageableNodes = _manageableNodes.Where(node => node.Id != _selectedDestNode.Id).ToList();
@@ -488,7 +488,7 @@
                 }
 
                 // Refresh the list of available source nodes and take out the one selected
-                _manageableNodes = await NodeRepository.GetAll();
+                _manageableNodes = await NodeRepository.GetAllManagedByUser(LoggedUser.Id);
                 _manageableNodes = _manageableNodes.Where(node => node.Id != _selectedDestNode?.Id).ToList();
                 _destNodeValidation.Clear();
             }
