@@ -77,6 +77,7 @@ public class NodeChannelSuscribeJob : IJob
                             throw new Exception("Close address is empty");
                         }
                         var channelOpened = channelEventUpdate.OpenChannel;
+                        var fundingTxAndIndex = channelOpened.ChannelPoint.Split(":");
                         var channel = new Channel()
                         {
                             ChanId = channelOpened.ChanId,
@@ -84,7 +85,8 @@ public class NodeChannelSuscribeJob : IJob
                             Status = Channel.ChannelStatus.Open,
                             IsAutomatedLiquidityEnabled = false,
                             BtcCloseAddress = channelOpened.CloseAddress,
-                            FundingTx = channelOpened.ChannelPoint,
+                            FundingTx = fundingTxAndIndex[0],
+                            FundingTxOutputIndex = Convert.ToUInt32(fundingTxAndIndex[1]),
                             CreatedByNodeGuard = false,
                             CreationDatetime = DateTimeOffset.Now,
                             UpdateDatetime = DateTimeOffset.Now,
