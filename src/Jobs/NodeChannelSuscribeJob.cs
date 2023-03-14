@@ -59,6 +59,13 @@ public class NodeChannelSuscribeJob : IJob
         try
         {
             var node = await _nodeRepository.GetById(nodeId);
+            
+            if (node == null)
+            {
+                _logger.LogInformation("The node: {@Node} is no longer ready to be supported quartz jobs", node);
+                return;
+            }
+
             var client = LightningService.CreateLightningClient(node.Endpoint);
             var result = client.Execute(x => x.SubscribeChannelEvents(new ChannelEventSubscription(), 
                 new Metadata {
@@ -67,6 +74,14 @@ public class NodeChannelSuscribeJob : IJob
 
             while (await result.ResponseStream.MoveNext())
             {
+                node = await _nodeRepository.GetById(nodeId);
+            
+                if (node == null)
+                {
+                    _logger.LogInformation("The node: {@Node} is no longer ready to be supported quartz jobs", node);
+                    return;
+                }
+                
                 try {
                     var channelEventUpdate = result.ResponseStream.Current;
 
