@@ -73,6 +73,8 @@ namespace FundsManager.Data.Repositories
 
             return await applicationDbContext.Nodes
                 .Include(node => node.Users)
+                .Include(x=> x.ChannelOperationRequestsAsSource)
+                    .ThenInclude(request => request.Channel)
                 .Include(node => node.ChannelOperationRequestsAsDestination)
                     .ThenInclude(request => request.Channel)
                 .Include(x=> x.ReturningFundsMultisigWallet)
