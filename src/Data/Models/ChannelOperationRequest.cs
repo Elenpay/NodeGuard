@@ -113,7 +113,7 @@ namespace FundsManager.Data.Models
         public int? DestNodeId { get; set; }
         public Node? DestNode { get; set; }
         public string? UserId { get; set; }
-        public ApplicationUser User { get; set; }
+        public ApplicationUser? User { get; set; }
         public int? ChannelId { get; set; }
         public Channel? Channel { get; set; }
 
