@@ -989,12 +989,16 @@ namespace FundsManager.Services
                 if (channelOperationRequest.ChannelId != null)
                 {
                     var channel = await _channelRepository.GetById((int)channelOperationRequest.ChannelId);
+                    
+                    var node = String.IsNullOrEmpty(channelOperationRequest.SourceNode.ChannelAdminMacaroon)
+                        ? channelOperationRequest.DestNode
+                        : channelOperationRequest.SourceNode;
 
-                    if (channel != null && channelOperationRequest.SourceNode.ChannelAdminMacaroon != null)
+                    if (channel != null && node.ChannelAdminMacaroon != null)
                     {
 
 
-                        var client = CreateLightningClient(channelOperationRequest.SourceNode.Endpoint);
+                        var client = CreateLightningClient(node.Endpoint);
 
                         //Time to close the channel
                         var closeChannelResult = client.Execute(x => x.CloseChannel(new CloseChannelRequest
@@ -1005,7 +1009,7 @@ namespace FundsManager.Services
                                 OutputIndex = channel.FundingTxOutputIndex
                             },
                             Force = forceClose,
-                        }, new Metadata { { "macaroon", channelOperationRequest.SourceNode.ChannelAdminMacaroon } }, null, default));
+                        }, new Metadata { { "macaroon", node.ChannelAdminMacaroon } }, null, default));
 
                         _logger.LogInformation("Channel close request: {RequestId} triggered",
                             channelOperationRequest.Id);

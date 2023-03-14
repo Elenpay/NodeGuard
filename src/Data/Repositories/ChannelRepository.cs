@@ -113,8 +113,6 @@ namespace FundsManager.Data.Repositories
             await using var applicationDbContext = await _dbContextFactory.CreateDbContextAsync();
             var openRequest = applicationDbContext.ChannelOperationRequests.Include(x => x.SourceNode).SingleOrDefault(request => request.ChannelId == type.Id && request.RequestType == OperationRequestType.Open);
             
-            var node = String.IsNullOrEmpty(type.SourceNode.ChannelAdminMacaroon) ? type.DestinationNode : type.SourceNode;
-            
             var closeRequest = new ChannelOperationRequest
             {
                 ChannelId = type.Id,
@@ -123,9 +121,10 @@ namespace FundsManager.Data.Repositories
                 UpdateDatetime = DateTimeOffset.Now,
                 Status = ChannelOperationRequestStatus.Approved, // Close operations are pre-approved by default
                 Description = "Close Channel Operation for Channel " + type.Id,
-                
                 Amount = type.SatsAmount,
                 AmountCryptoUnit = MoneyUnit.Satoshi,
+                SourceNodeId = type.SourceNode.Id,
+                DestNodeId = type.DestinationNode.Id,
             };
             if (openRequest != null)
             {
