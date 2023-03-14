@@ -202,7 +202,7 @@
             {
                 ToastService.ShowSuccess($"Node {arg.Item.Name} Created");
                 _nodes = await NodeRepository.GetAll();
-                CreateJobs(arg.Item);
+                await CreateJobs(arg.Item);
 
             }
             else
