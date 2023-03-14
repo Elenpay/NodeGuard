@@ -33,7 +33,7 @@ public class NodeSubscriptorJob : IJob
                 {
                     var map = new JobDataMap();
                     map.Put("nodeId", managedNode.Id.ToString());
-                    var job = RetriableJob.Create<NodeChannelSuscribeJob>(map, managedNode.Id.ToString(), new []{1,1,1,1});
+                    var job = SimpleJob.Create<NodeChannelSuscribeJob>(map, managedNode.Id.ToString());
                     await scheduler.ScheduleJob(job.Job, job.Trigger);
                     
                     managedNode.JobId = job.Job.Key.ToString();

@@ -172,6 +172,7 @@ public class NodeChannelSuscribeJob : IJob
                 catch (Exception e)
                 {
                     _logger.LogError(e, "Error reading and update event of node {NodeId}", nodeId);
+                    throw new JobExecutionException(e, true);
                 }
             }
 
@@ -179,6 +180,7 @@ public class NodeChannelSuscribeJob : IJob
         catch (Exception e)
         {
             _logger.LogError(e, "Error while subscribing for the channel updates of node {NodeId}", nodeId);
+            throw new JobExecutionException(e, true);
         }
         
         _logger.LogInformation("{JobName} ended", nameof(NodeChannelSuscribeJob));

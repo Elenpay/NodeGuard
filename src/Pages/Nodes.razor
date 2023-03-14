@@ -272,10 +272,6 @@
                 if (!result)
                 {
                     ToastService.ShowError($"{node.Name} could not be deleted");
-                    // IScheduler scheduler = await SchedulerFactory.GetScheduler();
-                    // scheduler.PauseJob(node.JobId.ToString());
-                    // scheduler.DeleteJob(node.JobId.ToString());
-                    
                 }
                 else
                 {
@@ -300,8 +296,7 @@
             var map = new JobDataMap();
             map.Put("nodeId", node.Id);
 
-            var retryList = RetriableJob.ParseRetryListFromString(Constants.JOB_RETRY_INTERVAL_LIST_IN_MINUTES);
-            var job = RetriableJob.Create<NodeChannelSuscribeJob>(map, node.Id.ToString(), retryList);
+            var job = SimpleJob.Create<NodeChannelSuscribeJob>(map, node.Id.ToString());
             await scheduler.ScheduleJob(job.Job, job.Trigger);
 
             node.JobId = job.Job.Key.ToString();
@@ -311,7 +306,7 @@
             map = new JobDataMap();
             map.Put("managedNodeId", node.Id.ToString());
             
-            var acceptorJob = RetriableJob.Create<ProcessNodeChannelAcceptorJob>(map, node.Id.ToString(), retryList);
+            var acceptorJob = SimpleJob.Create<ProcessNodeChannelAcceptorJob>(map, node.Id.ToString());
             await scheduler.ScheduleJob(acceptorJob.Job, acceptorJob.Trigger);
             
             ToastService.ShowSuccess("Node subscription job created");
