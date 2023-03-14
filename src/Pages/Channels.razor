@@ -101,7 +101,7 @@
                         </Button>
                     </DisplayTemplate>
                 </DataGridColumn>
-                <DataGridNumericColumn TItem="Channel" Field="@nameof(Channel.SatsAmount)" Caption="Capacity (BTC)" Sortable="true">
+                <DataGridNumericColumn TItem="Channel" Field="@nameof(Channel.SatsAmount)" Caption="Capacity (BTC)" Filterable="false" Sortable="true">
                     <DisplayTemplate>
                         @{
                             var btcAmount = new Money(context.SatsAmount, MoneyUnit.Satoshi).ToUnit(MoneyUnit.BTC);
@@ -123,7 +123,7 @@
                     </DisplayTemplate>
 
                 </DataGridColumn>
-                <DataGridColumn TItem="Channel" Caption="Channel Balance">
+                <DataGridColumn TItem="Channel" Caption="Channel Balance" Filterable="false">
                     <DisplayTemplate>
                         @{
                             var balance = Task.Run(() => GetPercentageBalance(context)).Result;
