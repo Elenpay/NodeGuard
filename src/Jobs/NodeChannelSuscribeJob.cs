@@ -85,73 +85,7 @@ public class NodeChannelSuscribeJob : IJob
                 try {
                     var channelEventUpdate = result.ResponseStream.Current;
 
-                    switch (channelEventUpdate.Type)
-                    {
-                        case ChannelEventUpdate.Types.UpdateType.OpenChannel:
-                            if (String.IsNullOrEmpty(channelEventUpdate.OpenChannel.CloseAddress))
-                            {
-                                throw new Exception("Close address is empty");
-                            }
-
-                            var channelOpened = channelEventUpdate.OpenChannel;
-                            var fundingTxAndIndex = channelOpened.ChannelPoint.Split(":");
-                            var channelToOpen = new Channel()
-                            {
-                                ChanId = channelOpened.ChanId,
-                                SatsAmount = channelOpened.Capacity,
-                                Status = Channel.ChannelStatus.Open,
-                                IsAutomatedLiquidityEnabled = false,
-                                BtcCloseAddress = channelOpened.CloseAddress,
-                                FundingTx = fundingTxAndIndex[0],
-                                FundingTxOutputIndex = Convert.ToUInt32(fundingTxAndIndex[1]),
-                                CreatedByNodeGuard = false,
-                                CreationDatetime = DateTimeOffset.Now,
-                                UpdateDatetime = DateTimeOffset.Now,
-                            };
-
-                            var remoteNode = await _nodeRepository.GetByPubkey(channelOpened.RemotePubkey);
-                            if (remoteNode == null)
-                            {
-                                var foundNode = await _lightningService.GetNodeInfo(channelOpened.RemotePubkey);
-                                if (foundNode == null)
-                                {
-                                    throw new Exception("Node info not found");
-                                }
-
-                                remoteNode = new Node()
-                                {
-                                    Name = foundNode.Alias,
-                                    PubKey = foundNode.PubKey,
-                                };
-                                var addNode = await _nodeRepository.AddAsync(remoteNode);
-                                if (!addNode.Item1)
-                                {
-                                    throw new Exception(addNode.Item2);
-                                }
-
-
-                            }
-                            break;
-                        
-                        case ChannelEventUpdate.Types.UpdateType.ClosedChannel:
-                            var channelClosed = channelEventUpdate.ClosedChannel;
-                            var channelToClose = await _channelRepository.GetByChanId(channelClosed.ChanId);
-                            if (channelToClose == null)
-                            {
-                                _logger.LogInformation("Channel with chanId: {ChanId} not found in the system", channelClosed.ChanId);
-                            }
-                            else
-                            {
-                                channelToClose.Status = Channel.ChannelStatus.Closed;
-                                var updateChannel = _channelRepository.Update(channelToClose);
-                                if (!updateChannel.Item1)
-                                {
-                                    throw new Exception(updateChannel.Item2);
-                                }
-                            }
-
-                            break;
-                    }
+                    NodeUpdateManagement(channelEventUpdate);
                 }
                 catch (Exception e)
                 {
@@ -170,4 +104,74 @@ public class NodeChannelSuscribeJob : IJob
         _logger.LogInformation("{JobName} ended", nameof(NodeChannelSuscribeJob));
     }
 
+    public async Task NodeUpdateManagement(ChannelEventUpdate channelEventUpdate)
+    {
+        switch (channelEventUpdate.Type)
+        {
+            case ChannelEventUpdate.Types.UpdateType.OpenChannel:
+                if (String.IsNullOrEmpty(channelEventUpdate.OpenChannel.CloseAddress))
+                {
+                    throw new Exception("Close address is empty");
+                }
+
+                var channelOpened = channelEventUpdate.OpenChannel;
+                var fundingTxAndIndex = channelOpened.ChannelPoint.Split(":");
+                var channelToOpen = new Channel()
+                {
+                    ChanId = channelOpened.ChanId,
+                    SatsAmount = channelOpened.Capacity,
+                    Status = Channel.ChannelStatus.Open,
+                    IsAutomatedLiquidityEnabled = false,
+                    BtcCloseAddress = channelOpened.CloseAddress,
+                    FundingTx = fundingTxAndIndex[0],
+                    FundingTxOutputIndex = Convert.ToUInt32(fundingTxAndIndex[1]),
+                    CreatedByNodeGuard = false,
+                    CreationDatetime = DateTimeOffset.Now,
+                    UpdateDatetime = DateTimeOffset.Now,
+                };
+
+                var remoteNode = await _nodeRepository.GetByPubkey(channelOpened.RemotePubkey);
+                if (remoteNode == null)
+                {
+                    var foundNode = await _lightningService.GetNodeInfo(channelOpened.RemotePubkey);
+                    if (foundNode == null)
+                    {
+                        throw new Exception("Node info not found");
+                    }
+
+                    remoteNode = new Node()
+                    {
+                        Name = foundNode.Alias,
+                        PubKey = foundNode.PubKey,
+                    };
+                    var addNode = await _nodeRepository.AddAsync(remoteNode);
+                    if (!addNode.Item1)
+                    {
+                        throw new Exception(addNode.Item2);
+                    }
+
+
+                }
+                break;
+            
+            case ChannelEventUpdate.Types.UpdateType.ClosedChannel:
+                var channelClosed = channelEventUpdate.ClosedChannel;
+                var channelToClose = await _channelRepository.GetByChanId(channelClosed.ChanId);
+                if (channelToClose == null)
+                {
+                    _logger.LogInformation("Channel with chanId: {ChanId} not found in the system", channelClosed.ChanId);
+                }
+                else
+                {
+                    channelToClose.Status = Channel.ChannelStatus.Closed;
+                    var updateChannel = _channelRepository.Update(channelToClose);
+                    if (!updateChannel.Item1)
+                    {
+                        throw new Exception(updateChannel.Item2);
+                    }
+                }
+
+                break;
+        }
+    }
 }
