@@ -1222,8 +1222,11 @@ namespace FundsManager.Services
             var chan = result.Channels.FirstOrDefault(x => x.ChanId == channel.ChanId);
             if(chan == null)
                 return (null, null);
+            
+            var htlcsLocal = chan.PendingHtlcs.Where(x => x.Incoming == true).Sum(x => x.Amount);
+            var htlcsRemote = chan.PendingHtlcs.Where(x => x.Incoming == false).Sum(x => x.Amount);
 
-            var res = (chan.LocalBalance, chan.RemoteBalance);
+            var res = (chan.LocalBalance + htlcsLocal, chan.RemoteBalance + htlcsRemote);
             return res;
         }
     }
