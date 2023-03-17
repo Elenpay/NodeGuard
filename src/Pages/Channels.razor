@@ -35,13 +35,12 @@
                             <DropdownMenu>
                                 @if (_IsUserNodeManager)
                                 {
-                                    var lastRequest = context.Item.ChannelOperationRequests.Last();
                                     <DropdownItem Disabled="context.Item.Status == Channel.ChannelStatus.Closed" Clicked="@(() => ShowChannelManagementModal(context.Item))">Manage</DropdownItem>
-                                    <DropdownItem Disabled="@(context.Item.Status == Channel.ChannelStatus.Closed || (lastRequest.RequestType == OperationRequestType.Close && lastRequest.Status == ChannelOperationRequestStatus.OnChainConfirmed || lastRequest.Status == ChannelOperationRequestStatus.OnChainConfirmationPending))" Clicked="() => ShowConfirmedClose(context.Item)">Close</DropdownItem>
-                                    <DropdownItem Disabled="@(context.Item.Status == Channel.ChannelStatus.Closed || (lastRequest.RequestType == OperationRequestType.Close && lastRequest.Status == ChannelOperationRequestStatus.OnChainConfirmed || lastRequest.Status == ChannelOperationRequestStatus.OnChainConfirmationPending))" Clicked="() => ShowConfirmedClose(context.Item, true)">Force close</DropdownItem>
-                                    <DropdownItem Disabled="@(context.Item.Status == Channel.ChannelStatus.Closed || (lastRequest.RequestType == OperationRequestType.Close && lastRequest.Status == ChannelOperationRequestStatus.OnChainConfirmed || lastRequest.Status == ChannelOperationRequestStatus.OnChainConfirmationPending))" Clicked="() => MarkAsClosed(context.Item)">Mark as closed</DropdownItem>
+                                    <DropdownItem Disabled="@(checkDisableCloseChannelButton(context.Item))" Clicked="() => ShowConfirmedClose(context.Item)">Close</DropdownItem>
+                                    <DropdownItem Disabled="@(checkDisableCloseChannelButton(context.Item))" Clicked="() => ShowConfirmedClose(context.Item, true)">Force close</DropdownItem>
+                                    <DropdownItem Disabled="@(checkDisableCloseChannelButton(context.Item))" Clicked="() => MarkAsClosed(context.Item)">Mark as closed</DropdownItem>
+                                    <DropdownItem Clicked="@(() => ShowModal(context.Item))">Requests</DropdownItem>
                                 }
-                                <DropdownItem Clicked="@(() => ShowModal(context.Item))">Requests</DropdownItem>
 
                             </DropdownMenu>
                         </Dropdown>
@@ -59,9 +58,9 @@
                     </FilterTemplate>
                     <DisplayTemplate>
                         @{
-                            var sourceNode = context.SourceNode;
+                            var sourceNode = Task.Run(() => NodeRepository.GetById(context.SourceNodeId)).Result;
+                            @(sourceNode.Name + " " + StringHelper.TruncateHeadAndTail(sourceNode.PubKey, 5))
                         }
-                        @(sourceNode.Name)(@(StringHelper.TruncateHeadAndTail(sourceNode.PubKey, 5)))
                     </DisplayTemplate>
                 </DataGridColumn>
                 <DataGridColumn TItem="Channel" Field="@nameof(Channel.DestinationNodeId)" Caption="Destination node" CustomFilter="OnDestinationNodeIdFilter" Filterable="true" Sortable="false">
@@ -75,8 +74,10 @@
                         </Select>
                     </FilterTemplate>
                     <DisplayTemplate>
-
-                        @(context.DestinationNode.Name)(@(StringHelper.TruncateHeadAndTail(context.DestinationNode.PubKey, 5)))
+                        @{
+                            var destinationNode = Task.Run(() => NodeRepository.GetById(context.DestinationNodeId)).Result;
+                            @(destinationNode.Name + " " + StringHelper.TruncateHeadAndTail(destinationNode.PubKey, 5))
+                        }
                     </DisplayTemplate>
                 </DataGridColumn>
                 <DataGridColumn TItem="Channel" Field="@nameof(Channel.Status)" Caption="@nameof(Channel.Status)" CustomFilter="OnStatusFilter" Filterable="true" Sortable="false">
@@ -100,7 +101,7 @@
                         </Button>
                     </DisplayTemplate>
                 </DataGridColumn>
-                <DataGridNumericColumn TItem="Channel" Field="@nameof(Channel.SatsAmount)" Caption="Capacity (BTC)" Sortable="true">
+                <DataGridNumericColumn TItem="Channel" Field="@nameof(Channel.SatsAmount)" Caption="Capacity (BTC)" Filterable="false" Sortable="true">
                     <DisplayTemplate>
                         @{
                             var btcAmount = new Money(context.SatsAmount, MoneyUnit.Satoshi).ToUnit(MoneyUnit.BTC);
@@ -112,7 +113,7 @@
                 <DataGridColumn TItem="Channel" Field="@nameof(Channel.BtcCloseAddress)" Caption="Close address" Filterable="false" Sortable="false">
 
                     <DisplayTemplate>
-                        @if (context.BtcCloseAddress != null)
+                        @if (!string.IsNullOrEmpty(context.BtcCloseAddress))
                         {
                             @StringHelper.TruncateHeadAndTail(context.BtcCloseAddress, 5)
                             <Button Color="Color.Primary" Clicked="@(() => CopyStrToClipboard(context.BtcCloseAddress))">
@@ -122,7 +123,7 @@
                     </DisplayTemplate>
 
                 </DataGridColumn>
-                <DataGridColumn TItem="Channel" Caption="Channel Balance">
+                <DataGridColumn TItem="Channel" Caption="Channel Balance" Filterable="false">
                     <DisplayTemplate>
                         @{
                             var balance = Task.Run(() => GetPercentageBalance(context)).Result;
@@ -357,6 +358,8 @@
         {
             if (channel != null)
             {
+                channel.DestinationNode = await NodeRepository.GetById(channel.DestinationNodeId);
+                channel.SourceNode = await NodeRepository.GetById(channel.SourceNodeId);
                 var result = await ChannelRepository.SafeRemove(channel, forceClose);
 
                 if (!result.Item1)
@@ -494,15 +497,19 @@
         await ClearManagementModal();
 
         _selectedChannel = channel;
-
-    //If there is a liquidity rule for this channel, we load it, the first one
+        
+        var destinationNode = await NodeRepository.GetById(channel.DestinationNodeId);
+        var sourceNode = await NodeRepository.GetById(channel.SourceNodeId);
+        var node = String.IsNullOrEmpty(sourceNode.ChannelAdminMacaroon) ? destinationNode : sourceNode;
+        
+        //If there is a liquidity rule for this channel, we load it, the first one
         _currentLiquidityRule = _selectedChannel?.LiquidityRules.FirstOrDefault() ?? new LiquidityRule
         {
             MinimumLocalBalance = 20,
             MinimumRemoteBalance = 80,
             RebalanceTarget = 50,
             ChannelId = channel.Id,
-            NodeId = channel.SourceNodeId
+            NodeId = node.Id
         };
 
         await _channelLiquidityModal?.Show();
@@ -675,5 +682,13 @@
 
         await FetchData();
     }
-
+    
+    private bool checkDisableCloseChannelButton(Channel channel)
+    {
+        ChannelOperationRequest? lastRequest = channel.ChannelOperationRequests.LastOrDefault();
+        if (lastRequest == null && channel.CreatedByNodeGuard == false) return false;
+        return channel.Status == Channel.ChannelStatus.Closed|| (lastRequest.RequestType == OperationRequestType.Close
+                                                                 && lastRequest.Status == ChannelOperationRequestStatus.OnChainConfirmed
+                                                                 || lastRequest.Status == ChannelOperationRequestStatus.OnChainConfirmationPending);
+    }
 }

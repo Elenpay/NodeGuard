@@ -31,6 +31,7 @@ using System.Security.Cryptography;
 using AutoMapper;
 using Blazored.Toast.Services;
 using FundsManager.Data;
+using FundsManager.Data.Repositories;
 using FundsManager.Helpers;
 using Humanizer;
 using Microsoft.EntityFrameworkCore;
@@ -111,8 +112,7 @@ namespace FundsManager.Services
         /// <param name="source"></param>
         /// <param name="pendingChannelId"></param>
         /// <param name="client"></param>
-        public void CancelPendingChannel(Node source, byte[] pendingChannelId,  IUnmockable<Lightning.LightningClient>? client = null); 
-
+        public void CancelPendingChannel(Node source, byte[] pendingChannelId,  IUnmockable<Lightning.LightningClient>? client = null);
     }
 
     public class LightningService : ILightningService
@@ -343,6 +343,7 @@ namespace FundsManager.Services
                                     Status = Channel.ChannelStatus.Open,
                                     SourceNodeId = channelOperationRequest.SourceNode.Id,
                                     DestinationNodeId = channelOperationRequest.DestNode.Id,
+                                    CreatedByNodeGuard = true
                                 };
 
                                 await context.AddAsync(channel);
@@ -777,7 +778,6 @@ namespace FundsManager.Services
             }
         }
 
-
         public async Task<(PSBT?, bool)> GenerateTemplatePSBT(ChannelOperationRequest? channelOperationRequest)
         {
             if (channelOperationRequest == null) throw new ArgumentNullException(nameof(channelOperationRequest));
@@ -989,12 +989,16 @@ namespace FundsManager.Services
                 if (channelOperationRequest.ChannelId != null)
                 {
                     var channel = await _channelRepository.GetById((int)channelOperationRequest.ChannelId);
+                    
+                    var node = String.IsNullOrEmpty(channelOperationRequest.SourceNode.ChannelAdminMacaroon)
+                        ? channelOperationRequest.DestNode
+                        : channelOperationRequest.SourceNode;
 
-                    if (channel != null && channelOperationRequest.SourceNode.ChannelAdminMacaroon != null)
+                    if (channel != null && node.ChannelAdminMacaroon != null)
                     {
 
 
-                        var client = CreateLightningClient(channelOperationRequest.SourceNode.Endpoint);
+                        var client = CreateLightningClient(node.Endpoint);
 
                         //Time to close the channel
                         var closeChannelResult = client.Execute(x => x.CloseChannel(new CloseChannelRequest
@@ -1005,7 +1009,7 @@ namespace FundsManager.Services
                                 OutputIndex = channel.FundingTxOutputIndex
                             },
                             Force = forceClose,
-                        }, new Metadata { { "macaroon", channelOperationRequest.SourceNode.ChannelAdminMacaroon } }, null, default));
+                        }, new Metadata { { "macaroon", node.ChannelAdminMacaroon } }, null, default));
 
                         _logger.LogInformation("Channel close request: {RequestId} triggered",
                             channelOperationRequest.Id);
@@ -1204,19 +1208,26 @@ namespace FundsManager.Services
 
         public async Task<(long?, long?)> GetChannelBalance(Channel channel)
         {
-            var client = CreateLightningClient(channel.SourceNode.Endpoint);
+            IUnmockable<Lightning.LightningClient> client;
+            var destinationNode = await _nodeRepository.GetById(channel.DestinationNodeId);
+            var sourceNode = await _nodeRepository.GetById(channel.SourceNodeId);
+            var node = String.IsNullOrEmpty(sourceNode.ChannelAdminMacaroon) ? destinationNode : sourceNode;
+            
+            client = CreateLightningClient(node.Endpoint);
             var result = client.Execute(x => x.ListChannels(new ListChannelsRequest(), 
                 new Metadata {
-                {"macaroon", channel.SourceNode.ChannelAdminMacaroon}
+                {"macaroon", node.ChannelAdminMacaroon}
             }, null, default));
             
             var chan = result.Channels.FirstOrDefault(x => x.ChanId == channel.ChanId);
             if(chan == null)
                 return (null, null);
+            
+            var htlcsLocal = chan.PendingHtlcs.Where(x => x.Incoming == true).Sum(x => x.Amount);
+            var htlcsRemote = chan.PendingHtlcs.Where(x => x.Incoming == false).Sum(x => x.Amount);
 
-            var res = (chan.LocalBalance, chan.RemoteBalance);
+            var res = (chan.LocalBalance + htlcsLocal, chan.RemoteBalance + htlcsRemote);
             return res;
         }
-        
     }
 }

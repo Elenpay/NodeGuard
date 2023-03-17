@@ -17,7 +17,7 @@
  *
  */
 
-﻿using AutoMapper;
+using AutoMapper;
 using FundsManager.Data.Models;
 using FundsManager.Data.Repositories.Interfaces;
 using FundsManager.Jobs;
@@ -27,7 +27,8 @@ using FundsManager.Helpers;
  using Lnrpc;
  using Quartz;
 using Microsoft.EntityFrameworkCore;
- using Channel = FundsManager.Data.Models.Channel;
+using NBitcoin;
+using Channel = FundsManager.Data.Models.Channel;
 
 namespace FundsManager.Data.Repositories
 {
@@ -60,6 +61,13 @@ namespace FundsManager.Data.Repositories
             await using var applicationDbContext = await _dbContextFactory.CreateDbContextAsync();
 
             return await applicationDbContext.Channels.Include(x => x.ChannelOperationRequests).FirstOrDefaultAsync(x => x.Id == id);
+        }
+        
+        public async Task<Channel?> GetByChanId(ulong chanId)
+        {
+            await using var applicationDbContext = await _dbContextFactory.CreateDbContextAsync();
+
+            return await applicationDbContext.Channels.Include(x => x.ChannelOperationRequests).FirstOrDefaultAsync(x => x.ChanId == chanId);
         }
 
         public async Task<List<Channel>> GetAll()
@@ -104,6 +112,7 @@ namespace FundsManager.Data.Repositories
         {
             await using var applicationDbContext = await _dbContextFactory.CreateDbContextAsync();
             var openRequest = applicationDbContext.ChannelOperationRequests.Include(x => x.SourceNode).SingleOrDefault(request => request.ChannelId == type.Id && request.RequestType == OperationRequestType.Open);
+            
             var closeRequest = new ChannelOperationRequest
             {
                 ChannelId = type.Id,
@@ -112,6 +121,10 @@ namespace FundsManager.Data.Repositories
                 UpdateDatetime = DateTimeOffset.Now,
                 Status = ChannelOperationRequestStatus.Approved, // Close operations are pre-approved by default
                 Description = "Close Channel Operation for Channel " + type.Id,
+                Amount = type.SatsAmount,
+                AmountCryptoUnit = MoneyUnit.Satoshi,
+                SourceNodeId = type.SourceNode.Id,
+                DestNodeId = type.DestinationNode.Id,
             };
             if (openRequest != null)
             {
@@ -125,7 +138,7 @@ namespace FundsManager.Data.Repositories
             }
             else
             {
-                _logger.LogWarning("Could not find a opening request operation for this channel Some of the fields will be not set");
+                _logger.LogWarning("Could not find a opening request operation for this channel. Some of the fields will be not set");
             }
 
             var closeRequestAddResult = await _channelOperationRequestRepository.AddAsync(closeRequest);
@@ -210,28 +223,20 @@ namespace FundsManager.Data.Repositories
                 throw new ArgumentException("Value cannot be null or whitespace.", nameof(loggedUserId));
             //Context
             await using var applicationDbContext = await _dbContextFactory.CreateDbContextAsync();
-            
-            //Query
-            var channels = applicationDbContext.Channels
-            .Include(channel => channel.ChannelOperationRequests).ThenInclude(request => request.SourceNode).ThenInclude(x=> x.Users)
-            .Include(channel => channel.ChannelOperationRequests).ThenInclude(request => request.DestNode).ThenInclude(x=> x.Users)
-            .Include(channel => channel.ChannelOperationRequests).ThenInclude(request => request.Wallet)
-            .Include(channel => channel.ChannelOperationRequests).ThenInclude(request => request.ChannelOperationRequestPsbts)
-            .Include(x=> x.LiquidityRules)
-            .ThenInclude(x=> x.Node)
-            .Include(x=> x.LiquidityRules)
-            .ThenInclude(x=> x.Wallet).AsSplitQuery().ToList() //Go to memory
-            .Where(x => x.ChannelOperationRequests.Any(y => y.SourceNode.Users.Select(x => x.Id)
-                                                                .Contains(loggedUserId) ||
-                                                            y.DestNode.Users.Select(x => x.Id)
-                                                                .Contains(loggedUserId))).ToList();
-            
-            
-            return channels;
-            
-            
 
-            
+            var channels = applicationDbContext.Channels
+                .Include(channel => channel.ChannelOperationRequests).ThenInclude(request => request.SourceNode).ThenInclude(x=> x.Users)
+                .Include(channel => channel.ChannelOperationRequests).ThenInclude(request => request.DestNode).ThenInclude(x=> x.Users)
+                .Include(channel => channel.ChannelOperationRequests).ThenInclude(request => request.Wallet)
+                .Include(channel => channel.ChannelOperationRequests).ThenInclude(request => request.ChannelOperationRequestPsbts)
+                .Include(x=> x.LiquidityRules)
+                .ThenInclude(x=> x.Node)
+                .Include(x=> x.LiquidityRules)
+                .ThenInclude(x=> x.Wallet).AsSplitQuery()
+                .Where(x => x.SourceNode.Users.Select(x => x.Id).Contains(loggedUserId) ||
+                            x.DestinationNode.Users.Select(x => x.Id).Contains(loggedUserId)).ToList();
+
+            return channels;
         }
 
 

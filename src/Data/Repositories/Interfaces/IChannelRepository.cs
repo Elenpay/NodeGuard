@@ -17,15 +17,17 @@
  *
  */
 
-﻿using FundsManager.Data.Models;
- using Lnrpc;
- using Channel = FundsManager.Data.Models.Channel;
+using FundsManager.Data.Models;
+using Lnrpc;
+using Channel = FundsManager.Data.Models.Channel;
 
 namespace FundsManager.Data.Repositories.Interfaces;
 
 public interface IChannelRepository
 {
     Task<Channel?> GetById(int id);
+    
+    Task<Channel?> GetByChanId(ulong chanId);
 
     Task<List<Channel>> GetAll();
 
