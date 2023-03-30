@@ -1,8 +1,10 @@
 @using NBitcoin
+@using Microsoft.CodeAnalysis.Text
+@using System.Xml.Schema
 <Modal @ref="_modalRef">
     <ModalContent Centered>
         <ModalHeader>
-            <ModalTitle>Sign Operation: @(RequestId?? 0)</ModalTitle>
+            <ModalTitle>Sign Operation: @(ChannelRequest?.Id ?? WithdrawalRequest?.Id ?? 0)</ModalTitle>
             <CloseButton />
         </ModalHeader>
         <ModalBody>
@@ -13,35 +15,40 @@
                         <i class="oi oi-clipboard"></i>
                     </Button>
                 </AlertMessage>
-                <MemoEdit Rows="4" @bind-Text="@TemplatePsbtString" Disabled="true"></MemoEdit>
+                <MemoEdit Rows="4" @bind-Text="@TemplatePsbtString" Disabled="true" ElementId="psbt-to-sign"></MemoEdit>
             </Alert>
             <Fields Flex="Flex.JustifyContent.Center">
                 <Field>
-                    <Validation Validator="ValidatePSBT">
+                    <Validation @ref="ValidatePSBTValidator" Validator="PSBTValidator">
                         <FieldLabel>To sign this operation, please paste here your PSBT in base64 string</FieldLabel>
-                        <MemoEdit Rows="4" @bind-Text="@SignedPSBT">
-                            <ValidationError />
+                        <MemoEdit Rows="4" @ref="_PSBTField" @onchange="HandleOnChange" @bind-Text="@SignedPSBT" ElementId="psbt-to-paste">
+                            <ValidationError/>
                         </MemoEdit>
                     </Validation>
                 </Field>
             </Fields>
+            <Fields Visibility="Visibility.Invisible" Style="height: 0" ElementId="channel-amount">@(ChannelRequest?.Amount ?? WithdrawalRequest?.Amount)</Fields>
+            <Fields Visibility="Visibility.Invisible" Style="height: 0"  ElementId="request-type">@GetRequestType()</Fields>
+            <Field id="approve-with-extension">Or click on your nodeguard signing extension to automatically sign</Field>
         </ModalBody>
         <ModalFooter>
             <Button Color="Color.Secondary" Clicked="@HideModal">Cancel</Button>
-            <Button Color="Color.Primary" Disabled="_isSignedPSBTInvalid" Clicked="@ApproveRequestDelegate">
+            <Button id="approve-button" Color="Color.Primary" Disabled="_isSignedPSBTInvalid" Clicked="@ApproveRequestDelegate">
                 Approve
             </Button>
         </ModalFooter>
     </ModalContent>
 </Modal>
 
+@inject IJSRuntime JsRuntime
 @code {
-
     [Inject]
     public IToastService ToastService { get; set; }
 
     [Parameter]
-    public int? RequestId { get; set; }
+    public ChannelOperationRequest? ChannelRequest { get; set; }
+    [Parameter]
+    public WalletWithdrawalRequest? WithdrawalRequest { get; set; }
 
     [Parameter]
     public string TemplatePsbtString { get; set; }
@@ -49,7 +56,7 @@
     [Parameter]
     public Action ApproveRequestDelegate { get; set; }
 
-    [Parameter] 
+    [Parameter]
     public  string? SignedPSBT { get; set; }
 
     [Parameter]
@@ -57,10 +64,20 @@
 
     private bool _isSignedPSBTInvalid = true;
     private Modal? _modalRef;
+    private MemoEdit _PSBTField;
+    private Validation ValidatePSBTValidator;
+
+    private void HandleOnChange(ChangeEventArgs e)
+    {
+        // HACK: We get the data from the "change" event in the extension and pass it to blazor
+        // otherwise it will not rerender when we put the value inside the textarea
+        SignedPSBT = e.Value?.ToString();
+        ValidatePSBT(SignedPSBT);
+    }
 
     private async Task CopyPSBTToClipboard()
     {
-        await ClipboardService.WriteTextAsync(TemplatePsbtString); 
+        await ClipboardService.WriteTextAsync(TemplatePsbtString);
         ToastService.ShowSuccess("PSBT copied");
     }
 
@@ -75,17 +92,26 @@
         TemplatePsbtString = null;
         _isSignedPSBTInvalid = true;
 
-        if (_modalRef != null) 
+        if (_modalRef != null)
             await _modalRef.Close(CloseReason.UserClosing);
     }
 
-    private void ValidatePSBT(ValidatorEventArgs obj)
+    private void PSBTValidator(ValidatorEventArgs obj)
     {
         var psbtBase64 = (string)obj.Value;
         //Error by default
         obj.Status = ValidationStatus.Error;
         obj.ErrorText = string.Empty;
 
+        if (string.IsNullOrWhiteSpace(ValidatePSBT(psbtBase64)))
+        {
+            obj.Status = ValidationStatus.Success;
+        }
+    }
+
+    private string ValidatePSBT(string psbtBase64)
+    {
+        var errorText =string.Empty;
         if (psbtBase64 != null && PSBT.TryParse(psbtBase64, CurrentNetworkHelper.GetCurrentNetwork(), out var templatePSBT))
         {
             if (PSBT.TryParse(psbtBase64, CurrentNetworkHelper.GetCurrentNetwork(), out var parsedPSBT))
@@ -96,48 +122,48 @@
                 //TXID Validation
                 if (parsedPSBT.GetGlobalTransaction().GetHash() != templatePSBT.GetGlobalTransaction().GetHash())
                 {
-                    obj.ErrorText += "Invalid PSBT, the transactions id do not match. ";
+                    errorText += "Invalid PSBT, the transactions id do not match. ";
 
                 }
                 //If all the inputs are not signed this is invalid
                 else if (!parsedPSBT.Inputs.All(x => x.PartialSigs.Any()))
                 {
-                    obj.ErrorText += $"Invalid PSBT, please make sure to use Sighash: {SigHashMode} and that every input is signed. ";
-                    obj.Status = ValidationStatus.Error;
+                    errorText += $"Invalid PSBT, please make sure to use Sighash: {SigHashMode} and that every input is signed. ";
                 }
 
                 //Sighash check
                 else if (!parsedPSBT.Inputs.Any(x => x.PartialSigs.All(y=> y.Value.SigHash == SigHashMode)))
                 {
-                    obj.ErrorText += $"Invalid PSBT, please make sure to use Sighash: {SigHashMode} and that every input is signed. ";
-                    obj.Status = ValidationStatus.Error;
+                    errorText += $"Invalid PSBT, please make sure to use Sighash: {SigHashMode} and that every input is signed. ";
                 }
                 //If the inputs outpoints (utxos) are not the same to the template invalidate it
                 else if (templateInputsOutpoints.Union(parsedPSBTInputsOutpoints).Count() != templateInputsOutpoints.Count())
                 {
-                    obj.ErrorText += "Invalid PSBT, the UTXOs do not match ";
-                    obj.Status = ValidationStatus.Error;
+                    errorText += "Invalid PSBT, the UTXOs do not match ";
                 }
                 else
                 {
                     //It looks good
                     _isSignedPSBTInvalid = false;
-                    obj.Status = ValidationStatus.Success;
                 }
             }
             else
             {
-                obj.ErrorText = "Invalid PSBT, it could not be parsed";
+                errorText = "Invalid PSBT, it could not be parsed";
             }
         }
         else
         {
-            obj.ErrorText = "Invalid template PSBT, it could not be parsed";
+            errorText = "Invalid template PSBT, it could not be parsed";
         }
 
-
+        return errorText;
     }
 
-    
-
+    private string GetRequestType()
+    {
+        if (ChannelRequest != null) return "Channel Opening Request";
+        if (WithdrawalRequest != null) return "Withdrawal Request";
+        return "Invalid Request Type";
+    }
 }
