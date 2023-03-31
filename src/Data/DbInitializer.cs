@@ -209,39 +209,56 @@ namespace FundsManager.Data
 
                 if (!nodes.Any() && Constants.IS_DEV_ENVIRONMENT)
                 {
-                    //Testing node from Polar (ALICE) LND 0.15.0 -> check devnetwork.zip polar file
-
-                    //Testing node from Polar (ALICE) LND 0.14.3 -> check devnetwork.zip polar file
+                    //Testing node from Polar (ALICE) LND 0.15.5 -> check devnetwork.zip polar file
                     var alice = new Node
                     {
                         ChannelAdminMacaroon =
-                            "0201036c6e6402f801030a108be5b2928f746a822b04a9b2848eb0321201301a160a0761646472657373120472656164120577726974651a130a04696e666f120472656164120577726974651a170a08696e766f69636573120472656164120577726974651a210a086d616361726f6f6e120867656e6572617465120472656164120577726974651a160a076d657373616765120472656164120577726974651a170a086f6666636861696e120472656164120577726974651a160a076f6e636861696e120472656164120577726974651a140a057065657273120472656164120577726974651a180a067369676e6572120867656e6572617465120472656164000006208e8b02d4bc0efd4f15a52946c5ef23f2954f8a07ed800733554a11a190cb71b4",
+                            "0201036c6e6402f801030a108cdfeb2614b8335c11aebb358f888d6d1201301a160a0761646472657373120472656164120577726974651a130a04696e666f120472656164120577726974651a170a08696e766f69636573120472656164120577726974651a210a086d616361726f6f6e120867656e6572617465120472656164120577726974651a160a076d657373616765120472656164120577726974651a170a086f6666636861696e120472656164120577726974651a160a076f6e636861696e120472656164120577726974651a140a057065657273120472656164120577726974651a180a067369676e6572120867656e657261746512047265616400000620c999e1a30842cbae3f79bd633b19d5ec0d2b6ebdc4880f6f5d5c230ce38f26ab",
                         Endpoint = Constants.ALICE_HOST, 
                         Name = "Alice",
                         CreationDatetime = DateTimeOffset.UtcNow,
-                        PubKey = "03b48034270e522e4033afdbe43383d66d426638927b940d09a8a7a0de4d96e807",
-                        Users = new List<ApplicationUser>()
+                        PubKey = "02dc2ae598a02fc1e9709a23b68cd51d7fa14b1132295a4d75aa4f5acd23ee9527",
+                        Users = new List<ApplicationUser>(),
+                        AutosweepEnabled = false
+
                     };
 
                     _ = Task.Run(() => nodeRepository.AddAsync(alice)).Result;
 
-                    //Testing node from Polar (CAROL) LND 0.15.0 -> check devnetwork.zip polar file
+                    //Testing node from Polar (CAROL) LND 0.15.5 -> check devnetwork.zip polar file
                     var carol = new Node
                     {
                         ChannelAdminMacaroon =
-                            "0201036c6e6402f801030a10dc64226b045d25f090b114baebcbf04c1201301a160a0761646472657373120472656164120577726974651a130a04696e666f120472656164120577726974651a170a08696e766f69636573120472656164120577726974651a210a086d616361726f6f6e120867656e6572617465120472656164120577726974651a160a076d657373616765120472656164120577726974651a170a086f6666636861696e120472656164120577726974651a160a076f6e636861696e120472656164120577726974651a140a057065657273120472656164120577726974651a180a067369676e6572120867656e657261746512047265616400000620a21b8cc8c071aa5104b706b751aede972f642537c05da31450fb4b02c6da776e",
+                            "0201036c6e6402f801030a101ec5b6370c166f6c8e2853164109145a1201301a160a0761646472657373120472656164120577726974651a130a04696e666f120472656164120577726974651a170a08696e766f69636573120472656164120577726974651a210a086d616361726f6f6e120867656e6572617465120472656164120577726974651a160a076d657373616765120472656164120577726974651a170a086f6666636861696e120472656164120577726974651a160a076f6e636861696e120472656164120577726974651a140a057065657273120472656164120577726974651a180a067369676e6572120867656e6572617465120472656164000006208e957e78ec39e7810fad25cfc43850b8e9e7c079843b8ec7bb5522bba12230d6",
                         Endpoint = Constants.CAROL_HOST,
                         Name = "Carol",
                         CreationDatetime = DateTimeOffset.UtcNow,
-                        PubKey = "03485d8dcdd149c87553eeb80586eb2bece874d412e9f117304446ce189955d375",
-                        Users = new List<ApplicationUser>()
+                        PubKey = "03650f49929d84d9a6d9b5a66235c603a1a0597dd609f7cd3b15052382cf9bb1b4",
+                        Users = new List<ApplicationUser>(),
+                        AutosweepEnabled = false
+
                     };
 
                     _ = Task.Run(() => nodeRepository.AddAsync(carol)).Result;
+                    
+                    //Bob node from Polar (BOB) LND 0.15.5 -> check devnetwork.zip polar file
+                    var bob = new Node
+                    {
+                        ChannelAdminMacaroon =
+                            "0201036c6e6402f801030a10e0e89a68f9e2398228a995890637d2531201301a160a0761646472657373120472656164120577726974651a130a04696e666f120472656164120577726974651a170a08696e766f69636573120472656164120577726974651a210a086d616361726f6f6e120867656e6572617465120472656164120577726974651a160a076d657373616765120472656164120577726974651a170a086f6666636861696e120472656164120577726974651a160a076f6e636861696e120472656164120577726974651a140a057065657273120472656164120577726974651a180a067369676e6572120867656e657261746512047265616400000620b85ae6b693338987cd65eda60a24573e962301b2a91d8f7c5625650d6368751f",
+                        Endpoint = Constants.BOB_HOST,
+                        Name = "Bob",
+                        CreationDatetime = DateTimeOffset.UtcNow,
+                        PubKey = "038644c6b13cdfc59bc97c2cc2b1418ced78f6d01da94f3bfd5fdf8b197335ea84",
+                        Users = new List<ApplicationUser>(),
+                        AutosweepEnabled = false
+                    };
+                    
+                    _ = Task.Run(() => nodeRepository.AddAsync(bob)).Result;
 
                     //Add user to the channel
 
-                    adminUser.Nodes = new List<Node> { alice, carol };
+                    adminUser.Nodes = new List<Node> { alice, carol, bob };
 
                     var carolUpdateResult = applicationDbContext.Update(adminUser);
                 }
