@@ -539,7 +539,7 @@
         arg1.Status = ValidationStatus.Success;
 
     //If the value is 0 is valid
-        if (_currentLiquidityRule.RebalanceTarget == 0)
+        if (_currentLiquidityRule.RebalanceTarget == 0 || _currentLiquidityRule.RebalanceTarget == null)
         {
             return;
         }
@@ -566,14 +566,15 @@
         arg1.Status = ValidationStatus.Success;
 
     //If the minimum local balance is 0 this cannot be 0
-        if (_currentLiquidityRule.MinimumLocalBalance == 0 && _currentLiquidityRule.MinimumRemoteBalance == 0)
+        if ((_currentLiquidityRule.MinimumLocalBalance == 0 || _currentLiquidityRule.MinimumLocalBalance == null) 
+            && (_currentLiquidityRule.MinimumRemoteBalance == 0 || _currentLiquidityRule.MinimumRemoteBalance == null))
         {
             arg1.Status = ValidationStatus.Error;
             arg1.ErrorText = "Minimum remote balance cannot be 0 if the minimum local balance is 0";
         }
 
     //If the value is 0 is valid
-        if (_currentLiquidityRule.MinimumRemoteBalance == 0)
+        if (_currentLiquidityRule.MinimumRemoteBalance == 0 || _currentLiquidityRule.MinimumRemoteBalance == null)
         {
             return;
         }
@@ -600,14 +601,15 @@
     //Default validation status
         arg1.Status = ValidationStatus.Success;
     //If the minimum remote balance is 0 this cannot be 0
-        if (_currentLiquidityRule.MinimumLocalBalance == 0 && _currentLiquidityRule.MinimumRemoteBalance == 0)
+        if ((_currentLiquidityRule.MinimumLocalBalance == 0 || _currentLiquidityRule.MinimumLocalBalance == null)
+            && (_currentLiquidityRule.MinimumRemoteBalance == 0 || _currentLiquidityRule.MinimumRemoteBalance == null))
         {
             arg1.Status = ValidationStatus.Error;
             arg1.ErrorText = "Minimum local balance cannot be 0 if the minimum remote balance is 0";
         }
 
     //If the value is 0 is valid
-        if (_currentLiquidityRule.MinimumRemoteBalance == 0)
+        if (_currentLiquidityRule.MinimumRemoteBalance == 0 || _currentLiquidityRule.MinimumRemoteBalance == null)
         {
             return;
         }
