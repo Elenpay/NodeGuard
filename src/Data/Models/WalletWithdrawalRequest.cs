@@ -115,6 +115,11 @@ namespace FundsManager.Data.Models
         public string? TxId { get; set; }
 
         /// <summary>
+        /// For additional info required by the requestor
+        /// </summary>
+        public string? RequestMetadata { get; set; }
+        
+        /// <summary>
         /// Check that the number of signatures (not finalised psbt nor internal wallet psbt or template psbt are gathered and increases by one to count on the internal wallet signature
         /// </summary>
         /// <returns></returns>

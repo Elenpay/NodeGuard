@@ -58,6 +58,8 @@ message RequestWithdrawalRequest {
   // Amount in satoshis
   int64 amount = 3;
   string description = 4;
+  // in JSON format
+  string request_metadata = 5;
 }
 
 message RequestWithdrawalResponse {
