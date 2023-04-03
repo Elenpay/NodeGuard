@@ -533,6 +533,9 @@ namespace FundsManager.Migrations
                     b.Property<string>("RejectCancelDescription")
                         .HasColumnType("text");
 
+                    b.Property<string>("RequestMetadata")
+                        .HasColumnType("text");
+
                     b.Property<int>("Status")
                         .HasColumnType("integer");
 
