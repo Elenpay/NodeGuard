@@ -84,7 +84,7 @@ public class NodeChannelSuscribeJob : IJob
                 
                 try {
                     var channelEventUpdate = result.ResponseStream.Current;
-
+                    _logger.LogInformation("Channel event update received for node {@NodeId}", node.Id);
                     NodeUpdateManagement(channelEventUpdate);
                 }
                 catch (Exception e)
@@ -111,6 +111,7 @@ public class NodeChannelSuscribeJob : IJob
             case ChannelEventUpdate.Types.UpdateType.OpenChannel:
                 if (String.IsNullOrEmpty(channelEventUpdate.OpenChannel.CloseAddress))
                 {
+                    _logger.LogError("Close address is empty");
                     throw new Exception("Close address is empty");
                 }
 
@@ -149,9 +150,24 @@ public class NodeChannelSuscribeJob : IJob
                     {
                         throw new Exception(addNode.Item2);
                     }
-
-
                 }
+
+                var channelExists = await _channelRepository.GetByChanId(channelToOpen.ChanId);
+                if (channelExists == null)
+                {
+                    var addChannel = await _channelRepository.AddAsync(channelToOpen);
+                    if (!addChannel.Item1)
+                    {
+                        throw new Exception(addChannel.Item2);
+                    }
+
+                    _logger.LogInformation("Channel with id: {ChannelId} added to the system", channelToOpen.Id);
+                }
+                else
+                {
+                    _logger.LogInformation("Channel with id: {ChannelId} already exists in the system", channelToOpen.Id);
+                }
+                
                 break;
             
             case ChannelEventUpdate.Types.UpdateType.ClosedChannel:
