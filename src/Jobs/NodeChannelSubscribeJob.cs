@@ -150,9 +150,24 @@ public class NodeChannelSuscribeJob : IJob
                     {
                         throw new Exception(addNode.Item2);
                     }
-
-
                 }
+
+                var channelExists = await _channelRepository.GetByChanId(channelToOpen.ChanId);
+                if (channelExists == null)
+                {
+                    var addChannel = await _channelRepository.AddAsync(channelToOpen);
+                    if (!addChannel.Item1)
+                    {
+                        throw new Exception(addChannel.Item2);
+                    }
+
+                    _logger.LogInformation("Channel with id: {ChannelId} added to the system", channelToOpen.Id);
+                }
+                else
+                {
+                    _logger.LogInformation("Channel with id: {ChannelId} already exists in the system", channelToOpen.Id);
+                }
+                
                 break;
             
             case ChannelEventUpdate.Types.UpdateType.ClosedChannel:
