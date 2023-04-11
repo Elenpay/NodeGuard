@@ -84,7 +84,7 @@ public class NodeChannelSuscribeJob : IJob
                 
                 try {
                     var channelEventUpdate = result.ResponseStream.Current;
-
+                    _logger.LogInformation("Channel event update received for node {@NodeId}", node.Id);
                     NodeUpdateManagement(channelEventUpdate);
                 }
                 catch (Exception e)
@@ -111,6 +111,7 @@ public class NodeChannelSuscribeJob : IJob
             case ChannelEventUpdate.Types.UpdateType.OpenChannel:
                 if (String.IsNullOrEmpty(channelEventUpdate.OpenChannel.CloseAddress))
                 {
+                    _logger.LogError("Close address is empty");
                     throw new Exception("Close address is empty");
                 }
 
