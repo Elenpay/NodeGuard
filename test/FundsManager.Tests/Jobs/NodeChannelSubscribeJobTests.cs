@@ -68,6 +68,7 @@ public class NodeChannelSubscribeJobTests
         };
         _nodeRepositoryMock.Setup(repo => repo.GetByPubkey(channelEventUpdate.OpenChannel.RemotePubkey)).ReturnsAsync((Node?)null);
         _nodeRepositoryMock.Setup(repo => repo.AddAsync(It.IsAny<Node>())).ReturnsAsync((true, ""));
+        _channelRepositoryMock.Setup(repo => repo.AddAsync(It.IsAny<Channel>())).ReturnsAsync((true, ""));
 
         _lightningServiceMock.Setup(service => service.GetNodeInfo(channelEventUpdate.OpenChannel.RemotePubkey))
             .ReturnsAsync(new LightningNode() { Alias = "TestAlias", PubKey = "TestPubKey" });
