@@ -63,7 +63,7 @@
                         <DisplayTemplate>
                             @*TODO Cancel / Reject  *@
                             @if ((context.Status == WalletWithdrawalRequestStatus.Pending || context.Status == WalletWithdrawalRequestStatus.PSBTSignaturesPending) && LoggedUser?.Id == context.UserRequestorId)
-                            
+
                             {
                                 <Button Color="Color.Danger" Clicked="()=> ShowRejectCancelModal(context, WalletWithdrawalRequestStatus.Cancelled)">Cancel</Button>
                             }
@@ -86,7 +86,7 @@
                                     <Feedback>
                                         <ValidationError/>
                                     </Feedback>
-                                </MemoEdit>                         
+                                </MemoEdit>
                             </Validation>
                         </EditTemplate>
                     </DataGridColumn>
@@ -143,10 +143,10 @@
                     </DataGridColumn>
                     <DataGridColumn TItem="WalletWithdrawalRequest" PopupFieldColumnSize="ColumnSize.Is6" Field="@nameof(WalletWithdrawalRequest.WithdrawAllFunds)" Caption="@nameof(WalletWithdrawalRequest.WithdrawAllFunds).Humanize(LetterCasing.Sentence)" Editable="true" Displayable="false">
                         <EditTemplate>
-                    
+
                             <Check TValue="bool" Checked="@((bool) context.CellValue)" CheckedChanged="(value) => {context.CellValue = value; _isAmountDisabled = value;}"> </Check>
-                    
-                    
+
+
                         </EditTemplate>
                     </DataGridColumn>
                     <DataGridColumn PopupFieldColumnSize="ColumnSize.Is6" Caption="Wallet Balance" Editable="true" Displayable="false">
@@ -157,7 +157,7 @@
                             }
                         </EditTemplate>
                     </DataGridColumn>
-                   
+
                 <DataGridColumn TItem="WalletWithdrawalRequest" PopupFieldColumnSize="ColumnSize.Is12" Editable="true" Displayable="true" Field="@nameof(WalletWithdrawalRequest.Amount)" Caption="Amount (BTC)" Sortable="false" >
                     <DisplayTemplate>
                         @{
@@ -300,7 +300,7 @@
                             @($"{context.Amount} BTC ({Math.Round(PriceConversionHelper.BtcToUsdConversion(context.Amount, _btcPrice), 2)} USD)")
                         }
                     </DisplayTemplate>
-                   
+
                 </DataGridColumn>
                 <DataGridColumn TItem="WalletWithdrawalRequest" Field="@nameof(WalletWithdrawalRequest.WalletId)" Caption="Signatures Collected" Sortable="false" Displayable="true">
                     <DisplayTemplate>
@@ -354,13 +354,13 @@
 
 </Row>
 
-<PSBTSign 
-    @ref="_psbtSignRef" 
-    SignedPSBT="@_signedPSBT" 
-    RequestId="_selectedRequest?.Id" 
+<PSBTSign
+    @ref="_psbtSignRef"
+    SignedPSBT="@_signedPSBT"
+    WithdrawalRequest="_selectedRequest"
     SigHashMode="SigHash.All"
-    TemplatePsbtString="@_templatePsbtString" 
-    ApproveRequestDelegate="async ()=> await ApproveRequestDelegate()"  
+    TemplatePsbtString="@_templatePsbtString"
+    ApproveRequestDelegate="async ()=> await ApproveRequestDelegate()"
 />
 
 <CancelOrRejectPopup
@@ -422,7 +422,7 @@
     private decimal _maxWithdrawal = Constants.MAXIMUM_WITHDRAWAL_BTC_AMOUNT;
     private decimal _minWithdrawal = Constants.MINIMUM_WITHDRAWAL_BTC_AMOUNT;
     private decimal _btcPrice;
-    
+
     protected override async Task OnInitializedAsync()
     {
         if (LoggedUser == null) return;
@@ -586,7 +586,7 @@
         }
         catch (NoUTXOsAvailableException)
         {
-            ToastService.ShowError("No UTXOs available for withdrawals were found for this wallet"); 
+            ToastService.ShowError("No UTXOs available for withdrawals were found for this wallet");
         }
         catch (Exception)
         {
@@ -672,7 +672,7 @@
 
     private async Task RejectOrCancel()
     {
-        if ((_rejectCancelStatus == WalletWithdrawalRequestStatus.Cancelled || _rejectCancelStatus == WalletWithdrawalRequestStatus.Rejected) 
+        if ((_rejectCancelStatus == WalletWithdrawalRequestStatus.Cancelled || _rejectCancelStatus == WalletWithdrawalRequestStatus.Rejected)
             && _selectedRequest != null)
         {
             _selectedRequest.RejectCancelDescription = _cancelOrRejectReason;
@@ -685,18 +685,18 @@
                 ToastService.ShowError("Something went wrong");
             }
 
-            
+
             await HideRejectCancelModal();
-            
+
         }
     }
-    
+
     private async Task HideRejectCancelModal()
     {
         _rejectCancelStatus = null;
         _selectedRequest = null;
         _cancelOrRejectReason = null;
-        
+
         await GetData();
         await _rejectCancelModalRef.CloseModal();
     }
@@ -708,7 +708,7 @@
 
         await _rejectCancelModalRef.ShowModal();
     }
-    
+
     private async Task OnSelectedWallet(CellEditContext<WalletWithdrawalRequest> context, int id)
     {
         context.CellValue = id;
@@ -734,7 +734,7 @@
             ValidationRule.None(e);
         }
     }
-    
+
     private async Task CloseConfirmationModal()
     {
         await _confirmationModal.CloseModal();
@@ -749,9 +749,9 @@
             WalletWithdrawalRequestRepository.Update(_selectedRequest);
             await _confirmationModal.CloseModal();
             await GetData();
-            StateHasChanged(); 
+            StateHasChanged();
         }
- 
+
         if (_selectedRequest != null)
         {
             try

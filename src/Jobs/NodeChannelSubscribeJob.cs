@@ -84,8 +84,8 @@ public class NodeChannelSuscribeJob : IJob
                 
                 try {
                     var channelEventUpdate = result.ResponseStream.Current;
-
-                    NodeUpdateManagement(channelEventUpdate);
+                    _logger.LogInformation("Channel event update received for node {@NodeId}", node.Id);
+                    NodeUpdateManagement(channelEventUpdate, node);
                 }
                 catch (Exception e)
                 {
@@ -104,13 +104,14 @@ public class NodeChannelSuscribeJob : IJob
         _logger.LogInformation("{JobName} ended", nameof(NodeChannelSuscribeJob));
     }
 
-    public async Task NodeUpdateManagement(ChannelEventUpdate channelEventUpdate)
+    public async Task NodeUpdateManagement(ChannelEventUpdate channelEventUpdate, Node node)
     {
         switch (channelEventUpdate.Type)
         {
             case ChannelEventUpdate.Types.UpdateType.OpenChannel:
                 if (String.IsNullOrEmpty(channelEventUpdate.OpenChannel.CloseAddress))
                 {
+                    _logger.LogError("Close address is empty");
                     throw new Exception("Close address is empty");
                 }
 
@@ -149,9 +150,32 @@ public class NodeChannelSuscribeJob : IJob
                     {
                         throw new Exception(addNode.Item2);
                     }
-
-
                 }
+                else if (remoteNode.IsManaged && channelOpened.Initiator)
+                {
+                    return;
+                }
+                
+                remoteNode = await _nodeRepository.GetByPubkey(channelOpened.RemotePubkey);
+                channelToOpen.SourceNodeId = channelOpened.Initiator ? node.Id : remoteNode.Id;
+                channelToOpen.DestinationNodeId = channelOpened.Initiator ? remoteNode.Id : node.Id;
+
+                var channelExists = await _channelRepository.GetByChanId(channelToOpen.ChanId);
+                if (channelExists == null)
+                {
+                    var addChannel = await _channelRepository.AddAsync(channelToOpen);
+                    if (!addChannel.Item1)
+                    {
+                        throw new Exception(addChannel.Item2);
+                    }
+
+                    _logger.LogInformation("Channel with id: {ChannelId} added to the system", channelToOpen.Id);
+                }
+                else
+                {
+                    _logger.LogInformation("Channel with id: {ChannelId} already exists in the system", channelToOpen.Id);
+                }
+                
                 break;
             
             case ChannelEventUpdate.Types.UpdateType.ClosedChannel:

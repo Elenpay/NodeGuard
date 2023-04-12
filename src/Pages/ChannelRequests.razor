@@ -294,12 +294,12 @@
     </LoadingTemplate>
 </DataGrid>
 
-<PSBTSign 
+<PSBTSign
     @ref="_psbtSignRef"
-    ApproveRequestDelegate="async ()=> await ApproveRequest()"  
+    ApproveRequestDelegate="async ()=> await ApproveRequest()"
     SigHashMode="SigHash.None"
-    RequestId="_selectedRequest?.Id" 
-    TemplatePsbtString="@_templatePSBTString" 
+    ChannelRequest="_selectedRequest"
+    TemplatePsbtString="@_templatePSBTString"
     SignedPSBT="@_psbt"
 />
 
@@ -387,7 +387,7 @@
     protected override async Task OnInitializedAsync()
     {
         if (LoggedUser == null) return;
-        
+
         _isFinanceManager = ClaimsPrincipal != null && ClaimsPrincipal.IsInRole(ApplicationUserRole.FinanceManager.ToString());
         _isNodeManager = ClaimsPrincipal != null && ClaimsPrincipal.IsInRole(ApplicationUserRole.NodeManager.ToString());
 
@@ -417,7 +417,7 @@
     private async Task FetchRequests()
     {
         if (LoggedUser == null) return;
-        
+
         _allRequests = await ChannelOperationRequestRepository.GetAll();
 
         if (_isFinanceManager)
@@ -545,7 +545,7 @@
             await ResetChannelRequestRejectModal();
         }
         await LoadData();
-        await FetchRequests(); 
+        await FetchRequests();
     }
 
     #endregion
@@ -672,7 +672,7 @@
             StateHasChanged();
 
         }
-    
+
 
     }
 
@@ -761,7 +761,7 @@
             {
                 ToastService.ShowError("Error while saving the signature");
             }
-           
+
             await FetchRequests();
             _allRequestsDatagrid.Dispose();
             StateHasChanged();
@@ -801,13 +801,13 @@
                request.Status == ChannelOperationRequestStatus.PSBTSignaturesPending ||
                request.Status == ChannelOperationRequestStatus.Pending;
     }
-    
+
     private async Task MarkRequestAsFailedCloseConfirmationModal()
     {
         _selectedRequestForMarkingAsFailed = null;
         await _markRequestAsFailedConfirmationModal.CloseModal();
     }
-    
+
     private async Task MarkRequestAsFailedSubmitConfirmationModal()
     {
         try
