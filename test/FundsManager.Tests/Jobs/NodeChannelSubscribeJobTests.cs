@@ -49,7 +49,7 @@ public class NodeChannelSubscribeJobTests
         };
 
         // Act + Assert
-        Assert.ThrowsAsync<Exception>(async () => await _nodeUpdateManager.NodeUpdateManagement(channelEventUpdate));
+        Assert.ThrowsAsync<Exception>(async () => await _nodeUpdateManager.NodeUpdateManagement(channelEventUpdate, new Node()));
     }
 
     [Fact]
@@ -66,7 +66,9 @@ public class NodeChannelSubscribeJobTests
                 RemotePubkey = "remotePubkey",
             },
         };
-        _nodeRepositoryMock.Setup(repo => repo.GetByPubkey(channelEventUpdate.OpenChannel.RemotePubkey)).ReturnsAsync((Node?)null);
+        _nodeRepositoryMock.SetupSequence(repo => repo.GetByPubkey(channelEventUpdate.OpenChannel.RemotePubkey))
+            .ReturnsAsync((Node?)null)
+            .ReturnsAsync(new Node(){Id = 1, Name = "TestAlias", PubKey = "TestPubKey"});
         _nodeRepositoryMock.Setup(repo => repo.AddAsync(It.IsAny<Node>())).ReturnsAsync((true, ""));
         _channelRepositoryMock.Setup(repo => repo.AddAsync(It.IsAny<Channel>())).ReturnsAsync((true, ""));
 
@@ -74,10 +76,11 @@ public class NodeChannelSubscribeJobTests
             .ReturnsAsync(new LightningNode() { Alias = "TestAlias", PubKey = "TestPubKey" });
 
         // Act
-        await _nodeUpdateManager.NodeUpdateManagement(channelEventUpdate);
+        await _nodeUpdateManager.NodeUpdateManagement(channelEventUpdate, new Node(){Id = 1});
 
         // Assert
         _nodeRepositoryMock.Verify(repo => repo.AddAsync(It.IsAny<Node>()), Times.Once);
+        _channelRepositoryMock.Verify(repo => repo.AddAsync(It.IsAny<Channel>()), Times.Once);
     }
 
     [Fact]
@@ -101,7 +104,7 @@ public class NodeChannelSubscribeJobTests
         _channelRepositoryMock.Setup(repo => repo.Update(channelToClose)).Returns((true, ""));
 
         // Act
-        await _nodeUpdateManager.NodeUpdateManagement(channelEventUpdate);
+        await _nodeUpdateManager.NodeUpdateManagement(channelEventUpdate, new Node());
 
         // Assert
         Assert.Equal(Channel.ChannelStatus.Closed, channelToClose.Status);

@@ -85,7 +85,7 @@ public class NodeChannelSuscribeJob : IJob
                 try {
                     var channelEventUpdate = result.ResponseStream.Current;
                     _logger.LogInformation("Channel event update received for node {@NodeId}", node.Id);
-                    NodeUpdateManagement(channelEventUpdate);
+                    NodeUpdateManagement(channelEventUpdate, node);
                 }
                 catch (Exception e)
                 {
@@ -104,7 +104,7 @@ public class NodeChannelSuscribeJob : IJob
         _logger.LogInformation("{JobName} ended", nameof(NodeChannelSuscribeJob));
     }
 
-    public async Task NodeUpdateManagement(ChannelEventUpdate channelEventUpdate)
+    public async Task NodeUpdateManagement(ChannelEventUpdate channelEventUpdate, Node node)
     {
         switch (channelEventUpdate.Type)
         {
@@ -151,6 +151,14 @@ public class NodeChannelSuscribeJob : IJob
                         throw new Exception(addNode.Item2);
                     }
                 }
+                else if (remoteNode.IsManaged && channelOpened.Initiator)
+                {
+                    return;
+                }
+                
+                remoteNode = await _nodeRepository.GetByPubkey(channelOpened.RemotePubkey);
+                channelToOpen.SourceNodeId = channelOpened.Initiator ? node.Id : remoteNode.Id;
+                channelToOpen.DestinationNodeId = channelOpened.Initiator ? remoteNode.Id : node.Id;
 
                 var channelExists = await _channelRepository.GetByChanId(channelToOpen.ChanId);
                 if (channelExists == null)
