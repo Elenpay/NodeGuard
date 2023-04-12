@@ -34,6 +34,7 @@ public class Constants
     public static readonly string? NBXPLORER_BTCRPCURL;
     public static readonly string ALICE_HOST;
     public static readonly string CAROL_HOST;
+    public static readonly string BOB_HOST;
     public static readonly string? FUNDSMANAGER_ENDPOINT;
     public static readonly string? COINGECKO_ENDPOINT;
     public static readonly string? MEMPOOL_ENDPOINT;
@@ -102,6 +103,8 @@ public class Constants
         ALICE_HOST = Environment.GetEnvironmentVariable("ALICE_HOST") ?? "host.docker.internal:10001";
 
         CAROL_HOST = Environment.GetEnvironmentVariable("CAROL_HOST") ?? "host.docker.internal:10003";
+        
+        BOB_HOST = Environment.GetEnvironmentVariable("BOB_HOST") ?? "host.docker.internal:10002";
 
         FUNDSMANAGER_ENDPOINT = Environment.GetEnvironmentVariable("FUNDSMANAGER_ENDPOINT");
 
