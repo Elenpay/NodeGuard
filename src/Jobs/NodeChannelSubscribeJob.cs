@@ -151,6 +151,10 @@ public class NodeChannelSuscribeJob : IJob
                         throw new Exception(addNode.Item2);
                     }
                 }
+                else if (remoteNode.IsManaged && channelOpened.Initiator)
+                {
+                    return;
+                }
                 
                 remoteNode = await _nodeRepository.GetByPubkey(channelOpened.RemotePubkey);
                 channelToOpen.SourceNodeId = channelOpened.Initiator ? node.Id : remoteNode.Id;
