@@ -3,6 +3,7 @@ using System;
 using FundsManager.Data;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 
@@ -11,9 +12,10 @@ using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 namespace FundsManager.Migrations
 {
     [DbContext(typeof(ApplicationDbContext))]
-    partial class ApplicationDbContextModelSnapshot : ModelSnapshot
+    [Migration("20230330221134_AddMetadataForWithdrawalRequests")]
+    partial class AddMetadataForWithdrawalRequests
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -172,9 +174,10 @@ namespace FundsManager.Migrations
                         .HasColumnType("timestamp with time zone");
 
                     b.Property<string>("UserId")
+                        .IsRequired()
                         .HasColumnType("text");
 
-                    b.Property<int?>("WalletId")
+                    b.Property<int>("WalletId")
                         .HasColumnType("integer");
 
                     b.HasKey("Id");
@@ -915,11 +918,15 @@ namespace FundsManager.Migrations
 
                     b.HasOne("FundsManager.Data.Models.ApplicationUser", "User")
                         .WithMany("ChannelOperationRequests")
-                        .HasForeignKey("UserId");
+                        .HasForeignKey("UserId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
 
                     b.HasOne("FundsManager.Data.Models.Wallet", "Wallet")
                         .WithMany("ChannelOperationRequestsAsSource")
-                        .HasForeignKey("WalletId");
+                        .HasForeignKey("WalletId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
 
                     b.Navigation("Channel");
 
