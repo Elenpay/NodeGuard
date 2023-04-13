@@ -32,7 +32,7 @@ namespace FundsManager.Data.Models
         /// <summary>
         /// Derivation path of the wallet
         /// </summary>
-        public string DerivationPath { get; set; } 
+        public string DerivationPath { get; set; }
 
         /// <summary>
         /// 24 Words mnemonic
@@ -82,26 +82,28 @@ namespace FundsManager.Data.Models
         public string GetXpubForAccount(string accountId)
         {
             var network = CurrentNetworkHelper.GetCurrentNetwork();
+
             if(!string.IsNullOrWhiteSpace(MnemonicString))
             {
                 var masterKey = new Mnemonic(MnemonicString).DeriveExtKey().GetWif(network);
                 var keyPath = new KeyPath($"{DerivationPath}/{accountId}"); //https://github.com/dgarage/NBXplorer/blob/0595a87fc14aee6a6e4a0194f75aec4717819/NBXplorer/Controllers/MainController.cs#L1141
                 var accountKey = masterKey.Derive(keyPath);
                 var bitcoinExtPubKey = accountKey.Neuter();
-
-                var walletDerivationScheme = bitcoinExtPubKey.ToWif();
-
-                return walletDerivationScheme;
+                return bitcoinExtPubKey.ToWif();
             }
-
-            return _xpub;
+            else
+            {
+                var extKey = new BitcoinExtPubKey(_xpub, network);
+                var derivedXpub = extKey.Derive(new KeyPath(accountId));
+                return derivedXpub.ToWif();
+            }
         }
 
         public string GetKeyPathForAccount(string accountId)
         {
             return $"{DerivationPath}/{accountId}";
         }
-        
+
         private string? GetMasterFingerprint()
         {
             var network = CurrentNetworkHelper.GetCurrentNetwork();
@@ -112,7 +114,7 @@ namespace FundsManager.Data.Models
                 return masterFingerprint;
             }
 
-            return _masterFingerprint; 
+            return _masterFingerprint;
         }
     }
 }
