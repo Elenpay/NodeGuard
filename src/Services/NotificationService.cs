@@ -64,7 +64,7 @@ public class NotificationService
 	
 	private async Task SendNotification(string message, List<string> recipientList, string returnUrl)
 	{
-		if (!recipientList.Any() && string.IsNullOrWhiteSpace(message))
+		if (!recipientList.Any() || string.IsNullOrWhiteSpace(message))
 		{
 			return;
 		}
