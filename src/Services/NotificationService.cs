@@ -30,8 +30,8 @@ public class NotificationService
 	private readonly DefaultApi _appInstance;
 	private readonly ILogger<NotificationService> _logger;
 	private readonly IDbContextFactory<ApplicationDbContext> _dbContextFactory;
-	private readonly String _oneSignalApiId;
-	private readonly String _notificationReturnUrl;
+	private readonly string _oneSignalApiId;
+	private readonly string _notificationReturnUrl;
 	
 	public NotificationService(ILogger<NotificationService> logger, IDbContextFactory<ApplicationDbContext> dbContextFactory)
 	{
@@ -51,8 +51,8 @@ public class NotificationService
 		if (Constants.PUSH_NOTIFICATIONS_ONESIGNAL_ENABLED)
 		{
 			await using var applicationDbContext = await _dbContextFactory.CreateDbContextAsync();
-			String notificationReturnUrl = _notificationReturnUrl + sourcePage;
-			List<String> notifiableUsersString = applicationDbContext.ApplicationUsers
+			var notificationReturnUrl = _notificationReturnUrl + sourcePage;
+			var notifiableUsersString = applicationDbContext.ApplicationUsers
 				.Where(user => user.Keys.Any(key => key.Wallets.Any(wallet => wallet.Id == walletId)))
 				.Select(user => user.Id)
 				.ToList();
@@ -62,8 +62,13 @@ public class NotificationService
 		}
 	}
 	
-	private async Task SendNotification(String message, List<String> recipientList, String returnUrl)
+	private async Task SendNotification(string message, List<string> recipientList, string returnUrl)
 	{
+		if (!recipientList.Any() || string.IsNullOrWhiteSpace(message))
+		{
+			return;
+		}
+		
 		var notification = new Notification(appId:_oneSignalApiId)
 		{
 			Contents = new StringMap(en: message),
@@ -72,7 +77,8 @@ public class NotificationService
 		};
 
 		var response = await _appInstance.CreateNotificationAsync(notification);
-		_logger.LogInformation("Notification created for {ResponseRecipients} recipients", response.Recipients);
+		if (response != null)
+			_logger.LogInformation("Notification created for {ResponseRecipients} recipients", response.Recipients);
 	}
 
 }
