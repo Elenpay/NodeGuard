@@ -228,7 +228,7 @@
                     <Validations @ref="_channelManagementValidationsRef">
 
                         <Field>
-                            <Validation AsyncValidator="ValidateLocalBalance">
+                            <Validation Validator="ValidateLocalBalance">
                                 <FieldLabel>Minimum local balance</FieldLabel>
                                 <FieldHelp>Balance % that will fire a reverse swap if the channel balance goes below this percent (0 means optional)</FieldHelp>
                                 <NumericEdit TValue="decimal?" Min="0M" Max="100M" @bind-Value="_currentLiquidityRule.MinimumLocalBalance">
@@ -240,7 +240,7 @@
                         </Field>
 
                         <Field>
-                            <Validation AsyncValidator="ValidateRemoteBalance">
+                            <Validation Validator="ValidateRemoteBalance">
                                 <FieldLabel>Minimum remote balance</FieldLabel>
                                 <FieldHelp>Balance % that will fire a swap if the channel balance goes above this percent (0 means optional)</FieldHelp>
                                 <NumericEdit TValue="decimal?" Min="0M" Max="100M" @bind-Value="_currentLiquidityRule.MinimumRemoteBalance">
@@ -251,7 +251,7 @@
                             </Validation>
                         </Field>
                         <Field>
-                            <Validation AsyncValidator="ValidateTargetBalance">
+                            <Validation Validator="ValidateTargetBalance">
                                 <FieldLabel>Target balance</FieldLabel>
                                 <FieldHelp>Desired target balance % after a swap operation is performed</FieldHelp>
                                 <NumericEdit TValue="decimal?" Min="0M" Max="100M" @bind-Value="_currentLiquidityRule.RebalanceTarget">
@@ -533,7 +533,7 @@
         }
     }
 
-    private async Task ValidateTargetBalance(ValidatorEventArgs arg1, CancellationToken arg2)
+    private void ValidateTargetBalance(ValidatorEventArgs arg1)
     {
     //Default validation status
         arg1.Status = ValidationStatus.Success;
@@ -560,7 +560,7 @@
         }
     }
 
-    private async Task ValidateRemoteBalance(ValidatorEventArgs arg1, CancellationToken arg2)
+    private void ValidateRemoteBalance(ValidatorEventArgs arg1)
     {
     //Default validation status
         arg1.Status = ValidationStatus.Success;
@@ -596,7 +596,7 @@
         }
     }
 
-    private async Task ValidateLocalBalance(ValidatorEventArgs arg1, CancellationToken arg2)
+    private void ValidateLocalBalance(ValidatorEventArgs arg1)
     {
     //Default validation status
         arg1.Status = ValidationStatus.Success;
