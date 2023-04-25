@@ -428,7 +428,7 @@ namespace FundsManager.Services
             var nodes = new List<Node> {destinationNode};
 
             nodeRepository
-                .Setup(x => x.GetAllManagedByFundsManager())
+                .Setup(x => x.GetAllManagedByNodeGuard())
                 .Returns(Task.FromResult(nodes));
 
             var lightningClient = Interceptor.For<Lightning.LightningClient>()
@@ -643,7 +643,7 @@ namespace FundsManager.Services
             var nodes = new List<Node> {destinationNode};
 
             nodeRepository
-                .Setup(x => x.GetAllManagedByFundsManager())
+                .Setup(x => x.GetAllManagedByNodeGuard())
                 .Returns(Task.FromResult(nodes));
 
             var lightningClient = Interceptor.For<Lightning.LightningClient>()
@@ -857,7 +857,7 @@ namespace FundsManager.Services
             var nodes = new List<Node> {destinationNode};
 
             nodeRepository
-                .Setup(x => x.GetAllManagedByFundsManager())
+                .Setup(x => x.GetAllManagedByNodeGuard())
                 .Returns(Task.FromResult(nodes));
 
             var lightningClient = Interceptor.For<Lightning.LightningClient>()

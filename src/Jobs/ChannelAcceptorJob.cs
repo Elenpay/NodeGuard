@@ -48,7 +48,7 @@ public class ChannelAcceptorJob : IJob
         _logger.LogInformation("Starting {JobName}... ", nameof(ChannelAcceptorJob));
         try
         {
-            var managedNodes = await _nodeRepository.GetAllManagedByFundsManager();
+            var managedNodes = await _nodeRepository.GetAllManagedByNodeGuard();
 
             var scheduler = await _schedulerFactory.GetScheduler();
             foreach (var managedNode in managedNodes)

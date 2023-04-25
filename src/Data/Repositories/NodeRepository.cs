@@ -50,7 +50,7 @@ namespace FundsManager.Data.Repositories
                 .Include(node => node.Users)
                 .ThenInclude(user => user.Keys)
                 .ThenInclude(key => key.Wallets)
-                .Include(x => x.ReturningFundsMultisigWallet)
+                .Include(x => x.ReturningFundsWallet)
                 .ThenInclude(x => x.Keys)
                 .SingleOrDefaultAsync(x => x.Id == id);
         }
@@ -63,7 +63,7 @@ namespace FundsManager.Data.Repositories
                 .Include(node => node.Users)
                 .ThenInclude(user => user.Keys)
                 .ThenInclude(keyObj => keyObj.Wallets)
-                .Include(x => x.ReturningFundsMultisigWallet)
+                .Include(x => x.ReturningFundsWallet)
                 .SingleOrDefaultAsync(x => x.PubKey == key);
         }
 
@@ -77,16 +77,16 @@ namespace FundsManager.Data.Repositories
                     .ThenInclude(request => request.Channel)
                 .Include(node => node.ChannelOperationRequestsAsDestination)
                     .ThenInclude(request => request.Channel)
-                .Include(x=> x.ReturningFundsMultisigWallet)
+                .Include(x=> x.ReturningFundsWallet)
                 .ToListAsync();
         }
 
-        public async Task<List<Node>> GetAllManagedByFundsManager()
+        public async Task<List<Node>> GetAllManagedByNodeGuard()
         {
             await using var applicationDbContext = await _dbContextFactory.CreateDbContextAsync();
 
             var resultAsync = await applicationDbContext.Nodes
-                .Include(x => x.ReturningFundsMultisigWallet)
+                .Include(x => x.ReturningFundsWallet)
                 .ThenInclude(x => x.Keys)
                 .Where(node => node.Endpoint != null)
                 .ToListAsync();
@@ -99,7 +99,7 @@ namespace FundsManager.Data.Repositories
             await using var applicationDbContext = await _dbContextFactory.CreateDbContextAsync();
 
             return await applicationDbContext.Nodes
-                .Include(x=> x.ReturningFundsMultisigWallet)
+                .Include(x=> x.ReturningFundsWallet)
                 .Include(x=> x.ChannelOperationRequestsAsDestination)
                 .Include(x=> x.ChannelOperationRequestsAsSource)
                 .Where(node => node.Endpoint != null

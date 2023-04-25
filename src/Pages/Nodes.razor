@@ -70,11 +70,11 @@
                         }
                     </DisplayTemplate>
                 </DataGridNumericColumn>
-                <DataGridColumn TItem="Node" Editable="true" Field="@nameof(Node.ReturningFundsMultisigWalletId)" Caption="Returning funds wallet" Sortable="false">
+                <DataGridColumn TItem="Node" Editable="true" Field="@nameof(Node.ReturningFundsWalletId)" Caption="Returning funds wallet" Sortable="false">
                     <DisplayTemplate>
-                        @if (context.ReturningFundsMultisigWallet != null)
+                        @if (context.ReturningFundsWallet != null)
                         {
-                            @context.ReturningFundsMultisigWallet.Name
+                            @context.ReturningFundsWallet.Name
                         }
                     </DisplayTemplate>
                     <EditTemplate>
@@ -183,7 +183,7 @@
 
     private async Task GetData()
     {
-        _nodes = await NodeRepository.GetAllManagedByFundsManager();
+        _nodes = await NodeRepository.GetAllManagedByNodeGuard();
         _availableWallets = await WalletRepository.GetAvailableWallets();
     }
 

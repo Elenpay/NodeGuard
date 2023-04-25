@@ -34,8 +34,10 @@ using NBXplorer.Models;
 using Nodeguard;
 using Quartz;
 using Quartz.Impl;
+using Channel = FundsManager.Data.Models.Channel;
 using Key = FundsManager.Data.Models.Key;
 using LiquidityRule = FundsManager.Data.Models.LiquidityRule;
+using Node = FundsManager.Data.Models.Node;
 using Wallet = FundsManager.Data.Models.Wallet;
 
 namespace FundsManager.Rpc
@@ -51,6 +53,224 @@ namespace FundsManager.Rpc
 
 
             _mockMapper = new MapperConfiguration(config => { config.AddProfile<MapperProfile>(); }).CreateMapper();
+        }
+
+        [Fact]
+        public async Task OpenChannel_SourceNodeNotFound_ReturnsNotFoundError()
+        {
+            // Arrange
+            var nodeRepositoryMock = new Mock<INodeRepository>();
+            var channelOperationRequestRepositoryMock = new Mock<IChannelOperationRequestRepository>();
+            var schedulerFactoryMock = GetSchedulerFactoryMock();
+
+            var sourcePubKey = "sourcePubKey";
+            var destPubKey = "destPubKey";
+            var walletId = 1;
+
+            nodeRepositoryMock.Setup(repo => repo.GetByPubkey(sourcePubKey)).ReturnsAsync((Node) null);
+            nodeRepositoryMock.Setup(repo => repo.GetByPubkey(destPubKey))
+                .ReturnsAsync(new Node {Id = 2, PubKey = destPubKey});
+
+            var service = new NodeGuardService(_logger.Object, new Mock<ILiquidityRuleRepository>().Object,
+                new Mock<IWalletRepository>().Object,
+                _mockMapper, new Mock<IWalletWithdrawalRequestRepository>().Object,
+                new Mock<IBitcoinService>().Object, new Mock<INBXplorerService>().Object,
+                schedulerFactoryMock,
+                nodeRepositoryMock.Object,
+                channelOperationRequestRepositoryMock.Object, null);
+
+            var request = new OpenChannelRequest
+            {
+                SourcePubKey = sourcePubKey,
+                DestinationPubKey = destPubKey,
+                SatsAmount = 10000,
+                Private = false,
+                WalletId = walletId,
+            };
+            var context = new Mock<ServerCallContext>().Object;
+
+            // Act
+            Func<Task> act = async () => await service.OpenChannel(request, context);
+
+            // Assert
+            (await act.Should().ThrowAsync<RpcException>()).Which.Status.StatusCode.Should().Be(StatusCode.NotFound);
+        }
+
+        [Fact]
+        public async Task OpenChannel_DestinationNodeNotFound_ReturnsNotFoundError()
+        {
+            // Arrange
+            var nodeRepositoryMock = new Mock<INodeRepository>();
+            var channelOperationRequestRepositoryMock = new Mock<IChannelOperationRequestRepository>();
+            var schedulerFactoryMock = GetSchedulerFactoryMock();
+
+            var sourcePubKey = "sourcePubKey";
+            var destPubKey = "destPubKey";
+            var walletId = 1;
+
+            nodeRepositoryMock.Setup(repo => repo.GetByPubkey(sourcePubKey))
+                .ReturnsAsync(new Node {Id = 1, PubKey = sourcePubKey});
+            nodeRepositoryMock.Setup(repo => repo.GetByPubkey(destPubKey)).ReturnsAsync((Node) null);
+
+            var service = new NodeGuardService(_logger.Object, new Mock<ILiquidityRuleRepository>().Object,
+                new Mock<IWalletRepository>().Object,
+                _mockMapper, new Mock<IWalletWithdrawalRequestRepository>().Object,
+                new Mock<IBitcoinService>().Object, new Mock<INBXplorerService>().Object,
+                schedulerFactoryMock,
+                nodeRepositoryMock.Object,
+                channelOperationRequestRepositoryMock.Object, null);
+
+            var request = new OpenChannelRequest
+            {
+                SourcePubKey = sourcePubKey,
+                DestinationPubKey = destPubKey,
+                SatsAmount = 10000,
+                Private = false,
+                WalletId = walletId,
+            };
+            var context = new Mock<ServerCallContext>().Object;
+
+            // Act
+            Func<Task> act = async () => await service.OpenChannel(request, context);
+
+            // Assert
+            (await act.Should().ThrowAsync<RpcException>()).Which.Status.StatusCode.Should().Be(StatusCode.NotFound);
+        }
+
+        [Fact]
+        public async Task OpenChannel_ValidRequest_OpensChannelAndReturnsResponse()
+        {
+            // Arrange
+            var nodeRepositoryMock = new Mock<INodeRepository>();
+            var channelOperationRequestRepositoryMock = new Mock<IChannelOperationRequestRepository>();
+            var schedulerFactoryMock = GetSchedulerFactoryMock();
+
+            var sourcePubKey = "sourcePubKey";
+            var destPubKey = "destPubKey";
+            var walletId = 1;
+
+            nodeRepositoryMock.Setup(repo => repo.GetByPubkey(sourcePubKey))
+                .ReturnsAsync(new Node {Id = 1, PubKey = sourcePubKey});
+            nodeRepositoryMock.Setup(repo => repo.GetByPubkey(destPubKey))
+                .ReturnsAsync(new Node {Id = 2, PubKey = destPubKey});
+            channelOperationRequestRepositoryMock.Setup(repo => repo.AddAsync(It.IsAny<ChannelOperationRequest>()))
+                .ReturnsAsync((true, null));
+            channelOperationRequestRepositoryMock.Setup(repo => repo.Update(It.IsAny<ChannelOperationRequest>()))
+                .Returns((true, null));
+
+
+            var service = new NodeGuardService(_logger.Object, new Mock<ILiquidityRuleRepository>().Object,
+                new Mock<IWalletRepository>().Object,
+                _mockMapper, new Mock<IWalletWithdrawalRequestRepository>().Object,
+                new Mock<IBitcoinService>().Object, new Mock<INBXplorerService>().Object,
+                schedulerFactoryMock,
+                nodeRepositoryMock.Object,
+                channelOperationRequestRepositoryMock.Object, null);
+
+            var request = new OpenChannelRequest
+            {
+                SourcePubKey = sourcePubKey,
+                DestinationPubKey = destPubKey,
+                SatsAmount = 10000,
+                Private = false,
+                WalletId = walletId,
+            };
+            var context = new Mock<ServerCallContext>().Object;
+
+            // Act
+            Func<Task> act = async () => await service.OpenChannel(request, context);
+
+            // Assert
+            act.Should().NotThrowAsync<Exception>();
+            nodeRepositoryMock.Verify(repo => repo.GetByPubkey(sourcePubKey), Times.Once);
+            nodeRepositoryMock.Verify(repo => repo.GetByPubkey(destPubKey), Times.Once);
+            channelOperationRequestRepositoryMock.Verify(repo => repo.AddAsync(It.IsAny<ChannelOperationRequest>()),
+                Times.Once);
+            channelOperationRequestRepositoryMock.Verify(repo => repo.Update(It.IsAny<ChannelOperationRequest>()),
+                Times.Once);
+        }
+
+        [Fact]
+        public async Task CloseChannel_ValidRequest_ClosesChannelAndReturnsResponse()
+        {
+            // Arrange
+            var channelRepositoryMock = new Mock<IChannelRepository>();
+            var channelOperationRequestRepositoryMock = new Mock<IChannelOperationRequestRepository>();
+            var schedulerFactoryMock = GetSchedulerFactoryMock();
+
+
+            channelRepositoryMock.Setup(repo => repo.GetByChanId(It.IsAny<ulong>())).ReturnsAsync(new Channel
+            {
+                Id = 1,
+                SourceNodeId = 1,
+                DestinationNodeId = 2,
+            });
+
+            channelOperationRequestRepositoryMock.Setup(repo => repo.AddAsync(It.IsAny<ChannelOperationRequest>()))
+                .ReturnsAsync((true, null));
+            channelOperationRequestRepositoryMock.Setup(repo => repo.Update(It.IsAny<ChannelOperationRequest>()))
+                .Returns((true, null));
+
+            var service = new NodeGuardService(_logger.Object, new Mock<ILiquidityRuleRepository>().Object,
+                new Mock<IWalletRepository>().Object,
+                _mockMapper, new Mock<IWalletWithdrawalRequestRepository>().Object,
+                new Mock<IBitcoinService>().Object, new Mock<INBXplorerService>().Object,
+                schedulerFactoryMock,
+                null,
+                channelOperationRequestRepositoryMock.Object, channelRepositoryMock.Object);
+
+
+            var request = new CloseChannelRequest
+            {
+                ChannelId = 1234,
+                Force = false,
+            };
+            var context = new Mock<ServerCallContext>().Object;
+
+            // Act
+            var response = await service.CloseChannel(request, context);
+
+            // Assert
+            response.Should().NotBeNull();
+            channelRepositoryMock.Verify(repo => repo.GetByChanId(It.IsAny<ulong>()), Times.Once);
+            channelOperationRequestRepositoryMock.Verify(repo => repo.AddAsync(It.IsAny<ChannelOperationRequest>()),
+                Times.Once);
+            channelOperationRequestRepositoryMock.Verify(repo => repo.Update(It.IsAny<ChannelOperationRequest>()),
+                Times.Once);
+        }
+
+        [Fact]
+        public async Task CloseChannel_ChannelNotFound_ReturnsNotFoundError()
+        {
+            // Arrange
+            var channelRepositoryMock = new Mock<IChannelRepository>();
+            var channelOperationRequestRepositoryMock = new Mock<IChannelOperationRequestRepository>();
+            var schedulerFactoryMock = GetSchedulerFactoryMock();
+
+            ulong channelId = 1234;
+
+            channelRepositoryMock.Setup(repo => repo.GetByChanId(It.IsAny<ulong>())).ReturnsAsync((Channel) null);
+
+            var service = new NodeGuardService(_logger.Object, new Mock<ILiquidityRuleRepository>().Object,
+                new Mock<IWalletRepository>().Object,
+                _mockMapper, new Mock<IWalletWithdrawalRequestRepository>().Object,
+                new Mock<IBitcoinService>().Object, new Mock<INBXplorerService>().Object,
+                schedulerFactoryMock,
+                null,
+                channelOperationRequestRepositoryMock.Object, channelRepositoryMock.Object);
+
+            var request = new CloseChannelRequest
+            {
+                ChannelId = channelId,
+                Force = false,
+            };
+            var context = new Mock<ServerCallContext>().Object;
+
+            // Act
+            Func<Task> act = async () => await service.CloseChannel(request, context);
+
+            // Assert
+            (await act.Should().ThrowAsync<RpcException>()).Which.Status.StatusCode.Should().Be(StatusCode.NotFound);
         }
 
 
@@ -73,7 +293,9 @@ namespace FundsManager.Rpc
                 new NodeGuardService(_logger.Object, liquidityRuleRepository.Object, walletRepository.Object,
                     _mockMapper, new Mock<IWalletWithdrawalRequestRepository>().Object,
                     new Mock<IBitcoinService>().Object, new Mock<INBXplorerService>().Object,
-                    new Mock<ISchedulerFactory>().Object);
+                    new Mock<ISchedulerFactory>().Object,
+                    new Mock<INodeRepository>().Object,
+                    new Mock<IChannelOperationRequestRepository>().Object, null);
             var getLiquidityRulesRequest = new GetLiquidityRulesRequest
             {
                 NodePubkey = string.Empty
@@ -103,7 +325,7 @@ namespace FundsManager.Rpc
                     WalletId = 1,
                     Wallet = new Wallet(),
                     NodeId = 0,
-                    Node = new Node{PubKey = "010101010101"}
+                    Node = new Node {PubKey = "010101010101"}
                 }
             };
 
@@ -120,7 +342,8 @@ namespace FundsManager.Rpc
                 new NodeGuardService(_logger.Object, liquidityRuleRepository.Object, walletRepository.Object,
                     _mockMapper, new Mock<IWalletWithdrawalRequestRepository>().Object,
                     new Mock<IBitcoinService>().Object, new Mock<INBXplorerService>().Object,
-                    new Mock<ISchedulerFactory>().Object);
+                    new Mock<ISchedulerFactory>().Object, new Mock<INodeRepository>().Object,
+                    new Mock<IChannelOperationRequestRepository>().Object, null);
             var getLiquidityRulesRequest = new GetLiquidityRulesRequest
             {
                 NodePubkey = "0101010011"
@@ -158,7 +381,8 @@ namespace FundsManager.Rpc
                 new NodeGuardService(_logger.Object, liquidityRuleRepository.Object, walletRepository.Object,
                     _mockMapper, new Mock<IWalletWithdrawalRequestRepository>().Object,
                     new Mock<IBitcoinService>().Object, new Mock<INBXplorerService>().Object,
-                    new Mock<ISchedulerFactory>().Object);
+                    new Mock<ISchedulerFactory>().Object, new Mock<INodeRepository>().Object,
+                    new Mock<IChannelOperationRequestRepository>().Object, null);
             var getLiquidityRulesRequest = new GetLiquidityRulesRequest
             {
                 NodePubkey = "101001010101"
@@ -202,7 +426,8 @@ namespace FundsManager.Rpc
                 new NodeGuardService(_logger.Object, null, walletRepository.Object,
                     _mockMapper, new Mock<IWalletWithdrawalRequestRepository>().Object,
                     new Mock<IBitcoinService>().Object,
-                    mock.Object, new Mock<ISchedulerFactory>().Object);
+                    mock.Object, new Mock<ISchedulerFactory>().Object, new Mock<INodeRepository>().Object,
+                    new Mock<IChannelOperationRequestRepository>().Object, null);
 
             var newWalletAddressRequest = new GetNewWalletAddressRequest
             {
@@ -238,7 +463,8 @@ namespace FundsManager.Rpc
                 new NodeGuardService(_logger.Object, null, walletRepository.Object,
                     _mockMapper, walletWithdrawalRequestRepository.Object,
                     bitcoinService.Object,
-                    nbxplorerService.Object, mockScheduler);
+                    nbxplorerService.Object, mockScheduler, new Mock<INodeRepository>().Object,
+                    new Mock<IChannelOperationRequestRepository>().Object, null);
 
             var requestWithdrawalRequest = new RequestWithdrawalRequest
             {
@@ -287,7 +513,8 @@ namespace FundsManager.Rpc
                 new NodeGuardService(_logger.Object, null, walletRepository.Object,
                     _mockMapper, walletWithdrawalRequestRepository.Object,
                     bitcoinService.Object,
-                    nbxplorerService.Object, new Mock<ISchedulerFactory>().Object);
+                    nbxplorerService.Object, new Mock<ISchedulerFactory>().Object, new Mock<INodeRepository>().Object,
+                    new Mock<IChannelOperationRequestRepository>().Object, null);
 
             //Act
             var resp = async () => await mockNodeGuardService.RequestWithdrawal(requestWithdrawalRequest,
@@ -327,7 +554,8 @@ namespace FundsManager.Rpc
                 new NodeGuardService(_logger.Object, null, walletRepository.Object,
                     _mockMapper, walletWithdrawalRequestRepository.Object,
                     bitcoinService.Object,
-                    nbxplorerService.Object, new Mock<ISchedulerFactory>().Object);
+                    nbxplorerService.Object, new Mock<ISchedulerFactory>().Object, new Mock<INodeRepository>().Object,
+                    new Mock<IChannelOperationRequestRepository>().Object, null);
 
             //Act
             var resp = async () => await mockNodeGuardService.RequestWithdrawal(requestWithdrawalRequest,
@@ -367,7 +595,8 @@ namespace FundsManager.Rpc
                 new NodeGuardService(_logger.Object, null, walletRepository.Object,
                     _mockMapper, walletWithdrawalRequestRepository.Object,
                     bitcoinService.Object,
-                    nbxplorerService.Object, new Mock<ISchedulerFactory>().Object);
+                    nbxplorerService.Object, new Mock<ISchedulerFactory>().Object, new Mock<INodeRepository>().Object,
+                    new Mock<IChannelOperationRequestRepository>().Object, null);
 
             //Act
             var resp = async () => await mockNodeGuardService.RequestWithdrawal(requestWithdrawalRequest,
@@ -407,7 +636,8 @@ namespace FundsManager.Rpc
                 new NodeGuardService(_logger.Object, null, walletRepository.Object,
                     _mockMapper, walletWithdrawalRequestRepository.Object,
                     bitcoinService.Object,
-                    nbxplorerService.Object, new Mock<ISchedulerFactory>().Object);
+                    nbxplorerService.Object, new Mock<ISchedulerFactory>().Object, new Mock<INodeRepository>().Object,
+                    new Mock<IChannelOperationRequestRepository>().Object, null);
 
             //Act
             var resp = async () => await mockNodeGuardService.RequestWithdrawal(requestWithdrawalRequest,
@@ -487,12 +717,20 @@ namespace FundsManager.Rpc
             walletWithdrawalRequestRepository.Setup(x => x.AddAsync(It.IsAny<WalletWithdrawalRequest>()))
                 .ReturnsAsync((true, null));
 
-            var withdrawalRequestFixture = new WalletWithdrawalRequest{};
+            var withdrawalRequestFixture = new WalletWithdrawalRequest { };
 
             //GetByIdMock
             walletWithdrawalRequestRepository.Setup(x => x.GetById(It.IsAny<int>()))
                 .ReturnsAsync(withdrawalRequestFixture);
 
+            schedulerFactory = GetSchedulerFactoryMock();
+
+            return wallet;
+        }
+
+        private static ISchedulerFactory GetSchedulerFactoryMock()
+        {
+            ISchedulerFactory schedulerFactory;
             var properties = new NameValueCollection
             {
                 ["quartz.serializer.type"] = "json"
@@ -505,8 +743,7 @@ namespace FundsManager.Rpc
                 .ReturnsAsync(sched);
 
             schedulerFactory = schedulerFactoryMock.Object;
-
-            return wallet;
+            return schedulerFactory;
         }
 
         private readonly Random _random = new();
@@ -555,7 +792,8 @@ namespace FundsManager.Rpc
 
             var request = new GetAvailableWalletsRequest();
             var nodeGuardService = new NodeGuardService(null, null, walletRepository, null, null, null, null,
-                scheduleFactory.Object);
+                scheduleFactory.Object, new Mock<INodeRepository>().Object,
+                new Mock<IChannelOperationRequestRepository>().Object, null);
             var result = await nodeGuardService.GetAvailableWallets(request, null);
 
             result.Wallets.ToList().Count().Should().Be(2);
@@ -596,12 +834,164 @@ namespace FundsManager.Rpc
                 WalletType = WALLET_TYPE.Hot
             };
             var nodeGuardService = new NodeGuardService(null, null, walletRepository, null, null, null, null,
-                scheduleFactory.Object);
+                scheduleFactory.Object, new Mock<INodeRepository>().Object,
+                new Mock<IChannelOperationRequestRepository>().Object, null);
             var result = await nodeGuardService.GetAvailableWallets(request, null);
 
             result.Wallets.ToList().Count().Should().Be(1);
             result.Wallets.ToList().FirstOrDefault()!.IsHotWallet.Should().Be(true);
         }
+
+        [Fact]
+        public async Task AddNode_ValidRequest_AddsNodeAndReturnsResponse()
+        {
+            // Arrange
+            var nodeRepositoryMock = new Mock<INodeRepository>();
+
+            nodeRepositoryMock.Setup(repo => repo.AddAsync(It.IsAny<Node>())).ReturnsAsync((true, null));
+
+            var service = new NodeGuardService(_logger.Object, new Mock<ILiquidityRuleRepository>().Object,
+                new Mock<IWalletRepository>().Object,
+                _mockMapper, new Mock<IWalletWithdrawalRequestRepository>().Object,
+                new Mock<IBitcoinService>().Object, new Mock<INBXplorerService>().Object,
+                new Mock<ISchedulerFactory>().Object,
+                nodeRepositoryMock.Object,
+                new Mock<IChannelOperationRequestRepository>().Object,
+                new Mock<IChannelRepository>().Object);
+
+            var request = new AddNodeRequest
+            {
+                PubKey = "pubKey",
+                Name = "nodeName",
+                Description = "description",
+                ChannelAdminMacaroon = "channelAdminMacaroon",
+                Endpoint = "endpoint",
+                AutosweepEnabled = true,
+                ReturningFundsWalletId = 1,
+            };
+            var context = new Mock<ServerCallContext>().Object;
+
+            // Act
+            var response = await service.AddNode(request, context);
+
+            // Assert
+            response.Should().NotBeNull();
+            nodeRepositoryMock.Verify(repo => repo.AddAsync(It.IsAny<Node>()), Times.Once);
+        }
+
+        [Fact]
+        public async Task AddNode_FailedToAddNode_ReturnsInternalError()
+        {
+            // Arrange
+            var nodeRepositoryMock = new Mock<INodeRepository>();
+
+            nodeRepositoryMock.Setup(repo => repo.AddAsync(It.IsAny<Node>()))
+                .ReturnsAsync((false, "Error adding node"));
+
+            var service = new NodeGuardService(_logger.Object, new Mock<ILiquidityRuleRepository>().Object,
+                new Mock<IWalletRepository>().Object,
+                _mockMapper, new Mock<IWalletWithdrawalRequestRepository>().Object,
+                new Mock<IBitcoinService>().Object, new Mock<INBXplorerService>().Object,
+                new Mock<ISchedulerFactory>().Object,
+                nodeRepositoryMock.Object,
+                new Mock<IChannelOperationRequestRepository>().Object,
+                new Mock<IChannelRepository>().Object);
+
+            var request = new AddNodeRequest
+            {
+                PubKey = "pubKey",
+                Name = "nodeName",
+                Description = "description",
+                ChannelAdminMacaroon = "channelAdminMacaroon",
+                Endpoint = "endpoint",
+                AutosweepEnabled = true,
+                ReturningFundsWalletId = 1,
+            };
+            var context = new Mock<ServerCallContext>().Object;
+
+            // Act
+            Func<Task> act = async () => await service.AddNode(request, context);
+
+            // Assert
+            (await act.Should().ThrowAsync<RpcException>()).Which.Status.StatusCode.Should().Be(StatusCode.Internal);
+        }
+
+        [Fact]
+        public async Task GetNodes_RequestIncludeUnmanaged_ReturnsUnmanagedNodes()
+        {
+            // Arrange
+            var nodeRepositoryMock = new Mock<INodeRepository>();
+            var sampleNodes = new List<Node>
+            {
+                new Node {Id = 1, PubKey = "pubKey1", Endpoint = "endpoint1:9735"},
+                new Node {Id = 2, PubKey = "pubKey2", Endpoint = "endpoint2:9735"},
+            };
+
+            nodeRepositoryMock.Setup(repo => repo.GetAll()).ReturnsAsync(sampleNodes);
+            nodeRepositoryMock.Setup(repo => repo.GetAllManagedByNodeGuard()).ReturnsAsync(new List<Node>());
+
+            var service = new NodeGuardService(_logger.Object, new Mock<ILiquidityRuleRepository>().Object,
+                new Mock<IWalletRepository>().Object,
+                _mockMapper, new Mock<IWalletWithdrawalRequestRepository>().Object,
+                new Mock<IBitcoinService>().Object, new Mock<INBXplorerService>().Object,
+                new Mock<ISchedulerFactory>().Object,
+                nodeRepositoryMock.Object,
+                new Mock<IChannelOperationRequestRepository>().Object,
+                new Mock<IChannelRepository>().Object);
+
+            var request = new GetNodesRequest
+            {
+                IncludeUnmanaged = true
+            };
+            var context = new Mock<ServerCallContext>().Object;
+
+            // Act
+            var response = await service.GetNodes(request, context);
+
+            // Assert
+            response.Nodes.Count.Should().Be(sampleNodes.Count);
+            nodeRepositoryMock.Verify(repo => repo.GetAll(), Times.Once);
+            nodeRepositoryMock.Verify(repo => repo.GetAllManagedByNodeGuard(), Times.Never);
+        }
+
+        [Fact]
+        public async Task GetNodes_RequestNotIncludeUnmanaged_ReturnsManagedNodes()
+        {
+            // Arrange
+            var nodeRepositoryMock = new Mock<INodeRepository>();
+            var sampleNodes = new List<Node>
+            {
+                new Node {Id = 1, PubKey = "pubKey1", Endpoint = "endpoint1:9735"},
+                new Node {Id = 2, PubKey = "pubKey2", Endpoint = "endpoint2:9735"},
+            };
+
+            nodeRepositoryMock.Setup(repo => repo.GetAll()).ReturnsAsync(new List<Node>());
+            nodeRepositoryMock.Setup(repo => repo.GetAllManagedByNodeGuard()).ReturnsAsync(sampleNodes);
+
+            var service = new NodeGuardService(_logger.Object, new Mock<ILiquidityRuleRepository>().Object,
+                new Mock<IWalletRepository>().Object,
+                _mockMapper, new Mock<IWalletWithdrawalRequestRepository>().Object,
+                new Mock<IBitcoinService>().Object, new Mock<INBXplorerService>().Object,
+                new Mock<ISchedulerFactory>().Object,
+                nodeRepositoryMock.Object,
+                new Mock<IChannelOperationRequestRepository>().Object,
+                new Mock<IChannelRepository>().Object);
+
+            var request = new GetNodesRequest
+            {
+                IncludeUnmanaged = false
+            };
+            var context = new Mock<ServerCallContext>().Object;
+
+            // Act
+            var response = await service.GetNodes(request, context);
+
+            // Assert
+            response.Nodes.Count.Should().Be(sampleNodes.Count);
+            nodeRepositoryMock.Verify(repo => repo.GetAll(), Times.Never);
+            nodeRepositoryMock.Verify(repo => repo.GetAllManagedByNodeGuard(), Times.Once);
+        }
+
 
         [Fact]
         public async Task GetAvailableWallets_ReturnsTypeCold()
@@ -638,7 +1028,8 @@ namespace FundsManager.Rpc
                 WalletType = WALLET_TYPE.Cold
             };
             var nodeGuardService = new NodeGuardService(null, null, walletRepository, null, null, null, null,
-                scheduleFactory.Object);
+                scheduleFactory.Object, new Mock<INodeRepository>().Object,
+                new Mock<IChannelOperationRequestRepository>().Object, null);
             var result = await nodeGuardService.GetAvailableWallets(request, null);
 
             result.Wallets.ToList().Count().Should().Be(1);
@@ -691,13 +1082,15 @@ namespace FundsManager.Rpc
                 Id = {1, 3}
             };
             var nodeGuardService = new NodeGuardService(null, null, walletRepository, null, null, null, null,
-                scheduleFactory.Object);
+                scheduleFactory.Object, new Mock<INodeRepository>().Object,
+                new Mock<IChannelOperationRequestRepository>().Object, null);
             var result = await nodeGuardService.GetAvailableWallets(request, null);
 
             result.Wallets.ToList().Count().Should().Be(2);
             result.Wallets.ToList().FirstOrDefault()!.Id.Should().Be(1);
             result.Wallets.ToList().LastOrDefault()!.Id.Should().Be(3);
         }
+
 
         [Fact]
         public async Task GetAvailableWallets_CantPassTwoFilters()
@@ -711,7 +1104,8 @@ namespace FundsManager.Rpc
                 Id = {1, 3}
             };
             var nodeGuardService =
-                new NodeGuardService(null, null, null, null, null, null, null, scheduleFactory.Object);
+                new NodeGuardService(null, null, null, null, null, null, null, scheduleFactory.Object, null,
+                    null, null);
             var act = () => nodeGuardService.GetAvailableWallets(request, null);
 
             await act

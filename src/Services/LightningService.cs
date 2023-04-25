@@ -990,7 +990,7 @@ namespace FundsManager.Services
                 {
                     var channel = await _channelRepository.GetById((int)channelOperationRequest.ChannelId);
                     
-                    var node = String.IsNullOrEmpty(channelOperationRequest.SourceNode.ChannelAdminMacaroon)
+                    var node = string.IsNullOrEmpty(channelOperationRequest.SourceNode.ChannelAdminMacaroon)
                         ? channelOperationRequest.DestNode
                         : channelOperationRequest.SourceNode;
 
@@ -1172,9 +1172,9 @@ namespace FundsManager.Services
 
             LightningNode? result = null;
 
-            var node = (await _nodeRepository.GetAllManagedByFundsManager()).FirstOrDefault();
+            var node = (await _nodeRepository.GetAllManagedByNodeGuard()).FirstOrDefault();
             if (node == null)
-                node = (await _nodeRepository.GetAllManagedByFundsManager()).LastOrDefault();
+                node = (await _nodeRepository.GetAllManagedByNodeGuard()).LastOrDefault();
 
             if (node == null)
             {

@@ -169,7 +169,7 @@
 
         _users = await ApplicationUserRepository.GetAll(true);
 
-        _nodesList = await NodeRepository.GetAllManagedByFundsManager();
+        _nodesList = await NodeRepository.GetAllManagedByNodeGuard();
 
     }
 

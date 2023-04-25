@@ -180,7 +180,7 @@ public class SweepNodeWalletsJob : IJob
                 && unspentResponse.Utxos.Any(x => x.AmountSat >= 100_000) //At least 1 UTXO with 100K according to  https://github.com/lightningnetwork/lnd/issues/6505#issuecomment-1120364460
                )
             {
-                if (node.ReturningFundsMultisigWallet == null)
+                if (node.ReturningFundsWallet == null)
                 {
                     //No returning multisig, let's assign the oldest
 
@@ -191,7 +191,7 @@ public class SweepNodeWalletsJob : IJob
                         //Existing Wallet found
                         await SweepFunds(node, wallet, client, unspentResponse.Utxos.ToList());
 
-                        node.ReturningFundsMultisigWalletId = wallet.Id;
+                        node.ReturningFundsWalletId = wallet.Id;
 
                         //We assign the node's returning wallet
                         var updateResult = _nodeRepository.Update(node);
@@ -216,7 +216,7 @@ public class SweepNodeWalletsJob : IJob
                 else
                 {
                     //Returning wallet found
-                    await SweepFunds(node, node.ReturningFundsMultisigWallet, client, unspentResponse.Utxos.ToList());
+                    await SweepFunds(node, node.ReturningFundsWallet, client, unspentResponse.Utxos.ToList());
                 }
             }
         }

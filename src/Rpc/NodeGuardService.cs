@@ -11,6 +11,7 @@ using NBXplorer.DerivationStrategy;
 using Nodeguard;
 using Quartz;
 using LiquidityRule = Nodeguard.LiquidityRule;
+using Node = Nodeguard.Node;
 using Wallet = FundsManager.Data.Models.Wallet;
 
 namespace FundsManager.Rpc;
@@ -25,7 +26,16 @@ public interface INodeGuardService
 
     Task<RequestWithdrawalResponse> RequestWithdrawal(RequestWithdrawalRequest request, ServerCallContext context);
 
-    Task<GetAvailableWalletsResponse> GetAvailableWallets(GetAvailableWalletsRequest request, ServerCallContext context);
+    Task<GetAvailableWalletsResponse>
+        GetAvailableWallets(GetAvailableWalletsRequest request, ServerCallContext context);
+
+    Task<GetNodesResponse> GetNodes(GetNodesRequest request, ServerCallContext context);
+
+    Task<AddNodeResponse> AddNode(AddNodeRequest request, ServerCallContext context);
+
+    Task<OpenChannelResponse> OpenChannel(OpenChannelRequest request, ServerCallContext context);
+
+    Task<CloseChannelResponse> CloseChannel(CloseChannelRequest request, ServerCallContext context);
 }
 
 /// <summary>
@@ -41,6 +51,9 @@ public class NodeGuardService : Nodeguard.NodeGuardService.NodeGuardServiceBase,
     private readonly IBitcoinService _bitcoinService;
     private readonly INBXplorerService _nbXplorerService;
     private readonly ISchedulerFactory _schedulerFactory;
+    private readonly INodeRepository _nodeRepository;
+    private readonly IChannelOperationRequestRepository _channelOperationRequestRepository;
+    private readonly IChannelRepository _channelRepository;
     private readonly IScheduler _scheduler;
 
     public NodeGuardService(ILogger<NodeGuardService> logger,
@@ -50,7 +63,10 @@ public class NodeGuardService : Nodeguard.NodeGuardService.NodeGuardServiceBase,
         IWalletWithdrawalRequestRepository walletWithdrawalRequestRepository,
         IBitcoinService bitcoinService,
         INBXplorerService nbXplorerService,
-        ISchedulerFactory schedulerFactory
+        ISchedulerFactory schedulerFactory,
+        INodeRepository nodeRepository,
+        IChannelOperationRequestRepository channelOperationRequestRepository,
+        IChannelRepository channelRepository
     )
     {
         _logger = logger;
@@ -61,6 +77,9 @@ public class NodeGuardService : Nodeguard.NodeGuardService.NodeGuardServiceBase,
         _bitcoinService = bitcoinService;
         _nbXplorerService = nbXplorerService;
         _schedulerFactory = schedulerFactory;
+        _nodeRepository = nodeRepository;
+        _channelOperationRequestRepository = channelOperationRequestRepository;
+        _channelRepository = channelRepository;
         _scheduler = Task.Run(() => _schedulerFactory.GetScheduler()).Result;
     }
 
@@ -80,7 +99,7 @@ public class NodeGuardService : Nodeguard.NodeGuardService.NodeGuardServiceBase,
             var liquidityRules = await _liquidityRuleRepository.GetByNodePubKey(request.NodePubkey);
             result = new GetLiquidityRulesResponse()
             {
-                LiquidityRules = { liquidityRules.Select(x => _mapper.Map<LiquidityRule>(x)).ToList() }
+                LiquidityRules = {liquidityRules.Select(x => _mapper.Map<LiquidityRule>(x)).ToList()}
             };
         }
         catch (Exception e)
@@ -143,7 +162,9 @@ public class NodeGuardService : Nodeguard.NodeGuardService.NodeGuardServiceBase,
                 Amount = amount,
                 DestinationAddress = request.Address,
                 Description = request.Description,
-                Status = wallet.IsHotWallet ? WalletWithdrawalRequestStatus.PSBTSignaturesPending : WalletWithdrawalRequestStatus.Pending,
+                Status = wallet.IsHotWallet
+                    ? WalletWithdrawalRequestStatus.PSBTSignaturesPending
+                    : WalletWithdrawalRequestStatus.Pending,
                 RequestMetadata = request.RequestMetadata
             };
 
@@ -249,5 +270,202 @@ public class NodeGuardService : Nodeguard.NodeGuardService.NodeGuardServiceBase,
             _logger?.LogError(e, "Error getting available wallets");
             throw new RpcException(new Status(StatusCode.Internal, e.Message));
         }
+    }
+
+    public override async Task<AddNodeResponse> AddNode(AddNodeRequest request, ServerCallContext context)
+    {
+        var node = new FundsManager.Data.Models.Node
+        {
+            PubKey = request.PubKey,
+            Name = request.Name,
+            Description = request.Description,
+            ChannelAdminMacaroon = request.ChannelAdminMacaroon,
+            Endpoint = request.Endpoint,
+            AutosweepEnabled = request.AutosweepEnabled,
+            ReturningFundsWalletId = request.ReturningFundsWalletId,
+        };
+
+        try
+        {
+            var result = await _nodeRepository.AddAsync(node);
+
+            if (result.Item1)
+            {
+                return new AddNodeResponse();
+            }
+
+            _logger?.LogError("Error adding node, error: {error}", result.Item2);
+            throw new RpcException(new Status(StatusCode.Internal, "Error adding node"));
+        }
+        catch (Exception e)
+        {
+            _logger?.LogError(e, "Error getting adding node through gRPC");
+            throw new RpcException(new Status(StatusCode.Internal, e.Message));
+        }
+    }
+
+    public override async Task<GetNodesResponse> GetNodes(GetNodesRequest request, ServerCallContext context)
+    {
+        try
+        {
+            var nodes = new List<Data.Models.Node>();
+            if (request.IncludeUnmanaged)
+            {
+                nodes = await _nodeRepository.GetAll();
+            }
+            else
+            {
+                nodes = await _nodeRepository.GetAllManagedByNodeGuard();
+            }
+
+            var mappedNodes = nodes.Select(x => _mapper.Map<Nodeguard.Node>(x)).ToList();
+
+            var response = new GetNodesResponse()
+            {
+                Nodes = {mappedNodes}
+            };
+            return response;
+        }
+        catch (Exception e)
+        {
+            _logger?.LogError(e, "Error getting nodes through gRPC");
+
+            throw new RpcException(new Status(StatusCode.Internal, e.Message));
+        }
+    }
+
+    public override async Task<OpenChannelResponse> OpenChannel(OpenChannelRequest request, ServerCallContext context)
+    {
+        var sourceNode = await _nodeRepository.GetByPubkey(request.SourcePubKey);
+        if (sourceNode == null)
+        {
+            throw new RpcException(new Status(StatusCode.NotFound, "Source node not found"));
+        }
+
+        var destNode = await _nodeRepository.GetByPubkey(request.DestinationPubKey);
+        if (destNode == null)
+        {
+            throw new RpcException(new Status(StatusCode.NotFound, "Destination node not found"));
+        }
+
+        try
+        {
+            var channelOperationRequest = new ChannelOperationRequest
+            {
+                SatsAmount = request.SatsAmount,
+                Description = $"Channel open from {sourceNode.PubKey} to {destNode.PubKey} (API)",
+                AmountCryptoUnit = MoneyUnit.Satoshi,
+                Status = ChannelOperationRequestStatus.Pending,
+                RequestType = OperationRequestType.Open,
+                WalletId = request.WalletId,
+                SourceNodeId = sourceNode.Id,
+                DestNodeId = destNode.Id,
+                /*UserId = null, //TODO User & Auth 
+            User = null,*/
+                IsChannelPrivate = request.Private,
+            };
+
+            //Persist request
+            var result = await _channelOperationRequestRepository.AddAsync(channelOperationRequest);
+            if (!result.Item1)
+            {
+                _logger?.LogError("Error adding channel operation request, error: {error}", result.Item2);
+                throw new RpcException(new Status(StatusCode.Internal, "Error adding channel operation request"));
+            }
+
+            //Fire Open Channel Job
+            var scheduler = await _schedulerFactory.GetScheduler();
+
+            var map = new JobDataMap();
+            map.Put("openRequestId", channelOperationRequest.Id);
+
+            var retryList = RetriableJob.ParseRetryListFromString(Constants.JOB_RETRY_INTERVAL_LIST_IN_MINUTES);
+            var job = RetriableJob.Create<ChannelOpenJob>(map, channelOperationRequest.Id.ToString(), retryList);
+            await scheduler.ScheduleJob(job.Job, job.Trigger);
+
+            channelOperationRequest.JobId = job.Job.Key.ToString();
+
+            var jobUpdateResult = _channelOperationRequestRepository.Update(channelOperationRequest);
+
+            if (!jobUpdateResult.Item1)
+            {
+                _logger?.LogError("Error updating channel operation request, error: {error}", jobUpdateResult.Item2);
+                throw new RpcException(new Status(StatusCode.Internal, "Error updating channel operation request"));
+            }
+        }
+        catch (Exception e)
+        {
+            _logger?.LogError(e, "Error opening channel through gRPC");
+            throw new RpcException(new Status(StatusCode.Internal, e.Message));
+        }
+
+
+        return new OpenChannelResponse();
+    }
+
+    public override async Task<CloseChannelResponse> CloseChannel(CloseChannelRequest request, ServerCallContext context)
+    {
+        //Get channel by its chan_id (id of the ln implementation)
+        var channel = await _channelRepository.GetByChanId(request.ChannelId);
+        
+        if (channel == null)
+        {
+            throw new RpcException(new Status(StatusCode.NotFound, "Channel not found"));
+        }
+
+        try
+        {
+            //Create channel operation request
+        
+            var channelOperationRequest = new ChannelOperationRequest
+            {
+                Description = "Channel close (API)", 
+                Status = ChannelOperationRequestStatus.Pending,
+                RequestType = OperationRequestType.Close,
+                SourceNodeId = channel.SourceNodeId,
+                DestNodeId = channel.DestinationNodeId,
+                ChannelId = channel.Id,
+                /*UserId = null, //TODO User & Auth
+            */
+            };
+        
+            //Persist request
+        
+            var result = await _channelOperationRequestRepository.AddAsync(channelOperationRequest);
+        
+            if (!result.Item1)
+            {
+                _logger?.LogError("Error adding channel operation request, error: {error}", result.Item2);
+                throw new RpcException(new Status(StatusCode.Internal, "Error adding channel operation request"));
+            }
+        
+            //Fire Close Channel Job
+            var scheduler = await _schedulerFactory.GetScheduler();
+        
+            var map = new JobDataMap();
+            map.Put("closeRequestId", channelOperationRequest.Id);
+            map.Put("forceClose", request.Force);
+        
+            var retryList = RetriableJob.ParseRetryListFromString(Constants.JOB_RETRY_INTERVAL_LIST_IN_MINUTES);
+            var job = RetriableJob.Create<ChannelCloseJob>(map, channelOperationRequest.Id.ToString(), retryList);
+            await scheduler.ScheduleJob(job.Job, job.Trigger);
+        
+            channelOperationRequest.JobId = job.Job.Key.ToString();
+        
+            var jobUpdateResult = _channelOperationRequestRepository.Update(channelOperationRequest);
+        
+            if (!jobUpdateResult.Item1)
+            {
+                _logger?.LogError("Error updating channel operation request, error: {error}", jobUpdateResult.Item2);
+                throw new RpcException(new Status(StatusCode.Internal, "Error updating channel operation request"));
+            }
+        }
+        catch (Exception e)
+        {
+            _logger?.LogError(e, "Error closing channel through gRPC");
+            throw new RpcException(new Status(StatusCode.Internal, e.Message));
+        }
+
+        return new CloseChannelResponse();
     }
 }
