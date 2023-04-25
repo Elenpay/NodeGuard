@@ -388,7 +388,7 @@ public class BitcoinServiceTests
             .Setup(x => x.BroadcastAsync(It.IsAny<Transaction>(), default, default))
             .ReturnsAsync(new BroadcastResult() { Success = true });
         nodeRepository
-            .Setup(x => x.GetAllManagedByFundsManager())
+            .Setup(x => x.GetAllManagedByNodeGuard())
             .Returns(Task.FromResult(new List<Node>() {node}));
         var bitcoinService = new BitcoinService(_logger, null, null, walletWithdrawalRequestRepository.Object, null, nodeRepository.Object, null, nbXplorerService.Object);
 
@@ -468,7 +468,7 @@ public class BitcoinServiceTests
             .Setup(x => x.BroadcastAsync(It.IsAny<Transaction>(), default, default))
             .ReturnsAsync(new BroadcastResult() { Success = true });
         nodeRepository
-            .Setup(x => x.GetAllManagedByFundsManager())
+            .Setup(x => x.GetAllManagedByNodeGuard())
             .Returns(Task.FromResult(new List<Node>() {node}));
         var bitcoinService = new BitcoinService(_logger, null, null, walletWithdrawalRequestRepository.Object, null, nodeRepository.Object, null, nbXplorerService.Object);
 
@@ -548,7 +548,7 @@ public class BitcoinServiceTests
             .Setup(x => x.BroadcastAsync(It.IsAny<Transaction>(), default, default))
             .ReturnsAsync(new BroadcastResult() { Success = true });
         nodeRepository
-            .Setup(x => x.GetAllManagedByFundsManager())
+            .Setup(x => x.GetAllManagedByNodeGuard())
             .Returns(Task.FromResult(new List<Node>() {node}));
         var bitcoinService = new BitcoinService(_logger, null, null, walletWithdrawalRequestRepository.Object, null, nodeRepository.Object, null, nbXplorerService.Object);
 
