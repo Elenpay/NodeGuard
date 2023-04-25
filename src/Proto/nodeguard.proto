@@ -20,11 +20,29 @@ service NodeGuardService {
     Withdraws funds from a given wallet to a given address
     */
   rpc RequestWithdrawal(RequestWithdrawalRequest) returns (RequestWithdrawalResponse);
-  
+  /*
+    Adds a new node to the nodeguard
+   */
+  rpc AddNode(AddNodeRequest) returns (AddNodeResponse);
+
+  /*
+    Gets a list of nodes
+   */
+  rpc GetNodes(GetNodesRequest) returns (GetNodesResponse);
+
   /*
     Gets a list of available wallets
-   */
+  */
   rpc GetAvailableWallets(GetAvailableWalletsRequest) returns (GetAvailableWalletsResponse);
+  /*
+    Opens a channel to a given node
+   */
+  rpc OpenChannel(OpenChannelRequest) returns (OpenChannelResponse);
+
+  /*
+    Closes a channel to a given node
+   */
+  rpc CloseChannel(CloseChannelRequest) returns (CloseChannelResponse);
 }
 
 message GetLiquidityRulesRequest {
@@ -90,4 +108,74 @@ message Wallet  {
 }
 message GetAvailableWalletsResponse {
   repeated Wallet wallets = 1;
+}
+
+message AddNodeRequest{
+  string pub_key = 1;
+  string name = 2;
+  string description = 3;
+  // Channel admin macaroon
+  string channel_admin_macaroon = 4;
+  // Endpoint of the node in the form of host:port (gRPC)
+  string endpoint = 5;
+  // Whether this node's hot wallet should be autoswept to the returning funds wallet
+  bool   autosweep_enabled = 6;
+  // Wallet ID as stored in the NG's database for use in autosweep ops
+  int32 returning_funds_wallet_id = 7;
+}
+
+message AddNodeResponse{
+}
+
+message Node {
+  // Node Id as in NodeGuard's database
+  int32 id = 1;
+  string pub_key = 2;
+  string name = 3;
+  string description = 4;
+  // Endpoint of the node in the form of host:port (gRPC)
+  string endpoint = 5;
+  // Whether this node's hot wallet should be autoswept to the returning funds wallet
+  bool autosweep_enabled = 6;
+  // Wallet ID as stored in the NG's database for use in autosweep ops
+  int32 returning_funds_wallet_id = 7;
+
+}
+
+message GetNodesRequest{
+  // Whether to include nodes that are not managed by the NG
+  bool include_unmanaged = 1;
+}
+
+message GetNodesResponse{
+  repeated Node nodes = 1;
+}
+
+message OpenChannelRequest {
+  // Source node pubkey
+  string source_pub_key = 5;
+  // Destination node pubkey
+  string destination_pub_key = 1;
+  // Wallet ID as stored in the NG's database
+  int32 wallet_id = 2;
+  // Amount in satoshis
+  int64 sats_amount = 3;
+  // Whether the channel should be private
+  bool private = 4;
+
+}
+
+// A successful response is an empty message and does NOT indicate that the channel has been open, external monitoring is required
+message OpenChannelResponse {
+}
+
+message CloseChannelRequest {
+  // Channel ID as returned by the Lightning implementation
+  uint64 channel_id = 1;
+  // Force close the channel
+  bool force = 2;
+}
+
+// A successful response is an empty message and does NOT indicate that the channel has been closed, external monitoring is required
+message CloseChannelResponse {
 }
