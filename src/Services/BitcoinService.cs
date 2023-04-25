@@ -371,7 +371,7 @@ namespace FundsManager.Services
                     _logger.LogError("Invalid tx check reason: {Reason}", transactionCheckResult.Humanize());
                 }
 
-                var node = (await _nodeRepository.GetAllManagedByFundsManager()).FirstOrDefault();
+                var node = (await _nodeRepository.GetAllManagedByNodeGuard()).FirstOrDefault();
 
                 if (node == null)
                 {
