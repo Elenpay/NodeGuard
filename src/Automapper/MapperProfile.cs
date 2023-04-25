@@ -40,7 +40,7 @@ namespace FundsManager.Automapper
             CreateMap<Node, Node>()
                 .ForMember(x => x.ChannelOperationRequestsAsDestination, opt => opt.Ignore())
                 .ForMember(x => x.ChannelOperationRequestsAsSource, opt => opt.Ignore())
-                .ForMember(x => x.ReturningFundsMultisigWallet, opt => opt.Ignore())
+                .ForMember(x => x.ReturningFundsWallet, opt => opt.Ignore())
                 .ForMember(x => x.Users, opt => opt.Ignore());
 
             CreateMap<Channel, Channel>()
@@ -78,7 +78,15 @@ namespace FundsManager.Automapper
             CreateMap<LiquidityRule, LiquidityRule>()
                 .ForMember(x => x.Wallet, opt => opt.Ignore())
                 .ForMember(x => x.Channel, opt => opt.Ignore());
-            
+
+            CreateMap<Node, Nodeguard.Node>()
+                .ForMember(x => x.Name, opt => opt.MapFrom(x => x.Name ?? string.Empty))
+                //Description
+                .ForMember(x => x.Description, opt => opt.MapFrom(x => x.Description ?? string.Empty))
+                //Pubkey
+                .ForMember(x => x.PubKey, opt => opt.MapFrom(x => x.PubKey ?? string.Empty));
+
+
         }
     }
 }

@@ -31,7 +31,7 @@ public interface INodeRepository
 
     Task<List<Node>> GetAllManagedByUser(string userId);
 
-    Task<List<Node>> GetAllManagedByFundsManager();
+    Task<List<Node>> GetAllManagedByNodeGuard();
 
     Task<(bool, string?)> AddAsync(Node type);
 
