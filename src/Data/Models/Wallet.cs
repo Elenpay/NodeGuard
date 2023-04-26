@@ -60,6 +60,11 @@ namespace FundsManager.Data.Models
         public bool IsHotWallet { get; set; }
         
         /// <summary>
+        /// Used to mark this wallet as imported from a BIP39 mnemonic though the seedphrase is not stored in the database
+        /// </summary>
+        public bool IsBIP39Imported { get; set; }
+        
+        /// <summary>
         /// This field is used to store the derivation path which allow to uniquely identify the wallet amongs others (Hot or Multisig)
         /// </summary>
         public string? InternalWalletSubDerivationPath { get; set; }
@@ -86,9 +91,9 @@ namespace FundsManager.Data.Models
         
 
         /// <summary>
-        /// The internal wallet is used to co-sign with other keys of the wallet entity
+        /// The internal wallet is used to co-sign with other keys of the wallet entity. It is optional for imported BIP39 wallets
         /// </summary>
-        public int InternalWalletId { get; set; }
+        public int? InternalWalletId { get; set; }
 
         public InternalWallet InternalWallet { get; set; }
         
@@ -118,7 +123,7 @@ namespace FundsManager.Data.Models
 
                 var factory = new DerivationStrategyFactory(currentNetwork);
 
-                if (IsHotWallet)
+                if (IsHotWallet || IsBIP39Imported)
                 {
                     return factory.CreateDirectDerivationStrategy(bitcoinExtPubKeys.FirstOrDefault(),
                         new DerivationStrategyOptions

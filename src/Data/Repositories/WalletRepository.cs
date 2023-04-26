@@ -17,7 +17,9 @@
  *
  */
 
+using FundsManager.Data.Models;
 using FundsManager.Data.Repositories.Interfaces;
+using FundsManager.Helpers;
 using FundsManager.Services;
 using Microsoft.EntityFrameworkCore;
 using NBitcoin;
@@ -41,7 +43,7 @@ namespace FundsManager.Data.Repositories
             IDbContextFactory<ApplicationDbContext> dbContextFactory,
             IInternalWalletRepository internalWalletRepository, IKeyRepository keyRepository,
             INBXplorerService nbXplorerService
-                )
+        )
         {
             _repository = repository;
             _logger = logger;
@@ -74,7 +76,8 @@ namespace FundsManager.Data.Repositories
             return await applicationDbContext.Wallets
                 .Where(w =>
                     !w.IsArchived && !w.IsCompromised && w.IsFinalised &&
-                    (type == WALLET_TYPE.Both || type == WALLET_TYPE.Cold && !w.IsHotWallet || type == WALLET_TYPE.Hot && w.IsHotWallet))
+                    (type == WALLET_TYPE.Both || type == WALLET_TYPE.Cold && !w.IsHotWallet ||
+                     type == WALLET_TYPE.Hot && w.IsHotWallet))
                 .Include(x => x.InternalWallet)
                 .Include(x => x.Keys)
                 .ToListAsync();
@@ -122,7 +125,8 @@ namespace FundsManager.Data.Repositories
                 }
 
                 type.InternalWalletSubDerivationPath = await GetNextSubderivationPath();
-                var currentInternalWalletKey = await _keyRepository.GetCurrentInternalWalletKey(type.InternalWalletSubDerivationPath);
+                var currentInternalWalletKey =
+                    await _keyRepository.GetCurrentInternalWalletKey(type.InternalWalletSubDerivationPath);
 
                 type.Keys = new List<Key>();
 
@@ -252,6 +256,119 @@ namespace FundsManager.Data.Repositories
             }
 
             return result;
+        }
+
+        public async Task<(bool, string?)> ImportBIP39Wallet(string seedphrase, string derivationPath,
+            string? userId = null)
+        {
+            if (string.IsNullOrWhiteSpace(seedphrase))
+                return (false, "Seedphrase is empty");
+
+            if (string.IsNullOrWhiteSpace(derivationPath))
+                return (false, "Derivation path is empty");
+
+            try
+            {
+                //Mnenomic create
+                var mnemonic = new Mnemonic(seedphrase);
+
+                if (mnemonic == null)
+                {
+                    _logger.LogError("Seedphrase is invalid");
+                    return (false, "Seedphrase is invalid");
+                }
+
+                var currentNetwork = CurrentNetworkHelper.GetCurrentNetwork();
+                //Get xpub and fingerprint
+                var extKey = mnemonic.DeriveExtKey();
+                var xpub = extKey.Neuter().GetWif(currentNetwork).ToString();
+                var masterFingerprint = extKey.GetWif(currentNetwork).GetPublicKey()
+                    .GetHDFingerPrint().ToString();
+
+                var wallet = new Wallet
+                {
+                    CreationDatetime = DateTimeOffset.Now,
+                    UpdateDatetime = DateTimeOffset.Now,
+                    Name = $"Imported BIP39 wallet(Fingerprint: {masterFingerprint})",
+                    MofN = 1,
+                    Description = "Imported BIP39 wallet",
+                    IsArchived = false,
+                    IsCompromised = false,
+                    IsFinalised = true,
+                    WalletAddressType = WalletAddressType.NativeSegwit,
+                    IsHotWallet = false,
+                    IsBIP39Imported = true,
+                };
+
+                //Persist wallet
+                var addResult = await AddAsync(wallet);
+                if (addResult.Item1 == false)
+                {
+                    _logger.LogError("Error while importing wallet from seedphrase: {Error}", addResult.Item2);
+                    return (false, addResult.Item2);
+                }
+
+                //Validate derivation path
+                var keyPath = KeyPath.Parse(derivationPath);
+
+
+                //Create key 
+                var key = new Key
+                {
+                    CreationDatetime = DateTimeOffset.Now,
+                    UpdateDatetime = DateTimeOffset.Now,
+                    Name = $"{masterFingerprint} key",
+                    XPUB = xpub,
+                    Description = "Imported BIP39 wallet key",
+                    IsArchived = false,
+                    IsCompromised = false,
+                    MasterFingerprint = masterFingerprint,
+                    Path = keyPath.ToString(),
+                    UserId = userId,
+                    IsBIP39ImportedKey = true,
+                };
+
+                //Persist key
+                var addKeyResult = await _keyRepository.AddAsync(key);
+                if (addKeyResult.Item1 == false)
+                {
+                    _logger.LogError("Error while importing wallet from seedphrase, invalid key: {Error}",
+                        addKeyResult.Item2);
+                    return (false, addKeyResult.Item2);
+                }
+
+                //Add key to wallet
+                wallet.Keys.Add(key);
+
+                //Update wallet
+                var updateResult = Update(wallet);
+                if (updateResult.Item1 == false)
+                {
+                    _logger.LogError("Error while importing wallet from seedphrase, invalid wallet: {Error}",
+                        updateResult.Item2);
+                    return (false, updateResult.Item2);
+                }
+
+                var derivationStrategyBase = wallet.GetDerivationStrategy();
+                if (derivationStrategyBase == null)
+                {
+                    return (false, "Error while getting the derivation scheme");
+                }
+
+                //Track wallet
+                await _nbXplorerService.TrackAsync(derivationStrategyBase, default);
+
+                //Since already existing wallet's utxos are not tracked by NBXplorer, we need to rescan the UTXO set for this wallet
+                //This is a long running operation in nbxplorer and should be queried in the background
+                await _nbXplorerService.ScanUTXOSetAsync(derivationStrategyBase, 1000, 30000, null, default);
+
+                return (true, null);
+            }
+            catch (Exception e)
+            {
+                _logger.LogError(e, "Error while importing wallet from seedphrase");
+                throw;
+            }
         }
     }
 }
