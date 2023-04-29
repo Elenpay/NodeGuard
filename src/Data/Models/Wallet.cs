@@ -65,6 +65,11 @@ namespace FundsManager.Data.Models
         public bool IsBIP39Imported { get; set; }
         
         /// <summary>
+        /// Only when the remote signer is disabled, the seedphrase is stored in the database
+        /// </summary>
+        public string? BIP39Seedphrase { get; set; }
+        
+        /// <summary>
         /// This field is used to store the derivation path which allow to uniquely identify the wallet amongs others (Hot or Multisig)
         /// </summary>
         public string? InternalWalletSubDerivationPath { get; set; }

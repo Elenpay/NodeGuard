@@ -54,11 +54,15 @@ public interface IWalletRepository
     /// <param name="selectedWalletToFinalise"></param>
     /// <returns></returns>
     Task<(bool, string?)> FinaliseWallet(Wallet selectedWalletToFinalise);
-    
+
     /// <summary>
     /// Imports a BIP39 wallet (single-sig and not hot-wallet) by creating a wallet and its key entities
     /// </summary>
+    /// <param name="description"></param>
     /// <param name="seedphrase"></param>
+    /// <param name="name"></param>
+    /// <param name="derivationPath"></param>
+    /// <param name="userId"></param>
     /// <returns></returns>
-    Task<(bool, string?)> ImportBIP39Wallet(string seedphrase, string derivationPath, string? userId = null);
+    Task<(bool, string?)> ImportBIP39Wallet(string name, string description, string seedphrase, string derivationPath, string? userId = null);
 }

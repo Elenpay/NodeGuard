@@ -3,6 +3,7 @@
 @using Humanizer
 @using NBitcoin
 @using NBXplorer.DerivationStrategy
+@using Field = Blazorise.Field
 @using Key = FundsManager.Data.Models.Key
 @inject IWalletRepository WalletRepository
 @inject IToastService ToastService
@@ -12,7 +13,6 @@
 @attribute [Authorize(Roles = "NodeManager, FinanceManager, Superadmin")]
 
 <h3 class="custom-primary">Treasury Wallets</h3>
-
 <Row>
     <Column ColumnSize="ColumnSize.Is12">
         <DataGrid TItem="Wallet"
@@ -39,7 +39,21 @@
             <DataGridColumns>
                 <DataGridCommandColumn TItem="Wallet">
                     <NewCommandTemplate>
-                        <Button Color="Color.Success" TextColor="TextColor.Light" Clicked="@context.Clicked" Block>New</Button>
+                        @if (_isFinanceManager)
+                        {
+                            <Dropdown>
+                                <DropdownToggle Color="Color.Primary">
+                                </DropdownToggle>
+                                <DropdownMenu>
+
+                                    <DropdownItem Clicked="context.Clicked">New</DropdownItem>
+                                    <DropdownItem Clicked="@(() => ShowImportWalletModal())">Import Wallet</DropdownItem>
+
+                                </DropdownMenu>
+                                <Dropdown></Dropdown>
+                            </Dropdown>
+                        }
+
                     </NewCommandTemplate>
                     <EditCommandTemplate>
                         <Button Color="Color.Primary" Clicked="@context.Clicked" @onclick:stopPropagation="true" Block>Edit</Button>
@@ -49,7 +63,6 @@
                         {
                             <Button Color="Color.Danger" Clicked="@context.Clicked" @onclick:stopPropagation="true" Block>Delete</Button>
                         }
-                        @*TODO Archive features*@
                     </DeleteCommandTemplate>
                 </DataGridCommandColumn>
                 <DataGridColumn TItem="Wallet" Filterable="false" ShowCaption="false" Sortable="false">
@@ -64,7 +77,7 @@
                         }
                     </DisplayTemplate>
                 </DataGridColumn>
-                <DataGridColumn TItem="Wallet" Filterable="false" ShowCaption="false" Sortable="false"  Width="140px">
+                <DataGridColumn TItem="Wallet" Filterable="false" ShowCaption="false" Sortable="false" Width="140px">
                     <DisplayTemplate>
                         @if (context.IsFinalised)
                         {
@@ -79,7 +92,7 @@
                 <DataGridColumn TItem="Wallet" Editable="true" Field="@nameof(Wallet.Name)" Caption="@nameof(Wallet.Name)" Sortable="false">
                     <EditTemplate>
                         <Validation Validator="@ValidationHelper.ValidateName">
-                            <TextEdit Text="@((string)context.CellValue)" TextChanged="(text) => { context.CellValue = text; }">
+                            <TextEdit Text="@((string) context.CellValue)" TextChanged="(text) => { context.CellValue = text; }">
                                 <Feedback>
                                     <ValidationError/>
                                 </Feedback>
@@ -90,16 +103,16 @@
                 <DataGridColumn TItem="Wallet" Editable="true" Field="@nameof(Wallet.Description)" Caption="@nameof(Wallet.Description)" Sortable="false"/>
                 <DataGridColumn TItem="Wallet" Editable="true" Field="@nameof(Wallet.IsHotWallet)" Caption="Hot Wallet" Sortable="true">
                     <EditTemplate>
-                        <Check TValue="bool" Disabled="@(context.Item.IsFinalised)" Checked="@((bool)context.CellValue)" CheckedChanged="(value) => OnCheckedChanged(context, value)" @ref="HotWalletCheckComponent"/>
+                        <Check TValue="bool" Disabled="@(context.Item.IsFinalised)" Checked="@((bool) context.CellValue)" CheckedChanged="(value) => OnCheckedChanged(context, value)" @ref="_hotWalletCheckComponent"/>
                     </EditTemplate>
                 </DataGridColumn>
                 <DataGridColumn TItem="Wallet" Editable="false" Field="@nameof(Wallet.IsFinalised)" Caption="Finalised" Sortable="false"/>
                 <DataGridColumn TItem="Wallet" Editable="true" CellsEditableOnNewCommand="false" Field="@nameof(Wallet.IsArchived)" Caption="Archived" Sortable="false"/>
-                <DataGridColumn TItem="Wallet" Editable="true" CellsEditableOnNewCommand="false" Field="@nameof(Wallet.IsCompromised)" Caption="Compromised" Sortable="false"/> 
+                <DataGridColumn TItem="Wallet" Editable="true" CellsEditableOnNewCommand="false" Field="@nameof(Wallet.IsCompromised)" Caption="Compromised" Sortable="false"/>
                 <DataGridNumericColumn TItem="Wallet" Decimals="0" Editable="true" Field="@nameof(Wallet.MofN)" Caption="Threshold" Sortable="false">
                     <EditTemplate>
                         <Validation Validator="@ValidateThreshold">
-                            <NumericEdit TValue="int" Value="@(IsHotWallet(HotWalletCheckComponent) ? 1 : (int)context.CellValue)" Disabled="@(context.Item.IsFinalised || IsHotWallet(HotWalletCheckComponent))" ValueChanged="(value) => { context.CellValue = value; }">
+                            <NumericEdit TValue="int" Value="@(IsHotWallet(_hotWalletCheckComponent) ? 1 : (int) context.CellValue)" Disabled="@(context.Item.IsFinalised || IsHotWallet(_hotWalletCheckComponent))" ValueChanged="(value) => { context.CellValue = value; }">
                                 <Feedback>
                                     <ValidationError/>
                                 </Feedback>
@@ -132,7 +145,7 @@
     <ModalContent Centered Size="ModalSize.ExtraLarge">
         <ModalHeader>
             <ModalTitle>Please select the key will be added this wallet</ModalTitle>
-            <CloseButton />
+            <CloseButton/>
         </ModalHeader>
         <ModalBody>
             <Field>
@@ -140,10 +153,10 @@
                 <SelectList TItem="ApplicationUser"
                             TValue="string"
                             Data="@_financeManagers"
-                            TextField="@((item)=>item.UserName)"
-                            ValueField="@((item)=>item.Id)"
+                            TextField="@((item) => item.UserName)"
+                            ValueField="@((item) => item.Id)"
                             SelectedValueChanged="@OnSelectedFinanceManager"
-                            DefaultItemText="Choose the approver" />
+                            DefaultItemText="Choose the approver"/>
 
             </Field>
             @if (_selectedFinanceManager != null && _selectedFinanceManagerAvailableKeys.Any())
@@ -153,10 +166,10 @@
                     <SelectList TItem="Key"
                                 TValue="int"
                                 Data="@_selectedFinanceManagerAvailableKeys"
-                                TextField="@((item)=> $"{item.Name}-{StringHelper.TruncateHeadAndTail(item.XPUB,10)}")"
-                                ValueField="@((item)=>item.Id)"
+                                TextField="@((item) => $"{item.Name}-{StringHelper.TruncateHeadAndTail(item.XPUB, 10)}")"
+                                ValueField="@((item) => item.Id)"
                                 SelectedValueChanged="@OnSelectedWalletKey"
-                                DefaultItemText="Choose the key of the manager" />
+                                DefaultItemText="Choose the key of the manager"/>
                 </Field>
             }
             else
@@ -164,16 +177,15 @@
                 <Alert Color="Color.Warning" Visible>
                     <AlertMessage>No keys found!</AlertMessage>
                     <AlertDescription>No keys are available for this Finance Manager, either are archived/compromised or already used.</AlertDescription>
-                    
+
                 </Alert>
-                
             }
 
             <Field>
                 <Alert Color="Color.Info" Visible>
                     <AlertMessage>Below you will find the key that form this wallet</AlertMessage>
                     <AlertDescription>Take into account that the NodeGuard key will be always be added to your wallet by the system</AlertDescription>
-                    
+
                 </Alert>
                 <ReadOnlyKeyDatagrid Keys="@_selectedWalletKeysPlusInternalWalletKey"></ReadOnlyKeyDatagrid>
             </Field>
@@ -189,7 +201,7 @@
     <ModalContent Centered Size="ModalSize.Large">
         <ModalHeader>
             <ModalTitle>@_textModalTitle</ModalTitle>
-            <CloseButton />
+            <CloseButton/>
         </ModalHeader>
         <ModalBody>
             <p>@_textModalContent</p>
@@ -203,7 +215,7 @@
     <ModalContent Centered Size="ModalSize.Default">
         <ModalHeader>
             <ModalTitle>Do you want to finalise this wallet?</ModalTitle>
-            <CloseButton />
+            <CloseButton/>
         </ModalHeader>
         <ModalBody>
             <p>If you confirm to finalise this wallet, it will become a ready-to-use wallet for the system but at the same time you won't be allowed to update it in terms of keys, thresholds and other configuration parameters</p>
@@ -215,8 +227,103 @@
         </ModalFooter>
     </ModalContent>
 </Modal>
+<Modal @ref="_importWalletModal">
+    <ModalContent Centered Size="ModalSize.Default">
+        <ModalHeader>
+            <ModalTitle>Import external wallet</ModalTitle>
+            <CloseButton/>
+        </ModalHeader>
+        <ModalBody>
+            <Alert Color="Color.Warning" Visible>
+
+                <AlertDescription>
+                    @if (@Constants.ENABLE_REMOTE_SIGNER)
+                    {
+                        <p>Remote signer is enabled, therefore the seedphrase <b>won't be stored in NodeGuard database.</b>. Take into account that a seedphrase will leak all the subwallets you have on it.</p>
+                    }
+                    else
+                    {
+                        <p>Remote signer is not enabled, therefore the seedphrase will be stored as plain-text in the NodeGuard database, please reconsider your security threat model based on this. Take into account that a seedphrase will leak all the subwallets you have on it.</p>
+                    }
+                </AlertDescription>
+            </Alert>
+            <Fields>
+                <Validations @ref="_importWalletValidations">
+                    <Column ColumnSize="ColumnSize.Is12">
+                        <Validation Validator="ValidationRule.IsNotEmpty">
+                            <Field>
+                                <FieldLabel>Name</FieldLabel>
+                                <FieldBody>
+                                    <TextEdit @bind-Text="@_name">
+                                        <Feedback>
+                                            <ValidationNone>Enter a valid name</ValidationNone>
+                                            <ValidationError>Invalid name</ValidationError>
+                                        </Feedback>
+                                    </TextEdit>
+                                </FieldBody>
+                            </Field>
+                        </Validation>
+                    </Column>
+                    <Column ColumnSize="ColumnSize.Is12">
+                        <Field>
+                            <FieldLabel>Description</FieldLabel>
+                            <FieldBody>
+                                <MemoEdit @bind-Text="@_description" Rows="4">
+                                    <Feedback>
+                                        <ValidationNone>Enter a valid description</ValidationNone>
+                                        <ValidationError>Invalid description</ValidationError>
+                                    </Feedback>
+                                </MemoEdit>
+                            </FieldBody>
+                        </Field>
+                    </Column>
+                    <Column ColumnSize="ColumnSize.Is12">
+                        <Validation AsyncValidator="@ValidateSeedphrase">
+                            <Field>
+                                <FieldLabel>Seedphrase</FieldLabel>
+                                <FieldHelp>Paste your seedphrase (English wordlist only)</FieldHelp>
+                                <FieldBody>
+                                    <MemoEdit @bind-Text="@_seedphrase" Rows="4">
+                                        <Feedback>
+                                            <ValidationNone>Enter a valid seedphrase</ValidationNone>
+                                            <ValidationError>Invalid seedphrase</ValidationError>
+                                        </Feedback>
+                                    </MemoEdit>
+                                </FieldBody>
+                            </Field>
+                        </Validation>
+                    </Column>
+                    <Column ColumnSize="ColumnSize.Is12">
+                        <Validation AsyncValidator="ValidateDerivationPath">
+                            <Field>
+                                <FieldLabel>Derivation path</FieldLabel>
+                                <FieldBody>
+                                    <TextEdit @bind-Text="@_derivationPath">
+                                        <Feedback>
+                                            <ValidationNone>Enter a valid derivation path</ValidationNone>
+                                            <ValidationError>Invalid derivation path</ValidationError>
+                                        </Feedback>
+                                    </TextEdit>
+                                </FieldBody>
+                            </Field>
+                        </Validation>
+                    </Column>
+
+
+                </Validations>
+            </Fields>
+
+        </ModalBody>
+        <ModalFooter>
+            <Button Color="Color.Secondary" Clicked="@CloseAndCleanImportWalletModal">Close</Button>
+            <Button Color="Color.Primary" Clicked="@ImportWallet">Import</Button>
+
+        </ModalFooter>
+    </ModalContent>
+</Modal>
 
 @code {
+
     [CascadingParameter]
     private ApplicationUser? LoggedUser { get; set; }
 
@@ -248,8 +355,18 @@
 
     private decimal _btcPrice;
 
-    private Check<bool> HotWalletCheckComponent;
-    
+    private Check<bool> _hotWalletCheckComponent;
+
+    private Modal? _importWalletModal;
+    private string? _importWalletSeedphrase;
+    private Validations _importWalletValidations;
+
+
+    private string _seedphrase = string.Empty;
+    private string _name = string.Empty;
+    private string _description = string.Empty;
+    private string _derivationPath = string.Empty;
+
     protected override async Task OnInitializedAsync()
     {
         _btcPrice = PriceConversionHelper.GetBtcToUsdPrice();
@@ -275,14 +392,14 @@
         }
         else
         {
-           _wallets = await WalletRepository.GetAvailableWallets(); 
+            _wallets = await WalletRepository.GetAvailableWallets();
         }
         var financeManagers = (await ApplicationUserRepository.GetUsersInRole(ApplicationUserRole.FinanceManager));
         _financeManagers = financeManagers.Where(x => x.Keys.Any()).ToList();
 
         if (_financeManagers.Any())
             _selectedFinanceManager = financeManagers.FirstOrDefault();
-        if (_selectedFinanceManager?.Keys != null) 
+        if (_selectedFinanceManager?.Keys != null)
             _selectedFinanceManagerAvailableKeys = await FilterKeys(_selectedFinanceManager.Keys);
     }
 
@@ -290,9 +407,9 @@
     private async Task OnRowInserted(SavedRowItem<Wallet, Dictionary<string, object>> arg)
     {
         if (arg.Item == null) return;
-        
+
         if (arg.Item.IsHotWallet) arg.Item.MofN = 1;
-        
+
         var addResult = await WalletRepository.AddAsync(arg.Item);
 
 
@@ -310,21 +427,17 @@
 
     private void NewItemDefaultSetter(Wallet obj)
     {
-
         obj.WalletAddressType = WalletAddressType.NativeSegwit;
-
     }
 
     private async Task OnRowRemoving(CancellableRowChange<Wallet> arg)
     {
         if (arg.Item != null)
         {
-
             var (result, message) = WalletRepository.Remove(arg.Item);
 
             if (!result)
             {
-
                 arg.Cancel = true;
                 ToastService.ShowError("Something went wrong");
             }
@@ -342,7 +455,7 @@
         if (arg.Item == null) return;
 
         if (arg.Item.IsHotWallet) arg.Item.MofN = 1;
-        
+
         var updateResult = WalletRepository.Update(arg.Item);
 
         if (updateResult.Item1)
@@ -368,7 +481,7 @@
         _selectedWalletKeysPlusInternalWalletKey = new List<Key>();
         _selectedFinanceManager = _financeManagers.FirstOrDefault();
         _selectedFinanceManagerAvailableKeys = new();
-  
+
         _selectedWallet = null;
     }
 
@@ -378,11 +491,11 @@
         _selectedWallet = await WalletRepository.GetById(wallet.Id);
 
 
-        if (_selectedWallet != null )
+        if (_selectedWallet != null)
         {
             await GetData();
 
-            //Modal data
+    //Modal data
             await GetModalDefaultData();
 
 
@@ -394,7 +507,7 @@
     {
         if (_selectedWallet == null) return;
 
-        //Add the key
+    //Add the key
 
         if (_selectedWalletKey != null)
         {
@@ -403,7 +516,7 @@
                 ToastService.ShowError("No co-signer key found");
                 return;
             }
-            
+
             _selectedWallet.Keys.Add(_selectedWalletKey);
 
             var updateResult = WalletRepository.Update(_selectedWallet);
@@ -415,10 +528,9 @@
             else
             {
                 ToastService.ShowError("Error while adding key...");
-                
             }
         }
-            
+
 
         CleanModal();
 
@@ -436,23 +548,19 @@
             _selectedFinanceManager = applicationUser;
             if (_selectedFinanceManager != null && _selectedFinanceManager.Keys.Any() && _selectedWallet != null)
             {
-                //Filter Keys
+    //Filter Keys
                 _selectedFinanceManagerAvailableKeys = await FilterKeys(_selectedFinanceManager.Keys);
-
-
             }
-
         }
     }
 
-    private async Task<List<Key>>  FilterKeys(ICollection<Key> keys)
+    private async Task<List<Key>> FilterKeys(ICollection<Key> keys)
     {
         var result = new List<Key>();
         if (_selectedWallet != null && _selectedWallet.Keys != null)
         {
-           result = keys.Where(x => !x.IsArchived && !x.IsCompromised && x.InternalWalletId == null).Except(_selectedWallet.Keys)
+            result = keys.Where(x => !x.IsArchived && !x.IsCompromised && x.InternalWalletId == null).Except(_selectedWallet.Keys)
                 .ToList();
-
         }
         else
         {
@@ -464,8 +572,7 @@
     }
 
     private async Task OnSelectedWalletKey(int keyId)
-    {            
-
+    {
         _selectedWalletKeysPlusInternalWalletKey = new List<Key>();
 
         if (keyId > 0)
@@ -477,10 +584,7 @@
                 _selectedWalletKey = selectedKey;
 
                 _selectedWalletKeysPlusInternalWalletKey.Add(selectedKey);
-
             }
-         
-
         }
 
         await GetModalDefaultData();
@@ -490,16 +594,14 @@
     {
         if (_selectedWallet != null)
             _selectedWalletKeysPlusInternalWalletKey.AddRange(_selectedWallet.Keys.ToList());
-        
+
         var currentInternalWalletKey = await KeyRepository.GetCurrentInternalWalletKey(_selectedWallet.InternalWalletSubDerivationPath);
 
-        //TODO What happens when the internal wallet changes? This is not correct, FUTURE FIX required
+    //TODO What happens when the internal wallet changes? This is not correct, FUTURE FIX required
         if (!_selectedWalletKeysPlusInternalWalletKey.Any(x => x.Id == currentInternalWalletKey.Id))
         {
             _selectedWalletKeysPlusInternalWalletKey.Add(currentInternalWalletKey);
-
         }
-
     }
 
     private async Task CleanTextModal()
@@ -511,7 +613,7 @@
     private async Task CloseTextModal()
     {
         await CleanTextModal();
-        
+
         await _textModalRef.Close(CloseReason.UserClosing);
     }
 
@@ -525,8 +627,8 @@
             if (balance != null)
             {
                 _textModalTitle = $"Wallet: {wallet.Name} On-chain Balance";
-                _textModalContent = $"Confirmed: {((Money) balance.Confirmed).ToUnit(MoneyUnit.BTC)} BTC ({Math.Round(PriceConversionHelper.BtcToUsdConversion(((Money)balance.Confirmed).ToUnit(MoneyUnit.BTC), _btcPrice), 2)} USD) - " +
-                                    $"Unconfirmed: {((Money) balance.Unconfirmed).ToUnit(MoneyUnit.BTC)} BTC ({Math.Round(PriceConversionHelper.BtcToUsdConversion(((Money)balance.Unconfirmed).ToUnit(MoneyUnit.BTC), _btcPrice), 2)} USD)";
+                _textModalContent = $"Confirmed: {((Money) balance.Confirmed).ToUnit(MoneyUnit.BTC)} BTC ({Math.Round(PriceConversionHelper.BtcToUsdConversion(((Money) balance.Confirmed).ToUnit(MoneyUnit.BTC), _btcPrice), 2)} USD) - " +
+                                    $"Unconfirmed: {((Money) balance.Unconfirmed).ToUnit(MoneyUnit.BTC)} BTC ({Math.Round(PriceConversionHelper.BtcToUsdConversion(((Money) balance.Unconfirmed).ToUnit(MoneyUnit.BTC), _btcPrice), 2)} USD)";
 
                 await _textModalRef.Show();
             }
@@ -535,13 +637,10 @@
                 ToastService.ShowError("Error while getting the wallet on-chain balance");
             }
         }
-       
-
     }
 
     private async Task LoadAndOpenModalTextModalUnusedAddress(Wallet wallet)
     {
-        
         await CleanTextModal();
         if (wallet != null)
         {
@@ -562,11 +661,9 @@
 
     private async Task LoadAndOpenFinaliseTextModal(Wallet wallet)
     {
-
         _selectedWalletToFinalise = wallet;
 
         await _finaliseModalRef.Show();
-
     }
 
     private async Task FinaliseWallet()
@@ -574,7 +671,7 @@
         if (_selectedWalletToFinalise == null || _selectedWalletToFinalise.IsFinalised)
             return;
 
-        
+
         var result = await WalletRepository.FinaliseWallet(_selectedWalletToFinalise);
 
         if (result.Item1)
@@ -584,7 +681,6 @@
         else
         {
             ToastService.ShowError("Error while marking wallet as finalised");
-
         }
 
         _selectedWalletToFinalise = null;
@@ -596,10 +692,8 @@
 
     private async Task CloseAndCleanFinaliseModal()
     {
-        
         _selectedWalletToFinalise = null;
         await _finaliseModalRef.Close(CloseReason.UserClosing);
-
     }
 
     private void ValidateThreshold(ValidatorEventArgs obj)
@@ -612,7 +706,6 @@
                 obj.ErrorText = "The threshold should be minimum 2 and maximum 5";
                 obj.Status = ValidationStatus.Error;
             }
-
         }
     }
 
@@ -629,7 +722,100 @@
         }
         return component.Checked;
     }
+
+    private async Task CloseAndCleanImportWalletModal()
+    {
+        await _importWalletModal?.Close(CloseReason.UserClosing);
+
+        _seedphrase = string.Empty;
+        _name = string.Empty;
+        _description = string.Empty;
+        _derivationPath = string.Empty;
+    }
+
+    private async Task ImportWallet()
+    {
+        if (!await _importWalletValidations.ValidateAll())
+        {
+            ToastService.ShowError("Please fill in all the required fields");
+            return;
+        }
+
+    //Import bip39 wallet
+        var result = await WalletRepository.ImportBIP39Wallet(_name, _description, _seedphrase, _derivationPath);
+
+    //Handle error
+        if (!result.Item1)
+        {
+            ToastService.ShowError("Something went wrong while importing the wallet");
+            return;
+        }
+
+    //Load data
+        await GetData();
+
+    //Success
+        ToastService.ShowSuccess("Wallet imported successfully");
+
+    //Close modal
+        await CloseAndCleanImportWalletModal();
+    }
+
+    private async Task ShowImportWalletModal()
+    {
+        _seedphrase = string.Empty;
+        _name = string.Empty;
+        _description = string.Empty;
+        _derivationPath = string.Empty;
+
+        await _importWalletModal?.Show();
+    }
+
+    private async Task ValidateDerivationPath(ValidatorEventArgs arg1, CancellationToken arg2)
+    {
+        arg1.Status = ValidationStatus.Success;
+
+    //if the string is empty, it is not valid
+
+        if (string.IsNullOrEmpty(arg1.Value.ToString()))
+        {
+            arg1.Status = ValidationStatus.Error;
+            arg1.ErrorText = "Invalid derivation path";
+            return;
+        }
+
+        if (!KeyPath.TryParse(arg1.Value.ToString() ?? string.Empty, out _))
+        {
+    //error
+            arg1.Status = ValidationStatus.Error;
+            arg1.ErrorText = "Invalid derivation path";
+        }
+    }
+
+
+    private async Task ValidateSeedphrase(ValidatorEventArgs arg1, CancellationToken arg2)
+    {
+    //Create a Mnemonic and validate it
+        try
+        {
+            var mnemonic = new Mnemonic(arg1.Value.ToString());
+            var isValid = mnemonic.IsValidChecksum;
+
+            if (!isValid)
+            {
+                arg1.Status = ValidationStatus.Error;
+                arg1.ErrorText = "Invalid seedphrase";
+            }
+            else
+            {
+                arg1.Status = ValidationStatus.Success;
+            }
+        }
+        catch (Exception e)
+        {
+            arg1.Status = ValidationStatus.Error;
+            arg1.ErrorText = "Invalid seedphrase";
+        }
+    }
+
 }
-
-
-

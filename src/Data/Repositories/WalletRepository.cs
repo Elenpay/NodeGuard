@@ -112,11 +112,21 @@ namespace FundsManager.Data.Repositories
             type.SetCreationDatetime();
             type.SetUpdateDatetime();
 
+            
+            if (type.IsBIP39Imported)
+            {
+                //Persist
+                
+                var addResult = await _repository.AddAsync(type, applicationDbContext);
+
+                return addResult;
+            }
+
             try
             {
-                await using var transaction = await applicationDbContext.Database.BeginTransactionAsync();
 
-                //We add the internal wallet of the moment and its key
+                //We add the internal wallet of the moment and its key if it is not a BIP39 wallet
+                
                 var currentInternalWallet = (await _internalWalletRepository.GetCurrentInternalWallet());
                 if (currentInternalWallet != null)
                 {
@@ -131,6 +141,9 @@ namespace FundsManager.Data.Repositories
                 type.Keys = new List<Key>();
 
                 var addResult = await _repository.AddAsync(type, applicationDbContext);
+                
+                if (!addResult.Item1)
+                    return addResult;
 
                 if (currentInternalWalletKey != null)
                     type.Keys.Add(currentInternalWalletKey);
@@ -139,7 +152,6 @@ namespace FundsManager.Data.Repositories
                 applicationDbContext.Update(type);
                 await applicationDbContext.SaveChangesAsync();
 
-                transaction.Commit();
             }
             catch (Exception e)
             {
@@ -208,7 +220,7 @@ namespace FundsManager.Data.Repositories
 
         public async Task<string> GetNextSubderivationPath()
         {
-            await using var applicationDbContext = _dbContextFactory.CreateDbContext();
+            await using var applicationDbContext = await _dbContextFactory.CreateDbContextAsync();
 
             var lastWallet = applicationDbContext.Wallets.OrderBy(w => w.Id).LastOrDefault(w => w.IsFinalised);
 
@@ -258,7 +270,7 @@ namespace FundsManager.Data.Repositories
             return result;
         }
 
-        public async Task<(bool, string?)> ImportBIP39Wallet(string seedphrase, string derivationPath,
+        public async Task<(bool, string?)> ImportBIP39Wallet(string name, string description, string seedphrase, string derivationPath,
             string? userId = null)
         {
             if (string.IsNullOrWhiteSpace(seedphrase))
@@ -269,6 +281,10 @@ namespace FundsManager.Data.Repositories
 
             try
             {
+                
+                //Validate derivation path
+                var keyPath = KeyPath.Parse(derivationPath);
+                
                 //Mnenomic create
                 var mnemonic = new Mnemonic(seedphrase);
 
@@ -280,7 +296,7 @@ namespace FundsManager.Data.Repositories
 
                 var currentNetwork = CurrentNetworkHelper.GetCurrentNetwork();
                 //Get xpub and fingerprint
-                var extKey = mnemonic.DeriveExtKey();
+                var extKey = mnemonic.DeriveExtKey().Derive(new KeyPath(derivationPath));
                 var xpub = extKey.Neuter().GetWif(currentNetwork).ToString();
                 var masterFingerprint = extKey.GetWif(currentNetwork).GetPublicKey()
                     .GetHDFingerPrint().ToString();
@@ -289,15 +305,17 @@ namespace FundsManager.Data.Repositories
                 {
                     CreationDatetime = DateTimeOffset.Now,
                     UpdateDatetime = DateTimeOffset.Now,
-                    Name = $"Imported BIP39 wallet(Fingerprint: {masterFingerprint})",
+                    Name = name,
                     MofN = 1,
-                    Description = "Imported BIP39 wallet",
+                    Description = description,
                     IsArchived = false,
                     IsCompromised = false,
                     IsFinalised = true,
                     WalletAddressType = WalletAddressType.NativeSegwit,
                     IsHotWallet = false,
                     IsBIP39Imported = true,
+                    BIP39Seedphrase = Constants.ENABLE_REMOTE_SIGNER ? null : seedphrase,
+                    Keys = new List<Key>()
                 };
 
                 //Persist wallet
@@ -307,10 +325,6 @@ namespace FundsManager.Data.Repositories
                     _logger.LogError("Error while importing wallet from seedphrase: {Error}", addResult.Item2);
                     return (false, addResult.Item2);
                 }
-
-                //Validate derivation path
-                var keyPath = KeyPath.Parse(derivationPath);
-
 
                 //Create key 
                 var key = new Key
@@ -362,13 +376,14 @@ namespace FundsManager.Data.Repositories
                 //This is a long running operation in nbxplorer and should be queried in the background
                 await _nbXplorerService.ScanUTXOSetAsync(derivationStrategyBase, 1000, 30000, null, default);
 
-                return (true, null);
+               
             }
             catch (Exception e)
             {
                 _logger.LogError(e, "Error while importing wallet from seedphrase");
-                throw;
+                return (false, "Error while importing wallet from seedphrase");
             }
+            return (true, null);
         }
     }
 }
