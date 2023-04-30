@@ -159,13 +159,15 @@ public class WalletRepositoryTests
             Name = "TestWallet2",
             IsFinalised = true,
             IsHotWallet = true,
-            InternalWalletSubDerivationPath = "1"
+            IsBIP39Imported = true,
+            IsCompromised = true,
+            InternalWalletSubDerivationPath = null
         });
         context.SaveChanges();
 
         var walletRepository = new WalletRepository(null, null, dbContextFactory.Object, null, null, null);
         var result = await walletRepository.GetNextSubderivationPath();
-        result.Should().Be("2");
+        result.Should().Be("1");
     }
     
     private WalletRepository SetupTestClassForImportBIP39Wallet()

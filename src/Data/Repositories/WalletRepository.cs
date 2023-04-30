@@ -222,7 +222,7 @@ namespace FundsManager.Data.Repositories
         {
             await using var applicationDbContext = await _dbContextFactory.CreateDbContextAsync();
 
-            var lastWallet = applicationDbContext.Wallets.OrderBy(w => w.Id).LastOrDefault(w => w.IsFinalised);
+            var lastWallet = applicationDbContext.Wallets.OrderBy(w => w.Id).LastOrDefault(w => w.IsFinalised && !w.IsBIP39Imported);
 
             if (lastWallet == null || string.IsNullOrEmpty(lastWallet.InternalWalletSubDerivationPath)) return "0";
 

@@ -50,13 +50,22 @@
                                     <DropdownItem Clicked="@(() => ShowImportWalletModal())">Import Wallet</DropdownItem>
 
                                 </DropdownMenu>
-                                <Dropdown></Dropdown>
                             </Dropdown>
                         }
 
                     </NewCommandTemplate>
                     <EditCommandTemplate>
-                        <Button Color="Color.Primary" Clicked="@context.Clicked" @onclick:stopPropagation="true" Block>Edit</Button>
+                        <Dropdown>
+                            <DropdownToggle Color="Color.Primary">
+                            </DropdownToggle>
+                            <DropdownMenu>
+
+                                <DropdownItem Clicked="context.Clicked">Edit</DropdownItem>
+                                <DropdownItem Disabled="!context.Item.IsFinalised" Clicked="@(() => LoadAndOpenTextModalBalance(context.Item))">Balance</DropdownItem>
+                                <DropdownItem Disabled="!context.Item.IsFinalised" Clicked="@(() => LoadAndOpenModalTextModalUnusedAddress(context.Item))">Get address</DropdownItem>
+
+                            </DropdownMenu>
+                        </Dropdown>
                     </EditCommandTemplate>
                     <DeleteCommandTemplate>
                         @if (!context.Item.IsFinalised)
@@ -67,23 +76,14 @@
                 </DataGridCommandColumn>
                 <DataGridColumn TItem="Wallet" Filterable="false" ShowCaption="false" Sortable="false">
                     <DisplayTemplate>
-                        @if (context.IsFinalised)
-                        {
-                            <Button Color="Color.Secondary" Clicked="@(() => LoadAndOpenTextModalBalance(context))" @onclick:stopPropagation="true">Balance</Button>
-                        }
-                        else if (!context.IsSingleSig)
-                        {
-                            <Button Color="Color.Info" Disabled="@(context.Keys != null && context.Keys.Count > context.MofN)" Clicked="@(() => LoadAndOpenModal(context))" @onclick:stopPropagation="true">Add key</Button>
+                        @if (!context.IsFinalised && !context.IsSingleSig){
+                        <Button Color="Color.Info" Disabled="@(context.Keys != null && context.Keys.Count > context.MofN)" Clicked="@(() => LoadAndOpenModal(context))" @onclick:stopPropagation="true">Add key</Button>
                         }
                     </DisplayTemplate>
                 </DataGridColumn>
                 <DataGridColumn TItem="Wallet" Filterable="false" ShowCaption="false" Sortable="false" Width="140px">
                     <DisplayTemplate>
-                        @if (context.IsFinalised)
-                        {
-                            <Button Color="Color.Secondary" Clicked="@(() => LoadAndOpenModalTextModalUnusedAddress(context))" Block @onclick:stopPropagation="true">Get address</Button>
-                        }
-                        else
+                        @if (!context.IsFinalised)
                         {
                             <Button Color="Color.Warning" Disabled="@(context.Keys != null && context.Keys.Count < context.MofN)" Clicked="@(() => LoadAndOpenFinaliseTextModal(context))" Block @onclick:stopPropagation="true">Finalise</Button>
                         }
