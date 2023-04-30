@@ -712,7 +712,7 @@ namespace FundsManager.Services
                     errorParsingSubderivationPath);
             }
 
-            //We need to SIGHASH_ALL all inputs/outputs as fundsmanager to protect the tx from tampering by adding a signature
+            //We need to SIGHASH_ALL all inputs/outputs as  to protect the tx from tampering by adding a signature
             var partialSigsCount = changeFixedPSBT.Inputs.Sum(x => x.PartialSigs.Count);
             foreach (var input in changeFixedPSBT.Inputs)
             {
@@ -809,7 +809,7 @@ namespace FundsManager.Services
             }
 
             //UTXOs -> they need to be tracked first on nbxplorer to get results!!
-            var derivationStrategy = channelOperationRequest.Wallet.GetDerivationStrategy();
+            var derivationStrategy = channelOperationRequest.Wallet?.GetDerivationStrategy();
 
             var nbXplorerServiceGetStatusAsync = await _nbXplorerService.GetStatusAsync(default);
             

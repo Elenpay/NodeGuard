@@ -201,8 +201,8 @@ public class WalletRepositoryTests
     public async Task ImportBIP39Wallet_WhenValidInput_ShouldReturnSuccess()
     {
         // Arrange
-        var seedphrase = "pistol maple assume music globe junk fury gasp crack bless eager donate";
-        var derivationPath = "m/44'/0'/0'";
+        var seedphrase = "social mango annual basic work brain economy one safe physical junk other toy valid load cook napkin maple runway island oil fan legend stem";
+        var derivationPath = "m/84'/1'/0'";
         var userId = "testUser";
         
         var testClass = SetupTestClassForImportBIP39Wallet();

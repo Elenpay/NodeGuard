@@ -148,7 +148,7 @@
                     @{
                         if (context.RequestType == OperationRequestType.Open)
                         {
-                            var signaturesCollected = context.NumberOfSignaturesCollected + (context.Wallet.IsHotWallet ? 0 : 1);
+                            var signaturesCollected = context.NumberOfSignaturesCollected + (context.Wallet.IsSingleSig ? 0 : 1);
                             var signaturesRequired = context.Wallet?.MofN ?? 0;
                             @($"{signaturesCollected} out of {signaturesRequired}")
                         }
@@ -234,7 +234,7 @@
                 @{
                     if (context.RequestType == OperationRequestType.Open)
                     {
-                        var signaturesCollected = context.NumberOfSignaturesCollected + (context.Wallet.IsHotWallet ? 0 : 1);
+                        var signaturesCollected = context.NumberOfSignaturesCollected + (context.Wallet.IsSingleSig ? 0 : 1);
                         var signaturesRequired = context.Wallet?.MofN ?? 0;
                         @($"{signaturesCollected} out of {signaturesRequired}")
                     }

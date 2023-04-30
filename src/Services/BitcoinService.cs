@@ -289,8 +289,8 @@ namespace FundsManager.Services
                                       throw new InvalidOperationException();
             
             PSBT? psbtToSign = null;
-            //If it is a hot wallet, we dont need to combine the PSBTs
-            if(walletWithdrawalRequest.Wallet.IsHotWallet)
+            //If it is a hot wallet or a BIP39 imported wallet, we dont need to combine the PSBTs
+            if(walletWithdrawalRequest.Wallet.IsHotWallet || walletWithdrawalRequest.Wallet.IsBIP39Imported)
             {
                 psbtToSign = PSBT.Parse(walletWithdrawalRequest.WalletWithdrawalRequestPSBTs
                         .Single(x => x.IsTemplatePSBT)

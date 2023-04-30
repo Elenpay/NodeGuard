@@ -71,7 +71,7 @@
                         {
                             <Button Color="Color.Secondary" Clicked="@(() => LoadAndOpenTextModalBalance(context))" @onclick:stopPropagation="true">Balance</Button>
                         }
-                        else if (!context.IsHotWallet)
+                        else if (!context.IsSingleSig)
                         {
                             <Button Color="Color.Info" Disabled="@(context.Keys != null && context.Keys.Count > context.MofN)" Clicked="@(() => LoadAndOpenModal(context))" @onclick:stopPropagation="true">Add key</Button>
                         }

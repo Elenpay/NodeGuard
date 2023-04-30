@@ -312,7 +312,7 @@ namespace FundsManager.Data.Repositories
                     IsCompromised = false,
                     IsFinalised = true,
                     WalletAddressType = WalletAddressType.NativeSegwit,
-                    IsHotWallet = false,
+                    IsHotWallet = true, //For now, imported wallet are hot wallet that do not require user interaction
                     IsBIP39Imported = true,
                     BIP39Seedphrase = Constants.ENABLE_REMOTE_SIGNER ? null : seedphrase,
                     Keys = new List<Key>()
