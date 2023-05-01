@@ -129,6 +129,7 @@ public class NodeChannelSuscribeJob : IJob
                     CreatedByNodeGuard = false,
                     CreationDatetime = DateTimeOffset.Now,
                     UpdateDatetime = DateTimeOffset.Now,
+                    IsPrivate = channelOpened.Private
                 };
 
                 var remoteNode = await _nodeRepository.GetByPubkey(channelOpened.RemotePubkey);

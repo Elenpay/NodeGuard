@@ -54,6 +54,11 @@ namespace FundsManager.Data.Models
         /// Bool to indicate if this channel's liquidity should be automatically managed
         /// </summary>
         public bool IsAutomatedLiquidityEnabled { get; set; }
+        
+        /// <summary>
+        /// Bool to indicate if this channel is private
+        /// </summary>
+        public bool IsPrivate { get; set; }
 
         #region Relationships
 
