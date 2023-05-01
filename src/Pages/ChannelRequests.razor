@@ -143,7 +143,12 @@
                     </Validation>
                 </EditTemplate>
             </DataGridColumn>
-            <DataGridColumn TItem="ChannelOperationRequest" Field="@nameof(ChannelOperationRequest.IsChannelPrivate)" Caption="Private" Displayable="true" Editable="true"></DataGridColumn>
+            <DataGridColumn TItem="ChannelOperationRequest" Field="@nameof(ChannelOperationRequest.IsChannelPrivate)" Caption="Private" Displayable="true" Editable="true">
+                <EditTemplate>
+                    <Check TValue="bool" @bind-Checked="_selectedPrivate"></Check>
+                    <FieldHelp>Check to make this channel private</FieldHelp>
+                </EditTemplate>
+            </DataGridColumn>
             <DataGridColumn TItem="ChannelOperationRequest" Field="@nameof(ChannelOperationRequest.WalletId)" Caption="Signatures Collected" Sortable="false" Displayable="true">
                 <DisplayTemplate>
                     @{
@@ -367,6 +372,7 @@
     private int _selectedWalletId;
     private string? _destNodeName;
     private long _amount = Constants.MINIMUM_CHANNEL_CAPACITY_SATS;
+    private bool _selectedPrivate = false;  
 
     //Validation
     private Validation? _walletValidation;
@@ -407,6 +413,7 @@
         await datagridRef.Edit(null);
         _destNodeName = "";
         _selectedDestNode = null;
+        _selectedPrivate = false;
         _amount = Constants.MINIMUM_CHANNEL_CAPACITY_SATS;
     }
 
@@ -517,7 +524,7 @@
                     UserId = LoggedUser.Id,
                     SourceNodeId = _selectedSourceNodeId,
                     DestNodeId = _selectedDestNode?.Id,
-                    IsChannelPrivate = false
+                    IsChannelPrivate = _selectedPrivate
                 };
 
                 var selectedWallet = await WalletRepository.GetById(_selectedWalletId);
