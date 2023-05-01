@@ -143,6 +143,7 @@
                     </Validation>
                 </EditTemplate>
             </DataGridColumn>
+            <DataGridColumn TItem="ChannelOperationRequest" Field="@nameof(ChannelOperationRequest.IsChannelPrivate)" Caption="Private" Displayable="true" Editable="true"></DataGridColumn>
             <DataGridColumn TItem="ChannelOperationRequest" Field="@nameof(ChannelOperationRequest.WalletId)" Caption="Signatures Collected" Sortable="false" Displayable="true">
                 <DisplayTemplate>
                     @{
@@ -229,6 +230,7 @@
                 }
             </DisplayTemplate>
         </DataGridColumn>
+        <DataGridColumn TItem="ChannelOperationRequest" Field="@nameof(ChannelOperationRequest.IsChannelPrivate)" Caption="Private" Displayable="true"></DataGridColumn>
         <DataGridColumn TItem="ChannelOperationRequest" Field="@nameof(ChannelOperationRequest.WalletId)" Caption="Signatures Collected" Sortable="false" Displayable="true">
             <DisplayTemplate>
                 @{
@@ -514,7 +516,8 @@
                     Status = ChannelOperationRequestStatus.Pending, //TODO Reject and cancel
                     UserId = LoggedUser.Id,
                     SourceNodeId = _selectedSourceNodeId,
-                    DestNodeId = _selectedDestNode?.Id
+                    DestNodeId = _selectedDestNode?.Id,
+                    IsChannelPrivate = false
                 };
 
                 var selectedWallet = await WalletRepository.GetById(_selectedWalletId);
