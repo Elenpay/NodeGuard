@@ -17,6 +17,9 @@
  *
  */
 
+using FundsManager.Data;
+using FundsManager.Data.Models;
+using FundsManager.Data.Repositories.Interfaces;
 using Grpc.Core;
 
 namespace FundsManager.TestHelpers;
@@ -41,6 +44,17 @@ public class MockHelpers
             () => Status.DefaultSuccess,
             () => new Metadata(),
             () => { });
+    }
+    
+    public static Mock<IRepository<T>> GetMockRepository<T>() where T : class
+    {
+        var mock = new Mock<IRepository<T>>();
+
+        mock.Setup(x => x.AddAsync(It.IsAny<T>(), It.IsAny<ApplicationDbContext>())).ReturnsAsync((true, null));
+        mock.Setup(x => x.Update(It.IsAny<T>(), It.IsAny<ApplicationDbContext>())).Returns((true, null));
+        mock.Setup(x => x.Remove(It.IsAny<T>(), It.IsAny<ApplicationDbContext>())).Returns((true, null));
+
+        return mock;
     }
 }
 

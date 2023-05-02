@@ -19,8 +19,13 @@
 
 using FluentAssertions;
 using FundsManager.Data.Models;
+using FundsManager.Data.Repositories.Interfaces;
+using FundsManager.Services;
 using Microsoft.EntityFrameworkCore;
-using Moq;
+using Microsoft.Extensions.Logging;
+using NBXplorer.DerivationStrategy;
+using FundsManager.TestHelpers;
+
 
 namespace FundsManager.Data.Repositories;
 
@@ -34,8 +39,9 @@ public class WalletRepositoryTests
         var options = new DbContextOptionsBuilder<ApplicationDbContext>()
             .UseInMemoryDatabase(databaseName: "WalletRepositoryTest" + _random.Next())
             .Options;
-        var context = new ApplicationDbContext(options);
+        var context = ()=> new ApplicationDbContext(options);
         dbContextFactory.Setup(x => x.CreateDbContext()).Returns(context);
+        dbContextFactory.Setup(x => x.CreateDbContextAsync(default)).ReturnsAsync(context);
         return dbContextFactory;
     }
 
@@ -153,12 +159,118 @@ public class WalletRepositoryTests
             Name = "TestWallet2",
             IsFinalised = true,
             IsHotWallet = true,
-            InternalWalletSubDerivationPath = "1"
+            IsBIP39Imported = true,
+            IsCompromised = true,
+            InternalWalletSubDerivationPath = null
         });
         context.SaveChanges();
 
         var walletRepository = new WalletRepository(null, null, dbContextFactory.Object, null, null, null);
         var result = await walletRepository.GetNextSubderivationPath();
-        result.Should().Be("2");
+        result.Should().Be("1");
     }
+    
+    private WalletRepository SetupTestClassForImportBIP39Wallet()
+    {
+        var keyRepositoryMock = new Mock<IKeyRepository>();
+        var loggerMock = new Mock<ILogger<WalletRepository>>();
+        var nbXplorerServiceMock = new Mock<INBXplorerService>();
+
+        MockHelpers.GetMockRepository<Wallet>();
+
+        var setupDbContextFactory = SetupDbContextFactory();
+
+        keyRepositoryMock.Setup(x => x.AddAsync(It.IsAny<Key>())).ReturnsAsync((true, (string?)null));
+        keyRepositoryMock.Setup(x => x.GetCurrentInternalWalletKey(It.IsAny<string>())).ReturnsAsync(new Key { XPUB = "tpubDFjD2KhvH1qGE99v1UgQebupcJEPHxjBRkxjmWxesPPz5jP38GBBHCqimqHtiidrVo5P8PxusC38VT1FLEQGxerdLnvpJHrv6nWeZ62M1kF", Name = "123" });
+        nbXplorerServiceMock.Setup(x => x.TrackAsync(It.IsAny<DerivationStrategyBase>(), default)).Returns(Task.CompletedTask);
+        nbXplorerServiceMock.Setup(x => x.ScanUTXOSetAsync(It.IsAny<DerivationStrategyBase>(), 1000, 30000, null, default)).Returns(Task.CompletedTask);
+
+        var internalWalletRepositoryMock = new Mock<IInternalWalletRepository>();
+        internalWalletRepositoryMock.Setup(x => x.GetCurrentInternalWallet()).ReturnsAsync(new InternalWallet
+        {
+            Id = 0,
+            CreationDatetime = default,
+            UpdateDatetime = default,
+            DerivationPath = "m/44'/0'/0'",
+            MnemonicString = "pistol maple assume music globe junk fury gasp crack bless eager donate",
+        });
+
+        return new WalletRepository(new Repository<Wallet>(new Mock<ILogger<Wallet>>().Object), loggerMock.Object, setupDbContextFactory.Object, internalWalletRepositoryMock.Object, keyRepositoryMock.Object, nbXplorerServiceMock.Object);
+    }
+
+    
+    [Fact]
+    public async Task ImportBIP39Wallet_WhenValidInput_ShouldReturnSuccess()
+    {
+        // Arrange
+        var seedphrase = "social mango annual basic work brain economy one safe physical junk other toy valid load cook napkin maple runway island oil fan legend stem";
+        var derivationPath = "m/84'/1'/0'";
+        var userId = "testUser";
+        
+        var testClass = SetupTestClassForImportBIP39Wallet();
+
+        // Act
+        var (result, errorMessage) = await testClass.ImportBIP39Wallet("name", "description", seedphrase, derivationPath, userId);
+
+        // Assert
+        result.Should().BeTrue();
+        errorMessage.Should().BeNull();
+    }
+
+    
+    [Fact]
+    public async Task ImportBIP39Wallet_WhenSeedPhraseIsEmpty_ShouldReturnError()
+    {
+        // Arrange
+        var seedphrase = "";
+        var derivationPath = "m/44'/0'/0'";
+        var userId = "testUser";
+
+        var testClass = SetupTestClassForImportBIP39Wallet();
+
+        // Act
+        var (result, errorMessage) = await testClass.ImportBIP39Wallet("name", "description", seedphrase, derivationPath, userId);
+
+        // Assert
+        result.Should().BeFalse();
+        errorMessage.Should().Be("Seedphrase is empty");
+    }
+    
+    [Fact]
+    public async Task ImportBIP39Wallet_WhenDerivationPathIsEmpty_ShouldReturnError()
+    {
+        // Arrange
+        var seedphrase = "pistol maple assume music globe junk fury gasp crack bless eager donate";
+        var derivationPath = "";
+        var userId = "testUser";
+
+        var testClass = SetupTestClassForImportBIP39Wallet();
+
+        // Act
+        var (result, errorMessage) = await testClass.ImportBIP39Wallet("name", "description", seedphrase, derivationPath, userId);
+
+        // Assert
+        result.Should().BeFalse();
+        errorMessage.Should().Be("Derivation path is empty");
+    }
+    
+    [Fact]
+    public async Task ImportBIP39Wallet_WhenSeedPhraseIsInvalid_ShouldReturnError()
+    {
+        // Arrange
+        var seedphrase = "invalid seed phrase with wrong words";
+        var derivationPath = "m/44'/0'/0'";
+        var userId = "testUser";
+
+        var testClass = SetupTestClassForImportBIP39Wallet();
+
+        // Act
+        var (result, errorMessage) = await testClass.ImportBIP39Wallet("name", "description", seedphrase, derivationPath, userId);
+
+        // Assert
+        result.Should().BeFalse();
+    }
+
+
+
 }

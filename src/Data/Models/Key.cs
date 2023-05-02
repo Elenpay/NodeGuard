@@ -36,9 +36,14 @@ namespace FundsManager.Data.Models
         public string? MasterFingerprint { get; set; }
 
         /// <summary>
-        /// Derivation Path (e.g.
+        /// Derivation Path (e.g. m/84'/0'/0')
         /// </summary>
         public string? Path { get; set; }
+        
+        /// <summary>
+        /// Flag to indicate that this key was imported from a BIP39 mnemonic
+        /// </summary>
+        public bool IsBIP39ImportedKey { get; set; }
 
         #region Relationships
 

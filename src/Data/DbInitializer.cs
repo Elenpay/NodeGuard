@@ -290,6 +290,7 @@ namespace FundsManager.Data
                     var testingLegacyMultisigWallet = CreateWallet.LegacyMultiSig(internalWallet, "1'", user1Key, user2Key); 
                     var testingMultisigWallet = CreateWallet.MultiSig(internalWallet, "0", user1Key, user2Key);
                     var testingSinglesigWallet = CreateWallet.SingleSig(internalWallet, "1");
+                    var testingSingleSigBIP39Wallet = CreateWallet.BIP39Singlesig();
 
                     //Now we fund a multisig address of that wallet with the miner (polar)
                     //We mine 10 blocks
@@ -300,27 +301,33 @@ namespace FundsManager.Data
                     var legacyMultisigDerivationStrategy = testingLegacyMultisigWallet.GetDerivationStrategy();
                     var multisigDerivationStrategy = testingMultisigWallet.GetDerivationStrategy();
                     var singlesigDerivationStrategy = testingSinglesigWallet.GetDerivationStrategy();
+                    var singleSigBIP39DerivationStrategy = testingSingleSigBIP39Wallet.GetDerivationStrategy();
                     //Nbxplorer tracking of the multisig derivation scheme
 
                     nbxplorerClient.Track(legacyMultisigDerivationStrategy);
                     nbxplorerClient.Track(multisigDerivationStrategy);
                     nbxplorerClient.Track(singlesigDerivationStrategy);
+                    nbxplorerClient.Track(singleSigBIP39DerivationStrategy);
                     var evts = nbxplorerClient.CreateLongPollingNotificationSession();
 
                     var legacyMultisigKeyPathInformation = nbxplorerClient.GetUnused(legacyMultisigDerivationStrategy, DerivationFeature.Deposit);
                     var multisigKeyPathInformation = nbxplorerClient.GetUnused(multisigDerivationStrategy, DerivationFeature.Deposit);
                     var singlesigKeyPathInformation = nbxplorerClient.GetUnused(singlesigDerivationStrategy, DerivationFeature.Deposit);
+                    var singleSigBIP39KeyPathInformation = nbxplorerClient.GetUnused(singleSigBIP39DerivationStrategy, DerivationFeature.Deposit);
                     var legacyMultisigAddress = legacyMultisigKeyPathInformation.Address;
                     var multisigAddress = multisigKeyPathInformation.Address;
                     var singlesigAddress = singlesigKeyPathInformation.Address;
+                    var singleSigBIP39Address = singleSigBIP39KeyPathInformation.Address;
 
                     var legacyMultisigFundCoins = Money.Coins(20m); //20BTC
                     var multisigFundCoins = Money.Coins(20m); //20BTC
                     var singlesigFundCoins = Money.Coins(20m); //20BTC
+                    var singleSigBIP39FundCoins = Money.Coins(20m); //20BTC
 
                     minerRPC.SendToAddress(legacyMultisigAddress, legacyMultisigFundCoins);
                     minerRPC.SendToAddress(multisigAddress, multisigFundCoins);
                     minerRPC.SendToAddress(singlesigAddress, singlesigFundCoins);
+                    minerRPC.SendToAddress(singleSigBIP39Address, singleSigBIP39FundCoins);
 
                     //6 blocks to confirm
                     minerRPC.Generate(6);
@@ -328,13 +335,16 @@ namespace FundsManager.Data
                     WaitNbxplorerNotification(evts, legacyMultisigDerivationStrategy);
                     WaitNbxplorerNotification(evts, multisigDerivationStrategy);
                     WaitNbxplorerNotification(evts, singlesigDerivationStrategy);
+                    WaitNbxplorerNotification(evts, singleSigBIP39DerivationStrategy);
 
                     var legacyMultisigBalance = nbxplorerClient.GetBalance(legacyMultisigDerivationStrategy);
                     var multisigBalance = nbxplorerClient.GetBalance(multisigDerivationStrategy);
                     var singleSigbalance = nbxplorerClient.GetBalance(singlesigDerivationStrategy);
+                    var singleSigBIP39Balance = nbxplorerClient.GetBalance(singleSigBIP39DerivationStrategy);
                     var legacyMultisigConfirmedBalance = (Money)legacyMultisigBalance.Confirmed;
                     var multisigConfirmedBalance = (Money)multisigBalance.Confirmed;
                     var singlesigConfirmedBalance = (Money)singleSigbalance.Confirmed;
+                    var singleSigBIP39ConfirmedBalance = (Money)singleSigBIP39Balance.Confirmed;
                     if (legacyMultisigConfirmedBalance.ToUnit(MoneyUnit.BTC) < 20)
                     {
                         throw new Exception("The multisig wallet balance is not >= 20BTC");
@@ -347,10 +357,15 @@ namespace FundsManager.Data
                     {
                         throw new Exception("The singlesig wallet balance is not >= 20BTC");
                     }
+                    if (singleSigBIP39ConfirmedBalance.ToUnit(MoneyUnit.BTC) < 20)
+                    {
+                        throw new Exception("The singleSigBIP39 wallet balance is not >= 20BTC");
+                    }
 
                     applicationDbContext.Add(testingLegacyMultisigWallet);
                     applicationDbContext.Add(testingMultisigWallet);
                     applicationDbContext.Add(testingSinglesigWallet);
+                    applicationDbContext.Add(testingSingleSigBIP39Wallet);
                 }
             }
                 

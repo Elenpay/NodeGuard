@@ -28,6 +28,17 @@ public interface INBXplorerService
 
   public Task<BroadcastResult> BroadcastAsync(Transaction tx, bool testMempoolAccept,
     CancellationToken cancellation = default);
+  
+  public Task ScanUTXOSetAsync( DerivationStrategyBase extKey, 
+    int? batchSize = null, 
+    int? gapLimit = null, 
+    int? fromIndex = null, 
+    CancellationToken cancellation = default(CancellationToken));
+
+  public Task<ScanUTXOInformation> GetScanUTXOSetInformationAsync(DerivationStrategyBase extKey,
+    CancellationToken cancellation = default(CancellationToken));
+
+
 }   
 /// <summary>
 /// Wrapper for the NBXplorer client to support DI
@@ -37,7 +48,6 @@ public class NBXplorerService : INBXplorerService
   public async Task TrackAsync(DerivationStrategyBase derivationStrategyBase, CancellationToken cancellation = default)
   {
     var client = await LightningHelper.CreateNBExplorerClient();
-    
     await client.TrackAsync(derivationStrategyBase, cancellation: cancellation);
   }
 
@@ -46,6 +56,7 @@ public class NBXplorerService : INBXplorerService
     var client = await LightningHelper.CreateNBExplorerClient();
     
     await client.TrackAsync(trackedSource, cancellation);
+    
   }
 
   public async Task<TransactionResult?> GetTransactionAsync(uint256 txId, CancellationToken cancellation = default)
@@ -99,6 +110,22 @@ public class NBXplorerService : INBXplorerService
     var client = await LightningHelper.CreateNBExplorerClient();
     
     return await client.BroadcastAsync(tx, testMempoolAccept, cancellation);
+  }
+
+  public async Task ScanUTXOSetAsync(DerivationStrategyBase extKey, int? batchSize = null, int? gapLimit = null, int? fromIndex = null,
+    CancellationToken cancellation = default)
+  {
+    var client = await LightningHelper.CreateNBExplorerClient();
+
+    await client.ScanUTXOSetAsync(extKey, batchSize, gapLimit, fromIndex, cancellation); 
+  }
+
+  public async Task<ScanUTXOInformation> GetScanUTXOSetInformationAsync(DerivationStrategyBase extKey,
+    CancellationToken cancellation = default)
+  {
+    var client = await LightningHelper.CreateNBExplorerClient();
+
+    return await client.GetScanUTXOSetInformationAsync(extKey, cancellation);
   }
 
   public async Task<StatusResult> GetStatusAsync(CancellationToken cancellation = default)

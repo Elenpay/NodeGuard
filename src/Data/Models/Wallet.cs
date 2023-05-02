@@ -60,6 +60,22 @@ namespace FundsManager.Data.Models
         public bool IsHotWallet { get; set; }
         
         /// <summary>
+        /// Used to mark this wallet as imported from a BIP39 mnemonic though the seedphrase is not stored in the database
+        /// </summary>
+        public bool IsBIP39Imported { get; set; }
+
+        /// <summary>
+        /// Single sig wallet is a wallet that does not require any other signer to sign the transaction
+        /// </summary>
+        [NotMapped] 
+        public bool IsSingleSig => MofN == 1 && (IsHotWallet || IsBIP39Imported);
+        
+        /// <summary>
+        /// Only when the remote signer is disabled, the seedphrase is stored in the database
+        /// </summary>
+        public string? BIP39Seedphrase { get; set; }
+        
+        /// <summary>
         /// This field is used to store the derivation path which allow to uniquely identify the wallet amongs others (Hot or Multisig)
         /// </summary>
         public string? InternalWalletSubDerivationPath { get; set; }
@@ -86,11 +102,11 @@ namespace FundsManager.Data.Models
         
 
         /// <summary>
-        /// The internal wallet is used to co-sign with other keys of the wallet entity
+        /// The internal wallet is used to co-sign with other keys of the wallet entity. It is optional for imported BIP39 wallets
         /// </summary>
-        public int InternalWalletId { get; set; }
+        public int? InternalWalletId { get; set; }
 
-        public InternalWallet InternalWallet { get; set; }
+        public InternalWallet? InternalWallet { get; set; }
         
         
         public ICollection<LiquidityRule> LiquidityRules { get; set; }
@@ -118,7 +134,7 @@ namespace FundsManager.Data.Models
 
                 var factory = new DerivationStrategyFactory(currentNetwork);
 
-                if (IsHotWallet)
+                if (IsHotWallet || IsBIP39Imported)
                 {
                     return factory.CreateDirectDerivationStrategy(bitcoinExtPubKeys.FirstOrDefault(),
                         new DerivationStrategyOptions
@@ -140,18 +156,38 @@ namespace FundsManager.Data.Models
        
         public NBitcoin.Key DeriveUtxoPrivateKey(Network network, KeyPath utxoKeyPath)
         {
-            if (InternalWalletId == null)
+            if (IsBIP39Imported)
             {
-                throw new InvalidOperationException("You can't derive from a user's key");
+                if(string.IsNullOrWhiteSpace(BIP39Seedphrase))
+                    throw new InvalidOperationException("Seedphrase is empty");
+                var key = Keys?.FirstOrDefault(k => k.IsBIP39ImportedKey);
+                var deriveUtxoPrivateKey = new Mnemonic(BIP39Seedphrase)
+                    .DeriveExtKey()
+                    .GetWif(network)
+                    .Derive(KeyPath.Parse(key.Path))
+                    .Derive(utxoKeyPath)
+                    .PrivateKey;
+                
+                return deriveUtxoPrivateKey; 
+                
             }
+            else
+            {
+                //If the wallet is has a internal wallet, we derive from it (not for BIP39 imported wallets)
+                if (InternalWalletId == null)
+                {
+                    throw new InvalidOperationException("You can't derive from a user's key");
+                }
 
-            var internalKey = Keys?.FirstOrDefault(k => k.InternalWalletId != null);
-            return new Mnemonic(InternalWallet.MnemonicString)
-                .DeriveExtKey()
-                .GetWif(network)
-                .Derive(KeyPath.Parse(internalKey.Path))
-                .Derive(utxoKeyPath)
-                .PrivateKey; 
+                var internalKey = Keys?.FirstOrDefault(k => k.InternalWalletId != null);
+                return new Mnemonic(InternalWallet.MnemonicString)
+                    .DeriveExtKey()
+                    .GetWif(network)
+                    .Derive(KeyPath.Parse(internalKey.Path))
+                    .Derive(utxoKeyPath)
+                    .PrivateKey; 
+            }
+          
         }
     }
 }

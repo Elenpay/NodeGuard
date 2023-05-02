@@ -91,6 +91,52 @@ public static class CreateWallet
         };
     }
 
+    public static Wallet BIP39Singlesig()
+    {
+        return new Wallet
+        {
+            Id = 0,
+            IsHotWallet = true,
+            MofN = 1,
+            Description = null,
+            IsArchived = false,
+            IsCompromised = false,
+            IsBIP39Imported = true,
+            //Bitcoin seedphrase 24 words
+            BIP39Seedphrase = "social mango annual basic work brain economy one safe physical junk other toy valid load cook napkin maple runway island oil fan legend stem",
+            Name = "Test BIP39 Singlesig wallet",
+            WalletAddressType = WalletAddressType.NativeSegwit,
+            IsFinalised = true,
+            CreationDatetime = DateTimeOffset.Now,
+            UpdateDatetime = default,
+            InternalWalletSubDerivationPath = null,
+            InternalWalletMasterFingerprint = null,
+            Keys = new List<Key>()
+            {
+             new()
+             {
+                 Id = 0,
+                 CreationDatetime = default,
+                 UpdateDatetime = default,
+                 Name = "test",
+                 XPUB = "tpubDCPqCySQAAMdD2VuYQSgqfmFt37vNpe51jqFqF95RpbctzWEhyA77CKPdD6ZgAvkNYBGQgeFcEZmoPyBD5uu2oSJ1wuyKzpdjBRbWXMBRMv",
+                 Description = "null",
+                 IsArchived = false,
+                 IsCompromised = false,
+                 MasterFingerprint = "1fcce4de",
+                 Path = "m/84'/1'/0'",
+                 IsBIP39ImportedKey = true,
+                 UserId = null,
+                 User = null,
+                 InternalWalletId = null,
+                 InternalWallet = null
+             }
+            },
+            InternalWalletId = null,
+
+        };
+    }
+
     public static Wallet MultiSig(InternalWallet internalWallet, string accountId = "0", string user1 = "1", string user2 = "2", ILogger? logger = null)
     {
         var wallet1Seed =

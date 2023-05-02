@@ -375,7 +375,7 @@ namespace FundsManager.Services
             // Assert
             result.Should().NotBeNull();
         }
-        
+
         [Fact]
         public async Task OpenChannel_SuccessLegacyMultiSig()
         {
@@ -471,7 +471,12 @@ namespace FundsManager.Services
             {
                 ChanPending = new PendingUpdate()
             };
-            var channelPoint = new ChannelPoint{ FundingTxidBytes = ByteString.CopyFromUtf8("e59fa8edcd772213239daef2834d9021d1aecc591d605b426ae32c4bec5fdd7d"), OutputIndex = 1};
+            var channelPoint = new ChannelPoint
+            {
+                FundingTxidBytes =
+                    ByteString.CopyFromUtf8("e59fa8edcd772213239daef2834d9021d1aecc591d605b426ae32c4bec5fdd7d"),
+                OutputIndex = 1
+            };
             var chanOpenUpdate = new OpenStatusUpdate
             {
                 ChanOpen = new ChannelOpenUpdate()
@@ -543,15 +548,18 @@ namespace FundsManager.Services
                     null,
                     default))
                 .Returns(MockHelpers.CreateAsyncUnaryCall(new FundingStateStepResp()));
-            
+
             //Mock List channels async
             var listChannelsResponse = new ListChannelsResponse
             {
-                Channels = {new Lnrpc.Channel
+                Channels =
+                {
+                    new Lnrpc.Channel
                     {
                         Active = true,
                         RemotePubkey = "03b48034270e522e4033afdbe43383d66d426638927b940d09a8a7a0de4d96e807",
-                        ChannelPoint = $"{LightningHelper.DecodeTxId(channelPoint.FundingTxidBytes)}:{channelPoint.OutputIndex}",
+                        ChannelPoint =
+                            $"{LightningHelper.DecodeTxId(channelPoint.FundingTxidBytes)}:{channelPoint.OutputIndex}",
                         ChanId = 124,
                         Capacity = 1000,
                         LocalBalance = 100,
@@ -559,7 +567,7 @@ namespace FundsManager.Services
                     }
                 }
             };
-            
+
             lightningClient
                 .Setup(x => x.ListChannelsAsync(
                     Arg.Ignore<ListChannelsRequest>(),
@@ -585,7 +593,7 @@ namespace FundsManager.Services
 
             // Assert
             await act.Should().NotThrowAsync();
-            
+
             //TODO Remove hack
             // Cleanup
             LightningService.CreateLightningClient = originalCreateLightningClient;
@@ -686,7 +694,12 @@ namespace FundsManager.Services
             {
                 ChanPending = new PendingUpdate()
             };
-            var channelPoint = new ChannelPoint{ FundingTxidBytes = ByteString.CopyFromUtf8("e59fa8edcd772213239daef2834d9021d1aecc591d605b426ae32c4bec5fdd7d"), OutputIndex = 1};
+            var channelPoint = new ChannelPoint
+            {
+                FundingTxidBytes =
+                    ByteString.CopyFromUtf8("e59fa8edcd772213239daef2834d9021d1aecc591d605b426ae32c4bec5fdd7d"),
+                OutputIndex = 1
+            };
             var chanOpenUpdate = new OpenStatusUpdate
             {
                 ChanOpen = new ChannelOpenUpdate()
@@ -758,15 +771,18 @@ namespace FundsManager.Services
                     null,
                     default))
                 .Returns(MockHelpers.CreateAsyncUnaryCall(new FundingStateStepResp()));
-            
+
             //Mock List channels async
             var listChannelsResponse = new ListChannelsResponse
             {
-                Channels = {new Lnrpc.Channel
+                Channels =
+                {
+                    new Lnrpc.Channel
                     {
                         Active = true,
                         RemotePubkey = "03b48034270e522e4033afdbe43383d66d426638927b940d09a8a7a0de4d96e807",
-                        ChannelPoint = $"{LightningHelper.DecodeTxId(channelPoint.FundingTxidBytes)}:{channelPoint.OutputIndex}",
+                        ChannelPoint =
+                            $"{LightningHelper.DecodeTxId(channelPoint.FundingTxidBytes)}:{channelPoint.OutputIndex}",
                         ChanId = 124,
                         Capacity = 1000,
                         LocalBalance = 100,
@@ -774,7 +790,7 @@ namespace FundsManager.Services
                     }
                 }
             };
-            
+
             lightningClient
                 .Setup(x => x.ListChannelsAsync(
                     Arg.Ignore<ListChannelsRequest>(),
@@ -800,11 +816,234 @@ namespace FundsManager.Services
 
             // Assert
             await act.Should().NotThrowAsync();
-            
+
             //TODO Remove hack
             LightningService.CreateLightningClient = originalCreateLightningClient;
         }
-        
+
+        [Fact]
+        public async Task OpenChannel_SuccessSingleSigBip39()
+        {
+            // Arrange
+            Environment.SetEnvironmentVariable("NBXPLORER_URI", "http://10.0.0.2:38762");
+            var dbContextFactory = new Mock<IDbContextFactory<ApplicationDbContext>>();
+
+            var options = new DbContextOptionsBuilder<ApplicationDbContext>()
+                .UseInMemoryDatabase(databaseName: "ChannelOpenDb")
+                .Options;
+            var context = new ApplicationDbContext(options);
+            dbContextFactory.Setup(x => x.CreateDbContextAsync(default)).ReturnsAsync(context);
+            var channelOperationRequestRepository = new Mock<IChannelOperationRequestRepository>();
+            var nodeRepository = new Mock<INodeRepository>();
+
+            var channelOpReqPsbts = new List<ChannelOperationRequestPSBT>();
+            //Took from Sparrow regtest
+            var userSignedPSBT =
+                "cHNidP8BAFICAAAAAfv+UUX9fRDASjtuFRFJIOTNu2JGP03ryLL4FmuJvHKaAAAAAAD9////ATKGAQAAAAAAFgAUPLrJoO1BWDB57NBnuvQEvhhC5jZGxgMATwEENYfPAzJGy4aAAAAAnFf4C7iwqBd3OhhHLTSnqy798jxPlzUZXIwdz3bSN5ICxVWbhbTl5YhGHd2pqRshzBM912xQzhNfks/rTi8W86cQH8zk3lQAAIABAACAAAAAgAABAHEBAAAAAaYagZjaGB68XpvC2hF/r0P9m0w1q/mjN5MSmCarzrj1AAAAAAD/////AqCGAQAAAAAAFgAUWTWFizT3fume3E4IphGbacJMSeOb9ZsCAAAAABYAFLvKMZ7jyVFpEKSfu9/YXU5aWPwKAAAAAAEBH6CGAQAAAAAAFgAUWTWFizT3fume3E4IphGbacJMSeMBAwQBAAAAIgYCpX8qwQjecohk9qD6kv9PzNztGlU+nLvdsQGihjqNMX0YH8zk3lQAAIABAACAAAAAgAAAAAAAAAAAACICAlSCuCZkq7Cc8MJOHGG41ZsFq9DlVmZtyIRsRN3/oeNgGB/M5N5UAACAAQAAgAAAAIAAAAAAAQAAAAA=";
+            channelOpReqPsbts.Add(new ChannelOperationRequestPSBT()
+            {
+                PSBT = userSignedPSBT,
+            });
+
+            var destinationNode = new Node()
+            {
+                PubKey = "03485d8dcdd149c87553eeb80586eb2bece874d412e9f117304446ce189955d375",
+                ChannelAdminMacaroon = "def",
+                Endpoint = "10.0.0.2"
+            };
+
+            var wallet = CreateWallet.BIP39Singlesig();
+            var operationRequest = new ChannelOperationRequest
+            {
+                RequestType = OperationRequestType.Open,
+                SourceNode = new Node()
+                {
+                    PubKey = "03b48034270e522e4033afdbe43383d66d426638927b940d09a8a7a0de4d96e807",
+                    ChannelAdminMacaroon = "abc",
+                    Endpoint = "10.0.0.1"
+                },
+                DestNode = destinationNode,
+                Wallet = wallet,
+                ChannelOperationRequestPsbts = channelOpReqPsbts,
+            };
+
+            channelOperationRequestRepository
+                .Setup(x => x.GetById(It.IsAny<int>()))
+                .ReturnsAsync(operationRequest);
+
+            var nodes = new List<Node> {destinationNode};
+
+            nodeRepository
+                .Setup(x => x.GetAllManagedByNodeGuard())
+                .Returns(Task.FromResult(nodes));
+
+            var lightningClient = Interceptor.For<Lightning.LightningClient>()
+                .Setup(x => x.GetNodeInfoAsync(
+                    Arg.Ignore<NodeInfoRequest>(),
+                    Arg.Ignore<Metadata>(),
+                    null,
+                    Arg.Ignore<CancellationToken>()
+                ))
+                .Returns(MockHelpers.CreateAsyncUnaryCall(
+                    new NodeInfo()
+                    {
+                        Node = new LightningNode()
+                        {
+                            Addresses =
+                            {
+                                new NodeAddress()
+                                {
+                                    Network = "tcp",
+                                    Addr = "10.0.0.2"
+                                }
+                            }
+                        }
+                    }));
+
+            var originalCreateLightningClient = LightningService.CreateLightningClient;
+            LightningService.CreateLightningClient = (_) => lightningClient;
+
+            lightningClient
+                .Setup(x => x.ConnectPeerAsync(
+                    Arg.Ignore<ConnectPeerRequest>(),
+                    Arg.Ignore<Metadata>(),
+                    null,
+                    Arg.Ignore<CancellationToken>()
+                ))
+                .Returns(MockHelpers.CreateAsyncUnaryCall(new ConnectPeerResponse()));
+
+            var noneUpdate = new OpenStatusUpdate();
+            var chanPendingUpdate = new OpenStatusUpdate
+            {
+                ChanPending = new PendingUpdate()
+            };
+            var channelPoint = new ChannelPoint
+            {
+                FundingTxidBytes =
+                    ByteString.CopyFromUtf8("e59fa8edcd772213239daef2834d9021d1aecc591d605b426ae32c4bec5fdd7d"),
+                OutputIndex = 1
+            };
+            var chanOpenUpdate = new OpenStatusUpdate
+            {
+                ChanOpen = new ChannelOpenUpdate()
+                {
+                    ChannelPoint = channelPoint
+                }
+            };
+
+            var psbtFundUpdate = new OpenStatusUpdate
+            {
+                PsbtFund = new ReadyForPsbtFunding()
+                {
+                    Psbt = ByteString.FromBase64(userSignedPSBT)
+                }
+            };
+            lightningClient
+                .Setup(x => x.OpenChannel(
+                    Arg.Ignore<OpenChannelRequest>(),
+                    Arg.Ignore<Metadata>(),
+                    null,
+                    Arg.Ignore<CancellationToken>()
+                ))
+                .Returns(MockHelpers.CreateAsyncServerStreamingCall(
+                    new List<OpenStatusUpdate>()
+                    {
+                        noneUpdate,
+                        chanPendingUpdate,
+                        psbtFundUpdate,
+                        chanOpenUpdate
+                    }));
+
+            channelOperationRequestRepository
+                .Setup(x => x.Update(It.IsAny<ChannelOperationRequest>()))
+                .Returns((true, ""));
+
+            var userSignedPsbtParsed = PSBT.Parse(userSignedPSBT, Network.RegTest);
+            var utxoChanges = new UTXOChanges();
+            var input = userSignedPsbtParsed.Inputs[0];
+            var utxoList = new List<UTXO>()
+            {
+                new UTXO()
+                {
+                    Outpoint = input.PrevOut,
+                    Index = 0,
+                    ScriptPubKey = input.WitnessUtxo.ScriptPubKey,
+                    KeyPath = new KeyPath("0/0"),
+                },
+            };
+
+            utxoChanges.Confirmed = new UTXOChange() {UTXOs = utxoList};
+
+            var channelOperationRequestPsbtRepository = new Mock<IChannelOperationRequestPSBTRepository>();
+            channelOperationRequestPsbtRepository
+                .Setup(x => x.AddAsync(It.IsAny<ChannelOperationRequestPSBT>()))
+                .ReturnsAsync((true, ""));
+
+            lightningClient
+                .Setup(x => x.FundingStateStep(
+                    Arg.Ignore<FundingTransitionMsg>(),
+                    Arg.Ignore<Metadata>(),
+                    null,
+                    default))
+                .Returns(new FundingStateStepResp());
+
+            lightningClient
+                .Setup(x => x.FundingStateStepAsync(
+                    Arg.Ignore<FundingTransitionMsg>(),
+                    Arg.Ignore<Metadata>(),
+                    null,
+                    default))
+                .Returns(MockHelpers.CreateAsyncUnaryCall(new FundingStateStepResp()));
+
+            //Mock List channels async
+            var listChannelsResponse = new ListChannelsResponse
+            {
+                Channels =
+                {
+                    new Lnrpc.Channel
+                    {
+                        Active = true,
+                        RemotePubkey = "03b48034270e522e4033afdbe43383d66d426638927b940d09a8a7a0de4d96e807",
+                        ChannelPoint =
+                            $"{LightningHelper.DecodeTxId(channelPoint.FundingTxidBytes)}:{channelPoint.OutputIndex}",
+                        ChanId = 124,
+                        Capacity = 1000,
+                        LocalBalance = 100,
+                        RemoteBalance = 900
+                    }
+                }
+            };
+
+            lightningClient
+                .Setup(x => x.ListChannelsAsync(
+                    Arg.Ignore<ListChannelsRequest>(),
+                    Arg.Ignore<Metadata>(),
+                    null,
+                    default))
+                .Returns(MockHelpers.CreateAsyncUnaryCall(listChannelsResponse));
+
+            var lightningService = new LightningService(_logger,
+                channelOperationRequestRepository.Object,
+                nodeRepository.Object,
+                dbContextFactory.Object,
+                null,
+                null,
+                null,
+                channelOperationRequestPsbtRepository.Object,
+                null,
+                null,
+                GetNBXplorerServiceFullyMocked(utxoChanges).Object);
+
+            // Act
+            var act = async () => await lightningService.OpenChannel(operationRequest);
+
+            // Assert
+            await act.Should().NotThrowAsync();
+
+            //TODO Remove hack
+            LightningService.CreateLightningClient = originalCreateLightningClient;
+        }
+
         [Fact]
         public async Task OpenChannel_SuccessSingleSig()
         {
@@ -900,7 +1139,12 @@ namespace FundsManager.Services
             {
                 ChanPending = new PendingUpdate()
             };
-            var channelPoint = new ChannelPoint{ FundingTxidBytes = ByteString.CopyFromUtf8("e59fa8edcd772213239daef2834d9021d1aecc591d605b426ae32c4bec5fdd7d"), OutputIndex = 1};
+            var channelPoint = new ChannelPoint
+            {
+                FundingTxidBytes =
+                    ByteString.CopyFromUtf8("e59fa8edcd772213239daef2834d9021d1aecc591d605b426ae32c4bec5fdd7d"),
+                OutputIndex = 1
+            };
             var chanOpenUpdate = new OpenStatusUpdate
             {
                 ChanOpen = new ChannelOpenUpdate()
@@ -972,15 +1216,18 @@ namespace FundsManager.Services
                     null,
                     default))
                 .Returns(MockHelpers.CreateAsyncUnaryCall(new FundingStateStepResp()));
-            
+
             //Mock List channels async
             var listChannelsResponse = new ListChannelsResponse
             {
-                Channels = {new Lnrpc.Channel
+                Channels =
+                {
+                    new Lnrpc.Channel
                     {
                         Active = true,
                         RemotePubkey = "03b48034270e522e4033afdbe43383d66d426638927b940d09a8a7a0de4d96e807",
-                        ChannelPoint = $"{LightningHelper.DecodeTxId(channelPoint.FundingTxidBytes)}:{channelPoint.OutputIndex}",
+                        ChannelPoint =
+                            $"{LightningHelper.DecodeTxId(channelPoint.FundingTxidBytes)}:{channelPoint.OutputIndex}",
                         ChanId = 124,
                         Capacity = 1000,
                         LocalBalance = 100,
@@ -988,7 +1235,7 @@ namespace FundsManager.Services
                     }
                 }
             };
-            
+
             lightningClient
                 .Setup(x => x.ListChannelsAsync(
                     Arg.Ignore<ListChannelsRequest>(),
@@ -1014,11 +1261,11 @@ namespace FundsManager.Services
 
             // Assert
             await act.Should().NotThrowAsync();
-            
+
             //TODO Remove hack
             LightningService.CreateLightningClient = originalCreateLightningClient;
         }
-        
+
         [Fact]
         public async Task CloseChannel_Succeeds()
         {
@@ -1034,7 +1281,7 @@ namespace FundsManager.Services
                     Endpoint = "10.0.0.1"
                 },
             };
-            
+
             var options = new DbContextOptionsBuilder<ApplicationDbContext>().Options;
             var context = new ApplicationDbContext(options);
             var dbContextFactory = new Mock<IDbContextFactory<ApplicationDbContext>>();
@@ -1056,11 +1303,11 @@ namespace FundsManager.Services
             channelOperationRequestRepository
                 .Setup(x => x.Update(It.IsAny<ChannelOperationRequest>()))
                 .Returns((true, null));
-            
+
             var noneUpdate = new CloseStatusUpdate();
             var closePendingUpdate = new CloseStatusUpdate
             {
-               ClosePending = new PendingUpdate()
+                ClosePending = new PendingUpdate()
             };
             var chanCloseUpdate = new CloseStatusUpdate
             {
@@ -1069,7 +1316,7 @@ namespace FundsManager.Services
                     Success = true,
                 }
             };
-            
+
             var lightningClient = Interceptor.For<Lightning.LightningClient>()
                 .Setup(x => x.CloseChannel(
                     Arg.Ignore<CloseChannelRequest>(),
@@ -1086,11 +1333,11 @@ namespace FundsManager.Services
 
             var originalCreateLightningClient = LightningService.CreateLightningClient;
             LightningService.CreateLightningClient = (_) => lightningClient;
-            
+
             var lightningService = new LightningService(_logger,
                 channelOperationRequestRepository.Object,
                 null,
-                null, 
+                null,
                 null,
                 null,
                 null,
@@ -1098,13 +1345,13 @@ namespace FundsManager.Services
                 channelRepository.Object,
                 null,
                 null);
-            
+
             // Act
             var act = async () => await lightningService.CloseChannel(operationRequest);
 
             // Assert
-            await act.Should().NotThrowAsync(); 
-            
+            await act.Should().NotThrowAsync();
+
             //TODO Remove hack
             LightningService.CreateLightningClient = originalCreateLightningClient;
         }
