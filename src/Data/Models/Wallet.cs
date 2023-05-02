@@ -106,7 +106,7 @@ namespace FundsManager.Data.Models
         /// </summary>
         public int? InternalWalletId { get; set; }
 
-        public InternalWallet InternalWallet { get; set; }
+        public InternalWallet? InternalWallet { get; set; }
         
         
         public ICollection<LiquidityRule> LiquidityRules { get; set; }
