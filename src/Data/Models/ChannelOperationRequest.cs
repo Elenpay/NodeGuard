@@ -130,8 +130,7 @@ namespace FundsManager.Data.Models
         public bool AreAllRequiredHumanSignaturesCollected => CheckSignatures();
 
         [NotMapped]
-        public int NumberOfSignaturesCollected => ChannelOperationRequestPsbts == null ? 0 : ChannelOperationRequestPsbts.Count(x =>
-                                                                                                                                                                                                                                                                                                                                                                                                                                                            !x.IsFinalisedPSBT && !x.IsTemplatePSBT && !x.IsInternalWalletPSBT);
+        public int NumberOfSignaturesCollected => ChannelOperationRequestPsbts == null ? 0 : ChannelOperationRequestPsbts.Count(x =>!x.IsFinalisedPSBT && !x.IsTemplatePSBT && !x.IsInternalWalletPSBT);
 
         /// <summary>
         /// This is the JobId provided by Quartz of the job executing this request.
@@ -151,7 +150,7 @@ namespace FundsManager.Data.Models
                 var userPSBTsCount = NumberOfSignaturesCollected;
 
                 //We add the internal Wallet signature
-                if(!Wallet.IsHotWallet || !Wallet.IsBIP39Imported) userPSBTsCount++;
+                if(!Wallet.IsHotWallet) userPSBTsCount++;
 
                 if (userPSBTsCount == Wallet.MofN)
                 {
