@@ -654,7 +654,7 @@ namespace FundsManager.Services
         }
 
         /// <summary>
-        /// Aux method when nodeguard's internal signer the one in change of signing the PSBTs
+        /// Aux method when nodeguard's internal signer is the one in charge of signing the PSBTs
         /// </summary>
         /// <param name="channelOperationRequest"></param>
         /// <param name="nbxplorerClient"></param>
