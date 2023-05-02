@@ -712,7 +712,7 @@ namespace FundsManager.Services
                     errorParsingSubderivationPath);
             }
 
-            //We need to SIGHASH_ALL all inputs/outputs as  to protect the tx from tampering by adding a signature
+            //We need to SIGHASH_ALL all inputs/outputs to protect the tx from tampering by adding a signature
             var partialSigsCount = changeFixedPSBT.Inputs.Sum(x => x.PartialSigs.Count);
             foreach (var input in changeFixedPSBT.Inputs)
             {
