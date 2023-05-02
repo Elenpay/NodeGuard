@@ -110,6 +110,7 @@
                         }
                     </DisplayTemplate>
                 </DataGridNumericColumn>
+                <DataGridColumn TItem="Channel" Field="@nameof(Channel.IsPrivate)" Caption="Private" Filterable="false" Sortable="true"/>
                 <DataGridColumn TItem="Channel" Field="@nameof(Channel.BtcCloseAddress)" Caption="Close address" Filterable="false" Sortable="false">
 
                     <DisplayTemplate>

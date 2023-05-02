@@ -343,7 +343,8 @@ namespace FundsManager.Services
                                     Status = Channel.ChannelStatus.Open,
                                     SourceNodeId = channelOperationRequest.SourceNode.Id,
                                     DestinationNodeId = channelOperationRequest.DestNode.Id,
-                                    CreatedByNodeGuard = true
+                                    CreatedByNodeGuard = true,
+                                    IsPrivate = currentChannel.Private
                                 };
 
                                 await context.AddAsync(channel);
