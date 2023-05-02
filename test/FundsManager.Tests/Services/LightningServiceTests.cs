@@ -1045,7 +1045,7 @@ namespace FundsManager.Services
         }
 
         [Fact]
-        public async Task OpenChannel_SuccesSingleSig()
+        public async Task OpenChannel_SuccessSingleSig()
         {
             // Arrange
             Environment.SetEnvironmentVariable("NBXPLORER_URI", "http://10.0.0.2:38762");
