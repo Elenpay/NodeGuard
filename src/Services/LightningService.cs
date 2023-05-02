@@ -423,7 +423,7 @@ namespace FundsManager.Services
                                     }
                                     else
                                     {
-                                        finalSignedPSBT = await SignPSBT(channelOperationRequest,
+                                        finalSignedPSBT = await SignPSBTWithEmbeddedSigner(channelOperationRequest,
                                             _nbXplorerService,
                                             derivationStrategyBase,
                                             channelfundingTx,
@@ -654,7 +654,7 @@ namespace FundsManager.Services
         }
 
         /// <summary>
-        /// Aux method when the fundsmanager is the one in change of signing the PSBTs
+        /// Aux method when nodeguard's internal signer the one in change of signing the PSBTs
         /// </summary>
         /// <param name="channelOperationRequest"></param>
         /// <param name="nbxplorerClient"></param>
@@ -667,7 +667,7 @@ namespace FundsManager.Services
         /// <param name="changeFixedPSBT"></param>
         /// <returns></returns>
         /// <exception cref="ArgumentException"></exception>
-        public static async Task<PSBT> SignPSBT(
+        public static async Task<PSBT> SignPSBTWithEmbeddedSigner(
                 ChannelOperationRequest channelOperationRequest, INBXplorerService nbXplorerService,
                 DerivationStrategyBase derivationStrategyBase, Transaction channelfundingTx, Network network, PSBT changeFixedPSBT, ILogger? logger = null)
             
