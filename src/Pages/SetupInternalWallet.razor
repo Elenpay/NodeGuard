@@ -99,12 +99,7 @@
     //Get Current internal wallet
         _internalWallet = await InternalWalletRepository.GetCurrentInternalWallet();
 
-    //If internal wallet is generated and has xpub or mnemonic then redirect to main page
-        var isIWalletWellFormed = !string.IsNullOrWhiteSpace(_internalWallet.XPUB) && !string.IsNullOrWhiteSpace(_internalWallet.MasterFingerprint);
-        if (_internalWallet != null && (isIWalletWellFormed|| !string.IsNullOrWhiteSpace(_internalWallet.MnemonicString)))
-        {
-            NavigationManager.NavigateTo("/");
-        }
+
 
     //If there is no internal wallet, create one only if the remote signer is not enabled
         if (_internalWallet == null)
@@ -119,6 +114,15 @@
             }
 
             StateHasChanged();
+        }
+        else
+        {
+    //If internal wallet is generated and has xpub or mnemonic then redirect to main page
+            var isIWalletWellFormed = !string.IsNullOrWhiteSpace(_internalWallet.XPUB) && !string.IsNullOrWhiteSpace(_internalWallet.MasterFingerprint);
+            if (_internalWallet != null && (isIWalletWellFormed|| !string.IsNullOrWhiteSpace(_internalWallet.MnemonicString)))
+            {
+                NavigationManager.NavigateTo("/");
+            }
         }
     }
 
