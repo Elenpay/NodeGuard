@@ -575,7 +575,7 @@ namespace FundsManager.Services
         {
             //PSBT Combine
             var signedPsbts = channelOperationRequest.ChannelOperationRequestPsbts.Where(x =>
-                    !x.IsFinalisedPSBT && !x.IsInternalWalletPSBT && !x.IsTemplatePSBT);
+                    channelOperationRequest.Wallet != null && !x.IsFinalisedPSBT && !x.IsInternalWalletPSBT && (channelOperationRequest.Wallet.IsHotWallet || !x.IsTemplatePSBT));
             var signedPsbts2 = signedPsbts.Select(x => x.PSBT);
 
             var combinedPSBT = LightningHelper.CombinePSBTs(signedPsbts2, _logger);

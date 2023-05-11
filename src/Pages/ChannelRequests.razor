@@ -744,38 +744,22 @@
                 return;
             }
 
-            var channelOperationRequestPSBT = new ChannelOperationRequestPSBT()
-            {
-                ChannelOperationRequestId = _selectedRequest.Id,
-                PSBT = templatePsbt.ToBase64(),
-                UserSignerId = null,
-            };
-            var addResult = await ChannelOperationRequestPsbtRepository.AddAsync(channelOperationRequestPSBT);
-            if (addResult.Item1)
-            {
-                ToastService.ShowSuccess("Signature collected");
 
-                _selectedRequest = await ChannelOperationRequestRepository.GetById(_selectedRequest.Id);
+            _selectedRequest = await ChannelOperationRequestRepository.GetById(_selectedRequest.Id);
 
-                if (_selectedRequest != null
-                    && _selectedRequest.AreAllRequiredHumanSignaturesCollected)
-                {
-                    await CreateJob();
-                }
-                else
-                {
-                    ToastService.ShowError("Invalid PSBT");
-                }
+            if (_selectedRequest != null
+                && _selectedRequest.AreAllRequiredHumanSignaturesCollected)
+            {
+                await CreateJob();
             }
             else
             {
-                ToastService.ShowError("Error while saving the signature");
+                ToastService.ShowError("Invalid PSBT");
             }
+           
 
             await FetchRequests();
-            _allRequestsDatagrid.Dispose();
-            StateHasChanged();
-            _approveOperationConfirmationModal.CloseModal();
+            await _approveOperationConfirmationModal.CloseModal();
         }
     }
 
@@ -784,7 +768,7 @@
         try
         {
             //TODO Async notifications when the channel has opened -> event / notifications system
-            IScheduler scheduler = await SchedulerFactory.GetScheduler();
+            var scheduler = await SchedulerFactory.GetScheduler();
 
             var map = new JobDataMap();
             map.Put("openRequestId", _selectedRequest.Id);
