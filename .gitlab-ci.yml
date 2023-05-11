@@ -16,7 +16,7 @@ services:
 build-staging:
   stage: build-staging
   script:
-    - docker login -u gitlab-ci-token -p $CI_BUILD_TOKEN registry.gitlab.com
+    - docker login -u gitlab-ci-token -p $CI_JOB_TOKEN registry.gitlab.com
     - docker build -t $CI_REGISTRY_IMAGE:$CI_COMMIT_REF_NAME -f ./src/Dockerfile .
     - docker push $CI_REGISTRY_IMAGE:$CI_COMMIT_REF_NAME
   rules:
@@ -24,7 +24,7 @@ build-staging:
 build-release:
   stage: build-release
   script:
-    - docker login -u gitlab-ci-token -p $CI_BUILD_TOKEN registry.gitlab.com
+    - docker login -u gitlab-ci-token -p $CI_JOB_TOKEN registry.gitlab.com
     - docker build -t $CI_REGISTRY_IMAGE:$CI_COMMIT_REF_NAME -f ./src/Dockerfile .
     - docker push $CI_REGISTRY_IMAGE:$CI_COMMIT_REF_NAME
   only:
