@@ -744,6 +744,20 @@
                 return;
             }
 
+
+            _selectedRequest = await ChannelOperationRequestRepository.GetById(_selectedRequest.Id);
+
+            if (_selectedRequest != null
+                && _selectedRequest.AreAllRequiredHumanSignaturesCollected)
+            {
+                await CreateJob();
+            }
+            else
+            {
+                ToastService.ShowError("Invalid PSBT");
+            }
+           
+
             await FetchRequests();
             await _approveOperationConfirmationModal.CloseModal();
         }
