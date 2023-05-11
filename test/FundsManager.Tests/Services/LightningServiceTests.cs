@@ -343,7 +343,8 @@ namespace FundsManager.Services
             };
             var operationRequest = new ChannelOperationRequest()
             {
-                ChannelOperationRequestPsbts = channelOpReqPsbts
+                ChannelOperationRequestPsbts = channelOpReqPsbts,
+                Wallet = CreateWallet.SingleSig(_internalWallet)
             };
 
             // Act
