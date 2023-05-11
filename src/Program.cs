@@ -132,7 +132,12 @@ namespace FundsManager
             }, ServiceLifetime.Transient);
             
             //gRPC
-            builder.Services.AddGrpc();
+            builder.Services.AddGrpc(options =>
+            {
+                var messageSize = 200 * 1024 * 1024; // 200 MB
+                options.MaxReceiveMessageSize = messageSize;
+                options.MaxSendMessageSize = messageSize;
+            });
             builder.WebHost.ConfigureKestrel(options =>
             {
                 // Setup a HTTP/2 endpoint without TLS.
