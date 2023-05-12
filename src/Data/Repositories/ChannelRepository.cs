@@ -62,12 +62,12 @@ namespace FundsManager.Data.Repositories
 
             return await applicationDbContext.Channels.Include(x => x.ChannelOperationRequests).FirstOrDefaultAsync(x => x.Id == id);
         }
-        
+
         public async Task<Channel?> GetByChanId(ulong chanId)
         {
             await using var applicationDbContext = await _dbContextFactory.CreateDbContextAsync();
 
-            return await applicationDbContext.Channels.Include(x => x.ChannelOperationRequests).FirstOrDefaultAsync(x => x.ChanId == chanId);
+            return await applicationDbContext.Channels.Include(x => x.ChannelOperationRequests).FirstOrDefaultAsync(x => x.ChanId.Equals(chanId));
         }
 
         public async Task<List<Channel>> GetAll()
@@ -112,7 +112,7 @@ namespace FundsManager.Data.Repositories
         {
             await using var applicationDbContext = await _dbContextFactory.CreateDbContextAsync();
             var openRequest = applicationDbContext.ChannelOperationRequests.Include(x => x.SourceNode).SingleOrDefault(request => request.ChannelId == type.Id && request.RequestType == OperationRequestType.Open);
-            
+
             var closeRequest = new ChannelOperationRequest
             {
                 ChannelId = type.Id,
@@ -153,8 +153,8 @@ namespace FundsManager.Data.Repositories
 
             if (closeRequest == null) return (false, null);
 
-            var scheduler = await _schedulerFactory.GetScheduler(); 
-            
+            var scheduler = await _schedulerFactory.GetScheduler();
+
             var map = new JobDataMap();
             map.Put("closeRequestId", closeRequest.Id);
             map.Put("forceClose", forceClose);
@@ -192,7 +192,7 @@ namespace FundsManager.Data.Repositories
 
             return _repository.Update(type, applicationDbContext);
         }
-        
+
         public async Task<ListChannelsResponse?> ListChannels(Node node)
         {
             //This method is here to avoid a circular dependency between the LightningService and the ChannelRepository
@@ -213,7 +213,7 @@ namespace FundsManager.Data.Repositories
                 _logger.LogError(e, "Error while listing channels for node {NodeId}", node.Id);
                 return null;
             }
-            
+
             return listChannelsResponse;
         }
 
@@ -243,38 +243,38 @@ namespace FundsManager.Data.Repositories
         public async Task<(bool, string?)> MarkAsClosed(Channel channel)
         {
             await using var applicationDbContext = await _dbContextFactory.CreateDbContextAsync();
-            
+
             //check the channel exists in the node
             var channelOperationRequest = channel.ChannelOperationRequests.FirstOrDefault();
-            
+
             if (channelOperationRequest == null)
             {
                 _logger.LogError("Error while marking as closed with id: {ChannelId}. No channel operation request found", channel.Id);
                 return (false, "No channel operation request found");
             }
-            
+
             var channels = await ListChannels(channelOperationRequest.SourceNode);
-            
+
             if (channels == null)
             {
                 _logger.LogError("Error while marking as closed with id: {ChannelId}. No channels found", channel.Id);
                 return (false, "No channels found");
             }
-            
+
             var channelFound = channels.Channels.FirstOrDefault(x => x.ChanId == channel.ChanId);
-            
+
             if (channelFound != null)
             {
                 _logger.LogError("Error while marking as closed with id: {ChannelId}. Channel was found", channel.Id);
                 return (false, "Channel was found");
             }
-            
+
             channel.Status = Channel.ChannelStatus.Closed;
 
             var markAsClosed = _repository.Update(channel, applicationDbContext);
-            
+
             return markAsClosed;
-            
+
         }
     }
 }
