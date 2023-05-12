@@ -163,12 +163,12 @@ namespace FundsManager.Services
         /// <param name="EnforcedSighash"></param>
         /// <param name="Network"></param>
         /// <param name="AwsKmsKeyId"></param>
-        public record Input(string Psbt, SigHash? EnforcedSighash, string Network, string AwsKmsKeyId);
+        public record RemoteSignerRequest(string Psbt, SigHash? EnforcedSighash, string Network);
         /// <summary>
         /// Record used to match AWS SignPSBT funciton output
         /// </summary>
         /// <param name="Psbt"></param>
-        public record Output(string? Psbt);
+        public record RemoteSignerResponse(string? Psbt);
 
         public async Task OpenChannel(ChannelOperationRequest channelOperationRequest)
         {
@@ -409,7 +409,7 @@ namespace FundsManager.Services
                                     var changeFixedPSBT = channelfundingTx.CreatePSBT(network).UpdateFrom(fundedPSBT);
 
                                     PSBT? finalSignedPSBT = null;
-                                    //We check the way the fundsmanager signs, with the remoteFundsManagerSigner or by itself.
+                                    //We check the way the nodeguard signs, with the nodeguard remote signer or with the embedded signer
                                     if (Constants.ENABLE_REMOTE_SIGNER)
                                     {
                                         finalSignedPSBT = await _remoteSignerService.Sign(changeFixedPSBT);
