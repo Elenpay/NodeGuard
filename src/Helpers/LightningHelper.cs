@@ -238,7 +238,7 @@ namespace FundsManager.Helpers
             {
                 //TODO Maybe the block confirmation count can be a parameter.
                 feeRateResult =
-                    await nbxplorerClient.GetFeeRateAsync(1, default);
+                    await nbxplorerClient.GetFeeRateAsync(6, default);
             }
 
             return feeRateResult;
