@@ -177,7 +177,12 @@ namespace FundsManager
                     options.UsePostgres(Constants.POSTGRES_CONNECTIONSTRING);
                     options.UseJsonSerializer();
                 });
-
+                
+                q.UseDedicatedThreadPool(x =>
+                {
+                    x.MaxConcurrency = 500;
+                });
+                
                 //This allows DI in jobs
                 q.UseMicrosoftDependencyInjectionJobFactory();
 
