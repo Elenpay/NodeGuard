@@ -85,13 +85,9 @@ public class RemoteSignerServiceService : IRemoteSignerService
                 awsAccessKeyId,
                 awsSecretAccessKey,
                 null);
-
-            var awsKmsKeyId = Constants.AWS_KMS_KEY_ID; 
-
-            var requestPayload = new LightningService.Input(psbt.ToBase64(), SigHash.All,
-                CurrentNetworkHelper.GetCurrentNetwork().ToString(),
-                awsKmsKeyId ??
-                throw new InvalidOperationException());
+            
+            var requestPayload = new LightningService.RemoteSignerRequest(psbt.ToBase64(), SigHash.All,
+                CurrentNetworkHelper.GetCurrentNetwork().ToString());
 
             var serializedPayload = JsonSerializer.Serialize(requestPayload);
 
@@ -115,11 +111,11 @@ public class RemoteSignerServiceService : IRemoteSignerService
                 throw new Exception(errorWhileSignignPsbtWithAwsLambdaFunctionStatus);
             }
 
-            var output =
-                JsonSerializer.Deserialize<LightningService.Output>(
+            var remoteSignerResponse =
+                JsonSerializer.Deserialize<LightningService.RemoteSignerResponse>(
                     await signLambdaResponse.Content.ReadAsStreamAsync());
 
-            if (!PSBT.TryParse(output.Psbt, CurrentNetworkHelper.GetCurrentNetwork(), out var finalSignedPsbt))
+            if (!PSBT.TryParse(remoteSignerResponse.Psbt, CurrentNetworkHelper.GetCurrentNetwork(), out var finalSignedPsbt))
             {
                 var errorWhileParsingPsbt = "Error while parsing PSBT signed from AWS Remote FundsManagerSigner";
                 _logger.LogError(errorWhileParsingPsbt);
