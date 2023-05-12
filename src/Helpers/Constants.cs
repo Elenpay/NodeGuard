@@ -50,7 +50,6 @@ public class Constants
     public static readonly string? AWS_REGION;
     public static readonly string? AWS_ACCESS_KEY_ID;
     public static readonly string? AWS_SECRET_ACCESS_KEY;
-    public static readonly string? AWS_KMS_KEY_ID;
 
     // Crons & Jobs
     public static readonly string MONITOR_WITHDRAWALS_CRON = "10 0/5 * * * ?";
@@ -137,9 +136,7 @@ public class Constants
             AWS_ACCESS_KEY_ID = GetEnvironmentalVariableOrThrowIfNotTesting("AWS_ACCESS_KEY_ID", "if ENABLE_REMOTE_SIGNER is set, AWS_ACCESS_KEY_ID");
 
             AWS_SECRET_ACCESS_KEY = GetEnvironmentalVariableOrThrowIfNotTesting("AWS_SECRET_ACCESS_KEY", "if ENABLE_REMOTE_SIGNER is set, AWS_SECRET_ACCESS_KEY");
-
-            AWS_KMS_KEY_ID = GetEnvironmentalVariableOrThrowIfNotTesting("AWS_KMS_KEY_ID", "if ENABLE_REMOTE_SIGNER is set, AWS_KMS_KEY_ID");
-
+            
             REMOTE_SIGNER_ENDPOINT = GetEnvironmentalVariableOrThrowIfNotTesting("REMOTE_SIGNER_ENDPOINT", "if ENABLE_REMOTE_SIGNER is set, REMOTE_SIGNER_ENDPOINT");
         }
 
