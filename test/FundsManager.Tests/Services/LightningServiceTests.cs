@@ -550,6 +550,13 @@ namespace FundsManager.Services
                     default))
                 .Returns(MockHelpers.CreateAsyncUnaryCall(new FundingStateStepResp()));
 
+            // Mock channel repository
+            var channelRepository = new Mock<IChannelRepository>();
+
+            channelRepository
+                .Setup(x => x.GetByChanId(It.IsAny<ulong>()))
+                .ReturnsAsync(() => null);
+
             //Mock List channels async
             var listChannelsResponse = new ListChannelsResponse
             {
@@ -585,7 +592,7 @@ namespace FundsManager.Services
                 null,
                 null,
                 channelOperationRequestPsbtRepository.Object,
-                null,
+                channelRepository.Object,
                 null,
                 GetNBXplorerServiceFullyMocked(utxoChanges).Object);
 
@@ -773,6 +780,13 @@ namespace FundsManager.Services
                     default))
                 .Returns(MockHelpers.CreateAsyncUnaryCall(new FundingStateStepResp()));
 
+            // Mock channel repository
+            var channelRepository = new Mock<IChannelRepository>();
+
+            channelRepository
+                .Setup(x => x.GetByChanId(It.IsAny<ulong>()))
+                .ReturnsAsync(() => null);
+
             //Mock List channels async
             var listChannelsResponse = new ListChannelsResponse
             {
@@ -808,7 +822,7 @@ namespace FundsManager.Services
                 null,
                 null,
                 channelOperationRequestPsbtRepository.Object,
-                null,
+                channelRepository.Object,
                 null,
                 GetNBXplorerServiceFullyMocked(utxoChanges).Object);
 
@@ -996,6 +1010,13 @@ namespace FundsManager.Services
                     default))
                 .Returns(MockHelpers.CreateAsyncUnaryCall(new FundingStateStepResp()));
 
+            // Mock channel repository
+            var channelRepository = new Mock<IChannelRepository>();
+
+            channelRepository
+                .Setup(x => x.GetByChanId(It.IsAny<ulong>()))
+                .ReturnsAsync(() => null);
+
             //Mock List channels async
             var listChannelsResponse = new ListChannelsResponse
             {
@@ -1031,7 +1052,7 @@ namespace FundsManager.Services
                 null,
                 null,
                 channelOperationRequestPsbtRepository.Object,
-                null,
+                channelRepository.Object,
                 null,
                 GetNBXplorerServiceFullyMocked(utxoChanges).Object);
 
@@ -1218,6 +1239,13 @@ namespace FundsManager.Services
                     default))
                 .Returns(MockHelpers.CreateAsyncUnaryCall(new FundingStateStepResp()));
 
+            // Mock channel repository
+            var channelRepository = new Mock<IChannelRepository>();
+
+            channelRepository
+                .Setup(x => x.GetByChanId(It.IsAny<ulong>()))
+                .ReturnsAsync(() => null);
+
             //Mock List channels async
             var listChannelsResponse = new ListChannelsResponse
             {
@@ -1253,7 +1281,7 @@ namespace FundsManager.Services
                 null,
                 null,
                 channelOperationRequestPsbtRepository.Object,
-                null,
+                channelRepository.Object,
                 null,
                 GetNBXplorerServiceFullyMocked(utxoChanges).Object);
 
