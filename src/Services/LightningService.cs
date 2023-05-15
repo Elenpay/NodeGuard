@@ -734,7 +734,7 @@ namespace FundsManager.Services
                 partialSigsCountAfterSignature != expectedPartialSigs)
             {
                 var invalidNoOfPartialSignatures =
-                    $"Invalid expected number of partial signatures after signing for the channel operation request:{channelOperationRequest.Id}, expected:{changeFixedPSBT.Inputs.Count}, actual:{partialSigsCountAfterSignature}";
+                    $"Invalid expected number of partial signatures after signing for the channel operation request:{channelOperationRequest.Id}, expected:{expectedPartialSigs}, actual:{partialSigsCountAfterSignature}";
                 logger?.LogError(invalidNoOfPartialSignatures);
 
                 throw new ArgumentException(
