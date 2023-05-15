@@ -131,6 +131,9 @@ namespace FundsManager
                     });
             }, ServiceLifetime.Transient);
             
+            //HTTPClient factory
+            builder.Services.AddHttpClient();
+            
             //gRPC
             builder.Services.AddGrpc(options =>
             {
