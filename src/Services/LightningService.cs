@@ -734,11 +734,14 @@ namespace FundsManager.Services
             var partialSigsCountAfterSignature =
                 changeFixedPSBT.Inputs.Sum(x => x.PartialSigs.Count);
 
+            //We should have added a signature for each input, plus already existing signatures
+            var expectedPartialSigs = partialSigsCount + changeFixedPSBT.Inputs.Count;
+            
             if (partialSigsCountAfterSignature == 0 ||
-                partialSigsCountAfterSignature <= partialSigsCount)
+                partialSigsCountAfterSignature != expectedPartialSigs)
             {
                 var invalidNoOfPartialSignatures =
-                    $"Invalid expected number of partial signatures after signing for the channel operation request:{channelOperationRequest.Id}";
+                    $"Invalid expected number of partial signatures after signing for the channel operation request:{channelOperationRequest.Id}, expected:{expectedPartialSigs}, actual:{partialSigsCountAfterSignature}";
                 logger?.LogError(invalidNoOfPartialSignatures);
 
                 throw new ArgumentException(
