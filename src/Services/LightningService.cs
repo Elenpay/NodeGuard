@@ -141,7 +141,7 @@ namespace FundsManager.Services
             IRemoteSignerService remoteSignerService,
             INBXplorerService nbXplorerService
           )
-        
+
         {
             _logger = logger;
             _channelOperationRequestRepository = channelOperationRequestRepository;
@@ -173,7 +173,7 @@ namespace FundsManager.Services
         public async Task OpenChannel(ChannelOperationRequest channelOperationRequest)
         {
             await using var context = await _dbContextFactory.CreateDbContextAsync();
-            
+
             CheckArgumentsAreValid(channelOperationRequest, OperationRequestType.Open, _logger);
 
             channelOperationRequest = await _channelOperationRequestRepository.GetById(channelOperationRequest.Id) ??
@@ -181,7 +181,7 @@ namespace FundsManager.Services
 
             var (source, destination) = CheckNodesAreValid(channelOperationRequest, _logger);
             var derivationStrategyBase = GetDerivationStrategyBase(channelOperationRequest, _logger);
- 
+
             var client = CreateLightningClient(source.Endpoint);
 
             var network = CurrentNetworkHelper.GetCurrentNetwork();
@@ -198,7 +198,7 @@ namespace FundsManager.Services
             //32 bytes of secure randomness for the pending channel id (lnd)
             var pendingChannelId = RandomNumberGenerator.GetBytes(32);
             var pendingChannelIdHex = Convert.ToHexString(pendingChannelId);
-            
+
             try
             {
                 //We prepare the request (shim) with the base PSBT we had presigned with the UTXOs to fund the channel
@@ -230,7 +230,7 @@ namespace FundsManager.Services
 
                 //For now, we only rely on pure tcp IPV4 connections
                 var addr = remoteNodeInfo.Addresses.FirstOrDefault(x => x.Network == "tcp").Addr;
-                
+
                 if(addr == null)
                 {
                     _logger.LogError("Error, remote node with {Pubkey} has no tcp IPV4 address",
@@ -347,7 +347,14 @@ namespace FundsManager.Services
                                     IsPrivate = currentChannel.Private
                                 };
 
-                                await context.AddAsync(channel);
+                                var channelExists = await _channelRepository.GetByChanId(channel.ChanId);
+                                if (channelExists == null)
+                                    await context.AddAsync(channel);
+                                else
+                                {
+                                    channel.Id = channelExists.Id;
+                                    context.Update(channel);
+                                }
 
                                 var addChannelResult = (await context.SaveChangesAsync()) > 0;
 
@@ -430,7 +437,7 @@ namespace FundsManager.Services
                                             network,
                                             changeFixedPSBT,
                                             _logger);
-                                        
+
                                         if (finalSignedPSBT == null)
                                         {
                                             const string errorMessage = "The signed PSBT was null, something went wrong while signing with the embedded signer";
@@ -581,21 +588,21 @@ namespace FundsManager.Services
             var combinedPSBT = LightningHelper.CombinePSBTs(signedPsbts2, _logger);
 
             if (combinedPSBT != null) return combinedPSBT;
-            
+
             var invalidPsbtNullToBeUsedForTheRequest = $"Invalid PSBT(null) to be used for the channel op request:{channelOperationRequest.Id}";
             _logger?.LogError(invalidPsbtNullToBeUsedForTheRequest);
 
             throw new ArgumentException(invalidPsbtNullToBeUsedForTheRequest, nameof(combinedPSBT));
         }
-        
+
         public static async Task<KeyPathInformation?> GetCloseAddress(ChannelOperationRequest channelOperationRequest,
             DerivationStrategyBase derivationStrategyBase, INBXplorerService nbXplorerService, ILogger? _logger = null)
         {
-            var closeAddress =await 
+            var closeAddress =await
                nbXplorerService.GetUnusedAsync(derivationStrategyBase, DerivationFeature.Deposit, 0, true, default);
 
             if (closeAddress != null) return closeAddress;
-            
+
             var closeAddressNull =  $"Closing address was null for an operation on wallet:{channelOperationRequest.Wallet.Id}";
             _logger?.LogError(closeAddressNull);
 
@@ -608,27 +615,27 @@ namespace FundsManager.Services
             var derivationStrategyBase = channelOperationRequest.Wallet.GetDerivationStrategy();
 
             if (derivationStrategyBase != null) return derivationStrategyBase;
-            
+
             var derivationNull = $"Derivation scheme not found for wallet:{channelOperationRequest.Wallet.Id}";
-            
+
             _logger?.LogError(derivationNull);
 
             throw new ArgumentException(derivationNull);
         }
-        
+
         public static void CheckArgumentsAreValid(ChannelOperationRequest channelOperationRequest, OperationRequestType requestype, ILogger? _logger = null)
         {
             if (channelOperationRequest == null) throw new ArgumentNullException(nameof(channelOperationRequest));
 
             if (channelOperationRequest.RequestType == requestype) return;
-            
+
             string requestInvalid = $"Invalid request. Requested ${channelOperationRequest.RequestType.ToString()} on ${requestype.ToString()} method";
 
             _logger?.LogError(requestInvalid);
 
             throw new ArgumentOutOfRangeException(requestInvalid);
         }
-        
+
         public static (Node, Node) CheckNodesAreValid(ChannelOperationRequest channelOperationRequest, ILogger? _logger = null)
         {
             var source = channelOperationRequest.SourceNode;
@@ -638,14 +645,14 @@ namespace FundsManager.Services
             {
                 throw new ArgumentException("Source or destination null", nameof(source));
             }
-            
+
             if (source.ChannelAdminMacaroon == null)
             {
                 throw new UnauthorizedAccessException("Macaroon not set for source channel");
             }
 
             if (source.PubKey != destination.PubKey) return (source, destination);
-            
+
             const string aNodeCannotOpenAChannelToItself = "A node cannot open a channel to itself.";
 
             _logger?.LogError(aNodeCannotOpenAChannelToItself);
@@ -670,7 +677,7 @@ namespace FundsManager.Services
         public static async Task<PSBT> SignPSBTWithEmbeddedSigner(
                 ChannelOperationRequest channelOperationRequest, INBXplorerService nbXplorerService,
                 DerivationStrategyBase derivationStrategyBase, Transaction channelfundingTx, Network network, PSBT changeFixedPSBT, ILogger? logger = null)
-            
+
         {
             //We get the UTXO keyPath / derivation path from nbxplorer
 
@@ -700,7 +707,7 @@ namespace FundsManager.Services
             Dictionary<NBitcoin.OutPoint,NBitcoin.Key> privateKeysForUsedUTXOs;
             try
             {
-                privateKeysForUsedUTXOs = txInKeyPathDictionary.ToDictionary(x => x.Key.PrevOut, x => 
+                privateKeysForUsedUTXOs = txInKeyPathDictionary.ToDictionary(x => x.Key.PrevOut, x =>
                     channelOperationRequest.Wallet.DeriveUtxoPrivateKey(network, x.Value));
             }
             catch (Exception e)
@@ -813,7 +820,7 @@ namespace FundsManager.Services
             var derivationStrategy = channelOperationRequest.Wallet?.GetDerivationStrategy();
 
             var nbXplorerServiceGetStatusAsync = await _nbXplorerService.GetStatusAsync(default);
-            
+
             if (!nbXplorerServiceGetStatusAsync.IsFullySynched)
             {
                 _logger.LogError("Error, nbxplorer not fully synched");
@@ -907,7 +914,7 @@ namespace FundsManager.Services
                     input.SighashType = SigHash.None;
                 }
 
-                //Additional fields to support PSBT signing with a HW or the Remote Signer 
+                //Additional fields to support PSBT signing with a HW or the Remote Signer
                 var psbt = LightningHelper.AddDerivationData(channelOperationRequest.Wallet, result.Item1, selectedUtxOs, multisigCoins, _logger);
                 result = (psbt, result.Item2);
             }
@@ -949,7 +956,7 @@ namespace FundsManager.Services
             return result;
         }
 
-      
+
         /// <summary>
         /// Gets UTXOs confirmed from the wallet of the request
         /// </summary>
@@ -990,7 +997,7 @@ namespace FundsManager.Services
                 if (channelOperationRequest.ChannelId != null)
                 {
                     var channel = await _channelRepository.GetById((int)channelOperationRequest.ChannelId);
-                    
+
                     var node = string.IsNullOrEmpty(channelOperationRequest.SourceNode.ChannelAdminMacaroon)
                         ? channelOperationRequest.DestNode
                         : channelOperationRequest.SourceNode;
@@ -1131,7 +1138,7 @@ namespace FundsManager.Services
         public async Task<GetBalanceResponse?> GetWalletBalance(Wallet wallet)
         {
             if (wallet == null) throw new ArgumentNullException(nameof(wallet));
-            
+
             GetBalanceResponse? getBalanceResponse = null;
             try
             {
@@ -1213,17 +1220,17 @@ namespace FundsManager.Services
             var destinationNode = await _nodeRepository.GetById(channel.DestinationNodeId);
             var sourceNode = await _nodeRepository.GetById(channel.SourceNodeId);
             var node = String.IsNullOrEmpty(sourceNode.ChannelAdminMacaroon) ? destinationNode : sourceNode;
-            
+
             client = CreateLightningClient(node.Endpoint);
-            var result = client.Execute(x => x.ListChannels(new ListChannelsRequest(), 
+            var result = client.Execute(x => x.ListChannels(new ListChannelsRequest(),
                 new Metadata {
                 {"macaroon", node.ChannelAdminMacaroon}
             }, null, default));
-            
+
             var chan = result.Channels.FirstOrDefault(x => x.ChanId == channel.ChanId);
             if(chan == null)
                 return (null, null);
-            
+
             var htlcsLocal = chan.PendingHtlcs.Where(x => x.Incoming == true).Sum(x => x.Amount);
             var htlcsRemote = chan.PendingHtlcs.Where(x => x.Incoming == false).Sum(x => x.Amount);
 
