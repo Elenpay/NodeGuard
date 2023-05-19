@@ -83,7 +83,7 @@ namespace FundsManager.Services
                 .ReturnsAsync(null as ChannelOperationRequest);
 
             var lightningService = new LightningService(_logger, channelOperationRequestRepository.Object, null,
-                dbContextFactory.Object, null, null, null, null, null, null, new Mock<INBXplorerService>().Object);
+                dbContextFactory.Object, null, null, null, null, null, null, new Mock<INBXplorerService>().Object, null);
 
             var operationRequest = new ChannelOperationRequest
             {
@@ -594,7 +594,8 @@ namespace FundsManager.Services
                 channelOperationRequestPsbtRepository.Object,
                 channelRepository.Object,
                 null,
-                GetNBXplorerServiceFullyMocked(utxoChanges).Object);
+                GetNBXplorerServiceFullyMocked(utxoChanges).Object,
+                null);
 
             // Act
             var act = async () => await lightningService.OpenChannel(operationRequest);
@@ -824,7 +825,8 @@ namespace FundsManager.Services
                 channelOperationRequestPsbtRepository.Object,
                 channelRepository.Object,
                 null,
-                GetNBXplorerServiceFullyMocked(utxoChanges).Object);
+                GetNBXplorerServiceFullyMocked(utxoChanges).Object,
+                null);
 
             // Act
             var act = async () => await lightningService.OpenChannel(operationRequest);
@@ -1054,7 +1056,8 @@ namespace FundsManager.Services
                 channelOperationRequestPsbtRepository.Object,
                 channelRepository.Object,
                 null,
-                GetNBXplorerServiceFullyMocked(utxoChanges).Object);
+                GetNBXplorerServiceFullyMocked(utxoChanges).Object,
+                null);
 
             // Act
             var act = async () => await lightningService.OpenChannel(operationRequest);
@@ -1283,7 +1286,8 @@ namespace FundsManager.Services
                 channelOperationRequestPsbtRepository.Object,
                 channelRepository.Object,
                 null,
-                GetNBXplorerServiceFullyMocked(utxoChanges).Object);
+                GetNBXplorerServiceFullyMocked(utxoChanges).Object,
+                null);
 
             // Act
             var act = async () => await lightningService.OpenChannel(operationRequest);
@@ -1372,6 +1376,7 @@ namespace FundsManager.Services
                 null,
                 null,
                 channelRepository.Object,
+                null,
                 null,
                 null);
 

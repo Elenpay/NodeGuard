@@ -39,7 +39,6 @@ namespace FundsManager.Services
 
     {
         private readonly ILogger<BitcoinService> _logger;
-        private readonly IFMUTXORepository _fmutxoRepository;
         private readonly IMapper _mapper;
         private readonly IWalletWithdrawalRequestRepository _walletWithdrawalRequestRepository;
         private readonly IWalletWithdrawalRequestPsbtRepository _walletWithdrawalRequestPsbtRepository;
@@ -49,7 +48,6 @@ namespace FundsManager.Services
         private readonly ICoinSelectionService _coinSelectionService;
 
         public BitcoinService(ILogger<BitcoinService> logger,
-            IFMUTXORepository fmutxoRepository,
             IMapper mapper,
             IWalletWithdrawalRequestRepository walletWithdrawalRequestRepository,
             IWalletWithdrawalRequestPsbtRepository walletWithdrawalRequestPsbtRepository,
@@ -60,7 +58,6 @@ namespace FundsManager.Services
         )
         {
             _logger = logger;
-            _fmutxoRepository = fmutxoRepository;
             _mapper = mapper;
             _walletWithdrawalRequestRepository = walletWithdrawalRequestRepository;
             _walletWithdrawalRequestPsbtRepository = walletWithdrawalRequestPsbtRepository;
@@ -148,9 +145,6 @@ namespace FundsManager.Services
 
             var utxoChanges = await _nbXplorerService.GetUTXOsAsync(derivationStrategy);
             utxoChanges.RemoveDuplicateUTXOs();
-
-            var lockedUtxOs =
-                await _fmutxoRepository.GetLockedUTXOs(ignoredWalletWithdrawalRequestId: walletWithdrawalRequest.Id);
 
             //If the request is a full funds withdrawal, calculate the amount to the existing balance
             if (walletWithdrawalRequest.WithdrawAllFunds)
