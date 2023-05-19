@@ -46,6 +46,7 @@ namespace FundsManager.Services
         private readonly INodeRepository _nodeRepository;
         private readonly IRemoteSignerService _remoteSignerService;
         private readonly INBXplorerService _nbXplorerService;
+        private readonly ICoinSelectionService _coinSelectionService;
 
         public BitcoinService(ILogger<BitcoinService> logger,
             IFMUTXORepository fmutxoRepository,
@@ -54,8 +55,9 @@ namespace FundsManager.Services
             IWalletWithdrawalRequestPsbtRepository walletWithdrawalRequestPsbtRepository,
             INodeRepository nodeRepository,
             IRemoteSignerService remoteSignerService,
-            INBXplorerService nbXplorerService
-            )
+            INBXplorerService nbXplorerService,
+            ICoinSelectionService coinSelectionService
+        )
         {
             _logger = logger;
             _fmutxoRepository = fmutxoRepository;
@@ -65,6 +67,7 @@ namespace FundsManager.Services
             _nodeRepository = nodeRepository;
             _remoteSignerService = remoteSignerService;
             _nbXplorerService = nbXplorerService;
+            _coinSelectionService = coinSelectionService;
         }
 
         public async Task<(decimal, long)> GetWalletConfirmedBalance(Wallet wallet)
@@ -72,7 +75,7 @@ namespace FundsManager.Services
             if (wallet == null) throw new ArgumentNullException(nameof(wallet));
 
             var balance = await _nbXplorerService.GetBalanceAsync(wallet.GetDerivationStrategy(), default);
-            var confirmedBalanceMoney = (Money) balance.Confirmed;
+            var confirmedBalanceMoney = (Money)balance.Confirmed;
 
             return (confirmedBalanceMoney.ToUnit(MoneyUnit.BTC), confirmedBalanceMoney.Satoshi);
         }
@@ -100,7 +103,7 @@ namespace FundsManager.Services
             var derivationStrategy = walletWithdrawalRequest.Wallet.GetDerivationStrategy();
             if (derivationStrategy == null)
             {
-                var message = $"Error while getting the derivation strategy scheme for wallet: {walletWithdrawalRequest.Wallet.Id}"; 
+                var message = $"Error while getting the derivation strategy scheme for wallet: {walletWithdrawalRequest.Wallet.Id}";
                 _logger.LogError(message);
                 throw new ArgumentNotFoundException(message);
             }
@@ -154,7 +157,7 @@ namespace FundsManager.Services
             {
                 var balanceResponse = await _nbXplorerService.GetBalanceAsync(derivationStrategy);
 
-                walletWithdrawalRequest.Amount = ((Money) balanceResponse.Confirmed).ToUnit(MoneyUnit.BTC);
+                walletWithdrawalRequest.Amount = ((Money)balanceResponse.Confirmed).ToUnit(MoneyUnit.BTC);
 
                 var update = _walletWithdrawalRequestRepository.Update(walletWithdrawalRequest);
                 if (!update.Item1)
@@ -163,11 +166,8 @@ namespace FundsManager.Services
                 }
             }
 
-            var (scriptCoins, selectedUTXOs) = await LightningHelper.SelectCoins(walletWithdrawalRequest.Wallet,
-                walletWithdrawalRequest.SatsAmount,
-                utxoChanges,
-                lockedUtxOs,
-                _logger, _mapper);
+            var availableUTXOs = await _coinSelectionService.GetAvailableUTXOsAsync(derivationStrategy);
+            var (scriptCoins, selectedUTXOs) = await _coinSelectionService.GetTxInputCoins(availableUTXOs, walletWithdrawalRequest, derivationStrategy);
 
             if (scriptCoins == null || !scriptCoins.Any())
             {
@@ -194,7 +194,7 @@ namespace FundsManager.Services
                 if (changeAddress == null)
                 {
                     var message = String.Format("Change address was not found for wallet: {WalletId}",
-                        walletWithdrawalRequest.Wallet.Id); 
+                        walletWithdrawalRequest.Wallet.Id);
                     _logger.LogError(message);
                     throw new ArgumentNullException(message);
                 }
@@ -211,7 +211,7 @@ namespace FundsManager.Services
 
                 // We preserve the output order when testing so the psbt doesn't change
                 var command = Assembly.GetEntryAssembly()?.GetName().Name?.ToLowerInvariant();
-                builder.ShuffleOutputs = command != "ef" && (command != null && !command.Contains("test"));;
+                builder.ShuffleOutputs = command != "ef" && (command != null && !command.Contains("test"));
 
                 if (walletWithdrawalRequest.WithdrawAllFunds)
                 {
@@ -224,8 +224,8 @@ namespace FundsManager.Services
                 }
 
                 result = builder.BuildPSBT(false);
-                
-                //Additional fields to support PSBT signing with a HW or the Remote Signer 
+
+                //Additional fields to support PSBT signing with a HW or the Remote Signer
                 result = LightningHelper.AddDerivationData(walletWithdrawalRequest.Wallet, result, selectedUTXOs, scriptCoins, _logger);
             }
             catch (Exception e)
@@ -246,7 +246,7 @@ namespace FundsManager.Services
 
             if (result == null)
             {
-                throw new Exception("Error while generating base PSBT");    
+                throw new Exception("Error while generating base PSBT");
             }
 
             // The template PSBT is saved for later reuse
@@ -287,10 +287,10 @@ namespace FundsManager.Services
             //Update
             walletWithdrawalRequest = await _walletWithdrawalRequestRepository.GetById(walletWithdrawalRequest.Id) ??
                                       throw new InvalidOperationException();
-            
+
             PSBT? psbtToSign = null;
             //If it is a hot wallet or a BIP39 imported wallet, we dont need to combine the PSBTs
-            if(walletWithdrawalRequest.Wallet.IsHotWallet || walletWithdrawalRequest.Wallet.IsBIP39Imported)
+            if (walletWithdrawalRequest.Wallet.IsHotWallet || walletWithdrawalRequest.Wallet.IsBIP39Imported)
             {
                 psbtToSign = PSBT.Parse(walletWithdrawalRequest.WalletWithdrawalRequestPSBTs
                         .Single(x => x.IsTemplatePSBT)
@@ -335,7 +335,6 @@ namespace FundsManager.Services
                         signedCombinedPSBT = await SignPSBTWithEmbeddedSigner(walletWithdrawalRequest, _nbXplorerService,
                             derivationStrategyBase, psbtToSign, CurrentNetworkHelper.GetCurrentNetwork(), _logger);
                     }
-                    
                 }
                 else
                 {
@@ -462,7 +461,7 @@ namespace FundsManager.Services
                     errorKeypathsForTheUtxosUsedInThisTxAreNotFound);
             }
 
-            Dictionary<NBitcoin.OutPoint,NBitcoin.Key> privateKeysForUsedUTXOs;
+            Dictionary<NBitcoin.OutPoint, NBitcoin.Key> privateKeysForUsedUTXOs;
             try
             {
                 privateKeysForUsedUTXOs = txInKeyPathDictionary.ToDictionary(x => x.Key.PrevOut,

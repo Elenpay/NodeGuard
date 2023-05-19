@@ -71,10 +71,7 @@ namespace FundsManager
 
             //Identity
             builder.Services
-                .AddDefaultIdentity<ApplicationUser>(options =>
-                {
-                    options.SignIn.RequireConfirmedAccount = false;
-                })
+                .AddDefaultIdentity<ApplicationUser>(options => { options.SignIn.RequireConfirmedAccount = false; })
                 .AddRoles<IdentityRole>()
                 .AddRoleManager<RoleManager<IdentityRole>>()
                 .AddEntityFrameworkStores<ApplicationDbContext>()
@@ -108,6 +105,7 @@ namespace FundsManager
             builder.Services.AddTransient<IWalletWithdrawalRequestRepository, WalletWithdrawalRequestRepository>();
             builder.Services.AddTransient<IRemoteSignerService, RemoteSignerServiceService>();
             builder.Services.AddTransient<ILiquidityRuleRepository, LiquidityRuleRepository>();
+            builder.Services.AddTransient<ICoinSelectionService, CoinSelectionService>();
 
             //BlazoredToast
             builder.Services.AddBlazoredToast();
@@ -125,15 +123,15 @@ namespace FundsManager
                 //options.EnableSensitiveDataLogging();
                 //options.EnableDetailedErrors();
                 options.UseNpgsql(Constants.POSTGRES_CONNECTIONSTRING, options =>
-                    {
-                        options.UseQuerySplittingBehavior(QuerySplittingBehavior
-                            .SingleQuery); // Slower but integrity is ensured
-                    });
+                {
+                    options.UseQuerySplittingBehavior(QuerySplittingBehavior
+                        .SingleQuery); // Slower but integrity is ensured
+                });
             }, ServiceLifetime.Transient);
-            
+
             //HTTPClient factory
             builder.Services.AddHttpClient();
-            
+
             //gRPC
             builder.Services.AddGrpc(options =>
             {
@@ -146,7 +144,7 @@ namespace FundsManager
                 // Setup a HTTP/2 endpoint without TLS.
                 options.ListenAnyIP(50051, o => o.Protocols =
                     HttpProtocols.Http2);
-                options.ListenAnyIP(int.Parse(Environment.GetEnvironmentVariable("HTTP1_LISTEN_PORT") ?? "80") , o => o.Protocols =
+                options.ListenAnyIP(int.Parse(Environment.GetEnvironmentVariable("HTTP1_LISTEN_PORT") ?? "80"), o => o.Protocols =
                     HttpProtocols.Http1);
             });
 
@@ -180,12 +178,9 @@ namespace FundsManager
                     options.UsePostgres(Constants.POSTGRES_CONNECTIONSTRING);
                     options.UseJsonSerializer();
                 });
-                
-                q.UseDedicatedThreadPool(x =>
-                {
-                    x.MaxConcurrency = 500;
-                });
-                
+
+                q.UseDedicatedThreadPool(x => { x.MaxConcurrency = 500; });
+
                 //This allows DI in jobs
                 q.UseMicrosoftDependencyInjectionJobFactory();
 
@@ -199,10 +194,7 @@ namespace FundsManager
                 q.AddTrigger(opts =>
                 {
                     opts.ForJob(nameof(SweepAllNodesWalletsJob)).WithIdentity($"{nameof(SweepAllNodesWalletsJob)}Trigger")
-                        .StartNow().WithSimpleSchedule(scheduleBuilder =>
-                        {
-                            scheduleBuilder.WithIntervalInMinutes(1).RepeatForever();
-                        });
+                        .StartNow().WithSimpleSchedule(scheduleBuilder => { scheduleBuilder.WithIntervalInMinutes(1).RepeatForever(); });
                 });
 
                 //Monitor Withdrawals Job
@@ -231,13 +223,10 @@ namespace FundsManager
                     opts.ForJob(nameof(ChannelAcceptorJob)).WithIdentity($"{nameof(ChannelAcceptorJob)}Trigger")
                         .StartNow();
                 });
-                
+
                 // NodeChannelSubscribeJob
-                q.AddJob<NodeSubscriptorJob>(opts =>
-                {
-                    opts.WithIdentity(nameof(NodeSubscriptorJob));
-                });
-                
+                q.AddJob<NodeSubscriptorJob>(opts => { opts.WithIdentity(nameof(NodeSubscriptorJob)); });
+
                 q.AddTrigger(opts =>
                 {
                     opts.ForJob(nameof(NodeSubscriptorJob)).WithIdentity($"{nameof(NodeSubscriptorJob)}Trigger")
@@ -258,42 +247,40 @@ namespace FundsManager
 
             if (Constants.OTEL_EXPORTER_ENDPOINT != null)
             {
-                    builder.Services
-                        .AddOpenTelemetryTracing((builder) => builder
-                            // Configure the resource attribute `service.name` to MyServiceName
-                            //.SetResourceBuilder(ResourceBuilder.CreateDefault().AddService("BtcPayServer"))
-                            .SetResourceBuilder(ResourceBuilder.CreateEmpty().AddEnvironmentVariableDetector())
-                            // Add tracing of the AspNetCore instrumentation library
-                            .AddAspNetCoreInstrumentation()
-                            .AddOtlpExporter(options =>
-                            {
-                                options.Protocol = OtlpExportProtocol.Grpc;
-                                options.ExportProcessorType = OpenTelemetry.ExportProcessorType.Batch;
-                                options.Endpoint = new Uri(Constants.OTEL_EXPORTER_ENDPOINT);
-                            })
-                            .AddEntityFrameworkCoreInstrumentation()
-                            .AddQuartzInstrumentation()
+                builder.Services
+                    .AddOpenTelemetryTracing((builder) => builder
+                        // Configure the resource attribute `service.name` to MyServiceName
+                        //.SetResourceBuilder(ResourceBuilder.CreateDefault().AddService("BtcPayServer"))
+                        .SetResourceBuilder(ResourceBuilder.CreateEmpty().AddEnvironmentVariableDetector())
+                        // Add tracing of the AspNetCore instrumentation library
+                        .AddAspNetCoreInstrumentation()
+                        .AddOtlpExporter(options =>
+                        {
+                            options.Protocol = OtlpExportProtocol.Grpc;
+                            options.ExportProcessorType = OpenTelemetry.ExportProcessorType.Batch;
+                            options.Endpoint = new Uri(Constants.OTEL_EXPORTER_ENDPOINT);
+                        })
+                        .AddEntityFrameworkCoreInstrumentation()
+                        .AddQuartzInstrumentation()
                     );
 
-                    builder.Services
-                        .AddOpenTelemetryMetrics(builder => builder
-                            // Configure the resource attribute `service.name` to MyServiceName
-                            //.SetResourceBuilder(ResourceBuilder.CreateDefault().AddService("BtcPayServer"))
-                            // Add metrics from the AspNetCore instrumentation library
-                            .SetResourceBuilder(ResourceBuilder.CreateEmpty().AddEnvironmentVariableDetector())
-                            .AddAspNetCoreInstrumentation()
-                            .AddRuntimeInstrumentation()
-                            .AddOtlpExporter(options =>
-                            {
-                                options.Protocol = OtlpExportProtocol.Grpc;
-                                options.ExportProcessorType = OpenTelemetry.ExportProcessorType.Batch;
-                                options.Endpoint = new Uri(Constants.OTEL_EXPORTER_ENDPOINT);
-                            })
+                builder.Services
+                    .AddOpenTelemetryMetrics(builder => builder
+                        // Configure the resource attribute `service.name` to MyServiceName
+                        //.SetResourceBuilder(ResourceBuilder.CreateDefault().AddService("BtcPayServer"))
+                        // Add metrics from the AspNetCore instrumentation library
+                        .SetResourceBuilder(ResourceBuilder.CreateEmpty().AddEnvironmentVariableDetector())
+                        .AddAspNetCoreInstrumentation()
+                        .AddRuntimeInstrumentation()
+                        .AddOtlpExporter(options =>
+                        {
+                            options.Protocol = OtlpExportProtocol.Grpc;
+                            options.ExportProcessorType = OpenTelemetry.ExportProcessorType.Batch;
+                            options.Endpoint = new Uri(Constants.OTEL_EXPORTER_ENDPOINT);
+                        })
                     );
             }
-            
-            
-          
+
 
             var app = builder.Build();
 
@@ -338,7 +325,7 @@ namespace FundsManager
             app.MapControllers();
             app.MapBlazorHub();
             app.MapFallbackToPage("/_Host");
-            
+
             //Grpc services
             //TODO Auth in the future, DAPR(?)
             app.MapGrpcService<NodeGuardService>();

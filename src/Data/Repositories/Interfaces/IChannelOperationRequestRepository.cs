@@ -17,11 +17,11 @@
  *
  */
 
-﻿using FundsManager.Data.Models;
+using FundsManager.Data.Models;
 
 namespace FundsManager.Data.Repositories.Interfaces;
 
-public interface IChannelOperationRequestRepository
+public interface IChannelOperationRequestRepository : IBitcoinRequestRepository
 {
     Task<ChannelOperationRequest?> GetById(int id);
 
@@ -45,7 +45,7 @@ public interface IChannelOperationRequestRepository
     /// <param name="type"></param>
     /// <param name="utxos"></param>
     /// <returns></returns>
-    Task<(bool, string?)> AddUTXOs(ChannelOperationRequest type, List<FMUTXO> utxos);
+    Task<(bool, string?)> AddUTXOs(IBitcoinRequest type, List<FMUTXO> utxos);
 
     /// <summary>
     /// Returns those requests that can have a PSBT locked until they are confirmed / rejected / cancelled

@@ -118,6 +118,7 @@ namespace FundsManager.Data.Repositories
             {
                 await _notificationService.NotifyRequestSigners(type.WalletId.Value, "/channel-requests");
             }
+
             return valueTuple;
         }
 
@@ -153,7 +154,7 @@ namespace FundsManager.Data.Repositories
             return _repository.Update(strippedType, applicationDbContext);
         }
 
-        public async Task<(bool, string?)> AddUTXOs(ChannelOperationRequest type, List<FMUTXO> utxos)
+        public async Task<(bool, string?)> AddUTXOs(IBitcoinRequest type, List<FMUTXO> utxos)
         {
             if (type == null) throw new ArgumentNullException(nameof(type));
             if (utxos.Count == 0) throw new ArgumentException("Value cannot be an empty collection.", nameof(utxos));
