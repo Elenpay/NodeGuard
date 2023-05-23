@@ -166,7 +166,8 @@ namespace FundsManager.Data.Models
             return Id == other.Id;
         }
 
-        [NotMapped] public long SatsAmount => new Money(Amount, MoneyUnit.BTC).Satoshi;
+        [NotMapped]
+        public long SatsAmount => new Money(Amount, MoneyUnit.BTC).Satoshi;
 
         #region Relationships
 

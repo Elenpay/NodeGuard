@@ -19,6 +19,12 @@
 
 namespace FundsManager.Data.Models;
 
+public enum BitcoinRequestType
+{
+    ChannelOperation,
+    WalletWithdrawal
+}
+
 public interface IBitcoinRequest
 {
     public int Id { get; set; }

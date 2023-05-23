@@ -127,7 +127,8 @@ namespace FundsManager.Data.Models
         [NotMapped]
         public bool AreAllRequiredHumanSignaturesCollected => CheckSignatures();
 
-        [NotMapped] public int NumberOfSignaturesCollected => ChannelOperationRequestPsbts == null ? 0 : ChannelOperationRequestPsbts.Count(x => !x.IsFinalisedPSBT && !x.IsTemplatePSBT && !x.IsInternalWalletPSBT);
+        [NotMapped]
+        public int NumberOfSignaturesCollected => ChannelOperationRequestPsbts == null ? 0 : ChannelOperationRequestPsbts.Count(x => !x.IsFinalisedPSBT && !x.IsTemplatePSBT && !x.IsInternalWalletPSBT);
 
         /// <summary>
         /// This is the JobId provided by Quartz of the job executing this request.

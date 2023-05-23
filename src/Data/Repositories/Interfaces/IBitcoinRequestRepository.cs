@@ -23,5 +23,11 @@ namespace FundsManager.Data.Repositories.Interfaces;
 
 public interface IBitcoinRequestRepository
 {
+    /// <summary>
+    /// Adds to the many-to-many collection the list of utxos provided
+    /// </summary>
+    /// <param name="type"></param>
+    /// <param name="utxos"></param>
+    /// <returns></returns>
     Task<(bool, string?)> AddUTXOs(IBitcoinRequest type, List<FMUTXO> utxos);
 }

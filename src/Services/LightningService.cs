@@ -841,7 +841,7 @@ namespace FundsManager.Services
             //If there is already a PSBT as template with the inputs as still valid UTXOs we avoid generating the whole process again to
             //avoid non-deterministic issues (e.g. Input order and other potential errors)
             var templatePSBT =
-                channelOperationRequest.ChannelOperationRequestPsbts.Where(x => x.IsTemplatePSBT).OrderBy(x => x.Id).LastOrDefault();
+                channelOperationRequest.ChannelOperationRequestPsbts.Where(x => x.IsTemplatePSBT).MaxBy(x => x.Id);
 
             if (templatePSBT != null && PSBT.TryParse(templatePSBT.PSBT, CurrentNetworkHelper.GetCurrentNetwork(),
                     out var parsedTemplatePSBT))
@@ -926,6 +926,8 @@ namespace FundsManager.Services
             {
                 _logger.LogError(e, "Error while generating base PSBT");
             }
+
+            await _coinSelectionService.LockUTXOs(selectedUtxOs, channelOperationRequest, _channelOperationRequestRepository);
 
             // The template PSBT is saved for later reuse
             if (result.Item1 != null)

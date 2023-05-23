@@ -143,9 +143,6 @@ namespace FundsManager.Services
                 }
             }
 
-            var utxoChanges = await _nbXplorerService.GetUTXOsAsync(derivationStrategy);
-            utxoChanges.RemoveDuplicateUTXOs();
-
             //If the request is a full funds withdrawal, calculate the amount to the existing balance
             if (walletWithdrawalRequest.WithdrawAllFunds)
             {
