@@ -40,14 +40,6 @@ public interface IChannelOperationRequestRepository : IBitcoinRequestRepository
     (bool, string?) Update(ChannelOperationRequest type);
 
     /// <summary>
-    /// Adds on the many-to-many collection the list of utxos provided
-    /// </summary>
-    /// <param name="type"></param>
-    /// <param name="utxos"></param>
-    /// <returns></returns>
-    Task<(bool, string?)> AddUTXOs(IBitcoinRequest type, List<FMUTXO> utxos);
-
-    /// <summary>
     /// Returns those requests that can have a PSBT locked until they are confirmed / rejected / cancelled
     /// </summary>
     /// <returns></returns>

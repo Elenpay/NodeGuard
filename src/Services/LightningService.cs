@@ -863,7 +863,8 @@ namespace FundsManager.Services
                 }
             }
 
-            var availableUTXOs = await _coinSelectionService.GetAvailableUTXOsAsync(derivationStrategy);
+            var previouslyLockedUTXOs = await _coinSelectionService.GetLockedUTXOsForRequest(channelOperationRequest, BitcoinRequestType.ChannelOperation);
+            var availableUTXOs = previouslyLockedUTXOs.Count > 0 ? previouslyLockedUTXOs : await _coinSelectionService.GetAvailableUTXOsAsync(derivationStrategy);
             var (multisigCoins, selectedUtxOs) = await _coinSelectionService.GetTxInputCoins(availableUTXOs, channelOperationRequest, derivationStrategy);
 
             if (multisigCoins == null || !multisigCoins.Any())
@@ -928,7 +929,10 @@ namespace FundsManager.Services
                 _logger.LogError(e, "Error while generating base PSBT");
             }
 
-            await _coinSelectionService.LockUTXOs(selectedUtxOs, channelOperationRequest, _channelOperationRequestRepository);
+            if (previouslyLockedUTXOs.Count == 0)
+            {
+                await _coinSelectionService.LockUTXOs(selectedUtxOs, channelOperationRequest, BitcoinRequestType.ChannelOperation);
+            }
 
             // The template PSBT is saved for later reuse
             if (result.Item1 != null)
