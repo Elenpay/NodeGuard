@@ -97,12 +97,12 @@ namespace FundsManager.Data.Repositories
 
                 var walletWithdrawalRequestsLockedUTXOs = await applicationDbContext.WalletWithdrawalRequests
                     .Include(x => x.UTXOs)
-                    .Where(x => ignoredRequestId == null || bitcoinRequest != BitcoinRequestType.WalletWithdrawal || x.Id == ignoredRequestId && x.Status == WalletWithdrawalRequestStatus.Pending ||
+                    .Where(x => ignoredRequestId == null || bitcoinRequest != BitcoinRequestType.WalletWithdrawal || x.Id != ignoredRequestId && x.Status == WalletWithdrawalRequestStatus.Pending ||
                                 x.Status == WalletWithdrawalRequestStatus.OnChainConfirmationPending)
                     .SelectMany(x => x.UTXOs).ToListAsync();
 
                 var channelOperationRequestsLockedUTXOs = await applicationDbContext.ChannelOperationRequests.Include(x => x.Utxos)
-                    .Where(x => ignoredRequestId == null || bitcoinRequest != BitcoinRequestType.ChannelOperation || x.Id == ignoredRequestId
+                    .Where(x => ignoredRequestId == null || bitcoinRequest != BitcoinRequestType.ChannelOperation || x.Id != ignoredRequestId
                                 && x.Status == ChannelOperationRequestStatus.Pending ||
                                 x.Status == ChannelOperationRequestStatus.OnChainConfirmationPending)
                     .SelectMany(x => x.Utxos).ToListAsync();
