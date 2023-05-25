@@ -89,34 +89,50 @@ namespace FundsManager.Data.Repositories
             return _repository.Update(type, applicationDbContext);
         }
 
-        public async Task<List<FMUTXO>> GetLockedUTXOs(int? ignoredRequestId = null, BitcoinRequestType? bitcoinRequest = null)
+        public async Task<List<FMUTXO>> GetLockedUTXOs(int? ignoredWalletWithdrawalRequestId = null, int? ignoredChannelOperationRequestId = null)
         {
-            try
-            {
-                await using var applicationDbContext = await _dbContextFactory.CreateDbContextAsync();
+            await using var applicationDbContext = await _dbContextFactory.CreateDbContextAsync();
 
-                var walletWithdrawalRequestsLockedUTXOs = await applicationDbContext.WalletWithdrawalRequests
+            var walletWithdrawalRequestsLockedUTXOs = new List<FMUTXO>();
+            if (ignoredWalletWithdrawalRequestId == null)
+            {
+                walletWithdrawalRequestsLockedUTXOs = await applicationDbContext.WalletWithdrawalRequests
                     .Include(x => x.UTXOs)
-                    .Where(x => ignoredRequestId == null || bitcoinRequest != BitcoinRequestType.WalletWithdrawal || x.Id != ignoredRequestId && x.Status == WalletWithdrawalRequestStatus.Pending ||
+                    .Where(x => x.Status == WalletWithdrawalRequestStatus.Pending ||
                                 x.Status == WalletWithdrawalRequestStatus.OnChainConfirmationPending)
                     .SelectMany(x => x.UTXOs).ToListAsync();
+            }
+            else
+            {
+                walletWithdrawalRequestsLockedUTXOs = await applicationDbContext.WalletWithdrawalRequests
+                    .Include(x => x.UTXOs)
+                    .Where(x => x.Id != ignoredWalletWithdrawalRequestId
+                                && x.Status == WalletWithdrawalRequestStatus.Pending ||
+                                x.Status == WalletWithdrawalRequestStatus.OnChainConfirmationPending)
+                    .SelectMany(x => x.UTXOs).ToListAsync();
+            }
 
-                var channelOperationRequestsLockedUTXOs = await applicationDbContext.ChannelOperationRequests.Include(x => x.Utxos)
-                    .Where(x => ignoredRequestId == null || bitcoinRequest != BitcoinRequestType.ChannelOperation || x.Id != ignoredRequestId
-                                && x.Status == ChannelOperationRequestStatus.Pending ||
+            var channelOperationRequestsLockedUTXOs = new List<FMUTXO>();
+
+            if (ignoredChannelOperationRequestId == null)
+            {
+                channelOperationRequestsLockedUTXOs = await applicationDbContext.ChannelOperationRequests.Include(x => x.Utxos)
+                    .Where(x => x.Status == ChannelOperationRequestStatus.Pending ||
                                 x.Status == ChannelOperationRequestStatus.OnChainConfirmationPending)
                     .SelectMany(x => x.Utxos).ToListAsync();
-
-
-                var result = walletWithdrawalRequestsLockedUTXOs.Union(channelOperationRequestsLockedUTXOs).ToList();
-
-                return result;
             }
-            catch (Exception e)
+            else
             {
-                _logger.LogError("Error while getting locked UTXOs: {Message}", e.Message);
-                return new();
+                channelOperationRequestsLockedUTXOs = await applicationDbContext.ChannelOperationRequests.Include(x => x.Utxos)
+                    .Where(x => x.Id != ignoredChannelOperationRequestId
+                        && x.Status == ChannelOperationRequestStatus.Pending ||
+                                x.Status == ChannelOperationRequestStatus.OnChainConfirmationPending)
+                    .SelectMany(x => x.Utxos).ToListAsync();
             }
+
+            var result = walletWithdrawalRequestsLockedUTXOs.Union(channelOperationRequestsLockedUTXOs).ToList();
+
+            return result;
         }
     }
 }

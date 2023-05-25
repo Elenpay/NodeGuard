@@ -70,7 +70,7 @@ public class FUTXORepositoryTests
         });
         await context.SaveChangesAsync();
 
-        var result = await futxoRepository.GetLockedUTXOs(1, BitcoinRequestType.WalletWithdrawal);
+        var result = await futxoRepository.GetLockedUTXOs(1);
         result.Should().HaveCount(1);
         result[0].Id.Should().Be(2);
     }
@@ -99,7 +99,65 @@ public class FUTXORepositoryTests
         });
         await context.SaveChangesAsync();
 
-        var result = await futxoRepository.GetLockedUTXOs( 2, BitcoinRequestType.ChannelOperation);
+        var result = await futxoRepository.GetLockedUTXOs( null, 2);
+        result.Should().HaveCount(1);
+        result[0].Id.Should().Be(1);
+    }
+
+    [Fact]
+    public async Task GetLockedUTXOs_failedChannels()
+    {
+        var dbContextFactory = SetupDbContextFactory();
+        var futxoRepository = new FUTXORepository(null, null, dbContextFactory.Object);
+
+        var context = dbContextFactory.Object.CreateDbContext();
+
+        context.WalletWithdrawalRequests.Add(new WalletWithdrawalRequest
+        {
+            Id = 1,
+            Description = "1",
+            DestinationAddress = "1",
+            Status = WalletWithdrawalRequestStatus.Failed,
+            UTXOs = new List<FMUTXO> { new () { TxId = "1"} }
+        });
+        context.ChannelOperationRequests.Add(new ChannelOperationRequest
+        {
+            Id = 2,
+            Status = ChannelOperationRequestStatus.Pending,
+            Utxos = new List<FMUTXO> { new () { TxId = "2"} }
+        });
+        await context.SaveChangesAsync();
+
+        var result = await futxoRepository.GetLockedUTXOs();
+        result.Should().HaveCount(1);
+        result[0].Id.Should().Be(2);
+    }
+
+    [Fact]
+    public async Task GetLockedUTXOs_failedCWithdrawals()
+    {
+        var dbContextFactory = SetupDbContextFactory();
+        var futxoRepository = new FUTXORepository(null, null, dbContextFactory.Object);
+
+        var context = dbContextFactory.Object.CreateDbContext();
+
+        context.WalletWithdrawalRequests.Add(new WalletWithdrawalRequest
+        {
+            Id = 1,
+            Description = "1",
+            DestinationAddress = "1",
+            Status = WalletWithdrawalRequestStatus.Pending,
+            UTXOs = new List<FMUTXO> { new () { TxId = "1"} }
+        });
+        context.ChannelOperationRequests.Add(new ChannelOperationRequest
+        {
+            Id = 2,
+            Status = ChannelOperationRequestStatus.Failed,
+            Utxos = new List<FMUTXO> { new () { TxId = "2"} }
+        });
+        await context.SaveChangesAsync();
+
+        var result = await futxoRepository.GetLockedUTXOs();
         result.Should().HaveCount(1);
         result[0].Id.Should().Be(1);
     }
