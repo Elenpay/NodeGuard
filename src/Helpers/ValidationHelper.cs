@@ -41,7 +41,7 @@ public static class ValidationHelper
             obj.Status = ValidationStatus.Error;
         }
     }
-    
+
     public static void ValidateUsername(ValidatorEventArgs obj, List<ApplicationUser> users, string currentUserId)
     {
         obj.Status = ValidationStatus.Success;
@@ -57,15 +57,20 @@ public static class ValidationHelper
             obj.Status = ValidationStatus.Error;
             return;
         }
-        
+
     }
 
     public static void ValidateChannelCapacity(ValidatorEventArgs obj)
     {
         obj.Status = ValidationStatus.Success;
-        if (((long)obj.Value) < Constants.MINIMUM_CHANNEL_CAPACITY_SATS)
+        if ((long)obj.Value < Constants.MINIMUM_CHANNEL_CAPACITY_SATS)
         {
-            obj.ErrorText = "The amount must be greater than 20.000";
+            obj.ErrorText = "The amount selected must be greater than 20.000";
+            obj.Status = ValidationStatus.Error;
+        }
+        else if ((long)obj.Value > Constants.MAXIMUM_CHANNEL_CAPACITY_SATS)
+        {
+            obj.ErrorText = "The amount selected must be lower than 16.777.215";
             obj.Status = ValidationStatus.Error;
         }
     }

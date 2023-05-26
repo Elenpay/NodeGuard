@@ -62,6 +62,7 @@ public class Constants
     // Usage
     public static readonly string BITCOIN_NETWORK;
     public static readonly long MINIMUM_CHANNEL_CAPACITY_SATS = 20_000;
+    public static readonly long MAXIMUM_CHANNEL_CAPACITY_SATS = 16_777_215;
     public static readonly decimal MINIMUM_WITHDRAWAL_BTC_AMOUNT = 0.0m;
     public static readonly decimal MAXIMUM_WITHDRAWAL_BTC_AMOUNT = 21_000_000;
     public static readonly int TRANSACTION_CONFIRMATION_MINIMUM_BLOCKS;
@@ -69,8 +70,6 @@ public class Constants
     public static readonly string DEFAULT_DERIVATION_PATH = "48'/1'";
     public static readonly int SESSION_TIMEOUT_MILLISECONDS = 3_600_000;
 
-    // Lightning Constants
-    public static readonly long CHANNEL_MAX_CAPACITY = 16777215;
     private static string? GetEnvironmentalVariableOrThrowIfNotTesting(string envVariableName, string? errorMessage = null)
     {
         // If it is a command from ef or a test, ignore the empty env variables

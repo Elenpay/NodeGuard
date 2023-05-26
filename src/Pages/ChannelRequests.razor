@@ -141,7 +141,7 @@
                     {
                         <span>Default coin selection strategy selected</span>
                     }
-                    <Validation Validator="ValidationHelper.ValidateChannelCapacity" @ref="_capacityValidation">
+                    <Validation Validator="@ValidationHelper.ValidateChannelCapacity" @ref="_capacityValidation">
                         <NumericPicker TValue="long" @bind-Value="@_amount" CurrencySymbol="SATS " Disabled="@(SelectedUTXOs.Count > 0)">
                             <Feedback>
                                 <ValidationError/>
@@ -519,9 +519,14 @@
 
     private async Task CreateChannelRequest()
     {
+        _utxoSelectorModalRef.ClearModal();
         if (LoggedUser == null) return;
 
-        Validation?[] validators = { _destNodeValidation, _sourceNodeValidation, _walletValidation, _capacityValidation };
+        List<Validation?> validators = new() { _destNodeValidation, _sourceNodeValidation, _walletValidation };
+        if (SelectedUTXOs.Count == 0)
+        {
+            validators.Add(_capacityValidation);
+        }
 
         if (validators.All(v => v != null && (int)v.Validate() == 1))
         {
@@ -881,10 +886,16 @@
     private void RejectReasonValidatorForUTXOsSelector(ValidatorEventArgs e)
     {
         var selectedUTXOsValue = SelectedUTXOsValue();
-        if (selectedUTXOsValue > Constants.CHANNEL_MAX_CAPACITY)
+        if (selectedUTXOsValue == 0) return;
+        if (selectedUTXOsValue < Constants.MINIMUM_CHANNEL_CAPACITY_SATS)
         {
+            e.ErrorText = "The combined amount of the UTXOs selected must be greater than 20.000";
             e.Status = ValidationStatus.Error;
-            e.ErrorText = "The selected UTXOs combined amounts are greater than the channel maximum capacity";
+        }
+        else if (selectedUTXOsValue > Constants.MAXIMUM_CHANNEL_CAPACITY_SATS)
+        {
+            e.ErrorText = "The combined amount of the UTXOs selected must be lower than 16.777.215";
+            e.Status = ValidationStatus.Error;
         }
         else
         {
