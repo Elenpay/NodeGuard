@@ -121,7 +121,7 @@
                         }
                     </Validation>
                     <Button Color="Color.Primary" Disabled="@(!_selectedWalletId.HasValue)" Clicked="@OpenCoinSelectionModal">Select Coins</Button> or use
-                    <Button Color="Color.Primary" Clicked="@ClearSelectedUTXOs">Default Coin Selection</Button>
+                    <Button Color="Color.Primary" Disabled="@(SelectedUTXOs.Count == 0)"Clicked="@ClearSelectedUTXOs">Default Coin Selection</Button>
                 </EditTemplate>
             </DataGridColumn>
             <DataGridColumn TItem="ChannelOperationRequest" Field="@nameof(ChannelOperationRequest.Amount)" Caption="Capacity" Sortable="false" Displayable="true" PopupFieldColumnSize="ColumnSize.Is12" Editable="true">
@@ -855,7 +855,12 @@
     private async Task OpenCoinSelectionModal()
     {
         var selectedWallet = await WalletRepository.GetById(_selectedWalletId.Value);
-        _utxoSelectorModalRef.UTXOList = await CoinSelectionService.GetAvailableUTXOsAsync(selectedWallet.GetDerivationStrategy());
+        var utxosList = await CoinSelectionService.GetAvailableUTXOsAsync(selectedWallet.GetDerivationStrategy());
+        _utxoSelectorModalRef.UTXOList = utxosList;
+
+        // Refresh the list with the new objects, or selection wont be preserved
+        var hashes = SelectedUTXOs.Select(utxos => utxos.Outpoint.Hash);
+        SelectedUTXOs = utxosList.Where(utxo => hashes.Contains(utxo.Outpoint.Hash)).ToList();
         _utxoSelectorModalRef.ShowModal();
     }
 

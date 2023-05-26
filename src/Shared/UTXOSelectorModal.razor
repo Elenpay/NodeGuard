@@ -14,14 +14,13 @@
                 <DataGrid TItem="UTXO"
                           Data="@UTXOList"
                           SelectionMode="DataGridSelectionMode.Multiple"
-                          @bind-SelectedRows="_selectedUTXOs"
-                          Responsive>
+                          @bind-SelectedRows="SelectedUTXOs"
+                          Responsive
+                          FixedHeader
+                          FixedHeaderDataGridMaxHeight="400px">
                     <DataGridMultiSelectColumn Width="30px"></DataGridMultiSelectColumn>
-                    <DataGridCommandColumn/>
-                    <DataGridColumn Field="@nameof(UTXO.Index)" Caption="#" Sortable="true"/>
                     <DataGridColumn Field="@nameof(UTXO.Value)" Caption="Value" Sortable="true"/>
-                    <DataGridColumn Field="@nameof(UTXO.KeyPath)" Caption="Address" Sortable="false"/>
-                    <DataGridColumn Field="@nameof(UTXO.TransactionHash)" Caption="Address" Sortable="false"/>
+                    <DataGridColumn Field="@nameof(UTXO.KeyPath)" Caption="KeyPath" Sortable="false"/>
                     <Feedback>@String.Join(",", _validation.Messages ?? GetUTXOsValues())</Feedback>
                 </DataGrid>
             </Validation>
@@ -36,7 +35,6 @@
 @code {
     private Modal? _modalRef { get; set; }
     public List<UTXO> UTXOList { get; set; } = new();
-    private List<UTXO> _selectedUTXOs { get; set; } = new();
 
     [Parameter, EditorRequired]
     public List<UTXO> SelectedUTXOs { get; set; } = new();
@@ -51,12 +49,11 @@
     public void ClearModal()
     {
         UTXOList.Clear();
-        _selectedUTXOs.Clear();
+        SelectedUTXOs.Clear();
     }
 
     private async Task CancelSelection()
     {
-        _selectedUTXOs.Clear();
         await _modalRef.Close(CloseReason.UserClosing);
     }
 
@@ -73,8 +70,6 @@
     public async Task ShowModal()
     {
         await _modalRef.Show();
-        _selectedUTXOs.Clear();
-        _selectedUTXOs = SelectedUTXOs;
         StateHasChanged();
     }
 
