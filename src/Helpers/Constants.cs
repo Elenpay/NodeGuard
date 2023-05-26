@@ -69,6 +69,8 @@ public class Constants
     public static readonly string DEFAULT_DERIVATION_PATH = "48'/1'";
     public static readonly int SESSION_TIMEOUT_MILLISECONDS = 3_600_000;
 
+    // Lightning Constants
+    public static readonly long CHANNEL_MAX_CAPACITY = 16777215;
     private static string? GetEnvironmentalVariableOrThrowIfNotTesting(string envVariableName, string? errorMessage = null)
     {
         // If it is a command from ef or a test, ignore the empty env variables
@@ -102,7 +104,7 @@ public class Constants
         ALICE_HOST = Environment.GetEnvironmentVariable("ALICE_HOST") ?? "host.docker.internal:10001";
 
         CAROL_HOST = Environment.GetEnvironmentVariable("CAROL_HOST") ?? "host.docker.internal:10003";
-        
+
         BOB_HOST = Environment.GetEnvironmentVariable("BOB_HOST") ?? "host.docker.internal:10002";
 
         FUNDSMANAGER_ENDPOINT = Environment.GetEnvironmentVariable("FUNDSMANAGER_ENDPOINT");
@@ -136,7 +138,7 @@ public class Constants
             AWS_ACCESS_KEY_ID = GetEnvironmentalVariableOrThrowIfNotTesting("AWS_ACCESS_KEY_ID", "if ENABLE_REMOTE_SIGNER is set, AWS_ACCESS_KEY_ID");
 
             AWS_SECRET_ACCESS_KEY = GetEnvironmentalVariableOrThrowIfNotTesting("AWS_SECRET_ACCESS_KEY", "if ENABLE_REMOTE_SIGNER is set, AWS_SECRET_ACCESS_KEY");
-            
+
             REMOTE_SIGNER_ENDPOINT = GetEnvironmentalVariableOrThrowIfNotTesting("REMOTE_SIGNER_ENDPOINT", "if ENABLE_REMOTE_SIGNER is set, REMOTE_SIGNER_ENDPOINT");
         }
 

@@ -1,5 +1,6 @@
 @using NBXplorer.Models
 @using NBXplorer.DerivationStrategy
+@using NBitcoin
 @inject ICoinSelectionService _CoinSelectionService
 
 <Modal @ref="@_modalRef">
@@ -9,18 +10,21 @@
             <CloseButton />
         </ModalHeader>
         <ModalBody>
-            <DataGrid TItem="UTXO"
-                      Data="@UTXOList"
-                      SelectionMode="DataGridSelectionMode.Multiple"
-                      @bind-SelectedRows="_selectedUTXOs"
-                      Responsive>
-                <DataGridMultiSelectColumn Width="30px"></DataGridMultiSelectColumn>
-                <DataGridCommandColumn />
-                <DataGridColumn Field="@nameof(UTXO.Index)" Caption="#" Sortable="true" />
-                <DataGridColumn Field="@nameof(UTXO.Value)" Caption="Value" Sortable="true" />
-                <DataGridColumn Field="@nameof(UTXO.KeyPath)" Caption="Address" Sortable="false" />
-                <DataGridColumn Field="@nameof(UTXO.TransactionHash)" Caption="Address" Sortable="false" />
-            </DataGrid>
+            <Validation @ref="_validation" Validator="Validator">
+                <DataGrid TItem="UTXO"
+                          Data="@UTXOList"
+                          SelectionMode="DataGridSelectionMode.Multiple"
+                          @bind-SelectedRows="_selectedUTXOs"
+                          Responsive>
+                    <DataGridMultiSelectColumn Width="30px"></DataGridMultiSelectColumn>
+                    <DataGridCommandColumn/>
+                    <DataGridColumn Field="@nameof(UTXO.Index)" Caption="#" Sortable="true"/>
+                    <DataGridColumn Field="@nameof(UTXO.Value)" Caption="Value" Sortable="true"/>
+                    <DataGridColumn Field="@nameof(UTXO.KeyPath)" Caption="Address" Sortable="false"/>
+                    <DataGridColumn Field="@nameof(UTXO.TransactionHash)" Caption="Address" Sortable="false"/>
+                    <Feedback>@String.Join(",", _validation.Messages ?? GetUTXOsValues())</Feedback>
+                </DataGrid>
+            </Validation>
         </ModalBody>
         <ModalFooter>
             <Button Color="Color.Secondary" Clicked="@CancelSelection">Cancel</Button>
@@ -40,6 +44,10 @@
     [Parameter, EditorRequired]
     public Action OnClose { get; set; } = () => { };
 
+    [Parameter, EditorRequired]
+    public Action<ValidatorEventArgs> Validator { get; set; } = ValidationRule.None;
+    private Validation _validation { get; set; } = new();
+
     public void ClearModal()
     {
         UTXOList.Clear();
@@ -54,8 +62,12 @@
 
     private async Task CloseModal()
     {
-        OnClose();
-        await _modalRef.Close(CloseReason.UserClosing);
+        _validation.Validator = Validator;
+        if (await _validation.ValidateAsync() != ValidationStatus.Error)
+        {
+            OnClose();
+            await _modalRef.Close(CloseReason.UserClosing);
+        }
     }
 
     public async Task ShowModal()
@@ -64,5 +76,14 @@
         _selectedUTXOs.Clear();
         _selectedUTXOs = SelectedUTXOs;
         StateHasChanged();
+    }
+
+    private string[] GetUTXOsValues()
+    {
+        var value = SelectedUTXOs.Sum(x => ((Money)x.Value).Satoshi);
+        return new[]
+        {
+            $"Selected {SelectedUTXOs.Count} for an amount of {value}"
+        };
     }
 }

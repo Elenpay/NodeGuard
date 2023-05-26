@@ -120,16 +120,8 @@
                             </SelectList>
                         }
                     </Validation>
-                    <Button Color="Color.Primary" Disabled="@(!_selectedWalletId.HasValue)" Clicked="@OpenCoinSelectionModal">Select Coins</Button> or use default coin selection
-                    <br/>
-                    @if (_selectedWalletId.HasValue && SelectedUTXOs.Count > 0)
-                    {
-                        <span>Selected @(SelectedUTXOs.Count) UTXOs for an amount of @(SelectedUTXOs.Aggregate(new Money(0) as IMoney, (total, next) => total.Add(next.Value)))</span>
-                    }
-                    else
-                    {
-                        <span>Default coin selection strategy selected</span>
-                    }
+                    <Button Color="Color.Primary" Disabled="@(!_selectedWalletId.HasValue)" Clicked="@OpenCoinSelectionModal">Select Coins</Button> or use
+                    <Button Color="Color.Primary" Clicked="@ClearSelectedUTXOs">Default Coin Selection</Button>
                 </EditTemplate>
             </DataGridColumn>
             <DataGridColumn TItem="ChannelOperationRequest" Field="@nameof(ChannelOperationRequest.Amount)" Caption="Capacity" Sortable="false" Displayable="true" PopupFieldColumnSize="ColumnSize.Is12" Editable="true">
@@ -140,8 +132,17 @@
                     }
                 </DisplayTemplate>
                 <EditTemplate>
+                    <br/>
+                    @if (_selectedWalletId.HasValue && SelectedUTXOs.Count > 0)
+                    {
+                        <span>Selected @(SelectedUTXOs.Count) UTXOs</span>
+                    }
+                    else
+                    {
+                        <span>Default coin selection strategy selected</span>
+                    }
                     <Validation Validator="ValidationHelper.ValidateChannelCapacity" @ref="_capacityValidation">
-                        <NumericPicker TValue="long" @bind-Value="@_amount" CurrencySymbol="SATS ">
+                        <NumericPicker TValue="long" @bind-Value="@_amount" CurrencySymbol="SATS " Disabled="@(SelectedUTXOs.Count > 0)">
                             <Feedback>
                                 <ValidationError/>
                             </Feedback>
@@ -347,7 +348,9 @@
 <UTXOSelectorModal
     @ref="_utxoSelectorModalRef"
     OnClose="@OnCloseCoinSelectionModal"
-    SelectedUTXOs="SelectedUTXOs"/>
+    SelectedUTXOs="SelectedUTXOs"
+    Validator="RejectReasonValidatorForUTXOsSelector"
+/>
 
 @inject IChannelOperationRequestRepository ChannelOperationRequestRepository
 @inject IChannelOperationRequestPSBTRepository ChannelOperationRequestPsbtRepository
@@ -524,9 +527,10 @@
         {
             if (_selectedDestNode?.Id != _selectedSourceNodeId)
             {
+                var amount = SelectedUTXOs.Count > 0 ? SelectedUTXOsValue() : _amount;
                 var request = new ChannelOperationRequest()
                 {
-                    SatsAmount = _amount,
+                    SatsAmount = amount,
                     RequestType = OperationRequestType.Open,
                     Description = "Created by user via Funds Manager",
                     WalletId = _selectedWalletId,
@@ -534,7 +538,7 @@
                     UserId = LoggedUser.Id,
                     SourceNodeId = _selectedSourceNodeId,
                     DestNodeId = _selectedDestNode?.Id,
-                    IsChannelPrivate = _selectedPrivate
+                    IsChannelPrivate = _selectedPrivate,
                 };
 
                 var selectedWallet = await WalletRepository.GetById(_selectedWalletId.Value);
@@ -564,6 +568,7 @@
                 {
                     ToastService.ShowError(createChannelResult.Item2);
                 }
+                _utxoSelectorModalRef.ClearModal();
             }
             else
             {
@@ -571,7 +576,6 @@
             }
             await ResetChannelRequestRejectModal();
         }
-        _utxoSelectorModalRef.ClearModal();
         await LoadData();
         await FetchRequests();
     }
@@ -857,6 +861,36 @@
 
     private void OnCloseCoinSelectionModal()
     {
+        if (SelectedUTXOs.Count > 0)
+        {
+            _amount = SelectedUTXOsValue();
+        }
+        StateHasChanged();
+    }
+
+    private long SelectedUTXOsValue()
+    {
+        return SelectedUTXOs.Sum(x => ((Money)x.Value).Satoshi);
+    }
+
+    private void RejectReasonValidatorForUTXOsSelector(ValidatorEventArgs e)
+    {
+        var selectedUTXOsValue = SelectedUTXOsValue();
+        if (selectedUTXOsValue > Constants.CHANNEL_MAX_CAPACITY)
+        {
+            e.Status = ValidationStatus.Error;
+            e.ErrorText = "The selected UTXOs combined amounts are greater than the channel maximum capacity";
+        }
+        else
+        {
+            e.Status = ValidationStatus.Success;
+        }
+    }
+
+    private void ClearSelectedUTXOs()
+    {
+        _utxoSelectorModalRef.ClearModal();
+        SelectedUTXOs.Clear();
         StateHasChanged();
     }
 }

@@ -543,7 +543,8 @@ namespace FundsManager.Services
 
                 CancelPendingChannel(source, pendingChannelId, client);
 
-                //TODO Mark as failed (?)
+                //TODO: We have to separate the exceptions between the ones that are retriable and the ones that are not
+                //TODO: and mark the channel operation request as failed automatically when they are not retriable
                 throw;
             }
         }
