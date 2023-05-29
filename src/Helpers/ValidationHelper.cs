@@ -17,16 +17,17 @@
  *
  */
 
-using System.Globalization;
 using System.Text.RegularExpressions;
 using Blazorise;
 using FundsManager.Data.Models;
-using FundsManager.Helpers;
+using NBitcoin;
 
 namespace FundsManager.Helpers;
 
 public static class ValidationHelper
 {
+    private static Network network = CurrentNetworkHelper.GetCurrentNetwork();
+
     /// <summary>
     /// Validates that the name of the item introduced in the form is not null and is not only whitespaces.
     /// </summary>
@@ -68,7 +69,7 @@ public static class ValidationHelper
             obj.ErrorText = "The amount selected must be greater than 20.000";
             obj.Status = ValidationStatus.Error;
         }
-        else if ((long)obj.Value > Constants.MAXIMUM_CHANNEL_CAPACITY_SATS)
+        else if ((long)obj.Value > Constants.MAXIMUM_CHANNEL_CAPACITY_SATS_REGTEST && network == Network.RegTest)
         {
             obj.ErrorText = "The amount selected must be lower than 16.777.215";
             obj.Status = ValidationStatus.Error;

@@ -36,6 +36,7 @@
 @inject IWalletRepository WalletRepository
 
 @code {
+    private Network network = CurrentNetworkHelper.GetCurrentNetwork();
     private Modal? _modalRef { get; set; }
     public List<UTXO> UTXOList { get; set; } = new();
 
@@ -101,7 +102,7 @@
             e.ErrorText = "The combined amount of the UTXOs selected must be greater than 20.000";
             e.Status = ValidationStatus.Error;
         }
-        else if (selectedUTXOsValue > Constants.MAXIMUM_CHANNEL_CAPACITY_SATS)
+        else if (selectedUTXOsValue > Constants.MAXIMUM_CHANNEL_CAPACITY_SATS_REGTEST && network == Network.RegTest)
         {
             e.ErrorText = "The combined amount of the UTXOs selected must be lower than 16.777.215";
             e.Status = ValidationStatus.Error;

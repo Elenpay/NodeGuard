@@ -25,7 +25,7 @@
 
         @if (_isNodeManager) // Admin can be node manager and finance manager
         {
-            <Button Color="Color.Success" TextColor="TextColor.Light" Clicked="async () => await datagridRef.New()">New</Button>
+            <Button Color="Color.Success" TextColor="TextColor.Light" Clicked="OnShowNewChannelRequestModal">New</Button>
         }
     </Field>
     <br/>
@@ -131,7 +131,7 @@
                 </DisplayTemplate>
                 <EditTemplate>
                     <Validation Validator="@ValidationHelper.ValidateChannelCapacity" @ref="_capacityValidation">
-                        <NumericPicker TValue="long" @bind-Value="@_amount" CurrencySymbol="SATS " Disabled="@(SelectedUTXOs.Count > 0)">
+                        <NumericPicker TValue="long" @bind-Value="@_amount" CurrencySymbol=" SATS" CurrencySymbolPlacement="CurrencySymbolPlacement.Suffix" Disabled="@(SelectedUTXOs.Count > 0)">
                             <Feedback>
                                 <ValidationError/>
                             </Feedback>
@@ -142,9 +142,10 @@
                             }
                         </FieldHelp>
                     </Validation>
-                    <Button Color="Color.Primary" Disabled="@(!_selectedWalletId.HasValue)" Clicked="@OpenCoinSelectionModal">Select Coins</Button> or use
-                    <Button Color="Color.Primary" Disabled="@(SelectedUTXOs.Count == 0)"Clicked="@ClearSelectedUTXOs">Default Coin Selection</Button>
-                    <br/>
+                    <div class="mb-3">
+                        <Button Color="Color.Primary" Disabled="@(!_selectedWalletId.HasValue)" Clicked="@OpenCoinSelectionModal">Select Coins</Button> or use
+                        <Button Color="Color.Primary" Disabled="@(SelectedUTXOs.Count == 0)" Clicked="@ClearSelectedUTXOs">Default Coin Selection</Button>
+                    </div>
                     @if (_selectedWalletId.HasValue && SelectedUTXOs.Count > 0)
                     {
                         <span>Selected @(SelectedUTXOs.Count) UTXOs</span>
@@ -155,6 +156,29 @@
                     }
                 </EditTemplate>
             </DataGridColumn>
+            @if (Constants.FEE_SELECTION_ENABLED)
+            {
+                <DataGridColumn TItem="ChannelOperationRequest" Displayable="false" Editable="true" Caption="Fees" PopupFieldColumnSize="ColumnSize.Is12">
+                    <EditTemplate>
+                        <div class="d-flex">
+                            <Select TValue="MempoolRecommendedFeesTypes" @bind-SelectedValue="@FeesSelection">
+                                <SelectGroup Label="Default">
+                                    <SelectItem Value="MempoolRecommendedFeesTypes.EconomyFee">Economy Fee</SelectItem>
+                                    <SelectItem Value="MempoolRecommendedFeesTypes.FastestFee">Fastest Fee</SelectItem>
+                                    <SelectItem Value="MempoolRecommendedFeesTypes.HourFee">Hour Fee</SelectItem>
+                                    <SelectItem Value="MempoolRecommendedFeesTypes.HalfHourFee">Half Hour Fee</SelectItem>
+                                </SelectGroup>
+                                <SelectItem Value="MempoolRecommendedFeesTypes.CustomFee">Custom</SelectItem>
+                            </Select>
+                            <NumericPicker TValue="long" @bind-Value="@FeeAmount" CurrencySymbolPlacement="CurrencySymbolPlacement.Suffix" CurrencySymbol=" sats/vbyte" Min="0" Disabled="@(FeesSelection != MempoolRecommendedFeesTypes.CustomFee)">
+                                <Feedback>
+                                    <ValidationError/>
+                                </Feedback>
+                            </NumericPicker>
+                        </div>
+                    </EditTemplate>
+                </DataGridColumn>
+            }
             <DataGridColumn TItem="ChannelOperationRequest" Field="@nameof(ChannelOperationRequest.IsChannelPrivate)" Caption="Private" Displayable="true" Editable="true">
                 <EditTemplate>
                     <Check TValue="bool" @bind-Checked="_selectedPrivate"></Check>
@@ -376,6 +400,8 @@
     private ConfirmationModal _markRequestAsFailedConfirmationModal;
     private UTXOSelectorModal _utxoSelectorModalRef;
     private List<UTXO> SelectedUTXOs = new();
+    private MempoolRecommendedFeesTypes FeesSelection;
+    private long FeeAmount;
 
     // New Request integration
     private List<Wallet> _allWallets = new List<Wallet>();
@@ -421,6 +447,14 @@
         }
         await FetchRequests();
         await LoadData();
+    }
+
+    private async Task OnShowNewChannelRequestModal()
+    {
+        _utxoSelectorModalRef.ClearModal();
+        FeesSelection = 0;
+        FeeAmount = 0;
+        await datagridRef.New();
     }
 
     private async Task ResetChannelRequestRejectModal()
@@ -639,7 +673,6 @@
     {
         _selectedRequest = channelOperationRequest;
         _psbt = string.Empty;
-        _utxoSelectorModalRef.ClearModal();
         if (_selectedRequest != null && !_selectedRequest.AreAllRequiredHumanSignaturesCollected)
         {
             var (templatePsbt,noUtxosAvailable) = (await LightningService.GenerateTemplatePSBT(_selectedRequest));

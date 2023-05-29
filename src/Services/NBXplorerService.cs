@@ -40,8 +40,17 @@ public interface INBXplorerService
         CancellationToken cancellation = default(CancellationToken));
 }
 
+public enum MempoolRecommendedFeesTypes
+{
+    EconomyFee,
+    FastestFee,
+    HourFee,
+    HalfHourFee,
+    CustomFee
+}
+
 /// <summary>
-/// Response from 
+/// Response from
 /// </summary>
 public class MempoolRecommendedFees
 {
@@ -132,7 +141,7 @@ public class NBXplorerService : INBXplorerService
 
         try
         {
-           
+
             var recommendedFees =
                 await _httpClient.GetFromJsonAsync<MempoolRecommendedFees>($"{mempoolEndpoint}/api/v1/fees/recommended");
             if (recommendedFees != null)
