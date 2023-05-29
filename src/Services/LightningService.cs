@@ -194,12 +194,18 @@ namespace FundsManager.Services
 
             var combinedPSBT = GetCombinedPsbt(channelOperationRequest, _logger);
 
+
             //32 bytes of secure randomness for the pending channel id (lnd)
             var pendingChannelId = RandomNumberGenerator.GetBytes(32);
             var pendingChannelIdHex = Convert.ToHexString(pendingChannelId);
 
             try
             {
+                var virtualSize=combinedPSBT.GetGlobalTransaction().GetVirtualSize()+22; //22 bytes for the 1 segwit output
+                var feeRateResult = await LightningHelper.GetFeeRateResult(network, _nbXplorerService);
+
+                var totalFees = new Money(virtualSize * feeRateResult.FeeRate.SatoshiPerByte, MoneyUnit.Satoshi);
+                
                 //We prepare the request (shim) with the base PSBT we had presigned with the UTXOs to fund the channel
                 var openChannelRequest = new OpenChannelRequest
                 {
@@ -212,7 +218,7 @@ namespace FundsManager.Services
                             PendingChanId = ByteString.CopyFrom(pendingChannelId)
                         }
                     },
-                    LocalFundingAmount = channelOperationRequest.SatsAmount,
+                    LocalFundingAmount = channelOperationRequest.SatsAmount- totalFees,
                     CloseAddress = closeAddress.Address.ToString(),
                     Private = channelOperationRequest.IsChannelPrivate,
                     NodePubkey = ByteString.CopyFrom(Convert.FromHexString(destination.PubKey)),
@@ -397,29 +403,12 @@ namespace FundsManager.Services
                                     };
 
                                     var channelfundingTx = fundedPSBT.GetGlobalTransaction();
-
-                                    //We manually fix the change (it was wrong from the Base template due to nbitcoin requiring a change on a PSBT)
-
-                                    var totalIn = new Money(0L);
-
-                                    foreach (var input in fundedPSBT.Inputs)
-                                    {
-                                        totalIn += (input.GetTxOut()?.Value);
-                                    }
-
-                                    var totalOut = new Money(channelOperationRequest.SatsAmount, MoneyUnit.Satoshi);
-                                    var totalFees = combinedPSBT.GetFee();
-                                    channelfundingTx.Outputs[0].Value = totalIn - totalOut - totalFees;
-
-                                    //We merge changeFixedPSBT with the other PSBT with the change fixed
-
-                                    var changeFixedPSBT = channelfundingTx.CreatePSBT(network).UpdateFrom(fundedPSBT);
-
+                                    
                                     PSBT? finalSignedPSBT = null;
                                     //We check the way the nodeguard signs, with the nodeguard remote signer or with the embedded signer
                                     if (Constants.ENABLE_REMOTE_SIGNER)
                                     {
-                                        finalSignedPSBT = await _remoteSignerService.Sign(changeFixedPSBT);
+                                        finalSignedPSBT = await _remoteSignerService.Sign(fundedPSBT);
                                         if (finalSignedPSBT == null)
                                         {
                                             const string errorMessage = "The signed PSBT was null, something went wrong while signing with the remote signer";
@@ -435,7 +424,7 @@ namespace FundsManager.Services
                                             derivationStrategyBase,
                                             channelfundingTx,
                                             network,
-                                            changeFixedPSBT,
+                                            fundedPSBT,
                                             _logger);
 
                                         if (finalSignedPSBT == null)
@@ -529,11 +518,13 @@ namespace FundsManager.Services
                                     }
                                     else
                                     {
+                                        _logger.LogError("TX Check failed for channel operation request id: {RequestId} reason: {Reason}", channelOperationRequest.Id, checkTx);
                                         CancelPendingChannel(source, pendingChannelId, client);
                                     }
                                 }
                                 else
                                 {
+                                    _logger.LogError("Could not parse the PSBT for funding channel operation request id: {RequestId}", channelOperationRequest.Id);
                                     CancelPendingChannel(source, pendingChannelId, client);
                                 }
 
@@ -910,11 +901,21 @@ namespace FundsManager.Services
                     .SetChange(changeAddress.Address)
                     .SendEstimatedFees(feeRateResult.FeeRate);
 
-                result.Item1 = builder.BuildPSBT(false);
+                var originalPSBT = builder.BuildPSBT(false);
+                
+                //Hack to remove outputs
+                
+                var combinedPsbTtx = originalPSBT.GetGlobalTransaction();
+                combinedPsbTtx.Outputs.Clear();
 
+                result.Item1 = combinedPsbTtx.CreatePSBT(network);
+
+                //Hack to make sure that witness and non-witness UTXOs are added to the PSBT
                 //Hack, see https://github.com/MetacoSA/NBitcoin/issues/1112 for details
                 foreach (var input in result.Item1.Inputs)
-                {
+                {   
+                    input.WitnessUtxo = originalPSBT.Inputs.FirstOrDefault(x=> x.PrevOut == input.PrevOut)?.WitnessUtxo;
+                    input.NonWitnessUtxo = originalPSBT.Inputs.FirstOrDefault(x=> x.PrevOut == input.PrevOut)?.NonWitnessUtxo;
                     input.SighashType = SigHash.None;
                 }
 

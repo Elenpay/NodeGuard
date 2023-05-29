@@ -139,8 +139,8 @@ public class NBXplorerService : INBXplorerService
             {
                 var feerate = new GetFeeRateResult
                 {
-                    FeeRate = new FeeRate((decimal) recommendedFees.HourFee),
-                    BlockCount = 6 // 60 mins / 10 mins
+                    FeeRate = new FeeRate((decimal) recommendedFees.FastestFee),
+                    BlockCount = 1 // 60 mins / 10 mins
                 };
 
                 return feerate;

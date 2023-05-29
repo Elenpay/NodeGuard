@@ -64,10 +64,14 @@ namespace FundsManager.Helpers
                 var rootedKeyPath = key.GetRootedKeyPath();
 
                 //Global xpubs field addition
-                result.GlobalXPubs.Add(
-                    bitcoinExtPubKey,
-                    rootedKeyPath
-                );
+                if (!result.GlobalXPubs.Any())
+                {
+                    result.GlobalXPubs.Add(
+                        bitcoinExtPubKey,
+                        rootedKeyPath
+                    );
+                }
+                
 
                 foreach (var selectedUtxo in selectedUtxOs)
                 {
@@ -76,7 +80,7 @@ namespace FundsManager.Helpers
                     var addressRootedKeyPath = key.GetAddressRootedKeyPath(utxoDerivationPath);
 
                     var input = result.Inputs.FirstOrDefault(input =>
-                        input?.GetCoin()?.Outpoint == selectedUtxo.Outpoint);
+                        input.PrevOut == selectedUtxo.Outpoint);
                     var coin = coins.FirstOrDefault(x => x.Outpoint == selectedUtxo.Outpoint);
 
                     if (coin != null && input != null &&
@@ -85,7 +89,11 @@ namespace FundsManager.Helpers
                             !wallet.IsHotWallet && (coin as ScriptCoin).Redeem.GetAllPubKeys().Contains(derivedPubKey))
                        )
                     {
-                        input.AddKeyPath(derivedPubKey, addressRootedKeyPath);
+                        if (!input.HDKeyPaths.Any())
+                        {
+                            input.AddKeyPath(derivedPubKey, addressRootedKeyPath);
+
+                        }
                     }
                     else
                     {
@@ -227,7 +235,7 @@ namespace FundsManager.Helpers
             {
                 //TODO Maybe the block confirmation count can be a parameter.
                 feeRateResult =
-                    await nbxplorerClient.GetFeeRateAsync(6, default);
+                    await nbxplorerClient.GetFeeRateAsync(1, default);
             }
 
             return feeRateResult;
