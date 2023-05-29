@@ -10,7 +10,7 @@
             <CloseButton />
         </ModalHeader>
         <ModalBody>
-            <Validation @ref="_validation" Validator="Validator">
+            <Validation @ref="_validation" Validator="RejectReasonValidatorForUTXOsSelector">
                 <DataGrid TItem="UTXO"
                           Data="@UTXOList"
                           SelectionMode="DataGridSelectionMode.Multiple"
@@ -32,18 +32,19 @@
     </ModalContent>
 </Modal>
 
+@inject ICoinSelectionService CoinSelectionService
+@inject IWalletRepository WalletRepository
+
 @code {
     private Modal? _modalRef { get; set; }
     public List<UTXO> UTXOList { get; set; } = new();
 
-    [Parameter, EditorRequired]
-    public List<UTXO> SelectedUTXOs { get; set; } = new();
+    private List<UTXO> SelectedUTXOs { get; set; } = new();
+    private List<UTXO> PrevSelectedUTXOs { get; set; } = new();
 
     [Parameter, EditorRequired]
-    public Action OnClose { get; set; } = () => { };
+    public Action<List<UTXO>> OnClose { get; set; } = _ => { };
 
-    [Parameter, EditorRequired]
-    public Action<ValidatorEventArgs> Validator { get; set; } = ValidationRule.None;
     private Validation _validation { get; set; } = new();
 
     public void ClearModal()
@@ -54,21 +55,30 @@
 
     private async Task CancelSelection()
     {
+        SelectedUTXOs = PrevSelectedUTXOs;
         await _modalRef.Close(CloseReason.UserClosing);
     }
 
     private async Task CloseModal()
     {
-        _validation.Validator = Validator;
         if (await _validation.ValidateAsync() != ValidationStatus.Error)
         {
-            OnClose();
+            OnClose(SelectedUTXOs);
             await _modalRef.Close(CloseReason.UserClosing);
         }
     }
 
-    public async Task ShowModal()
+    public async Task ShowModal(int walletId)
     {
+        PrevSelectedUTXOs = SelectedUTXOs;
+        var selectedWallet = await WalletRepository.GetById(walletId);
+        var utxosList = await CoinSelectionService.GetAvailableUTXOsAsync(selectedWallet.GetDerivationStrategy());
+        UTXOList = utxosList;
+
+        // Refresh the list with the new objects, or selection wont be preserved
+        var hashes = SelectedUTXOs.Select(utxos => utxos.Outpoint.Hash);
+        SelectedUTXOs = utxosList.Where(utxo => hashes.Contains(utxo.Outpoint.Hash)).ToList();
+
         await _modalRef.Show();
         StateHasChanged();
     }
@@ -80,5 +90,25 @@
         {
             $"Selected {SelectedUTXOs.Count} for an amount of {value}"
         };
+    }
+
+    private void RejectReasonValidatorForUTXOsSelector(ValidatorEventArgs e)
+    {
+        var selectedUTXOsValue = SelectedUTXOs.Sum(x => ((Money)x.Value).Satoshi);
+        if (selectedUTXOsValue == 0) return;
+        if (selectedUTXOsValue < Constants.MINIMUM_CHANNEL_CAPACITY_SATS)
+        {
+            e.ErrorText = "The combined amount of the UTXOs selected must be greater than 20.000";
+            e.Status = ValidationStatus.Error;
+        }
+        else if (selectedUTXOsValue > Constants.MAXIMUM_CHANNEL_CAPACITY_SATS)
+        {
+            e.ErrorText = "The combined amount of the UTXOs selected must be lower than 16.777.215";
+            e.Status = ValidationStatus.Error;
+        }
+        else
+        {
+            e.Status = ValidationStatus.Success;
+        }
     }
 }

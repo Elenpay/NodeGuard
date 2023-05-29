@@ -120,8 +120,6 @@
                             </SelectList>
                         }
                     </Validation>
-                    <Button Color="Color.Primary" Disabled="@(!_selectedWalletId.HasValue)" Clicked="@OpenCoinSelectionModal">Select Coins</Button> or use
-                    <Button Color="Color.Primary" Disabled="@(SelectedUTXOs.Count == 0)"Clicked="@ClearSelectedUTXOs">Default Coin Selection</Button>
                 </EditTemplate>
             </DataGridColumn>
             <DataGridColumn TItem="ChannelOperationRequest" Field="@nameof(ChannelOperationRequest.Amount)" Caption="Capacity" Sortable="false" Displayable="true" PopupFieldColumnSize="ColumnSize.Is12" Editable="true">
@@ -132,15 +130,6 @@
                     }
                 </DisplayTemplate>
                 <EditTemplate>
-                    <br/>
-                    @if (_selectedWalletId.HasValue && SelectedUTXOs.Count > 0)
-                    {
-                        <span>Selected @(SelectedUTXOs.Count) UTXOs</span>
-                    }
-                    else
-                    {
-                        <span>Default coin selection strategy selected</span>
-                    }
                     <Validation Validator="@ValidationHelper.ValidateChannelCapacity" @ref="_capacityValidation">
                         <NumericPicker TValue="long" @bind-Value="@_amount" CurrencySymbol="SATS " Disabled="@(SelectedUTXOs.Count > 0)">
                             <Feedback>
@@ -153,6 +142,17 @@
                             }
                         </FieldHelp>
                     </Validation>
+                    <Button Color="Color.Primary" Disabled="@(!_selectedWalletId.HasValue)" Clicked="@OpenCoinSelectionModal">Select Coins</Button> or use
+                    <Button Color="Color.Primary" Disabled="@(SelectedUTXOs.Count == 0)"Clicked="@ClearSelectedUTXOs">Default Coin Selection</Button>
+                    <br/>
+                    @if (_selectedWalletId.HasValue && SelectedUTXOs.Count > 0)
+                    {
+                        <span>Selected @(SelectedUTXOs.Count) UTXOs</span>
+                    }
+                    else
+                    {
+                        <span>Default coin selection strategy selected</span>
+                    }
                 </EditTemplate>
             </DataGridColumn>
             <DataGridColumn TItem="ChannelOperationRequest" Field="@nameof(ChannelOperationRequest.IsChannelPrivate)" Caption="Private" Displayable="true" Editable="true">
@@ -348,8 +348,6 @@
 <UTXOSelectorModal
     @ref="_utxoSelectorModalRef"
     OnClose="@OnCloseCoinSelectionModal"
-    SelectedUTXOs="SelectedUTXOs"
-    Validator="RejectReasonValidatorForUTXOsSelector"
 />
 
 @inject IChannelOperationRequestRepository ChannelOperationRequestRepository
@@ -641,6 +639,7 @@
     {
         _selectedRequest = channelOperationRequest;
         _psbt = string.Empty;
+        _utxoSelectorModalRef.ClearModal();
         if (_selectedRequest != null && !_selectedRequest.AreAllRequiredHumanSignaturesCollected)
         {
             var (templatePsbt,noUtxosAvailable) = (await LightningService.GenerateTemplatePSBT(_selectedRequest));
@@ -859,18 +858,12 @@
 
     private async Task OpenCoinSelectionModal()
     {
-        var selectedWallet = await WalletRepository.GetById(_selectedWalletId.Value);
-        var utxosList = await CoinSelectionService.GetAvailableUTXOsAsync(selectedWallet.GetDerivationStrategy());
-        _utxoSelectorModalRef.UTXOList = utxosList;
-
-        // Refresh the list with the new objects, or selection wont be preserved
-        var hashes = SelectedUTXOs.Select(utxos => utxos.Outpoint.Hash);
-        SelectedUTXOs = utxosList.Where(utxo => hashes.Contains(utxo.Outpoint.Hash)).ToList();
-        _utxoSelectorModalRef.ShowModal();
+        _utxoSelectorModalRef.ShowModal(_selectedWalletId.Value);
     }
 
-    private void OnCloseCoinSelectionModal()
+    private void OnCloseCoinSelectionModal(List<UTXO> selectedUTXOs)
     {
+        SelectedUTXOs = selectedUTXOs;
         if (SelectedUTXOs.Count > 0)
         {
             _amount = SelectedUTXOsValue();
@@ -881,26 +874,6 @@
     private long SelectedUTXOsValue()
     {
         return SelectedUTXOs.Sum(x => ((Money)x.Value).Satoshi);
-    }
-
-    private void RejectReasonValidatorForUTXOsSelector(ValidatorEventArgs e)
-    {
-        var selectedUTXOsValue = SelectedUTXOsValue();
-        if (selectedUTXOsValue == 0) return;
-        if (selectedUTXOsValue < Constants.MINIMUM_CHANNEL_CAPACITY_SATS)
-        {
-            e.ErrorText = "The combined amount of the UTXOs selected must be greater than 20.000";
-            e.Status = ValidationStatus.Error;
-        }
-        else if (selectedUTXOsValue > Constants.MAXIMUM_CHANNEL_CAPACITY_SATS)
-        {
-            e.ErrorText = "The combined amount of the UTXOs selected must be lower than 16.777.215";
-            e.Status = ValidationStatus.Error;
-        }
-        else
-        {
-            e.Status = ValidationStatus.Success;
-        }
     }
 
     private void ClearSelectedUTXOs()
