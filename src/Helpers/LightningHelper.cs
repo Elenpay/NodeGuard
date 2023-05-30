@@ -17,15 +17,12 @@
  *
  */
 
-using AutoMapper;
 using FundsManager.Data.Models;
 using FundsManager.Services;
 using Google.Protobuf;
 using NBitcoin;
 using NBXplorer;
 using NBXplorer.Models;
-using Key = FundsManager.Data.Models.Key;
-using Unmockable;
 
 namespace FundsManager.Helpers
 {
@@ -77,7 +74,7 @@ namespace FundsManager.Helpers
                     var utxoDerivationPath = key.DeriveUtxoKeyPath(selectedUtxo.KeyPath);
                     var derivedPubKey = key.DeriveUtxoPubKey(nbXplorerNetwork, selectedUtxo.KeyPath);
                     var addressRootedKeyPath = key.GetAddressRootedKeyPath(utxoDerivationPath);
-                    
+
                     var input = result.Inputs.FirstOrDefault(input =>
                         input?.GetCoin()?.Outpoint == selectedUtxo.Outpoint);
                     var coin = coins.FirstOrDefault(x => x.Outpoint == selectedUtxo.Outpoint);
@@ -86,7 +83,7 @@ namespace FundsManager.Helpers
                         (
                             wallet.IsHotWallet && (coin as Coin).ScriptPubKey == derivedPubKey.WitHash.ScriptPubKey ||
                             !wallet.IsHotWallet && (coin as ScriptCoin).Redeem.GetAllPubKeys().Contains(derivedPubKey))
-                        )
+                       )
                     {
                         input.AddKeyPath(derivedPubKey, addressRootedKeyPath);
                     }
@@ -108,7 +105,7 @@ namespace FundsManager.Helpers
         /// </summary>
         /// <returns></returns>
         /// <exception cref="ArgumentNullException"></exception>
-        public static async Task<ExplorerClient>  CreateNBExplorerClient()
+        public static async Task<ExplorerClient> CreateNBExplorerClient()
         {
             //Nbxplorer api client
             var nbXplorerNetwork = CurrentNetworkHelper.GetCurrentNetwork();
@@ -117,69 +114,46 @@ namespace FundsManager.Helpers
             var nbxplorerClient = new ExplorerClient(
                 provider.GetFromCryptoCode(nbXplorerNetwork.NetworkSet.CryptoCode),
                 new Uri(Constants.NBXPLORER_URI));
-            return  nbxplorerClient;
+            return nbxplorerClient;
         }
 
         /// <summary>
-        /// Helper to select coins from a wallet for requests (Withdrawals, ChannelOperationRequest). FIFO is the coin selection
+        /// Helper to select utxos from a wallet for requests (Withdrawals, ChannelOperationRequest) by oldest
         /// </summary>
         /// <param name="wallet"></param>
         /// <param name="satsAmount"></param>
-        /// <param name="utxoChanges"></param>
-        /// <param name="lockedUTXOs"></param>
+        /// <param name="availableUTXOs"></param>
         /// <param name="logger"></param>
-        /// <param name="mapper"></param>
         /// <returns></returns>
-        public static async Task<(List<ICoin> coins, List<UTXO> selectedUTXOs)> SelectCoins(
-            Wallet wallet, long satsAmount, UTXOChanges utxoChanges, List<FMUTXO> lockedUTXOs, ILogger logger,
-            IMapper mapper)
+        public static async Task<List<UTXO>> SelectUTXOsByOldest(
+            Wallet wallet, long satsAmount, List<UTXO> availableUTXOs, ILogger logger)
         {
             if (wallet == null) throw new ArgumentNullException(nameof(wallet));
-            if (utxoChanges == null) throw new ArgumentNullException(nameof(utxoChanges));
-            if (lockedUTXOs == null) throw new ArgumentNullException(nameof(lockedUTXOs));
             if (logger == null) throw new ArgumentNullException(nameof(logger));
-            if (mapper == null) throw new ArgumentNullException(nameof(mapper));
             if (wallet == null) throw new ArgumentNullException(nameof(wallet));
             if (satsAmount <= 0) throw new ArgumentOutOfRangeException(nameof(satsAmount));
 
-            var derivationStrategy = wallet.GetDerivationStrategy();
             var selectedUTXOs = new List<UTXO>();
-            var coins = new List<ICoin>();
-
-            var availableUTXOs = new List<UTXO>();
-            foreach (var utxo in utxoChanges.Confirmed.UTXOs)
-            {
-                var fmUtxo = mapper.Map<UTXO, FMUTXO>(utxo);
-
-                if (lockedUTXOs.Contains(fmUtxo))
-                {
-                    logger.LogInformation("Removing UTXO: {Utxo} from UTXO set as it is locked", fmUtxo.ToString());
-                }
-                else
-                {
-                    availableUTXOs.Add(utxo);
-                }
-            }
 
             if (!availableUTXOs.Any())
             {
                 logger.LogError("The PSBT cannot be generated, no UTXOs are available for walletId: {WalletId}",
                     wallet.Id);
-                return (coins, selectedUTXOs);
+                return selectedUTXOs;
             }
 
             var utxosStack = new Stack<UTXO>(availableUTXOs.OrderByDescending(x => x.Confirmations));
 
             //FIFO Algorithm to match the amount, oldest UTXOs are first taken
 
-            var totalUTXOsConfirmedSats = utxosStack.Sum(x => ((Money) x.Value).Satoshi);
+            var totalUTXOsConfirmedSats = utxosStack.Sum(x => ((Money)x.Value).Satoshi);
 
             if (totalUTXOsConfirmedSats < satsAmount)
             {
                 logger.LogError(
                     "Error, the total UTXOs set balance for walletid: {WalletId} ({AvailableSats} sats) is less than the amount in the request ({RequestedSats} sats)",
                     wallet.Id, totalUTXOsConfirmedSats, satsAmount);
-                return (coins, selectedUTXOs);
+                return selectedUTXOs;
             }
 
             var utxosSatsAmountAccumulator = 0M;
@@ -190,7 +164,7 @@ namespace FundsManager.Helpers
                 if (utxosStack.TryPop(out var utxo))
                 {
                     selectedUTXOs.Add(utxo);
-                    utxosSatsAmountAccumulator += ((Money) utxo.Value).Satoshi;
+                    utxosSatsAmountAccumulator += ((Money)utxo.Value).Satoshi;
                 }
 
                 iterations++;
@@ -201,19 +175,34 @@ namespace FundsManager.Helpers
                 }
             }
 
+            return selectedUTXOs;
+        }
+
+        /// <summary>
+        /// Helper to select coins from a wallet for requests (Withdrawals, ChannelOperationRequest). FIFO is the coin selection
+        /// </summary>
+        /// <param name="wallet"></param>
+        /// <param name="selectedUTXOs"></param>
+        /// <returns></returns>
+        public static async Task<List<ICoin>> SelectCoins(Wallet wallet, List<UTXO> selectedUTXOs)
+        {
+            if (wallet == null) throw new ArgumentNullException(nameof(wallet));
+            if (wallet == null) throw new ArgumentNullException(nameof(wallet));
+
+            var derivationStrategy = wallet.GetDerivationStrategy();
+
             //UTXOS to Enumerable of ICOINS
-            coins = selectedUTXOs.Select<UTXO, ICoin>(x =>
+            return selectedUTXOs.Select<UTXO, ICoin>(x =>
                 {
                     var coin = x.AsCoin(derivationStrategy);
                     if (wallet.IsHotWallet)
                     {
                         return coin;
                     }
+
                     return coin.ToScriptCoin(x.ScriptPubKey);
                 })
                 .ToList();
-
-            return (coins, selectedUTXOs);
         }
 
         /// <summary>
@@ -223,7 +212,7 @@ namespace FundsManager.Helpers
         /// <param name="nbxplorerClient"></param>
         /// <returns></returns>
         public static async Task<GetFeeRateResult> GetFeeRateResult(Network nbXplorerNetwork,
-          INBXplorerService nbxplorerClient)
+            INBXplorerService nbxplorerClient)
         {
             GetFeeRateResult feeRateResult;
             if (nbXplorerNetwork == Network.RegTest)
@@ -272,7 +261,7 @@ namespace FundsManager.Helpers
 
             return combinedPSBT;
         }
-        
+
         /// <summary>
         /// Helper for decoding bytestring-based LND representation of TxIds
         /// </summary>

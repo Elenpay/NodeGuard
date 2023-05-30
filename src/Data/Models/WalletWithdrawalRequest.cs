@@ -17,7 +17,7 @@
  *
  */
 
-﻿using System.ComponentModel.DataAnnotations.Schema;
+using System.ComponentModel.DataAnnotations.Schema;
 using NBitcoin;
 
 namespace FundsManager.Data.Models
@@ -63,7 +63,7 @@ namespace FundsManager.Data.Models
     /// <summary>
     /// Requests to withdraw funds from a FM-managed multisig wallet
     /// </summary>
-    public class WalletWithdrawalRequest : Entity, IEquatable<WalletWithdrawalRequest>
+    public class WalletWithdrawalRequest : Entity, IEquatable<WalletWithdrawalRequest>, IBitcoinRequest
     {
         public WalletWithdrawalRequestStatus Status { get; set; }
 
@@ -118,7 +118,7 @@ namespace FundsManager.Data.Models
         /// For additional info required by the requestor
         /// </summary>
         public string? RequestMetadata { get; set; }
-        
+
         /// <summary>
         /// Check that the number of signatures (not finalised psbt nor internal wallet psbt or template psbt are gathered and increases by one to count on the internal wallet signature
         /// </summary>
@@ -131,7 +131,7 @@ namespace FundsManager.Data.Models
             {
                 return true;
             }
-            
+
             if (WalletWithdrawalRequestPSBTs != null && WalletWithdrawalRequestPSBTs.Any())
             {
                 var numberOfSignaturesCollected = NumberOfSignaturesCollected;

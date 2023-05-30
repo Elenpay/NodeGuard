@@ -64,7 +64,7 @@ namespace FundsManager.Data.Models
         Close = 2
     }
 
-    public class ChannelOperationRequest : Entity, IEquatable<ChannelOperationRequest>
+    public class ChannelOperationRequest : Entity, IEquatable<ChannelOperationRequest>, IBitcoinRequest
     {
         /// <summary>
         /// Amount in satoshis
@@ -78,9 +78,7 @@ namespace FundsManager.Data.Models
         public decimal Amount
         {
             get => new Money(SatsAmount, MoneyUnit.Satoshi).ToDecimal(MoneyUnit.BTC);
-            set
-            {
-            }
+            set { }
         }
 
         public string? Description { get; set; }
@@ -130,7 +128,7 @@ namespace FundsManager.Data.Models
         public bool AreAllRequiredHumanSignaturesCollected => CheckSignatures();
 
         [NotMapped]
-        public int NumberOfSignaturesCollected => ChannelOperationRequestPsbts == null ? 0 : ChannelOperationRequestPsbts.Count(x =>!x.IsFinalisedPSBT && !x.IsTemplatePSBT && !x.IsInternalWalletPSBT);
+        public int NumberOfSignaturesCollected => ChannelOperationRequestPsbts == null ? 0 : ChannelOperationRequestPsbts.Count(x => !x.IsFinalisedPSBT && !x.IsTemplatePSBT && !x.IsInternalWalletPSBT);
 
         /// <summary>
         /// This is the JobId provided by Quartz of the job executing this request.
@@ -150,7 +148,7 @@ namespace FundsManager.Data.Models
                 var userPSBTsCount = NumberOfSignaturesCollected;
 
                 //We add the internal Wallet signature
-                if (Wallet != null && Wallet.IsHotWallet) return ChannelOperationRequestPsbts.Count(x=> x.IsTemplatePSBT) == 1;
+                if (Wallet != null && Wallet.IsHotWallet) return ChannelOperationRequestPsbts.Count(x => x.IsTemplatePSBT) == 1;
                 userPSBTsCount++;
 
                 if (userPSBTsCount == Wallet.MofN)
@@ -158,7 +156,7 @@ namespace FundsManager.Data.Models
                     result = true;
                 }
             }
-            
+
             return result;
         }
 
