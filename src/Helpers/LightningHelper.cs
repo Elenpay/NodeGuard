@@ -64,14 +64,14 @@ namespace FundsManager.Helpers
                 var rootedKeyPath = key.GetRootedKeyPath();
 
                 //Global xpubs field addition
-                if (!result.GlobalXPubs.Any())
+                if (!result.GlobalXPubs.ContainsKey(bitcoinExtPubKey))
                 {
                     result.GlobalXPubs.Add(
                         bitcoinExtPubKey,
                         rootedKeyPath
                     );
                 }
-                
+
 
                 foreach (var selectedUtxo in selectedUtxOs)
                 {
@@ -89,7 +89,7 @@ namespace FundsManager.Helpers
                             !wallet.IsHotWallet && (coin as ScriptCoin).Redeem.GetAllPubKeys().Contains(derivedPubKey))
                        )
                     {
-                        if (!input.HDKeyPaths.Any())
+                        if (!input.HDKeyPaths.ContainsKey(derivedPubKey))
                         {
                             input.AddKeyPath(derivedPubKey, addressRootedKeyPath);
 
