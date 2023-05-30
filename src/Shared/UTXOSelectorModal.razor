@@ -21,7 +21,7 @@
                     <DataGridMultiSelectColumn Width="30px"></DataGridMultiSelectColumn>
                     <DataGridColumn Field="@nameof(UTXO.Value)" Caption="Value" Sortable="true"/>
                     <DataGridColumn Field="@nameof(UTXO.KeyPath)" Caption="KeyPath" Sortable="false"/>
-                    <Feedback>@String.Join(",", _validation.Messages ?? GetUTXOsValues())</Feedback>
+                    <Feedback class="text-danger">@String.Join(",", _validation.Messages ?? GetUTXOsValues())</Feedback>
                 </DataGrid>
             </Validation>
         </ModalBody>

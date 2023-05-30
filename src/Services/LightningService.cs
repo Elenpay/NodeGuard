@@ -27,7 +27,6 @@ using NBitcoin;
 using NBXplorer.DerivationStrategy;
 using NBXplorer.Models;
 using System.Security.Cryptography;
-using AutoMapper;
 using FundsManager.Data;
 using FundsManager.Helpers;
 using Microsoft.EntityFrameworkCore;
@@ -116,9 +115,6 @@ namespace FundsManager.Services
         private readonly IChannelOperationRequestRepository _channelOperationRequestRepository;
         private readonly INodeRepository _nodeRepository;
         private readonly IDbContextFactory<ApplicationDbContext> _dbContextFactory;
-        private readonly IMapper _mapper;
-        private readonly IWalletRepository _walletRepository;
-        private readonly IFMUTXORepository _ifmutxoRepository;
         private readonly IChannelOperationRequestPSBTRepository _channelOperationRequestPsbtRepository;
         private readonly IChannelRepository _channelRepository;
         private readonly IRemoteSignerService _remoteSignerService;
@@ -129,9 +125,6 @@ namespace FundsManager.Services
             IChannelOperationRequestRepository channelOperationRequestRepository,
             INodeRepository nodeRepository,
             IDbContextFactory<ApplicationDbContext> dbContextFactory,
-            IMapper mapper,
-            IWalletRepository walletRepository,
-            IFMUTXORepository ifmutxoRepository,
             IChannelOperationRequestPSBTRepository channelOperationRequestPsbtRepository,
             IChannelRepository channelRepository,
             IRemoteSignerService remoteSignerService,
@@ -144,9 +137,6 @@ namespace FundsManager.Services
             _channelOperationRequestRepository = channelOperationRequestRepository;
             _nodeRepository = nodeRepository;
             _dbContextFactory = dbContextFactory;
-            _mapper = mapper;
-            _walletRepository = walletRepository;
-            _ifmutxoRepository = ifmutxoRepository;
             _channelOperationRequestPsbtRepository = channelOperationRequestPsbtRepository;
             _channelRepository = channelRepository;
             _remoteSignerService = remoteSignerService;
@@ -205,7 +195,8 @@ namespace FundsManager.Services
                 var feeRateResult = await LightningHelper.GetFeeRateResult(network, _nbXplorerService);
 
                 var totalFees = new Money(virtualSize * feeRateResult.FeeRate.SatoshiPerByte, MoneyUnit.Satoshi);
-                
+
+                long fundingAmount = channelOperationRequest.Changeless ? channelOperationRequest.SatsAmount - totalFees : channelOperationRequest.SatsAmount;
                 //We prepare the request (shim) with the base PSBT we had presigned with the UTXOs to fund the channel
                 var openChannelRequest = new OpenChannelRequest
                 {
@@ -218,7 +209,7 @@ namespace FundsManager.Services
                             PendingChanId = ByteString.CopyFrom(pendingChannelId)
                         }
                     },
-                    LocalFundingAmount = channelOperationRequest.SatsAmount- totalFees,
+                    LocalFundingAmount = fundingAmount,
                     CloseAddress = closeAddress.Address.ToString(),
                     Private = channelOperationRequest.IsChannelPrivate,
                     NodePubkey = ByteString.CopyFrom(Convert.FromHexString(destination.PubKey)),
@@ -403,7 +394,15 @@ namespace FundsManager.Services
                                     };
 
                                     var channelfundingTx = fundedPSBT.GetGlobalTransaction();
-                                    
+                                    var totalOut = new Money(channelOperationRequest.SatsAmount, MoneyUnit.Satoshi);
+
+                                    if (!channelOperationRequest.Changeless)
+                                    {
+                                        //We merge changeFixedPSBT with the other PSBT with the change fixed
+                                        channelfundingTx.Outputs[0].Value -= totalOut + totalFees;
+                                        fundedPSBT = channelfundingTx.CreatePSBT(network).UpdateFrom(fundedPSBT);
+                                    }
+
                                     PSBT? finalSignedPSBT = null;
                                     //We check the way the nodeguard signs, with the nodeguard remote signer or with the embedded signer
                                     if (Constants.ENABLE_REMOTE_SIGNER)
@@ -904,26 +903,23 @@ namespace FundsManager.Services
                     .SendEstimatedFees(feeRateResult.FeeRate);
 
                 var originalPSBT = builder.BuildPSBT(false);
-                
+
                 //Hack to remove outputs
-                
                 var combinedPsbTtx = originalPSBT.GetGlobalTransaction();
-                combinedPsbTtx.Outputs.Clear();
+                if (channelOperationRequest.Changeless)
+                {
+                    combinedPsbTtx.Outputs.Clear();
+                }
 
                 result.Item1 = combinedPsbTtx.CreatePSBT(network);
 
                 //Hack to make sure that witness and non-witness UTXOs are added to the PSBT
                 //Hack, see https://github.com/MetacoSA/NBitcoin/issues/1112 for details
                 foreach (var input in result.Item1.Inputs)
-                {   
+                {
                     input.WitnessUtxo = originalPSBT.Inputs.FirstOrDefault(x=> x.PrevOut == input.PrevOut)?.WitnessUtxo;
                     input.NonWitnessUtxo = originalPSBT.Inputs.FirstOrDefault(x=> x.PrevOut == input.PrevOut)?.NonWitnessUtxo;
-                    input.SighashType = SigHash.None;
                 }
-
-                //Additional fields to support PSBT signing with a HW or the Remote Signer
-                var psbt = LightningHelper.AddDerivationData(channelOperationRequest.Wallet, result.Item1, selectedUtxOs, multisigCoins, _logger);
-                result = (psbt, result.Item2);
             }
             catch (Exception e)
             {

@@ -148,11 +148,11 @@
                     </div>
                     @if (_selectedWalletId.HasValue && SelectedUTXOs.Count > 0)
                     {
-                        <span>Selected @(SelectedUTXOs.Count) UTXOs</span>
+                        <span class="text-danger">Selected @(SelectedUTXOs.Count) UTXOs, this is a changeless operation</span>
                     }
                     else
                     {
-                        <span>Default coin selection strategy selected</span>
+                        <span class="text-danger">Default coin selection strategy selected</span>
                     }
                 </EditTemplate>
             </DataGridColumn>
@@ -289,7 +289,7 @@
             </DisplayTemplate>
         </DataGridColumn>
         <DataGridColumn TItem="ChannelOperationRequest" Field="@nameof(ChannelOperationRequest.Status).Humanize(LetterCasing.Sentence)" Caption="Status" Sortable="false" Displayable="true"/>
-        <DataGridColumn TItem="ChannelOperationRequest" Field="@nameof(ChannelOperationRequest.CreationDatetime)" Caption="Creation Date" Sortable="true">
+        <DataGridColumn TItem="ChannelOperationRequest" Field="@nameof(ChannelOperationRequest.CreationDatetime)" Caption="Creation Date" Sortable="true" SortDirection="SortDirection.Descending">
             <DisplayTemplate>
                 @context.CreationDatetime.Humanize()
             </DisplayTemplate>
@@ -551,7 +551,6 @@
 
     private async Task CreateChannelRequest()
     {
-        _utxoSelectorModalRef.ClearModal();
         if (LoggedUser == null) return;
 
         List<Validation?> validators = new() { _destNodeValidation, _sourceNodeValidation, _walletValidation };
@@ -576,6 +575,7 @@
                     SourceNodeId = _selectedSourceNodeId,
                     DestNodeId = _selectedDestNode?.Id,
                     IsChannelPrivate = _selectedPrivate,
+                    Changeless = SelectedUTXOs.Count > 0
                 };
 
                 var selectedWallet = await WalletRepository.GetById(_selectedWalletId.Value);
