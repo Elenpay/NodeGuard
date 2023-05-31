@@ -234,6 +234,8 @@
                     <Button Color="Color.Primary" Clicked="@(async () => await CreateChannelRequest())">Save</Button>
                 </SaveCommandTemplate>
             </DataGridCommandColumn>
+            <DataGridColumn TItem="ChannelOperationRequest" Field="@nameof(ChannelOperationRequest.CreationDatetime)" Sortable="true" Displayable="false" SortDirection="SortDirection.Descending">
+            </DataGridColumn>
         </ChildContent>
         <EmptyTemplate>
             <div class="box">

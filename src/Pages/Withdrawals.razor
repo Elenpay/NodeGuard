@@ -204,7 +204,7 @@
                             @context?.Status.Humanize()
                         </DisplayTemplate>
                     </DataGridColumn>
-                    <DataGridColumn TItem="WalletWithdrawalRequest" Field="@nameof(WalletWithdrawalRequest.CreationDatetime)" Caption="Creation Date" Sortable="true">
+                    <DataGridColumn TItem="WalletWithdrawalRequest" Field="@nameof(WalletWithdrawalRequest.CreationDatetime)" Caption="Creation Date" Sortable="true" SortDirection="SortDirection.Descending">
                         <DisplayTemplate>
                             @context.CreationDatetime.Humanize()
                         </DisplayTemplate>
