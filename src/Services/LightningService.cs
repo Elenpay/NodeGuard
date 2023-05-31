@@ -192,10 +192,11 @@ namespace FundsManager.Services
 
             try
             {
-                var virtualSize=combinedPSBT.GetGlobalTransaction().GetVirtualSize()+22; //22 bytes for the 1 segwit output
+                // 8 value + 1 script pub key size + 34 script pub key hash (Segwit output 2-0f-2 multisig)
+                var outputVirtualSize = combinedPSBT.GetGlobalTransaction().GetVirtualSize() + 43;
                 var feeRateResult = await LightningHelper.GetFeeRateResult(network, _nbXplorerService);
 
-                var totalFees = new Money(virtualSize * feeRateResult.FeeRate.SatoshiPerByte, MoneyUnit.Satoshi);
+                var totalFees = new Money(outputVirtualSize * feeRateResult.FeeRate.SatoshiPerByte, MoneyUnit.Satoshi);
 
                 long fundingAmount = channelOperationRequest.Changeless ? channelOperationRequest.SatsAmount - totalFees : channelOperationRequest.SatsAmount;
                 //We prepare the request (shim) with the base PSBT we had presigned with the UTXOs to fund the channel
@@ -930,8 +931,8 @@ namespace FundsManager.Services
                 //Hack, see https://github.com/MetacoSA/NBitcoin/issues/1112 for details
                 foreach (var input in result.Item1.Inputs)
                 {
-                    input.WitnessUtxo = originalPSBT.Inputs.FirstOrDefault(x=> x.PrevOut == input.PrevOut)?.WitnessUtxo;
-                    input.NonWitnessUtxo = originalPSBT.Inputs.FirstOrDefault(x=> x.PrevOut == input.PrevOut)?.NonWitnessUtxo;
+                    input.WitnessUtxo = originalPSBT.Inputs.FirstOrDefault(x => x.PrevOut == input.PrevOut)?.WitnessUtxo;
+                    input.NonWitnessUtxo = originalPSBT.Inputs.FirstOrDefault(x => x.PrevOut == input.PrevOut)?.NonWitnessUtxo;
                     input.SighashType = SigHash.None;
                 }
 
