@@ -17,6 +17,7 @@
  *
  */
 
+using System.Runtime.InteropServices;
 using FundsManager.Data.Models;
 using FundsManager.Data.Repositories.Interfaces;
 using Google.Protobuf;
@@ -398,16 +399,21 @@ namespace FundsManager.Services
 
                                     if (!channelOperationRequest.Changeless)
                                     {
-                                        var totalIn = new Money(0L);
-
-                                        foreach (var input in fundedPSBT.Inputs)
+                                        if (fundedPSBT.TryGetVirtualSize(out var vsize))
                                         {
-                                            totalIn += (input.GetTxOut()?.Value);
-                                        }
+                                            var totalIn = fundedPSBT.Inputs.Sum(i => i.GetTxOut()?.Value);
+                                            //We manually fix the change (it was wrong from the Base template due to nbitcoin requiring a change on a PSBT)
+                                            var totalChangefulFees = new Money(vsize * feeRateResult.FeeRate.SatoshiPerByte, MoneyUnit.Satoshi);
+                                            var changeOutput = channelfundingTx.Outputs.SingleOrDefault(o => o.Value != channelOperationRequest.SatsAmount) ?? channelfundingTx.Outputs.First();
+                                            changeOutput.Value = totalIn - totalOut - totalChangefulFees;
 
-                                        //We merge changeFixedPSBT with the other PSBT with the change fixed
-                                        channelfundingTx.Outputs[0].Value = totalIn - totalOut - totalFees;
-                                        fundedPSBT = channelfundingTx.CreatePSBT(network).UpdateFrom(fundedPSBT);
+                                            //We merge changeFixedPSBT with the other PSBT with the change fixed
+                                            fundedPSBT = channelfundingTx.CreatePSBT(network).UpdateFrom(fundedPSBT);
+                                        }
+                                        else
+                                        {
+                                            throw new ExternalException("VSized could not be calculated for the funded PSBT, channel operation request id: {RequestId}", channelOperationRequest.Id);
+                                        }
                                     }
 
                                     PSBT? finalSignedPSBT = null;

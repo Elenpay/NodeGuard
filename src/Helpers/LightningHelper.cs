@@ -80,14 +80,17 @@ namespace FundsManager.Helpers
                     var addressRootedKeyPath = key.GetAddressRootedKeyPath(utxoDerivationPath);
 
                     var input = result.Inputs.FirstOrDefault(input =>
-                    {
-                        var coin = input?.GetCoin();
-                        if (coin == null) throw new InvalidOperationException();
-                        return coin.Outpoint == selectedUtxo.Outpoint;
-                    });
+                        input?.GetCoin()?.Outpoint == selectedUtxo.Outpoint);
                     var coin = coins.FirstOrDefault(x => x.Outpoint == selectedUtxo.Outpoint);
 
-                    if (coin != null && input != null &&
+                    if (input == null)
+                    {
+                        var errorMessage = $"Couldn't get coin for: {selectedUtxo.Outpoint}";
+                        logger?.LogError(errorMessage);
+                        throw new ArgumentException(errorMessage, nameof(derivedPubKey));
+                    }
+
+                    if (coin != null &&
                         (
                             wallet.IsHotWallet && (coin as Coin).ScriptPubKey == derivedPubKey.WitHash.ScriptPubKey ||
                             !wallet.IsHotWallet && (coin as ScriptCoin).Redeem.GetAllPubKeys().Contains(derivedPubKey))
