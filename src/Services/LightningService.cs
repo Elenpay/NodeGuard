@@ -398,8 +398,15 @@ namespace FundsManager.Services
 
                                     if (!channelOperationRequest.Changeless)
                                     {
+                                        var totalIn = new Money(0L);
+
+                                        foreach (var input in fundedPSBT.Inputs)
+                                        {
+                                            totalIn += (input.GetTxOut()?.Value);
+                                        }
+
                                         //We merge changeFixedPSBT with the other PSBT with the change fixed
-                                        channelfundingTx.Outputs[0].Value -= totalOut + totalFees;
+                                        channelfundingTx.Outputs[0].Value = totalIn - totalOut - totalFees;
                                         fundedPSBT = channelfundingTx.CreatePSBT(network).UpdateFrom(fundedPSBT);
                                     }
 
@@ -919,7 +926,11 @@ namespace FundsManager.Services
                 {
                     input.WitnessUtxo = originalPSBT.Inputs.FirstOrDefault(x=> x.PrevOut == input.PrevOut)?.WitnessUtxo;
                     input.NonWitnessUtxo = originalPSBT.Inputs.FirstOrDefault(x=> x.PrevOut == input.PrevOut)?.NonWitnessUtxo;
+                    input.SighashType = SigHash.None;
                 }
+
+                var psbt = LightningHelper.AddDerivationData(channelOperationRequest.Wallet, result.Item1, selectedUtxOs, multisigCoins, _logger);
+                result = (psbt, result.Item2);
             }
             catch (Exception e)
             {

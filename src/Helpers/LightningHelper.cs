@@ -80,7 +80,11 @@ namespace FundsManager.Helpers
                     var addressRootedKeyPath = key.GetAddressRootedKeyPath(utxoDerivationPath);
 
                     var input = result.Inputs.FirstOrDefault(input =>
-                        input.PrevOut == selectedUtxo.Outpoint);
+                    {
+                        var coin = input?.GetCoin();
+                        if (coin == null) throw new InvalidOperationException();
+                        return coin.Outpoint == selectedUtxo.Outpoint;
+                    });
                     var coin = coins.FirstOrDefault(x => x.Outpoint == selectedUtxo.Outpoint);
 
                     if (coin != null && input != null &&
