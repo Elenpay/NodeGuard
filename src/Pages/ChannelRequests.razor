@@ -6,6 +6,7 @@
 @using NBitcoin
 @using FundsManager.Jobs
 @using Google.Protobuf
+@using NBXplorer.Models
 @attribute [Authorize(Roles = "FinanceManager, Superadmin, NodeManager")]
 
 <PageTitle>Channel Operation Requests</PageTitle>
@@ -13,21 +14,21 @@
 @if (_isFinanceManager || _isNodeManager)
 {
     <Field Flex="Flex.JustifyContent.Between">
-    @if (_isFinanceManager)
-    {
-        <h3>Requests awaiting my signature</h3>
-    }
-    else if (_isNodeManager)
-    {
-        <h3>Requests awaiting signature by a Finance Manager</h3>
-    }
+        @if (_isFinanceManager)
+        {
+            <h3>Requests awaiting my signature</h3>
+        }
+        else if (_isNodeManager)
+        {
+            <h3>Requests awaiting signature by a Finance Manager</h3>
+        }
 
-    @if (_isNodeManager) // Admin can be node manager and finance manager
-    {
-        <Button Color="Color.Success" TextColor="TextColor.Light" Clicked="async () => await datagridRef.New()">New</Button>
-    }
+        @if (_isNodeManager) // Admin can be node manager and finance manager
+        {
+            <Button Color="Color.Success" TextColor="TextColor.Light" Clicked="OnShowNewChannelRequestModal">New</Button>
+        }
     </Field>
-    <br />
+    <br/>
     <DataGrid TItem="ChannelOperationRequest"
               @ref="datagridRef"
               Data="@_channelRequests"
@@ -129,8 +130,8 @@
                     }
                 </DisplayTemplate>
                 <EditTemplate>
-                    <Validation Validator="ValidationHelper.ValidateChannelCapacity" @ref="_capacityValidation">
-                        <NumericPicker TValue="long" @bind-Value="@_amount" CurrencySymbol="SATS ">
+                    <Validation Validator="@ValidationHelper.ValidateChannelCapacity" @ref="_capacityValidation">
+                        <NumericPicker TValue="long" @bind-Value="@_amount" CurrencySymbol=" SATS" CurrencySymbolPlacement="CurrencySymbolPlacement.Suffix" Disabled="@(SelectedUTXOs.Count > 0)">
                             <Feedback>
                                 <ValidationError/>
                             </Feedback>
@@ -141,8 +142,43 @@
                             }
                         </FieldHelp>
                     </Validation>
+                    <div class="mb-3">
+                        <Button Color="Color.Primary" Disabled="@(!_selectedWalletId.HasValue)" Clicked="@OpenCoinSelectionModal">Select Coins</Button> or use
+                        <Button Color="Color.Primary" Disabled="@(SelectedUTXOs.Count == 0)" Clicked="@ClearSelectedUTXOs">Default Coin Selection</Button>
+                    </div>
+                    @if (_selectedWalletId.HasValue && SelectedUTXOs.Count > 0)
+                    {
+                        <span class="text-danger">Selected @(SelectedUTXOs.Count) UTXOs, this is a changeless operation</span>
+                    }
+                    else
+                    {
+                        <span class="text-danger">Default coin selection strategy selected</span>
+                    }
                 </EditTemplate>
             </DataGridColumn>
+            @if (Constants.FEE_SELECTION_ENABLED)
+            {
+                <DataGridColumn TItem="ChannelOperationRequest" Displayable="false" Editable="true" Caption="Fees" PopupFieldColumnSize="ColumnSize.Is12">
+                    <EditTemplate>
+                        <div class="d-flex">
+                            <Select TValue="MempoolRecommendedFeesTypes" @bind-SelectedValue="@FeesSelection">
+                                <SelectGroup Label="Default">
+                                    <SelectItem Value="MempoolRecommendedFeesTypes.EconomyFee">Economy Fee</SelectItem>
+                                    <SelectItem Value="MempoolRecommendedFeesTypes.FastestFee">Fastest Fee</SelectItem>
+                                    <SelectItem Value="MempoolRecommendedFeesTypes.HourFee">Hour Fee</SelectItem>
+                                    <SelectItem Value="MempoolRecommendedFeesTypes.HalfHourFee">Half Hour Fee</SelectItem>
+                                </SelectGroup>
+                                <SelectItem Value="MempoolRecommendedFeesTypes.CustomFee">Custom</SelectItem>
+                            </Select>
+                            <NumericPicker TValue="long" @bind-Value="@FeeAmount" CurrencySymbolPlacement="CurrencySymbolPlacement.Suffix" CurrencySymbol=" sats/vbyte" Min="0" Disabled="@(FeesSelection != MempoolRecommendedFeesTypes.CustomFee)">
+                                <Feedback>
+                                    <ValidationError/>
+                                </Feedback>
+                            </NumericPicker>
+                        </div>
+                    </EditTemplate>
+                </DataGridColumn>
+            }
             <DataGridColumn TItem="ChannelOperationRequest" Field="@nameof(ChannelOperationRequest.IsChannelPrivate)" Caption="Private" Displayable="true" Editable="true">
                 <EditTemplate>
                     <Check TValue="bool" @bind-Checked="_selectedPrivate"></Check>
@@ -198,6 +234,8 @@
                     <Button Color="Color.Primary" Clicked="@(async () => await CreateChannelRequest())">Save</Button>
                 </SaveCommandTemplate>
             </DataGridCommandColumn>
+            <DataGridColumn TItem="ChannelOperationRequest" Field="@nameof(ChannelOperationRequest.CreationDatetime)" Sortable="true" Displayable="false" SortDirection="SortDirection.Descending">
+            </DataGridColumn>
         </ChildContent>
         <EmptyTemplate>
             <div class="box">
@@ -211,10 +249,10 @@
         </LoadingTemplate>
     </DataGrid>
 }
-<br />
-<br />
+<br/>
+<br/>
 <h3>All Requests</h3>
-<br />
+<br/>
 <DataGrid TItem="ChannelOperationRequest"
           @ref="@_allRequestsDatagrid"
           Data="@_allRequests"
@@ -247,13 +285,13 @@
                     }
                     else
                     {
-                        @("N/A");
+                        @("N/A")
                     }
                 }
             </DisplayTemplate>
         </DataGridColumn>
         <DataGridColumn TItem="ChannelOperationRequest" Field="@nameof(ChannelOperationRequest.Status).Humanize(LetterCasing.Sentence)" Caption="Status" Sortable="false" Displayable="true"/>
-        <DataGridColumn TItem="ChannelOperationRequest" Field="@nameof(ChannelOperationRequest.CreationDatetime)" Caption="Creation Date" Sortable="true">
+        <DataGridColumn TItem="ChannelOperationRequest" Field="@nameof(ChannelOperationRequest.CreationDatetime)" Caption="Creation Date" Sortable="true" SortDirection="SortDirection.Descending">
             <DisplayTemplate>
                 @context.CreationDatetime.Humanize()
             </DisplayTemplate>
@@ -303,21 +341,19 @@
 
 <PSBTSign
     @ref="_psbtSignRef"
-    ApproveRequestDelegate="async ()=> await ApproveRequest()"
+    ApproveRequestDelegate="async () => await ApproveRequest()"
     SigHashMode="SigHash.None"
     ChannelRequest="_selectedRequest"
     TemplatePsbtString="@_templatePSBTString"
-    SignedPSBT="@_psbt"
-/>
+    SignedPSBT="@_psbt"/>
 
 <CancelOrRejectPopup
     @ref=@_rejectCancelModalRef
-    Title='@(_selectedStatusActionString+" operation: "+_selectedRequest?.Id)'
+    Title='@(_selectedStatusActionString + " operation: " + _selectedRequest?.Id)'
     Reason="@_cancelOrRejectReason"
     Validator="@RejectReasonValidator"
     OnCancel="@ResetChannelCancelModal"
-    OnSubmit="@RejectOrCancelRequest"
-/>
+    OnSubmit="@RejectOrCancelRequest"/>
 
 <ConfirmationModal
     @ref="_approveOperationConfirmationModal"
@@ -325,8 +361,7 @@
     Body="You selected a hot wallet. This means that the system will automatically use the funds in it without the need of manual approval. Are you sure you want to perform this operation?"
     OkLabel="Yes, I am sure"
     OnCancel="@ApproveOperationCloseConfirmationModal"
-    OnSubmit="@ApproveOperationSubmitConfirmationModal"
-/>
+    OnSubmit="@ApproveOperationSubmitConfirmationModal"/>
 
 <ConfirmationModal
     @ref="_markRequestAsFailedConfirmationModal"
@@ -334,17 +369,21 @@
     Body="You are about to mark a request as failed. Operations pending on-chain confirmation might still go through. Are you sure you want to perform this operation?"
     OkLabel="Yes, I am sure"
     OnCancel="@MarkRequestAsFailedCloseConfirmationModal"
-    OnSubmit="@MarkRequestAsFailedSubmitConfirmationModal"
+    OnSubmit="@MarkRequestAsFailedSubmitConfirmationModal"/>
+
+<UTXOSelectorModal
+    @ref="_utxoSelectorModalRef"
+    OnClose="@OnCloseCoinSelectionModal"
 />
 
 @inject IChannelOperationRequestRepository ChannelOperationRequestRepository
 @inject IChannelOperationRequestPSBTRepository ChannelOperationRequestPsbtRepository
 @inject IToastService ToastService
 @inject ILightningService LightningService
-@inject ISchedulerFactory  SchedulerFactory
+@inject ISchedulerFactory SchedulerFactory
 @inject IWalletRepository WalletRepository
 @inject INodeRepository NodeRepository
-@inject NavigationManager uriHelper;
+@inject ICoinSelectionService CoinSelectionService
 
 @code {
     private List<ChannelOperationRequest>? _channelRequests;
@@ -361,6 +400,10 @@
     private bool _isNodeManager = false;
     private ConfirmationModal _approveOperationConfirmationModal;
     private ConfirmationModal _markRequestAsFailedConfirmationModal;
+    private UTXOSelectorModal _utxoSelectorModalRef;
+    private List<UTXO> SelectedUTXOs = new();
+    private MempoolRecommendedFeesTypes FeesSelection;
+    private long FeeAmount;
 
     // New Request integration
     private List<Wallet> _allWallets = new List<Wallet>();
@@ -369,10 +412,10 @@
     private List<Node>? _manageableNodes;
     private int _selectedSourceNodeId;
     private Node? _selectedDestNode;
-    private int _selectedWalletId;
+    private int? _selectedWalletId;
     private string? _destNodeName;
     private long _amount = Constants.MINIMUM_CHANNEL_CAPACITY_SATS;
-    private bool _selectedPrivate = false;  
+    private bool _selectedPrivate = false;
 
     //Validation
     private Validation? _walletValidation;
@@ -390,7 +433,7 @@
     private ApplicationUser? LoggedUser { get; set; }
 
     [CascadingParameter]
-    private ClaimsPrincipal? ClaimsPrincipal {get; set; }
+    private ClaimsPrincipal? ClaimsPrincipal { get; set; }
 
     protected override async Task OnInitializedAsync()
     {
@@ -406,6 +449,14 @@
         }
         await FetchRequests();
         await LoadData();
+    }
+
+    private async Task OnShowNewChannelRequestModal()
+    {
+        _utxoSelectorModalRef.ClearModal();
+        FeesSelection = 0;
+        FeeAmount = 0;
+        await datagridRef.New();
     }
 
     private async Task ResetChannelRequestRejectModal()
@@ -458,13 +509,11 @@
     private void OnSelectedSourceNode(int nodeId)
     {
         _selectedSourceNodeId = nodeId;
-
     }
 
     private void OnSelectedWallet(int walletId)
     {
-
-        _selectedWalletId = walletId;
+        _selectedWalletId = walletId == 0 ? null : walletId;
     }
 
     private async Task SearchNode()
@@ -475,17 +524,15 @@
             var foundNode = await LightningService.GetNodeInfo(_destNodeName);
             if (foundNode != null)
             {
-
                 _selectedDestNode = (await NodeRepository.GetByPubkey(_destNodeName));
 
-                //if not found we create it..
+    //if not found we create it..
                 if (_selectedDestNode == null)
                 {
                     _selectedDestNode = new Node
                     {
                         Name = foundNode.Alias,
                         PubKey = _destNodeName,
-
                     };
 
                     var nodeAddResult = await NodeRepository.AddAsync(_selectedDestNode);
@@ -496,7 +543,7 @@
                     }
                 }
 
-                // Refresh the list of available source nodes and take out the one selected
+    // Refresh the list of available source nodes and take out the one selected
                 _manageableNodes = await NodeRepository.GetAllManagedByUser(LoggedUser.Id);
                 _manageableNodes = _manageableNodes.Where(node => node.Id != _selectedDestNode?.Id).ToList();
                 _destNodeValidation.Clear();
@@ -508,15 +555,20 @@
     {
         if (LoggedUser == null) return;
 
-        Validation?[] validators = {_destNodeValidation, _sourceNodeValidation, _walletValidation, _capacityValidation};
+        List<Validation?> validators = new() { _destNodeValidation, _sourceNodeValidation, _walletValidation };
+        if (SelectedUTXOs.Count == 0)
+        {
+            validators.Add(_capacityValidation);
+        }
 
         if (validators.All(v => v != null && (int)v.Validate() == 1))
         {
             if (_selectedDestNode?.Id != _selectedSourceNodeId)
             {
+                var amount = SelectedUTXOs.Count > 0 ? SelectedUTXOsValue() : _amount;
                 var request = new ChannelOperationRequest()
                 {
-                    SatsAmount = _amount,
+                    SatsAmount = amount,
                     RequestType = OperationRequestType.Open,
                     Description = "Created by user via Funds Manager",
                     WalletId = _selectedWalletId,
@@ -524,10 +576,13 @@
                     UserId = LoggedUser.Id,
                     SourceNodeId = _selectedSourceNodeId,
                     DestNodeId = _selectedDestNode?.Id,
-                    IsChannelPrivate = _selectedPrivate
+                    IsChannelPrivate = _selectedPrivate,
+                    Changeless = SelectedUTXOs.Count > 0
                 };
 
-                var selectedWallet = await WalletRepository.GetById(_selectedWalletId);
+                var selectedWallet = await WalletRepository.GetById(_selectedWalletId.Value);
+
+
                 if (selectedWallet.IsHotWallet)
                 {
                     _selectedRequest = request;
@@ -542,11 +597,17 @@
                 if (createChannelResult.Item1)
                 {
                     ToastService.ShowSuccess("Open channel request created!");
+
+                    if (SelectedUTXOs.Count > 0)
+                    {
+                        await CoinSelectionService.LockUTXOs(SelectedUTXOs, request, BitcoinRequestType.ChannelOperation);
+                    }
                 }
                 else
                 {
                     ToastService.ShowError(createChannelResult.Item2);
                 }
+                _utxoSelectorModalRef.ClearModal();
             }
             else
             {
@@ -559,7 +620,6 @@
     }
 
     #endregion
-
 
     private static bool RequestPendingFilter(ChannelOperationRequest req)
     {
@@ -575,10 +635,14 @@
     {
         _selectedRequest = req;
         _selectedStatus = status;
-        switch(_selectedStatus)
+        switch (_selectedStatus)
         {
-            case ChannelOperationRequestStatus.Rejected: _selectedStatusActionString = "Reject"; break;
-            case ChannelOperationRequestStatus.Cancelled: _selectedStatusActionString = "Cancel"; break;
+            case ChannelOperationRequestStatus.Rejected:
+                _selectedStatusActionString = "Reject";
+                break;
+            case ChannelOperationRequestStatus.Cancelled:
+                _selectedStatusActionString = "Cancel";
+                break;
         }
         await _rejectCancelModalRef.ShowModal();
     }
@@ -611,28 +675,25 @@
     {
         _selectedRequest = channelOperationRequest;
         _psbt = string.Empty;
-        if (_selectedRequest != null && !_selectedRequest.AreAllRequiredHumanSignaturesCollected) {
+        if (_selectedRequest != null && !_selectedRequest.AreAllRequiredHumanSignaturesCollected)
+        {
             var (templatePsbt,noUtxosAvailable) = (await LightningService.GenerateTemplatePSBT(_selectedRequest));
             if (templatePsbt != null)
             {
                 _templatePSBTString = templatePsbt.ToBase64();
                 await _psbtSignRef.ShowModal();
-
             }
             else
             {
                 if (noUtxosAvailable)
                 {
                     ToastService.ShowError("No UTXOs found for this wallet, please wait for other requests to be confirmed or fund the wallet with more UTXOs");
-
                 }
                 else
                 {
                     ToastService.ShowError("Something went wrong");
-
                 }
             }
-
         }
     }
 
@@ -644,13 +705,13 @@
         {
             ToastService.ShowError("Error: Not all fields were set");
         }
-        else {
+        else
+        {
             ChannelOperationRequestPSBT channelOperationRequestPsbt = new()
             {
                 ChannelOperationRequestId = _selectedRequest.Id,
                 PSBT = _psbtSignRef.SignedPSBT,
                 UserSignerId = LoggedUser.Id,
-
             };
             var addResult = await ChannelOperationRequestPsbtRepository.AddAsync(channelOperationRequestPsbt);
 
@@ -668,28 +729,17 @@
                 else
                 {
                     ToastService.ShowError("Invalid PSBT");
-
                 }
             }
             else
             {
                 ToastService.ShowError("Error while saving the signature");
-
             }
 
             await FetchRequests();
             await _psbtSignRef.HideModal();
             StateHasChanged();
-
         }
-
-
-    }
-
-    private bool IsStatusCancellable(ChannelOperationRequestStatus status)
-    {
-        return status is ChannelOperationRequestStatus.Pending
-            or ChannelOperationRequestStatus.Approved;
     }
 
     private void RejectReasonValidator(ValidatorEventArgs e)
@@ -721,8 +771,14 @@
             else
             {
                 ToastService.ShowError(createChannelResult.Item2);
+                _utxoSelectorModalRef.ClearModal();
                 await _approveOperationConfirmationModal.CloseModal();
                 return;
+            }
+
+            if (SelectedUTXOs.Count > 0)
+            {
+                await CoinSelectionService.LockUTXOs(SelectedUTXOs, _selectedRequest, BitcoinRequestType.ChannelOperation);
             }
 
             var (templatePsbt, noUtxosAvailable) = (await LightningService.GenerateTemplatePSBT(_selectedRequest));
@@ -738,6 +794,7 @@
                 }
                 _selectedRequest.Status = ChannelOperationRequestStatus.Failed;
                 ChannelOperationRequestRepository.Update(_selectedRequest);
+                _utxoSelectorModalRef.ClearModal();
                 await _approveOperationConfirmationModal.CloseModal();
                 await FetchRequests();
                 StateHasChanged();
@@ -756,9 +813,10 @@
             {
                 ToastService.ShowError("Invalid PSBT");
             }
-           
+
 
             await FetchRequests();
+            _utxoSelectorModalRef.ClearModal();
             await _approveOperationConfirmationModal.CloseModal();
         }
     }
@@ -767,7 +825,7 @@
     {
         try
         {
-            //TODO Async notifications when the channel has opened -> event / notifications system
+    //TODO Async notifications when the channel has opened -> event / notifications system
             var scheduler = await SchedulerFactory.GetScheduler();
 
             var map = new JobDataMap();
@@ -777,7 +835,7 @@
             var job = RetriableJob.Create<ChannelOpenJob>(map, _selectedRequest.Id.ToString(), retryList);
             await scheduler.ScheduleJob(job.Job, job.Trigger);
 
-            // TODO: Check job id
+    // TODO: Check job id
             _selectedRequest.JobId = job.Job.Key.ToString();
 
             var jobUpdateResult = ChannelOperationRequestRepository.Update(_selectedRequest);
@@ -818,7 +876,7 @@
         }
         catch (Exception? e)
         {
-               ToastService.ShowError("Error while marking request as failed");
+            ToastService.ShowError("Error while marking request as failed");
         }
         finally
         {
@@ -831,5 +889,32 @@
     {
         _selectedRequestForMarkingAsFailed = context;
         await _markRequestAsFailedConfirmationModal.ShowModal();
+    }
+
+    private async Task OpenCoinSelectionModal()
+    {
+        _utxoSelectorModalRef.ShowModal(_selectedWalletId.Value);
+    }
+
+    private void OnCloseCoinSelectionModal(List<UTXO> selectedUTXOs)
+    {
+        SelectedUTXOs = selectedUTXOs;
+        if (SelectedUTXOs.Count > 0)
+        {
+            _amount = SelectedUTXOsValue();
+        }
+        StateHasChanged();
+    }
+
+    private long SelectedUTXOsValue()
+    {
+        return SelectedUTXOs.Sum(x => ((Money)x.Value).Satoshi);
+    }
+
+    private void ClearSelectedUTXOs()
+    {
+        _utxoSelectorModalRef.ClearModal();
+        SelectedUTXOs.Clear();
+        StateHasChanged();
     }
 }

@@ -21,6 +21,7 @@
 .nav-item {
     font-size: 1rem;
     padding-bottom: 0.5rem;
+    white-space: nowrap;
 }
 
     .nav-item:first-of-type {

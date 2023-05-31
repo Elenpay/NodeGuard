@@ -27,6 +27,7 @@ public class Constants
     public static readonly bool ENABLE_REMOTE_SIGNER;
     public static readonly bool PUSH_NOTIFICATIONS_ONESIGNAL_ENABLED;
     public static readonly bool ENABLE_HW_SUPPORT;
+    public static readonly bool FEE_SELECTION_ENABLED = false; // Incomplete feature, remove this line when it's ready
 
     // Connections
     public static readonly string POSTGRES_CONNECTIONSTRING = "Host=localhost;Port=5432;Database=fundsmanager;Username=rw_dev;Password=rw_dev";
@@ -62,6 +63,7 @@ public class Constants
     // Usage
     public static readonly string BITCOIN_NETWORK;
     public static readonly long MINIMUM_CHANNEL_CAPACITY_SATS = 20_000;
+    public static readonly long MAXIMUM_CHANNEL_CAPACITY_SATS_REGTEST = 16_777_215;
     public static readonly decimal MINIMUM_WITHDRAWAL_BTC_AMOUNT = 0.0m;
     public static readonly decimal MAXIMUM_WITHDRAWAL_BTC_AMOUNT = 21_000_000;
     public static readonly int TRANSACTION_CONFIRMATION_MINIMUM_BLOCKS;
@@ -102,7 +104,7 @@ public class Constants
         ALICE_HOST = Environment.GetEnvironmentVariable("ALICE_HOST") ?? "host.docker.internal:10001";
 
         CAROL_HOST = Environment.GetEnvironmentVariable("CAROL_HOST") ?? "host.docker.internal:10003";
-        
+
         BOB_HOST = Environment.GetEnvironmentVariable("BOB_HOST") ?? "host.docker.internal:10002";
 
         FUNDSMANAGER_ENDPOINT = Environment.GetEnvironmentVariable("FUNDSMANAGER_ENDPOINT");
@@ -136,7 +138,7 @@ public class Constants
             AWS_ACCESS_KEY_ID = GetEnvironmentalVariableOrThrowIfNotTesting("AWS_ACCESS_KEY_ID", "if ENABLE_REMOTE_SIGNER is set, AWS_ACCESS_KEY_ID");
 
             AWS_SECRET_ACCESS_KEY = GetEnvironmentalVariableOrThrowIfNotTesting("AWS_SECRET_ACCESS_KEY", "if ENABLE_REMOTE_SIGNER is set, AWS_SECRET_ACCESS_KEY");
-            
+
             REMOTE_SIGNER_ENDPOINT = GetEnvironmentalVariableOrThrowIfNotTesting("REMOTE_SIGNER_ENDPOINT", "if ENABLE_REMOTE_SIGNER is set, REMOTE_SIGNER_ENDPOINT");
         }
 

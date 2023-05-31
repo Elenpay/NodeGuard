@@ -136,6 +136,11 @@ namespace FundsManager.Data.Models
         public string? JobId { get; set; }
 
         /// <summary>
+        /// This indicates if the user requested a changeless operation by selecting UTXOs
+        /// </summary>
+        public bool Changeless { get; set; }
+
+        /// <summary>
         /// Check that the number of signatures (not finalised psbt nor internal wallet psbt or template psbt are gathered and increases by one to count on the internal wallet signature
         /// </summary>
         /// <returns></returns>

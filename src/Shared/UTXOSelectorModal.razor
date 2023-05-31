@@ -1,0 +1,115 @@
+@using NBXplorer.Models
+@using NBXplorer.DerivationStrategy
+@using NBitcoin
+@inject ICoinSelectionService _CoinSelectionService
+
+<Modal @ref="@_modalRef">
+    <ModalContent Centered>
+        <ModalHeader>
+            <ModalTitle>Select UTXOs for this wallet</ModalTitle>
+            <CloseButton />
+        </ModalHeader>
+        <ModalBody>
+            <Validation @ref="_validation" Validator="RejectReasonValidatorForUTXOsSelector">
+                <DataGrid TItem="UTXO"
+                          Data="@UTXOList"
+                          SelectionMode="DataGridSelectionMode.Multiple"
+                          @bind-SelectedRows="SelectedUTXOs"
+                          Responsive
+                          FixedHeader
+                          FixedHeaderDataGridMaxHeight="400px">
+                    <DataGridMultiSelectColumn Width="30px"></DataGridMultiSelectColumn>
+                    <DataGridColumn Field="@nameof(UTXO.Value)" Caption="Value" Sortable="true"/>
+                    <DataGridColumn Field="@nameof(UTXO.KeyPath)" Caption="KeyPath" Sortable="false"/>
+                    <Feedback class="text-danger">@String.Join(",", _validation.Messages ?? GetUTXOsValues())</Feedback>
+                </DataGrid>
+            </Validation>
+        </ModalBody>
+        <ModalFooter>
+            <Button Color="Color.Secondary" Clicked="@CancelSelection">Cancel</Button>
+            <Button Color="Color.Primary" Clicked="@CloseModal">Select UTXOs</Button>
+        </ModalFooter>
+    </ModalContent>
+</Modal>
+
+@inject ICoinSelectionService CoinSelectionService
+@inject IWalletRepository WalletRepository
+
+@code {
+    private Network network = CurrentNetworkHelper.GetCurrentNetwork();
+    private Modal? _modalRef { get; set; }
+    public List<UTXO> UTXOList { get; set; } = new();
+
+    private List<UTXO> SelectedUTXOs { get; set; } = new();
+    private List<UTXO> PrevSelectedUTXOs { get; set; } = new();
+
+    [Parameter, EditorRequired]
+    public Action<List<UTXO>> OnClose { get; set; } = _ => { };
+
+    private Validation _validation { get; set; } = new();
+
+    public void ClearModal()
+    {
+        UTXOList.Clear();
+        SelectedUTXOs.Clear();
+    }
+
+    private async Task CancelSelection()
+    {
+        SelectedUTXOs = PrevSelectedUTXOs;
+        await _modalRef.Close(CloseReason.UserClosing);
+    }
+
+    private async Task CloseModal()
+    {
+        if (await _validation.ValidateAsync() != ValidationStatus.Error)
+        {
+            OnClose(SelectedUTXOs);
+            await _modalRef.Close(CloseReason.UserClosing);
+        }
+    }
+
+    public async Task ShowModal(int walletId)
+    {
+        PrevSelectedUTXOs = SelectedUTXOs;
+        var selectedWallet = await WalletRepository.GetById(walletId);
+        var utxosList = await CoinSelectionService.GetAvailableUTXOsAsync(selectedWallet.GetDerivationStrategy());
+        UTXOList = utxosList;
+
+        // Refresh the list with the new objects, or selection wont be preserved
+        var hashes = SelectedUTXOs.Select(utxos => utxos.Outpoint.Hash);
+        SelectedUTXOs = utxosList.Where(utxo => hashes.Contains(utxo.Outpoint.Hash)).ToList();
+
+        await _modalRef.Show();
+        StateHasChanged();
+    }
+
+    private string[] GetUTXOsValues()
+    {
+        var value = SelectedUTXOs.Sum(x => ((Money)x.Value).Satoshi);
+        return new[]
+        {
+            $"Selected {SelectedUTXOs.Count} for an amount of {value}"
+        };
+    }
+
+    private void RejectReasonValidatorForUTXOsSelector(ValidatorEventArgs e)
+    {
+        var selectedUTXOsValue = SelectedUTXOs.Sum(x => ((Money)x.Value).Satoshi);
+        if (selectedUTXOsValue == 0) return;
+        if (selectedUTXOsValue < Constants.MINIMUM_CHANNEL_CAPACITY_SATS)
+        {
+            e.ErrorText = "The combined amount of the UTXOs selected must be greater than 20.000";
+            e.Status = ValidationStatus.Error;
+        }
+        else if (selectedUTXOsValue > Constants.MAXIMUM_CHANNEL_CAPACITY_SATS_REGTEST && network == Network.RegTest)
+        {
+            e.ErrorText = "The combined amount of the UTXOs selected must be lower than 16.777.215";
+            e.Status = ValidationStatus.Error;
+        }
+        else
+        {
+            e.Status = ValidationStatus.Success;
+        }
+    }
+}

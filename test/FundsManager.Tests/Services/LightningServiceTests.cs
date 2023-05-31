@@ -83,7 +83,7 @@ namespace FundsManager.Services
                 .ReturnsAsync(null as ChannelOperationRequest);
 
             var lightningService = new LightningService(_logger, channelOperationRequestRepository.Object, null,
-                dbContextFactory.Object, null, null, null, null, null, null, new Mock<INBXplorerService>().Object, null);
+                dbContextFactory.Object, null, null, null, new Mock<INBXplorerService>().Object, null);
 
             var operationRequest = new ChannelOperationRequest
             {
@@ -588,9 +588,6 @@ namespace FundsManager.Services
                 channelOperationRequestRepository.Object,
                 nodeRepository.Object,
                 dbContextFactory.Object,
-                null,
-                null,
-                null,
                 channelOperationRequestPsbtRepository.Object,
                 channelRepository.Object,
                 null,
@@ -819,9 +816,6 @@ namespace FundsManager.Services
                 channelOperationRequestRepository.Object,
                 nodeRepository.Object,
                 dbContextFactory.Object,
-                null,
-                null,
-                null,
                 channelOperationRequestPsbtRepository.Object,
                 channelRepository.Object,
                 null,
@@ -1050,9 +1044,6 @@ namespace FundsManager.Services
                 channelOperationRequestRepository.Object,
                 nodeRepository.Object,
                 dbContextFactory.Object,
-                null,
-                null,
-                null,
                 channelOperationRequestPsbtRepository.Object,
                 channelRepository.Object,
                 null,
@@ -1280,9 +1271,6 @@ namespace FundsManager.Services
                 channelOperationRequestRepository.Object,
                 nodeRepository.Object,
                 dbContextFactory.Object,
-                null,
-                null,
-                null,
                 channelOperationRequestPsbtRepository.Object,
                 channelRepository.Object,
                 null,
@@ -1369,9 +1357,6 @@ namespace FundsManager.Services
 
             var lightningService = new LightningService(_logger,
                 channelOperationRequestRepository.Object,
-                null,
-                null,
-                null,
                 null,
                 null,
                 null,

@@ -24,6 +24,7 @@ using FundsManager.Services;
 using Humanizer;
 using Microsoft.EntityFrameworkCore;
 using NBitcoin;
+using Exception = System.Exception;
 
 namespace FundsManager.Data.Repositories
 {
@@ -38,8 +39,8 @@ namespace FundsManager.Data.Repositories
 
         public WalletWithdrawalRequestRepository(IRepository<WalletWithdrawalRequest> repository,
             ILogger<WalletWithdrawalRequestRepository> logger,
-            IDbContextFactory<ApplicationDbContext> dbContextFactory, 
-            IMapper mapper, 
+            IDbContextFactory<ApplicationDbContext> dbContextFactory,
+            IMapper mapper,
             NotificationService notificationService,
             INBXplorerService nBXplorerService
             )
@@ -101,22 +102,22 @@ namespace FundsManager.Data.Repositories
 
             type.SetCreationDatetime();
             type.SetUpdateDatetime();
-            
+
             //Verify that the wallet has enough funds calling nbxplorer
             var wallet = await applicationDbContext.Wallets.Include(x=> x.Keys).SingleOrDefaultAsync(x => x.Id == type.WalletId);
-            
+
             if (wallet == null)
             {
                 return (false, "The wallet could not be found.");
             }
 
             var derivationStrategyBase = wallet.GetDerivationStrategy();
-            
+
             if (derivationStrategyBase == null)
             {
                 return (false, "The wallet does not have a derivation strategy.");
             }
-            
+
             var balance = await _nBXplorerService.GetBalanceAsync(derivationStrategyBase, default);
 
             if (balance == null)
@@ -125,12 +126,12 @@ namespace FundsManager.Data.Repositories
             }
 
             var requestMoneyAmount = new Money(type.Amount, MoneyUnit.BTC);
-            
+
             if ((Money) balance.Confirmed < requestMoneyAmount)
             {
                 return (false, $"The wallet {type.Wallet.Name} does not have enough funds to complete this withdrawal request. The wallet has {balance.Confirmed} BTC and the withdrawal request is for {requestMoneyAmount} BTC.");
             }
-            
+
 
             var valueTuple = await _repository.AddAsync(type, applicationDbContext);
             if (!wallet.IsHotWallet)
@@ -171,7 +172,7 @@ namespace FundsManager.Data.Repositories
             return _repository.Update(strippedType, applicationDbContext);
         }
 
-        public async Task<(bool, string?)> AddUTXOs(WalletWithdrawalRequest type, List<FMUTXO> utxos)
+        public async Task<(bool, string?)> AddUTXOs(IBitcoinRequest type, List<FMUTXO> utxos)
         {
             if (type == null) throw new ArgumentNullException(nameof(type));
             if (utxos.Count == 0) throw new ArgumentException("Value cannot be an empty collection.", nameof(utxos));
@@ -204,6 +205,28 @@ namespace FundsManager.Data.Repositories
             {
                 _logger.LogError(e, "Error while adding UTXOs ({Utxos}) to op request: {RequestId}", utxos.Humanize(), type.Id);
 
+                result.Item1 = false;
+            }
+
+            return result;
+        }
+
+        public async Task<(bool, List<FMUTXO>?)> GetUTXOs(IBitcoinRequest request)
+        {
+            await using var applicationDbContext = await _dbContextFactory.CreateDbContextAsync();
+
+            (bool, List<FMUTXO>?) result = (true, null);
+            try
+            {
+                var walletWithdrawalRequest = await applicationDbContext.WalletWithdrawalRequests
+                    .Include(r => r.UTXOs)
+                    .FirstOrDefaultAsync(r => r.Id == request.Id);
+
+                result.Item2 = walletWithdrawalRequest.UTXOs;
+            }
+            catch (Exception e)
+            {
+                _logger.LogError(e, "Error while getting UTXOs from wallet withdrawal request: {RequestId}",  request.Id);
                 result.Item1 = false;
             }
 

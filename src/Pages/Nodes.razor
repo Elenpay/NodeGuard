@@ -102,7 +102,7 @@
                     </EditTemplate>
                 </DataGridColumn>
                 <DataGridColumn TItem="Node" Editable="true" Field="@nameof(Node.AutosweepEnabled)" Caption="Autosweep" Sortable="false"></DataGridColumn>
-                <DataGridColumn TItem="Node" Field="@nameof(Node.CreationDatetime)" Caption="Creation Date" Sortable="false">
+                <DataGridColumn TItem="Node" Field="@nameof(Node.CreationDatetime)" Caption="Creation Date" Sortable="true" SortDirection="SortDirection.Descending">
                     <DisplayTemplate>
                         @context.CreationDatetime.Humanize()
                     </DisplayTemplate>
@@ -261,7 +261,7 @@
         cts.Cancel(); // Cancel Task.Delay
         cts.Dispose();
     }
-    
+
     private async Task ShowDeleteDialog(Node node)
     {
         if (await MessageService.Confirm($"Are you sure you want to delete { node.Name }?", "Confirmation"))
@@ -279,14 +279,14 @@
                     _nodes = await NodeRepository.GetAll();
 
                 }
-                
+
             }
         }
 
         await GetData();
 
     }
-    
+
     private async Task CreateJobs(Node node)
     {
         try
@@ -305,10 +305,10 @@
 
             map = new JobDataMap();
             map.Put("managedNodeId", node.Id.ToString());
-            
+
             var acceptorJob = SimpleJob.Create<ProcessNodeChannelAcceptorJob>(map, node.Id.ToString());
             await scheduler.ScheduleJob(acceptorJob.Job, acceptorJob.Trigger);
-            
+
             ToastService.ShowSuccess("Node subscription job created");
         }
         catch
