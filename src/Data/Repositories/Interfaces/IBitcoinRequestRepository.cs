@@ -30,4 +30,6 @@ public interface IBitcoinRequestRepository
     /// <param name="utxos"></param>
     /// <returns></returns>
     Task<(bool, string?)> AddUTXOs(IBitcoinRequest type, List<FMUTXO> utxos);
+
+    public Task<(bool, List<FMUTXO>?)> GetUTXOs(IBitcoinRequest type);
 }

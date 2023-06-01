@@ -21,7 +21,7 @@ using FundsManager.Data.Models;
 
 namespace FundsManager.Data.Repositories.Interfaces;
 
-public interface IWalletWithdrawalRequestRepository
+public interface IWalletWithdrawalRequestRepository: IBitcoinRequestRepository
 {
     Task<WalletWithdrawalRequest?> GetById(int id);
 
@@ -38,8 +38,6 @@ public interface IWalletWithdrawalRequestRepository
     (bool, string?) RemoveRange(List<WalletWithdrawalRequest> types);
 
     (bool, string?) Update(WalletWithdrawalRequest type);
-
-    Task<(bool, string?)> AddUTXOs(WalletWithdrawalRequest type, List<FMUTXO> utxos);
 
     Task<List<WalletWithdrawalRequest>> GetPendingRequests();
 

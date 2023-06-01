@@ -199,7 +199,7 @@
                     </DisplayTemplate>
                 </DataGridColumn>
                 <DataGridColumn TItem="ChannelOperationRequest" Field="@nameof(ChannelOperationRequest.Status)" Caption="Status" Sortable="false" Displayable="true"/>
-                <DataGridColumn TItem="ChannelOperationRequest" Field="@nameof(ChannelOperationRequest.CreationDatetime)" Caption="@nameof(ChannelOperationRequest.CreationDatetime).Humanize(LetterCasing.Sentence)" Sortable="false"/>
+                <DataGridColumn TItem="ChannelOperationRequest" Field="@nameof(ChannelOperationRequest.CreationDatetime)" Caption="@nameof(ChannelOperationRequest.CreationDatetime).Humanize(LetterCasing.Sentence)" Sortable="true" SortDirection="SortDirection.Descending"/>
                 <DataGridColumn TItem="ChannelOperationRequest" Field="@nameof(ChannelOperationRequest.UpdateDatetime)" Caption="@nameof(ChannelOperationRequest.UpdateDatetime).Humanize(LetterCasing.Sentence)" Sortable="false"/>
             </DataGrid>
         </ModalBody>
@@ -498,11 +498,11 @@
         await ClearManagementModal();
 
         _selectedChannel = channel;
-        
+
         var destinationNode = await NodeRepository.GetById(channel.DestinationNodeId);
         var sourceNode = await NodeRepository.GetById(channel.SourceNodeId);
         var node = String.IsNullOrEmpty(sourceNode.ChannelAdminMacaroon) ? destinationNode : sourceNode;
-        
+
         //If there is a liquidity rule for this channel, we load it, the first one
         _currentLiquidityRule = _selectedChannel?.LiquidityRules.FirstOrDefault() ?? new LiquidityRule
         {
@@ -567,7 +567,7 @@
         arg1.Status = ValidationStatus.Success;
 
     //If the minimum local balance is 0 this cannot be 0
-        if ((_currentLiquidityRule.MinimumLocalBalance == 0 || _currentLiquidityRule.MinimumLocalBalance == null) 
+        if ((_currentLiquidityRule.MinimumLocalBalance == 0 || _currentLiquidityRule.MinimumLocalBalance == null)
             && (_currentLiquidityRule.MinimumRemoteBalance == 0 || _currentLiquidityRule.MinimumRemoteBalance == null))
         {
             arg1.Status = ValidationStatus.Error;
@@ -685,7 +685,7 @@
 
         await FetchData();
     }
-    
+
     private bool checkDisableCloseChannelButton(Channel channel)
     {
         ChannelOperationRequest? lastRequest = channel.ChannelOperationRequests.LastOrDefault();

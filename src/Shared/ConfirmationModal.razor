@@ -22,14 +22,13 @@
 
     [Parameter, EditorRequired]
     public string Body { get; set; } = "";
-    
+
     [Parameter]
     public string CancelLabel { get; set; } = "Cancel";
 
     [Parameter] public string OkLabel { get; set; } = "Ok";
 
     private Modal? _modalRef { get; set; }
-    private Validation? _reasonValidation;
 
     [Parameter, EditorRequired]
     public EventCallback OnCancel { get; set; }

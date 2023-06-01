@@ -17,6 +17,7 @@
  *
  */
 
+using System.Runtime.InteropServices;
 using FundsManager.Data.Models;
 using FundsManager.Data.Repositories.Interfaces;
 using Google.Protobuf;
@@ -27,7 +28,6 @@ using NBitcoin;
 using NBXplorer.DerivationStrategy;
 using NBXplorer.Models;
 using System.Security.Cryptography;
-using AutoMapper;
 using FundsManager.Data;
 using FundsManager.Helpers;
 using Microsoft.EntityFrameworkCore;
@@ -116,9 +116,6 @@ namespace FundsManager.Services
         private readonly IChannelOperationRequestRepository _channelOperationRequestRepository;
         private readonly INodeRepository _nodeRepository;
         private readonly IDbContextFactory<ApplicationDbContext> _dbContextFactory;
-        private readonly IMapper _mapper;
-        private readonly IWalletRepository _walletRepository;
-        private readonly IFMUTXORepository _ifmutxoRepository;
         private readonly IChannelOperationRequestPSBTRepository _channelOperationRequestPsbtRepository;
         private readonly IChannelRepository _channelRepository;
         private readonly IRemoteSignerService _remoteSignerService;
@@ -129,9 +126,6 @@ namespace FundsManager.Services
             IChannelOperationRequestRepository channelOperationRequestRepository,
             INodeRepository nodeRepository,
             IDbContextFactory<ApplicationDbContext> dbContextFactory,
-            IMapper mapper,
-            IWalletRepository walletRepository,
-            IFMUTXORepository ifmutxoRepository,
             IChannelOperationRequestPSBTRepository channelOperationRequestPsbtRepository,
             IChannelRepository channelRepository,
             IRemoteSignerService remoteSignerService,
@@ -144,9 +138,6 @@ namespace FundsManager.Services
             _channelOperationRequestRepository = channelOperationRequestRepository;
             _nodeRepository = nodeRepository;
             _dbContextFactory = dbContextFactory;
-            _mapper = mapper;
-            _walletRepository = walletRepository;
-            _ifmutxoRepository = ifmutxoRepository;
             _channelOperationRequestPsbtRepository = channelOperationRequestPsbtRepository;
             _channelRepository = channelRepository;
             _remoteSignerService = remoteSignerService;
@@ -194,12 +185,20 @@ namespace FundsManager.Services
 
             var combinedPSBT = GetCombinedPsbt(channelOperationRequest, _logger);
 
+
             //32 bytes of secure randomness for the pending channel id (lnd)
             var pendingChannelId = RandomNumberGenerator.GetBytes(32);
             var pendingChannelIdHex = Convert.ToHexString(pendingChannelId);
 
             try
             {
+                // 8 value + 1 script pub key size + 34 script pub key hash (Segwit output 2-0f-2 multisig)
+                var outputVirtualSize = combinedPSBT.GetGlobalTransaction().GetVirtualSize() + 43;
+                var feeRateResult = await LightningHelper.GetFeeRateResult(network, _nbXplorerService);
+
+                var totalFees = new Money(outputVirtualSize * feeRateResult.FeeRate.SatoshiPerByte, MoneyUnit.Satoshi);
+
+                long fundingAmount = channelOperationRequest.Changeless ? channelOperationRequest.SatsAmount - totalFees : channelOperationRequest.SatsAmount;
                 //We prepare the request (shim) with the base PSBT we had presigned with the UTXOs to fund the channel
                 var openChannelRequest = new OpenChannelRequest
                 {
@@ -212,7 +211,7 @@ namespace FundsManager.Services
                             PendingChanId = ByteString.CopyFrom(pendingChannelId)
                         }
                     },
-                    LocalFundingAmount = channelOperationRequest.SatsAmount,
+                    LocalFundingAmount = fundingAmount,
                     CloseAddress = closeAddress.Address.ToString(),
                     Private = channelOperationRequest.IsChannelPrivate,
                     NodePubkey = ByteString.CopyFrom(Convert.FromHexString(destination.PubKey)),
@@ -397,29 +396,32 @@ namespace FundsManager.Services
                                     };
 
                                     var channelfundingTx = fundedPSBT.GetGlobalTransaction();
-
-                                    //We manually fix the change (it was wrong from the Base template due to nbitcoin requiring a change on a PSBT)
-
-                                    var totalIn = new Money(0L);
-
-                                    foreach (var input in fundedPSBT.Inputs)
-                                    {
-                                        totalIn += (input.GetTxOut()?.Value);
-                                    }
-
                                     var totalOut = new Money(channelOperationRequest.SatsAmount, MoneyUnit.Satoshi);
-                                    var totalFees = combinedPSBT.GetFee();
-                                    channelfundingTx.Outputs[0].Value = totalIn - totalOut - totalFees;
 
-                                    //We merge changeFixedPSBT with the other PSBT with the change fixed
+                                    if (!channelOperationRequest.Changeless)
+                                    {
+                                        if (fundedPSBT.TryGetVirtualSize(out var vsize))
+                                        {
+                                            var totalIn = fundedPSBT.Inputs.Sum(i => i.GetTxOut()?.Value);
+                                            //We manually fix the change (it was wrong from the Base template due to nbitcoin requiring a change on a PSBT)
+                                            var totalChangefulFees = new Money(vsize * feeRateResult.FeeRate.SatoshiPerByte, MoneyUnit.Satoshi);
+                                            var changeOutput = channelfundingTx.Outputs.SingleOrDefault(o => o.Value != channelOperationRequest.SatsAmount) ?? channelfundingTx.Outputs.First();
+                                            changeOutput.Value = totalIn - totalOut - totalChangefulFees;
 
-                                    var changeFixedPSBT = channelfundingTx.CreatePSBT(network).UpdateFrom(fundedPSBT);
+                                            //We merge changeFixedPSBT with the other PSBT with the change fixed
+                                            fundedPSBT = channelfundingTx.CreatePSBT(network).UpdateFrom(fundedPSBT);
+                                        }
+                                        else
+                                        {
+                                            throw new ExternalException("VSized could not be calculated for the funded PSBT, channel operation request id: {RequestId}", channelOperationRequest.Id);
+                                        }
+                                    }
 
                                     PSBT? finalSignedPSBT = null;
                                     //We check the way the nodeguard signs, with the nodeguard remote signer or with the embedded signer
                                     if (Constants.ENABLE_REMOTE_SIGNER)
                                     {
-                                        finalSignedPSBT = await _remoteSignerService.Sign(changeFixedPSBT);
+                                        finalSignedPSBT = await _remoteSignerService.Sign(fundedPSBT);
                                         if (finalSignedPSBT == null)
                                         {
                                             const string errorMessage = "The signed PSBT was null, something went wrong while signing with the remote signer";
@@ -435,7 +437,7 @@ namespace FundsManager.Services
                                             derivationStrategyBase,
                                             channelfundingTx,
                                             network,
-                                            changeFixedPSBT,
+                                            fundedPSBT,
                                             _logger);
 
                                         if (finalSignedPSBT == null)
@@ -529,11 +531,13 @@ namespace FundsManager.Services
                                     }
                                     else
                                     {
+                                        _logger.LogError("TX Check failed for channel operation request id: {RequestId} reason: {Reason}", channelOperationRequest.Id, checkTx);
                                         CancelPendingChannel(source, pendingChannelId, client);
                                     }
                                 }
                                 else
                                 {
+                                    _logger.LogError("Could not parse the PSBT for funding channel operation request id: {RequestId}", channelOperationRequest.Id);
                                     CancelPendingChannel(source, pendingChannelId, client);
                                 }
 
@@ -552,7 +556,8 @@ namespace FundsManager.Services
 
                 CancelPendingChannel(source, pendingChannelId, client);
 
-                //TODO Mark as failed (?)
+                //TODO: We have to separate the exceptions between the ones that are retriable and the ones that are not
+                //TODO: and mark the channel operation request as failed automatically when they are not retriable
                 throw;
             }
         }
@@ -872,7 +877,8 @@ namespace FundsManager.Services
                 }
             }
 
-            var availableUTXOs = await _coinSelectionService.GetAvailableUTXOsAsync(derivationStrategy);
+            var previouslyLockedUTXOs = await _coinSelectionService.GetLockedUTXOsForRequest(channelOperationRequest, BitcoinRequestType.ChannelOperation);
+            var availableUTXOs = previouslyLockedUTXOs.Count > 0 ? previouslyLockedUTXOs : await _coinSelectionService.GetAvailableUTXOsAsync(derivationStrategy);
             var (multisigCoins, selectedUtxOs) = await _coinSelectionService.GetTxInputCoins(availableUTXOs, channelOperationRequest, derivationStrategy);
 
             if (multisigCoins == null || !multisigCoins.Any())
@@ -910,15 +916,33 @@ namespace FundsManager.Services
                     .SetChange(changeAddress.Address)
                     .SendEstimatedFees(feeRateResult.FeeRate);
 
-                result.Item1 = builder.BuildPSBT(false);
+                var originalPSBT = builder.BuildPSBT(false);
+
+                //Hack to remove outputs
+                var combinedPsbTtx = originalPSBT.GetGlobalTransaction();
+                if (channelOperationRequest.Changeless)
+                {
+                    combinedPsbTtx.Outputs.Clear();
+                }
+
+                result.Item1 = combinedPsbTtx.CreatePSBT(network);
 
                 //Hack, see https://github.com/MetacoSA/NBitcoin/issues/1112 for details
+                //Hack to make sure that witness and non-witness UTXOs, witness scripts and redeem scripts are added to the PSBT along with SigHash
                 foreach (var input in result.Item1.Inputs)
                 {
+                    input.WitnessUtxo =
+                        originalPSBT.Inputs.FirstOrDefault(x => x.PrevOut == input.PrevOut)?.WitnessUtxo;
+                    input.NonWitnessUtxo = originalPSBT.Inputs.FirstOrDefault(x => x.PrevOut == input.PrevOut)
+                        ?.NonWitnessUtxo;
+                    input.WitnessScript = originalPSBT.Inputs.FirstOrDefault(x => x.PrevOut == input.PrevOut)
+                        ?.WitnessScript;
+                    input.RedeemScript = originalPSBT.Inputs.FirstOrDefault(x => x.PrevOut == input.PrevOut)
+                        ?.RedeemScript;
+                    
                     input.SighashType = SigHash.None;
                 }
 
-                //Additional fields to support PSBT signing with a HW or the Remote Signer
                 var psbt = LightningHelper.AddDerivationData(channelOperationRequest.Wallet, result.Item1, selectedUtxOs, multisigCoins, _logger);
                 result = (psbt, result.Item2);
             }
@@ -927,7 +951,10 @@ namespace FundsManager.Services
                 _logger.LogError(e, "Error while generating base PSBT");
             }
 
-            await _coinSelectionService.LockUTXOs(selectedUtxOs, channelOperationRequest, _channelOperationRequestRepository);
+            if (previouslyLockedUTXOs.Count == 0)
+            {
+                await _coinSelectionService.LockUTXOs(selectedUtxOs, channelOperationRequest, BitcoinRequestType.ChannelOperation);
+            }
 
             // The template PSBT is saved for later reuse
             if (result.Item1 != null)

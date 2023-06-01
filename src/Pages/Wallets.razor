@@ -121,7 +121,7 @@
                     </EditTemplate>
                 </DataGridNumericColumn>
                 <DataGridColumn TItem="Wallet" Editable="true" Field="@nameof(Wallet.ReferenceId)" Caption="Reference Id" Sortable="true"/>
-                <DataGridColumn TItem="Wallet" Field="@nameof(Wallet.CreationDatetime)" Caption="Creation Date" Sortable="true">
+                <DataGridColumn TItem="Wallet" Field="@nameof(Wallet.CreationDatetime)" Caption="Creation Date" Sortable="true" SortDirection="SortDirection.Descending">
                     <DisplayTemplate>
                         @context.CreationDatetime.Humanize()
                     </DisplayTemplate>

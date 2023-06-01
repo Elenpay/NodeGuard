@@ -193,6 +193,28 @@ namespace FundsManager.Data.Repositories
             return result;
         }
 
+        public async Task<(bool, List<FMUTXO>?)> GetUTXOs(IBitcoinRequest request)
+        {
+            await using var applicationDbContext = await _dbContextFactory.CreateDbContextAsync();
+
+            (bool, List<FMUTXO>?) result = (true, null);
+            try
+            {
+                var channelOperationRequest = await applicationDbContext.ChannelOperationRequests
+                    .Include(r => r.Utxos)
+                    .FirstOrDefaultAsync(r => r.Id == request.Id);
+
+                result.Item2 = channelOperationRequest.Utxos;
+            }
+            catch (Exception e)
+            {
+                _logger.LogError(e, "Error while getting UTXOs from channel op request: {RequestId}",  request.Id);
+                result.Item1 = false;
+            }
+
+            return result;
+        }
+
         public async Task<List<ChannelOperationRequest>> GetPendingRequests()
         {
             await using var applicationDbContext = await _dbContextFactory.CreateDbContextAsync();
