@@ -487,6 +487,7 @@ namespace FundsManager.Services
                                     channelfundingTx = finalizedPSBT.ExtractTransaction();
                                     
                                     //We check the feerate of the finalized PSBT by checkin a minimum and maximum allowed and also a fee-level max check in ratio
+
                                     var feerate = new FeeRate(finalizedPSBT.GetFee(), channelfundingTx.GetVirtualSize());
                                    
                                     var minFeeRate = Constants.MIN_SAT_PER_VB_RATIO * initialFeeRate.FeeRate.SatoshiPerByte;
@@ -970,12 +971,19 @@ namespace FundsManager.Services
 
                 result.Item1 = combinedPsbTtx.CreatePSBT(network);
 
-                //Hack to make sure that witness and non-witness UTXOs are added to the PSBT
                 //Hack, see https://github.com/MetacoSA/NBitcoin/issues/1112 for details
+                //Hack to make sure that witness and non-witness UTXOs, witness scripts and redeem scripts are added to the PSBT along with SigHash
                 foreach (var input in result.Item1.Inputs)
                 {
-                    input.WitnessUtxo = originalPSBT.Inputs.FirstOrDefault(x => x.PrevOut == input.PrevOut)?.WitnessUtxo;
-                    input.NonWitnessUtxo = originalPSBT.Inputs.FirstOrDefault(x => x.PrevOut == input.PrevOut)?.NonWitnessUtxo;
+                    input.WitnessUtxo =
+                        originalPSBT.Inputs.FirstOrDefault(x => x.PrevOut == input.PrevOut)?.WitnessUtxo;
+                    input.NonWitnessUtxo = originalPSBT.Inputs.FirstOrDefault(x => x.PrevOut == input.PrevOut)
+                        ?.NonWitnessUtxo;
+                    input.WitnessScript = originalPSBT.Inputs.FirstOrDefault(x => x.PrevOut == input.PrevOut)
+                        ?.WitnessScript;
+                    input.RedeemScript = originalPSBT.Inputs.FirstOrDefault(x => x.PrevOut == input.PrevOut)
+                        ?.RedeemScript;
+                    
                     input.SighashType = SigHash.None;
                 }
 
