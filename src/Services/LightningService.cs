@@ -486,8 +486,7 @@ namespace FundsManager.Services
 
                                     channelfundingTx = finalizedPSBT.ExtractTransaction();
                                     
-                                    //We check the feerate of the finalized PSBT by checkin a minimum and maximum allowed and also a fee-level max check in ratio
-
+                                    //We check the feerate of the finalized PSBT by checking a minimum and maximum allowed and also a fee-level max check in ratio
                                     var feerate = new FeeRate(finalizedPSBT.GetFee(), channelfundingTx.GetVirtualSize());
                                    
                                     var minFeeRate = Constants.MIN_SAT_PER_VB_RATIO * initialFeeRate.FeeRate.SatoshiPerByte;
