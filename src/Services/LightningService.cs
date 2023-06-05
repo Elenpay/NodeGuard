@@ -198,7 +198,7 @@ namespace FundsManager.Services
                     throw new InvalidOperationException("Could not estimate virtual size of the PSBT");
                 }
 
-                if (combinedPSBT.Outputs.Count != 1 && channelOperationRequest.Changeless)
+                if(channelOperationRequest.Changeless && combinedPSBT.Outputs.Any())
                 {
                     _logger.LogError("Changeless channel operation request must have only one output");
                     throw new InvalidOperationException("Changeless channel operation request must have only one output");
