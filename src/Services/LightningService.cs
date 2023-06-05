@@ -200,8 +200,8 @@ namespace FundsManager.Services
 
                 if(channelOperationRequest.Changeless && combinedPSBT.Outputs.Any())
                 {
-                    _logger.LogError("Changeless channel operation request must have only one output");
-                    throw new InvalidOperationException("Changeless channel operation request must have only one output");
+                    _logger.LogError("Changeless channel operation request cannot have outputs at this stage");
+                    throw new InvalidOperationException("Changeless channel operation request cannot have outputs at this stage");
                 }
                 
                 var changelessVSize = channelOperationRequest.Changeless ? 43 : 0; // 8 value + 1 script pub key size + 34 script pub key hash (Segwit output 2-0f-2 multisig)
