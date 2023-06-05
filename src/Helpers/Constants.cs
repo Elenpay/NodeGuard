@@ -70,6 +70,14 @@ public class Constants
     public static readonly long ANCHOR_CLOSINGS_MINIMUM_SATS;
     public static readonly string DEFAULT_DERIVATION_PATH = "48'/1'";
     public static readonly int SESSION_TIMEOUT_MILLISECONDS = 3_600_000;
+    
+    //Sat/vb ratio
+    public static decimal MIN_SAT_PER_VB_RATIO = 0.9m; 
+    public static decimal MAX_SAT_PER_VB_RATIO = 2.0m;
+    /// <summary>
+    /// Max ratio of the tx total input sum that could be used as fee
+    /// </summary>
+    public static decimal MAX_TX_FEE_RATIO =0.5m;
 
     private static string? GetEnvironmentalVariableOrThrowIfNotTesting(string envVariableName, string? errorMessage = null)
     {
@@ -190,6 +198,14 @@ public class Constants
 
         var timeout = Environment.GetEnvironmentVariable("SESSION_TIMEOUT_MILLISECONDS");
         if (timeout != null) SESSION_TIMEOUT_MILLISECONDS = int.Parse(timeout);
+        
+        //Sat/vb ratio
+        var minSatPerVbRatioEnv = Environment.GetEnvironmentVariable("MIN_SAT_PER_VB_RATIO");
+        MIN_SAT_PER_VB_RATIO = minSatPerVbRatioEnv!= null ? decimal.Parse(minSatPerVbRatioEnv) : MIN_SAT_PER_VB_RATIO;
+        
+        var maxSatPerVbRatioEnv = Environment.GetEnvironmentVariable("MAX_SAT_PER_VB_RATIO");
+        MAX_SAT_PER_VB_RATIO = maxSatPerVbRatioEnv!= null ? decimal.Parse(maxSatPerVbRatioEnv) : MAX_SAT_PER_VB_RATIO;
+
     }
 }
 
