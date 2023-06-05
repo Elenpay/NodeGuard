@@ -192,8 +192,20 @@ namespace FundsManager.Services
 
             try
             {
-                // 8 value + 1 script pub key size + 34 script pub key hash (Segwit output 2-0f-2 multisig)
-                var outputVirtualSize = combinedPSBT.GetGlobalTransaction().GetVirtualSize() + 43;
+                if (!combinedPSBT.TryGetVirtualSize(out var estimatedVsize))
+                {
+                    _logger.LogError("Could not estimate virtual size of the PSBT");
+                    throw new InvalidOperationException("Could not estimate virtual size of the PSBT");
+                }
+
+                if(channelOperationRequest.Changeless && combinedPSBT.Outputs.Any())
+                {
+                    _logger.LogError("Changeless channel operation request cannot have outputs at this stage");
+                    throw new InvalidOperationException("Changeless channel operation request cannot have outputs at this stage");
+                }
+                
+                var changelessVSize = channelOperationRequest.Changeless ? 43 : 0; // 8 value + 1 script pub key size + 34 script pub key hash (Segwit output 2-0f-2 multisig)
+                var outputVirtualSize = estimatedVsize + changelessVSize; // We add the change output if needed
                 var initialFeeRate = await LightningHelper.GetFeeRateResult(network, _nbXplorerService);
 
                 var totalFees = new Money(outputVirtualSize * initialFeeRate.FeeRate.SatoshiPerByte, MoneyUnit.Satoshi);
