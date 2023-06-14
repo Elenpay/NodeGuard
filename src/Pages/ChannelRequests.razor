@@ -161,7 +161,7 @@
                 <DataGridColumn TItem="ChannelOperationRequest" Displayable="false" Editable="true" Caption="Fees" PopupFieldColumnSize="ColumnSize.Is12">
                     <EditTemplate>
                         <div class="d-flex">
-                            <Select TValue="MempoolRecommendedFeesTypes" @bind-SelectedValue="@FeesSelection">
+                            <Select TValue="MempoolRecommendedFeesTypes" SelectedValueChanged="(value) => OnChangeFeeSelection(value)">
                                 <SelectGroup Label="Default">
                                     <SelectItem Value="MempoolRecommendedFeesTypes.EconomyFee">Economy Fee</SelectItem>
                                     <SelectItem Value="MempoolRecommendedFeesTypes.FastestFee">Fastest Fee</SelectItem>
@@ -384,6 +384,7 @@
 @inject IWalletRepository WalletRepository
 @inject INodeRepository NodeRepository
 @inject ICoinSelectionService CoinSelectionService
+@inject INBXplorerService NBXplorerService
 
 @code {
     private List<ChannelOperationRequest>? _channelRequests;
@@ -404,6 +405,7 @@
     private List<UTXO> SelectedUTXOs = new();
     private MempoolRecommendedFeesTypes FeesSelection;
     private long FeeAmount;
+    MempoolRecommendedFees? _recommendedFees;
 
     // New Request integration
     private List<Wallet> _allWallets = new List<Wallet>();
@@ -453,9 +455,10 @@
 
     private async Task OnShowNewChannelRequestModal()
     {
+        _recommendedFees = await NBXplorerService.GetMempoolRecommendedFeesAsync();
         _utxoSelectorModalRef.ClearModal();
         FeesSelection = 0;
-        FeeAmount = 0;
+        OnChangeFeeSelection(FeesSelection);
         await datagridRef.New();
     }
 
@@ -912,5 +915,29 @@
         _utxoSelectorModalRef.ClearModal();
         SelectedUTXOs.Clear();
         StateHasChanged();
+    }
+
+    private void OnChangeFeeSelection(MempoolRecommendedFeesTypes value)
+    {
+        FeesSelection = value;
+
+        switch (FeesSelection)
+        {
+            case MempoolRecommendedFeesTypes.EconomyFee:
+                FeeAmount = _recommendedFees.EconomyFee;
+                break;
+            case MempoolRecommendedFeesTypes.FastestFee:
+                FeeAmount = _recommendedFees.FastestFee;
+                break;
+            case MempoolRecommendedFeesTypes.HourFee:
+                FeeAmount = _recommendedFees.HourFee;
+                break;
+            case MempoolRecommendedFeesTypes.HalfHourFee:
+                FeeAmount = _recommendedFees.HalfHourFee;
+                break;
+            case MempoolRecommendedFeesTypes.CustomFee:
+                FeeAmount = 0;
+                break;
+        }
     }
 }
