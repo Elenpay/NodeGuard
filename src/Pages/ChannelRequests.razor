@@ -412,7 +412,7 @@
     private List<UTXO> SelectedUTXOs = new();
     private MempoolRecommendedFeesTypes FeesSelection;
     private long FeeAmount;
-    MempoolRecommendedFees? _recommendedFees;
+    private MempoolRecommendedFees? _recommendedFees;
 
     // New Request integration
     private List<Wallet> _allWallets = new List<Wallet>();
@@ -465,7 +465,7 @@
         _recommendedFees = await NBXplorerService.GetMempoolRecommendedFeesAsync();
         _utxoSelectorModalRef.ClearModal();
         FeesSelection = 0;
-        OnChangeFeeSelection(FeesSelection);
+        await OnChangeFeeSelection(FeesSelection);
         await datagridRef.New();
     }
 
