@@ -156,8 +156,6 @@
                     }
                 </EditTemplate>
             </DataGridColumn>
-            @if (Constants.FEE_SELECTION_ENABLED)
-            {
                 <DataGridColumn TItem="ChannelOperationRequest" Displayable="true" Editable="true" Caption="Fees" PopupFieldColumnSize="ColumnSize.Is12">
                     <EditTemplate>
                         <div class="d-flex">
@@ -178,7 +176,6 @@
                         </div>
                     </EditTemplate>
                 </DataGridColumn>
-            }
             <DataGridColumn TItem="ChannelOperationRequest" Field="@nameof(ChannelOperationRequest.IsChannelPrivate)" Caption="Private" Displayable="true" Editable="true">
                 <EditTemplate>
                     <Check TValue="bool" @bind-Checked="_selectedPrivate"></Check>
