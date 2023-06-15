@@ -158,7 +158,7 @@
             </DataGridColumn>
             @if (Constants.FEE_SELECTION_ENABLED)
             {
-                <DataGridColumn TItem="ChannelOperationRequest" Displayable="false" Editable="true" Caption="Fees" PopupFieldColumnSize="ColumnSize.Is12">
+                <DataGridColumn TItem="ChannelOperationRequest" Displayable="true" Editable="true" Caption="Fees" PopupFieldColumnSize="ColumnSize.Is12">
                     <EditTemplate>
                         <div class="d-flex">
                             <Select TValue="MempoolRecommendedFeesTypes" SelectedValueChanged="async (value) => await OnChangeFeeSelection(value)">
@@ -270,6 +270,13 @@
                 @{
                     @($"{context.Amount} BTC")
                     @($" ({Math.Round(PriceConversionHelper.BtcToUsdConversion(context.Amount, _btcPrice), 2)} USD)")
+                }
+            </DisplayTemplate>
+        </DataGridColumn>
+        <DataGridColumn TItem="ChannelOperationRequest" Field="@nameof(ChannelOperationRequest.FeeRate)" Caption="Private" Displayable="true">
+            <DisplayTemplate>
+                @{
+                    @($"{context.FeeRate} sats/vbyte")
                 }
             </DisplayTemplate>
         </DataGridColumn>
