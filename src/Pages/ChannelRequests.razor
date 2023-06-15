@@ -580,7 +580,8 @@
                     SourceNodeId = _selectedSourceNodeId,
                     DestNodeId = _selectedDestNode?.Id,
                     IsChannelPrivate = _selectedPrivate,
-                    Changeless = SelectedUTXOs.Count > 0
+                    Changeless = SelectedUTXOs.Count > 0,
+                    FeeRate = FeeAmount
                 };
 
                 var selectedWallet = await WalletRepository.GetById(_selectedWalletId.Value);

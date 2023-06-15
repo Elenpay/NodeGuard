@@ -3,6 +3,7 @@ using System;
 using FundsManager.Data;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 
@@ -11,9 +12,10 @@ using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 namespace FundsManager.Migrations
 {
     [DbContext(typeof(ApplicationDbContext))]
-    partial class ApplicationDbContextModelSnapshot : ModelSnapshot
+    [Migration("20230615063113_feesInChannelRequest")]
+    partial class feesInChannelRequest
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -153,9 +155,6 @@ namespace FundsManager.Migrations
                     b.Property<int?>("DestNodeId")
                         .HasColumnType("integer");
 
-                    b.Property<decimal?>("FeeRate")
-                        .HasColumnType("numeric");
-
                     b.Property<bool>("IsChannelPrivate")
                         .HasColumnType("boolean");
 
@@ -185,6 +184,9 @@ namespace FundsManager.Migrations
 
                     b.Property<int?>("WalletId")
                         .HasColumnType("integer");
+
+                    b.Property<long>("feeRate")
+                        .HasColumnType("bigint");
 
                     b.HasKey("Id");
 
