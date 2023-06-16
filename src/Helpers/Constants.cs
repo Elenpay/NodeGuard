@@ -28,6 +28,7 @@ public class Constants
     public static readonly bool PUSH_NOTIFICATIONS_ONESIGNAL_ENABLED;
     public static readonly bool ENABLE_HW_SUPPORT;
     public static readonly bool FEE_SELECTION_ENABLED = false; // Incomplete feature, remove this line when it's ready
+    public static readonly bool NBXPLORER_ENABLE_CUSTOM_BACKEND = false;
 
     // Connections
     public static readonly string POSTGRES_CONNECTIONSTRING = "Host=localhost;Port=5432;Database=fundsmanager;Username=rw_dev;Password=rw_dev";
@@ -70,9 +71,9 @@ public class Constants
     public static readonly long ANCHOR_CLOSINGS_MINIMUM_SATS;
     public static readonly string DEFAULT_DERIVATION_PATH = "48'/1'";
     public static readonly int SESSION_TIMEOUT_MILLISECONDS = 3_600_000;
-    
+
     //Sat/vb ratio
-    public static decimal MIN_SAT_PER_VB_RATIO = 0.9m; 
+    public static decimal MIN_SAT_PER_VB_RATIO = 0.9m;
     public static decimal MAX_SAT_PER_VB_RATIO = 2.0m;
     /// <summary>
     /// Max ratio of the tx total input sum that could be used as fee
@@ -101,6 +102,8 @@ public class Constants
         PUSH_NOTIFICATIONS_ONESIGNAL_ENABLED = StringHelper.IsTrue(Environment.GetEnvironmentVariable("PUSH_NOTIFICATIONS_ONESIGNAL_ENABLED"));
 
         ENABLE_HW_SUPPORT = Environment.GetEnvironmentVariable("ENABLE_HW_SUPPORT") != "false"; // We default to true
+
+        NBXPLORER_ENABLE_CUSTOM_BACKEND = Environment.GetEnvironmentVariable("NBXPLORER_ENABLE_CUSTOM_BACKEND") == "true";
 
         // Connections
         POSTGRES_CONNECTIONSTRING =  Environment.GetEnvironmentVariable("POSTGRES_CONNECTIONSTRING") ?? POSTGRES_CONNECTIONSTRING;
@@ -198,11 +201,11 @@ public class Constants
 
         var timeout = Environment.GetEnvironmentVariable("SESSION_TIMEOUT_MILLISECONDS");
         if (timeout != null) SESSION_TIMEOUT_MILLISECONDS = int.Parse(timeout);
-        
+
         //Sat/vb ratio
         var minSatPerVbRatioEnv = Environment.GetEnvironmentVariable("MIN_SAT_PER_VB_RATIO");
         MIN_SAT_PER_VB_RATIO = minSatPerVbRatioEnv!= null ? decimal.Parse(minSatPerVbRatioEnv) : MIN_SAT_PER_VB_RATIO;
-        
+
         var maxSatPerVbRatioEnv = Environment.GetEnvironmentVariable("MAX_SAT_PER_VB_RATIO");
         MAX_SAT_PER_VB_RATIO = maxSatPerVbRatioEnv!= null ? decimal.Parse(maxSatPerVbRatioEnv) : MAX_SAT_PER_VB_RATIO;
 

@@ -1,7 +1,11 @@
+using System.Text.Json;
 using FundsManager.Helpers;
+using Microsoft.AspNetCore.WebUtilities;
 using NBitcoin;
+using NBXplorer;
 using NBXplorer.DerivationStrategy;
 using NBXplorer.Models;
+using Newtonsoft.Json;
 
 namespace FundsManager.Services;
 
@@ -22,6 +26,8 @@ public interface INBXplorerService
     public Task<StatusResult> GetStatusAsync(CancellationToken cancellation = default);
 
     public Task<UTXOChanges> GetUTXOsAsync(DerivationStrategyBase extKey, CancellationToken cancellation = default);
+
+    public Task<UTXOChanges> GetUTXOsByLimitAsync(DerivationStrategyBase extKey, CoinSelectionStrategy strategy = CoinSelectionStrategy.SmallestFirst, int limit = 0, long amount = 0, long tolerance = 0, long closestTo = 0, CancellationToken cancellation = default);
 
     public Task<GetFeeRateResult> GetFeeRateAsync(int blockCount, FeeRate fallbackFeeRate,
         CancellationToken cancellation = default);
@@ -59,6 +65,14 @@ public class MempoolRecommendedFees
     public int HourFee { get; set; }
     public int EconomyFee { get; set; }
     public int MinimumFee { get; set; }
+}
+
+[JsonConverter(typeof(System.Text.Json.Serialization.JsonStringEnumConverter))]
+public enum CoinSelectionStrategy
+{
+    SmallestFirst,
+    BiggestFirst,
+    ClosestToTargetFirst
 }
 
 /// <summary>
@@ -126,6 +140,46 @@ public class NBXplorerService : INBXplorerService
         var client = await LightningHelper.CreateNBExplorerClient();
 
         return await client.GetUTXOsAsync(extKey, cancellation);
+    }
+
+    public async Task<UTXOChanges> GetUTXOsByLimitAsync(DerivationStrategyBase extKey,
+        CoinSelectionStrategy strategy = CoinSelectionStrategy.SmallestFirst,
+        int limit = 0,
+        long amount = 0,
+        long tolerance = 0,
+        long closestTo = 0,
+        CancellationToken cancellation = default)
+    {
+        try
+        {
+            var requestUri = $"{Constants.NBXPLORER_URI}/v1/cryptos/btc/derivations/{TrackedSource.Create(extKey).DerivationStrategy}/selectutxos";
+
+            IDictionary<string, string?> keyValuePairs = new Dictionary<string, string?>();
+            keyValuePairs.Add("strategy", strategy.ToString());
+            keyValuePairs.Add("limit", limit.ToString());
+            keyValuePairs.Add("amount", amount.ToString());
+            keyValuePairs.Add("tolerance", tolerance.ToString());
+            if (strategy == CoinSelectionStrategy.ClosestToTargetFirst)
+            {
+                keyValuePairs.Add("closestTo", closestTo.ToString());
+            }
+
+            var url = QueryHelpers.AddQueryString(requestUri, keyValuePairs);
+            var response = await _httpClient.GetAsync(url, cancellation);
+
+            if (response.IsSuccessStatusCode)
+            {
+                var client = await LightningHelper.CreateNBExplorerClient();
+
+                return client.Serializer.ToObject<UTXOChanges>(await response.Content.ReadAsStringAsync().ConfigureAwait(false));
+            }
+        }
+        catch (Exception e)
+        {
+            _logger.LogError(e.ToString());
+        }
+
+        return new UTXOChanges();
     }
 
     public async Task<GetFeeRateResult> GetFeeRateAsync(int blockCount, FeeRate fallbackFeeRate,

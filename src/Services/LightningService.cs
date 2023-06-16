@@ -1200,7 +1200,7 @@ namespace FundsManager.Services
             }
             catch (Exception e)
             {
-                _logger.LogError(e, "Error while getting wallet balance for wallet: {WalletId}", wallet.Id);
+                _logger.LogError(e, "Error while getting wallet addresss for wallet: {WalletId}", wallet.Id);
             }
 
             var result = keyPathInformation?.Address ?? null;

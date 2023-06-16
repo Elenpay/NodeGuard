@@ -214,7 +214,7 @@ namespace FundsManager.Data
                     {
                         ChannelAdminMacaroon =
                             "0201036c6e6402f801030a108cdfeb2614b8335c11aebb358f888d6d1201301a160a0761646472657373120472656164120577726974651a130a04696e666f120472656164120577726974651a170a08696e766f69636573120472656164120577726974651a210a086d616361726f6f6e120867656e6572617465120472656164120577726974651a160a076d657373616765120472656164120577726974651a170a086f6666636861696e120472656164120577726974651a160a076f6e636861696e120472656164120577726974651a140a057065657273120472656164120577726974651a180a067369676e6572120867656e657261746512047265616400000620c999e1a30842cbae3f79bd633b19d5ec0d2b6ebdc4880f6f5d5c230ce38f26ab",
-                        Endpoint = Constants.ALICE_HOST, 
+                        Endpoint = Constants.ALICE_HOST,
                         Name = "Alice",
                         CreationDatetime = DateTimeOffset.UtcNow,
                         PubKey = "02dc2ae598a02fc1e9709a23b68cd51d7fa14b1132295a4d75aa4f5acd23ee9527",
@@ -240,7 +240,7 @@ namespace FundsManager.Data
                     };
 
                     _ = Task.Run(() => nodeRepository.AddAsync(carol)).Result;
-                    
+
                     //Bob node from Polar (BOB) LND 0.15.5 -> check devnetwork.zip polar file
                     var bob = new Node
                     {
@@ -253,7 +253,7 @@ namespace FundsManager.Data
                         Users = new List<ApplicationUser>(),
                         AutosweepEnabled = false
                     };
-                    
+
                     _ = Task.Run(() => nodeRepository.AddAsync(bob)).Result;
 
                     //Add user to the channel
@@ -262,13 +262,13 @@ namespace FundsManager.Data
 
                     var carolUpdateResult = applicationDbContext.Update(adminUser);
                 }
-                
+
                 var internalWallet = applicationDbContext.InternalWallets.FirstOrDefault();
                 if (internalWallet == null)
                 {
                     //Default Internal Wallet
                     internalWallet = CreateWallet.CreateInternalWallet(logger);
-                    
+
                     applicationDbContext.Add(internalWallet);
                     applicationDbContext.SaveChanges();
                 }
@@ -280,14 +280,14 @@ namespace FundsManager.Data
                         "social mango annual basic work brain economy one safe physical junk other toy valid load cook napkin maple runway island oil fan legend stem";
                     var wallet2Seed =
                         "solar goat auto bachelor chronic input twin depth fork scale divorce fury mushroom column image sauce car public artist announce treat spend jacket physical";
-        
+
                     logger?.LogInformation("Wallet 1 seed: {MnemonicString}", wallet1Seed);
                     logger?.LogInformation("Wallet 2 seed: {MnemonicString}", wallet2Seed);
-                    
+
                     var user1Key = CreateWallet.CreateUserKey("Key 1", adminUser.Id, wallet1Seed);
                     var user2Key = CreateWallet.CreateUserKey("Key 2", financeUser.Id, wallet2Seed);
-                    
-                    var testingLegacyMultisigWallet = CreateWallet.LegacyMultiSig(internalWallet, "1'", user1Key, user2Key); 
+
+                    var testingLegacyMultisigWallet = CreateWallet.LegacyMultiSig(internalWallet, "1'", user1Key, user2Key);
                     var testingMultisigWallet = CreateWallet.MultiSig(internalWallet, "0", user1Key, user2Key);
                     var testingSinglesigWallet = CreateWallet.SingleSig(internalWallet, "1");
                     var testingSingleSigBIP39Wallet = CreateWallet.BIP39Singlesig();
@@ -329,6 +329,16 @@ namespace FundsManager.Data
                     minerRPC.SendToAddress(singlesigAddress, singlesigFundCoins);
                     minerRPC.SendToAddress(singleSigBIP39Address, singleSigBIP39FundCoins);
 
+                    // Create a lot of utxos and send them to the single sig wallet
+                    // Random r = new Random();
+                    // for (var i = 0; i < 1000; i++)
+                    // {
+                    //     var keypath = nbxplorerClient.GetUnused(singlesigDerivationStrategy, DerivationFeature.Deposit);
+                    //     decimal coin = r.Next(536, 10000000);
+                    //     var randomCoint = Money.Coins(coin / 100000000); //20BTC
+                    //     minerRPC.SendToAddress(keypath.Address, randomCoint);
+                    // }
+
                     //6 blocks to confirm
                     minerRPC.Generate(6);
 
@@ -368,7 +378,7 @@ namespace FundsManager.Data
                     applicationDbContext.Add(testingSingleSigBIP39Wallet);
                 }
             }
-                
+
             applicationDbContext.SaveChanges();
         }
 
