@@ -270,10 +270,13 @@
                 }
             </DisplayTemplate>
         </DataGridColumn>
-        <DataGridColumn TItem="ChannelOperationRequest" Field="@nameof(ChannelOperationRequest.FeeRate)" Caption="Private" Displayable="true">
+        <DataGridColumn TItem="ChannelOperationRequest" Field="@nameof(ChannelOperationRequest.FeeRate)" Caption="Fees" Displayable="true">
             <DisplayTemplate>
                 @{
-                    @($"{context.FeeRate} sats/vbyte")
+                    if (context.FeeRate != null)
+                    {
+                        @($"{context.FeeRate} sats/vbyte")
+                    }
                 }
             </DisplayTemplate>
         </DataGridColumn>
