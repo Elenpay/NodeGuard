@@ -22,7 +22,7 @@
                   RowRemoving="OnRowRemoving"
                   RowUpdated="OnRowUpdated"
                   NewItemDefaultSetter="NewItemDefaultSetter">
-            
+
             <PopupTitleTemplate>
                 <h2>@(context.EditState) keys</h2>
             </PopupTitleTemplate>
@@ -58,7 +58,7 @@
                         {
                             @StringHelper.TruncateHeadAndTail(context.XPUB, 6);
                             <span>&nbsp</span>
-                            <Button Color="Color.Primary" Clicked="@(() => CopyStrToClipboard(context.XPUB))" Size="Size.Small" Outline>
+                            <Button Color="Color.Primary" Clicked="@(async () => await CopyStrToClipboard(context.XPUB))" Size="Size.Small" Outline>
                                 <i class="oi oi-clipboard"></i>
                             </Button>
                         }
@@ -98,7 +98,7 @@
 
     private async Task GetData()
     {
-        
+
         userKeys = await KeyRepository.GetUserKeys(_loggedUser);
     }
 
@@ -109,7 +109,7 @@
 
         var addResult = await KeyRepository.AddAsync(arg.Item);
 
-        
+
         if (addResult.Item1)
         {
             ToastService.ShowSuccess("Success");
@@ -152,7 +152,7 @@
             }
         }
     }
-               
+
 
     private async Task OnRowUpdated(SavedRowItem<Key, Dictionary<string, object>> arg)
     {
@@ -160,7 +160,7 @@
 
         var updateResult = KeyRepository.Update(arg.Item);
 
-        
+
         if (updateResult.Item1)
         {
             ToastService.ShowSuccess("Success");
@@ -177,7 +177,7 @@
 
     private async Task CopyStrToClipboard(string arg)
     {
-        await ClipboardService.WriteTextAsync(arg); 
+        await ClipboardService.WriteTextAsync(arg);
         ToastService.ShowSuccess("Text copied");
     }
 
