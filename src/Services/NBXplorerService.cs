@@ -26,6 +26,8 @@ public interface INBXplorerService
     public Task<GetFeeRateResult> GetFeeRateAsync(int blockCount, FeeRate fallbackFeeRate,
         CancellationToken cancellation = default);
 
+    public Task<MempoolRecommendedFees> GetMempoolRecommendedFeesAsync(CancellationToken cancellation = default);
+
 
     public Task<BroadcastResult> BroadcastAsync(Transaction tx, bool testMempoolAccept,
         CancellationToken cancellation = default);
@@ -161,6 +163,31 @@ public class NBXplorerService : INBXplorerService
         }
 
         return await nbExplorerClient.GetFeeRateAsync(blockCount, fallbackFeeRate, cancellation);
+    }
+
+    public async Task<MempoolRecommendedFees> GetMempoolRecommendedFeesAsync(
+        CancellationToken cancellation = default)
+    {
+        var mempoolEndpoint = Constants.MEMPOOL_ENDPOINT;
+
+        if (string.IsNullOrWhiteSpace(mempoolEndpoint))
+            throw new Exception("MEMPOOL_ENDPOINT is not set");
+
+        try
+        {
+            var recommendedFees =
+                await _httpClient.GetFromJsonAsync<MempoolRecommendedFees>($"{mempoolEndpoint}/api/v1/fees/recommended");
+            if (recommendedFees != null)
+            {
+                return recommendedFees;
+            }
+        }
+        catch (Exception e)
+        {
+            _logger.LogError(e, "Error getting mempool fees");
+        }
+
+        return new MempoolRecommendedFees();
     }
 
     public async Task<BroadcastResult> BroadcastAsync(Transaction tx, bool testMempoolAccept,
