@@ -209,7 +209,7 @@
         <ModalFooter>
             @if (_textModalCopy)
             {
-                <Button Color="Color.Primary" Clicked="@(async () => await CopyStrToClipboard(_textModalContent))">Copy</Button>
+                <Button Color="Color.Primary" Clicked="@(() => CopyStrToClipboard(_textModalContent))">Copy</Button>
             }
             <Button Color="Color.Secondary" Clicked="@CloseTextModal">Close</Button>
         </ModalFooter>

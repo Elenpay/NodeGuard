@@ -58,7 +58,7 @@
                         {
                             @StringHelper.TruncateHeadAndTail(context.XPUB, 6);
                             <span>&nbsp</span>
-                            <Button Color="Color.Primary" Clicked="@(async () => await CopyStrToClipboard(context.XPUB))" Size="Size.Small" Outline>
+                            <Button Color="Color.Primary" Clicked="@(() => CopyStrToClipboard(context.XPUB))" Size="Size.Small" Outline>
                                 <i class="oi oi-clipboard"></i>
                             </Button>
                         }
