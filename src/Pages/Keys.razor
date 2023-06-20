@@ -22,7 +22,7 @@
                   RowRemoving="OnRowRemoving"
                   RowUpdated="OnRowUpdated"
                   NewItemDefaultSetter="NewItemDefaultSetter">
-            
+
             <PopupTitleTemplate>
                 <h2>@(context.EditState) keys</h2>
             </PopupTitleTemplate>
@@ -98,7 +98,7 @@
 
     private async Task GetData()
     {
-        
+
         userKeys = await KeyRepository.GetUserKeys(_loggedUser);
     }
 
@@ -109,7 +109,7 @@
 
         var addResult = await KeyRepository.AddAsync(arg.Item);
 
-        
+
         if (addResult.Item1)
         {
             ToastService.ShowSuccess("Success");
@@ -152,7 +152,7 @@
             }
         }
     }
-               
+
 
     private async Task OnRowUpdated(SavedRowItem<Key, Dictionary<string, object>> arg)
     {
@@ -160,7 +160,7 @@
 
         var updateResult = KeyRepository.Update(arg.Item);
 
-        
+
         if (updateResult.Item1)
         {
             ToastService.ShowSuccess("Success");
@@ -177,7 +177,7 @@
 
     private async Task CopyStrToClipboard(string arg)
     {
-        await ClipboardService.WriteTextAsync(arg); 
+        await ClipboardService.WriteTextAsync(arg);
         ToastService.ShowSuccess("Text copied");
     }
 

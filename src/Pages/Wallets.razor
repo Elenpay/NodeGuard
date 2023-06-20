@@ -207,6 +207,10 @@
             <p>@_textModalContent</p>
         </ModalBody>
         <ModalFooter>
+            @if (_textModalCopy)
+            {
+                <Button Color="Color.Primary" Clicked="@(() => CopyStrToClipboard(_textModalContent))">Copy</Button>
+            }
             <Button Color="Color.Secondary" Clicked="@CloseTextModal">Close</Button>
         </ModalFooter>
     </ModalContent>
@@ -347,6 +351,7 @@
     private Modal _textModalRef;
     private string _textModalTitle = string.Empty;
     private string _textModalContent = string.Empty;
+    private bool _textModalCopy;
 
     private Modal _finaliseModalRef;
     private Wallet? _selectedWalletToFinalise;
@@ -629,6 +634,7 @@
                 _textModalTitle = $"Wallet: {wallet.Name} On-chain Balance";
                 _textModalContent = $"Confirmed: {((Money) balance.Confirmed).ToUnit(MoneyUnit.BTC)} BTC ({Math.Round(PriceConversionHelper.BtcToUsdConversion(((Money) balance.Confirmed).ToUnit(MoneyUnit.BTC), _btcPrice), 2)} USD) - " +
                                     $"Unconfirmed: {((Money) balance.Unconfirmed).ToUnit(MoneyUnit.BTC)} BTC ({Math.Round(PriceConversionHelper.BtcToUsdConversion(((Money) balance.Unconfirmed).ToUnit(MoneyUnit.BTC), _btcPrice), 2)} USD)";
+                _textModalCopy = false;
 
                 await _textModalRef.Show();
             }
@@ -650,6 +656,7 @@
             {
                 _textModalTitle = $"Unused BTC Address for funding this wallet";
                 _textModalContent = bitcoinAddress.ToString();
+                _textModalCopy = true;
                 await _textModalRef.Show();
             }
             else
@@ -816,6 +823,12 @@
             arg1.Status = ValidationStatus.Error;
             arg1.ErrorText = "Invalid seedphrase";
         }
+    }
+
+    private async Task CopyStrToClipboard(string arg)
+    {
+        await ClipboardService.WriteTextAsync(arg);
+        ToastService.ShowSuccess("Text copied");
     }
 
 }
