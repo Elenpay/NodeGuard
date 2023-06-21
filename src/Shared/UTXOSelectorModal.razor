@@ -14,53 +14,53 @@
         </ModalHeader>
         <ModalBody>
             <div class="d-flex">
-                <div class="p-3" style="width: 35%;">
-                    @if (Constants.NBXPLORER_ENABLE_CUSTOM_BACKEND)
-                    {
-                        <Field>
-                            <FieldLabel>Strategy</FieldLabel>
-                            <Select TValue="CoinSelectionStrategy" SelectedValue="_selectedStrategy" SelectedValueChanged="OnSelectedStrategyChanged">
-                                <ChildContent>
-                                    <SelectItem Value="CoinSelectionStrategy.SmallestFirst">@CoinSelectionStrategy.SmallestFirst.Humanize()</SelectItem>
-                                    <SelectItem Value="CoinSelectionStrategy.BiggestFirst">@CoinSelectionStrategy.BiggestFirst.Humanize()</SelectItem>
-                                    <SelectItem Value="CoinSelectionStrategy.ClosestToTargetFirst">@CoinSelectionStrategy.ClosestToTargetFirst.Humanize()</SelectItem>
-                                </ChildContent>
-                                <Feedback>
-                                    <ValidationError/>
-                                </Feedback>
-                            </Select>
-                        </Field>
-                        @if (_selectedStrategy == CoinSelectionStrategy.ClosestToTargetFirst)
-                        {
+                @if (Constants.NBXPLORER_ENABLE_CUSTOM_BACKEND)
+                {
+                    <div class="p-3" style="width: 35%;">
                             <Field>
-                                <FieldLabel>Target</FieldLabel>
-                                <NumericPicker TValue="decimal" Min="0" Decimals="8" Step="0.00001m" CurrencySymbol=" BTC" CurrencySymbolPlacement="CurrencySymbolPlacement.Suffix" Disabled="@(_selectedStrategy != CoinSelectionStrategy.ClosestToTargetFirst)" Value="_closestTo" ValueChanged="OnClosestToChanged" Debounce="true"/>
-                                <FieldHelp>
-                                    @($"{Math.Round(PriceConversionHelper.BtcToUsdConversion(_closestTo, _btcPrice), 2)} USD")
-                                </FieldHelp>
+                                <FieldLabel>Strategy</FieldLabel>
+                                <Select TValue="CoinSelectionStrategy" SelectedValue="_selectedStrategy" SelectedValueChanged="OnSelectedStrategyChanged">
+                                    <ChildContent>
+                                        <SelectItem Value="CoinSelectionStrategy.SmallestFirst">@CoinSelectionStrategy.SmallestFirst.Humanize()</SelectItem>
+                                        <SelectItem Value="CoinSelectionStrategy.BiggestFirst">@CoinSelectionStrategy.BiggestFirst.Humanize()</SelectItem>
+                                        <SelectItem Value="CoinSelectionStrategy.ClosestToTargetFirst">@CoinSelectionStrategy.ClosestToTargetFirst.Humanize()</SelectItem>
+                                    </ChildContent>
+                                    <Feedback>
+                                        <ValidationError/>
+                                    </Feedback>
+                                </Select>
                             </Field>
-                        }
-                        <div class="d-flex my-2">
-                            <Check TValue="bool" Checked="@_isManualSelection" CheckedChanged="@OnManualSelectionChanged"></Check>
-                            <FieldLabel>Manual selection</FieldLabel>
-                        </div>
-                        @if (!_isManualSelection)
-                        {
-                            <Field>
-                                <FieldLabel>Amount</FieldLabel>
-                                <NumericPicker TValue="decimal" Min="0" Decimals="8" Step="0.00001m" CurrencySymbol=" BTC" CurrencySymbolPlacement="CurrencySymbolPlacement.Suffix" Value="_amount" ValueChanged="OnAmountChanged" Debounce="true"/>
-                                <FieldHelp>
-                                    @($"{Math.Round(PriceConversionHelper.BtcToUsdConversion(_amount, _btcPrice), 2)} USD")
-                                </FieldHelp>
-                            </Field>
-                            <Field>
-                                <FieldLabel>Limit</FieldLabel>
-                                <NumericPicker TValue="int" Min="0" CurrencySymbol=" UTXOs" CurrencySymbolPlacement="CurrencySymbolPlacement.Suffix" Value="_limit" ValueChanged="OnLimitChanged" Debounce="true"/>
-                            </Field>
-                        }
-                    }
-                </div>
-                <div class="p-3" style="width: 65%;">
+                            @if (_selectedStrategy == CoinSelectionStrategy.ClosestToTargetFirst)
+                            {
+                                <Field>
+                                    <FieldLabel>Target</FieldLabel>
+                                    <NumericPicker TValue="decimal" Min="0" Decimals="8" Step="0.00001m" CurrencySymbol=" BTC" CurrencySymbolPlacement="CurrencySymbolPlacement.Suffix" Disabled="@(_selectedStrategy != CoinSelectionStrategy.ClosestToTargetFirst)" Value="_closestTo" ValueChanged="OnClosestToChanged" Debounce="true"/>
+                                    <FieldHelp>
+                                        @($"{Math.Round(PriceConversionHelper.BtcToUsdConversion(_closestTo, _btcPrice), 2)} USD")
+                                    </FieldHelp>
+                                </Field>
+                            }
+                            <div class="d-flex my-2">
+                                <Check TValue="bool" Checked="@_isManualSelection" CheckedChanged="@OnManualSelectionChanged"></Check>
+                                <FieldLabel>Manual selection</FieldLabel>
+                            </div>
+                            @if (!_isManualSelection)
+                            {
+                                <Field>
+                                    <FieldLabel>Amount</FieldLabel>
+                                    <NumericPicker TValue="decimal" Min="0" Decimals="8" Step="0.00001m" CurrencySymbol=" BTC" CurrencySymbolPlacement="CurrencySymbolPlacement.Suffix" Value="_amount" ValueChanged="OnAmountChanged" Debounce="true"/>
+                                    <FieldHelp>
+                                        @($"{Math.Round(PriceConversionHelper.BtcToUsdConversion(_amount, _btcPrice), 2)} USD")
+                                    </FieldHelp>
+                                </Field>
+                                <Field>
+                                    <FieldLabel>Limit</FieldLabel>
+                                    <NumericPicker TValue="int" Min="0" CurrencySymbol=" UTXOs" CurrencySymbolPlacement="CurrencySymbolPlacement.Suffix" Value="_limit" ValueChanged="OnLimitChanged" Debounce="true"/>
+                                </Field>
+                            }
+                    </div>
+                }
+                <div class="p-3" style=@(Constants.NBXPLORER_ENABLE_CUSTOM_BACKEND ? "width: 65%;" : "width: 100%;")>
                     <Validation @ref="_validation" Validator="RejectReasonValidatorForUTXOsSelector">
                         <DataGrid TItem="UTXO"
                                   Data="@UTXOList"
@@ -80,7 +80,7 @@
                                     @($"{Math.Round(PriceConversionHelper.BtcToUsdConversion(((Money)context.Value).ToDecimal(MoneyUnit.BTC), _btcPrice), 2)} USD")
                                 </DisplayTemplate>
                             </DataGridColumn>
-                            <DataGridColumn Field="@nameof(UTXO.KeyPath)" Caption="KeyPath" Sortable="false"/>
+                            <DataGridColumn Field="@nameof(UTXO.KeyPath)" Caption="Path" Sortable="false"/>
                         </DataGrid>
                     </Validation>
                 </div>
