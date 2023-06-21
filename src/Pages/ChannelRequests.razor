@@ -131,15 +131,15 @@
                 </DisplayTemplate>
                 <EditTemplate>
                     <Validation Validator="@ValidationHelper.ValidateChannelCapacity" @ref="_capacityValidation">
-                        <NumericPicker TValue="long" @bind-Value="@_amount" CurrencySymbol=" SATS" CurrencySymbolPlacement="CurrencySymbolPlacement.Suffix" Disabled="@(SelectedUTXOs.Count > 0)">
+                        <NumericPicker TValue="decimal" @bind-Value="@_amount" Min="0" Decimals="8" Step="0.00001m" CurrencySymbol=" BTC" CurrencySymbolPlacement="CurrencySymbolPlacement.Suffix" Disabled="@(SelectedUTXOs.Count > 0)">
                             <Feedback>
                                 <ValidationError/>
                             </Feedback>
                         </NumericPicker>
                         <FieldHelp>
-                            @{
-                                @($"Amount in Satoshis. Minimum 20.000. Current amount: {Math.Round(PriceConversionHelper.SatToUsdConversion(_amount, _btcPrice), 2)} USD")
-                            }
+
+                            @($"Amount in Satoshis. Minimum {_minimumChannelCapacity:f8}. Current amount: {Math.Round(PriceConversionHelper.SatToUsdConversion(new Money(_amount, MoneyUnit.BTC).Satoshi, _btcPrice), 2)} USD")
+
                         </FieldHelp>
                     </Validation>
                     <div class="mb-3">
@@ -423,7 +423,8 @@
     private Node? _selectedDestNode;
     private int? _selectedWalletId;
     private string? _destNodeName;
-    private long _amount = Constants.MINIMUM_CHANNEL_CAPACITY_SATS;
+    private static readonly decimal _minimumChannelCapacity = new Money(Constants.MINIMUM_CHANNEL_CAPACITY_SATS).ToUnit(MoneyUnit.BTC);
+    private decimal _amount { get; set; } = _minimumChannelCapacity;
     private bool _selectedPrivate = false;
 
     //Validation
@@ -475,7 +476,8 @@
         _destNodeName = "";
         _selectedDestNode = null;
         _selectedPrivate = false;
-        _amount = Constants.MINIMUM_CHANNEL_CAPACITY_SATS;
+        _selectedWalletId = null;
+        _amount = _minimumChannelCapacity;
     }
 
     private async Task ResetChannelCancelModal()
@@ -578,7 +580,7 @@
                 var amount = SelectedUTXOs.Count > 0 ? SelectedUTXOsValue() : _amount;
                 var request = new ChannelOperationRequest()
                 {
-                    SatsAmount = amount,
+                    SatsAmount = new Money(amount, MoneyUnit.BTC).Satoshi,
                     RequestType = OperationRequestType.Open,
                     Description = "Created by user via Funds Manager",
                     WalletId = _selectedWalletId,
@@ -913,9 +915,9 @@
         StateHasChanged();
     }
 
-    private long SelectedUTXOsValue()
+    private decimal SelectedUTXOsValue()
     {
-        return SelectedUTXOs.Sum(x => ((Money)x.Value).Satoshi);
+        return SelectedUTXOs.Sum(x => ((Money)x.Value).ToUnit(MoneyUnit.BTC));
     }
 
     private void ClearSelectedUTXOs()

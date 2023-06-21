@@ -37,6 +37,17 @@ public interface ICoinSelectionService
     public Task<List<UTXO>> GetAvailableUTXOsAsync(DerivationStrategyBase derivationStrategy);
 
     /// <summary>
+    /// Gets the UTXOs for a wallet that are not locked in other transactions, but with a limit
+    /// </summary>
+    /// <param name="derivationStrategy"></param>
+    /// <param name="strategy"></param>
+    /// <param name="limit"></param>
+    /// <param name="amount"></param>
+    /// <param name="tolerance"></param>
+    /// <param name="closestTo"></param>
+    public Task<List<UTXO>> GetAvailableUTXOsAsync(DerivationStrategyBase derivationStrategy, CoinSelectionStrategy strategy, int limit, long amount, long closestTo);
+
+    /// <summary>
     /// Locks the UTXOs for using in a specific transaction
     /// </summary>
     /// <param name="selectedUTXOs"></param>
@@ -121,10 +132,9 @@ public class CoinSelectionService: ICoinSelectionService
         return utxos.Confirmed.UTXOs.Where(utxo => lockedUTXOsList.Contains(utxo.Outpoint.Hash.ToString())).ToList();
     }
 
-    public async Task<List<UTXO>> GetAvailableUTXOsAsync(DerivationStrategyBase derivationStrategy)
+    private async Task<List<UTXO>> FilterUnlockedUTXOs(UTXOChanges? utxoChanges)
     {
         var lockedUTXOs = await _fmutxoRepository.GetLockedUTXOs();
-        var utxoChanges = await _nbXplorerService.GetUTXOsAsync(derivationStrategy);
         utxoChanges.RemoveDuplicateUTXOs();
 
         var availableUTXOs = new List<UTXO>();
@@ -143,6 +153,26 @@ public class CoinSelectionService: ICoinSelectionService
         }
 
         return availableUTXOs;
+    }
+
+    public async Task<List<UTXO>> GetAvailableUTXOsAsync(DerivationStrategyBase derivationStrategy)
+    {
+        var utxoChanges = await _nbXplorerService.GetUTXOsAsync(derivationStrategy);
+        return await FilterUnlockedUTXOs(utxoChanges);
+    }
+
+    public async Task<List<UTXO>> GetAvailableUTXOsAsync(DerivationStrategyBase derivationStrategy, CoinSelectionStrategy strategy, int limit, long amount, long closestTo)
+    {
+        UTXOChanges utxoChanges;
+        if (Constants.NBXPLORER_ENABLE_CUSTOM_BACKEND)
+        {
+            utxoChanges = await _nbXplorerService.GetUTXOsByLimitAsync(derivationStrategy, strategy, limit, amount, closestTo);
+        }
+        else
+        {
+            utxoChanges = await _nbXplorerService.GetUTXOsAsync(derivationStrategy);
+        }
+        return await FilterUnlockedUTXOs(utxoChanges);
     }
 
     /// <summary>
