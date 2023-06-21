@@ -156,12 +156,10 @@
                     }
                 </EditTemplate>
             </DataGridColumn>
-            @if (Constants.FEE_SELECTION_ENABLED)
-            {
-                <DataGridColumn TItem="ChannelOperationRequest" Displayable="false" Editable="true" Caption="Fees" PopupFieldColumnSize="ColumnSize.Is12">
+                <DataGridColumn TItem="ChannelOperationRequest" Displayable="true" Editable="true" Caption="Fees" PopupFieldColumnSize="ColumnSize.Is12">
                     <EditTemplate>
                         <div class="d-flex">
-                            <Select TValue="MempoolRecommendedFeesTypes" @bind-SelectedValue="@FeesSelection">
+                            <Select TValue="MempoolRecommendedFeesTypes" SelectedValueChanged="async (value) => await OnChangeFeeSelection(value)">
                                 <SelectGroup Label="Default">
                                     <SelectItem Value="MempoolRecommendedFeesTypes.EconomyFee">Economy Fee</SelectItem>
                                     <SelectItem Value="MempoolRecommendedFeesTypes.FastestFee">Fastest Fee</SelectItem>
@@ -178,7 +176,6 @@
                         </div>
                     </EditTemplate>
                 </DataGridColumn>
-            }
             <DataGridColumn TItem="ChannelOperationRequest" Field="@nameof(ChannelOperationRequest.IsChannelPrivate)" Caption="Private" Displayable="true" Editable="true">
                 <EditTemplate>
                     <Check TValue="bool" @bind-Checked="_selectedPrivate"></Check>
@@ -270,6 +267,16 @@
                 @{
                     @($"{context.Amount} BTC")
                     @($" ({Math.Round(PriceConversionHelper.BtcToUsdConversion(context.Amount, _btcPrice), 2)} USD)")
+                }
+            </DisplayTemplate>
+        </DataGridColumn>
+        <DataGridColumn TItem="ChannelOperationRequest" Field="@nameof(ChannelOperationRequest.FeeRate)" Caption="Fees" Displayable="true">
+            <DisplayTemplate>
+                @{
+                    if (context.FeeRate != null)
+                    {
+                        @($"{context.FeeRate} sats/vbyte")
+                    }
                 }
             </DisplayTemplate>
         </DataGridColumn>
@@ -384,6 +391,7 @@
 @inject IWalletRepository WalletRepository
 @inject INodeRepository NodeRepository
 @inject ICoinSelectionService CoinSelectionService
+@inject INBXplorerService NBXplorerService
 
 @code {
     private List<ChannelOperationRequest>? _channelRequests;
@@ -404,6 +412,7 @@
     private List<UTXO> SelectedUTXOs = new();
     private MempoolRecommendedFeesTypes FeesSelection;
     private long FeeAmount;
+    private MempoolRecommendedFees? _recommendedFees;
 
     // New Request integration
     private List<Wallet> _allWallets = new List<Wallet>();
@@ -454,9 +463,10 @@
 
     private async Task OnShowNewChannelRequestModal()
     {
+        _recommendedFees = await NBXplorerService.GetMempoolRecommendedFeesAsync();
         _utxoSelectorModalRef.ClearModal();
         FeesSelection = 0;
-        FeeAmount = 0;
+        await OnChangeFeeSelection(FeesSelection);
         await datagridRef.New();
     }
 
@@ -466,6 +476,7 @@
         _destNodeName = "";
         _selectedDestNode = null;
         _selectedPrivate = false;
+        _selectedWalletId = null;
         _amount = _minimumChannelCapacity;
     }
 
@@ -578,7 +589,8 @@
                     SourceNodeId = _selectedSourceNodeId,
                     DestNodeId = _selectedDestNode?.Id,
                     IsChannelPrivate = _selectedPrivate,
-                    Changeless = SelectedUTXOs.Count > 0
+                    Changeless = SelectedUTXOs.Count > 0,
+                    FeeRate = FeeAmount
                 };
 
                 var selectedWallet = await WalletRepository.GetById(_selectedWalletId.Value);
@@ -913,5 +925,30 @@
         _utxoSelectorModalRef.ClearModal();
         SelectedUTXOs.Clear();
         StateHasChanged();
+    }
+
+    private async Task OnChangeFeeSelection(MempoolRecommendedFeesTypes value)
+    {
+        _recommendedFees = await NBXplorerService.GetMempoolRecommendedFeesAsync();
+        FeesSelection = value;
+
+        switch (FeesSelection)
+        {
+            case MempoolRecommendedFeesTypes.EconomyFee:
+                FeeAmount = _recommendedFees.EconomyFee;
+                break;
+            case MempoolRecommendedFeesTypes.FastestFee:
+                FeeAmount = _recommendedFees.FastestFee;
+                break;
+            case MempoolRecommendedFeesTypes.HourFee:
+                FeeAmount = _recommendedFees.HourFee;
+                break;
+            case MempoolRecommendedFeesTypes.HalfHourFee:
+                FeeAmount = _recommendedFees.HalfHourFee;
+                break;
+            case MempoolRecommendedFeesTypes.CustomFee:
+                FeeAmount = 0;
+                break;
+        }
     }
 }

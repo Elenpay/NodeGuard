@@ -99,6 +99,8 @@ namespace FundsManager.Data.Models
         /// </summary>
         public string? ClosingReason { get; set; }
 
+        public decimal? FeeRate { get; set; }
+
         #region Relationships
 
         public ICollection<ChannelOperationRequestPSBT> ChannelOperationRequestPsbts { get; set; }

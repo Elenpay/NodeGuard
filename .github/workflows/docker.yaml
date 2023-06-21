@@ -42,5 +42,18 @@ jobs:
           context: .
           file: src/Dockerfile
           push: true
+          sbom: true
+          platforms: linux/amd64,linux/arm64
+          provenance: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
+
+      - name: Scan SBOM
+        uses: anchore/scan-action@v3
+        with:
+          image: ${{ steps.meta.outputs.tags }}
+          add-cpes-if-none: true
+          output-format: table
+          severity-cutoff: critical
+          # fail-build: true
+          fail-build: false

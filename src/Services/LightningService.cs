@@ -206,9 +206,9 @@ namespace FundsManager.Services
 
                 var changelessVSize = channelOperationRequest.Changeless ? 43 : 0; // 8 value + 1 script pub key size + 34 script pub key hash (Segwit output 2-0f-2 multisig)
                 var outputVirtualSize = estimatedVsize + changelessVSize; // We add the change output if needed
-                var initialFeeRate = await LightningHelper.GetFeeRateResult(network, _nbXplorerService);
+                var initialFeeRate = channelOperationRequest.FeeRate ?? (await LightningHelper.GetFeeRateResult(network, _nbXplorerService)).FeeRate.SatoshiPerByte;;
 
-                var totalFees = new Money(outputVirtualSize * initialFeeRate.FeeRate.SatoshiPerByte, MoneyUnit.Satoshi);
+                var totalFees = new Money(outputVirtualSize * initialFeeRate, MoneyUnit.Satoshi);
 
                 long fundingAmount = channelOperationRequest.Changeless ? channelOperationRequest.SatsAmount - totalFees : channelOperationRequest.SatsAmount;
                 //We prepare the request (shim) with the base PSBT we had presigned with the UTXOs to fund the channel
@@ -416,7 +416,7 @@ namespace FundsManager.Services
                                         {
                                             var totalIn = fundedPSBT.Inputs.Sum(i => i.GetTxOut()?.Value);
                                             //We manually fix the change (it was wrong from the Base template due to nbitcoin requiring a change on a PSBT)
-                                            var totalChangefulFees = new Money(vsize * initialFeeRate.FeeRate.SatoshiPerByte, MoneyUnit.Satoshi);
+                                            var totalChangefulFees = new Money(vsize * initialFeeRate, MoneyUnit.Satoshi);
                                             var changeOutput = channelfundingTx.Outputs.SingleOrDefault(o => o.Value != channelOperationRequest.SatsAmount) ?? channelfundingTx.Outputs.First();
                                             changeOutput.Value = totalIn - totalOut - totalChangefulFees;
 
@@ -489,9 +489,9 @@ namespace FundsManager.Services
                                     //We check the feerate of the finalized PSBT by checking a minimum and maximum allowed and also a fee-level max check in ratio
                                     var feerate = new FeeRate(finalizedPSBT.GetFee(), channelfundingTx.GetVirtualSize());
 
-                                    var minFeeRate = Constants.MIN_SAT_PER_VB_RATIO * initialFeeRate.FeeRate.SatoshiPerByte;
+                                    var minFeeRate = Constants.MIN_SAT_PER_VB_RATIO * initialFeeRate;
 
-                                    var maxFeeRate = Constants.MAX_SAT_PER_VB_RATIO * initialFeeRate.FeeRate.SatoshiPerByte;
+                                    var maxFeeRate = Constants.MAX_SAT_PER_VB_RATIO * initialFeeRate;
 
                                     if (feerate.SatoshiPerByte < minFeeRate)
                                     {
@@ -942,7 +942,7 @@ namespace FundsManager.Services
                 var network = CurrentNetworkHelper.GetCurrentNetwork();
                 var txBuilder = network.CreateTransactionBuilder();
 
-                var feeRateResult = await LightningHelper.GetFeeRateResult(network, _nbXplorerService);
+                var feeRateResult = channelOperationRequest.FeeRate ?? (await LightningHelper.GetFeeRateResult(network, _nbXplorerService)).FeeRate.SatoshiPerByte;
 
                 var changeAddress = await _nbXplorerService.GetUnusedAsync(derivationStrategy, DerivationFeature.Change, 0, false, default);
                 if (changeAddress == null)
@@ -957,7 +957,7 @@ namespace FundsManager.Services
                 builder.SetSigningOptions(SigHash.None)
                     .SendAllRemainingToChange()
                     .SetChange(changeAddress.Address)
-                    .SendEstimatedFees(feeRateResult.FeeRate);
+                    .SendEstimatedFees(new FeeRate(satoshiPerByte: feeRateResult));
 
                 var originalPSBT = builder.BuildPSBT(false);
 

@@ -2,6 +2,7 @@
 @using System.Security.Claims
 @using Humanizer
 @using NBitcoin
+@using Polly
 @using Channel = FundsManager.Data.Models.Channel
 @attribute [Authorize(Roles = "FinanceManager, NodeManager, Superadmin")]
 <PageTitle>Active Channels</PageTitle>
@@ -153,7 +154,13 @@
                 </DataGridColumn>
                 <DataGridColumn TItem="Channel" Field="@nameof(Channel.CreationDatetime)" Caption="@nameof(Channel.CreationDatetime).Humanize(LetterCasing.Sentence)" Sortable="true"/>
                 <DataGridColumn TItem="Channel" Field="@nameof(Channel.UpdateDatetime)" Caption="@nameof(Channel.UpdateDatetime).Humanize(LetterCasing.Sentence)" Sortable="true"/>
-
+                <DataGridColumn TItem="Channel" Field="@nameof(Channel.ChanId)" Caption="Channel Id" Sortable="false">
+                    <DisplayTemplate>
+                        <a href="@(Constants.AMBOSS_ENDPOINT + "/edge/" + context.ChanId)" target="_blank">
+                            @context.ChanId
+                        </a>
+                    </DisplayTemplate>
+                </DataGridColumn>
             </DataGridColumns>
         </DataGrid>
     </Column>

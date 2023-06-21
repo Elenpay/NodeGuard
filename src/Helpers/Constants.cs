@@ -27,7 +27,6 @@ public class Constants
     public static readonly bool ENABLE_REMOTE_SIGNER;
     public static readonly bool PUSH_NOTIFICATIONS_ONESIGNAL_ENABLED;
     public static readonly bool ENABLE_HW_SUPPORT;
-    public static readonly bool FEE_SELECTION_ENABLED = false; // Incomplete feature, remove this line when it's ready
     public static readonly bool NBXPLORER_ENABLE_CUSTOM_BACKEND = false;
 
     // Connections
@@ -40,6 +39,7 @@ public class Constants
     public static readonly string? FUNDSMANAGER_ENDPOINT;
     public static readonly string? COINGECKO_ENDPOINT;
     public static readonly string? MEMPOOL_ENDPOINT;
+    public static readonly string? AMBOSS_ENDPOINT;
     public static readonly string? REMOTE_SIGNER_ENDPOINT;
 
     // Credentials
@@ -123,6 +123,8 @@ public class Constants
         COINGECKO_ENDPOINT = Environment.GetEnvironmentVariable("COINGECKO_ENDPOINT");
 
         MEMPOOL_ENDPOINT = Environment.GetEnvironmentVariable("MEMPOOL_ENDPOINT");
+
+        AMBOSS_ENDPOINT = Environment.GetEnvironmentVariable("AMBOSS_ENDPOINT");
 
         // Credentials
         NBXPLORER_BTCRPCUSER = Environment.GetEnvironmentVariable("NBXPLORER_BTCRPCUSER");
