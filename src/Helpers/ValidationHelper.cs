@@ -64,14 +64,16 @@ public static class ValidationHelper
     public static void ValidateChannelCapacity(ValidatorEventArgs obj)
     {
         obj.Status = ValidationStatus.Success;
-        if ((long)obj.Value < Constants.MINIMUM_CHANNEL_CAPACITY_SATS)
+        var minimumChannelValue = new Money(Constants.MINIMUM_CHANNEL_CAPACITY_SATS).ToUnit(MoneyUnit.BTC);
+        var maxChannelRegtestValue = new Money(Constants.MAXIMUM_CHANNEL_CAPACITY_SATS_REGTEST).ToUnit(MoneyUnit.BTC);
+        if ((decimal)obj.Value < minimumChannelValue)
         {
-            obj.ErrorText = "The amount selected must be greater than 20.000";
+            obj.ErrorText = $"The amount selected must be greater than {minimumChannelValue:f8} BTC";
             obj.Status = ValidationStatus.Error;
         }
-        else if ((long)obj.Value > Constants.MAXIMUM_CHANNEL_CAPACITY_SATS_REGTEST && network == Network.RegTest)
+        else if ((decimal)obj.Value > maxChannelRegtestValue && network == Network.RegTest)
         {
-            obj.ErrorText = "The amount selected must be lower than 16.777.215";
+            obj.ErrorText = $"The amount selected must be lower than {maxChannelRegtestValue:f8} BTC";
             obj.Status = ValidationStatus.Error;
         }
     }

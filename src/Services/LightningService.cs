@@ -203,7 +203,7 @@ namespace FundsManager.Services
                     _logger.LogError("Changeless channel operation request cannot have outputs at this stage");
                     throw new InvalidOperationException("Changeless channel operation request cannot have outputs at this stage");
                 }
-                
+
                 var changelessVSize = channelOperationRequest.Changeless ? 43 : 0; // 8 value + 1 script pub key size + 34 script pub key hash (Segwit output 2-0f-2 multisig)
                 var outputVirtualSize = estimatedVsize + changelessVSize; // We add the change output if needed
                 var initialFeeRate = await LightningHelper.GetFeeRateResult(network, _nbXplorerService);
@@ -485,26 +485,26 @@ namespace FundsManager.Services
                                     finalizedPSBT.AssertSanity();
 
                                     channelfundingTx = finalizedPSBT.ExtractTransaction();
-                                    
+
                                     //We check the feerate of the finalized PSBT by checking a minimum and maximum allowed and also a fee-level max check in ratio
                                     var feerate = new FeeRate(finalizedPSBT.GetFee(), channelfundingTx.GetVirtualSize());
-                                   
+
                                     var minFeeRate = Constants.MIN_SAT_PER_VB_RATIO * initialFeeRate.FeeRate.SatoshiPerByte;
-                                    
+
                                     var maxFeeRate = Constants.MAX_SAT_PER_VB_RATIO * initialFeeRate.FeeRate.SatoshiPerByte;
-                                    
+
                                     if (feerate.SatoshiPerByte < minFeeRate)
                                     {
                                         _logger.LogError("Channel operation request id: {RequestId} finalized PSBT sat/vb: {SatPerVb} is lower than the minimum allowed: {MinSatPerVb}", channelOperationRequest.Id, feerate.SatoshiPerByte, minFeeRate);
                                         throw new Exception("The finalized PSBT sat/vb is lower than the minimum allowed");
                                     }
-                                    
+
                                     if (feerate.SatoshiPerByte > maxFeeRate)
                                     {
                                         _logger.LogError("Channel operation request id: {RequestId} finalized PSBT sat/vb: {SatPerVb} is higher than the maximum allowed: {MaxSatPerVb}", channelOperationRequest.Id, feerate.SatoshiPerByte, maxFeeRate);
                                         throw new Exception("The finalized PSBT sat/vb is higher than the maximum allowed");
                                     }
-                                    
+
                                     //if the fee is too high, we throw an exception
                                     var finalizedTotalIn = finalizedPSBT.Inputs.Sum(x => (long) x.GetCoin()?.Amount);
                                     if (finalizedPSBT.GetFee().Satoshi >=
@@ -513,10 +513,10 @@ namespace FundsManager.Services
                                         _logger.LogError("Channel operation request id: {RequestId} finalized PSBT fee: {Fee} is higher than the maximum allowed: {MaxFee} sats", channelOperationRequest.Id, finalizedPSBT.GetFee().Satoshi, finalizedTotalIn * Constants.MAX_TX_FEE_RATIO);
                                         throw new Exception("The finalized PSBT fee is higher than the maximum allowed");
                                     }
-                                    
-                                  
+
+
                                     _logger.LogInformation("Channel operation request id: {RequestId} finalized PSBT sat/vb: {SatPerVb}", channelOperationRequest.Id, feerate.SatoshiPerByte);
-                        
+
                                     //Just a check of the tx based on the finalizedPSBT
                                     var checkTx = channelfundingTx.Check();
 
@@ -982,7 +982,7 @@ namespace FundsManager.Services
                         ?.WitnessScript;
                     input.RedeemScript = originalPSBT.Inputs.FirstOrDefault(x => x.PrevOut == input.PrevOut)
                         ?.RedeemScript;
-                    
+
                     input.SighashType = SigHash.None;
                 }
 
@@ -1200,7 +1200,7 @@ namespace FundsManager.Services
             }
             catch (Exception e)
             {
-                _logger.LogError(e, "Error while getting wallet addresss for wallet: {WalletId}", wallet.Id);
+                _logger.LogError(e, "Error while getting wallet address for wallet: {WalletId}", wallet.Id);
             }
 
             var result = keyPathInformation?.Address ?? null;

@@ -4,6 +4,7 @@
 @using Humanizer;
 @inject ICoinSelectionService _CoinSelectionService
 @inject IJSRuntime JsRuntime
+@inject IToastService ToastService
 
 <Modal @ref="@_modalRef">
     <ModalContent Centered Size="ModalSize.Large">
@@ -16,42 +17,47 @@
                 <div class="p-3" style="width: 35%;">
                     @if (Constants.NBXPLORER_ENABLE_CUSTOM_BACKEND)
                     {
-                        <Select TValue="CoinSelectionStrategy" SelectedValue="_selectedStrategy" SelectedValueChanged="OnSelectedStrategyChanged">
-                            <ChildContent>
-                                <SelectItem Value="CoinSelectionStrategy.SmallestFirst">@CoinSelectionStrategy.SmallestFirst.Humanize()</SelectItem>
-                                <SelectItem Value="CoinSelectionStrategy.BiggestFirst">@CoinSelectionStrategy.BiggestFirst.Humanize()</SelectItem>
-                                <SelectItem Value="CoinSelectionStrategy.ClosestToTargetFirst">@CoinSelectionStrategy.ClosestToTargetFirst.Humanize()</SelectItem>
-                            </ChildContent>
-                            <Feedback>
-                                <ValidationError/>
-                            </Feedback>
-                        </Select>
+                        <Field>
+                            <FieldLabel>Strategy</FieldLabel>
+                            <Select TValue="CoinSelectionStrategy" SelectedValue="_selectedStrategy" SelectedValueChanged="OnSelectedStrategyChanged">
+                                <ChildContent>
+                                    <SelectItem Value="CoinSelectionStrategy.SmallestFirst">@CoinSelectionStrategy.SmallestFirst.Humanize()</SelectItem>
+                                    <SelectItem Value="CoinSelectionStrategy.BiggestFirst">@CoinSelectionStrategy.BiggestFirst.Humanize()</SelectItem>
+                                    <SelectItem Value="CoinSelectionStrategy.ClosestToTargetFirst">@CoinSelectionStrategy.ClosestToTargetFirst.Humanize()</SelectItem>
+                                </ChildContent>
+                                <Feedback>
+                                    <ValidationError/>
+                                </Feedback>
+                            </Select>
+                        </Field>
+                        @if (_selectedStrategy == CoinSelectionStrategy.ClosestToTargetFirst)
+                        {
+                            <Field>
+                                <FieldLabel>Target</FieldLabel>
+                                <NumericPicker TValue="decimal" Min="0" Decimals="8" Step="0.00001m" CurrencySymbol=" BTC" CurrencySymbolPlacement="CurrencySymbolPlacement.Suffix" Disabled="@(_selectedStrategy != CoinSelectionStrategy.ClosestToTargetFirst)" Value="_closestTo" ValueChanged="OnClosestToChanged" Debounce="true"/>
+                                <FieldHelp>
+                                    @($"{Math.Round(PriceConversionHelper.BtcToUsdConversion(_closestTo, _btcPrice), 2)} USD")
+                                </FieldHelp>
+                            </Field>
+                        }
                         <div class="d-flex my-2">
                             <Check TValue="bool" Checked="@_isManualSelection" CheckedChanged="@OnManualSelectionChanged"></Check>
                             <FieldLabel>Manual selection</FieldLabel>
                         </div>
-                        <Field>
-                            <FieldLabel>Amount</FieldLabel>
-                            <NumericPicker TValue="decimal" Min="0" Decimals="8" Step="0.00001m" CurrencySymbol=" BTC" CurrencySymbolPlacement="CurrencySymbolPlacement.Suffix"  Disabled="_isManualSelection" Value="_amount" ValueChanged="OnAmountChanged" Debounce="true"/>
-                            <FieldHelp>
-                                @($"{Math.Round(PriceConversionHelper.BtcToUsdConversion(_amount, _btcPrice), 2)} USD")
-                            </FieldHelp>
-                        </Field>
-                        <Field>
-                            <FieldLabel>Target</FieldLabel>
-                            <NumericPicker TValue="decimal" Min="0" Decimals="8" Step="0.00001m" CurrencySymbol=" BTC" CurrencySymbolPlacement="CurrencySymbolPlacement.Suffix" Disabled="@(_selectedStrategy != CoinSelectionStrategy.ClosestToTargetFirst)" Value="_closestTo" ValueChanged="OnClosestToChanged" Debounce="true"/>
-                            <FieldHelp>
-                                @($"{Math.Round(PriceConversionHelper.BtcToUsdConversion(_closestTo, _btcPrice), 2)} USD")
-                            </FieldHelp>
-                        </Field>
-                        <Field>
-                            <FieldLabel>Limit</FieldLabel>
-                            <NumericPicker TValue="int" Min="0" CurrencySymbol=" UTXOs" CurrencySymbolPlacement="CurrencySymbolPlacement.Suffix"  Disabled="_isManualSelection" Value="_limit" ValueChanged="OnLimitChanged" Debounce="true"/>
-                        </Field>
-                        @* <Field> *@
-                        @*     <FieldLabel>Tolerance</FieldLabel> *@
-                        @*     <NumericPicker TValue="int" Min="0" CurrencySymbol="%" CurrencySymbolPlacement="CurrencySymbolPlacement.Suffix"  Max="50" Disabled="_isManualSelection" Value="_tolerance" ValueChanged="OnToleranceChanged" Debounce="true"/> *@
-                        @* </Field> *@
+                        @if (!_isManualSelection)
+                        {
+                            <Field>
+                                <FieldLabel>Amount</FieldLabel>
+                                <NumericPicker TValue="decimal" Min="0" Decimals="8" Step="0.00001m" CurrencySymbol=" BTC" CurrencySymbolPlacement="CurrencySymbolPlacement.Suffix" Value="_amount" ValueChanged="OnAmountChanged" Debounce="true"/>
+                                <FieldHelp>
+                                    @($"{Math.Round(PriceConversionHelper.BtcToUsdConversion(_amount, _btcPrice), 2)} USD")
+                                </FieldHelp>
+                            </Field>
+                            <Field>
+                                <FieldLabel>Limit</FieldLabel>
+                                <NumericPicker TValue="int" Min="0" CurrencySymbol=" UTXOs" CurrencySymbolPlacement="CurrencySymbolPlacement.Suffix" Value="_limit" ValueChanged="OnLimitChanged" Debounce="true"/>
+                            </Field>
+                        }
                     }
                 </div>
                 <div class="p-3" style="width: 65%;">
@@ -106,9 +112,9 @@
     private CoinSelectionStrategy _selectedStrategy { get; set; } = CoinSelectionStrategy.SmallestFirst;
     private bool _isManualSelection { get; set; } = true;
     private decimal _closestTo { get; set; } = 0m;
-    private decimal _amount { get; set; } = 0.0002m;
+    private static readonly decimal _minimumChannelCapacity = new Money(Constants.MINIMUM_CHANNEL_CAPACITY_SATS).ToUnit(MoneyUnit.BTC);
+    private decimal _amount { get; set; } = _minimumChannelCapacity;
     private int _limit { get; set; } = 50;
-    private int _tolerance { get; set; } = 0;
     private Wallet? SelectedWallet;
     private decimal _btcPrice;
 
@@ -121,6 +127,14 @@
     {
         UTXOList.Clear();
         SelectedUTXOs.Clear();
+        PrevSelectedUTXOs.Clear();
+        _selectedStrategy = CoinSelectionStrategy.SmallestFirst;
+        _isManualSelection = true;
+        _closestTo = 0;
+        _amount = _minimumChannelCapacity;
+        _limit = 50;
+        SelectedWallet = null;
+        _btcPrice = 0;
     }
 
     private async Task CancelSelection()
@@ -147,7 +161,7 @@
         {
             limit = 0;
         }
-        var utxosList = await CoinSelectionService.GetAvailableUTXOsAsync(SelectedWallet.GetDerivationStrategy(), _selectedStrategy, limit, new Money(_amount, MoneyUnit.BTC).Satoshi, _tolerance, new Money(_closestTo, MoneyUnit.BTC).Satoshi);
+        var utxosList = await CoinSelectionService.GetAvailableUTXOsAsync(SelectedWallet.GetDerivationStrategy(), _selectedStrategy, limit, new Money(_amount, MoneyUnit.BTC).Satoshi, new Money(_closestTo, MoneyUnit.BTC).Satoshi);
         UTXOList = utxosList;
 
         // Refresh the list with the new objects, or selection wont be preserved
@@ -162,7 +176,7 @@
     private string[] GetUTXOsValues()
     {
         var value = SelectedUTXOs.Sum(x => ((Money)x.Value).ToUnit(MoneyUnit.BTC));
-        var usd = Math.Round(PriceConversionHelper.BtcToUsdConversion(_amount, _btcPrice), 2);
+        var usd = Math.Round(PriceConversionHelper.BtcToUsdConversion(value, _btcPrice), 2);
 
         return new[]
         {
@@ -175,14 +189,16 @@
         if (e.Value is not List<UTXO>) return;
         var selectedUTXOsValue = ((List<UTXO>)e.Value).Sum(x => ((Money)x.Value).ToUnit(MoneyUnit.BTC));
         if (selectedUTXOsValue == 0) return;
-        if (selectedUTXOsValue < Constants.MINIMUM_CHANNEL_CAPACITY_SATS)
+        var minimumChannelValue = new Money(Constants.MINIMUM_CHANNEL_CAPACITY_SATS).ToUnit(MoneyUnit.BTC);
+        var maxChannelRegtestValue = new Money(Constants.MAXIMUM_CHANNEL_CAPACITY_SATS_REGTEST).ToUnit(MoneyUnit.BTC);
+        if (selectedUTXOsValue < minimumChannelValue)
         {
-            e.ErrorText = "The combined amount of the UTXOs selected must be greater than 0.00020000 BTC";
+            e.ErrorText = $"The combined amount of the UTXOs selected must be greater than {minimumChannelValue:f8} BTC";
             e.Status = ValidationStatus.Error;
         }
-        else if (selectedUTXOsValue > Constants.MAXIMUM_CHANNEL_CAPACITY_SATS_REGTEST && network == Network.RegTest)
+        else if (selectedUTXOsValue > maxChannelRegtestValue && network == Network.RegTest)
         {
-            e.ErrorText = "The combined amount of the UTXOs selected must be lower than 16.777.215";
+            e.ErrorText = $"The combined amount of the UTXOs selected must be lower than {maxChannelRegtestValue:f8} BTC";
             e.Status = ValidationStatus.Error;
         }
         else
@@ -199,9 +215,18 @@
         {
             limit = 0;
         }
-        var utxosList = await CoinSelectionService.GetAvailableUTXOsAsync(SelectedWallet.GetDerivationStrategy(), _selectedStrategy, limit, new Money(_amount, MoneyUnit.BTC).Satoshi, _tolerance, new Money(_closestTo, MoneyUnit.BTC).Satoshi);
-        UTXOList = utxosList;
-        SelectedUTXOs = _isManualSelection ? new() : UTXOList.Select(u => u).ToList();
+        try
+        {
+            var utxosList = await CoinSelectionService.GetAvailableUTXOsAsync(SelectedWallet.GetDerivationStrategy(), _selectedStrategy, limit, new Money(_amount, MoneyUnit.BTC).Satoshi, new Money(_closestTo, MoneyUnit.BTC).Satoshi);
+            UTXOList = utxosList;
+            SelectedUTXOs = _isManualSelection ? new() : UTXOList.Select(u => u).ToList();
+        }
+        catch
+        {
+            UTXOList = new();
+            SelectedUTXOs = new();
+            ToastService.ShowError("There was an unexpected error trying to get the UTXOs, please try again later.");
+        }
     }
 
     private async Task OnManualSelectionChanged(bool value)
@@ -231,12 +256,6 @@
     private async Task OnLimitChanged(int limit)
     {
         _limit = limit;
-        await OnChange();
-    }
-
-    private async Task OnToleranceChanged(int tolerance)
-    {
-        _tolerance = tolerance;
         await OnChange();
     }
 }

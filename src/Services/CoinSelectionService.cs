@@ -45,7 +45,7 @@ public interface ICoinSelectionService
     /// <param name="amount"></param>
     /// <param name="tolerance"></param>
     /// <param name="closestTo"></param>
-    public Task<List<UTXO>> GetAvailableUTXOsAsync(DerivationStrategyBase derivationStrategy, CoinSelectionStrategy strategy, int limit, long amount, long tolerance, long closestTo);
+    public Task<List<UTXO>> GetAvailableUTXOsAsync(DerivationStrategyBase derivationStrategy, CoinSelectionStrategy strategy, int limit, long amount, long closestTo);
 
     /// <summary>
     /// Locks the UTXOs for using in a specific transaction
@@ -161,12 +161,12 @@ public class CoinSelectionService: ICoinSelectionService
         return await FilterUnlockedUTXOs(utxoChanges);
     }
 
-    public async Task<List<UTXO>> GetAvailableUTXOsAsync(DerivationStrategyBase derivationStrategy, CoinSelectionStrategy strategy, int limit, long amount, long tolerance, long closestTo)
+    public async Task<List<UTXO>> GetAvailableUTXOsAsync(DerivationStrategyBase derivationStrategy, CoinSelectionStrategy strategy, int limit, long amount, long closestTo)
     {
         UTXOChanges utxoChanges;
         if (Constants.NBXPLORER_ENABLE_CUSTOM_BACKEND)
         {
-            utxoChanges = await _nbXplorerService.GetUTXOsByLimitAsync(derivationStrategy, strategy, limit, amount, tolerance, closestTo);
+            utxoChanges = await _nbXplorerService.GetUTXOsByLimitAsync(derivationStrategy, strategy, limit, amount, closestTo);
         }
         else
         {

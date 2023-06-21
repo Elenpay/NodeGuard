@@ -27,7 +27,7 @@ public interface INBXplorerService
 
     public Task<UTXOChanges> GetUTXOsAsync(DerivationStrategyBase extKey, CancellationToken cancellation = default);
 
-    public Task<UTXOChanges> GetUTXOsByLimitAsync(DerivationStrategyBase extKey, CoinSelectionStrategy strategy = CoinSelectionStrategy.SmallestFirst, int limit = 0, long amount = 0, long tolerance = 0, long closestTo = 0, CancellationToken cancellation = default);
+    public Task<UTXOChanges> GetUTXOsByLimitAsync(DerivationStrategyBase extKey, CoinSelectionStrategy strategy = CoinSelectionStrategy.SmallestFirst, int limit = 0, long amount = 0, long closestTo = 0, CancellationToken cancellation = default);
 
     public Task<GetFeeRateResult> GetFeeRateAsync(int blockCount, FeeRate fallbackFeeRate,
         CancellationToken cancellation = default);
@@ -146,7 +146,6 @@ public class NBXplorerService : INBXplorerService
         CoinSelectionStrategy strategy = CoinSelectionStrategy.SmallestFirst,
         int limit = 0,
         long amount = 0,
-        long tolerance = 0,
         long closestTo = 0,
         CancellationToken cancellation = default)
     {
@@ -158,7 +157,6 @@ public class NBXplorerService : INBXplorerService
             keyValuePairs.Add("strategy", strategy.ToString());
             keyValuePairs.Add("limit", limit.ToString());
             keyValuePairs.Add("amount", amount.ToString());
-            keyValuePairs.Add("tolerance", tolerance.ToString());
             if (strategy == CoinSelectionStrategy.ClosestToTargetFirst)
             {
                 keyValuePairs.Add("closestTo", closestTo.ToString());
@@ -177,6 +175,7 @@ public class NBXplorerService : INBXplorerService
         catch (Exception e)
         {
             _logger.LogError(e.ToString());
+            throw e;
         }
 
         return new UTXOChanges();
