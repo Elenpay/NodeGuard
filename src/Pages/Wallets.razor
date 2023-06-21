@@ -48,6 +48,7 @@
 
                                     <DropdownItem Clicked="context.Clicked">New</DropdownItem>
                                     <DropdownItem Clicked="@(() => ShowImportWalletModal())">Import Wallet</DropdownItem>
+                                    <DropdownItem Clicked="@ShowWallets">@("Show archived and compromised wallets" + (_showNotAvailableWallets ? "  \u2713" : ""))</DropdownItem>
 
                                 </DropdownMenu>
                             </Dropdown>
@@ -372,6 +373,8 @@
     private string _description = string.Empty;
     private string _derivationPath = string.Empty;
 
+    private bool _showNotAvailableWallets = false;
+
     protected override async Task OnInitializedAsync()
     {
         _btcPrice = PriceConversionHelper.GetBtcToUsdPrice();
@@ -391,14 +394,7 @@
 
     private async Task GetData()
     {
-        if (ClaimsPrincipal != null && ClaimsPrincipal.IsInRole(ApplicationUserRole.FinanceManager.ToString()))
-        {
-            _wallets = await WalletRepository.GetAll();
-        }
-        else
-        {
-            _wallets = await WalletRepository.GetAvailableWallets();
-        }
+        _wallets = _showNotAvailableWallets ? await WalletRepository.GetAll() : await WalletRepository.GetAvailableWallets();
         var financeManagers = (await ApplicationUserRepository.GetUsersInRole(ApplicationUserRole.FinanceManager));
         _financeManagers = financeManagers.Where(x => x.Keys.Any()).ToList();
 
@@ -829,6 +825,12 @@
     {
         await ClipboardService.WriteTextAsync(arg);
         ToastService.ShowSuccess("Text copied");
+    }
+
+    private async Task ShowWallets()
+    {
+        _showNotAvailableWallets = !_showNotAvailableWallets;
+        await GetData();
     }
 
 }
