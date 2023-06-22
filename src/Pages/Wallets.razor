@@ -3,6 +3,7 @@
 @using Humanizer
 @using NBitcoin
 @using NBXplorer.DerivationStrategy
+@using NSubstitute
 @using Field = Blazorise.Field
 @using Key = FundsManager.Data.Models.Key
 @inject IWalletRepository WalletRepository
@@ -48,7 +49,7 @@
 
                                     <DropdownItem Clicked="context.Clicked">New</DropdownItem>
                                     <DropdownItem Clicked="@(() => ShowImportWalletModal())">Import Wallet</DropdownItem>
-                                    <DropdownItem Clicked="@ShowWallets">@("Show archived and compromised wallets" + (_showNotAvailableWallets ? "  \u2713" : ""))</DropdownItem>
+                                    <DropdownItem Clicked="@ShowWallets">@("Archived & compromised wallets" + (_showNotAvailableWallets ? "  \u2713" : ""))</DropdownItem>
 
                                 </DropdownMenu>
                             </Dropdown>
@@ -394,7 +395,7 @@
 
     private async Task GetData()
     {
-        _wallets = _showNotAvailableWallets ? await WalletRepository.GetAll() : await WalletRepository.GetAvailableWallets();
+        _wallets = _showNotAvailableWallets ? (await WalletRepository.GetAll()).Where(x => x.IsArchived || x.IsCompromised).ToList() : await WalletRepository.GetAvailableWallets();
         var financeManagers = (await ApplicationUserRepository.GetUsersInRole(ApplicationUserRole.FinanceManager));
         _financeManagers = financeManagers.Where(x => x.Keys.Any()).ToList();
 
@@ -824,7 +825,7 @@
     private async Task CopyStrToClipboard(string arg)
     {
         await ClipboardService.WriteTextAsync(arg);
-        ToastService.ShowSuccess("Text copied");
+        ToastService.ShowSuccess("Address copied");
     }
 
     private async Task ShowWallets()
