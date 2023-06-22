@@ -43,13 +43,8 @@
             // If you have changed target frameworks, make sure to update the program path.
             "program": "${workspaceFolder}/src/bin/Debug/net6.0/FundsManager.dll",
             "launchSettingsFilePath": "${workspaceFolder}/src/Properties/launchSettings.json",
-            "launchSettingsProfile": "FundsManager NOVS",
+            "launchSettingsProfile": "NodeGuard local debug",
             "cwd": "${workspaceFolder}/src",
-            "env": {
-                //"OTEL_EXPORTER_OTLP_ENDPOINT": "http://localhost:4317", //gRPC endpoint for OTel collector (optional)
-                //"OTEL_RESOURCE_ATTRIBUTES": "service.name=NodeGuard"
-
-            },
             "sourceFileMap": {
                 "/Views": "${workspaceFolder}/Views"
             }
