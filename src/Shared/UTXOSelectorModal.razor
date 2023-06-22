@@ -161,12 +161,22 @@
         {
             limit = 0;
         }
-        var utxosList = await CoinSelectionService.GetAvailableUTXOsAsync(SelectedWallet.GetDerivationStrategy(), _selectedStrategy, limit, new Money(_amount, MoneyUnit.BTC).Satoshi, new Money(_closestTo, MoneyUnit.BTC).Satoshi);
-        UTXOList = utxosList;
+        try
+        {
+            var utxosList = await CoinSelectionService.GetAvailableUTXOsAsync(SelectedWallet.GetDerivationStrategy(), _selectedStrategy, limit, new Money(_amount, MoneyUnit.BTC).Satoshi, new Money(_closestTo, MoneyUnit.BTC).Satoshi);
+            UTXOList = utxosList;
 
-        // Refresh the list with the new objects, or selection wont be preserved
-        var hashes = SelectedUTXOs.Select(utxos => utxos.Outpoint.Hash);
-        SelectedUTXOs = utxosList.Where(utxo => hashes.Contains(utxo.Outpoint.Hash)).ToList();
+            // Refresh the list with the new objects, or selection wont be preserved
+            var hashes = SelectedUTXOs.Select(utxos => utxos.Outpoint.Hash);
+            SelectedUTXOs = utxosList.Where(utxo => hashes.Contains(utxo.Outpoint.Hash)).ToList();
+        }
+        catch
+        {
+            UTXOList = new();
+            SelectedUTXOs = new();
+            ToastService.ShowError("There was an unexpected error trying to get the UTXOs, please try again later.");
+        }
+
 
         _btcPrice = PriceConversionHelper.GetBtcToUsdPrice();
         await _modalRef.Show();

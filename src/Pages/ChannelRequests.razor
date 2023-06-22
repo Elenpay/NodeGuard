@@ -168,7 +168,7 @@
                                 </SelectGroup>
                                 <SelectItem Value="MempoolRecommendedFeesTypes.CustomFee">Custom</SelectItem>
                             </Select>
-                            <NumericPicker TValue="long" @bind-Value="@FeeAmount" CurrencySymbolPlacement="CurrencySymbolPlacement.Suffix" CurrencySymbol=" sats/vbyte" Min="0" Disabled="@(FeesSelection != MempoolRecommendedFeesTypes.CustomFee)">
+                            <NumericPicker TValue="long" @bind-Value="@FeeAmount" CurrencySymbolPlacement="CurrencySymbolPlacement.Suffix" CurrencySymbol=" sats/vbyte" Min="1" Disabled="@(FeesSelection != MempoolRecommendedFeesTypes.CustomFee)">
                                 <Feedback>
                                     <ValidationError/>
                                 </Feedback>
@@ -411,7 +411,7 @@
     private UTXOSelectorModal _utxoSelectorModalRef;
     private List<UTXO> SelectedUTXOs = new();
     private MempoolRecommendedFeesTypes FeesSelection;
-    private long FeeAmount;
+    private long FeeAmount = 1;
     private MempoolRecommendedFees? _recommendedFees;
 
     // New Request integration
@@ -947,7 +947,7 @@
                 FeeAmount = _recommendedFees.HalfHourFee;
                 break;
             case MempoolRecommendedFeesTypes.CustomFee:
-                FeeAmount = 0;
+                FeeAmount = 1;
                 break;
         }
     }

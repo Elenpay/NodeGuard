@@ -395,7 +395,8 @@
 
     private async Task GetData()
     {
-        _wallets = _showNotAvailableWallets ? (await WalletRepository.GetAll()).Where(x => x.IsArchived || x.IsCompromised).ToList() : await WalletRepository.GetAvailableWallets();
+        var allWallets = await WalletRepository.GetAll();
+        _wallets = _showNotAvailableWallets ? allWallets.Where(x => x.IsArchived || x.IsCompromised).ToList() : allWallets.Where(x => !x.IsArchived && !x.IsCompromised).ToList();
         var financeManagers = (await ApplicationUserRepository.GetUsersInRole(ApplicationUserRole.FinanceManager));
         _financeManagers = financeManagers.Where(x => x.Keys.Any()).ToList();
 
