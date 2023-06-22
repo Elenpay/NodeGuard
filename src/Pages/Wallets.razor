@@ -49,7 +49,7 @@
 
                                     <DropdownItem Clicked="context.Clicked">New</DropdownItem>
                                     <DropdownItem Clicked="@(() => ShowImportWalletModal())">Import Wallet</DropdownItem>
-                                    <DropdownItem Clicked="@ShowWallets">@("Show only archived and compromised wallets" + (_showNotAvailableWallets ? "  \u2713" : ""))</DropdownItem>
+                                    <DropdownItem Clicked="@ShowWallets">@("Archived & compromised wallets" + (_showNotAvailableWallets ? "  \u2713" : ""))</DropdownItem>
 
                                 </DropdownMenu>
                             </Dropdown>
