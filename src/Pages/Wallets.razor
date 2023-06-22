@@ -824,7 +824,7 @@
     private async Task CopyStrToClipboard(string arg)
     {
         await ClipboardService.WriteTextAsync(arg);
-        ToastService.ShowSuccess("Text copied");
+        ToastService.ShowSuccess("Address copied");
     }
 
     private async Task ShowWallets()
