@@ -32,7 +32,7 @@
                 </NavLink>
             </div>
         </AuthorizeView>
-      
+
         <AuthorizeView Roles="Superadmin,FinanceManager,NodeManager">
             <div class="nav-item px-3">
                 <NavLink class="nav-link" href="channel-requests">
@@ -45,16 +45,18 @@
                 </NavLink>
             </div>
         </AuthorizeView>
-        <div class="nav-item px-3">
-            <NavLink class="nav-link" href="nodes">
-                <span class="oi oi-layers" aria-hidden="true"></span> Nodes
-            </NavLink>
-        </div>
-        <div class="nav-item px-3">
-            <NavLink class="nav-link" href="channels">
-                <span class="oi oi-transfer" aria-hidden="true"></span> Channels
-            </NavLink>
-        </div>
+        <AuthorizeView Roles="NodeManager">
+            <div class="nav-item px-3">
+                <NavLink class="nav-link" href="nodes">
+                    <span class="oi oi-layers" aria-hidden="true"></span> Nodes
+                </NavLink>
+            </div>
+            <div class="nav-item px-3">
+                <NavLink class="nav-link" href="channels">
+                    <span class="oi oi-transfer" aria-hidden="true"></span> Channels
+                </NavLink>
+            </div>
+        </AuthorizeView>
     </nav>
 </div>
 
