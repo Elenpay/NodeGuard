@@ -170,10 +170,10 @@
         if (LoggedUser != null)
         {
             await GetData();
-            // Add button for copy key (js interop passing the content of the strings)
-            // https://www.meziantou.net/copying-text-to-clipboard-in-a-blazor-application.htm
 
-            if (ClaimsPrincipal != null && ClaimsPrincipal.IsInRole(ApplicationUserRole.Superadmin.ToString()))
+            if (ClaimsPrincipal != null &&
+                (ClaimsPrincipal.IsInRole(ApplicationUserRole.Superadmin.ToString())
+                 || ClaimsPrincipal.IsInRole(ApplicationUserRole.NodeManager.ToString())))
             {
                 _editable = true;
                 _hideDelete = false;
