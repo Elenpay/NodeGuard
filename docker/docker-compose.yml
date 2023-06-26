@@ -29,7 +29,7 @@ services:
         PUSH_NOTIFICATIONS_ONESIGNAL_API_BASE_PATH: "https://onesignal.com/api/v1"
         PUSH_NOTIFICATIONS_ONESIGNAL_APP_ID: "93800910-9a17-46c7-a3a0-175b68c7aea0"
         PUSH_NOTIFICATIONS_ONESIGNAL_API_TOKEN: "YTAxMGUwOWYtMTJlMC00MTQwLTg4MWUtMzZhNGQyYTBhMjYw"
-        PUSH_NOTIFICATIONS_ONESIGNAL_ENABLED: "false" # true/false case sensitive  
+        PUSH_NOTIFICATIONS_ONESIGNAL_ENABLED: "false" # true/false case sensitive
         SWEEPNODEWALLETSJOB_CRON: "0 */1 * * * ?"  #Every minute
         ANCHOR_CLOSINGS_MINIMUM_SATS: 100000 # Check https://github.com/lightningnetwork/lnd/issues/6505#issuecomment-1120364460 to understand, we need 100K+ sats to support anchor channel closings
         ALICE_HOST: "host.docker.internal:10001" #used for dev environment
@@ -52,7 +52,7 @@ services:
     image: postgres:13
     restart: always
     network_mode: service:fundsmanager
-    environment: 
+    environment:
       POSTGRES_DB: fundsmanager
       POSTGRES_USER: rw_dev
       POSTGRES_PASSWORD: rw_dev
@@ -62,7 +62,8 @@ services:
 
   nbxplorer:
     restart: unless-stopped
-    image: nicolasdorier/nbxplorer:2.3.54
+    image: ghcr.io/elenpay/nbxplorer:v2.3.65-1.0.0
+    platform: linux/amd64
     hostname: nbxplorer
     ports:
     - "32838:32838"
@@ -95,7 +96,7 @@ services:
         - redis_data:/data
 volumes:
     fundsmanager_postgres_data:
-    bitcoin_datadir: 
-    nbxplorer_datadir: 
+    bitcoin_datadir:
+    nbxplorer_datadir:
     fundsmanager_data_keys_dir:
     redis_data:
