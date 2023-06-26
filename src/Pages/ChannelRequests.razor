@@ -91,34 +91,29 @@
                 </DisplayTemplate>
                 <EditTemplate>
                     <Validation Validator="@ValidationRule.IsSelected" @ref="_walletValidation">
-                        @if (context.CellValue == null || (int)context.CellValue == 0)
-                        {
-                            <SelectList TItem="Wallet"
-                                        TValue="int"
-                                        Data="@_allWallets"
-                                        TextField="@((item) => item.Name)"
-                                        ValueField="@((item) => item.Id)"
-                                        SelectedValueChanged="(id) => OnSelectedWallet(id)"
-                                        DefaultItemText="Choose the wallet">
-                                <Feedback>
-                                    <ValidationError/>
-                                </Feedback>
-                            </SelectList>
-                        }
-                        else
-                        {
-                            <SelectList TItem="Wallet"
-                                        TValue="int"
-                                        Data="@_allWallets"
-                                        TextField="@((item) => item.Name)"
-                                        ValueField="@((item) => item.Id)"
-                                        SelectedValueChanged="(id) => OnSelectedWallet(id)"
-                                        SelectedValue="(int)context.CellValue">
-                                <Feedback>
-                                    <ValidationError/>
-                                </Feedback>
-                            </SelectList>
-                        }
+                        <SelectList TItem="Wallet"
+                                    TValue="int?"
+                                    DefaultItemText="Choose the wallet"
+                                    DefaultItemDisabled
+                                    Data="@_allWallets"
+                                    TextField="@((item) => item.Name)"
+                                    ValueField="@((item) => item.Id)"
+                                    SelectedValueChanged="(id) => OnSelectedWallet(id.Value)"
+                                    SelectedValue="@(_selectedWalletId)">
+                            <Feedback>
+                                <ValidationError/>
+                            </Feedback>
+                        </SelectList>
+                        <FieldHelp>
+                            @if (_selectedWalletId != null)
+                            {
+                                @($"{_selectedWalletBalance:f8} BTC ({Math.Round(PriceConversionHelper.BtcToUsdConversion(_selectedWalletBalance, _btcPrice), 2)} USD)")
+                            }
+                            else
+                            {
+                                @("Wallet not selected")
+                            }
+                        </FieldHelp>
                     </Validation>
                 </EditTemplate>
             </DataGridColumn>
@@ -422,6 +417,7 @@
     private int _selectedSourceNodeId;
     private Node? _selectedDestNode;
     private int? _selectedWalletId;
+    private decimal _selectedWalletBalance;
     private string? _destNodeName;
     private static readonly decimal _minimumChannelCapacity = new Money(Constants.MINIMUM_CHANNEL_CAPACITY_SATS).ToUnit(MoneyUnit.BTC);
     private decimal _amount { get; set; } = _minimumChannelCapacity;
@@ -523,9 +519,12 @@
         _selectedSourceNodeId = nodeId;
     }
 
-    private void OnSelectedWallet(int walletId)
+    private async Task OnSelectedWallet(int walletId)
     {
         _selectedWalletId = walletId == 0 ? null : walletId;
+        var wallet = _allWallets.Find(w => w.Id == _selectedWalletId);
+        var balance = (await LightningService.GetWalletBalance(wallet))?.Available ?? new Money(0);
+        _selectedWalletBalance = ((Money)balance).ToUnit(MoneyUnit.BTC);
     }
 
     private async Task SearchNode()
