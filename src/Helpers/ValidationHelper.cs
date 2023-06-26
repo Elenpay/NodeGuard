@@ -90,13 +90,13 @@ public static class ValidationHelper
         if (amount < minimum && !isAmountDisabled)
         {
             obj.Status = ValidationStatus.Error;
-            obj.ErrorText = $"Error, the minimum amount to withdraw is at least {minimum} BTC";
+            obj.ErrorText = $"Error, the minimum amount to withdraw is at least {minimum:f8} BTC";
         }
 
         if (amount > maximum && !isAmountDisabled)
         {
             obj.Status = ValidationStatus.Error;
-            obj.ErrorText = $"Error, the maximum amount to withdraw is {maximum} BTC";
+            obj.ErrorText = $"Error, the maximum amount to withdraw is {maximum:f8} BTC";
         }
     }
 

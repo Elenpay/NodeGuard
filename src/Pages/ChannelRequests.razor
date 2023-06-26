@@ -125,7 +125,7 @@
             <DataGridColumn TItem="ChannelOperationRequest" Field="@nameof(ChannelOperationRequest.Amount)" Caption="Capacity" Sortable="false" Displayable="true" PopupFieldColumnSize="ColumnSize.Is12" Editable="true">
                 <DisplayTemplate>
                     @{
-                        @($"{context.Amount} BTC")
+                        @($"{context.Amount:f8} BTC")
                         @($" ({Math.Round(PriceConversionHelper.BtcToUsdConversion(context.Amount, _btcPrice), 2)} USD)")
                     }
                 </DisplayTemplate>
@@ -265,7 +265,7 @@
         <DataGridColumn TItem="ChannelOperationRequest" Field="@nameof(ChannelOperationRequest.Amount)" Caption="Capacity" Sortable="false" Displayable="true">
             <DisplayTemplate>
                 @{
-                    @($"{context.Amount} BTC")
+                    @($"{context.Amount:f8} BTC")
                     @($" ({Math.Round(PriceConversionHelper.BtcToUsdConversion(context.Amount, _btcPrice), 2)} USD)")
                 }
             </DisplayTemplate>
