@@ -153,7 +153,7 @@
                         <EditTemplate>
                             @if (_selectedRequestWalletBalance != null)
                             {
-                                <p>@($"{_selectedRequestWalletBalance} BTC ({Math.Round(PriceConversionHelper.BtcToUsdConversion((decimal)_selectedRequestWalletBalance, _btcPrice), 2)} USD)")</p>
+                                <p>@($"{_selectedRequestWalletBalance:f8} BTC ({Math.Round(PriceConversionHelper.BtcToUsdConversion((decimal)_selectedRequestWalletBalance, _btcPrice), 2)} USD)")</p>
                             }
                         </EditTemplate>
                     </DataGridColumn>
@@ -161,7 +161,7 @@
                 <DataGridColumn TItem="WalletWithdrawalRequest" PopupFieldColumnSize="ColumnSize.Is12" Editable="true" Displayable="true" Field="@nameof(WalletWithdrawalRequest.Amount)" Caption="Amount (BTC)" Sortable="false" >
                     <DisplayTemplate>
                         @{
-                            @($"{context.Amount} BTC ({Math.Round(PriceConversionHelper.BtcToUsdConversion(context.Amount, _btcPrice), 2)} USD)")
+                            @($"{context.Amount:f8} BTC ({Math.Round(PriceConversionHelper.BtcToUsdConversion(context.Amount, _btcPrice), 2)} USD)")
                         }
                     </DisplayTemplate>
                     <EditTemplate>
@@ -297,7 +297,7 @@
                 <DataGridColumn TItem="WalletWithdrawalRequest" Editable="true"  Field="@nameof(WalletWithdrawalRequest.Amount)" Caption="Amount (BTC)" Sortable="false" Displayable="true">
                     <DisplayTemplate>
                         @{
-                            @($"{context.Amount} BTC ({Math.Round(PriceConversionHelper.BtcToUsdConversion(context.Amount, _btcPrice), 2)} USD)")
+                            @($"{context.Amount:f8} BTC ({Math.Round(PriceConversionHelper.BtcToUsdConversion(context.Amount, _btcPrice), 2)} USD)")
                         }
                     </DisplayTemplate>
 
@@ -534,7 +534,7 @@
             if (arg.Item.Amount > balance.Item1)
             {
                 ToastService.ShowError(
-                    $"The confirmed balance({balance.Item1} BTC) for the selected wallet is less than the amount requested to withdraw ({arg.Item.Amount})");
+                    $"The confirmed balance({balance.Item1:f8} BTC) for the selected wallet is less than the amount requested to withdraw ({arg.Item.Amount:f8} BTC)");
                 await GetData();
                 return true;
             }

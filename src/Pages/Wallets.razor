@@ -644,8 +644,8 @@
             if (balance != null)
             {
                 _textModalTitle = $"Wallet: {wallet.Name} On-chain Balance";
-                _textModalContent = $"Confirmed: {((Money) balance.Confirmed).ToUnit(MoneyUnit.BTC)} BTC ({Math.Round(PriceConversionHelper.BtcToUsdConversion(((Money) balance.Confirmed).ToUnit(MoneyUnit.BTC), _btcPrice), 2)} USD) - " +
-                                    $"Unconfirmed: {((Money) balance.Unconfirmed).ToUnit(MoneyUnit.BTC)} BTC ({Math.Round(PriceConversionHelper.BtcToUsdConversion(((Money) balance.Unconfirmed).ToUnit(MoneyUnit.BTC), _btcPrice), 2)} USD)";
+                _textModalContent = $"Confirmed: {((Money) balance.Confirmed).ToUnit(MoneyUnit.BTC):f8} BTC ({Math.Round(PriceConversionHelper.BtcToUsdConversion(((Money) balance.Confirmed).ToUnit(MoneyUnit.BTC), _btcPrice), 2)} USD) - " +
+                                    $"Unconfirmed: {((Money) balance.Unconfirmed).ToUnit(MoneyUnit.BTC):f8} BTC ({Math.Round(PriceConversionHelper.BtcToUsdConversion(((Money) balance.Unconfirmed).ToUnit(MoneyUnit.BTC), _btcPrice), 2)} USD)";
                 _textModalCopy = false;
 
                 await _textModalRef.Show();
