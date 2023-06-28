@@ -47,7 +47,24 @@
         </PopupTitleTemplate>
         <ChildContent>
             <DataGridColumn TItem="ChannelOperationRequest" Field="@nameof(ChannelOperationRequest.Id)" Caption="#" Sortable="false" Displayable="true"/>
-            <DataGridColumn TItem="ChannelOperationRequest" Field="DestNode.Name" Caption="Remote Node" Sortable="false" Displayable="true" PopupFieldColumnSize="ColumnSize.Is12" Editable="true"
+            <DataGridColumn TItem="ChannelOperationRequest" Field="SourceNode.Name" Caption="Source Node" Sortable="false" Displayable="@IsPendingRequestsColumnVisible(PendingRequestsColumnName.SourceNode)" PopupFieldColumnSize="ColumnSize.Is12" Editable="true">
+                <EditTemplate>
+                    <Validation Validator="ValidationRule.IsSelected" @ref="_sourceNodeValidation">
+                        <SelectList TItem="Node"
+                                    TValue="int"
+                                    Data="@_manageableNodes"
+                                    TextField="@((item) => item.Name)"
+                                    ValueField="@((item) => item.Id)"
+                                    SelectedValueChanged="@OnSelectedSourceNode"
+                                    DefaultItemText="Choose the source node">
+                            <Feedback>
+                                <ValidationError/>
+                            </Feedback>
+                        </SelectList>
+                    </Validation>
+                </EditTemplate>
+            </DataGridColumn>
+            <DataGridColumn TItem="ChannelOperationRequest" Field="DestNode.Name" Caption="Remote Node" Sortable="false" Displayable="@IsPendingRequestsColumnVisible(PendingRequestsColumnName.RemoteNode)" PopupFieldColumnSize="ColumnSize.Is12" Editable="true"
                             Validator="ValidationRule.IsAlphanumeric">
                 <EditTemplate>
                     <Validation Validator="@((ValidatorEventArgs obj) => ValidationHelper.validateDestNode(obj, _selectedDestNode))" @ref="_destNodeValidation">
@@ -65,24 +82,7 @@
                     </Validation>
                 </EditTemplate>
             </DataGridColumn>
-            <DataGridColumn TItem="ChannelOperationRequest" Field="SourceNode.Name" Caption="Source Node" Sortable="false" Displayable="true" PopupFieldColumnSize="ColumnSize.Is12" Editable="true">
-                <EditTemplate>
-                    <Validation Validator="ValidationRule.IsSelected" @ref="_sourceNodeValidation">
-                        <SelectList TItem="Node"
-                                    TValue="int"
-                                    Data="@_manageableNodes"
-                                    TextField="@((item) => item.Name)"
-                                    ValueField="@((item) => item.Id)"
-                                    SelectedValueChanged="@OnSelectedSourceNode"
-                                    DefaultItemText="Choose the source node">
-                            <Feedback>
-                                <ValidationError/>
-                            </Feedback>
-                        </SelectList>
-                    </Validation>
-                </EditTemplate>
-            </DataGridColumn>
-            <DataGridColumn TItem="ChannelOperationRequest" Field="Wallet.Name" Caption="Source of Funds" Sortable="false" Displayable="true" PopupFieldColumnSize="ColumnSize.Is12" Editable="true">
+            <DataGridColumn TItem="ChannelOperationRequest" Field="Wallet.Name" Caption="Source of Funds" Sortable="false" Displayable="@IsPendingRequestsColumnVisible(PendingRequestsColumnName.SourceOfFunds)" PopupFieldColumnSize="ColumnSize.Is12" Editable="true">
                 <DisplayTemplate>
                     @if (context.Wallet != null)
                     {
@@ -117,7 +117,7 @@
                     </Validation>
                 </EditTemplate>
             </DataGridColumn>
-            <DataGridColumn TItem="ChannelOperationRequest" Field="@nameof(ChannelOperationRequest.Amount)" Caption="Capacity" Sortable="false" Displayable="true" PopupFieldColumnSize="ColumnSize.Is12" Editable="true">
+            <DataGridColumn TItem="ChannelOperationRequest" Field="@nameof(ChannelOperationRequest.Amount)" Caption="Capacity" Sortable="false" Displayable="@IsPendingRequestsColumnVisible(PendingRequestsColumnName.Capacity)" PopupFieldColumnSize="ColumnSize.Is12" Editable="true">
                 <DisplayTemplate>
                     @{
                         @($"{context.Amount:f8} BTC")
@@ -151,33 +151,33 @@
                     }
                 </EditTemplate>
             </DataGridColumn>
-                <DataGridColumn TItem="ChannelOperationRequest" Displayable="true" Editable="true" Caption="Fees" PopupFieldColumnSize="ColumnSize.Is12">
-                    <EditTemplate>
-                        <div class="d-flex">
-                            <Select TValue="MempoolRecommendedFeesTypes" SelectedValueChanged="async (value) => await OnChangeFeeSelection(value)">
-                                <SelectGroup Label="Default">
-                                    <SelectItem Value="MempoolRecommendedFeesTypes.EconomyFee">Economy Fee</SelectItem>
-                                    <SelectItem Value="MempoolRecommendedFeesTypes.FastestFee">Fastest Fee</SelectItem>
-                                    <SelectItem Value="MempoolRecommendedFeesTypes.HourFee">Hour Fee</SelectItem>
-                                    <SelectItem Value="MempoolRecommendedFeesTypes.HalfHourFee">Half Hour Fee</SelectItem>
-                                </SelectGroup>
-                                <SelectItem Value="MempoolRecommendedFeesTypes.CustomFee">Custom</SelectItem>
-                            </Select>
-                            <NumericPicker TValue="long" @bind-Value="@FeeAmount" CurrencySymbolPlacement="CurrencySymbolPlacement.Suffix" CurrencySymbol=" sats/vbyte" Min="1" Disabled="@(FeesSelection != MempoolRecommendedFeesTypes.CustomFee)">
-                                <Feedback>
-                                    <ValidationError/>
-                                </Feedback>
-                            </NumericPicker>
-                        </div>
-                    </EditTemplate>
-                </DataGridColumn>
-            <DataGridColumn TItem="ChannelOperationRequest" Field="@nameof(ChannelOperationRequest.IsChannelPrivate)" Caption="Private" Displayable="true" Editable="true">
+            <DataGridColumn TItem="ChannelOperationRequest" Displayable="@IsPendingRequestsColumnVisible(PendingRequestsColumnName.FeeRates)" Editable="true" Caption="Fee Rates" PopupFieldColumnSize="ColumnSize.Is12">
+                <EditTemplate>
+                    <div class="d-flex">
+                        <Select TValue="MempoolRecommendedFeesTypes" SelectedValueChanged="async (value) => await OnChangeFeeSelection(value)">
+                            <SelectGroup Label="Default">
+                                <SelectItem Value="MempoolRecommendedFeesTypes.EconomyFee">Economy Fee</SelectItem>
+                                <SelectItem Value="MempoolRecommendedFeesTypes.FastestFee">Fastest Fee</SelectItem>
+                                <SelectItem Value="MempoolRecommendedFeesTypes.HourFee">Hour Fee</SelectItem>
+                                <SelectItem Value="MempoolRecommendedFeesTypes.HalfHourFee">Half Hour Fee</SelectItem>
+                            </SelectGroup>
+                            <SelectItem Value="MempoolRecommendedFeesTypes.CustomFee">Custom</SelectItem>
+                        </Select>
+                        <NumericPicker TValue="long" @bind-Value="@FeeAmount" CurrencySymbolPlacement="CurrencySymbolPlacement.Suffix" CurrencySymbol=" sats/vbyte" Min="1" Disabled="@(FeesSelection != MempoolRecommendedFeesTypes.CustomFee)">
+                            <Feedback>
+                                <ValidationError/>
+                            </Feedback>
+                        </NumericPicker>
+                    </div>
+                </EditTemplate>
+            </DataGridColumn>
+            <DataGridColumn TItem="ChannelOperationRequest" Field="@nameof(ChannelOperationRequest.IsChannelPrivate)" Caption="Private" Displayable="@IsPendingRequestsColumnVisible(PendingRequestsColumnName.Private)" Editable="true">
                 <EditTemplate>
                     <Check TValue="bool" @bind-Checked="_selectedPrivate"></Check>
                     <FieldHelp>Check to make this channel private</FieldHelp>
                 </EditTemplate>
             </DataGridColumn>
-            <DataGridColumn TItem="ChannelOperationRequest" Field="@nameof(ChannelOperationRequest.WalletId)" Caption="Signatures Collected" Sortable="false" Displayable="true">
+            <DataGridColumn TItem="ChannelOperationRequest" Field="@nameof(ChannelOperationRequest.WalletId)" Caption="Signatures Collected" Sortable="false" Displayable="@IsPendingRequestsColumnVisible(PendingRequestsColumnName.SignaturesCollected)">
                 <DisplayTemplate>
                     @{
                         if (context.RequestType == OperationRequestType.Open)
@@ -193,7 +193,7 @@
                     }
                 </DisplayTemplate>
             </DataGridColumn>
-            <DataGridColumn TItem="ChannelOperationRequest" Field="@nameof(ChannelOperationRequest.Status).Humanize(LetterCasing.Sentence)" Caption="Status" Sortable="false" Displayable="true">
+            <DataGridColumn TItem="ChannelOperationRequest" Field="@nameof(ChannelOperationRequest.Status).Humanize(LetterCasing.Sentence)" Caption="Status" Sortable="false" Displayable="@IsPendingRequestsColumnVisible(PendingRequestsColumnName.Status)">
                 <DisplayTemplate>
                     @context?.Status.Humanize()
                 </DisplayTemplate>
@@ -217,7 +217,7 @@
                     }
                 </EditCommandTemplate>
                 <NewCommandTemplate>
-                    <Button hidden/>
+                    <ColumnLayout @ref="PendingRequestsColumnLayout" ColumnType="PendingRequestsColumnName" OnUpdate="@OnColumnLayoutUpdate"/>
                 </NewCommandTemplate>
                 <DeleteCommandTemplate>
                     <Button Color="Color.Primary" hidden></Button>
@@ -254,10 +254,10 @@
           Striped="true">
     <ChildContent>
         <DataGridColumn TItem="ChannelOperationRequest" Field="@nameof(ChannelOperationRequest.Id)" Caption="#" Sortable="false" Displayable="true"/>
-        <DataGridColumn TItem="ChannelOperationRequest" Field="SourceNode.Name" Caption="Source Node" Sortable="false" Displayable="true"/>
-        <DataGridColumn TItem="ChannelOperationRequest" Field="DestNode.Name" Caption="Remote Node" Sortable="false" Displayable="true"/>
-        <DataGridColumn TItem="ChannelOperationRequest" Field="Wallet.Name" Caption="Source of Funds" Sortable="false" Displayable="true"/>
-        <DataGridColumn TItem="ChannelOperationRequest" Field="@nameof(ChannelOperationRequest.Amount)" Caption="Capacity" Sortable="false" Displayable="true">
+        <DataGridColumn TItem="ChannelOperationRequest" Field="SourceNode.Name" Caption="Source Node" Sortable="false" Displayable="@IsAllRequestsColumnVisible(AllRequestsColumnName.SourceNode)"/>
+        <DataGridColumn TItem="ChannelOperationRequest" Field="DestNode.Name" Caption="Remote Node" Sortable="false" Displayable="@IsAllRequestsColumnVisible(AllRequestsColumnName.RemoteNode)"/>
+        <DataGridColumn TItem="ChannelOperationRequest" Field="Wallet.Name" Caption="Source of Funds" Sortable="false" Displayable="@IsAllRequestsColumnVisible(AllRequestsColumnName.SourceOfFunds)"/>
+        <DataGridColumn TItem="ChannelOperationRequest" Field="@nameof(ChannelOperationRequest.Amount)" Caption="Capacity" Sortable="false" Displayable="@IsAllRequestsColumnVisible(AllRequestsColumnName.Capacity)">
             <DisplayTemplate>
                 @{
                     @($"{context.Amount:f8} BTC")
@@ -265,7 +265,7 @@
                 }
             </DisplayTemplate>
         </DataGridColumn>
-        <DataGridColumn TItem="ChannelOperationRequest" Field="@nameof(ChannelOperationRequest.FeeRate)" Caption="Fees" Displayable="true">
+        <DataGridColumn TItem="ChannelOperationRequest" Field="@nameof(ChannelOperationRequest.FeeRate)" Caption="Fee Rate" Displayable="@IsAllRequestsColumnVisible(AllRequestsColumnName.FeeRates)">
             <DisplayTemplate>
                 @{
                     if (context.FeeRate != null)
@@ -275,8 +275,8 @@
                 }
             </DisplayTemplate>
         </DataGridColumn>
-        <DataGridColumn TItem="ChannelOperationRequest" Field="@nameof(ChannelOperationRequest.IsChannelPrivate)" Caption="Private" Displayable="true"></DataGridColumn>
-        <DataGridColumn TItem="ChannelOperationRequest" Field="@nameof(ChannelOperationRequest.WalletId)" Caption="Signatures Collected" Sortable="false" Displayable="true">
+        <DataGridColumn TItem="ChannelOperationRequest" Field="@nameof(ChannelOperationRequest.IsChannelPrivate)" Caption="Private" Displayable="@IsAllRequestsColumnVisible(AllRequestsColumnName.Private)"></DataGridColumn>
+        <DataGridColumn TItem="ChannelOperationRequest" Field="@nameof(ChannelOperationRequest.WalletId)" Caption="Signatures Collected" Sortable="false" Displayable="@IsAllRequestsColumnVisible(AllRequestsColumnName.SignaturesCollected)">
             <DisplayTemplate>
                 @{
                     if (context.RequestType == OperationRequestType.Open)
@@ -292,18 +292,18 @@
                 }
             </DisplayTemplate>
         </DataGridColumn>
-        <DataGridColumn TItem="ChannelOperationRequest" Field="@nameof(ChannelOperationRequest.Status).Humanize(LetterCasing.Sentence)" Caption="Status" Sortable="false" Displayable="true"/>
-        <DataGridColumn TItem="ChannelOperationRequest" Field="@nameof(ChannelOperationRequest.CreationDatetime)" Caption="Creation Date" Sortable="true" SortDirection="SortDirection.Descending">
+        <DataGridColumn TItem="ChannelOperationRequest" Field="@nameof(ChannelOperationRequest.Status).Humanize(LetterCasing.Sentence)" Caption="Status" Sortable="false" Displayable="@IsAllRequestsColumnVisible(AllRequestsColumnName.Status)"/>
+        <DataGridColumn TItem="ChannelOperationRequest" Field="@nameof(ChannelOperationRequest.CreationDatetime)" Caption="Creation Date" Sortable="true" SortDirection="SortDirection.Descending" Displayable="@IsAllRequestsColumnVisible(AllRequestsColumnName.CreationDate)">
             <DisplayTemplate>
                 @context.CreationDatetime.Humanize()
             </DisplayTemplate>
         </DataGridColumn>
-        <DataGridColumn TItem="ChannelOperationRequest" Field="@nameof(ChannelOperationRequest.UpdateDatetime)" Caption="Update date" Sortable="true">
+        <DataGridColumn TItem="ChannelOperationRequest" Field="@nameof(ChannelOperationRequest.UpdateDatetime)" Caption="Update date" Sortable="true" Displayable="@IsAllRequestsColumnVisible(AllRequestsColumnName.UpdateDate)">
             <DisplayTemplate>
                 @context.UpdateDatetime.Humanize()
             </DisplayTemplate>
         </DataGridColumn>
-        <DataGridColumn TItem="ChannelOperationRequest" Field="@nameof(ChannelOperationRequest.TxId)" Caption="Links" Sortable="false" Displayable="true">
+        <DataGridColumn TItem="ChannelOperationRequest" Field="@nameof(ChannelOperationRequest.TxId)" Caption="Links" Sortable="false" Displayable="@IsAllRequestsColumnVisible(AllRequestsColumnName.Links)">
             <DisplayTemplate>
                 @if (mempoolUrl != null && !context.TxId.IsNullOrEmpty())
                 {
@@ -311,23 +311,23 @@
                 }
             </DisplayTemplate>
         </DataGridColumn>
-        @if (_isNodeManager)
-        {
-            <DataGridColumn Caption="Actions">
-                <DisplayTemplate>
-                    @if (ShowActionDrowpdown(context))
-                    {
-                        <Dropdown>
-                            <DropdownToggle Color="Color.Primary">
-                            </DropdownToggle>
-                            <DropdownMenu>
-                                <DropdownItem Clicked="() => ShowMarkRequestAsFailedConfirmationModal(context)">Mark as failed</DropdownItem>
-                            </DropdownMenu>
-                        </Dropdown>
-                    }
-                </DisplayTemplate>
-            </DataGridColumn>
-        }
+        <DataGridColumn TItem="ChannelOperationRequest" Caption="Actions" Displayable="true">
+            <FilterTemplate>
+                <ColumnLayout @ref="AllRequestsColumnLayout" ColumnType="AllRequestsColumnName" OnUpdate="@OnColumnLayoutUpdate"/>
+            </FilterTemplate>
+            <DisplayTemplate>
+                @if (_isNodeManager && ShowActionDrowpdown(context))
+                {
+                    <Dropdown>
+                        <DropdownToggle Color="Color.Primary">
+                        </DropdownToggle>
+                        <DropdownMenu>
+                            <DropdownItem Clicked="() => ShowMarkRequestAsFailedConfirmationModal(context)">Mark as failed</DropdownItem>
+                        </DropdownMenu>
+                    </Dropdown>
+                }
+            </DisplayTemplate>
+        </DataGridColumn>
     </ChildContent>
     <EmptyTemplate>
         <div class="box">
@@ -375,8 +375,7 @@
 
 <UTXOSelectorModal
     @ref="_utxoSelectorModalRef"
-    OnClose="@OnCloseCoinSelectionModal"
-/>
+    OnClose="@OnCloseCoinSelectionModal"/>
 
 @inject IChannelOperationRequestRepository ChannelOperationRequestRepository
 @inject IChannelOperationRequestPSBTRepository ChannelOperationRequestPsbtRepository
@@ -408,6 +407,8 @@
     private MempoolRecommendedFeesTypes FeesSelection;
     private long FeeAmount = 1;
     private MempoolRecommendedFees? _recommendedFees;
+    private ColumnLayout<PendingRequestsColumnName> PendingRequestsColumnLayout;
+    private ColumnLayout<AllRequestsColumnName> AllRequestsColumnLayout;
 
     // New Request integration
     private List<Wallet> _allWallets = new List<Wallet>();
@@ -441,6 +442,35 @@
     [CascadingParameter]
     private ClaimsPrincipal? ClaimsPrincipal { get; set; }
 
+    private bool layoutInitialized;
+
+    public abstract class PendingRequestsColumnName
+    {
+        public static readonly ColumnDefault SourceNode = new("Source Node");
+        public static readonly ColumnDefault RemoteNode = new("Remote Node");
+        public static readonly ColumnDefault SourceOfFunds = new("Source of Funds");
+        public static readonly ColumnDefault Capacity = new("Capacity");
+        public static readonly ColumnDefault FeeRates = new("Fee Rates");
+        public static readonly ColumnDefault Private = new("Private");
+        public static readonly ColumnDefault SignaturesCollected = new("Signatures Collected");
+        public static readonly ColumnDefault Status = new("Status");
+    }
+
+    public abstract class AllRequestsColumnName
+    {
+        public static readonly ColumnDefault SourceNode = new("Source Node");
+        public static readonly ColumnDefault RemoteNode = new("Remote Node");
+        public static readonly ColumnDefault SourceOfFunds = new("Source of Funds");
+        public static readonly ColumnDefault Capacity = new("Capacity");
+        public static readonly ColumnDefault FeeRates = new("Fee Rates");
+        public static readonly ColumnDefault Private = new("Private");
+        public static readonly ColumnDefault SignaturesCollected = new("Signatures Collected");
+        public static readonly ColumnDefault Status = new("Status");
+        public static readonly ColumnDefault CreationDate = new("Creation Date");
+        public static readonly ColumnDefault UpdateDate = new("Update Date");
+        public static readonly ColumnDefault Links = new("Links");
+    }
+
     protected override async Task OnInitializedAsync()
     {
         if (LoggedUser == null) return;
@@ -455,6 +485,17 @@
         }
         await FetchRequests();
         await LoadData();
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (PendingRequestsColumnLayout != null && AllRequestsColumnLayout != null && !layoutInitialized)
+        {
+            await PendingRequestsColumnLayout.InitializeColumnLayout();
+            await AllRequestsColumnLayout.InitializeColumnLayout();
+            OnColumnLayoutUpdate();
+            layoutInitialized = true;
+        }
     }
 
     private async Task OnShowNewChannelRequestModal()
@@ -949,5 +990,28 @@
                 FeeAmount = 1;
                 break;
         }
+    }
+
+    private void OnColumnLayoutUpdate()
+    {
+        StateHasChanged();
+    }
+
+    private bool IsPendingRequestsColumnVisible(ColumnDefault column)
+    {
+        if (PendingRequestsColumnLayout	== null)
+        {
+            return true;
+        }
+        return PendingRequestsColumnLayout.IsColumnVisible(column);
+    }
+
+    private bool IsAllRequestsColumnVisible(ColumnDefault column)
+    {
+        if (AllRequestsColumnLayout	== null)
+        {
+            return true;
+        }
+        return AllRequestsColumnLayout.IsColumnVisible(column);
     }
 }
