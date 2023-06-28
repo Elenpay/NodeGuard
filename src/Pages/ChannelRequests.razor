@@ -442,8 +442,6 @@
     [CascadingParameter]
     private ClaimsPrincipal? ClaimsPrincipal { get; set; }
 
-    private bool layoutInitialized;
-
     public abstract class PendingRequestsColumnName
     {
         public static readonly ColumnDefault SourceNode = new("Source Node");
@@ -485,17 +483,6 @@
         }
         await FetchRequests();
         await LoadData();
-    }
-
-    protected override async Task OnAfterRenderAsync(bool firstRender)
-    {
-        if (PendingRequestsColumnLayout != null && AllRequestsColumnLayout != null && !layoutInitialized)
-        {
-            await PendingRequestsColumnLayout.InitializeColumnLayout();
-            await AllRequestsColumnLayout.InitializeColumnLayout();
-            OnColumnLayoutUpdate();
-            layoutInitialized = true;
-        }
     }
 
     private async Task OnShowNewChannelRequestModal()

@@ -24,7 +24,13 @@
     [Parameter]
     public Action OnUpdate { private get; set; } = () => { };
 
-    public async Task InitializeColumnLayout()
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadStateAsync();
+        OnUpdate();
+    }
+
+    private async Task LoadStateAsync()
     {
         var result = await ProtectedLocalStorage.GetAsync<Dictionary<string, bool>>(typeof(ColumnType).Name);
         if (result.Success)
