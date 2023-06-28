@@ -217,7 +217,7 @@
                     }
                 </EditCommandTemplate>
                 <NewCommandTemplate>
-                    <ColumnLayout @ref="PendingRequestsColumnLayout" ColumnType="PendingRequestsColumnName" OnUpdate="@OnColumnLayoutUpdate"/>
+                    <ColumnLayout @ref="PendingRequestsColumnLayout" Columns="@PendingRequestsColumns" ColumnType="PendingRequestsColumnName" OnUpdate="@OnColumnLayoutUpdate"/>
                 </NewCommandTemplate>
                 <DeleteCommandTemplate>
                     <Button Color="Color.Primary" hidden></Button>
@@ -313,7 +313,7 @@
         </DataGridColumn>
         <DataGridColumn TItem="ChannelOperationRequest" Caption="Actions" Displayable="true">
             <FilterTemplate>
-                <ColumnLayout @ref="AllRequestsColumnLayout" ColumnType="AllRequestsColumnName" OnUpdate="@OnColumnLayoutUpdate"/>
+                <ColumnLayout @ref="AllRequestsColumnLayout" Columns="@AllRequestsColumns" ColumnType="AllRequestsColumnName" OnUpdate="@OnColumnLayoutUpdate"/>
             </FilterTemplate>
             <DisplayTemplate>
                 @if (_isNodeManager && ShowActionDrowpdown(context))
@@ -386,6 +386,7 @@
 @inject INodeRepository NodeRepository
 @inject ICoinSelectionService CoinSelectionService
 @inject INBXplorerService NBXplorerService
+@inject LocalStorageService LocalStorageService
 
 @code {
     private List<ChannelOperationRequest>? _channelRequests;
@@ -409,6 +410,8 @@
     private MempoolRecommendedFees? _recommendedFees;
     private ColumnLayout<PendingRequestsColumnName> PendingRequestsColumnLayout;
     private ColumnLayout<AllRequestsColumnName> AllRequestsColumnLayout;
+    private Dictionary<string, bool> PendingRequestsColumns = new();
+    private Dictionary<string, bool> AllRequestsColumns = new();
 
     // New Request integration
     private List<Wallet> _allWallets = new List<Wallet>();
@@ -481,8 +484,16 @@
         {
             ToastService.ShowError("Bitcoin price in USD could not be retrieved.");
         }
+        await LoadColumnLayout();
         await FetchRequests();
         await LoadData();
+    }
+
+    private async Task LoadColumnLayout()
+    {
+        AllRequestsColumns = await LocalStorageService.LoadStorage(nameof(AllRequestsColumnName), ColumnHelpers.GetColumnsDictionary<AllRequestsColumnName>());
+        PendingRequestsColumns = await LocalStorageService.LoadStorage(nameof(PendingRequestsColumnName), ColumnHelpers.GetColumnsDictionary<PendingRequestsColumnName>());
+        StateHasChanged();
     }
 
     private async Task OnShowNewChannelRequestModal()

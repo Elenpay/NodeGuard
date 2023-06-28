@@ -112,6 +112,7 @@ namespace FundsManager
 
             //Service DI
             builder.Services.AddTransient<ClipboardService>();
+            builder.Services.AddTransient<LocalStorageService>();
             builder.Services.AddTransient<ILightningService, LightningService>();
             builder.Services.AddTransient<IBitcoinService, BitcoinService>();
             builder.Services.AddTransient<NotificationService, NotificationService>();

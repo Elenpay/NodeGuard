@@ -30,3 +30,11 @@ public class ColumnDefault
         Visibility = visibility;
     }
 }
+
+public static class ColumnHelpers
+{
+    public static Dictionary<string, bool> GetColumnsDictionary<T>()
+    {
+        return typeof(T).GetFields().Select(p => (ColumnDefault)p.GetValue(null)).ToDictionary((c) => c.Name, (c) => c.Visibility);
+    }
+}

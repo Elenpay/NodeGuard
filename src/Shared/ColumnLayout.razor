@@ -15,41 +15,20 @@
 </Dropdown>
 
 @using Microsoft.AspNetCore.Components.Server.ProtectedBrowserStorage
-@inject ProtectedLocalStorage ProtectedLocalStorage
+@inject LocalStorageService LocalStorageService
 @typeparam ColumnType
 @code {
-    [Parameter]
+    [Parameter, EditorRequired]
     public Dictionary<string, bool> Columns { get; set; } = new();
 
     [Parameter]
     public Action OnUpdate { private get; set; } = () => { };
 
-    protected override async Task OnInitializedAsync()
-    {
-        await LoadStateAsync();
-        OnUpdate();
-    }
-
-    private async Task LoadStateAsync()
-    {
-        var result = await ProtectedLocalStorage.GetAsync<Dictionary<string, bool>>(typeof(ColumnType).Name);
-        if (result.Success)
-        {
-            Columns = result.Value;
-        }
-        else
-        {
-            Columns = GetColumnsDictionary();
-            await ProtectedLocalStorage.SetAsync(typeof(ColumnType).Name, Columns);
-        }
-    }
-
     private async Task OnColumnChanged(string key, bool value)
     {
         Columns[key] = value;
-        await ProtectedLocalStorage.SetAsync(typeof(ColumnType).Name, Columns);
+        await LocalStorageService.SetStorage(typeof(ColumnType).Name, Columns);
         OnUpdate();
-        StateHasChanged();
     }
 
     public bool IsColumnVisible(ColumnDefault column)
@@ -59,10 +38,5 @@
             return value;
         }
         return true;
-    }
-
-    private Dictionary<string, bool> GetColumnsDictionary()
-    {
-        return typeof(ColumnType).GetFields().Select(p => (ColumnDefault)p.GetValue(null)).ToDictionary((c) => c.Name, (c) => c.Visibility);
     }
 }
