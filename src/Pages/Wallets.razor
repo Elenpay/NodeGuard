@@ -49,7 +49,6 @@
 
                                     <DropdownItem Clicked="context.Clicked">New</DropdownItem>
                                     <DropdownItem Clicked="@(() => ShowImportWalletModal())">Import Wallet</DropdownItem>
-                                    <DropdownItem Clicked="@ShowWallets">@("Archived & compromised wallets" + (_showNotAvailableWallets ? "  \u2713" : ""))</DropdownItem>
 
                                 </DropdownMenu>
                             </Dropdown>
@@ -413,8 +412,6 @@
     private bool _archivedWalletFilter = false;
     private bool _compromisedWalletFilter = false;
 
-    private bool _showNotAvailableWallets = false;
-
     protected override async Task OnInitializedAsync()
     {
         _btcPrice = PriceConversionHelper.GetBtcToUsdPrice();
@@ -434,8 +431,7 @@
 
     private async Task GetData()
     {
-        var allWallets = await WalletRepository.GetAll();
-        _wallets = _showNotAvailableWallets ? allWallets.Where(x => x.IsArchived || x.IsCompromised).ToList() : allWallets.Where(x => !x.IsArchived && !x.IsCompromised).ToList();
+        _wallets = await WalletRepository.GetAll();
         var financeManagers = (await ApplicationUserRepository.GetUsersInRole(ApplicationUserRole.FinanceManager));
         _financeManagers = financeManagers.Where(x => x.Keys.Any()).ToList();
 
@@ -866,12 +862,6 @@
     {
         await ClipboardService.WriteTextAsync(arg);
         ToastService.ShowSuccess("Address copied");
-    }
-
-    private async Task ShowWallets()
-    {
-        _showNotAvailableWallets = !_showNotAvailableWallets;
-        await GetData();
     }
 
     private bool OnCustomFilter(object item, object value)
