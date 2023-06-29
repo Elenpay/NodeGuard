@@ -151,7 +151,7 @@
                     }
                 </EditTemplate>
             </DataGridColumn>
-            <DataGridColumn TItem="ChannelOperationRequest" Displayable="@IsPendingRequestsColumnVisible(PendingRequestsColumnName.FeeRates)" Editable="true" Caption="Fee Rates" PopupFieldColumnSize="ColumnSize.Is12">
+            <DataGridColumn TItem="ChannelOperationRequest" Displayable="@IsPendingRequestsColumnVisible(PendingRequestsColumnName.FeeRates)" Editable="true" Caption="Fee Rate" PopupFieldColumnSize="ColumnSize.Is12">
                 <EditTemplate>
                     <div class="d-flex">
                         <Select TValue="MempoolRecommendedFeesTypes" SelectedValueChanged="async (value) => await OnChangeFeeSelection(value)">
@@ -163,7 +163,7 @@
                             </SelectGroup>
                             <SelectItem Value="MempoolRecommendedFeesTypes.CustomFee">Custom</SelectItem>
                         </Select>
-                        <NumericPicker TValue="long" @bind-Value="@FeeAmount" CurrencySymbolPlacement="CurrencySymbolPlacement.Suffix" CurrencySymbol=" sats/vbyte" Min="1" Disabled="@(FeesSelection != MempoolRecommendedFeesTypes.CustomFee)">
+                        <NumericPicker TValue="long" @bind-Value="@FeeAmount" CurrencySymbolPlacement="CurrencySymbolPlacement.Suffix" CurrencySymbol=" sats/vb" Min="1" Disabled="@(FeesSelection != MempoolRecommendedFeesTypes.CustomFee)">
                             <Feedback>
                                 <ValidationError/>
                             </Feedback>
@@ -451,7 +451,7 @@
         public static readonly ColumnDefault RemoteNode = new("Remote Node");
         public static readonly ColumnDefault SourceOfFunds = new("Source of Funds");
         public static readonly ColumnDefault Capacity = new("Capacity");
-        public static readonly ColumnDefault FeeRates = new("Fee Rates");
+        public static readonly ColumnDefault FeeRates = new("Fee Rate");
         public static readonly ColumnDefault Private = new("Private");
         public static readonly ColumnDefault SignaturesCollected = new("Signatures Collected");
         public static readonly ColumnDefault Status = new("Status");
@@ -463,7 +463,7 @@
         public static readonly ColumnDefault RemoteNode = new("Remote Node");
         public static readonly ColumnDefault SourceOfFunds = new("Source of Funds");
         public static readonly ColumnDefault Capacity = new("Capacity");
-        public static readonly ColumnDefault FeeRates = new("Fee Rates");
+        public static readonly ColumnDefault FeeRates = new("Fee Rate");
         public static readonly ColumnDefault Private = new("Private");
         public static readonly ColumnDefault SignaturesCollected = new("Signatures Collected");
         public static readonly ColumnDefault Status = new("Status");
