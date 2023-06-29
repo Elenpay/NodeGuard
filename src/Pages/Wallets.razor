@@ -103,11 +103,15 @@
                     </EditTemplate>
                 </DataGridColumn>
                 <DataGridColumn TItem="Wallet" Editable="true" Field="@nameof(Wallet.Description)" Caption="@nameof(Wallet.Description)" Sortable="false"/>
-                <DataGridColumn TItem="Wallet" Displayable="false" Filterable="true" Field="@nameof(Wallet.IsHotWallet)" CustomFilter="((searchItem, searchValue) => OnCustomFilter(searchItem, _hotWalletFilter))"/>
-                <DataGridColumn TItem="Wallet" Displayable="false" Filterable="true" Field="@nameof(Wallet.IsHotWallet)" CustomFilter="((searchItem, searchValue) => OnCustomFilter(!(bool)searchItem, _coldWalletFilter))"/>
-                <DataGridColumn TItem="Wallet" Displayable="false" Filterable="true" Field="@nameof(Wallet.IsFinalised)" CustomFilter="((searchItem, searchValue) => OnCustomFilter(searchItem, _finalizedWalletFilter))"/>
-                <DataGridColumn TItem="Wallet" Displayable="false" Filterable="true" Field="@nameof(Wallet.IsArchived)" CustomFilter="((searchItem, searchValue) => OnCustomFilter(searchItem, _archivedWalletFilter))"/>
-                <DataGridColumn TItem="Wallet" Displayable="false" Filterable="true" Field="@nameof(Wallet.IsCompromised)" CustomFilter="((searchItem, searchValue) => OnCustomFilter(searchItem, _compromisedWalletFilter))"/>
+                <DataGridColumn TItem="Wallet" Displayable="false" Filterable="true" Caption="Hot Wallet" Field="@nameof(Wallet.IsHotWallet)" Editable="true" CustomFilter="((searchItem, searchValue) => OnCustomFilter(searchItem, _hotWalletFilter))">
+                    <EditTemplate>
+                        <Check TValue="bool" Disabled="@(context.Item.IsFinalised)" Checked="@((bool) context.CellValue)" CheckedChanged="(value) => OnCheckedChanged(context, value)" @ref="_hotWalletCheckComponent"/>
+                    </EditTemplate>
+                </DataGridColumn>
+                <DataGridColumn TItem="Wallet" Displayable="false" Filterable="true" Caption="Cold Wallet" Field="@nameof(Wallet.IsHotWallet)" Editable="false" CustomFilter="((searchItem, searchValue) => OnCustomFilter(!(bool)searchItem, _coldWalletFilter))"/>
+                <DataGridColumn TItem="Wallet" Displayable="false" Filterable="true" Caption="Finalized" Field="@nameof(Wallet.IsFinalised)" Editable="false" CustomFilter="((searchItem, searchValue) => OnCustomFilter(searchItem, _finalizedWalletFilter))"/>
+                <DataGridColumn TItem="Wallet" Displayable="false" Filterable="true" Caption="Archived" Field="@nameof(Wallet.IsArchived)" Editable="true" CellsEditableOnNewCommand="false" CustomFilter="((searchItem, searchValue) => OnCustomFilter(searchItem, _archivedWalletFilter))"/>
+                <DataGridColumn TItem="Wallet" Displayable="false" Filterable="true" Caption="Compromised" Field="@nameof(Wallet.IsCompromised)" Editable="true" CellsEditableOnNewCommand="false" CustomFilter="((searchItem, searchValue) => OnCustomFilter(searchItem, _compromisedWalletFilter))"/>
                 <DataGridSelectColumn TItem="Wallet" Sortable="false" Filterable="true">
                     <FilterTemplate>
                         <Dropdown>
