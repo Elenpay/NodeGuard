@@ -49,7 +49,6 @@
 
                                     <DropdownItem Clicked="context.Clicked">New</DropdownItem>
                                     <DropdownItem Clicked="@(() => ShowImportWalletModal())">Import Wallet</DropdownItem>
-                                    <DropdownItem Clicked="@ShowWallets">@("Archived & compromised wallets" + (_showNotAvailableWallets ? "  \u2713" : ""))</DropdownItem>
 
                                 </DropdownMenu>
                             </Dropdown>
@@ -104,7 +103,30 @@
                     </EditTemplate>
                 </DataGridColumn>
                 <DataGridColumn TItem="Wallet" Editable="true" Field="@nameof(Wallet.Description)" Caption="@nameof(Wallet.Description)" Sortable="false"/>
-                <DataGridColumn TItem="Wallet" Sortable="false" Filterable="false">
+                <DataGridColumn TItem="Wallet" Displayable="false" Filterable="true" Caption="Hot Wallet" Field="@nameof(Wallet.IsHotWallet)" Editable="true" CustomFilter="((searchItem, searchValue) => OnCustomFilter(searchItem, _hotWalletFilter))">
+                    <EditTemplate>
+                        <Check TValue="bool" Disabled="@(context.Item.IsFinalised)" Checked="@((bool) context.CellValue)" CheckedChanged="(value) => OnCheckedChanged(context, value)" @ref="_hotWalletCheckComponent"/>
+                    </EditTemplate>
+                </DataGridColumn>
+                <DataGridColumn TItem="Wallet" Displayable="false" Filterable="true" Caption="Cold Wallet" Field="@nameof(Wallet.IsHotWallet)" Editable="false" CustomFilter="((searchItem, searchValue) => OnCustomFilter(!(bool)searchItem, _coldWalletFilter))"/>
+                <DataGridColumn TItem="Wallet" Displayable="false" Filterable="true" Caption="Finalized" Field="@nameof(Wallet.IsFinalised)" Editable="false" CustomFilter="((searchItem, searchValue) => OnCustomFilter(searchItem, _finalizedWalletFilter))"/>
+                <DataGridColumn TItem="Wallet" Displayable="false" Filterable="true" Caption="Archived" Field="@nameof(Wallet.IsArchived)" Editable="true" CellsEditableOnNewCommand="false" CustomFilter="((searchItem, searchValue) => OnCustomFilter(searchItem, _archivedWalletFilter))"/>
+                <DataGridColumn TItem="Wallet" Displayable="false" Filterable="true" Caption="Compromised" Field="@nameof(Wallet.IsCompromised)" Editable="true" CellsEditableOnNewCommand="false" CustomFilter="((searchItem, searchValue) => OnCustomFilter(searchItem, _compromisedWalletFilter))"/>
+                <DataGridSelectColumn TItem="Wallet" Sortable="false" Filterable="true">
+                    <FilterTemplate>
+                        <Dropdown>
+                            <DropdownToggle>Select</DropdownToggle>
+                            <DropdownMenu>
+                                <div class="checkbox-drop">
+                                    <Check TValue="bool" @bind-Checked="_hotWalletFilter">🔥 Hot Wallet</Check>
+                                    <Check TValue="bool" @bind-Checked="_coldWalletFilter">❄️ Cold Wallet</Check>
+                                    <Check TValue="bool" @bind-Checked="_finalizedWalletFilter">🏁 Finalized</Check>
+                                    <Check TValue="bool" @bind-Checked="_archivedWalletFilter">📂 Archived</Check>
+                                    <Check TValue="bool" @bind-Checked="_compromisedWalletFilter">⛔️ Compromised</Check>
+                                </div>
+                            </DropdownMenu>
+                        </Dropdown>
+                    </FilterTemplate>
                     <CaptionTemplate>
                         <span>
                             Wallet Properties
@@ -124,7 +146,7 @@
                             <span>@walletProperties</span>
                         }
                     </DisplayTemplate>
-                </DataGridColumn>
+                </DataGridSelectColumn>
                 <DataGridNumericColumn TItem="Wallet" Decimals="0" Editable="true" Field="@nameof(Wallet.MofN)" Caption="Threshold" Sortable="false">
                     <EditTemplate>
                         <Validation Validator="@ValidateThreshold">
@@ -388,7 +410,11 @@
     private string _description = string.Empty;
     private string _derivationPath = string.Empty;
 
-    private bool _showNotAvailableWallets = false;
+    private bool _hotWalletFilter = false;
+    private bool _coldWalletFilter = false;
+    private bool _finalizedWalletFilter = false;
+    private bool _archivedWalletFilter = false;
+    private bool _compromisedWalletFilter = false;
 
     protected override async Task OnInitializedAsync()
     {
@@ -409,8 +435,7 @@
 
     private async Task GetData()
     {
-        var allWallets = await WalletRepository.GetAll();
-        _wallets = _showNotAvailableWallets ? allWallets.Where(x => x.IsArchived || x.IsCompromised).ToList() : allWallets.Where(x => !x.IsArchived && !x.IsCompromised).ToList();
+        _wallets = await WalletRepository.GetAll();
         var financeManagers = (await ApplicationUserRepository.GetUsersInRole(ApplicationUserRole.FinanceManager));
         _financeManagers = financeManagers.Where(x => x.Keys.Any()).ToList();
 
@@ -843,10 +868,16 @@
         ToastService.ShowSuccess("Address copied");
     }
 
-    private async Task ShowWallets()
+    private bool OnCustomFilter(object item, object value)
     {
-        _showNotAvailableWallets = !_showNotAvailableWallets;
-        await GetData();
-    }
+        bool anyCheck = _archivedWalletFilter || _compromisedWalletFilter || _hotWalletFilter || _coldWalletFilter || _finalizedWalletFilter;
+        if (!anyCheck)
+            return true;
 
+        if ((bool)value)
+        {
+            return (bool)item == (bool)value;
+        }
+        return true;
+    }
 }
