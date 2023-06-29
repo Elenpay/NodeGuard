@@ -114,7 +114,7 @@
                 <DataGridColumn TItem="Wallet" Displayable="false" Filterable="true" Caption="Compromised" Field="@nameof(Wallet.IsCompromised)" Editable="true" CellsEditableOnNewCommand="false" CustomFilter="((searchItem, searchValue) => OnCustomFilter(searchItem, _compromisedWalletFilter))"/>
                 <DataGridSelectColumn TItem="Wallet" Sortable="false" Filterable="true">
                     <FilterTemplate>
-                        <Dropdown>
+                        <Dropdown @ref="_dropdown" @onfocusout="@(() => _dropdown.Hide())">
                             <DropdownToggle>Select</DropdownToggle>
                             <DropdownMenu>
                                 <div class="checkbox-drop">
@@ -415,6 +415,8 @@
     private bool _finalizedWalletFilter = false;
     private bool _archivedWalletFilter = false;
     private bool _compromisedWalletFilter = false;
+
+    private Dropdown _dropdown;
 
     protected override async Task OnInitializedAsync()
     {
