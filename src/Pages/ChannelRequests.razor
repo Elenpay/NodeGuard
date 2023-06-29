@@ -484,9 +484,17 @@
         {
             ToastService.ShowError("Bitcoin price in USD could not be retrieved.");
         }
-        await LoadColumnLayout();
         await FetchRequests();
         await LoadData();
+    }
+    
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!firstRender)
+        {        
+            await LoadColumnLayout();
+
+        }
     }
 
     private async Task LoadColumnLayout()
