@@ -14,8 +14,7 @@
     </DropdownMenu>
 </Dropdown>
 
-@using Microsoft.AspNetCore.Components.Server.ProtectedBrowserStorage
-@inject LocalStorageService LocalStorageService
+@inject ILocalStorageService LocalStorageService
 @typeparam ColumnType
 @code {
     [Parameter, EditorRequired]

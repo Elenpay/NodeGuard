@@ -2,7 +2,13 @@ using Microsoft.AspNetCore.Components.Server.ProtectedBrowserStorage;
 
 namespace FundsManager.Services;
 
-public class LocalStorageService
+public interface  ILocalStorageService
+{
+    Task<T> LoadStorage<T>(string name, T? defaultValue = default);
+    Task SetStorage<T>(string name, T value);
+}
+
+public class LocalStorageService: ILocalStorageService
 {
     private ProtectedLocalStorage ProtectedLocalStorage;
 

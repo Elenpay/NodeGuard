@@ -22,7 +22,7 @@ namespace FundsManager.Helpers;
 public class ColumnDefault
 {
     public string Name { get; }
-    public bool Visibility { get; }
+    public bool Visibility { get;  }
 
     public ColumnDefault(string name, bool visibility = true)
     {
@@ -33,6 +33,11 @@ public class ColumnDefault
 
 public static class ColumnHelpers
 {
+    /// <summary>
+    /// This method gets the fields from a class and returns a dictionary with the name of the field and the visibility of the column
+    /// </summary>
+    /// <typeparam name="T"></typeparam>
+    /// <returns></returns>
     public static Dictionary<string, bool> GetColumnsDictionary<T>()
     {
         return typeof(T).GetFields().Select(p => (ColumnDefault)p.GetValue(null)).ToDictionary((c) => c.Name, (c) => c.Visibility);
