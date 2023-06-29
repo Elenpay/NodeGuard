@@ -232,3 +232,7 @@ a, .btn-link {
     font-size: 10px;
     margin-top: 5px;
 }
+
+.checkbox-drop {
+    padding: 5px;
+}
