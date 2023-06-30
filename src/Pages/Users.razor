@@ -24,7 +24,7 @@
                   ShowPager="true"
                   ShowPageSizes="true"
                   PageSize="25"
-                  Filterable="false"
+                  Filterable="true"
                   ShowValidationFeedback="true"
                   ShowValidationsSummary="false"
                   UseValidation="true">
@@ -32,7 +32,7 @@
                 <h2>@(context.EditState) user</h2>
             </PopupTitleTemplate>
             <DataGridColumns>
-                <DataGridCommandColumn TItem="ApplicationUser">
+                <DataGridCommandColumn TItem="ApplicationUser" Filterable="false">
                     <NewCommandTemplate>
                         <Button Color="Color.Success" TextColor="TextColor.Light" Clicked="@context.Clicked">New</Button>
                     </NewCommandTemplate>
@@ -43,23 +43,18 @@
                             @if (context.Item.IsLocked)
                             {
                                 <Button Color="Color.Danger" Clicked="@(()=>OnUnlockUserClicked(context.Item))">Unlock</Button>
-
                             }
                             else
                             {
                                 <Button Color="Color.Danger" Clicked="@(()=>OnLockUserClicked(context.Item))">Lock</Button>
-
                             }
                         </Buttons>
-
                     </EditCommandTemplate>
                     <DeleteCommandTemplate>
                         @*Button Color="Color.Danger" Clicked="@context.Clicked">Delete</Button>*@
                     </DeleteCommandTemplate>
-
                 </DataGridCommandColumn>
-
-                <DataGridColumn TItem="ApplicationUser" Editable="true" Field="@nameof(ApplicationUser.UserName)" Caption="Username" Sortable="false">
+                <DataGridColumn TItem="ApplicationUser" Editable="true" Field="@nameof(ApplicationUser.UserName)" Caption="Username" Sortable="false" Displayable="@IsColumnVisible(UsersColumnName.Username)" Filterable="false">
                     <EditTemplate>
                         <Validation Validator="@((ValidatorEventArgs obj) => @ValidationHelper.ValidateUsername(obj, _users, context.Item.Id))">
                             <TextEdit Text="@((string)context.CellValue)" TextChanged="(text) => { context.CellValue = text; }">
@@ -70,13 +65,11 @@
                         </Validation>
                     </EditTemplate>
                 </DataGridColumn>
-                <DataGridColumn TItem="ApplicationUser" Editable="true"  Caption="Roles" Sortable="false">
+                <DataGridColumn TItem="ApplicationUser" Editable="true"  Caption="Roles" Sortable="false" Displayable="@IsColumnVisible(UsersColumnName.Roles)" Filterable="false">
                     <DisplayTemplate>
                         @{
-                            
                             <span>@(GetUserRolesString(context))</span>
                         }
-                        
                     </DisplayTemplate>
                     <EditTemplate>
                         <Validation Validator="@ValidateRole">
@@ -85,7 +78,6 @@
                                     @foreach (var role in availableRoles)
                                     {
                                         <SelectItem Value="role">@role.Humanize()</SelectItem>
-
                                     }
                                 </ChildContent>
                                 <Feedback>
@@ -93,52 +85,42 @@
                                 </Feedback>
                             </Select>
                         </Validation>
-                        
-                        
-                        
                     </EditTemplate>
                 </DataGridColumn>
-                <DataGridColumn TItem="ApplicationUser" Editable="true" Field="@nameof(ApplicationUser.Nodes)" Caption="Managed nodes" Sortable="false">
+                <DataGridColumn TItem="ApplicationUser" Editable="true" Field="@nameof(ApplicationUser.Nodes)" Caption="Managed nodes" Sortable="false" Displayable="@IsColumnVisible(UsersColumnName.ManagedNodes)" Filterable="false">
                     <DisplayTemplate>
                         @{
                             <span>@context?.Nodes?.Select(x=> x.Name).Humanize()</span>
                         }
-                        
                     </DisplayTemplate>
-                    
                     <EditTemplate>
                         <Select Multiple="true" TValue="int" @bind-SelectedValues="_selectedManagedNodes">
-                            
                             @foreach (var node in _nodesList)
                             {
                                 <SelectItem Value="node.Id">@node.Name</SelectItem>
-
                             }
                         </Select>
-                        
                     </EditTemplate>
                 </DataGridColumn>
-            
+                <DataGridColumn TItem="ApplicationUser" Displayable="true">
+                    <FilterTemplate>
+                        <ColumnLayout @ref="UsersColumnLayout" Columns="@UsersColumns" ColumnType="UsersColumnName" OnUpdate="@OnColumnLayoutUpdate"/>
+                    </FilterTemplate>
+                </DataGridColumn>
             </DataGridColumns>
-           
         </DataGrid>
     </Column>
 </Row>
 
 @page "/users"
-@using System.Security.Claims
-@using Blazorise.Extensions
-@using Humanizer
-@using Microsoft.AspNetCore.Identity
 @inject IApplicationUserRepository ApplicationUserRepository
-@inject UserManager<ApplicationUser> UserManager
 @inject IToastService ToastService
 @inject INodeRepository NodeRepository
-@inject IDbContextFactory<ApplicationDbContext> DbContextFactory
+@inject ILocalStorageService LocalStorageService
 @attribute [Authorize(Roles = "Superadmin")]
 @code {
     private List<ApplicationUser> _users = new();
-    
+
     [CascadingParameter]
     private ApplicationUser? LoggedUser { get; set; }
 
@@ -146,13 +128,22 @@
     private ClaimsPrincipal? ClaimsPrincipal { get; set; }
 
     private IReadOnlyList<ApplicationUserRole> _selectedRoles = new List<ApplicationUserRole> {};
-    
+
     private List<ApplicationUserRole> availableRoles = Enum.GetValues(typeof(ApplicationUserRole)).Cast<ApplicationUserRole>().ToList();
 
     private List<Node> _nodesList = new();
 
     private IReadOnlyList<int> _selectedManagedNodes = new List<int> {};
 
+    private ColumnLayout<UsersColumnName> UsersColumnLayout;
+    private Dictionary<string, bool> UsersColumns = new();
+
+    public abstract class UsersColumnName
+    {
+        public static readonly ColumnDefault Username = new("Username");
+        public static readonly ColumnDefault Roles = new("Roles");
+        public static readonly ColumnDefault ManagedNodes = new("Managed Nodes");
+    }
 
     protected override async Task OnInitializedAsync()
     {
@@ -160,8 +151,6 @@
         {
             await GetData();
         }
-
-
     }
 
     private async Task GetData()
@@ -171,6 +160,21 @@
 
         _nodesList = await NodeRepository.GetAllManagedByNodeGuard();
 
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!firstRender)
+        {
+            await LoadColumnLayout();
+
+        }
+    }
+
+    private async Task LoadColumnLayout()
+    {
+        UsersColumns = await LocalStorageService.LoadStorage(nameof(UsersColumnName), ColumnHelpers.GetColumnsDictionary<UsersColumnName>());
+        StateHasChanged();
     }
 
     private async Task OnRowInserted(SavedRowItem<ApplicationUser, Dictionary<string, object>> arg)
@@ -199,7 +203,7 @@
 
 
             var updateResult = ApplicationUserRepository.Update(arg.Item);
-        
+
             //Roles
             var updateUserRoles = await ApplicationUserRepository.UpdateUserRoles(_selectedRoles,arg.Item);
             if (updateResult.Item1 && updateUserRoles.Item1)
@@ -215,7 +219,7 @@
             }
 
         }
-     
+
         else
         {
             ToastService.ShowError("Something went wrong");
@@ -257,13 +261,13 @@
             var node= await NodeRepository.GetById(selectedManagedNode);
 
             node = Mapper.Map<Node, Node>(node);
-            
+
             arg.Item.Nodes.Add(node);
         }
 
 
         var updateResult2 = ApplicationUserRepository.Update(arg.Item);
-        
+
         //Roles
         var updateUserRoles = await ApplicationUserRepository.UpdateUserRoles(_selectedRoles,arg.Item);
 
@@ -308,10 +312,10 @@
 
         await contextClicked.InvokeAsync();
     }
-    
+
     private async Task CopyStrToClipboard(string arg)
     {
-        await ClipboardService.WriteTextAsync(arg); 
+        await ClipboardService.WriteTextAsync(arg);
         ToastService.ShowSuccess("Text copied");
     }
 
@@ -321,7 +325,7 @@
 
         if (link != null)
         {
-            await ClipboardService.WriteTextAsync(link); 
+            await ClipboardService.WriteTextAsync(link);
             ToastService.ShowSuccess("Text copied");
         }
         else
@@ -329,7 +333,7 @@
             ToastService.ShowError("Something went wrong");
 
         }
-       
+
     }
 
     private async Task OnUnlockUserClicked(ApplicationUser contextItem)
@@ -383,4 +387,17 @@
         }
     }
 
+    private void OnColumnLayoutUpdate()
+    {
+        StateHasChanged();
+    }
+
+    private bool IsColumnVisible(ColumnDefault column)
+    {
+        if (UsersColumnLayout	== null)
+        {
+            return true;
+        }
+        return UsersColumnLayout.IsColumnVisible(column);
+    }
 }

@@ -21,12 +21,13 @@
                   UseInternalEditing="true"
                   RowInserted="OnRowInserted"
                   RowUpdated="OnRowUpdated"
+                  Filterable="true"
                   UseValidation="true">
             <PopupTitleTemplate>
                 <h2>@(context.EditState) node</h2>
             </PopupTitleTemplate>
             <DataGridColumns>
-                <DataGridCommandColumn TItem="Node" Width="120px">
+                <DataGridCommandColumn TItem="Node" Filterable="false" Width="120px">
                     <NewCommandTemplate>
                         <Button Color="Color.Success" TextColor="TextColor.Light" Clicked="@context.Clicked" Block>New</Button>
                     </NewCommandTemplate>
@@ -37,8 +38,8 @@
                         <Button Color="Color.Danger" hidden="@_hideDelete" Clicked="@(()=> ShowDeleteDialog(context.Item))" Size="Size.Small" Block>Delete</Button>
                     </DeleteCommandTemplate>
                 </DataGridCommandColumn>
-                <DataGridColumn TItem="Node" Editable="true" Field="@nameof(Node.Name)" Validator="ValidationHelper.ValidateName" Caption="@nameof(Node.Name)" Sortable="false"/>
-                <DataGridColumn TItem="Node" Editable="true" Field="@nameof(Node.PubKey)" Caption="@nameof(Node.PubKey)" Sortable="false" Width="220px">
+                <DataGridColumn TItem="Node" Filterable="false" Editable="true" Field="@nameof(Node.Name)" Validator="ValidationHelper.ValidateName" Caption="@nameof(Node.Name)" Sortable="false" Displayable="@IsColumnVisible(NodesColumnName.Name)"/>
+                <DataGridColumn TItem="Node" Filterable="false" Editable="true" Field="@nameof(Node.PubKey)" Caption="@nameof(Node.PubKey)" Sortable="false" Width="220px" Displayable="@IsColumnVisible(NodesColumnName.PubKey)">
                     <DisplayTemplate>
                         @StringHelper.TruncateHeadAndTail(context.PubKey, 6)&nbsp;
                         @{State state = new("Copy", "oi oi-clipboard");}
@@ -56,10 +57,10 @@
                         </Validation>
                     </EditTemplate>
                 </DataGridColumn>
-                <DataGridColumn TItem="Node" Editable="true" Field="@nameof(Node.Description)" Caption="@nameof(Node.Description)" Sortable="false"/>
-                <DataGridColumn TItem="Node" Editable="true" Field="@nameof(Node.ChannelAdminMacaroon)" Validator="ValidationRule.IsNotEmpty" Caption="Macaroon" CellsEditableOnNewCommand="true" CellsEditableOnEditCommand="false" Displayable="false" Sortable="false"/>
-                <DataGridColumn TItem="Node" Editable="true" Field="@nameof(Node.Endpoint)" Validator="ValidationRule.IsNotEmpty" Caption="@nameof(Node.Endpoint)" Sortable="false"/>
-                <DataGridNumericColumn TItem="Node" Editable="false" Caption="Outbound Open Channels" Sortable="false">
+                <DataGridColumn TItem="Node" Filterable="false" Editable="true" Field="@nameof(Node.Description)" Caption="@nameof(Node.Description)" Sortable="false" Displayable="@IsColumnVisible(NodesColumnName.Description)"/>
+                <DataGridColumn TItem="Node" Filterable="false" Editable="true" Field="@nameof(Node.ChannelAdminMacaroon)" Validator="ValidationRule.IsNotEmpty" Caption="Macaroon" CellsEditableOnNewCommand="true" CellsEditableOnEditCommand="false" Displayable="false" Sortable="false"/>
+                <DataGridColumn TItem="Node" Filterable="false" Editable="true" Field="@nameof(Node.Endpoint)" Validator="ValidationRule.IsNotEmpty" Caption="@nameof(Node.Endpoint)" Sortable="false" Displayable="@IsColumnVisible(NodesColumnName.Endpoint)"/>
+                <DataGridNumericColumn TItem="Node" Filterable="false" Editable="false" Caption="Outbound Open Channels" Sortable="false" Displayable="@IsColumnVisible(NodesColumnName.OutboundOpenChannels)">
                     <DisplayTemplate>
                         @{
                             IEnumerable<int?> associatedChannels = context?.ChannelOperationRequestsAsDestination?
@@ -70,7 +71,7 @@
                         }
                     </DisplayTemplate>
                 </DataGridNumericColumn>
-                <DataGridColumn TItem="Node" Editable="true" Field="@nameof(Node.ReturningFundsWalletId)" Caption="Returning funds wallet" Sortable="false">
+                <DataGridColumn TItem="Node" Filterable="false" Editable="true" Field="@nameof(Node.ReturningFundsWalletId)" Caption="Returning funds wallet" Sortable="false" Displayable="@IsColumnVisible(NodesColumnName.ReturningFundsWallet)">
                     <DisplayTemplate>
                         @if (context.ReturningFundsWallet != null)
                         {
@@ -101,21 +102,26 @@
 
                     </EditTemplate>
                 </DataGridColumn>
-                <DataGridColumn TItem="Node" Editable="true" Field="@nameof(Node.AutosweepEnabled)" Caption="Autosweep" Sortable="false"></DataGridColumn>
-                <DataGridColumn TItem="Node" Field="@nameof(Node.CreationDatetime)" Caption="Creation Date" Sortable="true" SortDirection="SortDirection.Descending">
+                <DataGridColumn TItem="Node" Filterable="false" Editable="true" Field="@nameof(Node.AutosweepEnabled)" Caption="Autosweep" Sortable="false" Displayable="@IsColumnVisible(NodesColumnName.Autosweep)"></DataGridColumn>
+                <DataGridColumn TItem="Node" Filterable="false" Field="@nameof(Node.CreationDatetime)" Caption="Creation Date" Sortable="true" SortDirection="SortDirection.Descending" Displayable="@IsColumnVisible(NodesColumnName.CreationDate)">
                     <DisplayTemplate>
                         @context.CreationDatetime.Humanize()
                     </DisplayTemplate>
                 </DataGridColumn>
-                <DataGridColumn TItem="Node" Field="@nameof(Node.UpdateDatetime)" Caption="Update date" Sortable="false">
+                <DataGridColumn TItem="Node" Filterable="false" Field="@nameof(Node.UpdateDatetime)" Caption="Update date" Sortable="false" Displayable="@IsColumnVisible(NodesColumnName.UpdateDate)">
                     <DisplayTemplate>
                         @context.UpdateDatetime.Humanize()
                     </DisplayTemplate>
                 </DataGridColumn>
-                <DataGridColumn TItem="Node" Caption="@nameof(Node.Users)" Editable="false" CellsEditableOnEditCommand="false" Sortable="false">
+                <DataGridColumn TItem="Node" Filterable="false" Caption="@nameof(Node.Users)" Editable="false" CellsEditableOnEditCommand="false" Sortable="false" Displayable="@IsColumnVisible(NodesColumnName.Users)">
                     <DisplayTemplate>
                         <Button Color="Color.Primary" Clicked="@ShowModal" Block>Display Users</Button>
                     </DisplayTemplate>
+                </DataGridColumn>
+                <DataGridColumn TItem="Node" Displayable="true">
+                    <FilterTemplate>
+                        <ColumnLayout @ref="NodesColumnLayout" Columns="@NodesColumns" ColumnType="NodesColumnName" OnUpdate="@OnColumnLayoutUpdate"/>
+                    </FilterTemplate>
                 </DataGridColumn>
             </DataGridColumns>
         </DataGrid>
@@ -147,7 +153,7 @@
 @inject IMessageService MessageService
 @inject IWalletRepository WalletRepository
 @inject ISchedulerFactory  SchedulerFactory
-@inject ILightningService LightningService
+@inject ILocalStorageService LocalStorageService
 @implements IDisposable
 @code {
     private List<Node>? _nodes;
@@ -164,6 +170,23 @@
 
     [CascadingParameter]
     private ClaimsPrincipal? ClaimsPrincipal { get; set; }
+
+    private ColumnLayout<NodesColumnName> NodesColumnLayout;
+    private Dictionary<string, bool> NodesColumns = new();
+
+    public abstract class NodesColumnName
+    {
+        public static readonly ColumnDefault Name = new("Name");
+        public static readonly ColumnDefault PubKey = new("PubKey");
+        public static readonly ColumnDefault Description = new("Description");
+        public static readonly ColumnDefault Endpoint = new("Endpoint");
+        public static readonly ColumnDefault OutboundOpenChannels = new("Outbound Open Channels");
+        public static readonly ColumnDefault ReturningFundsWallet = new("Returning Funds Wallet");
+        public static readonly ColumnDefault Autosweep = new("Autosweep");
+        public static readonly ColumnDefault CreationDate = new("Creation Date");
+        public static readonly ColumnDefault UpdateDate = new("Update Date");
+        public static readonly ColumnDefault Users = new("Users");
+    }
 
     protected override async Task OnInitializedAsync()
     {
@@ -185,6 +208,21 @@
     {
         _nodes = await NodeRepository.GetAllManagedByNodeGuard();
         _availableWallets = await WalletRepository.GetAvailableWallets();
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!firstRender)
+        {
+            await LoadColumnLayout();
+
+        }
+    }
+
+    private async Task LoadColumnLayout()
+    {
+        NodesColumns = await LocalStorageService.LoadStorage(nameof(NodesColumnName), ColumnHelpers.GetColumnsDictionary<NodesColumnName>());
+        StateHasChanged();
     }
 
     private async Task OnRowInserted(SavedRowItem<Node, Dictionary<string, object>> arg)
@@ -319,4 +357,17 @@
 
     record State(string Text, string ClassName, bool IsDisabled = false);
 
+    private void OnColumnLayoutUpdate()
+    {
+        StateHasChanged();
+    }
+
+    private bool IsColumnVisible(ColumnDefault column)
+    {
+        if (NodesColumnLayout	== null)
+        {
+            return true;
+        }
+        return NodesColumnLayout.IsColumnVisible(column);
+    }
 }

@@ -1,0 +1,48 @@
+<Dropdown Visible="Visible">
+    <DropdownToggle Color="Color.Primary" ToggleIconVisible="false" Clicked="OnVisibleChanged">
+        <Icon Name="IconName.AngleDown"></Icon>
+    </DropdownToggle>
+    <DropdownMenu>
+        @foreach(var Column in Columns)
+        {
+            <DropdownItem>
+                <Check TValue="bool" Checked="@Column.Value" CheckedChanged="@((value) => OnColumnChanged(Column.Key, value))">
+                    @Column.Key
+                </Check>
+            </DropdownItem>
+        }
+    </DropdownMenu>
+</Dropdown>
+
+@inject ILocalStorageService LocalStorageService
+@typeparam ColumnType
+@code {
+    [Parameter, EditorRequired]
+    public Dictionary<string, bool> Columns { get; set; } = new();
+
+    [Parameter]
+    public Action OnUpdate { private get; set; } = () => { };
+
+    private bool Visible { get; set; }
+
+    private void OnVisibleChanged(MouseEventArgs _)
+    {
+        Visible = !Visible;
+    }
+
+    private async Task OnColumnChanged(string key, bool value)
+    {
+        Columns[key] = value;
+        await LocalStorageService.SetStorage(typeof(ColumnType).Name, Columns);
+        OnUpdate();
+    }
+
+    public bool IsColumnVisible(ColumnDefault column)
+    {
+        if (Columns.TryGetValue(column.Name, out bool value))
+        {
+            return value;
+        }
+        return true;
+    }
+}
