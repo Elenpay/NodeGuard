@@ -47,7 +47,7 @@
                         </Dropdown>
                     </DeleteCommandTemplate>
                 </DataGridCommandColumn>
-                <DataGridColumn TItem="Channel" Field="@nameof(Channel.SourceNodeId)" Caption="Source node" CustomFilter="OnSourceNodeIdFilter" Filterable="true" Sortable="false">
+                <DataGridColumn TItem="Channel" Field="@nameof(Channel.SourceNodeId)" Caption="Source node" CustomFilter="OnSourceNodeIdFilter" Filterable="true" Sortable="false" Displayable="@IsColumnVisible(ChannelsColumnName.SourceNode)">
                     <FilterTemplate>
                         <Select TValue="int" SelectedValue="@((int) _sourceNodeIdFilter)" SelectedValueChanged="@(value => { _sourceNodeIdFilter = value; context.TriggerFilterChange(_sourceNodeIdFilter); })">
                             <SelectItem Value="@(0)">All</SelectItem>
@@ -64,7 +64,7 @@
                         }
                     </DisplayTemplate>
                 </DataGridColumn>
-                <DataGridColumn TItem="Channel" Field="@nameof(Channel.DestinationNodeId)" Caption="Destination node" CustomFilter="OnDestinationNodeIdFilter" Filterable="true" Sortable="false">
+                <DataGridColumn TItem="Channel" Field="@nameof(Channel.DestinationNodeId)" Caption="Destination node" CustomFilter="OnDestinationNodeIdFilter" Filterable="true" Sortable="false" Displayable="@IsColumnVisible(ChannelsColumnName.DestinationNode)">
                     <FilterTemplate>
                         <Select TValue="int" SelectedValue="@((int) _destinationNodeIdFilter)" SelectedValueChanged="@(value => { _destinationNodeIdFilter = value; context.TriggerFilterChange(_destinationNodeIdFilter); })">
                             <SelectItem Value="@(0)">All</SelectItem>
@@ -81,7 +81,7 @@
                         }
                     </DisplayTemplate>
                 </DataGridColumn>
-                <DataGridColumn TItem="Channel" Field="@nameof(Channel.Status)" Caption="@nameof(Channel.Status)" CustomFilter="OnStatusFilter" Filterable="true" Sortable="false">
+                <DataGridColumn TItem="Channel" Field="@nameof(Channel.Status)" Caption="@nameof(Channel.Status)" CustomFilter="OnStatusFilter" Filterable="true" Sortable="false" Displayable="@IsColumnVisible(ChannelsColumnName.Status)">
                     <FilterTemplate>
                         <Select TValue="string" SelectedValue="@((string) _statusFilter)" SelectedValueChanged="@(value => { _statusFilter = value; context.TriggerFilterChange(_statusFilter); })">
                             <SelectItem Value="@("")">All</SelectItem>
@@ -94,7 +94,7 @@
                     </DisplayTemplate>
                 </DataGridColumn>
 
-                <DataGridColumn TItem="Channel" Field="@nameof(Channel.FundingTx)" Caption="OutPoint" Filterable="false" Sortable="false">
+                <DataGridColumn TItem="Channel" Field="@nameof(Channel.FundingTx)" Caption="OutPoint" Filterable="false" Sortable="false" Displayable="@IsColumnVisible(ChannelsColumnName.Outpoint)">
                     <DisplayTemplate>
                         @StringHelper.TruncateHeadAndTail(context.FundingTx, 5):@context.FundingTxOutputIndex
                         <Button Color="Color.Primary" Clicked="@(() => CopyStrToClipboard($"{context.FundingTx}:{context.FundingTxOutputIndex}"))">
@@ -102,7 +102,7 @@
                         </Button>
                     </DisplayTemplate>
                 </DataGridColumn>
-                <DataGridNumericColumn TItem="Channel" Field="@nameof(Channel.SatsAmount)" Caption="Capacity (BTC)" Filterable="false" Sortable="true">
+                <DataGridNumericColumn TItem="Channel" Field="@nameof(Channel.SatsAmount)" Caption="Capacity (BTC)" Filterable="false" Sortable="true" Displayable="@IsColumnVisible(ChannelsColumnName.Capacity)">
                     <DisplayTemplate>
                         @{
                             var btcAmount = new Money(context.SatsAmount, MoneyUnit.Satoshi).ToUnit(MoneyUnit.BTC);
@@ -111,8 +111,8 @@
                         }
                     </DisplayTemplate>
                 </DataGridNumericColumn>
-                <DataGridColumn TItem="Channel" Field="@nameof(Channel.IsPrivate)" Caption="Private" Filterable="false" Sortable="true"/>
-                <DataGridColumn TItem="Channel" Field="@nameof(Channel.BtcCloseAddress)" Caption="Close address" Filterable="false" Sortable="false">
+                <DataGridColumn TItem="Channel" Field="@nameof(Channel.IsPrivate)" Caption="Private" Filterable="false" Sortable="true" Displayable="@IsColumnVisible(ChannelsColumnName.Private)"/>
+                <DataGridColumn TItem="Channel" Field="@nameof(Channel.BtcCloseAddress)" Caption="Close address" Filterable="false" Sortable="false" Displayable="@IsColumnVisible(ChannelsColumnName.CloseAddress)">
 
                     <DisplayTemplate>
                         @if (!string.IsNullOrEmpty(context.BtcCloseAddress))
@@ -125,7 +125,7 @@
                     </DisplayTemplate>
 
                 </DataGridColumn>
-                <DataGridColumn TItem="Channel" Caption="Channel Balance" Filterable="false">
+                <DataGridColumn TItem="Channel" Caption="Channel Balance" Filterable="false" Displayable="@IsColumnVisible(ChannelsColumnName.ChannelBalance)">
                     <DisplayTemplate>
                         @{
                             var balance = Task.Run(() => GetPercentageBalance(context)).Result;
@@ -152,14 +152,19 @@
 
                     </DisplayTemplate>
                 </DataGridColumn>
-                <DataGridColumn TItem="Channel" Field="@nameof(Channel.CreationDatetime)" Caption="@nameof(Channel.CreationDatetime).Humanize(LetterCasing.Sentence)" Sortable="true"/>
-                <DataGridColumn TItem="Channel" Field="@nameof(Channel.UpdateDatetime)" Caption="@nameof(Channel.UpdateDatetime).Humanize(LetterCasing.Sentence)" Sortable="true"/>
-                <DataGridColumn TItem="Channel" Field="@nameof(Channel.ChanId)" Caption="Channel Id" Sortable="false">
+                <DataGridColumn TItem="Channel" Field="@nameof(Channel.CreationDatetime)" Caption="@nameof(Channel.CreationDatetime).Humanize(LetterCasing.Sentence)" Sortable="true" Displayable="@IsColumnVisible(ChannelsColumnName.CreationDate)"/>
+                <DataGridColumn TItem="Channel" Field="@nameof(Channel.UpdateDatetime)" Caption="@nameof(Channel.UpdateDatetime).Humanize(LetterCasing.Sentence)" Sortable="true" Displayable="@IsColumnVisible(ChannelsColumnName.UpdateDate)"/>
+                <DataGridColumn TItem="Channel" Field="@nameof(Channel.ChanId)" Caption="Channel Id" Sortable="false" Displayable="@IsColumnVisible(ChannelsColumnName.ChannelId)">
                     <DisplayTemplate>
                         <a href="@(Constants.AMBOSS_ENDPOINT + "/edge/" + context.ChanId)" target="_blank">
                             @context.ChanId
                         </a>
                     </DisplayTemplate>
+                </DataGridColumn>
+                <DataGridColumn TItem="Channel" Displayable="true">
+                    <FilterTemplate>
+                        <ColumnLayout @ref="ChannelsColumnLayout" Columns="@ChannelsColumns" ColumnType="ChannelsColumnName" OnUpdate="@OnColumnLayoutUpdate"/>
+                    </FilterTemplate>
                 </DataGridColumn>
             </DataGridColumns>
         </DataGrid>
@@ -311,6 +316,7 @@
 @inject ILiquidityRuleRepository LiquidityRuleRepository
 @inject IWalletRepository WalletRepository
 @inject INodeRepository NodeRepository
+@inject ILocalStorageService LocalStorageService
 
 @code {
     private List<Channel>? _channels = new List<Channel>();
@@ -335,6 +341,24 @@
 
     private decimal _btcPrice;
 
+    private ColumnLayout<ChannelsColumnName> ChannelsColumnLayout;
+    private Dictionary<string, bool> ChannelsColumns = new();
+
+    public abstract class ChannelsColumnName
+    {
+        public static readonly ColumnDefault SourceNode = new("Source Node");
+        public static readonly ColumnDefault DestinationNode = new("Destination Node");
+        public static readonly ColumnDefault Status = new("Status");
+        public static readonly ColumnDefault Outpoint = new("Outpoint");
+        public static readonly ColumnDefault Capacity = new("Capacity (BTC)");
+        public static readonly ColumnDefault Private = new("Private");
+        public static readonly ColumnDefault CloseAddress = new("Close Address");
+        public static readonly ColumnDefault ChannelBalance = new("Channel Balance");
+        public static readonly ColumnDefault CreationDate = new("Creation Date");
+        public static readonly ColumnDefault UpdateDate = new("Update Date");
+        public static readonly ColumnDefault ChannelId = new("Channel Id");
+    }
+
     protected override async Task OnInitializedAsync()
     {
         _btcPrice = PriceConversionHelper.GetBtcToUsdPrice();
@@ -358,6 +382,21 @@
         _channels = await ChannelRepository.GetAllManagedByUserNodes(LoggedUser.Id);
         _nodes = await NodeRepository.GetAll();
         _channelsDataGridRef.FilterData();
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!firstRender)
+        {
+            await LoadColumnLayout();
+
+        }
+    }
+
+    private async Task LoadColumnLayout()
+    {
+        ChannelsColumns = await LocalStorageService.LoadStorage(nameof(ChannelsColumnName), ColumnHelpers.GetColumnsDictionary<ChannelsColumnName>());
+        StateHasChanged();
     }
 
     private async Task ShowConfirmedClose(Channel channel, bool forceClose = false)
@@ -700,5 +739,19 @@
         return channel.Status == Channel.ChannelStatus.Closed|| (lastRequest.RequestType == OperationRequestType.Close
                                                                  && lastRequest.Status == ChannelOperationRequestStatus.OnChainConfirmed
                                                                  || lastRequest.Status == ChannelOperationRequestStatus.OnChainConfirmationPending);
+    }
+
+    private void OnColumnLayoutUpdate()
+    {
+        StateHasChanged();
+    }
+
+    private bool IsColumnVisible(ColumnDefault column)
+    {
+        if (ChannelsColumnLayout	== null)
+        {
+            return true;
+        }
+        return ChannelsColumnLayout.IsColumnVisible(column);
     }
 }
