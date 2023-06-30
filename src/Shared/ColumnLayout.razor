@@ -1,5 +1,5 @@
-<Dropdown>
-    <DropdownToggle Color="Color.Primary" ToggleIconVisible="false">
+<Dropdown Visible="Visible">
+    <DropdownToggle Color="Color.Primary" ToggleIconVisible="false" Clicked="OnVisibleChanged">
         <Icon Name="IconName.AngleDown"></Icon>
     </DropdownToggle>
     <DropdownMenu>
@@ -22,6 +22,13 @@
 
     [Parameter]
     public Action OnUpdate { private get; set; } = () => { };
+
+    private bool Visible { get; set; }
+
+    private void OnVisibleChanged(MouseEventArgs _)
+    {
+        Visible = !Visible;
+    }
 
     private async Task OnColumnChanged(string key, bool value)
     {
