@@ -32,7 +32,7 @@
                 <h2>@(context.EditState) user</h2>
             </PopupTitleTemplate>
             <DataGridColumns>
-                <DataGridCommandColumn TItem="ApplicationUser">
+                <DataGridCommandColumn TItem="ApplicationUser" Filterable="false">
                     <NewCommandTemplate>
                         <Button Color="Color.Success" TextColor="TextColor.Light" Clicked="@context.Clicked">New</Button>
                     </NewCommandTemplate>
@@ -43,23 +43,18 @@
                             @if (context.Item.IsLocked)
                             {
                                 <Button Color="Color.Danger" Clicked="@(()=>OnUnlockUserClicked(context.Item))">Unlock</Button>
-
                             }
                             else
                             {
                                 <Button Color="Color.Danger" Clicked="@(()=>OnLockUserClicked(context.Item))">Lock</Button>
-
                             }
                         </Buttons>
-
                     </EditCommandTemplate>
                     <DeleteCommandTemplate>
                         @*Button Color="Color.Danger" Clicked="@context.Clicked">Delete</Button>*@
                     </DeleteCommandTemplate>
-
                 </DataGridCommandColumn>
-
-                <DataGridColumn TItem="ApplicationUser" Editable="true" Field="@nameof(ApplicationUser.UserName)" Caption="Username" Sortable="false" Displayable="@IsColumnVisible(UsersColumnName.Username)">
+                <DataGridColumn TItem="ApplicationUser" Editable="true" Field="@nameof(ApplicationUser.UserName)" Caption="Username" Sortable="false" Displayable="@IsColumnVisible(UsersColumnName.Username)" Filterable="false">
                     <EditTemplate>
                         <Validation Validator="@((ValidatorEventArgs obj) => @ValidationHelper.ValidateUsername(obj, _users, context.Item.Id))">
                             <TextEdit Text="@((string)context.CellValue)" TextChanged="(text) => { context.CellValue = text; }">
@@ -70,13 +65,11 @@
                         </Validation>
                     </EditTemplate>
                 </DataGridColumn>
-                <DataGridColumn TItem="ApplicationUser" Editable="true"  Caption="Roles" Sortable="false" Displayable="@IsColumnVisible(UsersColumnName.Roles)">
+                <DataGridColumn TItem="ApplicationUser" Editable="true"  Caption="Roles" Sortable="false" Displayable="@IsColumnVisible(UsersColumnName.Roles)" Filterable="false">
                     <DisplayTemplate>
                         @{
-
                             <span>@(GetUserRolesString(context))</span>
                         }
-
                     </DisplayTemplate>
                     <EditTemplate>
                         <Validation Validator="@ValidateRole">
@@ -85,7 +78,6 @@
                                     @foreach (var role in availableRoles)
                                     {
                                         <SelectItem Value="role">@role.Humanize()</SelectItem>
-
                                     }
                                 </ChildContent>
                                 <Feedback>
@@ -93,29 +85,21 @@
                                 </Feedback>
                             </Select>
                         </Validation>
-
-
-
                     </EditTemplate>
                 </DataGridColumn>
-                <DataGridColumn TItem="ApplicationUser" Editable="true" Field="@nameof(ApplicationUser.Nodes)" Caption="Managed nodes" Sortable="false" Displayable="@IsColumnVisible(UsersColumnName.ManagedNodes)">
+                <DataGridColumn TItem="ApplicationUser" Editable="true" Field="@nameof(ApplicationUser.Nodes)" Caption="Managed nodes" Sortable="false" Displayable="@IsColumnVisible(UsersColumnName.ManagedNodes)" Filterable="false">
                     <DisplayTemplate>
                         @{
                             <span>@context?.Nodes?.Select(x=> x.Name).Humanize()</span>
                         }
-
                     </DisplayTemplate>
-
                     <EditTemplate>
                         <Select Multiple="true" TValue="int" @bind-SelectedValues="_selectedManagedNodes">
-
                             @foreach (var node in _nodesList)
                             {
                                 <SelectItem Value="node.Id">@node.Name</SelectItem>
-
                             }
                         </Select>
-
                     </EditTemplate>
                 </DataGridColumn>
                 <DataGridColumn TItem="ApplicationUser" Displayable="true">
@@ -129,15 +113,9 @@
 </Row>
 
 @page "/users"
-@using System.Security.Claims
-@using Blazorise.Extensions
-@using Humanizer
-@using Microsoft.AspNetCore.Identity
 @inject IApplicationUserRepository ApplicationUserRepository
-@inject UserManager<ApplicationUser> UserManager
 @inject IToastService ToastService
 @inject INodeRepository NodeRepository
-@inject IDbContextFactory<ApplicationDbContext> DbContextFactory
 @inject ILocalStorageService LocalStorageService
 @attribute [Authorize(Roles = "Superadmin")]
 @code {
