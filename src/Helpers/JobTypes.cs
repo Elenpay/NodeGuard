@@ -144,6 +144,29 @@ public class RetriableJob
             await callback();
         }
     }
+    
+    /// <summary>
+    /// Get the next interval time
+    /// </summary>
+    /// <param name="context">The execution context of the job</param>
+    public static int? GetNextInterval(IJobExecutionContext context)
+    {
+        var data = context.JobDetail.JobDataMap;
+        var intervals = data.Get("intervalListInMinutes") as int[];
+        if (intervals == null)
+        {
+            throw new Exception("No interval list found, make sure you're using the RetriableJob class");
+        };
+
+        var trigger = context.Trigger as SimpleTriggerImpl;
+
+        if (trigger!.TimesTriggered <= intervals.Length)
+        {
+            return intervals[trigger!.TimesTriggered - 1];
+        }
+
+        return null;
+    } 
 }
 
 public class JobAndTrigger
