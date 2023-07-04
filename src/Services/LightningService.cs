@@ -330,6 +330,10 @@ namespace FundsManager.Services
                                     channelOperationRequest.Id, response.ChanOpen.ChannelPoint.ToString());
 
                                 channelOperationRequest.Status = ChannelOperationRequestStatus.OnChainConfirmed;
+                                if (channelOperationRequest.StatusLogs.Count > 0)
+                                {
+                                    channelOperationRequest.StatusLogs.Add(ChannelStatusLog.Info($"Channel opened successfully 🎉"));
+                                }
                                 _channelOperationRequestRepository.Update(channelOperationRequest);
 
                                 var fundingTx = LightningHelper.DecodeTxId(response.ChanOpen.ChannelPoint.FundingTxidBytes);

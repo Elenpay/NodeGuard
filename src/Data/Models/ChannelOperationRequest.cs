@@ -103,7 +103,7 @@ namespace FundsManager.Data.Models
 
         public decimal? FeeRate { get; set; }
 
-        [NotMapped, Column(TypeName = "jsonb")]
+        [Column(TypeName = "jsonb")]
         public List<ChannelStatusLog> StatusLogs { get; set; } = new();
 
         #region Relationships
