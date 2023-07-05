@@ -7,20 +7,22 @@
 <p align="center">
   <img src="nodeguard.png">
 </p>
-NodeGuard is a open source tech stack designed to simplify treasury ops in terms of Security and UX for lightning nodes. Currently only LND is supported. NodeGuards allows to manage a lightning treasury funds based on separation of duties and principle of least privilege principles. Watch the video below to learn more about it!
+NodeGuard is an open-source technology stack developed to simplify treasury operations for lightning nodes, focusing on both Security and UX. It enables the management of lightning treasury funds, adhering to the principles of separation of duties and the principle of least privilege. These principles form the core of NodeGuard's functionality, aiming to eliminate the need for an internal node hot wallet and to separate key management from the actual node operators. At present, NodeGuard supports only LND. For a more detailed understanding, please watch the video below.
 
 [![Watch the video](https://img.youtube.com/vi/qIQ5J0npj0c/maxresdefault.jpg)](https://youtu.be/qIQ5J0npj0c)
 
 Current features of NodeGuard are the following:
 
-- Funding and opening of a lightning channels using cold stored multisig wallets. Hot wallets are also supported.
-- Asynchronous channel funding leveraging multisig wallets
-- Automatic sweeping of funds in lightning nodes to avoid having funds on the node hot wallets
-- Channel creation interception with returning address to multisig wallets to avoid having funds on hot wallets
+- Asynchronous channel funding leveraging cold multisig wallets and hot wallets
+- Multisig wallet creation and import (BIP39), only segwit for now
 - Liquidity automation by settings rules in tandem with [NodeGuard liquidator](https://github.com/Elenpay/liquidator)
-- In-browser notification systems for channel approvals
 - Optional remote signing through [NodeGuard Remote Signer](https://github.com/Elenpay/Nodeguard-Remote-Signer) functions for channel funding transactions, separating the NodeGuard keys from the actual software
-- Minimalistic in-browser wallet, [NodeGuard Companion](https://github.com/Elenpay/Nodeguard-Remote-Signer) to ease signing of transactions and wallet creation
+- Automatic sweeping of funds in lightning nodes to avoid having funds on the node hot wallets
+- Channel management
+- Channel creation interception with returning address to multisig wallets to avoid having funds on hot wallets
+- Support for hardware wallets to sign the PSBTs for channel funding transactions
+- Minimalistic in-browser wallet with [NodeGuard Companion](https://github.com/Elenpay/Nodeguard-Remote-Signer) to ease signing of transactions and wallet creation
+- In-browser notification systems for channel approvals
 - Two-factor authentication
 
 # Contributing
@@ -96,4 +98,4 @@ docker-compose -f docker-compose.dev-novs.yml up -d
 Check [Security.md](SECURITY.md)
 
 # LICENSE
-This project is Licensed under AGPLv3.0. Check [LICENSE](LICENSE) for more information.
+This project is licensed under AGPLv3.0. Check [LICENSE](LICENSE) for more information.
