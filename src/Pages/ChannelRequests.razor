@@ -107,7 +107,7 @@
                         <FieldHelp>
                             @if (_selectedWalletId != null)
                             {
-                                @($"{_selectedWalletBalance:f8} BTC ({Math.Round(PriceConversionHelper.BtcToUsdConversion(_selectedWalletBalance, _btcPrice), 2)} USD)")
+                                @($"Wallet balance: {_selectedWalletBalance:f8} BTC ({Math.Round(PriceConversionHelper.BtcToUsdConversion(_selectedWalletBalance, _btcPrice), 2)} USD)")
                             }
                             else
                             {
