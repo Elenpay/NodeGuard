@@ -14,7 +14,7 @@ namespace FundsManager.Migrations
                 name: "StatusLogs",
                 table: "ChannelOperationRequests",
                 type: "jsonb",
-                nullable: false);
+                nullable: true);
         }
 
         protected override void Down(MigrationBuilder migrationBuilder)

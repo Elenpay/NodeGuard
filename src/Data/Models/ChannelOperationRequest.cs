@@ -104,7 +104,7 @@ namespace FundsManager.Data.Models
         public decimal? FeeRate { get; set; }
 
         [Column(TypeName = "jsonb")]
-        public List<ChannelStatusLog> StatusLogs { get; set; } = new();
+        public List<ChannelStatusLog>? StatusLogs { get; set; } = new();
 
         #region Relationships
 
