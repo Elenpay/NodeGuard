@@ -1,0 +1,38 @@
+@namespace FundsManager.Pages
+
+@if (ChannelStatusLogs?.Count > 0)
+{
+    <Tooltip Class="ml-2" Text="@GetTooltipText(ChannelStatusLogs)">
+        <Icon TextColor="TextColor.Danger" Name="IconName.InfoCircle"></Icon>
+    </Tooltip>
+}
+
+@code {
+   [Parameter, EditorRequired]
+   public List<ChannelStatusLog>? ChannelStatusLogs { get; set; }
+    
+    
+    private string GetTooltipText(List<ChannelStatusLog> channelStatusLogs)
+    {
+        var text = "<ul>";
+        foreach (var channelStatusLog in channelStatusLogs)
+        {
+            var emoji = "";
+            switch (channelStatusLog.Level)
+            {
+                case LogLevel.Information:
+                    emoji = "ℹ️";
+                    break;
+                case LogLevel.Warning:
+                    emoji = "⚠️";
+                    break;
+                case LogLevel.Error:
+                    emoji = "❌";
+                    break;
+            }
+            text += $"<li>{emoji} {channelStatusLog.DateTime:dd/MM/yyyy HH:mm:ss} - {channelStatusLog.Description}</li>";
+        }
+        text += "</ul>";
+        return text;
+    }
+}

@@ -265,6 +265,10 @@ namespace FundsManager.Services
                 //We avoid to stop the method if the peer is already connected
                 catch (RpcException e)
                 {
+                    if (e.Message.Contains("is not online"))
+                    {
+                        throw new PeerNotOnlineException($"$peer {destination.PubKey} is not online");
+                    }
                     if (!e.Message.Contains("already connected to peer"))
                     {
                         throw;
@@ -326,6 +330,10 @@ namespace FundsManager.Services
                                     channelOperationRequest.Id, response.ChanOpen.ChannelPoint.ToString());
 
                                 channelOperationRequest.Status = ChannelOperationRequestStatus.OnChainConfirmed;
+                                if (channelOperationRequest.StatusLogs.Count > 0)
+                                {
+                                    channelOperationRequest.StatusLogs.Add(ChannelStatusLog.Info($"Channel opened successfully 🎉"));
+                                }
                                 _channelOperationRequestRepository.Update(channelOperationRequest);
 
                                 var fundingTx = LightningHelper.DecodeTxId(response.ChanOpen.ChannelPoint.FundingTxidBytes);
@@ -601,6 +609,11 @@ namespace FundsManager.Services
 
                 //TODO: We have to separate the exceptions between the ones that are retriable and the ones that are not
                 //TODO: and mark the channel operation request as failed automatically when they are not retriable
+                if (e.Message.Contains("remote canceled funding"))
+                {
+                    // TODO: Make exception message pretty
+                    throw new RemoteCanceledFundingException(e.Message);
+                }
                 throw;
             }
         }

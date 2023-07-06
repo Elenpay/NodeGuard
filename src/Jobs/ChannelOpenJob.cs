@@ -60,6 +60,8 @@ public class ChannelOpenJob : IJob
         }
         catch (Exception e)
         {
+            var shouldRetry = await LogToChannelRequest(openRequestId, e, context);
+
             await RetriableJob.OnFail(context, async () =>
             {
                 var request = await _channelOperationRequestRepository.GetById(openRequestId);
@@ -68,9 +70,49 @@ public class ChannelOpenJob : IJob
             });
 
             _logger.LogError(e, "Error on {JobName}", nameof(ChannelOpenJob));
+            if (!shouldRetry)
+            {
+                await context.Scheduler.DeleteJob(context.JobDetail.Key, context.CancellationToken);
+            }
             throw new JobExecutionException(e, false);
         }
 
         _logger.LogInformation("{JobName} ended", nameof(ChannelOpenJob));
+    }
+
+    private async Task<bool> LogToChannelRequest(int openRequestId, Exception e, IJobExecutionContext context)
+    {
+        try
+        {
+            var request = await _channelOperationRequestRepository.GetById(openRequestId);
+            if (e is PeerNotOnlineException or RemoteCanceledFundingException)
+            {
+                request.StatusLogs.Add(ChannelStatusLog.Error(e.Message));
+            }
+            else
+            {
+                request.StatusLogs.Add(ChannelStatusLog.Error("Unexpected exception trying to open channel"));
+            }
+
+            if (e is RemoteCanceledFundingException)
+            {
+                request.Status = ChannelOperationRequestStatus.Failed;
+                _channelOperationRequestRepository.Update(request);
+                return false;
+            }
+
+            var nextRetry = RetriableJob.GetNextInterval(context);
+            if (nextRetry != null)
+            {
+                request.StatusLogs.Add(ChannelStatusLog.Info($"Next retry in {nextRetry} minutes"));
+            }
+            _channelOperationRequestRepository.Update(request);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error logging to channel request");
+        }
+
+        return true;
     }
 }

@@ -13,3 +13,13 @@ public class ShowToUserException : Exception
 {
    public ShowToUserException(string? message): base(message) {}
 }
+
+public class PeerNotOnlineException : Exception
+{
+   public PeerNotOnlineException(string? message = null): base(message) {}
+}
+
+public class RemoteCanceledFundingException : Exception
+{
+   public RemoteCanceledFundingException(string? message = null): base(message) {}
+}

@@ -292,7 +292,14 @@
                 }
             </DisplayTemplate>
         </DataGridColumn>
-        <DataGridColumn TItem="ChannelOperationRequest" Field="@nameof(ChannelOperationRequest.Status).Humanize(LetterCasing.Sentence)" Caption="Status" Sortable="false" Displayable="@IsAllRequestsColumnVisible(AllChannelsColumnName.Status)"/>
+        <DataGridColumn TItem="ChannelOperationRequest" Field="@nameof(ChannelOperationRequest.Status)" Caption="Status" Sortable="false" Displayable="@IsAllRequestsColumnVisible(AllChannelsColumnName.Status)">
+            <DisplayTemplate>
+                <Row Style="white-space: nowrap;">
+                    @context.Status.Humanize(LetterCasing.Sentence)
+                    <ChannelStatusLogsTooltip ChannelStatusLogs="@context.StatusLogs"/> 
+                </Row>
+            </DisplayTemplate>
+        </DataGridColumn>
         <DataGridColumn TItem="ChannelOperationRequest" Field="@nameof(ChannelOperationRequest.CreationDatetime)" Caption="Creation Date" Sortable="true" SortDirection="SortDirection.Descending" Displayable="@IsAllRequestsColumnVisible(AllChannelsColumnName.CreationDate)">
             <DisplayTemplate>
                 @context.CreationDatetime.Humanize()

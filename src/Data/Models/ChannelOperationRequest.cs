@@ -18,7 +18,9 @@
  */
 
 using System.ComponentModel.DataAnnotations.Schema;
+using FundsManager.Helpers;
 using NBitcoin;
+using System.Text.Json;
 
 namespace FundsManager.Data.Models
 {
@@ -100,6 +102,9 @@ namespace FundsManager.Data.Models
         public string? ClosingReason { get; set; }
 
         public decimal? FeeRate { get; set; }
+
+        [Column(TypeName = "jsonb")]
+        public List<ChannelStatusLog> StatusLogs { get; set; } = new();
 
         #region Relationships
 

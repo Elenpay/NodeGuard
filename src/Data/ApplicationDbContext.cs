@@ -16,7 +16,9 @@
  * along with this program.  If not, see http://www.gnu.org/licenses/.
  */
 
+using System.Text.Json;
 using FundsManager.Data.Models;
+using FundsManager.Helpers;
 using Microsoft.AspNetCore.Identity.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore;
 
@@ -51,11 +53,20 @@ namespace FundsManager.Data
             modelBuilder.Entity<Node>().HasIndex(x => x.PubKey).IsUnique();
             modelBuilder.Entity<Node>().HasIndex(x => x.Name).IsUnique();
             modelBuilder.Entity<Wallet>().HasIndex(x => new {x.InternalWalletSubDerivationPath, x.InternalWalletMasterFingerprint}).IsUnique();
-            
+
             //There should be only one Liquidity Rule per Channel
             modelBuilder.Entity<LiquidityRule>().HasIndex(x => x.ChannelId).IsUnique();
-            
+
             modelBuilder.Entity<ApplicationUser>().HasIndex(x => x.NormalizedUserName).IsUnique();
+
+            modelBuilder.Entity<ChannelStatusLog>().HasNoKey();
+
+            modelBuilder.Entity<ChannelOperationRequest>()
+                .Property(e => e.StatusLogs)
+                .HasConversion(
+                    v => JsonSerializer.Serialize(v, new JsonSerializerOptions()),
+                    v => JsonSerializer.Deserialize<List<ChannelStatusLog>>(v, new JsonSerializerOptions())
+                );
 
             base.OnModelCreating(modelBuilder);
         }
@@ -81,7 +92,7 @@ namespace FundsManager.Data
         public DbSet<InternalWallet> InternalWallets { get; set; }
 
         public DbSet<FMUTXO> FMUTXOs { get; set; }
-        
+
         public DbSet<LiquidityRule> LiquidityRules { get; set; }
     }
 }
