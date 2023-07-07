@@ -34,7 +34,7 @@ TODO
 
 # Dev environment quickstart
 
-1. Run polar regtest network with Polar, import devnetwork.polar.zip (in the root of this repo) and start it
+1. Run polar regtest network with Polar, import devnetwork.zip (in the root of this repo) and start it
 2. Open FundsManager.sln with Visual Studio or your favourite IDE/EDITOR
 3. Set startup project to docker-compose
 4. Run
