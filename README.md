@@ -21,7 +21,7 @@ Current features of NodeGuard are the following:
 - Channel management
 - Channel creation interception with returning address to multisig wallets to avoid having funds on hot wallets
 - Support for hardware wallets to sign the PSBTs for channel funding transactions
-- Minimalistic in-browser wallet with [NodeGuard Companion](https://github.com/Elenpay/Nodeguard-Remote-Signer) to ease signing of transactions and wallet creation
+- Minimalistic in-browser wallet with [NodeGuard Companion](https://github.com/Elenpay/Nodeguards-Companion) to ease signing of transactions and wallet creation
 - In-browser notification systems for channel approvals
 - Two-factor authentication
 
