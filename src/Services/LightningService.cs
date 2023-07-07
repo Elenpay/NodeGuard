@@ -614,6 +614,10 @@ namespace FundsManager.Services
                     // TODO: Make exception message pretty
                     throw new RemoteCanceledFundingException(e.Message);
                 }
+                if (e.Message.Contains("is not online"))
+                {
+                    throw new PeerNotOnlineException($"$peer {destination.PubKey} is not online");
+                }
                 throw;
             }
         }
