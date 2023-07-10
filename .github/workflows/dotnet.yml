@@ -1,4 +1,4 @@
-name: .NET Test on PR to main
+name: Unit testing
 
 on:
   pull_request:
