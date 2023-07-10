@@ -137,6 +137,7 @@
 
     private ColumnLayout<UsersColumnName> UsersColumnLayout;
     private Dictionary<string, bool> UsersColumns = new();
+    private bool columnsLoaded;
 
     public abstract class UsersColumnName
     {
@@ -164,7 +165,7 @@
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
-        if (!firstRender)
+        if (!firstRender && !columnsLoaded)
         {
             await LoadColumnLayout();
 
@@ -174,6 +175,7 @@
     private async Task LoadColumnLayout()
     {
         UsersColumns = await LocalStorageService.LoadStorage(nameof(UsersColumnName), ColumnHelpers.GetColumnsDictionary<UsersColumnName>());
+        columnsLoaded = true;
         StateHasChanged();
     }
 

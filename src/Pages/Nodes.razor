@@ -173,6 +173,7 @@
 
     private ColumnLayout<NodesColumnName> NodesColumnLayout;
     private Dictionary<string, bool> NodesColumns = new();
+    private bool columnsLoaded;
 
     public abstract class NodesColumnName
     {
@@ -212,7 +213,7 @@
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
-        if (!firstRender)
+        if (!firstRender && !columnsLoaded)
         {
             await LoadColumnLayout();
 
@@ -222,6 +223,7 @@
     private async Task LoadColumnLayout()
     {
         NodesColumns = await LocalStorageService.LoadStorage(nameof(NodesColumnName), ColumnHelpers.GetColumnsDictionary<NodesColumnName>());
+        columnsLoaded = true;
         StateHasChanged();
     }
 

@@ -424,6 +424,7 @@
 
     private ColumnLayout<WalletsColumnName> WalletsColumnLayout;
     private Dictionary<string, bool> WalletsColumns = new();
+    private bool columnsLoaded;
 
     public abstract class WalletsColumnName
     {
@@ -455,7 +456,7 @@
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
-        if (!firstRender)
+        if (!firstRender && !columnsLoaded)
         {
             await LoadColumnLayout();
 
@@ -465,6 +466,7 @@
     private async Task LoadColumnLayout()
     {
         WalletsColumns = await LocalStorageService.LoadStorage(nameof(WalletsColumnName), ColumnHelpers.GetColumnsDictionary<WalletsColumnName>());
+        columnsLoaded = true;
         StateHasChanged();
     }
 

@@ -296,7 +296,7 @@
             <DisplayTemplate>
                 <Row Style="white-space: nowrap;">
                     @context.Status.Humanize(LetterCasing.Sentence)
-                    <ChannelStatusLogsTooltip ChannelStatusLogs="@context.StatusLogs"/> 
+                    <ChannelStatusLogsTooltip ChannelStatusLogs="@context.StatusLogs"/>
                 </Row>
             </DisplayTemplate>
         </DataGridColumn>
@@ -415,10 +415,6 @@
     private MempoolRecommendedFeesTypes FeesSelection;
     private long FeeAmount = 1;
     private MempoolRecommendedFees? _recommendedFees;
-    private ColumnLayout<PendingChannelsColumnName> PendingRequestsColumnLayout;
-    private ColumnLayout<AllChannelsColumnName> AllRequestsColumnLayout;
-    private Dictionary<string, bool> PendingRequestsColumns = new();
-    private Dictionary<string, bool> AllRequestsColumns = new();
 
     // New Request integration
     private List<Wallet> _allWallets = new List<Wallet>();
@@ -451,6 +447,12 @@
 
     [CascadingParameter]
     private ClaimsPrincipal? ClaimsPrincipal { get; set; }
+
+    private ColumnLayout<PendingChannelsColumnName> PendingRequestsColumnLayout;
+    private ColumnLayout<AllChannelsColumnName> AllRequestsColumnLayout;
+    private Dictionary<string, bool> PendingRequestsColumns = new();
+    private Dictionary<string, bool> AllRequestsColumns = new();
+    private bool columnsLoaded;
 
     public abstract class PendingChannelsColumnName
     {
@@ -497,10 +499,9 @@
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
-        if (!firstRender)
+        if (!firstRender && !columnsLoaded)
         {
             await LoadColumnLayout();
-
         }
     }
 
@@ -508,6 +509,7 @@
     {
         AllRequestsColumns = await LocalStorageService.LoadStorage(nameof(AllChannelsColumnName), ColumnHelpers.GetColumnsDictionary<AllChannelsColumnName>());
         PendingRequestsColumns = await LocalStorageService.LoadStorage(nameof(PendingChannelsColumnName), ColumnHelpers.GetColumnsDictionary<PendingChannelsColumnName>());
+        columnsLoaded = true;
         StateHasChanged();
     }
 

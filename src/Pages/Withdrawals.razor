@@ -436,6 +436,7 @@
     private ColumnLayout<AllWithdrawalsColumnName> AllRequestsColumnLayout;
     private Dictionary<string, bool> PendingRequestsColumns = new();
     private Dictionary<string, bool> AllRequestsColumns = new();
+    private bool columnsLoaded;
 
     public abstract class PendingWithdrawalsColumnName
     {
@@ -476,14 +477,14 @@
 
         _isFinanceManager = ClaimsPrincipal != null && ClaimsPrincipal.IsInRole(ApplicationUserRole.FinanceManager.ToString());
         await GetData();
+        await LoadColumnLayout();
     }
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
-        if (!firstRender)
+        if (!firstRender && !columnsLoaded)
         {
             await LoadColumnLayout();
-
         }
     }
 
@@ -491,6 +492,7 @@
     {
         AllRequestsColumns = await LocalStorageService.LoadStorage(nameof(AllWithdrawalsColumnName), ColumnHelpers.GetColumnsDictionary<AllWithdrawalsColumnName>());
         PendingRequestsColumns = await LocalStorageService.LoadStorage(nameof(PendingWithdrawalsColumnName), ColumnHelpers.GetColumnsDictionary<PendingWithdrawalsColumnName>());
+        columnsLoaded = true;
         StateHasChanged();
     }
 
