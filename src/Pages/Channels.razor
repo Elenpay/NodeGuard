@@ -343,6 +343,7 @@
 
     private ColumnLayout<ChannelsColumnName> ChannelsColumnLayout;
     private Dictionary<string, bool> ChannelsColumns = new();
+    private bool columnsLoaded;
 
     public abstract class ChannelsColumnName
     {
@@ -386,7 +387,7 @@
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
-        if (!firstRender)
+        if (!firstRender && !columnsLoaded)
         {
             await LoadColumnLayout();
 
@@ -396,6 +397,7 @@
     private async Task LoadColumnLayout()
     {
         ChannelsColumns = await LocalStorageService.LoadStorage(nameof(ChannelsColumnName), ColumnHelpers.GetColumnsDictionary<ChannelsColumnName>());
+        columnsLoaded = true;
         StateHasChanged();
     }
 
