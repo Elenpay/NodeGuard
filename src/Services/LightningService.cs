@@ -192,6 +192,16 @@ namespace FundsManager.Services
 
             try
             {
+                var signedPsbtCount = channelOperationRequest.ChannelOperationRequestPsbts.Count(
+                    x => channelOperationRequest.Wallet != null && 
+                         !x.IsFinalisedPSBT && 
+                         !x.IsInternalWalletPSBT && 
+                         (channelOperationRequest.Wallet.IsHotWallet || !x.IsTemplatePSBT));
+                if (channelOperationRequest.Wallet != null && signedPsbtCount > channelOperationRequest.Wallet.MofN)
+                {
+                    _logger.LogError("The number of signatures exceeds the value set for this wallet");
+                    throw new InvalidOperationException("The number of signatures exceeds the value set for this wallet");
+                }
                 if (!combinedPSBT.TryGetVirtualSize(out var estimatedVsize))
                 {
                     _logger.LogError("Could not estimate virtual size of the PSBT");
