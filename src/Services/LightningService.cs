@@ -192,6 +192,18 @@ namespace FundsManager.Services
 
             try
             {
+                var humanSignaturesCount = channelOperationRequest.ChannelOperationRequestPsbts.Count(
+                    x => channelOperationRequest.Wallet != null && 
+                         !x.IsFinalisedPSBT && 
+                         !x.IsInternalWalletPSBT && 
+                         !x.IsTemplatePSBT);
+                
+                //If it is a hot wallet, we dont check the number of (human) signatures
+                if (channelOperationRequest.Wallet != null && !channelOperationRequest.Wallet.IsHotWallet && channelOperationRequest.Wallet != null && humanSignaturesCount != channelOperationRequest.Wallet.MofN -1)
+                {
+                    _logger.LogError("The number of human signatures does not match the number of signatures required for this wallet, expected {MofN} but got {HumanSignaturesCount}", channelOperationRequest.Wallet.MofN-1, humanSignaturesCount);
+                    throw new InvalidOperationException("The number of human signatures does not match the number of signatures required for this wallet");
+                }
                 if (!combinedPSBT.TryGetVirtualSize(out var estimatedVsize))
                 {
                     _logger.LogError("Could not estimate virtual size of the PSBT");
