@@ -176,7 +176,6 @@ namespace FundsManager.Services
 
             var network = CurrentNetworkHelper.GetCurrentNetwork();
 
-            var closeAddress = await GetCloseAddress(channelOperationRequest, derivationStrategyBase, _nbXplorerService, _logger);
 
             _logger.LogInformation("Channel open request for  request id: {RequestId} from node: {SourceNodeName} to node: {DestinationNodeName}",
                 channelOperationRequest.Id,
@@ -193,11 +192,11 @@ namespace FundsManager.Services
             try
             {
                 var humanSignaturesCount = channelOperationRequest.ChannelOperationRequestPsbts.Count(
-                    x => channelOperationRequest.Wallet != null && 
-                         !x.IsFinalisedPSBT && 
-                         !x.IsInternalWalletPSBT && 
+                    x => channelOperationRequest.Wallet != null &&
+                         !x.IsFinalisedPSBT &&
+                         !x.IsInternalWalletPSBT &&
                          !x.IsTemplatePSBT);
-                
+
                 //If it is a hot wallet, we dont check the number of (human) signatures
                 if (channelOperationRequest.Wallet != null && !channelOperationRequest.Wallet.IsHotWallet && channelOperationRequest.Wallet != null && humanSignaturesCount != channelOperationRequest.Wallet.MofN -1)
                 {
@@ -236,7 +235,6 @@ namespace FundsManager.Services
                         }
                     },
                     LocalFundingAmount = fundingAmount,
-                    CloseAddress = closeAddress.Address.ToString(),
                     Private = channelOperationRequest.IsChannelPrivate,
                     NodePubkey = ByteString.CopyFrom(Convert.FromHexString(destination.PubKey)),
                 };
@@ -250,8 +248,19 @@ namespace FundsManager.Services
                     throw new InvalidOperationException();
                 }
 
+                // Check features to see if we need or is allowed to add a close address
+                var upfrontShutdownScriptOpt = remoteNodeInfo.Features.ContainsKey((uint)FeatureBit.UpfrontShutdownScriptOpt);
+                var upfrontShutdownScriptReq = remoteNodeInfo.Features.ContainsKey((uint)FeatureBit.UpfrontShutdownScriptReq);
+                string? closeAddress = null;
+                if (upfrontShutdownScriptOpt || upfrontShutdownScriptReq)
+                {
+                    var keyPathInformation = await GetCloseAddress(channelOperationRequest, derivationStrategyBase, _nbXplorerService, _logger);
+                    closeAddress = keyPathInformation?.Address?.ToString();
+                    openChannelRequest.CloseAddress = closeAddress;
+                }
+
                 //For now, we only rely on pure tcp IPV4 connections
-                var addr = remoteNodeInfo.Addresses.FirstOrDefault(x => x.Network == "tcp").Addr;
+                var addr = remoteNodeInfo.Addresses.FirstOrDefault(x => x.Network == "tcp")?.Addr;
 
                 if (addr == null)
                 {
@@ -368,7 +377,7 @@ namespace FundsManager.Services
                                     CreationDatetime = DateTimeOffset.Now,
                                     FundingTx = fundingTx,
                                     FundingTxOutputIndex = response.ChanOpen.ChannelPoint.OutputIndex,
-                                    BtcCloseAddress = closeAddress?.Address.ToString(),
+                                    BtcCloseAddress = closeAddress,
                                     SatsAmount = channelOperationRequest.SatsAmount,
                                     UpdateDatetime = DateTimeOffset.Now,
                                     Status = Channel.ChannelStatus.Open,
