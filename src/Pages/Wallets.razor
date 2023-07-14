@@ -401,7 +401,7 @@
                                             SelectedValueChanged="(id) => OnSelectedWallet(id)"
                                             DefaultItemText="Choose the wallet">
                                     <Feedback>
-                                        <ValidationError/>
+                                        <ValidationError>You must select a valid wallet</ValidationError>
                                     </Feedback>
                                 </SelectList>
                                 </FieldBody>
@@ -1070,8 +1070,12 @@
 
     private async Task TransferFunds()
     {
-    // TODO: Falta validación de todo el modal
-        
+        if (!await _transferFundsValidations.ValidateAll())
+        {
+            ToastService.ShowError("There are fields that are not valid.");
+            return;
+        }
+
         if (_sourceTransferWallet != null && _targetTransferWallet != null)
         {
             if (_sourceTransferWallet.IsHotWallet)
@@ -1146,6 +1150,7 @@
         await _transferFundsModal?.Close(CloseReason.UserClosing);
 
         _selectedTransferWalletId = 0;
+        _amountToTransfer = Constants.MINIMUM_WITHDRAWAL_BTC_AMOUNT;
         _walletsForTransfer = new();
 		_transferTargetWalletBalance = string.Empty;
         _sourceWalletBalance = string.Empty;
