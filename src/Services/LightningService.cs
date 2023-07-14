@@ -252,7 +252,8 @@ namespace FundsManager.Services
                 var upfrontShutdownScriptOpt = remoteNodeInfo.Features.ContainsKey((uint)FeatureBit.UpfrontShutdownScriptOpt);
                 var upfrontShutdownScriptReq = remoteNodeInfo.Features.ContainsKey((uint)FeatureBit.UpfrontShutdownScriptReq);
                 string? closeAddress = null;
-                if (upfrontShutdownScriptOpt || upfrontShutdownScriptReq)
+                if (upfrontShutdownScriptOpt && remoteNodeInfo.Features[(uint)FeatureBit.UpfrontShutdownScriptOpt] is { IsKnown: true } ||
+                    upfrontShutdownScriptReq && remoteNodeInfo.Features[(uint)FeatureBit.UpfrontShutdownScriptReq] is { IsKnown: true })
                 {
                     var keyPathInformation = await GetCloseAddress(channelOperationRequest, derivationStrategyBase, _nbXplorerService, _logger);
                     closeAddress = keyPathInformation?.Address?.ToString();
