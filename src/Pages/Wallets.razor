@@ -397,7 +397,7 @@
                                             Data="_walletsForTransfer"
                                             TextField="@((item) => item.Name)"
                                             ValueField="@((item) => item.Id)"
-                                            @bind-Value="@_defaultTransferWalletId"
+                                            SelectedValue="@_selectedTransferWalletId"
                                             SelectedValueChanged="(id) => OnSelectedWallet(id)"
                                             DefaultItemText="Choose the wallet">
                                     <Feedback>
@@ -517,10 +517,7 @@
 	private Modal? _transferFundsModal;
     private Validations _transferFundsValidations;
 	private List<Wallet> _walletsForTransfer = new();
-    private int? _defaultTransferWalletId;
-    // TODO: ver si se puede quitar esto y mostrar el balance formateado arriba
-    // TODO: Creo que tambien hay todavia logica en el modal de que mostrar y qué no, y que permisos hay
-    // TODO: Loggear también el usuario en la request
+    private int _selectedTransferWalletId;
     private Wallet? _sourceTransferWallet;
     private Wallet? _targetTransferWallet;
     private string _sourceWalletName => _sourceTransferWallet != null ? $"{_sourceTransferWallet.Name} " : "";
@@ -900,6 +897,7 @@
         _selectedWalletToFinalise = null;
         await _finaliseModalRef.Close(CloseReason.UserClosing);
     }
+    
 
     private void ValidateThreshold(ValidatorEventArgs obj)
     {
@@ -993,15 +991,45 @@
     {
         bool result = false;
         
-        var templatePSBT = await BitcoinService.GenerateTemplatePSBT(withdrawalRequest);
-        var walletWithdrawalRequestPsbt = new WalletWithdrawalRequestPSBT()
+        async Task CleanUpWithdrawalRequest(string errorMessage)
         {
-            WalletWithdrawalRequestId = withdrawalRequest.Id,
-            PSBT = templatePSBT.ToBase64(),
-            SignerId = null,
-        };
-            
+            ToastService.ShowError(errorMessage);
+            withdrawalRequest.Status = WalletWithdrawalRequestStatus.Failed;
+            WalletWithdrawalRequestRepository.Update(withdrawalRequest);
+            await CloseHotWalletTransferModal();
+        }
+
+        var walletWithdrawalRequestPsbt = new WalletWithdrawalRequestPSBT();
+
+        try
+        {
+            var templatePSBT = await BitcoinService.GenerateTemplatePSBT(withdrawalRequest);
+            walletWithdrawalRequestPsbt.WalletWithdrawalRequestId = withdrawalRequest.Id;
+            walletWithdrawalRequestPsbt.PSBT = templatePSBT.ToBase64();
+            walletWithdrawalRequestPsbt.SignerId = null;
+        }
+        catch (NoUTXOsAvailableException e)
+        {
+            await CleanUpWithdrawalRequest("No UTXOs available for withdrawals were found for this wallet");
+            return result;
+        }
+        catch (ShowToUserException e)
+        {
+            CleanUpWithdrawalRequest(e.Message);
+            return result;
+        }
+        catch
+        {
+            CleanUpWithdrawalRequest("Something went wrong");
+            return result;
+        }
+        
         var addResult = await WalletWithdrawalRequestPsbtRepository.AddAsync(walletWithdrawalRequestPsbt);
+        
+        if (!addResult.Item1)
+        {
+            throw new ShowToUserException("Error while saving the signature");
+        }
             
         withdrawalRequest = await WalletWithdrawalRequestRepository.GetById(withdrawalRequest.Id);
             
@@ -1043,7 +1071,6 @@
     private async Task TransferFunds()
     {
     // TODO: Falta validación de todo el modal
-    // TODO: Faltan también de esta parte los distintos catch de withdrawal
         
         if (_sourceTransferWallet != null && _targetTransferWallet != null)
         {
@@ -1070,6 +1097,7 @@
         await CloseHotWalletTransferModal();
         ToastService.ShowSuccess(finalMsg);
     }
+    
     
     private async Task<bool> CreateJobForFunds(WalletWithdrawalRequest withdrawalRequest)
     {
@@ -1117,7 +1145,7 @@
     {
         await _transferFundsModal?.Close(CloseReason.UserClosing);
 
-        _defaultTransferWalletId = 0;
+        _selectedTransferWalletId = 0;
         _walletsForTransfer = new();
 		_transferTargetWalletBalance = string.Empty;
         _sourceWalletBalance = string.Empty;
@@ -1125,6 +1153,8 @@
 
     private async Task OnSelectedWallet(int id)
     {
+        _selectedTransferWalletId = id;
+        
 		if (id == 0) {
             _transferTargetWalletBalance = string.Empty;
         }
