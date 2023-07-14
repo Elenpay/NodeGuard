@@ -1025,7 +1025,7 @@
         var withdrawalRequest = new WalletWithdrawalRequest
         {
             UserRequestorId = LoggedUser != null ? LoggedUser.Id : string.Empty,
-            Description = "Transfer funds from another wallet",
+            Description = @$"Funds transferred from {_sourceWalletName} to {_targetWalletName}",
             WithdrawAllFunds = _transferAllFunds,
             DestinationAddress = targetBitcoinAddress.ToString(),
             Amount = _amountToTransfer,
