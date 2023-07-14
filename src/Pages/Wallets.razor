@@ -410,13 +410,13 @@
                     </Column>
                    <Column ColumnSize="ColumnSize.Is6">
                            <Field>
-                               <FieldLabel>@_sourceWalletName</FieldLabel>
+                               <FieldLabel>@($"{_sourceWalletName} Balance (this wallet)")</FieldLabel>
                                <TextEdit @bind-Text="_sourceWalletBalance" PlainText Disabled />
                            </Field>
                     </Column>
                     <Column ColumnSize="ColumnSize.Is6">
                            <Field>
-                               <FieldLabel>@_targetWalletName</FieldLabel>
+                           <FieldLabel>@($"{_targetWalletName} Balance")</FieldLabel>
                                <TextEdit @bind-Text="_transferTargetWalletBalance" PlainText Disabled />
                            </Field>
                     </Column>
@@ -523,8 +523,8 @@
     // TODO: Loggear también el usuario en la request
     private Wallet? _sourceTransferWallet;
     private Wallet? _targetTransferWallet;
-    private string _sourceWalletName => _sourceTransferWallet != null ? $"{_sourceTransferWallet.Name} Balance" : "Balance";
-    private string _targetWalletName => _targetTransferWallet != null ? $"{_targetTransferWallet.Name} Balance" : "Balance";
+    private string _sourceWalletName => _sourceTransferWallet != null ? $"{_sourceTransferWallet.Name} " : "";
+    private string _targetWalletName => _targetTransferWallet != null ? $"{_targetTransferWallet.Name} " : "";
     private string _transferTargetWalletBalance;
     private string _sourceWalletBalance;
     private bool _transferAllFunds;
