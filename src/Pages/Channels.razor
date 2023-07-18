@@ -42,7 +42,6 @@
                                     <DropdownItem Disabled="@(checkDisableCloseChannelButton(context.Item))" Clicked="() => MarkAsClosed(context.Item)">Mark as closed</DropdownItem>
                                     <DropdownItem Clicked="@(() => ShowModal(context.Item))">Requests</DropdownItem>
                                 }
-
                             </DropdownMenu>
                         </Dropdown>
                     </DeleteCommandTemplate>
@@ -93,7 +92,27 @@
                         @context.Status.ToString("G")
                     </DisplayTemplate>
                 </DataGridColumn>
-
+                <DataGridColumn TItem="Channel" Field="@nameof(Channel.OpenedWithId)" Caption="Opened with" CustomFilter="OnWalletFilter" Filterable="true" Displayable="@IsColumnVisible(ChannelsColumnName.OpenedWith)">
+                    <FilterTemplate>
+                        <Select TValue="int" SelectedValue="@(_filterWalletId)" SelectedValueChanged="@(value => { _filterWalletId = value; context.TriggerFilterChange(_filterWalletId); })">
+                            <SelectItem Value="@(0)">All</SelectItem>
+                            @foreach (var wallet in _wallets)
+                            {
+                                <SelectItem Value="@(wallet.Id)">@wallet.Name</SelectItem>
+                            }
+                        </Select>
+                    </FilterTemplate>
+                    <DisplayTemplate>
+                        @{
+                            Wallet wallet = null;
+                            if (context.OpenedWithId != null)
+                            {
+                                wallet = Task.Run(() => WalletRepository.GetById((int)context.OpenedWithId)).Result;
+                            }
+                            @(wallet == null ? "Unknown" : wallet.Name)
+                        }
+                    </DisplayTemplate>
+                </DataGridColumn>
                 <DataGridColumn TItem="Channel" Field="@nameof(Channel.FundingTx)" Caption="OutPoint" Filterable="false" Sortable="false" Displayable="@IsColumnVisible(ChannelsColumnName.Outpoint)">
                     <DisplayTemplate>
                         @StringHelper.TruncateHeadAndTail(context.FundingTx, 5):@context.FundingTxOutputIndex
@@ -332,6 +351,8 @@
     private int _sourceNodeIdFilter = 0;
     private int _destinationNodeIdFilter = 0;
     private List<Node> _nodes = new List<Node>();
+    private List<Wallet> _wallets = new List<Wallet>();
+    private int _filterWalletId;
 
     [CascadingParameter]
     private ApplicationUser? LoggedUser { get; set; }
@@ -350,6 +371,7 @@
         public static readonly ColumnDefault SourceNode = new("Source Node");
         public static readonly ColumnDefault DestinationNode = new("Destination Node");
         public static readonly ColumnDefault Status = new("Status");
+        public static readonly ColumnDefault OpenedWith = new("Opened With");
         public static readonly ColumnDefault Outpoint = new("Outpoint");
         public static readonly ColumnDefault Capacity = new("Capacity (BTC)");
         public static readonly ColumnDefault Private = new("Private");
@@ -382,6 +404,7 @@
         _availableWallets = await WalletRepository.GetAvailableWallets();
         _channels = await ChannelRepository.GetAllManagedByUserNodes(LoggedUser.Id);
         _nodes = await NodeRepository.GetAll();
+        _wallets = await WalletRepository.GetAll();
         _channelsDataGridRef.FilterData();
     }
 
@@ -692,6 +715,19 @@
         return true;
     }
 
+    private bool OnWalletFilter(object itemValue, object searchValue)
+    {
+        if (searchValue == null || (int)searchValue == 0)
+        {
+            return true;
+        }
+        if (itemValue == null) return false;
+        if ((int)itemValue == (int)searchValue)
+        {
+            return true;
+        }
+        return false;
+    }
 
     private bool OnSourceNodeIdFilter(object itemValue, object searchValue)
     {
@@ -750,7 +786,7 @@
 
     private bool IsColumnVisible(ColumnDefault column)
     {
-        if (ChannelsColumnLayout	== null)
+        if (ChannelsColumnLayout == null)
         {
             return true;
         }
