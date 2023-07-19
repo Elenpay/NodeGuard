@@ -849,7 +849,7 @@
 
             if (bitcoinAddress != null)
             {
-                _textModalTitle = $"Unused BTC Address for funding this wallet";
+                _textModalTitle = $"Wallet: {wallet.Name} - Unused BTC Address for funding this wallet";
                 _textModalContent = bitcoinAddress.ToString();
                 _textModalCopy = true;
                 await _textModalRef.Show();
