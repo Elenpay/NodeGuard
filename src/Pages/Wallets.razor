@@ -1096,10 +1096,18 @@
     private async Task TransferFundsHotWallet()
     {
         var withdrawalRequest = await CreateWithdrawalRequestForFunds();
-        var transferSuccess = await TransferInnerWithdrawalProcess(withdrawalRequest);   
-        var finalMsg = transferSuccess ? "Funds transferred successfully" : "Error while transferring funds, please contact a superadmin for troubleshooting";
+        var transferSuccess = await TransferInnerWithdrawalProcess(withdrawalRequest);
+        
+        if (transferSuccess)
+        {
+            ToastService.ShowSuccess("Funds transferred successfully");
+        }
+        else
+        {
+            ToastService.ShowError("Error while transferring funds, please contact a superadmin for troubleshooting");
+        }
+        
         await CloseHotWalletTransferModal();
-        ToastService.ShowSuccess(finalMsg);
     }
     
     
