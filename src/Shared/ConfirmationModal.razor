@@ -9,10 +9,12 @@
         </ModalBody>
         <ModalFooter>
             <Button Color="Color.Secondary" Clicked="@OnCancel">@CancelLabel</Button>
-            <Button Color="Color.Primary" Clicked="@OnSubmit">
-                @OkLabel
-            </Button>
-        </ModalFooter>
+            @if (OnSubmit.HasDelegate) {
+                <Button Color="Color.Primary" Clicked="@OnSubmit">
+                    @OkLabel
+                </Button>
+            }
+                </ModalFooter>
     </ModalContent>
 </Modal>
 
@@ -26,13 +28,14 @@
     [Parameter]
     public string CancelLabel { get; set; } = "Cancel";
 
-    [Parameter] public string OkLabel { get; set; } = "Ok";
+    [Parameter] 
+    public string OkLabel { get; set; } = "Ok";
 
     private Modal? _modalRef { get; set; }
 
     [Parameter, EditorRequired]
     public EventCallback OnCancel { get; set; }
-    [Parameter, EditorRequired]
+    [Parameter]
     public EventCallback OnSubmit { get; set; }
 
     public async Task CloseModal()
