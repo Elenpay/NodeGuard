@@ -717,16 +717,8 @@
 
     private bool OnWalletFilter(object itemValue, object searchValue)
     {
-        if (searchValue == null || (int)searchValue == 0)
-        {
-            return true;
-        }
         if (itemValue == null) return false;
-        if ((int)itemValue == (int)searchValue)
-        {
-            return true;
-        }
-        return false;
+        return searchValue == null || (int)searchValue == 0 || (int)itemValue == (int)searchValue;
     }
 
     private bool OnSourceNodeIdFilter(object itemValue, object searchValue)

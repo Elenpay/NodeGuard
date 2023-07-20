@@ -63,16 +63,7 @@ namespace FundsManager.Data.Models
         public bool IsPrivate { get; set; }
 
         [NotMapped]
-        public int? OpenedWithId
-        {
-            get
-            {
-                if (ChannelOperationRequests != null && ChannelOperationRequests.Count > 0)
-                    return ChannelOperationRequests.FirstOrDefault().Wallet.Id;
-                else
-                    return null;
-            }
-        }
+        public int? OpenedWithId => ChannelOperationRequests?.FirstOrDefault()?.Wallet?.Id;
 
         #region Relationships
 
