@@ -976,7 +976,8 @@
 
     private async Task ShowTransferFundsModal(Wallet wallet)
     {
-        _walletsForTransfer = _wallets.Where(w => w.Id != wallet.Id).ToList();
+		var availableWallets = await WalletRepository.GetAvailableWallets();
+        _walletsForTransfer = availableWallets.Where(w => w.Id != wallet.Id).ToList();
 		_transferTargetWalletBalance = string.Empty;
         _sourceTransferWallet = wallet;
         _targetTransferWallet = null;
