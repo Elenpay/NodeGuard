@@ -17,6 +17,7 @@
  *
  */
 
+using System.Security.Cryptography;
 using Microsoft.Extensions.Logging;
 using FundsManager.Data;
 using FundsManager.Data.Models;
@@ -297,7 +298,7 @@ namespace FundsManager.Services
             var nbXplorerMock = new Mock<INBXplorerService>();
             //Mock to return a wallet address
             var keyPathInformation = new KeyPathInformation()
-                {Address = BitcoinAddress.Create("bcrt1q590shaxaf5u08ml8jwlzghz99dup3z9592vxal", Network.RegTest)};
+                { Address = BitcoinAddress.Create("bcrt1q590shaxaf5u08ml8jwlzghz99dup3z9592vxal", Network.RegTest) };
 
             nbXplorerMock
                 .Setup(x => x.GetUnusedAsync(It.IsAny<DerivationStrategyBase>(), It.IsAny<DerivationFeature>(),
@@ -426,7 +427,7 @@ namespace FundsManager.Services
                 .Setup(x => x.GetById(It.IsAny<int>()))
                 .ReturnsAsync(operationRequest);
 
-            var nodes = new List<Node> {destinationNode};
+            var nodes = new List<Node> { destinationNode };
 
             nodeRepository
                 .Setup(x => x.GetAllManagedByNodeGuard())
@@ -527,7 +528,7 @@ namespace FundsManager.Services
                 },
             };
 
-            utxoChanges.Confirmed = new UTXOChange() {UTXOs = utxoList};
+            utxoChanges.Confirmed = new UTXOChange() { UTXOs = utxoList };
 
             var channelOperationRequestPsbtRepository = new Mock<IChannelOperationRequestPSBTRepository>();
             channelOperationRequestPsbtRepository
@@ -654,7 +655,7 @@ namespace FundsManager.Services
                 .Setup(x => x.GetById(It.IsAny<int>()))
                 .ReturnsAsync(operationRequest);
 
-            var nodes = new List<Node> {destinationNode};
+            var nodes = new List<Node> { destinationNode };
 
             nodeRepository
                 .Setup(x => x.GetAllManagedByNodeGuard())
@@ -755,7 +756,7 @@ namespace FundsManager.Services
                 },
             };
 
-            utxoChanges.Confirmed = new UTXOChange() {UTXOs = utxoList};
+            utxoChanges.Confirmed = new UTXOChange() { UTXOs = utxoList };
 
             var channelOperationRequestPsbtRepository = new Mock<IChannelOperationRequestPSBTRepository>();
             channelOperationRequestPsbtRepository
@@ -882,7 +883,7 @@ namespace FundsManager.Services
                 .Setup(x => x.GetById(It.IsAny<int>()))
                 .ReturnsAsync(operationRequest);
 
-            var nodes = new List<Node> {destinationNode};
+            var nodes = new List<Node> { destinationNode };
 
             nodeRepository
                 .Setup(x => x.GetAllManagedByNodeGuard())
@@ -983,7 +984,7 @@ namespace FundsManager.Services
                 },
             };
 
-            utxoChanges.Confirmed = new UTXOChange() {UTXOs = utxoList};
+            utxoChanges.Confirmed = new UTXOChange() { UTXOs = utxoList };
 
             var channelOperationRequestPsbtRepository = new Mock<IChannelOperationRequestPSBTRepository>();
             channelOperationRequestPsbtRepository
@@ -1059,7 +1060,7 @@ namespace FundsManager.Services
             //TODO Remove hack
             LightningService.CreateLightningClient = originalCreateLightningClient;
         }
-        
+
         /// <summary>
         /// This tests makes sure that if a multisig wallet is used, the number of signatures is correct.
         /// This means that we need in in a m-of-n multisig, m-1 signatures so nodeguard is that last one to sign to avoid leaking signatures with SIGHASH_NONE
@@ -1086,9 +1087,9 @@ namespace FundsManager.Services
             {
                 PSBT = userSignedPSBT,
             });
-            
+
             //Lets add a second signed "human" PSBT
-            
+
             channelOpReqPsbts.Add(new ChannelOperationRequestPSBT()
             {
                 PSBT = userSignedPSBT,
@@ -1120,7 +1121,7 @@ namespace FundsManager.Services
                 .Setup(x => x.GetById(It.IsAny<int>()))
                 .ReturnsAsync(operationRequest);
 
-            var nodes = new List<Node> {destinationNode};
+            var nodes = new List<Node> { destinationNode };
 
             nodeRepository
                 .Setup(x => x.GetAllManagedByNodeGuard())
@@ -1221,7 +1222,7 @@ namespace FundsManager.Services
                 },
             };
 
-            utxoChanges.Confirmed = new UTXOChange() {UTXOs = utxoList};
+            utxoChanges.Confirmed = new UTXOChange() { UTXOs = utxoList };
 
             var channelOperationRequestPsbtRepository = new Mock<IChannelOperationRequestPSBTRepository>();
             channelOperationRequestPsbtRepository
@@ -1347,7 +1348,7 @@ namespace FundsManager.Services
                 .Setup(x => x.GetById(It.IsAny<int>()))
                 .ReturnsAsync(operationRequest);
 
-            var nodes = new List<Node> {destinationNode};
+            var nodes = new List<Node> { destinationNode };
 
             nodeRepository
                 .Setup(x => x.GetAllManagedByNodeGuard())
@@ -1448,7 +1449,7 @@ namespace FundsManager.Services
                 },
             };
 
-            utxoChanges.Confirmed = new UTXOChange() {UTXOs = utxoList};
+            utxoChanges.Confirmed = new UTXOChange() { UTXOs = utxoList };
 
             var channelOperationRequestPsbtRepository = new Mock<IChannelOperationRequestPSBTRepository>();
             channelOperationRequestPsbtRepository
@@ -1611,6 +1612,104 @@ namespace FundsManager.Services
 
             //TODO Remove hack
             LightningService.CreateLightningClient = originalCreateLightningClient;
+        }
+
+        [Fact]
+        public async Task? CreateOpenChannelRequest_CreatesRequestWithoutClosingAddress()
+        {
+            // Arrange
+            var wallet = CreateWallet.SingleSig(_internalWallet);
+            var channelOperationRequest = new ChannelOperationRequest
+            {
+                Wallet = wallet
+            };
+            var psbt =
+                "cHNidP8BAFIBAAAAAeh7YDXyZE11vXb0yRqCkrxY7VpHH1WVMHwaCWYMv/pCAQAAAAD/////AUjf9QUAAAAAFgAULTCtUNMojFQZ8oa6fpbXbDhK2EYAAAAATwEENYfPA325Ro0AAAABg9H86IDUttPPFss+9te+0DByQgbeD7RPXNuVH9mh1qIDnMEWyKA+kvyG038on8+HxI+9AD8r6ZI1dNIDSGC8824Q7QIQyDAAAIABAACAAQAAAAABAR8A4fUFAAAAABYAFOk69QEyo0x+Xs/zV62OLrHh9eszAQMEAgAAAAAA";
+
+            var combinedPsbt = LightningHelper.CombinePSBTs(new[] { psbt });
+            var lightningService = new LightningService(_logger, null, null, null, null, null, null, null, null);
+            var pendingChannelId = RandomNumberGenerator.GetBytes(32);
+            var derivationStrategyBase = LightningService.GetDerivationStrategyBase(channelOperationRequest);
+            var node = new LightningNode()
+            {
+                PubKey = "03650f49929d84d9a6d9b5a66235c603a1a0597dd609f7cd3b15052382cf9bb1b4"
+            };
+
+            // Act
+            var openChannelRequest = await lightningService.CreateOpenChannelRequest(channelOperationRequest, combinedPsbt, node, 1000, pendingChannelId, derivationStrategyBase);
+
+            // Assert
+            openChannelRequest.Should().Be(new OpenChannelRequest()
+            {
+                FundingShim = new FundingShim
+                {
+                    PsbtShim = new PsbtShim
+                    {
+                        BasePsbt = ByteString.FromBase64(combinedPsbt.ToBase64()),
+                        NoPublish = false,
+                        PendingChanId = ByteString.CopyFrom(pendingChannelId)
+                    }
+                },
+                LocalFundingAmount = 1000,
+                Private = false,
+                NodePubkey = ByteString.CopyFrom(Convert.FromHexString("03650f49929d84d9a6d9b5a66235c603a1a0597dd609f7cd3b15052382cf9bb1b4")),
+                CloseAddress = ""
+            });
+        }
+
+        [Fact]
+        public async Task? CreateOpenChannelRequest_CreatesRequestWithClosingAddress()
+        {
+            // Arrange
+            var nbXplorerMock = new Mock<INBXplorerService>();
+
+            nbXplorerMock.Setup(x => x.GetUnusedAsync(It.IsAny<DerivationStrategyBase>(),
+                    It.IsAny<DerivationFeature>(),
+                    It.IsAny<int>(),
+                    It.IsAny<bool>(),
+                    It.IsAny<CancellationToken>()))
+                .Returns(Task.FromResult<KeyPathInformation?>(new KeyPathInformation() { Address = BitcoinAddress.Create("bcrt1q590shaxaf5u08ml8jwlzghz99dup3z9592vxal", Network.RegTest) }));
+
+
+            var wallet = CreateWallet.SingleSig(_internalWallet);
+            var channelOperationRequest = new ChannelOperationRequest
+            {
+                Wallet = wallet
+            };
+            var psbt =
+                "cHNidP8BAFIBAAAAAeh7YDXyZE11vXb0yRqCkrxY7VpHH1WVMHwaCWYMv/pCAQAAAAD/////AUjf9QUAAAAAFgAULTCtUNMojFQZ8oa6fpbXbDhK2EYAAAAATwEENYfPA325Ro0AAAABg9H86IDUttPPFss+9te+0DByQgbeD7RPXNuVH9mh1qIDnMEWyKA+kvyG038on8+HxI+9AD8r6ZI1dNIDSGC8824Q7QIQyDAAAIABAACAAQAAAAABAR8A4fUFAAAAABYAFOk69QEyo0x+Xs/zV62OLrHh9eszAQMEAgAAAAAA";
+
+            var combinedPsbt = LightningHelper.CombinePSBTs(new[] { psbt });
+            var lightningService = new LightningService(_logger, null, null, null, null, null, null, nbXplorerMock.Object, null);
+            var pendingChannelId = RandomNumberGenerator.GetBytes(32);
+            var derivationStrategyBase = LightningService.GetDerivationStrategyBase(channelOperationRequest);
+
+            var node = new LightningNode()
+            {
+                PubKey = "03650f49929d84d9a6d9b5a66235c603a1a0597dd609f7cd3b15052382cf9bb1b4",
+            };
+            node.Features.Add((uint)FeatureBit.UpfrontShutdownScriptOpt, new Feature() { Name = "upfront-shutdown-script", IsKnown = true, IsRequired = false });
+
+            // Act
+            var openChannelRequest = await lightningService.CreateOpenChannelRequest(channelOperationRequest, combinedPsbt, node, 1000, pendingChannelId, derivationStrategyBase);
+
+            // Assert
+            openChannelRequest.Should().Be(new OpenChannelRequest()
+            {
+                FundingShim = new FundingShim
+                {
+                    PsbtShim = new PsbtShim
+                    {
+                        BasePsbt = ByteString.FromBase64(combinedPsbt.ToBase64()),
+                        NoPublish = false,
+                        PendingChanId = ByteString.CopyFrom(pendingChannelId)
+                    }
+                },
+                LocalFundingAmount = 1000,
+                Private = false,
+                NodePubkey = ByteString.CopyFrom(Convert.FromHexString("03650f49929d84d9a6d9b5a66235c603a1a0597dd609f7cd3b15052382cf9bb1b4")),
+                CloseAddress = "bcrt1q590shaxaf5u08ml8jwlzghz99dup3z9592vxal"
+            });
         }
     }
 }

@@ -198,46 +198,17 @@ namespace FundsManager.Services
                          !x.IsTemplatePSBT);
 
                 //If it is a hot wallet, we dont check the number of (human) signatures
-                if (channelOperationRequest.Wallet != null && !channelOperationRequest.Wallet.IsHotWallet && channelOperationRequest.Wallet != null && humanSignaturesCount != channelOperationRequest.Wallet.MofN -1)
+                if (channelOperationRequest.Wallet != null && !channelOperationRequest.Wallet.IsHotWallet && channelOperationRequest.Wallet != null && humanSignaturesCount != channelOperationRequest.Wallet.MofN - 1)
                 {
-                    _logger.LogError("The number of human signatures does not match the number of signatures required for this wallet, expected {MofN} but got {HumanSignaturesCount}", channelOperationRequest.Wallet.MofN-1, humanSignaturesCount);
+                    _logger.LogError("The number of human signatures does not match the number of signatures required for this wallet, expected {MofN} but got {HumanSignaturesCount}", channelOperationRequest.Wallet.MofN - 1, humanSignaturesCount);
                     throw new InvalidOperationException("The number of human signatures does not match the number of signatures required for this wallet");
                 }
-                if (!combinedPSBT.TryGetVirtualSize(out var estimatedVsize))
-                {
-                    _logger.LogError("Could not estimate virtual size of the PSBT");
-                    throw new InvalidOperationException("Could not estimate virtual size of the PSBT");
-                }
 
-                if(channelOperationRequest.Changeless && combinedPSBT.Outputs.Any())
+                if (channelOperationRequest.Changeless && combinedPSBT.Outputs.Any())
                 {
                     _logger.LogError("Changeless channel operation request cannot have outputs at this stage");
                     throw new InvalidOperationException("Changeless channel operation request cannot have outputs at this stage");
                 }
-
-                var changelessVSize = channelOperationRequest.Changeless ? 43 : 0; // 8 value + 1 script pub key size + 34 script pub key hash (Segwit output 2-0f-2 multisig)
-                var outputVirtualSize = estimatedVsize + changelessVSize; // We add the change output if needed
-                var initialFeeRate = channelOperationRequest.FeeRate ?? (await LightningHelper.GetFeeRateResult(network, _nbXplorerService)).FeeRate.SatoshiPerByte;;
-
-                var totalFees = new Money(outputVirtualSize * initialFeeRate, MoneyUnit.Satoshi);
-
-                long fundingAmount = channelOperationRequest.Changeless ? channelOperationRequest.SatsAmount - totalFees : channelOperationRequest.SatsAmount;
-                //We prepare the request (shim) with the base PSBT we had presigned with the UTXOs to fund the channel
-                var openChannelRequest = new OpenChannelRequest
-                {
-                    FundingShim = new FundingShim
-                    {
-                        PsbtShim = new PsbtShim
-                        {
-                            BasePsbt = ByteString.FromBase64(combinedPSBT.ToBase64()),
-                            NoPublish = false,
-                            PendingChanId = ByteString.CopyFrom(pendingChannelId)
-                        }
-                    },
-                    LocalFundingAmount = fundingAmount,
-                    Private = channelOperationRequest.IsChannelPrivate,
-                    NodePubkey = ByteString.CopyFrom(Convert.FromHexString(destination.PubKey)),
-                };
 
                 //Prior to opening the channel, we add the remote node as a peer
                 var remoteNodeInfo = await GetNodeInfo(channelOperationRequest.DestNode?.PubKey);
@@ -248,17 +219,12 @@ namespace FundsManager.Services
                     throw new InvalidOperationException();
                 }
 
-                // Check features to see if we need or is allowed to add a close address
-                var upfrontShutdownScriptOpt = remoteNodeInfo.Features.ContainsKey((uint)FeatureBit.UpfrontShutdownScriptOpt);
-                var upfrontShutdownScriptReq = remoteNodeInfo.Features.ContainsKey((uint)FeatureBit.UpfrontShutdownScriptReq);
-                string? closeAddress = null;
-                if (upfrontShutdownScriptOpt && remoteNodeInfo.Features[(uint)FeatureBit.UpfrontShutdownScriptOpt] is { IsKnown: true } ||
-                    upfrontShutdownScriptReq && remoteNodeInfo.Features[(uint)FeatureBit.UpfrontShutdownScriptReq] is { IsKnown: true })
-                {
-                    var address = await GetCloseAddress(channelOperationRequest, derivationStrategyBase, _nbXplorerService, _logger);
-                    closeAddress = address.Address.ToString();
-                    openChannelRequest.CloseAddress = closeAddress;
-                }
+                var initialFeeRate = channelOperationRequest.FeeRate ?? (await LightningHelper.GetFeeRateResult(network, _nbXplorerService)).FeeRate.SatoshiPerByte;
+                ;
+
+                var fundingAmount = GetFundingAmount(channelOperationRequest, combinedPSBT, initialFeeRate);
+
+                var openChannelRequest = await CreateOpenChannelRequest(channelOperationRequest, combinedPSBT, remoteNodeInfo, fundingAmount, pendingChannelId, derivationStrategyBase);
 
                 //For now, we only rely on pure tcp IPV4 connections
                 var addr = remoteNodeInfo.Addresses.FirstOrDefault(x => x.Network == "tcp")?.Addr;
@@ -291,6 +257,7 @@ namespace FundsManager.Services
                     {
                         throw new PeerNotOnlineException($"$peer {destination.PubKey} is not online");
                     }
+
                     if (!e.Message.Contains("already connected to peer"))
                     {
                         throw;
@@ -356,6 +323,7 @@ namespace FundsManager.Services
                                 {
                                     channelOperationRequest.StatusLogs.Add(ChannelStatusLog.Info($"Channel opened successfully 🎉"));
                                 }
+
                                 _channelOperationRequestRepository.Update(channelOperationRequest);
 
                                 var fundingTx = LightningHelper.DecodeTxId(response.ChanOpen.ChannelPoint.FundingTxidBytes);
@@ -378,7 +346,7 @@ namespace FundsManager.Services
                                     CreationDatetime = DateTimeOffset.Now,
                                     FundingTx = fundingTx,
                                     FundingTxOutputIndex = response.ChanOpen.ChannelPoint.OutputIndex,
-                                    BtcCloseAddress = closeAddress,
+                                    BtcCloseAddress = openChannelRequest.CloseAddress,
                                     SatsAmount = channelOperationRequest.SatsAmount,
                                     UpdateDatetime = DateTimeOffset.Now,
                                     Status = Channel.ChannelStatus.Open,
@@ -536,7 +504,7 @@ namespace FundsManager.Services
                                     }
 
                                     //if the fee is too high, we throw an exception
-                                    var finalizedTotalIn = finalizedPSBT.Inputs.Sum(x => (long) x.GetCoin()?.Amount);
+                                    var finalizedTotalIn = finalizedPSBT.Inputs.Sum(x => (long)x.GetCoin()?.Amount);
                                     if (finalizedPSBT.GetFee().Satoshi >=
                                         finalizedTotalIn * Constants.MAX_TX_FEE_RATIO)
                                     {
@@ -636,10 +604,12 @@ namespace FundsManager.Services
                     // TODO: Make exception message pretty
                     throw new RemoteCanceledFundingException(e.Message);
                 }
+
                 if (e.Message.Contains("is not online"))
                 {
                     throw new PeerNotOnlineException($"$peer {destination.PubKey} is not online");
                 }
+
                 throw;
             }
         }
@@ -664,6 +634,58 @@ namespace FundsManager.Services
 
             return new Lightning.LightningClient(grpcChannel).Wrap();
         };
+
+        public long GetFundingAmount(ChannelOperationRequest channelOperationRequest, PSBT combinedPSBT, decimal initialFeeRate)
+        {
+            if (!combinedPSBT.TryGetVirtualSize(out var estimatedVsize))
+            {
+                _logger.LogError("Could not estimate virtual size of the PSBT");
+                throw new InvalidOperationException("Could not estimate virtual size of the PSBT");
+            }
+
+            var changelessVSize = channelOperationRequest.Changeless ? 43 : 0; // 8 value + 1 script pub key size + 34 script pub key hash (Segwit output 2-0f-2 multisig)
+            var outputVirtualSize = estimatedVsize + changelessVSize; // We add the change output if needed
+
+            var totalFees = new Money(outputVirtualSize * initialFeeRate, MoneyUnit.Satoshi);
+            return channelOperationRequest.Changeless ? channelOperationRequest.SatsAmount - totalFees : channelOperationRequest.SatsAmount;
+        }
+
+        public async Task<OpenChannelRequest> CreateOpenChannelRequest(ChannelOperationRequest channelOperationRequest, PSBT? combinedPSBT, LightningNode? remoteNodeInfo, long fundingAmount, byte[] pendingChannelId, DerivationStrategyBase? derivationStrategyBase)
+        {
+            if (combinedPSBT == null) throw new ArgumentNullException(nameof(combinedPSBT));
+            if (remoteNodeInfo == null) throw new ArgumentNullException(nameof(remoteNodeInfo));
+            if (derivationStrategyBase == null) throw new ArgumentNullException(nameof(derivationStrategyBase));
+
+            //We prepare the request (shim) with the base PSBT we had presigned with the UTXOs to fund the channel
+            var openChannelRequest = new OpenChannelRequest
+            {
+                FundingShim = new FundingShim
+                {
+                    PsbtShim = new PsbtShim
+                    {
+                        BasePsbt = ByteString.FromBase64(combinedPSBT.ToBase64()),
+                        NoPublish = false,
+                        PendingChanId = ByteString.CopyFrom(pendingChannelId)
+                    }
+                },
+                LocalFundingAmount = fundingAmount,
+                Private = channelOperationRequest.IsChannelPrivate,
+                NodePubkey = ByteString.CopyFrom(Convert.FromHexString(remoteNodeInfo.PubKey)),
+            };
+
+            // Check features to see if we need or is allowed to add a close address
+            var upfrontShutdownScriptOpt = remoteNodeInfo.Features.ContainsKey((uint)FeatureBit.UpfrontShutdownScriptOpt);
+            var upfrontShutdownScriptReq = remoteNodeInfo.Features.ContainsKey((uint)FeatureBit.UpfrontShutdownScriptReq);
+            if (upfrontShutdownScriptOpt && remoteNodeInfo.Features[(uint)FeatureBit.UpfrontShutdownScriptOpt] is { IsKnown: true } ||
+                upfrontShutdownScriptReq && remoteNodeInfo.Features[(uint)FeatureBit.UpfrontShutdownScriptReq] is { IsKnown: true })
+            {
+                var address = await GetCloseAddress(channelOperationRequest, derivationStrategyBase, _nbXplorerService, _logger);
+                openChannelRequest.CloseAddress = address.Address.ToString();
+                ;
+            }
+
+            return openChannelRequest;
+        }
 
         public static PSBT GetCombinedPsbt(ChannelOperationRequest channelOperationRequest, ILogger? _logger = null)
         {
