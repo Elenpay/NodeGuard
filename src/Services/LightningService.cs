@@ -255,8 +255,8 @@ namespace FundsManager.Services
                 if (upfrontShutdownScriptOpt && remoteNodeInfo.Features[(uint)FeatureBit.UpfrontShutdownScriptOpt] is { IsKnown: true } ||
                     upfrontShutdownScriptReq && remoteNodeInfo.Features[(uint)FeatureBit.UpfrontShutdownScriptReq] is { IsKnown: true })
                 {
-                    var keyPathInformation = await GetCloseAddress(channelOperationRequest, derivationStrategyBase, _nbXplorerService, _logger);
-                    closeAddress = keyPathInformation?.Address?.ToString();
+                    var address = await GetCloseAddress(channelOperationRequest, derivationStrategyBase, _nbXplorerService, _logger);
+                    closeAddress = address.Address.ToString();
                     openChannelRequest.CloseAddress = closeAddress;
                 }
 
@@ -682,7 +682,7 @@ namespace FundsManager.Services
             throw new ArgumentException(invalidPsbtNullToBeUsedForTheRequest, nameof(combinedPSBT));
         }
 
-        public static async Task<KeyPathInformation?> GetCloseAddress(ChannelOperationRequest channelOperationRequest,
+        public static async Task<KeyPathInformation> GetCloseAddress(ChannelOperationRequest channelOperationRequest,
             DerivationStrategyBase derivationStrategyBase, INBXplorerService nbXplorerService, ILogger? _logger = null)
         {
             var closeAddress = await
