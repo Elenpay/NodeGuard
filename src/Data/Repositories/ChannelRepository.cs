@@ -145,7 +145,7 @@ namespace FundsManager.Data.Repositories
 
             if (!closeRequestAddResult.Item1)
             {
-                _logger.LogError("Error while saving close request for channel with id: {RequestId}: " + closeRequestAddResult.Item2, type.Id);
+                _logger.LogError("Error while saving close request for channel with id: {RequestId}: {error}", type.Id, closeRequestAddResult.Item2);
                 return (false, closeRequestAddResult.Item2);
             }
 
