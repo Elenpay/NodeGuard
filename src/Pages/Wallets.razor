@@ -1,17 +1,24 @@
 @page "/wallets"
 @using System.Security.Claims
+@using System.Linq;
+@using FundsManager.Jobs
 @using Humanizer
 @using NBitcoin
 @using NBXplorer.DerivationStrategy
-@using NSubstitute
+@using Quartz
 @using Field = Blazorise.Field
 @using Key = FundsManager.Data.Models.Key
 @inject IWalletRepository WalletRepository
 @inject IToastService ToastService
 @inject IApplicationUserRepository ApplicationUserRepository
+@inject IWalletWithdrawalRequestRepository WalletWithdrawalRequestRepository
+@inject IWalletWithdrawalRequestPsbtRepository WalletWithdrawalRequestPsbtRepository
 @inject IKeyRepository KeyRepository
+@inject IBitcoinService BitcoinService
 @inject ILightningService LightningService
 @inject ILocalStorageService LocalStorageService
+@inject ISchedulerFactory SchedulerFactory
+
 @attribute [Authorize(Roles = "NodeManager, FinanceManager, Superadmin")]
 
 <h3 class="custom-primary">Treasury Wallets</h3>
@@ -65,6 +72,7 @@
                                 <DropdownItem Clicked="context.Clicked">Edit</DropdownItem>
                                 <DropdownItem Disabled="!context.Item.IsFinalised" Clicked="@(() => LoadAndOpenTextModalBalance(context.Item))">Balance</DropdownItem>
                                 <DropdownItem Disabled="!context.Item.IsFinalised" Clicked="@(() => LoadAndOpenModalTextModalUnusedAddress(context.Item))">Get address</DropdownItem>
+                                <DropdownItem Disabled="!context.Item.IsFinalised" Clicked="@(() => ShowTransferFundsModal(context.Item))">Transfer funds</DropdownItem>
 
                             </DropdownMenu>
                         </Dropdown>
@@ -183,7 +191,7 @@
                 }
             </DetailRowTemplate>
         </DataGrid>
-    </Column>
+    </Column>a
 </Row>
 <Modal @ref="_modalRef">
     <ModalContent Centered Size="ModalSize.ExtraLarge">
@@ -369,6 +377,102 @@
         </ModalFooter>
     </ModalContent>
 </Modal>
+<Modal @ref="_transferFundsModal">
+    <ModalContent Centered Size="ModalSize.Default">
+        <ModalHeader>
+            <ModalTitle>Transfer funds to another wallet</ModalTitle>
+            <CloseButton/>
+        </ModalHeader>
+        <ModalBody>
+            <Fields>
+                <Validations @ref="_transferFundsValidations">
+                    <Column ColumnSize="ColumnSize.Is12">
+                 <Validation Validator="@ValidationRule.IsSelected">
+						<Field>
+                               <FieldLabel>Target wallet</FieldLabel>
+                                <FieldHelp>Select the wallet you want to transfer your funds to</FieldHelp>
+                                <FieldBody>
+                                <SelectList TItem="Wallet"
+                                            TValue="int"
+                                            Data="_walletsForTransfer"
+                                            TextField="@((item) => item.Name)"
+                                            ValueField="@((item) => item.Id)"
+                                            SelectedValue="@_selectedTransferWalletId"
+                                            SelectedValueChanged="(id) => OnSelectedWallet(id)"
+                                            DefaultItemText="Choose the wallet">
+                                    <Feedback>
+                                        <ValidationError>You must select a valid wallet</ValidationError>
+                                    </Feedback>
+                                </SelectList>
+                                </FieldBody>
+                         </Field>
+                        </Validation>
+                    </Column>
+                   <Column ColumnSize="ColumnSize.Is6">
+                           <Field>
+                               <FieldLabel>@($"{_sourceWalletName} Balance (this wallet)")</FieldLabel>
+                               <TextEdit @bind-Text="_sourceWalletBalance" PlainText Disabled />
+                           </Field>
+                    </Column>
+                    <Column ColumnSize="ColumnSize.Is6">
+                           <Field>
+                           <FieldLabel>@($"{_targetWalletName} Balance")</FieldLabel>
+                               <TextEdit @bind-Text="_transferTargetWalletBalance" PlainText Disabled />
+                           </Field>
+                    </Column>
+                    <Column ColumnSize="ColumnSize.Is6">
+                        <Validation Validator="args => ValidationHelper.ValidateWithdrawalAmount(args, _transferAllFunds)">
+                            <Field>
+                                <FieldLabel>Amount</FieldLabel>
+                                <FieldBody>
+                                    <NumericPicker TValue="decimal" Disabled="_transferAllFunds" Value="@_amountToTransfer" ValueChanged="(value) => { _amountToTransfer = value; }" CurrencySymbol="₿ " Max="@_maxWithdrawal" Min="@_minWithdrawal" Decimals="8">
+                                        <Feedback>
+                                            <ValidationError />
+                                        </Feedback>
+                                    </NumericPicker>
+                                </FieldBody>
+                                <FieldHelp>
+                                    @($"Current amount: {Math.Round(PriceConversionHelper.BtcToUsdConversion((decimal)_amountToTransfer, _btcPrice), 2)} USD")
+                                </FieldHelp>
+                            </Field>
+                        </Validation>
+                    </Column>
+                    <Column ColumnSize="ColumnSize.Is6">
+                            <Field>
+                                <FieldBody>
+                                    <Check TValue="bool" @bind-Checked="@_transferAllFunds">Transfer all funds</Check>
+                                </FieldBody>
+                            </Field>
+                    </Column>
+
+
+                </Validations>
+            </Fields>
+
+        </ModalBody>
+        <ModalFooter>
+            <Button Color="Color.Secondary" Clicked="@CloseAndCleanTransferFundsModal">Close</Button>
+            <Button Color="Color.Primary" Clicked="@TransferFunds">Transfer</Button>
+
+        </ModalFooter>
+    </ModalContent>
+</Modal>
+
+<ConfirmationModal
+    @ref="_multisigTransferModal"
+    Title="Transferring from a multisig wallet"
+    Body="Your transfer request was succesfully done. Please, go to Withdrawals page to sign for this transfer."
+    CancelLabel="Yes, understood"
+    OnCancel="CloseMultisigTransferModal"
+/>
+<ConfirmationModal
+    @ref="_hotWalletTransferModal"
+    Title="Are you sure?"
+    Body="You're about to transfer funds from this wallet. This means that the system will automatically use the funds in it without the need of manual approval. Are you sure you want to perform this operation?"
+    OkLabel="Yes, understood"
+    OnCancel="CloseHotWalletTransferModal"
+    OnSubmit="TransferFundsHotWallet"
+/>
 
 @code {
 
@@ -409,6 +513,23 @@
     private Modal? _importWalletModal;
     private string? _importWalletSeedphrase;
     private Validations _importWalletValidations;
+
+	private Modal? _transferFundsModal;
+    private Validations _transferFundsValidations;
+	private List<Wallet> _walletsForTransfer = new();
+    private int _selectedTransferWalletId;
+    private Wallet? _sourceTransferWallet;
+    private Wallet? _targetTransferWallet;
+    private string _sourceWalletName => _sourceTransferWallet != null ? $"{_sourceTransferWallet.Name} " : "";
+    private string _targetWalletName => _targetTransferWallet != null ? $"{_targetTransferWallet.Name} " : "";
+    private string _transferTargetWalletBalance;
+    private string _sourceWalletBalance;
+    private bool _transferAllFunds;
+    private decimal _maxWithdrawal = Constants.MAXIMUM_WITHDRAWAL_BTC_AMOUNT;
+    private decimal _minWithdrawal = Constants.MINIMUM_WITHDRAWAL_BTC_AMOUNT;
+    private decimal _amountToTransfer = Constants.MINIMUM_WITHDRAWAL_BTC_AMOUNT;
+    private ConfirmationModal _multisigTransferModal;
+    private ConfirmationModal _hotWalletTransferModal;
 
 
     private string _seedphrase = string.Empty;
@@ -728,7 +849,7 @@
 
             if (bitcoinAddress != null)
             {
-                _textModalTitle = $"Unused BTC Address for funding this wallet";
+                _textModalTitle = $"Wallet: {wallet.Name} - Unused BTC Address for funding this wallet";
                 _textModalContent = bitcoinAddress.ToString();
                 _textModalCopy = true;
                 await _textModalRef.Show();
@@ -776,6 +897,7 @@
         _selectedWalletToFinalise = null;
         await _finaliseModalRef.Close(CloseReason.UserClosing);
     }
+    
 
     private void ValidateThreshold(ValidatorEventArgs obj)
     {
@@ -850,6 +972,215 @@
         _derivationPath = string.Empty;
 
         await _importWalletModal?.Show();
+    }
+
+    private async Task ShowTransferFundsModal(Wallet wallet)
+    {
+        _walletsForTransfer = _wallets.Where(w => w.Id != wallet.Id).ToList();
+		_transferTargetWalletBalance = string.Empty;
+        _sourceTransferWallet = wallet;
+        _targetTransferWallet = null;
+
+		var (balance,_) = await BitcoinService.GetWalletConfirmedBalance(wallet);
+        _sourceWalletBalance = $"{balance:f8} BTC ({Math.Round(PriceConversionHelper.BtcToUsdConversion((decimal)balance, _btcPrice), 2)} USD)";
+
+        await _transferFundsModal?.Show();
+    }
+    
+    private async Task<bool> TransferInnerWithdrawalProcess(WalletWithdrawalRequest withdrawalRequest)
+    {
+        bool result = false;
+        
+        async Task CleanUpWithdrawalRequest(string errorMessage)
+        {
+            ToastService.ShowError(errorMessage);
+            withdrawalRequest.Status = WalletWithdrawalRequestStatus.Failed;
+            WalletWithdrawalRequestRepository.Update(withdrawalRequest);
+            await CloseHotWalletTransferModal();
+        }
+
+        var walletWithdrawalRequestPsbt = new WalletWithdrawalRequestPSBT();
+
+        try
+        {
+            var templatePSBT = await BitcoinService.GenerateTemplatePSBT(withdrawalRequest);
+            walletWithdrawalRequestPsbt.WalletWithdrawalRequestId = withdrawalRequest.Id;
+            walletWithdrawalRequestPsbt.PSBT = templatePSBT.ToBase64();
+            walletWithdrawalRequestPsbt.SignerId = null;
+        }
+        catch (NoUTXOsAvailableException e)
+        {
+            await CleanUpWithdrawalRequest("No UTXOs available for withdrawals were found for this wallet");
+            return result;
+        }
+        catch (ShowToUserException e)
+        {
+            CleanUpWithdrawalRequest(e.Message);
+            return result;
+        }
+        catch
+        {
+            CleanUpWithdrawalRequest("Something went wrong");
+            return result;
+        }
+        
+        var addResult = await WalletWithdrawalRequestPsbtRepository.AddAsync(walletWithdrawalRequestPsbt);
+        
+        if (!addResult.Item1)
+        {
+            throw new ShowToUserException("Error while saving the signature");
+        }
+            
+        withdrawalRequest = await WalletWithdrawalRequestRepository.GetById(withdrawalRequest.Id);
+            
+        if (withdrawalRequest != null
+            && withdrawalRequest.AreAllRequiredHumanSignaturesCollected)
+        {
+            var isWithdrawalProcessed = await CreateJobForFunds(withdrawalRequest);
+            result = isWithdrawalProcessed;
+        }
+        else
+        {
+            throw new ShowToUserException("Invalid PSBT");
+        }
+        return result;
+    }
+
+    private async Task<WalletWithdrawalRequest> CreateWithdrawalRequestForFunds()
+    {
+        var targetBitcoinAddress = await LightningService.GetUnusedAddress(_targetTransferWallet, DerivationFeature.Deposit);
+            
+        var withdrawalRequest = new WalletWithdrawalRequest
+        {
+            UserRequestorId = LoggedUser != null ? LoggedUser.Id : string.Empty,
+            Description = @$"Funds transferred from {_sourceWalletName} to {_targetWalletName}",
+            WithdrawAllFunds = _transferAllFunds,
+            DestinationAddress = targetBitcoinAddress.ToString(),
+            Amount = _amountToTransfer,
+            WalletId = _sourceTransferWallet.Id,
+            Status = _sourceTransferWallet.IsHotWallet
+                ? WalletWithdrawalRequestStatus.PSBTSignaturesPending
+                : WalletWithdrawalRequestStatus.Pending,
+        };
+            
+        var withdrawalSaved = await WalletWithdrawalRequestRepository.AddAsync(withdrawalRequest);
+
+        return withdrawalRequest;
+    }
+
+    private async Task TransferFunds()
+    {
+        if (!await _transferFundsValidations.ValidateAll())
+        {
+            ToastService.ShowError("There are fields that are not valid.");
+            return;
+        }
+
+        if (_sourceTransferWallet != null && _targetTransferWallet != null)
+        {
+            if (_sourceTransferWallet.IsHotWallet)
+            {
+                await _hotWalletTransferModal.ShowModal();
+            }
+            else
+            {
+                var withdrawal = await CreateWithdrawalRequestForFunds();
+                await _multisigTransferModal.ShowModal();
+            }
+        }
+        
+        await CloseAndCleanTransferFundsModal();
+
+    }
+
+    private async Task TransferFundsHotWallet()
+    {
+        var withdrawalRequest = await CreateWithdrawalRequestForFunds();
+        var transferSuccess = await TransferInnerWithdrawalProcess(withdrawalRequest);
+        
+        if (transferSuccess)
+        {
+            ToastService.ShowSuccess("Funds transferred successfully");
+        }
+        else
+        {
+            ToastService.ShowError("Error while transferring funds, please contact a superadmin for troubleshooting");
+        }
+        
+        await CloseHotWalletTransferModal();
+    }
+    
+    
+    private async Task<bool> CreateJobForFunds(WalletWithdrawalRequest withdrawalRequest)
+    {
+        var result = false;
+        
+        try
+        {
+            IScheduler scheduler = await SchedulerFactory.GetScheduler();
+
+            var map = new JobDataMap();
+            map.Put("withdrawalRequestId", withdrawalRequest.Id);
+
+            var retryList = RetriableJob.ParseRetryListFromString(Constants.JOB_RETRY_INTERVAL_LIST_IN_MINUTES);
+            var job = RetriableJob.Create<PerformWithdrawalJob>(map, withdrawalRequest.Id.ToString(), retryList);
+            await scheduler.ScheduleJob(job.Job, job.Trigger);
+
+            if (withdrawalRequest != null)
+            {
+    // TODO: Check job id
+                withdrawalRequest.JobId = job.Job.Key.ToString();
+                WalletWithdrawalRequestRepository.Update(withdrawalRequest);
+                result = true;
+            }
+        }
+        catch
+        {
+            withdrawalRequest.Status = WalletWithdrawalRequestStatus.Failed;
+            WalletWithdrawalRequestRepository.Update(withdrawalRequest);
+        }
+
+        return result;
+    }
+    
+    private async Task CloseMultisigTransferModal()
+    {
+        await _multisigTransferModal.CloseModal();
+    }
+
+    private async Task CloseHotWalletTransferModal()
+    {
+        await _hotWalletTransferModal.CloseModal();
+    }
+    
+    private async Task CloseAndCleanTransferFundsModal()
+    {
+        await _transferFundsModal?.Close(CloseReason.UserClosing);
+
+        _selectedTransferWalletId = 0;
+        _amountToTransfer = Constants.MINIMUM_WITHDRAWAL_BTC_AMOUNT;
+        _walletsForTransfer = new();
+		_transferTargetWalletBalance = string.Empty;
+        _sourceWalletBalance = string.Empty;
+    }
+
+    private async Task OnSelectedWallet(int id)
+    {
+        _selectedTransferWalletId = id;
+        
+		if (id == 0) {
+            _transferTargetWalletBalance = string.Empty;
+        }
+
+        var targetWallet = _walletsForTransfer.SingleOrDefault(x => x.Id == id);
+        _targetTransferWallet = targetWallet;
+
+        if (targetWallet != null)
+        {
+            var (targetBalance,_) = await BitcoinService.GetWalletConfirmedBalance(targetWallet);
+
+            _transferTargetWalletBalance = $"{targetBalance:f8} BTC ({Math.Round(PriceConversionHelper.BtcToUsdConversion((decimal)targetBalance, _btcPrice), 2)} USD)";
+        }
     }
 
     private async Task ValidateDerivationPath(ValidatorEventArgs arg1, CancellationToken arg2)
