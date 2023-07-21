@@ -17,17 +17,19 @@
  *
  */
 
+using System.ComponentModel.DataAnnotations.Schema;
+
 namespace FundsManager.Data.Models
 {
     public class Channel : Entity
     {
-        
+
         public enum ChannelStatus
         {
             Open = 1,
             Closed = 2
         }
-        
+
         public string FundingTx { get; set; }
         public uint FundingTxOutputIndex { get; set; }
 
@@ -35,7 +37,7 @@ namespace FundsManager.Data.Models
         /// Final Channel id by LND
         /// </summary>
         public ulong ChanId { get; set; }
-        
+
         /// <summary>
         /// Capacity in SATS
         /// </summary>
@@ -44,31 +46,34 @@ namespace FundsManager.Data.Models
         public string? BtcCloseAddress { get; set; }
 
         public ChannelStatus Status { get; set; }
-        
+
         /// <summary>
         /// Indicates if this channel was created by NodeGuard
         /// </summary>
         public bool CreatedByNodeGuard { get; set; }
-        
+
         /// <summary>
         /// Bool to indicate if this channel's liquidity should be automatically managed
         /// </summary>
         public bool IsAutomatedLiquidityEnabled { get; set; }
-        
+
         /// <summary>
         /// Bool to indicate if this channel is private
         /// </summary>
         public bool IsPrivate { get; set; }
 
+        [NotMapped]
+        public int? OpenedWithId => ChannelOperationRequests?.FirstOrDefault()?.Wallet?.Id;
+
         #region Relationships
 
         public ICollection<ChannelOperationRequest> ChannelOperationRequests { get; set; }
-        
+
         public ICollection<LiquidityRule> LiquidityRules { get; set; }
-        
+
         public int SourceNodeId { get; set; }
         public Node SourceNode { get; set; }
-        
+
         public int DestinationNodeId { get; set; }
         public Node DestinationNode { get; set; }
 
