@@ -265,7 +265,7 @@ namespace FundsManager.Services
         {
             if (walletWithdrawalRequest == null) throw new ArgumentNullException(nameof(walletWithdrawalRequest));
 
-            if (walletWithdrawalRequest.Status != WalletWithdrawalRequestStatus.PSBTSignaturesPending)
+            if (walletWithdrawalRequest.Status != WalletWithdrawalRequestStatus.PSBTSignaturesPending && walletWithdrawalRequest.Status != WalletWithdrawalRequestStatus.FinalizingPSBT)
             {
                 _logger.LogError(
                     "Invalid status for broadcasting the tx from wallet withdrawal request: {RequestId}, status: {RequestStatus}",
@@ -278,6 +278,14 @@ namespace FundsManager.Services
             //Update
             walletWithdrawalRequest = await _walletWithdrawalRequestRepository.GetById(walletWithdrawalRequest.Id) ??
                                       throw new InvalidOperationException();
+
+            walletWithdrawalRequest.Status = WalletWithdrawalRequestStatus.FinalizingPSBT;
+            var (isSuccess, error) = _walletWithdrawalRequestRepository.Update(walletWithdrawalRequest);
+            if (!isSuccess)
+            {
+                _logger.LogWarning("Request in remote signing stage, but could not update status to {Status} for request id: {RequestId} reason: {Reason}",
+                    WalletWithdrawalRequestStatus.FinalizingPSBT, walletWithdrawalRequest.Id, error);
+            }
 
             PSBT? psbtToSign = null;
             //If it is a hot wallet or a BIP39 imported wallet, we dont need to combine the PSBTs

@@ -391,6 +391,13 @@ namespace FundsManager.Services
                                 break;
 
                             case OpenStatusUpdate.UpdateOneofCase.PsbtFund:
+                                channelOperationRequest.Status = ChannelOperationRequestStatus.FinalizingPSBT;
+                                var (isSuccess, error) = _channelOperationRequestRepository.Update(channelOperationRequest);
+                                if (!isSuccess)
+                                {
+                                    _logger.LogWarning("Request in funding stage, but could not update status to {Status} for request id: {RequestId} reason: {Reason}",
+                                        ChannelOperationRequestStatus.FinalizingPSBT, channelOperationRequest.Id, error);
+                                }
 
                                 //We got the funded PSBT, we need to tweak the tx outputs and mimick lnd-cli calls
                                 var hexPSBT = Convert.ToHexString((response.PsbtFund.Psbt.ToByteArray()));

@@ -57,7 +57,12 @@ namespace FundsManager.Data.Models
         /// <summary>
         /// Marked when a error happens when broadcasting the TX
         /// </summary>
-        Failed = 6
+        Failed = 6,
+
+        /// <summary>
+        /// The PSBT is being signed by NodeGuard
+        /// </summary>
+        FinalizingPSBT = 7
     }
 
     /// <summary>
