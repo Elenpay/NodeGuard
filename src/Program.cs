@@ -233,6 +233,15 @@ namespace FundsManager
                     opts.ForJob(nameof(NodeSubscriptorJob)).WithIdentity($"{nameof(NodeSubscriptorJob)}Trigger")
                         .StartNow();
                 });
+
+                // MonitorChannelsJob
+                q.AddJob<MonitorChannelsJob>(opts => { opts.WithIdentity(nameof(MonitorChannelsJob)); });
+
+                q.AddTrigger(opts =>
+                {
+                    opts.ForJob(nameof(MonitorChannelsJob)).WithIdentity($"{nameof(MonitorChannelsJob)}Trigger")
+                        .StartNow().WithCronSchedule(Constants.MONITOR_CHANNELS_CRON);;
+                });
             });
 
             // ASP.NET Core hosting
