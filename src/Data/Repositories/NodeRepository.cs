@@ -20,6 +20,7 @@
 using AutoMapper;
 using FundsManager.Data.Models;
 using FundsManager.Data.Repositories.Interfaces;
+using FundsManager.Services;
 using Microsoft.EntityFrameworkCore;
 
 namespace FundsManager.Data.Repositories
@@ -29,7 +30,7 @@ namespace FundsManager.Data.Repositories
         private readonly IRepository<Node> _repository;
         private readonly ILogger<NodeRepository> _logger;
         private readonly IDbContextFactory<ApplicationDbContext> _dbContextFactory;
-        private readonly IMapper _mapper; 
+        private readonly IMapper _mapper;
 
         public NodeRepository(IRepository<Node> repository,
             ILogger<NodeRepository> logger,
@@ -39,7 +40,7 @@ namespace FundsManager.Data.Repositories
             _repository = repository;
             _logger = logger;
             _dbContextFactory = dbContextFactory;
-            this._mapper = mapper;
+            _mapper = mapper;
         }
 
         public async Task<Node?> GetById(int id)
@@ -65,6 +66,33 @@ namespace FundsManager.Data.Repositories
                 .ThenInclude(keyObj => keyObj.Wallets)
                 .Include(x => x.ReturningFundsWallet)
                 .SingleOrDefaultAsync(x => x.PubKey == key);
+        }
+
+        public async Task<Node> GetOrCreateByPubKey(string pubKey, ILightningService lightningService)
+        {
+            var node = await GetByPubkey(pubKey);
+
+            if (node == null)
+            {
+                var foundNode = await lightningService.GetNodeInfo(pubKey);
+                if (foundNode == null)
+                {
+                    throw new Exception("Node info not found");
+                }
+
+                node = new Node()
+                {
+                    Name = foundNode.Alias,
+                    PubKey = foundNode.PubKey,
+                };
+                var addNode = await AddAsync(node);
+                if (!addNode.Item1)
+                {
+                    throw new Exception(addNode.Item2);
+                }
+            }
+
+            return node;
         }
 
         public async Task<List<Node>> GetAll()
@@ -141,13 +169,13 @@ namespace FundsManager.Data.Repositories
         {
             using var applicationDbContext = _dbContextFactory.CreateDbContext();
             type.SetUpdateDatetime();
-            
+
             type.Users?.Clear();
             type.ChannelOperationRequestsAsSource?.Clear();
             type.ChannelOperationRequestsAsDestination?.Clear();
 
             type = _mapper.Map<Node, Node>(type);
-            
+
             return _repository.Update(type, applicationDbContext);
         }
     }

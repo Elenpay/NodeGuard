@@ -591,26 +591,9 @@
             var foundNode = await LightningService.GetNodeInfo(_destNodeName);
             if (foundNode != null)
             {
-                _selectedDestNode = (await NodeRepository.GetByPubkey(_destNodeName));
+                _selectedDestNode = await NodeRepository.GetOrCreateByPubKey(_destNodeName, LightningService);
 
-    //if not found we create it..
-                if (_selectedDestNode == null)
-                {
-                    _selectedDestNode = new Node
-                    {
-                        Name = foundNode.Alias,
-                        PubKey = _destNodeName,
-                    };
-
-                    var nodeAddResult = await NodeRepository.AddAsync(_selectedDestNode);
-
-                    if (nodeAddResult.Item1)
-                    {
-                        _selectedDestNode = await NodeRepository.GetByPubkey(_selectedDestNode.PubKey);
-                    }
-                }
-
-    // Refresh the list of available source nodes and take out the one selected
+                // Refresh the list of available source nodes and take out the one selected
                 _manageableNodes = await NodeRepository.GetAllManagedByUser(LoggedUser.Id);
                 _manageableNodes = _manageableNodes.Where(node => node.Id != _selectedDestNode?.Id).ToList();
                 _destNodeValidation.Clear();

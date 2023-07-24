@@ -240,7 +240,7 @@ namespace FundsManager
                 q.AddTrigger(opts =>
                 {
                     opts.ForJob(nameof(MonitorChannelsJob)).WithIdentity($"{nameof(MonitorChannelsJob)}Trigger")
-                        .StartNow().WithCronSchedule(Constants.MONITOR_CHANNELS_CRON);;
+                        .StartNow().WithCronSchedule(Constants.MONITOR_CHANNELS_CRON);
                 });
             });
 

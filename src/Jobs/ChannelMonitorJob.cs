@@ -61,7 +61,7 @@ public class ChannelMonitorJob : IJob
 
             if (node1 == null)
             {
-                _logger.LogInformation("The node: {@Node} is no longer ready to be supported quartz jobs", node1);
+                _logger.LogInformation("The node {NodeId} was set up for monitoring but the node doesn't exist anymore", nodeId);
                 return;
             }
 
@@ -73,38 +73,11 @@ public class ChannelMonitorJob : IJob
 
             foreach (var channel in result?.Channels)
             {
-                var node2 = await _nodeRepository.GetByPubkey(channel.RemotePubkey);
+                var node2 = await _nodeRepository.GetOrCreateByPubKey(channel.RemotePubkey, _lightningService);
 
-                if (node2 == null)
-                {
-                    var foundNode = await _lightningService.GetNodeInfo(channel.RemotePubkey);
-                    if (foundNode == null)
-                    {
-                        throw new Exception("Node info not found");
-                    }
-
-                    node2 = new Node()
-                    {
-                        Name = foundNode.Alias,
-                        PubKey = foundNode.PubKey,
-                    };
-                    var addNode = await _nodeRepository.AddAsync(node2);
-                    if (!addNode.Item1)
-                    {
-                        throw new Exception(addNode.Item2);
-                    }
-                }
-
-                try {
-                    // Recover Operations on channels
-                    await RecoverGhostChannels(node1, node2, channel);
-                    await RecoverChannelInConfirmationPendingStatus(node1);
-                }
-                catch (Exception e)
-                {
-                    _logger.LogError(e, "Error reading and update event of node {NodeId}", nodeId);
-                    throw new JobExecutionException(e, true);
-                }
+                // Recover Operations on channels
+                await RecoverGhostChannels(node1, node2, channel);
+                await RecoverChannelInConfirmationPendingStatus(node1);
             }
 
         }
@@ -120,44 +93,60 @@ public class ChannelMonitorJob : IJob
     private async Task RecoverGhostChannels(Node source, Node destination, Channel? channel)
     {
         if (!channel.Initiator) return;
-
-        await using var context = await _dbContextFactory.CreateDbContextAsync();
-
-        var channelExists = await context.Channels.AnyAsync(c => c.ChanId == channel.ChanId);
-        if (channelExists) return;
-
-        var channelPoint = channel.ChannelPoint.Split(":");
-        var fundingTx = channelPoint[0];
-        var outputIndex = channelPoint[1];
-
-        var parsedChannelPoint = new ChannelPoint
+        try
         {
-            FundingTxidStr = fundingTx, FundingTxidBytes = ByteString.CopyFrom(Convert.FromHexString(fundingTx).Reverse().ToArray()),
-            OutputIndex = Convert.ToUInt32(outputIndex)
-        };
+            await using var dbContext = await _dbContextFactory.CreateDbContextAsync();
 
-        var createdChannel = await LightningService.CreateChannel(source, destination.Id, parsedChannelPoint, channel.Capacity, channel.CloseAddress);
+            var channelExists = await dbContext.Channels.AnyAsync(c => c.ChanId == channel.ChanId);
+            if (channelExists) return;
 
-        await context.Channels.AddAsync(createdChannel);
-        await context.SaveChangesAsync();
+            var channelPoint = channel.ChannelPoint.Split(":");
+            var fundingTx = channelPoint[0];
+            var outputIndex = channelPoint[1];
+
+            var parsedChannelPoint = new ChannelPoint
+            {
+                FundingTxidStr = fundingTx, FundingTxidBytes = ByteString.CopyFrom(Convert.FromHexString(fundingTx).Reverse().ToArray()),
+                OutputIndex = Convert.ToUInt32(outputIndex)
+            };
+
+            var createdChannel = await LightningService.CreateChannel(source, destination.Id, parsedChannelPoint, channel.Capacity, channel.CloseAddress);
+
+            await dbContext.Channels.AddAsync(createdChannel);
+            await dbContext.SaveChangesAsync();
+        }
+        catch (Exception e)
+        {
+            _logger.LogError(e, "Error while recovering ghost channel, {SourceNodeId}, {ChannelId}: {Error}", source.Id, channel?.ChanId, e);
+            throw new JobExecutionException(e, true);
+        }
     }
 
     private async Task RecoverChannelInConfirmationPendingStatus(Node source)
     {
-        await using var context = await _dbContextFactory.CreateDbContextAsync();
-        var confirmationPendingRequests = context.ChannelOperationRequests.Where(or => or.Status == ChannelOperationRequestStatus.OnChainConfirmationPending).ToList();
-        foreach (var request in confirmationPendingRequests)
+        try
         {
-            if (request.SourceNodeId != source.Id) return;
-            if (request.TxId == null)
+            await using var dbContext = await _dbContextFactory.CreateDbContextAsync();
+            var confirmationPendingRequests = dbContext.ChannelOperationRequests.Where(or => or.Status == ChannelOperationRequestStatus.OnChainConfirmationPending).ToList();
+            foreach (var request in confirmationPendingRequests)
             {
-                _logger.LogWarning("The channel operation request {RequestId} is in OnChainConfirmationPending status but the txId is null", request.Id);
-                return;
+                if (request.SourceNodeId != source.Id) return;
+                if (request.TxId == null)
+                {
+                    _logger.LogWarning("The channel operation request {RequestId} is in OnChainConfirmationPending status but the txId is null", request.Id);
+                    return;
+                }
+
+                var channel = await dbContext.Channels.FirstOrDefaultAsync(c => c.FundingTx == request.TxId);
+                request.ChannelId = channel.Id;
+                request.Status = ChannelOperationRequestStatus.OnChainConfirmed;
+                await dbContext.SaveChangesAsync();
             }
-            var channel = await context.Channels.FirstOrDefaultAsync(c => c.FundingTx == request.TxId);
-            request.ChannelId = channel.Id;
-            request.Status = ChannelOperationRequestStatus.OnChainConfirmed;
-            await context.SaveChangesAsync();
+        }
+        catch (Exception e)
+        {
+            _logger.LogError(e, "Error while recovering channel in OnChainConfirmationPending status, {SourceNodeId}: {Error}", source.Id, e);
+            throw new JobExecutionException(e, true);
         }
     }
 }

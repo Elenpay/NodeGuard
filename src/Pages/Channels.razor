@@ -717,7 +717,7 @@
 
     private bool OnWalletFilter(object itemValue, object searchValue)
     {
-        if (itemValue == null) return false;
+        if (itemValue == null) return true;
         return searchValue == null || (int)searchValue == 0 || (int)itemValue == (int)searchValue;
     }
 
@@ -765,7 +765,8 @@
     private bool checkDisableCloseChannelButton(Channel channel)
     {
         ChannelOperationRequest? lastRequest = channel.ChannelOperationRequests.LastOrDefault();
-        if (lastRequest == null && channel.CreatedByNodeGuard == false) return false;
+        if (channel.CreatedByNodeGuard == false) return true;
+        if (lastRequest == null) return false;
         return channel.Status == Channel.ChannelStatus.Closed|| (lastRequest.RequestType == OperationRequestType.Close
                                                                  && lastRequest.Status == ChannelOperationRequestStatus.OnChainConfirmed
                                                                  || lastRequest.Status == ChannelOperationRequestStatus.OnChainConfirmationPending);

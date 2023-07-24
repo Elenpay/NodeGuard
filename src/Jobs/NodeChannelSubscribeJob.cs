@@ -41,7 +41,7 @@ public class NodeChannelSuscribeJob : IJob
     private readonly INodeRepository _nodeRepository;
     private readonly IChannelRepository _channelRepository;
     private readonly ISchedulerFactory _schedulerFactory;
-    
+
     public NodeChannelSuscribeJob(ILogger<NodeChannelSuscribeJob> logger, ILightningService lightningService, INodeRepository nodeRepository, IChannelRepository channelRepository, ISchedulerFactory schedulerFactory)
     {
         _logger = logger;
@@ -50,7 +50,7 @@ public class NodeChannelSuscribeJob : IJob
         _channelRepository = channelRepository;
         _schedulerFactory = schedulerFactory;
     }
-        
+
     public async Task Execute(IJobExecutionContext context)
     {
         var data = context.JobDetail.JobDataMap;
@@ -59,7 +59,7 @@ public class NodeChannelSuscribeJob : IJob
         try
         {
             var node = await _nodeRepository.GetById(nodeId);
-            
+
             if (node == null)
             {
                 _logger.LogInformation("The node: {@Node} is no longer ready to be supported quartz jobs", node);
@@ -67,7 +67,7 @@ public class NodeChannelSuscribeJob : IJob
             }
 
             var client = LightningService.CreateLightningClient(node.Endpoint);
-            var result = client.Execute(x => x.SubscribeChannelEvents(new ChannelEventSubscription(), 
+            var result = client.Execute(x => x.SubscribeChannelEvents(new ChannelEventSubscription(),
                 new Metadata {
                     {"macaroon", node.ChannelAdminMacaroon}
                 }, null, default));
@@ -75,13 +75,13 @@ public class NodeChannelSuscribeJob : IJob
             while (await result.ResponseStream.MoveNext())
             {
                 node = await _nodeRepository.GetById(nodeId);
-            
+
                 if (node == null)
                 {
                     _logger.LogInformation("The node: {@Node} is no longer ready to be supported quartz jobs", node);
                     return;
                 }
-                
+
                 try {
                     var channelEventUpdate = result.ResponseStream.Current;
                     _logger.LogInformation("Channel event update received for node {@NodeId}", node.Id);
@@ -100,7 +100,7 @@ public class NodeChannelSuscribeJob : IJob
             _logger.LogError(e, "Error while subscribing for the channel updates of node {NodeId}", nodeId);
             throw new JobExecutionException(e, true);
         }
-        
+
         _logger.LogInformation("{JobName} ended", nameof(NodeChannelSuscribeJob));
     }
 
@@ -132,31 +132,12 @@ public class NodeChannelSuscribeJob : IJob
                     IsPrivate = channelOpened.Private
                 };
 
-                var remoteNode = await _nodeRepository.GetByPubkey(channelOpened.RemotePubkey);
-                if (remoteNode == null)
-                {
-                    var foundNode = await _lightningService.GetNodeInfo(channelOpened.RemotePubkey);
-                    if (foundNode == null)
-                    {
-                        throw new Exception("Node info not found");
-                    }
-
-                    remoteNode = new Node()
-                    {
-                        Name = foundNode.Alias,
-                        PubKey = foundNode.PubKey,
-                    };
-                    var addNode = await _nodeRepository.AddAsync(remoteNode);
-                    if (!addNode.Item1)
-                    {
-                        throw new Exception(addNode.Item2);
-                    }
-                }
-                else if (remoteNode.IsManaged && channelOpened.Initiator)
+                var remoteNode = await _nodeRepository.GetOrCreateByPubKey(channelOpened.RemotePubkey, _lightningService);
+                if (remoteNode.IsManaged && channelOpened.Initiator)
                 {
                     return;
                 }
-                
+
                 remoteNode = await _nodeRepository.GetByPubkey(channelOpened.RemotePubkey);
                 channelToOpen.SourceNodeId = channelOpened.Initiator ? node.Id : remoteNode.Id;
                 channelToOpen.DestinationNodeId = channelOpened.Initiator ? remoteNode.Id : node.Id;
@@ -176,9 +157,9 @@ public class NodeChannelSuscribeJob : IJob
                 {
                     _logger.LogInformation("Channel with id: {ChannelId} already exists in the system", channelToOpen.Id);
                 }
-                
+
                 break;
-            
+
             case ChannelEventUpdate.Types.UpdateType.ClosedChannel:
                 var channelClosed = channelEventUpdate.ClosedChannel;
                 var channelToClose = await _channelRepository.GetByChanId(channelClosed.ChanId);
