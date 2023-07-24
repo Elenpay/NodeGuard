@@ -60,7 +60,7 @@ namespace FundsManager.Data.Models
         Failed = 6,
 
         /// <summary>
-        /// The PSBT is being signed by NodeGuard
+        /// The PSBT is being signed by NodeGuard after all human required signatures have been collected
         /// </summary>
         FinalizingPSBT = 7
     }

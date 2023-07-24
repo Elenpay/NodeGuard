@@ -283,8 +283,10 @@ namespace FundsManager.Services
             var (isSuccess, error) = _walletWithdrawalRequestRepository.Update(walletWithdrawalRequest);
             if (!isSuccess)
             {
-                _logger.LogWarning("Request in remote signing stage, but could not update status to {Status} for request id: {RequestId} reason: {Reason}",
+                var errorMessage = string.Format("Request in remote signing stage, but could not update status to {Status} for request id: {RequestId} reason: {Reason}",
                     WalletWithdrawalRequestStatus.FinalizingPSBT, walletWithdrawalRequest.Id, error);
+                _logger.LogWarning(errorMessage);
+                throw new Exception(errorMessage);
             }
 
             PSBT? psbtToSign = null;

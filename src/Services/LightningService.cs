@@ -395,8 +395,10 @@ namespace FundsManager.Services
                                 var (isSuccess, error) = _channelOperationRequestRepository.Update(channelOperationRequest);
                                 if (!isSuccess)
                                 {
-                                    _logger.LogWarning("Request in funding stage, but could not update status to {Status} for request id: {RequestId} reason: {Reason}",
+                                    var errorMessage = string.Format("Request in funding stage, but could not update status to {Status} for request id: {RequestId} reason: {Reason}",
                                         ChannelOperationRequestStatus.FinalizingPSBT, channelOperationRequest.Id, error);
+                                    _logger.LogError(errorMessage);
+                                    throw new Exception(errorMessage);
                                 }
 
                                 //We got the funded PSBT, we need to tweak the tx outputs and mimick lnd-cli calls
