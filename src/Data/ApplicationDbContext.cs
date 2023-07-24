@@ -51,7 +51,6 @@ namespace FundsManager.Data
                 .HasForeignKey(cor => cor.DestNodeId);
 
             modelBuilder.Entity<Node>().HasIndex(x => x.PubKey).IsUnique();
-            modelBuilder.Entity<Node>().HasIndex(x => x.Name).IsUnique();
             modelBuilder.Entity<Wallet>().HasIndex(x => new {x.InternalWalletSubDerivationPath, x.InternalWalletMasterFingerprint}).IsUnique();
 
             //There should be only one Liquidity Rule per Channel
