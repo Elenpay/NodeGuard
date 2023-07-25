@@ -58,15 +58,6 @@ namespace FundsManager.Data
 
             modelBuilder.Entity<ApplicationUser>().HasIndex(x => x.NormalizedUserName).IsUnique();
 
-            modelBuilder.Entity<ChannelStatusLog>().HasNoKey();
-
-            modelBuilder.Entity<ChannelOperationRequest>()
-                .Property(e => e.StatusLogs)
-                .HasConversion(
-                    v => JsonSerializer.Serialize(v, new JsonSerializerOptions()),
-                    v => JsonSerializer.Deserialize<List<ChannelStatusLog>>(v, new JsonSerializerOptions())
-                );
-
             base.OnModelCreating(modelBuilder);
         }
 
