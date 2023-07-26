@@ -95,11 +95,10 @@ namespace FundsManager.Services
         public Task<LightningNode?> GetNodeInfo(string pubkey);
 
         /// <summary>
-        /// Channel balance
+        /// Gets a dictionary of the local and remote balance of all the channels managed by NG
         /// </summary>
-        /// <param name="channel"></param>
         /// <returns></returns>
-        public Task<(long?, long?)> GetChannelBalance(Channel channel);
+        public Task<Dictionary<ulong, (int, long, long)>> GetChannelsBalance();
 
         /// <summary>
         /// Cancels a pending channel from LND PSBT-based funding of channels
@@ -107,7 +106,8 @@ namespace FundsManager.Services
         /// <param name="source"></param>
         /// <param name="pendingChannelId"></param>
         /// <param name="client"></param>
-        public void CancelPendingChannel(Node source, byte[] pendingChannelId, IUnmockable<Lightning.LightningClient>? client = null);
+        public void CancelPendingChannel(Node source, byte[] pendingChannelId,
+            IUnmockable<Lightning.LightningClient>? client = null);
     }
 
     public class LightningService : ILightningService
@@ -177,7 +177,8 @@ namespace FundsManager.Services
             var network = CurrentNetworkHelper.GetCurrentNetwork();
 
 
-            _logger.LogInformation("Channel open request for  request id: {RequestId} from node: {SourceNodeName} to node: {DestinationNodeName}",
+            _logger.LogInformation(
+                "Channel open request for  request id: {RequestId} from node: {SourceNodeName} to node: {DestinationNodeName}",
                 channelOperationRequest.Id,
                 source.Name,
                 destination.Name);
@@ -198,16 +199,22 @@ namespace FundsManager.Services
                          !x.IsTemplatePSBT);
 
                 //If it is a hot wallet, we dont check the number of (human) signatures
-                if (channelOperationRequest.Wallet != null && !channelOperationRequest.Wallet.IsHotWallet && channelOperationRequest.Wallet != null && humanSignaturesCount != channelOperationRequest.Wallet.MofN - 1)
+                if (channelOperationRequest.Wallet != null && !channelOperationRequest.Wallet.IsHotWallet &&
+                    channelOperationRequest.Wallet != null &&
+                    humanSignaturesCount != channelOperationRequest.Wallet.MofN - 1)
                 {
-                    _logger.LogError("The number of human signatures does not match the number of signatures required for this wallet, expected {MofN} but got {HumanSignaturesCount}", channelOperationRequest.Wallet.MofN - 1, humanSignaturesCount);
-                    throw new InvalidOperationException("The number of human signatures does not match the number of signatures required for this wallet");
+                    _logger.LogError(
+                        "The number of human signatures does not match the number of signatures required for this wallet, expected {MofN} but got {HumanSignaturesCount}",
+                        channelOperationRequest.Wallet.MofN - 1, humanSignaturesCount);
+                    throw new InvalidOperationException(
+                        "The number of human signatures does not match the number of signatures required for this wallet");
                 }
 
                 if (channelOperationRequest.Changeless && combinedPSBT.Outputs.Any())
                 {
                     _logger.LogError("Changeless channel operation request cannot have outputs at this stage");
-                    throw new InvalidOperationException("Changeless channel operation request cannot have outputs at this stage");
+                    throw new InvalidOperationException(
+                        "Changeless channel operation request cannot have outputs at this stage");
                 }
 
                 //Prior to opening the channel, we add the remote node as a peer
@@ -219,12 +226,15 @@ namespace FundsManager.Services
                     throw new InvalidOperationException();
                 }
 
-                var initialFeeRate = channelOperationRequest.FeeRate ?? (await LightningHelper.GetFeeRateResult(network, _nbXplorerService)).FeeRate.SatoshiPerByte;
+                var initialFeeRate = channelOperationRequest.FeeRate ??
+                                     (await LightningHelper.GetFeeRateResult(network, _nbXplorerService)).FeeRate
+                                     .SatoshiPerByte;
                 ;
 
                 var fundingAmount = GetFundingAmount(channelOperationRequest, combinedPSBT, initialFeeRate);
 
-                var openChannelRequest = await CreateOpenChannelRequest(channelOperationRequest, combinedPSBT, remoteNodeInfo, fundingAmount, pendingChannelId, derivationStrategyBase);
+                var openChannelRequest = await CreateOpenChannelRequest(channelOperationRequest, combinedPSBT,
+                    remoteNodeInfo, fundingAmount, pendingChannelId, derivationStrategyBase);
 
                 //For now, we only rely on pure tcp IPV4 connections
                 var addr = remoteNodeInfo.Addresses.FirstOrDefault(x => x.Network == "tcp")?.Addr;
@@ -243,11 +253,11 @@ namespace FundsManager.Services
                 {
                     connectPeerResponse = await client.Execute(x => x.ConnectPeerAsync(new ConnectPeerRequest
                     {
-                        Addr = new LightningAddress { Host = addr, Pubkey = remoteNodeInfo.PubKey },
+                        Addr = new LightningAddress {Host = addr, Pubkey = remoteNodeInfo.PubKey},
                         Perm = true
                     }, new Metadata
                     {
-                        { "macaroon", source.ChannelAdminMacaroon }
+                        {"macaroon", source.ChannelAdminMacaroon}
                     }, null, default));
                 }
                 //We avoid to stop the method if the peer is already connected
@@ -290,7 +300,7 @@ namespace FundsManager.Services
                 if (source.ChannelAdminMacaroon != null)
                 {
                     var openStatusUpdateStream = client.Execute(x => x.OpenChannel(openChannelRequest,
-                        new Metadata { { "macaroon", source.ChannelAdminMacaroon } }, null, default
+                        new Metadata {{"macaroon", source.ChannelAdminMacaroon}}, null, default
                     ));
 
                     await foreach (var response in openStatusUpdateStream.ResponseStream.ReadAllAsync())
@@ -307,7 +317,8 @@ namespace FundsManager.Services
                                     "Channel pending for channel operation request id: {RequestId} for pending channel id: {ChannelId}",
                                     channelOperationRequest.Id, pendingChannelIdHex);
 
-                                channelOperationRequest.Status = ChannelOperationRequestStatus.OnChainConfirmationPending;
+                                channelOperationRequest.Status =
+                                    ChannelOperationRequestStatus.OnChainConfirmationPending;
                                 channelOperationRequest.TxId = LightningHelper.DecodeTxId(response.ChanPending.Txid);
                                 _channelOperationRequestRepository.Update(channelOperationRequest);
 
@@ -318,6 +329,18 @@ namespace FundsManager.Services
                                 break;
 
                             case OpenStatusUpdate.UpdateOneofCase.PsbtFund:
+                                channelOperationRequest.Status = ChannelOperationRequestStatus.FinalizingPSBT;
+                                var (isSuccess, error) =
+                                    _channelOperationRequestRepository.Update(channelOperationRequest);
+                                if (!isSuccess)
+                                {
+                                    var errorMessage = string.Format(
+                                        "Request in funding stage, but could not update status to {Status} for request id: {RequestId} reason: {Reason}",
+                                        ChannelOperationRequestStatus.FinalizingPSBT, channelOperationRequest.Id,
+                                        error);
+                                    _logger.LogError(errorMessage);
+                                    throw new Exception(errorMessage);
+                                }
 
                                 //We got the funded PSBT, we need to tweak the tx outputs and mimick lnd-cli calls
                                 var hexPSBT = Convert.ToHexString((response.PsbtFund.Psbt.ToByteArray()));
@@ -341,8 +364,12 @@ namespace FundsManager.Services
                                         {
                                             var totalIn = fundedPSBT.Inputs.Sum(i => i.GetTxOut()?.Value);
                                             //We manually fix the change (it was wrong from the Base template due to nbitcoin requiring a change on a PSBT)
-                                            var totalChangefulFees = new Money(vsize * initialFeeRate, MoneyUnit.Satoshi);
-                                            var changeOutput = channelfundingTx.Outputs.SingleOrDefault(o => o.Value != channelOperationRequest.SatsAmount) ?? channelfundingTx.Outputs.First();
+                                            var totalChangefulFees =
+                                                new Money(vsize * initialFeeRate, MoneyUnit.Satoshi);
+                                            var changeOutput =
+                                                channelfundingTx.Outputs.SingleOrDefault(o =>
+                                                    o.Value != channelOperationRequest.SatsAmount) ??
+                                                channelfundingTx.Outputs.First();
                                             changeOutput.Value = totalIn - totalOut - totalChangefulFees;
 
                                             //We merge changeFixedPSBT with the other PSBT with the change fixed
@@ -350,7 +377,9 @@ namespace FundsManager.Services
                                         }
                                         else
                                         {
-                                            throw new ExternalException("VSized could not be calculated for the funded PSBT, channel operation request id: {RequestId}", channelOperationRequest.Id);
+                                            throw new ExternalException(
+                                                "VSized could not be calculated for the funded PSBT, channel operation request id: {RequestId}",
+                                                channelOperationRequest.Id);
                                         }
                                     }
 
@@ -361,7 +390,8 @@ namespace FundsManager.Services
                                         finalSignedPSBT = await _remoteSignerService.Sign(fundedPSBT);
                                         if (finalSignedPSBT == null)
                                         {
-                                            const string errorMessage = "The signed PSBT was null, something went wrong while signing with the remote signer";
+                                            const string errorMessage =
+                                                "The signed PSBT was null, something went wrong while signing with the remote signer";
                                             _logger.LogError(errorMessage);
                                             throw new Exception(
                                                 errorMessage);
@@ -379,7 +409,8 @@ namespace FundsManager.Services
 
                                         if (finalSignedPSBT == null)
                                         {
-                                            const string errorMessage = "The signed PSBT was null, something went wrong while signing with the embedded signer";
+                                            const string errorMessage =
+                                                "The signed PSBT was null, something went wrong while signing with the embedded signer";
                                             _logger.LogError(errorMessage);
                                             throw new Exception(
                                                 errorMessage);
@@ -395,11 +426,15 @@ namespace FundsManager.Services
                                         IsInternalWalletPSBT = true
                                     };
 
-                                    var addResult = await _channelOperationRequestPsbtRepository.AddAsync(signedChannelOperationRequestPsbt);
+                                    var addResult =
+                                        await _channelOperationRequestPsbtRepository.AddAsync(
+                                            signedChannelOperationRequestPsbt);
 
                                     if (!addResult.Item1)
                                     {
-                                        _logger.LogError("Could not store the signed PSBT for channel operation request id: {RequestId} reason: {Reason}", channelOperationRequest.Id, addResult.Item2);
+                                        _logger.LogError(
+                                            "Could not store the signed PSBT for channel operation request id: {RequestId} reason: {Reason}",
+                                            channelOperationRequest.Id, addResult.Item2);
                                     }
 
                                     //Time to finalize the PSBT and broadcast the tx
@@ -412,7 +447,8 @@ namespace FundsManager.Services
                                     channelfundingTx = finalizedPSBT.ExtractTransaction();
 
                                     //We check the feerate of the finalized PSBT by checking a minimum and maximum allowed and also a fee-level max check in ratio
-                                    var feerate = new FeeRate(finalizedPSBT.GetFee(), channelfundingTx.GetVirtualSize());
+                                    var feerate = new FeeRate(finalizedPSBT.GetFee(),
+                                        channelfundingTx.GetVirtualSize());
 
                                     var minFeeRate = Constants.MIN_SAT_PER_VB_RATIO * initialFeeRate;
 
@@ -420,27 +456,39 @@ namespace FundsManager.Services
 
                                     if (feerate.SatoshiPerByte < minFeeRate)
                                     {
-                                        _logger.LogError("Channel operation request id: {RequestId} finalized PSBT sat/vb: {SatPerVb} is lower than the minimum allowed: {MinSatPerVb}", channelOperationRequest.Id, feerate.SatoshiPerByte, minFeeRate);
-                                        throw new Exception("The finalized PSBT sat/vb is lower than the minimum allowed");
+                                        _logger.LogError(
+                                            "Channel operation request id: {RequestId} finalized PSBT sat/vb: {SatPerVb} is lower than the minimum allowed: {MinSatPerVb}",
+                                            channelOperationRequest.Id, feerate.SatoshiPerByte, minFeeRate);
+                                        throw new Exception(
+                                            "The finalized PSBT sat/vb is lower than the minimum allowed");
                                     }
 
                                     if (feerate.SatoshiPerByte > maxFeeRate)
                                     {
-                                        _logger.LogError("Channel operation request id: {RequestId} finalized PSBT sat/vb: {SatPerVb} is higher than the maximum allowed: {MaxSatPerVb}", channelOperationRequest.Id, feerate.SatoshiPerByte, maxFeeRate);
-                                        throw new Exception("The finalized PSBT sat/vb is higher than the maximum allowed");
+                                        _logger.LogError(
+                                            "Channel operation request id: {RequestId} finalized PSBT sat/vb: {SatPerVb} is higher than the maximum allowed: {MaxSatPerVb}",
+                                            channelOperationRequest.Id, feerate.SatoshiPerByte, maxFeeRate);
+                                        throw new Exception(
+                                            "The finalized PSBT sat/vb is higher than the maximum allowed");
                                     }
 
                                     //if the fee is too high, we throw an exception
-                                    var finalizedTotalIn = finalizedPSBT.Inputs.Sum(x => (long)x.GetCoin()?.Amount);
+                                    var finalizedTotalIn = finalizedPSBT.Inputs.Sum(x => (long) x.GetCoin()?.Amount);
                                     if (finalizedPSBT.GetFee().Satoshi >=
                                         finalizedTotalIn * Constants.MAX_TX_FEE_RATIO)
                                     {
-                                        _logger.LogError("Channel operation request id: {RequestId} finalized PSBT fee: {Fee} is higher than the maximum allowed: {MaxFee} sats", channelOperationRequest.Id, finalizedPSBT.GetFee().Satoshi, finalizedTotalIn * Constants.MAX_TX_FEE_RATIO);
-                                        throw new Exception("The finalized PSBT fee is higher than the maximum allowed");
+                                        _logger.LogError(
+                                            "Channel operation request id: {RequestId} finalized PSBT fee: {Fee} is higher than the maximum allowed: {MaxFee} sats",
+                                            channelOperationRequest.Id, finalizedPSBT.GetFee().Satoshi,
+                                            finalizedTotalIn * Constants.MAX_TX_FEE_RATIO);
+                                        throw new Exception(
+                                            "The finalized PSBT fee is higher than the maximum allowed");
                                     }
 
 
-                                    _logger.LogInformation("Channel operation request id: {RequestId} finalized PSBT sat/vb: {SatPerVb}", channelOperationRequest.Id, feerate.SatoshiPerByte);
+                                    _logger.LogInformation(
+                                        "Channel operation request id: {RequestId} finalized PSBT sat/vb: {SatPerVb}",
+                                        channelOperationRequest.Id, feerate.SatoshiPerByte);
 
                                     //Just a check of the tx based on the finalizedPSBT
                                     var checkTx = channelfundingTx.Check();
@@ -454,15 +502,18 @@ namespace FundsManager.Services
                                                 PsbtVerify = new FundingPsbtVerify
                                                 {
                                                     FundedPsbt =
-                                                        ByteString.CopyFrom(Convert.FromHexString(finalizedPSBT.ToHex())),
+                                                        ByteString.CopyFrom(
+                                                            Convert.FromHexString(finalizedPSBT.ToHex())),
                                                     PendingChanId = ByteString.CopyFrom(pendingChannelId)
                                                 }
-                                            }, new Metadata { { "macaroon", source.ChannelAdminMacaroon } }, null, default));
+                                            }, new Metadata {{"macaroon", source.ChannelAdminMacaroon}}, null,
+                                            default));
 
                                         //Saving the PSBT in the ChannelOperationRequest collection of PSBTs
 
                                         channelOperationRequest =
-                                            await _channelOperationRequestRepository.GetById(channelOperationRequest.Id) ?? throw new InvalidOperationException();
+                                            await _channelOperationRequestRepository.GetById(channelOperationRequest
+                                                .Id) ?? throw new InvalidOperationException();
 
                                         if (channelOperationRequest.ChannelOperationRequestPsbts != null)
                                         {
@@ -475,7 +526,8 @@ namespace FundsManager.Services
                                             };
 
                                             var finalisedPSBTAdd = await
-                                                _channelOperationRequestPsbtRepository.AddAsync(finalizedChannelOperationRequestPsbt);
+                                                _channelOperationRequestPsbtRepository.AddAsync(
+                                                    finalizedChannelOperationRequestPsbt);
 
                                             if (!finalisedPSBTAdd.Item1)
                                             {
@@ -493,19 +545,25 @@ namespace FundsManager.Services
                                                     PendingChanId = ByteString.CopyFrom(pendingChannelId),
                                                     //FinalRawTx = ByteString.CopyFrom(Convert.FromHexString(finalTxHex)),
                                                     SignedPsbt =
-                                                        ByteString.CopyFrom(Convert.FromHexString(finalizedPSBT.ToHex()))
+                                                        ByteString.CopyFrom(
+                                                            Convert.FromHexString(finalizedPSBT.ToHex()))
                                                 },
-                                            }, new Metadata { { "macaroon", source.ChannelAdminMacaroon } }, null, default));
+                                            }, new Metadata {{"macaroon", source.ChannelAdminMacaroon}}, null,
+                                            default));
                                     }
                                     else
                                     {
-                                        _logger.LogError("TX Check failed for channel operation request id: {RequestId} reason: {Reason}", channelOperationRequest.Id, checkTx);
+                                        _logger.LogError(
+                                            "TX Check failed for channel operation request id: {RequestId} reason: {Reason}",
+                                            channelOperationRequest.Id, checkTx);
                                         CancelPendingChannel(source, pendingChannelId, client);
                                     }
                                 }
                                 else
                                 {
-                                    _logger.LogError("Could not parse the PSBT for funding channel operation request id: {RequestId}", channelOperationRequest.Id);
+                                    _logger.LogError(
+                                        "Could not parse the PSBT for funding channel operation request id: {RequestId}",
+                                        channelOperationRequest.Id);
                                     CancelPendingChannel(source, pendingChannelId, client);
                                 }
 
@@ -557,7 +615,7 @@ namespace FundsManager.Services
             };
 
             var grpcChannel = GrpcChannel.ForAddress($"https://{endpoint}",
-                new GrpcChannelOptions { HttpHandler = httpHandler });
+                new GrpcChannelOptions {HttpHandler = httpHandler});
 
             return new Lightning.LightningClient(grpcChannel).Wrap();
         };
@@ -660,14 +718,21 @@ namespace FundsManager.Services
                 throw new InvalidOperationException("Could not estimate virtual size of the PSBT");
             }
 
-            var changelessVSize = channelOperationRequest.Changeless ? 43 : 0; // 8 value + 1 script pub key size + 34 script pub key hash (Segwit output 2-0f-2 multisig)
+            var changelessVSize =
+                channelOperationRequest.Changeless
+                    ? 43
+                    : 0; // 8 value + 1 script pub key size + 34 script pub key hash (Segwit output 2-0f-2 multisig)
             var outputVirtualSize = estimatedVsize + changelessVSize; // We add the change output if needed
 
             var totalFees = new Money(outputVirtualSize * initialFeeRate, MoneyUnit.Satoshi);
-            return channelOperationRequest.Changeless ? channelOperationRequest.SatsAmount - totalFees : channelOperationRequest.SatsAmount;
+            return channelOperationRequest.Changeless
+                ? channelOperationRequest.SatsAmount - totalFees
+                : channelOperationRequest.SatsAmount;
         }
 
-        public async Task<OpenChannelRequest> CreateOpenChannelRequest(ChannelOperationRequest channelOperationRequest, PSBT? combinedPSBT, LightningNode? remoteNodeInfo, long fundingAmount, byte[] pendingChannelId, DerivationStrategyBase? derivationStrategyBase)
+        public async Task<OpenChannelRequest> CreateOpenChannelRequest(ChannelOperationRequest channelOperationRequest,
+            PSBT? combinedPSBT, LightningNode? remoteNodeInfo, long fundingAmount, byte[] pendingChannelId,
+            DerivationStrategyBase? derivationStrategyBase)
         {
             if (combinedPSBT == null) throw new ArgumentNullException(nameof(combinedPSBT));
             if (remoteNodeInfo == null) throw new ArgumentNullException(nameof(remoteNodeInfo));
@@ -691,12 +756,17 @@ namespace FundsManager.Services
             };
 
             // Check features to see if we need or is allowed to add a close address
-            var upfrontShutdownScriptOpt = remoteNodeInfo.Features.ContainsKey((uint)FeatureBit.UpfrontShutdownScriptOpt);
-            var upfrontShutdownScriptReq = remoteNodeInfo.Features.ContainsKey((uint)FeatureBit.UpfrontShutdownScriptReq);
-            if (upfrontShutdownScriptOpt && remoteNodeInfo.Features[(uint)FeatureBit.UpfrontShutdownScriptOpt] is { IsKnown: true } ||
-                upfrontShutdownScriptReq && remoteNodeInfo.Features[(uint)FeatureBit.UpfrontShutdownScriptReq] is { IsKnown: true })
+            var upfrontShutdownScriptOpt =
+                remoteNodeInfo.Features.ContainsKey((uint) FeatureBit.UpfrontShutdownScriptOpt);
+            var upfrontShutdownScriptReq =
+                remoteNodeInfo.Features.ContainsKey((uint) FeatureBit.UpfrontShutdownScriptReq);
+            if (upfrontShutdownScriptOpt && remoteNodeInfo.Features[(uint) FeatureBit.UpfrontShutdownScriptOpt] is
+                    {IsKnown: true} ||
+                upfrontShutdownScriptReq && remoteNodeInfo.Features[(uint) FeatureBit.UpfrontShutdownScriptReq] is
+                    {IsKnown: true})
             {
-                var address = await GetCloseAddress(channelOperationRequest, derivationStrategyBase, _nbXplorerService, _logger);
+                var address = await GetCloseAddress(channelOperationRequest, derivationStrategyBase, _nbXplorerService,
+                    _logger);
                 openChannelRequest.CloseAddress = address.Address.ToString();
                 ;
             }
@@ -708,14 +778,16 @@ namespace FundsManager.Services
         {
             //PSBT Combine
             var signedPsbts = channelOperationRequest.ChannelOperationRequestPsbts.Where(x =>
-                channelOperationRequest.Wallet != null && !x.IsFinalisedPSBT && !x.IsInternalWalletPSBT && (channelOperationRequest.Wallet.IsHotWallet || !x.IsTemplatePSBT));
+                channelOperationRequest.Wallet != null && !x.IsFinalisedPSBT && !x.IsInternalWalletPSBT &&
+                (channelOperationRequest.Wallet.IsHotWallet || !x.IsTemplatePSBT));
             var signedPsbts2 = signedPsbts.Select(x => x.PSBT);
 
             var combinedPSBT = LightningHelper.CombinePSBTs(signedPsbts2, _logger);
 
             if (combinedPSBT != null) return combinedPSBT;
 
-            var invalidPsbtNullToBeUsedForTheRequest = $"Invalid PSBT(null) to be used for the channel op request:{channelOperationRequest.Id}";
+            var invalidPsbtNullToBeUsedForTheRequest =
+                $"Invalid PSBT(null) to be used for the channel op request:{channelOperationRequest.Id}";
             _logger?.LogError(invalidPsbtNullToBeUsedForTheRequest);
 
             throw new ArgumentException(invalidPsbtNullToBeUsedForTheRequest, nameof(combinedPSBT));
@@ -729,13 +801,15 @@ namespace FundsManager.Services
 
             if (closeAddress != null) return closeAddress;
 
-            var closeAddressNull = $"Closing address was null for an operation on wallet:{channelOperationRequest.Wallet.Id}";
+            var closeAddressNull =
+                $"Closing address was null for an operation on wallet:{channelOperationRequest.Wallet.Id}";
             _logger?.LogError(closeAddressNull);
 
             throw new ArgumentException(closeAddressNull);
         }
 
-        public static DerivationStrategyBase GetDerivationStrategyBase(ChannelOperationRequest channelOperationRequest, ILogger? _logger = null)
+        public static DerivationStrategyBase GetDerivationStrategyBase(ChannelOperationRequest channelOperationRequest,
+            ILogger? _logger = null)
         {
             //Derivation strategy for the multisig address based on its wallet
             var derivationStrategyBase = channelOperationRequest.Wallet.GetDerivationStrategy();
@@ -749,20 +823,23 @@ namespace FundsManager.Services
             throw new ArgumentException(derivationNull);
         }
 
-        public static void CheckArgumentsAreValid(ChannelOperationRequest channelOperationRequest, OperationRequestType requestype, ILogger? _logger = null)
+        public static void CheckArgumentsAreValid(ChannelOperationRequest channelOperationRequest,
+            OperationRequestType requestype, ILogger? _logger = null)
         {
             if (channelOperationRequest == null) throw new ArgumentNullException(nameof(channelOperationRequest));
 
             if (channelOperationRequest.RequestType == requestype) return;
 
-            string requestInvalid = $"Invalid request. Requested ${channelOperationRequest.RequestType.ToString()} on ${requestype.ToString()} method";
+            string requestInvalid =
+                $"Invalid request. Requested ${channelOperationRequest.RequestType.ToString()} on ${requestype.ToString()} method";
 
             _logger?.LogError(requestInvalid);
 
             throw new ArgumentOutOfRangeException(requestInvalid);
         }
 
-        public static (Node, Node) CheckNodesAreValid(ChannelOperationRequest channelOperationRequest, ILogger? _logger = null)
+        public static (Node, Node) CheckNodesAreValid(ChannelOperationRequest channelOperationRequest,
+            ILogger? _logger = null)
         {
             var source = channelOperationRequest.SourceNode;
             var destination = channelOperationRequest.DestNode;
@@ -802,7 +879,8 @@ namespace FundsManager.Services
         /// <exception cref="ArgumentException"></exception>
         public static async Task<PSBT> SignPSBTWithEmbeddedSigner(
             ChannelOperationRequest channelOperationRequest, INBXplorerService nbXplorerService,
-            DerivationStrategyBase derivationStrategyBase, Transaction channelfundingTx, Network network, PSBT changeFixedPSBT, ILogger? logger = null)
+            DerivationStrategyBase derivationStrategyBase, Transaction channelfundingTx, Network network,
+            PSBT changeFixedPSBT, ILogger? logger = null)
 
         {
             //We get the UTXO keyPath / derivation path from nbxplorer
@@ -883,7 +961,8 @@ namespace FundsManager.Services
         /// <param name="source"></param>
         /// <param name="client"></param>
         /// <param name="pendingChannelId"></param>
-        public void CancelPendingChannel(Node source, byte[] pendingChannelId, IUnmockable<Lightning.LightningClient>? client = null)
+        public void CancelPendingChannel(Node source, byte[] pendingChannelId,
+            IUnmockable<Lightning.LightningClient>? client = null)
         {
             try
             {
@@ -905,7 +984,7 @@ namespace FundsManager.Services
                             {
                                 ShimCancel = cancelRequest,
                             },
-                            new Metadata { { "macaroon", source.ChannelAdminMacaroon } }, null, default));
+                            new Metadata {{"macaroon", source.ChannelAdminMacaroon}}, null, default));
                     }
                 }
             }
@@ -991,16 +1070,23 @@ namespace FundsManager.Services
 
                     if (!updateResult.Item1)
                     {
-                        _logger.LogError("Error while updating withdrawal request: {RequestId}", channelOperationRequest.Id);
+                        _logger.LogError("Error while updating withdrawal request: {RequestId}",
+                            channelOperationRequest.Id);
                     }
 
                     return (null, false);
                 }
             }
 
-            var previouslyLockedUTXOs = await _coinSelectionService.GetLockedUTXOsForRequest(channelOperationRequest, BitcoinRequestType.ChannelOperation);
-            var availableUTXOs = previouslyLockedUTXOs.Count > 0 ? previouslyLockedUTXOs : await _coinSelectionService.GetAvailableUTXOsAsync(derivationStrategy);
-            var (multisigCoins, selectedUtxOs) = await _coinSelectionService.GetTxInputCoins(availableUTXOs, channelOperationRequest, derivationStrategy);
+            var previouslyLockedUTXOs =
+                await _coinSelectionService.GetLockedUTXOsForRequest(channelOperationRequest,
+                    BitcoinRequestType.ChannelOperation);
+            var availableUTXOs = previouslyLockedUTXOs.Count > 0
+                ? previouslyLockedUTXOs
+                : await _coinSelectionService.GetAvailableUTXOsAsync(derivationStrategy);
+            var (multisigCoins, selectedUtxOs) =
+                await _coinSelectionService.GetTxInputCoins(availableUTXOs, channelOperationRequest,
+                    derivationStrategy);
 
             if (multisigCoins == null || !multisigCoins.Any())
             {
@@ -1020,12 +1106,16 @@ namespace FundsManager.Services
                 var network = CurrentNetworkHelper.GetCurrentNetwork();
                 var txBuilder = network.CreateTransactionBuilder();
 
-                var feeRateResult = channelOperationRequest.FeeRate ?? (await LightningHelper.GetFeeRateResult(network, _nbXplorerService)).FeeRate.SatoshiPerByte;
+                var feeRateResult = channelOperationRequest.FeeRate ??
+                                    (await LightningHelper.GetFeeRateResult(network, _nbXplorerService)).FeeRate
+                                    .SatoshiPerByte;
 
-                var changeAddress = await _nbXplorerService.GetUnusedAsync(derivationStrategy, DerivationFeature.Change, 0, false, default);
+                var changeAddress = await _nbXplorerService.GetUnusedAsync(derivationStrategy, DerivationFeature.Change,
+                    0, false, default);
                 if (changeAddress == null)
                 {
-                    _logger.LogError("Change address was not found for wallet: {WalletId}", channelOperationRequest.Wallet.Id);
+                    _logger.LogError("Change address was not found for wallet: {WalletId}",
+                        channelOperationRequest.Wallet.Id);
                     return (null, false);
                 }
 
@@ -1064,7 +1154,8 @@ namespace FundsManager.Services
                     input.SighashType = SigHash.None;
                 }
 
-                var psbt = LightningHelper.AddDerivationData(channelOperationRequest.Wallet, result.Item1, selectedUtxOs, multisigCoins, _logger);
+                var psbt = LightningHelper.AddDerivationData(channelOperationRequest.Wallet, result.Item1,
+                    selectedUtxOs, multisigCoins, _logger);
                 result = (psbt, result.Item2);
             }
             catch (Exception e)
@@ -1074,7 +1165,8 @@ namespace FundsManager.Services
 
             if (previouslyLockedUTXOs.Count == 0)
             {
-                await _coinSelectionService.LockUTXOs(selectedUtxOs, channelOperationRequest, BitcoinRequestType.ChannelOperation);
+                await _coinSelectionService.LockUTXOs(selectedUtxOs, channelOperationRequest,
+                    BitcoinRequestType.ChannelOperation);
             }
 
             // The template PSBT is saved for later reuse
@@ -1093,7 +1185,8 @@ namespace FundsManager.Services
 
                 if (addPsbtResult.Item1 == false)
                 {
-                    _logger.LogError("Error while saving template PSBT to channel operation request: {RequestId}", channelOperationRequest.Id);
+                    _logger.LogError("Error while saving template PSBT to channel operation request: {RequestId}",
+                        channelOperationRequest.Id);
                 }
             }
 
@@ -1111,7 +1204,7 @@ namespace FundsManager.Services
             {
                 if (channelOperationRequest.ChannelId != null)
                 {
-                    var channel = await _channelRepository.GetById((int)channelOperationRequest.ChannelId);
+                    var channel = await _channelRepository.GetById((int) channelOperationRequest.ChannelId);
 
                     var node = string.IsNullOrEmpty(channelOperationRequest.SourceNode.ChannelAdminMacaroon)
                         ? channelOperationRequest.DestNode
@@ -1130,7 +1223,7 @@ namespace FundsManager.Services
                                 OutputIndex = channel.FundingTxOutputIndex
                             },
                             Force = forceClose,
-                        }, new Metadata { { "macaroon", node.ChannelAdminMacaroon } }, null, default));
+                        }, new Metadata {{"macaroon", node.ChannelAdminMacaroon}}, null, default));
 
                         _logger.LogInformation("Channel close request: {RequestId} triggered",
                             channelOperationRequest.Id);
@@ -1153,7 +1246,8 @@ namespace FundsManager.Services
                                         channel.Id,
                                         closePendingTxid);
 
-                                    channelOperationRequest.Status = ChannelOperationRequestStatus.OnChainConfirmationPending;
+                                    channelOperationRequest.Status =
+                                        ChannelOperationRequestStatus.OnChainConfirmationPending;
                                     channelOperationRequest.TxId = closePendingTxid;
 
                                     var onChainPendingUpdate =
@@ -1172,7 +1266,8 @@ namespace FundsManager.Services
                                 case CloseStatusUpdate.UpdateOneofCase.ChanClose:
 
                                     //TODO Review why chanclose.success it is false for confirmed closings of channels
-                                    var chanCloseClosingTxid = LightningHelper.DecodeTxId(response.ChanClose.ClosingTxid);
+                                    var chanCloseClosingTxid =
+                                        LightningHelper.DecodeTxId(response.ChanClose.ClosingTxid);
                                     _logger.LogInformation(
                                         "Channel close request in status: {RequestStatus} for channel operation request: {RequestId} for channel: {ChannelId} closing txId: {TxId}",
                                         nameof(ChannelOperationRequestStatus.OnChainConfirmed),
@@ -1221,13 +1316,14 @@ namespace FundsManager.Services
                     //We mark it as closed as it no longer exists
                     if (channelOperationRequest.ChannelId != null)
                     {
-                        var channel = await _channelRepository.GetById((int)channelOperationRequest.ChannelId);
+                        var channel = await _channelRepository.GetById((int) channelOperationRequest.ChannelId);
                         if (channel != null)
                         {
                             channel.Status = Channel.ChannelStatus.Closed;
 
                             _channelRepository.Update(channel);
-                            _logger.LogInformation("Setting channel with id: {ChannelId} to closed as it no longer exists",
+                            _logger.LogInformation(
+                                "Setting channel with id: {ChannelId} to closed as it no longer exists",
                                 channel.Id);
 
                             //It does not exists, probably was on-chain confirmed
@@ -1313,7 +1409,7 @@ namespace FundsManager.Services
                     {
                         PubKey = pubkey,
                         IncludeChannels = false
-                    }, new Metadata { { "macaroon", node.ChannelAdminMacaroon } }, null, default));
+                    }, new Metadata {{"macaroon", node.ChannelAdminMacaroon}}, null, default));
 
                     result = nodeInfo?.Node;
                 }
@@ -1326,29 +1422,36 @@ namespace FundsManager.Services
             return result;
         }
 
-        public async Task<(long?, long?)> GetChannelBalance(Channel channel)
+        public async Task<Dictionary<ulong, (int, long, long)>> GetChannelsBalance()
         {
-            IUnmockable<Lightning.LightningClient> client;
-            var destinationNode = await _nodeRepository.GetById(channel.DestinationNodeId);
-            var sourceNode = await _nodeRepository.GetById(channel.SourceNodeId);
-            var node = String.IsNullOrEmpty(sourceNode.ChannelAdminMacaroon) ? destinationNode : sourceNode;
+            var nodes = await _nodeRepository.GetAllManagedByNodeGuard();
 
-            client = CreateLightningClient(node.Endpoint);
-            var result = client.Execute(x => x.ListChannels(new ListChannelsRequest(),
-                new Metadata
+            var result = new Dictionary<ulong, (int, long, long)>();
+            foreach (var node in nodes)
+            {
+                var client = CreateLightningClient(node.Endpoint);
+                var listChannelsResponse = client.Execute(x => x.ListChannels(new ListChannelsRequest(),
+                    new Metadata
+                    {
+                        {"macaroon", node.ChannelAdminMacaroon}
+                    }, null, default));
+
+                var channels = listChannelsResponse.Channels.ToList();
+
+                foreach (var channel in channels)
                 {
-                    { "macaroon", node.ChannelAdminMacaroon }
-                }, null, default));
+                    if (channel == null) continue;
 
-            var chan = result.Channels.FirstOrDefault(x => x.ChanId == channel.ChanId);
-            if (chan == null)
-                return (null, null);
+                    var htlcsLocal = channel.PendingHtlcs.Where(x => x.Incoming == true).Sum(x => x.Amount);
+                    var htlcsRemote = channel.PendingHtlcs.Where(x => x.Incoming == false).Sum(x => x.Amount);
 
-            var htlcsLocal = chan.PendingHtlcs.Where(x => x.Incoming == true).Sum(x => x.Amount);
-            var htlcsRemote = chan.PendingHtlcs.Where(x => x.Incoming == false).Sum(x => x.Amount);
+                    result.TryAdd(channel.ChanId,
+                        (node.Id, channel.LocalBalance + htlcsLocal, channel.RemoteBalance + htlcsRemote));
+                }
+            }
 
-            var res = (chan.LocalBalance + htlcsLocal, chan.RemoteBalance + htlcsRemote);
-            return res;
+
+            return result;
         }
     }
 }

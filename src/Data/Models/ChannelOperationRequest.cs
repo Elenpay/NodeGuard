@@ -57,7 +57,12 @@ namespace FundsManager.Data.Models
         /// <summary>
         /// The process failed in background
         /// </summary>
-        Failed = 8
+        Failed = 8,
+
+        /// <summary>
+        /// The PSBT is being signed by NodeGuard after all human required signatures have been collected
+        /// </summary>
+        FinalizingPSBT = 9
     }
 
     public enum OperationRequestType

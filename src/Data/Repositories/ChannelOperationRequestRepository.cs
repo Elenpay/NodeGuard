@@ -92,31 +92,35 @@ namespace FundsManager.Data.Repositories
                 .ToListAsync();
         }
 
-        public async Task<(bool, string?)> AddAsync(ChannelOperationRequest type)
+        public async Task<(bool, string?)> AddAsync(ChannelOperationRequest request)
         {
             await using var applicationDbContext = await _dbContextFactory.CreateDbContextAsync();
 
-            type.SetCreationDatetime();
-            type.SetUpdateDatetime();
+            request.SetCreationDatetime();
+            request.SetUpdateDatetime();
 
             //Check for avoiding duplicate request
-            var existingRequest = await applicationDbContext.ChannelOperationRequests.Where(x =>
-                x.SourceNodeId == type.SourceNodeId
-                && x.DestNodeId == type.DestNodeId && x.RequestType == type.RequestType).ToListAsync();
-
-            if (existingRequest.Any(x => x.Status == ChannelOperationRequestStatus.OnChainConfirmationPending ||
-                                         x.Status == ChannelOperationRequestStatus.Pending ||
-                                         x.Status == ChannelOperationRequestStatus.PSBTSignaturesPending
-                ))
+            if (!Constants.ALLOW_SIMULTANEOUS_CHANNEL_OPENING_OPERATIONS && request.RequestType != OperationRequestType.Close)
             {
-                return (false,
-                    "Error, a channel operation request with the same source and destination node is in pending status, wait for that request to finalise before submitting a new request");
+                var all = applicationDbContext.ChannelOperationRequests.Count();
+                var existingRequest = await applicationDbContext.ChannelOperationRequests.Where(x =>
+                    x.SourceNodeId == request.SourceNodeId
+                    && x.DestNodeId == request.DestNodeId && x.RequestType == request.RequestType).ToListAsync();
+
+                if (existingRequest.Any(x => x.Status == ChannelOperationRequestStatus.OnChainConfirmationPending ||
+                                             x.Status == ChannelOperationRequestStatus.Pending ||
+                                             x.Status == ChannelOperationRequestStatus.PSBTSignaturesPending
+                    ))
+                {
+                    return (false,
+                        "Error, a channel operation request with the same source and destination node is in pending status, wait for that request to finalise before submitting a new request");
+                }
             }
 
-            var valueTuple = await _repository.AddAsync(type, applicationDbContext);
-            if (type.WalletId.HasValue)
+            var valueTuple = await _repository.AddAsync(request, applicationDbContext);
+            if (request.WalletId.HasValue)
             {
-                await _notificationService.NotifyRequestSigners(type.WalletId.Value, "/channel-requests");
+                await _notificationService.NotifyRequestSigners(request.WalletId.Value, "/channel-requests");
             }
 
             return valueTuple;

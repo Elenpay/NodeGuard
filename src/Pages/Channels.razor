@@ -107,7 +107,7 @@
                             Wallet wallet = null;
                             if (context.OpenedWithId != null)
                             {
-                                wallet = Task.Run(() => WalletRepository.GetById((int)context.OpenedWithId)).Result;
+                                wallet = Task.Run(() => WalletRepository.GetById((int) context.OpenedWithId)).Result;
                             }
                             @(wallet == null ? "Unknown" : wallet.Name)
                         }
@@ -148,16 +148,11 @@
                     <DisplayTemplate>
                         @{
                             var balance = Task.Run(() => GetPercentageBalance(context)).Result;
-                            var percentageBalance = 0;
-                            if (balance != null)
-                            {
-                                percentageBalance = Convert.ToInt32(balance);
-                            }
-
+                           
                         }
-                        @if (balance != null)
+                        @if (balance >= 0)
                         {
-                            <Progress Color="Color.Primary" Value="@percentageBalance"/>
+                            <Progress Color="Color.Primary" Value="@balance"/>
                             <Text>
                                 @{
                                     @($"{balance}%")
@@ -365,6 +360,9 @@
     private ColumnLayout<ChannelsColumnName> ChannelsColumnLayout;
     private Dictionary<string, bool> ChannelsColumns = new();
     private bool columnsLoaded;
+    // This dictionary is used to store the balance of each channel, key is the channel id, value is a tuple with the node id as local in the pair, local balance, remote balance
+    private Dictionary<ulong, (int,long, long)> _channelsBalance = new();
+    private DateTimeOffset _lastBalanceUpdate = DateTimeOffset.Now;
 
     public abstract class ChannelsColumnName
     {
@@ -406,6 +404,7 @@
         _nodes = await NodeRepository.GetAll();
         _wallets = await WalletRepository.GetAll();
         _channelsDataGridRef.FilterData();
+        _channelsBalance = await LightningService.GetChannelsBalance();
     }
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
@@ -413,7 +412,6 @@
         if (!firstRender && !columnsLoaded)
         {
             await LoadColumnLayout();
-
         }
     }
 
@@ -469,28 +467,42 @@
         ToastService.ShowSuccess("Text copied");
     }
 
-    private async Task<double?> GetPercentageBalance(Channel channel)
+    private async Task<int> GetPercentageBalance(Channel channel)
     {
+        //If the last update was more than 60 seconds ago, we update the balance dictionary
+        if (DateTimeOffset.Now.Subtract(_lastBalanceUpdate).TotalSeconds > 60)
+        {
+            _channelsBalance = await LightningService.GetChannelsBalance();
+            _lastBalanceUpdate = DateTimeOffset.Now;
+        }
+        
         try
         {
-            double? result = null;
-            var values = await LightningService.GetChannelBalance(channel);
-            if (values.Item1 != null && values.Item2 != null)
+            var result = -1.0;
+            if (_channelsBalance.TryGetValue(channel.ChanId, out var values))
             {
-                result = (values.Item2 / (double) (values.Item2 + values.Item1)) * 100;
-                result = Math.Round(result.Value, 2);
-            }
-            else
-            {
-                result = null;
+                var sourceNodeId = values.Item1;
+                //If the source node is the local node, the remote balance is the third value, otherwise is the second
+                var capacity = values.Item2 + values.Item3;
+                if (sourceNodeId == channel.SourceNodeId)
+                {
+                    result = (values.Item3 / (double) capacity) * 100;
+                }
+                else
+                {
+                    result = (values.Item2 / (double) capacity) * 100;
+                }
+                
+                result = Math.Round(result, 2);
             }
 
-            return result;
+
+            return Convert.ToInt32(result);
         }
         catch (Exception e)
         {
             ToastService.ShowError($"Channel balance for channel id:{channel.Id} could not be retrieved");
-            return null;
+            return -1;
         }
     }
 
@@ -574,7 +586,7 @@
         var sourceNode = await NodeRepository.GetById(channel.SourceNodeId);
         var node = String.IsNullOrEmpty(sourceNode.ChannelAdminMacaroon) ? destinationNode : sourceNode;
 
-        //If there is a liquidity rule for this channel, we load it, the first one
+    //If there is a liquidity rule for this channel, we load it, the first one
         _currentLiquidityRule = _selectedChannel?.LiquidityRules.FirstOrDefault() ?? new LiquidityRule
         {
             MinimumLocalBalance = 20,
@@ -785,4 +797,5 @@
         }
         return ChannelsColumnLayout.IsColumnVisible(column);
     }
+
 }

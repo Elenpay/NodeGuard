@@ -28,6 +28,10 @@ public class Constants
     public static readonly bool PUSH_NOTIFICATIONS_ONESIGNAL_ENABLED;
     public static readonly bool ENABLE_HW_SUPPORT;
     public static readonly bool NBXPLORER_ENABLE_CUSTOM_BACKEND = false;
+    /// <summary>
+    /// Allow simultaneous channel opening operations using the same source and destination nodes
+    /// </summary>
+    public static bool ALLOW_SIMULTANEOUS_CHANNEL_OPENING_OPERATIONS; // Not readonly so we can change it in tests
 
     // Connections
     public static readonly string POSTGRES_CONNECTIONSTRING = "Host=localhost;Port=5432;Database=fundsmanager;Username=rw_dev;Password=rw_dev";
@@ -105,6 +109,8 @@ public class Constants
         ENABLE_HW_SUPPORT = Environment.GetEnvironmentVariable("ENABLE_HW_SUPPORT") != "false"; // We default to true
 
         NBXPLORER_ENABLE_CUSTOM_BACKEND = Environment.GetEnvironmentVariable("NBXPLORER_ENABLE_CUSTOM_BACKEND") == "true";
+
+        ALLOW_SIMULTANEOUS_CHANNEL_OPENING_OPERATIONS = Environment.GetEnvironmentVariable("ALLOW_SIMULTANEOUS_CHANNEL_OPENING_OPERATIONS") == "true";
 
         // Connections
         POSTGRES_CONNECTIONSTRING =  Environment.GetEnvironmentVariable("POSTGRES_CONNECTIONSTRING") ?? POSTGRES_CONNECTIONSTRING;
@@ -215,6 +221,7 @@ public class Constants
         MAX_SAT_PER_VB_RATIO = maxSatPerVbRatioEnv!= null ? decimal.Parse(maxSatPerVbRatioEnv) : MAX_SAT_PER_VB_RATIO;
 
     }
+
 }
 
 public class EnvironmentalVariableMissingException: ArgumentNullException

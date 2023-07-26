@@ -107,11 +107,6 @@ public class NodeChannelSuscribeJob : IJob
         switch (channelEventUpdate.Type)
         {
             case ChannelEventUpdate.Types.UpdateType.OpenChannel:
-                if (String.IsNullOrEmpty(channelEventUpdate.OpenChannel.CloseAddress))
-                {
-                    _logger.LogError("Close address is empty");
-                    throw new Exception("Close address is empty");
-                }
 
                 var channelOpened = channelEventUpdate.OpenChannel;
                 var fundingTxAndIndex = channelOpened.ChannelPoint.Split(":");
