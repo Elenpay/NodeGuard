@@ -17,12 +17,10 @@
  *
  */
 
-using FundsManager.Data.Repositories;
 using FundsManager.Data.Repositories.Interfaces;
 using FundsManager.Services;
 using Grpc.Core;
 using Lnrpc;
-using NBitcoin.Protocol;
 using Quartz;
 using Channel = FundsManager.Data.Models.Channel;
 using Node = FundsManager.Data.Models.Node;
@@ -40,15 +38,15 @@ public class NodeChannelSuscribeJob : IJob
     private readonly ILightningService _lightningService;
     private readonly INodeRepository _nodeRepository;
     private readonly IChannelRepository _channelRepository;
-    private readonly ISchedulerFactory _schedulerFactory;
+    private readonly ILightningClientsStorageService _lightningClientsStorageService;
 
-    public NodeChannelSuscribeJob(ILogger<NodeChannelSuscribeJob> logger, ILightningService lightningService, INodeRepository nodeRepository, IChannelRepository channelRepository, ISchedulerFactory schedulerFactory)
+    public NodeChannelSuscribeJob(ILogger<NodeChannelSuscribeJob> logger, ILightningService lightningService, INodeRepository nodeRepository, IChannelRepository channelRepository, ILightningClientsStorageService lightningClientsStorageService)
     {
         _logger = logger;
         _lightningService = lightningService;
         _nodeRepository = nodeRepository;
         _channelRepository = channelRepository;
-        _schedulerFactory = schedulerFactory;
+        _lightningClientsStorageService = lightningClientsStorageService;
     }
 
     public async Task Execute(IJobExecutionContext context)
@@ -66,11 +64,11 @@ public class NodeChannelSuscribeJob : IJob
                 return;
             }
 
-            var client = LightningService.CreateLightningClient(node.Endpoint);
-            var result = client.Execute(x => x.SubscribeChannelEvents(new ChannelEventSubscription(),
+            var client = _lightningClientsStorageService.GetLightningClient(node.Endpoint);
+            var result = client.SubscribeChannelEvents(new ChannelEventSubscription(),
                 new Metadata {
                     {"macaroon", node.ChannelAdminMacaroon}
-                }, null, default));
+                });
 
             while (await result.ResponseStream.MoveNext())
             {

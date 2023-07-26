@@ -41,13 +41,15 @@ public class ChannelMonitorJob : IJob
     private readonly IDbContextFactory<ApplicationDbContext> _dbContextFactory;
     private readonly INodeRepository _nodeRepository;
     private readonly ILightningService _lightningService;
+    private readonly ILightningClientsStorageService _lightningClientsStorageService;
 
-    public ChannelMonitorJob(ILogger<ChannelMonitorJob> logger, IDbContextFactory<ApplicationDbContext> dbContextFactory, INodeRepository nodeRepository, ILightningService lightningService)
+    public ChannelMonitorJob(ILogger<ChannelMonitorJob> logger, IDbContextFactory<ApplicationDbContext> dbContextFactory, INodeRepository nodeRepository, ILightningService lightningService, ILightningClientsStorageService lightningClientsStorageService)
     {
         _logger = logger;
         _dbContextFactory = dbContextFactory;
         _nodeRepository = nodeRepository;
         _lightningService = lightningService;
+        _lightningClientsStorageService = lightningClientsStorageService;
     }
 
     public async Task Execute(IJobExecutionContext context)
@@ -65,11 +67,12 @@ public class ChannelMonitorJob : IJob
                 return;
             }
 
-            var client = LightningService.CreateLightningClient(node1.Endpoint);
-            var result = client.Execute(x => x.ListChannels(new ListChannelsRequest(),
-                new Metadata {
-                    {"macaroon", node1.ChannelAdminMacaroon}
-                }, null, default));
+            var client = _lightningClientsStorageService.GetLightningClient(node1.Endpoint);
+            var result = client.ListChannels(new ListChannelsRequest(),
+                new Metadata
+                {
+                    { "macaroon", node1.ChannelAdminMacaroon }
+                });
 
             foreach (var channel in result?.Channels)
             {

@@ -106,6 +106,7 @@ namespace FundsManager
             builder.Services.AddTransient<IRemoteSignerService, RemoteSignerServiceService>();
             builder.Services.AddTransient<ILiquidityRuleRepository, LiquidityRuleRepository>();
             builder.Services.AddTransient<ICoinSelectionService, CoinSelectionService>();
+            builder.Services.AddSingleton<ILightningClientsStorageService, LightningClientsStorageService>();
 
             //BlazoredToast
             builder.Services.AddBlazoredToast();
