@@ -111,7 +111,7 @@
                             Wallet wallet = null;
                             if (context.OpenedWithId != null)
                             {
-                                wallet =context.ChannelOperationRequests.FirstOrDefault()?.Wallet;
+                                wallet = context.ChannelOperationRequests.FirstOrDefault()?.Wallet;
                             }
                             @(wallet == null ? "Unknown" : wallet.Name)
                         }
@@ -152,7 +152,7 @@
                     <DisplayTemplate>
                         @{
                             var balance = Task.Run(() => GetPercentageBalance(context)).Result;
-                           
+
                         }
                         @if (balance >= 0)
                         {
@@ -473,30 +473,44 @@
 
     private async Task<int> GetPercentageBalance(Channel channel)
     {
-        //If the last update was more than 60 seconds ago, we update the balance dictionary
+    //If the last update was more than 60 seconds ago, we update the balance dictionary
         if (DateTimeOffset.Now.Subtract(_lastBalanceUpdate).TotalSeconds > 60)
         {
             _channelsBalance = await LightningService.GetChannelsBalance();
             _lastBalanceUpdate = DateTimeOffset.Now;
         }
-        
+
         try
         {
             var result = -1.0;
             if (_channelsBalance.TryGetValue(channel.ChanId, out var values))
             {
-                var sourceNodeId = values.Item1;
-                //If the source node is the local node, the remote balance is the third value, otherwise is the second
+    // Extract the managed node ID from the tuple
+                var managedNodeId = values.Item1;
+
+    // Calculate the capacity as the sum of the second and third values in the tuple
                 var capacity = values.Item2 + values.Item3;
-                if (sourceNodeId == channel.SourceNodeId)
+
+    // Initialize the remote balance
+                var remoteBalance = 0L;
+
+    // Check if the source node ID of the channel is the same as the managed node ID
+    // or if the source node is not managed
+    // If either condition is true, set the remote balance to the third value in the tuple
+                if (channel.SourceNodeId == managedNodeId || !channel.SourceNode.IsManaged)
                 {
-                    result = (values.Item3 / (double) capacity) * 100;
+                    remoteBalance = values.Item3;
                 }
                 else
                 {
-                    result = (values.Item2 / (double) capacity) * 100;
+    // If neither condition is true, set the remote balance to the second value in the tuple
+                    remoteBalance = values.Item2;
                 }
-                
+
+    // Calculate the result as the percentage of the remote balance to the capacity
+                result = (remoteBalance / (double) capacity) * 100;
+
+
                 result = Math.Round(result, 2);
             }
 
@@ -743,9 +757,9 @@
 
     private bool OnWalletFilter(object? itemValue, object? searchValue)
     {
-        //If the wallet is null it might be a externally created channel, so we return true
+    //If the wallet is null it might be a externally created channel, so we return true
         if (itemValue == null) return true;
-        
+
         return searchValue == null || (int) searchValue == 0 || (int) itemValue == (int) searchValue;
     }
 
