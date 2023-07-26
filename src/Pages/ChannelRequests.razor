@@ -152,6 +152,9 @@
                 </EditTemplate>
             </DataGridColumn>
             <DataGridColumn TItem="ChannelOperationRequest" Displayable="@IsPendingRequestsColumnVisible(PendingChannelsColumnName.FeeRates)" Editable="true" Caption="Fee Rate" PopupFieldColumnSize="ColumnSize.Is12">
+                <DisplayTemplate>
+                    @(context.MempoolRecommendedFeesTypes == MempoolRecommendedFeesTypes.CustomFee ? $"{context.FeeRate} sats/vbyte" : FeesSelection.ToString().Humanize())
+                </DisplayTemplate>
                 <EditTemplate>
                     <div class="d-flex">
                         <Select TValue="MempoolRecommendedFeesTypes" SelectedValueChanged="async (value) => await OnChangeFeeSelection(value)">
@@ -169,6 +172,7 @@
                             </Feedback>
                         </NumericPicker>
                     </div>
+                    <FieldHelp>@(FeesSelection != MempoolRecommendedFeesTypes.CustomFee ? "Fees may change by the time the request is processed" : "")</FieldHelp>
                 </EditTemplate>
             </DataGridColumn>
             <DataGridColumn TItem="ChannelOperationRequest" Field="@nameof(ChannelOperationRequest.IsChannelPrivate)" Caption="Private" Displayable="@IsPendingRequestsColumnVisible(PendingChannelsColumnName.Private)" Editable="true">
@@ -267,12 +271,7 @@
         </DataGridColumn>
         <DataGridColumn TItem="ChannelOperationRequest" Field="@nameof(ChannelOperationRequest.FeeRate)" Caption="Fee Rate" Displayable="@IsAllRequestsColumnVisible(AllChannelsColumnName.FeeRates)">
             <DisplayTemplate>
-                @{
-                    if (context.FeeRate != null)
-                    {
-                        @($"{context.FeeRate} sats/vbyte")
-                    }
-                }
+                @(context.FeeRate != null ? $"{context.FeeRate} sats/vbyte" : FeesSelection.ToString().Humanize())
             </DisplayTemplate>
         </DataGridColumn>
         <DataGridColumn TItem="ChannelOperationRequest" Field="@nameof(ChannelOperationRequest.IsChannelPrivate)" Caption="Private" Displayable="@IsAllRequestsColumnVisible(AllChannelsColumnName.Private)"></DataGridColumn>
@@ -414,7 +413,6 @@
     private List<UTXO> SelectedUTXOs = new();
     private MempoolRecommendedFeesTypes FeesSelection;
     private long FeeAmount = 1;
-    private MempoolRecommendedFees? _recommendedFees;
 
     // New Request integration
     private List<Wallet> _allWallets = new List<Wallet>();
@@ -515,7 +513,6 @@
 
     private async Task OnShowNewChannelRequestModal()
     {
-        _recommendedFees = await NBXplorerService.GetMempoolRecommendedFeesAsync();
         _utxoSelectorModalRef.ClearModal();
         FeesSelection = 0;
         await OnChangeFeeSelection(FeesSelection);
@@ -645,7 +642,8 @@
                     DestNodeId = _selectedDestNode?.Id,
                     IsChannelPrivate = _selectedPrivate,
                     Changeless = SelectedUTXOs.Count > 0,
-                    FeeRate = FeeAmount
+                    MempoolRecommendedFeesTypes = FeesSelection,
+                    FeeRate = FeesSelection == MempoolRecommendedFeesTypes.CustomFee ?  FeeAmount : null
                 };
 
                 var selectedWallet = await WalletRepository.GetById(_selectedWalletId.Value);
@@ -984,27 +982,8 @@
 
     private async Task OnChangeFeeSelection(MempoolRecommendedFeesTypes value)
     {
-        _recommendedFees = await NBXplorerService.GetMempoolRecommendedFeesAsync();
         FeesSelection = value;
-
-        switch (FeesSelection)
-        {
-            case MempoolRecommendedFeesTypes.EconomyFee:
-                FeeAmount = _recommendedFees.EconomyFee;
-                break;
-            case MempoolRecommendedFeesTypes.FastestFee:
-                FeeAmount = _recommendedFees.FastestFee;
-                break;
-            case MempoolRecommendedFeesTypes.HourFee:
-                FeeAmount = _recommendedFees.HourFee;
-                break;
-            case MempoolRecommendedFeesTypes.HalfHourFee:
-                FeeAmount = _recommendedFees.HalfHourFee;
-                break;
-            case MempoolRecommendedFeesTypes.CustomFee:
-                FeeAmount = 1;
-                break;
-        }
+        FeeAmount = await NBXplorerService.GetFeesByType(FeesSelection) ?? 1;
     }
 
     private void OnColumnLayoutUpdate()
