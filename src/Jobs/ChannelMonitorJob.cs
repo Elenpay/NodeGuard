@@ -93,7 +93,7 @@ public class ChannelMonitorJob : IJob
         _logger.LogInformation("{JobName} ended", nameof(ChannelMonitorJob));
     }
 
-    private async Task RecoverGhostChannels(Node source, Node destination, Channel? channel)
+    public async Task RecoverGhostChannels(Node source, Node destination, Channel? channel)
     {
         if (!channel.Initiator) return;
         try
@@ -125,11 +125,11 @@ public class ChannelMonitorJob : IJob
         }
     }
 
-    private async Task RecoverChannelInConfirmationPendingStatus(Node source)
+    public async Task RecoverChannelInConfirmationPendingStatus(Node source)
     {
+        await using var dbContext = await _dbContextFactory.CreateDbContextAsync();
         try
         {
-            await using var dbContext = await _dbContextFactory.CreateDbContextAsync();
             var confirmationPendingRequests = dbContext.ChannelOperationRequests.Where(or => or.Status == ChannelOperationRequestStatus.OnChainConfirmationPending).ToList();
             foreach (var request in confirmationPendingRequests)
             {
@@ -140,7 +140,7 @@ public class ChannelMonitorJob : IJob
                     return;
                 }
 
-                var channel = await dbContext.Channels.FirstOrDefaultAsync(c => c.FundingTx == request.TxId);
+                var channel = await dbContext.Channels.FirstAsync(c => c.FundingTx == request.TxId);
                 request.ChannelId = channel.Id;
                 request.Status = ChannelOperationRequestStatus.OnChainConfirmed;
                 await dbContext.SaveChangesAsync();

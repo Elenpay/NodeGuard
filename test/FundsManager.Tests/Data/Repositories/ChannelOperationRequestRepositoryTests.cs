@@ -40,6 +40,7 @@ public class ChannelOperationRequestRepositoryTests
             Status = ChannelOperationRequestStatus.OnChainConfirmationPending
         };
         await context.ChannelOperationRequests.AddAsync(request1);
+        await context.SaveChangesAsync();
 
         var channelOperationRequestRepository = new ChannelOperationRequestRepository(repository.Object, null, dbContextFactory.Object, null, null);
 
