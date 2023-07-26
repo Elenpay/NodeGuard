@@ -17,7 +17,7 @@
  *
  */
 
-namespace FundsManager.Data.Models;
+namespace NodeGuard.Data.Models;
 
 public enum BitcoinRequestType
 {

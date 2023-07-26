@@ -18,7 +18,7 @@
  */
 using System.Globalization;
 using System.Reflection;
-using FundsManager.Helpers;
+using NodeGuard.Helpers;
 
 public class Constants
 {

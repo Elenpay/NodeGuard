@@ -22,7 +22,7 @@ using NBitcoin;
 using RestSharp;
 using Serilog;
 
-namespace FundsManager.Helpers;
+namespace NodeGuard.Helpers;
 
 public static class PriceConversionHelper
 {

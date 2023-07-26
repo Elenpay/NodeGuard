@@ -17,17 +17,17 @@
  *
  */
 
-using FundsManager.Data.Models;
-using FundsManager.Data.Repositories.Interfaces;
-using FundsManager.Helpers;
-using FundsManager.Services;
+using NodeGuard.Data.Models;
+using NodeGuard.Data.Repositories.Interfaces;
+using NodeGuard.Helpers;
+using NodeGuard.Services;
 using Microsoft.EntityFrameworkCore;
 using NBitcoin;
 using Nodeguard;
-using Key = FundsManager.Data.Models.Key;
-using Wallet = FundsManager.Data.Models.Wallet;
+using Key = NodeGuard.Data.Models.Key;
+using Wallet = NodeGuard.Data.Models.Wallet;
 
-namespace FundsManager.Data.Repositories
+namespace NodeGuard.Data.Repositories
 {
     public class WalletRepository : IWalletRepository
     {

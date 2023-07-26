@@ -17,9 +17,9 @@
  *
  */
 
-using FundsManager.Data.Models;
+using NodeGuard.Data.Models;
 
-namespace FundsManager.Data.Repositories.Interfaces;
+namespace NodeGuard.Data.Repositories.Interfaces;
 
 public interface IWalletWithdrawalRequestRepository: IBitcoinRequestRepository
 {

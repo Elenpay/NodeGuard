@@ -7,18 +7,18 @@ EXPOSE 443
 
 FROM mcr.microsoft.com/dotnet/sdk:6.0 AS build
 WORKDIR /src
-COPY ["src/FundsManager.csproj", "."]
-RUN dotnet restore "./FundsManager.csproj"
+COPY ["src/NodeGuard.csproj", "."]
+RUN dotnet restore "./NodeGuard.csproj"
 COPY . .
 WORKDIR /src/src
 RUN ls -l
-RUN dotnet build "FundsManager.csproj" -c Release -o /app/build
+RUN dotnet build "NodeGuard.csproj" -c Release -o /app/build
 
 FROM build AS publish
-RUN dotnet publish "FundsManager.csproj" -c Release -o /app/publish
+RUN dotnet publish "NodeGuard.csproj" -c Release -o /app/publish
 
 FROM base AS final
 WORKDIR /app
 COPY --from=publish /app/publish .
 COPY src/Migrations/*.sql Migrations/
-ENTRYPOINT ["dotnet", "FundsManager.dll"]
+ENTRYPOINT ["dotnet", "NodeGuard.dll"]

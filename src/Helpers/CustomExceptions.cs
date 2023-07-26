@@ -1,4 +1,4 @@
-namespace FundsManager.Helpers;
+namespace NodeGuard.Helpers;
 
 public class NoUTXOsAvailableException: Exception {}
 

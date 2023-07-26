@@ -21,14 +21,14 @@ using Blazored.Toast;
 using Blazorise;
 using Blazorise.Bootstrap;
 using Blazorise.Icons.FontAwesome;
-using FundsManager.Areas.Identity;
-using FundsManager.Automapper;
-using FundsManager.Data;
-using FundsManager.Data.Models;
-using FundsManager.Data.Repositories;
-using FundsManager.Data.Repositories.Interfaces;
-using FundsManager.Jobs;
-using FundsManager.Services;
+using NodeGuard.Areas.Identity;
+using NodeGuard.Automapper;
+using NodeGuard.Data;
+using NodeGuard.Data.Models;
+using NodeGuard.Data.Repositories;
+using NodeGuard.Data.Repositories.Interfaces;
+using NodeGuard.Jobs;
+using NodeGuard.Services;
 using Microsoft.AspNetCore.Components.Authorization;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
@@ -40,11 +40,11 @@ using OpenTelemetry.Exporter;
 using Serilog;
 using Serilog.Events;
 using Serilog.Formatting.Json;
-using FundsManager.Helpers;
-using FundsManager.Rpc;
+using NodeGuard.Helpers;
+using NodeGuard.Rpc;
 using Microsoft.AspNetCore.Server.Kestrel.Core;
 
-namespace FundsManager
+namespace NodeGuard
 {
     public class Program
     {

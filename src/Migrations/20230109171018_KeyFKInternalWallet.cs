@@ -21,7 +21,7 @@
 
 #nullable disable
 
-namespace FundsManager.Migrations
+namespace NodeGuard.Migrations
 {
     public partial class KeyFKInternalWallet : Migration
     {

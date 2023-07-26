@@ -1,6 +1,6 @@
 using System.Text.Json.Serialization;
 
-namespace FundsManager.Helpers;
+namespace NodeGuard.Helpers;
 
 public class ChannelStatusLog
 {

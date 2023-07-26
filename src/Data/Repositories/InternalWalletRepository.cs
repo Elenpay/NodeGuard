@@ -17,12 +17,12 @@
  *
  */
 
-﻿using FundsManager.Data.Models;
-using FundsManager.Data.Repositories.Interfaces;
+﻿using NodeGuard.Data.Models;
+using NodeGuard.Data.Repositories.Interfaces;
 using Microsoft.EntityFrameworkCore;
 using NBitcoin;
 
-namespace FundsManager.Data.Repositories
+namespace NodeGuard.Data.Repositories
 {
     public class InternalWalletRepository : IInternalWalletRepository
     {

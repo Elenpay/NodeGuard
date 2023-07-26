@@ -18,8 +18,8 @@
  */
 
 using System.Runtime.InteropServices;
-using FundsManager.Data.Models;
-using FundsManager.Data.Repositories.Interfaces;
+using NodeGuard.Data.Models;
+using NodeGuard.Data.Repositories.Interfaces;
 using Google.Protobuf;
 using Grpc.Core;
 using Grpc.Net.Client;
@@ -28,10 +28,10 @@ using NBitcoin;
 using NBXplorer.DerivationStrategy;
 using NBXplorer.Models;
 using System.Security.Cryptography;
-using FundsManager.Data;
-using FundsManager.Helpers;
+using NodeGuard.Data;
+using NodeGuard.Helpers;
 using Microsoft.EntityFrameworkCore;
-using Channel = FundsManager.Data.Models.Channel;
+using Channel = NodeGuard.Data.Models.Channel;
 using Transaction = NBitcoin.Transaction;
 using Unmockable;
 
@@ -39,7 +39,7 @@ using Unmockable;
 
 // ReSharper disable IdentifierTypo
 
-namespace FundsManager.Services
+namespace NodeGuard.Services
 {
     /// <summary>
     /// Service to interact with LND

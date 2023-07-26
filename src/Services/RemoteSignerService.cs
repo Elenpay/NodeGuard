@@ -40,10 +40,10 @@ using System.Net;
 using System.Text;
 using System.Text.Json;
 using Amazon.Runtime;
-using FundsManager.Helpers;
+using NodeGuard.Helpers;
 using NBitcoin;
 
-namespace FundsManager.Services;
+namespace NodeGuard.Services;
 
 public interface IRemoteSignerService
 {

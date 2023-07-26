@@ -18,11 +18,11 @@
  */
 
 using AutoMapper;
-using FundsManager.Data.Models;
+using NodeGuard.Data.Models;
 using NBitcoin;
 using UTXO = NBXplorer.Models.UTXO;
 
-namespace FundsManager.Automapper
+namespace NodeGuard.Automapper
 {
     /// <summary>
     /// Profile for setting automapper profile (Mainly used to strip collections when cloning objects)

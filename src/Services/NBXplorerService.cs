@@ -1,5 +1,5 @@
 using System.Text.Json;
-using FundsManager.Helpers;
+using NodeGuard.Helpers;
 using Microsoft.AspNetCore.WebUtilities;
 using NBitcoin;
 using NBXplorer;
@@ -7,7 +7,7 @@ using NBXplorer.DerivationStrategy;
 using NBXplorer.Models;
 using Newtonsoft.Json;
 
-namespace FundsManager.Services;
+namespace NodeGuard.Services;
 
 public interface INBXplorerService
 {

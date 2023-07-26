@@ -21,7 +21,7 @@ using System.Diagnostics;
 using Serilog.Events;
 using Serilog.Core;
 
-namespace FundsManager.Helpers;
+namespace NodeGuard.Helpers;
 public class DatadogLogEnricher : ILogEventEnricher
 {
     public void Enrich(LogEvent logEvent, ILogEventPropertyFactory propertyFactory)

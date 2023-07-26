@@ -18,11 +18,11 @@
  */
 
 using System.ComponentModel.DataAnnotations.Schema;
-using FundsManager.Helpers;
+using NodeGuard.Helpers;
 using NBitcoin;
 using System.Text.Json;
 
-namespace FundsManager.Data.Models
+namespace NodeGuard.Data.Models
 {
     public enum ChannelOperationRequestStatus
     {

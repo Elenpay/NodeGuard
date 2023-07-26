@@ -19,15 +19,15 @@
 
 ﻿using System.Text;
 using AutoMapper;
-using FundsManager.Data.Models;
-using FundsManager.Data.Repositories.Interfaces;
+using NodeGuard.Data.Models;
+using NodeGuard.Data.Repositories.Interfaces;
 using Humanizer;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Identity.EntityFrameworkCore;
 using Microsoft.AspNetCore.WebUtilities;
 using Microsoft.EntityFrameworkCore;
 
-namespace FundsManager.Data.Repositories
+namespace NodeGuard.Data.Repositories
 {
     public class ApplicationUserRepository : IApplicationUserRepository
     {

@@ -18,10 +18,10 @@
  */
 
 using System.Net;
-using FundsManager.Data.Models;
-using FundsManager.Data.Repositories.Interfaces;
-using FundsManager.Helpers;
-using FundsManager.TestHelpers;
+using NodeGuard.Data.Models;
+using NodeGuard.Data.Repositories.Interfaces;
+using NodeGuard.Helpers;
+using NodeGuard.TestHelpers;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
 using NBitcoin;
@@ -29,9 +29,9 @@ using NBitcoin.RPC;
 using NBXplorer;
 using NBXplorer.DerivationStrategy;
 using NBXplorer.Models;
-using Key = FundsManager.Data.Models.Key;
+using Key = NodeGuard.Data.Models.Key;
 
-namespace FundsManager.Data
+namespace NodeGuard.Data
 {
     public static class DbInitializer
     {

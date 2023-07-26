@@ -17,7 +17,7 @@
  *
  */
 
-namespace FundsManager.Services;
+namespace NodeGuard.Services;
 
 using System.Threading.Tasks;
 using Microsoft.JSInterop;

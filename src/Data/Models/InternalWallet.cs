@@ -17,10 +17,10 @@
  *
  */
 
-using FundsManager.Helpers;
+using NodeGuard.Helpers;
 using NBitcoin;
 
-namespace FundsManager.Data.Models
+namespace NodeGuard.Data.Models
 {
     /// <summary>
     /// This is another type of Wallet entity.

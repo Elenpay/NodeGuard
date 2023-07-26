@@ -17,9 +17,9 @@
  *
  */
 
-﻿using FundsManager.Data.Models;
+﻿using NodeGuard.Data.Models;
 
-namespace FundsManager.Data.Repositories.Interfaces;
+namespace NodeGuard.Data.Repositories.Interfaces;
 
 public interface IInternalWalletRepository
 {
@@ -38,7 +38,7 @@ public interface IInternalWalletRepository
     (bool, string?) Update(InternalWallet type);
 
     /// <summary>
-    /// Gets the current internal wallet in use by the FundsManager (the newest based on ID)
+    /// Gets the current internal wallet in use by the NodeGuard (the newest based on ID)
     /// </summary>
     /// <returns></returns>
     /// <returns></returns>

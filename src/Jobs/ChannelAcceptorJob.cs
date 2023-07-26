@@ -17,11 +17,11 @@
  *
  */
 
-using FundsManager.Data.Repositories.Interfaces;
-using FundsManager.Helpers;
+using NodeGuard.Data.Repositories.Interfaces;
+using NodeGuard.Helpers;
 using Quartz;
 
-namespace FundsManager.Jobs;
+namespace NodeGuard.Jobs;
 
 /// <summary>
 /// Job for the lifetime of the application that intercepts LND channel opening requests to the managed nodes

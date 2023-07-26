@@ -17,17 +17,17 @@
  *
  */
 
-using FundsManager.Data.Repositories;
-using FundsManager.Data.Repositories.Interfaces;
-using FundsManager.Services;
+using NodeGuard.Data.Repositories;
+using NodeGuard.Data.Repositories.Interfaces;
+using NodeGuard.Services;
 using Grpc.Core;
 using Lnrpc;
 using NBitcoin.Protocol;
 using Quartz;
-using Channel = FundsManager.Data.Models.Channel;
-using Node = FundsManager.Data.Models.Node;
+using Channel = NodeGuard.Data.Models.Channel;
+using Node = NodeGuard.Data.Models.Node;
 
-namespace FundsManager.Jobs;
+namespace NodeGuard.Jobs;
 
 /// <summary>
 /// Job for update the status of the channels

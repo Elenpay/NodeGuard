@@ -17,10 +17,10 @@
  *
  */
 
-﻿namespace FundsManager.Data.Models
+﻿namespace NodeGuard.Data.Models
 {
     /// <summary>
-    /// UTXO entity in the FundsManager
+    /// UTXO entity in the NodeGuard
     /// </summary>
     public class FMUTXO : Entity, IEquatable<FMUTXO>
     {

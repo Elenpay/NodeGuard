@@ -1,9 +1,9 @@
-using FundsManager.Data.Repositories;
-using FundsManager.Data.Repositories.Interfaces;
-using FundsManager.Helpers;
+using NodeGuard.Data.Repositories;
+using NodeGuard.Data.Repositories.Interfaces;
+using NodeGuard.Helpers;
 using Quartz;
 
-namespace FundsManager.Jobs;
+namespace NodeGuard.Jobs;
 
 public class NodeSubscriptorJob : IJob
 {

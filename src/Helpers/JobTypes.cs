@@ -20,7 +20,7 @@
 using Quartz;
 using Quartz.Impl.Triggers;
 
-namespace FundsManager.Helpers;
+namespace NodeGuard.Helpers;
 
 public class SimpleJob
 {

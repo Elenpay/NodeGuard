@@ -1,6 +1,6 @@
 using Microsoft.AspNetCore.Components.Server.ProtectedBrowserStorage;
 
-namespace FundsManager.Services;
+namespace NodeGuard.Services;
 
 public interface  ILocalStorageService
 {

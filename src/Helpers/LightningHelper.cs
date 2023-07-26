@@ -17,14 +17,14 @@
  *
  */
 
-using FundsManager.Data.Models;
-using FundsManager.Services;
+using NodeGuard.Data.Models;
+using NodeGuard.Services;
 using Google.Protobuf;
 using NBitcoin;
 using NBXplorer;
 using NBXplorer.Models;
 
-namespace FundsManager.Helpers
+namespace NodeGuard.Helpers
 {
     public static class LightningHelper
     {

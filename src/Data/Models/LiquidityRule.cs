@@ -1,4 +1,4 @@
-namespace FundsManager.Data.Models;
+namespace NodeGuard.Data.Models;
 
 /// <summary>
 /// A rule for setting liquidity automation on NodeGuard
