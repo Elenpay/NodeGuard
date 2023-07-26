@@ -4,7 +4,7 @@
     <TargetFramework>net7.0</TargetFramework>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
-    <UserSecretsId>aspnet-FundsManager-66F1BF9B-21F9-40C4-8380-C86E94E1BCAC</UserSecretsId>
+    <UserSecretsId>aspnet-NodeGuard-66F1BF9B-21F9-40C4-8380-C86E94E1BCAC</UserSecretsId>
     <DockerDefaultTargetOS>Linux</DockerDefaultTargetOS>
     <DockerfileContext>.</DockerfileContext>
     <DockerComposeProjectPath>..\..\docker\docker-compose.dcproj</DockerComposeProjectPath>
@@ -15,7 +15,7 @@
   </PropertyGroup>
 
 
-  <PropertyGroup Condition=" '$(RunConfiguration)' == 'FundsManager NOVS' " />
+  <PropertyGroup Condition=" '$(RunConfiguration)' == 'NodeGuard debug' " />
   <ItemGroup>
     <PackageReference Include="AutoMapper.Extensions.Microsoft.DependencyInjection" Version="12.0.1" />
     <PackageReference Include="AwsSignatureVersion4" Version="4.0.1" />
