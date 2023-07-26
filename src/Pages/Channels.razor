@@ -610,14 +610,14 @@
         var node = string.IsNullOrEmpty(sourceNode.ChannelAdminMacaroon) ? destinationNode : sourceNode;
 
     //If there is a liquidity rule for this channel, we load it, the first one
-        _currentLiquidityRule = _selectedChannel?.LiquidityRules.FirstOrDefault() ?? new LiquidityRule
+        _currentLiquidityRule = _selectedChannel?.LiquidityRules.FirstOrDefault()?? new LiquidityRule
         {
             MinimumLocalBalance = 20,
             MinimumRemoteBalance = 80,
             RebalanceTarget = 50,
             ChannelId = channel.Id,
             NodeId = node.Id
-        };
+        };;
 
         if (_channelLiquidityModal != null) await _channelLiquidityModal.Show();
     }
@@ -634,7 +634,15 @@
             }
             else
             {
-                _currentLiquidityRule = _selectedChannel.LiquidityRules.FirstOrDefault();
+                var node = string.IsNullOrEmpty(_selectedChannel.SourceNode.ChannelAdminMacaroon) ? _selectedChannel.DestinationNode : _selectedChannel.SourceNode;
+                _currentLiquidityRule = _selectedChannel.LiquidityRules.FirstOrDefault() ?? new LiquidityRule
+                {
+                    MinimumLocalBalance = 20,
+                    MinimumRemoteBalance = 80,
+                    RebalanceTarget = 50,
+                    ChannelId = _selectedChannel.Id,
+                    NodeId = node.Id
+                };
             }
 
             var updateResult = ChannelRepository.Update(_selectedChannel);
