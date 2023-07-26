@@ -229,12 +229,14 @@ namespace FundsManager.Data.Repositories
                 .Include(channel => channel.ChannelOperationRequests).ThenInclude(request => request.DestNode).ThenInclude(x=> x.Users)
                 .Include(channel => channel.ChannelOperationRequests).ThenInclude(request => request.Wallet)
                 .Include(channel => channel.ChannelOperationRequests).ThenInclude(request => request.ChannelOperationRequestPsbts)
+                .Include(x=> x.SourceNode)
+                .Include(x=>x.DestinationNode)
                 .Include(x=> x.LiquidityRules)
                 .ThenInclude(x=> x.Node)
                 .Include(x=> x.LiquidityRules)
                 .ThenInclude(x=> x.Wallet).AsSplitQuery()
-                .Where(x => x.SourceNode.Users.Select(x => x.Id).Contains(loggedUserId) ||
-                            x.DestinationNode.Users.Select(x => x.Id).Contains(loggedUserId)).ToList();
+                .Where(x => x.SourceNode.Users.Select(user => user.Id).Contains(loggedUserId) ||
+                            x.DestinationNode.Users.Select(user => user.Id).Contains(loggedUserId)).ToList();
 
             return channels;
         }
