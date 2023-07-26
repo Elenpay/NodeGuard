@@ -18,7 +18,7 @@ public class NodeChannelSubscribeJobTests
     private Mock<INodeRepository> _nodeRepositoryMock;
     private Mock<IChannelRepository> _channelRepositoryMock;
     private NodeChannelSuscribeJob _nodeUpdateManager;
-    private ISchedulerFactory _schedulerFactory;
+    private Mock<ILightningClientsStorageService> _lightningClientsStorageService;
 
     public NodeChannelSubscribeJobTests()
     {
@@ -26,13 +26,14 @@ public class NodeChannelSubscribeJobTests
         _nodeRepositoryMock = new Mock<INodeRepository>();
         _channelRepositoryMock = new Mock<IChannelRepository>();
         _lightningServiceMock = new Mock<ILightningService>();
+        _lightningClientsStorageService = new Mock<ILightningClientsStorageService>();
 
         _nodeUpdateManager = new NodeChannelSuscribeJob(
             _loggerMock.Object,
             _lightningServiceMock.Object,
             _nodeRepositoryMock.Object,
             _channelRepositoryMock.Object,
-            _schedulerFactory);
+            _lightningClientsStorageService.Object);
     }
 
     [Fact]
