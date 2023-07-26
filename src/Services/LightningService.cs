@@ -1432,8 +1432,10 @@ namespace FundsManager.Services
                     var htlcsLocal = channel.PendingHtlcs.Where(x => x.Incoming == true).Sum(x => x.Amount);
                     var htlcsRemote = channel.PendingHtlcs.Where(x => x.Incoming == false).Sum(x => x.Amount);
 
+                    //The nodeguard sided node is the one that is managed by nodeguard
+                    var nodeguardManagedNodeId = node.Id;
                     result.TryAdd(channel.ChanId,
-                        (node.Id, channel.LocalBalance + htlcsLocal, channel.RemoteBalance + htlcsRemote));
+                        (nodeguardManagedNodeId, channel.LocalBalance + htlcsLocal, channel.RemoteBalance + htlcsRemote));
                 }
             }
 
