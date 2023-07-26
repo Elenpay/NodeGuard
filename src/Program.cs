@@ -43,6 +43,7 @@ using Serilog.Formatting.Json;
 using NodeGuard.Helpers;
 using NodeGuard.Rpc;
 using Microsoft.AspNetCore.Server.Kestrel.Core;
+using Quartz.AspNetCore;
 
 namespace NodeGuard
 {
@@ -248,8 +249,21 @@ namespace NodeGuard
 
             if (Constants.OTEL_EXPORTER_ENDPOINT != null)
             {
-                builder.Services
-                    .AddOpenTelemetryTracing((builder) => builder
+                builder.Services.AddOpenTelemetry().WithMetrics(builder => builder
+                        // Configure the resource attribute `service.name` to MyServiceName
+                        //.SetResourceBuilder(ResourceBuilder.CreateDefault().AddService("BtcPayServer"))
+                        // Add metrics from the AspNetCore instrumentation library
+                        .SetResourceBuilder(ResourceBuilder.CreateEmpty().AddEnvironmentVariableDetector())
+                        .AddAspNetCoreInstrumentation()
+                        .AddRuntimeInstrumentation()
+                        .AddOtlpExporter(options =>
+                        {
+                            options.Protocol = OtlpExportProtocol.Grpc;
+                            options.ExportProcessorType = OpenTelemetry.ExportProcessorType.Batch;
+                            options.Endpoint = new Uri(Constants.OTEL_EXPORTER_ENDPOINT);
+                        })
+                    )
+                    .WithTracing((builder) => builder
                         // Configure the resource attribute `service.name` to MyServiceName
                         //.SetResourceBuilder(ResourceBuilder.CreateDefault().AddService("BtcPayServer"))
                         .SetResourceBuilder(ResourceBuilder.CreateEmpty().AddEnvironmentVariableDetector())
@@ -265,21 +279,6 @@ namespace NodeGuard
                         .AddQuartzInstrumentation()
                     );
 
-                builder.Services
-                    .AddOpenTelemetryMetrics(builder => builder
-                        // Configure the resource attribute `service.name` to MyServiceName
-                        //.SetResourceBuilder(ResourceBuilder.CreateDefault().AddService("BtcPayServer"))
-                        // Add metrics from the AspNetCore instrumentation library
-                        .SetResourceBuilder(ResourceBuilder.CreateEmpty().AddEnvironmentVariableDetector())
-                        .AddAspNetCoreInstrumentation()
-                        .AddRuntimeInstrumentation()
-                        .AddOtlpExporter(options =>
-                        {
-                            options.Protocol = OtlpExportProtocol.Grpc;
-                            options.ExportProcessorType = OpenTelemetry.ExportProcessorType.Batch;
-                            options.Endpoint = new Uri(Constants.OTEL_EXPORTER_ENDPOINT);
-                        })
-                    );
             }
 
 
