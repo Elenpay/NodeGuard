@@ -37,9 +37,9 @@
                                 @if (_IsUserNodeManager)
                                 {
                                     <DropdownItem Disabled="context.Item.Status == Channel.ChannelStatus.Closed" Clicked="@(() => ShowChannelManagementModal(context.Item))">Manage</DropdownItem>
-                                    <DropdownItem Disabled="@(checkDisableCloseChannelButton(context.Item))" Clicked="() => ShowConfirmedClose(context.Item)">Close</DropdownItem>
-                                    <DropdownItem Disabled="@(checkDisableCloseChannelButton(context.Item))" Clicked="() => ShowConfirmedClose(context.Item, true)">Force close</DropdownItem>
-                                    <DropdownItem Disabled="@(checkDisableCloseChannelButton(context.Item))" Clicked="() => MarkAsClosed(context.Item)">Mark as closed</DropdownItem>
+                                    <DropdownItem Disabled="@(CheckDisableCloseChannelButton(context.Item))" Clicked="() => ShowConfirmedClose(context.Item)">Close</DropdownItem>
+                                    <DropdownItem Disabled="@(CheckDisableCloseChannelButton(context.Item))" Clicked="() => ShowConfirmedClose(context.Item, true)">Force close</DropdownItem>
+                                    <DropdownItem Disabled="@(CheckDisableCloseChannelButton(context.Item))" Clicked="() => MarkAsClosed(context.Item)">Mark as closed</DropdownItem>
                                     <DropdownItem Clicked="@(() => ShowModal(context.Item))">Requests</DropdownItem>
                                 }
                             </DropdownMenu>
@@ -58,8 +58,7 @@
                     </FilterTemplate>
                     <DisplayTemplate>
                         @{
-                            var sourceNode = Task.Run(() => NodeRepository.GetById(context.SourceNodeId)).Result;
-                            @(sourceNode.Name + " " + StringHelper.TruncateHeadAndTail(sourceNode.PubKey, 5))
+                            @(context.SourceNode.Name + " " + StringHelper.TruncateHeadAndTail(context.SourceNode.PubKey, 5))
                         }
                     </DisplayTemplate>
                 </DataGridColumn>
@@ -75,8 +74,7 @@
                     </FilterTemplate>
                     <DisplayTemplate>
                         @{
-                            var destinationNode = Task.Run(() => NodeRepository.GetById(context.DestinationNodeId)).Result;
-                            @(destinationNode.Name + " " + StringHelper.TruncateHeadAndTail(destinationNode.PubKey, 5))
+                            @(context.DestinationNode.Name + " " + StringHelper.TruncateHeadAndTail(context.DestinationNode.PubKey, 5))
                         }
                     </DisplayTemplate>
                 </DataGridColumn>
@@ -107,7 +105,7 @@
                             Wallet wallet = null;
                             if (context.OpenedWithId != null)
                             {
-                                wallet = Task.Run(() => WalletRepository.GetById((int) context.OpenedWithId)).Result;
+                                wallet =context.ChannelOperationRequests.FirstOrDefault()?.Wallet;
                             }
                             @(wallet == null ? "Unknown" : wallet.Name)
                         }
@@ -250,7 +248,7 @@
 
                 </Field>
 
-                @if (_selectedChannel.IsAutomatedLiquidityEnabled)
+                @if (_selectedChannel.IsAutomatedLiquidityEnabled && _currentLiquidityRule != null)
                 {
                     <Validations @ref="_channelManagementValidationsRef">
 
@@ -340,7 +338,7 @@
     private DataGrid<Channel> _channelsDataGridRef;
     private Modal? _channelLiquidityModal;
     private List<Wallet> _availableWallets = new List<Wallet>();
-    private LiquidityRule _currentLiquidityRule = new LiquidityRule();
+    private LiquidityRule? _currentLiquidityRule = new LiquidityRule();
     private Validations _channelManagementValidationsRef;
     private string _statusFilter = "Open";
     private int _sourceNodeIdFilter = 0;
@@ -582,9 +580,9 @@
 
         _selectedChannel = channel;
 
-        var destinationNode = await NodeRepository.GetById(channel.DestinationNodeId);
-        var sourceNode = await NodeRepository.GetById(channel.SourceNodeId);
-        var node = String.IsNullOrEmpty(sourceNode.ChannelAdminMacaroon) ? destinationNode : sourceNode;
+        var destinationNode = channel.DestinationNode;
+        var sourceNode = channel.SourceNode;
+        var node = string.IsNullOrEmpty(sourceNode.ChannelAdminMacaroon) ? destinationNode : sourceNode;
 
     //If there is a liquidity rule for this channel, we load it, the first one
         _currentLiquidityRule = _selectedChannel?.LiquidityRules.FirstOrDefault() ?? new LiquidityRule
@@ -599,21 +597,31 @@
         await _channelLiquidityModal?.Show();
     }
 
-    private async Task OnEnableLiquidityMgnmtChanged(bool obj)
+    private async Task OnEnableLiquidityMgnmtChanged(bool enabledLiquidityMgnmt)
     {
-        _selectedChannel.IsAutomatedLiquidityEnabled = obj;
-
-        if (!obj) _currentLiquidityRule = null;
-
-        var updateResult = ChannelRepository.Update(_selectedChannel);
-
-        if (!updateResult.Item1)
+        if (_selectedChannel != null)
         {
-            ToastService.ShowError("Something went wrong");
-        }
-        else
-        {
-            ToastService.ShowSuccess("Channel updated successfully");
+            _selectedChannel.IsAutomatedLiquidityEnabled = enabledLiquidityMgnmt;
+
+            if (!enabledLiquidityMgnmt)
+            {
+                _currentLiquidityRule = null;
+            }
+            else
+            {
+                _currentLiquidityRule = _selectedChannel.LiquidityRules.FirstOrDefault();
+            }
+
+            var updateResult = ChannelRepository.Update(_selectedChannel);
+
+            if (!updateResult.Item1)
+            {
+                ToastService.ShowError("Something went wrong");
+            }
+            else
+            {
+                ToastService.ShowSuccess("Channel updated successfully");
+            }
         }
     }
 
@@ -774,9 +782,9 @@
         await FetchData();
     }
 
-    private bool checkDisableCloseChannelButton(Channel channel)
+    private bool CheckDisableCloseChannelButton(Channel channel)
     {
-        ChannelOperationRequest? lastRequest = channel.ChannelOperationRequests.LastOrDefault();
+        var lastRequest = channel.ChannelOperationRequests.LastOrDefault();
         if (lastRequest == null && channel.CreatedByNodeGuard == false) return false;
         return channel.Status == Channel.ChannelStatus.Closed || (lastRequest.RequestType == OperationRequestType.Close
                                                                   && lastRequest.Status == ChannelOperationRequestStatus.OnChainConfirmed
