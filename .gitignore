@@ -4,9 +4,10 @@ docker/bin/
 docker/obj/
 **/bin/
 **/obj/
-FundsManager.sln.DotSettings.user
-src/FundsManager.csproj.user
-
+NodeGuard.sln.DotSettings.user
+src/NodeGuard.csproj.user
+test/NodeGuard.Tests/bin
+test/NodeGuard.Tests/obj
 # Files created by Polar runs
 devnetwork.polar/
 docker/volumes
