@@ -59,7 +59,7 @@ public class Constants
 
     // Crons & Jobs
     public static readonly string MONITOR_WITHDRAWALS_CRON = "10 0/5 * * * ?";
-    public static readonly string MONITOR_CHANNELS_CRON = "0 0 0 * * ?";
+    public static readonly string MONITOR_CHANNELS_CRON = "0 0 */1 * * ?";
     public static readonly string JOB_RETRY_INTERVAL_LIST_IN_MINUTES = "1,2,5,10,20";
 
 
