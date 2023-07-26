@@ -153,7 +153,7 @@
             </DataGridColumn>
             <DataGridColumn TItem="ChannelOperationRequest" Displayable="@IsPendingRequestsColumnVisible(PendingChannelsColumnName.FeeRates)" Editable="true" Caption="Fee Rate" PopupFieldColumnSize="ColumnSize.Is12">
                 <DisplayTemplate>
-                    @(context.MempoolRecommendedFeesTypes == MempoolRecommendedFeesTypes.CustomFee ? $"{context.FeeRate} sats/vbyte" : FeesSelection.ToString().Humanize())
+                    @(context.MempoolRecommendedFeesTypes == MempoolRecommendedFeesTypes.CustomFee ? $"{context.FeeRate} sats/vb" : FeesSelection.ToString().Humanize())
                 </DisplayTemplate>
                 <EditTemplate>
                     <div class="d-flex">
@@ -983,7 +983,7 @@
     private async Task OnChangeFeeSelection(MempoolRecommendedFeesTypes value)
     {
         FeesSelection = value;
-        FeeAmount = await NBXplorerService.GetFeesByType(FeesSelection) ?? 1;
+        FeeAmount = (long?)await NBXplorerService.GetFeesByType(FeesSelection) ?? 1;
     }
 
     private void OnColumnLayoutUpdate()

@@ -32,7 +32,7 @@ public interface INBXplorerService
     public Task<GetFeeRateResult> GetFeeRateAsync(int blockCount, FeeRate fallbackFeeRate,
         CancellationToken cancellation = default);
 
-    public Task<int?> GetFeesByType(MempoolRecommendedFeesTypes mempoolRecommendedFeesTypes, CancellationToken cancellation = default);
+    public Task<decimal?> GetFeesByType(MempoolRecommendedFeesTypes mempoolRecommendedFeesTypes, CancellationToken cancellation = default);
 
     public Task<BroadcastResult> BroadcastAsync(Transaction tx, bool testMempoolAccept,
         CancellationToken cancellation = default);
@@ -61,11 +61,11 @@ public enum MempoolRecommendedFeesTypes
 /// </summary>
 public class MempoolRecommendedFees
 {
-    public int FastestFee { get; set; }
-    public int HalfHourFee { get; set; }
-    public int HourFee { get; set; }
-    public int EconomyFee { get; set; }
-    public int MinimumFee { get; set; }
+    public decimal FastestFee { get; set; }
+    public decimal HalfHourFee { get; set; }
+    public decimal HourFee { get; set; }
+    public decimal EconomyFee { get; set; }
+    public decimal MinimumFee { get; set; }
 }
 
 [JsonConverter(typeof(System.Text.Json.Serialization.JsonStringEnumConverter))]
@@ -242,7 +242,7 @@ public class NBXplorerService : INBXplorerService
         return new MempoolRecommendedFees();
     }
 
-    public async Task<int?> GetFeesByType(
+    public async Task<decimal?> GetFeesByType(
         MempoolRecommendedFeesTypes mempoolRecommendedFeesTypes,
         CancellationToken cancellation = default)
     {
