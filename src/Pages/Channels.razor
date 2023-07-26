@@ -57,9 +57,12 @@
                         </Select>
                     </FilterTemplate>
                     <DisplayTemplate>
-                        @{
+
+                        @if (context.SourceNode != null)
+                        {
                             @(context.SourceNode.Name + " " + StringHelper.TruncateHeadAndTail(context.SourceNode.PubKey, 5))
                         }
+
                     </DisplayTemplate>
                 </DataGridColumn>
                 <DataGridColumn TItem="Channel" Field="@nameof(Channel.DestinationNodeId)" Caption="Destination node" CustomFilter="OnDestinationNodeIdFilter" Filterable="true" Sortable="false" Displayable="@IsColumnVisible(ChannelsColumnName.DestinationNode)">
@@ -73,9 +76,12 @@
                         </Select>
                     </FilterTemplate>
                     <DisplayTemplate>
-                        @{
+
+                        @if (context.DestinationNode != null)
+                        {
                             @(context.DestinationNode.Name + " " + StringHelper.TruncateHeadAndTail(context.DestinationNode.PubKey, 5))
                         }
+
                     </DisplayTemplate>
                 </DataGridColumn>
                 <DataGridColumn TItem="Channel" Field="@nameof(Channel.Status)" Caption="@nameof(Channel.Status)" CustomFilter="OnStatusFilter" Filterable="true" Sortable="false" Displayable="@IsColumnVisible(ChannelsColumnName.Status)">
@@ -735,9 +741,11 @@
         return true;
     }
 
-    private bool OnWalletFilter(object itemValue, object searchValue)
+    private bool OnWalletFilter(object? itemValue, object? searchValue)
     {
-        if (itemValue == null) return false;
+        //If the wallet is null it might be a externally created channel, so we return true
+        if (itemValue == null) return true;
+        
         return searchValue == null || (int) searchValue == 0 || (int) itemValue == (int) searchValue;
     }
 
