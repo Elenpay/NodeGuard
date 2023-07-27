@@ -610,7 +610,7 @@
         var node = string.IsNullOrEmpty(sourceNode.ChannelAdminMacaroon) ? destinationNode : sourceNode;
 
     //If there is a liquidity rule for this channel, we load it, the first one
-        _currentLiquidityRule = _selectedChannel?.LiquidityRules.FirstOrDefault()?? new LiquidityRule
+        _currentLiquidityRule = _selectedChannel?.LiquidityRules.FirstOrDefault() ?? new LiquidityRule
         {
             MinimumLocalBalance = 20,
             MinimumRemoteBalance = 80,
