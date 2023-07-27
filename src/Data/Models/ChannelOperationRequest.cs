@@ -20,7 +20,7 @@
 using System.ComponentModel.DataAnnotations.Schema;
 using NodeGuard.Helpers;
 using NBitcoin;
-using System.Text.Json;
+using FundsManager.Services;
 
 namespace NodeGuard.Data.Models
 {
@@ -106,6 +106,14 @@ namespace NodeGuard.Data.Models
         /// </summary>
         public string? ClosingReason { get; set; }
 
+        /// <summary>
+        /// Recommended fee type selected by the user to be applied at the moment of the operation
+        /// </summary>
+        public MempoolRecommendedFeesTypes MempoolRecommendedFeesTypes { get; set; }
+
+        /// <summary>
+        /// Fee rate in sat/vbyte to be applied if the user selects a custom fee type
+        /// </summary>
         public decimal? FeeRate { get; set; }
 
         [Column(TypeName = "jsonb")]
