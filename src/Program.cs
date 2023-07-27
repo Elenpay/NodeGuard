@@ -262,8 +262,6 @@ namespace NodeGuard
                         })
                     )
                     .WithTracing((builder) => builder
-                        // Configure the resource attribute `service.name` to MyServiceName
-                        //.SetResourceBuilder(ResourceBuilder.CreateDefault().AddService("BtcPayServer"))
                         .SetResourceBuilder(ResourceBuilder.CreateEmpty().AddEnvironmentVariableDetector())
                         // Add tracing of the AspNetCore instrumentation library
                         .AddAspNetCoreInstrumentation()
