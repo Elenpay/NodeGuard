@@ -2,7 +2,6 @@
 @using System.Security.Claims
 @using Humanizer
 @using NBitcoin
-@using Polly
 @using Channel = FundsManager.Data.Models.Channel
 @attribute [Authorize(Roles = "NodeManager")]
 <PageTitle>Active Channels</PageTitle>
@@ -34,7 +33,7 @@
                             <DropdownToggle Color="Color.Primary">
                             </DropdownToggle>
                             <DropdownMenu>
-                                @if (_IsUserNodeManager)
+                                @if (_isUserNodeManager)
                                 {
                                     <DropdownItem Disabled="context.Item.Status == Channel.ChannelStatus.Closed" Clicked="@(() => ShowChannelManagementModal(context.Item))">Manage</DropdownItem>
                                     <DropdownItem Disabled="@(CheckDisableCloseChannelButton(context.Item))" Clicked="() => ShowConfirmedClose(context.Item)">Close</DropdownItem>
@@ -46,9 +45,9 @@
                         </Dropdown>
                     </DeleteCommandTemplate>
                 </DataGridCommandColumn>
-                <DataGridColumn TItem="Channel" Field="@nameof(Channel.SourceNodeId)" Caption="Source node" CustomFilter="OnSourceNodeIdFilter" Filterable="true" Sortable="false" Displayable="@IsColumnVisible(ChannelsColumnName.SourceNode)">
+                <DataGridColumn TItem="Channel" Field="@nameof(Channel.SourceNodeId)" Caption="Source node" CustomFilter="OnSourceNodeIdFilter" Filterable="true" Sortable="false" Displayable="@IsColumnVisible(ChannelsColumnName.SOURCE_NODE)">
                     <FilterTemplate>
-                        <Select TValue="int" SelectedValue="@((int) _sourceNodeIdFilter)" SelectedValueChanged="@(value => { _sourceNodeIdFilter = value; context.TriggerFilterChange(_sourceNodeIdFilter); })">
+                        <Select TValue="int" SelectedValue="@(_sourceNodeIdFilter)" SelectedValueChanged="@(value => { _sourceNodeIdFilter = value; context.TriggerFilterChange(_sourceNodeIdFilter); })">
                             <SelectItem Value="@(0)">All</SelectItem>
                             @foreach (var node in _nodes)
                             {
@@ -65,9 +64,9 @@
 
                     </DisplayTemplate>
                 </DataGridColumn>
-                <DataGridColumn TItem="Channel" Field="@nameof(Channel.DestinationNodeId)" Caption="Destination node" CustomFilter="OnDestinationNodeIdFilter" Filterable="true" Sortable="false" Displayable="@IsColumnVisible(ChannelsColumnName.DestinationNode)">
+                <DataGridColumn TItem="Channel" Field="@nameof(Channel.DestinationNodeId)" Caption="Destination node" CustomFilter="OnDestinationNodeIdFilter" Filterable="true" Sortable="false" Displayable="@IsColumnVisible(ChannelsColumnName.DESTINATION_NODE)">
                     <FilterTemplate>
-                        <Select TValue="int" SelectedValue="@((int) _destinationNodeIdFilter)" SelectedValueChanged="@(value => { _destinationNodeIdFilter = value; context.TriggerFilterChange(_destinationNodeIdFilter); })">
+                        <Select TValue="int" SelectedValue="@(_destinationNodeIdFilter)" SelectedValueChanged="@(value => { _destinationNodeIdFilter = value; context.TriggerFilterChange(_destinationNodeIdFilter); })">
                             <SelectItem Value="@(0)">All</SelectItem>
                             @foreach (var node in _nodes)
                             {
@@ -84,7 +83,7 @@
 
                     </DisplayTemplate>
                 </DataGridColumn>
-                <DataGridColumn TItem="Channel" Field="@nameof(Channel.Status)" Caption="@nameof(Channel.Status)" CustomFilter="OnStatusFilter" Filterable="true" Sortable="false" Displayable="@IsColumnVisible(ChannelsColumnName.Status)">
+                <DataGridColumn TItem="Channel" Field="@nameof(Channel.Status)" Caption="@nameof(Channel.Status)" CustomFilter="OnStatusFilter" Filterable="true" Sortable="false" Displayable="@IsColumnVisible(ChannelsColumnName.STATUS)">
                     <FilterTemplate>
                         <Select TValue="string" SelectedValue="@((string) _statusFilter)" SelectedValueChanged="@(value => { _statusFilter = value; context.TriggerFilterChange(_statusFilter); })">
                             <SelectItem Value="@("")">All</SelectItem>
@@ -96,7 +95,7 @@
                         @context.Status.ToString("G")
                     </DisplayTemplate>
                 </DataGridColumn>
-                <DataGridColumn TItem="Channel" Field="@nameof(Channel.OpenedWithId)" Caption="Opened with" CustomFilter="OnWalletFilter" Filterable="true" Displayable="@IsColumnVisible(ChannelsColumnName.OpenedWith)">
+                <DataGridColumn TItem="Channel" Field="@nameof(Channel.OpenedWithId)" Caption="Opened with" CustomFilter="OnWalletFilter" Filterable="true" Displayable="@IsColumnVisible(ChannelsColumnName.OPENED_WITH)">
                     <FilterTemplate>
                         <Select TValue="int" SelectedValue="@(_filterWalletId)" SelectedValueChanged="@(value => { _filterWalletId = value; context.TriggerFilterChange(_filterWalletId); })">
                             <SelectItem Value="@(0)">All</SelectItem>
@@ -117,7 +116,7 @@
                         }
                     </DisplayTemplate>
                 </DataGridColumn>
-                <DataGridColumn TItem="Channel" Field="@nameof(Channel.FundingTx)" Caption="OutPoint" Filterable="false" Sortable="false" Displayable="@IsColumnVisible(ChannelsColumnName.Outpoint)">
+                <DataGridColumn TItem="Channel" Field="@nameof(Channel.FundingTx)" Caption="OutPoint" Filterable="false" Sortable="false" Displayable="@IsColumnVisible(ChannelsColumnName.OUTPOINT)">
                     <DisplayTemplate>
                         @StringHelper.TruncateHeadAndTail(context.FundingTx, 5):@context.FundingTxOutputIndex
                         <Button Color="Color.Primary" Clicked="@(() => CopyStrToClipboard($"{context.FundingTx}:{context.FundingTxOutputIndex}"))">
@@ -125,7 +124,7 @@
                         </Button>
                     </DisplayTemplate>
                 </DataGridColumn>
-                <DataGridNumericColumn TItem="Channel" Field="@nameof(Channel.SatsAmount)" Caption="Capacity (BTC)" Filterable="false" Sortable="true" Displayable="@IsColumnVisible(ChannelsColumnName.Capacity)">
+                <DataGridNumericColumn TItem="Channel" Field="@nameof(Channel.SatsAmount)" Caption="Capacity (BTC)" Filterable="false" Sortable="true" Displayable="@IsColumnVisible(ChannelsColumnName.CAPACITY)">
                     <DisplayTemplate>
                         @{
                             var btcAmount = new Money(context.SatsAmount, MoneyUnit.Satoshi).ToUnit(MoneyUnit.BTC);
@@ -134,8 +133,8 @@
                         }
                     </DisplayTemplate>
                 </DataGridNumericColumn>
-                <DataGridColumn TItem="Channel" Field="@nameof(Channel.IsPrivate)" Caption="Private" Filterable="false" Sortable="true" Displayable="@IsColumnVisible(ChannelsColumnName.Private)"/>
-                <DataGridColumn TItem="Channel" Field="@nameof(Channel.BtcCloseAddress)" Caption="Close address" Filterable="false" Sortable="false" Displayable="@IsColumnVisible(ChannelsColumnName.CloseAddress)">
+                <DataGridColumn TItem="Channel" Field="@nameof(Channel.IsPrivate)" Caption="Private" Filterable="false" Sortable="true" Displayable="@IsColumnVisible(ChannelsColumnName.PRIVATE)"/>
+                <DataGridColumn TItem="Channel" Field="@nameof(Channel.BtcCloseAddress)" Caption="Close address" Filterable="false" Sortable="false" Displayable="@IsColumnVisible(ChannelsColumnName.CLOSE_ADDRESS)">
 
                     <DisplayTemplate>
                         @if (!string.IsNullOrEmpty(context.BtcCloseAddress))
@@ -148,7 +147,7 @@
                     </DisplayTemplate>
 
                 </DataGridColumn>
-                <DataGridColumn TItem="Channel" Caption="Channel Balance" Filterable="false" Displayable="@IsColumnVisible(ChannelsColumnName.ChannelBalance)">
+                <DataGridColumn TItem="Channel" Caption="Channel Balance" Filterable="false" Displayable="@IsColumnVisible(ChannelsColumnName.CHANNEL_BALANCE)">
                     <DisplayTemplate>
                         @{
                             var balance = Task.Run(() => GetPercentageBalance(context)).Result;
@@ -170,9 +169,9 @@
 
                     </DisplayTemplate>
                 </DataGridColumn>
-                <DataGridColumn TItem="Channel" Field="@nameof(Channel.CreationDatetime)" Caption="@nameof(Channel.CreationDatetime).Humanize(LetterCasing.Sentence)" Sortable="true" Displayable="@IsColumnVisible(ChannelsColumnName.CreationDate)"/>
-                <DataGridColumn TItem="Channel" Field="@nameof(Channel.UpdateDatetime)" Caption="@nameof(Channel.UpdateDatetime).Humanize(LetterCasing.Sentence)" Sortable="true" Displayable="@IsColumnVisible(ChannelsColumnName.UpdateDate)"/>
-                <DataGridColumn TItem="Channel" Field="@nameof(Channel.ChanId)" Caption="Channel Id" Sortable="false" Displayable="@IsColumnVisible(ChannelsColumnName.ChannelId)">
+                <DataGridColumn TItem="Channel" Field="@nameof(Channel.CreationDatetime)" Caption="@nameof(Channel.CreationDatetime).Humanize(LetterCasing.Sentence)" Sortable="true" Displayable="@IsColumnVisible(ChannelsColumnName.CREATION_DATE)"/>
+                <DataGridColumn TItem="Channel" Field="@nameof(Channel.UpdateDatetime)" Caption="@nameof(Channel.UpdateDatetime).Humanize(LetterCasing.Sentence)" Sortable="true" Displayable="@IsColumnVisible(ChannelsColumnName.UPDATE_DATE)"/>
+                <DataGridColumn TItem="Channel" Field="@nameof(Channel.ChanId)" Caption="Channel Id" Sortable="false" Displayable="@IsColumnVisible(ChannelsColumnName.CHANNEL_ID)">
                     <DisplayTemplate>
                         <a href="@(Constants.AMBOSS_ENDPOINT + "/edge/" + context.ChanId)" target="_blank">
                             @context.ChanId
@@ -181,7 +180,7 @@
                 </DataGridColumn>
                 <DataGridColumn TItem="Channel" Displayable="true">
                     <FilterTemplate>
-                        <ColumnLayout @ref="ChannelsColumnLayout" Columns="@ChannelsColumns" ColumnType="ChannelsColumnName" OnUpdate="@OnColumnLayoutUpdate"/>
+                        <ColumnLayout @ref="_channelsColumnLayout" Columns="@_channelsColumns" ColumnType="ChannelsColumnName" OnUpdate="@OnColumnLayoutUpdate"/>
                     </FilterTemplate>
                 </DataGridColumn>
             </DataGridColumns>
@@ -340,15 +339,15 @@
     private List<Channel>? _channels = new List<Channel>();
     private Channel? _selectedChannel;
     private bool _modalVisible;
-    private bool _IsUserNodeManager = false;
-    private DataGrid<Channel> _channelsDataGridRef;
+    private bool _isUserNodeManager;
+    private DataGrid<Channel>? _channelsDataGridRef;
     private Modal? _channelLiquidityModal;
     private List<Wallet> _availableWallets = new List<Wallet>();
     private LiquidityRule? _currentLiquidityRule = new LiquidityRule();
-    private Validations _channelManagementValidationsRef;
+    private Validations? _channelManagementValidationsRef;
     private string _statusFilter = "Open";
-    private int _sourceNodeIdFilter = 0;
-    private int _destinationNodeIdFilter = 0;
+    private int _sourceNodeIdFilter;
+    private int _destinationNodeIdFilter;
     private List<Node> _nodes = new List<Node>();
     private List<Wallet> _wallets = new List<Wallet>();
     private int _filterWalletId;
@@ -361,27 +360,27 @@
 
     private decimal _btcPrice;
 
-    private ColumnLayout<ChannelsColumnName> ChannelsColumnLayout;
-    private Dictionary<string, bool> ChannelsColumns = new();
-    private bool columnsLoaded;
+    private ColumnLayout<ChannelsColumnName>? _channelsColumnLayout;
+    private Dictionary<string, bool> _channelsColumns = new();
+    private bool _columnsLoaded;
     // This dictionary is used to store the balance of each channel, key is the channel id, value is a tuple with the node id as local in the pair, local balance, remote balance
     private Dictionary<ulong, (int,long, long)> _channelsBalance = new();
     private DateTimeOffset _lastBalanceUpdate = DateTimeOffset.Now;
 
     public abstract class ChannelsColumnName
     {
-        public static readonly ColumnDefault SourceNode = new("Source Node");
-        public static readonly ColumnDefault DestinationNode = new("Destination Node");
-        public static readonly ColumnDefault Status = new("Status");
-        public static readonly ColumnDefault OpenedWith = new("Opened With");
-        public static readonly ColumnDefault Outpoint = new("Outpoint");
-        public static readonly ColumnDefault Capacity = new("Capacity (BTC)");
-        public static readonly ColumnDefault Private = new("Private");
-        public static readonly ColumnDefault CloseAddress = new("Close Address");
-        public static readonly ColumnDefault ChannelBalance = new("Channel Balance");
-        public static readonly ColumnDefault CreationDate = new("Creation Date");
-        public static readonly ColumnDefault UpdateDate = new("Update Date");
-        public static readonly ColumnDefault ChannelId = new("Channel Id");
+        public static readonly ColumnDefault SOURCE_NODE = new("Source Node");
+        public static readonly ColumnDefault DESTINATION_NODE = new("Destination Node");
+        public static readonly ColumnDefault STATUS = new("Status");
+        public static readonly ColumnDefault OPENED_WITH = new("Opened With");
+        public static readonly ColumnDefault OUTPOINT = new("Outpoint");
+        public static readonly ColumnDefault CAPACITY = new("Capacity (BTC)");
+        public static readonly ColumnDefault PRIVATE = new("Private");
+        public static readonly ColumnDefault CLOSE_ADDRESS = new("Close Address");
+        public static readonly ColumnDefault CHANNEL_BALANCE = new("Channel Balance");
+        public static readonly ColumnDefault CREATION_DATE = new("Creation Date");
+        public static readonly ColumnDefault UPDATE_DATE = new("Update Date");
+        public static readonly ColumnDefault CHANNEL_ID = new("Channel Id");
     }
 
     protected override async Task OnInitializedAsync()
@@ -396,7 +395,7 @@
             await FetchData();
             if (ClaimsPrincipal != null && ClaimsPrincipal.IsInRole(ApplicationUserRole.NodeManager.ToString()))
             {
-                _IsUserNodeManager = true;
+                _isUserNodeManager = true;
             }
         }
     }
@@ -404,16 +403,19 @@
     private async Task FetchData()
     {
         _availableWallets = await WalletRepository.GetAvailableWallets();
-        _channels = await ChannelRepository.GetAllManagedByUserNodes(LoggedUser.Id);
+        if (LoggedUser?.Id != null)
+        {
+            _channels = await ChannelRepository.GetAllManagedByUserNodes(LoggedUser.Id);
+        }
         _nodes = await NodeRepository.GetAll();
         _wallets = await WalletRepository.GetAll();
-        _channelsDataGridRef.FilterData();
+        _channelsDataGridRef?.FilterData();
         _channelsBalance = await LightningService.GetChannelsBalance();
     }
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
-        if (!firstRender && !columnsLoaded)
+        if (!firstRender && !_columnsLoaded)
         {
             await LoadColumnLayout();
         }
@@ -421,19 +423,19 @@
 
     private async Task LoadColumnLayout()
     {
-        ChannelsColumns = await LocalStorageService.LoadStorage(nameof(ChannelsColumnName), ColumnHelpers.GetColumnsDictionary<ChannelsColumnName>());
-        columnsLoaded = true;
+        _channelsColumns = await LocalStorageService.LoadStorage(nameof(ChannelsColumnName), ColumnHelpers.GetColumnsDictionary<ChannelsColumnName>());
+        _columnsLoaded = true;
         StateHasChanged();
     }
 
-    private async Task ShowConfirmedClose(Channel channel, bool forceClose = false)
+    private async Task ShowConfirmedClose(Channel? channel, bool forceClose = false)
     {
         if (await MessageService.Confirm($"Are you sure you want to {(forceClose ? "force " : string.Empty)}close this channel?", "Confirmation"))
         {
             if (channel != null)
             {
-                channel.DestinationNode = await NodeRepository.GetById(channel.DestinationNodeId);
-                channel.SourceNode = await NodeRepository.GetById(channel.SourceNodeId);
+                channel.DestinationNode = await NodeRepository.GetById(channel.DestinationNodeId) ?? throw new InvalidOperationException();
+                channel.SourceNode = await NodeRepository.GetById(channel.SourceNodeId) ?? throw new InvalidOperationException();
                 var result = await ChannelRepository.SafeRemove(channel, forceClose);
 
                 if (!result.Item1)
@@ -492,7 +494,7 @@
                 var capacity = values.Item2 + values.Item3;
 
     // Initialize the remote balance
-                var remoteBalance = 0L;
+                long remoteBalance;
 
     // Check if the source node ID of the channel is the same as the managed node ID
     // or if the source node is not managed
@@ -517,7 +519,7 @@
 
             return Convert.ToInt32(result);
         }
-        catch (Exception e)
+        catch (Exception)
         {
             ToastService.ShowError($"Channel balance for channel id:{channel.Id} could not be retrieved");
             return -1;
@@ -526,29 +528,32 @@
 
     private async Task OnSelectedWalletChanged(int arg)
     {
-        _currentLiquidityRule.WalletId = arg;
+        if (_currentLiquidityRule != null) _currentLiquidityRule.WalletId = arg;
     }
 
     private async Task CloseChannelManagementModal()
     {
-        await _channelLiquidityModal?.Close(CloseReason.UserClosing);
+        if (_channelLiquidityModal != null) await _channelLiquidityModal.Close(CloseReason.UserClosing);
         await ClearManagementModal();
         await FetchData();
     }
 
     private async Task SaveAndCloseChannelManagementModal()
     {
-        if (await _channelManagementValidationsRef.ValidateAll())
+        if (_channelManagementValidationsRef != null && await _channelManagementValidationsRef.ValidateAll())
         {
     //Save the channel
-            var updateResult = ChannelRepository.Update(_selectedChannel);
-            if (!updateResult.Item1)
+            if (_selectedChannel != null)
             {
-                ToastService.ShowError("Something went wrong");
-            }
-            else
-            {
-                ToastService.ShowSuccess("Channel updated successfully");
+                var updateResult = ChannelRepository.Update(_selectedChannel);
+                if (!updateResult.Item1)
+                {
+                    ToastService.ShowError("Something went wrong");
+                }
+                else
+                {
+                    ToastService.ShowSuccess("Channel updated successfully");
+                }
             }
 
     //Save the liquidity rule if the liquidity rule id is below or equal zero
@@ -614,7 +619,7 @@
             NodeId = node.Id
         };
 
-        await _channelLiquidityModal?.Show();
+        if (_channelLiquidityModal != null) await _channelLiquidityModal.Show();
     }
 
     private async Task OnEnableLiquidityMgnmtChanged(bool enabledLiquidityMgnmt)
@@ -629,7 +634,15 @@
             }
             else
             {
-                _currentLiquidityRule = _selectedChannel.LiquidityRules.FirstOrDefault();
+                var node = string.IsNullOrEmpty(_selectedChannel.SourceNode.ChannelAdminMacaroon) ? _selectedChannel.DestinationNode : _selectedChannel.SourceNode;
+                _currentLiquidityRule = _selectedChannel.LiquidityRules.FirstOrDefault() ?? new LiquidityRule
+                {
+                    MinimumLocalBalance = 20,
+                    MinimumRemoteBalance = 80,
+                    RebalanceTarget = 50,
+                    ChannelId = _selectedChannel.Id,
+                    NodeId = node.Id
+                };
             }
 
             var updateResult = ChannelRepository.Update(_selectedChannel);
@@ -647,6 +660,7 @@
 
     private void ValidateTargetBalance(ValidatorEventArgs arg1)
     {
+        if(_currentLiquidityRule == null) return;
     //Default validation status
         arg1.Status = ValidationStatus.Success;
 
@@ -674,6 +688,7 @@
 
     private void ValidateRemoteBalance(ValidatorEventArgs arg1)
     {
+        if(_currentLiquidityRule == null) return;
     //Default validation status
         arg1.Status = ValidationStatus.Success;
 
@@ -710,6 +725,7 @@
 
     private void ValidateLocalBalance(ValidatorEventArgs arg1)
     {
+        if (_currentLiquidityRule == null) return;
     //Default validation status
         arg1.Status = ValidationStatus.Success;
     //If the minimum remote balance is 0 this cannot be 0
@@ -743,7 +759,7 @@
         }
     }
 
-    private bool OnStatusFilter(object itemValue, object searchValue)
+    private bool OnStatusFilter(object? itemValue, object? searchValue)
     {
     //If searchValue is null, we set it to the filter initial value in the field
         searchValue ??= _statusFilter;
@@ -763,7 +779,7 @@
         return searchValue == null || (int) searchValue == 0 || (int) itemValue == (int) searchValue;
     }
 
-    private bool OnSourceNodeIdFilter(object itemValue, object searchValue)
+    private bool OnSourceNodeIdFilter(object? itemValue, object? searchValue)
     {
     //If searchValue is null, we set it to the filter initial value in the field
         searchValue ??= _sourceNodeIdFilter;
@@ -775,7 +791,7 @@
         return true;
     }
 
-    private bool OnDestinationNodeIdFilter(object itemValue, object searchValue)
+    private bool OnDestinationNodeIdFilter(object? itemValue, object? searchValue)
     {
     //If searchValue is null, we set it to the filter initial value in the field
         searchValue ??= _destinationNodeIdFilter;
@@ -807,7 +823,11 @@
     private bool CheckDisableCloseChannelButton(Channel channel)
     {
         var lastRequest = channel.ChannelOperationRequests.LastOrDefault();
-        if (lastRequest == null && channel.CreatedByNodeGuard == false) return false;
+        
+        // If the channel is not created by the node guard, we dont disable the button
+        if (lastRequest == null || channel.CreatedByNodeGuard == false) return false;
+        
+        // If the channel is created by the node guard, we disable the button if the channel is closed or if the last request is a close request and is confirmed or is pending confirmation
         return channel.Status == Channel.ChannelStatus.Closed || (lastRequest.RequestType == OperationRequestType.Close
                                                                   && lastRequest.Status == ChannelOperationRequestStatus.OnChainConfirmed
                                                                   || lastRequest.Status == ChannelOperationRequestStatus.OnChainConfirmationPending);
@@ -820,11 +840,11 @@
 
     private bool IsColumnVisible(ColumnDefault column)
     {
-        if (ChannelsColumnLayout == null)
+        if (_channelsColumnLayout == null)
         {
             return true;
         }
-        return ChannelsColumnLayout.IsColumnVisible(column);
+        return _channelsColumnLayout.IsColumnVisible(column);
     }
 
 }
