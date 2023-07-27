@@ -19,7 +19,7 @@
 
 using NBitcoin;
 
-namespace FundsManager.Data.Models
+namespace NodeGuard.Data.Models
 {
     public class Key : Entity, IEquatable<Key>
     {

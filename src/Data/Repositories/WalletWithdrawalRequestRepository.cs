@@ -18,15 +18,15 @@
  */
 
 using AutoMapper;
-using FundsManager.Data.Models;
-using FundsManager.Data.Repositories.Interfaces;
-using FundsManager.Services;
+using NodeGuard.Data.Models;
+using NodeGuard.Data.Repositories.Interfaces;
+using NodeGuard.Services;
 using Humanizer;
 using Microsoft.EntityFrameworkCore;
 using NBitcoin;
 using Exception = System.Exception;
 
-namespace FundsManager.Data.Repositories
+namespace NodeGuard.Data.Repositories
 {
     public class WalletWithdrawalRequestRepository : IWalletWithdrawalRequestRepository
     {

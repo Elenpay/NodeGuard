@@ -23,9 +23,9 @@ using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
 using FluentAssertions;
-using FundsManager.Helpers;
+using NodeGuard.Helpers;
 
-namespace FundsManager.Tests
+namespace NodeGuard.Tests
 {
     public class StringHelperTests
     {

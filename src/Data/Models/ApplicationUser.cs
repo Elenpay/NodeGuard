@@ -21,7 +21,7 @@
 using System.Text.Json.Serialization;
 using Microsoft.AspNetCore.Identity;
 
-namespace FundsManager.Data.Models
+namespace NodeGuard.Data.Models
 {
     [Flags]
     [JsonConverter(typeof(JsonStringEnumConverter))]

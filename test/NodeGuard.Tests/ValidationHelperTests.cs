@@ -16,9 +16,9 @@
  * along with this program.  If not, see http://www.gnu.org/licenses/.
  */
 
-using FundsManager.Helpers;
+using NodeGuard.Helpers;
 
-namespace FundsManager.Tests;
+namespace NodeGuard.Tests;
 
 public class ValidationHelperTests
 {

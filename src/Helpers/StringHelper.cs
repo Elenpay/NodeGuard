@@ -19,7 +19,7 @@
 
 using Humanizer;
 
-namespace FundsManager.Helpers
+namespace NodeGuard.Helpers
 {
     public static class StringHelper
     {

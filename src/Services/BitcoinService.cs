@@ -19,9 +19,9 @@
 
 using System.Reflection;
 using AutoMapper;
-using FundsManager.Data.Models;
-using FundsManager.Data.Repositories.Interfaces;
-using FundsManager.Helpers;
+using NodeGuard.Data.Models;
+using NodeGuard.Data.Repositories.Interfaces;
+using NodeGuard.Helpers;
 using Humanizer;
 using NBitcoin;
 using NBXplorer.DerivationStrategy;
@@ -30,7 +30,7 @@ using NSubstitute.Exceptions;
 
 // ReSharper disable All
 
-namespace FundsManager.Services
+namespace NodeGuard.Services
 {
     /// <summary>
     /// Service for bitcoin-related things (e.g. Nbxplorer)

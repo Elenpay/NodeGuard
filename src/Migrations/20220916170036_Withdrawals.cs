@@ -23,7 +23,7 @@ using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 
 #nullable disable
 
-namespace FundsManager.Migrations
+namespace NodeGuard.Migrations
 {
     public partial class Withdrawals : Migration
     {

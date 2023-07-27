@@ -19,7 +19,7 @@
 
 ﻿using NBitcoin;
 
-namespace FundsManager.Helpers
+namespace NodeGuard.Helpers
 {
     public static class CurrentNetworkHelper
     {

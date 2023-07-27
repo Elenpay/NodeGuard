@@ -19,22 +19,22 @@
 
 using System.Security.Cryptography;
 using Microsoft.Extensions.Logging;
-using FundsManager.Data;
-using FundsManager.Data.Models;
-using FundsManager.Data.Repositories.Interfaces;
-using FundsManager.TestHelpers;
+using NodeGuard.Data;
+using NodeGuard.Data.Models;
+using NodeGuard.Data.Repositories.Interfaces;
+using NodeGuard.TestHelpers;
 using NBXplorer.Models;
 using FluentAssertions;
-using FundsManager.Helpers;
+using NodeGuard.Helpers;
 using Google.Protobuf;
 using Lnrpc;
 using NBitcoin;
 using NBXplorer.DerivationStrategy;
 using Grpc.Core;
 using Microsoft.EntityFrameworkCore;
-using Channel = FundsManager.Data.Models.Channel;
+using Channel = NodeGuard.Data.Models.Channel;
 
-namespace FundsManager.Services
+namespace NodeGuard.Services
 {
     public class LightningServiceTests
     {

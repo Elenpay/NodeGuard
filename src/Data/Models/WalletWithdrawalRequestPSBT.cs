@@ -17,7 +17,7 @@
  *
  */
 
-﻿namespace FundsManager.Data.Models
+﻿namespace NodeGuard.Data.Models
 {
     /// <summary>
     /// PSBTs related to a WalletWithdrawalRequest

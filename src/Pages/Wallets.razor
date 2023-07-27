@@ -1,13 +1,13 @@
 @page "/wallets"
 @using System.Security.Claims
 @using System.Linq;
-@using FundsManager.Jobs
+@using NodeGuard.Jobs
 @using Humanizer
 @using NBitcoin
 @using NBXplorer.DerivationStrategy
 @using Quartz
 @using Field = Blazorise.Field
-@using Key = FundsManager.Data.Models.Key
+@using Key = NodeGuard.Data.Models.Key
 @inject IWalletRepository WalletRepository
 @inject IToastService ToastService
 @inject IApplicationUserRepository ApplicationUserRepository

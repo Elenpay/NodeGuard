@@ -19,10 +19,10 @@
 
 using System.Text.RegularExpressions;
 using Blazorise;
-using FundsManager.Data.Models;
+using NodeGuard.Data.Models;
 using NBitcoin;
 
-namespace FundsManager.Helpers;
+namespace NodeGuard.Helpers;
 
 public static class ValidationHelper
 {

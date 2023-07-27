@@ -1,10 +1,10 @@
 using AutoMapper;
-using FundsManager.Data.Models;
-using FundsManager.Data.Repositories;
-using FundsManager.Data.Repositories.Interfaces;
-using FundsManager.Helpers;
-using FundsManager.Jobs;
-using FundsManager.Services;
+using NodeGuard.Data.Models;
+using NodeGuard.Data.Repositories;
+using NodeGuard.Data.Repositories.Interfaces;
+using NodeGuard.Helpers;
+using NodeGuard.Jobs;
+using NodeGuard.Services;
 using Grpc.Core;
 using NBitcoin;
 using NBXplorer.DerivationStrategy;
@@ -12,9 +12,9 @@ using Nodeguard;
 using Quartz;
 using LiquidityRule = Nodeguard.LiquidityRule;
 using Node = Nodeguard.Node;
-using Wallet = FundsManager.Data.Models.Wallet;
+using Wallet = NodeGuard.Data.Models.Wallet;
 
-namespace FundsManager.Rpc;
+namespace NodeGuard.Rpc;
 
 public interface INodeGuardService
 {
@@ -274,7 +274,7 @@ public class NodeGuardService : Nodeguard.NodeGuardService.NodeGuardServiceBase,
 
     public override async Task<AddNodeResponse> AddNode(AddNodeRequest request, ServerCallContext context)
     {
-        var node = new FundsManager.Data.Models.Node
+        var node = new NodeGuard.Data.Models.Node
         {
             PubKey = request.PubKey,
             Name = request.Name,

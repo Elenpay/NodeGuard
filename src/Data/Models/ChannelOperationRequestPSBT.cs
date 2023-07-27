@@ -17,7 +17,7 @@
  *
  */
 
-﻿namespace FundsManager.Data.Models
+﻿namespace NodeGuard.Data.Models
 {
     /// <summary>
     /// A ChannelOperationRequestPSBT is a PSBT with the input signed by the approver

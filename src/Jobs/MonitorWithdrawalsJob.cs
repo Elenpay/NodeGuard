@@ -17,13 +17,13 @@
  *
  */
 
-using FundsManager.Data.Models;
-using FundsManager.Data.Repositories.Interfaces;
-using FundsManager.Services;
+using NodeGuard.Data.Models;
+using NodeGuard.Data.Repositories.Interfaces;
+using NodeGuard.Services;
 using NBitcoin;
 using Quartz;
 
-namespace FundsManager.Jobs;
+namespace NodeGuard.Jobs;
 
 /// <summary>
 /// Monitors that withdrawals on-chain txs are confirmed

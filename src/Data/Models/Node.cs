@@ -19,7 +19,7 @@
 
 using System.ComponentModel.DataAnnotations.Schema;
 
-namespace FundsManager.Data.Models
+namespace NodeGuard.Data.Models
 {
     public class Node : Entity
     {

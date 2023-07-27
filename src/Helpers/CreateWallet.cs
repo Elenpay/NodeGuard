@@ -16,11 +16,11 @@
  * along with this program.  If not, see http://www.gnu.org/licenses/.
  *
  */
-using FundsManager.Data.Models;
+using NodeGuard.Data.Models;
 using NBitcoin;
-using Key = FundsManager.Data.Models.Key;
+using Key = NodeGuard.Data.Models.Key;
 
-namespace FundsManager.TestHelpers;
+namespace NodeGuard.TestHelpers;
 
 public static class CreateWallet
 {
@@ -44,7 +44,7 @@ public static class CreateWallet
     {
         return new Key
         {
-            Name = "FundsManager Co-signing Key",
+            Name = "NodeGuard Co-signing Key",
             XPUB = internalWallet.GetXpubForAccount(accountId),
             InternalWalletId = internalWallet.Id,
             Path = internalWallet.GetKeyPathForAccount(accountId), 

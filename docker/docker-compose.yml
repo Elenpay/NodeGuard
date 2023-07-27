@@ -1,64 +1,19 @@
 version: '3.4'
 
 services:
-  fundsmanager:
-    container_name: fundsmanager
-    hostname: fundsmanager
-    restart: always
-    build:
-      context: ..
-      dockerfile: src/Dockerfile
-    ports:
-        - "35433:5432"
-    environment:
-        ASPNETCORE_ENVIRONMENT: Development
-        BITCOIN_NETWORK: REGTEST
-        DEFAULT_DERIVATION_PATH: m/48'/1'
-        FUNDSMANAGER_ENDPOINT: http://localhost:50052
-        IS_DEV_ENVIRONMENT: "true"
-        Logging__LogLevel__Microsoft: Warning
-        Logging__LogLevel__Microsoft__EntityFrameworkCore: Warning
-        MAXIMUM_WITHDRAWAL_BTC_AMOUNT: 21000000
-        NBXPLORER_BTCNODEENDPOINT: host.docker.internal:19444
-        NBXPLORER_BTCRPCPASSWORD: "polarpass"
-        NBXPLORER_BTCRPCURL: http://host.docker.internal:18443/
-        NBXPLORER_BTCRPCUSER: "polaruser"
-        NBXPLORER_URI: http://nbxplorer:32838
-        TRANSACTION_CONFIRMATION_MINIMUM_BLOCKS: "6"
-        POSTGRES_CONNECTIONSTRING: Host=127.0.0.1;Port=5432;Database=fundsmanager;Username=rw_dev;Password=rw_dev
-        PUSH_NOTIFICATIONS_ONESIGNAL_API_BASE_PATH: "https://onesignal.com/api/v1"
-        PUSH_NOTIFICATIONS_ONESIGNAL_APP_ID: "93800910-9a17-46c7-a3a0-175b68c7aea0"
-        PUSH_NOTIFICATIONS_ONESIGNAL_API_TOKEN: "YTAxMGUwOWYtMTJlMC00MTQwLTg4MWUtMzZhNGQyYTBhMjYw"
-        PUSH_NOTIFICATIONS_ONESIGNAL_ENABLED: "false" # true/false case sensitive
-        SWEEPNODEWALLETSJOB_CRON: "0 */1 * * * ?"  #Every minute
-        ANCHOR_CLOSINGS_MINIMUM_SATS: 100000 # Check https://github.com/lightningnetwork/lnd/issues/6505#issuecomment-1120364460 to understand, we need 100K+ sats to support anchor channel closings
-        ALICE_HOST: "host.docker.internal:10001" #used for dev environment
-        CAROL_HOST: "host.docker.internal:10003" #used for dev environment
-        ENABLE_HW_SUPPORT: "false" # Enables fields and features for using Hardware Wallets
-        MINIMUM_WITHDRAWAL_BTC_AMOUNT: 0.001
-        MINIMUM_CHANNEL_CAPACITY_SATS: 20000
-        COINGECKO_ENDPOINT: https://pro-api.coingecko.com/api/v3/coins/markets?vs_currency=usd&ids=bitcoin
-        COINGECKO_KEY: "TBD" #PLEASE FILL IT WITH YOUR OWN
-        MONITOR_WITHDRAWALS_CRON: "0 */1 * * * ?" # Every Minute
-        # ENABLE_REMOTE_SIGNER: "false" #Changes the way of signing, instead of a auto-generated internal wallet, NodeGuard will sign with a remote signer function on AWS Lambda
-        #OTEL_COLLECTOR_ENDPOINT: http://host.docker.internal:4318 #gRPC endpoint for OTel collector (optional)
-        HTTP1_LISTEN_PORT: 38080
-
-    volumes:
-        - fundsmanager_data_keys_dir:/root/.aspnet/DataProtection-Keys
-
-  fundsmanager_postgres:
-    container_name: fundsmanager_postgres
+  nodeguard_postgres:
+    container_name: nodeguard_postgres
     image: postgres:13
     restart: always
-    network_mode: service:fundsmanager
     environment:
-      POSTGRES_DB: fundsmanager
+      POSTGRES_DB: nodeguard
       POSTGRES_USER: rw_dev
       POSTGRES_PASSWORD: rw_dev
       TZ: Europe/Madrid
     volumes:
-      - fundsmanager_postgres_data:/var/lib/postgresql/data
+      - nodeguard_postgres_data:/var/lib/postgresql/data
+    ports:
+      - 5432:5432
 
   nbxplorer:
     restart: unless-stopped
@@ -81,22 +36,21 @@ services:
       NBXPLORER_BTCNODEENDPOINT: host.docker.internal:19444
     command: ["--noauth"]
     volumes:
-    #- "nbxplorer_datadir:/datadir"
     - "bitcoin_datadir:/root/.bitcoin"
-
 
   redis:
     hostname: redis
     image: redis:7-bullseye
     restart: always
-    ports:
-      - "6379:6379"
     command: redis-server --save 60 1 --bind 0.0.0.0
     volumes:
         - redis_data:/data
+    ports:
+      - "6379:6379"
+
 volumes:
-    fundsmanager_postgres_data:
+    nodeguard_postgres_data:
     bitcoin_datadir:
     nbxplorer_datadir:
-    fundsmanager_data_keys_dir:
+    nodeguard_data_keys_dir:
     redis_data:

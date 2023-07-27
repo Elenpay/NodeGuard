@@ -2,8 +2,7 @@ using System.Collections.Concurrent;
 using Grpc.Net.Client;
 using Lnrpc;
 
-namespace FundsManager.Services;
-
+namespace NodeGuard.Services;
 public interface ILightningClientsStorageService
 {
     public Lightning.LightningClient GetLightningClient(string? endpoint);

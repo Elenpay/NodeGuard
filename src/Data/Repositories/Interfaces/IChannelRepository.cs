@@ -17,11 +17,11 @@
  *
  */
 
-using FundsManager.Data.Models;
+using NodeGuard.Data.Models;
 using Lnrpc;
-using Channel = FundsManager.Data.Models.Channel;
+using Channel = NodeGuard.Data.Models.Channel;
 
-namespace FundsManager.Data.Repositories.Interfaces;
+namespace NodeGuard.Data.Repositories.Interfaces;
 
 public interface IChannelRepository
 {

@@ -18,19 +18,19 @@
  */
 
 using AutoMapper;
-using FundsManager.Data.Models;
-using FundsManager.Data.Repositories.Interfaces;
-using FundsManager.Jobs;
-using FundsManager.Helpers;
- using FundsManager.Services;
+using NodeGuard.Data.Models;
+using NodeGuard.Data.Repositories.Interfaces;
+using NodeGuard.Jobs;
+using NodeGuard.Helpers;
+ using NodeGuard.Services;
  using Grpc.Core;
  using Lnrpc;
  using Quartz;
 using Microsoft.EntityFrameworkCore;
 using NBitcoin;
-using Channel = FundsManager.Data.Models.Channel;
+using Channel = NodeGuard.Data.Models.Channel;
 
-namespace FundsManager.Data.Repositories
+namespace NodeGuard.Data.Repositories
 {
     public class ChannelRepository : IChannelRepository
     {

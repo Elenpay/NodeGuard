@@ -3,12 +3,12 @@
 #nullable disable
 
 using System.ComponentModel.DataAnnotations;
-using FundsManager.Data.Models;
+using NodeGuard.Data.Models;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.RazorPages;
 using Microsoft.AspNetCore.Identity;
 
-namespace FundsManager.Areas.Identity.Pages.Account
+namespace NodeGuard.Areas.Identity.Pages.Account
 {
     public class LoginWith2faModel : PageModel
     {

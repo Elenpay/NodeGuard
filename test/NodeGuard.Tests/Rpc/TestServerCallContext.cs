@@ -18,7 +18,7 @@
 
 using Grpc.Core;
 
-namespace FundsManager.Rpc;
+namespace NodeGuard.Rpc;
 
 public class TestServerCallContext : ServerCallContext
 {

@@ -17,9 +17,9 @@
  *
  */
 
-﻿using FundsManager.Data.Repositories.Interfaces;
+﻿using NodeGuard.Data.Repositories.Interfaces;
 
-namespace FundsManager.Data.Repositories
+namespace NodeGuard.Data.Repositories
 {
     /// <summary>
     /// Class-less CRUD Entity manager.

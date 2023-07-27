@@ -18,12 +18,12 @@
  */
 
 using AutoMapper;
-using FundsManager.Data.Models;
-using FundsManager.Data.Repositories.Interfaces;
-using FundsManager.Services;
+using NodeGuard.Data.Models;
+using NodeGuard.Data.Repositories.Interfaces;
+using NodeGuard.Services;
 using Microsoft.EntityFrameworkCore;
 
-namespace FundsManager.Data.Repositories
+namespace NodeGuard.Data.Repositories
 {
     public class NodeRepository : INodeRepository
     {

@@ -17,13 +17,13 @@
  *
  */
 
-using FundsManager.Data;
+using NodeGuard.Data;
 using Microsoft.EntityFrameworkCore;
 using OneSignalApi.Api;
 using OneSignalApi.Client;
 using OneSignalApi.Model;
 
-namespace FundsManager.Services;
+namespace NodeGuard.Services;
 
 public class NotificationService
 {

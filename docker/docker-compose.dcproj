@@ -6,13 +6,7 @@
     <ProjectGuid>19c8820a-53f4-49c6-8a55-09094bb9f945</ProjectGuid>
     <DockerLaunchAction>LaunchBrowser</DockerLaunchAction>
     <DockerServiceUrl>{Scheme}://localhost:{ServicePort}</DockerServiceUrl>
-    <DockerServiceName>fundsmanager</DockerServiceName>
+    <DockerServiceName>NodeGuard</DockerServiceName>
     <DockerLaunchBrowser>false</DockerLaunchBrowser>
   </PropertyGroup>
-  <ItemGroup>
-    <None Include="docker-compose.override.yml">
-      <DependentUpon>docker-compose.yml</DependentUpon>
-    </None>
-    <None Include="docker-compose.yml" />
-  </ItemGroup>
 </Project>

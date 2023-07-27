@@ -17,10 +17,10 @@
  *
  */
 
-using FundsManager.Data.Models;
-using FundsManager.Services;
+using NodeGuard.Data.Models;
+using NodeGuard.Services;
 
-namespace FundsManager.Data.Repositories.Interfaces;
+namespace NodeGuard.Data.Repositories.Interfaces;
 
 public interface INodeRepository
 {

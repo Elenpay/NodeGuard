@@ -17,7 +17,7 @@
  *
  */
 
-﻿namespace FundsManager.Data.Repositories.Interfaces
+﻿namespace NodeGuard.Data.Repositories.Interfaces
 {
     /// <summary>
     /// Interface of a base Repository implementation

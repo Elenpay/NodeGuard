@@ -18,13 +18,13 @@
  */
 
 using FluentAssertions;
-using FundsManager.Data.Models;
-using FundsManager.Helpers;
-using FundsManager.TestHelpers;
+using NodeGuard.Data.Models;
+using NodeGuard.Helpers;
+using NodeGuard.TestHelpers;
 using NBitcoin;
 using NBXplorer.Models;
 
-namespace FundsManager.Tests
+namespace NodeGuard.Tests
 {
     public class LightningHelperTests
     {

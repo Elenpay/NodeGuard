@@ -17,12 +17,12 @@
  *
  */
 
-using FundsManager.Data;
-using FundsManager.Data.Models;
-using FundsManager.Data.Repositories.Interfaces;
+using NodeGuard.Data;
+using NodeGuard.Data.Models;
+using NodeGuard.Data.Repositories.Interfaces;
 using Grpc.Core;
 
-namespace FundsManager.TestHelpers;
+namespace NodeGuard.TestHelpers;
 
 public class MockHelpers
 {

@@ -4,13 +4,13 @@
 #nullable disable
 
 using System.ComponentModel.DataAnnotations;
-using FundsManager.Data.Models;
-using FundsManager.Data.Repositories.Interfaces;
+using NodeGuard.Data.Models;
+using NodeGuard.Data.Repositories.Interfaces;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.RazorPages;
 
-namespace FundsManager.Areas.Identity.Pages.Account
+namespace NodeGuard.Areas.Identity.Pages.Account
 {
     public class SetupSuperadminModel : PageModel
     {

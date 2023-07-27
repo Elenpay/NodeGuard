@@ -1,15 +1,13 @@
-using FundsManager.Data.Models;
-using FundsManager.Data.Repositories.Interfaces;
-using FundsManager.Jobs;
-using FundsManager.Services;
+using NodeGuard.Data.Repositories.Interfaces;
+using NodeGuard.Jobs;
+using NodeGuard.Services;
 using Lnrpc;
 using Microsoft.Extensions.Logging;
-using Quartz;
-using Channel = FundsManager.Data.Models.Channel;
-using Node = FundsManager.Data.Models.Node;
+using Channel = NodeGuard.Data.Models.Channel;
+using Node = NodeGuard.Data.Models.Node;
 
 
-namespace FundsManager.Tests.Jobs;
+namespace NodeGuard.Tests.Jobs;
 
 public class NodeChannelSubscribeJobTests
 {

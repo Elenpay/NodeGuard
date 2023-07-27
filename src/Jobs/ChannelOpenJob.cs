@@ -17,14 +17,14 @@
  *
  */
 
-using FundsManager.Data.Repositories.Interfaces;
-using FundsManager.Services;
-using FundsManager.Helpers;
-using FundsManager.Data.Models;
+using NodeGuard.Data.Repositories.Interfaces;
+using NodeGuard.Services;
+using NodeGuard.Helpers;
+using NodeGuard.Data.Models;
 using Quartz;
 using Quartz.Impl.Triggers;
 
-namespace FundsManager.Jobs;
+namespace NodeGuard.Jobs;
 
 /// <summary>
 /// Job for openning channel requests to the managed nodes, with automatic retry

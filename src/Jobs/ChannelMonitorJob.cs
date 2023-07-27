@@ -17,10 +17,10 @@
  *
  */
 
-using FundsManager.Data;
-using FundsManager.Data.Models;
-using FundsManager.Data.Repositories.Interfaces;
-using FundsManager.Services;
+using NodeGuard.Data;
+using NodeGuard.Data.Models;
+using NodeGuard.Data.Repositories.Interfaces;
+using NodeGuard.Services;
 using Google.Protobuf;
 using Grpc.Core;
 using Lnrpc;
@@ -28,7 +28,7 @@ using Microsoft.EntityFrameworkCore;
 using Quartz;
 using Channel = Lnrpc.Channel;
 
-namespace FundsManager.Jobs;
+namespace NodeGuard.Jobs;
 
 /// <summary>
 /// Job for update the status of the channels

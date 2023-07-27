@@ -1,19 +1,19 @@
 using AutoMapper;
 using FluentAssertions;
-using FundsManager.Data.Models;
-using FundsManager.Data.Repositories.Interfaces;
-using FundsManager.Helpers;
-using FundsManager.Services;
-using FundsManager.TestHelpers;
+using NodeGuard.Data.Models;
+using NodeGuard.Data.Repositories.Interfaces;
+using NodeGuard.Helpers;
+using NodeGuard.Services;
+using NodeGuard.TestHelpers;
 using Google.Protobuf;
 using Grpc.Core;
 using Lnrpc;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 using Quartz;
-using Channel = FundsManager.Data.Models.Channel;
+using Channel = NodeGuard.Data.Models.Channel;
 
-namespace FundsManager.Data.Repositories;
+namespace NodeGuard.Data.Repositories;
 
 public class ChannelRepositoryTests
 {

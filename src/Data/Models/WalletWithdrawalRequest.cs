@@ -20,7 +20,7 @@
 using System.ComponentModel.DataAnnotations.Schema;
 using NBitcoin;
 
-namespace FundsManager.Data.Models
+namespace NodeGuard.Data.Models
 {
     public enum WalletWithdrawalRequestStatus
     {

@@ -1,17 +1,17 @@
 using AutoMapper;
 using FluentAssertions;
-using FundsManager.Data.Models;
-using FundsManager.Data.Repositories.Interfaces;
-using FundsManager.Helpers;
-using FundsManager.TestHelpers;
+using NodeGuard.Data.Models;
+using NodeGuard.Data.Repositories.Interfaces;
+using NodeGuard.Helpers;
+using NodeGuard.TestHelpers;
 using Microsoft.Extensions.Logging;
 using NBitcoin;
 using NBXplorer.DerivationStrategy;
 using NBXplorer.Models;
 using NSubstitute.Exceptions;
-using Key = FundsManager.Data.Models.Key;
+using Key = NodeGuard.Data.Models.Key;
 
-namespace FundsManager.Services;
+namespace NodeGuard.Services;
 
 public class BitcoinServiceTests
 {

@@ -18,9 +18,9 @@
  */
 
 using Nodeguard;
-using Wallet = FundsManager.Data.Models.Wallet;
+using Wallet = NodeGuard.Data.Models.Wallet;
 
-namespace FundsManager.Data.Repositories.Interfaces;
+namespace NodeGuard.Data.Repositories.Interfaces;
 
 public interface IWalletRepository
 {

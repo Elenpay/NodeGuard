@@ -1,10 +1,10 @@
 ﻿using System.Collections.Generic;
-using FundsManager.Helpers;
+using NodeGuard.Helpers;
 using Microsoft.EntityFrameworkCore.Migrations;
 
 #nullable disable
 
-namespace FundsManager.Migrations
+namespace NodeGuard.Migrations
 {
     public partial class StatusLogsForChannelRequests : Migration
     {

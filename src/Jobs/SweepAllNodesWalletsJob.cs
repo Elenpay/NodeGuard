@@ -17,11 +17,11 @@
  *
  */
 
-﻿using FundsManager.Data.Repositories.Interfaces;
-using FundsManager.Helpers;
+﻿using NodeGuard.Data.Repositories.Interfaces;
+using NodeGuard.Helpers;
 using Quartz;
 
-namespace FundsManager.Jobs
+namespace NodeGuard.Jobs
 {
     /// <summary>
     /// CRON Job which checks if there is any funds on the LND hot wallet and sweep them to the returning multisig wallet (if assigned) to the node.

@@ -1,18 +1,18 @@
 using FluentAssertions;
-using FundsManager.Data;
-using FundsManager.Data.Models;
-using FundsManager.Helpers;
-using FundsManager.Jobs;
-using FundsManager.Services;
-using FundsManager.TestHelpers;
+using NodeGuard.Data;
+using NodeGuard.Data.Models;
+using NodeGuard.Helpers;
+using NodeGuard.Jobs;
+using NodeGuard.Services;
+using NodeGuard.TestHelpers;
 using Google.Protobuf;
 using Grpc.Core;
 using Lnrpc;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
-using Channel = FundsManager.Data.Models.Channel;
+using Channel = NodeGuard.Data.Models.Channel;
 
-namespace FundsManager.Tests.Jobs;
+namespace NodeGuard.Tests.Jobs;
 
 public class ChannelMonitorJobTests
 {

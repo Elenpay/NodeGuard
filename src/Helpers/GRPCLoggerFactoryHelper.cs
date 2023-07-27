@@ -17,7 +17,7 @@
  *
  */
 
-﻿namespace FundsManager.Helpers
+﻿namespace NodeGuard.Helpers
 {
     public class GRPCLoggerFactoryHelper
     {

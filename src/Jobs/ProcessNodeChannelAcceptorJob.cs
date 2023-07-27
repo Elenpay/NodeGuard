@@ -17,10 +17,10 @@
  *
  */
 
-using FundsManager.Data.Models;
-using FundsManager.Data.Repositories.Interfaces;
-using FundsManager.Helpers;
-using FundsManager.Services;
+using NodeGuard.Data.Models;
+using NodeGuard.Data.Repositories.Interfaces;
+using NodeGuard.Helpers;
+using NodeGuard.Services;
 using Grpc.Core;
 using Grpc.Net.Client;
 using Lnrpc;
@@ -29,7 +29,7 @@ using NBXplorer.DerivationStrategy;
 using Quartz;
 using Unmockable;
 
-namespace FundsManager.Jobs;
+namespace NodeGuard.Jobs;
 
 /// <summary>
 /// Subtask of ChannelAcceptorJob

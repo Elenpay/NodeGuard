@@ -19,7 +19,7 @@
 
 using System.ComponentModel.DataAnnotations;
 
-namespace FundsManager.Data.Models
+namespace NodeGuard.Data.Models
 {
     public abstract class Entity
     {

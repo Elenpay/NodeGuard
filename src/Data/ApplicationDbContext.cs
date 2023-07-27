@@ -18,12 +18,12 @@
 
 using System.Reflection;
 using System.Text.Json;
-using FundsManager.Data.Models;
-using FundsManager.Helpers;
+using NodeGuard.Data.Models;
+using NodeGuard.Helpers;
 using Microsoft.AspNetCore.Identity.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore;
 
-namespace FundsManager.Data
+namespace NodeGuard.Data
 {
     public class ApplicationDbContext : IdentityDbContext
     {

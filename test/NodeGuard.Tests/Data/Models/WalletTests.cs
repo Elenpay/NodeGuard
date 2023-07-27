@@ -1,10 +1,10 @@
 using FluentAssertions;
-using FundsManager.Data.Models;
-using FundsManager.TestHelpers;
+using NodeGuard.Data.Models;
+using NodeGuard.TestHelpers;
 using NBitcoin;
 using NBitcoin.Scripting;
 
-namespace FundsManager.Tests;
+namespace NodeGuard.Tests;
 
 public class WalletTests
 {

@@ -18,15 +18,15 @@
  */
 
 using AutoMapper;
-using FundsManager.Data.Models;
-using FundsManager.Data.Repositories.Interfaces;
-using FundsManager.Helpers;
+using NodeGuard.Data.Models;
+using NodeGuard.Data.Repositories.Interfaces;
+using NodeGuard.Helpers;
 using Humanizer;
 using NBitcoin;
 using NBXplorer.DerivationStrategy;
 using NBXplorer.Models;
 
-namespace FundsManager.Services;
+namespace NodeGuard.Services;
 
 public interface ICoinSelectionService
 {

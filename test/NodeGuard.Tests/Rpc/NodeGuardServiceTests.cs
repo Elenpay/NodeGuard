@@ -19,12 +19,12 @@
 using System.Collections.Specialized;
 using AutoMapper;
 using FluentAssertions;
-using FundsManager.Automapper;
-using FundsManager.Data;
-using FundsManager.Data.Models;
-using FundsManager.Data.Repositories;
-using FundsManager.Data.Repositories.Interfaces;
-using FundsManager.Services;
+using NodeGuard.Automapper;
+using NodeGuard.Data;
+using NodeGuard.Data.Models;
+using NodeGuard.Data.Repositories;
+using NodeGuard.Data.Repositories.Interfaces;
+using NodeGuard.Services;
 using Grpc.Core;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
@@ -34,13 +34,13 @@ using NBXplorer.Models;
 using Nodeguard;
 using Quartz;
 using Quartz.Impl;
-using Channel = FundsManager.Data.Models.Channel;
-using Key = FundsManager.Data.Models.Key;
-using LiquidityRule = FundsManager.Data.Models.LiquidityRule;
-using Node = FundsManager.Data.Models.Node;
-using Wallet = FundsManager.Data.Models.Wallet;
+using Channel = NodeGuard.Data.Models.Channel;
+using Key = NodeGuard.Data.Models.Key;
+using LiquidityRule = NodeGuard.Data.Models.LiquidityRule;
+using Node = NodeGuard.Data.Models.Node;
+using Wallet = NodeGuard.Data.Models.Wallet;
 
-namespace FundsManager.Rpc
+namespace NodeGuard.Rpc
 {
     public class NodeGuardServiceTests
     {

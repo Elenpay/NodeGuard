@@ -17,14 +17,14 @@
  *
  */
 
-using FundsManager.Helpers;
+using NodeGuard.Helpers;
 using NBitcoin;
 
-namespace FundsManager.Data.Models
+namespace NodeGuard.Data.Models
 {
     /// <summary>
     /// This is another type of Wallet entity.
-    /// ONLY FOR USE INTERNALLY BY THE FUNDSMANAGER as middleman in the signing process for security reasons
+    /// ONLY FOR USE INTERNALLY BY THE NodeGuard as middleman in the signing process for security reasons
     /// </summary>
     public class InternalWallet : Entity
     {

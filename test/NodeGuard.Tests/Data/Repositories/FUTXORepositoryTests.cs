@@ -1,8 +1,8 @@
 using FluentAssertions;
-using FundsManager.Data.Models;
+using NodeGuard.Data.Models;
 using Microsoft.EntityFrameworkCore;
 
-namespace FundsManager.Data.Repositories;
+namespace NodeGuard.Data.Repositories;
 
 public class FUTXORepositoryTests
 {

@@ -1,6 +1,6 @@
-using FundsManager.Data.Models;
+using NodeGuard.Data.Models;
 
-namespace FundsManager.Data.Repositories;
+namespace NodeGuard.Data.Repositories;
 
 public interface ILiquidityRuleRepository
 {

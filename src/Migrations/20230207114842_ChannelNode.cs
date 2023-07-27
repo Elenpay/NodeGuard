@@ -21,7 +21,7 @@ using Microsoft.EntityFrameworkCore.Migrations;
 
 #nullable disable
 
-namespace FundsManager.Migrations
+namespace NodeGuard.Migrations
 {
     public partial class ChannelNode : Migration
     {

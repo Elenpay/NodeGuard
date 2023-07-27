@@ -6,12 +6,12 @@ using System;
 using System.ComponentModel.DataAnnotations;
 using System.Text.Encodings.Web;
 using System.Threading.Tasks;
-using FundsManager.Data.Models;
+using NodeGuard.Data.Models;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.RazorPages;
 
-namespace FundsManager.Areas.Identity.Pages.Account.Manage
+namespace NodeGuard.Areas.Identity.Pages.Account.Manage
 {
     public class IndexModel : PageModel
     {
