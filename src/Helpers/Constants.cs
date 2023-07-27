@@ -34,7 +34,7 @@ public class Constants
     public static bool ALLOW_SIMULTANEOUS_CHANNEL_OPENING_OPERATIONS; // Not readonly so we can change it in tests
 
     // Connections
-    public static readonly string POSTGRES_CONNECTIONSTRING = "Host=localhost;Port=5432;Database=fundsmanager;Username=rw_dev;Password=rw_dev";
+    public static readonly string POSTGRES_CONNECTIONSTRING = "Host=localhost;Port=5432;Database=nodeguard;Username=rw_dev;Password=rw_dev";
     public static readonly string NBXPLORER_URI;
     public static readonly string? NBXPLORER_BTCRPCURL;
     public static readonly string ALICE_HOST;
