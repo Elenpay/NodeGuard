@@ -1,17 +1,17 @@
 version: '3.4'
 
 services:
-  fundsmanager_postgres:
-    container_name: fundsmanager_postgres
+  nodeguard_postgres:
+    container_name: nodeguard_postgres
     image: postgres:13
     restart: always
     environment:
-      POSTGRES_DB: fundsmanager
+      POSTGRES_DB: nodeguard
       POSTGRES_USER: rw_dev
       POSTGRES_PASSWORD: rw_dev
       TZ: Europe/Madrid
     volumes:
-      - fundsmanager_postgres_data:/var/lib/postgresql/data
+      - nodeguard_postgres_data:/var/lib/postgresql/data
     ports:
       - 5432:5432
 
@@ -49,8 +49,8 @@ services:
       - "6379:6379"
 
 volumes:
-    fundsmanager_postgres_data:
+    nodeguard_postgres_data:
     bitcoin_datadir:
     nbxplorer_datadir:
-    fundsmanager_data_keys_dir:
+    nodeguard_data_keys_dir:
     redis_data:
