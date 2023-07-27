@@ -226,10 +226,10 @@ namespace FundsManager.Services
                     throw new InvalidOperationException();
                 }
 
-                var initialFeeRate = channelOperationRequest.FeeRate ??
+                var feeRate = await _nbXplorerService.GetFeesByType(channelOperationRequest.MempoolRecommendedFeesTypes) ?? channelOperationRequest.FeeRate;;
+                var initialFeeRate = feeRate ??
                                      (await LightningHelper.GetFeeRateResult(network, _nbXplorerService)).FeeRate
                                      .SatoshiPerByte;
-                ;
 
                 var fundingAmount = GetFundingAmount(channelOperationRequest, combinedPSBT, initialFeeRate);
 
@@ -406,6 +406,7 @@ namespace FundsManager.Services
 
                             case OpenStatusUpdate.UpdateOneofCase.PsbtFund:
                                 channelOperationRequest.Status = ChannelOperationRequestStatus.FinalizingPSBT;
+                                channelOperationRequest.FeeRate = feeRate;
                                 var (isSuccess, error) =
                                     _channelOperationRequestRepository.Update(channelOperationRequest);
                                 if (!isSuccess)
@@ -1093,7 +1094,8 @@ namespace FundsManager.Services
                 var network = CurrentNetworkHelper.GetCurrentNetwork();
                 var txBuilder = network.CreateTransactionBuilder();
 
-                var feeRateResult = channelOperationRequest.FeeRate ??
+                var feeRate = await _nbXplorerService.GetFeesByType(channelOperationRequest.MempoolRecommendedFeesTypes) ?? channelOperationRequest.FeeRate;
+                var feeRateResult = feeRate ??
                                     (await LightningHelper.GetFeeRateResult(network, _nbXplorerService)).FeeRate
                                     .SatoshiPerByte;
 

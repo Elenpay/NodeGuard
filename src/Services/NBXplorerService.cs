@@ -32,8 +32,7 @@ public interface INBXplorerService
     public Task<GetFeeRateResult> GetFeeRateAsync(int blockCount, FeeRate fallbackFeeRate,
         CancellationToken cancellation = default);
 
-    public Task<MempoolRecommendedFees> GetMempoolRecommendedFeesAsync(CancellationToken cancellation = default);
-
+    public Task<decimal?> GetFeesByType(MempoolRecommendedFeesTypes mempoolRecommendedFeesTypes, CancellationToken cancellation = default);
 
     public Task<BroadcastResult> BroadcastAsync(Transaction tx, bool testMempoolAccept,
         CancellationToken cancellation = default);
@@ -62,11 +61,11 @@ public enum MempoolRecommendedFeesTypes
 /// </summary>
 public class MempoolRecommendedFees
 {
-    public int FastestFee { get; set; }
-    public int HalfHourFee { get; set; }
-    public int HourFee { get; set; }
-    public int EconomyFee { get; set; }
-    public int MinimumFee { get; set; }
+    public decimal FastestFee { get; set; }
+    public decimal HalfHourFee { get; set; }
+    public decimal HourFee { get; set; }
+    public decimal EconomyFee { get; set; }
+    public decimal MinimumFee { get; set; }
 }
 
 [JsonConverter(typeof(System.Text.Json.Serialization.JsonStringEnumConverter))]
@@ -218,7 +217,7 @@ public class NBXplorerService : INBXplorerService
         return await nbExplorerClient.GetFeeRateAsync(blockCount, fallbackFeeRate, cancellation);
     }
 
-    public async Task<MempoolRecommendedFees> GetMempoolRecommendedFeesAsync(
+    private async Task<MempoolRecommendedFees> GetMempoolRecommendedFeesAsync(
         CancellationToken cancellation = default)
     {
         var mempoolEndpoint = Constants.MEMPOOL_ENDPOINT;
@@ -241,6 +240,29 @@ public class NBXplorerService : INBXplorerService
         }
 
         return new MempoolRecommendedFees();
+    }
+
+    public async Task<decimal?> GetFeesByType(
+        MempoolRecommendedFeesTypes mempoolRecommendedFeesTypes,
+        CancellationToken cancellation = default)
+    {
+        var recommendedFees = await GetMempoolRecommendedFeesAsync(cancellation);
+
+        switch (mempoolRecommendedFeesTypes)
+        {
+            case MempoolRecommendedFeesTypes.EconomyFee:
+                return recommendedFees.EconomyFee;
+            case MempoolRecommendedFeesTypes.FastestFee:
+                return recommendedFees.FastestFee;
+            case MempoolRecommendedFeesTypes.HourFee:
+                return recommendedFees.HourFee;
+            case MempoolRecommendedFeesTypes.HalfHourFee:
+                return recommendedFees.HalfHourFee;
+            case MempoolRecommendedFeesTypes.CustomFee:
+                return null;
+        }
+
+        throw new Exception("Invalid mempoolRecommendedFeesTypes");
     }
 
     public async Task<BroadcastResult> BroadcastAsync(Transaction tx, bool testMempoolAccept,
