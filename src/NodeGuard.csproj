@@ -45,9 +45,9 @@
     <PackageReference Include="OpenTelemetry.Exporter.Console" Version="1.5.1" />
     <PackageReference Include="OpenTelemetry.Exporter.OpenTelemetryProtocol" Version="1.5.1" />
     <PackageReference Include="OpenTelemetry.Extensions.Hosting" Version="1.5.1" />
-    <PackageReference Include="OpenTelemetry.Instrumentation.AspNetCore" Version="1.0.0-rc9.9" />
-    <PackageReference Include="OpenTelemetry.Instrumentation.EntityFrameworkCore" Version="1.0.0-beta.3" />
-    <PackageReference Include="OpenTelemetry.Instrumentation.Quartz" Version="1.0.0-alpha.1" />
+    <PackageReference Include="OpenTelemetry.Instrumentation.AspNetCore" Version="1.5.1-beta.1" />
+    <PackageReference Include="OpenTelemetry.Instrumentation.EntityFrameworkCore" Version="1.0.0-beta.7" />
+    <PackageReference Include="OpenTelemetry.Instrumentation.Quartz" Version="1.0.0-alpha.3" />
     <PackageReference Include="OpenTelemetry.Instrumentation.Runtime" Version="1.5.0" />
     <PackageReference Include="Quartz" Version="3.6.3" />
     <PackageReference Include="Quartz.AspNetCore" Version="3.6.3" />
