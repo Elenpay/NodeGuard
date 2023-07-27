@@ -18,6 +18,7 @@
  */
 
 using NodeGuard.Data.Models;
+using NodeGuard.Services;
 
 namespace NodeGuard.Data.Repositories.Interfaces;
 
@@ -26,6 +27,8 @@ public interface INodeRepository
     Task<Node?> GetById(int id);
 
     Task<Node?> GetByPubkey(string key);
+
+    public Task<Node> GetOrCreateByPubKey(string pubKey, ILightningService lightningService);
 
     Task<List<Node>> GetAll();
 

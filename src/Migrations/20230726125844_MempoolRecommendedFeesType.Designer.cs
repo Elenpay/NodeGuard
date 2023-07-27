@@ -11,7 +11,7 @@ using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 
 #nullable disable
 
-namespace FundsManager.Migrations
+namespace NodeGuard.Migrations
 {
     [DbContext(typeof(ApplicationDbContext))]
     [Migration("20230726125844_MempoolRecommendedFeesType")]
