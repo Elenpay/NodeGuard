@@ -16,6 +16,7 @@
  * along with this program.  If not, see http://www.gnu.org/licenses/.
  */
 
+using System.Reflection;
 using System.Text.Json;
 using FundsManager.Data.Models;
 using FundsManager.Helpers;
@@ -58,14 +59,19 @@ namespace FundsManager.Data
 
             modelBuilder.Entity<ApplicationUser>().HasIndex(x => x.NormalizedUserName).IsUnique();
 
-            modelBuilder.Entity<ChannelStatusLog>().HasNoKey();
+            // We allow the value converter for tests because the in-memory database doesn't support JSON columns
+            var command = Assembly.GetEntryAssembly()?.GetName().Name?.ToLowerInvariant();
+            if (command != null && command.Contains("test"))
+            {
+                modelBuilder.Entity<ChannelStatusLog>().HasNoKey();
 
-            modelBuilder.Entity<ChannelOperationRequest>()
-                .Property(e => e.StatusLogs)
-                .HasConversion(
-                    v => JsonSerializer.Serialize(v, new JsonSerializerOptions()),
-                    v => JsonSerializer.Deserialize<List<ChannelStatusLog>>(v, new JsonSerializerOptions())
-                );
+                modelBuilder.Entity<ChannelOperationRequest>()
+                    .Property(e => e.StatusLogs)
+                    .HasConversion(
+                        v => JsonSerializer.Serialize(v, new JsonSerializerOptions()),
+                        v => JsonSerializer.Deserialize<List<ChannelStatusLog>>(v, new JsonSerializerOptions())
+                    );
+            }
 
             base.OnModelCreating(modelBuilder);
         }
