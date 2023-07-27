@@ -20,7 +20,7 @@
 using System.ComponentModel.DataAnnotations.Schema;
 using NodeGuard.Helpers;
 using NBitcoin;
-using FundsManager.Services;
+using NodeGuard.Services;
 
 namespace NodeGuard.Data.Models
 {
