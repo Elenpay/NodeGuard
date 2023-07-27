@@ -250,8 +250,6 @@ namespace NodeGuard
             if (Constants.OTEL_EXPORTER_ENDPOINT != null)
             {
                 builder.Services.AddOpenTelemetry().WithMetrics(builder => builder
-                        // Configure the resource attribute `service.name` to MyServiceName
-                        //.SetResourceBuilder(ResourceBuilder.CreateDefault().AddService("BtcPayServer"))
                         // Add metrics from the AspNetCore instrumentation library
                         .SetResourceBuilder(ResourceBuilder.CreateEmpty().AddEnvironmentVariableDetector())
                         .AddAspNetCoreInstrumentation()
