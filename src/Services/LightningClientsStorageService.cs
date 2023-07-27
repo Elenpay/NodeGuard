@@ -11,14 +11,14 @@ public interface ILightningClientsStorageService
 public class LightningClientsStorageService: ILightningClientsStorageService
 {
     private readonly ILogger<LightningClientsStorageService> _logger;
-    private readonly ConcurrentDictionary<string, Lightning.LightningClient> _clients = new();
+    private readonly ConcurrentDictionary<string, GrpcChannel> _clients = new();
 
     public LightningClientsStorageService(ILogger<LightningClientsStorageService> logger)
     {
         _logger = logger;
     }
 
-    private static Lightning.LightningClient CreateLightningClient(string? endpoint)
+    private static GrpcChannel CreateLightningClient(string? endpoint)
     {
         //Setup of grpc lnd api client (Lightning.proto)
         //Hack to allow self-signed https grpc calls
@@ -31,7 +31,7 @@ public class LightningClientsStorageService: ILightningClientsStorageService
         var grpcChannel = GrpcChannel.ForAddress($"https://{endpoint}",
             new GrpcChannelOptions { HttpHandler = httpHandler });
 
-        return new Lightning.LightningClient(grpcChannel);
+        return grpcChannel;
     }
 
     public Lightning.LightningClient GetLightningClient(string? endpoint)
@@ -41,6 +41,7 @@ public class LightningClientsStorageService: ILightningClientsStorageService
             throw new ArgumentNullException(nameof(endpoint));
         }
 
+        // Atomic operation for TryGetValue and TryAdd
         lock(_clients)
         {
             var found = _clients.TryGetValue(endpoint, out var client);
@@ -50,10 +51,10 @@ public class LightningClientsStorageService: ILightningClientsStorageService
                 var newClient = CreateLightningClient(endpoint);
                 var added = _clients.TryAdd(endpoint, newClient);
                 _logger.LogDebug("Client for endpoint {endpoint} was added: {added}", endpoint, added ? "true" : "false");
-                return newClient;
+                return new Lightning.LightningClient(newClient);
             }
             _logger.LogInformation("Client found for endpoint {endpoint}", endpoint);
-            return client!;
+            return new Lightning.LightningClient(client);
         }
     }
 }
