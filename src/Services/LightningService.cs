@@ -325,83 +325,7 @@ namespace FundsManager.Services
                                 break;
 
                             case OpenStatusUpdate.UpdateOneofCase.ChanOpen:
-                                _logger.LogInformation(
-                                    "Channel opened for channel operation request request id: {RequestId}, channel point: {ChannelPoint}",
-                                    channelOperationRequest.Id, response.ChanOpen.ChannelPoint.ToString());
-
-                                channelOperationRequest.Status = ChannelOperationRequestStatus.OnChainConfirmed;
-                                if (channelOperationRequest.StatusLogs.Count > 0)
-                                {
-                                    channelOperationRequest.StatusLogs.Add(
-                                        ChannelStatusLog.Info($"Channel opened successfully 🎉"));
-                                }
-
-                                _channelOperationRequestRepository.Update(channelOperationRequest);
-
-                                var fundingTx =
-                                    LightningHelper.DecodeTxId(response.ChanOpen.ChannelPoint.FundingTxidBytes);
-
-                                //Get the channels to find the channelId, not the temporary one
-                                var channels = await client.Execute(x => x.ListChannelsAsync(new ListChannelsRequest(),
-                                    new Metadata {{"macaroon", source.ChannelAdminMacaroon}}, null, default));
-                                var currentChannel = channels.Channels.SingleOrDefault(x =>
-                                    x.ChannelPoint == $"{fundingTx}:{response.ChanOpen.ChannelPoint.OutputIndex}");
-
-                                if (currentChannel == null)
-                                {
-                                    _logger.LogError("Error, channel not found for channel point: {ChannelPoint}",
-                                        response.ChanOpen.ChannelPoint.ToString());
-                                    throw new InvalidOperationException();
-                                }
-
-                                var channel = new Channel
-                                {
-                                    ChanId = currentChannel.ChanId,
-                                    CreationDatetime = DateTimeOffset.Now,
-                                    FundingTx = fundingTx,
-                                    FundingTxOutputIndex = response.ChanOpen.ChannelPoint.OutputIndex,
-                                    BtcCloseAddress = openChannelRequest.CloseAddress,
-                                    SatsAmount = channelOperationRequest.SatsAmount,
-                                    UpdateDatetime = DateTimeOffset.Now,
-                                    Status = Channel.ChannelStatus.Open,
-                                    SourceNodeId = channelOperationRequest.SourceNode.Id,
-                                    DestinationNodeId = channelOperationRequest.DestNode.Id,
-                                    CreatedByNodeGuard = true,
-                                    IsPrivate = currentChannel.Private
-                                };
-
-                                var channelExists = await _channelRepository.GetByChanId(channel.ChanId);
-                                if (channelExists == null)
-                                    await context.AddAsync(channel);
-                                else
-                                {
-                                    channel.Id = channelExists.Id;
-                                    context.Update(channel);
-                                }
-
-                                var addChannelResult = (await context.SaveChangesAsync()) > 0;
-
-                                if (addChannelResult == false)
-                                {
-                                    _logger.LogError(
-                                        "Channel for channel operation request id: {RequestId} could not be created, reason: {Reason}",
-                                        channelOperationRequest.Id,
-                                        "Could not persist to db");
-                                }
-
-                                channelOperationRequest.ChannelId = channel.Id;
-                                channelOperationRequest.DestNode = null;
-
-                                var channelUpdate = _channelOperationRequestRepository.Update(channelOperationRequest);
-
-                                if (channelUpdate.Item1 == false)
-                                {
-                                    _logger.LogError(
-                                        "Could not assign channel id to channel operation request: {RequestId} reason: {Reason}",
-                                        channelOperationRequest.Id,
-                                        channelUpdate.Item2);
-                                }
-
+                                await OnStatusChannelOpened(channelOperationRequest, source, response.ChanOpen.ChannelPoint, openChannelRequest.CloseAddress);
                                 break;
 
                             case OpenStatusUpdate.UpdateOneofCase.PsbtFund:
@@ -697,8 +621,97 @@ namespace FundsManager.Services
             return new Lightning.LightningClient(grpcChannel).Wrap();
         };
 
-        public long GetFundingAmount(ChannelOperationRequest channelOperationRequest, PSBT combinedPSBT,
-            decimal initialFeeRate)
+        public async Task OnStatusChannelOpened(ChannelOperationRequest channelOperationRequest, Node source, ChannelPoint channelPoint, string? closeAddress = null)
+        {
+            await using var context = await _dbContextFactory.CreateDbContextAsync();
+
+            _logger.LogInformation(
+                "Channel opened for channel operation request request id: {RequestId}, channel point: {ChannelPoint}",
+                channelOperationRequest.Id, channelPoint.ToString());
+
+            channelOperationRequest.Status = ChannelOperationRequestStatus.OnChainConfirmed;
+            if (channelOperationRequest.StatusLogs.Count > 0)
+            {
+                channelOperationRequest.StatusLogs.Add(ChannelStatusLog.Info($"Channel opened successfully 🎉"));
+            }
+
+            var (isSuccess, error) = _channelOperationRequestRepository.Update(channelOperationRequest);
+            if (!isSuccess)
+            {
+                _logger.LogWarning("Request is in OnChainConfirmed, but could not update status for request id: {RequestId} reason: {Reason}", channelOperationRequest.Id, error);
+            }
+
+            var channel = await CreateChannel(source, channelOperationRequest.DestNode.Id, channelPoint, channelOperationRequest.SatsAmount, closeAddress);
+
+            var channelExists = await _channelRepository.GetByChanId(channel.ChanId);
+            if (channelExists == null)
+                await context.AddAsync(channel);
+            else
+            {
+                channel.Id = channelExists.Id;
+                context.Update(channel);
+            }
+
+            var addChannelResult = (await context.SaveChangesAsync()) > 0;
+
+            if (addChannelResult == false)
+            {
+                _logger.LogError(
+                    "Channel for channel operation request id: {RequestId} could not be created, reason: {Reason}",
+                    channelOperationRequest.Id,
+                    "Could not persist to db");
+            }
+
+            channelOperationRequest.ChannelId = channel?.Id;
+            channelOperationRequest.DestNode = null;
+
+            var channelUpdate = _channelOperationRequestRepository.Update(channelOperationRequest);
+
+            if (channelUpdate.Item1 == false)
+            {
+                _logger.LogError(
+                    "Could not assign channel id to channel operation request: {RequestId} reason: {Reason}",
+                    channelOperationRequest.Id,
+                    channelUpdate.Item2);
+            }
+        }
+
+        public static async Task<Channel> CreateChannel(Node source, int destId, ChannelPoint channelPoint, long satsAmount, string? closeAddress = null)
+        {
+            var fundingTx = LightningHelper.DecodeTxId(channelPoint.FundingTxidBytes);
+
+            var client= CreateLightningClient(source.Endpoint);
+
+            //Get the channels to find the channelId, not the temporary one
+            var channels = await client.Execute(x => x.ListChannelsAsync(new ListChannelsRequest(),
+                new Metadata { { "macaroon", source.ChannelAdminMacaroon } }, null, default));
+            var currentChannel = channels.Channels.SingleOrDefault(x => x.ChannelPoint == $"{fundingTx}:{channelPoint.OutputIndex}");
+
+            if (currentChannel == null)
+            {
+                throw new InvalidOperationException($"Error, channel not found for channel point: {channelPoint}");
+            }
+
+            var channel = new Channel
+            {
+                ChanId = currentChannel.ChanId,
+                CreationDatetime = DateTimeOffset.Now,
+                FundingTx = fundingTx,
+                FundingTxOutputIndex = channelPoint.OutputIndex,
+                BtcCloseAddress = closeAddress,
+                SatsAmount = satsAmount,
+                UpdateDatetime = DateTimeOffset.Now,
+                Status = Channel.ChannelStatus.Open,
+                SourceNodeId = source.Id,
+                DestinationNodeId = destId,
+                CreatedByNodeGuard = true,
+                IsPrivate = currentChannel.Private
+            };
+
+            return channel;
+        }
+
+        public long GetFundingAmount(ChannelOperationRequest channelOperationRequest, PSBT combinedPSBT, decimal initialFeeRate)
         {
             if (!combinedPSBT.TryGetVirtualSize(out var estimatedVsize))
             {

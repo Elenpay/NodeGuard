@@ -18,7 +18,7 @@ public class NodeChannelSubscribeJobTests
     private Mock<INodeRepository> _nodeRepositoryMock;
     private Mock<IChannelRepository> _channelRepositoryMock;
     private NodeChannelSuscribeJob _nodeUpdateManager;
-    private ISchedulerFactory _schedulerFactory;
+    private Mock<ILightningClientsStorageService> _lightningClientsStorageService;
 
     public NodeChannelSubscribeJobTests()
     {
@@ -26,13 +26,14 @@ public class NodeChannelSubscribeJobTests
         _nodeRepositoryMock = new Mock<INodeRepository>();
         _channelRepositoryMock = new Mock<IChannelRepository>();
         _lightningServiceMock = new Mock<ILightningService>();
-        
+        _lightningClientsStorageService = new Mock<ILightningClientsStorageService>();
+
         _nodeUpdateManager = new NodeChannelSuscribeJob(
             _loggerMock.Object,
             _lightningServiceMock.Object,
             _nodeRepositoryMock.Object,
             _channelRepositoryMock.Object,
-            _schedulerFactory);
+            _lightningClientsStorageService.Object);
     }
 
     [Fact]
@@ -50,37 +51,6 @@ public class NodeChannelSubscribeJobTests
 
         // Act + Assert
         Assert.ThrowsAsync<Exception>(async () => await _nodeUpdateManager.NodeUpdateManagement(channelEventUpdate, new Node()));
-    }
-
-    [Fact]
-    public async Task NodeUpdateManagement_AddsNewNode_WhenRemoteNodeNotFound()
-    {
-        // Arrange
-        var channelEventUpdate = new ChannelEventUpdate()
-        {
-            Type = ChannelEventUpdate.Types.UpdateType.OpenChannel,
-            OpenChannel = new Lnrpc.Channel()
-            {
-                ChannelPoint = "1:1",
-                CloseAddress = "closeAddress",
-                RemotePubkey = "remotePubkey",
-            },
-        };
-        _nodeRepositoryMock.SetupSequence(repo => repo.GetByPubkey(channelEventUpdate.OpenChannel.RemotePubkey))
-            .ReturnsAsync((Node?)null)
-            .ReturnsAsync(new Node(){Id = 1, Name = "TestAlias", PubKey = "TestPubKey"});
-        _nodeRepositoryMock.Setup(repo => repo.AddAsync(It.IsAny<Node>())).ReturnsAsync((true, ""));
-        _channelRepositoryMock.Setup(repo => repo.AddAsync(It.IsAny<Channel>())).ReturnsAsync((true, ""));
-
-        _lightningServiceMock.Setup(service => service.GetNodeInfo(channelEventUpdate.OpenChannel.RemotePubkey))
-            .ReturnsAsync(new LightningNode() { Alias = "TestAlias", PubKey = "TestPubKey" });
-
-        // Act
-        await _nodeUpdateManager.NodeUpdateManagement(channelEventUpdate, new Node(){Id = 1});
-
-        // Assert
-        _nodeRepositoryMock.Verify(repo => repo.AddAsync(It.IsAny<Node>()), Times.Once);
-        _channelRepositoryMock.Verify(repo => repo.AddAsync(It.IsAny<Channel>()), Times.Once);
     }
 
     [Fact]

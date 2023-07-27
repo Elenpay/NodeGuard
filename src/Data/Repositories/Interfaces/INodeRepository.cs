@@ -18,6 +18,7 @@
  */
 
 using FundsManager.Data.Models;
+using FundsManager.Services;
 
 namespace FundsManager.Data.Repositories.Interfaces;
 
@@ -26,6 +27,8 @@ public interface INodeRepository
     Task<Node?> GetById(int id);
 
     Task<Node?> GetByPubkey(string key);
+
+    public Task<Node> GetOrCreateByPubKey(string pubKey, ILightningService lightningService);
 
     Task<List<Node>> GetAll();
 
