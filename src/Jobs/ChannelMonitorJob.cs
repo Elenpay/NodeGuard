@@ -87,7 +87,7 @@ public class ChannelMonitorJob : IJob
         catch (Exception e)
         {
             _logger.LogError(e, "Error while subscribing for the channel updates of node {NodeId}", nodeId);
-            throw new JobExecutionException(e, true);
+            throw new JobExecutionException(e, false);
         }
 
         _logger.LogInformation("{JobName} ended", nameof(ChannelMonitorJob));
