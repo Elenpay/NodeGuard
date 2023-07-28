@@ -95,7 +95,7 @@ public class ChannelMonitorJob : IJob
 
     public async Task RecoverGhostChannels(Node source, Node destination, Channel? channel)
     {
-        if (!channel.Initiator) return;
+        if (!channel.Initiator && destination.IsManaged) return;
         try
         {
             await using var dbContext = await _dbContextFactory.CreateDbContextAsync();
@@ -114,6 +114,7 @@ public class ChannelMonitorJob : IJob
             };
 
             var createdChannel = await LightningService.CreateChannel(source, destination.Id, parsedChannelPoint, channel.Capacity, channel.CloseAddress);
+            createdChannel.CreatedByNodeGuard = false;
 
             await dbContext.Channels.AddAsync(createdChannel);
             await dbContext.SaveChangesAsync();

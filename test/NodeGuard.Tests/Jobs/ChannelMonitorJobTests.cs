@@ -31,7 +31,7 @@ public class ChannelMonitorJobTests
     }
 
     [Fact]
-    public async Task RecoverGhostChannels_ChannelIsNotInitiator()
+    public async Task RecoverGhostChannels_ChannelIsNotInitiatorButManaged()
     {
         // Arrange
         var dbContextFactory = SetupDbContextFactory();
@@ -41,13 +41,13 @@ public class ChannelMonitorJobTests
         {
             Initiator = false
         };
+        var destination = new Node() { Endpoint = "abc" };
         // Act
-        var act = () => channelMonitorJob.RecoverGhostChannels(null, null, channel);
+        var act = () => channelMonitorJob.RecoverGhostChannels(null, destination, channel);
 
         // Assert
         await act.Should().NotThrowAsync();
         dbContextFactory.Invocations.Count.Should().Be(0);
-
     }
 
     [Fact]
@@ -80,8 +80,10 @@ public class ChannelMonitorJobTests
         dbContextFactory.Invocations.Count.Should().Be(2);
     }
 
-    [Fact]
-    public async Task RecoverGhostChannels_CreatesChannel()
+    [Theory]
+    [InlineData("locahost")]
+    [InlineData(null)]
+    public async Task RecoverGhostChannels_CreatesChannel(string? endpoint)
     {
         // Arrange
         var logger = new Mock<ILogger<ChannelMonitorJob>>();
@@ -123,7 +125,7 @@ public class ChannelMonitorJobTests
             Endpoint = "localhost",
             ChannelAdminMacaroon = "abc"
         };
-        var destination = new Node();
+        var destination = new Node() { Endpoint = endpoint};
         var channel = new Lnrpc.Channel()
         {
             ChanId = 1,
