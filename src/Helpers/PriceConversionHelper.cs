@@ -31,7 +31,7 @@ public static class PriceConversionHelper
         var client = new RestClient(Constants.COINGECKO_ENDPOINT);
         var request = new RestRequest
         {
-            Method = Method.Get
+            Method = Method.GET
         };
         request.AddHeader("x-cg-pro-api-key", Constants.COINGECKO_KEY);
         var response = client.Execute(request);

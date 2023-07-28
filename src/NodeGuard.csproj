@@ -53,7 +53,7 @@
     <PackageReference Include="Quartz.AspNetCore" Version="3.6.3" />
     <PackageReference Include="Quartz.Serialization.Json" Version="3.6.3" />
     <PackageReference Include="Blazorise.SpinKit" Version="1.2.4" />
-    <PackageReference Include="RestSharp" Version="110.2.0" />
+    <PackageReference Include="RestSharp" Version="106.13.0" />
     <PackageReference Include="Serilog.AspNetCore" Version="7.0.0" />
     <PackageReference Include="Unmockable" Version="3.0.132" />
     <PackageReference Include="Unmockable.Wrap" Version="3.0.132" />
