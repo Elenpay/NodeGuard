@@ -76,6 +76,7 @@ public class ChannelMonitorJob : IJob
 
             foreach (var channel in result?.Channels)
             {
+                if (!channel.Active) continue;
                 var node2 = await _nodeRepository.GetOrCreateByPubKey(channel.RemotePubkey, _lightningService);
 
                 // Recover Operations on channels
@@ -86,7 +87,7 @@ public class ChannelMonitorJob : IJob
         }
         catch (Exception e)
         {
-            _logger.LogError(e, "Error while subscribing for the channel updates of node {NodeId}", nodeId);
+            _logger.LogError(e, "Error while trying to monitor channels of node {NodeId}", nodeId);
             throw new JobExecutionException(e, false);
         }
 
@@ -122,7 +123,6 @@ public class ChannelMonitorJob : IJob
         catch (Exception e)
         {
             _logger.LogError(e, "Error while recovering ghost channel, {SourceNodeId}, {ChannelId}: {Error}", source.Id, channel?.ChanId, e);
-            throw new JobExecutionException(e, true);
         }
     }
 
@@ -150,7 +150,6 @@ public class ChannelMonitorJob : IJob
         catch (Exception e)
         {
             _logger.LogError(e, "Error while recovering channel in OnChainConfirmationPending status, {SourceNodeId}: {Error}", source.Id, e);
-            throw new JobExecutionException(e, true);
         }
     }
 }
