@@ -77,13 +77,13 @@ namespace NodeGuard.Data.Repositories
                 var foundNode = await lightningService.GetNodeInfo(pubKey);
                 if (foundNode == null)
                 {
-                    throw new Exception("Node info not found");
+                    _logger.LogWarning("Peer with PubKey {pubKey} not found", pubKey);
                 }
 
                 node = new Node()
                 {
-                    Name = foundNode.Alias,
-                    PubKey = foundNode.PubKey,
+                    Name = foundNode?.Alias ?? "Unavailable Node",
+                    PubKey = pubKey
                 };
                 var addNode = await AddAsync(node);
                 if (!addNode.Item1)

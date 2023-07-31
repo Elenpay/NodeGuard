@@ -76,7 +76,6 @@ public class ChannelMonitorJob : IJob
 
             foreach (var channel in result?.Channels)
             {
-                if (!channel.Active) continue;
                 var node2 = await _nodeRepository.GetOrCreateByPubKey(channel.RemotePubkey, _lightningService);
 
                 // Recover Operations on channels
@@ -94,7 +93,7 @@ public class ChannelMonitorJob : IJob
         _logger.LogInformation("{JobName} ended", nameof(ChannelMonitorJob));
     }
 
-    public async Task RecoverGhostChannels(Node source, Node destination, Channel? channel)
+    public async Task RecoverGhostChannels(Node source, Node destination, Channel channel)
     {
         if (!channel.Initiator && destination.IsManaged) return;
         try
