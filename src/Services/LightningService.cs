@@ -448,7 +448,7 @@ namespace NodeGuard.Services
                                     if (checkTx == TransactionCheckResult.Success)
                                     {
                                         //We tell lnd to verify the psbt
-                                        _lightningClientService.FundingStateStep(source, finalizedPSBT, pendingChannelId, client);
+                                        _lightningClientService.FundingStateStepVerify(source, finalizedPSBT, pendingChannelId, client);
 
                                         //Saving the PSBT in the ChannelOperationRequest collection of PSBTs
                                         channelOperationRequest =
@@ -477,7 +477,7 @@ namespace NodeGuard.Services
                                             }
                                         }
 
-                                        _lightningClientService.FundingStateStep(source, finalizedPSBT, pendingChannelId, client);
+                                        _lightningClientService.FundingStateStepFinalize(source, finalizedPSBT, pendingChannelId, client);
                                     }
                                     else
                                     {
@@ -874,30 +874,13 @@ namespace NodeGuard.Services
         /// <param name="source"></param>
         /// <param name="client"></param>
         /// <param name="pendingChannelId"></param>
-        public void CancelPendingChannel(Node source, byte[] pendingChannelId, Lightning.LightningClient? client = null)
+        public void CancelPendingChannel(Node source, byte[] pendingChannelId, Lightning.LightningClient? client)
         {
             try
             {
-                if (client == null)
-                {
-                    client = _lightningClientService.GetLightningClient(source.Endpoint);
-                }
-
                 if (pendingChannelId != null)
                 {
-                    var cancelRequest = new FundingShimCancel
-                    {
-                        PendingChanId = ByteString.CopyFrom(pendingChannelId)
-                    };
-
-                    if (source.ChannelAdminMacaroon != null)
-                    {
-                        var cancelResult = client.FundingStateStep(new FundingTransitionMsg
-                            {
-                                ShimCancel = cancelRequest,
-                            },
-                            new Metadata { { "macaroon", source.ChannelAdminMacaroon } });
-                    }
+                    _lightningClientService.FundingStateStepCancel(source, pendingChannelId, client);
                 }
             }
             catch (Exception e)
@@ -1313,13 +1296,7 @@ namespace NodeGuard.Services
             var result = new Dictionary<ulong, (int, long, long)>();
             foreach (var node in nodes)
             {
-                var client = _lightningClientService.GetLightningClient(node.Endpoint);
-                var listChannelsResponse = client.ListChannels(new ListChannelsRequest(),
-                    new Metadata
-                    {
-                        { "macaroon", node.ChannelAdminMacaroon }
-                    });
-
+                var listChannelsResponse = await _lightningClientService.ListChannels(node);
                 var channels = listChannelsResponse.Channels.ToList();
 
                 foreach (var channel in channels)

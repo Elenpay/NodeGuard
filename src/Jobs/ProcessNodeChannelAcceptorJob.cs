@@ -24,10 +24,8 @@ using NodeGuard.Services;
 using Grpc.Core;
 using Grpc.Net.Client;
 using Lnrpc;
-using NBXplorer;
 using NBXplorer.DerivationStrategy;
 using Quartz;
-using Unmockable;
 
 namespace NodeGuard.Jobs;
 

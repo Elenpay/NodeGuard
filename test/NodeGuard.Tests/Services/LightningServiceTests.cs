@@ -497,7 +497,8 @@ namespace NodeGuard.Services
                 .ReturnsAsync((true, ""));
 
             lightningClientService.Setup(
-                x => x.FundingStateStep(It.IsAny<Node>(), It.IsAny<PSBT>(), It.IsAny<byte[]>(), It.IsAny<Lightning.LightningClient>()));
+                x => x.FundingStateStepVerify(It.IsAny<Node>(), It.IsAny<PSBT>(), It.IsAny<byte[]>(), It.IsAny<Lightning.LightningClient>()));            lightningClientService.Setup(
+                x => x.FundingStateStepFinalize(It.IsAny<Node>(), It.IsAny<PSBT>(), It.IsAny<byte[]>(), It.IsAny<Lightning.LightningClient>()));
             // Mock channel repository
             var channelRepository = new Mock<IChannelRepository>();
 
@@ -693,7 +694,13 @@ namespace NodeGuard.Services
                 .ReturnsAsync((true, ""));
 
             lightningClient
-                .Setup(x => x.FundingStateStep(
+                .Setup(x => x.FundingStateStepVerify(
+                    It.IsAny<Node>(),
+                    It.IsAny<PSBT>(),
+                    It.IsAny<byte[]>(),
+                    It.IsAny<Lightning.LightningClient>()
+                ));            lightningClient
+                .Setup(x => x.FundingStateStepFinalize(
                     It.IsAny<Node>(),
                     It.IsAny<PSBT>(),
                     It.IsAny<byte[]>(),
@@ -901,7 +908,13 @@ namespace NodeGuard.Services
                 .ReturnsAsync((true, ""));
 
             lightningClient
-                .Setup(x => x.FundingStateStep(
+                .Setup(x => x.FundingStateStepVerify(
+                    It.IsAny<Node>(),
+                    It.IsAny<PSBT>(),
+                    It.IsAny<byte[]>(),
+                    It.IsAny<Lightning.LightningClient>()));
+            lightningClient
+                .Setup(x => x.FundingStateStepFinalize(
                     It.IsAny<Node>(),
                     It.IsAny<PSBT>(),
                     It.IsAny<byte[]>(),
@@ -1113,7 +1126,14 @@ namespace NodeGuard.Services
                 .ReturnsAsync((true, ""));
 
             lightningClient
-                .Setup(x => x.FundingStateStep(
+                .Setup(x => x.FundingStateStepVerify(
+                    It.IsAny<Node>(),
+                    It.IsAny<PSBT>(),
+                    It.IsAny<byte[]>(),
+                    It.IsAny<Lightning.LightningClient>()
+                ));
+            lightningClient
+                .Setup(x => x.FundingStateStepFinalize(
                     It.IsAny<Node>(),
                     It.IsAny<PSBT>(),
                     It.IsAny<byte[]>(),
@@ -1316,7 +1336,14 @@ namespace NodeGuard.Services
                 .ReturnsAsync((true, ""));
 
             lightningClient
-                .Setup(x => x.FundingStateStep(
+                .Setup(x => x.FundingStateStepVerify(
+                    It.IsAny<Node>(),
+                    It.IsAny<PSBT>(),
+                    It.IsAny<byte[]>(),
+                    It.IsAny<Lightning.LightningClient>()
+                ));
+            lightningClient
+                .Setup(x => x.FundingStateStepFinalize(
                     It.IsAny<Node>(),
                     It.IsAny<PSBT>(),
                     It.IsAny<byte[]>(),

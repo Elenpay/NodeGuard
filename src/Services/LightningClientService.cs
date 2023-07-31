@@ -32,30 +32,15 @@ namespace NodeGuard.Services;
 public interface ILightningClientService
 {
     public Lightning.LightningClient GetLightningClient(string? endpoint);
-
-    /// <summary>
-    /// List channels from a specific node
-    /// </summary>
-    /// <param name="node"></param>
-    /// <param name="client"></param>
-    /// <returns></returns>
     public Task<ListChannelsResponse?> ListChannels(Node node, Lightning.LightningClient? client = null);
-
-    /// <summary>
-    /// Closes a channel
-    /// </summary>
-    /// <param name="node"></param>
-    /// <param name="channel"></param>
-    /// <param name="forceClose"></param>
-    /// <param name="client"></param>
-    /// <returns></returns>
     public AsyncServerStreamingCall<CloseStatusUpdate>? CloseChannel(Node node, Channel channel, bool forceClose = false, Lightning.LightningClient? client = null);
-
     public AsyncServerStreamingCall<ChannelEventUpdate> SubscribeChannelEvents(Node node, Lightning.LightningClient? client = null);
     public Task<LightningNode?> GetNodeInfo(Node node, string pubKey, Lightning.LightningClient? client = null);
     public Task ConnectToPeer(Node node, string peerPubKey, Lightning.LightningClient? client = null);
     public AsyncServerStreamingCall<OpenStatusUpdate> OpenChannel(Node node, OpenChannelRequest openChannelRequest, Lightning.LightningClient? client = null);
-    public void FundingStateStep(Node node, PSBT finalizedPSBT, byte[] pendingChannelId, Lightning.LightningClient? client = null);
+    public void FundingStateStepVerify(Node node, PSBT finalizedPSBT, byte[] pendingChannelId, Lightning.LightningClient? client = null);
+    public void FundingStateStepFinalize(Node node, PSBT finalizedPSBT, byte[] pendingChannelId, Lightning.LightningClient? client = null);
+    public void FundingStateStepCancel(Node node, byte[] pendingChannelId, Lightning.LightningClient? client = null);
 }
 
 public class LightningClientService : ILightningClientService
@@ -259,7 +244,7 @@ public class LightningClientService : ILightningClientService
         );
     }
 
-    public void FundingStateStep(Node node, PSBT finalizedPSBT, byte[] pendingChannelId, Lightning.LightningClient? client = null)
+    public void FundingStateStepVerify(Node node, PSBT finalizedPSBT, byte[] pendingChannelId, Lightning.LightningClient? client = null)
     {
         client ??= GetLightningClient(node.Endpoint);
         client.FundingStateStep(
@@ -270,6 +255,35 @@ public class LightningClientService : ILightningClientService
                     FundedPsbt =
                         ByteString.CopyFrom(
                             Convert.FromHexString(finalizedPSBT.ToHex())),
+                    PendingChanId = ByteString.CopyFrom(pendingChannelId)
+                }
+            }, new Metadata { { "macaroon", node.ChannelAdminMacaroon } });
+    }
+
+    public void FundingStateStepFinalize(Node node, PSBT finalizedPSBT, byte[] pendingChannelId, Lightning.LightningClient? client = null)
+    {
+        client ??= GetLightningClient(node.Endpoint);
+        client.FundingStateStep(
+            new FundingTransitionMsg
+            {
+                PsbtFinalize = new FundingPsbtFinalize
+                {
+                    SignedPsbt =
+                        ByteString.CopyFrom(
+                            Convert.FromHexString(finalizedPSBT.ToHex())),
+                    PendingChanId = ByteString.CopyFrom(pendingChannelId)
+                }
+            }, new Metadata { { "macaroon", node.ChannelAdminMacaroon } });
+    }
+
+    public void FundingStateStepCancel(Node node, byte[] pendingChannelId, Lightning.LightningClient? client = null)
+    {
+        client ??= GetLightningClient(node.Endpoint);
+        client.FundingStateStep(
+            new FundingTransitionMsg
+            {
+                ShimCancel = new FundingShimCancel
+                {
                     PendingChanId = ByteString.CopyFrom(pendingChannelId)
                 }
             }, new Metadata { { "macaroon", node.ChannelAdminMacaroon } });
