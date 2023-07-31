@@ -82,7 +82,7 @@ namespace NodeGuard.Data.Repositories
 
                 node = new Node()
                 {
-                    Name = foundNode?.Alias ?? "Unavailable Node",
+                    Name = foundNode?.Alias ?? "",
                     PubKey = pubKey
                 };
                 var addNode = await AddAsync(node);
