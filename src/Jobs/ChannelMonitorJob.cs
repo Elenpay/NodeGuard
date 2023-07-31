@@ -22,7 +22,6 @@ using NodeGuard.Data.Models;
 using NodeGuard.Data.Repositories.Interfaces;
 using NodeGuard.Services;
 using Google.Protobuf;
-using Grpc.Core;
 using Lnrpc;
 using Microsoft.EntityFrameworkCore;
 using Quartz;
@@ -41,15 +40,15 @@ public class ChannelMonitorJob : IJob
     private readonly IDbContextFactory<ApplicationDbContext> _dbContextFactory;
     private readonly INodeRepository _nodeRepository;
     private readonly ILightningService _lightningService;
-    private readonly ILightningClientsStorageService _lightningClientsStorageService;
+    private readonly ILightningClientService _lightningClientService;
 
-    public ChannelMonitorJob(ILogger<ChannelMonitorJob> logger, IDbContextFactory<ApplicationDbContext> dbContextFactory, INodeRepository nodeRepository, ILightningService lightningService, ILightningClientsStorageService lightningClientsStorageService)
+    public ChannelMonitorJob(ILogger<ChannelMonitorJob> logger, IDbContextFactory<ApplicationDbContext> dbContextFactory, INodeRepository nodeRepository, ILightningService lightningService, ILightningClientService lightningClientService)
     {
         _logger = logger;
         _dbContextFactory = dbContextFactory;
         _nodeRepository = nodeRepository;
         _lightningService = lightningService;
-        _lightningClientsStorageService = lightningClientsStorageService;
+        _lightningClientService = lightningClientService;
     }
 
     public async Task Execute(IJobExecutionContext context)
@@ -67,12 +66,7 @@ public class ChannelMonitorJob : IJob
                 return;
             }
 
-            var client = _lightningClientsStorageService.GetLightningClient(node1.Endpoint);
-            var result = client.ListChannels(new ListChannelsRequest(),
-                new Metadata
-                {
-                    { "macaroon", node1.ChannelAdminMacaroon }
-                });
+            var result = await _lightningClientService.ListChannels(node1);
 
             foreach (var channel in result?.Channels)
             {
@@ -82,7 +76,6 @@ public class ChannelMonitorJob : IJob
                 await RecoverGhostChannels(node1, node2, channel);
                 await RecoverChannelInConfirmationPendingStatus(node1);
             }
-
         }
         catch (Exception e)
         {
@@ -113,7 +106,7 @@ public class ChannelMonitorJob : IJob
                 OutputIndex = Convert.ToUInt32(outputIndex)
             };
 
-            var createdChannel = await LightningService.CreateChannel(source, destination.Id, parsedChannelPoint, channel.Capacity, channel.CloseAddress);
+            var createdChannel = await _lightningService.CreateChannel(source, destination.Id, parsedChannelPoint, channel.Capacity, channel.CloseAddress);
             createdChannel.CreatedByNodeGuard = false;
 
             await dbContext.Channels.AddAsync(createdChannel);

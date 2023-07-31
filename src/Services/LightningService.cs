@@ -22,7 +22,6 @@ using NodeGuard.Data.Models;
 using NodeGuard.Data.Repositories.Interfaces;
 using Google.Protobuf;
 using Grpc.Core;
-using Grpc.Net.Client;
 using Lnrpc;
 using NBitcoin;
 using NBXplorer.DerivationStrategy;
@@ -33,7 +32,6 @@ using NodeGuard.Helpers;
 using Microsoft.EntityFrameworkCore;
 using Channel = NodeGuard.Data.Models.Channel;
 using Transaction = NBitcoin.Transaction;
-using Unmockable;
 
 // ReSharper disable InconsistentNaming
 
@@ -106,8 +104,18 @@ namespace NodeGuard.Services
         /// <param name="source"></param>
         /// <param name="pendingChannelId"></param>
         /// <param name="client"></param>
-        public void CancelPendingChannel(Node source, byte[] pendingChannelId,
-            IUnmockable<Lightning.LightningClient>? client = null);
+        public void CancelPendingChannel(Node source, byte[] pendingChannelId, Lightning.LightningClient? client = null);
+
+        /// <summary>
+        /// Creates a channel object given a source node and a channel point
+        /// </summary>
+        /// <param name="source"></param>
+        /// <param name="destId"></param>
+        /// <param name="channelPoint"></param>
+        /// <param name="satsAmount"></param>
+        /// <param name="closeAddress"></param>
+        /// <returns></returns>
+        public Task<Channel> CreateChannel(Node source, int destId, ChannelPoint channelPoint, long satsAmount, string? closeAddress = null);
     }
 
     public class LightningService : ILightningService
@@ -121,6 +129,7 @@ namespace NodeGuard.Services
         private readonly IRemoteSignerService _remoteSignerService;
         private readonly INBXplorerService _nbXplorerService;
         private readonly ICoinSelectionService _coinSelectionService;
+        private readonly ILightningClientService _lightningClientService;
 
         public LightningService(ILogger<LightningService> logger,
             IChannelOperationRequestRepository channelOperationRequestRepository,
@@ -130,7 +139,8 @@ namespace NodeGuard.Services
             IChannelRepository channelRepository,
             IRemoteSignerService remoteSignerService,
             INBXplorerService nbXplorerService,
-            ICoinSelectionService coinSelectionService
+            ICoinSelectionService coinSelectionService,
+            ILightningClientService lightningClientService
         )
 
         {
@@ -143,6 +153,7 @@ namespace NodeGuard.Services
             _remoteSignerService = remoteSignerService;
             _nbXplorerService = nbXplorerService;
             _coinSelectionService = coinSelectionService;
+            _lightningClientService = lightningClientService;
         }
 
         /// <summary>
@@ -172,7 +183,7 @@ namespace NodeGuard.Services
             var (source, destination) = CheckNodesAreValid(channelOperationRequest, _logger);
             var derivationStrategyBase = GetDerivationStrategyBase(channelOperationRequest, _logger);
 
-            var client = CreateLightningClient(source.Endpoint);
+            var client = _lightningClientService.GetLightningClient(source.Endpoint);
 
             var network = CurrentNetworkHelper.GetCurrentNetwork();
 
@@ -236,72 +247,12 @@ namespace NodeGuard.Services
                 var openChannelRequest = await CreateOpenChannelRequest(channelOperationRequest, combinedPSBT,
                     remoteNodeInfo, fundingAmount, pendingChannelId, derivationStrategyBase);
 
-                //For now, we only rely on pure tcp IPV4 connections
-                var addr = remoteNodeInfo.Addresses.FirstOrDefault(x => x.Network == "tcp")?.Addr;
-
-                if (addr == null)
-                {
-                    _logger.LogError("Error, remote node with {Pubkey} has no tcp IPV4 address",
-                        channelOperationRequest.DestNode?.PubKey);
-                    throw new InvalidOperationException();
-                }
-
-                var isPeerAlreadyConnected = false;
-
-                ConnectPeerResponse connectPeerResponse = null;
-                try
-                {
-                    connectPeerResponse = await client.Execute(x => x.ConnectPeerAsync(new ConnectPeerRequest
-                    {
-                        Addr = new LightningAddress {Host = addr, Pubkey = remoteNodeInfo.PubKey},
-                        Perm = true
-                    }, new Metadata
-                    {
-                        {"macaroon", source.ChannelAdminMacaroon}
-                    }, null, default));
-                }
-                //We avoid to stop the method if the peer is already connected
-                catch (RpcException e)
-                {
-                    if (e.Message.Contains("is not online"))
-                    {
-                        throw new PeerNotOnlineException($"$peer {destination.PubKey} is not online");
-                    }
-
-                    if (!e.Message.Contains("already connected to peer"))
-                    {
-                        throw;
-                    }
-                    else
-                    {
-                        isPeerAlreadyConnected = true;
-                    }
-                }
-
-                if (connectPeerResponse != null || isPeerAlreadyConnected)
-                {
-                    if (isPeerAlreadyConnected)
-                    {
-                        _logger.LogInformation("Peer: {Pubkey} already connected", remoteNodeInfo.PubKey);
-                    }
-                    else
-                    {
-                        _logger.LogInformation("Peer connected to {Pubkey}", remoteNodeInfo.PubKey);
-                    }
-                }
-                else
-                {
-                    _logger.LogError("Error, peer not connected to {Pubkey} on address: {address}",
-                        remoteNodeInfo.PubKey, addr);
-                    throw new InvalidOperationException();
-                }
+                await _lightningClientService.ConnectToPeer(source, channelOperationRequest.DestNode?.PubKey, client);
 
                 //We launch a openstatusupdate stream for all the events when calling OpenChannel api method from LND
                 if (source.ChannelAdminMacaroon != null)
                 {
-                    var openStatusUpdateStream = client.Execute(x => x.OpenChannel(openChannelRequest,
-                        new Metadata {{"macaroon", source.ChannelAdminMacaroon}}, null, default
-                    ));
+                    var openStatusUpdateStream = _lightningClientService.OpenChannel(source, openChannelRequest, client);
 
                     await foreach (var response in openStatusUpdateStream.ResponseStream.ReadAllAsync())
                     {
@@ -474,7 +425,7 @@ namespace NodeGuard.Services
                                     }
 
                                     //if the fee is too high, we throw an exception
-                                    var finalizedTotalIn = finalizedPSBT.Inputs.Sum(x => (long) x.GetCoin()?.Amount);
+                                    var finalizedTotalIn = finalizedPSBT.Inputs.Sum(x => (long)x.GetCoin()?.Amount);
                                     if (finalizedPSBT.GetFee().Satoshi >=
                                         finalizedTotalIn * Constants.MAX_TX_FEE_RATIO)
                                     {
@@ -497,21 +448,9 @@ namespace NodeGuard.Services
                                     if (checkTx == TransactionCheckResult.Success)
                                     {
                                         //We tell lnd to verify the psbt
-                                        client.Execute(x => x.FundingStateStep(
-                                            new FundingTransitionMsg
-                                            {
-                                                PsbtVerify = new FundingPsbtVerify
-                                                {
-                                                    FundedPsbt =
-                                                        ByteString.CopyFrom(
-                                                            Convert.FromHexString(finalizedPSBT.ToHex())),
-                                                    PendingChanId = ByteString.CopyFrom(pendingChannelId)
-                                                }
-                                            }, new Metadata {{"macaroon", source.ChannelAdminMacaroon}}, null,
-                                            default));
+                                        _lightningClientService.FundingStateStep(source, finalizedPSBT, pendingChannelId, client);
 
                                         //Saving the PSBT in the ChannelOperationRequest collection of PSBTs
-
                                         channelOperationRequest =
                                             await _channelOperationRequestRepository.GetById(channelOperationRequest
                                                 .Id) ?? throw new InvalidOperationException();
@@ -538,19 +477,7 @@ namespace NodeGuard.Services
                                             }
                                         }
 
-                                        var fundingStateStepResp = await client.Execute(x => x.FundingStateStepAsync(
-                                            new FundingTransitionMsg
-                                            {
-                                                PsbtFinalize = new FundingPsbtFinalize
-                                                {
-                                                    PendingChanId = ByteString.CopyFrom(pendingChannelId),
-                                                    //FinalRawTx = ByteString.CopyFrom(Convert.FromHexString(finalTxHex)),
-                                                    SignedPsbt =
-                                                        ByteString.CopyFrom(
-                                                            Convert.FromHexString(finalizedPSBT.ToHex()))
-                                                },
-                                            }, new Metadata {{"macaroon", source.ChannelAdminMacaroon}}, null,
-                                            default));
+                                        _lightningClientService.FundingStateStep(source, finalizedPSBT, pendingChannelId, client);
                                     }
                                     else
                                     {
@@ -599,27 +526,6 @@ namespace NodeGuard.Services
                 throw;
             }
         }
-
-        public static Func<string?, IUnmockable<Lightning.LightningClient>> CreateLightningClient = (endpoint) =>
-        {
-            if (string.IsNullOrWhiteSpace(endpoint))
-            {
-                throw new ArgumentException("Endpoint cannot be null");
-            }
-
-            //Setup of grpc lnd api client (Lightning.proto)
-            //Hack to allow self-signed https grpc calls
-            var httpHandler = new HttpClientHandler
-            {
-                ServerCertificateCustomValidationCallback =
-                    HttpClientHandler.DangerousAcceptAnyServerCertificateValidator
-            };
-
-            var grpcChannel = GrpcChannel.ForAddress($"https://{endpoint}",
-                new GrpcChannelOptions {HttpHandler = httpHandler});
-
-            return new Lightning.LightningClient(grpcChannel).Wrap();
-        };
 
         public async Task OnStatusChannelOpened(ChannelOperationRequest channelOperationRequest, Node source, ChannelPoint channelPoint, string? closeAddress = null)
         {
@@ -676,16 +582,14 @@ namespace NodeGuard.Services
             }
         }
 
-        public static async Task<Channel> CreateChannel(Node source, int destId, ChannelPoint channelPoint, long satsAmount, string? closeAddress = null)
+        public async Task<Channel> CreateChannel(Node source, int destId, ChannelPoint channelPoint, long satsAmount, string? closeAddress = null)
         {
             var fundingTx = LightningHelper.DecodeTxId(channelPoint.FundingTxidBytes);
 
-            var client= CreateLightningClient(source.Endpoint);
-
             //Get the channels to find the channelId, not the temporary one
-            var channels = await client.Execute(x => x.ListChannelsAsync(new ListChannelsRequest(),
-                new Metadata { { "macaroon", source.ChannelAdminMacaroon } }, null, default));
-            var currentChannel = channels.Channels.SingleOrDefault(x => x.ChannelPoint == $"{fundingTx}:{channelPoint.OutputIndex}");
+            var channels = await _lightningClientService.ListChannels(source);
+
+            var currentChannel = channels?.Channels.SingleOrDefault(x => x.ChannelPoint == $"{fundingTx}:{channelPoint.OutputIndex}");
 
             if (currentChannel == null)
             {
@@ -766,13 +670,13 @@ namespace NodeGuard.Services
 
             // Check features to see if we need or is allowed to add a close address
             var upfrontShutdownScriptOpt =
-                remoteNodeInfo.Features.ContainsKey((uint) FeatureBit.UpfrontShutdownScriptOpt);
+                remoteNodeInfo.Features.ContainsKey((uint)FeatureBit.UpfrontShutdownScriptOpt);
             var upfrontShutdownScriptReq =
-                remoteNodeInfo.Features.ContainsKey((uint) FeatureBit.UpfrontShutdownScriptReq);
-            if (upfrontShutdownScriptOpt && remoteNodeInfo.Features[(uint) FeatureBit.UpfrontShutdownScriptOpt] is
-                    {IsKnown: true} ||
-                upfrontShutdownScriptReq && remoteNodeInfo.Features[(uint) FeatureBit.UpfrontShutdownScriptReq] is
-                    {IsKnown: true})
+                remoteNodeInfo.Features.ContainsKey((uint)FeatureBit.UpfrontShutdownScriptReq);
+            if (upfrontShutdownScriptOpt && remoteNodeInfo.Features[(uint)FeatureBit.UpfrontShutdownScriptOpt] is
+                    { IsKnown: true } ||
+                upfrontShutdownScriptReq && remoteNodeInfo.Features[(uint)FeatureBit.UpfrontShutdownScriptReq] is
+                    { IsKnown: true })
             {
                 var address = await GetCloseAddress(channelOperationRequest, derivationStrategyBase, _nbXplorerService,
                     _logger);
@@ -970,14 +874,13 @@ namespace NodeGuard.Services
         /// <param name="source"></param>
         /// <param name="client"></param>
         /// <param name="pendingChannelId"></param>
-        public void CancelPendingChannel(Node source, byte[] pendingChannelId,
-            IUnmockable<Lightning.LightningClient>? client = null)
+        public void CancelPendingChannel(Node source, byte[] pendingChannelId, Lightning.LightningClient? client = null)
         {
             try
             {
                 if (client == null)
                 {
-                    client = CreateLightningClient(source.Endpoint);
+                    client = _lightningClientService.GetLightningClient(source.Endpoint);
                 }
 
                 if (pendingChannelId != null)
@@ -989,11 +892,11 @@ namespace NodeGuard.Services
 
                     if (source.ChannelAdminMacaroon != null)
                     {
-                        var cancelResult = client.Execute(x => x.FundingStateStep(new FundingTransitionMsg
+                        var cancelResult = client.FundingStateStep(new FundingTransitionMsg
                             {
                                 ShimCancel = cancelRequest,
                             },
-                            new Metadata {{"macaroon", source.ChannelAdminMacaroon}}, null, default));
+                            new Metadata { { "macaroon", source.ChannelAdminMacaroon } });
                     }
                 }
             }
@@ -1214,7 +1117,7 @@ namespace NodeGuard.Services
             {
                 if (channelOperationRequest.ChannelId != null)
                 {
-                    var channel = await _channelRepository.GetById((int) channelOperationRequest.ChannelId);
+                    var channel = await _channelRepository.GetById((int)channelOperationRequest.ChannelId);
 
                     var node = string.IsNullOrEmpty(channelOperationRequest.SourceNode.ChannelAdminMacaroon)
                         ? channelOperationRequest.DestNode
@@ -1222,18 +1125,8 @@ namespace NodeGuard.Services
 
                     if (channel != null && node.ChannelAdminMacaroon != null)
                     {
-                        var client = CreateLightningClient(node.Endpoint);
-
                         //Time to close the channel
-                        var closeChannelResult = client.Execute(x => x.CloseChannel(new CloseChannelRequest
-                        {
-                            ChannelPoint = new ChannelPoint
-                            {
-                                FundingTxidStr = channel.FundingTx,
-                                OutputIndex = channel.FundingTxOutputIndex
-                            },
-                            Force = forceClose,
-                        }, new Metadata {{"macaroon", node.ChannelAdminMacaroon}}, null, default));
+                        var closeChannelResult = _lightningClientService.CloseChannel(node, channel, forceClose);
 
                         _logger.LogInformation("Channel close request: {RequestId} triggered",
                             channelOperationRequest.Id);
@@ -1326,7 +1219,7 @@ namespace NodeGuard.Services
                     //We mark it as closed as it no longer exists
                     if (channelOperationRequest.ChannelId != null)
                     {
-                        var channel = await _channelRepository.GetById((int) channelOperationRequest.ChannelId);
+                        var channel = await _channelRepository.GetById((int)channelOperationRequest.ChannelId);
                         if (channel != null)
                         {
                             channel.Status = Channel.ChannelStatus.Closed;
@@ -1410,26 +1303,7 @@ namespace NodeGuard.Services
             }
 
 
-            var client = CreateLightningClient(node.Endpoint);
-            try
-            {
-                if (node.ChannelAdminMacaroon != null)
-                {
-                    var nodeInfo = await client.Execute(x => x.GetNodeInfoAsync(new NodeInfoRequest
-                    {
-                        PubKey = pubkey,
-                        IncludeChannels = false
-                    }, new Metadata {{"macaroon", node.ChannelAdminMacaroon}}, null, default));
-
-                    result = nodeInfo?.Node;
-                }
-            }
-            catch (Exception e)
-            {
-                _logger.LogError(e, "Error while obtaining node info for node with pubkey: {PubKey}", pubkey);
-            }
-
-            return result;
+            return await _lightningClientService.GetNodeInfo(node, pubkey);
         }
 
         public async Task<Dictionary<ulong, (int, long, long)>> GetChannelsBalance()
@@ -1439,12 +1313,12 @@ namespace NodeGuard.Services
             var result = new Dictionary<ulong, (int, long, long)>();
             foreach (var node in nodes)
             {
-                var client = CreateLightningClient(node.Endpoint);
-                var listChannelsResponse = client.Execute(x => x.ListChannels(new ListChannelsRequest(),
+                var client = _lightningClientService.GetLightningClient(node.Endpoint);
+                var listChannelsResponse = client.ListChannels(new ListChannelsRequest(),
                     new Metadata
                     {
-                        {"macaroon", node.ChannelAdminMacaroon}
-                    }, null, default));
+                        { "macaroon", node.ChannelAdminMacaroon }
+                    });
 
                 var channels = listChannelsResponse.Channels.ToList();
 
@@ -1461,7 +1335,6 @@ namespace NodeGuard.Services
                         (nodeguardManagedNodeId, channel.LocalBalance + htlcsLocal, channel.RemoteBalance + htlcsRemote));
                 }
             }
-
 
             return result;
         }

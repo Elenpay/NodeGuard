@@ -1,12 +1,29 @@
+/*
+ * NodeGuard
+ * Copyright (C) 2023  Elenpay
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU Affero General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU Affero General Public License for more details.
+ *
+ * You should have received a copy of the GNU Affero General Public License
+ * along with this program.  If not, see http://www.gnu.org/licenses/.
+ *
+ */
+
 using FluentAssertions;
 using NodeGuard.Data;
 using NodeGuard.Data.Models;
 using NodeGuard.Helpers;
 using NodeGuard.Jobs;
 using NodeGuard.Services;
-using NodeGuard.TestHelpers;
 using Google.Protobuf;
-using Grpc.Core;
 using Lnrpc;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
@@ -24,7 +41,7 @@ public class ChannelMonitorJobTests
         var options = new DbContextOptionsBuilder<ApplicationDbContext>()
             .UseInMemoryDatabase(databaseName: "ChannelOperationRequestRepositoryTests" + _random.Next())
             .Options;
-        var context = ()=> new ApplicationDbContext(options);
+        var context = () => new ApplicationDbContext(options);
         dbContextFactory.Setup(x => x.CreateDbContext()).Returns(context);
         dbContextFactory.Setup(x => x.CreateDbContextAsync(default)).ReturnsAsync(context);
         return dbContextFactory;
@@ -90,11 +107,13 @@ public class ChannelMonitorJobTests
         var dbContextFactory = SetupDbContextFactory();
         var context = await dbContextFactory.Object.CreateDbContextAsync();
         //Mock lightning client with iunmockable methods
-        var channelPoint = new ChannelPoint{ FundingTxidBytes = ByteString.CopyFrom(Convert.FromHexString("a2dffe0545ae0ce9091949477a9a7d91bb9478eb054fd9fa142e73562287ca4e").Reverse().ToArray()), OutputIndex = 1};
+        var channelPoint = new ChannelPoint { FundingTxidBytes = ByteString.CopyFrom(Convert.FromHexString("a2dffe0545ae0ce9091949477a9a7d91bb9478eb054fd9fa142e73562287ca4e").Reverse().ToArray()), OutputIndex = 1 };
 
         var listChannelsResponse = new ListChannelsResponse
         {
-            Channels = {new Lnrpc.Channel
+            Channels =
+            {
+                new Lnrpc.Channel
                 {
                     Active = true,
                     RemotePubkey = "03b48034270e522e4033afdbe43383d66d426638927b940d09a8a7a0de4d96e807",
@@ -108,18 +127,12 @@ public class ChannelMonitorJobTests
             }
         };
 
-        var lightningClient = Interceptor.For<Lightning.LightningClient>()
-            .Setup(x => x.ListChannelsAsync(
-                Arg.Ignore<ListChannelsRequest>(),
-                Arg.Ignore<Metadata>(),
-                null,
-                Arg.Ignore<CancellationToken>()
-            ))
-            .Returns(MockHelpers.CreateAsyncUnaryCall(listChannelsResponse));
-        var originalLightningClient = LightningService.CreateLightningClient;
-        LightningService.CreateLightningClient = (_) => lightningClient;
+        var lightningClientService = new Mock<ILightningClientService>() { CallBase = true };
+        lightningClientService.Setup(x => x.ListChannels(It.IsAny<Node>(), It.IsAny<Lightning.LightningClient>())).ReturnsAsync(listChannelsResponse);
 
-        var channelMonitorJob = new ChannelMonitorJob(logger.Object, dbContextFactory.Object, null, null, null);
+        var lightningService = new LightningService(null, null, null, null, null, null, null, null, null, lightningClientService.Object);
+
+        var channelMonitorJob = new ChannelMonitorJob(logger.Object, dbContextFactory.Object, null, lightningService, lightningClientService.Object);
 
         var source = new Node()
         {
@@ -136,7 +149,7 @@ public class ChannelMonitorJobTests
         {
             ChanId = 1,
             Initiator = true,
-            ChannelPoint =  "a2dffe0545ae0ce9091949477a9a7d91bb9478eb054fd9fa142e73562287ca4e:1"
+            ChannelPoint = "a2dffe0545ae0ce9091949477a9a7d91bb9478eb054fd9fa142e73562287ca4e:1"
         };
 
         // Act
@@ -147,7 +160,6 @@ public class ChannelMonitorJobTests
         createdChannel.SourceNodeId.Should().Be(source.Id);
         createdChannel.DestinationNodeId.Should().Be(destination.Id);
         context.Channels.Count().Should().Be(1);
-        LightningService.CreateLightningClient = originalLightningClient;
     }
 
     [Fact]
@@ -178,18 +190,12 @@ public class ChannelMonitorJobTests
             }
         };
 
-        var lightningClient = Interceptor.For<Lightning.LightningClient>()
-            .Setup(x => x.ListChannelsAsync(
-                Arg.Ignore<ListChannelsRequest>(),
-                Arg.Ignore<Metadata>(),
-                null,
-                Arg.Ignore<CancellationToken>()
-            ))
-            .Returns(MockHelpers.CreateAsyncUnaryCall(listChannelsResponse));
-        var originalLightningClient = LightningService.CreateLightningClient;
-        LightningService.CreateLightningClient = (_) => lightningClient;
+        var lightningClientService = new Mock<ILightningClientService>() { CallBase = true };
+        lightningClientService.Setup(x => x.ListChannels(It.IsAny<Node>(), It.IsAny<Lightning.LightningClient>())).ReturnsAsync(listChannelsResponse);
 
-        var channelMonitorJob = new ChannelMonitorJob(logger.Object, dbContextFactory.Object, null, null, null);
+        var lightningService = new LightningService(null, null, null, null, null, null, null, null, null, lightningClientService.Object);
+
+        var channelMonitorJob = new ChannelMonitorJob(logger.Object, dbContextFactory.Object, null, lightningService, lightningClientService.Object);
 
         var source = new Node()
         {
@@ -217,7 +223,6 @@ public class ChannelMonitorJobTests
         createdChannel.SourceNodeId.Should().Be(destination.Id);
         createdChannel.DestinationNodeId.Should().Be(source.Id);
         context.Channels.Count().Should().Be(1);
-        LightningService.CreateLightningClient = originalLightningClient;
     }
 
     [Fact]
