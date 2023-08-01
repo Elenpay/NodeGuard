@@ -115,11 +115,6 @@ public class ChannelMonitorJob : IJob
                 OutputIndex = Convert.ToUInt32(outputIndex)
             };
 
-            if (!channel.Initiator)
-            {
-                source = node2;
-                destination = node1;
-            }
             var createdChannel = await LightningService.CreateChannel(source, destination.Id, parsedChannelPoint, channel.Capacity, channel.CloseAddress);
             createdChannel.CreatedByNodeGuard = false;
 
