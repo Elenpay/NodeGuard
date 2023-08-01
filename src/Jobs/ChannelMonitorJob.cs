@@ -93,8 +93,10 @@ public class ChannelMonitorJob : IJob
         _logger.LogInformation("{JobName} ended", nameof(ChannelMonitorJob));
     }
 
-    public async Task RecoverGhostChannels(Node source, Node destination, Channel channel)
+    public async Task RecoverGhostChannels(Node node1, Node node2, Channel channel)
     {
+        var source = node1;
+        var destination = node2;
         if (!channel.Initiator && destination.IsManaged) return;
         try
         {
@@ -113,6 +115,11 @@ public class ChannelMonitorJob : IJob
                 OutputIndex = Convert.ToUInt32(outputIndex)
             };
 
+            if (!channel.Initiator)
+            {
+                source = node2;
+                destination = node1;
+            }
             var createdChannel = await LightningService.CreateChannel(source, destination.Id, parsedChannelPoint, channel.Capacity, channel.CloseAddress);
             createdChannel.CreatedByNodeGuard = false;
 

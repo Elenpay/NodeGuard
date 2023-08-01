@@ -226,7 +226,7 @@ namespace NodeGuard.Services
                     throw new InvalidOperationException();
                 }
 
-                var feeRate = await _nbXplorerService.GetFeesByType(channelOperationRequest.MempoolRecommendedFeesTypes) ?? channelOperationRequest.FeeRate;;
+                var feeRate = await _nbXplorerService.GetFeesByType(channelOperationRequest.MempoolRecommendedFeesTypes) ?? channelOperationRequest.FeeRate;
                 var initialFeeRate = feeRate ??
                                      (await LightningHelper.GetFeeRateResult(network, _nbXplorerService)).FeeRate
                                      .SatoshiPerByte;
