@@ -93,10 +93,8 @@ public class ChannelMonitorJob : IJob
         _logger.LogInformation("{JobName} ended", nameof(ChannelMonitorJob));
     }
 
-    public async Task RecoverGhostChannels(Node node1, Node node2, Channel channel)
+    public async Task RecoverGhostChannels(Node source, Node destination, Channel channel)
     {
-        var source = node1;
-        var destination = node2;
         if (!channel.Initiator && destination.IsManaged) return;
         try
         {
