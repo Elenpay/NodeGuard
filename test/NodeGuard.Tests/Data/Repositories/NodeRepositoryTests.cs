@@ -31,8 +31,9 @@ public class NodeRepositoryTests
         var lightningServiceMock = new Mock<ILightningService>();
         var repositoryMock = new Mock<IRepository<Node>>();
 
+        var node = new LightningNode() { Alias = "TestAlias", PubKey = "TestPubKey" };
         lightningServiceMock.Setup(service => service.GetNodeInfo(It.IsAny<string>()))
-            .ReturnsAsync(new LightningNode() { Alias = "TestAlias", PubKey = "TestPubKey" });
+            .ReturnsAsync(node);
 
         repositoryMock.Setup(repository => repository.AddAsync(It.IsAny<Node>(), It.IsAny<ApplicationDbContext>()))
             .ReturnsAsync((true, null));
@@ -40,7 +41,7 @@ public class NodeRepositoryTests
         var nodeRepository = new NodeRepository(repositoryMock.Object, null, dbContextFactory.Object, null);
 
         // Act
-        var result = await nodeRepository.GetOrCreateByPubKey("abc", lightningServiceMock.Object);
+        var result = await nodeRepository.GetOrCreateByPubKey(node.PubKey, lightningServiceMock.Object);
 
         // Assert
         result.Name.Should().Be("TestAlias");

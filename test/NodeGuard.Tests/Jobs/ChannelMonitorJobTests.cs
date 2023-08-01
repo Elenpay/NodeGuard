@@ -31,7 +31,7 @@ public class ChannelMonitorJobTests
     }
 
     [Fact]
-    public async Task RecoverGhostChannels_ChannelIsNotInitiator()
+    public async Task RecoverGhostChannels_ChannelIsNotInitiatorButManaged()
     {
         // Arrange
         var dbContextFactory = SetupDbContextFactory();
@@ -41,13 +41,13 @@ public class ChannelMonitorJobTests
         {
             Initiator = false
         };
+        var destination = new Node() { Endpoint = "abc" };
         // Act
-        var act = () => channelMonitorJob.RecoverGhostChannels(null, null, channel);
+        var act = () => channelMonitorJob.RecoverGhostChannels(null, destination, channel);
 
         // Assert
         await act.Should().NotThrowAsync();
         dbContextFactory.Invocations.Count.Should().Be(0);
-
     }
 
     [Fact]
@@ -80,8 +80,10 @@ public class ChannelMonitorJobTests
         dbContextFactory.Invocations.Count.Should().Be(2);
     }
 
-    [Fact]
-    public async Task RecoverGhostChannels_CreatesChannel()
+    [Theory]
+    [InlineData("locahost")]
+    [InlineData(null)]
+    public async Task RecoverGhostChannels_CreatesChannel(string? endpoint)
     {
         // Arrange
         var logger = new Mock<ILogger<ChannelMonitorJob>>();
@@ -100,7 +102,8 @@ public class ChannelMonitorJobTests
                     ChanId = 123,
                     Capacity = 1000,
                     LocalBalance = 100,
-                    RemoteBalance = 900
+                    RemoteBalance = 900,
+                    Initiator = true
                 }
             }
         };
@@ -120,10 +123,15 @@ public class ChannelMonitorJobTests
 
         var source = new Node()
         {
+            Id = 1,
             Endpoint = "localhost",
             ChannelAdminMacaroon = "abc"
         };
-        var destination = new Node();
+        var destination = new Node()
+        {
+            Id = 2,
+            Endpoint = endpoint
+        };
         var channel = new Lnrpc.Channel()
         {
             ChanId = 1,
@@ -135,6 +143,79 @@ public class ChannelMonitorJobTests
         await channelMonitorJob.RecoverGhostChannels(source, destination, channel);
 
         // Assert
+        var createdChannel = await context.Channels.FirstAsync();
+        createdChannel.SourceNodeId.Should().Be(source.Id);
+        createdChannel.DestinationNodeId.Should().Be(destination.Id);
+        context.Channels.Count().Should().Be(1);
+        LightningService.CreateLightningClient = originalLightningClient;
+    }
+
+    [Fact]
+    public async Task RecoverGhostChannels_CreatesChannelNotInitiator()
+    {
+        // Arrange
+        var logger = new Mock<ILogger<ChannelMonitorJob>>();
+        var dbContextFactory = SetupDbContextFactory();
+        var context = await dbContextFactory.Object.CreateDbContextAsync();
+        //Mock lightning client with iunmockable methods
+        var channelPoint = new ChannelPoint { FundingTxidBytes = ByteString.CopyFrom(Convert.FromHexString("a2dffe0545ae0ce9091949477a9a7d91bb9478eb054fd9fa142e73562287ca4e").Reverse().ToArray()), OutputIndex = 1 };
+
+        var listChannelsResponse = new ListChannelsResponse
+        {
+            Channels =
+            {
+                new Lnrpc.Channel
+                {
+                    Active = true,
+                    RemotePubkey = "03b48034270e522e4033afdbe43383d66d426638927b940d09a8a7a0de4d96e807",
+                    ChannelPoint = $"{LightningHelper.DecodeTxId(channelPoint.FundingTxidBytes)}:{channelPoint.OutputIndex}",
+                    ChanId = 123,
+                    Capacity = 1000,
+                    LocalBalance = 100,
+                    RemoteBalance = 900,
+                    Initiator = false
+                }
+            }
+        };
+
+        var lightningClient = Interceptor.For<Lightning.LightningClient>()
+            .Setup(x => x.ListChannelsAsync(
+                Arg.Ignore<ListChannelsRequest>(),
+                Arg.Ignore<Metadata>(),
+                null,
+                Arg.Ignore<CancellationToken>()
+            ))
+            .Returns(MockHelpers.CreateAsyncUnaryCall(listChannelsResponse));
+        var originalLightningClient = LightningService.CreateLightningClient;
+        LightningService.CreateLightningClient = (_) => lightningClient;
+
+        var channelMonitorJob = new ChannelMonitorJob(logger.Object, dbContextFactory.Object, null, null, null);
+
+        var source = new Node()
+        {
+            Id = 1,
+            Endpoint = "localhost",
+            ChannelAdminMacaroon = "abc"
+        };
+        var destination = new Node()
+        {
+            Id = 2,
+            Endpoint = null,
+        };
+        var channel = new Lnrpc.Channel()
+        {
+            ChanId = 1,
+            Initiator = false,
+            ChannelPoint = "a2dffe0545ae0ce9091949477a9a7d91bb9478eb054fd9fa142e73562287ca4e:1"
+        };
+
+        // Act
+        await channelMonitorJob.RecoverGhostChannels(source, destination, channel);
+
+        // Assert
+        var createdChannel = await context.Channels.FirstAsync();
+        createdChannel.SourceNodeId.Should().Be(destination.Id);
+        createdChannel.DestinationNodeId.Should().Be(source.Id);
         context.Channels.Count().Should().Be(1);
         LightningService.CreateLightningClient = originalLightningClient;
     }

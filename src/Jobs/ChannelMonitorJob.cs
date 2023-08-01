@@ -86,16 +86,16 @@ public class ChannelMonitorJob : IJob
         }
         catch (Exception e)
         {
-            _logger.LogError(e, "Error while subscribing for the channel updates of node {NodeId}", nodeId);
-            throw new JobExecutionException(e, true);
+            _logger.LogError(e, "Error while trying to monitor channels of node {NodeId}", nodeId);
+            throw new JobExecutionException(e, false);
         }
 
         _logger.LogInformation("{JobName} ended", nameof(ChannelMonitorJob));
     }
 
-    public async Task RecoverGhostChannels(Node source, Node destination, Channel? channel)
+    public async Task RecoverGhostChannels(Node source, Node destination, Channel channel)
     {
-        if (!channel.Initiator) return;
+        if (!channel.Initiator && destination.IsManaged) return;
         try
         {
             await using var dbContext = await _dbContextFactory.CreateDbContextAsync();
@@ -114,6 +114,7 @@ public class ChannelMonitorJob : IJob
             };
 
             var createdChannel = await LightningService.CreateChannel(source, destination.Id, parsedChannelPoint, channel.Capacity, channel.CloseAddress);
+            createdChannel.CreatedByNodeGuard = false;
 
             await dbContext.Channels.AddAsync(createdChannel);
             await dbContext.SaveChangesAsync();
@@ -121,7 +122,6 @@ public class ChannelMonitorJob : IJob
         catch (Exception e)
         {
             _logger.LogError(e, "Error while recovering ghost channel, {SourceNodeId}, {ChannelId}: {Error}", source.Id, channel?.ChanId, e);
-            throw new JobExecutionException(e, true);
         }
     }
 
@@ -149,7 +149,6 @@ public class ChannelMonitorJob : IJob
         catch (Exception e)
         {
             _logger.LogError(e, "Error while recovering channel in OnChainConfirmationPending status, {SourceNodeId}: {Error}", source.Id, e);
-            throw new JobExecutionException(e, true);
         }
     }
 }

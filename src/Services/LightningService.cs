@@ -226,7 +226,7 @@ namespace NodeGuard.Services
                     throw new InvalidOperationException();
                 }
 
-                var feeRate = await _nbXplorerService.GetFeesByType(channelOperationRequest.MempoolRecommendedFeesTypes) ?? channelOperationRequest.FeeRate;;
+                var feeRate = await _nbXplorerService.GetFeesByType(channelOperationRequest.MempoolRecommendedFeesTypes) ?? channelOperationRequest.FeeRate;
                 var initialFeeRate = feeRate ??
                                      (await LightningHelper.GetFeeRateResult(network, _nbXplorerService)).FeeRate
                                      .SatoshiPerByte;
@@ -692,6 +692,14 @@ namespace NodeGuard.Services
                 throw new InvalidOperationException($"Error, channel not found for channel point: {channelPoint}");
             }
 
+            var sourceNodeId = source.Id;
+            var destinationNodeId = destId;
+            if (!currentChannel.Initiator)
+            {
+                sourceNodeId = destId;
+                destinationNodeId = source.Id;
+            }
+
             var channel = new Channel
             {
                 ChanId = currentChannel.ChanId,
@@ -702,8 +710,8 @@ namespace NodeGuard.Services
                 SatsAmount = satsAmount,
                 UpdateDatetime = DateTimeOffset.Now,
                 Status = Channel.ChannelStatus.Open,
-                SourceNodeId = source.Id,
-                DestinationNodeId = destId,
+                SourceNodeId = sourceNodeId,
+                DestinationNodeId = destinationNodeId,
                 CreatedByNodeGuard = true,
                 IsPrivate = currentChannel.Private
             };
