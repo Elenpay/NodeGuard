@@ -80,16 +80,13 @@
                             <ValidationError/>
                         </Addons>
                <FieldHelp>
-                    @{
-                        if (_selectedDestNode == null)
-                        {
-                            @("Node Not found");
-                        }
-                        else
-                        {
+                    @if(_selectedDestNode == null)
+                    {
+                         <span>Node not found</span>
+                    }
+                    else
+                    {
                             @($"Found Node: {(string.IsNullOrEmpty(_selectedDestNode.Name) ? StringHelper.TruncateHeadAndTail(_selectedDestNode.PubKey, 5) : _selectedDestNode.Name)}");
-  
-                        }
                     }
                 </FieldHelp>
              </Validation>
@@ -275,7 +272,7 @@
         <DataGridColumn TItem="ChannelOperationRequest" Field="DestNode.Name" Caption="Remote Node" Sortable="false" Displayable="true">
             <DisplayTemplate>
                 @{
-                    string remoteNodeName = context.DestNode.Name;
+                    var remoteNodeName = context.DestNode.Name;
                     if (string.IsNullOrEmpty(remoteNodeName))
                     {
                         @($"{StringHelper.TruncateHeadAndTail(context.DestNode.PubKey, 5)}")
