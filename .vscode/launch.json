@@ -10,7 +10,7 @@
             "request": "launch",
             "preLaunchTask": "build",
             // If you have changed target frameworks, make sure to update the program path.
-            "program": "${workspaceFolder}/src/bin/Debug/net6.0/FundsManager.dll",
+            "program": "${workspaceFolder}/src/bin/Debug/net7.0/NodeGuard.dll",
             "args": [],
             "cwd": "${workspaceFolder}/src",
             "stopAtEntry": false,
@@ -41,7 +41,7 @@
             "request": "launch",
             "preLaunchTask": "build",
             // If you have changed target frameworks, make sure to update the program path.
-            "program": "${workspaceFolder}/src/bin/Debug/net6.0/FundsManager.dll",
+            "program": "${workspaceFolder}/src/bin/Debug/net7.0/NodeGuard.dll",
             "launchSettingsFilePath": "${workspaceFolder}/src/Properties/launchSettings.json",
             "launchSettingsProfile": "NodeGuard local debug",
             "cwd": "${workspaceFolder}/src",
