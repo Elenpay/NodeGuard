@@ -7,6 +7,7 @@
 @using NodeGuard.Jobs
 @using Google.Protobuf
 @using NBXplorer.Models
+@using NodeGuard.Helpers;
 @attribute [Authorize(Roles = "FinanceManager, Superadmin, NodeManager")]
 
 <PageTitle>Channel Operation Requests</PageTitle>
@@ -78,9 +79,18 @@
                             </Addon>
                             <ValidationError/>
                         </Addons>
-                        <FieldHelp>@(_selectedDestNode == null ? "Node Not found" : $"Found Node: {_selectedDestNode.Name}") </FieldHelp>
-                    </Validation>
-                </EditTemplate>
+               <FieldHelp>
+                    @if(_selectedDestNode == null)
+                    {
+                         <span>Node not found</span>
+                    }
+                    else
+                    {
+                            @($"Found Node: {(string.IsNullOrEmpty(_selectedDestNode.Name) ? StringHelper.TruncateHeadAndTail(_selectedDestNode.PubKey, 5) : _selectedDestNode.Name)}");
+                    }
+                </FieldHelp>
+             </Validation>
+            </EditTemplate>
             </DataGridColumn>
             <DataGridColumn TItem="ChannelOperationRequest" Field="Wallet.Name" Caption="Source of Funds" Sortable="false" Displayable="@IsPendingRequestsColumnVisible(PendingChannelsColumnName.SourceOfFunds)" PopupFieldColumnSize="ColumnSize.Is12" Editable="true">
                 <DisplayTemplate>
@@ -259,7 +269,21 @@
     <ChildContent>
         <DataGridColumn TItem="ChannelOperationRequest" Field="@nameof(ChannelOperationRequest.Id)" Caption="#" Sortable="false" Displayable="true"/>
         <DataGridColumn TItem="ChannelOperationRequest" Field="SourceNode.Name" Caption="Source Node" Sortable="false" Displayable="@IsAllRequestsColumnVisible(AllChannelsColumnName.SourceNode)"/>
-        <DataGridColumn TItem="ChannelOperationRequest" Field="DestNode.Name" Caption="Remote Node" Sortable="false" Displayable="@IsAllRequestsColumnVisible(AllChannelsColumnName.RemoteNode)"/>
+        <DataGridColumn TItem="ChannelOperationRequest" Field="DestNode.Name" Caption="Remote Node" Sortable="false" Displayable="true">
+            <DisplayTemplate>
+                @{
+                    var remoteNodeName = context.DestNode.Name;
+                    if (string.IsNullOrEmpty(remoteNodeName))
+                    {
+                        @($"{StringHelper.TruncateHeadAndTail(context.DestNode.PubKey, 5)}")
+                    }
+                    else
+                    {
+                        @(remoteNodeName)
+                    }
+                 }
+            </DisplayTemplate>
+        </DataGridColumn>
         <DataGridColumn TItem="ChannelOperationRequest" Field="Wallet.Name" Caption="Source of Funds" Sortable="false" Displayable="@IsAllRequestsColumnVisible(AllChannelsColumnName.SourceOfFunds)"/>
         <DataGridColumn TItem="ChannelOperationRequest" Field="@nameof(ChannelOperationRequest.Amount)" Caption="Capacity" Sortable="false" Displayable="@IsAllRequestsColumnVisible(AllChannelsColumnName.Capacity)">
             <DisplayTemplate>
