@@ -30,7 +30,6 @@ using Google.Protobuf;
 using Lnrpc;
 using NBitcoin;
 using NBXplorer.DerivationStrategy;
-using Grpc.Core;
 using Microsoft.EntityFrameworkCore;
 using Channel = NodeGuard.Data.Models.Channel;
 
@@ -84,7 +83,7 @@ namespace NodeGuard.Services
                 .ReturnsAsync(null as ChannelOperationRequest);
 
             var lightningService = new LightningService(_logger, channelOperationRequestRepository.Object, null,
-                dbContextFactory.Object, null, null, null, new Mock<INBXplorerService>().Object, null);
+                dbContextFactory.Object, null, null, null, new Mock<INBXplorerService>().Object, null, null);
 
             var operationRequest = new ChannelOperationRequest
             {
@@ -356,29 +355,6 @@ namespace NodeGuard.Services
         }
 
         [Fact]
-        public async Task CreateLightningClient_EndpointIsNull()
-        {
-            // Act
-            var act = () => LightningService.CreateLightningClient(null);
-
-            // Assert
-            act
-                .Should()
-                .Throw<ArgumentException>()
-                .WithMessage("Endpoint cannot be null");
-        }
-
-        [Fact]
-        public void CreateLightningClient_ReturnsLightningClient()
-        {
-            // Act
-            var result = LightningService.CreateLightningClient("10.0.0.1");
-
-            // Assert
-            result.Should().NotBeNull();
-        }
-
-        [Fact]
         public async Task OpenChannel_SuccessLegacyMultiSig()
         {
             // Arrange
@@ -433,40 +409,25 @@ namespace NodeGuard.Services
                 .Setup(x => x.GetAllManagedByNodeGuard())
                 .Returns(Task.FromResult(nodes));
 
-            var lightningClient = Interceptor.For<Lightning.LightningClient>()
-                .Setup(x => x.GetNodeInfoAsync(
-                    Arg.Ignore<NodeInfoRequest>(),
-                    Arg.Ignore<Metadata>(),
-                    null,
-                    Arg.Ignore<CancellationToken>()
-                ))
-                .Returns(MockHelpers.CreateAsyncUnaryCall(
-                    new NodeInfo()
+            var lightningClientService = new Mock<ILightningClientService>();
+            lightningClientService.Setup(x => x.GetNodeInfo(It.IsAny<Node>(), It.IsAny<string>(), It.IsAny<Lightning.LightningClient>())).ReturnsAsync(
+                new LightningNode()
+                {
+                    Addresses =
                     {
-                        Node = new LightningNode()
+                        new NodeAddress()
                         {
-                            Addresses =
-                            {
-                                new NodeAddress()
-                                {
-                                    Network = "tcp",
-                                    Addr = "10.0.0.2"
-                                }
-                            }
+                            Network = "tcp",
+                            Addr = "10.0.0.2"
                         }
-                    }));
-
-            var originalCreateLightningClient = LightningService.CreateLightningClient;
-            LightningService.CreateLightningClient = (_) => lightningClient;
-
-            lightningClient
-                .Setup(x => x.ConnectPeerAsync(
-                    Arg.Ignore<ConnectPeerRequest>(),
-                    Arg.Ignore<Metadata>(),
-                    null,
-                    Arg.Ignore<CancellationToken>()
-                ))
-                .Returns(MockHelpers.CreateAsyncUnaryCall(new ConnectPeerResponse()));
+                    }
+                });
+            lightningClientService
+                .Setup(x => x.ConnectToPeer(
+                    It.IsAny<Node>(),
+                    It.IsAny<string>(),
+                    It.IsAny<Lightning.LightningClient>()
+                ));
 
             var noneUpdate = new OpenStatusUpdate();
             var chanPendingUpdate = new OpenStatusUpdate
@@ -494,12 +455,12 @@ namespace NodeGuard.Services
                     Psbt = ByteString.FromBase64(userSignedPSBT)
                 }
             };
-            lightningClient
+
+            lightningClientService
                 .Setup(x => x.OpenChannel(
-                    Arg.Ignore<OpenChannelRequest>(),
-                    Arg.Ignore<Metadata>(),
-                    null,
-                    Arg.Ignore<CancellationToken>()
+                    It.IsAny<Node>(),
+                    It.IsAny<OpenChannelRequest>(),
+                    It.IsAny<Lightning.LightningClient>()
                 ))
                 .Returns(MockHelpers.CreateAsyncServerStreamingCall(
                     new List<OpenStatusUpdate>()
@@ -535,22 +496,9 @@ namespace NodeGuard.Services
                 .Setup(x => x.AddAsync(It.IsAny<ChannelOperationRequestPSBT>()))
                 .ReturnsAsync((true, ""));
 
-            lightningClient
-                .Setup(x => x.FundingStateStep(
-                    Arg.Ignore<FundingTransitionMsg>(),
-                    Arg.Ignore<Metadata>(),
-                    null,
-                    default))
-                .Returns(new FundingStateStepResp());
-
-            lightningClient
-                .Setup(x => x.FundingStateStepAsync(
-                    Arg.Ignore<FundingTransitionMsg>(),
-                    Arg.Ignore<Metadata>(),
-                    null,
-                    default))
-                .Returns(MockHelpers.CreateAsyncUnaryCall(new FundingStateStepResp()));
-
+            lightningClientService.Setup(
+                x => x.FundingStateStepVerify(It.IsAny<Node>(), It.IsAny<PSBT>(), It.IsAny<byte[]>(), It.IsAny<Lightning.LightningClient>()));            lightningClientService.Setup(
+                x => x.FundingStateStepFinalize(It.IsAny<Node>(), It.IsAny<PSBT>(), It.IsAny<byte[]>(), It.IsAny<Lightning.LightningClient>()));
             // Mock channel repository
             var channelRepository = new Mock<IChannelRepository>();
 
@@ -577,13 +525,7 @@ namespace NodeGuard.Services
                 }
             };
 
-            lightningClient
-                .Setup(x => x.ListChannelsAsync(
-                    Arg.Ignore<ListChannelsRequest>(),
-                    Arg.Ignore<Metadata>(),
-                    null,
-                    default))
-                .Returns(MockHelpers.CreateAsyncUnaryCall(listChannelsResponse));
+            lightningClientService.Setup(x => x.ListChannels(It.IsAny<Node>(), It.IsAny<Lightning.LightningClient>())).ReturnsAsync(listChannelsResponse);
 
             var lightningService = new LightningService(_logger,
                 channelOperationRequestRepository.Object,
@@ -593,17 +535,14 @@ namespace NodeGuard.Services
                 channelRepository.Object,
                 null,
                 GetNBXplorerServiceFullyMocked(utxoChanges).Object,
-                null);
+                null,
+                lightningClientService.Object);
 
             // Act
             var act = async () => await lightningService.OpenChannel(operationRequest);
 
             // Assert
             await act.Should().NotThrowAsync();
-
-            //TODO Remove hack
-            // Cleanup
-            LightningService.CreateLightningClient = originalCreateLightningClient;
         }
 
         [Fact]
@@ -661,40 +600,32 @@ namespace NodeGuard.Services
                 .Setup(x => x.GetAllManagedByNodeGuard())
                 .Returns(Task.FromResult(nodes));
 
-            var lightningClient = Interceptor.For<Lightning.LightningClient>()
-                .Setup(x => x.GetNodeInfoAsync(
-                    Arg.Ignore<NodeInfoRequest>(),
-                    Arg.Ignore<Metadata>(),
-                    null,
-                    Arg.Ignore<CancellationToken>()
+            var lightningClient = new Mock<ILightningClientService>();
+            lightningClient
+                .Setup(x => x.GetNodeInfo(
+                    It.IsAny<Node>(),
+                    It.IsAny<string>(),
+                    It.IsAny<Lightning.LightningClient>()
                 ))
-                .Returns(MockHelpers.CreateAsyncUnaryCall(
-                    new NodeInfo()
+                .ReturnsAsync(
+                    new LightningNode()
                     {
-                        Node = new LightningNode()
+                        Addresses =
                         {
-                            Addresses =
+                            new NodeAddress()
                             {
-                                new NodeAddress()
-                                {
-                                    Network = "tcp",
-                                    Addr = "10.0.0.2"
-                                }
+                                Network = "tcp",
+                                Addr = "10.0.0.2"
                             }
                         }
-                    }));
-
-            var originalCreateLightningClient = LightningService.CreateLightningClient;
-            LightningService.CreateLightningClient = (_) => lightningClient;
+                    });
 
             lightningClient
-                .Setup(x => x.ConnectPeerAsync(
-                    Arg.Ignore<ConnectPeerRequest>(),
-                    Arg.Ignore<Metadata>(),
-                    null,
-                    Arg.Ignore<CancellationToken>()
-                ))
-                .Returns(MockHelpers.CreateAsyncUnaryCall(new ConnectPeerResponse()));
+                .Setup(x => x.ConnectToPeer(
+                    It.IsAny<Node>(),
+                    It.IsAny<string>(),
+                    It.IsAny<Lightning.LightningClient>()
+                ));
 
             var noneUpdate = new OpenStatusUpdate();
             var chanPendingUpdate = new OpenStatusUpdate
@@ -724,10 +655,9 @@ namespace NodeGuard.Services
             };
             lightningClient
                 .Setup(x => x.OpenChannel(
-                    Arg.Ignore<OpenChannelRequest>(),
-                    Arg.Ignore<Metadata>(),
-                    null,
-                    Arg.Ignore<CancellationToken>()
+                    It.IsAny<Node>(),
+                    It.IsAny<OpenChannelRequest>(),
+                    It.IsAny<Lightning.LightningClient>()
                 ))
                 .Returns(MockHelpers.CreateAsyncServerStreamingCall(
                     new List<OpenStatusUpdate>()
@@ -764,20 +694,18 @@ namespace NodeGuard.Services
                 .ReturnsAsync((true, ""));
 
             lightningClient
-                .Setup(x => x.FundingStateStep(
-                    Arg.Ignore<FundingTransitionMsg>(),
-                    Arg.Ignore<Metadata>(),
-                    null,
-                    default))
-                .Returns(new FundingStateStepResp());
-
-            lightningClient
-                .Setup(x => x.FundingStateStepAsync(
-                    Arg.Ignore<FundingTransitionMsg>(),
-                    Arg.Ignore<Metadata>(),
-                    null,
-                    default))
-                .Returns(MockHelpers.CreateAsyncUnaryCall(new FundingStateStepResp()));
+                .Setup(x => x.FundingStateStepVerify(
+                    It.IsAny<Node>(),
+                    It.IsAny<PSBT>(),
+                    It.IsAny<byte[]>(),
+                    It.IsAny<Lightning.LightningClient>()
+                ));            lightningClient
+                .Setup(x => x.FundingStateStepFinalize(
+                    It.IsAny<Node>(),
+                    It.IsAny<PSBT>(),
+                    It.IsAny<byte[]>(),
+                    It.IsAny<Lightning.LightningClient>()
+                ));
 
             // Mock channel repository
             var channelRepository = new Mock<IChannelRepository>();
@@ -806,12 +734,10 @@ namespace NodeGuard.Services
             };
 
             lightningClient
-                .Setup(x => x.ListChannelsAsync(
-                    Arg.Ignore<ListChannelsRequest>(),
-                    Arg.Ignore<Metadata>(),
-                    null,
-                    default))
-                .Returns(MockHelpers.CreateAsyncUnaryCall(listChannelsResponse));
+                .Setup(x => x.ListChannels(
+                    It.IsAny<Node>(),
+                    It.IsAny<Lightning.LightningClient>()))
+                .ReturnsAsync(listChannelsResponse);
 
             var lightningService = new LightningService(_logger,
                 channelOperationRequestRepository.Object,
@@ -821,16 +747,14 @@ namespace NodeGuard.Services
                 channelRepository.Object,
                 null,
                 GetNBXplorerServiceFullyMocked(utxoChanges).Object,
-                null);
+                null,
+                lightningClient.Object);
 
             // Act
             var act = async () => await lightningService.OpenChannel(operationRequest);
 
             // Assert
             await act.Should().NotThrowAsync();
-
-            //TODO Remove hack
-            LightningService.CreateLightningClient = originalCreateLightningClient;
         }
 
         [Fact]
@@ -889,40 +813,33 @@ namespace NodeGuard.Services
                 .Setup(x => x.GetAllManagedByNodeGuard())
                 .Returns(Task.FromResult(nodes));
 
-            var lightningClient = Interceptor.For<Lightning.LightningClient>()
-                .Setup(x => x.GetNodeInfoAsync(
-                    Arg.Ignore<NodeInfoRequest>(),
-                    Arg.Ignore<Metadata>(),
-                    null,
-                    Arg.Ignore<CancellationToken>()
+            var lightningClient = new Mock<ILightningClientService>();
+            lightningClient
+                .Setup(x => x.GetNodeInfo(
+                    It.IsAny<Node>(),
+                    It.IsAny<string>(),
+                    It.IsAny<Lightning.LightningClient>()
                 ))
-                .Returns(MockHelpers.CreateAsyncUnaryCall(
-                    new NodeInfo()
+                .ReturnsAsync(
+                    new LightningNode()
                     {
-                        Node = new LightningNode()
+                        Addresses =
                         {
-                            Addresses =
+                            new NodeAddress()
                             {
-                                new NodeAddress()
-                                {
-                                    Network = "tcp",
-                                    Addr = "10.0.0.2"
-                                }
+                                Network = "tcp",
+                                Addr = "10.0.0.2"
                             }
                         }
-                    }));
-
-            var originalCreateLightningClient = LightningService.CreateLightningClient;
-            LightningService.CreateLightningClient = (_) => lightningClient;
+                    }
+                );
 
             lightningClient
-                .Setup(x => x.ConnectPeerAsync(
-                    Arg.Ignore<ConnectPeerRequest>(),
-                    Arg.Ignore<Metadata>(),
-                    null,
-                    Arg.Ignore<CancellationToken>()
-                ))
-                .Returns(MockHelpers.CreateAsyncUnaryCall(new ConnectPeerResponse()));
+                .Setup(x => x.ConnectToPeer(
+                    It.IsAny<Node>(),
+                    It.IsAny<string>(),
+                    It.IsAny<Lightning.LightningClient>()
+                ));
 
             var noneUpdate = new OpenStatusUpdate();
             var chanPendingUpdate = new OpenStatusUpdate
@@ -952,10 +869,9 @@ namespace NodeGuard.Services
             };
             lightningClient
                 .Setup(x => x.OpenChannel(
-                    Arg.Ignore<OpenChannelRequest>(),
-                    Arg.Ignore<Metadata>(),
-                    null,
-                    Arg.Ignore<CancellationToken>()
+                    It.IsAny<Node>(),
+                    It.IsAny<OpenChannelRequest>(),
+                    It.IsAny<Lightning.LightningClient>()
                 ))
                 .Returns(MockHelpers.CreateAsyncServerStreamingCall(
                     new List<OpenStatusUpdate>()
@@ -992,20 +908,17 @@ namespace NodeGuard.Services
                 .ReturnsAsync((true, ""));
 
             lightningClient
-                .Setup(x => x.FundingStateStep(
-                    Arg.Ignore<FundingTransitionMsg>(),
-                    Arg.Ignore<Metadata>(),
-                    null,
-                    default))
-                .Returns(new FundingStateStepResp());
-
+                .Setup(x => x.FundingStateStepVerify(
+                    It.IsAny<Node>(),
+                    It.IsAny<PSBT>(),
+                    It.IsAny<byte[]>(),
+                    It.IsAny<Lightning.LightningClient>()));
             lightningClient
-                .Setup(x => x.FundingStateStepAsync(
-                    Arg.Ignore<FundingTransitionMsg>(),
-                    Arg.Ignore<Metadata>(),
-                    null,
-                    default))
-                .Returns(MockHelpers.CreateAsyncUnaryCall(new FundingStateStepResp()));
+                .Setup(x => x.FundingStateStepFinalize(
+                    It.IsAny<Node>(),
+                    It.IsAny<PSBT>(),
+                    It.IsAny<byte[]>(),
+                    It.IsAny<Lightning.LightningClient>()));
 
             // Mock channel repository
             var channelRepository = new Mock<IChannelRepository>();
@@ -1033,13 +946,7 @@ namespace NodeGuard.Services
                 }
             };
 
-            lightningClient
-                .Setup(x => x.ListChannelsAsync(
-                    Arg.Ignore<ListChannelsRequest>(),
-                    Arg.Ignore<Metadata>(),
-                    null,
-                    default))
-                .Returns(MockHelpers.CreateAsyncUnaryCall(listChannelsResponse));
+            lightningClient.Setup(x => x.ListChannels(It.IsAny<Node>(), It.IsAny<Lightning.LightningClient>())).ReturnsAsync(listChannelsResponse);
 
             var lightningService = new LightningService(_logger,
                 channelOperationRequestRepository.Object,
@@ -1049,16 +956,14 @@ namespace NodeGuard.Services
                 channelRepository.Object,
                 null,
                 GetNBXplorerServiceFullyMocked(utxoChanges).Object,
-                null);
+                null,
+                lightningClient.Object);
 
             // Act
             var act = async () => await lightningService.OpenChannel(operationRequest);
 
             // Assert
             await act.Should().NotThrowAsync();
-
-            //TODO Remove hack
-            LightningService.CreateLightningClient = originalCreateLightningClient;
         }
 
         /// <summary>
@@ -1127,40 +1032,32 @@ namespace NodeGuard.Services
                 .Setup(x => x.GetAllManagedByNodeGuard())
                 .Returns(Task.FromResult(nodes));
 
-            var lightningClient = Interceptor.For<Lightning.LightningClient>()
-                .Setup(x => x.GetNodeInfoAsync(
-                    Arg.Ignore<NodeInfoRequest>(),
-                    Arg.Ignore<Metadata>(),
-                    null,
-                    Arg.Ignore<CancellationToken>()
+            var lightningClient = new Mock<ILightningClientService>();
+            lightningClient
+                .Setup(x => x.GetNodeInfo(
+                    It.IsAny<Node>(),
+                    It.IsAny<string>(),
+                    It.IsAny<Lightning.LightningClient>()
                 ))
-                .Returns(MockHelpers.CreateAsyncUnaryCall(
-                    new NodeInfo()
+                .ReturnsAsync(
+                    new LightningNode()
                     {
-                        Node = new LightningNode()
+                        Addresses =
                         {
-                            Addresses =
+                            new NodeAddress()
                             {
-                                new NodeAddress()
-                                {
-                                    Network = "tcp",
-                                    Addr = "10.0.0.2"
-                                }
+                                Network = "tcp",
+                                Addr = "10.0.0.2"
                             }
                         }
-                    }));
-
-            var originalCreateLightningClient = LightningService.CreateLightningClient;
-            LightningService.CreateLightningClient = (_) => lightningClient;
+                    });
 
             lightningClient
-                .Setup(x => x.ConnectPeerAsync(
-                    Arg.Ignore<ConnectPeerRequest>(),
-                    Arg.Ignore<Metadata>(),
-                    null,
-                    Arg.Ignore<CancellationToken>()
-                ))
-                .Returns(MockHelpers.CreateAsyncUnaryCall(new ConnectPeerResponse()));
+                .Setup(x => x.ConnectToPeer(
+                    It.IsAny<Node>(),
+                    It.IsAny<string>(),
+                    It.IsAny<Lightning.LightningClient>()
+                ));
 
             var noneUpdate = new OpenStatusUpdate();
             var chanPendingUpdate = new OpenStatusUpdate
@@ -1190,10 +1087,9 @@ namespace NodeGuard.Services
             };
             lightningClient
                 .Setup(x => x.OpenChannel(
-                    Arg.Ignore<OpenChannelRequest>(),
-                    Arg.Ignore<Metadata>(),
-                    null,
-                    Arg.Ignore<CancellationToken>()
+                    It.IsAny<Node>(),
+                    It.IsAny<OpenChannelRequest>(),
+                    It.IsAny<Lightning.LightningClient>()
                 ))
                 .Returns(MockHelpers.CreateAsyncServerStreamingCall(
                     new List<OpenStatusUpdate>()
@@ -1230,20 +1126,19 @@ namespace NodeGuard.Services
                 .ReturnsAsync((true, ""));
 
             lightningClient
-                .Setup(x => x.FundingStateStep(
-                    Arg.Ignore<FundingTransitionMsg>(),
-                    Arg.Ignore<Metadata>(),
-                    null,
-                    default))
-                .Returns(new FundingStateStepResp());
-
+                .Setup(x => x.FundingStateStepVerify(
+                    It.IsAny<Node>(),
+                    It.IsAny<PSBT>(),
+                    It.IsAny<byte[]>(),
+                    It.IsAny<Lightning.LightningClient>()
+                ));
             lightningClient
-                .Setup(x => x.FundingStateStepAsync(
-                    Arg.Ignore<FundingTransitionMsg>(),
-                    Arg.Ignore<Metadata>(),
-                    null,
-                    default))
-                .Returns(MockHelpers.CreateAsyncUnaryCall(new FundingStateStepResp()));
+                .Setup(x => x.FundingStateStepFinalize(
+                    It.IsAny<Node>(),
+                    It.IsAny<PSBT>(),
+                    It.IsAny<byte[]>(),
+                    It.IsAny<Lightning.LightningClient>()
+                ));
 
             // Mock channel repository
             var channelRepository = new Mock<IChannelRepository>();
@@ -1271,13 +1166,8 @@ namespace NodeGuard.Services
                 }
             };
 
-            lightningClient
-                .Setup(x => x.ListChannelsAsync(
-                    Arg.Ignore<ListChannelsRequest>(),
-                    Arg.Ignore<Metadata>(),
-                    null,
-                    default))
-                .Returns(MockHelpers.CreateAsyncUnaryCall(listChannelsResponse));
+            var lightningClientService = new Mock<ILightningClientService>();
+            lightningClientService.Setup(x => x.ListChannels(It.IsAny<Node>(), It.IsAny<Lightning.LightningClient>())).ReturnsAsync(listChannelsResponse);
 
             var lightningService = new LightningService(_logger,
                 channelOperationRequestRepository.Object,
@@ -1287,16 +1177,14 @@ namespace NodeGuard.Services
                 channelRepository.Object,
                 null,
                 GetNBXplorerServiceFullyMocked(utxoChanges).Object,
-                null);
+                null,
+                lightningClientService.Object);
 
             // Act
             var act = async () => await lightningService.OpenChannel(operationRequest);
 
             // Assert
             await act.Should().ThrowAsync<InvalidOperationException>();
-
-            //TODO Remove hack
-            LightningService.CreateLightningClient = originalCreateLightningClient;
         }
 
         [Fact]
@@ -1354,40 +1242,32 @@ namespace NodeGuard.Services
                 .Setup(x => x.GetAllManagedByNodeGuard())
                 .Returns(Task.FromResult(nodes));
 
-            var lightningClient = Interceptor.For<Lightning.LightningClient>()
-                .Setup(x => x.GetNodeInfoAsync(
-                    Arg.Ignore<NodeInfoRequest>(),
-                    Arg.Ignore<Metadata>(),
-                    null,
-                    Arg.Ignore<CancellationToken>()
+            var lightningClient = new Mock<ILightningClientService>();
+            lightningClient
+                .Setup(x => x.GetNodeInfo(
+                    It.IsAny<Node>(),
+                    It.IsAny<string>(),
+                    It.IsAny<Lightning.LightningClient>()
                 ))
-                .Returns(MockHelpers.CreateAsyncUnaryCall(
-                    new NodeInfo()
+                .ReturnsAsync(
+                    new LightningNode()
                     {
-                        Node = new LightningNode()
+                        Addresses =
                         {
-                            Addresses =
+                            new NodeAddress()
                             {
-                                new NodeAddress()
-                                {
-                                    Network = "tcp",
-                                    Addr = "10.0.0.2"
-                                }
+                                Network = "tcp",
+                                Addr = "10.0.0.2"
                             }
                         }
-                    }));
-
-            var originalCreateLightningClient = LightningService.CreateLightningClient;
-            LightningService.CreateLightningClient = (_) => lightningClient;
+                    });
 
             lightningClient
-                .Setup(x => x.ConnectPeerAsync(
-                    Arg.Ignore<ConnectPeerRequest>(),
-                    Arg.Ignore<Metadata>(),
-                    null,
-                    Arg.Ignore<CancellationToken>()
-                ))
-                .Returns(MockHelpers.CreateAsyncUnaryCall(new ConnectPeerResponse()));
+                .Setup(x => x.ConnectToPeer(
+                    It.IsAny<Node>(),
+                    It.IsAny<string>(),
+                    It.IsAny<Lightning.LightningClient>()
+                ));
 
             var noneUpdate = new OpenStatusUpdate();
             var chanPendingUpdate = new OpenStatusUpdate
@@ -1417,10 +1297,9 @@ namespace NodeGuard.Services
             };
             lightningClient
                 .Setup(x => x.OpenChannel(
-                    Arg.Ignore<OpenChannelRequest>(),
-                    Arg.Ignore<Metadata>(),
-                    null,
-                    Arg.Ignore<CancellationToken>()
+                    It.IsAny<Node>(),
+                    It.IsAny<OpenChannelRequest>(),
+                    It.IsAny<Lightning.LightningClient>()
                 ))
                 .Returns(MockHelpers.CreateAsyncServerStreamingCall(
                     new List<OpenStatusUpdate>()
@@ -1457,20 +1336,19 @@ namespace NodeGuard.Services
                 .ReturnsAsync((true, ""));
 
             lightningClient
-                .Setup(x => x.FundingStateStep(
-                    Arg.Ignore<FundingTransitionMsg>(),
-                    Arg.Ignore<Metadata>(),
-                    null,
-                    default))
-                .Returns(new FundingStateStepResp());
-
+                .Setup(x => x.FundingStateStepVerify(
+                    It.IsAny<Node>(),
+                    It.IsAny<PSBT>(),
+                    It.IsAny<byte[]>(),
+                    It.IsAny<Lightning.LightningClient>()
+                ));
             lightningClient
-                .Setup(x => x.FundingStateStepAsync(
-                    Arg.Ignore<FundingTransitionMsg>(),
-                    Arg.Ignore<Metadata>(),
-                    null,
-                    default))
-                .Returns(MockHelpers.CreateAsyncUnaryCall(new FundingStateStepResp()));
+                .Setup(x => x.FundingStateStepFinalize(
+                    It.IsAny<Node>(),
+                    It.IsAny<PSBT>(),
+                    It.IsAny<byte[]>(),
+                    It.IsAny<Lightning.LightningClient>()
+                ));
 
             // Mock channel repository
             var channelRepository = new Mock<IChannelRepository>();
@@ -1499,12 +1377,10 @@ namespace NodeGuard.Services
             };
 
             lightningClient
-                .Setup(x => x.ListChannelsAsync(
-                    Arg.Ignore<ListChannelsRequest>(),
-                    Arg.Ignore<Metadata>(),
-                    null,
-                    default))
-                .Returns(MockHelpers.CreateAsyncUnaryCall(listChannelsResponse));
+                .Setup(x => x.ListChannels(
+                    It.IsAny<Node>(),
+                    It.IsAny<Lightning.LightningClient>()))
+                .ReturnsAsync(listChannelsResponse);
 
             var lightningService = new LightningService(_logger,
                 channelOperationRequestRepository.Object,
@@ -1514,16 +1390,14 @@ namespace NodeGuard.Services
                 channelRepository.Object,
                 null,
                 GetNBXplorerServiceFullyMocked(utxoChanges).Object,
-                null);
+                null,
+                lightningClient.Object);
 
             // Act
             var act = async () => await lightningService.OpenChannel(operationRequest);
 
             // Assert
             await act.Should().NotThrowAsync();
-
-            //TODO Remove hack
-            LightningService.CreateLightningClient = originalCreateLightningClient;
         }
 
         [Fact]
@@ -1577,22 +1451,16 @@ namespace NodeGuard.Services
                 }
             };
 
-            var lightningClient = Interceptor.For<Lightning.LightningClient>()
-                .Setup(x => x.CloseChannel(
-                    Arg.Ignore<CloseChannelRequest>(),
-                    Arg.Ignore<Metadata>(),
-                    null,
-                    Arg.Ignore<CancellationToken>()
-                ))
-                .Returns(MockHelpers.CreateAsyncServerStreamingCall(new List<CloseStatusUpdate>()
-                {
-                    noneUpdate,
-                    closePendingUpdate,
-                    chanCloseUpdate,
-                }));
+            var closeChannelResponse = MockHelpers.CreateAsyncServerStreamingCall(new List<CloseStatusUpdate>()
+            {
+                noneUpdate,
+                closePendingUpdate,
+                chanCloseUpdate,
+            });
+            var lightningClientService = new Mock<ILightningClientService>();
 
-            var originalCreateLightningClient = LightningService.CreateLightningClient;
-            LightningService.CreateLightningClient = (_) => lightningClient;
+            lightningClientService.Setup(x =>
+                x.CloseChannel(It.IsAny<Node>(), It.IsAny<Channel>(), It.IsAny<bool>(), It.IsAny<Lightning.LightningClient>())).Returns(closeChannelResponse);
 
             var lightningService = new LightningService(_logger,
                 channelOperationRequestRepository.Object,
@@ -1602,16 +1470,14 @@ namespace NodeGuard.Services
                 channelRepository.Object,
                 null,
                 null,
-                null);
+                null,
+                lightningClientService.Object);
 
             // Act
             var act = async () => await lightningService.CloseChannel(operationRequest);
 
             // Assert
             await act.Should().NotThrowAsync();
-
-            //TODO Remove hack
-            LightningService.CreateLightningClient = originalCreateLightningClient;
         }
 
         [Fact]
@@ -1627,7 +1493,7 @@ namespace NodeGuard.Services
                 "cHNidP8BAFIBAAAAAeh7YDXyZE11vXb0yRqCkrxY7VpHH1WVMHwaCWYMv/pCAQAAAAD/////AUjf9QUAAAAAFgAULTCtUNMojFQZ8oa6fpbXbDhK2EYAAAAATwEENYfPA325Ro0AAAABg9H86IDUttPPFss+9te+0DByQgbeD7RPXNuVH9mh1qIDnMEWyKA+kvyG038on8+HxI+9AD8r6ZI1dNIDSGC8824Q7QIQyDAAAIABAACAAQAAAAABAR8A4fUFAAAAABYAFOk69QEyo0x+Xs/zV62OLrHh9eszAQMEAgAAAAAA";
 
             var combinedPsbt = LightningHelper.CombinePSBTs(new[] { psbt });
-            var lightningService = new LightningService(_logger, null, null, null, null, null, null, null, null);
+            var lightningService = new LightningService(_logger, null, null, null, null, null, null, null, null, null);
             var pendingChannelId = RandomNumberGenerator.GetBytes(32);
             var derivationStrategyBase = LightningService.GetDerivationStrategyBase(channelOperationRequest);
             var node = new LightningNode()
@@ -1680,7 +1546,7 @@ namespace NodeGuard.Services
                 "cHNidP8BAFIBAAAAAeh7YDXyZE11vXb0yRqCkrxY7VpHH1WVMHwaCWYMv/pCAQAAAAD/////AUjf9QUAAAAAFgAULTCtUNMojFQZ8oa6fpbXbDhK2EYAAAAATwEENYfPA325Ro0AAAABg9H86IDUttPPFss+9te+0DByQgbeD7RPXNuVH9mh1qIDnMEWyKA+kvyG038on8+HxI+9AD8r6ZI1dNIDSGC8824Q7QIQyDAAAIABAACAAQAAAAABAR8A4fUFAAAAABYAFOk69QEyo0x+Xs/zV62OLrHh9eszAQMEAgAAAAAA";
 
             var combinedPsbt = LightningHelper.CombinePSBTs(new[] { psbt });
-            var lightningService = new LightningService(_logger, null, null, null, null, null, null, nbXplorerMock.Object, null);
+            var lightningService = new LightningService(_logger, null, null, null, null, null, null, nbXplorerMock.Object, null, null);
             var pendingChannelId = RandomNumberGenerator.GetBytes(32);
             var derivationStrategyBase = LightningService.GetDerivationStrategyBase(channelOperationRequest);
 

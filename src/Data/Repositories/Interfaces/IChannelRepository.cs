@@ -17,8 +17,6 @@
  *
  */
 
-using NodeGuard.Data.Models;
-using Lnrpc;
 using Channel = NodeGuard.Data.Models.Channel;
 
 namespace NodeGuard.Data.Repositories.Interfaces;
@@ -26,7 +24,7 @@ namespace NodeGuard.Data.Repositories.Interfaces;
 public interface IChannelRepository
 {
     Task<Channel?> GetById(int id);
-    
+
     Task<Channel?> GetByChanId(ulong chanId);
 
     Task<List<Channel>> GetAll();
@@ -42,24 +40,16 @@ public interface IChannelRepository
     (bool, string?) RemoveRange(List<Channel> types);
 
     (bool, string?) Update(Channel type);
-    
+
     /// <summary>
     /// Marks the channel if it does not exist as closed
     /// </summary>
     /// <param name="channel"></param>
     /// <returns></returns>
     Task<(bool, string?)> MarkAsClosed(Channel channel);
-    
-            
-    /// <summary>
-    /// List the channels of a node
-    /// </summary>
-    /// <param name="node"></param>
-    /// <returns></returns>
-    Task<ListChannelsResponse?> ListChannels(Node node);
 
     /// <summary>
-    /// Retrieves all the channels to/from nodes managed by the user 
+    /// Retrieves all the channels to/from nodes managed by the user
     /// </summary>
     /// <param name="loggedUserId"></param>
     /// <returns></returns>

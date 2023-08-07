@@ -1,3 +1,22 @@
+/*
+ * NodeGuard
+ * Copyright (C) 2023  Elenpay
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU Affero General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU Affero General Public License for more details.
+ *
+ * You should have received a copy of the GNU Affero General Public License
+ * along with this program.  If not, see http://www.gnu.org/licenses/.
+ *
+ */
+
 using NodeGuard.Data.Repositories.Interfaces;
 using NodeGuard.Jobs;
 using NodeGuard.Services;
@@ -16,7 +35,7 @@ public class NodeChannelSubscribeJobTests
     private Mock<INodeRepository> _nodeRepositoryMock;
     private Mock<IChannelRepository> _channelRepositoryMock;
     private NodeChannelSuscribeJob _nodeUpdateManager;
-    private Mock<ILightningClientsStorageService> _lightningClientsStorageService;
+    private Mock<ILightningClientService> _lightningClientsService;
 
     public NodeChannelSubscribeJobTests()
     {
@@ -24,14 +43,14 @@ public class NodeChannelSubscribeJobTests
         _nodeRepositoryMock = new Mock<INodeRepository>();
         _channelRepositoryMock = new Mock<IChannelRepository>();
         _lightningServiceMock = new Mock<ILightningService>();
-        _lightningClientsStorageService = new Mock<ILightningClientsStorageService>();
+        _lightningClientsService = new Mock<ILightningClientService>();
 
         _nodeUpdateManager = new NodeChannelSuscribeJob(
             _loggerMock.Object,
             _lightningServiceMock.Object,
             _nodeRepositoryMock.Object,
             _channelRepositoryMock.Object,
-            _lightningClientsStorageService.Object);
+            _lightningClientsService.Object);
     }
 
     [Fact]

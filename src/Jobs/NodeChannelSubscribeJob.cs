@@ -38,15 +38,15 @@ public class NodeChannelSuscribeJob : IJob
     private readonly ILightningService _lightningService;
     private readonly INodeRepository _nodeRepository;
     private readonly IChannelRepository _channelRepository;
-    private readonly ILightningClientsStorageService _lightningClientsStorageService;
+    private readonly ILightningClientService _lightningClientService;
 
-    public NodeChannelSuscribeJob(ILogger<NodeChannelSuscribeJob> logger, ILightningService lightningService, INodeRepository nodeRepository, IChannelRepository channelRepository, ILightningClientsStorageService lightningClientsStorageService)
+    public NodeChannelSuscribeJob(ILogger<NodeChannelSuscribeJob> logger, ILightningService lightningService, INodeRepository nodeRepository, IChannelRepository channelRepository, ILightningClientService lightningClientService)
     {
         _logger = logger;
         _lightningService = lightningService;
         _nodeRepository = nodeRepository;
         _channelRepository = channelRepository;
-        _lightningClientsStorageService = lightningClientsStorageService;
+        _lightningClientService = lightningClientService;
     }
 
     public async Task Execute(IJobExecutionContext context)
@@ -64,11 +64,7 @@ public class NodeChannelSuscribeJob : IJob
                 return;
             }
 
-            var client = _lightningClientsStorageService.GetLightningClient(node.Endpoint);
-            var result = client.SubscribeChannelEvents(new ChannelEventSubscription(),
-                new Metadata {
-                    {"macaroon", node.ChannelAdminMacaroon}
-                });
+            var result = _lightningClientService.SubscribeChannelEvents(node);
 
             while (await result.ResponseStream.MoveNext())
             {
@@ -80,7 +76,8 @@ public class NodeChannelSuscribeJob : IJob
                     return;
                 }
 
-                try {
+                try
+                {
                     var channelEventUpdate = result.ResponseStream.Current;
                     _logger.LogInformation("Channel event update received for node {@NodeId}", node.Id);
                     NodeUpdateManagement(channelEventUpdate, node);
@@ -91,7 +88,6 @@ public class NodeChannelSuscribeJob : IJob
                     throw new JobExecutionException(e, true);
                 }
             }
-
         }
         catch (Exception e)
         {

@@ -22,10 +22,8 @@ using NodeGuard.Data.Models;
 using NodeGuard.Data.Repositories.Interfaces;
 using NodeGuard.Jobs;
 using NodeGuard.Helpers;
- using NodeGuard.Services;
- using Grpc.Core;
- using Lnrpc;
- using Quartz;
+using NodeGuard.Services;
+using Quartz;
 using Microsoft.EntityFrameworkCore;
 using NBitcoin;
 using Channel = NodeGuard.Data.Models.Channel;
@@ -40,13 +38,14 @@ namespace NodeGuard.Data.Repositories
         private readonly IChannelOperationRequestRepository _channelOperationRequestRepository;
         private readonly ISchedulerFactory _schedulerFactory;
         private readonly IMapper _mapper;
+        private readonly ILightningClientService _lightningClientService;
 
         public ChannelRepository(IRepository<Channel> repository,
             ILogger<ChannelRepository> logger,
             IDbContextFactory<ApplicationDbContext> dbContextFactory,
             IChannelOperationRequestRepository channelOperationRequestRepository, ISchedulerFactory schedulerFactory,
-            IMapper mapper
-            )
+            IMapper mapper,
+            ILightningClientService lightningClientService)
         {
             _repository = repository;
             _logger = logger;
@@ -54,6 +53,7 @@ namespace NodeGuard.Data.Repositories
             _channelOperationRequestRepository = channelOperationRequestRepository;
             _schedulerFactory = schedulerFactory;
             this._mapper = mapper;
+            _lightningClientService = lightningClientService;
         }
 
         public async Task<Channel?> GetById(int id)
@@ -80,10 +80,10 @@ namespace NodeGuard.Data.Repositories
                 .Include(channel => channel.ChannelOperationRequests).ThenInclude(request => request.Wallet)
                 .Include(channel => channel.ChannelOperationRequests).ThenInclude(request => request.DestNode)
                 .Include(channel => channel.ChannelOperationRequests).ThenInclude(request => request.ChannelOperationRequestPsbts)
-                .Include(x=> x.LiquidityRules)
-                .ThenInclude(x=> x.Node)
-                .Include(x=> x.LiquidityRules)
-                .ThenInclude(x=> x.Wallet)
+                .Include(x => x.LiquidityRules)
+                .ThenInclude(x => x.Node)
+                .Include(x => x.LiquidityRules)
+                .ThenInclude(x => x.Wallet)
                 .ToListAsync();
         }
 
@@ -193,30 +193,6 @@ namespace NodeGuard.Data.Repositories
             return _repository.Update(type, applicationDbContext);
         }
 
-        public async Task<ListChannelsResponse?> ListChannels(Node node)
-        {
-            //This method is here to avoid a circular dependency between the LightningService and the ChannelRepository
-            ListChannelsResponse? listChannelsResponse = null;
-            try
-            {
-                var client = LightningService.CreateLightningClient(node.Endpoint);
-                listChannelsResponse = await client.Execute(x => x.ListChannelsAsync(new ListChannelsRequest(),
-                    new Metadata
-                    {
-                        {
-                            "macaroon", node.ChannelAdminMacaroon
-                        }
-                    }, null, default));
-            }
-            catch (Exception e)
-            {
-                _logger.LogError(e, "Error while listing channels for node {NodeId}", node.Id);
-                return null;
-            }
-
-            return listChannelsResponse;
-        }
-
         public async Task<List<Channel>> GetAllManagedByUserNodes(string loggedUserId)
         {
             if (string.IsNullOrWhiteSpace(loggedUserId))
@@ -225,16 +201,16 @@ namespace NodeGuard.Data.Repositories
             await using var applicationDbContext = await _dbContextFactory.CreateDbContextAsync();
 
             var channels = applicationDbContext.Channels
-                .Include(channel => channel.ChannelOperationRequests).ThenInclude(request => request.SourceNode).ThenInclude(x=> x.Users)
-                .Include(channel => channel.ChannelOperationRequests).ThenInclude(request => request.DestNode).ThenInclude(x=> x.Users)
+                .Include(channel => channel.ChannelOperationRequests).ThenInclude(request => request.SourceNode).ThenInclude(x => x.Users)
+                .Include(channel => channel.ChannelOperationRequests).ThenInclude(request => request.DestNode).ThenInclude(x => x.Users)
                 .Include(channel => channel.ChannelOperationRequests).ThenInclude(request => request.Wallet)
                 .Include(channel => channel.ChannelOperationRequests).ThenInclude(request => request.ChannelOperationRequestPsbts)
-                .Include(x=> x.SourceNode)
-                .Include(x=>x.DestinationNode)
-                .Include(x=> x.LiquidityRules)
-                .ThenInclude(x=> x.Node)
-                .Include(x=> x.LiquidityRules)
-                .ThenInclude(x=> x.Wallet).AsSplitQuery()
+                .Include(x => x.SourceNode)
+                .Include(x => x.DestinationNode)
+                .Include(x => x.LiquidityRules)
+                .ThenInclude(x => x.Node)
+                .Include(x => x.LiquidityRules)
+                .ThenInclude(x => x.Wallet).AsSplitQuery()
                 .Where(x => x.SourceNode.Users.Select(user => user.Id).Contains(loggedUserId) ||
                             x.DestinationNode.Users.Select(user => user.Id).Contains(loggedUserId)).ToList();
 
@@ -255,7 +231,7 @@ namespace NodeGuard.Data.Repositories
                 return (false, "No channel operation request found");
             }
 
-            var channels = await ListChannels(channelOperationRequest.SourceNode);
+            var channels = await _lightningClientService.ListChannels(channelOperationRequest.SourceNode);
 
             if (channels == null)
             {
@@ -276,7 +252,6 @@ namespace NodeGuard.Data.Repositories
             var markAsClosed = _repository.Update(channel, applicationDbContext);
 
             return markAsClosed;
-
         }
     }
 }

@@ -24,10 +24,8 @@ using NodeGuard.Services;
 using Grpc.Core;
 using Grpc.Net.Client;
 using Lnrpc;
-using NBXplorer;
 using NBXplorer.DerivationStrategy;
 using Quartz;
-using Unmockable;
 
 namespace NodeGuard.Jobs;
 
@@ -59,7 +57,7 @@ public class SweepNodeWalletsJob : IJob
         _logger.LogInformation("Starting {JobName}... on node: {NodeId}", nameof(SweepNodeWalletsJob), managedNodeId);
 
         var requiredAnchorChannelClosingAmount = Constants.ANCHOR_CLOSINGS_MINIMUM_SATS;
-            
+
 
 
         #region Local functions
@@ -74,7 +72,7 @@ public class SweepNodeWalletsJob : IJob
             var returningAddress = await _nbXplorerService.GetUnusedAsync(wallet.GetDerivationStrategy(),
                 DerivationFeature.Deposit,
                 0,
-                false, //Reserve is false since this is a cron job and we wan't to avoid massive reserves 
+                false, //Reserve is false since this is a cron job and we wan't to avoid massive reserves
                 default);
 
             if (node.ChannelAdminMacaroon != null)
@@ -151,7 +149,7 @@ public class SweepNodeWalletsJob : IJob
             await context.Scheduler.DeleteJob(context.JobDetail.Key, context.CancellationToken);
             return;
         }
-        
+
         var loggerFactory = GRPCLoggerFactoryHelper.LoggerFactory();
 
         try

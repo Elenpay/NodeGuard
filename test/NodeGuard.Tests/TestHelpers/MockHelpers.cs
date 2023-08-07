@@ -17,10 +17,13 @@
  *
  */
 
+using System.Collections.Generic;
+using System.Threading;
+using System.Threading.Tasks;
 using NodeGuard.Data;
-using NodeGuard.Data.Models;
 using NodeGuard.Data.Repositories.Interfaces;
 using Grpc.Core;
+using Moq;
 
 namespace NodeGuard.TestHelpers;
 
@@ -36,7 +39,7 @@ public class MockHelpers
             () => { });
     }
 
-    public static AsyncServerStreamingCall<T> CreateAsyncServerStreamingCall<T>(IEnumerable<T> result) 
+    public static AsyncServerStreamingCall<T> CreateAsyncServerStreamingCall<T>(IEnumerable<T> result)
     {
         return new AsyncServerStreamingCall<T>(
             new MockAsyncStreamReader<T>(result),
@@ -45,7 +48,7 @@ public class MockHelpers
             () => new Metadata(),
             () => { });
     }
-    
+
     public static Mock<IRepository<T>> GetMockRepository<T>() where T : class
     {
         var mock = new Mock<IRepository<T>>();
