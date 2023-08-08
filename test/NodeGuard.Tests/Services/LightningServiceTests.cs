@@ -1625,7 +1625,7 @@ namespace NodeGuard.Services
         [Fact]
         public async Task GetChannelsStatus_SourceNodeIsManaged_SourceIsNotInitiator()
         {
-// Arrange
+            // Arrange
             var nodeRepository = new Mock<INodeRepository>();
             var lightningClientService = new Mock<ILightningClientService>();
 
@@ -1690,7 +1690,7 @@ namespace NodeGuard.Services
                     }
                 });
 
-            var listChannelsResponse = new ListChannelsResponse
+            var listChannelsResponse1 = new ListChannelsResponse
             {
                 Channels =
                 {
@@ -1705,7 +1705,24 @@ namespace NodeGuard.Services
                 }
             };
 
-            lightningClientService.Setup(x => x.ListChannels(It.IsAny<Node>(), null)).ReturnsAsync(listChannelsResponse);
+            var listChannelsResponse2 = new ListChannelsResponse
+            {
+                Channels =
+                {
+                    new Lnrpc.Channel
+                    {
+                        ChanId = 0,
+                        LocalBalance = 0,
+                        RemoteBalance = 500,
+                        Initiator = false,
+                        RemotePubkey = "managedPubKey1"
+                    }
+                }
+            };
+
+            lightningClientService.SetupSequence(x => x.ListChannels(It.IsAny<Node>(), null))
+                .ReturnsAsync(listChannelsResponse1)
+                .ReturnsAsync(listChannelsResponse2);
             var lightningService = new LightningService(null, null, nodeRepository.Object, null, null, null, null, null ,null, lightningClientService.Object);
 
             // Act
@@ -1740,7 +1757,22 @@ namespace NodeGuard.Services
                     }
                 });
 
-            var listChannelsResponse = new ListChannelsResponse
+            var listChannelsResponse1 = new ListChannelsResponse
+            {
+                Channels =
+                {
+                    new Lnrpc.Channel
+                    {
+                        ChanId = 0,
+                        LocalBalance = 0,
+                        RemoteBalance = 500,
+                        Initiator = false,
+                        RemotePubkey = "managedPubKey2"
+                    }
+                }
+            };
+
+            var listChannelsResponse2 = new ListChannelsResponse
             {
                 Channels =
                 {
@@ -1750,12 +1782,14 @@ namespace NodeGuard.Services
                         LocalBalance = 500,
                         RemoteBalance = 0,
                         Initiator = true,
-                        RemotePubkey = "managedPubKey2"
+                        RemotePubkey = "managedPubKey1"
                     }
                 }
             };
 
-            lightningClientService.Setup(x => x.ListChannels(It.IsAny<Node>(), null)).ReturnsAsync(listChannelsResponse);
+            lightningClientService.SetupSequence(x => x.ListChannels(It.IsAny<Node>(), null))
+                .ReturnsAsync(listChannelsResponse1)
+                .ReturnsAsync(listChannelsResponse2);
             var lightningService = new LightningService(null, null, nodeRepository.Object, null, null, null, null, null ,null, lightningClientService.Object);
 
             // Act
