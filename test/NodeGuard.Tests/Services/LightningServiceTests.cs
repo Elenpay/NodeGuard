@@ -1577,5 +1577,193 @@ namespace NodeGuard.Services
                 CloseAddress = "bcrt1q590shaxaf5u08ml8jwlzghz99dup3z9592vxal"
             });
         }
+
+        [Fact]
+        public async Task GetChannelsStatus_SourceNodeIsManaged_SourceIsInitiator()
+        {
+            // Arrange
+            var nodeRepository = new Mock<INodeRepository>();
+            var lightningClientService = new Mock<ILightningClientService>();
+
+            nodeRepository.Setup(x => x.GetAllManagedByNodeGuard()).ReturnsAsync(
+                new List<Node>()
+                {
+                    new()
+                    {
+                        Id = 1,
+                        PubKey = "managedPubKey",
+                        Endpoint = "abc", // Is Managed
+                    }
+                });
+
+            var listChannelsResponse = new ListChannelsResponse
+            {
+                Channels =
+                {
+                    new Lnrpc.Channel
+                    {
+                        ChanId = 0,
+                        LocalBalance = 500,
+                        RemoteBalance = 0,
+                        Initiator = true,
+                        RemotePubkey = "externalPubKey"
+                    }
+                }
+            };
+
+            lightningClientService.Setup(x => x.ListChannels(It.IsAny<Node>(), null)).ReturnsAsync(listChannelsResponse);
+            var lightningService = new LightningService(null, null, nodeRepository.Object, null, null, null, null, null ,null, lightningClientService.Object);
+
+            // Act
+            var channelStatus = await lightningService.GetChannelsStatus();
+
+            // Assert
+            channelStatus[0].LocalBalance.Should().Be(500);
+            channelStatus[0].RemoteBalance.Should().Be(0);
+        }
+
+        [Fact]
+        public async Task GetChannelsStatus_SourceNodeIsManaged_SourceIsNotInitiator()
+        {
+// Arrange
+            var nodeRepository = new Mock<INodeRepository>();
+            var lightningClientService = new Mock<ILightningClientService>();
+
+            nodeRepository.Setup(x => x.GetAllManagedByNodeGuard()).ReturnsAsync(
+                new List<Node>()
+                {
+                    new()
+                    {
+                        Id = 1,
+                        PubKey = "managedPubKey",
+                        Endpoint = "abc", // Is Managed
+                    }
+                });
+
+            var listChannelsResponse = new ListChannelsResponse
+            {
+                Channels =
+                {
+                    new Lnrpc.Channel
+                    {
+                        ChanId = 0,
+                        LocalBalance = 500,
+                        RemoteBalance = 0,
+                        Initiator = false,
+                        RemotePubkey = "externalPubKey"
+                    }
+                }
+            };
+
+            lightningClientService.Setup(x => x.ListChannels(It.IsAny<Node>(), null)).ReturnsAsync(listChannelsResponse);
+            var lightningService = new LightningService(null, null, nodeRepository.Object, null, null, null, null, null ,null, lightningClientService.Object);
+
+            // Act
+            var channelStatus = await lightningService.GetChannelsStatus();
+
+            // Assert
+            channelStatus[0].LocalBalance.Should().Be(0);
+            channelStatus[0].RemoteBalance.Should().Be(500);
+        }
+
+        [Fact]
+        public async Task GetChannelsStatus_BothNodesAreManaged_SourceIsInitiator()
+        {
+            // Arrange
+            var nodeRepository = new Mock<INodeRepository>();
+            var lightningClientService = new Mock<ILightningClientService>();
+
+            nodeRepository.Setup(x => x.GetAllManagedByNodeGuard()).ReturnsAsync(
+                new List<Node>()
+                {
+                    new()
+                    {
+                        Id = 1,
+                        Endpoint = "abc", // Is Managed
+                        PubKey = "managedPubKey1",
+                    },
+                    new()
+                    {
+                        Id = 2,
+                        Endpoint = "abc", // Is Managed
+                        PubKey = "managedPubKey2",
+                    }
+                });
+
+            var listChannelsResponse = new ListChannelsResponse
+            {
+                Channels =
+                {
+                    new Lnrpc.Channel
+                    {
+                        ChanId = 0,
+                        LocalBalance = 500,
+                        RemoteBalance = 0,
+                        Initiator = true,
+                        RemotePubkey = "managedPubKey2"
+                    }
+                }
+            };
+
+            lightningClientService.Setup(x => x.ListChannels(It.IsAny<Node>(), null)).ReturnsAsync(listChannelsResponse);
+            var lightningService = new LightningService(null, null, nodeRepository.Object, null, null, null, null, null ,null, lightningClientService.Object);
+
+            // Act
+            var channelStatus = await lightningService.GetChannelsStatus();
+
+            // Assert
+            channelStatus[0].LocalBalance.Should().Be(500);
+            channelStatus[0].RemoteBalance.Should().Be(0);
+        }
+
+        [Fact]
+        public async Task GetChannelsStatus_BothNodesAreManaged_SourceIsNotInitiator()
+        {
+            // Arrange
+            var nodeRepository = new Mock<INodeRepository>();
+            var lightningClientService = new Mock<ILightningClientService>();
+
+            nodeRepository.Setup(x => x.GetAllManagedByNodeGuard()).ReturnsAsync(
+                new List<Node>()
+                {
+                    new()
+                    {
+                        Id = 1,
+                        Endpoint = "abc", // Is Managed
+                        PubKey = "managedPubKey1",
+                    },
+                    new()
+                    {
+                        Id = 2,
+                        Endpoint = "abc", // Is Managed
+                        PubKey = "managedPubKey2",
+                    }
+                });
+
+            var listChannelsResponse = new ListChannelsResponse
+            {
+                Channels =
+                {
+                    new Lnrpc.Channel
+                    {
+                        ChanId = 0,
+                        LocalBalance = 500,
+                        RemoteBalance = 0,
+                        Initiator = true,
+                        RemotePubkey = "managedPubKey2"
+                    }
+                }
+            };
+
+            lightningClientService.Setup(x => x.ListChannels(It.IsAny<Node>(), null)).ReturnsAsync(listChannelsResponse);
+            var lightningService = new LightningService(null, null, nodeRepository.Object, null, null, null, null, null ,null, lightningClientService.Object);
+
+            // Act
+            var channelStatus = await lightningService.GetChannelsStatus();
+
+            // Assert
+            channelStatus[0].LocalBalance.Should().Be(500);
+            channelStatus[0].RemoteBalance.Should().Be(0);
+        }
     }
 }

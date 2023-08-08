@@ -1302,27 +1302,31 @@ namespace NodeGuard.Services
                 foreach (var channel in channels)
                 {
                     if (channel == null) continue;
+                    // If the source node is not the channel initiator, but the remote node is also managed by NodeGuard
+                    // We skip and wait for the other node to report the channel
+                    if (nodes.Any((n) => !channel.Initiator && n.PubKey == channel.RemotePubkey)) continue;
 
                     var htlcsLocal = channel.PendingHtlcs.Where(x => x.Incoming == true).Sum(x => x.Amount);
                     var htlcsRemote = channel.PendingHtlcs.Where(x => x.Incoming == false).Sum(x => x.Amount);
 
-                    //The nodeguard sided node is the one that is managed by nodeguard
-                    var nodeguardManagedNodeId = node.Id;
-
                     var localBalance = channel.LocalBalance + htlcsLocal;
                     var remoteBalance = channel.RemoteBalance + htlcsRemote;
+
+                    // If the node is not managed by NodeGuard, we need to swap the balances.
+                    // the balance is always shown from the NodeGuard's perspective
                     if (!channel.Initiator)
                     {
                         localBalance = channel.RemoteBalance + htlcsRemote;
                         remoteBalance = channel.LocalBalance + htlcsLocal;
                     }
+
+
                     result.TryAdd(channel.ChanId, new ChannelStatus()
-                        {
-                            ManagedNodeId = nodeguardManagedNodeId,
-                            LocalBalance = localBalance,
-                            RemoteBalance = remoteBalance,
-                            Active = channel.Active
-                        });
+                    {
+                        LocalBalance = localBalance,
+                        RemoteBalance = remoteBalance,
+                        Active = channel.Active
+                    });
                 }
             }
 

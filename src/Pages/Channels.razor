@@ -495,9 +495,6 @@
             var result = -1.0;
             if (_channelsBalance.TryGetValue(channel.ChanId, out var values))
             {
-    // Extract the managed node ID from the tuple
-                var managedNodeId = values.ManagedNodeId;
-
     // Calculate the capacity as the sum of the second and third values in the tuple
                 var capacity = values.LocalBalance + values.RemoteBalance;
 
