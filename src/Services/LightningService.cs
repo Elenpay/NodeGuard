@@ -96,7 +96,7 @@ namespace NodeGuard.Services
         /// Gets a dictionary of the local and remote balance of all the channels managed by NG
         /// </summary>
         /// <returns></returns>
-        public Task<Dictionary<ulong, (int, long, long)>> GetChannelsBalance();
+        public Task<Dictionary<ulong, ChannelStatus>> GetChannelsStatus();
 
         /// <summary>
         /// Cancels a pending channel from LND PSBT-based funding of channels
@@ -1289,11 +1289,11 @@ namespace NodeGuard.Services
             return await _lightningClientService.GetNodeInfo(node, pubkey);
         }
 
-        public async Task<Dictionary<ulong, (int, long, long)>> GetChannelsBalance()
+        public async Task<Dictionary<ulong, ChannelStatus>> GetChannelsStatus()
         {
             var nodes = await _nodeRepository.GetAllManagedByNodeGuard();
 
-            var result = new Dictionary<ulong, (int, long, long)>();
+            var result = new Dictionary<ulong, ChannelStatus>();
             foreach (var node in nodes)
             {
                 var listChannelsResponse = await _lightningClientService.ListChannels(node);
@@ -1308,8 +1308,21 @@ namespace NodeGuard.Services
 
                     //The nodeguard sided node is the one that is managed by nodeguard
                     var nodeguardManagedNodeId = node.Id;
-                    result.TryAdd(channel.ChanId,
-                        (nodeguardManagedNodeId, channel.LocalBalance + htlcsLocal, channel.RemoteBalance + htlcsRemote));
+
+                    var localBalance = channel.LocalBalance + htlcsLocal;
+                    var remoteBalance = channel.RemoteBalance + htlcsRemote;
+                    if (!channel.Initiator)
+                    {
+                        localBalance = channel.RemoteBalance + htlcsRemote;
+                        remoteBalance = channel.LocalBalance + htlcsLocal;
+                    }
+                    result.TryAdd(channel.ChanId, new ChannelStatus()
+                        {
+                            ManagedNodeId = nodeguardManagedNodeId,
+                            LocalBalance = localBalance,
+                            RemoteBalance = remoteBalance,
+                            Active = channel.Active
+                        });
                 }
             }
 

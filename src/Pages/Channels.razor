@@ -5,7 +5,11 @@
 @using Channel = NodeGuard.Data.Models.Channel
 @attribute [Authorize(Roles = "NodeManager")]
 <PageTitle>Active Channels</PageTitle>
-<h3 class="custom-primary">Channels</h3>
+<h3 class="custom-primary">Channels
+    <Tooltip Class="ml-2" Text="Refresh channel information">
+        <Button Color="Color.Primary" Clicked="RefreshChannelInformation"><Icon Name="IconName.SyncAlt"></Icon></Button>
+    </Tooltip>
+</h3>
 
 <Row>
     <Column ColumnSize="ColumnSize.Is12">
@@ -61,7 +65,6 @@
                         {
                             @(context.SourceNode.Name + " " + StringHelper.TruncateHeadAndTail(context.SourceNode.PubKey, 5))
                         }
-
                     </DisplayTemplate>
                 </DataGridColumn>
                 <DataGridColumn TItem="Channel" Field="@nameof(Channel.DestinationNodeId)" Caption="Destination node" CustomFilter="OnDestinationNodeIdFilter" Filterable="true" Sortable="false" Displayable="@IsColumnVisible(ChannelsColumnName.DESTINATION_NODE)">
@@ -80,7 +83,6 @@
                         {
                             @(context.DestinationNode.Name + " " + StringHelper.TruncateHeadAndTail(context.DestinationNode.PubKey, 5))
                         }
-
                     </DisplayTemplate>
                 </DataGridColumn>
                 <DataGridColumn TItem="Channel" Field="@nameof(Channel.Status)" Caption="@nameof(Channel.Status)" CustomFilter="OnStatusFilter" Filterable="true" Sortable="false" Displayable="@IsColumnVisible(ChannelsColumnName.STATUS)">
@@ -135,7 +137,6 @@
                 </DataGridNumericColumn>
                 <DataGridColumn TItem="Channel" Field="@nameof(Channel.IsPrivate)" Caption="Private" Filterable="false" Sortable="true" Displayable="@IsColumnVisible(ChannelsColumnName.PRIVATE)"/>
                 <DataGridColumn TItem="Channel" Field="@nameof(Channel.BtcCloseAddress)" Caption="Close address" Filterable="false" Sortable="false" Displayable="@IsColumnVisible(ChannelsColumnName.CLOSE_ADDRESS)">
-
                     <DisplayTemplate>
                         @if (!string.IsNullOrEmpty(context.BtcCloseAddress))
                         {
@@ -145,12 +146,19 @@
                             </Button>
                         }
                     </DisplayTemplate>
-
+                </DataGridColumn>
+                <DataGridColumn TItem="Channel" Caption="Availability" Sortable="true" Displayable="@IsColumnVisible(ChannelsColumnName.AVAILABILITY)">
+                    <DisplayTemplate>
+                        @{
+                            var isActive = GetAvailability(context);
+                        }
+                        <p>@(isActive ? "Active" : "Inactive")</p>
+                    </DisplayTemplate>
                 </DataGridColumn>
                 <DataGridColumn TItem="Channel" Caption="Channel Balance" Filterable="false" Displayable="@IsColumnVisible(ChannelsColumnName.CHANNEL_BALANCE)">
                     <DisplayTemplate>
                         @{
-                            var balance = Task.Run(() => GetPercentageBalance(context)).Result;
+                            var balance = GetPercentageBalance(context);
 
                         }
                         @if (balance >= 0)
@@ -166,7 +174,6 @@
                         {
                             <p>Not available</p>
                         }
-
                     </DisplayTemplate>
                 </DataGridColumn>
                 <DataGridColumn TItem="Channel" Field="@nameof(Channel.CreationDatetime)" Caption="@nameof(Channel.CreationDatetime).Humanize(LetterCasing.Sentence)" Sortable="true" Displayable="@IsColumnVisible(ChannelsColumnName.CREATION_DATE)"/>
@@ -187,6 +194,7 @@
         </DataGrid>
     </Column>
 </Row>
+
 <Modal @bind-Visible="@_modalVisible">
     <ModalContent Centered Scrollable Size="ModalSize.ExtraLarge">
         <ModalHeader>
@@ -224,7 +232,6 @@
                         {
                             <p>N/A</p>
                         }
-
                     </DisplayTemplate>
                 </DataGridColumn>
                 <DataGridColumn TItem="ChannelOperationRequest" Field="@nameof(ChannelOperationRequest.Status)" Caption="Status" Sortable="false" Displayable="true"/>
@@ -249,14 +256,11 @@
             <ModalBody>
                 <Field>
                     <FieldLabel>Enable automated liquidity management</FieldLabel>
-                    <Check TValue="bool" Checked="@_selectedChannel.IsAutomatedLiquidityEnabled" CheckedChanged="OnEnableLiquidityMgnmtChanged"></Check>
-
+                    <Check TValue="bool" Checked="@_selectedChannel.IsAutomatedLiquidityEnabled" CheckedChanged="OnEnableLiquidityMngmtChanged"></Check>
                 </Field>
-
                 @if (_selectedChannel.IsAutomatedLiquidityEnabled && _currentLiquidityRule != null)
                 {
                     <Validations @ref="_channelManagementValidationsRef">
-
                         <Field>
                             <Validation Validator="ValidateLocalBalance">
                                 <FieldLabel>Minimum local balance</FieldLabel>
@@ -268,7 +272,6 @@
                                 </NumericEdit>
                             </Validation>
                         </Field>
-
                         <Field>
                             <Validation Validator="ValidateRemoteBalance">
                                 <FieldLabel>Minimum remote balance</FieldLabel>
@@ -291,8 +294,6 @@
                                 </NumericEdit>
                             </Validation>
                         </Field>
-
-
                         <Field>
                             <Validation Validator="ValidationRule.IsSelected">
                                 <FieldLabel>Wallet to use in Swaps operations</FieldLabel>
@@ -310,10 +311,8 @@
                                 </SelectList>
                             </Validation>
                         </Field>
-
                     </Validations>
                 }
-
             </ModalBody>
             <ModalFooter>
                 <Button Color="Color.Secondary" Clicked="@CloseChannelManagementModal">Cancel</Button>
@@ -364,8 +363,7 @@
     private Dictionary<string, bool> _channelsColumns = new();
     private bool _columnsLoaded;
     // This dictionary is used to store the balance of each channel, key is the channel id, value is a tuple with the node id as local in the pair, local balance, remote balance
-    private Dictionary<ulong, (int,long, long)> _channelsBalance = new();
-    private DateTimeOffset _lastBalanceUpdate = DateTimeOffset.Now;
+    private Dictionary<ulong, ChannelStatus> _channelsBalance = new();
 
     public abstract class ChannelsColumnName
     {
@@ -377,6 +375,7 @@
         public static readonly ColumnDefault CAPACITY = new("Capacity (BTC)");
         public static readonly ColumnDefault PRIVATE = new("Private");
         public static readonly ColumnDefault CLOSE_ADDRESS = new("Close Address");
+        public static readonly ColumnDefault AVAILABILITY = new("Availability");
         public static readonly ColumnDefault CHANNEL_BALANCE = new("Channel Balance");
         public static readonly ColumnDefault CREATION_DATE = new("Creation Date");
         public static readonly ColumnDefault UPDATE_DATE = new("Update Date");
@@ -410,7 +409,7 @@
         _nodes = await NodeRepository.GetAll();
         _wallets = await WalletRepository.GetAll();
         _channelsDataGridRef?.FilterData();
-        _channelsBalance = await LightningService.GetChannelsBalance();
+        _channelsBalance = await LightningService.GetChannelsStatus();
     }
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
@@ -430,7 +429,15 @@
 
     private async Task ShowConfirmedClose(Channel? channel, bool forceClose = false)
     {
-        if (await MessageService.Confirm($"Are you sure you want to {(forceClose ? "force " : string.Empty)}close this channel?", "Confirmation"))
+        await RefreshChannelInformation();
+        var isChannelActive = GetAvailability(channel);
+        var preMessage = "";
+        if (forceClose && isChannelActive)
+        {
+            preMessage = "This channel is active!. ";
+        }
+
+        if (await MessageService.Confirm($"{preMessage}Are you sure you want to {(forceClose ? "force " : string.Empty)}close this channel?", "Confirmation"))
         {
             if (channel != null)
             {
@@ -473,44 +480,21 @@
         ToastService.ShowSuccess("Text copied");
     }
 
-    private async Task<int> GetPercentageBalance(Channel channel)
+    private int GetPercentageBalance(Channel channel)
     {
-    //If the last update was more than 60 seconds ago, we update the balance dictionary
-        if (DateTimeOffset.Now.Subtract(_lastBalanceUpdate).TotalSeconds > 60)
-        {
-            _channelsBalance = await LightningService.GetChannelsBalance();
-            _lastBalanceUpdate = DateTimeOffset.Now;
-        }
-
         try
         {
             var result = -1.0;
             if (_channelsBalance.TryGetValue(channel.ChanId, out var values))
             {
     // Extract the managed node ID from the tuple
-                var managedNodeId = values.Item1;
+                var managedNodeId = values.ManagedNodeId;
 
     // Calculate the capacity as the sum of the second and third values in the tuple
-                var capacity = values.Item2 + values.Item3;
-
-    // Initialize the remote balance
-                long remoteBalance;
-
-    // Check if the source node ID of the channel is the same as the managed node ID
-    // or if the source node is not managed
-    // If either condition is true, set the remote balance to the third value in the tuple
-                if (channel.SourceNodeId == managedNodeId || !channel.SourceNode.IsManaged)
-                {
-                    remoteBalance = values.Item3;
-                }
-                else
-                {
-    // If neither condition is true, set the remote balance to the second value in the tuple
-                    remoteBalance = values.Item2;
-                }
+                var capacity = values.LocalBalance + values.RemoteBalance;
 
     // Calculate the result as the percentage of the remote balance to the capacity
-                result = (remoteBalance / (double) capacity) * 100;
+                result = (values.RemoteBalance / (double) capacity) * 100;
 
 
                 result = Math.Round(result, 2);
@@ -524,6 +508,23 @@
             ToastService.ShowError($"Channel balance for channel id:{channel.Id} could not be retrieved");
             return -1;
         }
+    }
+
+    private bool GetAvailability(Channel? channel)
+    {
+        if (channel == null) return false;
+        try
+        {
+            if (_channelsBalance.TryGetValue(channel.ChanId, out var value))
+            {
+                return value.Active;
+            }
+        }
+        catch (Exception)
+        {
+            ToastService.ShowError($"Channel availability for channel id:{channel.Id} could not be retrieved");
+        }
+        return false;
     }
 
     private async Task OnSelectedWalletChanged(int arg)
@@ -622,13 +623,13 @@
         if (_channelLiquidityModal != null) await _channelLiquidityModal.Show();
     }
 
-    private async Task OnEnableLiquidityMgnmtChanged(bool enabledLiquidityMgnmt)
+    private async Task OnEnableLiquidityMngmtChanged(bool enabledLiquidityMngmt)
     {
         if (_selectedChannel != null)
         {
-            _selectedChannel.IsAutomatedLiquidityEnabled = enabledLiquidityMgnmt;
+            _selectedChannel.IsAutomatedLiquidityEnabled = enabledLiquidityMngmt;
 
-            if (!enabledLiquidityMgnmt)
+            if (!enabledLiquidityMngmt)
             {
                 _currentLiquidityRule = null;
             }
@@ -823,10 +824,10 @@
     private bool CheckDisableCloseChannelButton(Channel channel)
     {
         var lastRequest = channel.ChannelOperationRequests.LastOrDefault();
-        
+
         // If the channel is not created by the node guard, we dont disable the button
         if (lastRequest == null || channel.CreatedByNodeGuard == false) return false;
-        
+
         // If the channel is created by the node guard, we disable the button if the channel is closed or if the last request is a close request and is confirmed or is pending confirmation
         return channel.Status == Channel.ChannelStatus.Closed || (lastRequest.RequestType == OperationRequestType.Close
                                                                   && lastRequest.Status == ChannelOperationRequestStatus.OnChainConfirmed
@@ -847,4 +848,9 @@
         return _channelsColumnLayout.IsColumnVisible(column);
     }
 
+    private async Task RefreshChannelInformation()
+    {
+        _channelsBalance = await LightningService.GetChannelsStatus();
+        StateHasChanged();
+    }
 }
