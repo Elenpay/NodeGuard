@@ -318,7 +318,9 @@
         <DataGridColumn TItem="ChannelOperationRequest" Field="@nameof(ChannelOperationRequest.Status)" Caption="Status" Sortable="false" Displayable="@IsAllRequestsColumnVisible(AllChannelsColumnName.Status)">
             <DisplayTemplate>
                 <Row Style="white-space: nowrap;">
-                    @context.Status.Humanize(LetterCasing.Sentence)
+                    <Tooltip Text=@context.ClosingReason Placement="TooltipPlacement.Top">
+                        <span>@context.Status.Humanize(LetterCasing.Sentence)</span>
+                    </Tooltip>
                     <ChannelStatusLogsTooltip ChannelStatusLogs="@context.StatusLogs"/>
                 </Row>
             </DisplayTemplate>

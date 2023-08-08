@@ -319,7 +319,9 @@
                 </DataGridColumn>
                 <DataGridColumn TItem="WalletWithdrawalRequest" Field="@nameof(WalletWithdrawalRequest.Status).Humanize(LetterCasing.Sentence)" Caption="Status" Sortable="false" Displayable="@IsAllRequestsColumnVisible(AllWithdrawalsColumnName.Status)">
                     <DisplayTemplate>
-                        @context?.Status.Humanize()
+                        <Tooltip Text=@context.RejectCancelDescription Placement="TooltipPlacement.Top">
+                                <span>@context?.Status.Humanize()</span>
+                        </Tooltip>
                     </DisplayTemplate>
                 </DataGridColumn>
                 <DataGridColumn TItem="WalletWithdrawalRequest" Field="@nameof(WalletWithdrawalRequest.CreationDatetime)" Caption="Creation Date" Sortable="true" SortDirection="SortDirection.Descending" Displayable="@IsAllRequestsColumnVisible(AllWithdrawalsColumnName.CreationDate)">
