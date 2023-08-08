@@ -96,7 +96,7 @@ namespace NodeGuard.Services
         /// Gets a dictionary of the local and remote balance of all the channels managed by NG
         /// </summary>
         /// <returns></returns>
-        public Task<Dictionary<ulong, (int, long, long)>> GetChannelsBalance();
+        public Task<Dictionary<ulong, ChannelStatus>> GetChannelsStatus();
 
         /// <summary>
         /// Cancels a pending channel from LND PSBT-based funding of channels
@@ -1289,11 +1289,11 @@ namespace NodeGuard.Services
             return await _lightningClientService.GetNodeInfo(node, pubkey);
         }
 
-        public async Task<Dictionary<ulong, (int, long, long)>> GetChannelsBalance()
+        public async Task<Dictionary<ulong, ChannelStatus>> GetChannelsStatus()
         {
             var nodes = await _nodeRepository.GetAllManagedByNodeGuard();
 
-            var result = new Dictionary<ulong, (int, long, long)>();
+            var result = new Dictionary<ulong, ChannelStatus>();
             foreach (var node in nodes)
             {
                 var listChannelsResponse = await _lightningClientService.ListChannels(node);
@@ -1302,14 +1302,31 @@ namespace NodeGuard.Services
                 foreach (var channel in channels)
                 {
                     if (channel == null) continue;
+                    // If the source node is not the channel initiator, but the remote node is also managed by NodeGuard
+                    // We skip and wait for the other node to report the channel
+                    if (nodes.Any((n) => !channel.Initiator && n.PubKey == channel.RemotePubkey)) continue;
 
                     var htlcsLocal = channel.PendingHtlcs.Where(x => x.Incoming == true).Sum(x => x.Amount);
                     var htlcsRemote = channel.PendingHtlcs.Where(x => x.Incoming == false).Sum(x => x.Amount);
 
-                    //The nodeguard sided node is the one that is managed by nodeguard
-                    var nodeguardManagedNodeId = node.Id;
-                    result.TryAdd(channel.ChanId,
-                        (nodeguardManagedNodeId, channel.LocalBalance + htlcsLocal, channel.RemoteBalance + htlcsRemote));
+                    var localBalance = channel.LocalBalance + htlcsLocal;
+                    var remoteBalance = channel.RemoteBalance + htlcsRemote;
+
+                    // If the channel is not initiated by a NodeGuard node, we need to swap the balances.
+                    // the balance is always shown from the NodeGuard's perspective
+                    if (!channel.Initiator)
+                    {
+                        localBalance = channel.RemoteBalance + htlcsRemote;
+                        remoteBalance = channel.LocalBalance + htlcsLocal;
+                    }
+
+
+                    result.TryAdd(channel.ChanId, new ChannelStatus()
+                    {
+                        LocalBalance = localBalance,
+                        RemoteBalance = remoteBalance,
+                        Active = channel.Active
+                    });
                 }
             }
 
