@@ -147,10 +147,17 @@
                         }
                     </DisplayTemplate>
                 </DataGridColumn>
-                <DataGridColumn TItem="Channel" Caption="Availability" Sortable="true" Displayable="@IsColumnVisible(ChannelsColumnName.AVAILABILITY)">
+                <DataGridColumn TItem="Channel" Field="@nameof(Channel.ChanId)" Caption="Availability" Sortable Filterable CustomFilter="OnAvailabilityFilter" Displayable="@IsColumnVisible(ChannelsColumnName.AVAILABILITY)">
+                    <FilterTemplate>
+                        <Select TValue="int" SelectedValue="@(_availabilityFilter)" SelectedValueChanged="@(value => { _availabilityFilter = value; context.TriggerFilterChange(_availabilityFilter); })">
+                            <SelectItem Value="0">All</SelectItem>
+                            <SelectItem Value="1">Active</SelectItem>
+                            <SelectItem Value="-1">Inactive</SelectItem>
+                        </Select>
+                    </FilterTemplate>
                     <DisplayTemplate>
                         @{
-                            var isActive = GetAvailability(context);
+                            var isActive = GetAvailability(context.ChanId);
                         }
                         <p>@(isActive ? "Active" : "Inactive")</p>
                     </DisplayTemplate>
@@ -345,6 +352,7 @@
     private LiquidityRule? _currentLiquidityRule = new LiquidityRule();
     private Validations? _channelManagementValidationsRef;
     private string _statusFilter = "Open";
+    private int _availabilityFilter = 0;
     private int _sourceNodeIdFilter;
     private int _destinationNodeIdFilter;
     private List<Node> _nodes = new List<Node>();
@@ -430,7 +438,7 @@
     private async Task ShowConfirmedClose(Channel? channel, bool forceClose = false)
     {
         await RefreshChannelInformation();
-        var isChannelActive = GetAvailability(channel);
+        var isChannelActive = GetAvailability(channel?.ChanId);
         var preMessage = "";
         if (forceClose && isChannelActive)
         {
@@ -510,19 +518,19 @@
         }
     }
 
-    private bool GetAvailability(Channel? channel)
+    private bool GetAvailability(ulong? channelId)
     {
-        if (channel == null) return false;
+        if (channelId == null) return false;
         try
         {
-            if (_channelsBalance.TryGetValue(channel.ChanId, out var value))
+            if (_channelsBalance.TryGetValue(channelId.Value, out var value))
             {
                 return value.Active;
             }
         }
         catch (Exception)
         {
-            ToastService.ShowError($"Channel availability for channel id:{channel.Id} could not be retrieved");
+            ToastService.ShowError($"Channel availability for channel id:{channelId} could not be retrieved");
         }
         return false;
     }
@@ -853,4 +861,14 @@
         _channelsBalance = await LightningService.GetChannelsStatus();
         StateHasChanged();
     }
+
+    private bool OnAvailabilityFilter(object? itemvalue, object? searchvalue)
+    {
+        if (searchvalue == null || (int)searchvalue == 0) return true;
+        var isActive = GetAvailability((ulong?)itemvalue);
+        if ((int)searchvalue == 1 && isActive) return true;
+        if ((int)searchvalue == -1 && !isActive) return true;
+        return false;
+    }
+
 }
