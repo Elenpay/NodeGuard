@@ -376,7 +376,6 @@
 <CancelOrRejectPopup
     @ref="@_rejectCancelModalRef"
     Title='@("Wallet withdrawal:"+_selectedRequest?.Id)'
-    Reason="@_cancelOrRejectReason"
     Validator="@RejectReasonValidator"
     OnCancel="@HideRejectCancelModal"
     OnSubmit="@RejectOrCancel"
@@ -422,8 +421,6 @@
     private DataGrid<WalletWithdrawalRequest>? _allRequestsDatagrid;
 
     private ConfirmationModal _confirmationModal;
-
-    private string? _cancelOrRejectReason;
     private CancelOrRejectPopup? _rejectCancelModalRef;
     private WalletWithdrawalRequestStatus? _rejectCancelStatus = WalletWithdrawalRequestStatus.Rejected;
     private bool _isAmountDisabled;
@@ -735,7 +732,7 @@
         if ((_rejectCancelStatus == WalletWithdrawalRequestStatus.Cancelled || _rejectCancelStatus == WalletWithdrawalRequestStatus.Rejected)
             && _selectedRequest != null)
         {
-            _selectedRequest.RejectCancelDescription = _cancelOrRejectReason;
+            _selectedRequest.RejectCancelDescription = _rejectCancelModalRef.Reason;
             _selectedRequest.Status = (WalletWithdrawalRequestStatus) _rejectCancelStatus;
 
             var updateResult = WalletWithdrawalRequestRepository.Update(_selectedRequest);
@@ -755,7 +752,6 @@
     {
         _rejectCancelStatus = null;
         _selectedRequest = null;
-        _cancelOrRejectReason = null;
 
         await GetData();
         await _rejectCancelModalRef.CloseModal();
