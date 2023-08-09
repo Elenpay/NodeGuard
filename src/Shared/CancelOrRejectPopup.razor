@@ -9,7 +9,7 @@
                 <Field>
                     <Validation @ref="_reasonValidation" Validator="@Validator">
                         <FieldLabel>Please type a reason before performing this operation</FieldLabel>
-                        <MemoEdit Rows="4" @bind-Text="@Reason">
+                        <MemoEdit Rows="4" Text="@Reason" TextChanged="@OnDescriptionChanged">
                             <ValidationError />
                         </MemoEdit>
                     </Validation>
@@ -52,5 +52,12 @@
     public async Task ShowModal()
     {
         await _modalRef.Show();
+    }
+
+    Task OnDescriptionChanged( string value )
+    {
+        Reason = value;
+
+        return Task.CompletedTask;
     }
 }

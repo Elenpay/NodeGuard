@@ -318,7 +318,9 @@
         <DataGridColumn TItem="ChannelOperationRequest" Field="@nameof(ChannelOperationRequest.Status)" Caption="Status" Sortable="false" Displayable="@IsAllRequestsColumnVisible(AllChannelsColumnName.Status)">
             <DisplayTemplate>
                 <Row Style="white-space: nowrap;">
-                    @context.Status.Humanize(LetterCasing.Sentence)
+                    <Tooltip Text=@context.ClosingReason Placement="TooltipPlacement.Top">
+                        <span>@context.Status.Humanize(LetterCasing.Sentence)</span>
+                    </Tooltip>
                     <ChannelStatusLogsTooltip ChannelStatusLogs="@context.StatusLogs"/>
                 </Row>
             </DisplayTemplate>
@@ -382,7 +384,6 @@
 <CancelOrRejectPopup
     @ref=@_rejectCancelModalRef
     Title='@(_selectedStatusActionString + " operation: " + _selectedRequest?.Id)'
-    Reason="@_cancelOrRejectReason"
     Validator="@RejectReasonValidator"
     OnCancel="@ResetChannelCancelModal"
     OnSubmit="@RejectOrCancelRequest"/>
@@ -426,7 +427,6 @@
     private ChannelOperationRequest _selectedRequestForMarkingAsFailed;
     private string? _psbt;
     private string? _templatePSBTString;
-    private string? _cancelOrRejectReason;
     private CancelOrRejectPopup _rejectCancelModalRef;
     private string? _selectedStatusActionString;
     private bool _isFinanceManager = false;
@@ -555,7 +555,6 @@
 
     private async Task ResetChannelCancelModal()
     {
-        _cancelOrRejectReason = null;
         await _rejectCancelModalRef.CloseModal();
     }
 
@@ -724,7 +723,7 @@
     {
         if (_selectedRequest != null)
         {
-            _selectedRequest.ClosingReason = _cancelOrRejectReason;
+            _selectedRequest.ClosingReason = _rejectCancelModalRef.Reason;
             _selectedRequest.Status = _selectedStatus;
             var jobUpdateResult = ChannelOperationRequestRepository.Update(_selectedRequest);
             if (!jobUpdateResult.Item1)
