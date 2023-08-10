@@ -1662,8 +1662,8 @@ namespace NodeGuard.Services
             var channelStatus = await lightningService.GetChannelsStatus();
 
             // Assert
-            channelStatus[0].LocalBalance.Should().Be(0);
-            channelStatus[0].RemoteBalance.Should().Be(500);
+            channelStatus[0].LocalBalance.Should().Be(500);
+            channelStatus[0].RemoteBalance.Should().Be(0);
         }
 
         [Fact]

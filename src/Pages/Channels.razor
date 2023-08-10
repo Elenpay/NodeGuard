@@ -166,11 +166,12 @@
                     <DisplayTemplate>
                         @{
                             var balance = GetPercentageBalance(context);
-
                         }
                         @if (balance >= 0)
                         {
-                            <Progress Color="Color.Primary" Value="@balance"></Progress>
+                            <Tooltip Text="@GetBalanceTooltipInformation(context)">
+                                <Progress Color="Color.Primary" Value="@balance"></Progress>
+                            </Tooltip>
                             <Text>
                                 @{
                                     @($"{balance}%")
@@ -868,4 +869,16 @@
         return false;
     }
 
+    private string GetBalanceTooltipInformation(Channel channel)
+    {
+        var sourcePubKey = StringHelper.TruncateHeadAndTail(channel.SourceNode.PubKey, 5);
+        var destinationPubKey = StringHelper.TruncateHeadAndTail(channel.DestinationNode.PubKey, 5);
+        var source = string.IsNullOrWhiteSpace(channel.SourceNode.Name) ? sourcePubKey : channel.SourceNode.Name;
+        var destination = string.IsNullOrWhiteSpace(channel.DestinationNode.Name) ? destinationPubKey : channel.DestinationNode.Name;
+        if (!channel.SourceNode.IsManaged)
+        {
+            return $"{destination}  - {source}";
+        }
+        return $"{source}  - {destination}";
+    }
 }

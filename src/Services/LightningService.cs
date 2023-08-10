@@ -1312,15 +1312,6 @@ namespace NodeGuard.Services
                     var localBalance = channel.LocalBalance + htlcsLocal;
                     var remoteBalance = channel.RemoteBalance + htlcsRemote;
 
-                    // If the channel is not initiated by a NodeGuard node, we need to swap the balances.
-                    // the balance is always shown from the NodeGuard's perspective
-                    if (!channel.Initiator)
-                    {
-                        localBalance = channel.RemoteBalance + htlcsRemote;
-                        remoteBalance = channel.LocalBalance + htlcsLocal;
-                    }
-
-
                     result.TryAdd(channel.ChanId, new ChannelStatus()
                     {
                         LocalBalance = localBalance,
