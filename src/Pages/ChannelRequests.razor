@@ -257,7 +257,11 @@
 }
 <br/>
 <br/>
-<h3>All Requests</h3>
+<h3>All Requests
+    <Tooltip Class="ml-2" Text="Refresh channel information">
+        <Button Color="Color.Primary" Clicked="RefreshChannelRequestsInformation"><Icon Name="IconName.SyncAlt"></Icon></Button>
+    </Tooltip>
+</h3>
 <br/>
 <DataGrid TItem="ChannelOperationRequest"
           @ref="@_allRequestsDatagrid"
@@ -269,7 +273,7 @@
     <ChildContent>
         <DataGridColumn TItem="ChannelOperationRequest" Field="@nameof(ChannelOperationRequest.Id)" Caption="#" Sortable="false" Displayable="true"/>
         <DataGridColumn TItem="ChannelOperationRequest" Field="SourceNode.Name" Caption="Source Node" Sortable="false" Displayable="@IsAllRequestsColumnVisible(AllChannelsColumnName.SourceNode)"/>
-        <DataGridColumn TItem="ChannelOperationRequest" Field="DestNode.Name" Caption="Remote Node" Sortable="false" Displayable="true">
+        <DataGridColumn TItem="ChannelOperationRequest" Field="DestNode.Name" Caption="Remote Node" Sortable="false" Displayable="@IsAllRequestsColumnVisible(AllChannelsColumnName.RemoteNode)">
             <DisplayTemplate>
                 @{
                     var remoteNodeName = context.DestNode.Name;
@@ -348,7 +352,7 @@
                 <ColumnLayout @ref="AllRequestsColumnLayout" Columns="@AllRequestsColumns" ColumnType="AllChannelsColumnName" OnUpdate="@OnColumnLayoutUpdate"/>
             </FilterTemplate>
             <DisplayTemplate>
-                @if (_isNodeManager && ShowActionDrowpdown(context))
+                @if (_isNodeManager && ShowActionDropdown(context))
                 {
                     <Dropdown>
                         <DropdownToggle Color="Color.Primary">
@@ -915,11 +919,9 @@
         }
     }
 
-    private bool ShowActionDrowpdown(ChannelOperationRequest request)
+    private bool ShowActionDropdown(ChannelOperationRequest request)
     {
-        return request.Status == ChannelOperationRequestStatus.OnChainConfirmationPending ||
-               request.Status == ChannelOperationRequestStatus.PSBTSignaturesPending ||
-               request.Status == ChannelOperationRequestStatus.Pending;
+        return request.Status is ChannelOperationRequestStatus.FinalizingPSBT or ChannelOperationRequestStatus.PSBTSignaturesPending or ChannelOperationRequestStatus.Pending;
     }
 
     private async Task MarkRequestAsFailedCloseConfirmationModal()
@@ -937,10 +939,6 @@
             var scheduler = await SchedulerFactory.GetScheduler();
             await scheduler.DeleteJob(new JobKey($"{nameof(ChannelOpenJob)}-{request.Id}"));
             if (!ChannelOperationRequestRepository.Update(request).Item1) throw new Exception();
-            if (request.Channel?.ChanId != null)
-            {
-                LightningService.CancelPendingChannel(request.SourceNode, ByteString.CopyFromUtf8(request.Channel?.ChanId.ToString()).ToByteArray());
-            }
         }
         catch (Exception? e)
         {
@@ -1013,5 +1011,11 @@
             return true;
         }
         return AllRequestsColumnLayout.IsColumnVisible(column);
+    }
+
+    private async Task RefreshChannelRequestsInformation()
+    {
+        await FetchRequests();
+        StateHasChanged();
     }
 }
