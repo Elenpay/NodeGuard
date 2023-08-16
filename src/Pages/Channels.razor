@@ -105,6 +105,7 @@
                             {
                                 <SelectItem Value="@(wallet.Id)">@wallet.Name</SelectItem>
                             }
+                              <SelectItem Value="@(_wallets.Count +1)">Unknown</SelectItem>
                         </Select>
                     </FilterTemplate>
                     <DisplayTemplate>
@@ -778,13 +779,24 @@
         return true;
     }
 
-    private bool OnWalletFilter(object? itemValue, object? searchValue)
-    {
-    //If the wallet is null it might be a externally created channel, so we return true
-        if (itemValue == null) return true;
+private bool OnWalletFilter(object? itemValue, object? searchValue)
+{
+    if (searchValue == null)
+        return true;
 
-        return searchValue == null || (int) searchValue == 0 || (int) itemValue == (int) searchValue;
+    if (searchValue is int intValue && (intValue == 0 || intValue == _wallets.Count + 1))
+    {
+        return itemValue == null;
     }
+
+    if (itemValue is int itemIntValue && searchValue is int searchIntValue)
+    {
+        return itemIntValue == searchIntValue;
+    }
+
+    return false;
+}
+
 
     private bool OnSourceNodeIdFilter(object? itemValue, object? searchValue)
     {
