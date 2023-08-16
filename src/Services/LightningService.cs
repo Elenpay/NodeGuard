@@ -96,7 +96,7 @@ namespace NodeGuard.Services
         /// Gets a dictionary of the local and remote balance of all the channels managed by NG
         /// </summary>
         /// <returns></returns>
-        public Task<Dictionary<ulong, ChannelStatus>> GetChannelsStatus();
+        public Task<Dictionary<ulong, ChannelState>> GetChannelsState();
 
         /// <summary>
         /// Cancels a pending channel from LND PSBT-based funding of channels
@@ -1289,11 +1289,11 @@ namespace NodeGuard.Services
             return await _lightningClientService.GetNodeInfo(node, pubkey);
         }
 
-        public async Task<Dictionary<ulong, ChannelStatus>> GetChannelsStatus()
+        public async Task<Dictionary<ulong, ChannelState>> GetChannelsState()
         {
             var nodes = await _nodeRepository.GetAllManagedByNodeGuard();
 
-            var result = new Dictionary<ulong, ChannelStatus>();
+            var result = new Dictionary<ulong, ChannelState>();
             foreach (var node in nodes)
             {
                 var listChannelsResponse = await _lightningClientService.ListChannels(node);
@@ -1312,7 +1312,7 @@ namespace NodeGuard.Services
                     var localBalance = channel.LocalBalance + htlcsLocal;
                     var remoteBalance = channel.RemoteBalance + htlcsRemote;
 
-                    result.TryAdd(channel.ChanId, new ChannelStatus()
+                    result.TryAdd(channel.ChanId, new ChannelState()
                     {
                         LocalBalance = localBalance,
                         RemoteBalance = remoteBalance,

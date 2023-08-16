@@ -288,4 +288,78 @@ public class ChannelMonitorJobTests
         updatedRequest.Status.Should().Be(ChannelOperationRequestStatus.OnChainConfirmed);
         updatedRequest.ChannelId.Should().Be(channel1.Id);
     }
+
+    [Fact]
+    public async Task MarkClosedChannelsAsClosed_ChannelsIsNull()
+    {
+        // Arrange
+        var logger = new Mock<ILogger<ChannelMonitorJob>>();
+        var dbContextFactory = SetupDbContextFactory();
+        await using var context = await dbContextFactory.Object.CreateDbContextAsync();
+
+        var channel1 = new Channel()
+        {
+            Id = 4,
+            FundingTx = "a2dffe0545ae0ce9091949477a9a7d91bb9478eb054fd9fa142e73562287ca4e",
+            Status = Channel.ChannelStatus.Open
+        };
+        await context.Channels.AddAsync(channel1);
+        await context.SaveChangesAsync();
+
+        var channelMonitorJob = new ChannelMonitorJob(logger.Object, dbContextFactory.Object, null, null, null);
+
+        var source = new Node() { Id = 3 };
+        // Act
+        var act = () => channelMonitorJob.MarkClosedChannelsAsClosed(source, null);
+
+        // Assert
+        await using var newContext = await dbContextFactory.Object.CreateDbContextAsync();
+        await act.Should().NotThrowAsync();
+        var existingChannel = await newContext.Channels.FirstAsync();
+        existingChannel.Status.Should().Be(Channel.ChannelStatus.Open);
+    }
+
+    [Fact]
+    public async Task MarkClosedChannelsAsClosed_ChannelsIsClosed()
+    {
+        // Arrange
+        var logger = new Mock<ILogger<ChannelMonitorJob>>();
+        var dbContextFactory = SetupDbContextFactory();
+        await using var context = await dbContextFactory.Object.CreateDbContextAsync();
+
+        var channel1 = new Channel()
+        {
+            Id = 4,
+            ChanId = 2,
+            FundingTx = "a2dffe0545ae0ce9091949477a9a7d91bb9478eb054fd9fa142e73562287ca4e",
+            Status = Channel.ChannelStatus.Open,
+            SourceNodeId = 3
+        };
+        var channel2 = new Channel()
+        {
+            Id = 2,
+            ChanId = 3,
+            FundingTx = "03c63200efc79c6675bd9e3f051a7b4d7e512a7594d1fec64a40e6f1f93a2b2927",
+            Status = Channel.ChannelStatus.Open,
+            SourceNodeId = 3
+        };
+        await context.Channels.AddAsync(channel1);
+        await context.Channels.AddAsync(channel2);
+        await context.SaveChangesAsync();
+
+        var channelMonitorJob = new ChannelMonitorJob(logger.Object, dbContextFactory.Object, null, null, null);
+
+        var source = new Node() { Id = 3 };
+        var channelsList = new List<Lnrpc.Channel>() { new Lnrpc.Channel() { ChanId = 2, Active = true } };
+        // Act
+        var act = () => channelMonitorJob.MarkClosedChannelsAsClosed(source, channelsList);
+
+        // Assert
+        await using var newContext = await dbContextFactory.Object.CreateDbContextAsync();
+        await act.Should().NotThrowAsync();
+        var existingChannel1 = await newContext.Channels.FirstAsync();
+        existingChannel1.Status.Should().Be(Channel.ChannelStatus.Open);
+        var existingChannel2 = await newContext.Channels.LastAsync();
+        existingChannel2.Status.Should().Be(Channel.ChannelStatus.Closed);
+    }
 }
