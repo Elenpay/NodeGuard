@@ -1297,6 +1297,13 @@ namespace NodeGuard.Services
             foreach (var node in nodes)
             {
                 var listChannelsResponse = await _lightningClientService.ListChannels(node);
+
+                if (listChannelsResponse == null)
+                {
+                    _logger.LogError("Error while getting channels for node: {NodeId}", node.Id);
+                    continue;
+                }
+
                 var channels = listChannelsResponse.Channels.ToList();
 
                 foreach (var channel in channels)

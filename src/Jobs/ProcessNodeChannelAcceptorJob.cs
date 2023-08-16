@@ -39,17 +39,20 @@ public class ProcessNodeChannelAcceptorJob : IJob
     private readonly IWalletRepository _walletRepository;
     private readonly INBXplorerService _nBXplorerService;
     private readonly ILogger<ProcessNodeChannelAcceptorJob> _logger;
+    private readonly ILightningClientService _lightningClientService;
 
     public ProcessNodeChannelAcceptorJob(ILogger<ProcessNodeChannelAcceptorJob> logger,
         INodeRepository nodeRepository,
         IWalletRepository walletRepository,
-        INBXplorerService nBXplorerService
+        INBXplorerService nBXplorerService,
+        ILightningClientService lightningClientService
         )
     {
         _nodeRepository = nodeRepository;
         _walletRepository = walletRepository;
         _nBXplorerService = nBXplorerService;
         _logger = logger;
+        _lightningClientService = lightningClientService;
     }
 
     public async Task Execute(IJobExecutionContext context)
@@ -126,18 +129,7 @@ public class ProcessNodeChannelAcceptorJob : IJob
         {
             _logger.LogInformation("Starting {JobName} on node: {NodeName}", nameof(ProcessNodeChannelAcceptorJob), node.Name);
 
-            using var grpcChannel = GrpcChannel.ForAddress($"https://{node.Endpoint}",
-                new GrpcChannelOptions
-                {
-                    HttpHandler = new HttpClientHandler
-                    {
-                        ServerCertificateCustomValidationCallback =
-                            HttpClientHandler.DangerousAcceptAnyServerCertificateValidator
-                    },
-                    LoggerFactory = loggerFactory,
-                });
-
-            var client = new Lightning.LightningClient(grpcChannel);
+            var client = _lightningClientService.GetLightningClient(node.Endpoint);
 
             if (!string.IsNullOrEmpty(node.ChannelAdminMacaroon))
             {

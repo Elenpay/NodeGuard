@@ -42,6 +42,8 @@ public class ChannelMonitorJob : IJob
     private readonly INodeRepository _nodeRepository;
     private readonly ILightningService _lightningService;
     private readonly ILightningClientService _lightningClientService;
+    private readonly Dictionary<string, Node> _remoteNodes = new();
+    private readonly HashSet<string> _checkedRemoteNodes = new();
 
     public ChannelMonitorJob(ILogger<ChannelMonitorJob> logger, IDbContextFactory<ApplicationDbContext> dbContextFactory, INodeRepository nodeRepository, ILightningService lightningService, ILightningClientService lightningClientService)
     {
@@ -67,13 +69,20 @@ public class ChannelMonitorJob : IJob
                 return;
             }
 
-            var result = await _lightningClientService.ListChannels(node1);
+            var client = _lightningClientService.GetLightningClient(node1.Endpoint);
+            var result = await _lightningClientService.ListChannels(node1, client);
 
             var channels = result?.Channels.ToList();
             await MarkClosedChannelsAsClosed(node1, channels);
-            foreach (var channel in channels)
+            foreach (var channel in channels ?? new())
             {
-                var node2 = await _nodeRepository.GetOrCreateByPubKey(channel.RemotePubkey, _lightningService);
+                var node2 = await GetRemoteNode(channel.RemotePubkey);
+                if (node2 == null)
+                {
+                    _logger.LogWarning("The external node {NodeId} was set up for monitoring but the remote node {RemoteNodeId} doesn't exist anymore", nodeId, channel.RemotePubkey);
+                    continue;
+                }
+                await RefreshExternalNodeData(node1, node2, client);
 
                 // Recover Operations on channels
                 await RecoverGhostChannels(node1, node2, channel);
@@ -87,6 +96,38 @@ public class ChannelMonitorJob : IJob
         }
 
         _logger.LogInformation("{JobName} ended", nameof(ChannelMonitorJob));
+    }
+
+    private async Task<Node?> GetRemoteNode(string pubKey)
+    {
+        if (_remoteNodes.TryGetValue(pubKey, out var node))
+        {
+            return node;
+        }
+        node = await _nodeRepository.GetOrCreateByPubKey(pubKey, _lightningService);
+        _remoteNodes.Add(node.PubKey, node);
+        return node;
+    }
+
+    private async Task RefreshExternalNodeData(Node managedNode, Node remoteNode, Lightning.LightningClient lightningClient)
+    {
+        if (_checkedRemoteNodes.Contains(remoteNode.PubKey))
+        {
+            return;
+        }
+        var nodeInfo = await _lightningClientService.GetNodeInfo(managedNode, remoteNode.PubKey, lightningClient);
+        if (nodeInfo == null)
+        {
+            _logger.LogWarning("The external node {NodeId} was set up for monitoring but the remote node {RemoteNodeId} doesn't exist anymore", managedNode.Id, remoteNode.PubKey);
+            return;
+        }
+        remoteNode.Name = nodeInfo.Alias;
+        var (updated, error) = _nodeRepository.Update(remoteNode);
+        if (!updated)
+        {
+            _logger.LogWarning("Couldn't update Node {NodeId} with Name {Name}: {Error}", remoteNode.Id, remoteNode.Name, error);
+        }
+        _checkedRemoteNodes.Add(remoteNode.PubKey);
     }
 
     public async Task RecoverGhostChannels(Node source, Node destination, Channel channel)
