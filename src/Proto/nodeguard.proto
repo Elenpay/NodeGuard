@@ -6,7 +6,7 @@ option go_package = "./nodeguard";
 
 service NodeGuardService {
   /*
-  
+
   Returns the liquidity rules associated to a node and its channels
   */
   rpc GetLiquidityRules(GetLiquidityRulesRequest) returns (GetLiquidityRulesResponse);
@@ -43,6 +43,11 @@ service NodeGuardService {
     Closes a channel to a given node
    */
   rpc CloseChannel(CloseChannelRequest) returns (CloseChannelResponse);
+
+  /*
+    Opens a channel to a given node with the UTXOs of the given wallet
+   */
+  rpc OpenChangelessChannel(OpenChangelessChannelRequest) returns (OpenChangelessChannelResponse);
 }
 
 message GetLiquidityRulesRequest {
@@ -178,4 +183,23 @@ message CloseChannelRequest {
 
 // A successful response is an empty message and does NOT indicate that the channel has been closed, external monitoring is required
 message CloseChannelResponse {
+}
+
+message OpenChangelessChannelRequest {
+  // Source node pubkey
+  string source_pub_key = 5;
+  // Destination node pubkey
+  string destination_pub_key = 1;
+  // Wallet ID as stored in the NG's database
+  int32 wallet_id = 2;
+  // Amount in satoshis
+  int64 sats_amount = 3;
+  // Whether the channel should be private
+  bool private = 4;
+  // UTXOs to use for the channel
+  repeated string utxos = 6;
+}
+
+// A successful response is an empty message and does NOT indicate that the channel has been open, external monitoring is required
+message OpenChangelessChannelResponse {
 }

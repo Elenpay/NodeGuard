@@ -35,6 +35,8 @@ public interface INodeGuardService
 
     Task<OpenChannelResponse> OpenChannel(OpenChannelRequest request, ServerCallContext context);
 
+    Task<OpenChangelessChannelResponse> OpenChangelessChannel(OpenChangelessChannelRequest request, ServerCallContext context);
+
     Task<CloseChannelResponse> CloseChannel(CloseChannelRequest request, ServerCallContext context);
 }
 
@@ -360,7 +362,7 @@ public class NodeGuardService : Nodeguard.NodeGuardService.NodeGuardServiceBase,
                 WalletId = request.WalletId,
                 SourceNodeId = sourceNode.Id,
                 DestNodeId = destNode.Id,
-                /*UserId = null, //TODO User & Auth 
+                /*UserId = null, //TODO User & Auth
             User = null,*/
                 IsChannelPrivate = request.Private,
             };
@@ -403,11 +405,17 @@ public class NodeGuardService : Nodeguard.NodeGuardService.NodeGuardServiceBase,
         return new OpenChannelResponse();
     }
 
+    public override async Task<OpenChangelessChannelResponse> OpenChangelessChannel(
+        OpenChangelessChannelRequest request, ServerCallContext context)
+    {
+        return new OpenChangelessChannelResponse();
+    }
+
     public override async Task<CloseChannelResponse> CloseChannel(CloseChannelRequest request, ServerCallContext context)
     {
         //Get channel by its chan_id (id of the ln implementation)
         var channel = await _channelRepository.GetByChanId(request.ChannelId);
-        
+
         if (channel == null)
         {
             throw new RpcException(new Status(StatusCode.NotFound, "Channel not found"));
@@ -416,10 +424,10 @@ public class NodeGuardService : Nodeguard.NodeGuardService.NodeGuardServiceBase,
         try
         {
             //Create channel operation request
-        
+
             var channelOperationRequest = new ChannelOperationRequest
             {
-                Description = "Channel close (API)", 
+                Description = "Channel close (API)",
                 Status = ChannelOperationRequestStatus.Pending,
                 RequestType = OperationRequestType.Close,
                 SourceNodeId = channel.SourceNodeId,
@@ -428,32 +436,32 @@ public class NodeGuardService : Nodeguard.NodeGuardService.NodeGuardServiceBase,
                 /*UserId = null, //TODO User & Auth
             */
             };
-        
+
             //Persist request
-        
+
             var result = await _channelOperationRequestRepository.AddAsync(channelOperationRequest);
-        
+
             if (!result.Item1)
             {
                 _logger?.LogError("Error adding channel operation request, error: {error}", result.Item2);
                 throw new RpcException(new Status(StatusCode.Internal, "Error adding channel operation request"));
             }
-        
+
             //Fire Close Channel Job
             var scheduler = await _schedulerFactory.GetScheduler();
-        
+
             var map = new JobDataMap();
             map.Put("closeRequestId", channelOperationRequest.Id);
             map.Put("forceClose", request.Force);
-        
+
             var retryList = RetriableJob.ParseRetryListFromString(Constants.JOB_RETRY_INTERVAL_LIST_IN_MINUTES);
             var job = RetriableJob.Create<ChannelCloseJob>(map, channelOperationRequest.Id.ToString(), retryList);
             await scheduler.ScheduleJob(job.Job, job.Trigger);
-        
+
             channelOperationRequest.JobId = job.Job.Key.ToString();
-        
+
             var jobUpdateResult = _channelOperationRequestRepository.Update(channelOperationRequest);
-        
+
             if (!jobUpdateResult.Item1)
             {
                 _logger?.LogError("Error updating channel operation request, error: {error}", jobUpdateResult.Item2);
