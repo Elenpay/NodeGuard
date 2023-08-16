@@ -121,6 +121,9 @@ public class ChannelMonitorJob : IJob
             _logger.LogWarning("The external node {NodeId} was set up for monitoring but the remote node {RemoteNodeId} doesn't exist anymore", managedNode.Id, remoteNode.PubKey);
             return;
         }
+
+        if (remoteNode.Name == nodeInfo.Alias) return;
+
         remoteNode.Name = nodeInfo.Alias;
         var (updated, error) = _nodeRepository.Update(remoteNode);
         if (!updated)
