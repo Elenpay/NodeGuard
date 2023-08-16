@@ -8,6 +8,7 @@ using NodeGuard.Services;
 using Grpc.Core;
 using NBitcoin;
 using NBXplorer.DerivationStrategy;
+using NBXplorer.Models;
 using Nodeguard;
 using Quartz;
 using LiquidityRule = Nodeguard.LiquidityRule;
@@ -34,8 +35,6 @@ public interface INodeGuardService
     Task<AddNodeResponse> AddNode(AddNodeRequest request, ServerCallContext context);
 
     Task<OpenChannelResponse> OpenChannel(OpenChannelRequest request, ServerCallContext context);
-
-    Task<OpenChangelessChannelResponse> OpenChangelessChannel(OpenChangelessChannelRequest request, ServerCallContext context);
 
     Task<CloseChannelResponse> CloseChannel(CloseChannelRequest request, ServerCallContext context);
 }
@@ -353,8 +352,33 @@ public class NodeGuardService : Nodeguard.NodeGuardService.NodeGuardServiceBase,
             throw new RpcException(new Status(StatusCode.NotFound, "Destination node not found"));
         }
 
+        var wallet = await _walletRepository.GetById(request.WalletId);
+        if (wallet == null)
+        {
+            throw new RpcException(new Status(StatusCode.NotFound, "Wallet not found"));
+        }
+
+        if (request.Changeless && request.UtxosOutpoints.Count == 0)
+        {
+            throw new RpcException(new Status(StatusCode.InvalidArgument, "Changeless channel open requires utxos"));
+        }
+
         try
         {
+            var outpoints = new List<OutPoint>();
+            var utxos = new List<UTXO>();
+
+            if (request.Changeless)
+            {
+                foreach (var outpoint in request.UtxosOutpoints)
+                {
+                    outpoints.Add(OutPoint.Parse(outpoint));
+                }
+
+                // Search the utxos and lock them
+                utxos = await _coinSelectionService.GetUTXOsByOutpointAsync(wallet.GetDerivationStrategy(), outpoints);
+            }
+
             var channelOperationRequest = new ChannelOperationRequest
             {
                 SatsAmount = request.SatsAmount,
@@ -366,8 +390,9 @@ public class NodeGuardService : Nodeguard.NodeGuardService.NodeGuardServiceBase,
                 SourceNodeId = sourceNode.Id,
                 DestNodeId = destNode.Id,
                 /*UserId = null, //TODO User & Auth
-            User = null,*/
+                User = null,*/
                 IsChannelPrivate = request.Private,
+                Changeless = request.Changeless,
             };
 
             //Persist request
@@ -376,6 +401,13 @@ public class NodeGuardService : Nodeguard.NodeGuardService.NodeGuardServiceBase,
             {
                 _logger?.LogError("Error adding channel operation request, error: {error}", result.Item2);
                 throw new RpcException(new Status(StatusCode.Internal, "Error adding channel operation request"));
+            }
+
+            if (request.Changeless)
+            {
+                // Lock the utxos
+                await _coinSelectionService.LockUTXOs(utxos, channelOperationRequest,
+                    BitcoinRequestType.ChannelOperation);
             }
 
             //Fire Open Channel Job
@@ -406,97 +438,6 @@ public class NodeGuardService : Nodeguard.NodeGuardService.NodeGuardServiceBase,
 
 
         return new OpenChannelResponse();
-    }
-
-    public override async Task<OpenChangelessChannelResponse> OpenChangelessChannel(
-        OpenChangelessChannelRequest request, ServerCallContext context)
-    {
-        var sourceNode = await _nodeRepository.GetByPubkey(request.SourcePubKey);
-        if (sourceNode == null)
-        {
-            throw new RpcException(new Status(StatusCode.NotFound, "Source node not found"));
-        }
-
-        var destNode = await _nodeRepository.GetByPubkey(request.DestinationPubKey);
-        if (destNode == null)
-        {
-            throw new RpcException(new Status(StatusCode.NotFound, "Destination node not found"));
-        }
-
-        var wallet = await _walletRepository.GetById(request.WalletId);
-        if (wallet == null)
-        {
-            throw new RpcException(new Status(StatusCode.NotFound, "Wallet not found"));
-        }
-
-        try
-        {
-            // Create the list of outpoints
-            var outpoints = new List<OutPoint>();
-            foreach (var outpoint in request.Utxos)
-            {
-                outpoints.Add(OutPoint.Parse(outpoint));
-            }
-
-            // Search the utxos and lock them
-            var utxos = await _coinSelectionService.GetUTXOsByOutpointAsync(wallet.GetDerivationStrategy(), outpoints);
-
-            // Create channel operation request
-            var channelOperationRequest = new ChannelOperationRequest
-            {
-                SatsAmount = request.SatsAmount,
-                Description = $"Channel open from {sourceNode.PubKey} to {destNode.PubKey} (API)",
-                AmountCryptoUnit = MoneyUnit.Satoshi,
-                Status = ChannelOperationRequestStatus.Pending,
-                RequestType = OperationRequestType.Open,
-                WalletId = request.WalletId,
-                SourceNodeId = sourceNode.Id,
-                DestNodeId = destNode.Id,
-                /*UserId = null, //TODO User & Auth
-                User = null,*/
-                IsChannelPrivate = request.Private,
-                Changeless = true,
-            };
-
-            // Persist request
-            var result = await _channelOperationRequestRepository.AddAsync(channelOperationRequest);
-            if (!result.Item1)
-            {
-                _logger?.LogError("Error adding channel operation request, error: {error}", result.Item2);
-                throw new RpcException(new Status(StatusCode.Internal, "Error adding channel operation request"));
-            }
-
-            // Lock the utxos
-            await _coinSelectionService.LockUTXOs(utxos, channelOperationRequest, BitcoinRequestType.ChannelOperation);
-
-            // Fire Open Channel Job
-            var scheduler = await _schedulerFactory.GetScheduler();
-
-            var map = new JobDataMap();
-            map.Put("openRequestId", channelOperationRequest.Id);
-
-            var retryList = RetriableJob.ParseRetryListFromString(Constants.JOB_RETRY_INTERVAL_LIST_IN_MINUTES);
-            var job = RetriableJob.Create<ChannelOpenJob>(map, channelOperationRequest.Id.ToString(), retryList);
-            await scheduler.ScheduleJob(job.Job, job.Trigger);
-
-            channelOperationRequest.JobId = job.Job.Key.ToString();
-
-            var jobUpdateResult = _channelOperationRequestRepository.Update(channelOperationRequest);
-
-            if (!jobUpdateResult.Item1)
-            {
-                _logger?.LogError("Error updating channel operation request, error: {error}", jobUpdateResult.Item2);
-                throw new RpcException(new Status(StatusCode.Internal, "Error updating channel operation request"));
-            }
-
-        }
-        catch (Exception e)
-        {
-            Console.WriteLine(e);
-            throw;
-        }
-
-        return new OpenChangelessChannelResponse();
     }
 
     public override async Task<CloseChannelResponse> CloseChannel(CloseChannelRequest request, ServerCallContext context)
