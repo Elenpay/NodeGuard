@@ -373,7 +373,7 @@
     private Dictionary<string, bool> _channelsColumns = new();
     private bool _columnsLoaded;
     // This dictionary is used to store the balance of each channel, key is the channel id, value is a tuple with the node id as local in the pair, local balance, remote balance
-    private Dictionary<ulong, ChannelStatus> _channelsBalance = new();
+    private Dictionary<ulong, ChannelState> _channelsBalance = new();
 
     public abstract class ChannelsColumnName
     {
@@ -419,7 +419,7 @@
         _nodes = await NodeRepository.GetAll();
         _wallets = await WalletRepository.GetAll();
         _channelsDataGridRef?.FilterData();
-        _channelsBalance = await LightningService.GetChannelsStatus();
+        _channelsBalance = await LightningService.GetChannelsState();
     }
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
@@ -863,7 +863,8 @@
 
     private async Task RefreshChannelInformation()
     {
-        _channelsBalance = await LightningService.GetChannelsStatus();
+        await FetchData();
+        _channelsBalance = await LightningService.GetChannelsState();
         StateHasChanged();
     }
 

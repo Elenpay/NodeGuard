@@ -1,6 +1,6 @@
 namespace NodeGuard.Helpers;
 
-public class ChannelStatus
+public class ChannelState
 {
     public long LocalBalance { get; set; }
     public long RemoteBalance { get; set; }
