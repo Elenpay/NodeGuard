@@ -25,6 +25,7 @@
 <Row>
     <Column ColumnSize="ColumnSize.Is12">
         <DataGrid TItem="Wallet"
+                  @ref="_walletsDataGrid"
                   @bind-SelectedRow="_selectedWallet"
                   Data="_wallets"
                   Editable="@_isFinanceManager"
@@ -41,7 +42,8 @@
                   ShowPageSizes="true"
                   PageSize="25"
                   Filterable="true"
-                  UseValidation="true">
+                  UseValidation="true"
+                  CustomFilter="OnWalletCustomFilter">
             <PopupTitleTemplate>
                 <h2>@(context.EditState) wallet</h2>
             </PopupTitleTemplate>
@@ -112,26 +114,26 @@
                     </EditTemplate>
                 </DataGridColumn>
                 <DataGridColumn TItem="Wallet" Editable="true" Field="@nameof(Wallet.Description)" Caption="@nameof(Wallet.Description)" Sortable="false"  Displayable="@IsColumnVisible(WalletsColumnName.Description)"/>
-                <DataGridColumn TItem="Wallet" Displayable="false" Filterable="true" Caption="Hot Wallet" Field="@nameof(Wallet.IsHotWallet)" Editable="true" CustomFilter="((searchItem, searchValue) => OnCustomFilter(searchItem, _hotWalletFilter))">
+                <DataGridColumn TItem="Wallet" Displayable="false" Filterable="true" Caption="Hot Wallet" Field="@nameof(Wallet.IsHotWallet)" Editable="true">
                     <EditTemplate>
                         <Check TValue="bool" Disabled="@(context.Item.IsFinalised)" Checked="@((bool) context.CellValue)" CheckedChanged="(value) => OnCheckedChanged(context, value)" @ref="_hotWalletCheckComponent"/>
                     </EditTemplate>
                 </DataGridColumn>
-                <DataGridColumn TItem="Wallet" Displayable="false" Filterable="true" Caption="Cold Wallet" Field="@nameof(Wallet.IsHotWallet)" Editable="false" CustomFilter="((searchItem, searchValue) => OnCustomFilter(!(bool)searchItem, _coldWalletFilter))"/>
-                <DataGridColumn TItem="Wallet" Displayable="false" Filterable="true" Caption="Finalized" Field="@nameof(Wallet.IsFinalised)" Editable="false" CustomFilter="((searchItem, searchValue) => OnCustomFilter(searchItem, _finalizedWalletFilter))"/>
-                <DataGridColumn TItem="Wallet" Displayable="false" Filterable="true" Caption="Archived" Field="@nameof(Wallet.IsArchived)" Editable="true" CellsEditableOnNewCommand="false" CustomFilter="((searchItem, searchValue) => OnCustomFilter(searchItem, _archivedWalletFilter))"/>
-                <DataGridColumn TItem="Wallet" Displayable="false" Filterable="true" Caption="Compromised" Field="@nameof(Wallet.IsCompromised)" Editable="true" CellsEditableOnNewCommand="false" CustomFilter="((searchItem, searchValue) => OnCustomFilter(searchItem, _compromisedWalletFilter))"/>
+                <DataGridColumn TItem="Wallet" Displayable="false" Filterable="true" Caption="Cold Wallet" Field="@nameof(Wallet.IsHotWallet)" Editable="false"/>
+                <DataGridColumn TItem="Wallet" Displayable="false" Filterable="true" Caption="Finalised" Field="@nameof(Wallet.IsFinalised)" Editable="false"/>
+                <DataGridColumn TItem="Wallet" Displayable="false" Filterable="true" Caption="Archived" Field="@nameof(Wallet.IsArchived)" Editable="true" CellsEditableOnNewCommand="false"/>
+                <DataGridColumn TItem="Wallet" Displayable="false" Filterable="true" Caption="Compromised" Field="@nameof(Wallet.IsCompromised)" Editable="true" CellsEditableOnNewCommand="false"/>
                 <DataGridSelectColumn TItem="Wallet" Sortable="false" Filterable="true"  Displayable="@IsColumnVisible(WalletsColumnName.WalletProperties)">
                     <FilterTemplate>
                         <Dropdown>
                             <DropdownToggle>Select</DropdownToggle>
                             <DropdownMenu>
                                 <div class="checkbox-drop">
-                                    <Check TValue="bool" @bind-Checked="_hotWalletFilter">🔥 Hot Wallet</Check>
-                                    <Check TValue="bool" @bind-Checked="_coldWalletFilter">❄️ Cold Wallet</Check>
-                                    <Check TValue="bool" @bind-Checked="_finalizedWalletFilter">🏁 Finalized</Check>
-                                    <Check TValue="bool" @bind-Checked="_archivedWalletFilter">📂 Archived</Check>
-                                    <Check TValue="bool" @bind-Checked="_compromisedWalletFilter">⛔️ Compromised</Check>
+                                    <Check TValue="bool"  CheckedChanged="@(() => { _hotWalletFilter = !_hotWalletFilter; OnCheckedChanged(true); })">🔥 Hot Wallet</Check>
+                                    <Check TValue="bool"  CheckedChanged="@(() => { _coldWalletFilter = !_coldWalletFilter; OnCheckedChanged(true); })">❄️ Cold Wallet</Check>
+                                    <Check TValue="bool"  CheckedChanged="@(() => { _finalisedWalletFilter = !_finalisedWalletFilter; OnCheckedChanged(true); })">🏁 finalised</Check>
+                                    <Check TValue="bool"  CheckedChanged="@(() => { _archivedWalletFilter = !_archivedWalletFilter; OnCheckedChanged(true); })">📂 Archived</Check>
+                                    <Check TValue="bool"  CheckedChanged="@(() => { _compromisedWalletFilter = !_compromisedWalletFilter; OnCheckedChanged(true); })">⛔️ Compromised</Check>
                                 </div>
                             </DropdownMenu>
                         </Dropdown>
@@ -140,7 +142,7 @@
                         <span>
                             Wallet Properties
                         </span>
-                        <span title="@("🔥 Hot Wallet\n❄️ Cold Wallet\n🏁 Finalized\n📂 Archived\n⛔️ Compromised")">
+                        <span title="@("🔥 Hot Wallet\n❄️ Cold Wallet\n🏁 Finalised\n📂 Archived\n⛔️ Compromised")">
                             @("\u24D8")
                         </span>
                     </CaptionTemplate>
@@ -191,7 +193,7 @@
                 }
             </DetailRowTemplate>
         </DataGrid>
-    </Column>a
+    </Column>
 </Row>
 <Modal @ref="_modalRef">
     <ModalContent Centered Size="ModalSize.ExtraLarge">
@@ -514,9 +516,9 @@
     private string? _importWalletSeedphrase;
     private Validations _importWalletValidations;
 
-	private Modal? _transferFundsModal;
+    private Modal? _transferFundsModal;
     private Validations _transferFundsValidations;
-	private List<Wallet> _walletsForTransfer = new();
+    private List<Wallet> _walletsForTransfer = new();
     private int _selectedTransferWalletId;
     private Wallet? _sourceTransferWallet;
     private Wallet? _targetTransferWallet;
@@ -539,9 +541,10 @@
 
     private bool _hotWalletFilter = false;
     private bool _coldWalletFilter = false;
-    private bool _finalizedWalletFilter = false;
+    private bool _finalisedWalletFilter = false;
     private bool _archivedWalletFilter = false;
     private bool _compromisedWalletFilter = false;
+    private DataGrid<Wallet> _walletsDataGrid;
 
     private ColumnLayout<WalletsColumnName> WalletsColumnLayout;
     private Dictionary<string, bool> WalletsColumns = new();
@@ -827,8 +830,8 @@
             if (balance != null)
             {
                 _textModalTitle = $"Wallet: {wallet.Name} On-chain Balance";
-                _textModalContent = $"Confirmed: {((Money) balance.Confirmed).ToUnit(MoneyUnit.BTC):f8} BTC ({Math.Round(PriceConversionHelper.BtcToUsdConversion(((Money) balance.Confirmed).ToUnit(MoneyUnit.BTC), _btcPrice), 2)} USD) - " +
-                                    $"Unconfirmed: {((Money) balance.Unconfirmed).ToUnit(MoneyUnit.BTC):f8} BTC ({Math.Round(PriceConversionHelper.BtcToUsdConversion(((Money) balance.Unconfirmed).ToUnit(MoneyUnit.BTC), _btcPrice), 2)} USD)";
+                _textModalContent = $"Confirmed: {((Money)balance.Confirmed).ToUnit(MoneyUnit.BTC):f8} BTC ({Math.Round(PriceConversionHelper.BtcToUsdConversion(((Money)balance.Confirmed).ToUnit(MoneyUnit.BTC), _btcPrice), 2)} USD) - " +
+                                    $"Unconfirmed: {((Money)balance.Unconfirmed).ToUnit(MoneyUnit.BTC):f8} BTC ({Math.Round(PriceConversionHelper.BtcToUsdConversion(((Money)balance.Unconfirmed).ToUnit(MoneyUnit.BTC), _btcPrice), 2)} USD)";
                 _textModalCopy = false;
 
                 await _textModalRef.Show();
@@ -897,7 +900,7 @@
         _selectedWalletToFinalise = null;
         await _finaliseModalRef.Close(CloseReason.UserClosing);
     }
-    
+
 
     private void ValidateThreshold(ValidatorEventArgs obj)
     {
@@ -976,22 +979,22 @@
 
     private async Task ShowTransferFundsModal(Wallet wallet)
     {
-		var availableWallets = await WalletRepository.GetAvailableWallets();
+        var availableWallets = await WalletRepository.GetAvailableWallets();
         _walletsForTransfer = availableWallets.Where(w => w.Id != wallet.Id).ToList();
-		_transferTargetWalletBalance = string.Empty;
+        _transferTargetWalletBalance = string.Empty;
         _sourceTransferWallet = wallet;
         _targetTransferWallet = null;
 
-		var (balance,_) = await BitcoinService.GetWalletConfirmedBalance(wallet);
+        var (balance,_) = await BitcoinService.GetWalletConfirmedBalance(wallet);
         _sourceWalletBalance = $"{balance:f8} BTC ({Math.Round(PriceConversionHelper.BtcToUsdConversion((decimal)balance, _btcPrice), 2)} USD)";
 
         await _transferFundsModal?.Show();
     }
-    
+
     private async Task<bool> TransferInnerWithdrawalProcess(WalletWithdrawalRequest withdrawalRequest)
     {
         bool result = false;
-        
+
         async Task CleanUpWithdrawalRequest(string errorMessage)
         {
             ToastService.ShowError(errorMessage);
@@ -1024,16 +1027,16 @@
             CleanUpWithdrawalRequest("Something went wrong");
             return result;
         }
-        
+
         var addResult = await WalletWithdrawalRequestPsbtRepository.AddAsync(walletWithdrawalRequestPsbt);
-        
+
         if (!addResult.Item1)
         {
             throw new ShowToUserException("Error while saving the signature");
         }
-            
+
         withdrawalRequest = await WalletWithdrawalRequestRepository.GetById(withdrawalRequest.Id);
-            
+
         if (withdrawalRequest != null
             && withdrawalRequest.AreAllRequiredHumanSignaturesCollected)
         {
@@ -1050,7 +1053,7 @@
     private async Task<WalletWithdrawalRequest> CreateWithdrawalRequestForFunds()
     {
         var targetBitcoinAddress = await LightningService.GetUnusedAddress(_targetTransferWallet, DerivationFeature.Deposit);
-            
+
         var withdrawalRequest = new WalletWithdrawalRequest
         {
             UserRequestorId = LoggedUser != null ? LoggedUser.Id : string.Empty,
@@ -1063,7 +1066,7 @@
                 ? WalletWithdrawalRequestStatus.PSBTSignaturesPending
                 : WalletWithdrawalRequestStatus.Pending,
         };
-            
+
         var withdrawalSaved = await WalletWithdrawalRequestRepository.AddAsync(withdrawalRequest);
 
         return withdrawalRequest;
@@ -1089,7 +1092,7 @@
                 await _multisigTransferModal.ShowModal();
             }
         }
-        
+
         await CloseAndCleanTransferFundsModal();
 
     }
@@ -1098,7 +1101,7 @@
     {
         var withdrawalRequest = await CreateWithdrawalRequestForFunds();
         var transferSuccess = await TransferInnerWithdrawalProcess(withdrawalRequest);
-        
+
         if (transferSuccess)
         {
             ToastService.ShowSuccess("Funds transferred successfully");
@@ -1107,15 +1110,15 @@
         {
             ToastService.ShowError("Error while transferring funds, please contact a superadmin for troubleshooting");
         }
-        
+
         await CloseHotWalletTransferModal();
     }
-    
-    
+
+
     private async Task<bool> CreateJobForFunds(WalletWithdrawalRequest withdrawalRequest)
     {
         var result = false;
-        
+
         try
         {
             IScheduler scheduler = await SchedulerFactory.GetScheduler();
@@ -1143,7 +1146,7 @@
 
         return result;
     }
-    
+
     private async Task CloseMultisigTransferModal()
     {
         await _multisigTransferModal.CloseModal();
@@ -1153,7 +1156,7 @@
     {
         await _hotWalletTransferModal.CloseModal();
     }
-    
+
     private async Task CloseAndCleanTransferFundsModal()
     {
         await _transferFundsModal?.Close(CloseReason.UserClosing);
@@ -1161,15 +1164,16 @@
         _selectedTransferWalletId = 0;
         _amountToTransfer = Constants.MINIMUM_WITHDRAWAL_BTC_AMOUNT;
         _walletsForTransfer = new();
-		_transferTargetWalletBalance = string.Empty;
+        _transferTargetWalletBalance = string.Empty;
         _sourceWalletBalance = string.Empty;
     }
 
     private async Task OnSelectedWallet(int id)
     {
         _selectedTransferWalletId = id;
-        
-		if (id == 0) {
+
+        if (id == 0)
+        {
             _transferTargetWalletBalance = string.Empty;
         }
 
@@ -1237,17 +1241,28 @@
         ToastService.ShowSuccess("Address copied");
     }
 
-    private bool OnCustomFilter(object item, object value)
+    private bool OnWalletCustomFilter(Wallet wallet)
     {
-        bool anyCheck = _archivedWalletFilter || _compromisedWalletFilter || _hotWalletFilter || _coldWalletFilter || _finalizedWalletFilter;
+        bool anyCheck = _archivedWalletFilter || _compromisedWalletFilter || _hotWalletFilter || _coldWalletFilter || _finalisedWalletFilter;
         if (!anyCheck)
             return true;
 
-        if ((bool)value)
-        {
-            return (bool)item == (bool)value;
-        }
-        return true;
+        if (_archivedWalletFilter && wallet.IsArchived)
+            return true;
+
+        if (_compromisedWalletFilter && wallet.IsCompromised)
+            return true;
+
+        if (_hotWalletFilter && wallet.IsHotWallet)
+            return true;
+
+        if (_coldWalletFilter && !wallet.IsHotWallet)
+            return true;
+
+        if (_finalisedWalletFilter && wallet.IsFinalised)
+            return true;
+
+        return false;
     }
 
     private void OnColumnLayoutUpdate()
@@ -1262,5 +1277,10 @@
             return true;
         }
         return WalletsColumnLayout.IsColumnVisible(column);
+    }
+
+    private Task OnCheckedChanged(bool value)
+    {
+        return _walletsDataGrid.Reload();
     }
 }
