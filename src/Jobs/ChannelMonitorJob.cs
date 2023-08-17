@@ -26,6 +26,7 @@ using Lnrpc;
 using Microsoft.EntityFrameworkCore;
 using Quartz;
 using Channel = Lnrpc.Channel;
+using ChannelStatus = NodeGuard.Data.Models.Channel.ChannelStatus;
 
 namespace NodeGuard.Jobs;
 
@@ -68,7 +69,9 @@ public class ChannelMonitorJob : IJob
 
             var result = await _lightningClientService.ListChannels(node1);
 
-            foreach (var channel in result?.Channels)
+            var channels = result?.Channels.ToList();
+            await MarkClosedChannelsAsClosed(node1, channels);
+            foreach (var channel in channels)
             {
                 var node2 = await _nodeRepository.GetOrCreateByPubKey(channel.RemotePubkey, _lightningService);
 
@@ -142,6 +145,29 @@ public class ChannelMonitorJob : IJob
         catch (Exception e)
         {
             _logger.LogError(e, "Error while recovering channel in OnChainConfirmationPending status, {SourceNodeId}: {Error}", source.Id, e);
+        }
+    }
+
+    public async Task MarkClosedChannelsAsClosed(Node source, List<Channel>? channels)
+    {
+        if (channels == null) return;
+        await using var dbContext = await _dbContextFactory.CreateDbContextAsync();
+        try
+        {
+            var openChannels = dbContext.Channels.Where(c => (c.SourceNodeId == source.Id || c.DestinationNodeId == source.Id) && c.Status == ChannelStatus.Open).ToList();
+            foreach (var openChannel in openChannels)
+            {
+                var channel = channels.FirstOrDefault(c => c.ChanId == openChannel.ChanId);
+                if (channel == null)
+                {
+                    openChannel.Status = ChannelStatus.Closed;
+                    await dbContext.SaveChangesAsync();
+                }
+            }
+        }
+        catch (Exception e)
+        {
+            _logger.LogError(e, "Error while marking closed channels as closed, {SourceNodeId}: {Error}", source.Id, e);
         }
     }
 }

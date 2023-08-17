@@ -1615,7 +1615,7 @@ namespace NodeGuard.Services
             var lightningService = new LightningService(null, null, nodeRepository.Object, null, null, null, null, null ,null, lightningClientService.Object);
 
             // Act
-            var channelStatus = await lightningService.GetChannelsStatus();
+            var channelStatus = await lightningService.GetChannelsState();
 
             // Assert
             channelStatus[0].LocalBalance.Should().Be(500);
@@ -1659,7 +1659,7 @@ namespace NodeGuard.Services
             var lightningService = new LightningService(null, null, nodeRepository.Object, null, null, null, null, null ,null, lightningClientService.Object);
 
             // Act
-            var channelStatus = await lightningService.GetChannelsStatus();
+            var channelStatus = await lightningService.GetChannelsState();
 
             // Assert
             channelStatus[0].LocalBalance.Should().Be(500);
@@ -1726,7 +1726,7 @@ namespace NodeGuard.Services
             var lightningService = new LightningService(null, null, nodeRepository.Object, null, null, null, null, null ,null, lightningClientService.Object);
 
             // Act
-            var channelStatus = await lightningService.GetChannelsStatus();
+            var channelStatus = await lightningService.GetChannelsState();
 
             // Assert
             channelStatus[0].LocalBalance.Should().Be(500);
@@ -1793,7 +1793,7 @@ namespace NodeGuard.Services
             var lightningService = new LightningService(null, null, nodeRepository.Object, null, null, null, null, null ,null, lightningClientService.Object);
 
             // Act
-            var channelStatus = await lightningService.GetChannelsStatus();
+            var channelStatus = await lightningService.GetChannelsState();
 
             // Assert
             channelStatus[0].LocalBalance.Should().Be(500);
