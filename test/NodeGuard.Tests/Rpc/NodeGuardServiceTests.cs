@@ -195,6 +195,74 @@ namespace NodeGuard.Rpc
         }
 
         [Fact]
+        public async Task OpenChannel_ValidRequest_OpensChangelessChannelAndReturnsResponse()
+        {
+            // Arrange
+            var nodeRepositoryMock = new Mock<INodeRepository>();
+            var channelOperationRequestRepositoryMock = new Mock<IChannelOperationRequestRepository>();
+            var schedulerFactoryMock = GetSchedulerFactoryMock();
+            var coinSelectionServiceMock = new Mock<ICoinSelectionService>();
+            var walletRepositoryMock = new Mock<IWalletRepository>();
+
+            var sourcePubKey = "sourcePubKey";
+            var destPubKey = "destPubKey";
+            var walletId = 1;
+            var wallet = new Wallet() {Id = walletId};
+
+            nodeRepositoryMock.Setup(repo => repo.GetByPubkey(sourcePubKey))
+                .ReturnsAsync(new Node {Id = 1, PubKey = sourcePubKey});
+            nodeRepositoryMock.Setup(repo => repo.GetByPubkey(destPubKey))
+                .ReturnsAsync(new Node {Id = 2, PubKey = destPubKey});
+            walletRepositoryMock.Setup(repo => repo.GetById(walletId))
+                .ReturnsAsync(wallet);
+            coinSelectionServiceMock.Setup(service => service.GetUTXOsByOutpointAsync(wallet.GetDerivationStrategy(),
+                    new List<OutPoint> { new OutPoint(), new OutPoint() }))
+                .ReturnsAsync(new List<UTXO> { new UTXO() });
+            channelOperationRequestRepositoryMock.Setup(repo => repo.AddAsync(It.IsAny<ChannelOperationRequest>()))
+                .ReturnsAsync((true, null));
+            coinSelectionServiceMock.Setup(service => service.LockUTXOs(new List<UTXO> { new UTXO() },
+                    new ChannelOperationRequest(), BitcoinRequestType.ChannelOperation));
+            channelOperationRequestRepositoryMock.Setup(repo => repo.Update(It.IsAny<ChannelOperationRequest>()))
+                .Returns((true, null));
+
+
+            var service = new NodeGuardService(_logger.Object, new Mock<ILiquidityRuleRepository>().Object,
+                walletRepositoryMock.Object,
+                _mockMapper, new Mock<IWalletWithdrawalRequestRepository>().Object,
+                new Mock<IBitcoinService>().Object, new Mock<INBXplorerService>().Object,
+                schedulerFactoryMock,
+                nodeRepositoryMock.Object,
+                channelOperationRequestRepositoryMock.Object, null, coinSelectionServiceMock.Object);
+
+            var request = new OpenChannelRequest
+            {
+                SourcePubKey = sourcePubKey,
+                DestinationPubKey = destPubKey,
+                SatsAmount = 10000,
+                Private = false,
+                WalletId = walletId,
+                Changeless = true,
+                UtxosOutpoints = {
+                    "6b0d07129a492c287d6fdd34c7b19f0b0136901db6c1a95e0d46e0ecde9db1c3:0",
+                    "6b0d07129a492c287d6fdd34c7b19f0b0136901db6c1a95e0d46e0ecde9db1c3:1"
+                }
+            };
+            var context = new Mock<ServerCallContext>().Object;
+
+            // Act
+            Func<Task> act = async () => await service.OpenChannel(request, context);
+
+            // Assert
+            act.Should().NotThrowAsync<Exception>();
+            nodeRepositoryMock.Verify(repo => repo.GetByPubkey(sourcePubKey), Times.Once);
+            nodeRepositoryMock.Verify(repo => repo.GetByPubkey(destPubKey), Times.Once);
+            channelOperationRequestRepositoryMock.Verify(repo => repo.AddAsync(It.IsAny<ChannelOperationRequest>()),
+                Times.Once);
+            channelOperationRequestRepositoryMock.Verify(repo => repo.Update(It.IsAny<ChannelOperationRequest>()),
+                Times.Once);
+        }
+
+        [Fact]
         public async Task CloseChannel_ValidRequest_ClosesChannelAndReturnsResponse()
         {
             // Arrange
