@@ -105,7 +105,7 @@
                             {
                                 <SelectItem Value="@(wallet.Id)">@wallet.Name</SelectItem>
                             }
-                              <SelectItem Value="@(_wallets.Count +1)">Unknown</SelectItem>
+                              <SelectItem Value="-1">Unknown</SelectItem>
                         </Select>
                     </FilterTemplate>
                     <DisplayTemplate>
@@ -779,23 +779,19 @@
         return true;
     }
 
-private bool OnWalletFilter(object? itemValue, object? searchValue)
-{
-    if (searchValue == null || searchValue as int? == 0){
-        return true;
-    }
-    if (searchValue is int intValue && (intValue == 0 || intValue == _wallets.Count + 1))
+    private bool OnWalletFilter(object? itemValue, object? searchValue)
     {
-        return itemValue == null;
-    }
+        if (searchValue == null || searchValue is 0)
+        {
+            return true;
+        }
+        if (searchValue is -1)
+        {
+            return itemValue == null;
+        }
 
-    if (itemValue is int itemIntValue && searchValue is int searchIntValue)
-    {
-        return itemIntValue == searchIntValue;
+        return itemValue is int itemIntValue && searchValue is int searchIntValue && itemIntValue == searchIntValue;
     }
-
-    return false;
-}
 
     private bool OnSourceNodeIdFilter(object? itemValue, object? searchValue)
     {
