@@ -1247,22 +1247,11 @@
         if (!anyCheck)
             return true;
 
-        if (_archivedWalletFilter && wallet.IsArchived)
-            return true;
-
-        if (_compromisedWalletFilter && wallet.IsCompromised)
-            return true;
-
-        if (_hotWalletFilter && wallet.IsHotWallet)
-            return true;
-
-        if (_coldWalletFilter && !wallet.IsHotWallet)
-            return true;
-
-        if (_finalisedWalletFilter && wallet.IsFinalised)
-            return true;
-
-        return false;
+        return _archivedWalletFilter && wallet.IsArchived
+               || _compromisedWalletFilter && wallet.IsCompromised
+               || _hotWalletFilter && wallet.IsHotWallet
+               || _coldWalletFilter && !wallet.IsHotWallet
+               || _finalisedWalletFilter && wallet.IsFinalised;
     }
 
     private void OnColumnLayoutUpdate()
