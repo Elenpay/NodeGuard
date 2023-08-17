@@ -144,6 +144,8 @@ namespace NodeGuard.Rpc
             var nodeRepositoryMock = new Mock<INodeRepository>();
             var channelOperationRequestRepositoryMock = new Mock<IChannelOperationRequestRepository>();
             var schedulerFactoryMock = GetSchedulerFactoryMock();
+            var coinSelectionServiceMock = new Mock<ICoinSelectionService>();
+            var walletRepositoryMock = new Mock<IWalletRepository>();
 
             var sourcePubKey = "sourcePubKey";
             var destPubKey = "destPubKey";
@@ -153,6 +155,8 @@ namespace NodeGuard.Rpc
                 .ReturnsAsync(new Node {Id = 1, PubKey = sourcePubKey});
             nodeRepositoryMock.Setup(repo => repo.GetByPubkey(destPubKey))
                 .ReturnsAsync(new Node {Id = 2, PubKey = destPubKey});
+            walletRepositoryMock.Setup(repo => repo.GetById(walletId))
+                .ReturnsAsync(new Wallet {Id = walletId});
             channelOperationRequestRepositoryMock.Setup(repo => repo.AddAsync(It.IsAny<ChannelOperationRequest>()))
                 .ReturnsAsync((true, null));
             channelOperationRequestRepositoryMock.Setup(repo => repo.Update(It.IsAny<ChannelOperationRequest>()))
@@ -160,12 +164,12 @@ namespace NodeGuard.Rpc
 
 
             var service = new NodeGuardService(_logger.Object, new Mock<ILiquidityRuleRepository>().Object,
-                new Mock<IWalletRepository>().Object,
+                walletRepositoryMock.Object,
                 _mockMapper, new Mock<IWalletWithdrawalRequestRepository>().Object,
                 new Mock<IBitcoinService>().Object, new Mock<INBXplorerService>().Object,
                 schedulerFactoryMock,
                 nodeRepositoryMock.Object,
-                channelOperationRequestRepositoryMock.Object, null, null);
+                channelOperationRequestRepositoryMock.Object, null, coinSelectionServiceMock.Object);
 
             var request = new OpenChannelRequest
             {
