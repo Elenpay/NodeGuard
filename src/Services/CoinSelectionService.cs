@@ -48,6 +48,13 @@ public interface ICoinSelectionService
     public Task<List<UTXO>> GetAvailableUTXOsAsync(DerivationStrategyBase derivationStrategy, CoinSelectionStrategy strategy, int limit, long amount, long closestTo);
 
     /// <summary>
+    /// Gets the UTXOs that are not locked in other transactions related to the outpoints
+    /// </summary>
+    /// <param name="derivationStrategy"></param>
+    /// <param name="outPoints"></param>
+    public Task<List<UTXO>> GetUTXOsByOutpointAsync(DerivationStrategyBase derivationStrategy, List<OutPoint> outPoints);
+
+    /// <summary>
     /// Locks the UTXOs for using in a specific transaction
     /// </summary>
     /// <param name="selectedUTXOs"></param>
@@ -193,5 +200,11 @@ public class CoinSelectionService: ICoinSelectionService
         var coins = await LightningHelper.SelectCoins(request.Wallet, selectedUTXOs);
 
         return (coins, selectedUTXOs);
+    }
+
+    public async Task<List<UTXO>> GetUTXOsByOutpointAsync(DerivationStrategyBase derivationStrategy, List<OutPoint> outPoints)
+    {
+        var utxos = await _nbXplorerService.GetUTXOsAsync(derivationStrategy);
+        return utxos.Confirmed.UTXOs.Where(utxo => outPoints.Contains(utxo.Outpoint)).ToList();
     }
 }

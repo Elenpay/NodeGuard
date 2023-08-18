@@ -6,7 +6,7 @@ option go_package = "./nodeguard";
 
 service NodeGuardService {
   /*
-  
+
   Returns the liquidity rules associated to a node and its channels
   */
   rpc GetLiquidityRules(GetLiquidityRulesRequest) returns (GetLiquidityRulesResponse);
@@ -162,7 +162,10 @@ message OpenChannelRequest {
   int64 sats_amount = 3;
   // Whether the channel should be private
   bool private = 4;
-
+  // Whether the channel should be created in a changeless way
+  bool changeless = 6;
+  // Outpoints for the UTXOs to use for the channel
+  repeated string utxos_outpoints = 7;
 }
 
 // A successful response is an empty message and does NOT indicate that the channel has been open, external monitoring is required

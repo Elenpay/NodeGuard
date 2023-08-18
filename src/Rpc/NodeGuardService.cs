@@ -8,6 +8,7 @@ using NodeGuard.Services;
 using Grpc.Core;
 using NBitcoin;
 using NBXplorer.DerivationStrategy;
+using NBXplorer.Models;
 using Nodeguard;
 using Quartz;
 using LiquidityRule = Nodeguard.LiquidityRule;
@@ -54,6 +55,7 @@ public class NodeGuardService : Nodeguard.NodeGuardService.NodeGuardServiceBase,
     private readonly INodeRepository _nodeRepository;
     private readonly IChannelOperationRequestRepository _channelOperationRequestRepository;
     private readonly IChannelRepository _channelRepository;
+    private readonly ICoinSelectionService _coinSelectionService;
     private readonly IScheduler _scheduler;
 
     public NodeGuardService(ILogger<NodeGuardService> logger,
@@ -66,7 +68,8 @@ public class NodeGuardService : Nodeguard.NodeGuardService.NodeGuardServiceBase,
         ISchedulerFactory schedulerFactory,
         INodeRepository nodeRepository,
         IChannelOperationRequestRepository channelOperationRequestRepository,
-        IChannelRepository channelRepository
+        IChannelRepository channelRepository,
+        ICoinSelectionService coinSelectionService
     )
     {
         _logger = logger;
@@ -80,6 +83,7 @@ public class NodeGuardService : Nodeguard.NodeGuardService.NodeGuardServiceBase,
         _nodeRepository = nodeRepository;
         _channelOperationRequestRepository = channelOperationRequestRepository;
         _channelRepository = channelRepository;
+        _coinSelectionService = coinSelectionService;
         _scheduler = Task.Run(() => _schedulerFactory.GetScheduler()).Result;
     }
 
@@ -348,8 +352,33 @@ public class NodeGuardService : Nodeguard.NodeGuardService.NodeGuardServiceBase,
             throw new RpcException(new Status(StatusCode.NotFound, "Destination node not found"));
         }
 
+        var wallet = await _walletRepository.GetById(request.WalletId);
+        if (wallet == null)
+        {
+            throw new RpcException(new Status(StatusCode.NotFound, "Wallet not found"));
+        }
+
+        if (request.Changeless && request.UtxosOutpoints.Count == 0)
+        {
+            throw new RpcException(new Status(StatusCode.InvalidArgument, "Changeless channel open requires utxos"));
+        }
+
         try
         {
+            var outpoints = new List<OutPoint>();
+            var utxos = new List<UTXO>();
+
+            if (request.Changeless)
+            {
+                foreach (var outpoint in request.UtxosOutpoints)
+                {
+                    outpoints.Add(OutPoint.Parse(outpoint));
+                }
+
+                // Search the utxos and lock them
+                utxos = await _coinSelectionService.GetUTXOsByOutpointAsync(wallet.GetDerivationStrategy(), outpoints);
+            }
+
             var channelOperationRequest = new ChannelOperationRequest
             {
                 SatsAmount = request.SatsAmount,
@@ -360,9 +389,10 @@ public class NodeGuardService : Nodeguard.NodeGuardService.NodeGuardServiceBase,
                 WalletId = request.WalletId,
                 SourceNodeId = sourceNode.Id,
                 DestNodeId = destNode.Id,
-                /*UserId = null, //TODO User & Auth 
-            User = null,*/
+                /*UserId = null, //TODO User & Auth
+                User = null,*/
                 IsChannelPrivate = request.Private,
+                Changeless = request.Changeless,
             };
 
             //Persist request
@@ -371,6 +401,13 @@ public class NodeGuardService : Nodeguard.NodeGuardService.NodeGuardServiceBase,
             {
                 _logger?.LogError("Error adding channel operation request, error: {error}", result.Item2);
                 throw new RpcException(new Status(StatusCode.Internal, "Error adding channel operation request"));
+            }
+
+            if (request.Changeless)
+            {
+                // Lock the utxos
+                await _coinSelectionService.LockUTXOs(utxos, channelOperationRequest,
+                    BitcoinRequestType.ChannelOperation);
             }
 
             //Fire Open Channel Job
@@ -407,7 +444,7 @@ public class NodeGuardService : Nodeguard.NodeGuardService.NodeGuardServiceBase,
     {
         //Get channel by its chan_id (id of the ln implementation)
         var channel = await _channelRepository.GetByChanId(request.ChannelId);
-        
+
         if (channel == null)
         {
             throw new RpcException(new Status(StatusCode.NotFound, "Channel not found"));
@@ -416,10 +453,10 @@ public class NodeGuardService : Nodeguard.NodeGuardService.NodeGuardServiceBase,
         try
         {
             //Create channel operation request
-        
+
             var channelOperationRequest = new ChannelOperationRequest
             {
-                Description = "Channel close (API)", 
+                Description = "Channel close (API)",
                 Status = ChannelOperationRequestStatus.Pending,
                 RequestType = OperationRequestType.Close,
                 SourceNodeId = channel.SourceNodeId,
@@ -428,32 +465,32 @@ public class NodeGuardService : Nodeguard.NodeGuardService.NodeGuardServiceBase,
                 /*UserId = null, //TODO User & Auth
             */
             };
-        
+
             //Persist request
-        
+
             var result = await _channelOperationRequestRepository.AddAsync(channelOperationRequest);
-        
+
             if (!result.Item1)
             {
                 _logger?.LogError("Error adding channel operation request, error: {error}", result.Item2);
                 throw new RpcException(new Status(StatusCode.Internal, "Error adding channel operation request"));
             }
-        
+
             //Fire Close Channel Job
             var scheduler = await _schedulerFactory.GetScheduler();
-        
+
             var map = new JobDataMap();
             map.Put("closeRequestId", channelOperationRequest.Id);
             map.Put("forceClose", request.Force);
-        
+
             var retryList = RetriableJob.ParseRetryListFromString(Constants.JOB_RETRY_INTERVAL_LIST_IN_MINUTES);
             var job = RetriableJob.Create<ChannelCloseJob>(map, channelOperationRequest.Id.ToString(), retryList);
             await scheduler.ScheduleJob(job.Job, job.Trigger);
-        
+
             channelOperationRequest.JobId = job.Job.Key.ToString();
-        
+
             var jobUpdateResult = _channelOperationRequestRepository.Update(channelOperationRequest);
-        
+
             if (!jobUpdateResult.Item1)
             {
                 _logger?.LogError("Error updating channel operation request, error: {error}", jobUpdateResult.Item2);
