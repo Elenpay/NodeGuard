@@ -166,6 +166,8 @@ message OpenChannelRequest {
   bool changeless = 6;
   // Outpoints for the UTXOs to use for the channel
   repeated string utxos_outpoints = 7;
+  // Fee rate in sat/vbyte
+  int32 fee_rate = 8;
 }
 
 // A successful response is an empty message and does NOT indicate that the channel has been open, external monitoring is required

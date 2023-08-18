@@ -57,6 +57,7 @@ public class NodeGuardService : Nodeguard.NodeGuardService.NodeGuardServiceBase,
     private readonly IChannelRepository _channelRepository;
     private readonly ICoinSelectionService _coinSelectionService;
     private readonly IScheduler _scheduler;
+    private readonly ILightningService _lightningService;
 
     public NodeGuardService(ILogger<NodeGuardService> logger,
         ILiquidityRuleRepository liquidityRuleRepository,
@@ -69,7 +70,8 @@ public class NodeGuardService : Nodeguard.NodeGuardService.NodeGuardServiceBase,
         INodeRepository nodeRepository,
         IChannelOperationRequestRepository channelOperationRequestRepository,
         IChannelRepository channelRepository,
-        ICoinSelectionService coinSelectionService
+        ICoinSelectionService coinSelectionService,
+        ILightningService lightningService
     )
     {
         _logger = logger;
@@ -84,6 +86,7 @@ public class NodeGuardService : Nodeguard.NodeGuardService.NodeGuardServiceBase,
         _channelOperationRequestRepository = channelOperationRequestRepository;
         _channelRepository = channelRepository;
         _coinSelectionService = coinSelectionService;
+        _lightningService = lightningService;
         _scheduler = Task.Run(() => _schedulerFactory.GetScheduler()).Result;
     }
 
@@ -395,6 +398,11 @@ public class NodeGuardService : Nodeguard.NodeGuardService.NodeGuardServiceBase,
                 Changeless = request.Changeless,
             };
 
+            if (request.FeeRate != 0)
+            {
+                channelOperationRequest.FeeRate = request.FeeRate;
+            }
+
             //Persist request
             var result = await _channelOperationRequestRepository.AddAsync(channelOperationRequest);
             if (!result.Item1)
@@ -408,6 +416,24 @@ public class NodeGuardService : Nodeguard.NodeGuardService.NodeGuardServiceBase,
                 // Lock the utxos
                 await _coinSelectionService.LockUTXOs(utxos, channelOperationRequest,
                     BitcoinRequestType.ChannelOperation);
+            }
+
+            var (templatePsbt, noUtxosAvailable) = (await _lightningService.GenerateTemplatePSBT(channelOperationRequest));
+            if (templatePsbt == null)
+            {
+                channelOperationRequest.Status = ChannelOperationRequestStatus.Failed;
+                _channelOperationRequestRepository.Update(channelOperationRequest);
+                if (noUtxosAvailable)
+                {
+                    _logger?.LogError("No UTXOs available for opening the channel");
+                    throw new RpcException(new Status(StatusCode.ResourceExhausted,
+                        "No UTXOs available for opening the channel"));
+                }
+                else
+                {
+                    _logger?.LogError("Error generating template PSBT");
+                    throw new RpcException(new Status(StatusCode.Internal, "Error generating template PSBT"));
+                }
             }
 
             //Fire Open Channel Job
