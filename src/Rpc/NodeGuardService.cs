@@ -364,7 +364,7 @@ public class NodeGuardService : Nodeguard.NodeGuardService.NodeGuardServiceBase,
 
         if (request.MempoolFeeRate.Equals("") || request.MempoolFeeRate == null)
         {
-            throw new RpcException(new Status(StatusCode.InvalidArgument, "Mempool fee rate is required"));
+            throw new RpcException(new Status(StatusCode.NotFound, "Mempool fee rate is required"));
         }
 
         if (request.Changeless && request.UtxosOutpoints.Count == 0)
@@ -393,21 +393,26 @@ public class NodeGuardService : Nodeguard.NodeGuardService.NodeGuardServiceBase,
 
             switch (request.MempoolFeeRate)
             {
-                case "Economy":
+                case "EconomyFee":
                     feeType = MempoolRecommendedFeesTypes.EconomyFee;
                     break;
-                case "Fastest":
+                case "FastestFee":
                     feeType = MempoolRecommendedFeesTypes.FastestFee;
                     break;
-                case "Hour":
+                case "HourFee":
                     feeType = MempoolRecommendedFeesTypes.HourFee;
                     break;
-                case "HalfHour":
+                case "HalfHourFee":
                     feeType = MempoolRecommendedFeesTypes.HalfHourFee;
                     break;
                 default:
                     feeType = MempoolRecommendedFeesTypes.CustomFee;
                     break;
+            }
+
+            if (feeType == MempoolRecommendedFeesTypes.CustomFee && request.CustomFeeRate == null)
+            {
+                throw new RpcException(new Status(StatusCode.NotFound, "Custom fee rate is required"));
             }
 
             var channelOperationRequest = new ChannelOperationRequest
