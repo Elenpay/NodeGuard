@@ -108,6 +108,7 @@ namespace NodeGuard
             builder.Services.AddTransient<ILiquidityRuleRepository, LiquidityRuleRepository>();
             builder.Services.AddTransient<ICoinSelectionService, CoinSelectionService>();
             builder.Services.AddSingleton<ILightningClientService, LightningClientService>();
+            builder.Services.AddSingleton<IPriceConversionService, PriceConversionService>();
 
             //BlazoredToast
             builder.Services.AddBlazoredToast();

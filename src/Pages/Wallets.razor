@@ -18,6 +18,7 @@
 @inject ILightningService LightningService
 @inject ILocalStorageService LocalStorageService
 @inject ISchedulerFactory SchedulerFactory
+@inject IPriceConversionService PriceConversionService
 
 @attribute [Authorize(Roles = "NodeManager, FinanceManager, Superadmin")]
 
@@ -434,7 +435,7 @@
                                     </NumericPicker>
                                 </FieldBody>
                                 <FieldHelp>
-                                    @($"Current amount: {Math.Round(PriceConversionHelper.BtcToUsdConversion((decimal)_amountToTransfer, _btcPrice), 2)} USD")
+                                    @($"Current amount: {Math.Round(PriceConversionService.BtcToUsdConversion((decimal)_amountToTransfer, _btcPrice), 2)} USD")
                                 </FieldHelp>
                             </Field>
                         </Validation>
@@ -563,7 +564,7 @@
 
     protected override async Task OnInitializedAsync()
     {
-        _btcPrice = PriceConversionHelper.GetBtcToUsdPrice();
+        _btcPrice = await PriceConversionService.GetBtcToUsdPrice();
         if (_btcPrice == 0)
         {
             ToastService.ShowError("Bitcoin price in USD could not be retrieved.");
@@ -830,8 +831,8 @@
             if (balance != null)
             {
                 _textModalTitle = $"Wallet: {wallet.Name} On-chain Balance";
-                _textModalContent = $"Confirmed: {((Money)balance.Confirmed).ToUnit(MoneyUnit.BTC):f8} BTC ({Math.Round(PriceConversionHelper.BtcToUsdConversion(((Money)balance.Confirmed).ToUnit(MoneyUnit.BTC), _btcPrice), 2)} USD) - " +
-                                    $"Unconfirmed: {((Money)balance.Unconfirmed).ToUnit(MoneyUnit.BTC):f8} BTC ({Math.Round(PriceConversionHelper.BtcToUsdConversion(((Money)balance.Unconfirmed).ToUnit(MoneyUnit.BTC), _btcPrice), 2)} USD)";
+                _textModalContent = $"Confirmed: {((Money)balance.Confirmed).ToUnit(MoneyUnit.BTC):f8} BTC ({Math.Round(PriceConversionService.BtcToUsdConversion(((Money)balance.Confirmed).ToUnit(MoneyUnit.BTC), _btcPrice), 2)} USD) - " +
+                                    $"Unconfirmed: {((Money)balance.Unconfirmed).ToUnit(MoneyUnit.BTC):f8} BTC ({Math.Round(PriceConversionService.BtcToUsdConversion(((Money)balance.Unconfirmed).ToUnit(MoneyUnit.BTC), _btcPrice), 2)} USD)";
                 _textModalCopy = false;
 
                 await _textModalRef.Show();
@@ -986,7 +987,7 @@
         _targetTransferWallet = null;
 
         var (balance,_) = await BitcoinService.GetWalletConfirmedBalance(wallet);
-        _sourceWalletBalance = $"{balance:f8} BTC ({Math.Round(PriceConversionHelper.BtcToUsdConversion((decimal)balance, _btcPrice), 2)} USD)";
+        _sourceWalletBalance = $"{balance:f8} BTC ({Math.Round(PriceConversionService.BtcToUsdConversion((decimal)balance, _btcPrice), 2)} USD)";
 
         await _transferFundsModal?.Show();
     }
@@ -1184,7 +1185,7 @@
         {
             var (targetBalance,_) = await BitcoinService.GetWalletConfirmedBalance(targetWallet);
 
-            _transferTargetWalletBalance = $"{targetBalance:f8} BTC ({Math.Round(PriceConversionHelper.BtcToUsdConversion((decimal)targetBalance, _btcPrice), 2)} USD)";
+            _transferTargetWalletBalance = $"{targetBalance:f8} BTC ({Math.Round(PriceConversionService.BtcToUsdConversion((decimal)targetBalance, _btcPrice), 2)} USD)";
         }
     }
 

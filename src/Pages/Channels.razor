@@ -132,7 +132,7 @@
                         @{
                             var btcAmount = new Money(context.SatsAmount, MoneyUnit.Satoshi).ToUnit(MoneyUnit.BTC);
                             @($"{btcAmount:f8} BTC")
-                            @($" ({Math.Round(PriceConversionHelper.BtcToUsdConversion(btcAmount, _btcPrice), 2)} USD)")
+                            @($" ({Math.Round(PriceConversionService.BtcToUsdConversion(btcAmount, _btcPrice), 2)} USD)")
                         }
                     </DisplayTemplate>
                 </DataGridNumericColumn>
@@ -225,7 +225,7 @@
                     <DisplayTemplate>
                         @{
                             @($"{context.Amount:f8} BTC")
-                            @($" ({Math.Round(PriceConversionHelper.BtcToUsdConversion(context.Amount, _btcPrice), 2)} USD)")
+                            @($" ({Math.Round(PriceConversionService.BtcToUsdConversion(context.Amount, _btcPrice), 2)} USD)")
                         }
                     </DisplayTemplate>
                 </DataGridColumn>
@@ -342,6 +342,7 @@
 @inject IWalletRepository WalletRepository
 @inject INodeRepository NodeRepository
 @inject ILocalStorageService LocalStorageService
+@inject IPriceConversionService PriceConversionService
 
 @code {
     private List<Channel>? _channels = new List<Channel>();
@@ -394,7 +395,7 @@
 
     protected override async Task OnInitializedAsync()
     {
-        _btcPrice = PriceConversionHelper.GetBtcToUsdPrice();
+        _btcPrice = await PriceConversionService.GetBtcToUsdPrice();
         if (_btcPrice == 0)
         {
             ToastService.ShowError("Bitcoin price in USD could not be retrieved.");
