@@ -166,8 +166,10 @@ message OpenChannelRequest {
   bool changeless = 6;
   // Outpoints for the UTXOs to use for the channel
   repeated string utxos_outpoints = 7;
+  // MempoolRecommended fee rate
+  string mempool_fee_rate = 8;
   // Fee rate in sat/vbyte
-  int32 fee_rate = 8;
+  int32 custom_fee_rate = 9;
 }
 
 // A successful response is an empty message and does NOT indicate that the channel has been open, external monitoring is required

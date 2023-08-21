@@ -7,6 +7,7 @@ using NodeGuard.Jobs;
 using NodeGuard.Services;
 using Grpc.Core;
 using NBitcoin;
+using NBitcoin.RPC;
 using NBXplorer.DerivationStrategy;
 using NBXplorer.Models;
 using Nodeguard;
@@ -361,6 +362,11 @@ public class NodeGuardService : Nodeguard.NodeGuardService.NodeGuardServiceBase,
             throw new RpcException(new Status(StatusCode.NotFound, "Wallet not found"));
         }
 
+        if (request.MempoolFeeRate.Equals("") || request.MempoolFeeRate == null)
+        {
+            throw new RpcException(new Status(StatusCode.InvalidArgument, "Mempool fee rate is required"));
+        }
+
         if (request.Changeless && request.UtxosOutpoints.Count == 0)
         {
             throw new RpcException(new Status(StatusCode.InvalidArgument, "Changeless channel open requires utxos"));
@@ -382,6 +388,28 @@ public class NodeGuardService : Nodeguard.NodeGuardService.NodeGuardServiceBase,
                 utxos = await _coinSelectionService.GetUTXOsByOutpointAsync(wallet.GetDerivationStrategy(), outpoints);
             }
 
+            // Get the fee type of the request
+            MempoolRecommendedFeesTypes feeType;
+
+            switch (request.MempoolFeeRate)
+            {
+                case "Economy":
+                    feeType = MempoolRecommendedFeesTypes.EconomyFee;
+                    break;
+                case "Fastest":
+                    feeType = MempoolRecommendedFeesTypes.FastestFee;
+                    break;
+                case "Hour":
+                    feeType = MempoolRecommendedFeesTypes.HourFee;
+                    break;
+                case "HalfHour":
+                    feeType = MempoolRecommendedFeesTypes.HalfHourFee;
+                    break;
+                default:
+                    feeType = MempoolRecommendedFeesTypes.CustomFee;
+                    break;
+            }
+
             var channelOperationRequest = new ChannelOperationRequest
             {
                 SatsAmount = request.SatsAmount,
@@ -396,12 +424,9 @@ public class NodeGuardService : Nodeguard.NodeGuardService.NodeGuardServiceBase,
                 User = null,*/
                 IsChannelPrivate = request.Private,
                 Changeless = request.Changeless,
+                MempoolRecommendedFeesTypes = feeType,
+                FeeRate = feeType == MempoolRecommendedFeesTypes.CustomFee ? request.CustomFeeRate : null,
             };
-
-            if (request.FeeRate != 0)
-            {
-                channelOperationRequest.FeeRate = request.FeeRate;
-            }
 
             //Persist request
             var result = await _channelOperationRequestRepository.AddAsync(channelOperationRequest);
