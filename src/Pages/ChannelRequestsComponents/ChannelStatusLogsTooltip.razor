@@ -1,9 +1,12 @@
 @namespace NodeGuard.Pages
+@inject IJSRuntime JSRuntime
 
 @if (ChannelStatusLogs?.Count > 0)
 {
     <Tooltip Class="ml-2" Text="@GetTooltipText(ChannelStatusLogs)">
-        <Icon TextColor="TextColor.Danger" Name="IconName.InfoCircle"></Icon>
+          <span @ondblclick="() => CopyTooltipText()">
+            <Icon TextColor="TextColor.Danger" Name="IconName.InfoCircle"/>
+          </span>
     </Tooltip>
 }
 
@@ -11,7 +14,20 @@
    [Parameter, EditorRequired]
    public List<ChannelStatusLog>? ChannelStatusLogs { get; set; }
     
-    
+    private async Task CopyTooltipText()
+    {
+        List<ChannelStatusLog>? listToCopy = ChannelStatusLogs;
+        if (listToCopy == null)
+        {
+            return;
+        }
+
+        string textToCopy = string.Join(", ", listToCopy.Select(item =>
+            $"{item.DateTime.ToString("dd/MM/yyyy HH:mm:ss")} - {item.Description}"));
+
+        await JSRuntime.InvokeVoidAsync("copyTooltipToClipboard", textToCopy);
+    }
+
     private string GetTooltipText(List<ChannelStatusLog> channelStatusLogs)
     {
         var text = "<ul>";
@@ -32,6 +48,7 @@
             }
             text += $"<li>{emoji} {channelStatusLog.DateTime:dd/MM/yyyy HH:mm:ss} - {channelStatusLog.Description}</li>";
         }
+        text += $"<li>Double tap copy error text</li>";
         text += "</ul>";
         return text;
     }
