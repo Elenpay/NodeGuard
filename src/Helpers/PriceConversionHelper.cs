@@ -47,7 +47,7 @@ public static class PriceConversionHelper
             }
             else
             {
-                throw new Exception("Bitcoin price could not be retrieved");
+                throw new Exception($"Bitcoin price could not be retrieved {response.ErrorMessage}");
             }
         }
         catch (Exception e)
@@ -55,7 +55,7 @@ public static class PriceConversionHelper
             Log.Logger.Error(e.Message);
             btcPrice = 0;
         }
-        
+
         return btcPrice;
     }
 
