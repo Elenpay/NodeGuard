@@ -1,0 +1,33 @@
+name: Github Container Registry cleanup tasks
+on:
+  # On demand || Each 10 days
+  workflow_dispatch:
+  schedule:
+    - cron: '0 0 */10 * *'
+jobs:
+  cleanup-docker:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Prune untagged containers
+        uses: vlaurin/action-ghcr-prune@v0.5.0
+        with:
+          token: ${{ github.token	 }}
+          organization: ${{ github.repository_owner }}
+          container: ${{ github.event.repository.name }}
+          prune-untagged: true
+          untagged: true
+
+      - name: Prune old containers (Dry-run)
+        uses: vlaurin/action-ghcr-prune@v0.5.0
+        with:
+          token: ${{ github.token	 }}
+          organization: ${{ github.repository_owner }}
+          container: ${{ github.event.repository.name }}
+          dry-run: true # Dry-run first, then change to `false`
+          keep-younger-than: 365 # days
+          keep-last: 20
+          prune-tags-regexes: | 
+            .*
+          keep-tags-regexes: | 
+            ^main$
+            ^latest$
