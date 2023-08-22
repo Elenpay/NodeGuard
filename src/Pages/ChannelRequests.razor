@@ -117,7 +117,7 @@
                         <FieldHelp>
                             @if (_selectedWalletId != null)
                             {
-                                @($"Wallet balance: {_selectedWalletBalance:f8} BTC ({Math.Round(PriceConversionHelper.BtcToUsdConversion(_selectedWalletBalance, _btcPrice), 2)} USD)")
+                                @($"Wallet balance: {_selectedWalletBalance:f8} BTC ({Math.Round(PriceConversionService.BtcToUsdConversion(_selectedWalletBalance, _btcPrice), 2)} USD)")
                             }
                             else
                             {
@@ -131,7 +131,7 @@
                 <DisplayTemplate>
                     @{
                         @($"{context.Amount:f8} BTC")
-                        @($" ({Math.Round(PriceConversionHelper.BtcToUsdConversion(context.Amount, _btcPrice), 2)} USD)")
+                        @($" ({Math.Round(PriceConversionService.BtcToUsdConversion(context.Amount, _btcPrice), 2)} USD)")
                     }
                 </DisplayTemplate>
                 <EditTemplate>
@@ -143,7 +143,7 @@
                         </NumericPicker>
                         <FieldHelp>
 
-                            @($"Amount in Satoshis. Minimum {_minimumChannelCapacity:f8}. Current amount: {Math.Round(PriceConversionHelper.SatToUsdConversion(new Money(_amount, MoneyUnit.BTC).Satoshi, _btcPrice), 2)} USD")
+                            @($"Amount in Satoshis. Minimum {_minimumChannelCapacity:f8}. Current amount: {Math.Round(PriceConversionService.SatToUsdConversion(new Money(_amount, MoneyUnit.BTC).Satoshi, _btcPrice), 2)} USD")
 
                         </FieldHelp>
                     </Validation>
@@ -293,7 +293,7 @@
             <DisplayTemplate>
                 @{
                     @($"{context.Amount:f8} BTC")
-                    @($" ({Math.Round(PriceConversionHelper.BtcToUsdConversion(context.Amount, _btcPrice), 2)} USD)")
+                    @($" ({Math.Round(PriceConversionService.BtcToUsdConversion(context.Amount, _btcPrice), 2)} USD)")
                 }
             </DisplayTemplate>
         </DataGridColumn>
@@ -422,6 +422,7 @@
 @inject ICoinSelectionService CoinSelectionService
 @inject INBXplorerService NBXplorerService
 @inject ILocalStorageService LocalStorageService
+@inject IPriceConversionService PriceConversionService
 
 @code {
     private List<ChannelOperationRequest>? _channelRequests;
@@ -514,7 +515,7 @@
         _isFinanceManager = ClaimsPrincipal != null && ClaimsPrincipal.IsInRole(ApplicationUserRole.FinanceManager.ToString());
         _isNodeManager = ClaimsPrincipal != null && ClaimsPrincipal.IsInRole(ApplicationUserRole.NodeManager.ToString());
 
-        _btcPrice = PriceConversionHelper.GetBtcToUsdPrice();
+        _btcPrice = await PriceConversionService.GetBtcToUsdPrice();
         if (_btcPrice == 0)
         {
             ToastService.ShowError("Bitcoin price in USD could not be retrieved.");
