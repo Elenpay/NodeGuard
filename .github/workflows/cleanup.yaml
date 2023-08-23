@@ -16,7 +16,7 @@ jobs:
           container: ${{ github.event.repository.name }}
           prune-untagged: true
           untagged: true
-          keep-last: 10
+          keep-last: 5
 
       - name: Prune old containers (Dry-run)
         uses: vlaurin/action-ghcr-prune@v0.5.0
