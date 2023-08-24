@@ -362,7 +362,7 @@ public class NodeGuardService : Nodeguard.NodeGuardService.NodeGuardServiceBase,
             throw new RpcException(new Status(StatusCode.NotFound, "Wallet not found"));
         }
 
-        if (request.MempoolFeeRate.Equals("") || request.MempoolFeeRate == null)
+        if (string.IsNullOrEmpty(request.MempoolFeeRate))
         {
             throw new RpcException(new Status(StatusCode.NotFound, "Mempool fee rate is required"));
         }
