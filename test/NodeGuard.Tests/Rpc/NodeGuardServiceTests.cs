@@ -183,7 +183,7 @@ namespace NodeGuard.Rpc
                 SatsAmount = 10000,
                 Private = false,
                 WalletId = walletId,
-                MempoolFeeRate = "HourFee"
+                MempoolFeeRate = FEES_TYPE.HourFee
             };
             var context = new Mock<ServerCallContext>().Object;
 
@@ -261,7 +261,7 @@ namespace NodeGuard.Rpc
                     "6b0d07129a492c287d6fdd34c7b19f0b0136901db6c1a95e0d46e0ecde9db1c3:0",
                     "6b0d07129a492c287d6fdd34c7b19f0b0136901db6c1a95e0d46e0ecde9db1c3:1"
                 },
-                MempoolFeeRate = "HourFee"
+                MempoolFeeRate = FEES_TYPE.HourFee
             };
             var context = new Mock<ServerCallContext>().Object;
 
@@ -321,7 +321,7 @@ namespace NodeGuard.Rpc
                 Private = false,
                 WalletId = walletId,
                 Changeless = true,
-                MempoolFeeRate = "HourFee"
+                MempoolFeeRate = FEES_TYPE.HourFee
             };
             var context = new Mock<ServerCallContext>().Object;
 
