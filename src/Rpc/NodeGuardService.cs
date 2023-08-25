@@ -38,6 +38,8 @@ public interface INodeGuardService
     Task<OpenChannelResponse> OpenChannel(OpenChannelRequest request, ServerCallContext context);
 
     Task<CloseChannelResponse> CloseChannel(CloseChannelRequest request, ServerCallContext context);
+
+    Task<GetChannelOperationRequestByIdResponse> GetChannelOperationRequests(GetChannelOperationRequestByIdRequest request, ServerCallContext context);
 }
 
 /// <summary>
@@ -372,6 +374,8 @@ public class NodeGuardService : Nodeguard.NodeGuardService.NodeGuardServiceBase,
             throw new RpcException(new Status(StatusCode.InvalidArgument, "Changeless channel open requires utxos"));
         }
 
+        int requestId;
+
         try
         {
             var outpoints = new List<OutPoint>();
@@ -485,6 +489,8 @@ public class NodeGuardService : Nodeguard.NodeGuardService.NodeGuardServiceBase,
                 _logger?.LogError("Error updating channel operation request, error: {error}", jobUpdateResult.Item2);
                 throw new RpcException(new Status(StatusCode.Internal, "Error updating channel operation request"));
             }
+
+            requestId = channelOperationRequest.Id;
         }
         catch (Exception e)
         {
@@ -493,7 +499,10 @@ public class NodeGuardService : Nodeguard.NodeGuardService.NodeGuardServiceBase,
         }
 
 
-        return new OpenChannelResponse();
+        return new OpenChannelResponse()
+        {
+            ChannelOperationRequestId = requestId
+        };
     }
 
     public override async Task<CloseChannelResponse> CloseChannel(CloseChannelRequest request, ServerCallContext context)
@@ -560,5 +569,32 @@ public class NodeGuardService : Nodeguard.NodeGuardService.NodeGuardServiceBase,
         }
 
         return new CloseChannelResponse();
+    }
+
+    public override async Task<GetChannelOperationRequestByIdResponse> GetChannelOperationRequestById(GetChannelOperationRequestByIdRequest request, ServerCallContext context)
+    {
+        var channelOperationRequest = await _channelOperationRequestRepository.GetById(request.ChannelOperationRequestId);
+
+        if (channelOperationRequest == null)
+        {
+            throw new RpcException(new Status(StatusCode.NotFound, "Channel operation request not found"));
+        }
+
+        return new GetChannelOperationRequestByIdResponse()
+        {
+            SatsAmount = channelOperationRequest.SatsAmount,
+            Description = channelOperationRequest.Description,
+            Status = (CHANNEL_OPERATION_STATUS)(int)channelOperationRequest.Status,
+            Type = (CHANNEL_OPERATION_TYPE)(int)channelOperationRequest.RequestType,
+            TxId = channelOperationRequest.TxId,
+            ClosingReason = channelOperationRequest.ClosingReason,
+            FeeRate = (double)channelOperationRequest.FeeRate,
+            WalletId = channelOperationRequest.WalletId ?? 0,
+            ChannelId = channelOperationRequest.ChannelId ?? 0,
+            SourceNodeId = channelOperationRequest.SourceNodeId,
+            DestNodeId = channelOperationRequest.DestNodeId ?? 0,
+            Private = channelOperationRequest.IsChannelPrivate,
+            JobId = channelOperationRequest.JobId,
+        };
     }
 }

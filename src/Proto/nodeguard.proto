@@ -43,6 +43,11 @@ service NodeGuardService {
     Closes a channel to a given node
    */
   rpc CloseChannel(CloseChannelRequest) returns (CloseChannelResponse);
+
+  /*
+    Gets a list of channel operations requests by id
+   */
+  rpc GetChannelOperationRequestById(GetChannelOperationRequestByIdRequest) returns (GetChannelOperationRequestByIdResponse);
 }
 
 message GetLiquidityRulesRequest {
@@ -182,7 +187,7 @@ message OpenChannelRequest {
 
 // A successful response returns the channel_operation_request_id but it does NOT indicate that the channel has been open, external monitoring is required
 message OpenChannelResponse {
-  uint32 channel_operation_request_id = 1;
+  int32 channel_operation_request_id = 1;
 }
 
 message CloseChannelRequest {
@@ -194,4 +199,44 @@ message CloseChannelRequest {
 
 // A successful response is an empty message and does NOT indicate that the channel has been closed, external monitoring is required
 message CloseChannelResponse {
+}
+
+message GetChannelOperationRequestByIdRequest {
+  // Whether to include requests that are not managed by the NG
+  int32 channel_operation_request_id = 1;
+}
+
+enum CHANNEL_OPERATION_STATUS {
+  NULL = 0;
+  APPROVED = 1;
+  CANCELLED = 2;
+  REJECTED = 3;
+  PENDING = 4;
+  PSBT_SIGNATURES_PENDING = 5;
+  ONCHAIN_CONFIRMATION_PENDING = 6;
+  ONCHAIN_CONFIRMED = 7;
+  FAILED = 8;
+  FINALIZINGPSBT = 9;
+}
+
+enum CHANNEL_OPERATION_TYPE {
+  NULL0 = 0;
+  OPEN_CHANNEL = 1;
+  CLOSE_CHANNEL = 2;
+}
+
+message GetChannelOperationRequestByIdResponse {
+  int64 sats_amount = 1;
+  string description = 2;
+  CHANNEL_OPERATION_STATUS status = 3;
+  CHANNEL_OPERATION_TYPE type = 4;
+  string tx_id = 5;
+  string closing_reason = 6;
+  double fee_rate = 7;
+  int32 wallet_id = 8;
+  int32 source_node_id = 9;
+  int32 dest_node_id = 10;
+  int64 channel_id = 11;
+  bool private = 12;
+  string job_id = 13;
 }
