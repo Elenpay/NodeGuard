@@ -39,7 +39,7 @@ public interface INodeGuardService
 
     Task<CloseChannelResponse> CloseChannel(CloseChannelRequest request, ServerCallContext context);
 
-    Task<GetChannelOperationRequestByIdResponse> GetChannelOperationRequests(GetChannelOperationRequestByIdRequest request, ServerCallContext context);
+    Task<GetChannelOperationRequestByIdResponse> GetChannelOperationRequestById(GetChannelOperationRequestByIdRequest request, ServerCallContext context);
 }
 
 /// <summary>
