@@ -152,11 +152,11 @@ message GetNodesResponse{
 }
 
 enum FEES_TYPE {
-  ECONOMY_FEE = 0;
+  CUSTOM_FEE = 0;
   FASTEST_FEE = 1;
   HOUR_FEE = 2;
   HALF_HOUR_FEE = 3;
-  CUSTOM_FEE = 4;
+  ECONOMY_FEE = 4;
 }
 
 message OpenChannelRequest {
