@@ -151,6 +151,14 @@ message GetNodesResponse{
   repeated Node nodes = 1;
 }
 
+enum FEES_TYPE {
+  ECONOMY_FEE = 0;
+  FASTEST_FEE = 1;
+  HOUR_FEE = 2;
+  HALF_HOUR_FEE = 3;
+  CUSTOM_FEE = 4;
+}
+
 message OpenChannelRequest {
   // Source node pubkey
   string source_pub_key = 5;
@@ -167,13 +175,14 @@ message OpenChannelRequest {
   // Outpoints for the UTXOs to use for the channel
   repeated string utxos_outpoints = 7;
   // MempoolRecommended fee rate
-  string mempool_fee_rate = 8;
+  FEES_TYPE mempool_fee_rate = 8;
   // Fee rate in sat/vbyte
   int32 custom_fee_rate = 9;
 }
 
-// A successful response is an empty message and does NOT indicate that the channel has been open, external monitoring is required
+// A successful response returns the channel_operation_request_id but it does NOT indicate that the channel has been open, external monitoring is required
 message OpenChannelResponse {
+  uint32 channel_operation_request_id = 1;
 }
 
 message CloseChannelRequest {

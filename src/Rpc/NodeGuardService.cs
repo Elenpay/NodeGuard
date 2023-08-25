@@ -393,16 +393,16 @@ public class NodeGuardService : Nodeguard.NodeGuardService.NodeGuardServiceBase,
 
             switch (request.MempoolFeeRate)
             {
-                case "EconomyFee":
+                case FEES_TYPE.EconomyFee:
                     feeType = MempoolRecommendedFeesTypes.EconomyFee;
                     break;
-                case "FastestFee":
+                case FEES_TYPE.FastestFee:
                     feeType = MempoolRecommendedFeesTypes.FastestFee;
                     break;
-                case "HourFee":
+                case FEES_TYPE.HourFee:
                     feeType = MempoolRecommendedFeesTypes.HourFee;
                     break;
-                case "HalfHourFee":
+                case FEES_TYPE.HalfHourFee:
                     feeType = MempoolRecommendedFeesTypes.HalfHourFee;
                     break;
                 default:
