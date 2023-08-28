@@ -228,15 +228,15 @@ enum CHANNEL_OPERATION_TYPE {
 message GetChannelOperationRequestByIdResponse {
   int64 sats_amount = 1;
   string description = 2;
-  CHANNEL_OPERATION_STATUS status = 3;
-  CHANNEL_OPERATION_TYPE type = 4;
-  string tx_id = 5;
-  string closing_reason = 6;
-  double fee_rate = 7;
-  int32 wallet_id = 8;
+  optional CHANNEL_OPERATION_STATUS status = 3;
+  optional CHANNEL_OPERATION_TYPE type = 4;
+  optional string tx_id = 5;
+  optional string closing_reason = 6;
+  optional double fee_rate = 7;
+  optional int32 wallet_id = 8;
   int32 source_node_id = 9;
-  int32 dest_node_id = 10;
-  int64 channel_id = 11;
+  optional int32 dest_node_id = 10;
+  optional int64 channel_id = 11;
   bool private = 12;
   string job_id = 13;
 }

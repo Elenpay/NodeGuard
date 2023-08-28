@@ -580,21 +580,29 @@ public class NodeGuardService : Nodeguard.NodeGuardService.NodeGuardServiceBase,
             throw new RpcException(new Status(StatusCode.NotFound, "Channel operation request not found"));
         }
 
-        return new GetChannelOperationRequestByIdResponse()
+        var result = new GetChannelOperationRequestByIdResponse
         {
             SatsAmount = channelOperationRequest.SatsAmount,
             Description = channelOperationRequest.Description,
             Status = (CHANNEL_OPERATION_STATUS)(int)channelOperationRequest.Status,
             Type = (CHANNEL_OPERATION_TYPE)(int)channelOperationRequest.RequestType,
-            TxId = channelOperationRequest.TxId,
-            ClosingReason = channelOperationRequest.ClosingReason,
-            FeeRate = (double)channelOperationRequest.FeeRate,
-            WalletId = channelOperationRequest.WalletId ?? 0,
-            ChannelId = channelOperationRequest.ChannelId ?? 0,
             SourceNodeId = channelOperationRequest.SourceNodeId,
-            DestNodeId = channelOperationRequest.DestNodeId ?? 0,
             Private = channelOperationRequest.IsChannelPrivate,
-            JobId = channelOperationRequest.JobId,
+            JobId = channelOperationRequest.JobId
         };
+        if (channelOperationRequest.TxId != null)
+            result.TxId = channelOperationRequest.TxId;
+        if (channelOperationRequest.ClosingReason != null)
+            result.ClosingReason = channelOperationRequest.ClosingReason;
+        if (channelOperationRequest.FeeRate != null)
+            result.FeeRate = (double)channelOperationRequest.FeeRate;
+        if (channelOperationRequest.WalletId != null)
+            result.WalletId = channelOperationRequest.WalletId ?? 0;
+        if (channelOperationRequest.ChannelId != null)
+            result.ChannelId = channelOperationRequest.ChannelId ?? 0;
+        if (channelOperationRequest.DestNodeId != null)
+            result.DestNodeId = channelOperationRequest.DestNodeId ?? 0;
+
+        return result;
     }
 }
