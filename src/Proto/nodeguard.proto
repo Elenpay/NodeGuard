@@ -65,11 +65,10 @@ message GetLiquidityRulesResponse {
 
 message LiquidityRule {
   uint64 channel_id = 1;
-  string node_pubkey = 2;
-  int32 wallet_id = 3;
-  float minimum_local_balance = 4;
-  float minimum_remote_balance = 5;
-  float rebalance_target = 6;
+  int32 wallet_id = 2;
+  float minimum_local_balance = 3;
+  float minimum_remote_balance = 4;
+  float rebalance_target = 5;
 }
 
 message GetNewWalletAddressRequest {

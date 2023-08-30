@@ -611,10 +611,26 @@ public class NodeGuardService : Nodeguard.NodeGuardService.NodeGuardServiceBase,
 
     public override async Task<AddLiquidityRuleResponse> AddLiquidityRule(AddLiquidityRuleRequest request, ServerCallContext context)
     {
+        var channel = await _channelRepository.GetById(request.ChannelId);
+        if (channel == null)
+        {
+            throw new RpcException(new Status(StatusCode.NotFound, "Channel not found"));
+        }
+
+        if (!channel.IsAutomatedLiquidityEnabled)
+        {
+            channel.IsAutomatedLiquidityEnabled = true;
+        }
+
+        var node = string.IsNullOrEmpty(channel.SourceNode.ChannelAdminMacaroon) ? channel.DestinationNode : channel.SourceNode;
+
+        var rules = await _liquidityRuleRepository.GetByNodePubKey(node.PubKey);
+        var rule = rules.FirstOrDefault(r => r.ChannelId == request.ChannelId);
+
         var liquidityRule = new LiquidityRule()
         {
             ChannelId = request.ChannelId,
-            NodeId = request.NodeId,
+            NodeId = node.Id,
             WalletId = request.WalletId,
         };
         if (request.MinimumLocalBalance != 0)
@@ -624,24 +640,96 @@ public class NodeGuardService : Nodeguard.NodeGuardService.NodeGuardServiceBase,
         if (request.RebalanceTarget != 0)
             liquidityRule.RebalanceTarget = (decimal)request.RebalanceTarget;
 
-        var addResult = await _liquidityRuleRepository.AddAsync(liquidityRule);
-        if (!addResult.Item1)
+        if (!(ValidateLocalBalance(liquidityRule) && ValidateRemoteBalance(liquidityRule) &&
+            ValidateTargetBalance(liquidityRule)))
         {
-            throw new RpcException(new Status(StatusCode.Internal, "Error adding liquidity rule"));
+            throw new RpcException(new Status(StatusCode.InvalidArgument, "Invalid rule"));
         }
 
-        var channel = await _channelRepository.GetById(request.ChannelId);
-        if (channel == null)
+        if (rule == null)
         {
-            throw new RpcException(new Status(StatusCode.NotFound, "Channel not found"));
+            var addResult = await _liquidityRuleRepository.AddAsync(liquidityRule);
+            if (!addResult.Item1)
+            {
+                throw new RpcException(new Status(StatusCode.Internal, "Error adding liquidity rule"));
+            }
         }
-
-        channel.LiquidityRules.Add(liquidityRule);
+        else
+        {
+            liquidityRule.Id = rule.Id;
+            var updateResult = _liquidityRuleRepository.Update(liquidityRule);
+            if (!updateResult.Item1)
+            {
+                throw new RpcException(new Status(StatusCode.Internal, "Error updating liquidity rule"));
+            }
+        }
         _channelRepository.Update(channel);
 
         return new AddLiquidityRuleResponse()
         {
             RuleId = liquidityRule.Id,
         };
+    }
+
+    private bool ValidateLocalBalance(LiquidityRule rule)
+    {
+        //If the minimum remote balance is 0 this cannot be 0
+        if ((rule.MinimumLocalBalance == 0 || rule.MinimumLocalBalance == null)
+            && (rule.MinimumRemoteBalance == 0 || rule.MinimumRemoteBalance == null))
+            return false;
+
+        //If the value is 0 is valid
+        if (rule.MinimumRemoteBalance == 0 || rule.MinimumRemoteBalance == null)
+            return true;
+
+        //Check that the balance is between 0 and 100
+        if (rule.MinimumLocalBalance < 0 || rule.MinimumLocalBalance > 100)
+            return false;
+
+        //Check that the Minimum local balance must be less than the minimum remote balance
+        if (rule.MinimumLocalBalance >= rule.MinimumRemoteBalance)
+            return false;
+
+        return true;
+    }
+
+    private bool ValidateRemoteBalance(LiquidityRule rule)
+    {
+        //If the minimum local balance is 0 this cannot be 0
+        if ((rule.MinimumLocalBalance == 0 || rule.MinimumLocalBalance == null)
+            && (rule.MinimumRemoteBalance == 0 || rule.MinimumRemoteBalance == null))
+            return false;
+
+        //If the value is 0 is valid
+        if (rule.MinimumRemoteBalance == 0 || rule.MinimumRemoteBalance == null)
+            return true;
+
+        //Check that the minimum remote balance is between 0 and 100
+        if (rule.MinimumRemoteBalance < 0 || rule.MinimumRemoteBalance > 100)
+            return false;
+
+        //Check that the Minimum remote balance must be greater than the minimum local balance
+        if (rule.MinimumRemoteBalance <= rule.MinimumLocalBalance)
+            return false;
+
+        return true;
+    }
+
+    private bool ValidateTargetBalance(LiquidityRule rule)
+    {
+        //If the value is 0 is valid
+        if (rule.RebalanceTarget == 0 || rule.RebalanceTarget == null)
+            return true;
+
+        //Check that the target balance is between 0 and 100
+        if (rule.RebalanceTarget < 0 || rule.RebalanceTarget > 100)
+            return false;
+
+        //Check that the rebalancetarget of the current liquidity rule is between the mininum local and minimum remote balance
+        if (rule.RebalanceTarget < rule.MinimumLocalBalance ||
+            rule.RebalanceTarget > rule.MinimumRemoteBalance)
+            return false;
+
+        return true;
     }
 }
