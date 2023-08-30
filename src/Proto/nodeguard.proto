@@ -65,10 +65,11 @@ message GetLiquidityRulesResponse {
 
 message LiquidityRule {
   uint64 channel_id = 1;
-  int32 wallet_id = 2;
-  float minimum_local_balance = 3;
-  float minimum_remote_balance = 4;
-  float rebalance_target = 5;
+  string node_pubkey = 2;
+  int32 wallet_id = 3;
+  float minimum_local_balance = 4;
+  float minimum_remote_balance = 5;
+  float rebalance_target = 6;
 }
 
 message GetNewWalletAddressRequest {
@@ -246,7 +247,7 @@ message GetChannelOperationRequestResponse {
 message AddLiquidityRuleRequest {
 // Channel ID as returned by the Lightning implementation
   int32 channel_id = 1;
-  // Node pubkey
+  // Node id
   int32 node_id = 2;
   // Wallet ID as stored in the NG's database
   int32 wallet_id = 3;
