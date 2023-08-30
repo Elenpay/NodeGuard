@@ -187,7 +187,7 @@ message OpenChannelRequest {
   // MempoolRecommended fee rate
   FEES_TYPE mempool_fee_rate = 8;
   // Fee rate in sat/vbyte
-  int32 custom_fee_rate = 9;
+  optional int32 custom_fee_rate = 9;
 }
 
 // A successful response returns the channel_operation_request_id but it does NOT indicate that the channel has been open, external monitoring is required

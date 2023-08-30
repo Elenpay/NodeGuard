@@ -417,7 +417,7 @@ public class NodeGuardService : Nodeguard.NodeGuardService.NodeGuardServiceBase,
                     break;
             }
 
-            if (feeType == MempoolRecommendedFeesTypes.CustomFee && request.CustomFeeRate == null)
+            if (feeType == MempoolRecommendedFeesTypes.CustomFee && !request.HasCustomFeeRate)
             {
                 throw new RpcException(new Status(StatusCode.NotFound, "Custom fee rate is required"));
             }
@@ -622,10 +622,27 @@ public class NodeGuardService : Nodeguard.NodeGuardService.NodeGuardServiceBase,
             channel.IsAutomatedLiquidityEnabled = true;
         }
 
-        var node = string.IsNullOrEmpty(channel.SourceNode.ChannelAdminMacaroon) ? channel.DestinationNode : channel.SourceNode;
+        var source = await _nodeRepository.GetById(channel.SourceNodeId);
+        if (source == null)
+        {
+            throw new RpcException(new Status(StatusCode.NotFound, "Source node not found"));
+        }
+        var destination = await _nodeRepository.GetById(channel.DestinationNodeId);
+        if (destination == null)
+        {
+            throw new RpcException(new Status(StatusCode.NotFound, "Destination node not found"));
+        }
+
+        var node = string.IsNullOrEmpty(source.ChannelAdminMacaroon) ? destination : source;
 
         var rules = await _liquidityRuleRepository.GetByNodePubKey(node.PubKey);
         var rule = rules.FirstOrDefault(r => r.ChannelId == request.ChannelId);
+
+        var wallet = await _walletRepository.GetById(request.WalletId);
+        if (wallet == null)
+        {
+            throw new RpcException(new Status(StatusCode.NotFound, "Wallet not found"));
+        }
 
         var liquidityRule = new LiquidityRule()
         {
@@ -633,11 +650,11 @@ public class NodeGuardService : Nodeguard.NodeGuardService.NodeGuardServiceBase,
             NodeId = node.Id,
             WalletId = request.WalletId,
         };
-        if (request.MinimumLocalBalance != 0)
+        if (request.HasMinimumLocalBalance)
             liquidityRule.MinimumLocalBalance = (decimal)request.MinimumLocalBalance;
-        if (request.MinimumRemoteBalance != 0)
+        if (request.HasMinimumRemoteBalance)
             liquidityRule.MinimumRemoteBalance = (decimal)request.MinimumRemoteBalance;
-        if (request.RebalanceTarget != 0)
+        if (request.HasRebalanceTarget)
             liquidityRule.RebalanceTarget = (decimal)request.RebalanceTarget;
 
         if (!(ValidateLocalBalance(liquidityRule) && ValidateRemoteBalance(liquidityRule) &&
