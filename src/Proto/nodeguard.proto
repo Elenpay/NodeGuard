@@ -47,7 +47,12 @@ service NodeGuardService {
   /*
     Gets a list of channel operations requests by id
    */
-  rpc GetChannelOperationRequestById(GetChannelOperationRequestByIdRequest) returns (GetChannelOperationRequestByIdResponse);
+  rpc GetChannelOperationRequest(GetChannelOperationRequestRequest) returns (GetChannelOperationRequestResponse);
+
+  /*
+  Adds a liquidity rule to a channel
+   */
+  rpc AddLiquidityRule(AddLiquidityRuleRequest) returns (AddLiquidityRuleResponse);
 }
 
 message GetLiquidityRulesRequest {
@@ -201,31 +206,29 @@ message CloseChannelRequest {
 message CloseChannelResponse {
 }
 
-message GetChannelOperationRequestByIdRequest {
+message GetChannelOperationRequestRequest {
   // Whether to include requests that are not managed by the NG
   int32 channel_operation_request_id = 1;
 }
 
 enum CHANNEL_OPERATION_STATUS {
-  NULL = 0;
-  APPROVED = 1;
-  CANCELLED = 2;
-  REJECTED = 3;
-  PENDING = 4;
-  PSBT_SIGNATURES_PENDING = 5;
-  ONCHAIN_CONFIRMATION_PENDING = 6;
-  ONCHAIN_CONFIRMED = 7;
-  FAILED = 8;
-  FINALIZINGPSBT = 9;
+  APPROVED = 0;
+  CANCELLED = 1;
+  REJECTED = 2;
+  PENDING = 3;
+  PSBT_SIGNATURES_PENDING = 4;
+  ONCHAIN_CONFIRMATION_PENDING = 5;
+  ONCHAIN_CONFIRMED = 6;
+  FAILED = 7;
+  FINALIZINGPSBT = 8;
 }
 
 enum CHANNEL_OPERATION_TYPE {
-  NULL0 = 0;
-  OPEN_CHANNEL = 1;
-  CLOSE_CHANNEL = 2;
+  OPEN_CHANNEL = 0;
+  CLOSE_CHANNEL = 1;
 }
 
-message GetChannelOperationRequestByIdResponse {
+message GetChannelOperationRequestResponse {
   int64 sats_amount = 1;
   string description = 2;
   optional CHANNEL_OPERATION_STATUS status = 3;
@@ -239,4 +242,24 @@ message GetChannelOperationRequestByIdResponse {
   optional int64 channel_id = 11;
   bool private = 12;
   string job_id = 13;
+}
+
+message AddLiquidityRuleRequest {
+// Channel ID as returned by the Lightning implementation
+  int32 channel_id = 1;
+  // Node pubkey
+  int32 node_id = 2;
+  // Wallet ID as stored in the NG's database
+  int32 wallet_id = 3;
+  // Minimum local balance
+  optional double minimum_local_balance = 4;
+  // Minimum remote balance
+  optional double minimum_remote_balance = 5;
+  // Rebalance target
+  optional double rebalance_target = 6;
+}
+
+message AddLiquidityRuleResponse {
+  // Rule ID as stored in the NG's database
+  int32 rule_id = 1;
 }

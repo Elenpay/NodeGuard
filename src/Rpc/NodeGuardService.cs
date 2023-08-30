@@ -6,13 +6,14 @@ using NodeGuard.Helpers;
 using NodeGuard.Jobs;
 using NodeGuard.Services;
 using Grpc.Core;
+using Microsoft.EntityFrameworkCore.Infrastructure;
 using NBitcoin;
 using NBitcoin.RPC;
 using NBXplorer.DerivationStrategy;
 using NBXplorer.Models;
 using Nodeguard;
 using Quartz;
-using LiquidityRule = Nodeguard.LiquidityRule;
+using LiquidityRule = NodeGuard.Data.Models.LiquidityRule;
 using Node = Nodeguard.Node;
 using Wallet = NodeGuard.Data.Models.Wallet;
 
@@ -39,7 +40,9 @@ public interface INodeGuardService
 
     Task<CloseChannelResponse> CloseChannel(CloseChannelRequest request, ServerCallContext context);
 
-    Task<GetChannelOperationRequestByIdResponse> GetChannelOperationRequestById(GetChannelOperationRequestByIdRequest request, ServerCallContext context);
+    Task<GetChannelOperationRequestResponse> GetChannelOperationRequest(GetChannelOperationRequestRequest request, ServerCallContext context);
+
+    Task<AddLiquidityRuleResponse> AddLiquidityRule(AddLiquidityRuleRequest request, ServerCallContext context);
 }
 
 /// <summary>
@@ -109,7 +112,7 @@ public class NodeGuardService : Nodeguard.NodeGuardService.NodeGuardServiceBase,
             var liquidityRules = await _liquidityRuleRepository.GetByNodePubKey(request.NodePubkey);
             result = new GetLiquidityRulesResponse()
             {
-                LiquidityRules = {liquidityRules.Select(x => _mapper.Map<LiquidityRule>(x)).ToList()}
+                LiquidityRules = {liquidityRules.Select(x => _mapper.Map<Nodeguard.LiquidityRule>(x)).ToList()}
             };
         }
         catch (Exception e)
@@ -364,7 +367,7 @@ public class NodeGuardService : Nodeguard.NodeGuardService.NodeGuardServiceBase,
             throw new RpcException(new Status(StatusCode.NotFound, "Wallet not found"));
         }
 
-        if (request.MempoolFeeRate == 0 && request.CustomFeeRate == 0)
+        if (request.MempoolFeeRate == FEES_TYPE.CustomFee && request.CustomFeeRate == 0)
         {
             throw new RpcException(new Status(StatusCode.InvalidArgument, "Mempool fee rate configuration is not valid"));
         }
@@ -571,7 +574,7 @@ public class NodeGuardService : Nodeguard.NodeGuardService.NodeGuardServiceBase,
         return new CloseChannelResponse();
     }
 
-    public override async Task<GetChannelOperationRequestByIdResponse> GetChannelOperationRequestById(GetChannelOperationRequestByIdRequest request, ServerCallContext context)
+    public override async Task<GetChannelOperationRequestResponse> GetChannelOperationRequest(GetChannelOperationRequestRequest request, ServerCallContext context)
     {
         var channelOperationRequest = await _channelOperationRequestRepository.GetById(request.ChannelOperationRequestId);
 
@@ -580,12 +583,12 @@ public class NodeGuardService : Nodeguard.NodeGuardService.NodeGuardServiceBase,
             throw new RpcException(new Status(StatusCode.NotFound, "Channel operation request not found"));
         }
 
-        var result = new GetChannelOperationRequestByIdResponse
+        var result = new GetChannelOperationRequestResponse
         {
             SatsAmount = channelOperationRequest.SatsAmount,
             Description = channelOperationRequest.Description,
-            Status = (CHANNEL_OPERATION_STATUS)(int)channelOperationRequest.Status,
-            Type = (CHANNEL_OPERATION_TYPE)(int)channelOperationRequest.RequestType,
+            Status = (CHANNEL_OPERATION_STATUS)((int)channelOperationRequest.Status - 1),
+            Type = (CHANNEL_OPERATION_TYPE)((int)channelOperationRequest.RequestType - 1),
             SourceNodeId = channelOperationRequest.SourceNodeId,
             Private = channelOperationRequest.IsChannelPrivate,
             JobId = channelOperationRequest.JobId
@@ -604,5 +607,41 @@ public class NodeGuardService : Nodeguard.NodeGuardService.NodeGuardServiceBase,
             result.DestNodeId = channelOperationRequest.DestNodeId ?? 0;
 
         return result;
+    }
+
+    public override async Task<AddLiquidityRuleResponse> AddLiquidityRule(AddLiquidityRuleRequest request, ServerCallContext context)
+    {
+        var liquidityRule = new LiquidityRule()
+        {
+            ChannelId = request.ChannelId,
+            NodeId = request.NodeId,
+            WalletId = request.WalletId,
+        };
+        if (request.MinimumLocalBalance != 0)
+            liquidityRule.MinimumLocalBalance = (decimal)request.MinimumLocalBalance;
+        if (request.MinimumRemoteBalance != 0)
+            liquidityRule.MinimumRemoteBalance = (decimal)request.MinimumRemoteBalance;
+        if (request.RebalanceTarget != 0)
+            liquidityRule.RebalanceTarget = (decimal)request.RebalanceTarget;
+
+        var addResult = await _liquidityRuleRepository.AddAsync(liquidityRule);
+        if (!addResult.Item1)
+        {
+            throw new RpcException(new Status(StatusCode.Internal, "Error adding liquidity rule"));
+        }
+
+        var channel = await _channelRepository.GetById(request.ChannelId);
+        if (channel == null)
+        {
+            throw new RpcException(new Status(StatusCode.NotFound, "Channel not found"));
+        }
+
+        channel.LiquidityRules.Add(liquidityRule);
+        _channelRepository.Update(channel);
+
+        return new AddLiquidityRuleResponse()
+        {
+            RuleId = liquidityRule.Id,
+        };
     }
 }
