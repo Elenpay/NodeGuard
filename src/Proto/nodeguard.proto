@@ -247,16 +247,14 @@ message GetChannelOperationRequestResponse {
 message AddLiquidityRuleRequest {
 // Channel ID as returned by the Lightning implementation
   int32 channel_id = 1;
-  // Node id
-  int32 node_id = 2;
   // Wallet ID as stored in the NG's database
-  int32 wallet_id = 3;
+  int32 wallet_id = 2;
   // Minimum local balance
-  optional double minimum_local_balance = 4;
+  optional double minimum_local_balance = 3;
   // Minimum remote balance
-  optional double minimum_remote_balance = 5;
+  optional double minimum_remote_balance = 4;
   // Rebalance target
-  optional double rebalance_target = 6;
+  optional double rebalance_target = 5;
 }
 
 message AddLiquidityRuleResponse {
