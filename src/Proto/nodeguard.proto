@@ -245,7 +245,7 @@ message GetChannelOperationRequestResponse {
 }
 
 message AddLiquidityRuleRequest {
-// Channel ID as returned by the Lightning implementation
+// Channel ID from NGs database
   int32 channel_id = 1;
   // Wallet ID as stored in the NG's database
   int32 wallet_id = 2;
