@@ -644,7 +644,7 @@ public class NodeGuardService : Nodeguard.NodeGuardService.NodeGuardServiceBase,
             throw new RpcException(new Status(StatusCode.NotFound, "Wallet not found"));
         }
 
-        var liquidityRule = new LiquidityRule()
+        var liquidityRule = rule ?? new LiquidityRule()
         {
             ChannelId = request.ChannelId,
             NodeId = node.Id,
@@ -673,7 +673,6 @@ public class NodeGuardService : Nodeguard.NodeGuardService.NodeGuardServiceBase,
         }
         else
         {
-            liquidityRule.Id = rule.Id;
             var updateResult = _liquidityRuleRepository.Update(liquidityRule);
             if (!updateResult.Item1)
             {
