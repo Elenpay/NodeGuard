@@ -24,10 +24,6 @@
             <h3>Requests awaiting signature by a Finance Manager</h3>
         }
 
-        @if (_isNodeManager) // Admin can be node manager and finance manager
-        {
-            <Button Color="Color.Success" TextColor="TextColor.Light" Clicked="OnShowNewChannelRequestModal">New</Button>
-        }
     </Field>
     <br/>
     <DataGrid TItem="ChannelOperationRequest"
@@ -46,9 +42,18 @@
         <PopupTitleTemplate>
             <h2>Create Channel Request</h2>
         </PopupTitleTemplate>
+
         <ChildContent>
+            <DataGridColumn>
+                <NewCommandTemplate>
+                      @if (_isNodeManager) {
+                    <Button Color="Color.Success" TextColor="TextColor.Light" Clicked="OnShowNewChannelRequestModal">New</Button>
+                      }
+                </NewCommandTemplate>
+            </DataGridColumn>
             <DataGridColumn TItem="ChannelOperationRequest" Field="@nameof(ChannelOperationRequest.Id)" Caption="#" Sortable="false" Displayable="true"/>
             <DataGridColumn TItem="ChannelOperationRequest" Field="SourceNode.Name" Caption="Source Node" Sortable="false" Displayable="@IsPendingRequestsColumnVisible(PendingChannelsColumnName.SourceNode)" PopupFieldColumnSize="ColumnSize.Is12" Editable="true">
+                          
                 <EditTemplate>
                     <Validation Validator="ValidationRule.IsSelected" @ref="_sourceNodeValidation">
                         <SelectList TItem="Node"
