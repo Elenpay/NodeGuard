@@ -87,13 +87,13 @@ public static class ValidationHelper
         decimal minimum = Constants.MINIMUM_WITHDRAWAL_BTC_AMOUNT;
         decimal maximum = Constants.MAXIMUM_WITHDRAWAL_BTC_AMOUNT;
 
-        if (amount < minimum && !isAmountDisabled)
+        if (amount < minimum && isAmountDisabled)
         {
             obj.Status = ValidationStatus.Error;
             obj.ErrorText = $"Error, the minimum amount to withdraw is at least {minimum:f8} BTC";
         }
 
-        if (amount > maximum && !isAmountDisabled)
+        if (amount > maximum && isAmountDisabled)
         {
             obj.Status = ValidationStatus.Error;
             obj.ErrorText = $"Error, the maximum amount to withdraw is {maximum:f8} BTC";

@@ -147,9 +147,14 @@
                             </Feedback>
                         </NumericPicker>
                         <FieldHelp>
-
-                            @($"Amount in Satoshis. Minimum {_minimumChannelCapacity:f8}. Current amount: {Math.Round(PriceConversionService.SatToUsdConversion(new Money(_amount, MoneyUnit.BTC).Satoshi, _btcPrice), 2)} USD")
-
+                             @if (Constants.MAXIMUM_WITHDRAWAL_BTC_AMOUNT < _amount)
+                             {
+                                 <span class="text-danger">@($"Amount in BTC. Maximum {Constants.MAXIMUM_WITHDRAWAL_BTC_AMOUNT}.")</span>
+                             }    
+                             else
+                            {
+                                @($"Amount in Satoshis. Minimum {_minimumChannelCapacity:f8}. Current amount: {Math.Round(PriceConversionService.SatToUsdConversion(new Money(_amount, MoneyUnit.BTC).Satoshi, _btcPrice), 2)} USD")
+                            }
                         </FieldHelp>
                     </Validation>
                     <div class="mb-3">
