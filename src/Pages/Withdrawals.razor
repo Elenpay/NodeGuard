@@ -1,9 +1,13 @@
 ﻿@page "/withdrawals"
-@using Humanizer
 @using System.Security.Claims
+@using Blazorise.Extensions
 @using Quartz
+@using Humanizer
 @using NBitcoin
 @using NodeGuard.Jobs
+@using Google.Protobuf
+@using NBXplorer.Models
+@using NodeGuard.Helpers;
 @attribute [Authorize(Roles = "Superadmin,NodeManager,FinanceManager")]
 
 <Row>
@@ -197,6 +201,40 @@
                             }
                         </DisplayTemplate>
                     </DataGridColumn>
+                    <DataGridColumn TItem="WalletWithdrawalRequest" Field="@nameof(ChannelOperationRequest.Amount)" Caption="Capacity" Sortable="false" Displayable="@IsPendingRequestsColumnVisible(PendingWithdrawalsColumnName.Capacity)" PopupFieldColumnSize="ColumnSize.Is12" Editable="true">
+                            <DisplayTemplate>
+                                @{
+                                    @($"{context.Amount:f8} BTC")
+                                    @($" ({Math.Round(PriceConversionService.BtcToUsdConversion(context.Amount, _btcPrice), 2)} USD)")
+                                }
+                            </DisplayTemplate>
+                            <EditTemplate>
+                            <Validation Validator="@ValidationHelper.ValidateChannelCapacity" @ref="_capacityValidation">
+                                <NumericPicker TValue="decimal" @bind-Value="@_amount" Min="0" Decimals="8" Step="0.00001m" CurrencySymbol=" BTC" CurrencySymbolPlacement="CurrencySymbolPlacement.Suffix" Disabled="@(SelectedUTXOs.Count > 0)">
+                                    <Feedback>
+                                        <ValidationError/>
+                                    </Feedback>
+                                </NumericPicker>
+                                <FieldHelp>
+
+                                    @($"Amount in Satoshis. Minimum {_minimumChannelCapacity:f8}. Current amount: {Math.Round(PriceConversionService.SatToUsdConversion(new Money(_amount, MoneyUnit.BTC).Satoshi, _btcPrice), 2)} USD")
+
+                                </FieldHelp>
+                            </Validation>
+                            <div class="mb-3">
+                                <Button Color="Color.Primary" Disabled="@(!_selectedWalletId.HasValue)" Clicked="@OpenCoinSelectionModal">Select Coins</Button> or use
+                                <Button Color="Color.Primary" Disabled="@(SelectedUTXOs.Count == 0)" Clicked="@ClearSelectedUTXOs">Default Coin Selection</Button>
+                            </div>
+                                @if (_selectedWalletId.HasValue && SelectedUTXOs.Count > 0)
+                                {
+                                    <span class="text-danger">Selected @(SelectedUTXOs.Count) UTXOs, this is a changeless operation</span>
+                                }
+                                else
+                                {
+                                    <span class="text-danger">Default coin selection strategy selected</span>
+                                }
+                            </EditTemplate>
+                    </DataGridColumn>
                     <DataGridColumn TItem="WalletWithdrawalRequest" Filterable="false" Field="@nameof(WalletWithdrawalRequest.Status).Humanize(LetterCasing.Sentence)" Caption="Status" Sortable="false" Displayable="@IsPendingRequestsColumnVisible(PendingWithdrawalsColumnName.Status)">
                         <DisplayTemplate>
                             @context?.Status.Humanize()
@@ -218,6 +256,7 @@
                         </FilterTemplate>
                     </DataGridColumn>
                 </DataGridColumns>
+                
                 <EmptyTemplate>
                     <div class="box">
                         No records were found.
@@ -237,7 +276,7 @@
         <h3>Withdrawal requests</h3>
         <DataGrid TItem="WalletWithdrawalRequest"
                   @ref="_allRequestsDatagrid"
-                  Data="@_allRequests"
+                  Data="@_allWalletRequests"
                   Filterable="true"
                   FilterMethod="DataGridFilterMethod.Contains"
                   Editable="false"
@@ -390,6 +429,12 @@
     OnSubmit="@SubmitConfirmationModal"
 />
 
+<UTXOSelectorModal
+    @ref="_utxoSelectorModalRef"
+    OnClose="@OnCloseCoinSelectionModal"/>
+
+@inject IChannelOperationRequestRepository ChannelOperationRequestRepository
+@inject IChannelOperationRequestPSBTRepository ChannelOperationRequestPsbtRepository
 @inject IToastService ToastService
 @inject IWalletWithdrawalRequestRepository WalletWithdrawalRequestRepository
 @inject IWalletWithdrawalRequestPsbtRepository WalletWithdrawalRequestPsbtRepository
@@ -398,6 +443,10 @@
 @inject ISchedulerFactory SchedulerFactory
 @inject ILocalStorageService LocalStorageService
 @inject IPriceConversionService PriceConversionService
+@inject ICoinSelectionService CoinSelectionService
+@inject INBXplorerService NBXplorerService
+@inject INodeRepository NodeRepository
+@inject ILightningService LightningService
 
 @code {
     [CascadingParameter]
@@ -406,42 +455,61 @@
 
     [CascadingParameter]
     private ClaimsPrincipal? ClaimsPrincipal { get; set; }
-
+    private List<Wallet> _allWallets = new List<Wallet>();
+    private MempoolRecommendedFeesTypes FeesSelection;
+    protected DataGrid<ChannelOperationRequest>? datagridRef;
+    private bool _selectedPrivate = false;
+    private string? _destNodeName;
+    private long FeeAmount = 1;
+    private ColumnLayout<PendingWithdrawalsColumnName> PendingRequestsColumnLayout;
     private List<WalletWithdrawalRequest> _userPendingRequests = new List<WalletWithdrawalRequest>();
     private List<Wallet> _availableWallets = new List<Wallet>();
-    private List<WalletWithdrawalRequest> _allRequests = new List<WalletWithdrawalRequest>();
-
+    private List<ChannelOperationRequest>? _allRequests;
+    private List<WalletWithdrawalRequest> _allWalletRequests = new List<WalletWithdrawalRequest>();
+    private List<ChannelOperationRequest>? _channelRequests;
     private string? mempoolUrl = Constants.MEMPOOL_ENDPOINT;
     private bool _isFinanceManager;
-
+    private List<UTXO> SelectedUTXOs = new();
     private WalletWithdrawalRequest? _selectedRequest;
+    private ChannelOperationRequest? _selectedChannelRequest;
     private PSBTSign? _psbtSignRef;
+    private Node? _selectedDestNode;
     private string _signedPSBT;
     private string? _templatePsbtString;
+    private int? _selectedWalletId;
+    private static readonly decimal _minimumChannelCapacity = new Money(Constants.MINIMUM_CHANNEL_CAPACITY_SATS).ToUnit(MoneyUnit.BTC);
+    private decimal _amount { get; set; } = _minimumChannelCapacity;
+    private int _selectedSourceNodeId;
+    //Validation
+    private Validation? _walletValidation;
+    private Validation? _sourceNodeValidation;
+    private Validation? _destNodeValidation;
+    private Validation? _capacityValidation;
 
     private DataGrid<WalletWithdrawalRequest>? _allRequestsDatagrid;
-
+    private UTXOSelectorModal _utxoSelectorModalRef;
     private ConfirmationModal _confirmationModal;
     private CancelOrRejectPopup? _rejectCancelModalRef;
+    private bool _isNodeManager = false;
     private WalletWithdrawalRequestStatus? _rejectCancelStatus = WalletWithdrawalRequestStatus.Rejected;
     private bool _isAmountDisabled;
     private decimal? _selectedRequestWalletBalance;
-
+    private List<Node>? _manageableNodes;
     private decimal _maxWithdrawal = Constants.MAXIMUM_WITHDRAWAL_BTC_AMOUNT;
     private decimal _minWithdrawal = Constants.MINIMUM_WITHDRAWAL_BTC_AMOUNT;
     private decimal _btcPrice;
-
-    private ColumnLayout<PendingWithdrawalsColumnName> PendingRequestsColumnLayout;
     private ColumnLayout<AllWithdrawalsColumnName> AllRequestsColumnLayout;
     private Dictionary<string, bool> PendingRequestsColumns = new();
     private Dictionary<string, bool> AllRequestsColumns = new();
     private bool columnsLoaded;
+    private decimal _selectedWalletBalance;
 
     public abstract class PendingWithdrawalsColumnName
     {
         public static readonly ColumnDefault Description = new("Description");
         public static readonly ColumnDefault Wallet = new("Wallet");
         public static readonly ColumnDefault Requestor = new("Requestor");
+        public static readonly ColumnDefault Capacity = new("Capacity");
         public static readonly ColumnDefault DestinationAddress = new("Destination Address");
         public static readonly ColumnDefault Amount = new("Amount (BTC)");
         public static readonly ColumnDefault SignaturesCollected = new("Signatures Collected");
@@ -487,6 +555,11 @@
         }
     }
 
+    private decimal SelectedUTXOsValue()
+    {
+        return SelectedUTXOs.Sum(x => ((Money)x.Value).ToUnit(MoneyUnit.BTC));
+    }
+
     private async Task LoadColumnLayout()
     {
         AllRequestsColumns = await LocalStorageService.LoadStorage(nameof(AllWithdrawalsColumnName), ColumnHelpers.GetColumnsDictionary<AllWithdrawalsColumnName>());
@@ -495,14 +568,121 @@
         StateHasChanged();
     }
 
+    private async Task ResetChannelRequestRejectModal()
+    {
+        await datagridRef.Edit(null);
+        _destNodeName = "";
+        _selectedDestNode = null;
+        _selectedPrivate = false;
+        _selectedWalletId = null;
+        _amount = _minimumChannelCapacity;
+    }
+
+    private Task OnChannelRequestRejectModalClosing(ModalClosingEventArgs args)
+    {
+        return ResetChannelRequestRejectModal();
+    }
+
+    private async Task LoadData()
+    {
+        if (LoggedUser != null)
+        {
+            _manageableNodes = await NodeRepository.GetAllManagedByUser(LoggedUser.Id);
+            if (_selectedDestNode != null)
+            {
+                _manageableNodes = _manageableNodes.Where(node => node.Id != _selectedDestNode.Id).ToList();
+            }
+            _allWallets = await WalletRepository.GetAvailableWallets();
+        }
+    }
+    private async Task CreateChannelRequest()
+    {
+        if (LoggedUser == null) return;
+
+        List<Validation?> validators = new() { _destNodeValidation, _sourceNodeValidation, _walletValidation };
+        if (SelectedUTXOs.Count == 0)
+        {
+            validators.Add(_capacityValidation);
+        }
+
+        if (validators.All(v => v != null && (int)v.Validate() == 1))
+        {
+            if (_selectedDestNode?.Id != _selectedSourceNodeId)
+            {
+                var amount = SelectedUTXOs.Count > 0 ? SelectedUTXOsValue() : _amount;
+                var request = new ChannelOperationRequest()
+                {
+                    SatsAmount = new Money(amount, MoneyUnit.BTC).Satoshi,
+                    RequestType = OperationRequestType.Open,
+                    Description = "Created by user via Funds Manager",
+                    WalletId = _selectedWalletId,
+                    Status = ChannelOperationRequestStatus.Pending, //TODO Reject and cancel
+                    UserId = LoggedUser.Id,
+                    SourceNodeId = _selectedSourceNodeId,
+                    DestNodeId = _selectedDestNode?.Id,
+                    IsChannelPrivate = _selectedPrivate,
+                    Changeless = SelectedUTXOs.Count > 0,
+                    MempoolRecommendedFeesTypes = FeesSelection,
+                    FeeRate = FeesSelection == MempoolRecommendedFeesTypes.CustomFee ?  FeeAmount : null
+                };
+
+                var selectedWallet = await WalletRepository.GetById(_selectedWalletId.Value);
+
+
+                if (selectedWallet.IsHotWallet)
+                {
+                    _selectedChannelRequest = request;
+                    await datagridRef.Edit(null);
+                    await _confirmationModal.ShowModal();
+                    await ResetChannelRequestRejectModal();
+                    return;
+                }
+
+                var createChannelResult = await ChannelOperationRequestRepository.AddAsync(request);
+
+                if (createChannelResult.Item1)
+                {
+                    ToastService.ShowSuccess("Open channel request created!");
+
+                    if (SelectedUTXOs.Count > 0)
+                    {
+                        await CoinSelectionService.LockUTXOs(SelectedUTXOs, request, BitcoinRequestType.ChannelOperation);
+                    }
+                }
+                else
+                {
+                    ToastService.ShowError(createChannelResult.Item2);
+                }
+                _utxoSelectorModalRef.ClearModal();
+            }
+            else
+            {
+                ToastService.ShowError("The Source Node cannot be the same as the Destitation Node");
+            }
+            await ResetChannelRequestRejectModal();
+        }
+        await LoadData();
+        await FetchRequests();
+    }
+
     private async Task GetData()
     {
         if (LoggedUser?.Id != null)
             _userPendingRequests = await WalletWithdrawalRequestRepository.GetUnsignedPendingRequestsByUser(LoggedUser.Id);
 
-        _allRequests = (await WalletWithdrawalRequestRepository.GetAll()).Except(_userPendingRequests).ToList();
+        _allWalletRequests = (await WalletWithdrawalRequestRepository.GetAll()).Except(_userPendingRequests).ToList();
 
         _availableWallets = await WalletRepository.GetAvailableWallets();
+    }
+
+    private void OnCloseCoinSelectionModal(List<UTXO> selectedUTXOs)
+    {
+        SelectedUTXOs = selectedUTXOs;
+        if (SelectedUTXOs.Count > 0)
+        {
+            _amount = SelectedUTXOsValue();
+        }
+        StateHasChanged();
     }
 
     private async Task OnRowInserted(SavedRowItem<WalletWithdrawalRequest, Dictionary<string, object>> arg)
@@ -728,6 +908,10 @@
             await Approve(_selectedRequest);
     }
 
+    private void OnSelectedSourceNode(int nodeId)
+    {
+        _selectedSourceNodeId = nodeId;
+    }
     private async Task RejectOrCancel()
     {
         if ((_rejectCancelStatus == WalletWithdrawalRequestStatus.Cancelled || _rejectCancelStatus == WalletWithdrawalRequestStatus.Rejected)
@@ -771,13 +955,44 @@
         context.CellValue = id;
 
         var wallet = _availableWallets.SingleOrDefault(x => x.Id == id);
-
+        _selectedWalletId = id == 0 ? null : id;
         if (wallet != null)
         {
-            var (balance,_) = await BitcoinService.GetWalletConfirmedBalance(wallet);
-
-            _selectedRequestWalletBalance = balance;
+        var (balance,_) = await BitcoinService.GetWalletConfirmedBalance(wallet);
+        _selectedRequestWalletBalance = balance;
+        var allWallet = _allWallets.Find(w => w.Id == _selectedWalletId);
+        var balanceWallet = (await LightningService.GetWalletBalance(allWallet))?.Available ?? new Money(0);
+        _selectedWalletBalance = ((Money)balanceWallet).ToUnit(MoneyUnit.BTC);
         }
+    }
+    
+    private async Task FetchRequests()
+    {
+        if (LoggedUser == null) return;
+
+        _allRequests = await ChannelOperationRequestRepository.GetAll();
+
+        if (_isFinanceManager)
+        {
+            _channelRequests = await ChannelOperationRequestRepository.GetUnsignedPendingRequestsByUser(LoggedUser.Id);
+        }
+        else if (_isNodeManager)
+        {
+            _channelRequests = await ChannelOperationRequestRepository.GetPendingRequests();
+        }
+        _allRequests = _allRequests.Except(_channelRequests ?? new List<ChannelOperationRequest>()).ToList();
+    }
+
+    private async Task OpenCoinSelectionModal()
+    {
+        _utxoSelectorModalRef.ShowModal(_selectedWalletId.Value);
+    }
+
+    private void ClearSelectedUTXOs()
+    {
+        _utxoSelectorModalRef.ClearModal();
+        SelectedUTXOs.Clear();
+        StateHasChanged();
     }
 
     private void RejectReasonValidator(ValidatorEventArgs e)
@@ -824,7 +1039,7 @@
 
                 var templatePSBT = await BitcoinService.GenerateTemplatePSBT(_selectedRequest);
 
-    //TODO Save template PSBT (?)
+                //TODO Save template PSBT (?)
                 var walletWithdrawalRequestPsbt = new WalletWithdrawalRequestPSBT()
                 {
                     WalletWithdrawalRequestId = _selectedRequest.Id,
