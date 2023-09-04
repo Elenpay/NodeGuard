@@ -6,12 +6,14 @@ using NodeGuard.Helpers;
 using NodeGuard.Jobs;
 using NodeGuard.Services;
 using Grpc.Core;
+using Microsoft.EntityFrameworkCore.Infrastructure;
 using NBitcoin;
+using NBitcoin.RPC;
 using NBXplorer.DerivationStrategy;
 using NBXplorer.Models;
 using Nodeguard;
 using Quartz;
-using LiquidityRule = Nodeguard.LiquidityRule;
+using LiquidityRule = NodeGuard.Data.Models.LiquidityRule;
 using Node = Nodeguard.Node;
 using Wallet = NodeGuard.Data.Models.Wallet;
 
@@ -37,6 +39,10 @@ public interface INodeGuardService
     Task<OpenChannelResponse> OpenChannel(OpenChannelRequest request, ServerCallContext context);
 
     Task<CloseChannelResponse> CloseChannel(CloseChannelRequest request, ServerCallContext context);
+
+    Task<GetChannelOperationRequestResponse> GetChannelOperationRequest(GetChannelOperationRequestRequest request, ServerCallContext context);
+
+    Task<AddLiquidityRuleResponse> AddLiquidityRule(AddLiquidityRuleRequest request, ServerCallContext context);
 }
 
 /// <summary>
@@ -57,6 +63,7 @@ public class NodeGuardService : Nodeguard.NodeGuardService.NodeGuardServiceBase,
     private readonly IChannelRepository _channelRepository;
     private readonly ICoinSelectionService _coinSelectionService;
     private readonly IScheduler _scheduler;
+    private readonly ILightningService _lightningService;
 
     public NodeGuardService(ILogger<NodeGuardService> logger,
         ILiquidityRuleRepository liquidityRuleRepository,
@@ -69,7 +76,8 @@ public class NodeGuardService : Nodeguard.NodeGuardService.NodeGuardServiceBase,
         INodeRepository nodeRepository,
         IChannelOperationRequestRepository channelOperationRequestRepository,
         IChannelRepository channelRepository,
-        ICoinSelectionService coinSelectionService
+        ICoinSelectionService coinSelectionService,
+        ILightningService lightningService
     )
     {
         _logger = logger;
@@ -84,6 +92,7 @@ public class NodeGuardService : Nodeguard.NodeGuardService.NodeGuardServiceBase,
         _channelOperationRequestRepository = channelOperationRequestRepository;
         _channelRepository = channelRepository;
         _coinSelectionService = coinSelectionService;
+        _lightningService = lightningService;
         _scheduler = Task.Run(() => _schedulerFactory.GetScheduler()).Result;
     }
 
@@ -103,7 +112,7 @@ public class NodeGuardService : Nodeguard.NodeGuardService.NodeGuardServiceBase,
             var liquidityRules = await _liquidityRuleRepository.GetByNodePubKey(request.NodePubkey);
             result = new GetLiquidityRulesResponse()
             {
-                LiquidityRules = {liquidityRules.Select(x => _mapper.Map<LiquidityRule>(x)).ToList()}
+                LiquidityRules = {liquidityRules.Select(x => _mapper.Map<Nodeguard.LiquidityRule>(x)).ToList()}
             };
         }
         catch (Exception e)
@@ -358,10 +367,17 @@ public class NodeGuardService : Nodeguard.NodeGuardService.NodeGuardServiceBase,
             throw new RpcException(new Status(StatusCode.NotFound, "Wallet not found"));
         }
 
+        if (request.MempoolFeeRate == FEES_TYPE.CustomFee && request.CustomFeeRate == 0)
+        {
+            throw new RpcException(new Status(StatusCode.InvalidArgument, "Mempool fee rate configuration is not valid"));
+        }
+
         if (request.Changeless && request.UtxosOutpoints.Count == 0)
         {
             throw new RpcException(new Status(StatusCode.InvalidArgument, "Changeless channel open requires utxos"));
         }
+
+        int requestId;
 
         try
         {
@@ -379,6 +395,33 @@ public class NodeGuardService : Nodeguard.NodeGuardService.NodeGuardServiceBase,
                 utxos = await _coinSelectionService.GetUTXOsByOutpointAsync(wallet.GetDerivationStrategy(), outpoints);
             }
 
+            // Get the fee type of the request
+            MempoolRecommendedFeesTypes feeType;
+
+            switch (request.MempoolFeeRate)
+            {
+                case FEES_TYPE.EconomyFee:
+                    feeType = MempoolRecommendedFeesTypes.EconomyFee;
+                    break;
+                case FEES_TYPE.FastestFee:
+                    feeType = MempoolRecommendedFeesTypes.FastestFee;
+                    break;
+                case FEES_TYPE.HourFee:
+                    feeType = MempoolRecommendedFeesTypes.HourFee;
+                    break;
+                case FEES_TYPE.HalfHourFee:
+                    feeType = MempoolRecommendedFeesTypes.HalfHourFee;
+                    break;
+                default:
+                    feeType = MempoolRecommendedFeesTypes.CustomFee;
+                    break;
+            }
+
+            if (feeType == MempoolRecommendedFeesTypes.CustomFee && !request.HasCustomFeeRate)
+            {
+                throw new RpcException(new Status(StatusCode.NotFound, "Custom fee rate is required"));
+            }
+
             var channelOperationRequest = new ChannelOperationRequest
             {
                 SatsAmount = request.SatsAmount,
@@ -393,6 +436,8 @@ public class NodeGuardService : Nodeguard.NodeGuardService.NodeGuardServiceBase,
                 User = null,*/
                 IsChannelPrivate = request.Private,
                 Changeless = request.Changeless,
+                MempoolRecommendedFeesTypes = feeType,
+                FeeRate = feeType == MempoolRecommendedFeesTypes.CustomFee ? request.CustomFeeRate : null,
             };
 
             //Persist request
@@ -408,6 +453,24 @@ public class NodeGuardService : Nodeguard.NodeGuardService.NodeGuardServiceBase,
                 // Lock the utxos
                 await _coinSelectionService.LockUTXOs(utxos, channelOperationRequest,
                     BitcoinRequestType.ChannelOperation);
+            }
+
+            var (templatePsbt, noUtxosAvailable) = (await _lightningService.GenerateTemplatePSBT(channelOperationRequest));
+            if (templatePsbt == null)
+            {
+                channelOperationRequest.Status = ChannelOperationRequestStatus.Failed;
+                _channelOperationRequestRepository.Update(channelOperationRequest);
+                if (noUtxosAvailable)
+                {
+                    _logger?.LogError("No UTXOs available for opening the channel");
+                    throw new RpcException(new Status(StatusCode.ResourceExhausted,
+                        "No UTXOs available for opening the channel"));
+                }
+                else
+                {
+                    _logger?.LogError("Error generating template PSBT");
+                    throw new RpcException(new Status(StatusCode.Internal, "Error generating template PSBT"));
+                }
             }
 
             //Fire Open Channel Job
@@ -429,6 +492,8 @@ public class NodeGuardService : Nodeguard.NodeGuardService.NodeGuardServiceBase,
                 _logger?.LogError("Error updating channel operation request, error: {error}", jobUpdateResult.Item2);
                 throw new RpcException(new Status(StatusCode.Internal, "Error updating channel operation request"));
             }
+
+            requestId = channelOperationRequest.Id;
         }
         catch (Exception e)
         {
@@ -437,7 +502,10 @@ public class NodeGuardService : Nodeguard.NodeGuardService.NodeGuardServiceBase,
         }
 
 
-        return new OpenChannelResponse();
+        return new OpenChannelResponse()
+        {
+            ChannelOperationRequestId = requestId
+        };
     }
 
     public override async Task<CloseChannelResponse> CloseChannel(CloseChannelRequest request, ServerCallContext context)
@@ -504,5 +572,180 @@ public class NodeGuardService : Nodeguard.NodeGuardService.NodeGuardServiceBase,
         }
 
         return new CloseChannelResponse();
+    }
+
+    public override async Task<GetChannelOperationRequestResponse> GetChannelOperationRequest(GetChannelOperationRequestRequest request, ServerCallContext context)
+    {
+        var channelOperationRequest = await _channelOperationRequestRepository.GetById(request.ChannelOperationRequestId);
+
+        if (channelOperationRequest == null)
+        {
+            throw new RpcException(new Status(StatusCode.NotFound, "Channel operation request not found"));
+        }
+
+        var result = new GetChannelOperationRequestResponse
+        {
+            SatsAmount = channelOperationRequest.SatsAmount,
+            Description = channelOperationRequest.Description,
+            Status = (CHANNEL_OPERATION_STATUS)((int)channelOperationRequest.Status - 1),
+            Type = (CHANNEL_OPERATION_TYPE)((int)channelOperationRequest.RequestType - 1),
+            SourceNodeId = channelOperationRequest.SourceNodeId,
+            Private = channelOperationRequest.IsChannelPrivate,
+            JobId = channelOperationRequest.JobId
+        };
+        if (channelOperationRequest.TxId != null)
+            result.TxId = channelOperationRequest.TxId;
+        if (channelOperationRequest.ClosingReason != null)
+            result.ClosingReason = channelOperationRequest.ClosingReason;
+        if (channelOperationRequest.FeeRate != null)
+            result.FeeRate = (double)channelOperationRequest.FeeRate;
+        if (channelOperationRequest.WalletId != null)
+            result.WalletId = channelOperationRequest.WalletId ?? 0;
+        if (channelOperationRequest.ChannelId != null)
+            result.ChannelId = channelOperationRequest.ChannelId ?? 0;
+        if (channelOperationRequest.DestNodeId != null)
+            result.DestNodeId = channelOperationRequest.DestNodeId ?? 0;
+
+        return result;
+    }
+
+    public override async Task<AddLiquidityRuleResponse> AddLiquidityRule(AddLiquidityRuleRequest request, ServerCallContext context)
+    {
+        var channel = await _channelRepository.GetById(request.ChannelId);
+        if (channel == null)
+        {
+            throw new RpcException(new Status(StatusCode.NotFound, "Channel not found"));
+        }
+
+        if (!channel.IsAutomatedLiquidityEnabled)
+        {
+            channel.IsAutomatedLiquidityEnabled = true;
+        }
+
+        var source = await _nodeRepository.GetById(channel.SourceNodeId);
+        if (source == null)
+        {
+            throw new RpcException(new Status(StatusCode.NotFound, "Source node not found"));
+        }
+        var destination = await _nodeRepository.GetById(channel.DestinationNodeId);
+        if (destination == null)
+        {
+            throw new RpcException(new Status(StatusCode.NotFound, "Destination node not found"));
+        }
+
+        var node = string.IsNullOrEmpty(source.ChannelAdminMacaroon) ? destination : source;
+
+        var rules = await _liquidityRuleRepository.GetByNodePubKey(node.PubKey);
+        var rule = rules.FirstOrDefault(r => r.ChannelId == request.ChannelId);
+
+        var wallet = await _walletRepository.GetById(request.WalletId);
+        if (wallet == null)
+        {
+            throw new RpcException(new Status(StatusCode.NotFound, "Wallet not found"));
+        }
+
+        var liquidityRule = rule ?? new LiquidityRule()
+        {
+            ChannelId = request.ChannelId,
+            NodeId = node.Id,
+            WalletId = request.WalletId,
+        };
+        if (request.HasMinimumLocalBalance)
+            liquidityRule.MinimumLocalBalance = (decimal)request.MinimumLocalBalance;
+        if (request.HasMinimumRemoteBalance)
+            liquidityRule.MinimumRemoteBalance = (decimal)request.MinimumRemoteBalance;
+        if (request.HasRebalanceTarget)
+            liquidityRule.RebalanceTarget = (decimal)request.RebalanceTarget;
+
+        if (!(ValidateLocalBalance(liquidityRule) && ValidateRemoteBalance(liquidityRule) &&
+            ValidateTargetBalance(liquidityRule)))
+        {
+            throw new RpcException(new Status(StatusCode.InvalidArgument, "Invalid rule"));
+        }
+
+        if (rule == null)
+        {
+            var addResult = await _liquidityRuleRepository.AddAsync(liquidityRule);
+            if (!addResult.Item1)
+            {
+                throw new RpcException(new Status(StatusCode.Internal, "Error adding liquidity rule"));
+            }
+        }
+        else
+        {
+            var updateResult = _liquidityRuleRepository.Update(liquidityRule);
+            if (!updateResult.Item1)
+            {
+                throw new RpcException(new Status(StatusCode.Internal, "Error updating liquidity rule"));
+            }
+        }
+        _channelRepository.Update(channel);
+
+        return new AddLiquidityRuleResponse()
+        {
+            RuleId = liquidityRule.Id,
+        };
+    }
+
+    private bool ValidateLocalBalance(LiquidityRule rule)
+    {
+        //If the minimum remote balance is 0 this cannot be 0
+        if ((rule.MinimumLocalBalance == 0 || rule.MinimumLocalBalance == null)
+            && (rule.MinimumRemoteBalance == 0 || rule.MinimumRemoteBalance == null))
+            return false;
+
+        //If the value is 0 is valid
+        if (rule.MinimumRemoteBalance == 0 || rule.MinimumRemoteBalance == null)
+            return true;
+
+        //Check that the balance is between 0 and 100
+        if (rule.MinimumLocalBalance < 0 || rule.MinimumLocalBalance > 100)
+            return false;
+
+        //Check that the Minimum local balance must be less than the minimum remote balance
+        if (rule.MinimumLocalBalance >= rule.MinimumRemoteBalance)
+            return false;
+
+        return true;
+    }
+
+    private bool ValidateRemoteBalance(LiquidityRule rule)
+    {
+        //If the minimum local balance is 0 this cannot be 0
+        if ((rule.MinimumLocalBalance == 0 || rule.MinimumLocalBalance == null)
+            && (rule.MinimumRemoteBalance == 0 || rule.MinimumRemoteBalance == null))
+            return false;
+
+        //If the value is 0 is valid
+        if (rule.MinimumRemoteBalance == 0 || rule.MinimumRemoteBalance == null)
+            return true;
+
+        //Check that the minimum remote balance is between 0 and 100
+        if (rule.MinimumRemoteBalance < 0 || rule.MinimumRemoteBalance > 100)
+            return false;
+
+        //Check that the Minimum remote balance must be greater than the minimum local balance
+        if (rule.MinimumRemoteBalance <= rule.MinimumLocalBalance)
+            return false;
+
+        return true;
+    }
+
+    private bool ValidateTargetBalance(LiquidityRule rule)
+    {
+        //If the value is 0 is valid
+        if (rule.RebalanceTarget == 0 || rule.RebalanceTarget == null)
+            return true;
+
+        //Check that the target balance is between 0 and 100
+        if (rule.RebalanceTarget < 0 || rule.RebalanceTarget > 100)
+            return false;
+
+        //Check that the rebalancetarget of the current liquidity rule is between the mininum local and minimum remote balance
+        if (rule.RebalanceTarget < rule.MinimumLocalBalance ||
+            rule.RebalanceTarget > rule.MinimumRemoteBalance)
+            return false;
+
+        return true;
     }
 }

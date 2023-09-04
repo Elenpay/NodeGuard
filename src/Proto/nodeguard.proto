@@ -43,6 +43,16 @@ service NodeGuardService {
     Closes a channel to a given node
    */
   rpc CloseChannel(CloseChannelRequest) returns (CloseChannelResponse);
+
+  /*
+    Gets a list of channel operations requests by id
+   */
+  rpc GetChannelOperationRequest(GetChannelOperationRequestRequest) returns (GetChannelOperationRequestResponse);
+
+  /*
+  Adds a liquidity rule to a channel
+   */
+  rpc AddLiquidityRule(AddLiquidityRuleRequest) returns (AddLiquidityRuleResponse);
 }
 
 message GetLiquidityRulesRequest {
@@ -151,6 +161,14 @@ message GetNodesResponse{
   repeated Node nodes = 1;
 }
 
+enum FEES_TYPE {
+  CUSTOM_FEE = 0;
+  FASTEST_FEE = 1;
+  HOUR_FEE = 2;
+  HALF_HOUR_FEE = 3;
+  ECONOMY_FEE = 4;
+}
+
 message OpenChannelRequest {
   // Source node pubkey
   string source_pub_key = 5;
@@ -166,10 +184,15 @@ message OpenChannelRequest {
   bool changeless = 6;
   // Outpoints for the UTXOs to use for the channel
   repeated string utxos_outpoints = 7;
+  // MempoolRecommended fee rate
+  FEES_TYPE mempool_fee_rate = 8;
+  // Fee rate in sat/vbyte
+  optional int32 custom_fee_rate = 9;
 }
 
-// A successful response is an empty message and does NOT indicate that the channel has been open, external monitoring is required
+// A successful response returns the channel_operation_request_id but it does NOT indicate that the channel has been open, external monitoring is required
 message OpenChannelResponse {
+  int32 channel_operation_request_id = 1;
 }
 
 message CloseChannelRequest {
@@ -181,4 +204,60 @@ message CloseChannelRequest {
 
 // A successful response is an empty message and does NOT indicate that the channel has been closed, external monitoring is required
 message CloseChannelResponse {
+}
+
+message GetChannelOperationRequestRequest {
+  // Whether to include requests that are not managed by the NG
+  int32 channel_operation_request_id = 1;
+}
+
+enum CHANNEL_OPERATION_STATUS {
+  APPROVED = 0;
+  CANCELLED = 1;
+  REJECTED = 2;
+  PENDING = 3;
+  PSBT_SIGNATURES_PENDING = 4;
+  ONCHAIN_CONFIRMATION_PENDING = 5;
+  ONCHAIN_CONFIRMED = 6;
+  FAILED = 7;
+  FINALIZINGPSBT = 8;
+}
+
+enum CHANNEL_OPERATION_TYPE {
+  OPEN_CHANNEL = 0;
+  CLOSE_CHANNEL = 1;
+}
+
+message GetChannelOperationRequestResponse {
+  int64 sats_amount = 1;
+  string description = 2;
+  optional CHANNEL_OPERATION_STATUS status = 3;
+  optional CHANNEL_OPERATION_TYPE type = 4;
+  optional string tx_id = 5;
+  optional string closing_reason = 6;
+  optional double fee_rate = 7;
+  optional int32 wallet_id = 8;
+  int32 source_node_id = 9;
+  optional int32 dest_node_id = 10;
+  optional int64 channel_id = 11;
+  bool private = 12;
+  string job_id = 13;
+}
+
+message AddLiquidityRuleRequest {
+// Channel ID from NGs database
+  int32 channel_id = 1;
+  // Wallet ID as stored in the NG's database
+  int32 wallet_id = 2;
+  // Minimum local balance
+  optional double minimum_local_balance = 3;
+  // Minimum remote balance
+  optional double minimum_remote_balance = 4;
+  // Rebalance target
+  optional double rebalance_target = 5;
+}
+
+message AddLiquidityRuleResponse {
+  // Rule ID as stored in the NG's database
+  int32 rule_id = 1;
 }
