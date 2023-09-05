@@ -139,18 +139,18 @@ public class ChannelMonitorJob : IJob
         try
         {
             await using var dbContext = await _dbContextFactory.CreateDbContextAsync();
-
-            var channelExists = await dbContext.Channels.AnyAsync(c => c.ChanId == channel.ChanId);
-            if (channelExists) return;
-
+            
             var channelPoint = channel.ChannelPoint.Split(":");
             var fundingTx = channelPoint[0];
-            var outputIndex = channelPoint[1];
+            var outputIndex = Convert.ToUInt32(channelPoint[1]);
+
+            var channelExists = await dbContext.Channels.AnyAsync(c => c.FundingTx.Equals(fundingTx) && c.FundingTxOutputIndex == outputIndex);
+            if (channelExists) return;
 
             var parsedChannelPoint = new ChannelPoint
             {
                 FundingTxidStr = fundingTx, FundingTxidBytes = ByteString.CopyFrom(Convert.FromHexString(fundingTx).Reverse().ToArray()),
-                OutputIndex = Convert.ToUInt32(outputIndex)
+                OutputIndex = outputIndex
             };
 
             var createdChannel = await _lightningService.CreateChannel(source, destination.Id, parsedChannelPoint, channel.Capacity, channel.CloseAddress);
