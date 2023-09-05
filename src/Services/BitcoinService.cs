@@ -157,7 +157,12 @@ namespace NodeGuard.Services
                 }
             }
 
-            var availableUTXOs = await _coinSelectionService.GetAvailableUTXOsAsync(derivationStrategy);
+            var previouslyLockedUTXOs =
+                await _coinSelectionService.GetLockedUTXOsForRequest(walletWithdrawalRequest,
+                    BitcoinRequestType.WalletWithdrawal);
+            var availableUTXOs = previouslyLockedUTXOs.Count > 0
+                ? previouslyLockedUTXOs
+                : await _coinSelectionService.GetAvailableUTXOsAsync(derivationStrategy);
             var (scriptCoins, selectedUTXOs) = await _coinSelectionService.GetTxInputCoins(availableUTXOs, walletWithdrawalRequest, derivationStrategy);
 
             if (scriptCoins == null || !scriptCoins.Any())
@@ -171,11 +176,12 @@ namespace NodeGuard.Services
 
             var nbXplorerNetwork = CurrentNetworkHelper.GetCurrentNetwork();
 
-            PSBT? result = null;
+            PSBT? originalPSBT = null;
             try
             {
                 //We got enough inputs to fund the TX so time to build the PSBT
 
+                var network = CurrentNetworkHelper.GetCurrentNetwork();
                 var txBuilder = nbXplorerNetwork.CreateTransactionBuilder();
 
                 var feeRateResult = await LightningHelper.GetFeeRateResult(nbXplorerNetwork, _nbXplorerService);
@@ -211,13 +217,17 @@ namespace NodeGuard.Services
                 else
                 {
                     builder.Send(destination, amount);
+                    if (walletWithdrawalRequest.Changeless)
+                    {
+                        builder.SubtractFees();
+                    }
                     builder.SendAllRemainingToChange();
                 }
 
-                result = builder.BuildPSBT(false);
+                originalPSBT = builder.BuildPSBT(false);
 
                 //Additional fields to support PSBT signing with a HW or the Remote Signer
-                result = LightningHelper.AddDerivationData(walletWithdrawalRequest.Wallet, result, selectedUTXOs, scriptCoins, _logger);
+                originalPSBT = LightningHelper.AddDerivationData(walletWithdrawalRequest.Wallet, originalPSBT, selectedUTXOs, scriptCoins, _logger);
             }
             catch (Exception e)
             {
@@ -235,7 +245,7 @@ namespace NodeGuard.Services
                 throw new Exception(message);
             }
 
-            if (result == null)
+            if (originalPSBT == null)
             {
                 throw new Exception("Error while generating base PSBT");
             }
@@ -247,7 +257,7 @@ namespace NodeGuard.Services
                 CreationDatetime = DateTimeOffset.Now,
                 IsTemplatePSBT = true,
                 UpdateDatetime = DateTimeOffset.Now,
-                PSBT = result.ToBase64()
+                PSBT = originalPSBT.ToBase64()
             };
 
             var addPsbtResult = await _walletWithdrawalRequestPsbtRepository.AddAsync(psbt);
@@ -258,7 +268,7 @@ namespace NodeGuard.Services
                     walletWithdrawalRequest.Id);
             }
 
-            return result;
+            return originalPSBT;
         }
 
         public async Task PerformWithdrawal(WalletWithdrawalRequest walletWithdrawalRequest)

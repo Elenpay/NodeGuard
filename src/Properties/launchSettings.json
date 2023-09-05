@@ -19,7 +19,7 @@
         "BITCOIN_NETWORK": "REGTEST",
         "MAXIMUM_WITHDRAWAL_BTC_AMOUNT": "21000000",
         "NBXPLORER_ENABLE_CUSTOM_BACKEND": "true",
-        "NBXPLORER_URI": "http://127.0.0.1:32838",
+        "NBXPLORER_URI": "http://localhost:32838",
         "NBXPLORER_BTCRPCUSER": "polaruser",
         "NBXPLORER_BTCRPCPASSWORD": "polarpass",
         "NBXPLORER_BTCRPCURL": "http://127.0.0.1:18443/",

@@ -73,7 +73,8 @@ public enum CoinSelectionStrategy
 {
     SmallestFirst,
     BiggestFirst,
-    ClosestToTargetFirst
+    ClosestToTargetFirst,
+    UpToAmount
 }
 
 /// <summary>

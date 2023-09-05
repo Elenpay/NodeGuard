@@ -6,15 +6,12 @@ using NodeGuard.Helpers;
 using NodeGuard.Jobs;
 using NodeGuard.Services;
 using Grpc.Core;
-using Microsoft.EntityFrameworkCore.Infrastructure;
 using NBitcoin;
-using NBitcoin.RPC;
 using NBXplorer.DerivationStrategy;
 using NBXplorer.Models;
 using Nodeguard;
 using Quartz;
 using LiquidityRule = NodeGuard.Data.Models.LiquidityRule;
-using Node = Nodeguard.Node;
 using Wallet = NodeGuard.Data.Models.Wallet;
 
 namespace NodeGuard.Rpc;
@@ -43,6 +40,8 @@ public interface INodeGuardService
     Task<GetChannelOperationRequestResponse> GetChannelOperationRequest(GetChannelOperationRequestRequest request, ServerCallContext context);
 
     Task<AddLiquidityRuleResponse> AddLiquidityRule(AddLiquidityRuleRequest request, ServerCallContext context);
+
+    Task<GetAvailableUtxosResponse> GetAvailableUtxos(GetAvailableUtxosRequest request, ServerCallContext context);
 }
 
 /// <summary>
@@ -169,6 +168,20 @@ public class NodeGuardService : Nodeguard.NodeGuardService.NodeGuardServiceBase,
             //Create withdrawal request
             var amount = new Money(request.Amount, MoneyUnit.Satoshi).ToUnit(MoneyUnit.BTC);
 
+            var outpoints = new List<OutPoint>();
+            var utxos = new List<UTXO>();
+
+            if (request.Changeless)
+            {
+                foreach (var outpoint in request.UtxosOutpoints)
+                {
+                    outpoints.Add(OutPoint.Parse(outpoint));
+                }
+
+                // Search the utxos and lock them
+                utxos = await _coinSelectionService.GetUTXOsByOutpointAsync(wallet.GetDerivationStrategy(), outpoints);
+            }
+
             var withdrawalRequest = new WalletWithdrawalRequest()
             {
                 WalletId = request.WalletId,
@@ -178,7 +191,8 @@ public class NodeGuardService : Nodeguard.NodeGuardService.NodeGuardServiceBase,
                 Status = wallet.IsHotWallet
                     ? WalletWithdrawalRequestStatus.PSBTSignaturesPending
                     : WalletWithdrawalRequestStatus.Pending,
-                RequestMetadata = request.RequestMetadata
+                RequestMetadata = request.RequestMetadata,
+                Changeless = request.Changeless
             };
 
             //Save withdrawal request
@@ -188,6 +202,13 @@ public class NodeGuardService : Nodeguard.NodeGuardService.NodeGuardServiceBase,
             {
                 _logger.LogError("Error saving withdrawal request for wallet with id {walletId}", request.WalletId);
                 throw new RpcException(new Status(StatusCode.Internal, "Error saving withdrawal request for wallet"));
+            }
+
+            if (request.Changeless)
+            {
+                // Lock the utxos
+                await _coinSelectionService.LockUTXOs(utxos, withdrawalRequest,
+                    BitcoinRequestType.WalletWithdrawal);
             }
 
             //Update to refresh from db
@@ -747,5 +768,65 @@ public class NodeGuardService : Nodeguard.NodeGuardService.NodeGuardServiceBase,
             return false;
 
         return true;
+    }
+
+    public override async Task<GetAvailableUtxosResponse> GetAvailableUtxos(GetAvailableUtxosRequest request, ServerCallContext context)
+    {
+        var wallet = await _walletRepository.GetById(request.WalletId);
+        if (wallet == null)
+        {
+            throw new Exception("Wallet not found");
+        }
+
+        CoinSelectionStrategy coinSelectionStrategy;
+        switch (request.Strategy)
+        {
+            case COIN_SELECTION_STRATEGY.BiggestFirst:
+                coinSelectionStrategy = CoinSelectionStrategy.BiggestFirst;
+                break;
+            case COIN_SELECTION_STRATEGY.SmallestFirst:
+                coinSelectionStrategy = CoinSelectionStrategy.SmallestFirst;
+                break;
+            case COIN_SELECTION_STRATEGY.ClosestToTargetFirst:
+                coinSelectionStrategy = CoinSelectionStrategy.ClosestToTargetFirst;
+                break;
+            case COIN_SELECTION_STRATEGY.UpToAmount:
+                coinSelectionStrategy = CoinSelectionStrategy.UpToAmount;
+                break;
+            default:
+                coinSelectionStrategy = CoinSelectionStrategy.SmallestFirst;
+                break;
+        }
+
+        var derivationStrategy = wallet.GetDerivationStrategy();
+        if (derivationStrategy == null)
+        {
+            throw new Exception("Derivation strategy not found for wallet with id {walletId}");
+        }
+
+        var utxos = await _nbXplorerService.GetUTXOsByLimitAsync(
+            derivationStrategy,
+            coinSelectionStrategy,
+            request.Limit,
+            request.Amount,
+            request.ClosestTo
+            );
+
+        var confirmedUtxos = utxos.Confirmed.UTXOs.Select(utxo => new Utxo()
+        {
+            Amount = (Money)utxo.Value,
+            Outpoint = utxo.Outpoint.ToString()
+        });
+        var unconfirmedUtxos = utxos.Unconfirmed.UTXOs.Select(utxo => new Utxo()
+        {
+            Amount = (Money)utxo.Value,
+            Outpoint = utxo.Outpoint.ToString()
+        });
+
+        return new GetAvailableUtxosResponse()
+        {
+            Confirmed = { confirmedUtxos },
+            Unconfirmed = { unconfirmedUtxos },
+        };
     }
 }
