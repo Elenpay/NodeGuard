@@ -27,7 +27,7 @@ public interface INBXplorerService
 
     public Task<UTXOChanges> GetUTXOsAsync(DerivationStrategyBase extKey, CancellationToken cancellation = default);
 
-    public Task<UTXOChanges> GetUTXOsByLimitAsync(DerivationStrategyBase extKey, CoinSelectionStrategy strategy = CoinSelectionStrategy.SmallestFirst, int limit = 0, long amount = 0, long closestTo = 0, CancellationToken cancellation = default);
+    public Task<UTXOChanges> GetUTXOsByLimitAsync(DerivationStrategyBase extKey, CoinSelectionStrategy strategy = CoinSelectionStrategy.SmallestFirst, int limit = 0, long amount = 0, long closestTo = 0, List<string>? ignoreOutpoints = null, CancellationToken cancellation = default);
 
     public Task<GetFeeRateResult> GetFeeRateAsync(int blockCount, FeeRate fallbackFeeRate,
         CancellationToken cancellation = default);
@@ -149,20 +149,25 @@ public class NBXplorerService : INBXplorerService
         int limit = 0,
         long amount = 0,
         long closestTo = 0,
+        List<string>? ignoreOutpoints = null,
         CancellationToken cancellation = default)
     {
         try
         {
             var requestUri = $"{Constants.NBXPLORER_URI}/v1/cryptos/btc/derivations/{TrackedSource.Create(extKey).DerivationStrategy}/selectutxos";
 
-            IDictionary<string, string?> keyValuePairs = new Dictionary<string, string?>();
-            keyValuePairs.Add("strategy", strategy.ToString());
-            keyValuePairs.Add("limit", limit.ToString());
-            keyValuePairs.Add("amount", amount.ToString());
+            var keyValuePairs = new List<KeyValuePair<string, string?>>()
+            {
+                new("strategy", strategy.ToString()),
+                new("limit", limit.ToString()),
+                new("amount", amount.ToString()),
+            };
             if (strategy == CoinSelectionStrategy.ClosestToTargetFirst)
             {
-                keyValuePairs.Add("closestTo", closestTo.ToString());
+                keyValuePairs.Add(new("closestTo", closestTo.ToString()));
             }
+
+            ignoreOutpoints?.ForEach(outpoint => keyValuePairs.Add(new("ignoreOutpoint", outpoint)));
 
             var url = QueryHelpers.AddQueryString(requestUri, keyValuePairs);
             var response = await _httpClient.GetAsync(url, cancellation);

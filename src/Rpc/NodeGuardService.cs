@@ -63,6 +63,7 @@ public class NodeGuardService : Nodeguard.NodeGuardService.NodeGuardServiceBase,
     private readonly ICoinSelectionService _coinSelectionService;
     private readonly IScheduler _scheduler;
     private readonly ILightningService _lightningService;
+    private readonly IFMUTXORepository _fmutxoRepository;
 
     public NodeGuardService(ILogger<NodeGuardService> logger,
         ILiquidityRuleRepository liquidityRuleRepository,
@@ -76,7 +77,8 @@ public class NodeGuardService : Nodeguard.NodeGuardService.NodeGuardServiceBase,
         IChannelOperationRequestRepository channelOperationRequestRepository,
         IChannelRepository channelRepository,
         ICoinSelectionService coinSelectionService,
-        ILightningService lightningService
+        ILightningService lightningService,
+        IFMUTXORepository fmutxoRepository
     )
     {
         _logger = logger;
@@ -92,6 +94,7 @@ public class NodeGuardService : Nodeguard.NodeGuardService.NodeGuardServiceBase,
         _channelRepository = channelRepository;
         _coinSelectionService = coinSelectionService;
         _lightningService = lightningService;
+        _fmutxoRepository = fmutxoRepository;
         _scheduler = Task.Run(() => _schedulerFactory.GetScheduler()).Result;
     }
 
@@ -180,6 +183,7 @@ public class NodeGuardService : Nodeguard.NodeGuardService.NodeGuardServiceBase,
 
                 // Search the utxos and lock them
                 utxos = await _coinSelectionService.GetUTXOsByOutpointAsync(wallet.GetDerivationStrategy(), outpoints);
+                amount = utxos.Sum(u => ((Money)u.Value).ToUnit(MoneyUnit.BTC));
             }
 
             var withdrawalRequest = new WalletWithdrawalRequest()
@@ -804,12 +808,14 @@ public class NodeGuardService : Nodeguard.NodeGuardService.NodeGuardServiceBase,
             throw new Exception("Derivation strategy not found for wallet with id {walletId}");
         }
 
+        var lockedUtxos = await _fmutxoRepository.GetLockedUTXOs();
         var utxos = await _nbXplorerService.GetUTXOsByLimitAsync(
             derivationStrategy,
             coinSelectionStrategy,
             request.Limit,
             request.Amount,
-            request.ClosestTo
+            request.ClosestTo,
+            lockedUtxos.Select(utxo => $"{utxo.TxId}-{utxo.OutputIndex}").ToList()
             );
 
         var confirmedUtxos = utxos.Confirmed.UTXOs.Select(utxo => new Utxo()
