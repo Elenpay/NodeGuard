@@ -158,6 +158,7 @@ public class NodeGuardService : Nodeguard.NodeGuardService.NodeGuardServiceBase,
     public override async Task<RequestWithdrawalResponse> RequestWithdrawal(RequestWithdrawalRequest request,
         ServerCallContext context)
     {
+        WalletWithdrawalRequest? withdrawalRequest = null;
         try
         {
             //We get the wallet
@@ -186,7 +187,7 @@ public class NodeGuardService : Nodeguard.NodeGuardService.NodeGuardServiceBase,
                 amount = utxos.Sum(u => ((Money)u.Value).ToUnit(MoneyUnit.BTC));
             }
 
-            var withdrawalRequest = new WalletWithdrawalRequest()
+            withdrawalRequest = new WalletWithdrawalRequest()
             {
                 WalletId = request.WalletId,
                 Amount = amount,
@@ -252,6 +253,15 @@ public class NodeGuardService : Nodeguard.NodeGuardService.NodeGuardServiceBase,
         }
         catch (Exception e)
         {
+            if (withdrawalRequest != null)
+            {
+                withdrawalRequest.Status = WalletWithdrawalRequestStatus.Cancelled;
+                var (success, error) = _walletWithdrawalRequestRepository.Update(withdrawalRequest);
+                if (!success)
+                {
+                    _logger.LogError(e, "Error updating status of withdrawal request {RequestId} for wallet {WalletId}", withdrawalRequest.Id, request.WalletId);
+                }
+            }
             _logger.LogError(e, "Error requesting withdrawal for wallet with id {walletId}", request.WalletId);
             throw new RpcException(new Status(StatusCode.Internal, "Error requesting withdrawal for wallet"));
         }
