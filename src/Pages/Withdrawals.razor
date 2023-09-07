@@ -186,6 +186,18 @@
                             {
                                 <NumericPicker TValue="decimal" Disabled="_isAmountDisabled" Value="@((decimal)context.CellValue)" ValueChanged="(value) => { context.CellValue = value; }" CurrencySymbol="SAT "/>
                             }
+                                       <div class="mb-3">
+                                <Button Color="Color.Primary" Disabled="@(!_selectedWalletId.HasValue)" Clicked="@OpenCoinSelectionModal">Select Coins</Button> or use
+                                <Button Color="Color.Primary" Disabled="@(SelectedUTXOs.Count == 0)" Clicked="@ClearSelectedUTXOs">Default Coin Selection</Button>
+                            </div>
+                                @if (_selectedWalletId.HasValue && SelectedUTXOs.Count > 0)
+                                {
+                                    <span class="text-danger">Selected @(SelectedUTXOs.Count) UTXOs, this is a changeless operation</span>
+                                }
+                                else
+                                {
+                                    <span class="text-danger">Default coin selection strategy selected</span>
+                                }
                             </EditTemplate>
                     </DataGridColumn>
                     <DataGridColumn TItem="WalletWithdrawalRequest" Filterable="false" Field="@nameof(WalletWithdrawalRequest.WalletId)" Caption="Signatures Collected" Sortable="false" Displayable="@IsPendingRequestsColumnVisible(PendingWithdrawalsColumnName.SignaturesCollected)">
@@ -200,40 +212,6 @@
 
                             }
                         </DisplayTemplate>
-                    </DataGridColumn>
-                    <DataGridColumn TItem="WalletWithdrawalRequest" Field="@nameof(ChannelOperationRequest.Amount)" Caption="Capacity" Sortable="false" Displayable="@IsPendingRequestsColumnVisible(PendingWithdrawalsColumnName.Capacity)" PopupFieldColumnSize="ColumnSize.Is12" Editable="true">
-                            <DisplayTemplate>
-                                @{
-                                    @($"{context.Amount:f8} BTC")
-                                    @($" ({Math.Round(PriceConversionService.BtcToUsdConversion(context.Amount, _btcPrice), 2)} USD)")
-                                }
-                            </DisplayTemplate>
-                            <EditTemplate>
-                            <Validation Validator="@ValidationHelper.ValidateChannelCapacity" @ref="_capacityValidation">
-                                <NumericPicker TValue="decimal" @bind-Value="@_amount" Min="0" Decimals="8" Step="0.00001m" CurrencySymbol=" BTC" CurrencySymbolPlacement="CurrencySymbolPlacement.Suffix" Disabled="@(SelectedUTXOs.Count > 0)">
-                                    <Feedback>
-                                        <ValidationError/>
-                                    </Feedback>
-                                </NumericPicker>
-                                <FieldHelp>
-
-                                    @($"Amount in Satoshis. Minimum {_minimumChannelCapacity:f8}. Current amount: {Math.Round(PriceConversionService.SatToUsdConversion(new Money(_amount, MoneyUnit.BTC).Satoshi, _btcPrice), 2)} USD")
-
-                                </FieldHelp>
-                            </Validation>
-                            <div class="mb-3">
-                                <Button Color="Color.Primary" Disabled="@(!_selectedWalletId.HasValue)" Clicked="@OpenCoinSelectionModal">Select Coins</Button> or use
-                                <Button Color="Color.Primary" Disabled="@(SelectedUTXOs.Count == 0)" Clicked="@ClearSelectedUTXOs">Default Coin Selection</Button>
-                            </div>
-                                @if (_selectedWalletId.HasValue && SelectedUTXOs.Count > 0)
-                                {
-                                    <span class="text-danger">Selected @(SelectedUTXOs.Count) UTXOs, this is a changeless operation</span>
-                                }
-                                else
-                                {
-                                    <span class="text-danger">Default coin selection strategy selected</span>
-                                }
-                            </EditTemplate>
                     </DataGridColumn>
                     <DataGridColumn TItem="WalletWithdrawalRequest" Filterable="false" Field="@nameof(WalletWithdrawalRequest.Status).Humanize(LetterCasing.Sentence)" Caption="Status" Sortable="false" Displayable="@IsPendingRequestsColumnVisible(PendingWithdrawalsColumnName.Status)">
                         <DisplayTemplate>
