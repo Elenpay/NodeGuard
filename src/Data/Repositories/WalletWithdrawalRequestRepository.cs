@@ -69,6 +69,13 @@ namespace NodeGuard.Data.Repositories
             return request;
         }
 
+        public async Task<List<WalletWithdrawalRequest>> GetByIds(List<int> ids)
+        {
+            await using var applicationDbContext = await _dbContextFactory.CreateDbContextAsync();
+
+            return await applicationDbContext.WalletWithdrawalRequests.Where(wr => ids.Contains(wr.Id)).ToListAsync();
+        }
+
         public async Task<List<WalletWithdrawalRequest>> GetAll()
         {
             await using var applicationDbContext = await _dbContextFactory.CreateDbContextAsync();

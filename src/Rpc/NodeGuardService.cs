@@ -42,6 +42,8 @@ public interface INodeGuardService
     Task<AddLiquidityRuleResponse> AddLiquidityRule(AddLiquidityRuleRequest request, ServerCallContext context);
 
     Task<GetAvailableUtxosResponse> GetAvailableUtxos(GetAvailableUtxosRequest request, ServerCallContext context);
+
+    Task<GetWithdrawalsRequestStatusResponse> GetWithdrawalsRequestStatus(GetWithdrawalsRequestStatusRequest request, ServerCallContext context);
 }
 
 /// <summary>
@@ -241,7 +243,8 @@ public class NodeGuardService : Nodeguard.NodeGuardService.NodeGuardServiceBase,
             var response = new RequestWithdrawalResponse
             {
                 IsHotWallet = wallet.IsHotWallet,
-                Txid = psbt.GetGlobalTransaction().GetHash().ToString()
+                Txid = psbt.GetGlobalTransaction().GetHash().ToString(),
+                RequestId = withdrawalRequest.Id
             };
 
             return response;
@@ -843,6 +846,39 @@ public class NodeGuardService : Nodeguard.NodeGuardService.NodeGuardServiceBase,
         {
             Confirmed = { confirmedUtxos },
             Unconfirmed = { unconfirmedUtxos },
+        };
+    }
+
+    private WITHDRAWAL_REQUEST_STATUS GetStatus(WalletWithdrawalRequestStatus status)
+    {
+        return status switch
+        {
+            WalletWithdrawalRequestStatus.Cancelled => WITHDRAWAL_REQUEST_STATUS.WithdrawalCancelled,
+            WalletWithdrawalRequestStatus.Failed => WITHDRAWAL_REQUEST_STATUS.WithdrawalFailed,
+            WalletWithdrawalRequestStatus.FinalizingPSBT => WITHDRAWAL_REQUEST_STATUS.WithdrawalPendingApproval,
+            WalletWithdrawalRequestStatus.OnChainConfirmationPending => WITHDRAWAL_REQUEST_STATUS.WithdrawalPendingConfirmation,
+            WalletWithdrawalRequestStatus.OnChainConfirmed => WITHDRAWAL_REQUEST_STATUS.WithdrawalSettled,
+            WalletWithdrawalRequestStatus.Pending => WITHDRAWAL_REQUEST_STATUS.WithdrawalPendingApproval,
+            WalletWithdrawalRequestStatus.PSBTSignaturesPending => WITHDRAWAL_REQUEST_STATUS.WithdrawalPendingApproval,
+            WalletWithdrawalRequestStatus.Rejected => WITHDRAWAL_REQUEST_STATUS.WithdrawalRejected,
+            _ => throw new ArgumentOutOfRangeException(nameof(status), status, "Unknown status")
+        };
+    }
+
+    public override async Task<GetWithdrawalsRequestStatusResponse> GetWithdrawalsRequestStatus(GetWithdrawalsRequestStatusRequest request, ServerCallContext context)
+    {
+        var withdrawalRequests = await _walletWithdrawalRequestRepository.GetByIds(request.RequestIds.ToList());
+        return new GetWithdrawalsRequestStatusResponse()
+        {
+            WithdrawalRequests =
+            {
+                withdrawalRequests.Select(wr => new WithdrawalRequest
+                {
+                    RequestId = wr.Id,
+                    Status = GetStatus(wr.Status),
+                    RejectOrCancelReason = wr.RejectCancelDescription ?? ""
+                }).ToList()
+            }
         };
     }
 }
