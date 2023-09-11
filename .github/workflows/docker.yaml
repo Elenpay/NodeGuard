@@ -7,6 +7,7 @@ on:
     branches:
       - main
       - master
+      - fix/docker_cleanup_2
 
 env:
   REGISTRY: ghcr.io
@@ -42,7 +43,7 @@ jobs:
           context: .
           file: src/Dockerfile
           push: true
-          sbom: true
+          # sbom: true
           platforms: linux/amd64
           provenance: false
           tags: ${{ steps.meta.outputs.tags }}
