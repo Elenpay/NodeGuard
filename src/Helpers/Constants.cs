@@ -56,6 +56,7 @@ public class Constants
     public static readonly string? AWS_REGION;
     public static readonly string? AWS_ACCESS_KEY_ID;
     public static readonly string? AWS_SECRET_ACCESS_KEY;
+    public static readonly string API_TOKEN_SALT;
 
     // Crons & Jobs
     public static readonly string MONITOR_WITHDRAWALS_CRON = "10 0/5 * * * ?";
@@ -162,7 +163,8 @@ public class Constants
             REMOTE_SIGNER_ENDPOINT = GetEnvironmentalVariableOrThrowIfNotTesting("REMOTE_SIGNER_ENDPOINT", "if ENABLE_REMOTE_SIGNER is set, REMOTE_SIGNER_ENDPOINT");
         }
 
-
+        API_TOKEN_SALT = Environment.GetEnvironmentVariable("API_TOKEN_SALT") ?? "H/fCx1+maAFMcdi6idIYEg==";
+        
 
         // Crons & Jobs
         MONITOR_WITHDRAWALS_CRON = Environment.GetEnvironmentVariable("MONITOR_WITHDRAWALS_CRON") ?? MONITOR_WITHDRAWALS_CRON;

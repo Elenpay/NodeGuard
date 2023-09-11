@@ -53,11 +53,13 @@ namespace NodeGuard.Data
 
             modelBuilder.Entity<Node>().HasIndex(x => x.PubKey).IsUnique();
             modelBuilder.Entity<Wallet>().HasIndex(x => new {x.InternalWalletSubDerivationPath, x.InternalWalletMasterFingerprint}).IsUnique();
-
+            
+            
             //There should be only one Liquidity Rule per Channel
             modelBuilder.Entity<LiquidityRule>().HasIndex(x => x.ChannelId).IsUnique();
-
+            
             modelBuilder.Entity<ApplicationUser>().HasIndex(x => x.NormalizedUserName).IsUnique();
+
 
             // We allow the value converter for tests because the in-memory database doesn't support JSON columns
             var command = Assembly.GetEntryAssembly()?.GetName().Name?.ToLowerInvariant();
@@ -99,5 +101,7 @@ namespace NodeGuard.Data
         public DbSet<FMUTXO> FMUTXOs { get; set; }
 
         public DbSet<LiquidityRule> LiquidityRules { get; set; }
+        
+        public DbSet<APIToken> ApiTokens { get; set; }
     }
 }

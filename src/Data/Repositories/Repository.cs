@@ -25,6 +25,8 @@ namespace NodeGuard.Data.Repositories
     /// Class-less CRUD Entity manager.
     /// </summary>
     /// <typeparam name="T"></typeparam>
+    /// 
+    
     public class Repository<T> : IRepository<T>
     {
         private readonly ILogger<T> _logger;
