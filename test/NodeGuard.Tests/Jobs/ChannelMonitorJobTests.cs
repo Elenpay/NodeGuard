@@ -77,7 +77,8 @@ public class ChannelMonitorJobTests
         var request1 = new Channel()
         {
             ChanId = 1,
-            FundingTx = "abc:0"
+            FundingTx = "abc",
+            FundingTxOutputIndex = 0
         };
         await context.Channels.AddAsync(request1);
         await context.SaveChangesAsync();
@@ -86,7 +87,8 @@ public class ChannelMonitorJobTests
 
         var channel = new Lnrpc.Channel()
         {
-            ChanId = 1,
+            ChanId = 2,
+            ChannelPoint = "abc:0",
             Initiator = true
         };
         // Act
