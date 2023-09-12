@@ -43,6 +43,8 @@ public interface INodeGuardService
     Task<GetChannelOperationRequestResponse> GetChannelOperationRequest(GetChannelOperationRequestRequest request, ServerCallContext context);
 
     Task<AddLiquidityRuleResponse> AddLiquidityRule(AddLiquidityRuleRequest request, ServerCallContext context);
+    
+    Task<GetChannelResponse> GetChannel(GetChannelRequest request, ServerCallContext context);
 }
 
 /// <summary>
@@ -747,5 +749,31 @@ public class NodeGuardService : Nodeguard.NodeGuardService.NodeGuardServiceBase,
             return false;
 
         return true;
+    }
+
+    public override async Task<GetChannelResponse> GetChannel(GetChannelRequest request, ServerCallContext context)
+    {
+        var channel = await _channelRepository.GetById(request.ChannelId);
+        if (channel == null)
+        {
+            throw new RpcException(new Status(StatusCode.NotFound, "Channel not found"));
+        }
+        
+        var result = new GetChannelResponse()
+        {
+            FundingTx = channel.FundingTx,
+            OutputIndex = channel.FundingTxOutputIndex,
+            ChanId = channel.ChanId,
+            SatsAmount = channel.SatsAmount,
+            Status = (CHANNEL_STATUS)((int)channel.Status - 1),
+            CreatedByNodeguard = channel.CreatedByNodeGuard,
+            IsAutomatedLiquidityEnabled = channel.IsAutomatedLiquidityEnabled,
+            IsPrivate = channel.IsPrivate,
+        };
+
+        if (channel.BtcCloseAddress != null)
+            result.BtcCloseAddress = channel.BtcCloseAddress;
+
+        return result;
     }
 }

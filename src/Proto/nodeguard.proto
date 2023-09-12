@@ -53,6 +53,11 @@ service NodeGuardService {
   Adds a liquidity rule to a channel
    */
   rpc AddLiquidityRule(AddLiquidityRuleRequest) returns (AddLiquidityRuleResponse);
+  
+  /*
+  Gets a channel by id
+   */
+  rpc GetChannel(GetChannelRequest) returns (GetChannelResponse);
 }
 
 message GetLiquidityRulesRequest {
@@ -260,4 +265,26 @@ message AddLiquidityRuleRequest {
 message AddLiquidityRuleResponse {
   // Rule ID as stored in the NG's database
   int32 rule_id = 1;
+}
+
+message GetChannelRequest {
+  // Channel ID from NGs database
+  int32 channel_id = 1;
+}
+
+enum CHANNEL_STATUS {
+  OPEN = 0;
+  CLOSE = 1;
+}
+
+message GetChannelResponse {
+  string funding_tx = 1;
+  uint32 output_index = 2;
+  uint64 chan_id = 3;
+  int64 sats_amount = 4;
+  optional string btc_close_address = 5;
+  CHANNEL_STATUS status = 6;
+  bool created_by_nodeguard = 7;
+  bool is_automated_liquidity_enabled = 8;
+  bool is_private = 9;
 }
