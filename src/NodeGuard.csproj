@@ -34,7 +34,7 @@
     </PackageReference>
     <PackageReference Include="Microsoft.VisualStudio.Web.CodeGeneration.Design" Version="7.0.8" />
     <PackageReference Include="Moq.EntityFrameworkCore" Version="7.0.0.2" />
-    <PackageReference Include="NBitcoin" Version="7.0.27" />
+    <PackageReference Include="NBitcoin" Version="7.0.30" />
     <PackageReference Include="NBXplorer.Client" Version="4.2.5" />
     <PackageReference Include="Newtonsoft.Json" Version="13.0.3" />
     <PackageReference Include="Npgsql.EntityFrameworkCore.PostgreSQL" Version="7.0.4" />
