@@ -434,26 +434,15 @@ public class NodeGuardService : Nodeguard.NodeGuardService.NodeGuardServiceBase,
             }
 
             // Get the fee type of the request
-            MempoolRecommendedFeesTypes feeType;
-
-            switch (request.MempoolFeeRate)
+            var feeType = request.MempoolFeeRate switch
             {
-                case FEES_TYPE.EconomyFee:
-                    feeType = MempoolRecommendedFeesTypes.EconomyFee;
-                    break;
-                case FEES_TYPE.FastestFee:
-                    feeType = MempoolRecommendedFeesTypes.FastestFee;
-                    break;
-                case FEES_TYPE.HourFee:
-                    feeType = MempoolRecommendedFeesTypes.HourFee;
-                    break;
-                case FEES_TYPE.HalfHourFee:
-                    feeType = MempoolRecommendedFeesTypes.HalfHourFee;
-                    break;
-                default:
-                    feeType = MempoolRecommendedFeesTypes.CustomFee;
-                    break;
-            }
+                FEES_TYPE.EconomyFee => MempoolRecommendedFeesTypes.EconomyFee,
+                FEES_TYPE.FastestFee => MempoolRecommendedFeesTypes.FastestFee,
+                FEES_TYPE.HourFee => MempoolRecommendedFeesTypes.HourFee,
+                FEES_TYPE.HalfHourFee => MempoolRecommendedFeesTypes.HalfHourFee,
+                FEES_TYPE.CustomFee => MempoolRecommendedFeesTypes.CustomFee,
+                _ => throw new ArgumentOutOfRangeException(nameof(request.MempoolFeeRate), request.MempoolFeeRate, "Unknown status")
+            };
 
             if (feeType == MempoolRecommendedFeesTypes.CustomFee && !request.HasCustomFeeRate)
             {
@@ -795,25 +784,14 @@ public class NodeGuardService : Nodeguard.NodeGuardService.NodeGuardServiceBase,
             throw new Exception("Wallet not found");
         }
 
-        CoinSelectionStrategy coinSelectionStrategy;
-        switch (request.Strategy)
+        var coinSelectionStrategy = request.Strategy switch
         {
-            case COIN_SELECTION_STRATEGY.BiggestFirst:
-                coinSelectionStrategy = CoinSelectionStrategy.BiggestFirst;
-                break;
-            case COIN_SELECTION_STRATEGY.SmallestFirst:
-                coinSelectionStrategy = CoinSelectionStrategy.SmallestFirst;
-                break;
-            case COIN_SELECTION_STRATEGY.ClosestToTargetFirst:
-                coinSelectionStrategy = CoinSelectionStrategy.ClosestToTargetFirst;
-                break;
-            case COIN_SELECTION_STRATEGY.UpToAmount:
-                coinSelectionStrategy = CoinSelectionStrategy.UpToAmount;
-                break;
-            default:
-                coinSelectionStrategy = CoinSelectionStrategy.SmallestFirst;
-                break;
-        }
+            COIN_SELECTION_STRATEGY.BiggestFirst => CoinSelectionStrategy.BiggestFirst,
+            COIN_SELECTION_STRATEGY.SmallestFirst => CoinSelectionStrategy.SmallestFirst,
+            COIN_SELECTION_STRATEGY.ClosestToTargetFirst => CoinSelectionStrategy.ClosestToTargetFirst,
+            COIN_SELECTION_STRATEGY.UpToAmount => CoinSelectionStrategy.UpToAmount,
+            _ => throw new ArgumentOutOfRangeException(nameof(request.Strategy), request.Strategy, "Unknown status")
+        };
 
         var derivationStrategy = wallet.GetDerivationStrategy();
         if (derivationStrategy == null)
