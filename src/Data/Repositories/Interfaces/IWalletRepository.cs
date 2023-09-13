@@ -65,4 +65,13 @@ public interface IWalletRepository
     /// <param name="userId"></param>
     /// <returns></returns>
     Task<(bool, string?)> ImportBIP39Wallet(string name, string description, string seedphrase, string derivationPath, string? userId = null);
+
+    /// <summary>
+    /// Imports a watch-only wallet by creating a wallet and its key entities based on the output descriptor
+    /// </summary>
+    /// <param name="name"></param>
+    /// <param name="description"></param>
+    /// <param name="outputDescriptor"></param>
+    /// <returns></returns>
+    Task<(bool,string?)> ImportWatchOnlyWallet(string name, string? description, string outputDescriptor, string? userId = null);
 }

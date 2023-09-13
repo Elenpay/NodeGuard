@@ -23,6 +23,7 @@ using NodeGuard.Helpers;
 using NodeGuard.Services;
 using Microsoft.EntityFrameworkCore;
 using NBitcoin;
+using NBXplorer.DerivationStrategy;
 using Nodeguard;
 using Key = NodeGuard.Data.Models.Key;
 using Wallet = NodeGuard.Data.Models.Wallet;
@@ -113,7 +114,7 @@ namespace NodeGuard.Data.Repositories
             type.SetUpdateDatetime();
 
             
-            if (type.IsBIP39Imported)
+            if (type.IsBIP39Imported || type.IsWatchOnly)
             {
                 //Persist
                 
@@ -369,14 +370,7 @@ namespace NodeGuard.Data.Repositories
                     return (false, "Error while getting the derivation scheme");
                 }
 
-                //Track wallet
-                await _nbXplorerService.TrackAsync(derivationStrategyBase, default);
-
-                //Since already existing wallet's utxos are not tracked by NBXplorer, we need to rescan the UTXO set for this wallet
-                //This is a long running operation in nbxplorer and should be queried in the background
-                await _nbXplorerService.ScanUTXOSetAsync(derivationStrategyBase, 1000, 30000, null, default);
-
-               
+                await TrackAndScanWallet(derivationStrategyBase);
             }
             catch (Exception e)
             {
@@ -384,6 +378,129 @@ namespace NodeGuard.Data.Repositories
                 return (false, "Error while importing wallet from seedphrase");
             }
             return (true, null);
+        }
+
+        private async Task TrackAndScanWallet(DerivationStrategyBase derivationStrategyBase)
+        {
+            //Track wallet
+            await _nbXplorerService.TrackAsync(derivationStrategyBase, default);
+
+            //Since already existing wallet's utxos are not tracked by NBXplorer, we need to rescan the UTXO set for this wallet
+            //This is a long running operation in nbxplorer and should be queried in the background
+            await _nbXplorerService.ScanUTXOSetAsync(derivationStrategyBase, 1000, 30000, null, default);
+        }
+
+        public async Task<(bool, string?)> ImportWatchOnlyWallet(string name, string? description, string outputDescriptor, string? userId = null)
+        {
+            if (string.IsNullOrWhiteSpace(name))
+                throw new ArgumentException("Value cannot be null or whitespace.", nameof(name));
+            if (string.IsNullOrWhiteSpace(outputDescriptor))
+                throw new ArgumentException("Value cannot be null or whitespace.", nameof(outputDescriptor));
+
+            (bool, string?) result = (true, null);
+                
+            try
+            {
+                var (strategyBase, tuples) = WalletParser.ParseOutputDescriptor(outputDescriptor, CurrentNetworkHelper.GetCurrentNetwork());
+
+                var keys = tuples.Select(x => new Key
+                {
+                    Id = 0,
+                    CreationDatetime = DateTimeOffset.UtcNow,
+                    Name = "Imported key from output descriptor",
+                    XPUB = x.Item1.ToString() ?? throw new InvalidOperationException(),
+                    Description =null,
+                    MasterFingerprint = x.Item2.MasterFingerprint.ToString(),
+                    Path = x.Item2.KeyPath.ToString(),
+                    IsBIP39ImportedKey = false,
+                    UserId = userId,
+                    
+                }).ToList();
+                
+                Wallet? wallet;
+                //if singlesig
+                if (strategyBase is DirectDerivationStrategy)
+                {
+                    wallet = new Wallet
+                    {
+                        Id = 0,
+                        CreationDatetime = DateTimeOffset.UtcNow,
+                        Name = name,
+                        Description = description,
+                        IsArchived = false,
+                        IsCompromised = false,
+                        IsFinalised = true,
+                        WalletAddressType = WalletAddressType.NativeSegwit,
+                        IsHotWallet = false,
+                        IsBIP39Imported = false,
+                        ImportedOutputDescriptor = outputDescriptor,
+                        BIP39Seedphrase = null,
+                        InternalWalletSubDerivationPath = null,
+                        InternalWalletMasterFingerprint = null,
+                        Keys = keys,
+                        InternalWalletId = null,
+                        MofN = 1,
+
+
+                    };
+                }
+                else if (strategyBase is P2WSHDerivationStrategy p2WshDerivationStrategy && p2WshDerivationStrategy.Inner is MultisigDerivationStrategy multisigDerivationStrategy)
+                {
+                    
+                    wallet = new Wallet
+                    {
+                        Id = 0,
+                        CreationDatetime = DateTimeOffset.UtcNow,
+                        Name = name,
+                        Description = description,
+                        IsArchived = false,
+                        IsCompromised = false,
+                        IsFinalised = true,
+                        WalletAddressType = WalletAddressType.NativeSegwit,
+                        IsHotWallet = false,
+                        IsBIP39Imported = false,
+                        ImportedOutputDescriptor = outputDescriptor,
+                        BIP39Seedphrase = null,
+                        Keys = keys,
+                        MofN = multisigDerivationStrategy.RequiredSignatures
+                    };
+                }
+                else
+                {
+                    _logger.LogError("Invalid output descriptor");
+                    return (false, "Invalid output descriptor");
+                    
+                }
+                
+                //Persist wallet
+                var addResult = await AddAsync(wallet);
+                if (addResult.Item1 == false)
+                {
+                    _logger.LogError("Error while importing wallet from output descriptor: {Error}", addResult.Item2);
+                    return (false, addResult.Item2);
+                }
+                
+                //Track wallet
+                var derivationStrategyBase = wallet.GetDerivationStrategy();
+                if (derivationStrategyBase == null)
+                {
+                    _logger.LogError("Error while getting the derivation scheme");
+                    return (false, "Error while getting the derivation scheme");
+                }
+
+
+                await TrackAndScanWallet(derivationStrategyBase);
+
+
+            }
+            catch (Exception e)
+            {
+                var errorWhileImportingWatchOnlyWalletFromOutputDescriptor = "Error while importing watch-only wallet from output descriptor";
+                _logger.LogError(e, errorWhileImportingWatchOnlyWalletFromOutputDescriptor);
+                return (false, errorWhileImportingWatchOnlyWalletFromOutputDescriptor);
+            }
+
+            return result;
         }
     }
 }
