@@ -17,6 +17,7 @@
  *
  */
 
+using System.Diagnostics;
 using System.Runtime.InteropServices;
 using NodeGuard.Data.Models;
 using NodeGuard.Data.Repositories.Interfaces;
@@ -335,62 +336,16 @@ namespace NodeGuard.Services
                                         }
                                     }
 
-                                    PSBT? finalSignedPSBT = null;
-                                    //We check the way the nodeguard signs, with the nodeguard remote signer or with the embedded signer
-                                    if (Constants.ENABLE_REMOTE_SIGNER)
+                                    var finalSignedPSBT = await SignWithInternalWallet(channelOperationRequest, fundedPSBT, derivationStrategyBase, channelfundingTx, network);    
+                                    
+                                    //Null check
+                                    if (finalSignedPSBT is null)
                                     {
-                                        finalSignedPSBT = await _remoteSignerService.Sign(fundedPSBT);
-                                        if (finalSignedPSBT == null)
-                                        {
-                                            const string errorMessage =
-                                                "The signed PSBT was null, something went wrong while signing with the remote signer";
-                                            _logger.LogError(errorMessage);
-                                            throw new Exception(
-                                                errorMessage);
-                                        }
-                                    }
-                                    else
-                                    {
-                                        finalSignedPSBT = await SignPSBTWithEmbeddedSigner(channelOperationRequest,
-                                            _nbXplorerService,
-                                            derivationStrategyBase,
-                                            channelfundingTx,
-                                            network,
-                                            fundedPSBT,
-                                            _logger);
-
-                                        if (finalSignedPSBT == null)
-                                        {
-                                            const string errorMessage =
-                                                "The signed PSBT was null, something went wrong while signing with the embedded signer";
-                                            _logger.LogError(errorMessage);
-                                            throw new Exception(
-                                                errorMessage);
-                                        }
-                                    }
-
-                                    //We store the final signed PSBT without being finalized for debugging purposes
-                                    var signedChannelOperationRequestPsbt = new ChannelOperationRequestPSBT
-                                    {
-                                        ChannelOperationRequestId = channelOperationRequest.Id,
-                                        PSBT = finalSignedPSBT.ToBase64(),
-                                        CreationDatetime = DateTimeOffset.Now,
-                                        IsInternalWalletPSBT = true
-                                    };
-
-                                    var addResult =
-                                        await _channelOperationRequestPsbtRepository.AddAsync(
-                                            signedChannelOperationRequestPsbt);
-
-                                    if (!addResult.Item1)
-                                    {
-                                        _logger.LogError(
-                                            "Could not store the signed PSBT for channel operation request id: {RequestId} reason: {Reason}",
-                                            channelOperationRequest.Id, addResult.Item2);
+                                        _logger.LogError("Could not sign the PSBT for funding channel operation request id: {RequestId}", channelOperationRequest.Id);
+                                        throw new Exception("Could not sign the PSBT for funding channel operation request");
                                     }
 
                                     //Time to finalize the PSBT and broadcast the tx
-
                                     var finalizedPSBT = finalSignedPSBT.Finalize();
 
                                     //Sanity check
@@ -525,6 +480,66 @@ namespace NodeGuard.Services
 
                 throw;
             }
+        }
+
+        private async Task<PSBT?> SignWithInternalWallet(ChannelOperationRequest channelOperationRequest, PSBT fundedPSBT,
+            DerivationStrategyBase derivationStrategyBase, Transaction channelfundingTx, Network network)
+        {
+            PSBT? finalSignedPSBT;
+            //We check the way the nodeguard signs, with the nodeguard remote signer or with the embedded signer
+            if (Constants.ENABLE_REMOTE_SIGNER)
+            {
+                finalSignedPSBT = await _remoteSignerService.Sign(fundedPSBT);
+                if (finalSignedPSBT == null)
+                {
+                    const string errorMessage =
+                        "The signed PSBT was null, something went wrong while signing with the remote signer";
+                    _logger.LogError(errorMessage);
+                    throw new Exception(
+                        errorMessage);
+                }
+            }
+            else
+            {
+                finalSignedPSBT = await SignPSBTWithEmbeddedSigner(channelOperationRequest,
+                    _nbXplorerService,
+                    derivationStrategyBase,
+                    channelfundingTx,
+                    network,
+                    fundedPSBT,
+                    _logger);
+
+                if (finalSignedPSBT == null)
+                {
+                    const string errorMessage =
+                        "The signed PSBT was null, something went wrong while signing with the embedded signer";
+                    _logger.LogError(errorMessage);
+                    throw new Exception(
+                        errorMessage);
+                }
+            }
+
+            //We store the final signed PSBT without being finalized for debugging purposes
+            var signedChannelOperationRequestPsbt = new ChannelOperationRequestPSBT
+            {
+                ChannelOperationRequestId = channelOperationRequest.Id,
+                PSBT = finalSignedPSBT.ToBase64(),
+                CreationDatetime = DateTimeOffset.Now,
+                IsInternalWalletPSBT = true
+            };
+
+            var addResult =
+                await _channelOperationRequestPsbtRepository.AddAsync(
+                    signedChannelOperationRequestPsbt);
+
+            if (!addResult.Item1)
+            {
+                _logger.LogError(
+                    "Could not store the signed PSBT for channel operation request id: {RequestId} reason: {Reason}",
+                    channelOperationRequest.Id, addResult.Item2);
+            }
+
+            return finalSignedPSBT;
         }
 
         public async Task OnStatusChannelOpened(ChannelOperationRequest channelOperationRequest, Node source, ChannelPoint channelPoint, string? closeAddress = null)
@@ -740,6 +755,17 @@ namespace NodeGuard.Services
             OperationRequestType requestype, ILogger? _logger = null)
         {
             if (channelOperationRequest == null) throw new ArgumentNullException(nameof(channelOperationRequest));
+            
+            //If the wallet is watch only, we cannot open a channel as there is no way securely sign the PSBT with SIGHASH_NONE (the internal wallet is not there)
+            if (channelOperationRequest.Wallet != null && channelOperationRequest.Wallet.IsWatchOnly)
+            {
+                const string watchOnlyWalletsCannotOpenChannels =
+                    "Watch only wallets cannot open channels";
+
+                _logger?.LogError(watchOnlyWalletsCannotOpenChannels);
+
+                throw new ArgumentException(watchOnlyWalletsCannotOpenChannels);
+            }
 
             if (channelOperationRequest.RequestType == requestype) return;
 
@@ -747,7 +773,8 @@ namespace NodeGuard.Services
                 $"Invalid request. Requested ${channelOperationRequest.RequestType.ToString()} on ${requestype.ToString()} method";
 
             _logger?.LogError(requestInvalid);
-
+            
+           
             throw new ArgumentOutOfRangeException(requestInvalid);
         }
 

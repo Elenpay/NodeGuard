@@ -75,7 +75,7 @@
                                 <DropdownItem Clicked="context.Clicked">Edit</DropdownItem>
                                 <DropdownItem Disabled="!context.Item.IsFinalised" Clicked="@(() => LoadAndOpenTextModalBalance(context.Item))">Balance</DropdownItem>
                                 <DropdownItem Disabled="!context.Item.IsFinalised" Clicked="@(() => LoadAndOpenModalTextModalUnusedAddress(context.Item))">Get address</DropdownItem>
-                                <DropdownItem Disabled="!context.Item.IsFinalised" Clicked="@(() => ShowTransferFundsModal(context.Item))">Transfer funds</DropdownItem>
+                                <DropdownItem Disabled="!context.Item.IsFinalised || context.Item.IsWatchOnly" Clicked="@(() => ShowTransferFundsModal(context.Item))">Transfer funds</DropdownItem>
 
                             </DropdownMenu>
                         </Dropdown>
@@ -292,19 +292,6 @@
             <CloseButton/>
         </ModalHeader>
         <ModalBody>
-            <Alert Color="Color.Warning" Visible>
-
-                <AlertDescription>
-                    @if (@Constants.ENABLE_REMOTE_SIGNER)
-                    {
-                        <p>Remote signer is enabled, therefore the seedphrase <b>won't be stored in NodeGuard database.</b>. Take into account that a seedphrase will leak all the subwallets you have on it.</p>
-                    }
-                    else
-                    {
-                        <p>Remote signer is not enabled, therefore the seedphrase will be stored as plain-text in the NodeGuard database, please reconsider your security threat model based on this. Take into account that a seedphrase will leak all the subwallets you have on it.</p>
-                    }
-                </AlertDescription>
-            </Alert>
             <Fields>
                 <Validations @ref="_importWalletValidations">
                     <Column ColumnSize="ColumnSize.Is12">
@@ -340,12 +327,16 @@
                             <FieldLabel>Watch-only</FieldLabel>
                             <FieldHelp>Switch on if you want to import a watch-only wallet</FieldHelp>
                             <FieldBody>
-                                <Switch TValue="bool" @bind-Checked="@_IsImportWalletModalWatchOnly" ></Switch>
+                                <Switch TValue="bool" @bind-Checked="@_IsImportWalletModalWatchOnly"></Switch>
                             </FieldBody>
                         </Field>
                     </Column>
                     @if (_IsImportWalletModalWatchOnly)
                     {
+                        <Alert Color="Color.Warning" Visible>
+                            <AlertMessage></AlertMessage>
+                            <AlertDescription> Watch-only wallets cannot be used to open channels in NodeGuard for security reasons(check async channel funding). Watch-only wallets should be used specifically as a target for rebalancing operations (reverse submarine swaps) or when you want to sweep funds to a wallet you don't control the keys and its not managed by NodeGuard. If you want to use multisigs, we don't recommend using imported watch-only wallets for other uses cases than the mentioned here.</AlertDescription>
+                        </Alert>
                         <Alert Color="Color.Info" Visible>
                             <AlertMessage></AlertMessage>
                             <AlertDescription>
@@ -355,8 +346,8 @@
                                 <br/>
                                 Multisig: <code>wsh(sortedmulti(2,[…/48'/0'/0'/2']xpub…/0/*,[…/48'/0'/0'/2']xpub…/0/*))</code>
                             </AlertDescription>
-
                         </Alert>
+
                         <Column ColumnSize="ColumnSize.Is12">
                             <Validation AsyncValidator="@ValidateOutputDescriptor">
                                 <Field>
@@ -376,6 +367,19 @@
                     }
                     else
                     {
+                        <Alert Color="Color.Warning" Visible>
+                            <AlertMessage></AlertMessage>
+                            <AlertDescription>
+                                @if (@Constants.ENABLE_REMOTE_SIGNER)
+                                {
+                                    <p>Remote signer is enabled, therefore the seedphrase <b>won't be stored in NodeGuard database.</b>. Take into account that a seedphrase will leak all the subwallets you have on it.</p>
+                                }
+                                else
+                                {
+                                    <p>Remote signer is not enabled, therefore the seedphrase will be stored as plain-text in the NodeGuard database, please reconsider your security threat model based on this. Take into account that a seedphrase will leak all the subwallets you have on it.</p>
+                                }
+                            </AlertDescription>
+                        </Alert>
                         <Column ColumnSize="ColumnSize.Is12">
                             <Validation AsyncValidator="@ValidateSeedphrase">
                                 <Field>
@@ -1034,7 +1038,7 @@
 
     private async Task ShowTransferFundsModal(Wallet wallet)
     {
-        var availableWallets = await WalletRepository.GetAvailableWallets();
+        var availableWallets = await WalletRepository.GetAvailableWallets(true);
         _walletsForTransfer = availableWallets.Where(w => w.Id != wallet.Id).ToList();
         _transferTargetWalletBalance = string.Empty;
         _sourceTransferWallet = wallet;

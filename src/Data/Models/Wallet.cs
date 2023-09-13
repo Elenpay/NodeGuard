@@ -113,7 +113,7 @@ namespace NodeGuard.Data.Models
         /// </summary>
         public string? ReferenceId { get; set; }
 
-        [NotMapped] public bool RequiresInternalWalletSigning => Keys != null ? Keys.Count == MofN : false;
+        [NotMapped] public bool RequiresInternalWalletSigning => IsBIP39Imported || IsWatchOnly ? false : Keys != null ? Keys.Count == MofN : false;
 
         #region Relationships
 
