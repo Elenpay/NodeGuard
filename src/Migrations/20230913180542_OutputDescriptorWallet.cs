@@ -1,6 +1,4 @@
-﻿using System.Collections.Generic;
-using Microsoft.EntityFrameworkCore.Migrations;
-using NodeGuard.Helpers;
+﻿using Microsoft.EntityFrameworkCore.Migrations;
 
 #nullable disable
 
@@ -24,14 +22,6 @@ namespace NodeGuard.Migrations
                 type: "boolean",
                 nullable: false,
                 defaultValue: false);
-
-            migrationBuilder.AlterColumn<List<ChannelStatusLog>>(
-                name: "StatusLogs",
-                table: "ChannelOperationRequests",
-                type: "jsonb",
-                nullable: true,
-                oldClrType: typeof(List<ChannelStatusLog>),
-                oldType: "jsonb");
         }
 
         /// <inheritdoc />
@@ -44,15 +34,6 @@ namespace NodeGuard.Migrations
             migrationBuilder.DropColumn(
                 name: "IsUnSortedMultiSig",
                 table: "Wallets");
-
-            migrationBuilder.AlterColumn<List<ChannelStatusLog>>(
-                name: "StatusLogs",
-                table: "ChannelOperationRequests",
-                type: "jsonb",
-                nullable: false,
-                oldClrType: typeof(List<ChannelStatusLog>),
-                oldType: "jsonb",
-                oldNullable: true);
         }
     }
 }

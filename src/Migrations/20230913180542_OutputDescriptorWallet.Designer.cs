@@ -14,7 +14,7 @@ using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 namespace NodeGuard.Migrations
 {
     [DbContext(typeof(ApplicationDbContext))]
-    [Migration("20230913125531_OutputDescriptorWallet")]
+    [Migration("20230913180542_OutputDescriptorWallet")]
     partial class OutputDescriptorWallet
     {
         /// <inheritdoc />
