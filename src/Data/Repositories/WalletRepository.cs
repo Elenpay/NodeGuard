@@ -95,15 +95,22 @@ namespace NodeGuard.Data.Repositories
                 .ToListAsync();
         }
 
-        public async Task<List<Wallet>> GetAvailableWallets()
+        public async Task<List<Wallet>> GetAvailableWallets(bool includeWatchOnlyWallets = false)
         {
             await using var applicationDbContext = await _dbContextFactory.CreateDbContextAsync();
 
-            return await applicationDbContext.Wallets
+            var availableWallets = await applicationDbContext.Wallets
                 .Where(wallet => !wallet.IsArchived && !wallet.IsCompromised && wallet.IsFinalised)
                 .Include(x => x.InternalWallet)
                 .Include(x => x.Keys)
                 .ToListAsync();
+            
+            if (!includeWatchOnlyWallets)
+            {
+                availableWallets = availableWallets.Where(w => !w.IsWatchOnly).ToList();
+            }
+            
+            return availableWallets;
         }
 
         public async Task<(bool, string?)> AddAsync(Wallet type)
