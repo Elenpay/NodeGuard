@@ -1,19 +1,21 @@
 using FluentAssertions;
 using NBitcoin;
 using NBXplorer.DerivationStrategy;
+using Nodeguard;
 using NodeGuard.Helpers;
+using Key = NodeGuard.Data.Models.Key;
 
 namespace NodeGuard.Tests;
 
-public class WalletHelperTests
+public class WalletParserTests
 {
     
     [Theory]
-    [InlineData("wsh(sortedmulti(2,[62a7956f/84h/1h/0h]tpubDDXgATYzdQkHHhZZCMcNJj8BGDENvzMVou5v9NdxiP4rxDLj33nS233dGFW4htpVZSJ6zds9eVqAV9RyRHHiKtwQKX8eR4n4KN3Dwmj7A3h/0/*,[11312aa2/84h/1h/0h]tpubDC8a54NFtQtMQAZ97VhoU9V6jVTvi9w4Y5SaAXJSBYETKg3AoX5CCKndznhPWxJUBToPCpT44s86QbKdGpKAnSjcMTGW4kE6UQ8vpBjcybW/0/*,[8f71b834/84h/1h/0h]tpubDChjnP9LXNrJp43biqjY7FH93wgRRNrNxB4Q8pH7PPRy8UPcH2S6V46WGVJ47zVGF7SyBJNCpnaogsFbsybVQckGtVhCkng3EtFn8qmxptS/0/*))",
-        "2-of-tpubDDXgATYzdQkHHhZZCMcNJj8BGDENvzMVou5v9NdxiP4rxDLj33nS233dGFW4htpVZSJ6zds9eVqAV9RyRHHiKtwQKX8eR4n4KN3Dwmj7A3h-tpubDC8a54NFtQtMQAZ97VhoU9V6jVTvi9w4Y5SaAXJSBYETKg3AoX5CCKndznhPWxJUBToPCpT44s86QbKdGpKAnSjcMTGW4kE6UQ8vpBjcybW-tpubDChjnP9LXNrJp43biqjY7FH93wgRRNrNxB4Q8pH7PPRy8UPcH2S6V46WGVJ47zVGF7SyBJNCpnaogsFbsybVQckGtVhCkng3EtFn8qmxptS",
+    [InlineData("wsh(multi(2,[62a7956f/84h/1h/0h]tpubDDXgATYzdQkHHhZZCMcNJj8BGDENvzMVou5v9NdxiP4rxDLj33nS233dGFW4htpVZSJ6zds9eVqAV9RyRHHiKtwQKX8eR4n4KN3Dwmj7A3h/0/*,[11312aa2/84h/1h/0h]tpubDC8a54NFtQtMQAZ97VhoU9V6jVTvi9w4Y5SaAXJSBYETKg3AoX5CCKndznhPWxJUBToPCpT44s86QbKdGpKAnSjcMTGW4kE6UQ8vpBjcybW/0/*,[8f71b834/84h/1h/0h]tpubDChjnP9LXNrJp43biqjY7FH93wgRRNrNxB4Q8pH7PPRy8UPcH2S6V46WGVJ47zVGF7SyBJNCpnaogsFbsybVQckGtVhCkng3EtFn8qmxptS/0/*))",
+        "2-of-tpubDDXgATYzdQkHHhZZCMcNJj8BGDENvzMVou5v9NdxiP4rxDLj33nS233dGFW4htpVZSJ6zds9eVqAV9RyRHHiKtwQKX8eR4n4KN3Dwmj7A3h-tpubDC8a54NFtQtMQAZ97VhoU9V6jVTvi9w4Y5SaAXJSBYETKg3AoX5CCKndznhPWxJUBToPCpT44s86QbKdGpKAnSjcMTGW4kE6UQ8vpBjcybW-tpubDChjnP9LXNrJp43biqjY7FH93wgRRNrNxB4Q8pH7PPRy8UPcH2S6V46WGVJ47zVGF7SyBJNCpnaogsFbsybVQckGtVhCkng3EtFn8qmxptS-[keeporder]",
         "RegTest", 2,3)]
     [InlineData("wsh(sortedmulti(2,[00000000/48h/1h/1h]tpubDCNTr5eMFBvYQJKJNySFcXM3HdxjseLSpTA5crAPAbXYjBb5zgtwKrHTTdRu11vUCZVYeHcV6H2oj2reuGma9Hu3t1LSPNgL5b8F6W6hsQN/0/*,[60f3a0b3/48h/1h/1h]tpubDCfM7v7fKZ31gTGGggNMycfCr5cDGinyijveRZ44RYSgAgEARwhaBd6PPpWst8kKbhEVoqNasgjHFWZKrEQoJ9pzPVEmNZDNe92hShzEMDy/0/*,[60f3a0b2/48h/1h/1h]tpubDCwziS3VhtLnXSR7oL9Xkft5LVbrsfEQ9h7YkCNSa1cYSi1KNuMEnsb9NeouNjpq91KSK3R87jFx8oFGvSM5g9Vax1VrvawWzD9xnGjgndB/0/*))#jt4e29lt",
-        "2-of-tpubDCNTr5eMFBvYQJKJNySFcXM3HdxjseLSpTA5crAPAbXYjBb5zgtwKrHTTdRu11vUCZVYeHcV6H2oj2reuGma9Hu3t1LSPNgL5b8F6W6hsQN-tpubDCfM7v7fKZ31gTGGggNMycfCr5cDGinyijveRZ44RYSgAgEARwhaBd6PPpWst8kKbhEVoqNasgjHFWZKrEQoJ9pzPVEmNZDNe92hShzEMDy-tpubDCwziS3VhtLnXSR7oL9Xkft5LVbrsfEQ9h7YkCNSa1cYSi1KNuMEnsb9NeouNjpq91KSK3R87jFx8oFGvSM5g9Vax1VrvawWzD9xnGjgndB",
+        "2-of-tpubDCfM7v7fKZ31gTGGggNMycfCr5cDGinyijveRZ44RYSgAgEARwhaBd6PPpWst8kKbhEVoqNasgjHFWZKrEQoJ9pzPVEmNZDNe92hShzEMDy-tpubDCNTr5eMFBvYQJKJNySFcXM3HdxjseLSpTA5crAPAbXYjBb5zgtwKrHTTdRu11vUCZVYeHcV6H2oj2reuGma9Hu3t1LSPNgL5b8F6W6hsQN-tpubDCwziS3VhtLnXSR7oL9Xkft5LVbrsfEQ9h7YkCNSa1cYSi1KNuMEnsb9NeouNjpq91KSK3R87jFx8oFGvSM5g9Vax1VrvawWzD9xnGjgndB",
         "RegTest", 2,3)]
     public void ParseOutputDescriptor_ValidSegwitMultisig(string descriptor, string expectedDerivationStrategy, string network, int m , int n)
     {
@@ -21,11 +23,16 @@ public class WalletHelperTests
         var currentNetwork = Network.GetNetwork(network);
 
         //Act
-        var (strategyBase,rootedKeyPath) = WalletParser.ParseOutputDescriptor(descriptor, currentNetwork);
+        var (strategyBase,valueTuples) = WalletParser.ParseOutputDescriptor(descriptor, currentNetwork);
 
         //Assert
         strategyBase.ToString().Should().Be(expectedDerivationStrategy);
-        rootedKeyPath.Length.Should().Be(n);
+        valueTuples.Length.Should().Be(n);
+        foreach (var (bitcoinExtPubKey, rootedKeyPath) in valueTuples)
+        {
+            bitcoinExtPubKey.Should().NotBeNull();
+            rootedKeyPath.Should().NotBeNull();
+        }
         strategyBase.Should().BeOfType<P2WSHDerivationStrategy>();
         
         ((P2WSHDerivationStrategy)strategyBase).Inner.Should().BeOfType<MultisigDerivationStrategy>();
@@ -36,7 +43,36 @@ public class WalletHelperTests
         inner.Keys.Count.Should().Be(n);
         inner.RequiredSignatures.Should().Be(m);
         inner.ToString().Should().Be(expectedDerivationStrategy);
+        var keys = valueTuples.Select(x => new Key
+        {
+            Id = 0,
+            CreationDatetime = DateTimeOffset.UtcNow,
+            Name = "Imported key from output descriptor",
+            XPUB = x.Item1.ToString() ?? throw new InvalidOperationException(),
+            Description =null,
+            MasterFingerprint = x.Item2.MasterFingerprint.ToString(),
+            Path = x.Item2.KeyPath.ToString(),
+            IsBIP39ImportedKey = false,
+                    
+        }).ToList();
+
+        var msigStrategy =  ((P2WSHDerivationStrategy) strategyBase).Inner as MultisigDerivationStrategy;
+        //Create a wallet from the descriptor and test the matching strategies
+        var wallet = new Data.Models.Wallet()
+        {
+            MofN = m,
+            Keys = new List<Key>(keys),
+            IsUnSortedMultiSig = !msigStrategy.LexicographicOrder
+        };
         
+        var derivationStrategy = wallet.GetDerivationStrategy();
+        
+        derivationStrategy.Should().BeOfType<P2WSHDerivationStrategy>();
+        
+        ((P2WSHDerivationStrategy)derivationStrategy).Inner.Should().BeOfType<MultisigDerivationStrategy>();
+        
+        strategyBase.ToString().Should().Be(derivationStrategy.ToString());
+
     }
     
     [Theory]
@@ -79,11 +115,17 @@ public class WalletHelperTests
         var currentNetwork = Network.GetNetwork(network);
         
         //Act
-        var (strategyBase,rootedKeyPath) = WalletParser.ParseOutputDescriptor(descriptor, currentNetwork);
+        var (strategyBase,valueTuples) = WalletParser.ParseOutputDescriptor(descriptor, currentNetwork);
         
         //Assert
         strategyBase.ToString().Should().Be(expectedDerivationStrategy);
-        rootedKeyPath.Length.Should().Be(1);
+        valueTuples.Length.Should().Be(1);
+        foreach (var (bitcoinExtPubKey, rootedKeyPath) in valueTuples)
+        {
+            bitcoinExtPubKey.Should().NotBeNull();
+            bitcoinExtPubKey.ToString().Should().Be(expectedDerivationStrategy);
+            rootedKeyPath.Should().NotBeNull();
+        }
         strategyBase.Should().BeOfType<DirectDerivationStrategy>();
         ((DirectDerivationStrategy) strategyBase).Segwit.Should().Be(true);
 

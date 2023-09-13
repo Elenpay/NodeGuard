@@ -10,21 +10,21 @@ public static class WalletParser
     /// Parse the output descriptor string to get the wallet info, Took from BTCPAYServer codebase
     /// </summary>
     /// <param name="outputDescriptorStr"></param>
-    public static (DerivationStrategyBase, RootedKeyPath[]) ParseOutputDescriptor(string outputDescriptorStr, Network currentNetwork)
+    public static (DerivationStrategyBase, (BitcoinExtPubKey, RootedKeyPath)[]) ParseOutputDescriptor(
+        string outputDescriptorStr, Network currentNetwork)
     {
         if (currentNetwork == null) throw new ArgumentNullException(nameof(currentNetwork));
         if (string.IsNullOrWhiteSpace(outputDescriptorStr))
             throw new ArgumentException("Value cannot be null or whitespace.", nameof(outputDescriptorStr));
-        
+
         var factory = new DerivationStrategyFactory(currentNetwork);
         outputDescriptorStr = outputDescriptorStr.Trim();
-        
+
         if (outputDescriptorStr.Contains("<0;1>"))
         {
             throw new ArgumentException("Descriptor contains <0;1> which is not supported, please use <0/*>");
-        
         }
-        
+
         var outputDescriptor = OutputDescriptor.Parse(outputDescriptorStr, currentNetwork);
         switch (outputDescriptor)
         {
@@ -55,17 +55,26 @@ public static class WalletParser
                 throw new ArgumentOutOfRangeException(nameof(outputDescriptor));
         }
 
-        (DerivationStrategyBase, RootedKeyPath[]) ExtractFromMulti(OutputDescriptor.Multi multi)
+        (DerivationStrategyBase, (BitcoinExtPubKey, RootedKeyPath)[]) ExtractFromMulti(OutputDescriptor.Multi multi)
         {
-            var xpubs = multi.PkProviders.Select(provider => ExtractFromPkProvider(provider));
-            var valueTuples = xpubs as (DerivationStrategyBase, RootedKeyPath[])[] ?? xpubs.ToArray();
-            return (
+            var multiPkProviders = multi.PkProviders;
+            
+            var xpubs = multiPkProviders.Select(provider => ExtractFromPkProvider(provider)).ToArray();
+
+            var xpubsStrings = xpubs.Select(tuple => tuple.Item1.ToString()).ToArray();
+            
+            if(multi.IsSorted)
+                xpubsStrings = xpubsStrings.OrderBy(x => x).ToArray();
+            
+            var extractFromMulti = (
                 Parse(
-                    $"{multi.Threshold}-of-{(string.Join('-', valueTuples.Select(tuple => tuple.Item1.ToString())))}{(multi.IsSorted ? "" : "-[keeporder]")}"),
-                valueTuples.SelectMany(tuple => tuple.Item2).ToArray());
+                    $"{multi.Threshold}-of-{(string.Join('-', xpubsStrings))}{(multi.IsSorted ? "" : "-[keeporder]")}"),
+                xpubs.SelectMany(tuple => tuple.Item2).ToArray());
+            return extractFromMulti;
         }
 
-        (DerivationStrategyBase, RootedKeyPath[]) ExtractFromPkProvider(PubKeyProvider pubKeyProvider,
+        (DerivationStrategyBase, (BitcoinExtPubKey, RootedKeyPath)[]) ExtractFromPkProvider(
+            PubKeyProvider pubKeyProvider,
             string suffix = "")
         {
             switch (pubKeyProvider)
@@ -81,7 +90,9 @@ public static class WalletParser
                     return (Parse($"{hd.Extkey}{suffix}"), null);
                 case PubKeyProvider.Origin origin:
                     var innerResult = ExtractFromPkProvider(origin.Inner, suffix);
-                    return (innerResult.Item1, new[] {origin.KeyOriginInfo});
+                    var bitcoinExtPubKey = innerResult.Item1.GetExtPubKeys().First().GetWif(currentNetwork);
+                    var rootedKeyPath = origin.KeyOriginInfo;
+                    return (innerResult.Item1, new[] {(extPubKey: bitcoinExtPubKey, KeyOriginInfo: rootedKeyPath)});
                 default:
                     throw new ArgumentOutOfRangeException();
             }
