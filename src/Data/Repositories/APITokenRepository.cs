@@ -9,17 +9,14 @@ namespace NodeGuard.Data.Repositories;
 public class APITokenRepository : IAPITokenRepository
 {
     private readonly IRepository<APIToken> _repository;
-    private readonly ISaltRepository _saltRepository;
     private readonly ILogger<APITokenRepository> _logger;
     private readonly IDbContextFactory<ApplicationDbContext> _dbContextFactory;
     
     public APITokenRepository(IRepository<APIToken> repository,
-        ISaltRepository saltRepository,
         ILogger<APITokenRepository> logger,
         IDbContextFactory<ApplicationDbContext> dbContextFactory)
     {
         _repository = repository;
-        _saltRepository = saltRepository;
         _logger = logger;
         _dbContextFactory = dbContextFactory;
     }
@@ -30,8 +27,19 @@ public class APITokenRepository : IAPITokenRepository
 
             type.SetCreationDatetime();
             type.SetUpdateDatetime();
-            var saltresult = _saltRepository.Salt();
-            type.GenerateTokenHash(saltresult.Item2);
+            
+            var password = Convert.ToBase64String(RandomNumberGenerator.GetBytes(32));
+            try
+            {
+                type.GenerateTokenHash(password, Constants.API_TOKEN_SALT);
+            }
+            catch (Exception e)
+            {
+                var errorMsg = "Error generating API token hash";  
+                _logger.LogError(e, errorMsg);
+
+                return (false, errorMsg);
+            }
 
             try
             {
@@ -40,10 +48,10 @@ public class APITokenRepository : IAPITokenRepository
             }
             catch (Exception e)
             {
-                const string errorWhileAddingOnRepository = "Error adding API token on repository";
-                _logger.LogError(e, errorWhileAddingOnRepository);
+                var errorMsg = "Error adding API token on repository";
+                _logger.LogError(e, errorMsg);
 
-                return (false, errorWhileAddingOnRepository);
+                return (false, errorMsg);
             }
         }
 

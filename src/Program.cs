@@ -94,7 +94,6 @@ namespace NodeGuard
             builder.Services.AddTransient(typeof(IRepository<>), typeof(Repository<>));
             builder.Services.AddTransient<IApplicationUserRepository, ApplicationUserRepository>();
             builder.Services.AddTransient<IAPITokenRepository, APITokenRepository>();
-            builder.Services.AddTransient<ISaltRepository, SaltRepository>();
             builder.Services.AddTransient<IChannelOperationRequestRepository, ChannelOperationRequestRepository>();
             builder.Services
                 .AddTransient<IChannelOperationRequestPSBTRepository, ChannelOperationRequestPSBTRepository>();

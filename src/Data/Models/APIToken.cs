@@ -1,4 +1,5 @@
 using System.Security.Cryptography;
+using Blazorise;
 using Microsoft.AspNetCore.Cryptography.KeyDerivation;
 
 namespace NodeGuard.Data.Models;
@@ -18,27 +19,18 @@ public class APIToken: Entity
     
     #endregion Relationships
 
-    public bool GenerateTokenHash(string salt)
+    public void GenerateTokenHash(string password, string salt)
     {
-        var password = Convert.ToBase64String(RandomNumberGenerator.GetBytes(16));
 
-        try
-        {
-            string hashed = Convert.ToBase64String(KeyDerivation.Pbkdf2(
-            password: password!,
-            salt:  Convert.FromBase64String(salt),
-            prf: KeyDerivationPrf.HMACSHA256,
-            iterationCount: 100000,
-            numBytesRequested: 256 / 8));
-            
-            TokenHash = hashed;
-        }
-        catch (Exception e)
-        {
-            return false;
-        }
-
-        return true;
+        var hashed = Convert.ToBase64String(KeyDerivation.Pbkdf2(
+        password: password!,
+        salt:  Convert.FromBase64String(salt),
+        prf: KeyDerivationPrf.HMACSHA256,
+        iterationCount: 100000,
+        numBytesRequested: 256 / 8));
+        
+        TokenHash = hashed;
+        
     }
 
 
