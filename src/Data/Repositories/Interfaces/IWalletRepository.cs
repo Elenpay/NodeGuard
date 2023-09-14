@@ -35,9 +35,9 @@ public interface IWalletRepository
     /// <summary>
     /// Obtains all wallets that are Finalised and not in a compromised or archived state
     /// </summary>
-    /// // <param name="includeWatchOnlyWallets">If true, only wallets with an internal wallet will be returned</param>
+    /// // <param name="includeWatchOnlyWallets">If true, watch-only wallets will be included</param>
     /// <returns> List of available wallets</returns>
-    Task<List<Wallet>> GetAvailableWallets(bool includeWatchOnlyWallets = true);
+    Task<List<Wallet>> GetAvailableWallets(bool includeWatchOnlyWallets = false);
 
     Task<(bool, string?)> AddAsync(Wallet type);
 
