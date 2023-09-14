@@ -115,6 +115,11 @@ namespace NodeGuard.Data.Models
         public string? JobId { get; set; }
 
         /// <summary>
+        /// This indicates if the user requested a changeless operation by selecting UTXOs
+        /// </summary>
+        public bool Changeless { get; set; }
+
+        /// <summary>
         /// TxId of the request
         /// </summary>
         public string? TxId { get; set; }

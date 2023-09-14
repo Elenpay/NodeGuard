@@ -123,9 +123,8 @@ namespace NodeGuard.Services
                 else
                 {
                     //We mark the request as failed since we would need to invalidate existing PSBTs
-                    var message = String.Format("Marking the withdrawal request: {RequestId} as failed since the original UTXOs are no longer valid",
+                    _logger.LogError("Marking the withdrawal request: {RequestId} as failed since the original UTXOs are no longer valid",
                         walletWithdrawalRequest.Id);
-                    _logger.LogError(message);
 
                     walletWithdrawalRequest.Status = WalletWithdrawalRequestStatus.Failed;
 
@@ -133,10 +132,9 @@ namespace NodeGuard.Services
 
                     if (!updateResult.Item1)
                     {
-                        message = String.Format("Error while updating withdrawal request: {RequestId}",
+                        _logger.LogError("Error while updating withdrawal request: {RequestId}",
                             walletWithdrawalRequest.Id);
-                        _logger.LogError(message);
-                        throw new Exception(message);
+                        throw new Exception($"Error while updating withdrawal request: {walletWithdrawalRequest.Id}");
                     }
 
                     throw new UTXOsNoLongerValidException();
@@ -157,7 +155,18 @@ namespace NodeGuard.Services
                 }
             }
 
-            var availableUTXOs = await _coinSelectionService.GetAvailableUTXOsAsync(derivationStrategy);
+            var previouslyLockedUTXOs =
+                await _coinSelectionService.GetLockedUTXOsForRequest(walletWithdrawalRequest,
+                    BitcoinRequestType.WalletWithdrawal);
+
+            if (walletWithdrawalRequest.Changeless && previouslyLockedUTXOs.Count == 0)
+            {
+                _logger.LogError("Cannot generate base template PSBT for withdrawal request: {RequestId}, no UTXOs were provided for the changeless operation", walletWithdrawalRequest.Id);
+                throw new ArgumentException();
+            }
+            var availableUTXOs = previouslyLockedUTXOs.Count > 0
+                ? previouslyLockedUTXOs
+                : await _coinSelectionService.GetAvailableUTXOsAsync(derivationStrategy);
             var (scriptCoins, selectedUTXOs) = await _coinSelectionService.GetTxInputCoins(availableUTXOs, walletWithdrawalRequest, derivationStrategy);
 
             if (scriptCoins == null || !scriptCoins.Any())
@@ -171,11 +180,12 @@ namespace NodeGuard.Services
 
             var nbXplorerNetwork = CurrentNetworkHelper.GetCurrentNetwork();
 
-            PSBT? result = null;
+            PSBT? originalPSBT = null;
             try
             {
                 //We got enough inputs to fund the TX so time to build the PSBT
 
+                var network = CurrentNetworkHelper.GetCurrentNetwork();
                 var txBuilder = nbXplorerNetwork.CreateTransactionBuilder();
 
                 var feeRateResult = await LightningHelper.GetFeeRateResult(nbXplorerNetwork, _nbXplorerService);
@@ -184,15 +194,15 @@ namespace NodeGuard.Services
 
                 if (changeAddress == null)
                 {
-                    var message = String.Format("Change address was not found for wallet: {WalletId}",
+                    _logger.LogError("Change address was not found for wallet: {WalletId}",
                         walletWithdrawalRequest.Wallet.Id);
-                    _logger.LogError(message);
-                    throw new ArgumentNullException(message);
+                    throw new ArgumentNullException($"Change address was not found for wallet: {walletWithdrawalRequest.Wallet.Id}");
                 }
 
                 var builder = txBuilder;
                 builder.AddCoins(scriptCoins);
 
+                var changelessAmount = selectedUTXOs.Sum(u => (Money)u.Value);
                 var amount = new Money(walletWithdrawalRequest.SatsAmount, MoneyUnit.Satoshi);
                 var destination = BitcoinAddress.Create(walletWithdrawalRequest.DestinationAddress, nbXplorerNetwork);
 
@@ -210,14 +220,18 @@ namespace NodeGuard.Services
                 }
                 else
                 {
-                    builder.Send(destination, amount);
+                    builder.Send(destination, walletWithdrawalRequest.Changeless ? changelessAmount : amount);
+                    if (walletWithdrawalRequest.Changeless)
+                    {
+                        builder.SubtractFees();
+                    }
                     builder.SendAllRemainingToChange();
                 }
 
-                result = builder.BuildPSBT(false);
+                originalPSBT = builder.BuildPSBT(false);
 
                 //Additional fields to support PSBT signing with a HW or the Remote Signer
-                result = LightningHelper.AddDerivationData(walletWithdrawalRequest.Wallet, result, selectedUTXOs, scriptCoins, _logger);
+                originalPSBT = LightningHelper.AddDerivationData(walletWithdrawalRequest.Wallet, originalPSBT, selectedUTXOs, scriptCoins, _logger);
             }
             catch (Exception e)
             {
@@ -235,7 +249,7 @@ namespace NodeGuard.Services
                 throw new Exception(message);
             }
 
-            if (result == null)
+            if (originalPSBT == null)
             {
                 throw new Exception("Error while generating base PSBT");
             }
@@ -247,7 +261,7 @@ namespace NodeGuard.Services
                 CreationDatetime = DateTimeOffset.Now,
                 IsTemplatePSBT = true,
                 UpdateDatetime = DateTimeOffset.Now,
-                PSBT = result.ToBase64()
+                PSBT = originalPSBT.ToBase64()
             };
 
             var addPsbtResult = await _walletWithdrawalRequestPsbtRepository.AddAsync(psbt);
@@ -258,7 +272,7 @@ namespace NodeGuard.Services
                     walletWithdrawalRequest.Id);
             }
 
-            return result;
+            return originalPSBT;
         }
 
         public async Task PerformWithdrawal(WalletWithdrawalRequest walletWithdrawalRequest)
