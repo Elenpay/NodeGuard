@@ -42,9 +42,9 @@ jobs:
           context: .
           file: src/Dockerfile
           push: true
-          sbom: true
           platforms: linux/amd64
-          provenance: true
+          # sbom: true
+          provenance: false
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
 
