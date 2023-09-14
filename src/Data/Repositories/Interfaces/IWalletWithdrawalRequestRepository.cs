@@ -25,6 +25,8 @@ public interface IWalletWithdrawalRequestRepository: IBitcoinRequestRepository
 {
     Task<WalletWithdrawalRequest?> GetById(int id);
 
+    Task<List<WalletWithdrawalRequest>> GetByIds(List<int> ids);
+
     Task<List<WalletWithdrawalRequest>> GetAll();
 
     Task<List<WalletWithdrawalRequest>> GetUnsignedPendingRequestsByUser(string userId);

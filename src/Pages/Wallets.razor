@@ -473,7 +473,7 @@
                             <Field>
                                 <FieldLabel>Amount</FieldLabel>
                                 <FieldBody>
-                                    <NumericPicker TValue="decimal" Disabled="_transferAllFunds" Value="@_amountToTransfer" ValueChanged="(value) => { _amountToTransfer = value; }" CurrencySymbol="₿ " Max="@_maxWithdrawal" Min="@_minWithdrawal" Decimals="8">
+                                    <NumericPicker TValue="decimal" Disabled="_transferAllFunds" @bind-Value="@_amountToTransfer"  CurrencySymbol="₿ " Max="@_maxWithdrawal" Min="@_minWithdrawal" Decimals="8">
                                         <Feedback>
                                             <ValidationError/>
                                         </Feedback>
@@ -1149,10 +1149,11 @@
             {
                 var withdrawal = await CreateWithdrawalRequestForFunds();
                 await _multisigTransferModal.ShowModal();
+                await CloseAndCleanTransferFundsModal();
             }
         }
-
         await CloseAndCleanTransferFundsModal();
+
     }
 
     private async Task TransferFundsHotWallet()
@@ -1169,6 +1170,7 @@
             ToastService.ShowError("Error while transferring funds, please contact a superadmin for troubleshooting");
         }
 
+        await CloseAndCleanTransferFundsModal();
         await CloseHotWalletTransferModal();
     }
 
