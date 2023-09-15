@@ -143,6 +143,7 @@ namespace NodeGuard
                 var messageSize = 200 * 1024 * 1024; // 200 MB
                 options.MaxReceiveMessageSize = messageSize;
                 options.MaxSendMessageSize = messageSize;
+                options.Interceptors.Add<ServerAuthInterceptor>();
             });
             builder.WebHost.ConfigureKestrel(options =>
             {

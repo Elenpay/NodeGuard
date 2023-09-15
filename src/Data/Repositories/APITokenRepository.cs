@@ -22,6 +22,12 @@ public class APITokenRepository : IAPITokenRepository
         _dbContextFactory = dbContextFactory;
     }
     
+    private async Task<T> WithContext<T>(Func<ApplicationDbContext, Task<T>> func)
+    {
+        await using var context = _dbContextFactory.CreateDbContext();
+        return await func(context);
+    }
+    
     public async Task<(bool, string?)> AddAsync(APIToken type)
         {
             await using var applicationDbContext = await _dbContextFactory.CreateDbContextAsync();
@@ -56,6 +62,17 @@ public class APITokenRepository : IAPITokenRepository
             }
         }
 
+    public async Task<APIToken?> GetByToken(string token)
+    {
+        return await WithContext(
+            async context =>
+            {
+                var result = await context.ApiTokens.FirstOrDefaultAsync(x => x.TokenHash == token);
+                return result;
+            }
+                
+            );
+    }
     public async Task<List<APIToken>> GetAll()
     {
         await using var applicationDbContext = await _dbContextFactory.CreateDbContextAsync();
