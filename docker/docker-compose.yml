@@ -2,7 +2,6 @@ version: '3.4'
 
 services:
   nodeguard_postgres:
-    hostname: postgres
     container_name: nodeguard_postgres
     image: postgres:13
     restart: always
@@ -29,8 +28,7 @@ services:
       NBXPLORER_TRIMEVENTS: 10000
       NBXPLORER_SIGNALFILESDIR: /datadir
       #Keeping dbtrie for dev until it is fully removed since we would need to modify nbxplorer docker image to wait for the db to be ready
-      NBXPLORER_DBTRIE: 0
-      NBXPLORER_POSTGRES: Host=postgres;Port=5432;Database=nodeguard;Username=rw_dev;Password=rw_dev
+      NBXPLORER_DBTRIE: 1
       NBXPLORER_CHAINS: "btc"
       NBXPLORER_BTCRPCUSER: "polaruser"
       NBXPLORER_BTCRPCPASSWORD: "polarpass"
