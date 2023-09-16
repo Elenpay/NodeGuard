@@ -759,8 +759,8 @@ namespace NodeGuard.Services
             //If the wallet is watch only, we cannot open a channel as there is no way securely sign the PSBT with SIGHASH_NONE (the internal wallet is not there)
             if (channelOperationRequest.Wallet != null && channelOperationRequest.Wallet.IsWatchOnly)
             {
-                const string watchOnlyWalletsCannotOpenChannels =
-                    "Watch only wallets cannot open channels";
+                var watchOnlyWalletsCannotOpenChannels =
+                    $"Watch only wallets cannot open channels with channel request id: {channelOperationRequest.Id} and wallet id: {channelOperationRequest.Wallet.Id}";
 
                 _logger?.LogError(watchOnlyWalletsCannotOpenChannels);
 
