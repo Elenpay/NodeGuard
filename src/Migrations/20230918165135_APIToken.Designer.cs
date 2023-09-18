@@ -14,8 +14,8 @@ using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 namespace NodeGuard.Migrations
 {
     [DbContext(typeof(ApplicationDbContext))]
-    [Migration("20230908151840_APITokenRemoveSaltyColumn")]
-    partial class APITokenRemoveSaltyColumn
+    [Migration("20230918165135_APIToken")]
+    partial class APIToken
     {
         /// <inheritdoc />
         protected override void BuildTargetModel(ModelBuilder modelBuilder)
@@ -743,6 +743,9 @@ namespace NodeGuard.Migrations
                     b.Property<string>("Description")
                         .HasColumnType("text");
 
+                    b.Property<string>("ImportedOutputDescriptor")
+                        .HasColumnType("text");
+
                     b.Property<int?>("InternalWalletId")
                         .HasColumnType("integer");
 
@@ -765,6 +768,9 @@ namespace NodeGuard.Migrations
                         .HasColumnType("boolean");
 
                     b.Property<bool>("IsHotWallet")
+                        .HasColumnType("boolean");
+
+                    b.Property<bool>("IsUnSortedMultiSig")
                         .HasColumnType("boolean");
 
                     b.Property<int>("MofN")
@@ -803,6 +809,9 @@ namespace NodeGuard.Migrations
 
                     b.Property<decimal>("Amount")
                         .HasColumnType("numeric");
+
+                    b.Property<bool>("Changeless")
+                        .HasColumnType("boolean");
 
                     b.Property<DateTimeOffset>("CreationDatetime")
                         .HasColumnType("timestamp with time zone");
