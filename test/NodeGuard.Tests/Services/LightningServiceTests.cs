@@ -1202,7 +1202,10 @@ namespace NodeGuard.Services
             var channelOperationRequestRepository = new Mock<IChannelOperationRequestRepository>();
             var nodeRepository = new Mock<INodeRepository>();
 
-            var channelOpReqPsbts = new List<ChannelOperationRequestPSBT>();
+            var channelOpReqPsbts = new List<ChannelOperationRequestPSBT>
+            {
+                new ChannelOperationRequestPSBT{PSBT = "cHNidP8BAFIBAAAAAeh7YDXyZE11vXb0yRqCkrxY7VpHH1WVMHwaCWYMv/pCAQAAAAD/////AUjf9QUAAAAAFgAULTCtUNMojFQZ8oa6fpbXbDhK2EYAAAAATwEENYfPA325Ro0AAAABg9H86IDUttPPFss+9te+0DByQgbeD7RPXNuVH9mh1qIDnMEWyKA+kvyG038on8+HxI+9AD8r6ZI1dNIDSGC8824Q7QIQyDAAAIABAACAAQAAAAABAR8A4fUFAAAAABYAFOk69QEyo0x+Xs/zV62OLrHh9eszAQMEAgAAAAAA", IsTemplatePSBT = true}
+            };
             var userSignedPSBT =
                 "cHNidP8BAFIBAAAAAeh7YDXyZE11vXb0yRqCkrxY7VpHH1WVMHwaCWYMv/pCAQAAAAD/////AUjf9QUAAAAAFgAULTCtUNMojFQZ8oa6fpbXbDhK2EYAAAAATwEENYfPA325Ro0AAAABg9H86IDUttPPFss+9te+0DByQgbeD7RPXNuVH9mh1qIDnMEWyKA+kvyG038on8+HxI+9AD8r6ZI1dNIDSGC8824Q7QIQyDAAAIABAACAAQAAAAABAR8A4fUFAAAAABYAFOk69QEyo0x+Xs/zV62OLrHh9eszAQMEAgAAAAAA";
             channelOpReqPsbts.Add(new ChannelOperationRequestPSBT()

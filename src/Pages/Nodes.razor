@@ -208,7 +208,7 @@
     private async Task GetData()
     {
         _nodes = await NodeRepository.GetAllManagedByNodeGuard();
-        _availableWallets = await WalletRepository.GetAvailableWallets();
+        _availableWallets = await WalletRepository.GetAvailableWallets(false);
     }
 
     protected override async Task OnAfterRenderAsync(bool firstRender)

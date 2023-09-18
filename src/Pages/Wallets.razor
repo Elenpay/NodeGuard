@@ -75,7 +75,7 @@
                                 <DropdownItem Clicked="context.Clicked">Edit</DropdownItem>
                                 <DropdownItem Disabled="!context.Item.IsFinalised" Clicked="@(() => LoadAndOpenTextModalBalance(context.Item))">Balance</DropdownItem>
                                 <DropdownItem Disabled="!context.Item.IsFinalised" Clicked="@(() => LoadAndOpenModalTextModalUnusedAddress(context.Item))">Get address</DropdownItem>
-                                <DropdownItem Disabled="!context.Item.IsFinalised" Clicked="@(() => ShowTransferFundsModal(context.Item))">Transfer funds</DropdownItem>
+                                <DropdownItem Disabled="!context.Item.IsFinalised || context.Item.IsWatchOnly" Clicked="@(() => ShowTransferFundsModal(context.Item))">Transfer funds</DropdownItem>
 
                             </DropdownMenu>
                         </Dropdown>
@@ -114,7 +114,7 @@
                         </Validation>
                     </EditTemplate>
                 </DataGridColumn>
-                <DataGridColumn TItem="Wallet" Editable="true" Field="@nameof(Wallet.Description)" Caption="@nameof(Wallet.Description)" Sortable="false"  Displayable="@IsColumnVisible(WalletsColumnName.Description)"/>
+                <DataGridColumn TItem="Wallet" Editable="true" Field="@nameof(Wallet.Description)" Caption="@nameof(Wallet.Description)" Sortable="false" Displayable="@IsColumnVisible(WalletsColumnName.Description)"/>
                 <DataGridColumn TItem="Wallet" Displayable="false" Filterable="true" Caption="Hot Wallet" Field="@nameof(Wallet.IsHotWallet)" Editable="true">
                     <EditTemplate>
                         <Check TValue="bool" Disabled="@(context.Item.IsFinalised)" Checked="@((bool) context.CellValue)" CheckedChanged="(value) => OnCheckedChanged(context, value)" @ref="_hotWalletCheckComponent"/>
@@ -124,17 +124,17 @@
                 <DataGridColumn TItem="Wallet" Displayable="false" Filterable="true" Caption="Finalised" Field="@nameof(Wallet.IsFinalised)" Editable="false"/>
                 <DataGridColumn TItem="Wallet" Displayable="false" Filterable="true" Caption="Archived" Field="@nameof(Wallet.IsArchived)" Editable="true" CellsEditableOnNewCommand="false"/>
                 <DataGridColumn TItem="Wallet" Displayable="false" Filterable="true" Caption="Compromised" Field="@nameof(Wallet.IsCompromised)" Editable="true" CellsEditableOnNewCommand="false"/>
-                <DataGridSelectColumn TItem="Wallet" Sortable="false" Filterable="true"  Displayable="@IsColumnVisible(WalletsColumnName.WalletProperties)">
+                <DataGridSelectColumn TItem="Wallet" Sortable="false" Filterable="true" Displayable="@IsColumnVisible(WalletsColumnName.WalletProperties)">
                     <FilterTemplate>
                         <Dropdown>
                             <DropdownToggle>Select</DropdownToggle>
                             <DropdownMenu>
                                 <div class="checkbox-drop">
-                                    <Check TValue="bool"  CheckedChanged="@(() => { _hotWalletFilter = !_hotWalletFilter; OnCheckedChanged(true); })">🔥 Hot Wallet</Check>
-                                    <Check TValue="bool"  CheckedChanged="@(() => { _coldWalletFilter = !_coldWalletFilter; OnCheckedChanged(true); })">❄️ Cold Wallet</Check>
-                                    <Check TValue="bool"  CheckedChanged="@(() => { _finalisedWalletFilter = !_finalisedWalletFilter; OnCheckedChanged(true); })">🏁 finalised</Check>
-                                    <Check TValue="bool"  CheckedChanged="@(() => { _archivedWalletFilter = !_archivedWalletFilter; OnCheckedChanged(true); })">📂 Archived</Check>
-                                    <Check TValue="bool"  CheckedChanged="@(() => { _compromisedWalletFilter = !_compromisedWalletFilter; OnCheckedChanged(true); })">⛔️ Compromised</Check>
+                                    <Check TValue="bool" CheckedChanged="@(() => { _hotWalletFilter = !_hotWalletFilter; OnCheckedChanged(true); })">🔥 Hot Wallet</Check>
+                                    <Check TValue="bool" CheckedChanged="@(() => { _coldWalletFilter = !_coldWalletFilter; OnCheckedChanged(true); })">❄️ Cold Wallet</Check>
+                                    <Check TValue="bool" CheckedChanged="@(() => { _finalisedWalletFilter = !_finalisedWalletFilter; OnCheckedChanged(true); })">🏁 finalised</Check>
+                                    <Check TValue="bool" CheckedChanged="@(() => { _archivedWalletFilter = !_archivedWalletFilter; OnCheckedChanged(true); })">📂 Archived</Check>
+                                    <Check TValue="bool" CheckedChanged="@(() => { _compromisedWalletFilter = !_compromisedWalletFilter; OnCheckedChanged(true); })">⛔️ Compromised</Check>
                                 </div>
                             </DropdownMenu>
                         </Dropdown>
@@ -159,7 +159,7 @@
                         }
                     </DisplayTemplate>
                 </DataGridSelectColumn>
-                <DataGridNumericColumn TItem="Wallet" Decimals="0" Editable="true" Field="@nameof(Wallet.MofN)" Caption="Threshold" Sortable="false"  Displayable="@IsColumnVisible(WalletsColumnName.Threshold)">
+                <DataGridNumericColumn TItem="Wallet" Decimals="0" Editable="true" Field="@nameof(Wallet.MofN)" Caption="Threshold" Sortable="false" Displayable="@IsColumnVisible(WalletsColumnName.Threshold)">
                     <EditTemplate>
                         <Validation Validator="@ValidateThreshold">
                             <NumericEdit TValue="int" Value="@(IsHotWallet(_hotWalletCheckComponent) ? 1 : (int) context.CellValue)" Disabled="@(context.Item.IsFinalised || IsHotWallet(_hotWalletCheckComponent))" ValueChanged="(value) => { context.CellValue = value; }">
@@ -170,13 +170,13 @@
                         </Validation>
                     </EditTemplate>
                 </DataGridNumericColumn>
-                <DataGridColumn TItem="Wallet" Editable="true" Field="@nameof(Wallet.ReferenceId)" Caption="Reference Id" Sortable="true"  Displayable="@IsColumnVisible(WalletsColumnName.ReferenceId)"/>
-                <DataGridColumn TItem="Wallet" Field="@nameof(Wallet.CreationDatetime)" Caption="Creation Date" Sortable="true" SortDirection="SortDirection.Descending"  Displayable="@IsColumnVisible(WalletsColumnName.CreationDate)">
+                <DataGridColumn TItem="Wallet" Editable="true" Field="@nameof(Wallet.ReferenceId)" Caption="Reference Id" Sortable="true" Displayable="@IsColumnVisible(WalletsColumnName.ReferenceId)"/>
+                <DataGridColumn TItem="Wallet" Field="@nameof(Wallet.CreationDatetime)" Caption="Creation Date" Sortable="true" SortDirection="SortDirection.Descending" Displayable="@IsColumnVisible(WalletsColumnName.CreationDate)">
                     <DisplayTemplate>
                         @context.CreationDatetime.Humanize()
                     </DisplayTemplate>
                 </DataGridColumn>
-                <DataGridColumn TItem="Wallet" Field="@nameof(Wallet.UpdateDatetime)" Caption="Update date" Sortable="true"  Displayable="@IsColumnVisible(WalletsColumnName.UpdateDate)">
+                <DataGridColumn TItem="Wallet" Field="@nameof(Wallet.UpdateDatetime)" Caption="Update date" Sortable="true" Displayable="@IsColumnVisible(WalletsColumnName.UpdateDate)">
                     <DisplayTemplate>
                         @context.UpdateDatetime.Humanize()
                     </DisplayTemplate>
@@ -264,9 +264,8 @@
         <ModalFooter>
             @if (_textModalCopy)
             {
-                <Button Color="Color.Primary" Clicked="@(() => CopyStrToClipboard(_textModalContent))">Copy</Button>
+                <Button Color="Color.Primary" Clicked="@(() => CopyStrToClipboard(_textModalContent))">Copy and close</Button>
             }
-            <Button Color="Color.Secondary" Clicked="@CloseTextModal">Close</Button>
         </ModalFooter>
     </ModalContent>
 </Modal>
@@ -293,19 +292,6 @@
             <CloseButton/>
         </ModalHeader>
         <ModalBody>
-            <Alert Color="Color.Warning" Visible>
-
-                <AlertDescription>
-                    @if (@Constants.ENABLE_REMOTE_SIGNER)
-                    {
-                        <p>Remote signer is enabled, therefore the seedphrase <b>won't be stored in NodeGuard database.</b>. Take into account that a seedphrase will leak all the subwallets you have on it.</p>
-                    }
-                    else
-                    {
-                        <p>Remote signer is not enabled, therefore the seedphrase will be stored as plain-text in the NodeGuard database, please reconsider your security threat model based on this. Take into account that a seedphrase will leak all the subwallets you have on it.</p>
-                    }
-                </AlertDescription>
-            </Alert>
             <Fields>
                 <Validations @ref="_importWalletValidations">
                     <Column ColumnSize="ColumnSize.Is12">
@@ -337,36 +323,95 @@
                         </Field>
                     </Column>
                     <Column ColumnSize="ColumnSize.Is12">
-                        <Validation AsyncValidator="@ValidateSeedphrase">
-                            <Field>
-                                <FieldLabel>Seedphrase</FieldLabel>
-                                <FieldHelp>Paste your seedphrase (English wordlist only)</FieldHelp>
-                                <FieldBody>
-                                    <MemoEdit @bind-Text="@_seedphrase" Rows="4">
-                                        <Feedback>
-                                            <ValidationNone>Enter a valid seedphrase</ValidationNone>
-                                            <ValidationError>Invalid seedphrase</ValidationError>
-                                        </Feedback>
-                                    </MemoEdit>
-                                </FieldBody>
-                            </Field>
-                        </Validation>
+                        <Field>
+                            <FieldLabel>Watch-only</FieldLabel>
+                            <FieldHelp>Switch on if you want to import a watch-only wallet</FieldHelp>
+                            <FieldBody>
+                                <Switch TValue="bool" @bind-Checked="@_IsImportWalletModalWatchOnly"></Switch>
+                            </FieldBody>
+                        </Field>
                     </Column>
-                    <Column ColumnSize="ColumnSize.Is12">
-                        <Validation AsyncValidator="ValidateDerivationPath">
-                            <Field>
-                                <FieldLabel>Derivation path</FieldLabel>
-                                <FieldBody>
-                                    <TextEdit @bind-Text="@_derivationPath">
-                                        <Feedback>
-                                            <ValidationNone>Enter a valid derivation path</ValidationNone>
-                                            <ValidationError>Invalid derivation path</ValidationError>
-                                        </Feedback>
-                                    </TextEdit>
-                                </FieldBody>
-                            </Field>
-                        </Validation>
-                    </Column>
+                    @if (_IsImportWalletModalWatchOnly)
+                    {
+                        <Alert Color="Color.Warning" Visible>
+                            <AlertMessage></AlertMessage>
+                            <AlertDescription> Watch-only wallets cannot be used to open channels in NodeGuard for security reasons(check async channel funding). Watch-only wallets should be used specifically as a target for rebalancing operations (reverse submarine swaps) or when you want to sweep funds to a wallet you don't control the keys and its not managed by NodeGuard. If you want to use multisigs, we don't recommend using imported watch-only wallets for other uses cases than the mentioned here.</AlertDescription>
+                        </Alert>
+                        <Alert Color="Color.Info" Visible>
+                            <AlertMessage></AlertMessage>
+                            <AlertDescription>
+                                Only segwit descriptors for single sig(WPKH) or multisigs (WSH) are supported.
+                                <br/>
+                                Singlesig: <code>wpkh([…/84'/0'/0']xpub…/0/*)</code>
+                                <br/>
+                                Multisig: <code>wsh(sortedmulti(2,[…/48'/0'/0'/2']xpub…/0/*,[…/48'/0'/0'/2']xpub…/0/*))</code>
+                            </AlertDescription>
+                        </Alert>
+
+                        <Column ColumnSize="ColumnSize.Is12">
+                            <Validation AsyncValidator="@ValidateOutputDescriptor">
+                                <Field>
+                                    <FieldLabel>Output descriptor</FieldLabel>
+                                    <FieldHelp>Segwit descriptor (Singlesig or multisig)</FieldHelp>
+                                    <FieldBody>
+                                        <MemoEdit @bind-Text="@_outputDescriptor" Rows="4">
+                                            <Feedback>
+                                                <ValidationNone>Enter a valid descriptor</ValidationNone>
+                                                <ValidationError>Invalid descriptor</ValidationError>
+                                            </Feedback>
+                                        </MemoEdit>
+                                    </FieldBody>
+                                </Field>
+                            </Validation>
+                        </Column>
+                    }
+                    else
+                    {
+                        <Alert Color="Color.Warning" Visible>
+                            <AlertMessage></AlertMessage>
+                            <AlertDescription>
+                                @if (@Constants.ENABLE_REMOTE_SIGNER)
+                                {
+                                    <p>Remote signer is enabled, therefore the seedphrase <b>won't be stored in NodeGuard database.</b>. Take into account that a seedphrase will leak all the subwallets you have on it.</p>
+                                }
+                                else
+                                {
+                                    <p>Remote signer is not enabled, therefore the seedphrase will be stored as plain-text in the NodeGuard database, please reconsider your security threat model based on this. Take into account that a seedphrase will leak all the subwallets you have on it.</p>
+                                }
+                            </AlertDescription>
+                        </Alert>
+                        <Column ColumnSize="ColumnSize.Is12">
+                            <Validation AsyncValidator="@ValidateSeedphrase">
+                                <Field>
+                                    <FieldLabel>Seedphrase</FieldLabel>
+                                    <FieldHelp>Paste your seedphrase (English wordlist only)</FieldHelp>
+                                    <FieldBody>
+                                        <MemoEdit @bind-Text="@_seedphrase" Rows="4">
+                                            <Feedback>
+                                                <ValidationNone>Enter a valid seedphrase</ValidationNone>
+                                                <ValidationError>Invalid seedphrase</ValidationError>
+                                            </Feedback>
+                                        </MemoEdit>
+                                    </FieldBody>
+                                </Field>
+                            </Validation>
+                        </Column>
+                        <Column ColumnSize="ColumnSize.Is12">
+                            <Validation AsyncValidator="ValidateDerivationPath">
+                                <Field>
+                                    <FieldLabel>Derivation path</FieldLabel>
+                                    <FieldBody>
+                                        <TextEdit @bind-Text="@_derivationPath">
+                                            <Feedback>
+                                                <ValidationNone>Enter a valid derivation path</ValidationNone>
+                                                <ValidationError>Invalid derivation path</ValidationError>
+                                            </Feedback>
+                                        </TextEdit>
+                                    </FieldBody>
+                                </Field>
+                            </Validation>
+                        </Column>
+                    }
 
 
                 </Validations>
@@ -390,38 +435,38 @@
             <Fields>
                 <Validations @ref="_transferFundsValidations">
                     <Column ColumnSize="ColumnSize.Is12">
-                 <Validation Validator="@ValidationRule.IsSelected">
-						<Field>
-                               <FieldLabel>Target wallet</FieldLabel>
+                        <Validation Validator="@ValidationRule.IsSelected">
+                            <Field>
+                                <FieldLabel>Target wallet</FieldLabel>
                                 <FieldHelp>Select the wallet you want to transfer your funds to</FieldHelp>
                                 <FieldBody>
-                                <SelectList TItem="Wallet"
-                                            TValue="int"
-                                            Data="_walletsForTransfer"
-                                            TextField="@((item) => item.Name)"
-                                            ValueField="@((item) => item.Id)"
-                                            SelectedValue="@_selectedTransferWalletId"
-                                            SelectedValueChanged="(id) => OnSelectedWallet(id)"
-                                            DefaultItemText="Choose the wallet">
-                                    <Feedback>
-                                        <ValidationError>You must select a valid wallet</ValidationError>
-                                    </Feedback>
-                                </SelectList>
+                                    <SelectList TItem="Wallet"
+                                                TValue="int"
+                                                Data="_walletsForTransfer"
+                                                TextField="@((item) => item.Name)"
+                                                ValueField="@((item) => item.Id)"
+                                                SelectedValue="@_selectedTransferWalletId"
+                                                SelectedValueChanged="(id) => OnSelectedWallet(id)"
+                                                DefaultItemText="Choose the wallet">
+                                        <Feedback>
+                                            <ValidationError>You must select a valid wallet</ValidationError>
+                                        </Feedback>
+                                    </SelectList>
                                 </FieldBody>
-                         </Field>
+                            </Field>
                         </Validation>
                     </Column>
-                   <Column ColumnSize="ColumnSize.Is6">
-                           <Field>
-                               <FieldLabel>@($"{_sourceWalletName} Balance (this wallet)")</FieldLabel>
-                               <TextEdit @bind-Text="_sourceWalletBalance" PlainText Disabled />
-                           </Field>
+                    <Column ColumnSize="ColumnSize.Is6">
+                        <Field>
+                            <FieldLabel>@($"{_sourceWalletName} Balance (this wallet)")</FieldLabel>
+                            <TextEdit @bind-Text="_sourceWalletBalance" PlainText Disabled/>
+                        </Field>
                     </Column>
                     <Column ColumnSize="ColumnSize.Is6">
-                           <Field>
-                           <FieldLabel>@($"{_targetWalletName} Balance")</FieldLabel>
-                               <TextEdit @bind-Text="_transferTargetWalletBalance" PlainText Disabled />
-                           </Field>
+                        <Field>
+                            <FieldLabel>@($"{_targetWalletName} Balance")</FieldLabel>
+                            <TextEdit @bind-Text="_transferTargetWalletBalance" PlainText Disabled/>
+                        </Field>
                     </Column>
                     <Column ColumnSize="ColumnSize.Is6">
                         <Validation Validator="args => ValidationHelper.ValidateWithdrawalAmount(args, _transferAllFunds)">
@@ -430,22 +475,22 @@
                                 <FieldBody>
                                     <NumericPicker TValue="decimal" Disabled="_transferAllFunds" @bind-Value="@_amountToTransfer"  CurrencySymbol="₿ " Max="@_maxWithdrawal" Min="@_minWithdrawal" Decimals="8">
                                         <Feedback>
-                                            <ValidationError />
+                                            <ValidationError/>
                                         </Feedback>
                                     </NumericPicker>
                                 </FieldBody>
                                 <FieldHelp>
-                                    @($"Current amount: {Math.Round(PriceConversionService.BtcToUsdConversion((decimal)_amountToTransfer, _btcPrice), 2)} USD")
+                                    @($"Current amount: {Math.Round(PriceConversionService.BtcToUsdConversion((decimal) _amountToTransfer, _btcPrice), 2)} USD")
                                 </FieldHelp>
                             </Field>
                         </Validation>
                     </Column>
                     <Column ColumnSize="ColumnSize.Is6">
-                            <Field>
-                                <FieldBody>
-                                    <Check TValue="bool" @bind-Checked="@_transferAllFunds">Transfer all funds</Check>
-                                </FieldBody>
-                            </Field>
+                        <Field>
+                            <FieldBody>
+                                <Check TValue="bool" @bind-Checked="@_transferAllFunds">Transfer all funds</Check>
+                            </FieldBody>
+                        </Field>
                     </Column>
 
 
@@ -466,16 +511,14 @@
     Title="Transferring from a multisig wallet"
     Body="Your transfer request was succesfully done. Please, go to Withdrawals page to sign for this transfer."
     CancelLabel="Yes, understood"
-    OnCancel="CloseMultisigTransferModal"
-/>
+    OnCancel="CloseMultisigTransferModal"/>
 <ConfirmationModal
     @ref="_hotWalletTransferModal"
     Title="Are you sure?"
     Body="You're about to transfer funds from this wallet. This means that the system will automatically use the funds in it without the need of manual approval. Are you sure you want to perform this operation?"
     OkLabel="Yes, understood"
     OnCancel="CloseHotWalletTransferModal"
-    OnSubmit="TransferFundsHotWallet"
-/>
+    OnSubmit="TransferFundsHotWallet"/>
 
 @code {
 
@@ -534,6 +577,9 @@
     private ConfirmationModal _multisigTransferModal;
     private ConfirmationModal _hotWalletTransferModal;
 
+    /// Used to change the modal view for the import wallet, true means that output descriptors will be used intead of seedphrase
+    private bool _IsImportWalletModalWatchOnly = false;
+
 
     private string _seedphrase = string.Empty;
     private string _name = string.Empty;
@@ -550,6 +596,8 @@
     private ColumnLayout<WalletsColumnName> WalletsColumnLayout;
     private Dictionary<string, bool> WalletsColumns = new();
     private bool columnsLoaded;
+
+    private string? _outputDescriptor;
 
     public abstract class WalletsColumnName
     {
@@ -584,7 +632,6 @@
         if (!firstRender && !columnsLoaded)
         {
             await LoadColumnLayout();
-
         }
     }
 
@@ -831,8 +878,8 @@
             if (balance != null)
             {
                 _textModalTitle = $"Wallet: {wallet.Name} On-chain Balance";
-                _textModalContent = $"Confirmed: {((Money)balance.Confirmed).ToUnit(MoneyUnit.BTC):f8} BTC ({Math.Round(PriceConversionService.BtcToUsdConversion(((Money)balance.Confirmed).ToUnit(MoneyUnit.BTC), _btcPrice), 2)} USD) - " +
-                                    $"Unconfirmed: {((Money)balance.Unconfirmed).ToUnit(MoneyUnit.BTC):f8} BTC ({Math.Round(PriceConversionService.BtcToUsdConversion(((Money)balance.Unconfirmed).ToUnit(MoneyUnit.BTC), _btcPrice), 2)} USD)";
+                _textModalContent = $"Confirmed: {((Money) balance.Confirmed).ToUnit(MoneyUnit.BTC):f8} BTC ({Math.Round(PriceConversionService.BtcToUsdConversion(((Money) balance.Confirmed).ToUnit(MoneyUnit.BTC), _btcPrice), 2)} USD) - " +
+                                    $"Unconfirmed: {((Money) balance.Unconfirmed).ToUnit(MoneyUnit.BTC):f8} BTC ({Math.Round(PriceConversionService.BtcToUsdConversion(((Money) balance.Unconfirmed).ToUnit(MoneyUnit.BTC), _btcPrice), 2)} USD)";
                 _textModalCopy = false;
 
                 await _textModalRef.Show();
@@ -938,6 +985,8 @@
         _name = string.Empty;
         _description = string.Empty;
         _derivationPath = string.Empty;
+        _outputDescriptor = string.Empty;
+        _IsImportWalletModalWatchOnly = false;
     }
 
     private async Task ImportWallet()
@@ -947,9 +996,18 @@
             ToastService.ShowError("Please fill in all the required fields");
             return;
         }
-
+        (bool, string?) result = (false, null);
+        if (_IsImportWalletModalWatchOnly && !string.IsNullOrWhiteSpace(_outputDescriptor))
+        {
+    //Import watch-only wallet
+            result = await WalletRepository.ImportWatchOnlyWallet(_name, _description, _outputDescriptor, LoggedUser?.Id);
+        }
+        else
+        {
     //Import bip39 wallet
-        var result = await WalletRepository.ImportBIP39Wallet(_name, _description, _seedphrase, _derivationPath);
+            result = await WalletRepository.ImportBIP39Wallet(_name, _description, _seedphrase, _derivationPath);
+        }
+
 
     //Handle error
         if (!result.Item1)
@@ -980,14 +1038,14 @@
 
     private async Task ShowTransferFundsModal(Wallet wallet)
     {
-        var availableWallets = await WalletRepository.GetAvailableWallets();
+        var availableWallets = await WalletRepository.GetAvailableWallets(true);
         _walletsForTransfer = availableWallets.Where(w => w.Id != wallet.Id).ToList();
         _transferTargetWalletBalance = string.Empty;
         _sourceTransferWallet = wallet;
         _targetTransferWallet = null;
 
         var (balance,_) = await BitcoinService.GetWalletConfirmedBalance(wallet);
-        _sourceWalletBalance = $"{balance:f8} BTC ({Math.Round(PriceConversionService.BtcToUsdConversion((decimal)balance, _btcPrice), 2)} USD)";
+        _sourceWalletBalance = $"{balance:f8} BTC ({Math.Round(PriceConversionService.BtcToUsdConversion((decimal) balance, _btcPrice), 2)} USD)";
 
         await _transferFundsModal?.Show();
     }
@@ -1094,7 +1152,7 @@
                 await CloseAndCleanTransferFundsModal();
             }
         }
-        
+        await CloseAndCleanTransferFundsModal();
 
     }
 
@@ -1186,7 +1244,7 @@
         {
             var (targetBalance,_) = await BitcoinService.GetWalletConfirmedBalance(targetWallet);
 
-            _transferTargetWalletBalance = $"{targetBalance:f8} BTC ({Math.Round(PriceConversionService.BtcToUsdConversion((decimal)targetBalance, _btcPrice), 2)} USD)";
+            _transferTargetWalletBalance = $"{targetBalance:f8} BTC ({Math.Round(PriceConversionService.BtcToUsdConversion((decimal) targetBalance, _btcPrice), 2)} USD)";
         }
     }
 
@@ -1241,6 +1299,7 @@
     {
         await ClipboardService.WriteTextAsync(arg);
         ToastService.ShowSuccess("Address copied");
+        await CloseTextModal();
     }
 
     private bool OnWalletCustomFilter(Wallet wallet)
@@ -1263,7 +1322,7 @@
 
     private bool IsColumnVisible(ColumnDefault column)
     {
-        if (WalletsColumnLayout	== null)
+        if (WalletsColumnLayout == null)
         {
             return true;
         }
@@ -1274,4 +1333,31 @@
     {
         return _walletsDataGrid.Reload();
     }
+
+    private async Task ValidateOutputDescriptor(ValidatorEventArgs arg1, CancellationToken arg2)
+    {
+        arg1.Status = ValidationStatus.Success;
+
+
+    //Parse
+        if (arg1.Value is string)
+        {
+            try
+            {
+                WalletParser.ParseOutputDescriptor(arg1.Value.ToString(), CurrentNetworkHelper.GetCurrentNetwork());
+            }
+            catch (Exception e)
+            {
+                arg1.Status = ValidationStatus.Error;
+                arg1.ErrorText = "Invalid output descriptor";
+            }
+        }
+        else
+        {
+    //Null
+            arg1.Status = ValidationStatus.Error;
+            arg1.ErrorText = "Invalid output descriptor";
+        }
+    }
+
 }
