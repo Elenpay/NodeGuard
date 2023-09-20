@@ -62,12 +62,18 @@ public class APITokenRepository : IAPITokenRepository
             }
         }
 
-    public async Task<APIToken?> GetByToken(string token)
+    public async Task<APIToken?> GetByToken(string token, bool valid = false)
     {
         return await WithContext(
             async context =>
             {
                 var result = await context.ApiTokens.FirstOrDefaultAsync(x => x.TokenHash == token);
+                // Null if it wasn't found in database 
+                // or if the token needs to be valid and it's blocked
+                if (result == null || (valid && result.IsBlocked) )
+                {
+                    return null;
+                }
                 return result;
             }
                 
