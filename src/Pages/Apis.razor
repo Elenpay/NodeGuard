@@ -1,0 +1,250 @@
+@using Humanizer
+@using Microsoft.AspNetCore.Identity
+@using System.Security.Claims
+@using Blazorise.Extensions
+@using Blazorise
+@using Blazorise.DataGrid
+@using Microsoft.AspNetCore.Components.Web
+<PageTitle>API management</PageTitle>
+<h3 class="custom-primary">API tokens</h3>
+
+<Row>
+    <Column ColumnSize="ColumnSize.Is12">
+        <DataGrid TItem="APIToken"
+                  Data="@_apiTokens"
+                  Editable="true"
+                  EditMode="DataGridEditMode.Popup"
+                  Responsive="true"
+                  ResizeMode="TableResizeMode.Columns"
+                  UseInternalEditing="true"
+                  RowInserted="OnRowInserted"
+                  NewItemDefaultSetter="NewItemDefaultSetter"
+                  ShowPager="true"
+                  ShowPageSizes="true"
+                  PageSize="25"
+                  Filterable="true"
+                  ShowValidationFeedback="true"
+                  ShowValidationsSummary="false"
+                  UseValidation="true">
+            <PopupTitleTemplate>
+                <h2>@(context.EditState) api token</h2>
+            </PopupTitleTemplate>
+            <DataGridColumns>
+                <DataGridCommandColumn TItem="APIToken" Filterable="false">
+                    <NewCommandTemplate>
+                        <Button Color="Color.Success" TextColor="TextColor.Light" Clicked="@context.Clicked">New</Button>
+                    </NewCommandTemplate>
+                    <EditCommandTemplate>
+                        <Buttons>
+                            <Button Color="Color.Primary" Clicked="@context.Clicked">Edit</Button>
+                            @if (!context.Item.IsBlocked)
+                            {
+                                <Button Color="Color.Danger" Clicked="@(()=>OnBlockTokenClicked(context.Item))">Block</Button>
+                            }
+                        </Buttons>
+                    </EditCommandTemplate>
+                    <DeleteCommandTemplate>
+                        <Button Color="Color.Secondary" TextColor="TextColor.Light" Clicked="@context.Clicked">Delete</Button>
+                    </DeleteCommandTemplate>
+                </DataGridCommandColumn>
+                <DataGridColumn TItem="APIToken" Editable="true" Field="@nameof(APIToken.Name)" Caption="Name" Sortable="false" Displayable="@IsColumnVisible(APITokenColumnName.Name)" Filterable="true">
+                </DataGridColumn>
+                <DataGridColumn TItem="APIToken" Field="@nameof(APIToken.CreationDatetime)" Caption="Creation time" Sortable="true" SortDirection="SortDirection.Descending" Displayable="@IsColumnVisible(APITokenColumnName.CreationDatetime)" Filterable="false">
+                    <DisplayTemplate>
+                        @context.CreationDatetime.Humanize()
+                    </DisplayTemplate>
+                </DataGridColumn>
+                <DataGridColumn TItem="APIToken" Field="@nameof(APIToken.IsBlocked)" Caption="Blocked" Displayable="@IsColumnVisible(APITokenColumnName.IsBlocked)" Filterable="false" Sortable="false">
+                </DataGridColumn>
+            </DataGridColumns>
+        </DataGrid>
+    </Column>
+</Row>
+
+<Modal @ref="_textModalRef">
+    <ModalContent Centered Size="ModalSize.Large">
+        <ModalHeader>
+            <ModalTitle>@_textModalTitle</ModalTitle>
+            <CloseButton/>
+        </ModalHeader>
+        <ModalBody>
+            <p>@_textModalContent</p>
+        </ModalBody>
+        <ModalFooter>
+            @if (_textModalCopy)
+            {
+                <Button Color="Color.Primary" Clicked="@(() => CopyStrToClipboard(_textModalContent))">Copy</Button>
+            }
+            <Button Color="Color.Secondary" Clicked="@CloseTextModal">Close</Button>
+        </ModalFooter>
+    </ModalContent>
+</Modal>
+
+@page "/apis"
+@inject IApplicationUserRepository ApplicationUserRepository
+@inject IAPITokenRepository APITokenRepository
+@inject IToastService ToastService
+@inject ILocalStorageService LocalStorageService
+@attribute [Authorize(Roles = "Superadmin")]
+@code {
+    
+    private APIToken _newItem;
+    private List<APIToken> _apiTokens = new();
+    
+    private Modal _textModalRef;
+    private string _textModalTitle = string.Empty;
+    private string _textModalContent = string.Empty;
+    private bool _textModalCopy;
+
+    [CascadingParameter]
+    private ApplicationUser? LoggedUser { get; set; }
+
+    [CascadingParameter]
+    private ClaimsPrincipal? ClaimsPrincipal { get; set; }
+
+    private ColumnLayout<APITokenColumnName> APITokenColumnLayout;
+    private Dictionary<string, bool> UsersColumns = new();
+    private bool columnsLoaded;
+
+    public abstract class APITokenColumnName
+    {
+        public static readonly ColumnDefault Name = new("Name");
+        public static readonly ColumnDefault IsBlocked = new("Blocked");
+        public static readonly ColumnDefault CreationDatetime = new("Creation Time");
+    }
+
+    protected override async Task OnInitializedAsync()
+    {
+        if (LoggedUser != null)
+        {
+            await GetData();
+        }
+    }
+
+    private async Task GetData()
+    {
+
+        _apiTokens = await APITokenRepository.GetAll();
+
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!firstRender && !columnsLoaded)
+        {
+            await LoadColumnLayout();
+
+        }
+    }
+
+    private async Task LoadColumnLayout()
+    {
+        UsersColumns = await LocalStorageService.LoadStorage(nameof(APITokenColumnName), ColumnHelpers.GetColumnsDictionary<APITokenColumnName>());
+        columnsLoaded = true;
+        StateHasChanged();
+    }
+
+    private async Task OnRowInserted(SavedRowItem<APIToken, Dictionary<string, object>> arg)
+    {
+        if (arg.Item == null) return;
+
+        var addResult = await APITokenRepository.AddAsync(arg.Item);
+
+        if (addResult.Item1)
+        {
+            await ShowCopyModalToken(arg.Item);
+        }
+
+        else
+        {
+            ToastService.ShowError("Something went wrong");
+            _apiTokens.Remove(arg.Item);
+        }
+    }
+
+    private async Task OnRowRemoving(CancellableRowChange<ApplicationUser> arg)
+    {
+        if (arg.Item != null)
+        {
+
+            var (result, message) = ApplicationUserRepository.Remove(arg.Item);
+
+            if (!result)
+            {
+
+                arg.Cancel = true;
+                ToastService.ShowError("Something went wrong");
+            }
+            else
+            {
+                ToastService.ShowSuccess("Success");
+                await GetData();
+            }
+        }
+    }
+    
+
+    private bool IsColumnVisible(ColumnDefault column)
+    {
+        if (APITokenColumnLayout == null)
+        {
+            return true;
+        }
+        return APITokenColumnLayout.IsColumnVisible(column);
+    }
+    
+    private async Task OnBlockTokenClicked(APIToken contextItem)
+    {
+        if (contextItem != null)
+        {
+            var result= APITokenRepository.BlockToken(contextItem);
+
+            if (result)
+            {
+                ToastService.ShowSuccess("Token blocked");
+            }
+            else
+            {
+                ToastService.ShowError("Something went wrong");
+
+            }
+
+            await GetData();
+        }
+    }
+    
+    private void NewItemDefaultSetter(APIToken obj)
+    {
+        obj.CreatorId = LoggedUser.Id;
+        _newItem = obj;
+    }
+    
+    
+    private async Task ShowCopyModalToken(APIToken token)
+    {
+        await CleanTextModal();
+        _textModalTitle = "Make sure to copy your token now. You won’t be able to see it again!";
+        _textModalContent = token.TokenHash;
+        _textModalCopy = true;
+        await _textModalRef.Show();
+    }
+    
+    private async Task CleanTextModal()
+    {
+        _textModalContent = string.Empty;
+        _textModalTitle = string.Empty;
+    }
+    
+    private async Task CopyStrToClipboard(string arg)
+    {
+        await ClipboardService.WriteTextAsync(arg);
+        ToastService.ShowSuccess("Token copied to clipboard");
+        await CloseTextModal();
+    }
+    
+    private async Task CloseTextModal()
+    {
+        await CleanTextModal();
+        await _textModalRef.Close(CloseReason.UserClosing);
+    }
+}

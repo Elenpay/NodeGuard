@@ -596,7 +596,7 @@
             {
                 _manageableNodes = _manageableNodes.Where(node => node.Id != _selectedDestNode.Id).ToList();
             }
-            _allWallets = await WalletRepository.GetAvailableWallets();
+            _allWallets = await WalletRepository.GetAvailableWallets(false);
         }
     }
 

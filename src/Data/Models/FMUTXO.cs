@@ -17,7 +17,7 @@
  *
  */
 
-﻿namespace NodeGuard.Data.Models
+namespace NodeGuard.Data.Models
 {
     /// <summary>
     /// UTXO entity in the NodeGuard

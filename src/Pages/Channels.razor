@@ -412,7 +412,7 @@
 
     private async Task FetchData()
     {
-        _availableWallets = await WalletRepository.GetAvailableWallets();
+        _availableWallets = await WalletRepository.GetAvailableWallets(true);
         if (LoggedUser?.Id != null)
         {
             _channels = await ChannelRepository.GetAllManagedByUserNodes(LoggedUser.Id);

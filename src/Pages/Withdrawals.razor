@@ -502,7 +502,10 @@
 
         _allRequests = (await WalletWithdrawalRequestRepository.GetAll()).Except(_userPendingRequests).ToList();
 
-        _availableWallets = await WalletRepository.GetAvailableWallets();
+        _availableWallets = await WalletRepository.GetAvailableWallets(false);
+        //TODO Fix BIP39 withdrawals, until then, manual hack to filter them out
+        _availableWallets = _availableWallets.Where(x => !x.IsBIP39Imported).ToList();
+
     }
 
     private async Task OnRowInserted(SavedRowItem<WalletWithdrawalRequest, Dictionary<string, object>> arg)

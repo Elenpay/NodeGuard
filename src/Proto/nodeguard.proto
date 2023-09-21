@@ -53,6 +53,16 @@ service NodeGuardService {
   Adds a liquidity rule to a channel
    */
   rpc AddLiquidityRule(AddLiquidityRuleRequest) returns (AddLiquidityRuleResponse);
+
+  /*
+  Gets a list of available UTXOs for a wallet
+   */
+  rpc GetAvailableUtxos(GetAvailableUtxosRequest) returns (GetAvailableUtxosResponse);
+
+  /*
+  Gets the status for the provided withdrawals request ids
+   */
+  rpc GetWithdrawalsRequestStatus(GetWithdrawalsRequestStatusRequest) returns (GetWithdrawalsRequestStatusResponse);
   
   /*
   Gets a channel by id
@@ -93,12 +103,17 @@ message RequestWithdrawalRequest {
   string description = 4;
   // in JSON format
   string request_metadata = 5;
+  // Whether the withdrawal should be performed in a changeless way
+  bool changeless = 6;
+  // Outpoints for the UTXOs to use for the withdrawal
+  repeated string utxos_outpoints = 7;
 }
 
 message RequestWithdrawalResponse {
   //  optionalTransaction ID of the withdrawal
   string txid = 1;
   bool is_hot_wallet = 2;
+  int32 request_id = 3;
 }
 
 enum WALLET_TYPE {
@@ -250,7 +265,7 @@ message GetChannelOperationRequestResponse {
 }
 
 message AddLiquidityRuleRequest {
-// Channel ID from NGs database
+  // Channel ID from NGs database
   int32 channel_id = 1;
   // Wallet ID as stored in the NG's database
   int32 wallet_id = 2;
@@ -265,6 +280,60 @@ message AddLiquidityRuleRequest {
 message AddLiquidityRuleResponse {
   // Rule ID as stored in the NG's database
   int32 rule_id = 1;
+}
+
+enum COIN_SELECTION_STRATEGY
+{
+    SMALLEST_FIRST = 0;
+    BIGGEST_FIRST = 1;
+    CLOSEST_TO_TARGET_FIRST = 2;
+    UP_TO_AMOUNT = 3;
+}
+
+message GetAvailableUtxosRequest {
+  // Wallet ID as stored in the NG's database
+  int32 wallet_id = 1;
+  // How to order the UTXOs for automatic selection
+  optional COIN_SELECTION_STRATEGY strategy = 2;
+  // How many UTXOs are allowed to be used for the withdrawal
+  optional int32 limit = 3;
+  // Amount in satoshis
+  optional int64 amount = 4;
+  // Order the UTXOs by closest to the amount specified if the strategy selected is CLOSEST_TO_TARGET_FIRST
+  optional int64 closestTo = 5;
+}
+
+message Utxo {
+  int64 amount = 1;
+  string outpoint = 2;
+}
+
+message GetAvailableUtxosResponse {
+  repeated Utxo confirmed = 1;
+  repeated Utxo unconfirmed = 2;
+}
+
+enum WITHDRAWAL_REQUEST_STATUS {
+    WITHDRAWAL_SETTLED = 0;
+    WITHDRAWAL_PENDING_APPROVAL = 1;
+    WITHDRAWAL_CANCELLED = 2;
+    WITHDRAWAL_REJECTED = 3;
+    WITHDRAWAL_PENDING_CONFIRMATION = 4;
+    WITHDRAWAL_FAILED = 5;
+}
+
+message GetWithdrawalsRequestStatusRequest {
+  repeated int32 request_ids = 1;
+}
+
+message WithdrawalRequest {
+  int32 request_id = 1;
+  WITHDRAWAL_REQUEST_STATUS status = 2;
+  optional string reject_or_cancel_reason = 3;
+}
+
+message GetWithdrawalsRequestStatusResponse {
+  repeated WithdrawalRequest withdrawal_requests = 1;
 }
 
 message GetChannelRequest {

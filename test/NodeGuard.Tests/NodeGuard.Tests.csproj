@@ -9,7 +9,7 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <PackageReference Include="FluentAssertions" Version="6.11.0" />
+    <PackageReference Include="FluentAssertions" Version="6.12.0" />
     <PackageReference Include="Grpc.Core.Api" Version="2.55.0" />
     <PackageReference Include="Grpc.Core.Testing" Version="2.46.6" />
     <PackageReference Include="Microsoft.EntityFrameworkCore.InMemory" Version="7.0.9" />

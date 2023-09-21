@@ -174,6 +174,13 @@ namespace NodeGuard.Data.Models
 
                 //We add the internal Wallet signature
                 if (Wallet != null && Wallet.IsHotWallet) return ChannelOperationRequestPsbts.Count(x => x.IsTemplatePSBT) == 1;
+                
+                //if it is a BIP39 or watch only wallet, we don't need to add the internal wallet signature
+                if (Wallet != null && (Wallet.IsBIP39Imported || Wallet.IsWatchOnly))
+                {
+                    return userPSBTsCount == Wallet.MofN;
+                }
+                
                 userPSBTsCount++;
 
                 if (userPSBTsCount == Wallet.MofN)

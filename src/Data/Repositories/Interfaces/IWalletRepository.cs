@@ -35,8 +35,9 @@ public interface IWalletRepository
     /// <summary>
     /// Obtains all wallets that are Finalised and not in a compromised or archived state
     /// </summary>
+    /// // <param name="includeWatchOnlyWallets">If true, watch-only wallets will be included</param>
     /// <returns> List of available wallets</returns>
-    Task<List<Wallet>> GetAvailableWallets();
+    Task<List<Wallet>> GetAvailableWallets(bool includeWatchOnlyWallets = false);
 
     Task<(bool, string?)> AddAsync(Wallet type);
 
@@ -65,4 +66,13 @@ public interface IWalletRepository
     /// <param name="userId"></param>
     /// <returns></returns>
     Task<(bool, string?)> ImportBIP39Wallet(string name, string description, string seedphrase, string derivationPath, string? userId = null);
+
+    /// <summary>
+    /// Imports a watch-only wallet by creating a wallet and its key entities based on the output descriptor
+    /// </summary>
+    /// <param name="name"></param>
+    /// <param name="description"></param>
+    /// <param name="outputDescriptor"></param>
+    /// <returns></returns>
+    Task<(bool,string?)> ImportWatchOnlyWallet(string name, string? description, string outputDescriptor, string? userId = null);
 }

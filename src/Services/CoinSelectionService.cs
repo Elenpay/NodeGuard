@@ -126,7 +126,7 @@ public class CoinSelectionService: ICoinSelectionService
     public async Task<List<UTXO>> GetLockedUTXOsForRequest(IBitcoinRequest bitcoinRequest, BitcoinRequestType requestType)
     {
         var getUTXOsOperation = await GetRepository(requestType).GetUTXOs(bitcoinRequest);
-        if (!getUTXOsOperation.Item1)
+        if (!getUTXOsOperation.Item1 || getUTXOsOperation.Item2 == null)
         {
             _logger.LogError(
                 $"Could not get utxos from {requestType.ToString()} request:{bitcoinRequest.Id}");
@@ -134,9 +134,10 @@ public class CoinSelectionService: ICoinSelectionService
         }
 
         // TODO: Convert from fmutxo to utxo by calling nbxplorer api with the list of txids
-        var lockedUTXOsList = getUTXOsOperation.Item2.Select(utxo => utxo.TxId);
+        var lockedUTXOsList = getUTXOsOperation.Item2.Select(utxo => $"{utxo.TxId}-{utxo.OutputIndex}");
         var utxos = await _nbXplorerService.GetUTXOsAsync(bitcoinRequest.Wallet.GetDerivationStrategy());
-        return utxos.Confirmed.UTXOs.Where(utxo => lockedUTXOsList.Contains(utxo.Outpoint.Hash.ToString())).ToList();
+        utxos.RemoveDuplicateUTXOs();
+        return utxos.Confirmed.UTXOs.Where(utxo => lockedUTXOsList.Contains(utxo.Outpoint.ToString())).ToList();
     }
 
     private async Task<List<UTXO>> FilterUnlockedUTXOs(UTXOChanges? utxoChanges)
@@ -205,6 +206,7 @@ public class CoinSelectionService: ICoinSelectionService
     public async Task<List<UTXO>> GetUTXOsByOutpointAsync(DerivationStrategyBase derivationStrategy, List<OutPoint> outPoints)
     {
         var utxos = await _nbXplorerService.GetUTXOsAsync(derivationStrategy);
+        utxos.RemoveDuplicateUTXOs();
         return utxos.Confirmed.UTXOs.Where(utxo => outPoints.Contains(utxo.Outpoint)).ToList();
     }
 }

@@ -43,6 +43,10 @@ public interface INodeGuardService
     Task<GetChannelOperationRequestResponse> GetChannelOperationRequest(GetChannelOperationRequestRequest request, ServerCallContext context);
 
     Task<AddLiquidityRuleResponse> AddLiquidityRule(AddLiquidityRuleRequest request, ServerCallContext context);
+
+    Task<GetAvailableUtxosResponse> GetAvailableUtxos(GetAvailableUtxosRequest request, ServerCallContext context);
+
+    Task<GetWithdrawalsRequestStatusResponse> GetWithdrawalsRequestStatus(GetWithdrawalsRequestStatusRequest request, ServerCallContext context);
     
     Task<GetChannelResponse> GetChannel(GetChannelRequest request, ServerCallContext context);
 }
@@ -66,6 +70,7 @@ public class NodeGuardService : Nodeguard.NodeGuardService.NodeGuardServiceBase,
     private readonly ICoinSelectionService _coinSelectionService;
     private readonly IScheduler _scheduler;
     private readonly ILightningService _lightningService;
+    private readonly IFMUTXORepository _fmutxoRepository;
 
     public NodeGuardService(ILogger<NodeGuardService> logger,
         ILiquidityRuleRepository liquidityRuleRepository,
@@ -79,7 +84,8 @@ public class NodeGuardService : Nodeguard.NodeGuardService.NodeGuardServiceBase,
         IChannelOperationRequestRepository channelOperationRequestRepository,
         IChannelRepository channelRepository,
         ICoinSelectionService coinSelectionService,
-        ILightningService lightningService
+        ILightningService lightningService,
+        IFMUTXORepository fmutxoRepository
     )
     {
         _logger = logger;
@@ -95,6 +101,7 @@ public class NodeGuardService : Nodeguard.NodeGuardService.NodeGuardServiceBase,
         _channelRepository = channelRepository;
         _coinSelectionService = coinSelectionService;
         _lightningService = lightningService;
+        _fmutxoRepository = fmutxoRepository;
         _scheduler = Task.Run(() => _schedulerFactory.GetScheduler()).Result;
     }
 
@@ -158,6 +165,7 @@ public class NodeGuardService : Nodeguard.NodeGuardService.NodeGuardServiceBase,
     public override async Task<RequestWithdrawalResponse> RequestWithdrawal(RequestWithdrawalRequest request,
         ServerCallContext context)
     {
+        WalletWithdrawalRequest? withdrawalRequest = null;
         try
         {
             //We get the wallet
@@ -171,7 +179,22 @@ public class NodeGuardService : Nodeguard.NodeGuardService.NodeGuardServiceBase,
             //Create withdrawal request
             var amount = new Money(request.Amount, MoneyUnit.Satoshi).ToUnit(MoneyUnit.BTC);
 
-            var withdrawalRequest = new WalletWithdrawalRequest()
+            var outpoints = new List<OutPoint>();
+            var utxos = new List<UTXO>();
+
+            if (request.Changeless)
+            {
+                foreach (var outpoint in request.UtxosOutpoints)
+                {
+                    outpoints.Add(OutPoint.Parse(outpoint));
+                }
+
+                // Search the utxos and lock them
+                utxos = await _coinSelectionService.GetUTXOsByOutpointAsync(wallet.GetDerivationStrategy(), outpoints);
+                amount = utxos.Sum(u => ((Money)u.Value).ToUnit(MoneyUnit.BTC));
+            }
+
+            withdrawalRequest = new WalletWithdrawalRequest()
             {
                 WalletId = request.WalletId,
                 Amount = amount,
@@ -180,7 +203,8 @@ public class NodeGuardService : Nodeguard.NodeGuardService.NodeGuardServiceBase,
                 Status = wallet.IsHotWallet
                     ? WalletWithdrawalRequestStatus.PSBTSignaturesPending
                     : WalletWithdrawalRequestStatus.Pending,
-                RequestMetadata = request.RequestMetadata
+                RequestMetadata = request.RequestMetadata,
+                Changeless = request.Changeless
             };
 
             //Save withdrawal request
@@ -190,6 +214,13 @@ public class NodeGuardService : Nodeguard.NodeGuardService.NodeGuardServiceBase,
             {
                 _logger.LogError("Error saving withdrawal request for wallet with id {walletId}", request.WalletId);
                 throw new RpcException(new Status(StatusCode.Internal, "Error saving withdrawal request for wallet"));
+            }
+
+            if (request.Changeless)
+            {
+                // Lock the utxos
+                await _coinSelectionService.LockUTXOs(utxos, withdrawalRequest,
+                    BitcoinRequestType.WalletWithdrawal);
             }
 
             //Update to refresh from db
@@ -217,7 +248,8 @@ public class NodeGuardService : Nodeguard.NodeGuardService.NodeGuardServiceBase,
             var response = new RequestWithdrawalResponse
             {
                 IsHotWallet = wallet.IsHotWallet,
-                Txid = psbt.GetGlobalTransaction().GetHash().ToString()
+                Txid = psbt.GetGlobalTransaction().GetHash().ToString(),
+                RequestId = withdrawalRequest.Id
             };
 
             return response;
@@ -229,6 +261,15 @@ public class NodeGuardService : Nodeguard.NodeGuardService.NodeGuardServiceBase,
         }
         catch (Exception e)
         {
+            if (withdrawalRequest != null)
+            {
+                withdrawalRequest.Status = WalletWithdrawalRequestStatus.Cancelled;
+                var (success, error) = _walletWithdrawalRequestRepository.Update(withdrawalRequest);
+                if (!success)
+                {
+                    _logger.LogError(e, "Error updating status of withdrawal request {RequestId} for wallet {WalletId}", withdrawalRequest.Id, request.WalletId);
+                }
+            }
             _logger.LogError(e, "Error requesting withdrawal for wallet with id {walletId}", request.WalletId);
             throw new RpcException(new Status(StatusCode.Internal, "Error requesting withdrawal for wallet"));
         }
@@ -398,26 +439,15 @@ public class NodeGuardService : Nodeguard.NodeGuardService.NodeGuardServiceBase,
             }
 
             // Get the fee type of the request
-            MempoolRecommendedFeesTypes feeType;
-
-            switch (request.MempoolFeeRate)
+            var feeType = request.MempoolFeeRate switch
             {
-                case FEES_TYPE.EconomyFee:
-                    feeType = MempoolRecommendedFeesTypes.EconomyFee;
-                    break;
-                case FEES_TYPE.FastestFee:
-                    feeType = MempoolRecommendedFeesTypes.FastestFee;
-                    break;
-                case FEES_TYPE.HourFee:
-                    feeType = MempoolRecommendedFeesTypes.HourFee;
-                    break;
-                case FEES_TYPE.HalfHourFee:
-                    feeType = MempoolRecommendedFeesTypes.HalfHourFee;
-                    break;
-                default:
-                    feeType = MempoolRecommendedFeesTypes.CustomFee;
-                    break;
-            }
+                FEES_TYPE.EconomyFee => MempoolRecommendedFeesTypes.EconomyFee,
+                FEES_TYPE.FastestFee => MempoolRecommendedFeesTypes.FastestFee,
+                FEES_TYPE.HourFee => MempoolRecommendedFeesTypes.HourFee,
+                FEES_TYPE.HalfHourFee => MempoolRecommendedFeesTypes.HalfHourFee,
+                FEES_TYPE.CustomFee => MempoolRecommendedFeesTypes.CustomFee,
+                _ => throw new ArgumentOutOfRangeException(nameof(request.MempoolFeeRate), request.MempoolFeeRate, "Unknown status")
+            };
 
             if (feeType == MempoolRecommendedFeesTypes.CustomFee && !request.HasCustomFeeRate)
             {
@@ -749,6 +779,90 @@ public class NodeGuardService : Nodeguard.NodeGuardService.NodeGuardServiceBase,
             return false;
 
         return true;
+    }
+
+    public override async Task<GetAvailableUtxosResponse> GetAvailableUtxos(GetAvailableUtxosRequest request, ServerCallContext context)
+    {
+        var wallet = await _walletRepository.GetById(request.WalletId);
+        if (wallet == null)
+        {
+            throw new Exception("Wallet not found");
+        }
+
+        var coinSelectionStrategy = request.Strategy switch
+        {
+            COIN_SELECTION_STRATEGY.BiggestFirst => CoinSelectionStrategy.BiggestFirst,
+            COIN_SELECTION_STRATEGY.SmallestFirst => CoinSelectionStrategy.SmallestFirst,
+            COIN_SELECTION_STRATEGY.ClosestToTargetFirst => CoinSelectionStrategy.ClosestToTargetFirst,
+            COIN_SELECTION_STRATEGY.UpToAmount => CoinSelectionStrategy.UpToAmount,
+            _ => throw new ArgumentOutOfRangeException(nameof(request.Strategy), request.Strategy, "Unknown status")
+        };
+
+        var derivationStrategy = wallet.GetDerivationStrategy();
+        if (derivationStrategy == null)
+        {
+            throw new Exception("Derivation strategy not found for wallet with id {walletId}");
+        }
+
+        var lockedUtxos = await _fmutxoRepository.GetLockedUTXOs();
+        var utxos = await _nbXplorerService.GetUTXOsByLimitAsync(
+            derivationStrategy,
+            coinSelectionStrategy,
+            request.Limit,
+            request.Amount,
+            request.ClosestTo,
+            lockedUtxos.Select(utxo => $"{utxo.TxId}-{utxo.OutputIndex}").ToList()
+            );
+
+        var confirmedUtxos = utxos.Confirmed.UTXOs.Select(utxo => new Utxo()
+        {
+            Amount = (Money)utxo.Value,
+            Outpoint = utxo.Outpoint.ToString()
+        });
+        var unconfirmedUtxos = utxos.Unconfirmed.UTXOs.Select(utxo => new Utxo()
+        {
+            Amount = (Money)utxo.Value,
+            Outpoint = utxo.Outpoint.ToString()
+        });
+
+        return new GetAvailableUtxosResponse()
+        {
+            Confirmed = { confirmedUtxos },
+            Unconfirmed = { unconfirmedUtxos },
+        };
+    }
+
+    private WITHDRAWAL_REQUEST_STATUS GetStatus(WalletWithdrawalRequestStatus status)
+    {
+        return status switch
+        {
+            WalletWithdrawalRequestStatus.Cancelled => WITHDRAWAL_REQUEST_STATUS.WithdrawalCancelled,
+            WalletWithdrawalRequestStatus.Failed => WITHDRAWAL_REQUEST_STATUS.WithdrawalFailed,
+            WalletWithdrawalRequestStatus.FinalizingPSBT => WITHDRAWAL_REQUEST_STATUS.WithdrawalPendingApproval,
+            WalletWithdrawalRequestStatus.OnChainConfirmationPending => WITHDRAWAL_REQUEST_STATUS.WithdrawalPendingConfirmation,
+            WalletWithdrawalRequestStatus.OnChainConfirmed => WITHDRAWAL_REQUEST_STATUS.WithdrawalSettled,
+            WalletWithdrawalRequestStatus.Pending => WITHDRAWAL_REQUEST_STATUS.WithdrawalPendingApproval,
+            WalletWithdrawalRequestStatus.PSBTSignaturesPending => WITHDRAWAL_REQUEST_STATUS.WithdrawalPendingApproval,
+            WalletWithdrawalRequestStatus.Rejected => WITHDRAWAL_REQUEST_STATUS.WithdrawalRejected,
+            _ => throw new ArgumentOutOfRangeException(nameof(status), status, "Unknown status")
+        };
+    }
+
+    public override async Task<GetWithdrawalsRequestStatusResponse> GetWithdrawalsRequestStatus(GetWithdrawalsRequestStatusRequest request, ServerCallContext context)
+    {
+        var withdrawalRequests = await _walletWithdrawalRequestRepository.GetByIds(request.RequestIds.ToList());
+        return new GetWithdrawalsRequestStatusResponse()
+        {
+            WithdrawalRequests =
+            {
+                withdrawalRequests.Select(wr => new WithdrawalRequest
+                {
+                    RequestId = wr.Id,
+                    Status = GetStatus(wr.Status),
+                    RejectOrCancelReason = wr.RejectCancelDescription ?? ""
+                }).ToList()
+            }
+        };
     }
 
     public override async Task<GetChannelResponse> GetChannel(GetChannelRequest request, ServerCallContext context)
