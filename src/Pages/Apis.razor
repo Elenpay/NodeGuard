@@ -52,6 +52,15 @@
                     </DeleteCommandTemplate>
                 </DataGridCommandColumn>
                 <DataGridColumn TItem="APIToken" Editable="true" Field="@nameof(APIToken.Name)" Caption="Name" Sortable="false" Displayable="@IsColumnVisible(APITokenColumnName.Name)" Filterable="true">
+                                        <EditTemplate>
+                                            <Validation Validator="@ValidationHelper.ValidateName">
+                                                <TextEdit Text="@((string) context.CellValue)" TextChanged="(text) => { context.CellValue = text; }">
+                                                    <Feedback>
+                                                        <ValidationError/>
+                                                    </Feedback>
+                                                </TextEdit>
+                                            </Validation>
+                                        </EditTemplate>
                 </DataGridColumn>
                 <DataGridColumn TItem="APIToken" Field="@nameof(APIToken.CreationDatetime)" Caption="Creation time" Sortable="true" SortDirection="SortDirection.Descending" Displayable="@IsColumnVisible(APITokenColumnName.CreationDatetime)" Filterable="false">
                     <DisplayTemplate>
