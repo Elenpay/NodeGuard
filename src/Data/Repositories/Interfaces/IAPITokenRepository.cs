@@ -8,5 +8,6 @@ public interface IAPITokenRepository
     Task<List<APIToken>> GetAll();
     (bool, string?) Update(APIToken type);
     bool BlockToken(APIToken type);
+    bool UnblockToken(APIToken type);
     
 }

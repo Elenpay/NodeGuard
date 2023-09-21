@@ -1,4 +1,5 @@
 using System.Security.Cryptography;
+using Google.Protobuf.WellKnownTypes;
 using Microsoft.EntityFrameworkCore;
 using NodeGuard.Data.Models;
 using NodeGuard.Data.Repositories.Interfaces;
@@ -74,16 +75,26 @@ public class APITokenRepository : IAPITokenRepository
     
     public bool BlockToken(APIToken type)
     {
+        return ChangeBlockStatus(type, true);
+    }
+
+    public bool UnblockToken(APIToken type)
+    {
+        return ChangeBlockStatus(type, false);
+    }
+    
+    private bool ChangeBlockStatus(APIToken type, bool status)
+    {
         try
         {
-            type.IsBlocked = true;
+            type.IsBlocked = status;
             Update(type);
             return true;
         }
         catch (Exception e)
         {
-            const string errorWhileBlockingToken = "Error while blocking token";
-            _logger.LogError(e, errorWhileBlockingToken);
+            var errorWhileChangingBlockStatus = status ? "Error while blocking token" : "Error while unblocking token";
+            _logger.LogError(e, errorWhileChangingBlockStatus);
             return false;
         }
     }

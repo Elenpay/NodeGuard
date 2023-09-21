@@ -39,7 +39,11 @@
                             <Button Color="Color.Primary" Clicked="@context.Clicked">Edit</Button>
                             @if (!context.Item.IsBlocked)
                             {
-                                <Button Color="Color.Danger" Clicked="@(()=>OnBlockTokenClicked(context.Item))">Block</Button>
+                                <Button Color="Color.Danger" Clicked="@(()=>OnBlockStatusTokenClicked(context.Item))">Block</Button>
+                            }
+                            else
+                            {
+                                <Button Color="Color.Success" Clicked="@(()=>OnBlockStatusTokenClicked(context.Item, false))">Unblock</Button>
                             }
                         </Buttons>
                     </EditCommandTemplate>
@@ -193,15 +197,15 @@
         return APITokenColumnLayout.IsColumnVisible(column);
     }
     
-    private async Task OnBlockTokenClicked(APIToken contextItem)
+    private async Task OnBlockStatusTokenClicked(APIToken contextItem, bool blockIt = true)
     {
         if (contextItem != null)
         {
-            var result= APITokenRepository.BlockToken(contextItem);
+            var result= blockIt ? APITokenRepository.BlockToken(contextItem) : APITokenRepository.UnblockToken(contextItem);
 
             if (result)
             {
-                ToastService.ShowSuccess("Token blocked");
+                ToastService.ShowSuccess(blockIt ? "Token blocked" : "Token unblocked");
             }
             else
             {
