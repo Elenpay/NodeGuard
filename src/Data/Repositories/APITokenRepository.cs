@@ -22,11 +22,6 @@ public class APITokenRepository : IAPITokenRepository
         _dbContextFactory = dbContextFactory;
     }
     
-    private async Task<T> WithContext<T>(Func<ApplicationDbContext, Task<T>> func)
-    {
-        await using var context = _dbContextFactory.CreateDbContext();
-        return await func(context);
-    }
     
     public async Task<(bool, string?)> AddAsync(APIToken type)
         {
@@ -64,20 +59,15 @@ public class APITokenRepository : IAPITokenRepository
 
     public async Task<APIToken?> GetByToken(string token, bool valid = false)
     {
-        return await WithContext(
-            async context =>
-            {
-                var result = await context.ApiTokens.FirstOrDefaultAsync(x => x.TokenHash == token);
-                // Null if it wasn't found in database 
-                // or if the token needs to be valid and it's blocked
-                if (result == null || (valid && result.IsBlocked) )
-                {
-                    return null;
-                }
-                return result;
-            }
-                
-            );
+        await using var applicationDbContext = await _dbContextFactory.CreateDbContextAsync();
+        var result = await applicationDbContext.ApiTokens.FirstOrDefaultAsync(x => x.TokenHash == token);
+        // Null if it wasn't found in database 
+        // or if the token needs to be valid and it's blocked
+        if (result == null || (valid && result.IsBlocked) )
+        {
+            return null;
+        }
+        return result;
     }
     public async Task<List<APIToken>> GetAll()
     {
