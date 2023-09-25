@@ -2,6 +2,7 @@
 using Grpc.Core;
 using NodeGuard.Data.Models;
 using NodeGuard.Data.Repositories.Interfaces;
+using NSubstitute.ExceptionExtensions;
 
 namespace NodeGuard.Rpc;
 
@@ -36,7 +37,7 @@ public class AuthInterceptorTests
     }
     
     [Fact]
-    public async Task AuthInterceptor_ExistingToken()
+    public async Task AuthInterceptor_ExistingTokenValid()
     {
         var validToken = "iamavalidtoken";
         var apiTokenFixture = new APIToken { TokenHash = validToken };
@@ -63,5 +64,26 @@ public class AuthInterceptorTests
                 It.IsAny<string>(),
                 It.IsAny<TestServerCallContext>()),
             Times.Once);
+    }
+    
+    [Fact]
+    public async Task AuthInterceptor_ExistingTokenInvalid()
+    {
+        var validToken = "iamaninvalidtoken";
+        var apiTokenFixture = new APIToken { TokenHash = validToken , IsBlocked = true};
+        var mockedApiTokenRepository = new Mock<IAPITokenRepository>();
+        //GetBytoken mocked to return a valid token
+        mockedApiTokenRepository.Setup(x => x.GetByToken(It.IsAny<string>()))
+            .ReturnsAsync(apiTokenFixture);
+        
+        var context = TestServerCallContext.Create(new Metadata{{"auth-token", validToken}});
+        var interceptor = new ServerAuthInterceptor(mockedApiTokenRepository.Object);
+        var continuation = new UnaryServerMethod<string, string>(async (request, context) => { return "response"; });
+
+        
+        var expectedMessage = "Invalid token";
+
+        var exception = await Assert.ThrowsAsync<RpcException>(() => interceptor.UnaryServerHandler<string, string>(String.Empty, context, continuation));
+        Assert.Equal(expectedMessage, exception.Status.Detail);
     }
 }
