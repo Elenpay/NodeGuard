@@ -14,7 +14,7 @@ public class AuthInterceptorTests
         // Arrange
         var context = TestServerCallContext.Create();
         var mockedApiTokenRepository = new Mock<IAPITokenRepository>();
-        var interceptor = new ServerAuthInterceptor(mockedApiTokenRepository.Object);
+        var interceptor = new GRPCAuthInterceptor(mockedApiTokenRepository.Object);
         var continuation = new UnaryServerMethod<string, string>(async (request, context) => { return "response"; });
 
         var expectedMessage = "No token provided";
@@ -30,7 +30,7 @@ public class AuthInterceptorTests
         // Arrange
         var context = TestServerCallContext.Create(new Metadata{{"auth-token", "iamastupidtoken"}});
         var mockedApiTokenRepository = new Mock<IAPITokenRepository>();
-        var interceptor = new ServerAuthInterceptor(mockedApiTokenRepository.Object);
+        var interceptor = new GRPCAuthInterceptor(mockedApiTokenRepository.Object);
         var continuation = new UnaryServerMethod<string, string>(async (request, context) => { return "response"; });
 
         var expectedMessage = "Invalid token";
@@ -52,7 +52,7 @@ public class AuthInterceptorTests
             .ReturnsAsync(apiTokenFixture);
         
         var context = TestServerCallContext.Create(new Metadata{{"auth-token", validToken}});
-        var interceptor = new ServerAuthInterceptor(mockedApiTokenRepository.Object);
+        var interceptor = new GRPCAuthInterceptor(mockedApiTokenRepository.Object);
         var mockContinuation = new Mock<UnaryServerMethod<string, string>>();
         mockContinuation.Setup(x => x.Invoke(
                 It.IsAny<string>(), 
@@ -86,7 +86,7 @@ public class AuthInterceptorTests
             .ReturnsAsync(apiTokenFixture);
         
         var context = TestServerCallContext.Create(new Metadata{{"auth-token", validToken}});
-        var interceptor = new ServerAuthInterceptor(mockedApiTokenRepository.Object);
+        var interceptor = new GRPCAuthInterceptor(mockedApiTokenRepository.Object);
         var continuation = new UnaryServerMethod<string, string>(async (request, context) => { return "response"; });
         
         var expectedMessage = "Invalid token";

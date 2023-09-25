@@ -4,11 +4,11 @@ using NodeGuard.Data.Repositories.Interfaces;
 
 namespace NodeGuard.Rpc;
 
-public class ServerAuthInterceptor : Interceptor
+public class GRPCAuthInterceptor : Interceptor
 {
     private readonly IAPITokenRepository _apiTokenRepository;
     
-    public ServerAuthInterceptor(IAPITokenRepository apiTokenRepository)
+    public GRPCAuthInterceptor(IAPITokenRepository apiTokenRepository)
     {
         _apiTokenRepository = apiTokenRepository;
     }
@@ -30,7 +30,7 @@ public override async Task<TResponse> UnaryServerHandler<TRequest, TResponse>(
         {
             throw new RpcException(new Status(StatusCode.Unauthenticated, "Invalid token"));
         }
-
+        
         return await continuation(request, context);
     }
     
