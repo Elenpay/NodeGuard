@@ -343,7 +343,7 @@ message GetChannelRequest {
 
 enum CHANNEL_STATUS {
   OPEN = 0;
-  CLOSE = 1;
+  CLOSED = 1;
 }
 
 message GetChannelResponse {
