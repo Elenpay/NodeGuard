@@ -615,12 +615,34 @@ public class NodeGuardService : Nodeguard.NodeGuardService.NodeGuardServiceBase,
             throw new RpcException(new Status(StatusCode.NotFound, "Channel operation request not found"));
         }
 
+        var status = channelOperationRequest.Status switch
+        {
+            ChannelOperationRequestStatus.Approved => CHANNEL_OPERATION_STATUS.Approved,
+            ChannelOperationRequestStatus.Cancelled => CHANNEL_OPERATION_STATUS.Cancelled,
+            ChannelOperationRequestStatus.Rejected => CHANNEL_OPERATION_STATUS.Rejected,
+            ChannelOperationRequestStatus.Pending => CHANNEL_OPERATION_STATUS.Pending,
+            ChannelOperationRequestStatus.PSBTSignaturesPending => CHANNEL_OPERATION_STATUS.PsbtSignaturesPending,
+            ChannelOperationRequestStatus.OnChainConfirmationPending => CHANNEL_OPERATION_STATUS
+                .OnchainConfirmationPending,
+            ChannelOperationRequestStatus.OnChainConfirmed => CHANNEL_OPERATION_STATUS.OnchainConfirmed,
+            ChannelOperationRequestStatus.Failed => CHANNEL_OPERATION_STATUS.Failed,
+            ChannelOperationRequestStatus.FinalizingPSBT => CHANNEL_OPERATION_STATUS.FinalizingPsbt,
+            _ => throw new ArgumentOutOfRangeException(nameof(channelOperationRequest.Status), channelOperationRequest.Status, "Unknown status")
+        };
+        
+        var type = channelOperationRequest.RequestType switch
+        {
+            OperationRequestType.Open => CHANNEL_OPERATION_TYPE.OpenChannel,
+            OperationRequestType.Close => CHANNEL_OPERATION_TYPE.CloseChannel,
+            _ => throw new ArgumentOutOfRangeException(nameof(channelOperationRequest.RequestType), channelOperationRequest.RequestType, "Unknown type")
+        };
+
         var result = new GetChannelOperationRequestResponse
         {
             SatsAmount = channelOperationRequest.SatsAmount,
             Description = channelOperationRequest.Description,
-            Status = (CHANNEL_OPERATION_STATUS)((int)channelOperationRequest.Status - 1),
-            Type = (CHANNEL_OPERATION_TYPE)((int)channelOperationRequest.RequestType - 1),
+            Status = status,
+            Type = type,
             SourceNodeId = channelOperationRequest.SourceNodeId,
             Private = channelOperationRequest.IsChannelPrivate,
             JobId = channelOperationRequest.JobId
@@ -872,6 +894,13 @@ public class NodeGuardService : Nodeguard.NodeGuardService.NodeGuardServiceBase,
         {
             throw new RpcException(new Status(StatusCode.NotFound, "Channel not found"));
         }
+
+        var status = channel.Status switch
+        {
+            Channel.ChannelStatus.Open => CHANNEL_STATUS.Open,
+            Channel.ChannelStatus.Closed => CHANNEL_STATUS.Closed,
+            _ => throw new ArgumentOutOfRangeException(nameof(channel.Status), channel.Status, "Unknown status")
+        };
         
         var result = new GetChannelResponse()
         {
@@ -879,14 +908,13 @@ public class NodeGuardService : Nodeguard.NodeGuardService.NodeGuardServiceBase,
             OutputIndex = channel.FundingTxOutputIndex,
             ChanId = channel.ChanId,
             SatsAmount = channel.SatsAmount,
-            Status = (CHANNEL_STATUS)((int)channel.Status - 1),
+            Status = status,
             CreatedByNodeguard = channel.CreatedByNodeGuard,
             IsAutomatedLiquidityEnabled = channel.IsAutomatedLiquidityEnabled,
             IsPrivate = channel.IsPrivate,
         };
-
-        if (channel.BtcCloseAddress != null)
-            result.BtcCloseAddress = channel.BtcCloseAddress;
+        
+        result.BtcCloseAddress = channel.BtcCloseAddress != null ? channel.BtcCloseAddress : String.Empty;
 
         return result;
     }
