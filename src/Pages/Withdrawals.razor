@@ -166,7 +166,7 @@
                             }
                         </DisplayTemplate>
                         <EditTemplate>
-                                <Validation Validator="args => ValidationHelper.ValidateWithdrawalAmount(args, false)">
+                                <Validation Validator="args => ValidationHelper.ValidateWithdrawalAmount(args)">
                                     <NumericPicker TValue="decimal" @bind-Value="@_amount" Step="0.00001m" CurrencySymbol="₿ " Max="@(_maxWithdrawal)" Min="_minWithdrawal" Decimals="8" />
                                      <FieldHelp>
                                        @if (Constants.MAXIMUM_WITHDRAWAL_BTC_AMOUNT < _amount)
