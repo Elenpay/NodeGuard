@@ -175,7 +175,7 @@
                                        }
                                        else
                                        {
-                                           @($"Amount in BTC. Minimum {_minimumChannelCapacity:f8}. Current amount: {Math.Round(PriceConversionService.SatToUsdConversion(new Money(_amount, MoneyUnit.BTC).Satoshi, _btcPrice), 2)} USD")
+                                           @($"Amount in BTC. Minimum {_minimumWithdrawalAmount:f8}. Current amount: {Math.Round(PriceConversionService.SatToUsdConversion(new Money(_amount, MoneyUnit.BTC).Satoshi, _btcPrice), 2)} USD")
                                        }
                                      </FieldHelp>
                                 </Validation>
@@ -439,8 +439,8 @@
     private string _signedPSBT;
     private string? _templatePsbtString;
     private int? _selectedWalletId;
-    private static readonly decimal _minimumChannelCapacity = new Money(Constants.MINIMUM_CHANNEL_CAPACITY_SATS).ToUnit(MoneyUnit.BTC);
-    private decimal _amount { get; set; } = _minimumChannelCapacity;
+    private static readonly decimal _minimumWithdrawalAmount = Constants.MINIMUM_WITHDRAWAL_BTC_AMOUNT;
+    private decimal _amount { get; set; } = _minimumWithdrawalAmount;
     private int _selectedSourceNodeId;
     //Validation
     private Validation? _walletValidation;
@@ -527,13 +527,6 @@
         PendingRequestsColumns = await LocalStorageService.LoadStorage(nameof(PendingWithdrawalsColumnName), ColumnHelpers.GetColumnsDictionary<PendingWithdrawalsColumnName>());
         columnsLoaded = true;
         StateHasChanged();
-    }
-
-    private async Task ResetChannelRequestRejectModal()
-    {
-        _selectedDestNode = null;
-        _selectedWalletId = null;
-        _amount = _minimumChannelCapacity;
     }
 
     private async Task GetData()
