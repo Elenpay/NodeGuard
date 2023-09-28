@@ -469,12 +469,22 @@
                             <TextEdit @bind-Text="_transferTargetWalletBalance" PlainText Disabled/>
                         </Field>
                     </Column>
+                             <Column ColumnSize="ColumnSize.Is12"  style="display: flex; flex-direction: row; align-items: center;">
+                               <div style="display: flex; justify-content: space-between; align-items: center;">
+                                     <Field>
+                                         <FieldBody>
+                                             <Check TValue="bool" @bind-Checked="@_transferAllFunds">Transfer all funds</Check>
+                                         </FieldBody>
+                                     </Field>
+                                 </div>
+                             </Column>
                     <Column ColumnSize="ColumnSize.Is6">
-                        <Validation Validator="args => ValidationHelper.ValidateWithdrawalAmount(args)">
+                        <Validation Validator="args => ValidationHelper.ValidateWithdrawalAmount(args, _transferAllFunds)">
+                               
                             <Field>
                                 <FieldLabel>Amount</FieldLabel>
                                 <FieldBody>
-                                    <NumericPicker TValue="decimal" Disabled="_transferAllFunds" @bind-Value="@_amountToTransfer" CurrencySymbol="₿ " Max="@_maxWithdrawal" Min="@_minWithdrawal" Decimals="8">
+                                    <NumericPicker TValue="decimal" Disabled="_transferAllFunds" @bind-Value="@_amountToTransfer"  CurrencySymbol="₿ " Max="@_maxWithdrawal" Min="@_minWithdrawal" Decimals="8">
                                         <Feedback>
                                             <ValidationError/>
                                         </Feedback>
@@ -486,15 +496,21 @@
                             </Field>
                         </Validation>
                     </Column>
-                    <Column ColumnSize="ColumnSize.Is6">
-                        <Field>
-                            <FieldBody>
-                                <Check TValue="bool" @bind-Checked="@_transferAllFunds">Transfer all funds</Check>
-                            </FieldBody>
-                        </Field>
-                    </Column>
-
-
+                              <Validation Validator="args => ValidationHelper.ValidateWithdrawalAmount(args, _transferAllFunds)">
+                                                                        <Field>
+                                                                            <FieldLabel>Amount</FieldLabel>
+                                                                            <FieldBody>
+                                                                                <NumericPicker TValue="decimal" Disabled="_transferAllFunds" @bind-Value="@_amountToTransfer"  CurrencySymbol="₿ " Max="@_maxWithdrawal" Min="@_minWithdrawal" Decimals="8">
+                                                                                    <Feedback>
+                                                                                        <ValidationError/>
+                                                                                    </Feedback>
+                                                                                </NumericPicker>
+                                                                            </FieldBody>
+                                                                            <FieldHelp>
+                                                                                @($"Current amount: {Math.Round(PriceConversionService.BtcToUsdConversion((decimal) _amountToTransfer, _btcPrice), 2)} USD")
+                                                                            </FieldHelp>
+                                                                        </Field>
+                                                                    </Validation>
                 </Validations>
             </Fields>
 
