@@ -169,14 +169,13 @@
                                 <Validation Validator="args => ValidationHelper.ValidateWithdrawalAmount(args)">
                                     <NumericPicker TValue="decimal" @bind-Value="@_amount" Step="0.00001m" CurrencySymbol="₿ " Max="@(_maxWithdrawal)" Min="_minWithdrawal" Decimals="8" />
                                      <FieldHelp>
-                                       @if (Constants.MAXIMUM_WITHDRAWAL_BTC_AMOUNT < _amount)
-                                       {
-                                           <span class="text-danger">@($"Maximum amount {Constants.MAXIMUM_WITHDRAWAL_BTC_AMOUNT} BTC.")</span>
-                                       }
-                                       else
-                                       {
-                                           @($"Amount in BTC. Minimum {_minimumWithdrawalAmount:f8}. Current amount: {Math.Round(PriceConversionService.SatToUsdConversion(new Money(_amount, MoneyUnit.BTC).Satoshi, _btcPrice), 2)} USD")
-                                       }
+                                    @{
+                                        decimal amountToShow = _amount < Constants.MAXIMUM_WITHDRAWAL_BTC_AMOUNT
+                                            ? _amount
+                                            : Constants.MAXIMUM_WITHDRAWAL_BTC_AMOUNT;
+                                        decimal convertedAmount = Math.Round(PriceConversionService.SatToUsdConversion(new Money(amountToShow, MoneyUnit.BTC).Satoshi, _btcPrice), 2);    
+                                    }
+                                    @($"Amount in BTC. Minimum {_minimumWithdrawalAmount:f8}. Current amount: {convertedAmount} USD")
                                      </FieldHelp>
                                 </Validation>
                                        <div class="mb-3">
