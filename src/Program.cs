@@ -55,12 +55,14 @@ namespace NodeGuard
 
             var builder = WebApplication.CreateBuilder(args);
 
+            var jsonFormatter = new LowerCaseJsonFormatter();
+            
             Log.Logger = new LoggerConfiguration()
                 .ReadFrom.Configuration(builder.Configuration)
                 .MinimumLevel.Override("Microsoft", LogEventLevel.Warning)
                 .MinimumLevel.Override("System", LogEventLevel.Warning)
                 .Enrich.With(new DatadogLogEnricher())
-                .WriteTo.Console(new JsonFormatter())
+                .WriteTo.Console(jsonFormatter)
                 .CreateLogger();
 
             builder.Logging.ClearProviders();
