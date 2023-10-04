@@ -241,7 +241,12 @@ public class ProcessNodeChannelAcceptorJob : IJob
         catch (Exception e)
         {
             _logger.LogError(e, "Error on {JobName}", nameof(ProcessNodeChannelAcceptorJob));
+            
+            //Sleep to avoid massive requests
+            await Task.Delay(1000);
+
             throw new JobExecutionException(e, true);
+
         }
     }
 }
