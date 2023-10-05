@@ -270,3 +270,25 @@ a, .btn-link {
 .checkbox-drop {
     padding: 5px;
 }
+
+.arrow-icon {
+    font-size: 24px;
+}
+
+.flex-container {
+    display: flex;
+    align-items: center;
+}
+
+.source-wallet-name {
+    margin-top: 2px;
+}
+
+.arrow-icon-container {
+    margin-left: auto;
+    margin-top: -5px;
+}
+
+.field-help {
+    margin-top: -5px;
+}
