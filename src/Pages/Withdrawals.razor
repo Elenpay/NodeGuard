@@ -148,7 +148,7 @@
                     </DataGridColumn>
                     <DataGridColumn TItem="WalletWithdrawalRequest" PopupFieldColumnSize="ColumnSize.Is6" Field="@nameof(WalletWithdrawalRequest.WithdrawAllFunds)" Caption="@nameof(WalletWithdrawalRequest.WithdrawAllFunds).Humanize(LetterCasing.Sentence)" Editable="true" Displayable="false">
                         <EditTemplate>
-                            <Check TValue="bool" Checked="@((bool) context.CellValue)" CheckedChanged="(value) => {context.CellValue = value;}"> </Check>
+                            <Check TValue="bool" Checked="@((bool) context.CellValue)" CheckedChanged="(value) => HandleCheckboxChange(context, value)"  @bind-Value="_isCheckedAllFunds"/> 
                         </EditTemplate>
                     </DataGridColumn>
                     <DataGridColumn PopupFieldColumnSize="ColumnSize.Is6" Caption="Wallet Balance" Editable="true" Displayable="false">
@@ -166,8 +166,8 @@
                             }
                         </DisplayTemplate>
                         <EditTemplate>
-                                <Validation Validator="args => ValidationHelper.ValidateWithdrawalAmount(args)">
-                                    <NumericPicker TValue="decimal" @bind-Value="@_amount" Step="0.00001m" CurrencySymbol="₿ " Max="@(_maxWithdrawal)" Min="_minWithdrawal" Decimals="8" />
+                            <Validation Validator="args => ValidationHelper.ValidateWithdrawalAmount(args)">
+                                <NumericPicker TValue="decimal" @bind-Value="@_amount" Step="0.00001m" CurrencySymbol="₿ " Max="@(_maxWithdrawal)" Min="_minWithdrawal" Decimals="8"  Disabled="@(SelectedUTXOs.Count > 0 || _isCheckedAllFunds)"  />
                                      <FieldHelp>
                                     @{
                                         decimal amountToShow = _amount < Constants.MAXIMUM_WITHDRAWAL_BTC_AMOUNT
@@ -464,6 +464,7 @@
     private decimal _selectedWalletBalance;
     private bool _validationError;
     private decimal _previousAmount;
+    public bool _isCheckedAllFunds;
     
     public abstract class PendingWithdrawalsColumnName
     {
@@ -592,6 +593,16 @@
 
     }
 
+    private void HandleCheckboxChange(CellEditContext<WalletWithdrawalRequest> context, bool value)
+    {
+        context.CellValue = value;
+        _isCheckedAllFunds = value;
+        if (_isCheckedAllFunds)
+        {
+            ClearSelectedUTXOs();
+        }
+    }
+    
     private async Task OnRowRemoving(CancellableRowChange<WalletWithdrawalRequest> arg)
     {
         if (arg.Item != null)
@@ -996,4 +1007,5 @@
         }
         return AllRequestsColumnLayout.IsColumnVisible(column);
     }
+
 }

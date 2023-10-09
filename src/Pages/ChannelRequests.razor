@@ -143,13 +143,14 @@
                     <Validation Validator="@ValidationHelper.ValidateChannelCapacity" @ref="_capacityValidation">
                         <NumericPicker TValue="decimal" @bind-Value="@_amount" Min="@_minimumChannelCapacity" Max="Constants.MAXIMUM_WITHDRAWAL_BTC_AMOUNT" Decimals="8" Step="0.00001m" CurrencySymbol=" BTC" CurrencySymbolPlacement="CurrencySymbolPlacement.Suffix" Disabled="@(SelectedUTXOs.Count > 0)"/>
                         <FieldHelp>
-                              @{
-                                  decimal amountToShow = _amount < Constants.MAXIMUM_WITHDRAWAL_BTC_AMOUNT
-                                      ? _amount
-                                      : Constants.MAXIMUM_WITHDRAWAL_BTC_AMOUNT;
-                                  decimal convertedAmount = Math.Round(PriceConversionService.SatToUsdConversion(new Money(amountToShow, MoneyUnit.BTC).Satoshi, _btcPrice), 2);
-                              }
-                            @($"Amount in Satoshis. Minimum {_minimumChannelCapacity:f8}. Current amount: {convertedAmount} USD")
+                              @* @{ *@
+                              @*     decimal amountToShow = _amount < Constants.MAXIMUM_WITHDRAWAL_BTC_AMOUNT *@
+                              @*         ? _amount *@
+                              @*         : Constants.MAXIMUM_WITHDRAWAL_BTC_AMOUNT; *@
+                              @*     decimal convertedAmount = Math.Round(PriceConversionService.SatToUsdConversion(new Money(amountToShow, MoneyUnit.BTC).Satoshi, _btcPrice), 2); *@
+                              @* } *@
+                              @* @($"Amount in Satoshis. Minimum {_minimumChannelCapacity:f8}. Current amount: {convertedAmount} USD") *@
+                               @($"Amount in Satoshis. Minimum {_minimumChannelCapacity:f8}. Current amount: {Math.Round(PriceConversionService.SatToUsdConversion(new Money(_amount, MoneyUnit.BTC).Satoshi, _btcPrice), 2)} USD")
                         </FieldHelp>
                     </Validation>
                     <div class="mb-3">
