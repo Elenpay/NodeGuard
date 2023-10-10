@@ -150,8 +150,7 @@
                                   decimal convertedAmount = Math.Round(PriceConversionService.SatToUsdConversion(new Money(amountToShow, MoneyUnit.BTC).Satoshi, _btcPrice), 2);
                               }
                               @($"Amount in Satoshis. Minimum {_minimumChannelCapacity:f8}. Current amount: {convertedAmount} USD")
-                               @* @($"Amount in Satoshis. Minimum {_minimumChannelCapacity:f8}. Current amount: {Math.Round(PriceConversionService.SatToUsdConversion(new Money(_amount, MoneyUnit.BTC).Satoshi, _btcPrice), 2)} USD") *@
-                        </FieldHelp>
+                            </FieldHelp>
                     </Validation>
                     <div class="mb-3">
                         <Button Color="Color.Primary" Disabled="@(!_selectedWalletId.HasValue)" Clicked="@OpenCoinSelectionModal">Select Coins</Button> or use
@@ -460,7 +459,7 @@
     private decimal _selectedWalletBalance;
     private string? _destNodeName;
     private static readonly decimal _minimumChannelCapacity = new Money(Constants.MINIMUM_CHANNEL_CAPACITY_SATS).ToUnit(MoneyUnit.BTC);
-    private static readonly decimal _maxChannelCapacity =  CurrentNetworkHelper.GetCurrentNetwork() == Network.RegTest ? Constants.MAXIMUM_CHANNEL_CAPACITY_SATS_REGTEST : Constants.MAXIMUM_WITHDRAWAL_BTC_AMOUNT;
+    private static readonly decimal _maxChannelCapacity =  CurrentNetworkHelper.GetCurrentNetwork() == Network.RegTest ? new Money(Constants.MAXIMUM_CHANNEL_CAPACITY_SATS_REGTEST).ToUnit(MoneyUnit.BTC) : Constants.MAXIMUM_WITHDRAWAL_BTC_AMOUNT;
     private decimal _amount { get; set; } = _minimumChannelCapacity;
     private bool _selectedPrivate;
 
