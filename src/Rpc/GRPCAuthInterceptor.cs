@@ -26,7 +26,7 @@ public override async Task<TResponse> UnaryServerHandler<TRequest, TResponse>(
 
         var apiToken = await _apiTokenRepository.GetByToken(token);
         
-        if (apiToken is { IsBlocked: true })
+        if (apiToken?.IsBlocked ?? true)
         {
             throw new RpcException(new Status(StatusCode.Unauthenticated, "Invalid token"));
         }

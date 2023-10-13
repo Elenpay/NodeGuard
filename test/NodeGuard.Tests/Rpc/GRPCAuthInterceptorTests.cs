@@ -1,4 +1,5 @@
 
+using FluentAssertions;
 using Grpc.Core;
 using NodeGuard.Data.Models;
 using NodeGuard.Data.Repositories.Interfaces;
@@ -16,12 +17,15 @@ public class AuthInterceptorTests
         var mockedApiTokenRepository = new Mock<IAPITokenRepository>();
         var interceptor = new GRPCAuthInterceptor(mockedApiTokenRepository.Object);
         var continuation = new UnaryServerMethod<string, string>(async (request, context) => { return "response"; });
-
-        var expectedMessage = "No token provided";
         
         // Act & Assert
-        var exception = await Assert.ThrowsAsync<RpcException>(() => interceptor.UnaryServerHandler<string, string>(String.Empty, context, continuation));
-        Assert.Equal(expectedMessage, exception.Status.Detail);
+        var act = () => interceptor.UnaryServerHandler<string, string>(String.Empty, context, continuation);
+        
+        // Assert
+        await act
+            .Should()
+            .ThrowAsync<RpcException>()
+            .WithMessage($"Status(StatusCode=\"Unauthenticated\", Detail=\"No token provided\")");
     }
     
     [Fact]
@@ -32,12 +36,16 @@ public class AuthInterceptorTests
         var mockedApiTokenRepository = new Mock<IAPITokenRepository>();
         var interceptor = new GRPCAuthInterceptor(mockedApiTokenRepository.Object);
         var continuation = new UnaryServerMethod<string, string>(async (request, context) => { return "response"; });
-
-        var expectedMessage = "Invalid token";
         
-        // Act & Assert
-        var exception = await Assert.ThrowsAsync<RpcException>(() => interceptor.UnaryServerHandler<string, string>(String.Empty, context, continuation));
-        Assert.Equal(expectedMessage, exception.Status.Detail);
+        // Act
+        var act = () => interceptor.UnaryServerHandler<string, string>(String.Empty, context, continuation);
+        
+        // Assert
+        await act
+            .Should()
+            .ThrowAsync<RpcException>()
+            .WithMessage("Status(StatusCode=\"Unauthenticated\", Detail=\"Invalid token\")");
+
     }
     
     [Fact]
@@ -88,11 +96,14 @@ public class AuthInterceptorTests
         var context = TestServerCallContext.Create(new Metadata{{"auth-token", validToken}});
         var interceptor = new GRPCAuthInterceptor(mockedApiTokenRepository.Object);
         var continuation = new UnaryServerMethod<string, string>(async (request, context) => { return "response"; });
-        
-        var expectedMessage = "Invalid token";
 
-        // Act & Assert
-        var exception = await Assert.ThrowsAsync<RpcException>(() => interceptor.UnaryServerHandler<string, string>(String.Empty, context, continuation));
-        Assert.Equal(expectedMessage, exception.Status.Detail);
+        // Act 
+        var act = () => interceptor.UnaryServerHandler(String.Empty, context, continuation);
+        
+        // Assert
+        await act
+            .Should()
+            .ThrowAsync<RpcException>()
+            .WithMessage("Status(StatusCode=\"Unauthenticated\", Detail=\"Invalid token\")");
     }
 }
