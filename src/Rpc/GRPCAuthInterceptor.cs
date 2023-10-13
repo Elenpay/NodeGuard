@@ -18,17 +18,20 @@ public override async Task<TResponse> UnaryServerHandler<TRequest, TResponse>(
     ServerCallContext context, 
     UnaryServerMethod<TRequest, TResponse> continuation)
     {
-        var token = context.RequestHeaders.FirstOrDefault(x => x.Key == "auth-token")?.Value;
-        if (token == null)
-        {
-            throw new RpcException(new Status(StatusCode.Unauthenticated, "No token provided"));
-        }
-
-        var apiToken = await _apiTokenRepository.GetByToken(token);
         
-        if (apiToken?.IsBlocked ?? true)
-        {
-            throw new RpcException(new Status(StatusCode.Unauthenticated, "Invalid token"));
+        if (Constants.GRPC_AUTH_FEATURE_FLAG) {
+            var token = context.RequestHeaders.FirstOrDefault(x => x.Key == "auth-token")?.Value;
+            if (token == null)
+            {
+                throw new RpcException(new Status(StatusCode.Unauthenticated, "No token provided"));
+            }
+
+            var apiToken = await _apiTokenRepository.GetByToken(token);
+            
+            if (apiToken?.IsBlocked ?? true)
+            {
+                throw new RpcException(new Status(StatusCode.Unauthenticated, "Invalid token"));
+            }
         }
         
         return await continuation(request, context);
