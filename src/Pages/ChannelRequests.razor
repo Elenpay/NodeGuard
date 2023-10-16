@@ -141,16 +141,16 @@
                 </DisplayTemplate>
                 <EditTemplate>
                     <Validation Validator="@ValidationHelper.ValidateChannelCapacity" @ref="_capacityValidation">
-                        <NumericPicker TValue="decimal" @bind-Value="@_amount" Min="0" Decimals="8" Step="0.00001m" CurrencySymbol=" BTC" CurrencySymbolPlacement="CurrencySymbolPlacement.Suffix" Disabled="@(SelectedUTXOs.Count > 0)">
-                            <Feedback>
-                                <ValidationError/>
-                            </Feedback>
-                        </NumericPicker>
+                        <NumericPicker TValue="decimal" @bind-Value="@_amount" Min="@_minimumChannelCapacity" Max="@_maxChannelCapacity" Decimals="8" Step="0.00001m" CurrencySymbol=" BTC" CurrencySymbolPlacement="CurrencySymbolPlacement.Suffix" Disabled="@(SelectedUTXOs.Count > 0)"/>
                         <FieldHelp>
-
-                            @($"Amount in Satoshis. Minimum {_minimumChannelCapacity:f8}. Current amount: {Math.Round(PriceConversionService.SatToUsdConversion(new Money(_amount, MoneyUnit.BTC).Satoshi, _btcPrice), 2)} USD")
-
-                        </FieldHelp>
+                            @{
+                                  decimal amountToShow = _amount < _maxChannelCapacity
+                                      ? _amount
+                                      : _maxChannelCapacity;
+                                  decimal convertedAmount = Math.Round(PriceConversionService.SatToUsdConversion(new Money(amountToShow, MoneyUnit.BTC).Satoshi, _btcPrice), 2);
+                              }
+                              @($"Amount in Satoshis. Minimum {_minimumChannelCapacity:f8}. Current amount: {convertedAmount} USD")
+                            </FieldHelp>
                     </Validation>
                     <div class="mb-3">
                         <Button Color="Color.Primary" Disabled="@(!_selectedWalletId.HasValue)" Clicked="@OpenCoinSelectionModal">Select Coins</Button> or use
@@ -459,8 +459,9 @@
     private decimal _selectedWalletBalance;
     private string? _destNodeName;
     private static readonly decimal _minimumChannelCapacity = new Money(Constants.MINIMUM_CHANNEL_CAPACITY_SATS).ToUnit(MoneyUnit.BTC);
+    private static readonly decimal _maxChannelCapacity =  CurrentNetworkHelper.GetCurrentNetwork() == Network.RegTest ? new Money(Constants.MAXIMUM_CHANNEL_CAPACITY_SATS_REGTEST).ToUnit(MoneyUnit.BTC) : Constants.MAXIMUM_WITHDRAWAL_BTC_AMOUNT;
     private decimal _amount { get; set; } = _minimumChannelCapacity;
-    private bool _selectedPrivate = false;
+    private bool _selectedPrivate;
 
     //Validation
     private Validation? _walletValidation;

@@ -469,9 +469,9 @@
                         </Field>
                     </Column>
                     <Column ColumnSize="ColumnSize.Is6">
-                        <Validation Validator="args => ValidationHelper.ValidateWithdrawalAmount(args, _transferAllFunds)">
+                        <Validation Validator="args => ValidationHelper.ValidateWithdrawalAmount(args)">
                             <Field>
-                                <FieldLabel>Amount</FieldLabel>
+                                <FieldLabel>Amount</FieldLabel>   
                                 <FieldBody>
                                     <NumericPicker TValue="decimal" Disabled="_transferAllFunds" @bind-Value="@_amountToTransfer"  CurrencySymbol="₿ " Max="@_maxWithdrawal" Min="@_minWithdrawal" Decimals="8">
                                         <Feedback>
