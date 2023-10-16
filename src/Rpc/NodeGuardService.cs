@@ -315,7 +315,8 @@ public class NodeGuardService : Nodeguard.NodeGuardService.NodeGuardServiceBase,
                             {
                                 Xpub = k.XPUB,
                             })
-                        }
+                        },
+                        Threshold = w.MofN
                     }).ToList()
                 }
             };
