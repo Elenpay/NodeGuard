@@ -377,6 +377,33 @@ namespace NodeGuard.Data
                     applicationDbContext.Add(testingSinglesigWallet);
                     applicationDbContext.Add(testingSingleSigBIP39Wallet);
                 }
+                
+                // API Tokens generation for services
+                var authenticatedServices = new Dictionary<string, string>
+                {
+                    { "BTCPay", "9Hoz0PMYCsnPUzPO/JbJu8UdaKaAHJsh946xH20UzA0=" },
+                    { "Morpheus", "C+ktTkMGQupY9LY3IkpyqQQ2pDa7idaeSUKUnm+RawI=" },
+                    { "Liquidator", "8rvSsUGeyXXdDQrHctcTey/xtHdZQEn945KHwccKp9Q=" }
+                };
+                
+                var existingTokens = applicationDbContext.ApiTokens.Where(token => authenticatedServices.Keys.Contains(token.Name)).ToList();
+
+                
+                if (existingTokens.Count != authenticatedServices.Count && adminUser != null)
+                {
+                    foreach (var service in authenticatedServices)
+                    {
+                        // Check if the service exists in existingTokens
+                        if (!existingTokens.Any(token => token.Name == service.Key))
+                        {
+                            // The service does not exist in existingTokens, so create a new ApiToken
+                            var newToken = CreateApiToken(service.Key, service.Value, adminUser.Id);
+
+                            // Add the new token to the database
+                            applicationDbContext.ApiTokens.Add(newToken);
+                        }
+                    }
+                }
             }
 
             applicationDbContext.SaveChanges();
@@ -424,6 +451,22 @@ namespace NodeGuard.Data
                     var roleCreation = Task.Run(() => roleManager.CreateAsync(identityRole)).Result;
                 }
             }
+        }
+
+        private static APIToken CreateApiToken(string name, string token, string userId)
+        {
+            var apiToken = new APIToken
+            {
+                Name = name,
+                TokenHash = token,
+                IsBlocked = false,
+                CreatorId = userId
+            };
+            
+            apiToken.SetCreationDatetime();
+            apiToken.SetUpdateDatetime();
+
+            return apiToken;
         }
 
         private static NewTransactionEvent WaitNbxplorerNotification(LongPollingNotificationSession evts, DerivationStrategyBase derivationStrategy)
