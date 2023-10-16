@@ -1,9 +1,14 @@
 ﻿@page "/withdrawals"
-@using Humanizer
 @using System.Security.Claims
+@using Blazorise.Extensions
 @using Quartz
+@using Humanizer
 @using NBitcoin
 @using NodeGuard.Jobs
+@using Google.Protobuf
+@using NBXplorer.Models
+@using NodeGuard.Helpers;
+@using Polly
 @attribute [Authorize(Roles = "Superadmin,NodeManager,FinanceManager")]
 
 <Row>
@@ -36,7 +41,7 @@
                 <DataGridColumns>
                     <DataGridCommandColumn TItem="WalletWithdrawalRequest" Filterable="false" >
                         <NewCommandTemplate>
-                            <Button Color="Color.Success" TextColor="TextColor.Light" Clicked="@context.Clicked">New</Button>
+                            <Button Color="Color.Success" TextColor="TextColor.Light"  Clicked="@(async () => {  OnShowNewWalletWithdrawalModal(); await context.Clicked.InvokeAsync(); })">New</Button>
                         </NewCommandTemplate>
                         <EditCommandTemplate>
                             @*<Button Color="Color.Primary" Clicked="@context.Clicked">Edit</Button>*@
@@ -144,10 +149,7 @@
                     </DataGridColumn>
                     <DataGridColumn TItem="WalletWithdrawalRequest" PopupFieldColumnSize="ColumnSize.Is6" Field="@nameof(WalletWithdrawalRequest.WithdrawAllFunds)" Caption="@nameof(WalletWithdrawalRequest.WithdrawAllFunds).Humanize(LetterCasing.Sentence)" Editable="true" Displayable="false">
                         <EditTemplate>
-
-                            <Check TValue="bool" Checked="@((bool) context.CellValue)" CheckedChanged="(value) => {context.CellValue = value; _isAmountDisabled = value;}"> </Check>
-
-
+                            <Check TValue="bool" Checked="@((bool) context.CellValue)" CheckedChanged="(value) => HandleCheckboxChange(context, value)"  @bind-Value="IsCheckedAllFunds"/> 
                         </EditTemplate>
                     </DataGridColumn>
                     <DataGridColumn PopupFieldColumnSize="ColumnSize.Is6" Caption="Wallet Balance" Editable="true" Displayable="false">
@@ -165,23 +167,30 @@
                             }
                         </DisplayTemplate>
                         <EditTemplate>
-                            @if (!_isAmountDisabled)
-                            {
-                                <Validation Validator="args => ValidationHelper.ValidateWithdrawalAmount(args, _isAmountDisabled)">
-                                    <NumericPicker TValue="decimal" Disabled="_isAmountDisabled" Value="@((decimal)context.CellValue)" ValueChanged="(value) => { context.CellValue = value; }" CurrencySymbol="₿ " Max="@(_maxWithdrawal)" Min="_minWithdrawal" Decimals="8">
-                                        <Feedback>
-                                            <ValidationError />
-                                        </Feedback>
-                                    </NumericPicker>
-                                    <FieldHelp>
-                                        @($"Current amount: {Math.Round(PriceConversionService.BtcToUsdConversion((decimal)context.CellValue, _btcPrice), 2)} USD")
-                                    </FieldHelp>
+                            <Validation Validator="args => ValidationHelper.ValidateWithdrawalAmount(args)">
+                                <NumericPicker TValue="decimal" @bind-Value="@_amount" Step="0.00001m" CurrencySymbol="₿ " Max="@(_maxWithdrawal)" Min="_minWithdrawal" Decimals="8"  Disabled="@(SelectedUTXOs.Count > 0 || IsCheckedAllFunds)"  />
+                                     <FieldHelp>
+                                    @{
+                                        decimal amountToShow = _amount < Constants.MAXIMUM_WITHDRAWAL_BTC_AMOUNT
+                                            ? _amount
+                                            : Constants.MAXIMUM_WITHDRAWAL_BTC_AMOUNT;
+                                        decimal convertedAmount = Math.Round(PriceConversionService.SatToUsdConversion(new Money(amountToShow, MoneyUnit.BTC).Satoshi, _btcPrice), 2);    
+                                    }
+                                    @($"Amount in BTC. Minimum {_minimumWithdrawalAmount:f8}. Current amount: {convertedAmount} USD")
+                                     </FieldHelp>
                                 </Validation>
-                            }
-                            else
-                            {
-                                <NumericPicker TValue="decimal" Disabled="_isAmountDisabled" Value="@((decimal)context.CellValue)" ValueChanged="(value) => { context.CellValue = value; }" CurrencySymbol="SAT "/>
-                            }
+                                       <div class="mb-3">
+                                <Button Color="Color.Primary" Disabled="@(!_selectedWalletId.HasValue)" Clicked="@OpenCoinSelectionModal">Select Coins</Button> or use
+                                <Button Color="Color.Primary" Disabled="@(SelectedUTXOs.Count == 0)" Clicked="@ClearSelectedUTXOs">Default Coin Selection</Button>
+                            </div>
+                                @if (_selectedWalletId.HasValue && SelectedUTXOs.Count > 0)
+                                {
+                                    <span class="text-danger">Selected @(SelectedUTXOs.Count) UTXOs, this is a changeless operation</span>
+                                }
+                                else
+                                {
+                                    <span class="text-danger">Default coin selection strategy selected</span>
+                                }
                             </EditTemplate>
                     </DataGridColumn>
                     <DataGridColumn TItem="WalletWithdrawalRequest" Filterable="false" Field="@nameof(WalletWithdrawalRequest.WalletId)" Caption="Signatures Collected" Sortable="false" Displayable="@IsPendingRequestsColumnVisible(PendingWithdrawalsColumnName.SignaturesCollected)">
@@ -214,10 +223,11 @@
                     </DataGridColumn>
                     <DataGridColumn TItem="WalletWithdrawalRequest" Displayable="true">
                         <FilterTemplate>
-                            <ColumnLayout @ref="PendingRequestsColumnLayout" Columns="@PendingRequestsColumns" ColumnType="PendingWithdrawalsColumnName" OnUpdate="@OnColumnLayoutUpdate"/>
+                            <ColumnLayout @ref="PendingRequestsColumnLayout" Columns="@_pendingRequestsColumns" ColumnType="PendingWithdrawalsColumnName" OnUpdate="@OnColumnLayoutUpdate"/>
                         </FilterTemplate>
                     </DataGridColumn>
                 </DataGridColumns>
+                
                 <EmptyTemplate>
                     <div class="box">
                         No records were found.
@@ -237,7 +247,7 @@
         <h3>Withdrawal requests</h3>
         <DataGrid TItem="WalletWithdrawalRequest"
                   @ref="_allRequestsDatagrid"
-                  Data="@_allRequests"
+                  Data="@_withdrawalRequests"
                   Filterable="true"
                   FilterMethod="DataGridFilterMethod.Contains"
                   Editable="false"
@@ -344,7 +354,7 @@
                 </DataGridColumn>
                 <DataGridColumn TItem="WalletWithdrawalRequest" Displayable="true">
                     <FilterTemplate>
-                        <ColumnLayout @ref="AllRequestsColumnLayout" Columns="@AllRequestsColumns" ColumnType="AllWithdrawalsColumnName" OnUpdate="@OnColumnLayoutUpdate"/>
+                        <ColumnLayout @ref="AllRequestsColumnLayout" Columns="@_allRequestsColumns" ColumnType="AllWithdrawalsColumnName" OnUpdate="@OnColumnLayoutUpdate"/>
                     </FilterTemplate>
                 </DataGridColumn>
             </DataGridColumns>
@@ -390,11 +400,17 @@
     OnSubmit="@SubmitConfirmationModal"
 />
 
+<UTXOSelectorModal
+    @ref="_utxoSelectorModalRef"
+    OnClose="@OnCloseCoinSelectionModal"
+    IsWalletWithdrawalValidation="false"/>
+
 @inject IToastService ToastService
 @inject IWalletWithdrawalRequestRepository WalletWithdrawalRequestRepository
 @inject IWalletWithdrawalRequestPsbtRepository WalletWithdrawalRequestPsbtRepository
 @inject IWalletRepository WalletRepository
 @inject IBitcoinService BitcoinService
+@inject ICoinSelectionService CoinSelectionService
 @inject ISchedulerFactory SchedulerFactory
 @inject ILocalStorageService LocalStorageService
 @inject IPriceConversionService PriceConversionService
@@ -407,36 +423,37 @@
     [CascadingParameter]
     private ClaimsPrincipal? ClaimsPrincipal { get; set; }
 
-    private List<WalletWithdrawalRequest> _userPendingRequests = new List<WalletWithdrawalRequest>();
-    private List<Wallet> _availableWallets = new List<Wallet>();
-    private List<WalletWithdrawalRequest> _allRequests = new List<WalletWithdrawalRequest>();
-
+    private ColumnLayout<PendingWithdrawalsColumnName> PendingRequestsColumnLayout;
+    private List<WalletWithdrawalRequest> _userPendingRequests = new();
+    private List<Wallet> _availableWallets = new();
+    private List<WalletWithdrawalRequest> _withdrawalRequests = new();
     private string? mempoolUrl = Constants.MEMPOOL_ENDPOINT;
     private bool _isFinanceManager;
-
+    private List<UTXO> SelectedUTXOs = new();
     private WalletWithdrawalRequest? _selectedRequest;
     private PSBTSign? _psbtSignRef;
     private string _signedPSBT;
     private string? _templatePsbtString;
-
+    private int? _selectedWalletId;
+    private static readonly decimal _minimumWithdrawalAmount = Constants.MINIMUM_WITHDRAWAL_BTC_AMOUNT;
+    private decimal _amount { get; set; } = _minimumWithdrawalAmount;
+    //Validation
     private DataGrid<WalletWithdrawalRequest>? _allRequestsDatagrid;
-
+    private UTXOSelectorModal _utxoSelectorModalRef;
     private ConfirmationModal _confirmationModal;
     private CancelOrRejectPopup? _rejectCancelModalRef;
+    private bool _isNodeManager = false;
     private WalletWithdrawalRequestStatus? _rejectCancelStatus = WalletWithdrawalRequestStatus.Rejected;
-    private bool _isAmountDisabled;
     private decimal? _selectedRequestWalletBalance;
-
     private decimal _maxWithdrawal = Constants.MAXIMUM_WITHDRAWAL_BTC_AMOUNT;
     private decimal _minWithdrawal = Constants.MINIMUM_WITHDRAWAL_BTC_AMOUNT;
     private decimal _btcPrice;
-
-    private ColumnLayout<PendingWithdrawalsColumnName> PendingRequestsColumnLayout;
     private ColumnLayout<AllWithdrawalsColumnName> AllRequestsColumnLayout;
-    private Dictionary<string, bool> PendingRequestsColumns = new();
-    private Dictionary<string, bool> AllRequestsColumns = new();
-    private bool columnsLoaded;
-
+    private Dictionary<string, bool> _pendingRequestsColumns = new();
+    private Dictionary<string, bool> _allRequestsColumns = new();
+    private bool _columnsLoaded;
+    public bool IsCheckedAllFunds;
+    
     public abstract class PendingWithdrawalsColumnName
     {
         public static readonly ColumnDefault Description = new("Description");
@@ -463,7 +480,7 @@
         public static readonly ColumnDefault UpdateDate = new("Update Date");
         public static readonly ColumnDefault Links = new("Links");
     }
-
+    
     protected override async Task OnInitializedAsync()
     {
         if (LoggedUser == null) return;
@@ -481,17 +498,22 @@
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
-        if (!firstRender && !columnsLoaded)
+        if (!firstRender && !_columnsLoaded)
         {
             await LoadColumnLayout();
         }
     }
 
+    private decimal SelectedUTXOsValue()
+    {
+        return SelectedUTXOs.Sum(x => ((Money)x.Value).ToUnit(MoneyUnit.BTC));
+    }
+
     private async Task LoadColumnLayout()
     {
-        AllRequestsColumns = await LocalStorageService.LoadStorage(nameof(AllWithdrawalsColumnName), ColumnHelpers.GetColumnsDictionary<AllWithdrawalsColumnName>());
-        PendingRequestsColumns = await LocalStorageService.LoadStorage(nameof(PendingWithdrawalsColumnName), ColumnHelpers.GetColumnsDictionary<PendingWithdrawalsColumnName>());
-        columnsLoaded = true;
+        _allRequestsColumns = await LocalStorageService.LoadStorage(nameof(AllWithdrawalsColumnName), ColumnHelpers.GetColumnsDictionary<AllWithdrawalsColumnName>());
+        _pendingRequestsColumns = await LocalStorageService.LoadStorage(nameof(PendingWithdrawalsColumnName), ColumnHelpers.GetColumnsDictionary<PendingWithdrawalsColumnName>());
+        _columnsLoaded = true;
         StateHasChanged();
     }
 
@@ -500,7 +522,7 @@
         if (LoggedUser?.Id != null)
             _userPendingRequests = await WalletWithdrawalRequestRepository.GetUnsignedPendingRequestsByUser(LoggedUser.Id);
 
-        _allRequests = (await WalletWithdrawalRequestRepository.GetAll()).Except(_userPendingRequests).ToList();
+        _withdrawalRequests = (await WalletWithdrawalRequestRepository.GetAll()).Except(_userPendingRequests).ToList();
 
         _availableWallets = await WalletRepository.GetAvailableWallets(false);
         //TODO Fix BIP39 withdrawals, until then, manual hack to filter them out
@@ -508,13 +530,24 @@
 
     }
 
+    private void OnCloseCoinSelectionModal(List<UTXO> selectedUTXOs)
+    {
+        SelectedUTXOs = selectedUTXOs;
+        if (SelectedUTXOs.Count > 0)
+        {
+            _amount = SelectedUTXOsValue();
+        }
+        StateHasChanged();
+    }
+
     private async Task OnRowInserted(SavedRowItem<WalletWithdrawalRequest, Dictionary<string, object>> arg)
     {
         if (arg.Item == null) return;
         //Balance validation
         if (await ValidateBalance(arg)) return;
-
+        var amount = SelectedUTXOs.Count > 0 ? SelectedUTXOsValue() : _amount;
         arg.Item.Wallet = await WalletRepository.GetById(arg.Item.WalletId);
+        arg.Item.Amount = amount;
         if (arg.Item.Wallet.IsHotWallet)
         {
             await GetData();
@@ -531,6 +564,13 @@
         {
             ToastService.ShowSuccess("Success");
             await GetData();
+
+            if (SelectedUTXOs.Count > 0)
+            {
+                await CoinSelectionService.LockUTXOs(SelectedUTXOs, arg.Item, BitcoinRequestType.ChannelOperation);
+            }
+
+            _utxoSelectorModalRef.ClearModal();
         }
         else
         {
@@ -541,6 +581,16 @@
 
     }
 
+    private void HandleCheckboxChange(CellEditContext<WalletWithdrawalRequest> context, bool value)
+    {
+        context.CellValue = value;
+        IsCheckedAllFunds = value;
+        if (IsCheckedAllFunds)
+        {
+            ClearSelectedUTXOs();
+        }
+    }
+    
     private async Task OnRowRemoving(CancellableRowChange<WalletWithdrawalRequest> arg)
     {
         if (arg.Item != null)
@@ -627,7 +677,6 @@
         if (LoggedUser != null)
         {
             obj.UserRequestorId = LoggedUser.Id;
-            _isAmountDisabled = false;
             _selectedRequestWalletBalance = null;
         }
     }
@@ -635,7 +684,7 @@
     private async Task ShowApprovalModal(WalletWithdrawalRequest walletWithdrawalRequest)
     {
         _selectedRequest = walletWithdrawalRequest;
-
+       
         //PSBT Generation
         try
         {
@@ -656,10 +705,11 @@
 
     }
 
-    private async Task Approve(WalletWithdrawalRequest context)
+    private async Task Approve(WalletWithdrawalRequest request)
     {
         if (_selectedRequest == null || string.IsNullOrEmpty(_psbtSignRef?.SignedPSBT) || LoggedUser == null)
         {
+             _utxoSelectorModalRef.ClearModal();
             ToastService.ShowError("Invalid request");
         }
         else
@@ -672,7 +722,7 @@
 
                 };
             var addResult = await WalletWithdrawalRequestPsbtRepository.AddAsync(walletWithdrawalRequestPsbt);
-
+            
             if (addResult.Item1)
             {
                 _selectedRequest.Status = WalletWithdrawalRequestStatus.PSBTSignaturesPending;
@@ -730,7 +780,7 @@
         if (_selectedRequest != null)
             await Approve(_selectedRequest);
     }
-
+    
     private async Task RejectOrCancel()
     {
         if ((_rejectCancelStatus == WalletWithdrawalRequestStatus.Cancelled || _rejectCancelStatus == WalletWithdrawalRequestStatus.Rejected)
@@ -756,7 +806,7 @@
     {
         _rejectCancelStatus = null;
         _selectedRequest = null;
-
+        _selectedRequestWalletBalance = 0;
         await GetData();
         await _rejectCancelModalRef.CloseModal();
     }
@@ -774,13 +824,24 @@
         context.CellValue = id;
 
         var wallet = _availableWallets.SingleOrDefault(x => x.Id == id);
-
+        _selectedWalletId = id == 0 ? null : id;
         if (wallet != null)
         {
-            var (balance,_) = await BitcoinService.GetWalletConfirmedBalance(wallet);
-
-            _selectedRequestWalletBalance = balance;
+        var (balance,_) = await BitcoinService.GetWalletConfirmedBalance(wallet);
+        _selectedRequestWalletBalance = balance;
         }
+    }
+
+    private async Task OpenCoinSelectionModal()
+    {
+        _utxoSelectorModalRef.ShowModal(_selectedWalletId.Value);
+    }
+
+    private void ClearSelectedUTXOs()
+    {
+        _utxoSelectorModalRef.ClearModal();
+        SelectedUTXOs.Clear();
+        StateHasChanged();
     }
 
     private void RejectReasonValidator(ValidatorEventArgs e)
@@ -817,17 +878,21 @@
             try
             {
                 _selectedRequest.Wallet = null;
+                _selectedRequest.Changeless = SelectedUTXOs.Count > 0;
                 var createWithdrawalResult = await WalletWithdrawalRequestRepository.AddAsync(_selectedRequest);
                 if (!createWithdrawalResult.Item1)
                 {
                     throw new ShowToUserException(createWithdrawalResult.Item2);
                 }
-
                 ToastService.ShowSuccess("Withdrawal request created!");
 
+                if (SelectedUTXOs.Count > 0)
+                {
+                    await CoinSelectionService.LockUTXOs(SelectedUTXOs, _selectedRequest, BitcoinRequestType.WalletWithdrawal);
+                }
                 var templatePSBT = await BitcoinService.GenerateTemplatePSBT(_selectedRequest);
 
-    //TODO Save template PSBT (?)
+                //TODO Save template PSBT (?)
                 var walletWithdrawalRequestPsbt = new WalletWithdrawalRequestPSBT()
                 {
                     WalletWithdrawalRequestId = _selectedRequest.Id,
@@ -930,4 +995,10 @@
         }
         return AllRequestsColumnLayout.IsColumnVisible(column);
     }
+
+    private void OnShowNewWalletWithdrawalModal()
+    {
+        _amount = _minimumWithdrawalAmount;
+    }
+
 }
