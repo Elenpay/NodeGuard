@@ -3,7 +3,6 @@ using FluentAssertions;
 using Grpc.Core;
 using NodeGuard.Data.Models;
 using NodeGuard.Data.Repositories.Interfaces;
-using NSubstitute.ExceptionExtensions;
 
 namespace NodeGuard.Rpc;
 

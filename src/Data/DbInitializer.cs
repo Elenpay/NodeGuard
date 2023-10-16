@@ -382,7 +382,7 @@ namespace NodeGuard.Data
                 var authenticatedServices = new Dictionary<string, string>
                 {
                     { "BTCPay", "9Hoz0PMYCsnPUzPO/JbJu8UdaKaAHJsh946xH20UzA0=" },
-                    { "Morpheus", "C+ktTkMGQupY9LY3IkpyqQQ2pDa7idaeSUKUnm+RawI=" },
+                    { "X", "C+ktTkMGQupY9LY3IkpyqQQ2pDa7idaeSUKUnm+RawI=" },
                     { "Liquidator", "8rvSsUGeyXXdDQrHctcTey/xtHdZQEn945KHwccKp9Q=" }
                 };
                 
