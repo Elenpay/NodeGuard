@@ -39,7 +39,11 @@
                             <Button Color="Color.Primary" Clicked="@context.Clicked">Edit</Button>
                             @if (!context.Item.IsBlocked)
                             {
-                                <Button Color="Color.Danger" Clicked="@(()=>OnBlockTokenClicked(context.Item))">Block</Button>
+                                <Button Color="Color.Danger" Clicked="@(()=>OnBlockStatusTokenClicked(context.Item))">Block</Button>
+                            }
+                            else
+                            {
+                                <Button Color="Color.Success" Clicked="@(()=>OnBlockStatusTokenClicked(context.Item, false))">Unblock</Button>
                             }
                         </Buttons>
                     </EditCommandTemplate>
@@ -48,6 +52,15 @@
                     </DeleteCommandTemplate>
                 </DataGridCommandColumn>
                 <DataGridColumn TItem="APIToken" Editable="true" Field="@nameof(APIToken.Name)" Caption="Name" Sortable="false" Displayable="@IsColumnVisible(APITokenColumnName.Name)" Filterable="true">
+                    <EditTemplate>
+                        <Validation Validator="@ValidationHelper.ValidateName">
+                            <TextEdit Text="@((string) context.CellValue)" TextChanged="(text) => { context.CellValue = text; }">
+                                <Feedback>
+                                    <ValidationError/>
+                                </Feedback>
+                            </TextEdit>
+                        </Validation>
+                    </EditTemplate>
                 </DataGridColumn>
                 <DataGridColumn TItem="APIToken" Field="@nameof(APIToken.CreationDatetime)" Caption="Creation time" Sortable="true" SortDirection="SortDirection.Descending" Displayable="@IsColumnVisible(APITokenColumnName.CreationDatetime)" Filterable="false">
                     <DisplayTemplate>
@@ -193,15 +206,15 @@
         return APITokenColumnLayout.IsColumnVisible(column);
     }
     
-    private async Task OnBlockTokenClicked(APIToken contextItem)
+    private async Task OnBlockStatusTokenClicked(APIToken contextItem, bool blockIt = true)
     {
         if (contextItem != null)
         {
-            var result= APITokenRepository.BlockToken(contextItem);
+            var result= blockIt ? APITokenRepository.BlockToken(contextItem) : APITokenRepository.UnblockToken(contextItem);
 
             if (result)
             {
-                ToastService.ShowSuccess("Token blocked");
+                ToastService.ShowSuccess(blockIt ? "Token blocked" : "Token unblocked");
             }
             else
             {
