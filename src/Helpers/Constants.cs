@@ -57,7 +57,6 @@ public class Constants
     public static readonly string? AWS_ACCESS_KEY_ID;
     public static readonly string? AWS_SECRET_ACCESS_KEY;
     public static readonly string API_TOKEN_SALT;
-    public static readonly bool GRPC_AUTH_FEATURE_FLAG;
 
     // Crons & Jobs
     public static readonly string MONITOR_WITHDRAWALS_CRON = "10 0/5 * * * ?";
@@ -166,8 +165,6 @@ public class Constants
 
         API_TOKEN_SALT = Environment.GetEnvironmentVariable("API_TOKEN_SALT") ?? "H/fCx1+maAFMcdi6idIYEg==";
         
-        GRPC_AUTH_FEATURE_FLAG = Environment.GetEnvironmentVariable("GRPC_AUTH_FEATURE_FLAG") == "true";
-
         // Crons & Jobs
         MONITOR_WITHDRAWALS_CRON = Environment.GetEnvironmentVariable("MONITOR_WITHDRAWALS_CRON") ?? MONITOR_WITHDRAWALS_CRON;
 
