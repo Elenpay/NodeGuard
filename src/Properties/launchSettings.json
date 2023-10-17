@@ -49,7 +49,6 @@
         "COINGECKO_KEY": "TBD",
         "HTTP1_LISTEN_PORT": "38080",
         "API_TOKEN_SALT": "H/fCx1+maAFMcdi6idIYEg==",
-        "GRPC_AUTH_FEATURE_FLAG": "false"
       }
     }
   }
