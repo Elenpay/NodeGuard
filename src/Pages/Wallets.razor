@@ -439,11 +439,7 @@
                             <Field>
                                 <FieldLabel>Amount</FieldLabel>
                                 <FieldBody>
-                                    <NumericPicker TValue="decimal" Disabled="_transferAllFunds" @bind-Value="@_amountToTransfer"  CurrencySymbol="₿ " Max="@_maxWithdrawal" Min="@_minWithdrawal" Decimals="8">
-                                        <Feedback>
-                                            <ValidationError/>
-                                        </Feedback>
-                                    </NumericPicker>
+                                    <NumericPicker TValue="decimal" Disabled="_transferAllFunds" @bind-Value="@_amountToTransfer" CurrencySymbol="₿ " Max="@_maxWithdrawal" Min="@_minWithdrawal" Decimals="8"/>
                                 </FieldBody>
                                 <FieldHelp>
                                     @($"Current amount: {Math.Round(PriceConversionService.BtcToUsdConversion((decimal) _amountToTransfer, _btcPrice), 2)} USD")
@@ -478,12 +474,13 @@
                         </Field>
                     </Column>
                     <Column ColumnSize="ColumnSize.Is6" @bind-Value="@_amountToTransfer">
-                        <Validation Validator="@ValidationRule.IsSelected">
+                        <Validation Validator="@ValidationRule.IsSelected" >
                             <Field>
                                 <FieldLabel><strong>To</strong></FieldLabel>
                                 <FieldBody>
                                     <SelectList TItem="Wallet"
                                                 TValue="int"
+                                                DefaultItemDisabled
                                                 Data="_walletsForTransfer"
                                                 TextField="@((item) => item.Name)"
                                                 ValueField="@((item) => item.Id)"
@@ -568,7 +565,7 @@
     private Modal? _importWalletModal;
     private string? _importWalletSeedphrase;
     private Validations _importWalletValidations;
-
+    private Validations? _walletValidation;
     private Modal? _transferFundsModal;
     private Validations _transferFundsValidations;
     private List<Wallet> _walletsForTransfer = new();
@@ -585,7 +582,7 @@
     private bool _transferAllFunds;
     private decimal _maxWithdrawal = Constants.MAXIMUM_WITHDRAWAL_BTC_AMOUNT;
     private decimal _minWithdrawal = Constants.MINIMUM_WITHDRAWAL_BTC_AMOUNT;
-    private decimal _amountToTransfer = Constants.MINIMUM_WITHDRAWAL_BTC_AMOUNT;
+    private decimal _amountToTransfer { get; set; }
     private ConfirmationModal _multisigTransferModal;
     private ConfirmationModal _hotWalletTransferModal;
 
@@ -1070,7 +1067,7 @@
         _transferTargetWalletBalance = string.Empty;
         _sourceTransferWallet = wallet;
         _targetTransferWallet = null;
-        _selectedTransferWalletId = 0;
+        _transferAllFunds = false;
         _amountToTransfer = Constants.MINIMUM_WITHDRAWAL_BTC_AMOUNT;
 
         (_sourceBalance,_) = await BitcoinService.GetWalletConfirmedBalance(wallet);
@@ -1148,6 +1145,7 @@
             Description = @$"Funds transferred from {_sourceWalletName} to {_targetWalletName}",
             WithdrawAllFunds = _transferAllFunds,
             DestinationAddress = targetBitcoinAddress.ToString(),
+            
             Amount = _amountToTransfer,
             WalletId = _sourceTransferWallet.Id,
             Status = _sourceTransferWallet.IsHotWallet
@@ -1176,7 +1174,7 @@
             }
             else
             {
-                var withdrawal = await CreateWithdrawalRequestForFunds();
+                await CreateWithdrawalRequestForFunds();
                 await _multisigTransferModal.ShowModal();
                 await CloseAndCleanTransferFundsModal();
             }
@@ -1250,7 +1248,6 @@
         await _transferFundsModal?.Close(CloseReason.UserClosing);
 
         _selectedTransferWalletId = 0;
-        _amountToTransfer = Constants.MINIMUM_WITHDRAWAL_BTC_AMOUNT;
         _walletsForTransfer = new();
         _transferTargetWalletBalance = string.Empty;
         _sourceWalletBalance = string.Empty;
