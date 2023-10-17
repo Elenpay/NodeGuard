@@ -165,7 +165,6 @@ public class Constants
 
         API_TOKEN_SALT = Environment.GetEnvironmentVariable("API_TOKEN_SALT") ?? "H/fCx1+maAFMcdi6idIYEg==";
         
-
         // Crons & Jobs
         MONITOR_WITHDRAWALS_CRON = Environment.GetEnvironmentVariable("MONITOR_WITHDRAWALS_CRON") ?? MONITOR_WITHDRAWALS_CRON;
 

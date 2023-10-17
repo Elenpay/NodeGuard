@@ -1,5 +1,4 @@
-using System.Security.Cryptography;
-using Blazorise;
+
 using Microsoft.AspNetCore.Cryptography.KeyDerivation;
 
 namespace NodeGuard.Data.Models;
@@ -18,7 +17,7 @@ public class APIToken: Entity
     public DateTime? ExpirationDate { get; set; }
     
     #endregion Relationships
-
+    
     public void GenerateTokenHash(string password, string salt)
     {
 
@@ -30,7 +29,6 @@ public class APIToken: Entity
         numBytesRequested: 256 / 8));
         
         TokenHash = hashed;
-        
     }
 
 
