@@ -76,6 +76,7 @@
                                 <DropdownItem Disabled="!context.Item.IsFinalised" Clicked="@(() => LoadAndOpenTextModalBalance(context.Item))">Balance</DropdownItem>
                                 <DropdownItem Disabled="!context.Item.IsFinalised" Clicked="@(() => LoadAndOpenModalTextModalUnusedAddress(context.Item))">Get address</DropdownItem>
                                 <DropdownItem Disabled="!context.Item.IsFinalised || context.Item.IsWatchOnly" Clicked="@(() => ShowTransferFundsModal(context.Item))">Transfer funds</DropdownItem>
+                                <DropdownItem Disabled="!context.Item.IsFinalised" Clicked="@(() => RescanWallet(context.Item))">Rescan wallet</DropdownItem>
 
                             </DropdownMenu>
                         </Dropdown>
@@ -471,9 +472,9 @@
                     <Column ColumnSize="ColumnSize.Is6">
                         <Validation Validator="args => ValidationHelper.ValidateWithdrawalAmount(args)">
                             <Field>
-                                <FieldLabel>Amount</FieldLabel>   
+                                <FieldLabel>Amount</FieldLabel>
                                 <FieldBody>
-                                    <NumericPicker TValue="decimal" Disabled="_transferAllFunds" @bind-Value="@_amountToTransfer"  CurrencySymbol="₿ " Max="@_maxWithdrawal" Min="@_minWithdrawal" Decimals="8">
+                                    <NumericPicker TValue="decimal" Disabled="_transferAllFunds" @bind-Value="@_amountToTransfer" CurrencySymbol="₿ " Max="@_maxWithdrawal" Min="@_minWithdrawal" Decimals="8">
                                         <Feedback>
                                             <ValidationError/>
                                         </Feedback>
@@ -1153,7 +1154,6 @@
             }
         }
         await CloseAndCleanTransferFundsModal();
-
     }
 
     private async Task TransferFundsHotWallet()
@@ -1357,6 +1357,23 @@
     //Null
             arg1.Status = ValidationStatus.Error;
             arg1.ErrorText = "Invalid output descriptor";
+        }
+    }
+    
+    private async Task RescanWallet(Wallet contextItem)
+    {
+        if (contextItem != null)
+        {
+            try
+            {
+                await WalletRepository.TrackAndScanWallet(contextItem);
+            }
+            catch (Exception e)
+            {
+                ToastService.ShowError("Something went wrong while rescanning the wallet");
+            }
+
+            ToastService.ShowSuccess("Wallet rescan job created successfully");
         }
     }
 
