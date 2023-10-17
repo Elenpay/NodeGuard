@@ -33,6 +33,13 @@ public interface IWalletRepository
     Task<List<Wallet>> GetAvailableByIds(List<int> ids);
 
     /// <summary>
+    /// Tracks and rescans the wallet for transactions and UTXOs
+    /// </summary>
+    /// <param name="wallet"></param>
+    /// <returns></returns>
+    Task TrackAndScanWallet(Wallet wallet);
+
+    /// <summary>
     /// Obtains all wallets that are Finalised and not in a compromised or archived state
     /// </summary>
     /// // <param name="includeWatchOnlyWallets">If true, watch-only wallets will be included</param>

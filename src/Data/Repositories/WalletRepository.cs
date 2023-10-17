@@ -377,7 +377,7 @@ namespace NodeGuard.Data.Repositories
                     return (false, "Error while getting the derivation scheme");
                 }
 
-                await TrackAndScanWallet(derivationStrategyBase);
+                await TrackAndScanWallet(wallet);
             }
             catch (Exception e)
             {
@@ -387,8 +387,18 @@ namespace NodeGuard.Data.Repositories
             return (true, null);
         }
 
-        private async Task TrackAndScanWallet(DerivationStrategyBase derivationStrategyBase)
-        {
+        public async Task TrackAndScanWallet(Wallet wallet){
+        
+            var derivationStrategyBase = wallet.GetDerivationStrategy();
+            if (derivationStrategyBase == null)
+            {
+                _logger.LogError("Error while getting the derivation scheme");
+                
+                throw new InvalidOperationException("Error while getting the derivation scheme for wallet with id: when rescaning" + wallet.Id);
+            }
+            
+            _logger.LogInformation("Starting tracking and scanning wallet with id: {WalletId}", wallet.Id);
+
             //Track wallet
             await _nbXplorerService.TrackAsync(derivationStrategyBase, default);
 
@@ -496,7 +506,7 @@ namespace NodeGuard.Data.Repositories
                 }
 
 
-                await TrackAndScanWallet(derivationStrategyBase);
+                await TrackAndScanWallet(wallet);
 
 
             }

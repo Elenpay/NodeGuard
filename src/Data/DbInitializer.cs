@@ -61,7 +61,7 @@ namespace NodeGuard.Data
             while (!nbxplorerClient.GetStatus().IsFullySynched)
             {
                 logger!.LogInformation("Waiting for nbxplorer to be synched..");
-                Thread.Sleep(100);
+                Thread.Sleep(1000);
             }
 
             //Migrations
