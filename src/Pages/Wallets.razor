@@ -426,7 +426,7 @@
     </ModalContent>
 </Modal>
 <Modal @ref="_transferFundsModal">
-    <ModalContent Centered Size="ModalSize.Large	">
+    <ModalContent Centered Size="ModalSize.Large">
         <ModalHeader>
             <ModalTitle>Transfer funds to another wallet</ModalTitle>
             <CloseButton/>
@@ -470,10 +470,10 @@
                                 </div>
                             </FieldBody>
                             <FieldHelp class="field-help">
-                                Current balance: @_sourceWalletBalance
+                                 @($"Current balance: {_sourceWalletBalance:F8}");
                             </FieldHelp>
                             <FieldHelp>
-                                Balance after transfer: @CalculateAmountWalletSourceAfterTransaction():f8 BTC (@Math.Round(PriceConversionService.BtcToUsdConversion(_sourceBalanceAfterTransaction, _btcPrice), 2) USD)
+                                @($"Balance after transfer: {CalculateAmountWalletSourceAfterTransaction():F8} BTC ({Math.Round(PriceConversionService.BtcToUsdConversion(_sourceBalanceAfterTransaction, _btcPrice), 2)} USD)")
                             </FieldHelp>
                         </Field>
                     </Column>
@@ -496,10 +496,10 @@
                                     </SelectList>
                                 </FieldBody>
                                 <FieldHelp Visibility="@(_transferTargetWalletBalance.IsNullOrEmpty() ? Visibility.Invisible : Visibility.Visible)">
-                                    @($"Current balance: {_transferTargetWalletBalance}")
+                                    @($"Current balance: {_transferTargetWalletBalance:f8}")
                                 </FieldHelp>
                                 <FieldHelp Visibility="@(_transferTargetWalletBalance.IsNullOrEmpty() ? Visibility.Invisible : Visibility.Visible)">
-                                    @($"Balance after transfer: {(CalculateAmountWalletTargetAfterTransaction()):f8} BTC ({Math.Round(PriceConversionService.BtcToUsdConversion((decimal)(targetBalance + _amountToTransfer), _btcPrice), 2)} USD)")
+                                    @($"Balance after transfer: {CalculateAmountWalletTargetAfterTransaction():F8} BTC ({Math.Round(PriceConversionService.BtcToUsdConversion((decimal)(targetBalance + _amountToTransfer), _btcPrice), 2)} USD)")
                                 </FieldHelp>
                             </Field>
                         </Validation>
@@ -714,11 +714,8 @@
 
     private decimal CalculateAmountWalletTargetAfterTransaction()
     {
-        if (_transferAllFunds)
-        {
-            return targetBalance + _sourceBalance;
-        }
-        return targetBalance + _amountToTransfer;
+        decimal amount = _transferAllFunds ? targetBalance + _sourceBalance : targetBalance + _amountToTransfer;
+        return amount;
     }
 
     private decimal CalculateAmountWalletSourceAfterTransaction()
@@ -1073,6 +1070,8 @@
         _transferTargetWalletBalance = string.Empty;
         _sourceTransferWallet = wallet;
         _targetTransferWallet = null;
+        _selectedTransferWalletId = 0;
+        _amountToTransfer = Constants.MINIMUM_WITHDRAWAL_BTC_AMOUNT;
 
         (_sourceBalance,_) = await BitcoinService.GetWalletConfirmedBalance(wallet);
         _sourceWalletBalance = $"{_sourceBalance:f8} BTC ({Math.Round(PriceConversionService.BtcToUsdConversion((decimal) _sourceBalance, _btcPrice), 2)} USD)";
