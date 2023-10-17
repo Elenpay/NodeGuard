@@ -135,6 +135,7 @@ message Wallet  {
   string name = 2;
   bool is_hot_wallet = 3;
   repeated AccountKeySettings account_key_settings = 4;
+  int32 threshold = 5;
 }
 message GetAvailableWalletsResponse {
   repeated Wallet wallets = 1;
