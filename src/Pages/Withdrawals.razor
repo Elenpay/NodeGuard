@@ -149,7 +149,7 @@
                     </DataGridColumn>
                     <DataGridColumn TItem="WalletWithdrawalRequest" PopupFieldColumnSize="ColumnSize.Is6" Field="@nameof(WalletWithdrawalRequest.WithdrawAllFunds)" Caption="@nameof(WalletWithdrawalRequest.WithdrawAllFunds).Humanize(LetterCasing.Sentence)" Editable="true" Displayable="false">
                         <EditTemplate>
-                            <Check TValue="bool" Checked="@((bool) context.CellValue)" CheckedChanged="(value) => HandleCheckboxChange(context, value)"  @bind-Value="IsCheckedAllFunds"/> 
+                            <Check TValue="bool" Checked="@((bool) context.CellValue)" CheckedChanged="(value) => HandleCheckboxChange(context, value)"  @bind-Value="IsCheckedAllFunds"/>
                         </EditTemplate>
                     </DataGridColumn>
                     <DataGridColumn PopupFieldColumnSize="ColumnSize.Is6" Caption="Wallet Balance" Editable="true" Displayable="false">
@@ -174,7 +174,7 @@
                                         decimal amountToShow = _amount < Constants.MAXIMUM_WITHDRAWAL_BTC_AMOUNT
                                             ? _amount
                                             : Constants.MAXIMUM_WITHDRAWAL_BTC_AMOUNT;
-                                        decimal convertedAmount = Math.Round(PriceConversionService.SatToUsdConversion(new Money(amountToShow, MoneyUnit.BTC).Satoshi, _btcPrice), 2);    
+                                        decimal convertedAmount = Math.Round(PriceConversionService.SatToUsdConversion(new Money(amountToShow, MoneyUnit.BTC).Satoshi, _btcPrice), 2);
                                     }
                                     @($"Minimum {_minimumWithdrawalAmount:f8}. Current amount: {convertedAmount} USD")
                                      </FieldHelp>
@@ -227,7 +227,7 @@
                         </FilterTemplate>
                     </DataGridColumn>
                 </DataGridColumns>
-                
+
                 <EmptyTemplate>
                     <div class="box">
                         No records were found.
@@ -453,7 +453,7 @@
     private Dictionary<string, bool> _allRequestsColumns = new();
     private bool _columnsLoaded;
     public bool IsCheckedAllFunds;
-    
+
     public abstract class PendingWithdrawalsColumnName
     {
         public static readonly ColumnDefault Description = new("Description");
@@ -480,7 +480,7 @@
         public static readonly ColumnDefault UpdateDate = new("Update Date");
         public static readonly ColumnDefault Links = new("Links");
     }
-    
+
     protected override async Task OnInitializedAsync()
     {
         if (LoggedUser == null) return;
@@ -548,6 +548,8 @@
         var amount = SelectedUTXOs.Count > 0 ? SelectedUTXOsValue() : _amount;
         arg.Item.Wallet = await WalletRepository.GetById(arg.Item.WalletId);
         arg.Item.Amount = amount;
+        arg.Item.Changeless = SelectedUTXOs.Count > 0;
+        arg.Item.WithdrawAllFunds = arg.Item.WithdrawAllFunds || _amount == _selectedRequestWalletBalance;
         if (arg.Item.Wallet.IsHotWallet)
         {
             await GetData();
@@ -567,7 +569,7 @@
 
             if (SelectedUTXOs.Count > 0)
             {
-                await CoinSelectionService.LockUTXOs(SelectedUTXOs, arg.Item, BitcoinRequestType.ChannelOperation);
+                await CoinSelectionService.LockUTXOs(SelectedUTXOs, arg.Item, BitcoinRequestType.WalletWithdrawal);
             }
 
             _utxoSelectorModalRef.ClearModal();
@@ -590,7 +592,7 @@
             ClearSelectedUTXOs();
         }
     }
-    
+
     private async Task OnRowRemoving(CancellableRowChange<WalletWithdrawalRequest> arg)
     {
         if (arg.Item != null)
@@ -684,7 +686,7 @@
     private async Task ShowApprovalModal(WalletWithdrawalRequest walletWithdrawalRequest)
     {
         _selectedRequest = walletWithdrawalRequest;
-       
+
         //PSBT Generation
         try
         {
@@ -722,7 +724,7 @@
 
                 };
             var addResult = await WalletWithdrawalRequestPsbtRepository.AddAsync(walletWithdrawalRequestPsbt);
-            
+
             if (addResult.Item1)
             {
                 _selectedRequest.Status = WalletWithdrawalRequestStatus.PSBTSignaturesPending;
@@ -780,7 +782,7 @@
         if (_selectedRequest != null)
             await Approve(_selectedRequest);
     }
-    
+
     private async Task RejectOrCancel()
     {
         if ((_rejectCancelStatus == WalletWithdrawalRequestStatus.Cancelled || _rejectCancelStatus == WalletWithdrawalRequestStatus.Rejected)
@@ -879,6 +881,7 @@
             {
                 _selectedRequest.Wallet = null;
                 _selectedRequest.Changeless = SelectedUTXOs.Count > 0;
+                _selectedRequest.WithdrawAllFunds = _selectedRequest.WithdrawAllFunds || _amount == _selectedRequestWalletBalance;
                 var createWithdrawalResult = await WalletWithdrawalRequestRepository.AddAsync(_selectedRequest);
                 if (!createWithdrawalResult.Item1)
                 {
