@@ -435,7 +435,7 @@
             <Fields>
                 <Validations @ref="_transferFundsValidations">
                     <Column ColumnSize="ColumnSize.Is6">
-                        <Validation Validator="args => ValidationHelper.ValidateWithdrawalAmount(args, _transferAllFunds)">
+                        <Validation Validator="args => ValidationHelper.ValidateWithdrawalAmount(args)">
                             <Field>
                                 <FieldLabel>Amount</FieldLabel>
                                 <FieldBody>
