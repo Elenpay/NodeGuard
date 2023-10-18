@@ -176,7 +176,7 @@
                                             : Constants.MAXIMUM_WITHDRAWAL_BTC_AMOUNT;
                                         decimal convertedAmount = Math.Round(PriceConversionService.SatToUsdConversion(new Money(amountToShow, MoneyUnit.BTC).Satoshi, _btcPrice), 2);    
                                     }
-                                    @($"Amount in BTC. Minimum {_minimumWithdrawalAmount:f8}. Current amount: {convertedAmount} USD")
+                                    @($"Minimum {_minimumWithdrawalAmount:f8}. Current amount: {convertedAmount} USD")
                                      </FieldHelp>
                                 </Validation>
                                        <div class="mb-3">
