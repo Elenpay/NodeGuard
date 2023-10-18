@@ -47,7 +47,7 @@ public interface INodeGuardService
     Task<GetAvailableUtxosResponse> GetAvailableUtxos(GetAvailableUtxosRequest request, ServerCallContext context);
 
     Task<GetWithdrawalsRequestStatusResponse> GetWithdrawalsRequestStatus(GetWithdrawalsRequestStatusRequest request, ServerCallContext context);
-    
+
     Task<GetChannelResponse> GetChannel(GetChannelRequest request, ServerCallContext context);
 }
 
@@ -315,7 +315,8 @@ public class NodeGuardService : Nodeguard.NodeGuardService.NodeGuardServiceBase,
                             {
                                 Xpub = k.XPUB,
                             })
-                        }
+                        },
+                        Threshold = w.MofN
                     }).ToList()
                 }
             };
@@ -629,7 +630,7 @@ public class NodeGuardService : Nodeguard.NodeGuardService.NodeGuardServiceBase,
             ChannelOperationRequestStatus.FinalizingPSBT => CHANNEL_OPERATION_STATUS.FinalizingPsbt,
             _ => throw new ArgumentOutOfRangeException(nameof(channelOperationRequest.Status), channelOperationRequest.Status, "Unknown status")
         };
-        
+
         var type = channelOperationRequest.RequestType switch
         {
             OperationRequestType.Open => CHANNEL_OPERATION_TYPE.OpenChannel,
@@ -901,7 +902,7 @@ public class NodeGuardService : Nodeguard.NodeGuardService.NodeGuardServiceBase,
             Channel.ChannelStatus.Closed => CHANNEL_STATUS.Closed,
             _ => throw new ArgumentOutOfRangeException(nameof(channel.Status), channel.Status, "Unknown status")
         };
-        
+
         var result = new GetChannelResponse()
         {
             FundingTx = channel.FundingTx,
@@ -913,7 +914,7 @@ public class NodeGuardService : Nodeguard.NodeGuardService.NodeGuardServiceBase,
             IsAutomatedLiquidityEnabled = channel.IsAutomatedLiquidityEnabled,
             IsPrivate = channel.IsPrivate,
         };
-        
+
         result.BtcCloseAddress = channel.BtcCloseAddress != null ? channel.BtcCloseAddress : String.Empty;
 
         return result;
