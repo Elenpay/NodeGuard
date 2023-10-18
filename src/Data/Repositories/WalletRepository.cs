@@ -104,12 +104,12 @@ namespace NodeGuard.Data.Repositories
                 .Include(x => x.InternalWallet)
                 .Include(x => x.Keys)
                 .ToListAsync();
-            
+
             if (!includeWatchOnlyWallets)
             {
                 availableWallets = availableWallets.Where(w => !w.IsWatchOnly).ToList();
             }
-            
+
             return availableWallets;
         }
 
@@ -120,11 +120,11 @@ namespace NodeGuard.Data.Repositories
             type.SetCreationDatetime();
             type.SetUpdateDatetime();
 
-            
+
             if (type.IsBIP39Imported || type.IsWatchOnly)
             {
                 //Persist
-                
+
                 var addResult = await _repository.AddAsync(type, applicationDbContext);
 
                 return addResult;
@@ -134,7 +134,7 @@ namespace NodeGuard.Data.Repositories
             {
 
                 //We add the internal wallet of the moment and its key if it is not a BIP39 wallet
-                
+
                 var currentInternalWallet = (await _internalWalletRepository.GetCurrentInternalWallet());
                 if (currentInternalWallet != null)
                 {
@@ -149,7 +149,7 @@ namespace NodeGuard.Data.Repositories
                 type.Keys = new List<Key>();
 
                 var addResult = await _repository.AddAsync(type, applicationDbContext);
-                
+
                 if (!addResult.Item1)
                     return addResult;
 
@@ -230,7 +230,7 @@ namespace NodeGuard.Data.Repositories
         {
             await using var applicationDbContext = await _dbContextFactory.CreateDbContextAsync();
 
-            var lastWallet = applicationDbContext.Wallets.OrderBy(w => w.Id).LastOrDefault(w => w.IsFinalised && !w.IsBIP39Imported);
+            var lastWallet = applicationDbContext.Wallets.OrderBy(w => w.Id).LastOrDefault(w => w.IsFinalised && !w.IsBIP39Imported && w.InternalWalletMasterFingerprint != null);
 
             if (lastWallet == null || string.IsNullOrEmpty(lastWallet.InternalWalletSubDerivationPath)) return "0";
 
@@ -289,10 +289,10 @@ namespace NodeGuard.Data.Repositories
 
             try
             {
-                
+
                 //Validate derivation path
                 var keyPath = KeyPath.Parse(derivationPath);
-                
+
                 //Mnenomic create
                 var mnemonic = new Mnemonic(seedphrase);
 
@@ -334,7 +334,7 @@ namespace NodeGuard.Data.Repositories
                     return (false, addResult.Item2);
                 }
 
-                //Create key 
+                //Create key
                 var key = new Key
                 {
                     CreationDatetime = DateTimeOffset.Now,
@@ -388,15 +388,15 @@ namespace NodeGuard.Data.Repositories
         }
 
         public async Task TrackAndScanWallet(Wallet wallet){
-        
+
             var derivationStrategyBase = wallet.GetDerivationStrategy();
             if (derivationStrategyBase == null)
             {
                 _logger.LogError("Error while getting the derivation scheme");
-                
+
                 throw new InvalidOperationException("Error while getting the derivation scheme for wallet with id: when rescaning" + wallet.Id);
             }
-            
+
             _logger.LogInformation("Starting tracking and scanning wallet with id: {WalletId}", wallet.Id);
 
             //Track wallet
@@ -415,7 +415,7 @@ namespace NodeGuard.Data.Repositories
                 throw new ArgumentException("Value cannot be null or whitespace.", nameof(outputDescriptor));
 
             (bool, string?) result = (true, null);
-                
+
             try
             {
                 var (strategyBase, tuples) = WalletParser.ParseOutputDescriptor(outputDescriptor, CurrentNetworkHelper.GetCurrentNetwork());
@@ -431,9 +431,9 @@ namespace NodeGuard.Data.Repositories
                     Path = x.Item2.KeyPath.ToString(),
                     IsBIP39ImportedKey = false,
                     UserId = userId,
-                    
+
                 }).ToList();
-                
+
                 Wallet? wallet;
                 //if singlesig
                 if (strategyBase is DirectDerivationStrategy)
@@ -463,7 +463,7 @@ namespace NodeGuard.Data.Repositories
                 }
                 else if (strategyBase is P2WSHDerivationStrategy p2WshDerivationStrategy && p2WshDerivationStrategy.Inner is MultisigDerivationStrategy multisigDerivationStrategy)
                 {
-                    
+
                     wallet = new Wallet
                     {
                         Id = 0,
@@ -486,9 +486,9 @@ namespace NodeGuard.Data.Repositories
                 {
                     _logger.LogError("Invalid output descriptor");
                     return (false, "Invalid output descriptor");
-                    
+
                 }
-                
+
                 //Persist wallet
                 var addResult = await AddAsync(wallet);
                 if (addResult.Item1 == false)
@@ -496,7 +496,7 @@ namespace NodeGuard.Data.Repositories
                     _logger.LogError("Error while importing wallet from output descriptor: {Error}", addResult.Item2);
                     return (false, addResult.Item2);
                 }
-                
+
                 //Track wallet
                 var derivationStrategyBase = wallet.GetDerivationStrategy();
                 if (derivationStrategyBase == null)
