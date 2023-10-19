@@ -6,6 +6,7 @@
 @using Humanizer
 @using NBitcoin
 @using NBXplorer.DerivationStrategy
+@using NBXplorer.Models
 @using Quartz
 @using Field = Blazorise.Field
 @using Key = NodeGuard.Data.Models.Key
@@ -20,6 +21,7 @@
 @inject ILocalStorageService LocalStorageService
 @inject ISchedulerFactory SchedulerFactory
 @inject IPriceConversionService PriceConversionService
+@inject INBXplorerService NBXplorerService
 
 @attribute [Authorize(Roles = "NodeManager, FinanceManager, Superadmin")]
 
@@ -74,7 +76,7 @@
                             <DropdownMenu>
 
                                 <DropdownItem Clicked="context.Clicked">Edit</DropdownItem>
-                                <DropdownItem Disabled="!context.Item.IsFinalised" Clicked="@(() => LoadAndOpenTextModalBalance(context.Item))">Balance</DropdownItem>
+                                <DropdownItem Disabled="!context.Item.IsFinalised" Clicked="@(() => LoadAndOpenDetailsModal(context.Item))">Details</DropdownItem>
                                 <DropdownItem Disabled="!context.Item.IsFinalised" Clicked="@(() => LoadAndOpenModalTextModalUnusedAddress(context.Item))">Get address</DropdownItem>
                                 <DropdownItem Disabled="!context.Item.IsFinalised || context.Item.IsWatchOnly" Clicked="@(() => ShowTransferFundsModal(context.Item))">Transfer funds</DropdownItem>
                                 <DropdownItem Disabled="!context.Item.IsFinalised" Clicked="@(() => RescanWallet(context.Item))">Rescan wallet</DropdownItem>
@@ -461,12 +463,12 @@
                                 <div class="flex-container">
                                     <p class="source-wallet-name">@_sourceWalletName</p>
                                     <div class="arrow-icon-container">
-                                        <Icon Name="IconName.ArrowRight" class="arrow-icon" />
+                                        <Icon Name="IconName.ArrowRight" class="arrow-icon"/>
                                     </div>
                                 </div>
                             </FieldBody>
                             <FieldHelp class="field-help">
-                                 @($"Current balance: {_sourceWalletBalance:F8}");
+                                @($"Current balance: {_sourceWalletBalance:F8}");
                             </FieldHelp>
                             <FieldHelp>
                                 @($"Balance after transfer: {CalculateAmountWalletSourceAfterTransaction():F8} BTC ({Math.Round(PriceConversionService.BtcToUsdConversion(_sourceBalanceAfterTransaction, _btcPrice), 2)} USD)")
@@ -474,9 +476,11 @@
                         </Field>
                     </Column>
                     <Column ColumnSize="ColumnSize.Is6" @bind-Value="@_amountToTransfer">
-                        <Validation Validator="@ValidationRule.IsSelected" >
+                        <Validation Validator="@ValidationRule.IsSelected">
                             <Field>
-                                <FieldLabel><strong>To</strong></FieldLabel>
+                                <FieldLabel>
+                                    <strong>To</strong>
+                                </FieldLabel>
                                 <FieldBody>
                                     <SelectList TItem="Wallet"
                                                 TValue="int"
@@ -496,7 +500,7 @@
                                     @($"Current balance: {_transferTargetWalletBalance:f8}")
                                 </FieldHelp>
                                 <FieldHelp Visibility="@(_transferTargetWalletBalance.IsNullOrEmpty() ? Visibility.Invisible : Visibility.Visible)">
-                                    @($"Balance after transfer: {CalculateAmountWalletTargetAfterTransaction():F8} BTC ({Math.Round(PriceConversionService.BtcToUsdConversion((decimal)(targetBalance + _amountToTransfer), _btcPrice), 2)} USD)")
+                                    @($"Balance after transfer: {CalculateAmountWalletTargetAfterTransaction():F8} BTC ({Math.Round(PriceConversionService.BtcToUsdConversion((decimal) (targetBalance + _amountToTransfer), _btcPrice), 2)} USD)")
                                 </FieldHelp>
                             </Field>
                         </Validation>
@@ -511,7 +515,166 @@
         </ModalFooter>
     </ModalContent>
 </Modal>
+<Modal @ref="_detailsModal">
+    <ModalContent Centered Size="ModalSize.ExtraLarge">
+        <ModalHeader>
+            <ModalTitle>Details of the wallet</ModalTitle>
+            <CloseButton/>
+        </ModalHeader>
+        <ModalBody>
+            <Tabs FullWidth="true" Justified="true" SelectedTab="Balance">
+                <Items>
+                    <Tab Name="Balance">On-chain Balance</Tab>
+                    <Tab Name="UTXOS">Coins/UTXOs</Tab>
+                    <Tab Name="Transactions">Transactions</Tab>
+                </Items>
+                <Content>
+                    <TabPanel Name="Balance">
+                        @if (_walletBalance != null)
+                        {
+                            <Row>
+                                <Column ColumnSize="ColumnSize.Is6">
+                                    <Column ColumnSize="ColumnSize.Is12">
 
+                                        <h3> Confirmed Balance</h3>
+                                    </Column>
+
+                                    <Column ColumnSize="ColumnSize.Is12">
+                                        <p>@($"{((Money) _walletBalance.Confirmed).ToUnit(MoneyUnit.BTC):f8} BTC ({Math.Round(PriceConversionService.BtcToUsdConversion(((Money) _walletBalance.Confirmed).ToUnit(MoneyUnit.BTC), _btcPrice), 2)} USD)")</p>
+                                    </Column>
+
+                                </Column>
+                                <Column ColumnSize="ColumnSize.Is6">
+                                    <Column ColumnSize="ColumnSize.Is12">
+
+                                        <h3> Unconfirmed Balance</h3>
+                                    </Column>
+
+                                    <Column ColumnSize="ColumnSize.Is12">
+                                        <p>@($"{((Money) _walletBalance.Unconfirmed).ToUnit(MoneyUnit.BTC):f8} BTC ({Math.Round(PriceConversionService.BtcToUsdConversion(((Money) _walletBalance.Unconfirmed).ToUnit(MoneyUnit.BTC), _btcPrice), 2)} USD)")</p>
+                                    </Column>
+
+                                </Column>
+                            </Row>
+                        }
+
+                    </TabPanel>
+                    <TabPanel Name="UTXOS">
+                        <Table>
+                            <TableHeader>
+                                <TableRow>
+                                    <TableHeaderCell>Outpoint</TableHeaderCell>
+                                    <TableHeaderCell>Confirmations</TableHeaderCell>
+                                    <TableHeaderCell>Value</TableHeaderCell>
+                                </TableRow>
+                            </TableHeader>
+                            <TableBody>
+                                @if (_detailsUTXOs?.Confirmed.UTXOs != null && _detailsUTXOs.Confirmed.UTXOs.Any())
+                                {
+                                    foreach (var utxo in _detailsUTXOs?.Confirmed.UTXOs)
+                                    {
+                                        <TableRow>
+                                            <TableRowHeader>
+                                                <a href="@($"{Environment.GetEnvironmentVariable("MEMPOOL_ENDPOINT")}/tx/{utxo.Outpoint.Hash}#vout={utxo.Outpoint.N}")" target="_blank">@utxo.Outpoint </a>
+                                            </TableRowHeader>
+                                            <TableRowCell>@utxo.Confirmations</TableRowCell>
+                                            <TableRowCell>@($"{@utxo.Value} BTC")</TableRowCell>
+                                        </TableRow>
+                                    }
+                                }
+                                else
+                                {
+                                    @("No UTXOs to display.")
+                                }
+                            </TableBody>
+                        </Table>
+                    </TabPanel>
+                    <TabPanel Name="Transactions">
+                        <Row>
+                            <Column ColumnSize="ColumnSize.Is12">
+
+                                <Column ColumnSize="ColumnSize.Is12">
+                                    <h3>Unconfirmed transactions</h3>
+                                </Column>
+                                <Column ColumnSize="ColumnSize.Is12">
+                                    <Table>
+                                        <TableHeader>
+                                            <TableRow>
+                                                <TableHeaderCell>TxId</TableHeaderCell>
+                                                <TableHeaderCell>Confirmations</TableHeaderCell>
+                                                <TableHeaderCell>Timestamp</TableHeaderCell>
+                                            </TableRow>
+                                        </TableHeader>
+                                        @* TODO PAGING *@
+                                        <TableBody>
+                                            @if (_detailsTransactions != null && _detailsTransactions.UnconfirmedTransactions.Transactions.Any())
+                                            {
+                                                foreach (var tx in _detailsTransactions.UnconfirmedTransactions.Transactions)
+                                                {
+                                                    <TableRow>
+                                                        <TableRowHeader>
+                                                            <a href="@($"{Environment.GetEnvironmentVariable("MEMPOOL_ENDPOINT")}/tx/{tx.TransactionId}")" target="_blank">@StringHelper.TruncateHeadAndTail(tx.TransactionId.ToString(), 6) </a>
+                                                        </TableRowHeader>
+                                                        <TableRowCell>@tx.Confirmations</TableRowCell>
+                                                        <TableRowCell>@tx.Timestamp.ToString("s")</TableRowCell>
+                                                    </TableRow>
+                                                }
+                                            }
+                                            else
+                                            {
+                                                @("No transactions to display.")
+                                            }
+                                        </TableBody>
+                                    </Table>
+                                </Column>
+                            </Column>
+                            <Column ColumnSize="ColumnSize.Is12">
+                                <Column ColumnSize="ColumnSize.Is12">
+                                    <h3>Confirmed transactions</h3>
+                                </Column>
+                                <Column ColumnSize="ColumnSize.Is12">
+                                    <Table>
+                                        <TableHeader>
+                                            <TableRow>
+                                                <TableHeaderCell>TxId</TableHeaderCell>
+                                                <TableHeaderCell>Confirmations</TableHeaderCell>
+                                                <TableHeaderCell>Timestamp</TableHeaderCell>
+                                            </TableRow>
+                                        </TableHeader>
+                                        <TableBody>
+                                            @if (_detailsTransactions != null && _detailsTransactions.ConfirmedTransactions.Transactions.Any())
+                                            {
+                                                foreach (var tx in _detailsTransactions.ConfirmedTransactions.Transactions)
+                                                {
+                                                    <TableRow>
+                                                        <TableRowHeader>
+                                                            <a href="@($"{Environment.GetEnvironmentVariable("MEMPOOL_ENDPOINT")}/tx/{tx.TransactionId}")" target="_blank">@StringHelper.TruncateHeadAndTail(tx.TransactionId.ToString(), 6) </a>
+                                                        </TableRowHeader>
+                                                        <TableRowCell>@tx.Confirmations</TableRowCell>
+                                                        <TableRowCell>@tx.Timestamp.ToString("s")</TableRowCell>
+                                                    </TableRow>
+                                                }
+                                            }
+                                            else
+                                            {
+                                                @("No transactions to display.")
+                                            }
+                                        </TableBody>
+                                    </Table>
+                                </Column>
+                            </Column>
+                        </Row>
+
+                    </TabPanel>
+                </Content>
+            </Tabs>
+        </ModalBody>
+        <ModalFooter>
+            <Button Color="Color.Secondary" Clicked="@CloseAndCleanDetailsModal">Close</Button>
+
+        </ModalFooter>
+    </ModalContent>
+</Modal>
 <ConfirmationModal
     @ref="_multisigTransferModal"
     Title="Transferring from a multisig wallet"
@@ -607,6 +770,11 @@
     private bool columnsLoaded;
 
     private string? _outputDescriptor;
+
+    private Modal? _detailsModal;
+    private GetBalanceResponse? _walletBalance;
+    private UTXOChanges? _detailsUTXOs;
+    private GetTransactionsResponse? _detailsTransactions;
 
     public abstract class WalletsColumnName
     {
@@ -724,7 +892,7 @@
         return _sourceBalanceAfterTransaction;
     }
 
-    
+
     private async Task OnRowUpdated(SavedRowItem<Wallet, Dictionary<string, object>> arg)
     {
         if (arg.Item == null) return;
@@ -892,25 +1060,30 @@
         await _textModalRef.Close(CloseReason.UserClosing);
     }
 
-    private async Task LoadAndOpenTextModalBalance(Wallet wallet)
+    /// Loads the modal with the balance of the wallet, the utxos and the transactions
+    private async Task LoadAndOpenDetailsModal(Wallet wallet)
     {
-        await CleanTextModal();
         if (wallet != null)
         {
-            var balance = await LightningService.GetWalletBalance(wallet);
+            _walletBalance = await LightningService.GetWalletBalance(wallet);
+            var derivationStrategyBase = wallet.GetDerivationStrategy();
 
-            if (balance != null)
+            if (derivationStrategyBase == null)
             {
-                _textModalTitle = $"Wallet: {wallet.Name} On-chain Balance";
-                _textModalContent = $"Confirmed: {((Money) balance.Confirmed).ToUnit(MoneyUnit.BTC):f8} BTC ({Math.Round(PriceConversionService.BtcToUsdConversion(((Money) balance.Confirmed).ToUnit(MoneyUnit.BTC), _btcPrice), 2)} USD) - " +
-                                    $"Unconfirmed: {((Money) balance.Unconfirmed).ToUnit(MoneyUnit.BTC):f8} BTC ({Math.Round(PriceConversionService.BtcToUsdConversion(((Money) balance.Unconfirmed).ToUnit(MoneyUnit.BTC), _btcPrice), 2)} USD)";
-                _textModalCopy = false;
+                ToastService.ShowError("Error while getting the wallet on-chain balance");
+                return;
+            }
 
-                await _textModalRef.Show();
+            _detailsUTXOs = await NBXplorerService.GetUTXOsAsync(derivationStrategyBase);
+            _detailsTransactions = await NBXplorerService.GetTransactionsAsync(derivationStrategyBase);
+
+            if (_walletBalance == null || _detailsUTXOs == null || _detailsTransactions == null)
+            {
+                ToastService.ShowError("Error while getting the wallet on-chain balance");
             }
             else
             {
-                ToastService.ShowError("Error while getting the wallet on-chain balance");
+                await _detailsModal?.Show();
             }
         }
     }
@@ -1145,7 +1318,6 @@
             Description = @$"Funds transferred from {_sourceWalletName} to {_targetWalletName}",
             WithdrawAllFunds = _transferAllFunds,
             DestinationAddress = targetBitcoinAddress.ToString(),
-            
             Amount = _amountToTransfer,
             WalletId = _sourceTransferWallet.Id,
             Status = _sourceTransferWallet.IsHotWallet
@@ -1267,10 +1439,10 @@
 
         if (targetWallet != null)
         {
-             (targetBalance,_) = await BitcoinService.GetWalletConfirmedBalance(targetWallet);
+            (targetBalance,_) = await BitcoinService.GetWalletConfirmedBalance(targetWallet);
 
             _transferTargetWalletBalance = $"{targetBalance:f8} BTC ({Math.Round(PriceConversionService.BtcToUsdConversion((decimal) targetBalance, _btcPrice), 2)} USD)";
-          }
+        }
     }
 
     private async Task ValidateDerivationPath(ValidatorEventArgs arg1, CancellationToken arg2)
@@ -1384,7 +1556,7 @@
             arg1.ErrorText = "Invalid output descriptor";
         }
     }
-    
+
     private async Task RescanWallet(Wallet contextItem)
     {
         if (contextItem != null)
@@ -1407,4 +1579,10 @@
         _transferAllFunds = value;
         _amountToTransfer = _sourceBalance;
     }
+
+    private async Task CloseAndCleanDetailsModal()
+    {
+        await _detailsModal?.Close(CloseReason.UserClosing);
+    }
+
 }

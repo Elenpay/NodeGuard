@@ -25,9 +25,9 @@ public interface INBXplorerService
 
     public Task<StatusResult> GetStatusAsync(CancellationToken cancellation = default);
 
-    public Task<UTXOChanges> GetUTXOsAsync(DerivationStrategyBase extKey, CancellationToken cancellation = default);
+    public Task<UTXOChanges> GetUTXOsAsync(DerivationStrategyBase derivationStrategy, CancellationToken cancellation = default);
 
-    public Task<UTXOChanges> GetUTXOsByLimitAsync(DerivationStrategyBase extKey, CoinSelectionStrategy strategy = CoinSelectionStrategy.SmallestFirst, int limit = 0, long amount = 0, long closestTo = 0, List<string>? ignoreOutpoints = null, CancellationToken cancellation = default);
+    public Task<UTXOChanges> GetUTXOsByLimitAsync(DerivationStrategyBase derivationStrategy, CoinSelectionStrategy strategy = CoinSelectionStrategy.SmallestFirst, int limit = 0, long amount = 0, long closestTo = 0, List<string>? ignoreOutpoints = null, CancellationToken cancellation = default);
 
     public Task<GetFeeRateResult> GetFeeRateAsync(int blockCount, FeeRate fallbackFeeRate,
         CancellationToken cancellation = default);
@@ -36,14 +36,16 @@ public interface INBXplorerService
 
     public Task<BroadcastResult> BroadcastAsync(Transaction tx, bool testMempoolAccept,
         CancellationToken cancellation = default);
+    
+    public Task<GetTransactionsResponse> GetTransactionsAsync(DerivationStrategyBase derivationStrategy);
 
-    public Task ScanUTXOSetAsync(DerivationStrategyBase extKey,
+    public Task ScanUTXOSetAsync(DerivationStrategyBase derivationStrategy,
         int? batchSize = null,
         int? gapLimit = null,
         int? fromIndex = null,
         CancellationToken cancellation = default(CancellationToken));
 
-    public Task<ScanUTXOInformation> GetScanUTXOSetInformationAsync(DerivationStrategyBase extKey,
+    public Task<ScanUTXOInformation> GetScanUTXOSetInformationAsync(DerivationStrategyBase derivationStrategy,
         CancellationToken cancellation = default(CancellationToken));
 }
 
@@ -101,7 +103,6 @@ public class NBXplorerService : INBXplorerService
     public async Task TrackAsync(TrackedSource trackedSource, CancellationToken cancellation = default)
     {
         var client = await LightningHelper.CreateNBExplorerClient();
-
         await client.TrackAsync(trackedSource, cancellation);
     }
 
@@ -136,15 +137,15 @@ public class NBXplorerService : INBXplorerService
     }
 
 
-    public async Task<UTXOChanges> GetUTXOsAsync(DerivationStrategyBase extKey,
+    public async Task<UTXOChanges> GetUTXOsAsync(DerivationStrategyBase derivationStrategy,
         CancellationToken cancellation = default)
     {
         var client = await LightningHelper.CreateNBExplorerClient();
 
-        return await client.GetUTXOsAsync(extKey, cancellation);
+        return await client.GetUTXOsAsync(derivationStrategy, cancellation);
     }
 
-    public async Task<UTXOChanges> GetUTXOsByLimitAsync(DerivationStrategyBase extKey,
+    public async Task<UTXOChanges> GetUTXOsByLimitAsync(DerivationStrategyBase derivationStrategy,
         CoinSelectionStrategy strategy = CoinSelectionStrategy.SmallestFirst,
         int limit = 0,
         long amount = 0,
@@ -154,7 +155,7 @@ public class NBXplorerService : INBXplorerService
     {
         try
         {
-            var requestUri = $"{Constants.NBXPLORER_URI}/v1/cryptos/btc/derivations/{TrackedSource.Create(extKey).DerivationStrategy}/selectutxos";
+            var requestUri = $"{Constants.NBXPLORER_URI}/v1/cryptos/btc/derivations/{TrackedSource.Create(derivationStrategy).DerivationStrategy}/selectutxos";
 
             var keyValuePairs = new List<KeyValuePair<string, string?>>()
             {
@@ -279,21 +280,28 @@ public class NBXplorerService : INBXplorerService
         return await client.BroadcastAsync(tx, testMempoolAccept, cancellation);
     }
 
-    public async Task ScanUTXOSetAsync(DerivationStrategyBase extKey, int? batchSize = null, int? gapLimit = null,
+    public async Task<GetTransactionsResponse> GetTransactionsAsync(DerivationStrategyBase derivationStrategy)
+    {
+        var client = await LightningHelper.CreateNBExplorerClient();
+
+        return await client.GetTransactionsAsync(derivationStrategy);
+    }
+
+    public async Task ScanUTXOSetAsync(DerivationStrategyBase derivationStrategy, int? batchSize = null, int? gapLimit = null,
         int? fromIndex = null,
         CancellationToken cancellation = default)
     {
         var client = await LightningHelper.CreateNBExplorerClient();
 
-        await client.ScanUTXOSetAsync(extKey, batchSize, gapLimit, fromIndex, cancellation);
+        await client.ScanUTXOSetAsync(derivationStrategy, batchSize, gapLimit, fromIndex, cancellation);
     }
 
-    public async Task<ScanUTXOInformation> GetScanUTXOSetInformationAsync(DerivationStrategyBase extKey,
+    public async Task<ScanUTXOInformation> GetScanUTXOSetInformationAsync(DerivationStrategyBase derivationStrategy,
         CancellationToken cancellation = default)
     {
         var client = await LightningHelper.CreateNBExplorerClient();
 
-        return await client.GetScanUTXOSetInformationAsync(extKey, cancellation);
+        return await client.GetScanUTXOSetInformationAsync(derivationStrategy, cancellation);
     }
 
     public async Task<StatusResult> GetStatusAsync(CancellationToken cancellation = default)
