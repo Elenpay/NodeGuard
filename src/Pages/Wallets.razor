@@ -527,6 +527,7 @@
                     <Tab Name="Balance">On-chain Balance</Tab>
                     <Tab Name="UTXOS">Coins/UTXOs</Tab>
                     <Tab Name="Transactions">Transactions</Tab>
+                    <Tab Name="FirstAddresses">First addresses</Tab>
                 </Items>
                 <Content>
                     <TabPanel Name="Balance">
@@ -666,6 +667,30 @@
                         </Row>
 
                     </TabPanel>
+                    <TabPanel Name="FirstAddresses">
+                        <Table>
+                            <TableHeader>
+                                <TableRow>
+                                    <TableHeaderCell>Address</TableHeaderCell>
+                                </TableRow>
+                            </TableHeader>
+                            <TableBody>
+                                @if (_firstDetailsAddresses.Any())
+                                {
+                                    foreach (var address in _firstDetailsAddresses)
+                                    {
+                                        <TableRow>
+                                            <TableRowCell>@($"{address}")</TableRowCell>
+                                        </TableRow>
+                                    }
+                                }
+                                else
+                                {
+                                    @("No address to display.")
+                                }
+                            </TableBody>
+                        </Table>
+                    </TabPanel>
                 </Content>
             </Tabs>
         </ModalBody>
@@ -775,6 +800,7 @@
     private GetBalanceResponse? _walletBalance;
     private UTXOChanges? _detailsUTXOs;
     private GetTransactionsResponse? _detailsTransactions;
+    private List<BitcoinAddress> _firstDetailsAddresses = new();
 
     public abstract class WalletsColumnName
     {
@@ -1076,6 +1102,14 @@
 
             _detailsUTXOs = await NBXplorerService.GetUTXOsAsync(derivationStrategyBase);
             _detailsTransactions = await NBXplorerService.GetTransactionsAsync(derivationStrategyBase);
+            
+            //Lets generate the 10 first addresses
+            _firstDetailsAddresses = new List<BitcoinAddress>();
+            
+            for (int i = 0; i < 10; i++)
+            {
+                _firstDetailsAddresses.Add(wallet.GetDerivationStrategy().GetDerivation(new KeyPath($"0/{i}")).ScriptPubKey.GetDestinationAddress(CurrentNetworkHelper.GetCurrentNetwork()));
+            }
 
             if (_walletBalance == null || _detailsUTXOs == null || _detailsTransactions == null)
             {
@@ -1086,6 +1120,12 @@
                 await _detailsModal?.Show();
             }
         }
+    }
+    
+    
+    private async Task CloseAndCleanDetailsModal()
+    {
+        await _detailsModal?.Close(CloseReason.UserClosing);
     }
 
     private async Task LoadAndOpenModalTextModalUnusedAddress(Wallet wallet)
@@ -1580,9 +1620,5 @@
         _amountToTransfer = _sourceBalance;
     }
 
-    private async Task CloseAndCleanDetailsModal()
-    {
-        await _detailsModal?.Close(CloseReason.UserClosing);
-    }
 
 }
