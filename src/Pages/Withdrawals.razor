@@ -77,6 +77,9 @@
                                      && LoggedUser?.Id != context.UserRequestorId)
                             {
                                 <Button Color="Color.Danger" Clicked="()=> ShowRejectCancelModal(context, WalletWithdrawalRequestStatus.Rejected)">Reject</Button>
+                            } else if (LoggedUser?.Id == context.UserRequestorId)
+                            {
+                                <Button Color="Color.Danger" Clicked="()=> ShowRejectCancelModal(context, WalletWithdrawalRequestStatus.Cancelled)">Cancel</Button>
                             }
                         </DisplayTemplate>
                     </DataGridColumn>
