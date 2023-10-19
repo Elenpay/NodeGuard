@@ -78,14 +78,14 @@ public static class ValidationHelper
         }
     }
 
-    public static void ValidateWithdrawalAmount(ValidatorEventArgs obj)
+    public static void ValidateWithdrawalAmount(ValidatorEventArgs obj, decimal? walletBalance)
     {
         var amount = (decimal)obj.Value;
 
         obj.Status = ValidationStatus.Success;
 
         decimal minimum = Constants.MINIMUM_WITHDRAWAL_BTC_AMOUNT;
-        decimal maximum = Constants.MAXIMUM_WITHDRAWAL_BTC_AMOUNT;
+        decimal maximum = walletBalance ?? Constants.MAXIMUM_WITHDRAWAL_BTC_AMOUNT;
 
         if (amount < minimum)
         {
