@@ -450,7 +450,7 @@
                     <Column ColumnSize="ColumnSize.Is6">
                         <Field>
                             <FieldBody>
-                                <Check TValue="bool" @bind-Checked="@_transferAllFunds">Transfer all funds</Check>
+                                <Check TValue="bool" CheckedChanged="OnTransferAllFundsCheckedChanged" Checked="@_transferAllFunds">Transfer all funds</Check>
                             </FieldBody>
                         </Field>
                     </Column>
@@ -1402,4 +1402,9 @@
         }
     }
 
+    private void OnTransferAllFundsCheckedChanged(bool value)
+    {
+        _transferAllFunds = value;
+        _amountToTransfer = _sourceBalance;
+    }
 }
