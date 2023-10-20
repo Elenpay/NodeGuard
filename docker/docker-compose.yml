@@ -17,7 +17,7 @@ services:
 
   nbxplorer:
     restart: unless-stopped
-    image: ghcr.io/elenpay/nbxplorer:v2.3.65-1.0.0
+    image: ghcr.io/elenpay/nbxplorer:elenpay-develop
     platform: linux/amd64
     hostname: nbxplorer
     ports:
@@ -29,6 +29,7 @@ services:
       NBXPLORER_SIGNALFILESDIR: /datadir
       #Keeping dbtrie for dev until it is fully removed since we would need to modify nbxplorer docker image to wait for the db to be ready
       NBXPLORER_DBTRIE: 1
+      # NBXPLORER_POSTGRES: Host=nodeguard_postgres;Port=5432;Database=nbxplorer;Username=rw_dev;Password=rw_dev
       NBXPLORER_CHAINS: "btc"
       NBXPLORER_BTCRPCUSER: "polaruser"
       NBXPLORER_BTCRPCPASSWORD: "polarpass"

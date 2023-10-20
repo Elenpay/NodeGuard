@@ -68,7 +68,7 @@
 
                     </NewCommandTemplate>
                     <EditCommandTemplate>
-                        <Dropdown>
+                        <Dropdown @onclick:stopPropagation="true" @onclick:preventDefault="true">
                             <DropdownToggle Color="Color.Primary">
                             </DropdownToggle>
                             <DropdownMenu>
