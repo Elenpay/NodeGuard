@@ -524,8 +524,13 @@
 
     private async Task GetData()
     {
-        if (LoggedUser?.Id != null)
+        if (LoggedUser?.Id != null && !_isFinanceManager)
+        {
             _userPendingRequests = await WalletWithdrawalRequestRepository.GetUnsignedPendingRequestsByUser(LoggedUser.Id);
+        }else 
+        {
+            _userPendingRequests = await WalletWithdrawalRequestRepository.GetAllUnsignedPendingRequests(); 
+        }
 
         _withdrawalRequests = (await WalletWithdrawalRequestRepository.GetAll()).Except(_userPendingRequests).ToList();
 
