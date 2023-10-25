@@ -20,6 +20,7 @@
 @inject ILocalStorageService LocalStorageService
 @inject ISchedulerFactory SchedulerFactory
 @inject IPriceConversionService PriceConversionService
+@inject IInternalWalletRepository InternalWalletRepository
 
 @attribute [Authorize(Roles = "NodeManager, FinanceManager, Superadmin")]
 
@@ -78,6 +79,7 @@
                                 <DropdownItem Disabled="!context.Item.IsFinalised" Clicked="@(() => LoadAndOpenModalTextModalUnusedAddress(context.Item))">Get address</DropdownItem>
                                 <DropdownItem Disabled="!context.Item.IsFinalised || context.Item.IsWatchOnly" Clicked="@(() => ShowTransferFundsModal(context.Item))">Transfer funds</DropdownItem>
                                 <DropdownItem Disabled="!context.Item.IsFinalised" Clicked="@(() => RescanWallet(context.Item))">Rescan wallet</DropdownItem>
+                                <DropdownItem Disabled="!context.Item.IsFinalised" Clicked="@(() => LoadAndOpenExportOutputDescriptor(context.Item))">Export output descriptor</DropdownItem>
 
                             </DropdownMenu>
                         </Dropdown>
@@ -512,6 +514,36 @@
     </ModalContent>
 </Modal>
 
+<Modal @ref="_exportOutputDescriptorModal">
+    <ModalContent Size="ModalSize.Large">
+        <ModalHeader>
+            @($"Export wallet") 
+        </ModalHeader>
+        <ModalBody>
+            <p>Copy the output descriptor below and use it to import this wallet in other systems.</p>
+            <p>Only segwit descriptors for single sig(WPKH) or multisigs (WSH) are supported.</p>
+            <p>Singlesig: <code>wpkh([…/84'/0'/0']xpub…/0/*)</code></p>
+            <p>Multisig: <code>wsh(sortedmulti(2,[…/48'/0'/0'/2']xpub…/0/*,[…/48'/0'/0'/2']xpub…/0/*))</code></p>
+            <Paragraph>
+                @(StringHelper.TruncateHeadAndTail(_outputDescriptorContentModal, 25))
+                <Button Color="Color.Primary" Clicked="@(()=> CopyStrToClipboard(_outputDescriptorContentModal))">Copy</Button>
+            </Paragraph>
+            @{
+                foreach(var k in _keysContentModal)
+                {
+                    <p>
+                        @($"{k.Name}: {k.Path}")
+                        <Button Color="Color.Primary" Clicked="@(() => CopyStrToClipboard(k.Path))">Copy</Button>
+                    </p>
+                }
+            }
+        </ModalBody>
+        <ModalFooter>
+            <Button Color="Color.Secondary" Clicked="@CloseExportOutputDescriptorModal">Close</Button>
+        </ModalFooter>
+    </ModalContent>
+</Modal>
+
 <ConfirmationModal
     @ref="_multisigTransferModal"
     Title="Transferring from a multisig wallet"
@@ -525,6 +557,7 @@
     OkLabel="Yes, understood"
     OnCancel="CloseHotWalletTransferModal"
     OnSubmit="TransferFundsHotWallet"/>
+    
 
 @code {
 
@@ -547,6 +580,10 @@
     private List<Key> _selectedWalletKeysPlusInternalWalletKey = new();
     private List<Key> _selectedFinanceManagerAvailableKeys = new();
     private Key? _selectedWalletKey;
+    
+    private Modal _exportOutputDescriptorModal;
+    private string _outputDescriptorContentModal;
+    private HashSet<Key> _keysContentModal = new();
 
     private Modal _textModalRef;
     private string _textModalTitle = string.Empty;
@@ -1400,6 +1437,32 @@
 
             ToastService.ShowSuccess("Wallet rescan job created successfully");
         }
+    }
+
+    private async Task LoadAndOpenExportOutputDescriptor(Wallet contextItem)
+    {
+        await CleanTextModal();
+        if (contextItem != null)
+        {
+            try
+            {
+                _outputDescriptorContentModal = WalletParser.GetOutputDescriptor(contextItem);
+                _keysContentModal = contextItem.Keys as HashSet<Key> ?? new HashSet<Key>();
+                await _exportOutputDescriptorModal.Show();
+            }
+            catch (Exception e)
+            {
+                ToastService.ShowError("Error while getting the wallet descriptor");
+            }
+        }
+    }
+
+    private async Task CloseExportOutputDescriptorModal()
+    {
+        await _exportOutputDescriptorModal.Close(CloseReason.UserClosing);
+        
+        _outputDescriptorContentModal = string.Empty;
+        _keysContentModal = new HashSet<Key>();
     }
 
 }

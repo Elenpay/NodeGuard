@@ -1,6 +1,9 @@
+using System.Text;
+using Humanizer;
 using NBitcoin;
 using NBitcoin.Scripting;
 using NBXplorer.DerivationStrategy;
+using NodeGuard.Data.Models;
 
 namespace NodeGuard.Helpers;
 
@@ -104,5 +107,105 @@ public static class WalletParser
             var strategy = factory.Parse(str);
             return strategy;
         }
+    }
+
+    public static string GetOutputDescriptor(Wallet wallet)
+    {
+        var network = Network.GetNetwork(Constants.BITCOIN_NETWORK);
+        OutputDescriptor outputDescriptor = null;
+        PubKeyProvider pubKeyProvider;
+
+        if (wallet.IsHotWallet)
+        {
+            var key = wallet.Keys.FirstOrDefault();
+            pubKeyProvider = PubKeyProvider.NewHD(
+                new BitcoinExtPubKey(
+                    ExtPubKey.Parse(key.XPUB, network),
+                    network
+                ),
+                new KeyPath(""),
+                key.Path.EndsWith("'") ? PubKeyProvider.DeriveType.HARDENED : PubKeyProvider.DeriveType.UNHARDENED
+            );
+            
+            if (!wallet.IsBIP39Imported)
+            {
+                var internalKey = wallet.Keys.FirstOrDefault(k => k.InternalWalletId != null);
+                var internalBytes = GetMasterFingerprint(internalKey.MasterFingerprint);
+                var rootedKeyPath = new RootedKeyPath(
+                    new HDFingerprint(internalBytes),
+                    KeyPath.Parse(internalKey.Path)
+                );
+                pubKeyProvider = PubKeyProvider.NewOrigin(rootedKeyPath, pubKeyProvider);
+            }
+
+            switch (wallet.WalletAddressType)
+            {
+                case WalletAddressType.NativeSegwit:
+                    outputDescriptor = OutputDescriptor.NewWPKH(pubKeyProvider, network);
+                    break;
+                case WalletAddressType.NestedSegwit:
+                    outputDescriptor = OutputDescriptor.NewWPKH(pubKeyProvider, network);
+                    outputDescriptor = OutputDescriptor.NewSH(outputDescriptor, network);
+                    break;
+                case WalletAddressType.Legacy:
+                    outputDescriptor = OutputDescriptor.NewPKH(pubKeyProvider, network);
+                    break;
+                case WalletAddressType.Taproot:
+                    throw new NotImplementedException();
+            }
+        }
+        else
+        {
+            var pubKeyProviders = new List<PubKeyProvider>();
+            foreach (var k in wallet.Keys)
+            {
+                var rootedKeyPath = new RootedKeyPath(
+                    new HDFingerprint(GetMasterFingerprint(k.MasterFingerprint)),
+                    KeyPath.Parse(k.Path)
+                );
+                pubKeyProvider = PubKeyProvider.NewOrigin(
+                    rootedKeyPath,
+                    PubKeyProvider.NewHD(
+                        new BitcoinExtPubKey(
+                            ExtPubKey.Parse(k.XPUB, network),
+                            network
+                        ),
+                        new KeyPath(""),
+                        k.Path.EndsWith("'") ? PubKeyProvider.DeriveType.HARDENED : PubKeyProvider.DeriveType.UNHARDENED
+                    )
+                );
+                pubKeyProviders.Add(pubKeyProvider);
+            }
+            outputDescriptor = OutputDescriptor.NewMulti(
+                (uint)wallet.MofN,
+                pubKeyProviders,
+                !wallet.IsUnSortedMultiSig,
+                network);
+            
+            switch (wallet.WalletAddressType)
+            {
+                case WalletAddressType.NativeSegwit:
+                    outputDescriptor = OutputDescriptor.NewWSH(outputDescriptor, network);
+                    break;
+                case WalletAddressType.NestedSegwit:
+                    outputDescriptor = OutputDescriptor.NewSH(outputDescriptor, network);
+                    break;
+                case WalletAddressType.Legacy:
+                    break;
+                case WalletAddressType.Taproot:
+                    throw new NotImplementedException();
+            }
+        }
+
+        return outputDescriptor is not null ? outputDescriptor.ToString() : throw new Exception("Something went wrong");
+    }
+    
+    public static byte[] GetMasterFingerprint(string masterFingerprint)
+    {
+        var internalBytes = Enumerable.Range(0, masterFingerprint.Length)
+            .Where(x => x % 2 == 0)
+            .Select(x => Convert.ToByte(masterFingerprint.Substring(x, 2), 16))
+            .ToArray();
+        return internalBytes;
     }
 }
