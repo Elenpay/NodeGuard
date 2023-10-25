@@ -68,18 +68,16 @@
                     <DataGridColumn TItem="WalletWithdrawalRequest" Filterable="false" Caption="" Sortable="false" Displayable="true">
                         <DisplayTemplate>
                             @*TODO Cancel / Reject  *@
-                            @if ((context.Status == WalletWithdrawalRequestStatus.Pending || context.Status == WalletWithdrawalRequestStatus.PSBTSignaturesPending) && LoggedUser?.Id == context.UserRequestorId)
-
-                            {
-                                <Button Color="Color.Danger" Clicked="()=> ShowRejectCancelModal(context, WalletWithdrawalRequestStatus.Cancelled)">Cancel</Button>
+                            @{
+                                bool canCancel = context.Status == WalletWithdrawalRequestStatus.Pending || context.Status == WalletWithdrawalRequestStatus.PSBTSignaturesPending;
+                                bool isRequestor = LoggedUser?.Id == context.UserRequestorId;
+                                string action = isRequestor ? "Cancel" : "Reject";
+                                WalletWithdrawalRequestStatus newStatus = isRequestor ? WalletWithdrawalRequestStatus.Cancelled : WalletWithdrawalRequestStatus.Rejected;
                             }
-                            else if ((context.Status == WalletWithdrawalRequestStatus.Pending || context.Status == WalletWithdrawalRequestStatus.PSBTSignaturesPending)
-                                     && LoggedUser?.Id != context.UserRequestorId)
+                            
+                            @if (canCancel || (canCancel && !isRequestor))
                             {
-                                <Button Color="Color.Danger" Clicked="()=> ShowRejectCancelModal(context, WalletWithdrawalRequestStatus.Rejected)">Reject</Button>
-                            } else if (LoggedUser?.Id == context.UserRequestorId)
-                            {
-                                <Button Color="Color.Danger" Clicked="()=> ShowRejectCancelModal(context, WalletWithdrawalRequestStatus.Cancelled)">Cancel</Button>
+                                <Button Color="Color.Danger" Clicked="() => ShowRejectCancelModal(context, newStatus)">@action</Button>
                             }
                         </DisplayTemplate>
                     </DataGridColumn>
@@ -524,10 +522,7 @@
 
     private async Task GetData()
     {
-        if (LoggedUser?.Id != null && !_isFinanceManager)
-        {
-            _userPendingRequests = await WalletWithdrawalRequestRepository.GetUnsignedPendingRequestsByUser(LoggedUser.Id);
-        }else 
+        if (LoggedUser?.Id != null && _isFinanceManager)
         {
             _userPendingRequests = await WalletWithdrawalRequestRepository.GetAllUnsignedPendingRequests(); 
         }
