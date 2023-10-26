@@ -154,6 +154,7 @@ public class WalletParserTests
     [Fact]
     public void GetOutputDescriptor_NativeSegwits()
     {
+        // Arrange
         // Testing NodeGuard created Native Segwit hot wallet
         var wallet1HotWalletCreated = new Wallet()
         {
@@ -171,8 +172,6 @@ public class WalletParserTests
                 }
             }
         };
-        var outputDescriptor1 = WalletParser.GetOutputDescriptor(wallet1HotWalletCreated, "mainnet");
-        outputDescriptor1.Should().Be("wpkh([ed0210c8/48'/0'/0']xpub661MyMwAqRbcFW31YEwpkMuc5THy2PSt5bDMsktWQcFF8syAmRUapSCGu8ED9W6oDMSgv6Zz8idoc4a6mr8BDzTJY47LJhkJ8UB7WEGuduB/*')#j646efh8");
         
         // Testing NodeGuard imported Native Segwit hot wallet
         var wallet1HotWalletImported = new Wallet()
@@ -189,8 +188,6 @@ public class WalletParserTests
                 }
             }
         };
-        var outputDescriptor2 = WalletParser.GetOutputDescriptor(wallet1HotWalletImported, "mainnet");
-        outputDescriptor2.Should().Be("wpkh(xpub661MyMwAqRbcFW31YEwpkMuc5THy2PSt5bDMsktWQcFF8syAmRUapSCGu8ED9W6oDMSgv6Zz8idoc4a6mr8BDzTJY47LJhkJ8UB7WEGuduB/*')#s032ytxu");
 
         // Testing NodeGuard created Native Segwit cold wallet
         var wallet1ColdWallet = new Wallet()
@@ -220,7 +217,15 @@ public class WalletParserTests
                 }
             }
         };
+        
+        // Act
+        var outputDescriptor1 = WalletParser.GetOutputDescriptor(wallet1HotWalletCreated, "mainnet");
+        var outputDescriptor2 = WalletParser.GetOutputDescriptor(wallet1HotWalletImported, "mainnet");
         var outputDescriptor3 = WalletParser.GetOutputDescriptor(wallet1ColdWallet, "mainnet");
+        
+        // Assert
+        outputDescriptor1.Should().Be("wpkh([ed0210c8/48'/0'/0']xpub661MyMwAqRbcFW31YEwpkMuc5THy2PSt5bDMsktWQcFF8syAmRUapSCGu8ED9W6oDMSgv6Zz8idoc4a6mr8BDzTJY47LJhkJ8UB7WEGuduB/*')#j646efh8");
+        outputDescriptor2.Should().Be("wpkh(xpub661MyMwAqRbcFW31YEwpkMuc5THy2PSt5bDMsktWQcFF8syAmRUapSCGu8ED9W6oDMSgv6Zz8idoc4a6mr8BDzTJY47LJhkJ8UB7WEGuduB/*')#s032ytxu");
         outputDescriptor3.Should().Be(
             "wsh(sortedmulti(2," +
             "[ed0210c8/48'/0'/0]xpub661MyMwAqRbcFW31YEwpkMuc5THy2PSt5bDMsktWQcFF8syAmRUapSCGu8ED9W6oDMSgv6Zz8idoc4a6mr8BDzTJY47LJhkJ8UB7WEGuduB/*," +
@@ -232,6 +237,7 @@ public class WalletParserTests
     [Fact]
     public void GetOutputDescriptor_NestedSegwits()
     {
+        // Arrange
         // Testing NodeGuard created Nested Segwit hot wallet
         var wallet1HotWalletCreated = new Wallet()
         {
@@ -249,8 +255,6 @@ public class WalletParserTests
                 }
             }
         };
-        var outputDescriptor1 = WalletParser.GetOutputDescriptor(wallet1HotWalletCreated, "mainnet");
-        outputDescriptor1.Should().Be("sh(wpkh([ed0210c8/48'/0'/0']xpub661MyMwAqRbcFW31YEwpkMuc5THy2PSt5bDMsktWQcFF8syAmRUapSCGu8ED9W6oDMSgv6Zz8idoc4a6mr8BDzTJY47LJhkJ8UB7WEGuduB/*'))#7run0eul");
         
         // Testing NodeGuard imported Nested Segwit hot wallet
         var wallet1HotWalletImported = new Wallet()
@@ -267,8 +271,6 @@ public class WalletParserTests
                 }
             }
         };
-        var outputDescriptor2 = WalletParser.GetOutputDescriptor(wallet1HotWalletImported, "mainnet");
-        outputDescriptor2.Should().Be("sh(wpkh(xpub661MyMwAqRbcFW31YEwpkMuc5THy2PSt5bDMsktWQcFF8syAmRUapSCGu8ED9W6oDMSgv6Zz8idoc4a6mr8BDzTJY47LJhkJ8UB7WEGuduB/*'))#m766kd29");
         
         // Testing NodeGuard created Nested Segwit cold wallet
         var wallet1ColdWallet = new Wallet()
@@ -297,8 +299,16 @@ public class WalletParserTests
                     MasterFingerprint = "ed0210c8"
                 }
             }
-        }; 
+        };
+        
+        //Act
+        var outputDescriptor1 = WalletParser.GetOutputDescriptor(wallet1HotWalletCreated, "mainnet");
+        var outputDescriptor2 = WalletParser.GetOutputDescriptor(wallet1HotWalletImported, "mainnet");
         var outputDescriptor3 = WalletParser.GetOutputDescriptor(wallet1ColdWallet, "mainnet");
+        
+        // Assert
+        outputDescriptor1.Should().Be("sh(wpkh([ed0210c8/48'/0'/0']xpub661MyMwAqRbcFW31YEwpkMuc5THy2PSt5bDMsktWQcFF8syAmRUapSCGu8ED9W6oDMSgv6Zz8idoc4a6mr8BDzTJY47LJhkJ8UB7WEGuduB/*'))#7run0eul");
+        outputDescriptor2.Should().Be("sh(wpkh(xpub661MyMwAqRbcFW31YEwpkMuc5THy2PSt5bDMsktWQcFF8syAmRUapSCGu8ED9W6oDMSgv6Zz8idoc4a6mr8BDzTJY47LJhkJ8UB7WEGuduB/*'))#m766kd29");
         outputDescriptor3.Should().Be(
             "sh(sortedmulti(2," +
             "[ed0210c8/48'/0'/0]xpub661MyMwAqRbcFW31YEwpkMuc5THy2PSt5bDMsktWQcFF8syAmRUapSCGu8ED9W6oDMSgv6Zz8idoc4a6mr8BDzTJY47LJhkJ8UB7WEGuduB/*," +
@@ -310,6 +320,7 @@ public class WalletParserTests
     [Fact]
     public void GetOutputDescriptor_Legacy()
     {
+        // Arrange
         // Testing NodeGuard created Legacy hot wallet
         var wallet1HotWalletCreated = new Wallet()
         {
@@ -329,8 +340,6 @@ public class WalletParserTests
                 }
             }
         };
-        var outputDescriptor1 = WalletParser.GetOutputDescriptor(wallet1HotWalletCreated, "mainnet");
-        outputDescriptor1.Should().Be("pkh([ed0210c8/48'/0'/0']xpub661MyMwAqRbcFW31YEwpkMuc5THy2PSt5bDMsktWQcFF8syAmRUapSCGu8ED9W6oDMSgv6Zz8idoc4a6mr8BDzTJY47LJhkJ8UB7WEGuduB/*')#tvnkfe78");
 
         // Testing NodeGuard imported Legacy hot wallet
         var wallet1HotWalletImported = new Wallet()
@@ -349,8 +358,6 @@ public class WalletParserTests
                 }
             }
         };
-        var outputDescriptor2 = WalletParser.GetOutputDescriptor(wallet1HotWalletImported, "mainnet");
-        outputDescriptor2.Should().Be("pkh(xpub661MyMwAqRbcFW31YEwpkMuc5THy2PSt5bDMsktWQcFF8syAmRUapSCGu8ED9W6oDMSgv6Zz8idoc4a6mr8BDzTJY47LJhkJ8UB7WEGuduB/*')#6n7l5kek");
 
         // Testing NodeGuard created Legacy cold wallet
         var wallet1ColdWallet = new Wallet()
@@ -380,7 +387,15 @@ public class WalletParserTests
                 }
             }
         };
+        
+        // Act
+        var outputDescriptor1 = WalletParser.GetOutputDescriptor(wallet1HotWalletCreated, "mainnet");
+        var outputDescriptor2 = WalletParser.GetOutputDescriptor(wallet1HotWalletImported, "mainnet");
         var outputDescriptor3 = WalletParser.GetOutputDescriptor(wallet1ColdWallet, "mainnet");
+        
+        // Assert
+        outputDescriptor1.Should().Be("pkh([ed0210c8/48'/0'/0']xpub661MyMwAqRbcFW31YEwpkMuc5THy2PSt5bDMsktWQcFF8syAmRUapSCGu8ED9W6oDMSgv6Zz8idoc4a6mr8BDzTJY47LJhkJ8UB7WEGuduB/*')#tvnkfe78");
+        outputDescriptor2.Should().Be("pkh(xpub661MyMwAqRbcFW31YEwpkMuc5THy2PSt5bDMsktWQcFF8syAmRUapSCGu8ED9W6oDMSgv6Zz8idoc4a6mr8BDzTJY47LJhkJ8UB7WEGuduB/*')#6n7l5kek");
         outputDescriptor3.Should().Be(
             "sortedmulti(2," +
             "[ed0210c8/48'/0'/0]xpub661MyMwAqRbcFW31YEwpkMuc5THy2PSt5bDMsktWQcFF8syAmRUapSCGu8ED9W6oDMSgv6Zz8idoc4a6mr8BDzTJY47LJhkJ8UB7WEGuduB/*," +
@@ -392,6 +407,7 @@ public class WalletParserTests
     [Fact]
     public void GetOutputDescriptor_Taproot()
     {
+        // Arrange
         // Testing NodeGuard created Taproot hot wallet
         var wallet1HotWalletCreated = new Wallet()
         {
@@ -409,8 +425,6 @@ public class WalletParserTests
                 }
             }
         };
-        var taprootFunction = () => WalletParser.GetOutputDescriptor(wallet1HotWalletCreated, "mainnet");
-        taprootFunction.Should().Throw<NotImplementedException>();
         
         // Testing NodeGuard imported Taproot hot wallet
         var wallet1HotWalletImported = new Wallet()
@@ -427,8 +441,6 @@ public class WalletParserTests
                 }
             }
         };
-        taprootFunction = () => WalletParser.GetOutputDescriptor(wallet1HotWalletImported, "mainnet");
-        taprootFunction.Should().Throw<NotImplementedException>();
         
         // Testing NodeGuard created Taproot cold wallet
         var wallet1ColdWallet = new Wallet()
@@ -458,7 +470,15 @@ public class WalletParserTests
                 }
             }
         };
-        taprootFunction = () => WalletParser.GetOutputDescriptor(wallet1ColdWallet, "mainnet");
-        taprootFunction.Should().Throw<NotImplementedException>();
+        
+        // Act
+        var taprootFunction1 = () => WalletParser.GetOutputDescriptor(wallet1HotWalletCreated, "mainnet");
+        var taprootFunction2 = () => WalletParser.GetOutputDescriptor(wallet1HotWalletImported, "mainnet");
+        var taprootFunction3 = () => WalletParser.GetOutputDescriptor(wallet1ColdWallet, "mainnet");
+        
+        // Assert
+        taprootFunction1.Should().Throw<NotImplementedException>();
+        taprootFunction2.Should().Throw<NotImplementedException>();
+        taprootFunction3.Should().Throw<NotImplementedException>();
     }
 }
