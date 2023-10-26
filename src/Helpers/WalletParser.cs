@@ -109,9 +109,9 @@ public static class WalletParser
         }
     }
 
-    public static string GetOutputDescriptor(Wallet wallet)
+    public static string GetOutputDescriptor(Wallet wallet, string bitcoinNetwork)
     {
-        var network = Network.GetNetwork(Constants.BITCOIN_NETWORK);
+        var network = Network.GetNetwork(bitcoinNetwork);
         OutputDescriptor outputDescriptor = null;
         PubKeyProvider pubKeyProvider;
 
