@@ -123,7 +123,7 @@ public static class WalletParser
                     ExtPubKey.Parse(key.XPUB, network),
                     network
                 ),
-                new KeyPath(""),
+                new KeyPath("/0"),
                 key.Path.EndsWith("'") ? PubKeyProvider.DeriveType.HARDENED : PubKeyProvider.DeriveType.UNHARDENED
             );
             
@@ -170,7 +170,7 @@ public static class WalletParser
                             ExtPubKey.Parse(k.XPUB, network),
                             network
                         ),
-                        new KeyPath(""),
+                        new KeyPath("/0"),
                         k.Path.EndsWith("'") ? PubKeyProvider.DeriveType.HARDENED : PubKeyProvider.DeriveType.UNHARDENED
                     )
                 );
