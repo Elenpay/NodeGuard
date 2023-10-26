@@ -126,18 +126,13 @@ public static class WalletParser
                 new KeyPath("/0"),
                 PubKeyProvider.DeriveType.UNHARDENED
             );
+            var fingerprint = GetMasterFingerprint(key.MasterFingerprint);
+            var rootedKeyPath = new RootedKeyPath(
+                new HDFingerprint(fingerprint),
+                KeyPath.Parse(key.Path)
+            );
+            pubKeyProvider = PubKeyProvider.NewOrigin(rootedKeyPath, pubKeyProvider);
             
-            if (!wallet.IsBIP39Imported)
-            {
-                var internalKey = wallet.Keys.FirstOrDefault(k => k.InternalWalletId != null);
-                var internalBytes = GetMasterFingerprint(internalKey.MasterFingerprint);
-                var rootedKeyPath = new RootedKeyPath(
-                    new HDFingerprint(internalBytes),
-                    KeyPath.Parse(internalKey.Path)
-                );
-                pubKeyProvider = PubKeyProvider.NewOrigin(rootedKeyPath, pubKeyProvider);
-            }
-
             switch (wallet.WalletAddressType)
             {
                 case WalletAddressType.NativeSegwit:
