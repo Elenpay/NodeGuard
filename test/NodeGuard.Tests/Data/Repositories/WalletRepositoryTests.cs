@@ -96,6 +96,7 @@ public class WalletRepositoryTests
             Name = "TestWallet",
             IsFinalised = true,
             IsHotWallet = true,
+            InternalWalletMasterFingerprint = "abcd",
             InternalWalletSubDerivationPath = "0"
         });
         context.SaveChanges();
@@ -120,6 +121,7 @@ public class WalletRepositoryTests
             Name = "TestWallet",
             IsFinalised = true,
             IsHotWallet = true,
+            InternalWalletMasterFingerprint = "abcd",
             InternalWalletSubDerivationPath = "0"
         });
         context.Wallets.Add(new Wallet()
@@ -127,6 +129,7 @@ public class WalletRepositoryTests
             Name = "NotFinalised",
             IsFinalised = false,
             IsHotWallet = true,
+            InternalWalletMasterFingerprint = "abcd",
             InternalWalletSubDerivationPath = "1"
         });
         context.SaveChanges();
@@ -152,6 +155,7 @@ public class WalletRepositoryTests
             IsFinalised = true,
             IsHotWallet = true,
             IsCompromised = true,
+            InternalWalletMasterFingerprint = "abcd",
             InternalWalletSubDerivationPath = "0"
         });
         context.Wallets.Add(new Wallet()
@@ -161,6 +165,7 @@ public class WalletRepositoryTests
             IsHotWallet = true,
             IsBIP39Imported = true,
             IsCompromised = true,
+            InternalWalletMasterFingerprint = "abcd",
             InternalWalletSubDerivationPath = null
         });
         context.SaveChanges();
@@ -169,7 +174,7 @@ public class WalletRepositoryTests
         var result = await walletRepository.GetNextSubderivationPath();
         result.Should().Be("1");
     }
-    
+
     private WalletRepository SetupTestClassForImportBIP39Wallet()
     {
         var keyRepositoryMock = new Mock<IKeyRepository>();
@@ -198,7 +203,7 @@ public class WalletRepositoryTests
         return new WalletRepository(new Repository<Wallet>(new Mock<ILogger<Wallet>>().Object), loggerMock.Object, setupDbContextFactory.Object, internalWalletRepositoryMock.Object, keyRepositoryMock.Object, nbXplorerServiceMock.Object);
     }
 
-    
+
     [Fact]
     public async Task ImportBIP39Wallet_WhenValidInput_ShouldReturnSuccess()
     {
@@ -206,7 +211,7 @@ public class WalletRepositoryTests
         var seedphrase = "social mango annual basic work brain economy one safe physical junk other toy valid load cook napkin maple runway island oil fan legend stem";
         var derivationPath = "m/84'/1'/0'";
         var userId = "testUser";
-        
+
         var testClass = SetupTestClassForImportBIP39Wallet();
 
         // Act
@@ -217,7 +222,7 @@ public class WalletRepositoryTests
         errorMessage.Should().BeNull();
     }
 
-    
+
     [Fact]
     public async Task ImportBIP39Wallet_WhenSeedPhraseIsEmpty_ShouldReturnError()
     {
@@ -235,7 +240,7 @@ public class WalletRepositoryTests
         result.Should().BeFalse();
         errorMessage.Should().Be("Seedphrase is empty");
     }
-    
+
     [Fact]
     public async Task ImportBIP39Wallet_WhenDerivationPathIsEmpty_ShouldReturnError()
     {
@@ -253,7 +258,7 @@ public class WalletRepositoryTests
         result.Should().BeFalse();
         errorMessage.Should().Be("Derivation path is empty");
     }
-    
+
     [Fact]
     public async Task ImportBIP39Wallet_WhenSeedPhraseIsInvalid_ShouldReturnError()
     {
