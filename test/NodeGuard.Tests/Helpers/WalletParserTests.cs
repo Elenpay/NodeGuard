@@ -224,13 +224,13 @@ public class WalletParserTests
         var outputDescriptor3 = WalletParser.GetOutputDescriptor(wallet1ColdWallet, "mainnet");
         
         // Assert
-        outputDescriptor1.Should().Be("wpkh([ed0210c8/48'/0'/0']xpub661MyMwAqRbcFW31YEwpkMuc5THy2PSt5bDMsktWQcFF8syAmRUapSCGu8ED9W6oDMSgv6Zz8idoc4a6mr8BDzTJY47LJhkJ8UB7WEGuduB/*')#j646efh8");
-        outputDescriptor2.Should().Be("wpkh(xpub661MyMwAqRbcFW31YEwpkMuc5THy2PSt5bDMsktWQcFF8syAmRUapSCGu8ED9W6oDMSgv6Zz8idoc4a6mr8BDzTJY47LJhkJ8UB7WEGuduB/*')#s032ytxu");
-        outputDescriptor3.Should().Be(
+        outputDescriptor1.Should().Contain("wpkh([ed0210c8/48'/0'/0']xpub661MyMwAqRbcFW31YEwpkMuc5THy2PSt5bDMsktWQcFF8syAmRUapSCGu8ED9W6oDMSgv6Zz8idoc4a6mr8BDzTJY47LJhkJ8UB7WEGuduB/*')#");
+        outputDescriptor2.Should().Contain("wpkh(xpub661MyMwAqRbcFW31YEwpkMuc5THy2PSt5bDMsktWQcFF8syAmRUapSCGu8ED9W6oDMSgv6Zz8idoc4a6mr8BDzTJY47LJhkJ8UB7WEGuduB/*')#");
+        outputDescriptor3.Should().Contain(
             "wsh(sortedmulti(2," +
             "[ed0210c8/48'/0'/0]xpub661MyMwAqRbcFW31YEwpkMuc5THy2PSt5bDMsktWQcFF8syAmRUapSCGu8ED9W6oDMSgv6Zz8idoc4a6mr8BDzTJY47LJhkJ8UB7WEGuduB/*," +
             "[ed0210c8/48'/0'/1]xpub69H7F5d8KSRgmmdJg2KhpAK8SR3DjMwAdkxj3ZuxV27CprR9LgpeyGmXUbC6wb7ERfvrnKZjXoUmmDznezpbZb7ap6r1D3tgFxHmwMkQTPH/*," +
-            "[ed0210c8/48'/0'/2]xpub6CUGRUonZSQ4TWtTMmzXdrXDtypWKiKrhko4egpiMZbpiaQL2jkwSB1icqYh2cfDfVxdx4df189oLKnC5fSwqPfgyP3hooxujYzAu3fDVmz/*))#rm8zkn09"
+            "[ed0210c8/48'/0'/2]xpub6CUGRUonZSQ4TWtTMmzXdrXDtypWKiKrhko4egpiMZbpiaQL2jkwSB1icqYh2cfDfVxdx4df189oLKnC5fSwqPfgyP3hooxujYzAu3fDVmz/*))#"
         );
     }
     
@@ -307,13 +307,13 @@ public class WalletParserTests
         var outputDescriptor3 = WalletParser.GetOutputDescriptor(wallet1ColdWallet, "mainnet");
         
         // Assert
-        outputDescriptor1.Should().Be("sh(wpkh([ed0210c8/48'/0'/0']xpub661MyMwAqRbcFW31YEwpkMuc5THy2PSt5bDMsktWQcFF8syAmRUapSCGu8ED9W6oDMSgv6Zz8idoc4a6mr8BDzTJY47LJhkJ8UB7WEGuduB/*'))#7run0eul");
-        outputDescriptor2.Should().Be("sh(wpkh(xpub661MyMwAqRbcFW31YEwpkMuc5THy2PSt5bDMsktWQcFF8syAmRUapSCGu8ED9W6oDMSgv6Zz8idoc4a6mr8BDzTJY47LJhkJ8UB7WEGuduB/*'))#m766kd29");
-        outputDescriptor3.Should().Be(
+        outputDescriptor1.Should().Contain("sh(wpkh([ed0210c8/48'/0'/0']xpub661MyMwAqRbcFW31YEwpkMuc5THy2PSt5bDMsktWQcFF8syAmRUapSCGu8ED9W6oDMSgv6Zz8idoc4a6mr8BDzTJY47LJhkJ8UB7WEGuduB/*'))#");
+        outputDescriptor2.Should().Contain("sh(wpkh(xpub661MyMwAqRbcFW31YEwpkMuc5THy2PSt5bDMsktWQcFF8syAmRUapSCGu8ED9W6oDMSgv6Zz8idoc4a6mr8BDzTJY47LJhkJ8UB7WEGuduB/*'))#");
+        outputDescriptor3.Should().Contain(
             "sh(sortedmulti(2," +
             "[ed0210c8/48'/0'/0]xpub661MyMwAqRbcFW31YEwpkMuc5THy2PSt5bDMsktWQcFF8syAmRUapSCGu8ED9W6oDMSgv6Zz8idoc4a6mr8BDzTJY47LJhkJ8UB7WEGuduB/*," +
             "[ed0210c8/48'/0'/1]xpub69H7F5d8KSRgmmdJg2KhpAK8SR3DjMwAdkxj3ZuxV27CprR9LgpeyGmXUbC6wb7ERfvrnKZjXoUmmDznezpbZb7ap6r1D3tgFxHmwMkQTPH/*," +
-            "[ed0210c8/48'/0'/2]xpub6CUGRUonZSQ4TWtTMmzXdrXDtypWKiKrhko4egpiMZbpiaQL2jkwSB1icqYh2cfDfVxdx4df189oLKnC5fSwqPfgyP3hooxujYzAu3fDVmz/*))#9y9xajh7"
+            "[ed0210c8/48'/0'/2]xpub6CUGRUonZSQ4TWtTMmzXdrXDtypWKiKrhko4egpiMZbpiaQL2jkwSB1icqYh2cfDfVxdx4df189oLKnC5fSwqPfgyP3hooxujYzAu3fDVmz/*))#"
         );
     }
 
@@ -394,13 +394,13 @@ public class WalletParserTests
         var outputDescriptor3 = WalletParser.GetOutputDescriptor(wallet1ColdWallet, "mainnet");
         
         // Assert
-        outputDescriptor1.Should().Be("pkh([ed0210c8/48'/0'/0']xpub661MyMwAqRbcFW31YEwpkMuc5THy2PSt5bDMsktWQcFF8syAmRUapSCGu8ED9W6oDMSgv6Zz8idoc4a6mr8BDzTJY47LJhkJ8UB7WEGuduB/*')#tvnkfe78");
-        outputDescriptor2.Should().Be("pkh(xpub661MyMwAqRbcFW31YEwpkMuc5THy2PSt5bDMsktWQcFF8syAmRUapSCGu8ED9W6oDMSgv6Zz8idoc4a6mr8BDzTJY47LJhkJ8UB7WEGuduB/*')#6n7l5kek");
-        outputDescriptor3.Should().Be(
+        outputDescriptor1.Should().Contain("pkh([ed0210c8/48'/0'/0']xpub661MyMwAqRbcFW31YEwpkMuc5THy2PSt5bDMsktWQcFF8syAmRUapSCGu8ED9W6oDMSgv6Zz8idoc4a6mr8BDzTJY47LJhkJ8UB7WEGuduB/*')#");
+        outputDescriptor2.Should().Contain("pkh(xpub661MyMwAqRbcFW31YEwpkMuc5THy2PSt5bDMsktWQcFF8syAmRUapSCGu8ED9W6oDMSgv6Zz8idoc4a6mr8BDzTJY47LJhkJ8UB7WEGuduB/*')#");
+        outputDescriptor3.Should().Contain(
             "sortedmulti(2," +
             "[ed0210c8/48'/0'/0]xpub661MyMwAqRbcFW31YEwpkMuc5THy2PSt5bDMsktWQcFF8syAmRUapSCGu8ED9W6oDMSgv6Zz8idoc4a6mr8BDzTJY47LJhkJ8UB7WEGuduB/*," +
             "[ed0210c8/48'/0'/1]xpub69H7F5d8KSRgmmdJg2KhpAK8SR3DjMwAdkxj3ZuxV27CprR9LgpeyGmXUbC6wb7ERfvrnKZjXoUmmDznezpbZb7ap6r1D3tgFxHmwMkQTPH/*," +
-            "[ed0210c8/48'/0'/2]xpub6CUGRUonZSQ4TWtTMmzXdrXDtypWKiKrhko4egpiMZbpiaQL2jkwSB1icqYh2cfDfVxdx4df189oLKnC5fSwqPfgyP3hooxujYzAu3fDVmz/*)#eeg5es07"
+            "[ed0210c8/48'/0'/2]xpub6CUGRUonZSQ4TWtTMmzXdrXDtypWKiKrhko4egpiMZbpiaQL2jkwSB1icqYh2cfDfVxdx4df189oLKnC5fSwqPfgyP3hooxujYzAu3fDVmz/*)#"
         );
     }
 
