@@ -124,7 +124,7 @@ public static class WalletParser
                     network
                 ),
                 new KeyPath("/0"),
-                key.Path.EndsWith("'") ? PubKeyProvider.DeriveType.HARDENED : PubKeyProvider.DeriveType.UNHARDENED
+                PubKeyProvider.DeriveType.UNHARDENED
             );
             
             if (!wallet.IsBIP39Imported)
@@ -171,7 +171,7 @@ public static class WalletParser
                             network
                         ),
                         new KeyPath("/0"),
-                        k.Path.EndsWith("'") ? PubKeyProvider.DeriveType.HARDENED : PubKeyProvider.DeriveType.UNHARDENED
+                        PubKeyProvider.DeriveType.UNHARDENED
                     )
                 );
                 pubKeyProviders.Add(pubKeyProvider);
