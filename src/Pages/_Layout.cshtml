@@ -38,6 +38,16 @@
     function logoutInactiveUser(dotnethelper) {
         document.onclick = () => dotnethelper.invokeMethodAsync("ResetTimer");
     }
+    
+    window.getText = (elem) => {
+      const textValue = elem.value;
+      const utf8Encoder = new TextEncoder();
+      const encodedTextValue = utf8Encoder.encode(textValue);
+      return encodedTextValue;
+    };
+    window.clearText = () => {
+        document.getElementById("psbt-to-paste").value = ""; 
+    };
     </script>
 </head>
 <body>
