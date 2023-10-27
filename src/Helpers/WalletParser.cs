@@ -109,6 +109,19 @@ public static class WalletParser
         }
     }
 
+    /// <summary>
+    /// Generates an output descriptor for a given wallet based on its type and the Bitcoin network it's associated with.
+    /// </summary>
+    /// <param name="wallet">The wallet for which the output descriptor is to be generated.</param>
+    /// <param name="bitcoinNetwork">The Bitcoin network associated with the wallet.</param>
+    /// <returns>A string representation of the output descriptor.</returns>
+    /// <exception cref="System.NotImplementedException">Thrown when the wallet address type is Taproot, which is not currently supported.</exception>
+    /// <exception cref="System.Exception">Thrown when the output descriptor could not be generated for some reason.</exception>
+    /// <remarks>
+    /// This method first determines the network based on the provided string. It then checks if the wallet is a hot wallet or not.
+    /// If it is, it generates the output descriptor based on the first key in the wallet and the wallet's address type.
+    /// If it's not a hot wallet, it generates a multi-signature output descriptor based on all the keys in the wallet and the wallet's address type.
+    /// </remarks>
     public static string GetOutputDescriptor(this Wallet wallet, string bitcoinNetwork)
     {
         var network = Network.GetNetwork(bitcoinNetwork);
@@ -195,6 +208,14 @@ public static class WalletParser
         return outputDescriptor is not null ? outputDescriptor.ToString() : throw new Exception("Something went wrong");
     }
     
+    /// <summary>
+    /// Converts a hexadecimal string representation of a master fingerprint into a byte array.
+    /// </summary>
+    /// <param name="masterFingerprint">The hexadecimal string representation of the master fingerprint.</param>
+    /// <returns>A byte array that represents the master fingerprint.</returns>
+    /// <remarks>
+    /// This method works by iterating over the input string two characters at a time (since each byte in a hexadecimal string is represented by two characters), converting those two characters into a byte, and then adding that byte to the output array.
+    /// </remarks>
     public static byte[] GetMasterFingerprint(string masterFingerprint)
     {
         var internalBytes = Enumerable.Range(0, masterFingerprint.Length)
