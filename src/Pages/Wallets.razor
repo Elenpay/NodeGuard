@@ -1662,7 +1662,7 @@
         {
             try
             {
-                _outputDescriptorContentModal = WalletParser.GetOutputDescriptor(contextItem, Constants.BITCOIN_NETWORK);
+                _outputDescriptorContentModal = contextItem.GetOutputDescriptor(Constants.BITCOIN_NETWORK);
                 _keysContentModal = contextItem.Keys as HashSet<Key> ?? new HashSet<Key>();
                 await _exportOutputDescriptorModal.Show();
             }

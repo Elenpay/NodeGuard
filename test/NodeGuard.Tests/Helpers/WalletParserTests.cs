@@ -203,8 +203,8 @@ public class WalletParserTests
         };
         
         // Act
-        var outputDescriptor1 = WalletParser.GetOutputDescriptor(wallet1HotWalletCreated, "mainnet");
-        var outputDescriptor2 = WalletParser.GetOutputDescriptor(wallet1ColdWallet, "mainnet");
+        var outputDescriptor1 = wallet1HotWalletCreated.GetOutputDescriptor("mainnet");
+        var outputDescriptor2 = wallet1ColdWallet.GetOutputDescriptor("mainnet");
         
         // Assert
         outputDescriptor1.Should().Contain("wpkh([ed0210c8/48'/0'/0']xpub661MyMwAqRbcFW31YEwpkMuc5THy2PSt5bDMsktWQcFF8syAmRUapSCGu8ED9W6oDMSgv6Zz8idoc4a6mr8BDzTJY47LJhkJ8UB7WEGuduB/0/*)#");
@@ -268,8 +268,8 @@ public class WalletParserTests
         };
         
         //Act
-        var outputDescriptor1 = WalletParser.GetOutputDescriptor(wallet1HotWalletCreated, "mainnet");
-        var outputDescriptor2 = WalletParser.GetOutputDescriptor(wallet1ColdWallet, "mainnet");
+        var outputDescriptor1 = wallet1HotWalletCreated.GetOutputDescriptor("mainnet");
+        var outputDescriptor2 = wallet1ColdWallet.GetOutputDescriptor("mainnet");
         
         // Assert
         outputDescriptor1.Should().Contain("sh(wpkh([ed0210c8/48'/0'/0']xpub661MyMwAqRbcFW31YEwpkMuc5THy2PSt5bDMsktWQcFF8syAmRUapSCGu8ED9W6oDMSgv6Zz8idoc4a6mr8BDzTJY47LJhkJ8UB7WEGuduB/0/*))#");
@@ -335,8 +335,8 @@ public class WalletParserTests
         };
         
         // Act
-        var outputDescriptor1 = WalletParser.GetOutputDescriptor(wallet1HotWalletCreated, "mainnet");
-        var outputDescriptor2 = WalletParser.GetOutputDescriptor(wallet1ColdWallet, "mainnet");
+        var outputDescriptor1 = wallet1HotWalletCreated.GetOutputDescriptor("mainnet");
+        var outputDescriptor2 = wallet1ColdWallet.GetOutputDescriptor("mainnet");
         
         // Assert
         outputDescriptor1.Should().Contain("pkh([ed0210c8/48'/0'/0']xpub661MyMwAqRbcFW31YEwpkMuc5THy2PSt5bDMsktWQcFF8syAmRUapSCGu8ED9W6oDMSgv6Zz8idoc4a6mr8BDzTJY47LJhkJ8UB7WEGuduB/0/*)#");
@@ -400,8 +400,8 @@ public class WalletParserTests
         };
         
         // Act
-        var taprootFunction1 = () => WalletParser.GetOutputDescriptor(wallet1HotWalletCreated, "mainnet");
-        var taprootFunction2 = () => WalletParser.GetOutputDescriptor(wallet1ColdWallet, "mainnet");
+        var taprootFunction1 = () => wallet1HotWalletCreated.GetOutputDescriptor("mainnet");
+        var taprootFunction2 = () => wallet1ColdWallet.GetOutputDescriptor("mainnet");
         
         // Assert
         taprootFunction1.Should().Throw<NotImplementedException>();

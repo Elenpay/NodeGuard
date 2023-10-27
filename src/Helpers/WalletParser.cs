@@ -109,7 +109,7 @@ public static class WalletParser
         }
     }
 
-    public static string GetOutputDescriptor(Wallet wallet, string bitcoinNetwork)
+    public static string GetOutputDescriptor(this Wallet wallet, string bitcoinNetwork)
     {
         var network = Network.GetNetwork(bitcoinNetwork);
         OutputDescriptor outputDescriptor = null;
