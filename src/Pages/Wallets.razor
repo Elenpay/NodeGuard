@@ -708,23 +708,12 @@
             @($"Export wallet") 
         </ModalHeader>
         <ModalBody>
-            <p>Copy the output descriptor below and use it to import this wallet in other systems.</p>
-            <p>Only segwit descriptors for single sig(WPKH) or multisigs (WSH) are supported.</p>
-            <p>Singlesig: <code>wpkh([…/84'/0'/0']xpub…/0/*)</code></p>
-            <p>Multisig: <code>wsh(sortedmulti(2,[…/48'/0'/0'/2']xpub…/0/*,[…/48'/0'/0'/2']xpub…/0/*))</code></p>
             <Paragraph>
-                @(StringHelper.TruncateHeadAndTail(_outputDescriptorContentModal, 25))
+                @("Output descriptor: " + StringHelper.TruncateHeadAndTail(_outputDescriptorContentModal, 25))
                 <Button Color="Color.Primary" Clicked="@(()=> CopyStrToClipboard(_outputDescriptorContentModal))">Copy</Button>
             </Paragraph>
-            @{
-                foreach(var k in _keysContentModal)
-                {
-                    <p>
-                        @($"{k.Name}: {k.Path}")
-                        <Button Color="Color.Primary" Clicked="@(() => CopyStrToClipboard(k.Path))">Copy</Button>
-                    </p>
-                }
-            }
+                @("Wallet derivation strategy (NBITCOIN): " + StringHelper.TruncateHeadAndTail(_derivationScheme, 25))
+                <Button Color="Color.Primary" Clicked="@(()=> CopyStrToClipboard(_derivationScheme))">Copy</Button>
         </ModalBody>
         <ModalFooter>
             <Button Color="Color.Secondary" Clicked="@CloseExportOutputDescriptorModal">Close</Button>
@@ -770,7 +759,7 @@
     
     private Modal _exportOutputDescriptorModal;
     private string _outputDescriptorContentModal;
-    private HashSet<Key> _keysContentModal = new();
+    private string _derivationScheme;
 
     private Modal _textModalRef;
     private string _textModalTitle = string.Empty;
@@ -1663,7 +1652,7 @@
             try
             {
                 _outputDescriptorContentModal = contextItem.GetOutputDescriptor(Constants.BITCOIN_NETWORK);
-                _keysContentModal = contextItem.Keys as HashSet<Key> ?? new HashSet<Key>();
+                _derivationScheme = contextItem.GetDerivationStrategy().ToString();
                 await _exportOutputDescriptorModal.Show();
             }
             catch (Exception e)
@@ -1678,7 +1667,7 @@
         await _exportOutputDescriptorModal.Close(CloseReason.UserClosing);
         
         _outputDescriptorContentModal = string.Empty;
-        _keysContentModal = new HashSet<Key>();
+        _derivationScheme = string.Empty;
     }
 
 }
