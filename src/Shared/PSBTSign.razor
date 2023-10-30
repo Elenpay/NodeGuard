@@ -1,6 +1,9 @@
 @using NBitcoin
 @using Microsoft.CodeAnalysis.Text
 @using System.Xml.Schema
+@using JSException = Microsoft.JSInterop.JSException
+@using System.Runtime.InteropServices.JavaScript
+@inject IJSRuntime JS
 <Modal @ref="_modalRef">
     <ModalContent Centered>
         <ModalHeader>
@@ -19,12 +22,10 @@
             </Alert>
             <Fields Flex="Flex.JustifyContent.Center">
                 <Field>
-                    <Validation @ref="ValidatePSBTValidator" Validator="PSBTValidator">
-                        <FieldLabel>To sign this operation, please paste here your PSBT in base64 string</FieldLabel>
-                        <MemoEdit Rows="4" @ref="_PSBTField" @onchange="HandleOnChange" @bind-Text="@SignedPSBT" ElementId="psbt-to-paste">
-                            <ValidationError/>
-                        </MemoEdit>
-                    </Validation>
+                    <FieldLabel>To sign this operation, please paste here your PSBT in base64 string</FieldLabel>
+                    <textarea @ref="_PSBTField" id="psbt-to-paste" rows="4" class="form-control @(ValidationErrors.Length > 0 ? "is-invalid" : "")">
+                    </textarea>
+                    <div class="text-danger">@ValidationErrors</div>
                 </Field>
             </Fields>
             <Fields Visibility="Visibility.Invisible" Style="height: 0" ElementId="channel-amount">@(ChannelRequest?.Amount ?? WithdrawalRequest?.Amount)</Fields>
@@ -33,7 +34,7 @@
         </ModalBody>
         <ModalFooter>
             <Button Color="Color.Secondary" Clicked="@HideModal">Cancel</Button>
-            <Button id="approve-button" Color="Color.Primary" Disabled="_isSignedPSBTInvalid" Clicked="@ApproveRequestDelegate">
+            <Button id="approve-button" Color="Color.Primary" Clicked="@HandleOnClick">
                 Approve
             </Button>
         </ModalFooter>
@@ -64,15 +65,43 @@
 
     private bool _isSignedPSBTInvalid = true;
     private Modal? _modalRef;
-    private MemoEdit _PSBTField;
-    private Validation ValidatePSBTValidator;
+    private ElementReference _PSBTField;
+    private string ValidationErrors = string.Empty;
 
-    private void HandleOnChange(ChangeEventArgs e)
+    private async Task HandleOnClick()
     {
-        // HACK: We get the data from the "change" event in the extension and pass it to blazor
-        // otherwise it will not rerender when we put the value inside the textarea
-        SignedPSBT = e.Value?.ToString();
-        ValidatePSBT(SignedPSBT);
+        SignedPSBT = await GetTextAsync();
+        ValidationErrors = ValidatePSBT(SignedPSBT);
+        if (ValidationErrors.Length == 0)
+        {
+            ApproveRequestDelegate?.Invoke();
+        }
+    }
+    
+    public async Task<string> GetTextAsync()
+    {
+        try
+        {
+            var streamRef =
+                await JS.InvokeAsync<IJSStreamReference>("getText", _PSBTField);
+            var stream = await streamRef.OpenReadStreamAsync(maxAllowedSize: 50_000);
+            var streamReader = new StreamReader(stream);
+
+            return await streamReader.ReadToEndAsync();
+        }
+        catch (JSException jsException)
+        {
+            if (jsException.InnerException is
+                ArgumentOutOfRangeException outOfRangeException &&
+                outOfRangeException.ActualValue is not null &&
+                outOfRangeException.ActualValue is long actualLength &&
+                actualLength == 0)
+            {
+                return string.Empty;
+            }
+
+            throw;
+        }
     }
 
     private async Task CopyPSBTToClipboard()
@@ -83,6 +112,8 @@
 
     public async Task ShowModal()
     {
+        ValidationErrors = string.Empty;
+        await JsRuntime.InvokeAsync<string>("clearText");
         if (_modalRef != null)
             await _modalRef.Show();
     }
