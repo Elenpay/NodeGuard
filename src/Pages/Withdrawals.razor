@@ -138,7 +138,7 @@
                     </DataGridColumn>
                     <DataGridColumn TItem="WalletWithdrawalRequest" Filterable="false" Editable="false" Field="@nameof(WalletWithdrawalRequest.UserRequestor)" Caption="Requestor" Sortable="true" Displayable="@IsPendingRequestsColumnVisible(PendingWithdrawalsColumnName.Requestor)">
                         <DisplayTemplate>
-                            @context?.UserRequestor?.UserName
+                            @(context?.UserRequestor?.UserName ?? "Elenpay's Backend " + context?.RequestMetadata)
                         </DisplayTemplate>
                     </DataGridColumn>
                     <DataGridColumn TItem="WalletWithdrawalRequest" Filterable="false" PopupFieldColumnSize="ColumnSize.Is12" Editable="true" Validator="DestinationAddressValidator" Field="@nameof(WalletWithdrawalRequest.DestinationAddress)" Caption="@nameof(WalletWithdrawalRequest.DestinationAddress).Humanize()" Sortable="false" Displayable="@IsPendingRequestsColumnVisible(PendingWithdrawalsColumnName.DestinationAddress)">
