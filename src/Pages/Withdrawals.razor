@@ -75,7 +75,7 @@
                                 WalletWithdrawalRequestStatus newStatus = isRequestor ? WalletWithdrawalRequestStatus.Cancelled : WalletWithdrawalRequestStatus.Rejected;
                             }
                             
-                            @if (canCancel || (canCancel && !isRequestor))
+                            @if (canCancel)
                             {
                                 <Button Color="Color.Danger" Clicked="() => ShowRejectCancelModal(context, newStatus)">@action</Button>
                             }
