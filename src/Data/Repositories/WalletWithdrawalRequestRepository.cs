@@ -102,6 +102,19 @@ namespace NodeGuard.Data.Repositories
                 .AsSplitQuery()
                 .ToListAsync();
         }
+        
+        public async Task<List<WalletWithdrawalRequest>> GetAllUnsignedPendingRequests()
+        {
+            await using var applicationDbContext = await _dbContextFactory.CreateDbContextAsync();
+
+            return await applicationDbContext.WalletWithdrawalRequests
+                .Include(x => x.Wallet).ThenInclude(x => x.Keys)
+                .Include(x => x.UserRequestor)
+                .Include(x => x.WalletWithdrawalRequestPSBTs)
+                .Where(request => request.Status == WalletWithdrawalRequestStatus.Pending || request.Status == WalletWithdrawalRequestStatus.PSBTSignaturesPending)
+                .AsSplitQuery()
+                .ToListAsync();
+        }
 
         public async Task<(bool, string?)> AddAsync(WalletWithdrawalRequest type)
         {
