@@ -1125,6 +1125,8 @@
             }
 
             _detailsUTXOs = await NBXplorerService.GetUTXOsAsync(derivationStrategyBase);
+            _detailsUTXOs.RemoveDuplicateUTXOs();
+            
             _detailsTransactions = await NBXplorerService.GetTransactionsAsync(derivationStrategyBase);
             
             //Lets generate the 10 first addresses
