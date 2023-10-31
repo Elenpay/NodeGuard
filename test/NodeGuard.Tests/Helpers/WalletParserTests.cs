@@ -1,8 +1,9 @@
 using FluentAssertions;
 using NBitcoin;
 using NBXplorer.DerivationStrategy;
-using Nodeguard;
+using NodeGuard.Data.Models;
 using NodeGuard.Helpers;
+using NSubstitute.ExceptionExtensions;
 using Key = NodeGuard.Data.Models.Key;
 
 namespace NodeGuard.Tests;
@@ -149,4 +150,261 @@ public class WalletParserTests
 
     }
     
+    // Testing GetOutputDescriptor method
+    [Fact]
+    public void GetOutputDescriptor_NativeSegwits()
+    {
+        // Arrange
+        // Testing NodeGuard created Native Segwit hot wallet
+        var wallet1HotWalletCreated = new Wallet()
+        {
+            IsHotWallet = true,
+            InternalWalletId = 1,
+            WalletAddressType = WalletAddressType.NativeSegwit,
+            MofN = 1,
+            InternalWalletSubDerivationPath = "0",
+            Keys = new List<Key>() { 
+                new() {
+                    XPUB = "xpub661MyMwAqRbcFW31YEwpkMuc5THy2PSt5bDMsktWQcFF8syAmRUapSCGu8ED9W6oDMSgv6Zz8idoc4a6mr8BDzTJY47LJhkJ8UB7WEGuduB",
+                    Path = "48'/0'/0'",
+                    MasterFingerprint = "ed0210c8",
+                    InternalWalletId = 1,
+                }
+            }
+        };
+
+        // Testing NodeGuard created Native Segwit cold wallet
+        var wallet1ColdWallet = new Wallet()
+        {
+            IsHotWallet = false,
+            WalletAddressType = WalletAddressType.NativeSegwit,
+            MofN = 2,
+            Keys = new List<Key>()
+            {
+                new()
+                {
+                    XPUB = "xpub661MyMwAqRbcFW31YEwpkMuc5THy2PSt5bDMsktWQcFF8syAmRUapSCGu8ED9W6oDMSgv6Zz8idoc4a6mr8BDzTJY47LJhkJ8UB7WEGuduB",
+                    Path = "48'/0'/0",
+                    MasterFingerprint = "ed0210c8"
+                },
+                new()
+                {
+                    XPUB = "xpub69H7F5d8KSRgmmdJg2KhpAK8SR3DjMwAdkxj3ZuxV27CprR9LgpeyGmXUbC6wb7ERfvrnKZjXoUmmDznezpbZb7ap6r1D3tgFxHmwMkQTPH",
+                    Path = "48'/0'/1",
+                    MasterFingerprint = "ed0210c8"
+                },
+                new()
+                {
+                    XPUB = "xpub6CUGRUonZSQ4TWtTMmzXdrXDtypWKiKrhko4egpiMZbpiaQL2jkwSB1icqYh2cfDfVxdx4df189oLKnC5fSwqPfgyP3hooxujYzAu3fDVmz", 
+                    Path = "48'/0'/2", 
+                    MasterFingerprint = "ed0210c8"
+                }
+            }
+        };
+        
+        // Act
+        var outputDescriptor1 = wallet1HotWalletCreated.GetOutputDescriptor("mainnet");
+        var outputDescriptor2 = wallet1ColdWallet.GetOutputDescriptor("mainnet");
+        
+        // Assert
+        outputDescriptor1.Should().Be("wpkh([ed0210c8/48'/0'/0']xpub661MyMwAqRbcFW31YEwpkMuc5THy2PSt5bDMsktWQcFF8syAmRUapSCGu8ED9W6oDMSgv6Zz8idoc4a6mr8BDzTJY47LJhkJ8UB7WEGuduB/0/*)#yt9sugwc");
+        outputDescriptor2.Should().Be(
+            "wsh(sortedmulti(2," +
+            "[ed0210c8/48'/0'/0]xpub661MyMwAqRbcFW31YEwpkMuc5THy2PSt5bDMsktWQcFF8syAmRUapSCGu8ED9W6oDMSgv6Zz8idoc4a6mr8BDzTJY47LJhkJ8UB7WEGuduB/0/*," +
+            "[ed0210c8/48'/0'/1]xpub69H7F5d8KSRgmmdJg2KhpAK8SR3DjMwAdkxj3ZuxV27CprR9LgpeyGmXUbC6wb7ERfvrnKZjXoUmmDznezpbZb7ap6r1D3tgFxHmwMkQTPH/0/*," +
+            "[ed0210c8/48'/0'/2]xpub6CUGRUonZSQ4TWtTMmzXdrXDtypWKiKrhko4egpiMZbpiaQL2jkwSB1icqYh2cfDfVxdx4df189oLKnC5fSwqPfgyP3hooxujYzAu3fDVmz/0/*))#8qt3h45m"
+        );
+    }
+    
+    [Fact]
+    public void GetOutputDescriptor_NestedSegwits()
+    {
+        // Arrange
+        // Testing NodeGuard created Nested Segwit hot wallet
+        var wallet1HotWalletCreated = new Wallet()
+        {
+            IsHotWallet = true,
+            InternalWalletId = 1,
+            WalletAddressType = WalletAddressType.NestedSegwit,
+            MofN = 1,
+            InternalWalletSubDerivationPath = "0",
+            Keys = new List<Key>() { 
+                new() {
+                    XPUB = "xpub661MyMwAqRbcFW31YEwpkMuc5THy2PSt5bDMsktWQcFF8syAmRUapSCGu8ED9W6oDMSgv6Zz8idoc4a6mr8BDzTJY47LJhkJ8UB7WEGuduB",
+                    Path = "48'/0'/0'",
+                    MasterFingerprint = "ed0210c8",
+                    InternalWalletId = 1,
+                }
+            }
+        };
+        
+        // Testing NodeGuard created Nested Segwit cold wallet
+        var wallet1ColdWallet = new Wallet()
+        {
+            IsHotWallet = false,
+            WalletAddressType = WalletAddressType.NestedSegwit,
+            MofN = 2,
+            Keys = new List<Key>()
+            {
+                new()
+                {
+                    XPUB = "xpub661MyMwAqRbcFW31YEwpkMuc5THy2PSt5bDMsktWQcFF8syAmRUapSCGu8ED9W6oDMSgv6Zz8idoc4a6mr8BDzTJY47LJhkJ8UB7WEGuduB",
+                    Path = "48'/0'/0",
+                    MasterFingerprint = "ed0210c8"
+                },
+                new()
+                {
+                    XPUB = "xpub69H7F5d8KSRgmmdJg2KhpAK8SR3DjMwAdkxj3ZuxV27CprR9LgpeyGmXUbC6wb7ERfvrnKZjXoUmmDznezpbZb7ap6r1D3tgFxHmwMkQTPH",
+                    Path = "48'/0'/1",
+                    MasterFingerprint = "ed0210c8"
+                },
+                new()
+                {
+                    XPUB = "xpub6CUGRUonZSQ4TWtTMmzXdrXDtypWKiKrhko4egpiMZbpiaQL2jkwSB1icqYh2cfDfVxdx4df189oLKnC5fSwqPfgyP3hooxujYzAu3fDVmz", 
+                    Path = "48'/0'/2", 
+                    MasterFingerprint = "ed0210c8"
+                }
+            }
+        };
+        
+        //Act
+        var outputDescriptor1 = wallet1HotWalletCreated.GetOutputDescriptor("mainnet");
+        var outputDescriptor2 = wallet1ColdWallet.GetOutputDescriptor("mainnet");
+        
+        // Assert
+        outputDescriptor1.Should().Be("sh(wpkh([ed0210c8/48'/0'/0']xpub661MyMwAqRbcFW31YEwpkMuc5THy2PSt5bDMsktWQcFF8syAmRUapSCGu8ED9W6oDMSgv6Zz8idoc4a6mr8BDzTJY47LJhkJ8UB7WEGuduB/0/*))#u4qug9gg");
+        outputDescriptor2.Should().Be(
+            "sh(sortedmulti(2," +
+            "[ed0210c8/48'/0'/0]xpub661MyMwAqRbcFW31YEwpkMuc5THy2PSt5bDMsktWQcFF8syAmRUapSCGu8ED9W6oDMSgv6Zz8idoc4a6mr8BDzTJY47LJhkJ8UB7WEGuduB/0/*," +
+            "[ed0210c8/48'/0'/1]xpub69H7F5d8KSRgmmdJg2KhpAK8SR3DjMwAdkxj3ZuxV27CprR9LgpeyGmXUbC6wb7ERfvrnKZjXoUmmDznezpbZb7ap6r1D3tgFxHmwMkQTPH/0/*," +
+            "[ed0210c8/48'/0'/2]xpub6CUGRUonZSQ4TWtTMmzXdrXDtypWKiKrhko4egpiMZbpiaQL2jkwSB1icqYh2cfDfVxdx4df189oLKnC5fSwqPfgyP3hooxujYzAu3fDVmz/0/*))#acnwnep3"
+        );
+    }
+
+    [Fact]
+    public void GetOutputDescriptor_Legacy()
+    {
+        // Arrange
+        // Testing NodeGuard created Legacy hot wallet
+        var wallet1HotWalletCreated = new Wallet()
+        {
+            IsHotWallet = true,
+            InternalWalletId = 1,
+            WalletAddressType = WalletAddressType.Legacy,
+            MofN = 1,
+            InternalWalletSubDerivationPath = "0",
+            Keys = new List<Key>()
+            {
+                new()
+                {
+                    XPUB = "xpub661MyMwAqRbcFW31YEwpkMuc5THy2PSt5bDMsktWQcFF8syAmRUapSCGu8ED9W6oDMSgv6Zz8idoc4a6mr8BDzTJY47LJhkJ8UB7WEGuduB",
+                    Path = "48'/0'/0'",
+                    MasterFingerprint = "ed0210c8",
+                    InternalWalletId = 1,
+                }
+            }
+        };
+
+        // Testing NodeGuard created Legacy cold wallet
+        var wallet1ColdWallet = new Wallet()
+        {
+            IsHotWallet = false,
+            WalletAddressType = WalletAddressType.Legacy,
+            MofN = 2,
+            Keys = new List<Key>()
+            {
+                new()
+                {
+                    XPUB = "xpub661MyMwAqRbcFW31YEwpkMuc5THy2PSt5bDMsktWQcFF8syAmRUapSCGu8ED9W6oDMSgv6Zz8idoc4a6mr8BDzTJY47LJhkJ8UB7WEGuduB",
+                    Path = "48'/0'/0",
+                    MasterFingerprint = "ed0210c8"
+                },
+                new()
+                {
+                    XPUB = "xpub69H7F5d8KSRgmmdJg2KhpAK8SR3DjMwAdkxj3ZuxV27CprR9LgpeyGmXUbC6wb7ERfvrnKZjXoUmmDznezpbZb7ap6r1D3tgFxHmwMkQTPH",
+                    Path = "48'/0'/1",
+                    MasterFingerprint = "ed0210c8"
+                },
+                new()
+                {
+                    XPUB = "xpub6CUGRUonZSQ4TWtTMmzXdrXDtypWKiKrhko4egpiMZbpiaQL2jkwSB1icqYh2cfDfVxdx4df189oLKnC5fSwqPfgyP3hooxujYzAu3fDVmz",
+                    Path = "48'/0'/2",
+                    MasterFingerprint = "ed0210c8"
+                }
+            }
+        };
+        
+        // Act
+        var outputDescriptor1 = wallet1HotWalletCreated.GetOutputDescriptor("mainnet");
+        var outputDescriptor2 = wallet1ColdWallet.GetOutputDescriptor("mainnet");
+        
+        // Assert
+        outputDescriptor1.Should().Be("pkh([ed0210c8/48'/0'/0']xpub661MyMwAqRbcFW31YEwpkMuc5THy2PSt5bDMsktWQcFF8syAmRUapSCGu8ED9W6oDMSgv6Zz8idoc4a6mr8BDzTJY47LJhkJ8UB7WEGuduB/0/*)#p7sn6nw0");
+        outputDescriptor2.Should().Be(
+            "sortedmulti(2," +
+            "[ed0210c8/48'/0'/0]xpub661MyMwAqRbcFW31YEwpkMuc5THy2PSt5bDMsktWQcFF8syAmRUapSCGu8ED9W6oDMSgv6Zz8idoc4a6mr8BDzTJY47LJhkJ8UB7WEGuduB/0/*," +
+            "[ed0210c8/48'/0'/1]xpub69H7F5d8KSRgmmdJg2KhpAK8SR3DjMwAdkxj3ZuxV27CprR9LgpeyGmXUbC6wb7ERfvrnKZjXoUmmDznezpbZb7ap6r1D3tgFxHmwMkQTPH/0/*," +
+            "[ed0210c8/48'/0'/2]xpub6CUGRUonZSQ4TWtTMmzXdrXDtypWKiKrhko4egpiMZbpiaQL2jkwSB1icqYh2cfDfVxdx4df189oLKnC5fSwqPfgyP3hooxujYzAu3fDVmz/0/*)#uqv67sle"
+        );
+    }
+
+    [Fact]
+    public void GetOutputDescriptor_Taproot()
+    {
+        // Arrange
+        // Testing NodeGuard created Taproot hot wallet
+        var wallet1HotWalletCreated = new Wallet()
+        {
+            IsHotWallet = true,
+            InternalWalletId = 1,
+            WalletAddressType = WalletAddressType.Taproot,
+            MofN = 1,
+            InternalWalletSubDerivationPath = "0",
+            Keys = new List<Key>() { 
+                new() {
+                    XPUB = "xpub661MyMwAqRbcFW31YEwpkMuc5THy2PSt5bDMsktWQcFF8syAmRUapSCGu8ED9W6oDMSgv6Zz8idoc4a6mr8BDzTJY47LJhkJ8UB7WEGuduB",
+                    Path = "48'/0'/0'",
+                    MasterFingerprint = "ed0210c8",
+                    InternalWalletId = 1,
+                }
+            }
+        };
+        
+        // Testing NodeGuard created Taproot cold wallet
+        var wallet1ColdWallet = new Wallet()
+        {
+            IsHotWallet = false,
+            WalletAddressType = WalletAddressType.Taproot,
+            MofN = 2,
+            Keys = new List<Key>()
+            {
+                new()
+                {
+                    XPUB = "xpub661MyMwAqRbcFW31YEwpkMuc5THy2PSt5bDMsktWQcFF8syAmRUapSCGu8ED9W6oDMSgv6Zz8idoc4a6mr8BDzTJY47LJhkJ8UB7WEGuduB",
+                    Path = "48'/0'/0",
+                    MasterFingerprint = "ed0210c8"
+                },
+                new()
+                {
+                    XPUB = "xpub69H7F5d8KSRgmmdJg2KhpAK8SR3DjMwAdkxj3ZuxV27CprR9LgpeyGmXUbC6wb7ERfvrnKZjXoUmmDznezpbZb7ap6r1D3tgFxHmwMkQTPH",
+                    Path = "48'/0'/1",
+                    MasterFingerprint = "ed0210c8"
+                },
+                new()
+                {
+                    XPUB = "xpub6CUGRUonZSQ4TWtTMmzXdrXDtypWKiKrhko4egpiMZbpiaQL2jkwSB1icqYh2cfDfVxdx4df189oLKnC5fSwqPfgyP3hooxujYzAu3fDVmz", 
+                    Path = "48'/0'/2", 
+                    MasterFingerprint = "ed0210c8"
+                }
+            }
+        };
+        
+        // Act
+        var taprootFunction1 = () => wallet1HotWalletCreated.GetOutputDescriptor("mainnet");
+        var taprootFunction2 = () => wallet1ColdWallet.GetOutputDescriptor("mainnet");
+        
+        // Assert
+        taprootFunction1.Should().Throw<NotImplementedException>();
+        taprootFunction2.Should().Throw<NotImplementedException>();
+    }
 }

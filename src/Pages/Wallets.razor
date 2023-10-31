@@ -21,6 +21,7 @@
 @inject ILocalStorageService LocalStorageService
 @inject ISchedulerFactory SchedulerFactory
 @inject IPriceConversionService PriceConversionService
+@inject IInternalWalletRepository InternalWalletRepository
 @inject INBXplorerService NBXplorerService
 
 @attribute [Authorize(Roles = "NodeManager, FinanceManager, Superadmin")]
@@ -80,6 +81,7 @@
                                 <DropdownItem Disabled="!context.Item.IsFinalised" Clicked="@(() => LoadAndOpenModalTextModalUnusedAddress(context.Item))">Get address</DropdownItem>
                                 <DropdownItem Disabled="!context.Item.IsFinalised || context.Item.IsWatchOnly" Clicked="@(() => ShowTransferFundsModal(context.Item))">Transfer funds</DropdownItem>
                                 <DropdownItem Disabled="!context.Item.IsFinalised" Clicked="@(() => RescanWallet(context.Item))">Rescan wallet</DropdownItem>
+                                <DropdownItem Disabled="!context.Item.IsFinalised" Clicked="@(() => LoadAndOpenExportOutputDescriptor(context.Item))">Export output descriptor</DropdownItem>
 
                             </DropdownMenu>
                         </Dropdown>
@@ -700,6 +702,25 @@
         </ModalFooter>
     </ModalContent>
 </Modal>
+<Modal @ref="_exportOutputDescriptorModal">
+    <ModalContent Size="ModalSize.Large">
+        <ModalHeader>
+            @($"Export wallet") 
+        </ModalHeader>
+        <ModalBody>
+            <Paragraph>
+                @("Output descriptor: " + StringHelper.TruncateHeadAndTail(_outputDescriptorContentModal, 25))
+                <Button Color="Color.Primary" Clicked="@(()=> CopyStrToClipboard(_outputDescriptorContentModal))">Copy</Button>
+            </Paragraph>
+                @("Wallet derivation strategy (NBITCOIN): " + StringHelper.TruncateHeadAndTail(_derivationScheme, 25))
+                <Button Color="Color.Primary" Clicked="@(()=> CopyStrToClipboard(_derivationScheme))">Copy</Button>
+        </ModalBody>
+        <ModalFooter>
+            <Button Color="Color.Secondary" Clicked="@CloseExportOutputDescriptorModal">Close</Button>
+        </ModalFooter>
+    </ModalContent>
+</Modal>
+
 <ConfirmationModal
     @ref="_multisigTransferModal"
     Title="Transferring from a multisig wallet"
@@ -735,6 +756,10 @@
     private List<Key> _selectedWalletKeysPlusInternalWalletKey = new();
     private List<Key> _selectedFinanceManagerAvailableKeys = new();
     private Key? _selectedWalletKey;
+    
+    private Modal _exportOutputDescriptorModal;
+    private string _outputDescriptorContentModal;
+    private string _derivationScheme;
 
     private Modal _textModalRef;
     private string _textModalTitle = string.Empty;
@@ -917,8 +942,7 @@
         }
         return _sourceBalanceAfterTransaction;
     }
-
-
+    
     private async Task OnRowUpdated(SavedRowItem<Wallet, Dictionary<string, object>> arg)
     {
         if (arg.Item == null) return;
@@ -1619,6 +1643,31 @@
         _transferAllFunds = value;
         _amountToTransfer = _sourceBalance;
     }
+    
+    private async Task LoadAndOpenExportOutputDescriptor(Wallet contextItem)
+    {
+        await CleanTextModal();
+        if (contextItem != null)
+        {
+            try
+            {
+                _outputDescriptorContentModal = contextItem.GetOutputDescriptor(Constants.BITCOIN_NETWORK);
+                _derivationScheme = contextItem.GetDerivationStrategy().ToString();
+                await _exportOutputDescriptorModal.Show();
+            }
+            catch (Exception e)
+            {
+                ToastService.ShowError("Error while getting the wallet descriptor");
+            }
+        }
+    }
 
+    private async Task CloseExportOutputDescriptorModal()
+    {
+        await _exportOutputDescriptorModal.Close(CloseReason.UserClosing);
+        
+        _outputDescriptorContentModal = string.Empty;
+        _derivationScheme = string.Empty;
+    }
 
 }
