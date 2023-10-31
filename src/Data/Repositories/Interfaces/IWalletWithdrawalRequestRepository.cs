@@ -30,7 +30,9 @@ public interface IWalletWithdrawalRequestRepository: IBitcoinRequestRepository
     Task<List<WalletWithdrawalRequest>> GetAll();
 
     Task<List<WalletWithdrawalRequest>> GetUnsignedPendingRequestsByUser(string userId);
-
+    
+    Task<List<WalletWithdrawalRequest>> GetAllUnsignedPendingRequests();
+    
     Task<(bool, string?)> AddAsync(WalletWithdrawalRequest type);
 
     Task<(bool, string?)> AddRangeAsync(List<WalletWithdrawalRequest> type);
