@@ -703,17 +703,17 @@
     </ModalContent>
 </Modal>
 <Modal @ref="_exportOutputDescriptorModal">
-    <ModalContent Size="ModalSize.Large">
+    <ModalContent Centered Size="ModalSize.ExtraLarge">
         <ModalHeader>
             @($"Export wallet") 
         </ModalHeader>
         <ModalBody>
             <Paragraph>
                 @("Output descriptor: " + StringHelper.TruncateHeadAndTail(_outputDescriptorContentModal, 25))
-                <Button Color="Color.Primary" Clicked="@(()=> CopyStrToClipboard(_outputDescriptorContentModal))">Copy</Button>
+                <Button Color="Color.Primary" Clicked="@(()=> CopyStrToClipboard(_outputDescriptorContentModal, "Output Descriptor"))">Copy</Button>
             </Paragraph>
                 @("Wallet derivation strategy (NBITCOIN): " + StringHelper.TruncateHeadAndTail(_derivationScheme, 25))
-                <Button Color="Color.Primary" Clicked="@(()=> CopyStrToClipboard(_derivationScheme))">Copy</Button>
+                <Button Color="Color.Primary" Clicked="@(()=> CopyStrToClipboard(_derivationScheme, "Derivation Strategy"))">Copy</Button>
         </ModalBody>
         <ModalFooter>
             <Button Color="Color.Secondary" Clicked="@CloseExportOutputDescriptorModal">Close</Button>
@@ -1556,10 +1556,10 @@
         }
     }
 
-    private async Task CopyStrToClipboard(string arg)
+    private async Task CopyStrToClipboard(string arg, string whatCopied = "Address")
     {
         await ClipboardService.WriteTextAsync(arg);
-        ToastService.ShowSuccess("Address copied");
+        ToastService.ShowSuccess(whatCopied + " copied");
         await CloseTextModal();
     }
 
