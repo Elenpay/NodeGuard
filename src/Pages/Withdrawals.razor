@@ -7,16 +7,17 @@
 @using NodeGuard.Jobs
 @using Google.Protobuf
 @using NBXplorer.Models
+@using Newtonsoft.Json
 @using NodeGuard.Helpers;
 @using Polly
 @attribute [Authorize(Roles = "Superadmin,NodeManager,FinanceManager")]
 
 <Row>
-    @if (_isFinanceManager)
-    {
-        <Column ColumnSize="ColumnSize.Is12">
-            <h3>Withdrawal requests awaiting my signature</h3>
-            <DataGrid TItem="WalletWithdrawalRequest"
+@if (_isFinanceManager)
+{
+    <Column ColumnSize="ColumnSize.Is12">
+        <h3>Withdrawal requests awaiting my signature</h3>
+        <DataGrid TItem="WalletWithdrawalRequest"
                   Data="@_userPendingRequests"
                   Editable="@_isFinanceManager"
                   EditMode="DataGridEditMode.Popup"
@@ -35,85 +36,85 @@
                   ShowValidationFeedback="true"
                   ShowValidationsSummary="false"
                   UseValidation="true">
-                <PopupTitleTemplate>
-                    <h2>@(context.EditState) withdrawal</h2>
-                </PopupTitleTemplate>
-                <DataGridColumns>
-                    <DataGridCommandColumn TItem="WalletWithdrawalRequest" Filterable="false" >
-                        <NewCommandTemplate>
-                            <Button Color="Color.Success" TextColor="TextColor.Light"  Clicked="@(async () => {  OnShowNewWalletWithdrawalModal(); await context.Clicked.InvokeAsync(); })">New</Button>
-                        </NewCommandTemplate>
-                        <EditCommandTemplate>
-                            @*<Button Color="Color.Primary" Clicked="@context.Clicked">Edit</Button>*@
+            <PopupTitleTemplate>
+                <h2>@(context.EditState) withdrawal</h2>
+            </PopupTitleTemplate>
+            <DataGridColumns>
+                <DataGridCommandColumn TItem="WalletWithdrawalRequest" Filterable="false">
+                    <NewCommandTemplate>
+                        <Button Color="Color.Success" TextColor="TextColor.Light" Clicked="@(async () => { OnShowNewWalletWithdrawalModal(); await context.Clicked.InvokeAsync(); })">New</Button>
+                    </NewCommandTemplate>
+                    <EditCommandTemplate>
+                        @*<Button Color="Color.Primary" Clicked="@context.Clicked">Edit</Button>*@
 
-                        </EditCommandTemplate>
-                        <DeleteCommandTemplate>
-                            @*<Button Color="Color.Danger" Clicked="@context.Clicked">Delete</Button>*@
-                        </DeleteCommandTemplate>
+                    </EditCommandTemplate>
+                    <DeleteCommandTemplate>
+                        @*<Button Color="Color.Danger" Clicked="@context.Clicked">Delete</Button>*@
+                    </DeleteCommandTemplate>
 
-                    </DataGridCommandColumn>
-                    <DataGridColumn TItem="WalletWithdrawalRequest" Filterable="false" Field="@nameof(WalletWithdrawalRequest.Id)" Caption="#" Sortable="false" Displayable="true" />
-                    <DataGridColumn TItem="WalletWithdrawalRequest" Filterable="false" Caption="Actions" Sortable="false" Displayable="true">
-                        <DisplayTemplate>
-                            @*TODO Cancel / Reject  *@
+                </DataGridCommandColumn>
+                <DataGridColumn TItem="WalletWithdrawalRequest" Filterable="false" Field="@nameof(WalletWithdrawalRequest.Id)" Caption="#" Sortable="false" Displayable="true"/>
+                <DataGridColumn TItem="WalletWithdrawalRequest" Filterable="false" Caption="Actions" Sortable="false" Displayable="true">
+                    <DisplayTemplate>
+                        @*TODO Cancel / Reject  *@
 
-                            @if (context.Wallet != null && context.Wallet.Keys != null && context.Wallet.Keys.Any(x => x.UserId == LoggedUser?.Id)
-                                 && !context.AreAllRequiredHumanSignaturesCollected
-                                 && context.WalletWithdrawalRequestPSBTs.All(x => x.SignerId != LoggedUser?.Id))
-                            {
-                                <Button Color="Color.Success" Clicked="()=> ShowApprovalModal(context)">Approve</Button>
-                            }
-                        </DisplayTemplate>
-                    </DataGridColumn>
-                    <DataGridColumn TItem="WalletWithdrawalRequest" Filterable="false" Caption="" Sortable="false" Displayable="true">
-                        <DisplayTemplate>
-                            @*TODO Cancel / Reject  *@
-                            @{
-                                bool canCancel = context.Status == WalletWithdrawalRequestStatus.Pending || context.Status == WalletWithdrawalRequestStatus.PSBTSignaturesPending;
-                                bool isRequestor = LoggedUser?.Id == context.UserRequestorId;
-                                string action = isRequestor ? "Cancel" : "Reject";
-                                WalletWithdrawalRequestStatus newStatus = isRequestor ? WalletWithdrawalRequestStatus.Cancelled : WalletWithdrawalRequestStatus.Rejected;
-                            }
-                            
-                            @if (canCancel)
-                            {
-                                <Button Color="Color.Danger" Clicked="() => ShowRejectCancelModal(context, newStatus)">@action</Button>
-                            }
-                        </DisplayTemplate>
-                    </DataGridColumn>
-                    <DataGridColumn TItem="WalletWithdrawalRequest" Filterable="false" PopupFieldColumnSize="ColumnSize.Is12" Editable="true" Field="@nameof(WalletWithdrawalRequest.Description)" Caption="@nameof(WalletWithdrawalRequest.Description)" Sortable="false" Displayable="@IsPendingRequestsColumnVisible(PendingWithdrawalsColumnName.Description)">
-                        <DisplayTemplate>
-                            <Tooltip Text="@context.Description" Placement="TooltipPlacement.Top">
-                                @context.Description.Truncate(40)
-                            </Tooltip>
-                        </DisplayTemplate>
-                        <EditTemplate>
-                            <Validation Validator="@ValidationRule.IsNotEmpty">
-                                <MemoEdit Rows="4" Text="@((string) context.CellValue)" TextChanged="(text) => context.CellValue = text">
-                                    <Feedback>
-                                        <ValidationError/>
-                                    </Feedback>
-                                </MemoEdit>
-                            </Validation>
-                        </EditTemplate>
-                    </DataGridColumn>
-                    <DataGridColumn TItem="WalletWithdrawalRequest" Filterable="false" PopupFieldColumnSize="ColumnSize.Is12" Validator="@ValidationRule.IsSelected" Editable="true" Field="@nameof(WalletWithdrawalRequest.WalletId)" Caption="@nameof(WalletWithdrawalRequest.Wallet)" Sortable="false" Displayable="@IsPendingRequestsColumnVisible(PendingWithdrawalsColumnName.Wallet)">
-                        <DisplayTemplate>
-                            @if (context.Wallet != null)
-                            {
-                                @($"{context.Wallet.Name} ({context.Wallet.MofN}-of-{context.Wallet.Keys.Count})")
-                            }
-                        </DisplayTemplate>
-                        <EditTemplate>
-                            <Validation Validator="@ValidationRule.IsSelected">
-                            @if (context.CellValue == null || (int) context.CellValue == 0)
+                        @if (context.Wallet != null && context.Wallet.Keys != null && context.Wallet.Keys.Any(x => x.UserId == LoggedUser?.Id)
+                             && !context.AreAllRequiredHumanSignaturesCollected
+                             && context.WalletWithdrawalRequestPSBTs.All(x => x.SignerId != LoggedUser?.Id))
+                        {
+                            <Button Color="Color.Success" Clicked="() => ShowApprovalModal(context)">Approve</Button>
+                        }
+                    </DisplayTemplate>
+                </DataGridColumn>
+                <DataGridColumn TItem="WalletWithdrawalRequest" Filterable="false" Caption="" Sortable="false" Displayable="true">
+                    <DisplayTemplate>
+                        @*TODO Cancel / Reject  *@
+                        @{
+                            bool canCancel = context.Status == WalletWithdrawalRequestStatus.Pending || context.Status == WalletWithdrawalRequestStatus.PSBTSignaturesPending;
+                            bool isRequestor = LoggedUser?.Id == context.UserRequestorId;
+                            string action = isRequestor ? "Cancel" : "Reject";
+                            WalletWithdrawalRequestStatus newStatus = isRequestor ? WalletWithdrawalRequestStatus.Cancelled : WalletWithdrawalRequestStatus.Rejected;
+                        }
+
+                        @if (canCancel)
+                        {
+                            <Button Color="Color.Danger" Clicked="() => ShowRejectCancelModal(context, newStatus)">@action</Button>
+                        }
+                    </DisplayTemplate>
+                </DataGridColumn>
+                <DataGridColumn TItem="WalletWithdrawalRequest" Filterable="false" PopupFieldColumnSize="ColumnSize.Is12" Editable="true" Field="@nameof(WalletWithdrawalRequest.Description)" Caption="@nameof(WalletWithdrawalRequest.Description)" Sortable="false" Displayable="@IsPendingRequestsColumnVisible(PendingWithdrawalsColumnName.Description)">
+                    <DisplayTemplate>
+                        <Tooltip Text="@context.Description" Placement="TooltipPlacement.Top">
+                            @context.Description.Truncate(40)
+                        </Tooltip>
+                    </DisplayTemplate>
+                    <EditTemplate>
+                        <Validation Validator="@ValidationRule.IsNotEmpty">
+                            <MemoEdit Rows="4" Text="@((string)context.CellValue)" TextChanged="(text) => context.CellValue = text">
+                                <Feedback>
+                                    <ValidationError/>
+                                </Feedback>
+                            </MemoEdit>
+                        </Validation>
+                    </EditTemplate>
+                </DataGridColumn>
+                <DataGridColumn TItem="WalletWithdrawalRequest" Filterable="false" PopupFieldColumnSize="ColumnSize.Is12" Validator="@ValidationRule.IsSelected" Editable="true" Field="@nameof(WalletWithdrawalRequest.WalletId)" Caption="@nameof(WalletWithdrawalRequest.Wallet)" Sortable="false" Displayable="@IsPendingRequestsColumnVisible(PendingWithdrawalsColumnName.Wallet)">
+                    <DisplayTemplate>
+                        @if (context.Wallet != null)
+                        {
+                            @($"{context.Wallet.Name} ({context.Wallet.MofN}-of-{context.Wallet.Keys.Count})")
+                        }
+                    </DisplayTemplate>
+                    <EditTemplate>
+                        <Validation Validator="@ValidationRule.IsSelected">
+                            @if (context.CellValue == null || (int)context.CellValue == 0)
                             {
                                 <SelectList TItem="Wallet"
                                             TValue="int"
                                             Data="@_availableWallets"
                                             TextField="@((item) => item.Name)"
                                             ValueField="@((item) => item.Id)"
-                                            SelectedValueChanged="(id) => OnSelectedWallet(context,id)"
+                                            SelectedValueChanged="(id) => OnSelectedWallet(context, id)"
                                             DefaultItemText="Choose the wallet">
                                     <Feedback>
                                         <ValidationError/>
@@ -127,242 +128,112 @@
                                             Data="@_availableWallets"
                                             TextField="@((item) => item.Name)"
                                             ValueField="@((item) => item.Id)"
-                                            SelectedValue="(int) context.CellValue"
-                                            SelectedValueChanged="(id) => OnSelectedWallet(context,id)">
+                                            SelectedValue="(int)context.CellValue"
+                                            SelectedValueChanged="(id) => OnSelectedWallet(context, id)">
                                     <Feedback>
                                         <ValidationError/>
                                     </Feedback>
                                 </SelectList>
                             }
-                            </Validation>
-                        </EditTemplate>
-                    </DataGridColumn>
-                    <DataGridColumn TItem="WalletWithdrawalRequest" Filterable="false" Editable="false" Field="@nameof(WalletWithdrawalRequest.UserRequestor)" Caption="Requestor" Sortable="true" Displayable="@IsPendingRequestsColumnVisible(PendingWithdrawalsColumnName.Requestor)">
-                        <DisplayTemplate>
-                            @context?.UserRequestor?.UserName
-                        </DisplayTemplate>
-                    </DataGridColumn>
-                    <DataGridColumn TItem="WalletWithdrawalRequest" Filterable="false" PopupFieldColumnSize="ColumnSize.Is12" Editable="true" Validator="DestinationAddressValidator" Field="@nameof(WalletWithdrawalRequest.DestinationAddress)" Caption="@nameof(WalletWithdrawalRequest.DestinationAddress).Humanize()" Sortable="false" Displayable="@IsPendingRequestsColumnVisible(PendingWithdrawalsColumnName.DestinationAddress)">
-                        <DisplayTemplate>
-                            @StringHelper.TruncateHeadAndTail(context.DestinationAddress,10)
-                            @* TODO Copy and explorer buttons *@
-                        </DisplayTemplate>
-                    </DataGridColumn>
-                    <DataGridColumn TItem="WalletWithdrawalRequest" PopupFieldColumnSize="ColumnSize.Is6" Field="@nameof(WalletWithdrawalRequest.WithdrawAllFunds)" Caption="@nameof(WalletWithdrawalRequest.WithdrawAllFunds).Humanize(LetterCasing.Sentence)" Editable="true" Displayable="false">
-                        <EditTemplate>
-                            <Check TValue="bool" Checked="@((bool) context.CellValue)" CheckedChanged="(value) => HandleCheckboxChange(context, value)"  @bind-Value="IsCheckedAllFunds"/>
-                        </EditTemplate>
-                    </DataGridColumn>
-                    <DataGridColumn PopupFieldColumnSize="ColumnSize.Is6" Caption="Wallet Balance" Editable="true" Displayable="false">
-                        <EditTemplate>
-                            @if (_selectedRequestWalletBalance != null)
-                            {
-                                <p>@($"{_selectedRequestWalletBalance:f8} BTC ({Math.Round(PriceConversionService.BtcToUsdConversion((decimal)_selectedRequestWalletBalance, _btcPrice), 2)} USD)")</p>
-                            }
-                        </EditTemplate>
-                    </DataGridColumn>
-                    <DataGridColumn TItem="WalletWithdrawalRequest" Filterable="false" PopupFieldColumnSize="ColumnSize.Is12" Editable="true" Field="@nameof(WalletWithdrawalRequest.Amount)" Caption="Amount" Sortable="false" Displayable="@IsPendingRequestsColumnVisible(PendingWithdrawalsColumnName.Amount)" >
-                        <DisplayTemplate>
-                            @{
-                                @($"{context.Amount:f8} BTC ({Math.Round(PriceConversionService.BtcToUsdConversion(context.Amount, _btcPrice), 2)} USD)")
-                            }
-                        </DisplayTemplate>
-                        <EditTemplate>
-                            <Validation Validator="args => ValidationHelper.ValidateWithdrawalAmount(args, _selectedRequestWalletBalance)">
-                                <NumericPicker TValue="decimal" @bind-Value="@_amount" Step="0.00001m" CurrencySymbol="₿ " Decimals="8" DecimalSeparator="," Disabled="@(SelectedUTXOs.Count > 0 || IsCheckedAllFunds)">
-                                    <Feedback>
-                                        <ValidationError/>
-                                    </Feedback>
-                                </NumericPicker>
-                                <FieldHelp>
-                                    @{
-                                        decimal amountToShow = _amount < Constants.MAXIMUM_WITHDRAWAL_BTC_AMOUNT
-                                            ? _amount
-                                            : Constants.MAXIMUM_WITHDRAWAL_BTC_AMOUNT;
-                                        decimal convertedAmount = Math.Round(PriceConversionService.SatToUsdConversion(new Money(amountToShow, MoneyUnit.BTC).Satoshi, _btcPrice), 2);
-                                    }
-                                    @($"Minimum {_minimumWithdrawalAmount:f8} BTC. Current amount: {convertedAmount} USD")
-                                </FieldHelp>
-                            </Validation>
-                            <div class="mb-3">
-                                <Button Color="Color.Primary" Disabled="@(!_selectedWalletId.HasValue || IsCheckedAllFunds)" Clicked="@OpenCoinSelectionModal">Select Coins</Button> or use
-                                <Button Color="Color.Primary" Disabled="@(SelectedUTXOs.Count == 0)" Clicked="@ClearSelectedUTXOs">Default Coin Selection</Button>
-                            </div>
-                            @if (_selectedWalletId.HasValue && SelectedUTXOs.Count > 0)
-                            {
-                                <span class="text-danger">Selected @(SelectedUTXOs.Count) UTXOs, this is a changeless operation</span>
-                            }
-                            else
-                            {
-                                <span class="text-danger">Default coin selection strategy selected</span>
-                            }
-                        </EditTemplate>
-                    </DataGridColumn>
-                    <DataGridColumn TItem="WalletWithdrawalRequest" Filterable="false" Field="@nameof(WalletWithdrawalRequest.WalletId)" Caption="Signatures Collected" Sortable="false" Displayable="@IsPendingRequestsColumnVisible(PendingWithdrawalsColumnName.SignaturesCollected)">
-                        <DisplayTemplate>
-                            @{
-                                if (context.Wallet != null)
-                                {
-                                    var signaturesCollected = context.NumberOfSignaturesCollected + (context.Wallet.RequiresInternalWalletSigning && !context.Wallet.IsSingleSig ? 1 : 0);
-                                    var signaturesRequired = context.Wallet?.MofN ?? 0;
-                                        @($"{signaturesCollected} out of {signaturesRequired}")
-                                }
-
-                            }
-                        </DisplayTemplate>
-                    </DataGridColumn>
-                    <DataGridColumn TItem="WalletWithdrawalRequest" Filterable="false" Field="@nameof(WalletWithdrawalRequest.Status).Humanize(LetterCasing.Sentence)" Caption="Status" Sortable="false" Displayable="@IsPendingRequestsColumnVisible(PendingWithdrawalsColumnName.Status)">
-                        <DisplayTemplate>
-                            @context?.Status.Humanize()
-                        </DisplayTemplate>
-                    </DataGridColumn>
-                    <DataGridColumn TItem="WalletWithdrawalRequest" Filterable="false" Field="@nameof(WalletWithdrawalRequest.CreationDatetime)" Caption="Creation Date" Sortable="true" SortDirection="SortDirection.Descending" Displayable="@IsPendingRequestsColumnVisible(PendingWithdrawalsColumnName.CreationDate)">
-                        <DisplayTemplate>
-                            @context.CreationDatetime.Humanize()
-                        </DisplayTemplate>
-                    </DataGridColumn>
-                    <DataGridColumn TItem="WalletWithdrawalRequest" Filterable="false" Field="@nameof(WalletWithdrawalRequest.UpdateDatetime)" Caption="Update date" Sortable="true" Displayable="@IsPendingRequestsColumnVisible(PendingWithdrawalsColumnName.UpdateDate)">
-                        <DisplayTemplate>
-                            @context.UpdateDatetime.Humanize()
-                        </DisplayTemplate>
-                    </DataGridColumn>
-                    <DataGridColumn TItem="WalletWithdrawalRequest" Displayable="true">
-                        <FilterTemplate>
-                            <ColumnLayout @ref="PendingRequestsColumnLayout" Columns="@_pendingRequestsColumns" ColumnType="PendingWithdrawalsColumnName" OnUpdate="@OnColumnLayoutUpdate"/>
-                        </FilterTemplate>
-                    </DataGridColumn>
-                </DataGridColumns>
-
-                <EmptyTemplate>
-                    <div class="box">
-                        No records were found.
-                    </div>
-                </EmptyTemplate>
-                <LoadingTemplate>
-                    <div class="box">
-                        <progress class="progress is-small is-primary" max="100"></progress>
-                    </div>
-                </LoadingTemplate>
-            </DataGrid>
-
-        </Column>
-    }
-
-    <Column ColumnSize="ColumnSize.Is12">
-        <h3>Withdrawal requests</h3>
-        <DataGrid TItem="WalletWithdrawalRequest"
-                  @ref="_allRequestsDatagrid"
-                  Data="@_withdrawalRequests"
-                  Filterable="true"
-                  FilterMethod="DataGridFilterMethod.Contains"
-                  Editable="false"
-                  Responsive="true"
-                  ResizeMode="TableResizeMode.Columns"
-                  ShowPager="true"
-                  ShowPageSizes="true"
-                  Narrow="true"
-                  PageSize="25">
-            <DataGridColumns>
-                <DataGridColumn TItem="WalletWithdrawalRequest" Field="@nameof(WalletWithdrawalRequest.Id)" Caption="#" Sortable="false" Displayable="true" />
-                <DataGridColumn TItem="WalletWithdrawalRequest" PopupFieldColumnSize="ColumnSize.Is12" Editable="true" Field="@nameof(WalletWithdrawalRequest.Description)" Caption="@nameof(WalletWithdrawalRequest.Description)" Sortable="false" Displayable="@IsAllRequestsColumnVisible(AllWithdrawalsColumnName.Description)">
-                    <DisplayTemplate>
-                        <Tooltip Text="@context.Description" Placement="TooltipPlacement.Top">
-                            @context.Description.Truncate(40)
-                        </Tooltip>
-                    </DisplayTemplate>
-                </DataGridColumn>
-                <DataGridColumn TItem="WalletWithdrawalRequest" Editable="true" Field="@nameof(WalletWithdrawalRequest.WalletId)" Caption="@nameof(WalletWithdrawalRequest.Wallet)" Sortable="false" Displayable="@IsAllRequestsColumnVisible(AllWithdrawalsColumnName.Wallet)">
-                    <DisplayTemplate>
-                        @if (context.Wallet != null)
-                        {
-                            @($"{context.Wallet.Name} ({context.Wallet.MofN}-of-{context.Wallet.Keys.Count})")
-                        }
-                    </DisplayTemplate>
-                    <EditTemplate>
-                        @if (context.CellValue == null || (int)context.CellValue == 0)
-                        {
-                            <SelectList TItem="Wallet"
-                                    TValue="int"
-                                    Data="@_availableWallets"
-                                    TextField="@((item) => item.Name)"
-                                    ValueField="@((item) => item.Id)"
-                                    SelectedValueChanged="(id) => context.CellValue = id"
-                                    DefaultItemText="Choose the wallet" />
-                        }
-                        else
-                        {
-                            <SelectList TItem="Wallet"
-                                    TValue="int"
-                                    Data="@_availableWallets"
-                                    TextField="@((item) => item.Name)"
-                                    ValueField="@((item) => item.Id)"
-                                    SelectedValue="(int) context.CellValue"
-                                    SelectedValueChanged="(id) => context.CellValue = id" />
-                        }
+                        </Validation>
                     </EditTemplate>
                 </DataGridColumn>
-                <DataGridColumn TItem="WalletWithdrawalRequest" Editable="false" Field="@nameof(WalletWithdrawalRequest.UserRequestor)" Caption="Requestor" Sortable="true" Displayable="@IsAllRequestsColumnVisible(AllWithdrawalsColumnName.Requestor)">
+                <DataGridColumn TItem="WalletWithdrawalRequest" Filterable="false" Editable="false" Field="@nameof(WalletWithdrawalRequest.UserRequestor)" Caption="Requestor" Sortable="true" Displayable="@IsPendingRequestsColumnVisible(PendingWithdrawalsColumnName.Requestor)">
                     <DisplayTemplate>
-                        @context?.UserRequestor?.UserName
+                        @ShowRequestor(context)
                     </DisplayTemplate>
                 </DataGridColumn>
-                <DataGridColumn TItem="WalletWithdrawalRequest" Editable="true" Validator="DestinationAddressValidator" Field="@nameof(WalletWithdrawalRequest.DestinationAddress)" Caption="@nameof(WalletWithdrawalRequest.DestinationAddress).Humanize()" Sortable="false" Displayable="@IsAllRequestsColumnVisible(AllWithdrawalsColumnName.DestinationAddress)">
+                <DataGridColumn TItem="WalletWithdrawalRequest" Filterable="false" PopupFieldColumnSize="ColumnSize.Is12" Editable="true" Validator="DestinationAddressValidator" Field="@nameof(WalletWithdrawalRequest.DestinationAddress)" Caption="@nameof(WalletWithdrawalRequest.DestinationAddress).Humanize()" Sortable="false" Displayable="@IsPendingRequestsColumnVisible(PendingWithdrawalsColumnName.DestinationAddress)">
                     <DisplayTemplate>
-                        @StringHelper.TruncateHeadAndTail(context.DestinationAddress,10)
+                        @StringHelper.TruncateHeadAndTail(context.DestinationAddress, 10)
                         @* TODO Copy and explorer buttons *@
                     </DisplayTemplate>
                 </DataGridColumn>
-                <DataGridColumn TItem="WalletWithdrawalRequest" Editable="true"  Field="@nameof(WalletWithdrawalRequest.Amount)" Caption="Amount (BTC)" Sortable="false" Displayable="@IsAllRequestsColumnVisible(AllWithdrawalsColumnName.Amount)">
+                <DataGridColumn TItem="WalletWithdrawalRequest" PopupFieldColumnSize="ColumnSize.Is6" Field="@nameof(WalletWithdrawalRequest.WithdrawAllFunds)" Caption="@nameof(WalletWithdrawalRequest.WithdrawAllFunds).Humanize(LetterCasing.Sentence)" Editable="true" Displayable="false">
+                    <EditTemplate>
+                        <Check TValue="bool" Checked="@((bool)context.CellValue)" CheckedChanged="(value) => HandleCheckboxChange(context, value)" @bind-Value="IsCheckedAllFunds"/>
+                    </EditTemplate>
+                </DataGridColumn>
+                <DataGridColumn PopupFieldColumnSize="ColumnSize.Is6" Caption="Wallet Balance" Editable="true" Displayable="false">
+                    <EditTemplate>
+                        @if (_selectedRequestWalletBalance != null)
+                        {
+                            <p>@($"{_selectedRequestWalletBalance:f8} BTC ({Math.Round(PriceConversionService.BtcToUsdConversion((decimal)_selectedRequestWalletBalance, _btcPrice), 2)} USD)")</p>
+                        }
+                    </EditTemplate>
+                </DataGridColumn>
+                <DataGridColumn TItem="WalletWithdrawalRequest" Filterable="false" PopupFieldColumnSize="ColumnSize.Is12" Editable="true" Field="@nameof(WalletWithdrawalRequest.Amount)" Caption="Amount" Sortable="false" Displayable="@IsPendingRequestsColumnVisible(PendingWithdrawalsColumnName.Amount)">
                     <DisplayTemplate>
                         @{
                             @($"{context.Amount:f8} BTC ({Math.Round(PriceConversionService.BtcToUsdConversion(context.Amount, _btcPrice), 2)} USD)")
                         }
                     </DisplayTemplate>
-
+                    <EditTemplate>
+                        <Validation Validator="args => ValidationHelper.ValidateWithdrawalAmount(args, _selectedRequestWalletBalance)">
+                            <NumericPicker TValue="decimal" @bind-Value="@_amount" Step="0.00001m" CurrencySymbol="₿ " Decimals="8" DecimalSeparator="," Disabled="@(SelectedUTXOs.Count > 0 || IsCheckedAllFunds)">
+                                <Feedback>
+                                    <ValidationError/>
+                                </Feedback>
+                            </NumericPicker>
+                            <FieldHelp>
+                                @{
+                                    decimal amountToShow = _amount < Constants.MAXIMUM_WITHDRAWAL_BTC_AMOUNT
+                                        ? _amount
+                                        : Constants.MAXIMUM_WITHDRAWAL_BTC_AMOUNT;
+                                    decimal convertedAmount = Math.Round(PriceConversionService.SatToUsdConversion(new Money(amountToShow, MoneyUnit.BTC).Satoshi, _btcPrice), 2);
+                                }
+                                @($"Minimum {_minimumWithdrawalAmount:f8} BTC. Current amount: {convertedAmount} USD")
+                            </FieldHelp>
+                        </Validation>
+                        <div class="mb-3">
+                            <Button Color="Color.Primary" Disabled="@(!_selectedWalletId.HasValue || IsCheckedAllFunds)" Clicked="@OpenCoinSelectionModal">Select Coins</Button> or use
+                            <Button Color="Color.Primary" Disabled="@(SelectedUTXOs.Count == 0)" Clicked="@ClearSelectedUTXOs">Default Coin Selection</Button>
+                        </div>
+                        @if (_selectedWalletId.HasValue && SelectedUTXOs.Count > 0)
+                        {
+                            <span class="text-danger">Selected @(SelectedUTXOs.Count) UTXOs, this is a changeless operation</span>
+                        }
+                        else
+                        {
+                            <span class="text-danger">Default coin selection strategy selected</span>
+                        }
+                    </EditTemplate>
                 </DataGridColumn>
-                <DataGridColumn TItem="WalletWithdrawalRequest" Field="@nameof(WalletWithdrawalRequest.WalletId)" Caption="Signatures Collected" Sortable="false" Displayable="@IsAllRequestsColumnVisible(AllWithdrawalsColumnName.SignaturesCollected)">
+                <DataGridColumn TItem="WalletWithdrawalRequest" Filterable="false" Field="@nameof(WalletWithdrawalRequest.WalletId)" Caption="Signatures Collected" Sortable="false" Displayable="@IsPendingRequestsColumnVisible(PendingWithdrawalsColumnName.SignaturesCollected)">
                     <DisplayTemplate>
                         @{
                             if (context.Wallet != null)
                             {
                                 var signaturesCollected = context.NumberOfSignaturesCollected + (context.Wallet.RequiresInternalWalletSigning && !context.Wallet.IsSingleSig ? 1 : 0);
                                 var signaturesRequired = context.Wallet?.MofN ?? 0;
-                                    @($"{signaturesCollected} out of {signaturesRequired}")
+                                @($"{signaturesCollected} out of {signaturesRequired}")
                             }
+
                         }
                     </DisplayTemplate>
                 </DataGridColumn>
-                <DataGridColumn TItem="WalletWithdrawalRequest" Field="@nameof(WalletWithdrawalRequest.Status).Humanize(LetterCasing.Sentence)" Caption="Status" Sortable="false" Displayable="@IsAllRequestsColumnVisible(AllWithdrawalsColumnName.Status)">
+                <DataGridColumn TItem="WalletWithdrawalRequest" Filterable="false" Field="@nameof(WalletWithdrawalRequest.Status).Humanize(LetterCasing.Sentence)" Caption="Status" Sortable="false" Displayable="@IsPendingRequestsColumnVisible(PendingWithdrawalsColumnName.Status)">
                     <DisplayTemplate>
-                        <Tooltip Text=@context.RejectCancelDescription Placement="TooltipPlacement.Top">
-                                <span>@context?.Status.Humanize()</span>
-                        </Tooltip>
+                        @context?.Status.Humanize()
                     </DisplayTemplate>
                 </DataGridColumn>
-                <DataGridColumn TItem="WalletWithdrawalRequest" Field="@nameof(WalletWithdrawalRequest.CreationDatetime)" Caption="Creation Date" Sortable="true" SortDirection="SortDirection.Descending" Displayable="@IsAllRequestsColumnVisible(AllWithdrawalsColumnName.CreationDate)">
+                <DataGridColumn TItem="WalletWithdrawalRequest" Filterable="false" Field="@nameof(WalletWithdrawalRequest.CreationDatetime)" Caption="Creation Date" Sortable="true" SortDirection="SortDirection.Descending" Displayable="@IsPendingRequestsColumnVisible(PendingWithdrawalsColumnName.CreationDate)">
                     <DisplayTemplate>
                         @context.CreationDatetime.Humanize()
                     </DisplayTemplate>
                 </DataGridColumn>
-                <DataGridColumn TItem="WalletWithdrawalRequest" Field="@nameof(WalletWithdrawalRequest.UpdateDatetime)" Caption="Update date" Sortable="true" Displayable="@IsAllRequestsColumnVisible(AllWithdrawalsColumnName.UpdateDate)">
+                <DataGridColumn TItem="WalletWithdrawalRequest" Filterable="false" Field="@nameof(WalletWithdrawalRequest.UpdateDatetime)" Caption="Update date" Sortable="true" Displayable="@IsPendingRequestsColumnVisible(PendingWithdrawalsColumnName.UpdateDate)">
                     <DisplayTemplate>
                         @context.UpdateDatetime.Humanize()
                     </DisplayTemplate>
                 </DataGridColumn>
-                <DataGridColumn TItem="WalletWithdrawalRequest" Field="@nameof(WalletWithdrawalRequest.TxId)" Caption="Links" Sortable="false" Displayable="@IsAllRequestsColumnVisible(AllWithdrawalsColumnName.Links)">
-                    <DisplayTemplate>
-                        @if (mempoolUrl != null && !string.IsNullOrEmpty(context.TxId))
-                        {
-                            <a href="@(mempoolUrl + "/tx/" + context.TxId)" target="_blank">See in explorer</a>
-                        }
-                    </DisplayTemplate>
-                </DataGridColumn>
                 <DataGridColumn TItem="WalletWithdrawalRequest" Displayable="true">
                     <FilterTemplate>
-                        <ColumnLayout @ref="AllRequestsColumnLayout" Columns="@_allRequestsColumns" ColumnType="AllWithdrawalsColumnName" OnUpdate="@OnColumnLayoutUpdate"/>
+                        <ColumnLayout @ref="PendingRequestsColumnLayout" Columns="@_pendingRequestsColumns" ColumnType="PendingWithdrawalsColumnName" OnUpdate="@OnColumnLayoutUpdate"/>
                     </FilterTemplate>
                 </DataGridColumn>
             </DataGridColumns>
+
             <EmptyTemplate>
                 <div class="box">
                     No records were found.
@@ -376,6 +247,136 @@
         </DataGrid>
 
     </Column>
+}
+
+<Column ColumnSize="ColumnSize.Is12">
+    <h3>Withdrawal requests</h3>
+    <DataGrid TItem="WalletWithdrawalRequest"
+              @ref="_allRequestsDatagrid"
+              Data="@_withdrawalRequests"
+              Filterable="true"
+              FilterMethod="DataGridFilterMethod.Contains"
+              Editable="false"
+              Responsive="true"
+              ResizeMode="TableResizeMode.Columns"
+              ShowPager="true"
+              ShowPageSizes="true"
+              Narrow="true"
+              PageSize="25">
+        <DataGridColumns>
+            <DataGridColumn TItem="WalletWithdrawalRequest" Field="@nameof(WalletWithdrawalRequest.Id)" Caption="#" Sortable="false" Displayable="true"/>
+            <DataGridColumn TItem="WalletWithdrawalRequest" PopupFieldColumnSize="ColumnSize.Is12" Editable="true" Field="@nameof(WalletWithdrawalRequest.Description)" Caption="@nameof(WalletWithdrawalRequest.Description)" Sortable="false" Displayable="@IsAllRequestsColumnVisible(AllWithdrawalsColumnName.Description)">
+                <DisplayTemplate>
+                    <Tooltip Text="@context.Description" Placement="TooltipPlacement.Top">
+                        @context.Description.Truncate(40)
+                    </Tooltip>
+                </DisplayTemplate>
+            </DataGridColumn>
+            <DataGridColumn TItem="WalletWithdrawalRequest" Editable="true" Field="@nameof(WalletWithdrawalRequest.WalletId)" Caption="@nameof(WalletWithdrawalRequest.Wallet)" Sortable="false" Displayable="@IsAllRequestsColumnVisible(AllWithdrawalsColumnName.Wallet)">
+                <DisplayTemplate>
+                    @if (context.Wallet != null)
+                    {
+                        @($"{context.Wallet.Name} ({context.Wallet.MofN}-of-{context.Wallet.Keys.Count})")
+                    }
+                </DisplayTemplate>
+                <EditTemplate>
+                    @if (context.CellValue == null || (int)context.CellValue == 0)
+                    {
+                        <SelectList TItem="Wallet"
+                                    TValue="int"
+                                    Data="@_availableWallets"
+                                    TextField="@((item) => item.Name)"
+                                    ValueField="@((item) => item.Id)"
+                                    SelectedValueChanged="(id) => context.CellValue = id"
+                                    DefaultItemText="Choose the wallet"/>
+                    }
+                    else
+                    {
+                        <SelectList TItem="Wallet"
+                                    TValue="int"
+                                    Data="@_availableWallets"
+                                    TextField="@((item) => item.Name)"
+                                    ValueField="@((item) => item.Id)"
+                                    SelectedValue="(int)context.CellValue"
+                                    SelectedValueChanged="(id) => context.CellValue = id"/>
+                    }
+                </EditTemplate>
+            </DataGridColumn>
+            <DataGridColumn TItem="WalletWithdrawalRequest" Editable="false" Field="@nameof(WalletWithdrawalRequest.UserRequestor)" Caption="Requestor" Sortable="true" Displayable="@IsAllRequestsColumnVisible(AllWithdrawalsColumnName.Requestor)">
+                <DisplayTemplate>
+                    @ShowRequestor(context)
+                </DisplayTemplate>
+            </DataGridColumn>
+            <DataGridColumn TItem="WalletWithdrawalRequest" Editable="true" Validator="DestinationAddressValidator" Field="@nameof(WalletWithdrawalRequest.DestinationAddress)" Caption="@nameof(WalletWithdrawalRequest.DestinationAddress).Humanize()" Sortable="false" Displayable="@IsAllRequestsColumnVisible(AllWithdrawalsColumnName.DestinationAddress)">
+                <DisplayTemplate>
+                    @StringHelper.TruncateHeadAndTail(context.DestinationAddress, 10)
+                    @* TODO Copy and explorer buttons *@
+                </DisplayTemplate>
+            </DataGridColumn>
+            <DataGridColumn TItem="WalletWithdrawalRequest" Editable="true" Field="@nameof(WalletWithdrawalRequest.Amount)" Caption="Amount (BTC)" Sortable="false" Displayable="@IsAllRequestsColumnVisible(AllWithdrawalsColumnName.Amount)">
+                <DisplayTemplate>
+                    @{
+                        @($"{context.Amount:f8} BTC ({Math.Round(PriceConversionService.BtcToUsdConversion(context.Amount, _btcPrice), 2)} USD)")
+                    }
+                </DisplayTemplate>
+
+            </DataGridColumn>
+            <DataGridColumn TItem="WalletWithdrawalRequest" Field="@nameof(WalletWithdrawalRequest.WalletId)" Caption="Signatures Collected" Sortable="false" Displayable="@IsAllRequestsColumnVisible(AllWithdrawalsColumnName.SignaturesCollected)">
+                <DisplayTemplate>
+                    @{
+                        if (context.Wallet != null)
+                        {
+                            var signaturesCollected = context.NumberOfSignaturesCollected + (context.Wallet.RequiresInternalWalletSigning && !context.Wallet.IsSingleSig ? 1 : 0);
+                            var signaturesRequired = context.Wallet?.MofN ?? 0;
+                            @($"{signaturesCollected} out of {signaturesRequired}")
+                        }
+                    }
+                </DisplayTemplate>
+            </DataGridColumn>
+            <DataGridColumn TItem="WalletWithdrawalRequest" Field="@nameof(WalletWithdrawalRequest.Status).Humanize(LetterCasing.Sentence)" Caption="Status" Sortable="false" Displayable="@IsAllRequestsColumnVisible(AllWithdrawalsColumnName.Status)">
+                <DisplayTemplate>
+                    <Tooltip Text=@context.RejectCancelDescription Placement="TooltipPlacement.Top">
+                        <span>@context?.Status.Humanize()</span>
+                    </Tooltip>
+                </DisplayTemplate>
+            </DataGridColumn>
+            <DataGridColumn TItem="WalletWithdrawalRequest" Field="@nameof(WalletWithdrawalRequest.CreationDatetime)" Caption="Creation Date" Sortable="true" SortDirection="SortDirection.Descending" Displayable="@IsAllRequestsColumnVisible(AllWithdrawalsColumnName.CreationDate)">
+                <DisplayTemplate>
+                    @context.CreationDatetime.Humanize()
+                </DisplayTemplate>
+            </DataGridColumn>
+            <DataGridColumn TItem="WalletWithdrawalRequest" Field="@nameof(WalletWithdrawalRequest.UpdateDatetime)" Caption="Update date" Sortable="true" Displayable="@IsAllRequestsColumnVisible(AllWithdrawalsColumnName.UpdateDate)">
+                <DisplayTemplate>
+                    @context.UpdateDatetime.Humanize()
+                </DisplayTemplate>
+            </DataGridColumn>
+            <DataGridColumn TItem="WalletWithdrawalRequest" Field="@nameof(WalletWithdrawalRequest.TxId)" Caption="Links" Sortable="false" Displayable="@IsAllRequestsColumnVisible(AllWithdrawalsColumnName.Links)">
+                <DisplayTemplate>
+                    @if (mempoolUrl != null && !string.IsNullOrEmpty(context.TxId))
+                    {
+                        <a href="@(mempoolUrl + "/tx/" + context.TxId)" target="_blank">See in explorer</a>
+                    }
+                </DisplayTemplate>
+            </DataGridColumn>
+            <DataGridColumn TItem="WalletWithdrawalRequest" Displayable="true">
+                <FilterTemplate>
+                    <ColumnLayout @ref="AllRequestsColumnLayout" Columns="@_allRequestsColumns" ColumnType="AllWithdrawalsColumnName" OnUpdate="@OnColumnLayoutUpdate"/>
+                </FilterTemplate>
+            </DataGridColumn>
+        </DataGridColumns>
+        <EmptyTemplate>
+            <div class="box">
+                No records were found.
+            </div>
+        </EmptyTemplate>
+        <LoadingTemplate>
+            <div class="box">
+                <progress class="progress is-small is-primary" max="100"></progress>
+            </div>
+        </LoadingTemplate>
+    </DataGrid>
+
+</Column>
 
 </Row>
 
@@ -385,16 +386,14 @@
     WithdrawalRequest="_selectedRequest"
     SigHashMode="SigHash.All"
     TemplatePsbtString="@_templatePsbtString"
-    ApproveRequestDelegate="async ()=> await ApproveRequestDelegate()"
-/>
+    ApproveRequestDelegate="async () => await ApproveRequestDelegate()"/>
 
 <CancelOrRejectPopup
     @ref="@_rejectCancelModalRef"
-    Title='@("Wallet withdrawal:"+_selectedRequest?.Id)'
+    Title='@("Wallet withdrawal:" + _selectedRequest?.Id)'
     Validator="@RejectReasonValidator"
     OnCancel="@HideRejectCancelModal"
-    OnSubmit="@RejectOrCancel"
-/>
+    OnSubmit="@RejectOrCancel"/>
 
 <ConfirmationModal
     @ref="_confirmationModal"
@@ -402,8 +401,7 @@
     Body="You selected a hot wallet. This means that the system will automatically use the funds in it without the need of manual approval. Are you sure you want to perform this operation?"
     OkLabel="Yes, I am sure"
     OnCancel="@CloseConfirmationModal"
-    OnSubmit="@SubmitConfirmationModal"
-/>
+    OnSubmit="@SubmitConfirmationModal"/>
 
 <UTXOSelectorModal
     @ref="_utxoSelectorModalRef"
@@ -421,6 +419,7 @@
 @inject IPriceConversionService PriceConversionService
 
 @code {
+
     [CascadingParameter]
     private ApplicationUser? LoggedUser { get; set; }
 
@@ -524,15 +523,14 @@
     {
         if (LoggedUser?.Id != null && _isFinanceManager)
         {
-            _userPendingRequests = await WalletWithdrawalRequestRepository.GetAllUnsignedPendingRequests(); 
+            _userPendingRequests = await WalletWithdrawalRequestRepository.GetAllUnsignedPendingRequests();
         }
 
         _withdrawalRequests = (await WalletWithdrawalRequestRepository.GetAll()).Except(_userPendingRequests).ToList();
 
         _availableWallets = await WalletRepository.GetAvailableWallets(false);
-        //TODO Fix BIP39 withdrawals, until then, manual hack to filter them out
+    //TODO Fix BIP39 withdrawals, until then, manual hack to filter them out
         _availableWallets = _availableWallets.Where(x => !x.IsBIP39Imported).ToList();
-
     }
 
     private void OnCloseCoinSelectionModal(List<UTXO> selectedUTXOs)
@@ -581,10 +579,35 @@
         {
             ToastService.ShowError("Something went wrong");
             _userPendingRequests.Remove(arg.Item);
-
         }
-
     }
+
+private string ShowRequestor(WalletWithdrawalRequest walletWithdrawalRequest)
+{
+    if (walletWithdrawalRequest.RequestMetadata != null)
+    {
+        var requestMetadata = JsonConvert.DeserializeObject<Dictionary<string, string>>(walletWithdrawalRequest.RequestMetadata);
+
+        if (requestMetadata.TryGetValue("userName", out var userName))
+        {
+            // Check if userName is an email and extract the part before '@'
+            if (ValidationHelper.IsValidEmail(userName))
+            {
+                int atIndex = userName.IndexOf('@');
+                if (atIndex >= 0)
+                {
+                    return userName.Substring(0, atIndex);
+                }
+            }
+            else
+            {
+                return requestMetadata["userName"];
+            }
+        }
+    }
+
+    return walletWithdrawalRequest.UserRequestor?.ToString() ?? "";
+}
 
     private void HandleCheckboxChange(CellEditContext<WalletWithdrawalRequest> context, bool value)
     {
@@ -601,7 +624,6 @@
     {
         if (arg.Item != null)
         {
-
             var (result, _) = WalletWithdrawalRequestRepository.Remove(arg.Item);
 
             if (!result)
@@ -619,9 +641,8 @@
 
     private async Task OnRowUpdated(SavedRowItem<WalletWithdrawalRequest, Dictionary<string, object>> arg)
     {
-
         if (arg.Item == null) return;
-        // Validate balance
+    // Validate balance
 
         if (await ValidateBalance(arg)) return;
 
@@ -674,7 +695,6 @@
         {
             obj.ErrorText = "Invalid bitcoin address";
             obj.Status = ValidationStatus.Error;
-
         }
     }
 
@@ -691,12 +711,12 @@
     {
         _selectedRequest = walletWithdrawalRequest;
 
-        //PSBT Generation
+    //PSBT Generation
         try
         {
             var templatePSBT = await BitcoinService.GenerateTemplatePSBT(walletWithdrawalRequest);
 
-            //TODO Save template PSBT (?)
+    //TODO Save template PSBT (?)
             _templatePsbtString = templatePSBT.ToBase64();
             if (_psbtSignRef != null) await _psbtSignRef.ShowModal();
         }
@@ -708,25 +728,23 @@
         {
             ToastService.ShowError("Error while generating PSBT template for the request");
         }
-
     }
 
     private async Task Approve(WalletWithdrawalRequest request)
     {
         if (_selectedRequest == null || string.IsNullOrEmpty(_psbtSignRef?.SignedPSBT) || LoggedUser == null)
         {
-             _utxoSelectorModalRef.ClearModal();
+            _utxoSelectorModalRef.ClearModal();
             ToastService.ShowError("Invalid request");
         }
         else
         {
             WalletWithdrawalRequestPSBT walletWithdrawalRequestPsbt = new()
-                {
-                    WalletWithdrawalRequestId = _selectedRequest.Id,
-                    PSBT = _psbtSignRef.SignedPSBT,
-                    SignerId = LoggedUser.Id,
-
-                };
+            {
+                WalletWithdrawalRequestId = _selectedRequest.Id,
+                PSBT = _psbtSignRef.SignedPSBT,
+                SignerId = LoggedUser.Id,
+            };
             var addResult = await WalletWithdrawalRequestPsbtRepository.AddAsync(walletWithdrawalRequestPsbt);
 
             if (addResult.Item1)
@@ -735,7 +753,7 @@
                 _selectedRequest = await WalletWithdrawalRequestRepository.GetById(_selectedRequest.Id);
 
                 if (_selectedRequest != null
-                   && PSBT.TryParse(walletWithdrawalRequestPsbt.PSBT, CurrentNetworkHelper.GetCurrentNetwork(), out _))
+                    && PSBT.TryParse(walletWithdrawalRequestPsbt.PSBT, CurrentNetworkHelper.GetCurrentNetwork(), out _))
                 {
                     if (_selectedRequest.AreAllRequiredHumanSignaturesCollected)
                     {
@@ -762,7 +780,6 @@
                             ToastService.ShowSuccess("Signature collected");
                         }
                     }
-
                 }
                 else
                 {
@@ -772,12 +789,10 @@
             else
             {
                 ToastService.ShowSuccess("Error while saving the signature");
-
             }
             await _psbtSignRef.HideModal();
             await GetData();
             StateHasChanged();
-
         }
     }
 
@@ -793,18 +808,17 @@
             && _selectedRequest != null)
         {
             _selectedRequest.RejectCancelDescription = _rejectCancelModalRef.Reason;
-            _selectedRequest.Status = (WalletWithdrawalRequestStatus) _rejectCancelStatus;
+            _selectedRequest.Status = (WalletWithdrawalRequestStatus)_rejectCancelStatus;
 
             var updateResult = WalletWithdrawalRequestRepository.Update(_selectedRequest);
 
-             if (updateResult.Item1 == false)
+            if (updateResult.Item1 == false)
             {
                 ToastService.ShowError("Something went wrong");
             }
 
 
             await HideRejectCancelModal();
-
         }
     }
 
@@ -903,7 +917,7 @@
                 }
                 var templatePSBT = await BitcoinService.GenerateTemplatePSBT(_selectedRequest);
 
-                //TODO Save template PSBT (?)
+    //TODO Save template PSBT (?)
                 var walletWithdrawalRequestPsbt = new WalletWithdrawalRequestPSBT()
                 {
                     WalletWithdrawalRequestId = _selectedRequest.Id,
@@ -967,7 +981,7 @@
 
             if (_selectedRequest != null)
             {
-                // TODO: Check job id
+    // TODO: Check job id
                 _selectedRequest.JobId = job.Job.Key.ToString();
                 WalletWithdrawalRequestRepository.Update(_selectedRequest);
             }
@@ -991,7 +1005,7 @@
 
     private bool IsPendingRequestsColumnVisible(ColumnDefault column)
     {
-        if (PendingRequestsColumnLayout	== null)
+        if (PendingRequestsColumnLayout == null)
         {
             return true;
         }
@@ -1000,7 +1014,7 @@
 
     private bool IsAllRequestsColumnVisible(ColumnDefault column)
     {
-        if (AllRequestsColumnLayout	== null)
+        if (AllRequestsColumnLayout == null)
         {
             return true;
         }
