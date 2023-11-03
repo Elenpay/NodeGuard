@@ -35,6 +35,9 @@ jobs:
         uses: docker/metadata-action@v4
         with:
           images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+          labels: |
+            commit=${{ github.sha }}
+            actions_run=${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
 
       - name: Build and push the Docker image
         uses: docker/build-push-action@v4
