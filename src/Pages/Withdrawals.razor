@@ -582,32 +582,32 @@
         }
     }
 
-private string ShowRequestor(WalletWithdrawalRequest walletWithdrawalRequest)
-{
-    if (walletWithdrawalRequest.RequestMetadata != null)
+    private string ShowRequestor(WalletWithdrawalRequest walletWithdrawalRequest)
     {
-        var requestMetadata = JsonConvert.DeserializeObject<Dictionary<string, string>>(walletWithdrawalRequest.RequestMetadata);
-
-        if (requestMetadata.TryGetValue("userName", out var userName))
+        if (walletWithdrawalRequest.RequestMetadata != null)
         {
-            // Check if userName is an email and extract the part before '@'
-            if (ValidationHelper.IsValidEmail(userName))
+            try
             {
-                int atIndex = userName.IndexOf('@');
-                if (atIndex >= 0)
+                var requestMetadata = JsonConvert.DeserializeObject<Dictionary<string, string>>(walletWithdrawalRequest.RequestMetadata);
+
+                if (requestMetadata.TryGetValue("userName", out var userName))
                 {
-                    return userName.Substring(0, atIndex);
+                    if (ValidationHelper.IsValidEmail(userName))
+                    {
+                        int atIndex = userName.IndexOf('@');
+                        return atIndex >= 0 ? userName.Substring(0, atIndex) : userName;
+                    }
+                    return userName;
                 }
             }
-            else
+            catch (JsonReaderException ex)
             {
-                return requestMetadata["userName"];
+                Console.WriteLine("Invalid JSON: " + ex.Message);
             }
         }
-    }
 
-    return walletWithdrawalRequest.UserRequestor?.ToString() ?? "";
-}
+        return walletWithdrawalRequest.UserRequestor?.ToString() ?? "";
+    }
 
     private void HandleCheckboxChange(CellEditContext<WalletWithdrawalRequest> context, bool value)
     {
