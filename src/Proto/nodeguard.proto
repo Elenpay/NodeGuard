@@ -85,6 +85,8 @@ message LiquidityRule {
   float minimum_local_balance = 4;
   float minimum_remote_balance = 5;
   float rebalance_target = 6;
+  bool is_wallet_rule = 7;
+  string address = 8;
 }
 
 message GetNewWalletAddressRequest {
@@ -269,13 +271,17 @@ message AddLiquidityRuleRequest {
   // Channel ID from NGs database
   int32 channel_id = 1;
   // Wallet ID as stored in the NG's database
-  int32 wallet_id = 2;
+  optional int32 wallet_id = 2;
   // Minimum local balance
   optional double minimum_local_balance = 3;
   // Minimum remote balance
   optional double minimum_remote_balance = 4;
   // Rebalance target
   optional double rebalance_target = 5;
+  // Whether this rule is for a wallet
+  bool is_wallet_rule = 6;
+  // Address to send the funds to
+  optional string address = 7;
 }
 
 message AddLiquidityRuleResponse {

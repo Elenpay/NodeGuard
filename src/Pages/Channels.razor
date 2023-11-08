@@ -304,21 +304,38 @@
                             </Validation>
                         </Field>
                         <Field>
-                            <Validation Validator="ValidationRule.IsSelected">
-                                <FieldLabel>Wallet to use in Swaps operations</FieldLabel>
-                                <SelectList TItem="Wallet"
-                                            TValue="int"
-                                            Data="@_availableWallets"
-                                            SelectedValue="_currentLiquidityRule.WalletId"
-                                            TextField="@((item) => item.Name)"
-                                            ValueField="@((item) => item.Id)"
-                                            SelectedValueChanged="@OnSelectedWalletChanged"
-                                            DefaultItemText="Choose the wallet to fund/receive swap amounts">
-                                    <Feedback>
-                                        <ValidationError>A wallet for swaps operation must be selected as target/origin of funds</ValidationError>
-                                    </Feedback>
-                                </SelectList>
-                            </Validation>
+                            <Switch TValue="bool" Checked="@_currentLiquidityRule.IsWalletRule" CheckedChanged="value => _currentLiquidityRule.IsWalletRule = value">
+                                Wallet based liquidity rule
+                            </Switch>
+                            @if (_currentLiquidityRule.IsWalletRule)
+                            {
+                                <Validation Validator="ValidationRule.IsSelected">
+                                    <FieldLabel>Wallet to use in Swaps operations</FieldLabel>
+                                    <SelectList TItem="Wallet"
+                                                TValue="int"
+                                                Data="@_availableWallets"
+                                                SelectedValue="_currentLiquidityRule.WalletId ?? 0"
+                                                TextField="@((item) => item.Name)"
+                                                ValueField="@((item) => item.Id)"
+                                                SelectedValueChanged="@OnSelectedWalletChanged"
+                                                DefaultItemText="Choose the wallet to fund/receive swap amounts">
+                                        <Feedback>
+                                            <ValidationError>A wallet for swaps operation must be selected as target/origin of funds</ValidationError>
+                                        </Feedback>
+                                    </SelectList>
+                                </Validation>
+                            }
+                            else
+                            {
+                                <Validation Validator="@ValidateBitcoinAddress">
+                                    <FieldLabel>Address to use in Swaps operations</FieldLabel>
+                                    <TextEdit Text="@((string)_currentLiquidityRule.Address)" TextChanged="(text) => _currentLiquidityRule.Address = text">
+                                        <Feedback>
+                                            <ValidationError>A valid bitcoin address must be provided</ValidationError>
+                                        </Feedback>
+                                    </TextEdit>
+                                </Validation>
+                            }
                         </Field>
                     </Validations>
                 }
@@ -889,5 +906,23 @@
             return $"{destination}  - {source}";
         }
         return $"{source}  - {destination}";
+    }
+    
+    private void ValidateBitcoinAddress(ValidatorEventArgs obj)
+    {
+        var str = obj.Value as string;
+
+        obj.Status = ValidationStatus.Success;
+
+        try
+        {
+            BitcoinAddress.Create(str!, CurrentNetworkHelper.GetCurrentNetwork());
+        }
+        catch (Exception)
+        {
+            obj.ErrorText = "Invalid bitcoin address";
+            obj.Status = ValidationStatus.Error;
+
+        }
     }
 }

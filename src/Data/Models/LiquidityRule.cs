@@ -30,8 +30,8 @@ public class LiquidityRule: Entity
     public int ChannelId { get; set; }
     public Channel Channel { get; set; }
   
-    public int WalletId { get; set; }
-    public Wallet Wallet { get; set; }
+    public int? WalletId { get; set; }
+    public Wallet? Wallet { get; set; }
     
     public int NodeId { get; set; }
     public Node Node { get; set; }

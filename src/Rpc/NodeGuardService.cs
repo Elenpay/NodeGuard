@@ -703,8 +703,12 @@ public class NodeGuardService : Nodeguard.NodeGuardService.NodeGuardServiceBase,
         {
             ChannelId = request.ChannelId,
             NodeId = node.Id,
-            WalletId = request.WalletId,
+            IsWalletRule = request.IsWalletRule,
         };
+        if (request.IsWalletRule)
+            liquidityRule.WalletId = request.WalletId;
+        else
+            liquidityRule.Address = request.Address;
         if (request.HasMinimumLocalBalance)
             liquidityRule.MinimumLocalBalance = (decimal)request.MinimumLocalBalance;
         if (request.HasMinimumRemoteBalance)
