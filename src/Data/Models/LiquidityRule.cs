@@ -15,6 +15,16 @@ public class LiquidityRule: Entity
     /// </summary>
     public decimal? RebalanceTarget { get; set; }
     
+    /// <summary>
+    /// Let's you know if the rule has a wallet or an address as a target for the rebalancing operation
+    /// </summary>
+    public bool IsWalletRule { get; set; }
+    
+    /// <summary>
+    /// In case that is a rule that sends the funds to an address instead of a wallet this is the address
+    /// </summary>
+    public string? Address { get; set; }
+    
     #region Relationships
     
     public int ChannelId { get; set; }
