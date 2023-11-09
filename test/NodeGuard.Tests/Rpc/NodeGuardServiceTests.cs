@@ -469,7 +469,7 @@ namespace NodeGuard.Rpc
                 new LiquidityRule
                 {
                     Id = 0,
-
+                    IsWalletRule = true,
                     MinimumLocalBalance = 0.2M,
                     MinimumRemoteBalance = 0.8M,
                     RebalanceTarget = 0.5M,

@@ -70,8 +70,10 @@ namespace NodeGuard.Automapper
             CreateMap<LiquidityRule, Nodeguard.LiquidityRule>()
                 .ForMember(x => x.MinimumLocalBalance, opt => opt.MapFrom(x => x.MinimumLocalBalance ?? 0))
                 .ForMember(x => x.MinimumRemoteBalance, opt => opt.MapFrom(x => x.MinimumRemoteBalance ?? 0))
+                .ForMember(x => x.IsWalletRule, opt => opt.MapFrom(x => x.IsWalletRule))
+                .ForMember(x => x.Address, opt => opt.MapFrom(x => x.Address ?? string.Empty))
                 .ForMember(x => x.ChannelId, opt => opt.MapFrom(x => x.Channel.ChanId))
-                .ForMember(x => x.WalletId, opt => opt.MapFrom(x => x.WalletId))
+                .ForMember(x => x.WalletId, opt => opt.MapFrom(x => x.WalletId ?? 0))
                 .ForMember(x => x.RebalanceTarget, opt => opt.MapFrom(x => x.RebalanceTarget ?? 0))
                 .ForMember(x => x.NodePubkey, opt => opt.MapFrom(x => x.Node.PubKey));
 
