@@ -672,6 +672,16 @@ public class NodeGuardService : Nodeguard.NodeGuardService.NodeGuardServiceBase,
             throw new RpcException(new Status(StatusCode.NotFound, "Channel not found"));
         }
 
+        if (request.IsWalletRule && !request.HasWalletId)
+        {
+            throw new RpcException(new Status(StatusCode.FailedPrecondition, "WalletId is required for wallet rules"));
+        }
+        
+        if (!request.IsWalletRule && !request.HasAddress)
+        {
+            throw new RpcException(new Status(StatusCode.FailedPrecondition, "Address is required for address rules"));
+        }
+
         if (!channel.IsAutomatedLiquidityEnabled)
         {
             channel.IsAutomatedLiquidityEnabled = true;
