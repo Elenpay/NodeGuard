@@ -1,4 +1,5 @@
 using AutoMapper;
+using Blazorise;
 using NodeGuard.Data.Models;
 using NodeGuard.Data.Repositories;
 using NodeGuard.Data.Repositories.Interfaces;
@@ -672,16 +673,6 @@ public class NodeGuardService : Nodeguard.NodeGuardService.NodeGuardServiceBase,
             throw new RpcException(new Status(StatusCode.NotFound, "Channel not found"));
         }
 
-        if (request.IsWalletRule && !request.HasWalletId)
-        {
-            throw new RpcException(new Status(StatusCode.FailedPrecondition, "WalletId is required for wallet rules"));
-        }
-        
-        if (!request.IsWalletRule && !request.HasAddress)
-        {
-            throw new RpcException(new Status(StatusCode.FailedPrecondition, "Address is required for address rules"));
-        }
-
         if (!channel.IsAutomatedLiquidityEnabled)
         {
             channel.IsAutomatedLiquidityEnabled = true;
@@ -703,22 +694,41 @@ public class NodeGuardService : Nodeguard.NodeGuardService.NodeGuardServiceBase,
         var rules = await _liquidityRuleRepository.GetByNodePubKey(node.PubKey);
         var rule = rules.FirstOrDefault(r => r.ChannelId == request.ChannelId);
 
-        var wallet = await _walletRepository.GetById(request.WalletId);
-        if (wallet == null)
+        if (request.IsWalletRule)
         {
-            throw new RpcException(new Status(StatusCode.NotFound, "Wallet not found"));
+            if (!request.HasWalletId)
+                throw new RpcException(new Status(StatusCode.FailedPrecondition, "WalletId is required for wallet rules"));
+            
+            var wallet = await _walletRepository.GetById(request.WalletId);
+            if (wallet == null)
+                throw new RpcException(new Status(StatusCode.NotFound, "Wallet not found"));
+        }
+        
+        if (!request.IsWalletRule)
+        {
+            if (!request.HasAddress)
+                throw new RpcException(new Status(StatusCode.FailedPrecondition, "Address is required for address rules"));
+            if (ValidateBitcoinAddress(request.Address))
+                throw new RpcException(new Status(StatusCode.InvalidArgument, "Invalid address"));
         }
 
         var liquidityRule = rule ?? new LiquidityRule()
         {
             ChannelId = request.ChannelId,
             NodeId = node.Id,
-            IsWalletRule = request.IsWalletRule,
         };
+        liquidityRule.IsWalletRule = request.IsWalletRule;
         if (request.IsWalletRule)
+        {
             liquidityRule.WalletId = request.WalletId;
+            liquidityRule.Address = null;
+        }
         else
+        {
             liquidityRule.Address = request.Address;
+            liquidityRule.WalletId = null;
+        }
+
         if (request.HasMinimumLocalBalance)
             liquidityRule.MinimumLocalBalance = (decimal)request.MinimumLocalBalance;
         if (request.HasMinimumRemoteBalance)
@@ -932,5 +942,19 @@ public class NodeGuardService : Nodeguard.NodeGuardService.NodeGuardServiceBase,
         result.BtcCloseAddress = channel.BtcCloseAddress != null ? channel.BtcCloseAddress : String.Empty;
 
         return result;
+    }
+    
+    private bool ValidateBitcoinAddress(string address)
+    {
+        try
+        {
+            BitcoinAddress.Create(address, CurrentNetworkHelper.GetCurrentNetwork());
+        }
+        catch (Exception)
+        {
+            return false;
+        }
+
+        return true;
     }
 }
