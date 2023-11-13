@@ -108,8 +108,10 @@ public class LiquidityRuleRepository : ILiquidityRuleRepository
 
         var result = applicationDbContext.LiquidityRules
             .Include(x=> x.Node)
-            .Include(x=> x.Wallet)
+            .Include(x=> x.SwapWallet)
             .ThenInclude(x=> x.InternalWallet)
+            .Include(x => x.ReverseSwapWallet)
+            .ThenInclude(x => x.InternalWallet)
             .Include(x=> x.Channel)
             .Where(x=> x.Node.PubKey == nodePubKey && x.Channel.IsAutomatedLiquidityEnabled && x.Channel.Status != Channel.ChannelStatus.Closed).ToList();
         

@@ -129,7 +129,9 @@ namespace NodeGuard.Data.Models
         public InternalWallet? InternalWallet { get; set; }
 
 
-        public ICollection<LiquidityRule> LiquidityRules { get; set; }
+        public ICollection<LiquidityRule> LiquidityRulesAsSwapWallet { get; set; }
+        
+        public ICollection<LiquidityRule> LiquidityRulesAsReverseSwapWallet { get; set; }
 
         #endregion Relationships
 

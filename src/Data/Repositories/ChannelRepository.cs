@@ -83,7 +83,9 @@ namespace NodeGuard.Data.Repositories
                 .Include(x => x.LiquidityRules)
                 .ThenInclude(x => x.Node)
                 .Include(x => x.LiquidityRules)
-                .ThenInclude(x => x.Wallet)
+                .ThenInclude(x => x.SwapWallet)
+                .Include(x => x.LiquidityRules)
+                .ThenInclude(x => x.ReverseSwapWallet)
                 .ToListAsync();
         }
 
@@ -210,7 +212,9 @@ namespace NodeGuard.Data.Repositories
                 .Include(x => x.LiquidityRules)
                 .ThenInclude(x => x.Node)
                 .Include(x => x.LiquidityRules)
-                .ThenInclude(x => x.Wallet).AsSplitQuery()
+                .ThenInclude(x => x.SwapWallet)
+                .Include(x => x.LiquidityRules)
+                .ThenInclude(x => x.ReverseSwapWallet).AsSplitQuery()
                 .Where(x => x.SourceNode.Users.Select(user => user.Id).Contains(loggedUserId) ||
                             x.DestinationNode.Users.Select(user => user.Id).Contains(loggedUserId)).ToList();
 

@@ -29,6 +29,7 @@ using NBitcoin.RPC;
 using NBXplorer;
 using NBXplorer.DerivationStrategy;
 using NBXplorer.Models;
+using NodeGuard.Data.Repositories;
 using Key = NodeGuard.Data.Models.Key;
 
 namespace NodeGuard.Data
@@ -45,7 +46,7 @@ namespace NodeGuard.Data
                 serviceProvider.GetRequiredService<IChannelOperationRequestRepository>();
             var walletRepository = serviceProvider.GetRequiredService<IWalletRepository>();
             var keyRepository = serviceProvider.GetRequiredService<IKeyRepository>();
-
+            var liquidityRuleRepository = serviceProvider.GetRequiredService<ILiquidityRuleRepository>();
             var webHostEnvironment = serviceProvider.GetRequiredService<IWebHostEnvironment>();
             var logger = serviceProvider.GetService<ILogger<Program>>();
             //Nbxplorer setup & check

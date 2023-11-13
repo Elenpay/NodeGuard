@@ -469,13 +469,15 @@ namespace NodeGuard.Rpc
                 new LiquidityRule
                 {
                     Id = 0,
-                    IsWalletRule = true,
+                    IsReverseSwapWalletRule = true,
                     MinimumLocalBalance = 0.2M,
                     MinimumRemoteBalance = 0.8M,
                     RebalanceTarget = 0.5M,
                     ChannelId = 1,
-                    WalletId = 1,
-                    Wallet = new Wallet(),
+                    SwapWalletId = 1,
+                    ReverseSwapWalletId = 1, 
+                    SwapWallet = new Wallet(),
+                    ReverseSwapWallet = new Wallet(),
                     NodeId = 0,
                     Node = new Node {PubKey = "010101010101"}
                 }

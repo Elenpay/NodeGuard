@@ -1,3 +1,5 @@
+using System.ComponentModel.DataAnnotations.Schema;
+
 namespace NodeGuard.Data.Models;
 
 /// <summary>
@@ -18,20 +20,23 @@ public class LiquidityRule: Entity
     /// <summary>
     /// Let's you know if the rule has a wallet or an address as a target for the rebalancing operation
     /// </summary>
-    public bool IsWalletRule { get; set; }
+    public bool IsReverseSwapWalletRule { get; set; }
     
     /// <summary>
     /// In case that is a rule that sends the funds to an address instead of a wallet this is the address
     /// </summary>
-    public string? Address { get; set; }
+    public string? ReverseSwapAddress { get; set; }
     
     #region Relationships
     
     public int ChannelId { get; set; }
     public Channel Channel { get; set; }
   
-    public int? WalletId { get; set; }
-    public Wallet? Wallet { get; set; }
+    public int SwapWalletId { get; set; }
+    public Wallet SwapWallet { get; set; }
+    
+    public int? ReverseSwapWalletId { get; set; }
+    public Wallet? ReverseSwapWallet { get; set; }
     
     public int NodeId { get; set; }
     public Node Node { get; set; }

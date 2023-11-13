@@ -694,21 +694,26 @@ public class NodeGuardService : Nodeguard.NodeGuardService.NodeGuardServiceBase,
         var rules = await _liquidityRuleRepository.GetByNodePubKey(node.PubKey);
         var rule = rules.FirstOrDefault(r => r.ChannelId == request.ChannelId);
 
-        if (request.IsWalletRule)
+        var swapWallet = await _walletRepository.GetById(request.SwapWalletId);
+        if (swapWallet == null)
         {
-            if (!request.HasWalletId)
+            throw new RpcException(new Status(StatusCode.NotFound, "Swap wallet not found"));
+        }
+
+        if (request.IsReverseSwapWalletRule)
+        {
+            if (!request.HasReverseSwapWalletId)
                 throw new RpcException(new Status(StatusCode.FailedPrecondition, "WalletId is required for wallet rules"));
             
-            var wallet = await _walletRepository.GetById(request.WalletId);
+            var wallet = await _walletRepository.GetById(request.ReverseSwapWalletId);
             if (wallet == null)
                 throw new RpcException(new Status(StatusCode.NotFound, "Wallet not found"));
         }
-        
-        if (!request.IsWalletRule)
+        else
         {
-            if (!request.HasAddress)
+            if (!request.HasReverseSwapAddress)
                 throw new RpcException(new Status(StatusCode.FailedPrecondition, "Address is required for address rules"));
-            if (ValidateBitcoinAddress(request.Address))
+            if (ValidateBitcoinAddress(request.ReverseSwapAddress))
                 throw new RpcException(new Status(StatusCode.InvalidArgument, "Invalid address"));
         }
 
@@ -716,17 +721,18 @@ public class NodeGuardService : Nodeguard.NodeGuardService.NodeGuardServiceBase,
         {
             ChannelId = request.ChannelId,
             NodeId = node.Id,
+            SwapWalletId = request.SwapWalletId
         };
-        liquidityRule.IsWalletRule = request.IsWalletRule;
-        if (request.IsWalletRule)
+        liquidityRule.IsReverseSwapWalletRule = request.IsReverseSwapWalletRule;
+        if (request.IsReverseSwapWalletRule)
         {
-            liquidityRule.WalletId = request.WalletId;
-            liquidityRule.Address = null;
+            liquidityRule.ReverseSwapWalletId = request.ReverseSwapWalletId;
+            liquidityRule.ReverseSwapAddress = null;
         }
         else
         {
-            liquidityRule.Address = request.Address;
-            liquidityRule.WalletId = null;
+            liquidityRule.ReverseSwapAddress = request.ReverseSwapAddress;
+            liquidityRule.ReverseSwapWalletId = null;
         }
 
         if (request.HasMinimumLocalBalance)

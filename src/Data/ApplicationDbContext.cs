@@ -43,13 +43,21 @@ namespace NodeGuard.Data
         protected override void OnModelCreating(ModelBuilder modelBuilder)
         {
             modelBuilder.Entity<ChannelOperationRequest>()
-                    .HasOne(cor => cor.SourceNode)
-                    .WithMany(node => node.ChannelOperationRequestsAsSource)
-                    .HasForeignKey(cor => cor.SourceNodeId);
+                .HasOne(cor => cor.SourceNode)
+                .WithMany(node => node.ChannelOperationRequestsAsSource)
+                .HasForeignKey(cor => cor.SourceNodeId);
             modelBuilder.Entity<ChannelOperationRequest>()
                 .HasOne(cor => cor.DestNode)
                 .WithMany(node => node.ChannelOperationRequestsAsDestination)
                 .HasForeignKey(cor => cor.DestNodeId);
+            modelBuilder.Entity<LiquidityRule>()
+                .HasOne(lr => lr.SwapWallet)
+                .WithMany(wallet => wallet.LiquidityRulesAsSwapWallet)
+                .HasForeignKey(lr => lr.SwapWalletId);
+            modelBuilder.Entity<LiquidityRule>()
+                .HasOne(lr => lr.ReverseSwapWallet)
+                .WithMany(wallet => wallet.LiquidityRulesAsReverseSwapWallet)
+                .HasForeignKey(lr => lr.ReverseSwapWalletId);
 
             modelBuilder.Entity<Node>().HasIndex(x => x.PubKey).IsUnique();
             modelBuilder.Entity<Wallet>().HasIndex(x => new {x.InternalWalletSubDerivationPath, x.InternalWalletMasterFingerprint}).IsUnique();

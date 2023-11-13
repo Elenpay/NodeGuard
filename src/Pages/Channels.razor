@@ -303,40 +303,66 @@
                                 </NumericEdit>
                             </Validation>
                         </Field>
-                        <Field>
-                            <Switch TValue="bool" Checked="@_currentLiquidityRule.IsWalletRule" CheckedChanged="value => _currentLiquidityRule.IsWalletRule = value">
-                                Wallet based liquidity rule
-                            </Switch>
-                            @if (_currentLiquidityRule.IsWalletRule)
-                            {
-                                <Validation Validator="ValidationRule.IsSelected">
-                                    <FieldLabel>Wallet to use in Swaps operations</FieldLabel>
-                                    <SelectList TItem="Wallet"
-                                                TValue="int"
-                                                Data="@_availableWallets"
-                                                SelectedValue="_currentLiquidityRule.WalletId ?? 0"
-                                                TextField="@((item) => item.Name)"
-                                                ValueField="@((item) => item.Id)"
-                                                SelectedValueChanged="@OnSelectedWalletChanged"
-                                                DefaultItemText="Choose the wallet to fund/receive swap amounts">
-                                        <Feedback>
-                                            <ValidationError>A wallet for swaps operation must be selected as target/origin of funds</ValidationError>
-                                        </Feedback>
-                                    </SelectList>
-                                </Validation>
-                            }
-                            else
-                            {
-                                <Validation Validator="@ValidateBitcoinAddress">
-                                    <FieldLabel>Address to use in Swaps operations</FieldLabel>
-                                    <TextEdit Text="@((string)_currentLiquidityRule.Address)" TextChanged="(text) => _currentLiquidityRule.Address = text">
-                                        <Feedback>
-                                            <ValidationError>A valid bitcoin address must be provided</ValidationError>
-                                        </Feedback>
-                                    </TextEdit>
-                                </Validation>
-                            }
-                        </Field>
+                        <Row>
+                            <Column>
+                                @* Swaps *@
+                                <Field Style="padding-top: 1.5rem">
+                                    <Validation Validator="ValidationRule.IsSelected">
+                                        <FieldLabel>Wallet to use in SWAPS operations</FieldLabel>
+                                        <SelectList TItem="Wallet"
+                                                    TValue="int"
+                                                    Data="@_availableWallets"
+                                                    SelectedValue="_currentLiquidityRule.SwapWalletId"
+                                                    TextField="@((item) => item.Name)"
+                                                    ValueField="@((item) => item.Id)"
+                                                    SelectedValueChanged="@OnSelectedSwapWalletChanged"
+                                                    DefaultItemText="Choose the wallet to fund/receive swap amounts">
+                                            <Feedback>
+                                                <ValidationError>A wallet for swaps operation must be selected as target/origin of funds</ValidationError>
+                                            </Feedback>
+                                        </SelectList>
+                                    </Validation>
+                                </Field>
+                            </Column>
+                            <Column>
+                                @* Reverse swaps *@
+                                <Field>
+                                    <Switch TValue="bool" Checked="@_currentLiquidityRule.IsReverseSwapWalletRule" CheckedChanged="value => _currentLiquidityRule.IsReverseSwapWalletRule = value">
+                                        @(_currentLiquidityRule.IsReverseSwapWalletRule ? "Wallet based liquidity rule" : "Address based liquidity rule")
+                                    </Switch>
+                                    @if (_currentLiquidityRule.IsReverseSwapWalletRule)
+                                    {
+                                        <Validation Validator="ValidationRule.IsSelected">
+                                            <FieldLabel>Wallet to use in REVERSE SWAPS operations</FieldLabel>
+                                            <SelectList TItem="Wallet"
+                                                        TValue="int"
+                                                        Data="@_availableWallets"
+                                                        SelectedValue="_currentLiquidityRule.ReverseSwapWalletId ?? 0"
+                                                        TextField="@((item) => item.Name)"
+                                                        ValueField="@((item) => item.Id)"
+                                                        SelectedValueChanged="@OnSelectedReverseSwapWalletChanged"
+                                                        DefaultItemText="Choose the wallet to fund/receive reverse swap amounts">
+                                                <Feedback>
+                                                    <ValidationError>A wallet for swaps operation must be selected as target/origin of funds</ValidationError>
+                                                </Feedback>
+                                            </SelectList>
+                                        </Validation>
+                                    }
+                                    else
+                                    {
+                                        <Validation Validator="@ValidateBitcoinAddress">
+                                            <FieldLabel>Address to use in REVERSE SWAPS operations</FieldLabel>
+                                            <TextEdit Text="@((string)_currentLiquidityRule.ReverseSwapAddress)" TextChanged="(text) => _currentLiquidityRule.ReverseSwapAddress = text">
+                                                <Feedback>
+                                                    <ValidationError>A valid bitcoin address must be provided</ValidationError>
+                                                </Feedback>
+                                            </TextEdit>
+                                        </Validation>
+                                    }
+                                </Field>
+                            </Column>
+                        </Row>
+                        
                     </Validations>
                 }
             </ModalBody>
@@ -552,9 +578,14 @@
         return false;
     }
 
-    private async Task OnSelectedWalletChanged(int arg)
+    private async Task OnSelectedSwapWalletChanged(int arg)
     {
-        if (_currentLiquidityRule != null) _currentLiquidityRule.WalletId = arg;
+        if (_currentLiquidityRule != null) _currentLiquidityRule.SwapWalletId = arg;
+    }
+    
+    private async Task OnSelectedReverseSwapWalletChanged(int arg)
+    {
+        if (_currentLiquidityRule != null) _currentLiquidityRule.ReverseSwapWalletId = arg;
     }
 
     private async Task CloseChannelManagementModal()

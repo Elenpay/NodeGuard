@@ -81,12 +81,13 @@ message GetLiquidityRulesResponse {
 message LiquidityRule {
   uint64 channel_id = 1;
   string node_pubkey = 2;
-  optional int32 wallet_id = 3;
-  float minimum_local_balance = 4;
-  float minimum_remote_balance = 5;
-  float rebalance_target = 6;
-  bool is_wallet_rule = 7;
-  optional string address = 8;
+  int32 swap_wallet_id = 3;
+  optional int32 reverse_swap_wallet_id = 4;
+  float minimum_local_balance = 5;
+  float minimum_remote_balance = 6;
+  float rebalance_target = 7;
+  optional string reverse_swap_address = 8;
+  bool is_reverse_swap_wallet_rule = 9;
 }
 
 message GetNewWalletAddressRequest {
@@ -270,8 +271,8 @@ message GetChannelOperationRequestResponse {
 message AddLiquidityRuleRequest {
   // Channel ID from NGs database
   int32 channel_id = 1;
-  // Wallet ID as stored in the NG's database
-  optional int32 wallet_id = 2;
+  // Wallet ID for swaps as stored in the NG's database
+  int32 swap_wallet_id = 2;
   // Minimum local balance
   optional double minimum_local_balance = 3;
   // Minimum remote balance
@@ -279,9 +280,11 @@ message AddLiquidityRuleRequest {
   // Rebalance target
   optional double rebalance_target = 5;
   // Whether this rule is for a wallet
-  bool is_wallet_rule = 6;
-  // Address to send the funds to
-  optional string address = 7;
+  bool is_reverse_swap_wallet_rule = 6;
+  // Address to send the reverse swaps funds to
+  optional string reverse_swap_address = 8;
+  // Wallet ID for reverse swaps as stored in the NG's database
+  optional int32 reverse_swap_wallet_id = 9;
 }
 
 message AddLiquidityRuleResponse {
