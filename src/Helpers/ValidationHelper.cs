@@ -52,13 +52,13 @@ public static class ValidationHelper
             obj.Status = ValidationStatus.Error;
             return;
         }
+
         if (users.Any(user => user.UserName.Equals(obj.Value) && currentUserId != user.Id))
         {
             obj.ErrorText = "A user with the same username already exists";
             obj.Status = ValidationStatus.Error;
             return;
         }
-
     }
 
     public static void ValidateChannelCapacity(ValidatorEventArgs obj)
@@ -108,7 +108,6 @@ public static class ValidationHelper
             obj.ErrorText = "The XPUB field cannot be empty";
             obj.Status = ValidationStatus.Error;
         }
-
     }
 
     public static void ValidatePubKey(ValidatorEventArgs obj, List<Node> nodes, string currentPubKey)
@@ -120,6 +119,7 @@ public static class ValidationHelper
             obj.Status = ValidationStatus.Error;
             return;
         }
+
         if (nodes.Any(node => node.PubKey.Equals(obj.Value) && currentPubKey != node.PubKey))
         {
             obj.ErrorText = "A node with the same pubkey already exists";
@@ -152,5 +152,18 @@ public static class ValidationHelper
             result = regex.IsMatch(xpub);
 
         return result;
+    }
+
+    public static bool IsValidEmail(string email)
+    {
+        try
+        {
+            var addr = new System.Net.Mail.MailAddress(email);
+            return addr.Address == email;
+        }
+        catch
+        {
+            return false;
+        }
     }
 }
