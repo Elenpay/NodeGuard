@@ -10,6 +10,15 @@ namespace NodeGuard.Migrations
         /// <inheritdoc />
         protected override void Up(MigrationBuilder migrationBuilder)
         {
+            migrationBuilder.AddColumn<int>(
+                name: "SwapWalletId",
+                table: "LiquidityRules",
+                type: "integer",
+                nullable: false,
+                defaultValue: 0);
+
+            migrationBuilder.Sql(@"UPDATE ""LiquidityRules"" SET ""SwapWalletId"" = ""WalletId""");
+            
             migrationBuilder.DropForeignKey(
                 name: "FK_LiquidityRules_Wallets_WalletId",
                 table: "LiquidityRules");
@@ -34,17 +43,11 @@ namespace NodeGuard.Migrations
                 table: "LiquidityRules",
                 newName: "IX_LiquidityRules_ReverseSwapWalletId");
 
-            migrationBuilder.AddColumn<int>(
-                name: "SwapWalletId",
-                table: "LiquidityRules",
-                type: "integer",
-                nullable: false,
-                defaultValue: 0);
-
             migrationBuilder.CreateIndex(
                 name: "IX_LiquidityRules_SwapWalletId",
                 table: "LiquidityRules",
                 column: "SwapWalletId");
+
 
             migrationBuilder.AddForeignKey(
                 name: "FK_LiquidityRules_Wallets_ReverseSwapWalletId",
