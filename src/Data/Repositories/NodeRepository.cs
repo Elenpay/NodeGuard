@@ -67,6 +67,7 @@ namespace NodeGuard.Data.Repositories
                 .Include(x => x.ReturningFundsWallet)
                 .SingleOrDefaultAsync(x => x.PubKey == key);
         }
+        
 
         public async Task<Node> GetOrCreateByPubKey(string pubKey, ILightningService lightningService)
         {
@@ -109,19 +110,26 @@ namespace NodeGuard.Data.Repositories
                 .ToListAsync();
         }
 
-        public async Task<List<Node>> GetAllManagedByNodeGuard()
+        public async Task<List<Node>> GetAllManagedByNodeGuard(bool includeDisabledNodes = true)
         {
             await using var applicationDbContext = await _dbContextFactory.CreateDbContextAsync();
 
-            var resultAsync = await applicationDbContext.Nodes
+            var query = applicationDbContext.Nodes
                 .Include(x => x.ReturningFundsWallet)
                 .ThenInclude(x => x.Keys)
-                .Where(node => node.Endpoint != null)
-                .ToListAsync();
+                .Include(x => x.ReturningFundsWallet)
+                .Where(node => node.Endpoint != null);
+
+            if (includeDisabledNodes)
+            {
+                query = query.Where(node => node.EnabledNode);
+            }
+
+            var resultAsync = await query.ToListAsync();
 
             return resultAsync;
         }
-
+        
         public async Task<List<Node>> GetAllManagedByUser(string userId)
         {
             await using var applicationDbContext = await _dbContextFactory.CreateDbContextAsync();

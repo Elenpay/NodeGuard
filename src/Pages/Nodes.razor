@@ -27,16 +27,25 @@
                 <h2>@(context.EditState) node</h2>
             </PopupTitleTemplate>
             <DataGridColumns>
-                <DataGridCommandColumn TItem="Node" Filterable="false" Width="120px">
+    
+                <DataGridCommandColumn TItem="Node" Filterable="false"  Editable="false" Width="60px">
+
+                    <EditCommandTemplate>
+                        <Dropdown @onclick:stopPropagation="true">
+                            <DropdownToggle Color="Color.Primary">
+                            </DropdownToggle>
+                            <DropdownMenu>
+                                <DropdownItem Clicked="context.Clicked">Edit</DropdownItem>
+                                <DropdownItem Clicked="@(() => ShowDeleteDialog(context.Item))">Delete</DropdownItem>
+                                <DropdownItem Clicked="@(() => DisabledNode(context.Item) )">@_NodesState(context.Item)</DropdownItem>
+                            </DropdownMenu>
+                        </Dropdown>
+                    </EditCommandTemplate>
+                    <DeleteCommandTemplate/>
+                    
                     <NewCommandTemplate>
                         <Button Color="Color.Success" TextColor="TextColor.Light" Clicked="@context.Clicked" Block>New</Button>
                     </NewCommandTemplate>
-                    <EditCommandTemplate>
-                        <Button Color="Color.Primary" Clicked="@context.Clicked" Size="Size.Small" Block>Edit</Button>
-                    </EditCommandTemplate>
-                    <DeleteCommandTemplate>
-                        <Button Color="Color.Danger" hidden="@_hideDelete" Clicked="@(()=> ShowDeleteDialog(context.Item))" Size="Size.Small" Block>Delete</Button>
-                    </DeleteCommandTemplate>
                 </DataGridCommandColumn>
                 <DataGridColumn TItem="Node" Filterable="false" Editable="true" Field="@nameof(Node.Name)" Validator="ValidationHelper.ValidateName" Caption="@nameof(Node.Name)" Sortable="false" Displayable="@IsColumnVisible(NodesColumnName.Name)"/>
                 <DataGridColumn TItem="Node" Filterable="false" Editable="true" Field="@nameof(Node.PubKey)" Caption="@nameof(Node.PubKey)" Sortable="false" Width="220px" Displayable="@IsColumnVisible(NodesColumnName.PubKey)">
@@ -102,6 +111,7 @@
 
                     </EditTemplate>
                 </DataGridColumn>
+                <DataGridColumn TItem="Node" Filterable="false" Editable="true" Field="@nameof(Node.EnabledNode)" Caption="Enabled Node" Sortable="false" Displayable="@IsColumnVisible(NodesColumnName.EnabledNode)"></DataGridColumn>
                 <DataGridColumn TItem="Node" Filterable="false" Editable="true" Field="@nameof(Node.AutosweepEnabled)" Caption="Autosweep" Sortable="false" Displayable="@IsColumnVisible(NodesColumnName.Autosweep)"></DataGridColumn>
                 <DataGridColumn TItem="Node" Filterable="false" Field="@nameof(Node.CreationDatetime)" Caption="Creation Date" Sortable="true" SortDirection="SortDirection.Descending" Displayable="@IsColumnVisible(NodesColumnName.CreationDate)">
                     <DisplayTemplate>
@@ -161,7 +171,7 @@
     private bool _modalVisible;
     private bool _hideDelete = true;
     private bool _editable;
-    private List<Wallet> _availableWallets = new List<Wallet>();
+    private List<Wallet> _availableWallets = new();
 
     CancellationTokenSource cts = new();
 
@@ -183,6 +193,7 @@
         public static readonly ColumnDefault Endpoint = new("Endpoint");
         public static readonly ColumnDefault OutboundOpenChannels = new("Outbound Open Channels");
         public static readonly ColumnDefault ReturningFundsWallet = new("Returning Funds Wallet");
+        public static readonly ColumnDefault EnabledNode = new("Enabled");
         public static readonly ColumnDefault Autosweep = new("Autosweep");
         public static readonly ColumnDefault CreationDate = new("Creation Date");
         public static readonly ColumnDefault UpdateDate = new("Update Date");
@@ -205,9 +216,23 @@
         }
     }
 
+    private string _NodesState(Node node)
+    {
+       return node.EnabledNode ? "Disable Node" : "Enable Node";
+    }
+
+    private async Task DisabledNode(Node node)
+    {
+        node.EnabledNode = !node.EnabledNode;
+        _NodesState(node);
+        NodeRepository.Update(node);
+        _nodes = await NodeRepository.GetAllManagedByNodeGuard(false);
+        _availableWallets = await WalletRepository.GetAvailableWallets(false);
+    }
+
     private async Task GetData()
     {
-        _nodes = await NodeRepository.GetAllManagedByNodeGuard();
+        _nodes = await NodeRepository.GetAllManagedByNodeGuard(false);
         _availableWallets = await WalletRepository.GetAvailableWallets(false);
     }
 
@@ -237,7 +262,19 @@
         {
             arg.Item.UpdateDatetime = DateTimeOffset.Now;
             arg.Item.CreationDatetime = DateTimeOffset.Now;
-            var addResult = await NodeRepository.AddAsync(arg.Item);
+            (bool, string?) addResult;
+            var restoredNode = await NodeRepository.GetByPubkey(arg.Item.PubKey);
+            if (restoredNode != null)
+            {
+                restoredNode.EnabledNode = true;
+                restoredNode.Endpoint = arg.Item.Endpoint;
+                restoredNode.ChannelAdminMacaroon = arg.Item.ChannelAdminMacaroon;
+                addResult=  NodeRepository.Update(restoredNode);
+            }
+            else
+            {
+                addResult = await NodeRepository.AddAsync(arg.Item);
+            }
             if (addResult.Item1)
             {
                 ToastService.ShowSuccess($"Node {arg.Item.Name} Created");
@@ -308,7 +345,9 @@
         {
             if (node != null)
             {
-                var (result, _) = NodeRepository.Remove(node);
+                node.Endpoint = null;
+                node.ChannelAdminMacaroon = null;
+                var (result, _) = NodeRepository.Update(node);
                 if (!result)
                 {
                     ToastService.ShowError($"{node.Name} could not be deleted");

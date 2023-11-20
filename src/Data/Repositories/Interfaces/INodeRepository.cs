@@ -34,7 +34,7 @@ public interface INodeRepository
 
     Task<List<Node>> GetAllManagedByUser(string userId);
 
-    Task<List<Node>> GetAllManagedByNodeGuard();
+    Task<List<Node>> GetAllManagedByNodeGuard(bool includeDisabledNodes = true);
 
     Task<(bool, string?)> AddAsync(Node type);
 

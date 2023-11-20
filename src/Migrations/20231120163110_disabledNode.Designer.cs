@@ -3,6 +3,7 @@ using System;
 using System.Collections.Generic;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using NodeGuard.Data;
 using NodeGuard.Helpers;
@@ -13,9 +14,11 @@ using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 namespace NodeGuard.Migrations
 {
     [DbContext(typeof(ApplicationDbContext))]
-    partial class ApplicationDbContextModelSnapshot : ModelSnapshot
+    [Migration("20231120163110_disabledNode")]
+    partial class disabledNode
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -643,9 +646,6 @@ namespace NodeGuard.Migrations
                     b.Property<DateTimeOffset>("CreationDatetime")
                         .HasColumnType("timestamp with time zone");
 
-                    b.Property<bool>("IsReverseSwapWalletRule")
-                        .HasColumnType("boolean");
-
                     b.Property<decimal?>("MinimumLocalBalance")
                         .HasColumnType("numeric");
 
@@ -658,17 +658,11 @@ namespace NodeGuard.Migrations
                     b.Property<decimal?>("RebalanceTarget")
                         .HasColumnType("numeric");
 
-                    b.Property<string>("ReverseSwapAddress")
-                        .HasColumnType("text");
-
-                    b.Property<int?>("ReverseSwapWalletId")
-                        .HasColumnType("integer");
-
-                    b.Property<int>("SwapWalletId")
-                        .HasColumnType("integer");
-
                     b.Property<DateTimeOffset>("UpdateDatetime")
                         .HasColumnType("timestamp with time zone");
+
+                    b.Property<int>("WalletId")
+                        .HasColumnType("integer");
 
                     b.HasKey("Id");
 
@@ -677,9 +671,7 @@ namespace NodeGuard.Migrations
 
                     b.HasIndex("NodeId");
 
-                    b.HasIndex("ReverseSwapWalletId");
-
-                    b.HasIndex("SwapWalletId");
+                    b.HasIndex("WalletId");
 
                     b.ToTable("LiquidityRules");
                 });
@@ -1142,13 +1134,9 @@ namespace NodeGuard.Migrations
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
 
-                    b.HasOne("NodeGuard.Data.Models.Wallet", "ReverseSwapWallet")
-                        .WithMany("LiquidityRulesAsReverseSwapWallet")
-                        .HasForeignKey("ReverseSwapWalletId");
-
-                    b.HasOne("NodeGuard.Data.Models.Wallet", "SwapWallet")
-                        .WithMany("LiquidityRulesAsSwapWallet")
-                        .HasForeignKey("SwapWalletId")
+                    b.HasOne("NodeGuard.Data.Models.Wallet", "Wallet")
+                        .WithMany("LiquidityRules")
+                        .HasForeignKey("WalletId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
 
@@ -1156,9 +1144,7 @@ namespace NodeGuard.Migrations
 
                     b.Navigation("Node");
 
-                    b.Navigation("ReverseSwapWallet");
-
-                    b.Navigation("SwapWallet");
+                    b.Navigation("Wallet");
                 });
 
             modelBuilder.Entity("NodeGuard.Data.Models.Node", b =>
@@ -1236,9 +1222,7 @@ namespace NodeGuard.Migrations
                 {
                     b.Navigation("ChannelOperationRequestsAsSource");
 
-                    b.Navigation("LiquidityRulesAsReverseSwapWallet");
-
-                    b.Navigation("LiquidityRulesAsSwapWallet");
+                    b.Navigation("LiquidityRules");
                 });
 
             modelBuilder.Entity("NodeGuard.Data.Models.WalletWithdrawalRequest", b =>
