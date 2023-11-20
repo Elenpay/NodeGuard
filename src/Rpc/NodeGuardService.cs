@@ -1,4 +1,5 @@
 using AutoMapper;
+using Blazorise;
 using NodeGuard.Data.Models;
 using NodeGuard.Data.Repositories;
 using NodeGuard.Data.Repositories.Interfaces;
@@ -693,18 +694,47 @@ public class NodeGuardService : Nodeguard.NodeGuardService.NodeGuardServiceBase,
         var rules = await _liquidityRuleRepository.GetByNodePubKey(node.PubKey);
         var rule = rules.FirstOrDefault(r => r.ChannelId == request.ChannelId);
 
-        var wallet = await _walletRepository.GetById(request.WalletId);
-        if (wallet == null)
+        var swapWallet = await _walletRepository.GetById(request.SwapWalletId);
+        if (swapWallet == null)
         {
-            throw new RpcException(new Status(StatusCode.NotFound, "Wallet not found"));
+            throw new RpcException(new Status(StatusCode.NotFound, "Swap wallet not found"));
+        }
+
+        if (request.IsReverseSwapWalletRule)
+        {
+            if (!request.HasReverseSwapWalletId)
+                throw new RpcException(new Status(StatusCode.FailedPrecondition, "WalletId is required for wallet rules"));
+            
+            var wallet = await _walletRepository.GetById(request.ReverseSwapWalletId);
+            if (wallet == null)
+                throw new RpcException(new Status(StatusCode.NotFound, "Wallet not found"));
+        }
+        else
+        {
+            if (!request.HasReverseSwapAddress)
+                throw new RpcException(new Status(StatusCode.FailedPrecondition, "Address is required for address rules"));
+            if (ValidateBitcoinAddress(request.ReverseSwapAddress))
+                throw new RpcException(new Status(StatusCode.InvalidArgument, "Invalid address"));
         }
 
         var liquidityRule = rule ?? new LiquidityRule()
         {
             ChannelId = request.ChannelId,
             NodeId = node.Id,
-            WalletId = request.WalletId,
+            SwapWalletId = request.SwapWalletId
         };
+        liquidityRule.IsReverseSwapWalletRule = request.IsReverseSwapWalletRule;
+        if (request.IsReverseSwapWalletRule)
+        {
+            liquidityRule.ReverseSwapWalletId = request.ReverseSwapWalletId;
+            liquidityRule.ReverseSwapAddress = null;
+        }
+        else
+        {
+            liquidityRule.ReverseSwapAddress = request.ReverseSwapAddress;
+            liquidityRule.ReverseSwapWalletId = null;
+        }
+
         if (request.HasMinimumLocalBalance)
             liquidityRule.MinimumLocalBalance = (decimal)request.MinimumLocalBalance;
         if (request.HasMinimumRemoteBalance)
@@ -918,5 +948,19 @@ public class NodeGuardService : Nodeguard.NodeGuardService.NodeGuardServiceBase,
         result.BtcCloseAddress = channel.BtcCloseAddress != null ? channel.BtcCloseAddress : String.Empty;
 
         return result;
+    }
+    
+    private bool ValidateBitcoinAddress(string address)
+    {
+        try
+        {
+            BitcoinAddress.Create(address, CurrentNetworkHelper.GetCurrentNetwork());
+        }
+        catch (Exception)
+        {
+            return false;
+        }
+
+        return true;
     }
 }

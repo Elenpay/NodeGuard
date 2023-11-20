@@ -70,13 +70,17 @@ namespace NodeGuard.Automapper
             CreateMap<LiquidityRule, Nodeguard.LiquidityRule>()
                 .ForMember(x => x.MinimumLocalBalance, opt => opt.MapFrom(x => x.MinimumLocalBalance ?? 0))
                 .ForMember(x => x.MinimumRemoteBalance, opt => opt.MapFrom(x => x.MinimumRemoteBalance ?? 0))
+                .ForMember(x => x.IsReverseSwapWalletRule, opt => opt.MapFrom(x => x.IsReverseSwapWalletRule))
+                .ForMember(x => x.ReverseSwapAddress, opt => opt.MapFrom(x => x.ReverseSwapAddress ?? string.Empty))
                 .ForMember(x => x.ChannelId, opt => opt.MapFrom(x => x.Channel.ChanId))
-                .ForMember(x => x.WalletId, opt => opt.MapFrom(x => x.WalletId))
+                .ForMember(x => x.SwapWalletId, opt => opt.MapFrom(x => x.SwapWalletId))
+                .ForMember(x => x.ReverseSwapWalletId, opt => opt.MapFrom(x => x.ReverseSwapWalletId ?? 0))
                 .ForMember(x => x.RebalanceTarget, opt => opt.MapFrom(x => x.RebalanceTarget ?? 0))
                 .ForMember(x => x.NodePubkey, opt => opt.MapFrom(x => x.Node.PubKey));
 
             CreateMap<LiquidityRule, LiquidityRule>()
-                .ForMember(x => x.Wallet, opt => opt.Ignore())
+                .ForMember(x => x.SwapWallet, opt => opt.Ignore())
+                .ForMember(x => x.ReverseSwapWallet, opt => opt.Ignore())
                 .ForMember(x => x.Channel, opt => opt.Ignore());
 
             CreateMap<Node, Nodeguard.Node>()
