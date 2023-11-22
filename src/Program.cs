@@ -139,7 +139,6 @@ namespace NodeGuard
             
             //DataProtection
             builder.Services.AddDbContext<DataProtectionKeysContext>(options => options.UseNpgsql(Constants.POSTGRES_CONNECTIONSTRING));
-            builder.Services.AddDbContextFactory<DataProtectionKeysContext>(options => options.UseNpgsql(Constants.POSTGRES_CONNECTIONSTRING));
             builder.Services.AddDataProtection()
                 .PersistKeysToDbContext<DataProtectionKeysContext>()
                 .SetApplicationName("NodeGuard");
