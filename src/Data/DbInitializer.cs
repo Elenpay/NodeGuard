@@ -40,6 +40,7 @@ namespace NodeGuard.Data
         {
             //DI
             var applicationDbContext = serviceProvider.GetRequiredService<ApplicationDbContext>();
+            var dataprotectionKeysContext = serviceProvider.GetRequiredService<DataProtectionKeysContext>();
             var appUserRepository = serviceProvider.GetRequiredService<IApplicationUserRepository>();
             var nodeRepository = serviceProvider.GetRequiredService<INodeRepository>();
             var channelOperationRequestRepository =
@@ -72,6 +73,8 @@ namespace NodeGuard.Data
                 try
                 {
                     applicationDbContext.Database.Migrate();
+                    dataprotectionKeysContext.Database.Migrate();
+                    
                     isConnected = true;
                 }
                 catch (Exception e)
