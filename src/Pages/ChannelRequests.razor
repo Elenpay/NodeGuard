@@ -141,7 +141,7 @@
                 </DisplayTemplate>
                 <EditTemplate>
                     <Validation Validator="@ValidationHelper.ValidateChannelCapacity" @ref="_capacityValidation">
-                        <NumericPicker TValue="decimal" @bind-Value="@_amount" Min="@_minimumChannelCapacity" Max="@_maxChannelCapacity" Decimals="8" Step="0.00001m" CurrencySymbol=" ₿" Disabled="@(SelectedUTXOs.Count > 0)"/>
+                        <NumericPicker TValue="decimal" @bind-Value="@_amount" Min="@_minimumChannelCapacity" Max="@_maxChannelCapacity" Decimals="8" Step="0.00001m" CurrencySymbol=" ₿" Disabled="_isChangeless"/>
                         <FieldHelp>
                             @{
                                   decimal amountToShow = _amount < _maxChannelCapacity
@@ -156,9 +156,17 @@
                         <Button Color="Color.Primary" Disabled="@(!_selectedWalletId.HasValue)" Clicked="@OpenCoinSelectionModal">Select Coins</Button> or use
                         <Button Color="Color.Primary" Disabled="@(SelectedUTXOs.Count == 0)" Clicked="@ClearSelectedUTXOs">Default Coin Selection</Button>
                     </div>
+                    <Check TValue="bool" @bind-Checked="_isChangeless">Changeless transaction</Check>
                     @if (_selectedWalletId.HasValue && SelectedUTXOs.Count > 0)
                     {
-                        <span class="text-danger">Selected @(SelectedUTXOs.Count) UTXOs, this is a changeless operation</span>
+                        if (_isChangeless)
+                        {
+                            <span class="text-danger">Selected @(SelectedUTXOs.Count) UTXOs, this is a changeless operation.</span>
+                        }
+                        else
+                        {
+                            <span class="text-danger">Selected @(SelectedUTXOs.Count) UTXOs. Change will be sent to the wallet.</span>
+                        }
                     }
                     else
                     {
@@ -462,6 +470,7 @@
     private static readonly decimal _maxChannelCapacity =  CurrentNetworkHelper.GetCurrentNetwork() == Network.RegTest ? new Money(Constants.MAXIMUM_CHANNEL_CAPACITY_SATS_REGTEST).ToUnit(MoneyUnit.BTC) : Constants.MAXIMUM_WITHDRAWAL_BTC_AMOUNT;
     private decimal _amount { get; set; } = _minimumChannelCapacity;
     private bool _selectedPrivate;
+    private bool _isChangeless;
 
     //Validation
     private Validation? _walletValidation;
@@ -651,14 +660,14 @@
                 {
                     SatsAmount = new Money(amount, MoneyUnit.BTC).Satoshi,
                     RequestType = OperationRequestType.Open,
-                    Description = "Created by user via Funds Manager",
+                    Description = "Created by user via NodeGuard",
                     WalletId = _selectedWalletId,
                     Status = ChannelOperationRequestStatus.Pending, //TODO Reject and cancel
                     UserId = LoggedUser.Id,
                     SourceNodeId = _selectedSourceNodeId,
                     DestNodeId = _selectedDestNode?.Id,
                     IsChannelPrivate = _selectedPrivate,
-                    Changeless = SelectedUTXOs.Count > 0,
+                    Changeless = _isChangeless,
                     MempoolRecommendedFeesTypes = FeesSelection,
                     FeeRate = FeesSelection == MempoolRecommendedFeesTypes.CustomFee ?  FeeAmount : null
                 };
@@ -904,7 +913,7 @@
     {
         try
         {
-    //TODO Async notifications when the channel has opened -> event / notifications system
+            //TODO Async notifications when the channel has opened -> event / notifications system
             var scheduler = await SchedulerFactory.GetScheduler();
 
             var map = new JobDataMap();
@@ -914,7 +923,7 @@
             var job = RetriableJob.Create<ChannelOpenJob>(map, _selectedRequest.Id.ToString(), retryList);
             await scheduler.ScheduleJob(job.Job, job.Trigger);
 
-    // TODO: Check job id
+            // TODO: Check job id
             _selectedRequest.JobId = job.Job.Key.ToString();
 
             var jobUpdateResult = ChannelOperationRequestRepository.Update(_selectedRequest);
