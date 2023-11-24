@@ -429,7 +429,7 @@ public class NodeGuardService : Nodeguard.NodeGuardService.NodeGuardServiceBase,
             var outpoints = new List<OutPoint>();
             var utxos = new List<UTXO>();
 
-            if (request.Changeless)
+            if (request.UtxosOutpoints != null && request.UtxosOutpoints.Count > 0)
             {
                 foreach (var outpoint in request.UtxosOutpoints)
                 {
