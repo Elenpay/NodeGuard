@@ -156,7 +156,7 @@
                         <Button Color="Color.Primary" Disabled="@(!_selectedWalletId.HasValue)" Clicked="@OpenCoinSelectionModal">Select Coins</Button> or use
                         <Button Color="Color.Primary" Disabled="@(SelectedUTXOs.Count == 0)" Clicked="@ClearSelectedUTXOs">Default Coin Selection</Button>
                     </div>
-                    <Check TValue="bool" @bind-Checked="_isChangeless">Changeless transaction</Check>
+                    <Check TValue="bool" @bind-Checked="_isChangeless" Disabled="@(SelectedUTXOs.Count == 0)">Changeless transaction</Check>
                     @if (_selectedWalletId.HasValue && SelectedUTXOs.Count > 0)
                     {
                         if (_isChangeless)
@@ -655,7 +655,7 @@
         {
             if (_selectedDestNode?.Id != _selectedSourceNodeId)
             {
-                var amount = SelectedUTXOs.Count > 0 ? SelectedUTXOsValue() : _amount;
+                var amount = _isChangeless ? SelectedUTXOsValue() : _amount;
                 var request = new ChannelOperationRequest()
                 {
                     SatsAmount = new Money(amount, MoneyUnit.BTC).Satoshi,
