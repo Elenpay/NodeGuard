@@ -30,6 +30,7 @@ using NodeGuard.Data.Repositories.Interfaces;
 using NodeGuard.Jobs;
 using NodeGuard.Services;
 using Microsoft.AspNetCore.Components.Authorization;
+using Microsoft.AspNetCore.DataProtection;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
 using Quartz;
@@ -135,6 +136,12 @@ namespace NodeGuard
                         .SingleQuery); // Slower but integrity is ensured
                 });
             }, ServiceLifetime.Transient);
+            
+            //DataProtection
+            builder.Services.AddDbContext<DataProtectionKeysContext>(options => options.UseNpgsql(Constants.POSTGRES_CONNECTIONSTRING));
+            builder.Services.AddDataProtection()
+                .PersistKeysToDbContext<DataProtectionKeysContext>()
+                .SetApplicationName("NodeGuard");
 
             //HTTPClient factory
             builder.Services.AddHttpClient();
