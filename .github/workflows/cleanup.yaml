@@ -1,9 +1,10 @@
 name: Github Container Registry cleanup tasks
 on:
-  # On demand || Each 10 days
+  # On demand
   workflow_dispatch:
-  schedule:
-    - cron: '0 0 */10 * *'
+  # schedule:
+  #   - cron: '0 0 */10 * *'
+
 jobs:
   cleanup-docker:
     runs-on: ubuntu-latest
