@@ -713,7 +713,7 @@ public class NodeGuardService : Nodeguard.NodeGuardService.NodeGuardServiceBase,
         {
             if (!request.HasReverseSwapAddress)
                 throw new RpcException(new Status(StatusCode.FailedPrecondition, "Address is required for address rules"));
-            if (ValidateBitcoinAddress(request.ReverseSwapAddress))
+            if (!ValidateBitcoinAddress(request.ReverseSwapAddress))
                 throw new RpcException(new Status(StatusCode.InvalidArgument, "Invalid address"));
         }
 
