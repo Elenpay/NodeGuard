@@ -52,8 +52,6 @@ public class SimpleJob
         try
         {
             var triggerKey = new TriggerKey($"{typeof(T).Name}-{identitySuffix}");
-            
-            await scheduler.UnscheduleJob(triggerKey);
 
             var trigger = TriggerBuilder.Create()
                 .WithIdentity($"{typeof(T).Name}Trigger-{identitySuffix}")
@@ -69,18 +67,16 @@ public class SimpleJob
         }
     }
     
-    public static async Task StopJob<T>(IScheduler scheduler, string identitySuffix) where T : IJob
+    public static async Task DeleteJob<T>(IScheduler scheduler, string identitySuffix) where T : IJob
     {
         try
         {
             JobKey jobKey = new JobKey($"{typeof(T).Name}-{identitySuffix}");
-            await scheduler.Interrupt(jobKey);
             await scheduler.DeleteJob(jobKey);
-            await scheduler.UnscheduleJob(new TriggerKey(jobKey.Name));
         }
         catch (Exception ex)
         {
-            Console.WriteLine($"Unexpected error stop job of type {typeof(T).Name} with identity suffix {identitySuffix}: {ex.Message}");
+            Console.WriteLine($"Unexpected error occurred while removing the job of type {typeof(T).Name} with identity suffix {identitySuffix}: {ex.Message}");
         }
     }
 

@@ -403,8 +403,8 @@
         {
             IScheduler scheduler = await SchedulerFactory.GetScheduler();
             
-            await SimpleJob.StopJob<NodeChannelSuscribeJob>(scheduler, node.Id.ToString());
-            await SimpleJob.StopJob<ProcessNodeChannelAcceptorJob>(scheduler, node.Id.ToString());
+            await SimpleJob.DeleteJob<NodeChannelSuscribeJob>(scheduler, node.Id.ToString());
+            await SimpleJob.DeleteJob<ProcessNodeChannelAcceptorJob>(scheduler, node.Id.ToString());
             
             node.JobId = null;
         }
