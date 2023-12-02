@@ -110,7 +110,7 @@ namespace NodeGuard.Data.Repositories
                 .ToListAsync();
         }
 
-        public async Task<List<Node>> GetAllManagedByNodeGuard(bool includeDisabledNodes = true)
+        public async Task<List<Node>> GetAllManagedByNodeGuard()
         {
             await using var applicationDbContext = await _dbContextFactory.CreateDbContextAsync();
 
@@ -119,11 +119,6 @@ namespace NodeGuard.Data.Repositories
                 .ThenInclude(x => x.Keys)
                 .Include(x => x.ReturningFundsWallet)
                 .Where(node => node.Endpoint != null);
-
-            if (includeDisabledNodes)
-            {
-                query = query.Where(node => node.EnabledNode);
-            }
 
             var resultAsync = await query.ToListAsync();
 

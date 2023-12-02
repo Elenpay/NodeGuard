@@ -54,7 +54,7 @@ namespace NodeGuard.Data.Models
         /// <summary>
         /// enable/disable node
         /// </summary>
-        public bool EnabledNode { get; set; } = true;
+        public bool IsNodeEnabled { get; set; } = true;
 
         /// <summary>
         /// Returns true if the node is managed by us. We defer this from the existence of an Endpoint

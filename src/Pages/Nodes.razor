@@ -37,12 +37,11 @@
                             <DropdownMenu>
                                 <DropdownItem Clicked="context.Clicked">Edit</DropdownItem>
                                 <DropdownItem Clicked="@(() => ShowDeleteDialog(context.Item))">Delete</DropdownItem>
-                                <DropdownItem Clicked="@(() => DisabledNode(context.Item) )">@_NodesState(context.Item)</DropdownItem>
+                                <DropdownItem Clicked="@(() => ToggleNodeStatus(context.Item))">@_NodesState(context.Item)</DropdownItem>
                             </DropdownMenu>
                         </Dropdown>
                     </EditCommandTemplate>
                     <DeleteCommandTemplate/>
-                    
                     <NewCommandTemplate>
                         <Button Color="Color.Success" TextColor="TextColor.Light" Clicked="@context.Clicked" Block>New</Button>
                     </NewCommandTemplate>
@@ -111,7 +110,7 @@
 
                     </EditTemplate>
                 </DataGridColumn>
-                <DataGridColumn TItem="Node" Filterable="false" Editable="true" Field="@nameof(Node.EnabledNode)" Caption="Enabled Node" Sortable="false" Displayable="@IsColumnVisible(NodesColumnName.EnabledNode)"></DataGridColumn>
+                <DataGridColumn TItem="Node" Filterable="false" Editable="false" Field="@nameof(Node.IsNodeEnabled)" Caption="Enabled" Sortable="false" Displayable="@IsColumnVisible(NodesColumnName.Enabled)"></DataGridColumn>
                 <DataGridColumn TItem="Node" Filterable="false" Editable="true" Field="@nameof(Node.AutosweepEnabled)" Caption="Autosweep" Sortable="false" Displayable="@IsColumnVisible(NodesColumnName.Autosweep)"></DataGridColumn>
                 <DataGridColumn TItem="Node" Filterable="false" Field="@nameof(Node.CreationDatetime)" Caption="Creation Date" Sortable="true" SortDirection="SortDirection.Descending" Displayable="@IsColumnVisible(NodesColumnName.CreationDate)">
                     <DisplayTemplate>
@@ -193,7 +192,7 @@
         public static readonly ColumnDefault Endpoint = new("Endpoint");
         public static readonly ColumnDefault OutboundOpenChannels = new("Outbound Open Channels");
         public static readonly ColumnDefault ReturningFundsWallet = new("Returning Funds Wallet");
-        public static readonly ColumnDefault EnabledNode = new("Enabled");
+        public static readonly ColumnDefault Enabled = new("Enabled");
         public static readonly ColumnDefault Autosweep = new("Autosweep");
         public static readonly ColumnDefault CreationDate = new("Creation Date");
         public static readonly ColumnDefault UpdateDate = new("Update Date");
@@ -215,24 +214,47 @@
             }
         }
     }
-
+    
     private string _NodesState(Node node)
     {
-       return node.EnabledNode ? "Disable Node" : "Enable Node";
+        return node.IsNodeEnabled ? "Disable Node" : "Enable Node";
     }
-
-    private async Task DisabledNode(Node node)
+    
+    private async Task ToggleNodeStatus(Node node)
     {
-        node.EnabledNode = !node.EnabledNode;
-        _NodesState(node);
-        NodeRepository.Update(node);
-        _nodes = await NodeRepository.GetAllManagedByNodeGuard(false);
-        _availableWallets = await WalletRepository.GetAvailableWallets(false);
+        try
+        {
+            node.IsNodeEnabled = !node.IsNodeEnabled;
+            if (!node.IsNodeEnabled)
+            {
+                await StopJob(node);
+            }
+            else
+            {
+                await CreateJobs(node);
+            }
+            node.JobId = null;
+            var (result, _) = NodeRepository.Update(node);
+            if (result)
+            {
+                _nodes = await NodeRepository.GetAllManagedByNodeGuard();
+                _availableWallets = await WalletRepository.GetAvailableWallets();
+                ToastService.ShowSuccess($"{node.Name} is disabled");
+            }
+            else
+            {
+                ToastService.ShowError($"Error while disabling the {node.Name}, please contact a superadmin for troubleshooting");
+            }
+        }
+        catch
+        {
+            ToastService.ShowError($"Error while disabling {node.Name}, please contact a superadmin for troubleshooting");
+        }
     }
 
     private async Task GetData()
     {
-        _nodes = await NodeRepository.GetAllManagedByNodeGuard(false);
+        _nodes = await NodeRepository.GetAllManagedByNodeGuard();
         _availableWallets = await WalletRepository.GetAvailableWallets(false);
     }
 
@@ -260,16 +282,23 @@
         }
         else
         {
-            arg.Item.UpdateDatetime = DateTimeOffset.Now;
-            arg.Item.CreationDatetime = DateTimeOffset.Now;
+            Node newNode = arg.Item as Node;
             (bool, string?) addResult;
             var restoredNode = await NodeRepository.GetByPubkey(arg.Item.PubKey);
+         
             if (restoredNode != null)
             {
-                restoredNode.EnabledNode = true;
-                restoredNode.Endpoint = arg.Item.Endpoint;
-                restoredNode.ChannelAdminMacaroon = arg.Item.ChannelAdminMacaroon;
-                addResult=  NodeRepository.Update(restoredNode);
+                newNode = restoredNode;
+                newNode.Endpoint = arg.Item.Endpoint;
+                newNode.ChannelAdminMacaroon = arg.Item.ChannelAdminMacaroon;
+                newNode.IsNodeEnabled = true;
+                newNode.Description =  arg.Item.Description;
+                newNode.AutosweepEnabled = arg.Item.AutosweepEnabled;
+                newNode.Name = arg.Item.Name;
+                newNode.ReturningFundsWalletId = arg.Item.ReturningFundsWalletId;
+                newNode.ReturningFundsWallet = arg.Item.ReturningFundsWallet;
+                addResult =  NodeRepository.Update(newNode);
+                
             }
             else
             {
@@ -345,6 +374,7 @@
         {
             if (node != null)
             {
+                node.IsNodeEnabled = false;
                 node.Endpoint = null;
                 node.ChannelAdminMacaroon = null;
                 var (result, _) = NodeRepository.Update(node);
@@ -358,7 +388,7 @@
                     _nodes = await NodeRepository.GetAll();
 
                 }
-
+                await StopJob(node);
             }
         }
 
@@ -366,33 +396,69 @@
 
     }
 
+
+    private async Task StopJob(Node node)
+    {
+        try
+        {
+            IScheduler scheduler = await SchedulerFactory.GetScheduler();
+            
+            await SimpleJob.StopJob<NodeChannelSuscribeJob>(scheduler, node.Id.ToString());
+            await SimpleJob.StopJob<ProcessNodeChannelAcceptorJob>(scheduler, node.Id.ToString());
+            
+            node.JobId = null;
+        }
+        catch
+        {
+            ToastService.ShowError("Error while stopping jobs, please contact a superadmin for troubleshooting");
+        }
+    }
+
     private async Task CreateJobs(Node node)
     {
         try
         {
             IScheduler scheduler = await SchedulerFactory.GetScheduler();
+            
+            await UpsertJob<NodeChannelSuscribeJob>(scheduler, node, map =>
+            {
+                map.Put("nodeId", node.Id);
+            });
 
+            await UpsertJob<ProcessNodeChannelAcceptorJob>(scheduler, node, map =>
+            {
+                map.Put("managedNodeId", node.Id.ToString());
+            });
+            
+            ToastService.ShowSuccess("Node subscription job created");
+        }
+        
+        catch
+        {
+            ToastService.ShowError("Error while requesting to open the channel, please contact a superadmin for troubleshooting");
+        }
+    }
+
+    private async Task UpsertJob<TJob>(IScheduler scheduler, Node node, Action<JobDataMap> configureMap) where TJob : IJob
+    {
+        var isJobExists = await SimpleJob.IsJobExists<TJob>(scheduler, node.Id.ToString());
+
+        if (isJobExists)
+        {
+            await SimpleJob.Reschedule<TJob>(scheduler, node.Id.ToString());
+        }
+        else
+        {
             var map = new JobDataMap();
-            map.Put("nodeId", node.Id);
+            configureMap(map);
 
-            var job = SimpleJob.Create<NodeChannelSuscribeJob>(map, node.Id.ToString());
+            var job = SimpleJob.Create<TJob>(map, node.Id.ToString());
+
             await scheduler.ScheduleJob(job.Job, job.Trigger);
 
             node.JobId = job.Job.Key.ToString();
 
-            var jobUpdateResult = NodeRepository.Update(node);
-
-            map = new JobDataMap();
-            map.Put("managedNodeId", node.Id.ToString());
-
-            var acceptorJob = SimpleJob.Create<ProcessNodeChannelAcceptorJob>(map, node.Id.ToString());
-            await scheduler.ScheduleJob(acceptorJob.Job, acceptorJob.Trigger);
-
-            ToastService.ShowSuccess("Node subscription job created");
-        }
-        catch
-        {
-            ToastService.ShowError("Error while requesting to open the channel, please contact a superadmin for troubleshooting");
+            NodeRepository.Update(node);
         }
     }
 

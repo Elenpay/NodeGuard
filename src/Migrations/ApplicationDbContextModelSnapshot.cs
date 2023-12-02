@@ -704,7 +704,7 @@ namespace NodeGuard.Migrations
                     b.Property<string>("Description")
                         .HasColumnType("text");
 
-                    b.Property<bool>("EnabledNode")
+                    b.Property<bool>("isEnabledNode")
                         .HasColumnType("boolean");
 
                     b.Property<string>("Endpoint")
