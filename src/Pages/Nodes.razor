@@ -452,7 +452,11 @@
 
             node.JobId = job.Job.Key.ToString();
 
-            NodeRepository.Update(node);
+            var (result, _) = NodeRepository.Update(node);
+            if (!result)
+            {
+                ToastService.ShowError($"Error while subscribing to job for node {node.Name}");
+            }
         }
     }
 
