@@ -27,16 +27,24 @@
                 <h2>@(context.EditState) node</h2>
             </PopupTitleTemplate>
             <DataGridColumns>
-                <DataGridCommandColumn TItem="Node" Filterable="false" Width="120px">
+    
+                <DataGridCommandColumn TItem="Node" Filterable="false"  Editable="false" Width="60px">
+
+                    <EditCommandTemplate>
+                        <Dropdown @onclick:stopPropagation="true">
+                            <DropdownToggle Color="Color.Primary">
+                            </DropdownToggle>
+                            <DropdownMenu>
+                                <DropdownItem Clicked="context.Clicked">Edit</DropdownItem>
+                                <DropdownItem Clicked="@(() => ShowDeleteDialog(context.Item))">Delete</DropdownItem>
+                                <DropdownItem Clicked="@(() => ToggleNodeStatus(context.Item))">@_NodesState(context.Item)</DropdownItem>
+                            </DropdownMenu>
+                        </Dropdown>
+                    </EditCommandTemplate>
+                    <DeleteCommandTemplate/>
                     <NewCommandTemplate>
                         <Button Color="Color.Success" TextColor="TextColor.Light" Clicked="@context.Clicked" Block>New</Button>
                     </NewCommandTemplate>
-                    <EditCommandTemplate>
-                        <Button Color="Color.Primary" Clicked="@context.Clicked" Size="Size.Small" Block>Edit</Button>
-                    </EditCommandTemplate>
-                    <DeleteCommandTemplate>
-                        <Button Color="Color.Danger" hidden="@_hideDelete" Clicked="@(()=> ShowDeleteDialog(context.Item))" Size="Size.Small" Block>Delete</Button>
-                    </DeleteCommandTemplate>
                 </DataGridCommandColumn>
                 <DataGridColumn TItem="Node" Filterable="false" Editable="true" Field="@nameof(Node.Name)" Validator="ValidationHelper.ValidateName" Caption="@nameof(Node.Name)" Sortable="false" Displayable="@IsColumnVisible(NodesColumnName.Name)"/>
                 <DataGridColumn TItem="Node" Filterable="false" Editable="true" Field="@nameof(Node.PubKey)" Caption="@nameof(Node.PubKey)" Sortable="false" Width="220px" Displayable="@IsColumnVisible(NodesColumnName.PubKey)">
@@ -102,6 +110,7 @@
 
                     </EditTemplate>
                 </DataGridColumn>
+                <DataGridColumn TItem="Node" Filterable="false" Editable="false" Field="@nameof(Node.IsNodeDisabled)" Caption="Disabled" Sortable="false" Displayable="@IsColumnVisible(NodesColumnName.Disabled)"></DataGridColumn>
                 <DataGridColumn TItem="Node" Filterable="false" Editable="true" Field="@nameof(Node.AutosweepEnabled)" Caption="Autosweep" Sortable="false" Displayable="@IsColumnVisible(NodesColumnName.Autosweep)"></DataGridColumn>
                 <DataGridColumn TItem="Node" Filterable="false" Field="@nameof(Node.CreationDatetime)" Caption="Creation Date" Sortable="true" SortDirection="SortDirection.Descending" Displayable="@IsColumnVisible(NodesColumnName.CreationDate)">
                     <DisplayTemplate>
@@ -161,7 +170,7 @@
     private bool _modalVisible;
     private bool _hideDelete = true;
     private bool _editable;
-    private List<Wallet> _availableWallets = new List<Wallet>();
+    private List<Wallet> _availableWallets = new();
 
     CancellationTokenSource cts = new();
 
@@ -183,6 +192,7 @@
         public static readonly ColumnDefault Endpoint = new("Endpoint");
         public static readonly ColumnDefault OutboundOpenChannels = new("Outbound Open Channels");
         public static readonly ColumnDefault ReturningFundsWallet = new("Returning Funds Wallet");
+        public static readonly ColumnDefault Disabled = new("Disabled");
         public static readonly ColumnDefault Autosweep = new("Autosweep");
         public static readonly ColumnDefault CreationDate = new("Creation Date");
         public static readonly ColumnDefault UpdateDate = new("Update Date");
@@ -202,6 +212,45 @@
                 _editable = true;
                 _hideDelete = false;
             }
+        }
+    }
+    
+    private string _NodesState(Node node)
+    {
+        return node.IsNodeDisabled ?  "Enable Node" : "Disable Node";
+    }
+    
+    private async Task ToggleNodeStatus(Node node)
+    {
+        try
+        {
+            node.IsNodeDisabled = !node.IsNodeDisabled;
+            if (node.IsNodeDisabled)
+            {
+                await StopJob(node);
+            }
+            else
+            {
+                await CreateJobs(node);
+            }
+            node.JobId = null;
+            var (result, _) = NodeRepository.Update(node);
+            if (result)
+            {
+                _nodes = await NodeRepository.GetAllManagedByNodeGuard();
+                _availableWallets = await WalletRepository.GetAvailableWallets();
+                string status = node.IsNodeDisabled ? "disabled": "enabled";
+                string message = $"{node.Name} is {status}";
+                ToastService.ShowSuccess(message);
+            }
+            else
+            {
+                ToastService.ShowError($"Error while disabling the {node.Name}, please contact a superadmin for troubleshooting");
+            }
+        }
+        catch
+        {
+            ToastService.ShowError($"Error while disabling {node.Name}, please contact a superadmin for troubleshooting");
         }
     }
 
@@ -235,9 +284,20 @@
         }
         else
         {
-            arg.Item.UpdateDatetime = DateTimeOffset.Now;
-            arg.Item.CreationDatetime = DateTimeOffset.Now;
-            var addResult = await NodeRepository.AddAsync(arg.Item);
+            Node newNode = arg.Item as Node;
+            (bool, string?) addResult;
+            var restoredNode = await NodeRepository.GetByPubkey(arg.Item.PubKey);
+         
+            if (restoredNode != null)
+            {
+                newNode.Id = restoredNode.Id;
+                newNode.CreationDatetime = restoredNode.CreationDatetime;
+                addResult =  NodeRepository.Update(newNode);
+            }
+            else
+            {
+                addResult = await NodeRepository.AddAsync(arg.Item);
+            }
             if (addResult.Item1)
             {
                 ToastService.ShowSuccess($"Node {arg.Item.Name} Created");
@@ -308,7 +368,10 @@
         {
             if (node != null)
             {
-                var (result, _) = NodeRepository.Remove(node);
+                node.IsNodeDisabled = true;
+                node.Endpoint = null;
+                node.ChannelAdminMacaroon = null;
+                var (result, _) = NodeRepository.Update(node);
                 if (!result)
                 {
                     ToastService.ShowError($"{node.Name} could not be deleted");
@@ -319,7 +382,7 @@
                     _nodes = await NodeRepository.GetAll();
 
                 }
-
+                await StopJob(node);
             }
         }
 
@@ -327,33 +390,73 @@
 
     }
 
+
+    private async Task StopJob(Node node)
+    {
+        try
+        {
+            IScheduler scheduler = await SchedulerFactory.GetScheduler();
+            
+            await SimpleJob.DeleteJob<NodeChannelSuscribeJob>(scheduler, node.Id.ToString());
+            await SimpleJob.DeleteJob<ProcessNodeChannelAcceptorJob>(scheduler, node.Id.ToString());
+            
+            node.JobId = null;
+        }
+        catch
+        {
+            ToastService.ShowError("Error while stopping jobs, please contact a superadmin for troubleshooting");
+        }
+    }
+
     private async Task CreateJobs(Node node)
     {
         try
         {
             IScheduler scheduler = await SchedulerFactory.GetScheduler();
+           
+            await UpsertJob<ProcessNodeChannelAcceptorJob>(scheduler, node, map =>
+            {
+                map.Put("managedNodeId", node.Id.ToString());
+            });
+            
+            await UpsertJob<NodeChannelSuscribeJob>(scheduler, node, map =>
+            {
+                map.Put("nodeId", node.Id);
+            });
+            
+            ToastService.ShowSuccess("Node subscription job created");
+        }
+        
+        catch
+        {
+            ToastService.ShowError("Error while requesting to open the channel, please contact a superadmin for troubleshooting");
+        }
+    }
 
+    private async Task UpsertJob<TJob>(IScheduler scheduler, Node node, Action<JobDataMap> configureMap) where TJob : IJob
+    {
+        var isJobExists = await SimpleJob.IsJobExists<TJob>(scheduler, node.Id.ToString());
+
+        if (isJobExists)
+        {
+            await SimpleJob.Reschedule<TJob>(scheduler, node.Id.ToString());
+        }
+        else
+        {
             var map = new JobDataMap();
-            map.Put("nodeId", node.Id);
+            configureMap(map);
 
-            var job = SimpleJob.Create<NodeChannelSuscribeJob>(map, node.Id.ToString());
+            var job = SimpleJob.Create<TJob>(map, node.Id.ToString());
+
             await scheduler.ScheduleJob(job.Job, job.Trigger);
 
             node.JobId = job.Job.Key.ToString();
 
-            var jobUpdateResult = NodeRepository.Update(node);
-
-            map = new JobDataMap();
-            map.Put("managedNodeId", node.Id.ToString());
-
-            var acceptorJob = SimpleJob.Create<ProcessNodeChannelAcceptorJob>(map, node.Id.ToString());
-            await scheduler.ScheduleJob(acceptorJob.Job, acceptorJob.Trigger);
-
-            ToastService.ShowSuccess("Node subscription job created");
-        }
-        catch
-        {
-            ToastService.ShowError("Error while requesting to open the channel, please contact a superadmin for troubleshooting");
+            var (result, _) = NodeRepository.Update(node);
+            if (!result)
+            {
+                ToastService.ShowError($"Error while subscribing to job for node {node.Name}");
+            }
         }
     }
 
