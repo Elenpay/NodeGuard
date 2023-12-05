@@ -239,7 +239,9 @@
             {
                 _nodes = await NodeRepository.GetAllManagedByNodeGuard();
                 _availableWallets = await WalletRepository.GetAvailableWallets();
-                ToastService.ShowSuccess($"{node.Name} is disabled");
+                string status = node.IsNodeEnabled ? "enabled" : "disabled";
+                string message = $"{node.Name} is {status}";
+                ToastService.ShowSuccess(message);
             }
             else
             {
@@ -290,6 +292,7 @@
             {
                 newNode = restoredNode;
                 newNode.Endpoint = arg.Item.Endpoint;
+                newNode.Id = restoredNode.Id;
                 newNode.ChannelAdminMacaroon = arg.Item.ChannelAdminMacaroon;
                 newNode.IsNodeEnabled = true;
                 newNode.Description =  arg.Item.Description;
