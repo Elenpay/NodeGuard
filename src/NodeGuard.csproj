@@ -81,9 +81,4 @@
     <Content Remove="wwwroot\lib\" />
     <Content Remove="wwwroot\js\" />
   </ItemGroup>
-  <ItemGroup>
-    <Compile Remove="Migrations\20231127171339_RenamedDisableNode.cs" />
-    <Compile Remove="Migrations\20231127171339_RenamedDisableNode.Designer.cs" />
-    <Compile Remove="Migrations\20231126115717_DisableNode.Designer.cs" />
-  </ItemGroup>
 </Project>
