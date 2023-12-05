@@ -225,13 +225,13 @@
         try
         {
             node.IsNodeEnabled = !node.IsNodeEnabled;
-            if (!node.IsNodeEnabled)
+            if (node.IsNodeEnabled)
             {
-                await StopJob(node);
+                await CreateJobs(node);
             }
             else
             {
-                await CreateJobs(node);
+                await StopJob(node);
             }
             node.JobId = null;
             var (result, _) = NodeRepository.Update(node);
