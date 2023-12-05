@@ -290,16 +290,7 @@
          
             if (restoredNode != null)
             {
-                newNode = restoredNode;
-                newNode.Endpoint = arg.Item.Endpoint;
                 newNode.Id = restoredNode.Id;
-                newNode.ChannelAdminMacaroon = arg.Item.ChannelAdminMacaroon;
-                newNode.IsNodeEnabled = true;
-                newNode.Description =  arg.Item.Description;
-                newNode.AutosweepEnabled = arg.Item.AutosweepEnabled;
-                newNode.Name = arg.Item.Name;
-                newNode.ReturningFundsWalletId = arg.Item.ReturningFundsWalletId;
-                newNode.ReturningFundsWallet = arg.Item.ReturningFundsWallet;
                 addResult =  NodeRepository.Update(newNode);
                 
             }
