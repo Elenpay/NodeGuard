@@ -5,24 +5,25 @@
 namespace NodeGuard.Migrations
 {
     /// <inheritdoc />
-    public partial class DisableNode : Migration
+    public partial class IsNodeDisabled : Migration
     {
         /// <inheritdoc />
         protected override void Up(MigrationBuilder migrationBuilder)
         {
-            migrationBuilder.RenameColumn(
-                name: "isEnabledNode",
+            migrationBuilder.AddColumn<bool>(
+                name: "IsNodeDisabled",
                 table: "Nodes",
-                newName: "IsNodeEnabled");
+                type: "boolean",
+                nullable: false,
+                defaultValue: false);
         }
 
         /// <inheritdoc />
         protected override void Down(MigrationBuilder migrationBuilder)
         {
-            migrationBuilder.RenameColumn(
-                name: "IsNodeEnabled",
-                table: "Nodes",
-                newName: "isEnabledNode");
+            migrationBuilder.DropColumn(
+                name: "IsNodeDisabled",
+                table: "Nodes");
         }
     }
 }

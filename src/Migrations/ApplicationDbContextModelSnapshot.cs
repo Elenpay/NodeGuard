@@ -707,7 +707,7 @@ namespace NodeGuard.Migrations
                     b.Property<string>("Endpoint")
                         .HasColumnType("text");
 
-                    b.Property<bool>("IsNodeEnabled")
+                    b.Property<bool>("IsNodeDisabled")
                         .HasColumnType("boolean");
 
                     b.Property<string>("JobId")

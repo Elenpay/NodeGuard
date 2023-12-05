@@ -14,8 +14,8 @@ using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 namespace NodeGuard.Migrations
 {
     [DbContext(typeof(ApplicationDbContext))]
-    [Migration("20231205152120_DisableNode")]
-    partial class DisableNode
+    [Migration("20231205153253_IsNodeDisabled")]
+    partial class IsNodeDisabled
     {
         /// <inheritdoc />
         protected override void BuildTargetModel(ModelBuilder modelBuilder)
@@ -710,7 +710,7 @@ namespace NodeGuard.Migrations
                     b.Property<string>("Endpoint")
                         .HasColumnType("text");
 
-                    b.Property<bool>("IsNodeEnabled")
+                    b.Property<bool>("IsNodeDisabled")
                         .HasColumnType("boolean");
 
                     b.Property<string>("JobId")

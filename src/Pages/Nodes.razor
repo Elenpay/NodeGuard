@@ -110,7 +110,7 @@
 
                     </EditTemplate>
                 </DataGridColumn>
-                <DataGridColumn TItem="Node" Filterable="false" Editable="false" Field="@nameof(Node.IsNodeEnabled)" Caption="Enabled" Sortable="false" Displayable="@IsColumnVisible(NodesColumnName.Enabled)"></DataGridColumn>
+                <DataGridColumn TItem="Node" Filterable="false" Editable="false" Field="@nameof(Node.IsNodeDisabled)" Caption="Disabled" Sortable="false" Displayable="@IsColumnVisible(NodesColumnName.Disabled)"></DataGridColumn>
                 <DataGridColumn TItem="Node" Filterable="false" Editable="true" Field="@nameof(Node.AutosweepEnabled)" Caption="Autosweep" Sortable="false" Displayable="@IsColumnVisible(NodesColumnName.Autosweep)"></DataGridColumn>
                 <DataGridColumn TItem="Node" Filterable="false" Field="@nameof(Node.CreationDatetime)" Caption="Creation Date" Sortable="true" SortDirection="SortDirection.Descending" Displayable="@IsColumnVisible(NodesColumnName.CreationDate)">
                     <DisplayTemplate>
@@ -192,7 +192,7 @@
         public static readonly ColumnDefault Endpoint = new("Endpoint");
         public static readonly ColumnDefault OutboundOpenChannels = new("Outbound Open Channels");
         public static readonly ColumnDefault ReturningFundsWallet = new("Returning Funds Wallet");
-        public static readonly ColumnDefault Enabled = new("Enabled");
+        public static readonly ColumnDefault Disabled = new("Disabled");
         public static readonly ColumnDefault Autosweep = new("Autosweep");
         public static readonly ColumnDefault CreationDate = new("Creation Date");
         public static readonly ColumnDefault UpdateDate = new("Update Date");
@@ -217,21 +217,21 @@
     
     private string _NodesState(Node node)
     {
-        return node.IsNodeEnabled ? "Disable Node" : "Enable Node";
+        return node.IsNodeDisabled ?  "Enable Node" : "Disable Node";
     }
     
     private async Task ToggleNodeStatus(Node node)
     {
         try
         {
-            node.IsNodeEnabled = !node.IsNodeEnabled;
-            if (node.IsNodeEnabled)
+            node.IsNodeDisabled = !node.IsNodeDisabled;
+            if (node.IsNodeDisabled)
             {
-                await CreateJobs(node);
+                await StopJob(node);
             }
             else
             {
-                await StopJob(node);
+                await CreateJobs(node);
             }
             node.JobId = null;
             var (result, _) = NodeRepository.Update(node);
@@ -239,7 +239,7 @@
             {
                 _nodes = await NodeRepository.GetAllManagedByNodeGuard();
                 _availableWallets = await WalletRepository.GetAvailableWallets();
-                string status = node.IsNodeEnabled ? "enabled" : "disabled";
+                string status = node.IsNodeDisabled ? "disabled": "enabled";
                 string message = $"{node.Name} is {status}";
                 ToastService.ShowSuccess(message);
             }
@@ -291,8 +291,8 @@
             if (restoredNode != null)
             {
                 newNode.Id = restoredNode.Id;
+                newNode.CreationDatetime = restoredNode.CreationDatetime;
                 addResult =  NodeRepository.Update(newNode);
-                
             }
             else
             {
@@ -368,7 +368,7 @@
         {
             if (node != null)
             {
-                node.IsNodeEnabled = false;
+                node.IsNodeDisabled = true;
                 node.Endpoint = null;
                 node.ChannelAdminMacaroon = null;
                 var (result, _) = NodeRepository.Update(node);
@@ -413,15 +413,15 @@
         try
         {
             IScheduler scheduler = await SchedulerFactory.GetScheduler();
+           
+            await UpsertJob<ProcessNodeChannelAcceptorJob>(scheduler, node, map =>
+            {
+                map.Put("managedNodeId", node.Id.ToString());
+            });
             
             await UpsertJob<NodeChannelSuscribeJob>(scheduler, node, map =>
             {
                 map.Put("nodeId", node.Id);
-            });
-
-            await UpsertJob<ProcessNodeChannelAcceptorJob>(scheduler, node, map =>
-            {
-                map.Put("managedNodeId", node.Id.ToString());
             });
             
             ToastService.ShowSuccess("Node subscription job created");
