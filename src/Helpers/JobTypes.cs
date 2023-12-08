@@ -18,6 +18,8 @@
  */
 
 using Quartz;
+using Quartz.Impl;
+using Quartz.Impl.Matchers;
 using Quartz.Impl.Triggers;
 
 namespace NodeGuard.Helpers;
@@ -33,9 +35,9 @@ public class SimpleJob
     public static JobAndTrigger Create<T>(JobDataMap data, string identitySuffix) where T : IJob
     {
         var job = JobBuilder.Create<T>()
-                    .WithIdentity($"{typeof(T).Name}-{identitySuffix}")
-                    .SetJobData(data ?? new JobDataMap())
-                    .Build();
+            .WithIdentity($"{typeof(T).Name}-{identitySuffix}")
+            .SetJobData(data ?? new JobDataMap())
+            .Build();
 
         var trigger = TriggerBuilder.Create()
             .WithIdentity($"{typeof(T).Name}Trigger-{identitySuffix}")
@@ -44,6 +46,46 @@ public class SimpleJob
 
         return new JobAndTrigger(job, trigger);
     }
+    
+    public static async Task Reschedule<T>(IScheduler scheduler, string identitySuffix) where T : IJob
+    {
+        try
+        {
+            var triggerKey = new TriggerKey($"{typeof(T).Name}-{identitySuffix}");
+
+            var trigger = TriggerBuilder.Create()
+                .WithIdentity($"{typeof(T).Name}Trigger-{identitySuffix}")
+                .StartNow()
+                .Build();
+            
+            await scheduler.RescheduleJob(triggerKey, trigger);
+
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Unexpected error rescheduling job of type {typeof(T).Name} with identity suffix {identitySuffix}: {ex.Message}");
+        }
+    }
+    
+    public static async Task DeleteJob<T>(IScheduler scheduler, string identitySuffix) where T : IJob
+    {
+        try
+        {
+            JobKey jobKey = new JobKey($"{typeof(T).Name}-{identitySuffix}");
+            await scheduler.DeleteJob(jobKey);
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Unexpected error occurred while removing the job of type {typeof(T).Name} with identity suffix {identitySuffix}: {ex.Message}");
+        }
+    }
+
+    public static async Task<bool> IsJobExists<T>(IScheduler scheduler, string identitySuffix) where T : IJob
+    {
+        JobKey jobKey = new JobKey($"{typeof(T).Name}-{identitySuffix}");
+        return await scheduler.CheckExists(jobKey);
+    }
+    
 }
 
 public class RetriableJob
@@ -55,7 +97,8 @@ public class RetriableJob
     /// <param name="identitySuffix">A suffix to identify a specific job, triggered from the same class</param>
     /// <param name="intervalListInMinutes">An optional list of retry intervals in minutes, defaults to { 1, 5, 10, 20 }</param>
     /// <returns>An object with a job and a trigger to pass to a scheduler</returns>
-    public static JobAndTrigger Create<T>(JobDataMap data, string identitySuffix, int[]? intervalListInMinutes = null) where T : IJob
+    public static JobAndTrigger Create<T>(JobDataMap data, string identitySuffix, int[]? intervalListInMinutes = null)
+        where T : IJob
     {
         intervalListInMinutes = intervalListInMinutes ?? new int[] { 1, 5, 10, 20 };
 
@@ -63,10 +106,10 @@ public class RetriableJob
         map.Put("intervalListInMinutes", intervalListInMinutes);
 
         var job = JobBuilder.Create<T>()
-                   .DisallowConcurrentExecution()
-                   .SetJobData(map)
-                   .WithIdentity($"{typeof(T).Name}-{identitySuffix}")
-                   .Build();
+            .DisallowConcurrentExecution()
+            .SetJobData(map)
+            .WithIdentity($"{typeof(T).Name}-{identitySuffix}")
+            .Build();
 
         var trigger = TriggerBuilder.Create()
             .WithIdentity($"{typeof(T).Name}Trigger-{identitySuffix}")
@@ -103,7 +146,7 @@ public class RetriableJob
         if (intervals == null)
         {
             throw new Exception("No interval list found, make sure you're using the RetriableJob class");
-        };
+        }
 
         var trigger = context.Trigger as SimpleTriggerImpl;
 
@@ -134,7 +177,7 @@ public class RetriableJob
         if (intervals == null)
         {
             throw new Exception("No interval list found, make sure you're using the RetriableJob class");
-        };
+        }
 
         var trigger = context.Trigger as SimpleTriggerImpl;
 
@@ -144,7 +187,7 @@ public class RetriableJob
             await callback();
         }
     }
-    
+
     /// <summary>
     /// Get the next interval time
     /// </summary>
@@ -156,7 +199,7 @@ public class RetriableJob
         if (intervals == null)
         {
             throw new Exception("No interval list found, make sure you're using the RetriableJob class");
-        };
+        }
 
         var trigger = context.Trigger as SimpleTriggerImpl;
 
@@ -166,7 +209,7 @@ public class RetriableJob
         }
 
         return null;
-    } 
+    }
 }
 
 public class JobAndTrigger
@@ -180,10 +223,12 @@ public class JobAndTrigger
         {
             throw new Exception("Job parameter is needed");
         }
+
         if (trigger == null)
         {
             throw new Exception("Trigger parameter is needed");
         }
+
         Job = job;
         Trigger = trigger;
     }
