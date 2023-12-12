@@ -293,7 +293,6 @@ namespace NodeGuard
                             options.Endpoint = new Uri(Constants.OTEL_EXPORTER_ENDPOINT);
                         })
                         .AddEntityFrameworkCoreInstrumentation()
-                        .AddQuartzInstrumentation()
                     );
             }
 

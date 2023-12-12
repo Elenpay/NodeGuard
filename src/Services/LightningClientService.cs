@@ -22,6 +22,7 @@ using Google.Protobuf;
 using Grpc.Core;
 using Grpc.Net.Client;
 using Lnrpc;
+using Microsoft.Extensions.Logging.Abstractions;
 using NBitcoin;
 using NodeGuard.Data.Models;
 using NodeGuard.Helpers;
@@ -53,7 +54,7 @@ public class LightningClientService : ILightningClientService
         _logger = logger;
     }
 
-    private static GrpcChannel CreateLightningClient(string? endpoint)
+    private GrpcChannel CreateLightningClient(string? endpoint)
     {
         //Setup of grpc lnd api client (Lightning.proto)
         //Hack to allow self-signed https grpc calls
