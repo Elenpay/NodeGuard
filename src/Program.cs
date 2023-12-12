@@ -65,11 +65,10 @@ namespace NodeGuard
                 .Enrich.With(new DatadogLogEnricher())
                 .WriteTo.Console(jsonFormatter)
                 .CreateLogger();
+            
+            builder.Host.UseSerilog();
 
-            builder.Logging.ClearProviders();
-            builder.Logging.AddSerilog(Log.Logger);
-
-            // Add services to the container.
+            //Add services to the container.
 
             builder.Services.AddDatabaseDeveloperPageExceptionFilter();
 
@@ -194,7 +193,7 @@ namespace NodeGuard
                     options.UseJsonSerializer();
                 });
 
-                q.UseDedicatedThreadPool(x => { x.MaxConcurrency = 500; });
+                q.UseDefaultThreadPool(x => { x.MaxConcurrency = 100; });
 
                 //This allows DI in jobs
                 q.UseMicrosoftDependencyInjectionJobFactory();
@@ -294,7 +293,6 @@ namespace NodeGuard
                             options.Endpoint = new Uri(Constants.OTEL_EXPORTER_ENDPOINT);
                         })
                         .AddEntityFrameworkCoreInstrumentation()
-                        .AddQuartzInstrumentation()
                     );
             }
 
@@ -347,6 +345,9 @@ namespace NodeGuard
             //TODO Auth in the future, DAPR(?)
             app.MapGrpcService<NodeGuardService>();
 
+            var loggerFactory = new LoggerFactory()
+                .AddSerilog(Log.Logger);
+            Quartz.Logging.LogContext.SetCurrentLogProvider(loggerFactory);
             app.Run();
         }
     }

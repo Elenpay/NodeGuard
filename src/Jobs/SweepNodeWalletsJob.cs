@@ -32,21 +32,24 @@ namespace NodeGuard.Jobs;
 [DisallowConcurrentExecution]
 public class SweepNodeWalletsJob : IJob
 {
+    private readonly ILightningClientService _lightningClientService;
     private readonly ILogger<SweepNodeWalletsJob> _logger;
     private readonly INodeRepository _nodeRepository;
     private readonly IWalletRepository _walletRepository;
     private readonly INBXplorerService _nbXplorerService;
 
     public SweepNodeWalletsJob(ILogger<SweepNodeWalletsJob> logger,
-        INodeRepository _nodeRepository,
+        INodeRepository nodeRepository,
         IWalletRepository walletRepository,
-        INBXplorerService nbXplorerService
-    )
+        INBXplorerService nbXplorerService,
+        ILightningClientService lightningClientService)
     {
+       
         _logger = logger;
-        this._nodeRepository = _nodeRepository;
+        _nodeRepository = nodeRepository;
         _walletRepository = walletRepository;
         _nbXplorerService = nbXplorerService;
+        _lightningClientService = lightningClientService;
     }
 
     public async Task Execute(IJobExecutionContext context)
@@ -150,23 +153,13 @@ public class SweepNodeWalletsJob : IJob
             return;
         }
 
-        var loggerFactory = GRPCLoggerFactoryHelper.LoggerFactory();
+
 
         try
         {
-            using var grpcChannel = GrpcChannel.ForAddress($"https://{node.Endpoint}",
-                new GrpcChannelOptions
-                {
-                    HttpHandler = new HttpClientHandler
-                    {
-                        ServerCertificateCustomValidationCallback =
-                            HttpClientHandler.DangerousAcceptAnyServerCertificateValidator
-                    },
-                    LoggerFactory = loggerFactory,
-                });
-
-            var client = new Lightning.LightningClient(grpcChannel);
-
+          
+            var client = _lightningClientService.GetLightningClient(node.Endpoint);
+            
             var unspentResponse = await client.ListUnspentAsync(new ListUnspentRequest { MinConfs = 1, MaxConfs = Int32.MaxValue }, new Metadata
             {
                 {

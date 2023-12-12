@@ -60,9 +60,6 @@ public class ProcessNodeChannelAcceptorJob : IJob
         var managedNodeId = context.JobDetail.JobDataMap.GetIntValueFromString("managedNodeId");
 
         if (managedNodeId <= 0) throw new JobExecutionException(new Exception("Invalid managedNodeId"), false);
-
-        var loggerFactory = GRPCLoggerFactoryHelper.LoggerFactory();
-
         #region Local Functions
 
         async Task AcceptChannelOpeningRequest(

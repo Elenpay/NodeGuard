@@ -80,7 +80,7 @@ public class NodeChannelSuscribeJob : IJob
                 {
                     var channelEventUpdate = result.ResponseStream.Current;
                     _logger.LogInformation("Channel event update received for node {@NodeId}", node.Id);
-                    NodeUpdateManagement(channelEventUpdate, node);
+                    await NodeUpdateManagement(channelEventUpdate, node);
                 }
                 catch (Exception e)
                 {
