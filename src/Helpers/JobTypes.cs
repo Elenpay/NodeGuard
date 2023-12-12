@@ -33,6 +33,7 @@ public class SimpleJob
     public static JobAndTrigger Create<T>(JobDataMap data, string identitySuffix) where T : IJob
     {
         var job = JobBuilder.Create<T>()
+                    .DisallowConcurrentExecution()
                     .WithIdentity($"{typeof(T).Name}-{identitySuffix}")
                     .SetJobData(data ?? new JobDataMap())
                     .Build();
