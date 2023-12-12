@@ -236,6 +236,21 @@ namespace NodeGuard.Data.Repositories
             }
 
             var channels = await _lightningClientService.ListChannels(channelOperationRequest.SourceNode);
+            Node managedNode;
+
+            //If the source is not a managed node lets take the destination
+            if (channelOperationRequest.SourceNode.IsManaged)
+                managedNode = channelOperationRequest.SourceNode;
+            else
+                managedNode = channelOperationRequest.DestNode;
+
+            if (managedNode == null)
+            {
+                _logger.LogError(
+                    "Error while marking as closed with id: {ChannelId}. No managed node found",
+                    channel.Id);
+                return (false, "No managed node found");
+            }
 
             if (channels == null)
             {

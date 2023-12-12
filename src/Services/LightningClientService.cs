@@ -64,7 +64,11 @@ public class LightningClientService : ILightningClientService
         };
 
         var grpcChannel = GrpcChannel.ForAddress($"https://{endpoint}",
-            new GrpcChannelOptions { HttpHandler = httpHandler });
+            new GrpcChannelOptions
+                {HttpHandler = httpHandler, LoggerFactory = NullLoggerFactory.Instance});
+
+
+        _logger.LogInformation("New grpc channel created for endpoint {endpoint}", endpoint);
 
         return grpcChannel;
     }
