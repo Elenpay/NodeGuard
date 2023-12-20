@@ -44,6 +44,7 @@ using Serilog.Formatting.Json;
 using NodeGuard.Helpers;
 using NodeGuard.Rpc;
 using Microsoft.AspNetCore.Server.Kestrel.Core;
+using Npgsql;
 using Quartz.AspNetCore;
 
 namespace NodeGuard
@@ -57,7 +58,7 @@ namespace NodeGuard
             var builder = WebApplication.CreateBuilder(args);
 
             var jsonFormatter = new LowerCaseJsonFormatter();
-            
+
             Log.Logger = new LoggerConfiguration()
                 .ReadFrom.Configuration(builder.Configuration)
                 .MinimumLevel.Override("Microsoft", LogEventLevel.Warning)
@@ -65,7 +66,7 @@ namespace NodeGuard
                 .Enrich.With(new DatadogLogEnricher())
                 .WriteTo.Console(jsonFormatter)
                 .CreateLogger();
-            
+
             builder.Host.UseSerilog();
 
             //Add services to the container.
@@ -105,7 +106,8 @@ namespace NodeGuard
             builder.Services.AddTransient<IWalletRepository, WalletRepository>();
             builder.Services.AddTransient<IInternalWalletRepository, InternalWalletRepository>();
             builder.Services.AddTransient<IFMUTXORepository, FUTXORepository>();
-            builder.Services.AddTransient<IWalletWithdrawalRequestPsbtRepository, WalletWithdrawalRequestPsbtRepository>();
+            builder.Services
+                .AddTransient<IWalletWithdrawalRequestPsbtRepository, WalletWithdrawalRequestPsbtRepository>();
             builder.Services.AddTransient<IWalletWithdrawalRequestRepository, WalletWithdrawalRequestRepository>();
             builder.Services.AddTransient<IRemoteSignerService, RemoteSignerServiceService>();
             builder.Services.AddTransient<ILiquidityRuleRepository, LiquidityRuleRepository>();
@@ -125,19 +127,26 @@ namespace NodeGuard
             builder.Services.AddTransient<INBXplorerService, NBXplorerService>();
 
             //DbContext
+            var dataSourceBuilder = new NpgsqlDataSourceBuilder(Constants.POSTGRES_CONNECTIONSTRING);
+            dataSourceBuilder.EnableDynamicJson();
+
+            var npgsqlDataSource = dataSourceBuilder.Build();
             builder.Services.AddDbContext<ApplicationDbContext>(options =>
             {
                 //options.EnableSensitiveDataLogging();
                 //options.EnableDetailedErrors();
-                options.UseNpgsql(Constants.POSTGRES_CONNECTIONSTRING, options =>
+
+
+                options.UseNpgsql(npgsqlDataSource, npgsqlDbContextOptionsBuilder =>
                 {
-                    options.UseQuerySplittingBehavior(QuerySplittingBehavior
+                    npgsqlDbContextOptionsBuilder.UseQuerySplittingBehavior(QuerySplittingBehavior
                         .SingleQuery); // Slower but integrity is ensured
                 });
             }, ServiceLifetime.Transient);
-            
+
             //DataProtection
-            builder.Services.AddDbContext<DataProtectionKeysContext>(options => options.UseNpgsql(Constants.POSTGRES_CONNECTIONSTRING));
+            builder.Services.AddDbContext<DataProtectionKeysContext>(options =>
+                options.UseNpgsql(Constants.POSTGRES_CONNECTIONSTRING));
             builder.Services.AddDataProtection()
                 .PersistKeysToDbContext<DataProtectionKeysContext>()
                 .SetApplicationName("NodeGuard");
@@ -158,8 +167,9 @@ namespace NodeGuard
                 // Setup a HTTP/2 endpoint without TLS.
                 options.ListenAnyIP(50051, o => o.Protocols =
                     HttpProtocols.Http2);
-                options.ListenAnyIP(int.Parse(Environment.GetEnvironmentVariable("HTTP1_LISTEN_PORT") ?? "80"), o => o.Protocols =
-                    HttpProtocols.Http1);
+                options.ListenAnyIP(int.Parse(Environment.GetEnvironmentVariable("HTTP1_LISTEN_PORT") ?? "80"), o =>
+                    o.Protocols =
+                        HttpProtocols.Http1);
             });
 
             //DBContextFactory
@@ -207,8 +217,12 @@ namespace NodeGuard
 
                 q.AddTrigger(opts =>
                 {
-                    opts.ForJob(nameof(SweepAllNodesWalletsJob)).WithIdentity($"{nameof(SweepAllNodesWalletsJob)}Trigger")
-                        .StartNow().WithSimpleSchedule(scheduleBuilder => { scheduleBuilder.WithIntervalInMinutes(1).RepeatForever(); });
+                    opts.ForJob(nameof(SweepAllNodesWalletsJob))
+                        .WithIdentity($"{nameof(SweepAllNodesWalletsJob)}Trigger")
+                        .StartNow().WithSimpleSchedule(scheduleBuilder =>
+                        {
+                            scheduleBuilder.WithIntervalInMinutes(1).RepeatForever();
+                        });
                 });
 
                 //Monitor Withdrawals Job

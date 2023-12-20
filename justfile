@@ -1,7 +1,7 @@
 set fallback := true
 
 drop-db:
-    cd src && dotnet ef database drop -f
+    cd src && dotnet ef database drop -f --context ApplicationDbContext 
 add-license-cs:
     go install github.com/fbiville/headache/cmd/headache@latest
     headache --configuration ./configuration-cs.json
