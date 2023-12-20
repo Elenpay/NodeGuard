@@ -191,7 +191,12 @@ public class NodeGuardService : Nodeguard.NodeGuardService.NodeGuardServiceBase,
                 }
 
                 // Search the utxos and lock them
-                utxos = await _coinSelectionService.GetUTXOsByOutpointAsync(wallet.GetDerivationStrategy(), outpoints);
+                var derivationStrategyBase = wallet.GetDerivationStrategy();
+                
+                if(derivationStrategyBase == null)
+                    throw new RpcException(new Status(StatusCode.Internal, "Derivation strategy not found"));
+                
+                utxos = await _coinSelectionService.GetUTXOsByOutpointAsync(derivationStrategyBase, outpoints);
                 amount = utxos.Sum(u => ((Money)u.Value).ToUnit(MoneyUnit.BTC));
             }
 
@@ -205,7 +210,9 @@ public class NodeGuardService : Nodeguard.NodeGuardService.NodeGuardServiceBase,
                     ? WalletWithdrawalRequestStatus.PSBTSignaturesPending
                     : WalletWithdrawalRequestStatus.Pending,
                 RequestMetadata = request.RequestMetadata,
-                Changeless = request.Changeless
+                Changeless = request.Changeless,
+                MempoolRecommendedFeesType = (MempoolRecommendedFeesType) request.MempoolFeeRate,
+                CustomFeeRate = request.CustomFeeRate
             };
 
             //Save withdrawal request
@@ -232,9 +239,9 @@ public class NodeGuardService : Nodeguard.NodeGuardService.NodeGuardServiceBase,
                 _logger.LogError("Error saving withdrawal request for wallet with id {walletId}", request.WalletId);
                 throw new RpcException(new Status(StatusCode.Internal, "Error saving withdrawal request for wallet"));
             }
-
+            
             //Template PSBT generation with SIGHASH_ALL
-            var psbt = await _bitcoinService.GenerateTemplatePSBT(withdrawalRequest);
+            var psbt = await _bitcoinService.GenerateTemplatePSBT(withdrawalRequest ?? throw new ArgumentException(nameof(withdrawalRequest)));
 
             //If the wallet is hot, we send the withdrawal request to the node
             if (wallet.IsHotWallet)
@@ -443,15 +450,15 @@ public class NodeGuardService : Nodeguard.NodeGuardService.NodeGuardServiceBase,
             // Get the fee type of the request
             var feeType = request.MempoolFeeRate switch
             {
-                FEES_TYPE.EconomyFee => MempoolRecommendedFeesTypes.EconomyFee,
-                FEES_TYPE.FastestFee => MempoolRecommendedFeesTypes.FastestFee,
-                FEES_TYPE.HourFee => MempoolRecommendedFeesTypes.HourFee,
-                FEES_TYPE.HalfHourFee => MempoolRecommendedFeesTypes.HalfHourFee,
-                FEES_TYPE.CustomFee => MempoolRecommendedFeesTypes.CustomFee,
+                FEES_TYPE.EconomyFee => MempoolRecommendedFeesType.EconomyFee,
+                FEES_TYPE.FastestFee => MempoolRecommendedFeesType.FastestFee,
+                FEES_TYPE.HourFee => MempoolRecommendedFeesType.HourFee,
+                FEES_TYPE.HalfHourFee => MempoolRecommendedFeesType.HalfHourFee,
+                FEES_TYPE.CustomFee => MempoolRecommendedFeesType.CustomFee,
                 _ => throw new ArgumentOutOfRangeException(nameof(request.MempoolFeeRate), request.MempoolFeeRate, "Unknown status")
             };
 
-            if (feeType == MempoolRecommendedFeesTypes.CustomFee && !request.HasCustomFeeRate)
+            if (feeType == MempoolRecommendedFeesType.CustomFee && !request.HasCustomFeeRate)
             {
                 throw new RpcException(new Status(StatusCode.NotFound, "Custom fee rate is required"));
             }
@@ -470,8 +477,8 @@ public class NodeGuardService : Nodeguard.NodeGuardService.NodeGuardServiceBase,
                 User = null,*/
                 IsChannelPrivate = request.Private,
                 Changeless = request.Changeless,
-                MempoolRecommendedFeesTypes = feeType,
-                FeeRate = feeType == MempoolRecommendedFeesTypes.CustomFee ? request.CustomFeeRate : null,
+                MempoolRecommendedFeesType = feeType,
+                FeeRate = feeType == MempoolRecommendedFeesType.CustomFee ? request.CustomFeeRate : null,
             };
 
             //Persist request

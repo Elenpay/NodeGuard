@@ -154,18 +154,18 @@
                     </Validation>
                     <div class="mb-3">
                         <Button Color="Color.Primary" Disabled="@(!_selectedWalletId.HasValue)" Clicked="@OpenCoinSelectionModal">Select Coins</Button> or use
-                        <Button Color="Color.Primary" Disabled="@(SelectedUTXOs.Count == 0)" Clicked="@ClearSelectedUTXOs">Default Coin Selection</Button>
+                        <Button Color="Color.Primary" Disabled="@(_selectedUTXOs.Count == 0)" Clicked="@ClearSelectedUTXOs">Default Coin Selection</Button>
                     </div>
-                    <Check TValue="bool" @bind-Checked="_isChangeless" Disabled="@(SelectedUTXOs.Count == 0)">Changeless transaction</Check>
-                    @if (_selectedWalletId.HasValue && SelectedUTXOs.Count > 0)
+                    <Check TValue="bool" @bind-Checked="_isChangeless" Disabled="@(_selectedUTXOs.Count == 0)">Changeless transaction</Check>
+                    @if (_selectedWalletId.HasValue && _selectedUTXOs.Count > 0)
                     {
                         if (_isChangeless)
                         {
-                            <span class="text-danger">Selected @(SelectedUTXOs.Count) UTXOs, this is a changeless operation.</span>
+                            <span class="text-danger">Selected @(_selectedUTXOs.Count) UTXOs, this is a changeless operation.</span>
                         }
                         else
                         {
-                            <span class="text-danger">Selected @(SelectedUTXOs.Count) UTXOs. Change will be sent back to the selected wallet.</span>
+                            <span class="text-danger">Selected @(_selectedUTXOs.Count) UTXOs. Change will be sent back to the selected wallet.</span>
                         }
                     }
                     else
@@ -176,26 +176,26 @@
             </DataGridColumn>
             <DataGridColumn TItem="ChannelOperationRequest" Displayable="@IsPendingRequestsColumnVisible(PendingChannelsColumnName.FeeRates)" Editable="true" Caption="Fee Rate" PopupFieldColumnSize="ColumnSize.Is12">
                 <DisplayTemplate>
-                    @(context.MempoolRecommendedFeesTypes == MempoolRecommendedFeesTypes.CustomFee ? $"{context.FeeRate} sats/vb" : FeesSelection.ToString().Humanize())
+                    @(context.MempoolRecommendedFeesType == MempoolRecommendedFeesType.CustomFee ? $"{context.FeeRate} sats/vb" : _selectedMempoolRecommendedFeesType.ToString().Humanize())
                 </DisplayTemplate>
                 <EditTemplate>
                     <div class="d-flex">
-                        <Select TValue="MempoolRecommendedFeesTypes" SelectedValueChanged="async (value) => await OnChangeFeeSelection(value)">
-                            <SelectGroup Label="Default">
-                                <SelectItem Value="MempoolRecommendedFeesTypes.EconomyFee">Economy Fee</SelectItem>
-                                <SelectItem Value="MempoolRecommendedFeesTypes.FastestFee">Fastest Fee</SelectItem>
-                                <SelectItem Value="MempoolRecommendedFeesTypes.HourFee">Hour Fee</SelectItem>
-                                <SelectItem Value="MempoolRecommendedFeesTypes.HalfHourFee">Half Hour Fee</SelectItem>
+                        <Select TValue="MempoolRecommendedFeesType" SelectedValue="@_selectedMempoolRecommendedFeesType" SelectedValueChanged="async (value) => await OnChangeFeeSelection(value)">
+                            <SelectGroup Label="Mempool.space fee">
+                                <SelectItem Value="MempoolRecommendedFeesType.EconomyFee">Economy Fee</SelectItem>
+                                <SelectItem Value="MempoolRecommendedFeesType.FastestFee">Fastest Fee</SelectItem>
+                                <SelectItem Value="MempoolRecommendedFeesType.HourFee">Hour Fee</SelectItem>
+                                <SelectItem Value="MempoolRecommendedFeesType.HalfHourFee">Half Hour Fee</SelectItem>
                             </SelectGroup>
-                            <SelectItem Value="MempoolRecommendedFeesTypes.CustomFee">Custom</SelectItem>
+                            <SelectItem Value="MempoolRecommendedFeesType.CustomFee">Custom</SelectItem>
                         </Select>
-                        <NumericPicker TValue="long" @bind-Value="@FeeAmount" CurrencySymbolPlacement="CurrencySymbolPlacement.Suffix" CurrencySymbol=" sats/vb" Min="1" Disabled="@(FeesSelection != MempoolRecommendedFeesTypes.CustomFee)">
+                        <NumericPicker TValue="long" @bind-Value="@_customSatPerVbAmount" CurrencySymbolPlacement="CurrencySymbolPlacement.Suffix" CurrencySymbol=" sats/vb" Min="1" Disabled="@(_selectedMempoolRecommendedFeesType != MempoolRecommendedFeesType.CustomFee)">
                             <Feedback>
                                 <ValidationError/>
                             </Feedback>
                         </NumericPicker>
                     </div>
-                    <FieldHelp>@(FeesSelection != MempoolRecommendedFeesTypes.CustomFee ? "Fees may change by the time the request is processed" : "")</FieldHelp>
+                    <FieldHelp>@(_selectedMempoolRecommendedFeesType != MempoolRecommendedFeesType.CustomFee ? "Fees may change by the time the request is processed" : "")</FieldHelp>
                 </EditTemplate>
             </DataGridColumn>
             <DataGridColumn TItem="ChannelOperationRequest" Field="@nameof(ChannelOperationRequest.IsChannelPrivate)" Caption="Private" Displayable="@IsPendingRequestsColumnVisible(PendingChannelsColumnName.Private)" Editable="true">
@@ -312,7 +312,7 @@
         </DataGridColumn>
         <DataGridColumn TItem="ChannelOperationRequest" Field="@nameof(ChannelOperationRequest.FeeRate)" Caption="Fee Rate" Displayable="@IsAllRequestsColumnVisible(AllChannelsColumnName.FeeRates)">
             <DisplayTemplate>
-                @(context.FeeRate != null ? $"{context.FeeRate} sats/vbyte" : FeesSelection.ToString().Humanize())
+                @(context.FeeRate != null ? $"{context.FeeRate} sats/vbyte" : _selectedMempoolRecommendedFeesType.ToString().Humanize())
             </DisplayTemplate>
         </DataGridColumn>
         <DataGridColumn TItem="ChannelOperationRequest" Field="@nameof(ChannelOperationRequest.IsChannelPrivate)" Caption="Private" Displayable="@IsAllRequestsColumnVisible(AllChannelsColumnName.Private)"></DataGridColumn>
@@ -452,14 +452,14 @@
     private ConfirmationModal _approveOperationConfirmationModal;
     private ConfirmationModal _markRequestAsFailedConfirmationModal;
     private UTXOSelectorModal _utxoSelectorModalRef;
-    private List<UTXO> SelectedUTXOs = new();
-    private MempoolRecommendedFeesTypes FeesSelection;
-    private long FeeAmount = 1;
+    private List<UTXO> _selectedUTXOs = new();
+    private MempoolRecommendedFeesType _selectedMempoolRecommendedFeesType;
+    private long _customSatPerVbAmount = 1;
 
     // New Request integration
     private List<Wallet> _allWallets = new List<Wallet>();
-    protected DataGrid<ChannelOperationRequest>? datagridRef;
-    protected DataGrid<ChannelOperationRequest>? _allRequestsDatagrid;
+    private DataGrid<ChannelOperationRequest>? datagridRef;
+    private DataGrid<ChannelOperationRequest>? _allRequestsDatagrid;
     private List<Node>? _manageableNodes;
     private int _selectedSourceNodeId;
     private Node? _selectedDestNode;
@@ -558,8 +558,8 @@
     private async Task OnShowNewChannelRequestModal()
     {
         _utxoSelectorModalRef.ClearModal();
-        FeesSelection = 0;
-        await OnChangeFeeSelection(FeesSelection);
+        _selectedMempoolRecommendedFeesType = MempoolRecommendedFeesType.FastestFee;
+        await OnChangeFeeSelection(_selectedMempoolRecommendedFeesType);
         await datagridRef.New();
     }
 
@@ -646,7 +646,7 @@
         if (LoggedUser == null) return;
 
         List<Validation?> validators = new() { _destNodeValidation, _sourceNodeValidation, _walletValidation };
-        if (SelectedUTXOs.Count == 0)
+        if (_selectedUTXOs.Count == 0)
         {
             validators.Add(_capacityValidation);
         }
@@ -668,8 +668,8 @@
                     DestNodeId = _selectedDestNode?.Id,
                     IsChannelPrivate = _selectedPrivate,
                     Changeless = _isChangeless,
-                    MempoolRecommendedFeesTypes = FeesSelection,
-                    FeeRate = FeesSelection == MempoolRecommendedFeesTypes.CustomFee ?  FeeAmount : null
+                    MempoolRecommendedFeesType = _selectedMempoolRecommendedFeesType,
+                    FeeRate = _selectedMempoolRecommendedFeesType == MempoolRecommendedFeesType.CustomFee ?  _customSatPerVbAmount : null
                 };
 
                 var selectedWallet = await WalletRepository.GetById(_selectedWalletId.Value);
@@ -690,9 +690,9 @@
                 {
                     ToastService.ShowSuccess("Open channel request created!");
 
-                    if (SelectedUTXOs.Count > 0)
+                    if (_selectedUTXOs.Count > 0)
                     {
-                        await CoinSelectionService.LockUTXOs(SelectedUTXOs, request, BitcoinRequestType.ChannelOperation);
+                        await CoinSelectionService.LockUTXOs(_selectedUTXOs, request, BitcoinRequestType.ChannelOperation);
                     }
                 }
                 else
@@ -864,9 +864,9 @@
                 return;
             }
 
-            if (SelectedUTXOs.Count > 0)
+            if (_selectedUTXOs.Count > 0)
             {
-                await CoinSelectionService.LockUTXOs(SelectedUTXOs, _selectedRequest, BitcoinRequestType.ChannelOperation);
+                await CoinSelectionService.LockUTXOs(_selectedUTXOs, _selectedRequest, BitcoinRequestType.ChannelOperation);
             }
 
             var (templatePsbt, noUtxosAvailable) = (await LightningService.GenerateTemplatePSBT(_selectedRequest));
@@ -980,8 +980,8 @@
 
     private void OnCloseCoinSelectionModal(List<UTXO> selectedUTXOs)
     {
-        SelectedUTXOs = selectedUTXOs;
-        if (SelectedUTXOs.Count > 0)
+        _selectedUTXOs = selectedUTXOs;
+        if (_selectedUTXOs.Count > 0)
         {
             _amount = SelectedUTXOsValue();
         }
@@ -990,21 +990,21 @@
 
     private decimal SelectedUTXOsValue()
     {
-        return SelectedUTXOs.Sum(x => ((Money)x.Value).ToUnit(MoneyUnit.BTC));
+        return _selectedUTXOs.Sum(x => ((Money)x.Value).ToUnit(MoneyUnit.BTC));
     }
 
     private void ClearSelectedUTXOs()
     {
         _utxoSelectorModalRef.ClearModal();
-        SelectedUTXOs.Clear();
+        _selectedUTXOs.Clear();
         _isChangeless = false;
         StateHasChanged();
     }
 
-    private async Task OnChangeFeeSelection(MempoolRecommendedFeesTypes value)
+    private async Task OnChangeFeeSelection(MempoolRecommendedFeesType value)
     {
-        FeesSelection = value;
-        FeeAmount = (long?)await NBXplorerService.GetFeesByType(FeesSelection) ?? 1;
+        _selectedMempoolRecommendedFeesType = value;
+        _customSatPerVbAmount = (long?)await NBXplorerService.GetFeesByType(_selectedMempoolRecommendedFeesType) ?? 1;
     }
 
     private void OnColumnLayoutUpdate()

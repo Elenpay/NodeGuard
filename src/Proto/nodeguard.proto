@@ -110,6 +110,10 @@ message RequestWithdrawalRequest {
   bool changeless = 6;
   // Outpoints for the UTXOs to use for the withdrawal
   repeated string utxos_outpoints = 7;
+  // MempoolRecommended fee rate
+  FEES_TYPE mempool_fee_rate = 8;
+  // Fee rate in sat/vbyte
+  optional int32 custom_fee_rate = 9;
 }
 
 message RequestWithdrawalResponse {
@@ -186,11 +190,11 @@ message GetNodesResponse{
 }
 
 enum FEES_TYPE {
-  CUSTOM_FEE = 0;
+  ECONOMY_FEE = 0;
   FASTEST_FEE = 1;
   HOUR_FEE = 2;
   HALF_HOUR_FEE = 3;
-  ECONOMY_FEE = 4;
+  CUSTOM_FEE = 4;
 }
 
 message OpenChannelRequest {
