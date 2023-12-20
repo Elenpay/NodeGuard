@@ -72,7 +72,7 @@ namespace NodeGuard.Services
             if (wallet == null) throw new ArgumentNullException(nameof(wallet));
 
             var balance = await _nbXplorerService.GetBalanceAsync(wallet.GetDerivationStrategy(), default);
-            var confirmedBalanceMoney = (Money)balance.Confirmed;
+            var confirmedBalanceMoney = (Money) balance.Confirmed;
 
             return (confirmedBalanceMoney.ToUnit(MoneyUnit.BTC), confirmedBalanceMoney.Satoshi);
         }
@@ -100,7 +100,8 @@ namespace NodeGuard.Services
             var derivationStrategy = walletWithdrawalRequest.Wallet.GetDerivationStrategy();
             if (derivationStrategy == null)
             {
-                var message = $"Error while getting the derivation strategy scheme for wallet: {walletWithdrawalRequest.Wallet.Id}";
+                var message =
+                    $"Error while getting the derivation strategy scheme for wallet: {walletWithdrawalRequest.Wallet.Id}";
                 _logger.LogError(message);
                 throw new ArgumentNotFoundException(message);
             }
@@ -118,12 +119,14 @@ namespace NodeGuard.Services
                 if (parsedTemplatePSBT.Inputs.All(
                         x => currentUtxos.Confirmed.UTXOs.Select(x => x.Outpoint).Contains(x.PrevOut)))
                 {
+                    //TODO Recalculate fee rate if a mempool space fee rate is selected
                     return parsedTemplatePSBT;
                 }
                 else
                 {
                     //We mark the request as failed since we would need to invalidate existing PSBTs
-                    _logger.LogError("Marking the withdrawal request: {RequestId} as failed since the original UTXOs are no longer valid",
+                    _logger.LogError(
+                        "Marking the withdrawal request: {RequestId} as failed since the original UTXOs are no longer valid",
                         walletWithdrawalRequest.Id);
 
                     walletWithdrawalRequest.Status = WalletWithdrawalRequestStatus.Failed;
@@ -146,7 +149,7 @@ namespace NodeGuard.Services
             {
                 var balanceResponse = await _nbXplorerService.GetBalanceAsync(derivationStrategy);
 
-                walletWithdrawalRequest.Amount = ((Money)balanceResponse.Confirmed).ToUnit(MoneyUnit.BTC);
+                walletWithdrawalRequest.Amount = ((Money) balanceResponse.Confirmed).ToUnit(MoneyUnit.BTC);
 
                 var update = _walletWithdrawalRequestRepository.Update(walletWithdrawalRequest);
                 if (!update.Item1)
@@ -161,13 +164,18 @@ namespace NodeGuard.Services
 
             if (walletWithdrawalRequest.Changeless && previouslyLockedUTXOs.Count == 0)
             {
-                _logger.LogError("Cannot generate base template PSBT for withdrawal request: {RequestId}, no UTXOs were provided for the changeless operation", walletWithdrawalRequest.Id);
+                _logger.LogError(
+                    "Cannot generate base template PSBT for withdrawal request: {RequestId}, no UTXOs were provided for the changeless operation",
+                    walletWithdrawalRequest.Id);
                 throw new ArgumentException();
             }
+
             var availableUTXOs = previouslyLockedUTXOs.Count > 0
                 ? previouslyLockedUTXOs
                 : await _coinSelectionService.GetAvailableUTXOsAsync(derivationStrategy);
-            var (scriptCoins, selectedUTXOs) = await _coinSelectionService.GetTxInputCoins(availableUTXOs, walletWithdrawalRequest, derivationStrategy);
+            var (scriptCoins, selectedUTXOs) =
+                await _coinSelectionService.GetTxInputCoins(availableUTXOs, walletWithdrawalRequest,
+                    derivationStrategy);
 
             if (scriptCoins == null || !scriptCoins.Any())
             {
@@ -188,27 +196,34 @@ namespace NodeGuard.Services
                 var network = CurrentNetworkHelper.GetCurrentNetwork();
                 var txBuilder = nbXplorerNetwork.CreateTransactionBuilder();
 
-                var feeRateResult = await LightningHelper.GetFeeRateResult(nbXplorerNetwork, _nbXplorerService);
+                //We get the mempool.space recommended fees, the custom or use the bitcoin core (nbxplorer) one if not available
+                var feerate = await _nbXplorerService.GetFeesByType(walletWithdrawalRequest.MempoolRecommendedFeesType)
+                              ?? walletWithdrawalRequest.CustomFeeRate
+                              ?? (await LightningHelper.GetFeeRateResult(network, _nbXplorerService)).FeeRate
+                              .SatoshiPerByte;
+                var feeRateResult = new FeeRate(feerate);
 
-                var changeAddress = await _nbXplorerService.GetUnusedAsync(derivationStrategy, DerivationFeature.Change, 0, false, default);
+                var changeAddress = await _nbXplorerService.GetUnusedAsync(derivationStrategy, DerivationFeature.Change,
+                    0, false, default);
 
                 if (changeAddress == null)
                 {
                     _logger.LogError("Change address was not found for wallet: {WalletId}",
                         walletWithdrawalRequest.Wallet.Id);
-                    throw new ArgumentNullException($"Change address was not found for wallet: {walletWithdrawalRequest.Wallet.Id}");
+                    throw new ArgumentNullException(
+                        $"Change address was not found for wallet: {walletWithdrawalRequest.Wallet.Id}");
                 }
 
                 var builder = txBuilder;
                 builder.AddCoins(scriptCoins);
 
-                var changelessAmount = selectedUTXOs.Sum(u => (Money)u.Value);
+                var changelessAmount = selectedUTXOs.Sum(u => (Money) u.Value);
                 var amount = new Money(walletWithdrawalRequest.SatsAmount, MoneyUnit.Satoshi);
                 var destination = BitcoinAddress.Create(walletWithdrawalRequest.DestinationAddress, nbXplorerNetwork);
 
                 builder.SetSigningOptions(SigHash.All)
                     .SetChange(changeAddress.Address)
-                    .SendEstimatedFees(feeRateResult.FeeRate);
+                    .SendEstimatedFees(feeRateResult);
 
                 // We preserve the output order when testing so the psbt doesn't change
                 var command = Assembly.GetEntryAssembly()?.GetName().Name?.ToLowerInvariant();
@@ -225,13 +240,15 @@ namespace NodeGuard.Services
                     {
                         builder.SubtractFees();
                     }
+
                     builder.SendAllRemainingToChange();
                 }
 
                 originalPSBT = builder.BuildPSBT(false);
 
                 //Additional fields to support PSBT signing with a HW or the Remote Signer
-                originalPSBT = LightningHelper.AddDerivationData(walletWithdrawalRequest.Wallet, originalPSBT, selectedUTXOs, scriptCoins, _logger);
+                originalPSBT = LightningHelper.AddDerivationData(walletWithdrawalRequest.Wallet, originalPSBT,
+                    selectedUTXOs, scriptCoins, _logger);
             }
             catch (Exception e)
             {
@@ -244,7 +261,8 @@ namespace NodeGuard.Services
             var addUTXOSOperation = await _walletWithdrawalRequestRepository.AddUTXOs(walletWithdrawalRequest, utxos);
             if (!addUTXOSOperation.Item1)
             {
-                var message = $"Could not add the following utxos({utxos.Humanize()}) to op request:{walletWithdrawalRequest.Id}";
+                var message =
+                    $"Could not add the following utxos({utxos.Humanize()}) to op request:{walletWithdrawalRequest.Id}";
                 _logger.LogError(message);
                 throw new Exception(message);
             }
@@ -279,7 +297,8 @@ namespace NodeGuard.Services
         {
             if (walletWithdrawalRequest == null) throw new ArgumentNullException(nameof(walletWithdrawalRequest));
 
-            if (walletWithdrawalRequest.Status != WalletWithdrawalRequestStatus.PSBTSignaturesPending && walletWithdrawalRequest.Status != WalletWithdrawalRequestStatus.FinalizingPSBT)
+            if (walletWithdrawalRequest.Status != WalletWithdrawalRequestStatus.PSBTSignaturesPending &&
+                walletWithdrawalRequest.Status != WalletWithdrawalRequestStatus.FinalizingPSBT)
             {
                 _logger.LogError(
                     "Invalid status for broadcasting the tx from wallet withdrawal request: {RequestId}, status: {RequestStatus}",
@@ -297,7 +316,8 @@ namespace NodeGuard.Services
             var (isSuccess, error) = _walletWithdrawalRequestRepository.Update(walletWithdrawalRequest);
             if (!isSuccess)
             {
-                var errorMessage = string.Format("Request in remote signing stage, but could not update status to {Status} for request id: {RequestId} reason: {Reason}",
+                var errorMessage = string.Format(
+                    "Request in remote signing stage, but could not update status to {Status} for request id: {RequestId} reason: {Reason}",
                     WalletWithdrawalRequestStatus.FinalizingPSBT, walletWithdrawalRequest.Id, error);
                 _logger.LogWarning(errorMessage);
                 throw new Exception(errorMessage);
@@ -347,7 +367,8 @@ namespace NodeGuard.Services
                     }
                     else
                     {
-                        signedCombinedPSBT = await SignPSBTWithEmbeddedSigner(walletWithdrawalRequest, _nbXplorerService,
+                        signedCombinedPSBT = await SignPSBTWithEmbeddedSigner(walletWithdrawalRequest,
+                            _nbXplorerService,
                             derivationStrategyBase, psbtToSign, CurrentNetworkHelper.GetCurrentNetwork(), _logger);
                     }
                 }
@@ -534,7 +555,9 @@ namespace NodeGuard.Services
                     {
                         //Let's check if the minimum amount of confirmations are established
 
-                        var getTxResult = await _nbXplorerService.GetTransactionAsync(uint256.Parse(walletWithdrawalRequest.TxId), default);
+                        var getTxResult =
+                            await _nbXplorerService.GetTransactionAsync(uint256.Parse(walletWithdrawalRequest.TxId),
+                                default);
 
                         if (getTxResult.Confirmations >= Constants.TRANSACTION_CONFIRMATION_MINIMUM_BLOCKS)
                         {

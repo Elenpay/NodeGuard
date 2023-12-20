@@ -238,7 +238,7 @@ namespace NodeGuard.Services
                     throw new InvalidOperationException();
                 }
 
-                var feeRate = await _nbXplorerService.GetFeesByType(channelOperationRequest.MempoolRecommendedFeesTypes) ?? channelOperationRequest.FeeRate;
+                var feeRate = await _nbXplorerService.GetFeesByType(channelOperationRequest.MempoolRecommendedFeesType) ?? channelOperationRequest.FeeRate;
                 var initialFeeRate = feeRate ??
                                      (await LightningHelper.GetFeeRateResult(network, _nbXplorerService)).FeeRate
                                      .SatoshiPerByte;
@@ -1028,7 +1028,7 @@ namespace NodeGuard.Services
                 var network = CurrentNetworkHelper.GetCurrentNetwork();
                 var txBuilder = network.CreateTransactionBuilder();
 
-                var feeRate = await _nbXplorerService.GetFeesByType(channelOperationRequest.MempoolRecommendedFeesTypes) ?? channelOperationRequest.FeeRate;
+                var feeRate = await _nbXplorerService.GetFeesByType(channelOperationRequest.MempoolRecommendedFeesType) ?? channelOperationRequest.FeeRate;
                 var feeRateResult = feeRate ??
                                     (await LightningHelper.GetFeeRateResult(network, _nbXplorerService)).FeeRate
                                     .SatoshiPerByte;

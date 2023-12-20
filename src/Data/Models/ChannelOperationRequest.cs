@@ -109,7 +109,7 @@ namespace NodeGuard.Data.Models
         /// <summary>
         /// Recommended fee type selected by the user to be applied at the moment of the operation
         /// </summary>
-        public MempoolRecommendedFeesTypes MempoolRecommendedFeesTypes { get; set; }
+        public MempoolRecommendedFeesType MempoolRecommendedFeesType { get; set; }
 
         /// <summary>
         /// Fee rate in sat/vbyte to be applied if the user selects a custom fee type
