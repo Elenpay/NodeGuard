@@ -67,7 +67,7 @@ public class NodeChannelSubscribeJobTests
         };
 
         // Act + Assert
-        Assert.ThrowsAsync<Exception>(async () => await _nodeUpdateManager.NodeUpdateManagement(channelEventUpdate, new Node()));
+        await Assert.ThrowsAnyAsync<Exception>(async () => await _nodeUpdateManager.NodeUpdateManagement(channelEventUpdate, new Node()));
     }
 
     [Fact]
