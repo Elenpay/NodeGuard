@@ -32,7 +32,7 @@ public interface INBXplorerService
     public Task<GetFeeRateResult> GetFeeRateAsync(int blockCount, FeeRate fallbackFeeRate,
         CancellationToken cancellation = default);
 
-    public Task<decimal?> GetFeesByType(MempoolRecommendedFeesTypes mempoolRecommendedFeesTypes, CancellationToken cancellation = default);
+    public Task<decimal?> GetFeesByType(MempoolRecommendedFeesType mempoolRecommendedFeesType, CancellationToken cancellation = default);
 
     public Task<BroadcastResult> BroadcastAsync(Transaction tx, bool testMempoolAccept,
         CancellationToken cancellation = default);
@@ -49,7 +49,7 @@ public interface INBXplorerService
         CancellationToken cancellation = default(CancellationToken));
 }
 
-public enum MempoolRecommendedFeesTypes
+public enum MempoolRecommendedFeesType
 {
     EconomyFee,
     FastestFee,
@@ -250,22 +250,22 @@ public class NBXplorerService : INBXplorerService
     }
 
     public async Task<decimal?> GetFeesByType(
-        MempoolRecommendedFeesTypes mempoolRecommendedFeesTypes,
+        MempoolRecommendedFeesType mempoolRecommendedFeesType,
         CancellationToken cancellation = default)
     {
         var recommendedFees = await GetMempoolRecommendedFeesAsync(cancellation);
 
-        switch (mempoolRecommendedFeesTypes)
+        switch (mempoolRecommendedFeesType)
         {
-            case MempoolRecommendedFeesTypes.EconomyFee:
+            case MempoolRecommendedFeesType.EconomyFee:
                 return recommendedFees.EconomyFee;
-            case MempoolRecommendedFeesTypes.FastestFee:
+            case MempoolRecommendedFeesType.FastestFee:
                 return recommendedFees.FastestFee;
-            case MempoolRecommendedFeesTypes.HourFee:
+            case MempoolRecommendedFeesType.HourFee:
                 return recommendedFees.HourFee;
-            case MempoolRecommendedFeesTypes.HalfHourFee:
+            case MempoolRecommendedFeesType.HalfHourFee:
                 return recommendedFees.HalfHourFee;
-            case MempoolRecommendedFeesTypes.CustomFee:
+            case MempoolRecommendedFeesType.CustomFee:
                 return null;
         }
 

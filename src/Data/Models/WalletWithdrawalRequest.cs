@@ -19,6 +19,7 @@
 
 using System.ComponentModel.DataAnnotations.Schema;
 using NBitcoin;
+using NodeGuard.Services;
 
 namespace NodeGuard.Data.Models
 {
@@ -66,7 +67,7 @@ namespace NodeGuard.Data.Models
     }
 
     /// <summary>
-    /// Requests to withdraw funds from a FM-managed multisig wallet
+    /// Requests to withdraw funds from a NG-managed wallet
     /// </summary>
     public class WalletWithdrawalRequest : Entity, IEquatable<WalletWithdrawalRequest>, IBitcoinRequest
     {
@@ -128,6 +129,16 @@ namespace NodeGuard.Data.Models
         /// For additional info required by the requestor
         /// </summary>
         public string? RequestMetadata { get; set; }
+        
+        /// <summary>
+        /// Recommended fee type selected by the user to be applied at the moment of the operation, this cannot be changed once the template PSBT is created nor signed
+        /// </summary>
+        public MempoolRecommendedFeesType MempoolRecommendedFeesType { get; set; }
+
+        /// <summary>
+        /// Fee rate in sat/vbyte to be applied if the user selects a custom fee rate
+        /// </summary>
+        public decimal? CustomFeeRate { get; set; }
 
         /// <summary>
         /// Check that the number of signatures (not finalised psbt nor internal wallet psbt or template psbt are gathered and increases by one to count on the internal wallet signature
