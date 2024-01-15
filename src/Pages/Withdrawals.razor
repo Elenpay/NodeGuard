@@ -56,9 +56,9 @@
             <DataGridColumn TItem="WalletWithdrawalRequest" Filterable="false" Field="@nameof(WalletWithdrawalRequest.Id)" Caption="#" Sortable="false" Displayable="true"/>
             <DataGridColumn TItem="WalletWithdrawalRequest" Filterable="false" Caption="Actions" Sortable="false" Displayable="true">
                 <DisplayTemplate>
-                    @if (context.Wallet != null && context.Wallet.Keys != null && context.Wallet.Keys.Any(x => x.UserId == LoggedUser?.Id)
-                         && !context.AreAllRequiredHumanSignaturesCollected
-                         && context.WalletWithdrawalRequestPSBTs.All(x => x.SignerId != LoggedUser?.Id))
+                    @if (context.Wallet != null && context.Wallet.Keys != null
+                         && context.Wallet.Keys.Count(x => x.UserId == LoggedUser?.Id) > context.WalletWithdrawalRequestPSBTs.Count(x => x.SignerId == LoggedUser?.Id)
+                         && !context.AreAllRequiredHumanSignaturesCollected)
                     {
                         <Button Color="Color.Success" Clicked="() => ShowApprovalModal(context)">Approve</Button>
                     }
@@ -761,12 +761,17 @@
         }
     }
 
-    private async Task Approve(WalletWithdrawalRequest request)
+    private async Task Approve()
     {
         if (_selectedRequest == null || string.IsNullOrEmpty(_psbtSignRef?.SignedPSBT) || LoggedUser == null)
         {
             _utxoSelectorModalRef.ClearModal();
             ToastService.ShowError("Invalid request");
+        }
+        else if (_selectedRequest.WalletWithdrawalRequestPSBTs.Any(x => x.SignerId == LoggedUser?.Id
+                                                                        && _psbtSignRef.SignedPSBT.Equals(x.PSBT)))
+        {
+            ToastService.ShowError("You already signed this request with this key");
         }
         else
         {
@@ -831,7 +836,9 @@
     private async Task ApproveRequestDelegate()
     {
         if (_selectedRequest != null)
-            await Approve(_selectedRequest);
+        {
+            await Approve();
+        }
     }
 
     private async Task RejectOrCancel()
