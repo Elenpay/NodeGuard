@@ -227,7 +227,13 @@
             </DataGridColumn>
             <DataGridCommandColumn TItem="ChannelOperationRequest" Caption="Actions" Displayable="true">
                 <EditCommandTemplate>
-                    <Button Color="Color.Primary" hidden=@(!_isFinanceManager) Clicked="@(() => ShowModal(context.Item))">Approve</Button>
+                    @if (_isFinanceManager && context.Item.Wallet != null && context.Item.Wallet.Keys != null 
+                         && context.Item.Wallet.Keys.Count(x => x.UserId == LoggedUser?.Id) > context.Item.ChannelOperationRequestPsbts.Count(x => x.UserSignerId == LoggedUser?.Id) 
+                         && !context.Item.AreAllRequiredHumanSignaturesCollected)
+                    {
+                        <Button Color="Color.Primary" hidden=@(!_isFinanceManager) Clicked="@(() => ShowModal(context.Item))">Approve</Button>
+                    }
+                    
                     @{
                         if (LoggedUser?.Id == context.Item.UserId)
                         {
@@ -795,7 +801,12 @@
 
         if (_selectedRequest == null || string.IsNullOrEmpty(_psbtSignRef?.SignedPSBT) || LoggedUser == null)
         {
-            ToastService.ShowError("Error: Not all fields were set");
+            ToastService.ShowError("Not all fields were set");
+        }
+        else if (_selectedRequest.ChannelOperationRequestPsbts.Any(x => x.UserSignerId == LoggedUser?.Id
+                                                                        && _psbtSignRef.SignedPSBT.Equals(x.PSBT)))
+        {
+            ToastService.ShowError("You already signed this PSBT");
         }
         else
         {
