@@ -837,6 +837,7 @@
     {
         if (_selectedRequest != null)
         {
+            _selectedRequest = await WalletWithdrawalRequestRepository.GetById(_selectedRequest.Id);
             await Approve();
         }
     }
