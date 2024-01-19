@@ -56,12 +56,7 @@
             <DataGridColumn TItem="WalletWithdrawalRequest" Filterable="false" Field="@nameof(WalletWithdrawalRequest.Id)" Caption="#" Sortable="false" Displayable="true"/>
             <DataGridColumn TItem="WalletWithdrawalRequest" Filterable="false" Caption="Actions" Sortable="false" Displayable="true">
                 <DisplayTemplate>
-                    @if (context.Wallet != null && context.Wallet.Keys != null
-                         && context.Wallet.Keys.Count(x => x.UserId == LoggedUser?.Id) > context.WalletWithdrawalRequestPSBTs.Count(x => x.SignerId == LoggedUser?.Id)
-                         && !context.AreAllRequiredHumanSignaturesCollected)
-                    {
-                        <Button Color="Color.Success" hidden="@(!_isFinanceManager)" Clicked="() => ShowApprovalModal(context)">Approve</Button>
-                    }
+                    <Button Color="Color.Success" hidden="@(!_isFinanceManager)" Clicked="() => ShowApprovalModal(context)">Approve</Button>
                 </DisplayTemplate>
             </DataGridColumn>
             <DataGridColumn TItem="WalletWithdrawalRequest" Filterable="false" Caption="" Sortable="false" Displayable="true">
