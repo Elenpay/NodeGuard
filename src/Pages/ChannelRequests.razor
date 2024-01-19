@@ -227,13 +227,7 @@
             </DataGridColumn>
             <DataGridCommandColumn TItem="ChannelOperationRequest" Caption="Actions" Displayable="true">
                 <EditCommandTemplate>
-                    @if (_isFinanceManager && context.Item.Wallet != null && context.Item.Wallet.Keys != null 
-                         && context.Item.Wallet.Keys.Count(x => x.UserId == LoggedUser?.Id) > context.Item.ChannelOperationRequestPsbts.Count(x => x.UserSignerId == LoggedUser?.Id) 
-                         && !context.Item.AreAllRequiredHumanSignaturesCollected)
-                    {
-                        <Button Color="Color.Primary" hidden=@(!_isFinanceManager) Clicked="@(() => ShowModal(context.Item))">Approve</Button>
-                    }
-                    
+                    <Button Color="Color.Primary" hidden=@(!_isFinanceManager) Clicked="@(() => ShowModal(context.Item))">Approve</Button>
                     @{
                         if (LoggedUser?.Id == context.Item.UserId)
                         {

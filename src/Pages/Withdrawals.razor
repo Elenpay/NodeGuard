@@ -60,7 +60,7 @@
                          && context.Wallet.Keys.Count(x => x.UserId == LoggedUser?.Id) > context.WalletWithdrawalRequestPSBTs.Count(x => x.SignerId == LoggedUser?.Id)
                          && !context.AreAllRequiredHumanSignaturesCollected)
                     {
-                        <Button Color="Color.Success" Clicked="() => ShowApprovalModal(context)">Approve</Button>
+                        <Button Color="Color.Success" hidden="@(!_isFinanceManager)" Clicked="() => ShowApprovalModal(context)">Approve</Button>
                     }
                 </DisplayTemplate>
             </DataGridColumn>
@@ -552,7 +552,7 @@
     {
         if (LoggedUser?.Id != null && _isFinanceManager)
         {
-            _userPendingRequests = await WalletWithdrawalRequestRepository.GetAllUnsignedPendingRequests();
+            _userPendingRequests = await WalletWithdrawalRequestRepository.GetUnsignedPendingRequestsByUser(LoggedUser.Id);
         }
 
         _withdrawalRequests = (await WalletWithdrawalRequestRepository.GetAll()).Except(_userPendingRequests).ToList();
