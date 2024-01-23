@@ -1456,8 +1456,6 @@
 
             if (withdrawalRequest != null)
             {
-    // TODO: Check job id
-                withdrawalRequest.JobId = job.Job.Key.ToString();
                 WalletWithdrawalRequestRepository.Update(withdrawalRequest);
                 result = true;
             }

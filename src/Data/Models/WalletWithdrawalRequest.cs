@@ -111,11 +111,6 @@ namespace NodeGuard.Data.Models
                     !x.IsTemplatePSBT && !x.IsFinalisedPSBT && !x.IsInternalWalletPSBT);
 
         /// <summary>
-        /// This is the JobId provided by Quartz of the job executing this request.
-        /// </summary>
-        public string? JobId { get; set; }
-
-        /// <summary>
         /// This indicates if the user requested a changeless operation by selecting UTXOs
         /// </summary>
         public bool Changeless { get; set; }

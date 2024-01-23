@@ -36,7 +36,6 @@ public class NodeSubscriptorJob : IJob
                     var job = SimpleJob.Create<NodeChannelSuscribeJob>(map, managedNode.Id.ToString());
                     await scheduler.ScheduleJob(job.Job, job.Trigger);
                     
-                    managedNode.JobId = job.Job.Key.ToString();
                     var jobUpateResult = _nodeRepository.Update(managedNode);
                 }
             }

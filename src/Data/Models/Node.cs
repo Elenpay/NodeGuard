@@ -68,11 +68,6 @@ namespace NodeGuard.Data.Models
         public ICollection<ChannelOperationRequest> ChannelOperationRequestsAsDestination { get; set; }
 
         public ICollection<ApplicationUser> Users { get; set; }
-        
-        /// <summary>
-        /// This is the JobId provided by Quartz of the job running the subscription to get the info of the node.
-        /// </summary>
-        public string? JobId { get; set; }
 
         #endregion Relationships
     }

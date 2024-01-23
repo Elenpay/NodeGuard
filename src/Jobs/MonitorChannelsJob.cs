@@ -35,12 +35,10 @@ public class MonitorChannelsJob : IJob
                     var job = SimpleJob.Create<ChannelMonitorJob>(map, managedNode.Id.ToString());
                     await scheduler.ScheduleJob(job.Job, job.Trigger);
 
-                    var jobId = job.Job.Key.ToString();
-                    managedNode.JobId = jobId;
                     var jobUpateResult = _nodeRepository.Update(managedNode);
                     if (!jobUpateResult.Item1)
                     {
-                        _logger.LogWarning("Couldn't update Node {NodeId} with JobId {JobId}", managedNode.Id, jobId);
+                        _logger.LogWarning("Couldn't update Node {NodeId}", managedNode.Id);
                     }
                 }
             }

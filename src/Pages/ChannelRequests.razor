@@ -923,9 +923,6 @@
             var job = RetriableJob.Create<ChannelOpenJob>(map, _selectedRequest.Id.ToString(), retryList);
             await scheduler.ScheduleJob(job.Job, job.Trigger);
 
-            // TODO: Check job id
-            _selectedRequest.JobId = job.Job.Key.ToString();
-
             var jobUpdateResult = ChannelOperationRequestRepository.Update(_selectedRequest);
             ToastService.ShowSuccess("Channel opening job created");
         }

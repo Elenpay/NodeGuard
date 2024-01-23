@@ -233,7 +233,6 @@
             {
                 await CreateJobs(node);
             }
-            node.JobId = null;
             var (result, _) = NodeRepository.Update(node);
             if (result)
             {
@@ -400,7 +399,6 @@
             await SimpleJob.DeleteJob<NodeChannelSuscribeJob>(scheduler, node.Id.ToString());
             await SimpleJob.DeleteJob<ProcessNodeChannelAcceptorJob>(scheduler, node.Id.ToString());
             
-            node.JobId = null;
         }
         catch
         {
@@ -450,7 +448,7 @@
 
             await scheduler.ScheduleJob(job.Job, job.Trigger);
 
-            node.JobId = job.Job.Key.ToString();
+            // node.JobId = job.Job.Key.ToString();
 
             var (result, _) = NodeRepository.Update(node);
             if (!result)

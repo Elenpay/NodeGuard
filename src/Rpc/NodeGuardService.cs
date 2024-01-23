@@ -524,8 +524,6 @@ public class NodeGuardService : Nodeguard.NodeGuardService.NodeGuardServiceBase,
             var job = RetriableJob.Create<ChannelOpenJob>(map, channelOperationRequest.Id.ToString(), retryList);
             await scheduler.ScheduleJob(job.Job, job.Trigger);
 
-            channelOperationRequest.JobId = job.Job.Key.ToString();
-
             var jobUpdateResult = _channelOperationRequestRepository.Update(channelOperationRequest);
 
             if (!jobUpdateResult.Item1)
@@ -596,8 +594,6 @@ public class NodeGuardService : Nodeguard.NodeGuardService.NodeGuardServiceBase,
             var job = RetriableJob.Create<ChannelCloseJob>(map, channelOperationRequest.Id.ToString(), retryList);
             await scheduler.ScheduleJob(job.Job, job.Trigger);
 
-            channelOperationRequest.JobId = job.Job.Key.ToString();
-
             var jobUpdateResult = _channelOperationRequestRepository.Update(channelOperationRequest);
 
             if (!jobUpdateResult.Item1)
@@ -653,8 +649,7 @@ public class NodeGuardService : Nodeguard.NodeGuardService.NodeGuardServiceBase,
             Status = status,
             Type = type,
             SourceNodeId = channelOperationRequest.SourceNodeId,
-            Private = channelOperationRequest.IsChannelPrivate,
-            JobId = channelOperationRequest.JobId
+            Private = channelOperationRequest.IsChannelPrivate
         };
         if (channelOperationRequest.TxId != null)
             result.TxId = channelOperationRequest.TxId;
