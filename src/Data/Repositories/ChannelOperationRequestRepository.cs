@@ -79,15 +79,15 @@ namespace NodeGuard.Data.Repositories
             await using var applicationDbContext = await _dbContextFactory.CreateDbContextAsync();
 
             return await applicationDbContext.ChannelOperationRequests
-                .Where(request => request.Wallet.Keys.Any(key => key.User != null && key.User.Id == userId) &&
-                                  (request.Status == ChannelOperationRequestStatus.Pending || request.Status == ChannelOperationRequestStatus.PSBTSignaturesPending) &&
-                                  request.ChannelOperationRequestPsbts.All(signature => signature.UserSignerId != userId))
                 .Include(request => request.SourceNode)
                 .Include(request => request.Wallet).ThenInclude(x => x.InternalWallet)
                 .Include(x => x.Wallet).ThenInclude(x => x.Keys)
                 .Include(request => request.DestNode)
                 .Include(request => request.ChannelOperationRequestPsbts)
                 .Include(x => x.Utxos)
+                .Where(request => request.Wallet != null
+                                  && request.Wallet.Keys.Count(key => userId == key.UserId) > request.ChannelOperationRequestPsbts.Count(req => req.UserSignerId == userId)
+                                  && (request.Status == ChannelOperationRequestStatus.Pending || request.Status == ChannelOperationRequestStatus.PSBTSignaturesPending))
                 .AsSplitQuery()
                 .ToListAsync();
         }

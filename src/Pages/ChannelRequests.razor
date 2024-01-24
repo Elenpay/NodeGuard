@@ -793,9 +793,18 @@
     {
         _psbtSignRef?.HideModal();
 
+        if (_selectedRequest != null)
+        {
+            _selectedRequest = await ChannelOperationRequestRepository.GetById(_selectedRequest.Id);
+        }
+
         if (_selectedRequest == null || string.IsNullOrEmpty(_psbtSignRef?.SignedPSBT) || LoggedUser == null)
         {
-            ToastService.ShowError("Error: Not all fields were set");
+            ToastService.ShowError("Not all fields were set");
+        }
+        else if (_selectedRequest.ChannelOperationRequestPsbts.Any(x => _psbtSignRef.SignedPSBT.Equals(x.PSBT)))
+        {
+            ToastService.ShowError("You already signed this PSBT");
         }
         else
         {
