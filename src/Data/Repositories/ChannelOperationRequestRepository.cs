@@ -87,7 +87,7 @@ namespace NodeGuard.Data.Repositories
                 .Include(x => x.Utxos)
                 .Where(request => request.Wallet != null
                                   && request.Wallet.Keys.Count(key => userId == key.UserId) > request.ChannelOperationRequestPsbts.Count(req => req.UserSignerId == userId)
-                                  && !request.AreAllRequiredHumanSignaturesCollected)
+                                  && (request.Status == ChannelOperationRequestStatus.Pending || request.Status == ChannelOperationRequestStatus.PSBTSignaturesPending))
                 .AsSplitQuery()
                 .ToListAsync();
         }

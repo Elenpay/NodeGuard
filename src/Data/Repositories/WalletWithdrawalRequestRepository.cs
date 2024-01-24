@@ -98,7 +98,7 @@ namespace NodeGuard.Data.Repositories
                 .Include(x => x.WalletWithdrawalRequestPSBTs)
                 .Where(request => request.Wallet != null
                                 && request.Wallet.Keys.Count(key => userId == key.UserId) > request.WalletWithdrawalRequestPSBTs.Count(req => req.SignerId == userId)
-                                && !request.AreAllRequiredHumanSignaturesCollected)
+                                && (request.Status == WalletWithdrawalRequestStatus.Pending || request.Status == WalletWithdrawalRequestStatus.PSBTSignaturesPending))
                 .AsSplitQuery()
                 .ToListAsync();
         }
