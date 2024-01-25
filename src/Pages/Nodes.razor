@@ -448,8 +448,6 @@
 
             await scheduler.ScheduleJob(job.Job, job.Trigger);
 
-            // node.JobId = job.Job.Key.ToString();
-
             var (result, _) = NodeRepository.Update(node);
             if (!result)
             {
