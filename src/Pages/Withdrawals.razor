@@ -56,12 +56,7 @@
             <DataGridColumn TItem="WalletWithdrawalRequest" Filterable="false" Field="@nameof(WalletWithdrawalRequest.Id)" Caption="#" Sortable="false" Displayable="true"/>
             <DataGridColumn TItem="WalletWithdrawalRequest" Filterable="false" Caption="Actions" Sortable="false" Displayable="true">
                 <DisplayTemplate>
-                    @if (context.Wallet != null && context.Wallet.Keys != null && context.Wallet.Keys.Any(x => x.UserId == LoggedUser?.Id)
-                         && !context.AreAllRequiredHumanSignaturesCollected
-                         && context.WalletWithdrawalRequestPSBTs.All(x => x.SignerId != LoggedUser?.Id))
-                    {
-                        <Button Color="Color.Success" Clicked="() => ShowApprovalModal(context)">Approve</Button>
-                    }
+                    <Button Color="Color.Success" hidden="@(!_isFinanceManager)" Clicked="() => ShowApprovalModal(context)">Approve</Button>
                 </DisplayTemplate>
             </DataGridColumn>
             <DataGridColumn TItem="WalletWithdrawalRequest" Filterable="false" Caption="" Sortable="false" Displayable="true">
@@ -552,7 +547,7 @@
     {
         if (LoggedUser?.Id != null && _isFinanceManager)
         {
-            _userPendingRequests = await WalletWithdrawalRequestRepository.GetAllUnsignedPendingRequests();
+            _userPendingRequests = await WalletWithdrawalRequestRepository.GetUnsignedPendingRequestsByUser(LoggedUser.Id);
         }
 
         _withdrawalRequests = (await WalletWithdrawalRequestRepository.GetAll()).Except(_userPendingRequests).ToList();
@@ -761,12 +756,16 @@
         }
     }
 
-    private async Task Approve(WalletWithdrawalRequest request)
+    private async Task Approve()
     {
         if (_selectedRequest == null || string.IsNullOrEmpty(_psbtSignRef?.SignedPSBT) || LoggedUser == null)
         {
             _utxoSelectorModalRef.ClearModal();
             ToastService.ShowError("Invalid request");
+        }
+        else if (_selectedRequest.WalletWithdrawalRequestPSBTs.Any(x => _psbtSignRef.SignedPSBT.Equals(x.PSBT)))
+        {
+            ToastService.ShowError("You already signed this request with this key");
         }
         else
         {
@@ -831,7 +830,10 @@
     private async Task ApproveRequestDelegate()
     {
         if (_selectedRequest != null)
-            await Approve(_selectedRequest);
+        {
+            _selectedRequest = await WalletWithdrawalRequestRepository.GetById(_selectedRequest.Id);
+            await Approve();
+        }
     }
 
     private async Task RejectOrCancel()
