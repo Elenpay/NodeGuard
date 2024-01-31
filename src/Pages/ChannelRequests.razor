@@ -88,7 +88,8 @@
                                     TextField="@((item) => item.Name)"
                                     ValueField="@((item) => item.Id)"
                                     SelectedValueChanged="@OnSelectedSourceNode"
-                                    DefaultItemText="Choose the source node">
+                                    DefaultItemText="Choose the source node"
+                                    @onfocus="@UpdateManageableNodes">
                             <Feedback>
                                 <ValidationError/>
                             </Feedback>
@@ -622,6 +623,14 @@
         _selectedWalletBalance = ((Money)balance).ToUnit(MoneyUnit.BTC);
     }
 
+    private async Task UpdateManageableNodes()
+    {
+        if (_destNodeName.IsNullOrEmpty	())
+        {
+            _manageableNodes = await NodeRepository.GetAllManagedByUser(LoggedUser.Id);
+        }
+    }
+    
     private async Task SearchNode()
     {
         _selectedDestNode = null;
