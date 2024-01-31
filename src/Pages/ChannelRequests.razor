@@ -52,24 +52,6 @@
                 </CaptionTemplate>
             </DataGridColumn>
             <DataGridColumn TItem="ChannelOperationRequest" Field="@nameof(ChannelOperationRequest.Id)" Caption="#" Sortable="false" Displayable="true"/>
-            <DataGridColumn TItem="ChannelOperationRequest" Field="SourceNode.Name" Caption="Source Node" Sortable="false" Displayable="@IsPendingRequestsColumnVisible(PendingChannelsColumnName.SourceNode)" PopupFieldColumnSize="ColumnSize.Is12" Editable="true">
-                          
-                <EditTemplate>
-                    <Validation Validator="ValidationRule.IsSelected" @ref="_sourceNodeValidation">
-                        <SelectList TItem="Node"
-                                    TValue="int"
-                                    Data="@_manageableNodes"
-                                    TextField="@((item) => item.Name)"
-                                    ValueField="@((item) => item.Id)"
-                                    SelectedValueChanged="@OnSelectedSourceNode"
-                                    DefaultItemText="Choose the source node">
-                            <Feedback>
-                                <ValidationError/>
-                            </Feedback>
-                        </SelectList>
-                    </Validation>
-                </EditTemplate>
-            </DataGridColumn>
             <DataGridColumn TItem="ChannelOperationRequest" Field="DestNode.Name" Caption="Remote Node" Sortable="false" Displayable="@IsPendingRequestsColumnVisible(PendingChannelsColumnName.RemoteNode)" PopupFieldColumnSize="ColumnSize.Is12" Editable="true"
                             Validator="ValidationRule.IsAlphanumeric">
                 <EditTemplate>
@@ -96,6 +78,23 @@
                 </FieldHelp>
              </Validation>
             </EditTemplate>
+            </DataGridColumn>
+            <DataGridColumn TItem="ChannelOperationRequest" Field="SourceNode.Name" Caption="Source Node" Sortable="false" Displayable="@IsPendingRequestsColumnVisible(PendingChannelsColumnName.SourceNode)" PopupFieldColumnSize="ColumnSize.Is12" Editable="true">
+                <EditTemplate>
+                    <Validation Validator="ValidationRule.IsSelected" @ref="_sourceNodeValidation">
+                        <SelectList TItem="Node"
+                                    TValue="int"
+                                    Data="@_manageableNodes"
+                                    TextField="@((item) => item.Name)"
+                                    ValueField="@((item) => item.Id)"
+                                    SelectedValueChanged="@OnSelectedSourceNode"
+                                    DefaultItemText="Choose the source node">
+                            <Feedback>
+                                <ValidationError/>
+                            </Feedback>
+                        </SelectList>
+                    </Validation>
+                </EditTemplate>
             </DataGridColumn>
             <DataGridColumn TItem="ChannelOperationRequest" Field="Wallet.Name" Caption="Source of Funds" Sortable="false" Displayable="@IsPendingRequestsColumnVisible(PendingChannelsColumnName.SourceOfFunds)" PopupFieldColumnSize="ColumnSize.Is12" Editable="true">
                 <DisplayTemplate>
