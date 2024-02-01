@@ -165,9 +165,6 @@ namespace NodeGuard.Data.Repositories
             var job = RetriableJob.Create<ChannelCloseJob>(map, closeRequest.Id.ToString(), retryList);
             await scheduler.ScheduleJob(job.Job, job.Trigger);
 
-            // TODO: Check job id
-            closeRequest.JobId = job.Job.Key.ToString();
-
             var jobUpdateResult = _channelOperationRequestRepository.Update(closeRequest);
             if (!jobUpdateResult.Item1)
             {

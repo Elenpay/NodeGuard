@@ -1018,8 +1018,6 @@
 
             if (_selectedRequest != null)
             {
-                // TODO: Check job id
-                _selectedRequest.JobId = job.Job.Key.ToString();
                 WalletWithdrawalRequestRepository.Update(_selectedRequest);
             }
         }
