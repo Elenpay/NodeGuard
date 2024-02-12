@@ -162,7 +162,7 @@
                         <Button Color="Color.Primary" Disabled="@(!_selectedWalletId.HasValue)" Clicked="@OpenCoinSelectionModal">Select Coins</Button> or use
                         <Button Color="Color.Primary" Disabled="@(_selectedUTXOs.Count == 0)" Clicked="@ClearSelectedUTXOs">Default Coin Selection</Button>
                     </div>
-                        <Check TValue="bool" @bind-Checked="_isChangeless" Disabled="@(_selectedUTXOs.Count == 0)">Changeless transaction</Check>
+                    <Check TValue="bool" @bind-Checked="_isChangeless" Disabled="@(_selectedUTXOs.Count == 0)">Changeless transaction</Check>
                     @if (_selectedWalletId.HasValue && _selectedUTXOs.Count > 0)
                     {
                         if (_isChangeless)
