@@ -23,3 +23,8 @@ public class RemoteCanceledFundingException : Exception
 {
    public RemoteCanceledFundingException(string? message = null): base(message) {}
 }
+
+public class NotEnoughRoomInUtxosForFeesException : Exception
+{
+   public NotEnoughRoomInUtxosForFeesException(): base("Not enough room in the UTXOs to cover the fees") {}
+}

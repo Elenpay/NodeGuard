@@ -55,7 +55,7 @@
             <DataGridColumn TItem="ChannelOperationRequest" Field="DestNode.Name" Caption="Remote Node" Sortable="false" Displayable="@IsPendingRequestsColumnVisible(PendingChannelsColumnName.RemoteNode)" PopupFieldColumnSize="ColumnSize.Is12" Editable="true"
                             Validator="ValidationRule.IsAlphanumeric">
                 <EditTemplate>
-                    <Validation Validator="@((ValidatorEventArgs obj) => ValidationHelper.validateDestNode(obj, _selectedDestNode))" @ref="_destNodeValidation">
+                    <Validation Validator="@((ValidatorEventArgs obj) => ValidationHelper.ValidateDestNode(obj, _selectedDestNode))" @ref="_destNodeValidation">
                         <Addons>
                             <Addon AddonType="AddonType.Body">
                                 <TextEdit @bind-Text="@_destNodeName" Placeholder="Type the destination Node public key">
@@ -141,22 +141,28 @@
                 </DisplayTemplate>
                 <EditTemplate>
                     <Validation Validator="@ValidationHelper.ValidateChannelCapacity" @ref="_capacityValidation">
-                        <NumericPicker TValue="decimal" @bind-Value="@_amount" Min="@_minimumChannelCapacity" Max="@_maxChannelCapacity" Decimals="8" Step="0.00001m" CurrencySymbol=" ₿" Disabled="_isChangeless"/>
-                        <FieldHelp>
-                            @{
-                                  decimal amountToShow = _amount < _maxChannelCapacity
-                                      ? _amount
-                                      : _maxChannelCapacity;
-                                  decimal convertedAmount = Math.Round(PriceConversionService.SatToUsdConversion(new Money(amountToShow, MoneyUnit.BTC).Satoshi, _btcPrice), 2);
-                              }
-                              @($"Minimum {_minimumChannelCapacity:f8}. Current amount: {convertedAmount} USD")
+                        <Validation Validator="@((ValidatorEventArgs obj) => ValidationHelper.ValidateAmount(obj, _amount, SelectedUTXOsValue(), _isChangeless))" @ref="_changelessValidation">
+                            <NumericPicker TValue="decimal" @bind-Value="@_amount" Min="@_minimumChannelCapacity" Max="@_maxChannelCapacity" Decimals="8" Step="0.00001m" CurrencySymbol=" ₿" Disabled="_isChangeless">
+                                <Feedback>
+                                    <ValidationError/>
+                                </Feedback>
+                            </NumericPicker>
+                            <FieldHelp>
+                                @{
+                                    decimal amountToShow = _amount < _maxChannelCapacity
+                                        ? _amount
+                                        : _maxChannelCapacity;
+                                    decimal convertedAmount = Math.Round(PriceConversionService.SatToUsdConversion(new Money(amountToShow, MoneyUnit.BTC).Satoshi, _btcPrice), 2);
+                                }
+                                @($"Minimum {_minimumChannelCapacity:f8}. Current amount: {convertedAmount} USD")
                             </FieldHelp>
+                        </Validation>
                     </Validation>
                     <div class="mb-3">
                         <Button Color="Color.Primary" Disabled="@(!_selectedWalletId.HasValue)" Clicked="@OpenCoinSelectionModal">Select Coins</Button> or use
                         <Button Color="Color.Primary" Disabled="@(_selectedUTXOs.Count == 0)" Clicked="@ClearSelectedUTXOs">Default Coin Selection</Button>
                     </div>
-                    <Check TValue="bool" @bind-Checked="_isChangeless" Disabled="@(_selectedUTXOs.Count == 0)">Changeless transaction</Check>
+                        <Check TValue="bool" @bind-Checked="_isChangeless" Disabled="@(_selectedUTXOs.Count == 0)">Changeless transaction</Check>
                     @if (_selectedWalletId.HasValue && _selectedUTXOs.Count > 0)
                     {
                         if (_isChangeless)
@@ -423,7 +429,8 @@
 
 <UTXOSelectorModal
     @ref="_utxoSelectorModalRef"
-    OnClose="@OnCloseCoinSelectionModal"/>
+    OnClose="@OnCloseCoinSelectionModal"
+    IsWalletWithdrawalValidation="false"/>
 
 @inject IChannelOperationRequestRepository ChannelOperationRequestRepository
 @inject IChannelOperationRequestPSBTRepository ChannelOperationRequestPsbtRepository
@@ -477,6 +484,7 @@
     private Validation? _sourceNodeValidation;
     private Validation? _destNodeValidation;
     private Validation? _capacityValidation;
+    private Validation? _changelessValidation;
 
     private decimal _btcPrice;
 
@@ -653,7 +661,7 @@
     {
         if (LoggedUser == null) return;
 
-        List<Validation?> validators = new() { _destNodeValidation, _sourceNodeValidation, _walletValidation };
+        List<Validation?> validators = new() { _destNodeValidation, _sourceNodeValidation, _walletValidation, _changelessValidation };
         if (_selectedUTXOs.Count == 0)
         {
             validators.Add(_capacityValidation);
@@ -998,6 +1006,11 @@
         if (_selectedUTXOs.Count > 0)
         {
             _amount = SelectedUTXOsValue();
+        }
+        // Most probably, if the user selected all UTXOs is because they want to do a changeless operation
+        if (_selectedUTXOs.Count == _utxoSelectorModalRef.UTXOList.Count)
+        {
+            _isChangeless = true;
         }
         StateHasChanged();
     }
