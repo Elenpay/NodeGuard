@@ -128,13 +128,28 @@ public static class ValidationHelper
         }
     }
 
-    public static void validateDestNode(ValidatorEventArgs obj, Node? destNode)
+    public static void ValidateDestNode(ValidatorEventArgs obj, Node? destNode)
     {
         obj.Status = ValidationStatus.Success;
         if (destNode == null)
         {
             obj.ErrorText = "Select a proper destination node";
             obj.Status = ValidationStatus.Error;
+        }
+    }
+
+    public static void ValidateAmount(ValidatorEventArgs obj, decimal amount, decimal selectedUtxosAmount, bool isChangeless)
+    {
+        obj.Status = ValidationStatus.Success;
+        if (!isChangeless && amount > selectedUtxosAmount)
+        {
+            obj.Status = ValidationStatus.Error;
+            obj.ErrorText = "The amount is greater than the selected UTXOs amount";
+        }
+        else if (!isChangeless && amount == selectedUtxosAmount)
+        {
+            obj.Status = ValidationStatus.Error;
+            obj.ErrorText = "The amount to send is equal to the selected UTXOs amount, there is no room in the UTXOs for change";
         }
     }
 

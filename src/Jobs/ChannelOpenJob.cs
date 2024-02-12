@@ -85,7 +85,7 @@ public class ChannelOpenJob : IJob
         try
         {
             var request = await _channelOperationRequestRepository.GetById(openRequestId);
-            if (e is PeerNotOnlineException or RemoteCanceledFundingException)
+            if (e is PeerNotOnlineException or RemoteCanceledFundingException or NotEnoughRoomInUtxosForFeesException)
             {
                 request.StatusLogs.Add(ChannelStatusLog.Error(e.Message));
             }
