@@ -80,6 +80,7 @@ message GetLiquidityRulesResponse {
 
 message LiquidityRule {
   uint64 channel_id = 1;
+  // Public key of the node that is the managed node of the channel
   string node_pubkey = 2;
   int32 swap_wallet_id = 3;
   optional int32 reverse_swap_wallet_id = 4;
@@ -88,6 +89,8 @@ message LiquidityRule {
   float rebalance_target = 7;
   optional string reverse_swap_address = 8;
   bool is_reverse_swap_wallet_rule = 9;
+  // Public key of the node that is the counterparty of the channel
+  string remote_node_pubkey = 10;
 }
 
 message GetNewWalletAddressRequest {
