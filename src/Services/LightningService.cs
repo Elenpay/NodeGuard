@@ -324,6 +324,10 @@ namespace NodeGuard.Services
                                                     o.Value != channelOperationRequest.SatsAmount) ??
                                                 channelfundingTx.Outputs.First();
                                             changeOutput.Value = totalIn - totalOut - totalChangefulFees;
+                                            if (changeOutput.Value < 0)
+                                            {
+                                                throw new NotEnoughRoomInUtxosForFeesException();
+                                            }
 
                                             //We merge changeFixedPSBT with the other PSBT with the change fixed
                                             fundedPSBT = channelfundingTx.CreatePSBT(network).UpdateFrom(fundedPSBT);
