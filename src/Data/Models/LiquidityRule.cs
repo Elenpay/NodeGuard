@@ -45,7 +45,7 @@ public class LiquidityRule : Entity
     /// The pubkey of the node that is the remote counterparty of the channel
     /// </summary>
     [NotMapped]
-    public string? RemoteNodePubkey => Channel?.SourceNode.PubKey != Node.PubKey ? Channel?.SourceNode.PubKey : Channel.DestinationNode.PubKey;
+    public string? RemoteNodePubkey => Channel?.SourceNode?.PubKey != Node.PubKey ? Channel?.SourceNode?.PubKey : Channel?.DestinationNode?.PubKey;
     
     #endregion
 
