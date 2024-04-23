@@ -257,9 +257,7 @@ public class NodeGuardService : Nodeguard.NodeGuardService.NodeGuardServiceBase,
             }
 
             //Template PSBT generation with SIGHASH_ALL
-            var psbt = await _bitcoinService.GenerateTemplatePSBT(withdrawalRequest ??
-                                                                  throw new ArgumentException(
-                                                                      nameof(withdrawalRequest)));
+            var psbt = await _bitcoinService.GenerateTemplatePSBT(withdrawalRequest ?? throw new ArgumentException(nameof(withdrawalRequest)));
 
             //If the wallet is hot, we send the withdrawal request to the node
             if (wallet.IsHotWallet)
