@@ -131,6 +131,8 @@ namespace NodeGuard.Data.Repositories
                 return (false, "The wallet could not be found.");
             }
 
+            type.Wallet = wallet;
+
             var derivationStrategyBase = wallet.GetDerivationStrategy();
 
             if (derivationStrategyBase == null)

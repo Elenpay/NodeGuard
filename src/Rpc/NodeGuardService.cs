@@ -177,6 +177,17 @@ public class NodeGuardService : Nodeguard.NodeGuardService.NodeGuardServiceBase,
                 throw new RpcException(new Status(StatusCode.NotFound, "Wallet not found"));
             }
 
+            if (request.Amount <= 0)
+            {
+                throw new RpcException(new Status(StatusCode.InvalidArgument, "Amount must be greater than 0"));
+            }
+
+            if (request.Address == "")
+            {
+                throw new RpcException(new Status(StatusCode.InvalidArgument,
+                    "A destination address must be provided"));
+            }
+
             //Create withdrawal request
             var amount = new Money(request.Amount, MoneyUnit.Satoshi).ToUnit(MoneyUnit.BTC);
 
@@ -192,10 +203,10 @@ public class NodeGuardService : Nodeguard.NodeGuardService.NodeGuardServiceBase,
 
                 // Search the utxos and lock them
                 var derivationStrategyBase = wallet.GetDerivationStrategy();
-                
-                if(derivationStrategyBase == null)
+
+                if (derivationStrategyBase == null)
                     throw new RpcException(new Status(StatusCode.Internal, "Derivation strategy not found"));
-                
+
                 utxos = await _coinSelectionService.GetUTXOsByOutpointAsync(derivationStrategyBase, outpoints);
                 amount = utxos.Sum(u => ((Money)u.Value).ToUnit(MoneyUnit.BTC));
             }
@@ -211,12 +222,17 @@ public class NodeGuardService : Nodeguard.NodeGuardService.NodeGuardServiceBase,
                     : WalletWithdrawalRequestStatus.Pending,
                 RequestMetadata = request.RequestMetadata,
                 Changeless = request.Changeless,
-                MempoolRecommendedFeesType = (MempoolRecommendedFeesType) request.MempoolFeeRate,
+                MempoolRecommendedFeesType = (MempoolRecommendedFeesType)request.MempoolFeeRate,
                 CustomFeeRate = request.CustomFeeRate
             };
 
             //Save withdrawal request
             var withdrawalSaved = await _walletWithdrawalRequestRepository.AddAsync(withdrawalRequest);
+            if (!withdrawalSaved.Item1 && withdrawalSaved.Item2!.Contains("does not have enough funds"))
+            {
+                _logger.LogError(withdrawalSaved.Item2);
+                throw new NotEnoughBalanceInWalletException(withdrawalSaved.Item2);
+            }
 
             if (!withdrawalSaved.Item1)
             {
@@ -239,9 +255,11 @@ public class NodeGuardService : Nodeguard.NodeGuardService.NodeGuardServiceBase,
                 _logger.LogError("Error saving withdrawal request for wallet with id {walletId}", request.WalletId);
                 throw new RpcException(new Status(StatusCode.Internal, "Error saving withdrawal request for wallet"));
             }
-            
+
             //Template PSBT generation with SIGHASH_ALL
-            var psbt = await _bitcoinService.GenerateTemplatePSBT(withdrawalRequest ?? throw new ArgumentException(nameof(withdrawalRequest)));
+            var psbt = await _bitcoinService.GenerateTemplatePSBT(withdrawalRequest ??
+                                                                  throw new ArgumentException(
+                                                                      nameof(withdrawalRequest)));
 
             //If the wallet is hot, we send the withdrawal request to the node
             if (wallet.IsHotWallet)
@@ -264,25 +282,41 @@ public class NodeGuardService : Nodeguard.NodeGuardService.NodeGuardServiceBase,
         }
         catch (NoUTXOsAvailableException)
         {
+            CancelWithdrawalRequest(withdrawalRequest);
             _logger.LogError("No available UTXOs for wallet with id {walletId}", request.WalletId);
-            throw new RpcException(new Status(StatusCode.Internal, "No available UTXOs for wallet"));
+            throw new RpcException(new Status(StatusCode.ResourceExhausted, "No available UTXOs for wallet"));
+        }
+        catch (NotEnoughBalanceInWalletException e)
+        {
+            _logger.LogError(e.Message);
+            throw new RpcException(new Status(StatusCode.ResourceExhausted, e.Message));
+        }
+        catch (RpcException e)
+        {
+            CancelWithdrawalRequest(withdrawalRequest);
+            _logger.LogError(e.Message);
+            throw new RpcException(new Status(e.Status.StatusCode, e.Status.Detail));
         }
         catch (Exception e)
         {
-            if (withdrawalRequest != null)
-            {
-                withdrawalRequest.Status = WalletWithdrawalRequestStatus.Cancelled;
-                var (success, error) = _walletWithdrawalRequestRepository.Update(withdrawalRequest);
-                if (!success)
-                {
-                    _logger.LogError(e, "Error updating status of withdrawal request {RequestId} for wallet {WalletId}", withdrawalRequest.Id, request.WalletId);
-                }
-            }
+            CancelWithdrawalRequest(withdrawalRequest);
             _logger.LogError(e, "Error requesting withdrawal for wallet with id {walletId}", request.WalletId);
             throw new RpcException(new Status(StatusCode.Internal, "Error requesting withdrawal for wallet"));
         }
     }
 
+    private void CancelWithdrawalRequest(WalletWithdrawalRequest? withdrawalRequest)
+    {
+        if (withdrawalRequest != null)
+        {
+            withdrawalRequest.Status = WalletWithdrawalRequestStatus.Cancelled;
+            var (success, error) = _walletWithdrawalRequestRepository.Update(withdrawalRequest);
+            if (!success)
+            {
+                _logger.LogError(error, "Error updating status of withdrawal request {RequestId} for wallet {WalletId}", withdrawalRequest.Id, withdrawalRequest.WalletId);
+            }
+        }
+    }
     public override async Task<GetAvailableWalletsResponse> GetAvailableWallets(GetAvailableWalletsRequest request,
         ServerCallContext context)
     {
