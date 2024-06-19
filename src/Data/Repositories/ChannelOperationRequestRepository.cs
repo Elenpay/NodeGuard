@@ -158,7 +158,7 @@ namespace NodeGuard.Data.Repositories
             return _repository.Update(strippedType, applicationDbContext);
         }
 
-        public async Task<(bool, string?)> AddUTXOs(IBitcoinRequest type, List<FMUTXO> utxos)
+        public async Task<(bool, string?)> AddUTXOs(IBitcoinRequest type, List<UTXO> utxos)
         {
             if (type == null) throw new ArgumentNullException(nameof(type));
             if (utxos.Count == 0) throw new ArgumentException("Value cannot be an empty collection.", nameof(utxos));
@@ -197,11 +197,11 @@ namespace NodeGuard.Data.Repositories
             return result;
         }
 
-        public async Task<(bool, List<FMUTXO>?)> GetUTXOs(IBitcoinRequest request)
+        public async Task<(bool, List<UTXO>?)> GetUTXOs(IBitcoinRequest request)
         {
             await using var applicationDbContext = await _dbContextFactory.CreateDbContextAsync();
 
-            (bool, List<FMUTXO>?) result = (true, null);
+            (bool, List<UTXO>?) result = (true, null);
             try
             {
                 var channelOperationRequest = await applicationDbContext.ChannelOperationRequests

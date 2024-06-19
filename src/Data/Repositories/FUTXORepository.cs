@@ -23,13 +23,13 @@ using Microsoft.EntityFrameworkCore;
 
 namespace NodeGuard.Data.Repositories
 {
-    public class FUTXORepository : IFMUTXORepository
+    public class FUTXORepository : IUTXORepository
     {
-        private readonly IRepository<FMUTXO> _repository;
+        private readonly IRepository<UTXO> _repository;
         private readonly ILogger<FUTXORepository> _logger;
         private readonly IDbContextFactory<ApplicationDbContext> _dbContextFactory;
 
-        public FUTXORepository(IRepository<FMUTXO> repository,
+        public FUTXORepository(IRepository<UTXO> repository,
             ILogger<FUTXORepository> logger,
             IDbContextFactory<ApplicationDbContext> dbContextFactory)
         {
@@ -38,19 +38,19 @@ namespace NodeGuard.Data.Repositories
             _dbContextFactory = dbContextFactory;
         }
 
-        public async Task<FMUTXO?> GetById(int id)
+        public async Task<UTXO?> GetById(int id)
         {
             await using var applicationDbContext = await _dbContextFactory.CreateDbContextAsync();
 
-            return await applicationDbContext.FMUTXOs.FirstOrDefaultAsync(x => x.Id == id);
+            return await applicationDbContext.UTXOs.FirstOrDefaultAsync(x => x.Id == id);
         }
 
-        public async Task<List<FMUTXO>> GetAll()
+        public async Task<List<UTXO>> GetAll()
         {
             throw new NotImplementedException();
         }
 
-        public async Task<(bool, string?)> AddAsync(FMUTXO type)
+        public async Task<(bool, string?)> AddAsync(UTXO type)
         {
             await using var applicationDbContext = await _dbContextFactory.CreateDbContextAsync();
 
@@ -59,28 +59,28 @@ namespace NodeGuard.Data.Repositories
             return await _repository.AddAsync(type, applicationDbContext);
         }
 
-        public async Task<(bool, string?)> AddRangeAsync(List<FMUTXO> type)
+        public async Task<(bool, string?)> AddRangeAsync(List<UTXO> type)
         {
             await using var applicationDbContext = await _dbContextFactory.CreateDbContextAsync();
 
             return await _repository.AddRangeAsync(type, applicationDbContext);
         }
 
-        public (bool, string?) Remove(FMUTXO type)
+        public (bool, string?) Remove(UTXO type)
         {
             using var applicationDbContext = _dbContextFactory.CreateDbContext();
 
             return _repository.Remove(type, applicationDbContext);
         }
 
-        public (bool, string?) RemoveRange(List<FMUTXO> types)
+        public (bool, string?) RemoveRange(List<UTXO> types)
         {
             using var applicationDbContext = _dbContextFactory.CreateDbContext();
 
             return _repository.RemoveRange(types, applicationDbContext);
         }
 
-        public (bool, string?) Update(FMUTXO type)
+        public (bool, string?) Update(UTXO type)
         {
             using var applicationDbContext = _dbContextFactory.CreateDbContext();
 
@@ -89,11 +89,11 @@ namespace NodeGuard.Data.Repositories
             return _repository.Update(type, applicationDbContext);
         }
 
-        public async Task<List<FMUTXO>> GetLockedUTXOs(int? ignoredWalletWithdrawalRequestId = null, int? ignoredChannelOperationRequestId = null)
+        public async Task<List<UTXO>> GetLockedUTXOs(int? ignoredWalletWithdrawalRequestId = null, int? ignoredChannelOperationRequestId = null)
         {
             await using var applicationDbContext = await _dbContextFactory.CreateDbContextAsync();
 
-            var walletWithdrawalRequestsLockedUTXOs = new List<FMUTXO>();
+            var walletWithdrawalRequestsLockedUTXOs = new List<UTXO>();
             if (ignoredWalletWithdrawalRequestId == null)
             {
                 walletWithdrawalRequestsLockedUTXOs = await applicationDbContext.WalletWithdrawalRequests
@@ -116,7 +116,7 @@ namespace NodeGuard.Data.Repositories
                     .SelectMany(x => x.UTXOs).ToListAsync();
             }
 
-            var channelOperationRequestsLockedUTXOs = new List<FMUTXO>();
+            var channelOperationRequestsLockedUTXOs = new List<UTXO>();
 
             if (ignoredChannelOperationRequestId == null)
             {

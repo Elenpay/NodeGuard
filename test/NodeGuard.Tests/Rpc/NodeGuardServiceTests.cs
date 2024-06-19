@@ -38,6 +38,7 @@ using Channel = NodeGuard.Data.Models.Channel;
 using Key = NodeGuard.Data.Models.Key;
 using LiquidityRule = NodeGuard.Data.Models.LiquidityRule;
 using Node = NodeGuard.Data.Models.Node;
+using UTXO = NBXplorer.Models.UTXO;
 using Wallet = NodeGuard.Data.Models.Wallet;
 
 namespace NodeGuard.Rpc

@@ -33,12 +33,12 @@ public class FUTXORepositoryTests
             Description = "1",
             DestinationAddress = "1",
             Status = WalletWithdrawalRequestStatus.Pending,
-            UTXOs = new List<FMUTXO> { new () { TxId = "1"} }
+            UTXOs = new List<UTXO> { new () { TxId = "1"} }
         });
         context.ChannelOperationRequests.Add(new ChannelOperationRequest
         {
             Status = ChannelOperationRequestStatus.Pending,
-            Utxos = new List<FMUTXO> { new () { TxId = "2"} }
+            Utxos = new List<UTXO> { new () { TxId = "2"} }
         });
         await context.SaveChangesAsync();
 
@@ -60,13 +60,13 @@ public class FUTXORepositoryTests
             Description = "1",
             DestinationAddress = "1",
             Status = WalletWithdrawalRequestStatus.Pending,
-            UTXOs = new List<FMUTXO> { new () { TxId = "1"} }
+            UTXOs = new List<UTXO> { new () { TxId = "1"} }
         });
         context.ChannelOperationRequests.Add(new ChannelOperationRequest
         {
             Id = 2,
             Status = ChannelOperationRequestStatus.Pending,
-            Utxos = new List<FMUTXO> { new () { TxId = "2"} }
+            Utxos = new List<UTXO> { new () { TxId = "2"} }
         });
         await context.SaveChangesAsync();
 
@@ -89,13 +89,13 @@ public class FUTXORepositoryTests
             Description = "1",
             DestinationAddress = "1",
             Status = WalletWithdrawalRequestStatus.Pending,
-            UTXOs = new List<FMUTXO> { new () { TxId = "1"} }
+            UTXOs = new List<UTXO> { new () { TxId = "1"} }
         });
         context.ChannelOperationRequests.Add(new ChannelOperationRequest
         {
             Id = 2,
             Status = ChannelOperationRequestStatus.Pending,
-            Utxos = new List<FMUTXO> { new () { TxId = "2"} }
+            Utxos = new List<UTXO> { new () { TxId = "2"} }
         });
         await context.SaveChangesAsync();
 
@@ -118,13 +118,13 @@ public class FUTXORepositoryTests
             Description = "1",
             DestinationAddress = "1",
             Status = WalletWithdrawalRequestStatus.Failed,
-            UTXOs = new List<FMUTXO> { new () { TxId = "1"} }
+            UTXOs = new List<UTXO> { new () { TxId = "1"} }
         });
         context.ChannelOperationRequests.Add(new ChannelOperationRequest
         {
             Id = 2,
             Status = ChannelOperationRequestStatus.Pending,
-            Utxos = new List<FMUTXO> { new () { TxId = "2"} }
+            Utxos = new List<UTXO> { new () { TxId = "2"} }
         });
         await context.SaveChangesAsync();
 
@@ -147,13 +147,13 @@ public class FUTXORepositoryTests
             Description = "1",
             DestinationAddress = "1",
             Status = WalletWithdrawalRequestStatus.Pending,
-            UTXOs = new List<FMUTXO> { new () { TxId = "1"} }
+            UTXOs = new List<UTXO> { new () { TxId = "1"} }
         });
         context.ChannelOperationRequests.Add(new ChannelOperationRequest
         {
             Id = 2,
             Status = ChannelOperationRequestStatus.Failed,
-            Utxos = new List<FMUTXO> { new () { TxId = "2"} }
+            Utxos = new List<UTXO> { new () { TxId = "2"} }
         });
         await context.SaveChangesAsync();
 

@@ -23,6 +23,7 @@ using NodeGuard.Helpers;
 using NodeGuard.TestHelpers;
 using NBitcoin;
 using NBXplorer.Models;
+using UTXO = NBXplorer.Models.UTXO;
 
 namespace NodeGuard.Tests
 {

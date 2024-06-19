@@ -22,7 +22,7 @@ namespace NodeGuard.Data.Models
     /// <summary>
     /// UTXO entity in the NodeGuard
     /// </summary>
-    public class FMUTXO : Entity, IEquatable<FMUTXO>
+    public class UTXO : Entity, IEquatable<UTXO>
     {
         public string TxId { get; set; }
 
@@ -48,7 +48,7 @@ namespace NodeGuard.Data.Models
             return base.Equals(obj);
         }
 
-        public bool Equals(FMUTXO? other)
+        public bool Equals(UTXO? other)
         {
             if (ReferenceEquals(null, other)) return false;
             if (ReferenceEquals(this, other)) return true;
@@ -60,12 +60,12 @@ namespace NodeGuard.Data.Models
             return HashCode.Combine(TxId, OutputIndex, SatsAmount);
         }
 
-        public static bool operator ==(FMUTXO? left, FMUTXO? right)
+        public static bool operator ==(UTXO? left, UTXO? right)
         {
             return Equals(left, right);
         }
 
-        public static bool operator !=(FMUTXO? left, FMUTXO? right)
+        public static bool operator !=(UTXO? left, UTXO? right)
         {
             return !Equals(left, right);
         }

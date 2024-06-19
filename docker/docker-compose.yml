@@ -13,7 +13,7 @@ services:
     volumes:
       - nodeguard_postgres_data:/var/lib/postgresql/data
     ports:
-      - 25432:5432
+      - 5432:5432
 
   nbxplorer:
     restart: unless-stopped

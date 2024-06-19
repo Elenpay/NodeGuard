@@ -21,25 +21,25 @@
 
 namespace NodeGuard.Data.Repositories.Interfaces;
 
-public interface IFMUTXORepository
+public interface IUTXORepository
 {
-    Task<FMUTXO?> GetById(int id);
+    Task<UTXO?> GetById(int id);
 
-    Task<List<FMUTXO>> GetAll();
+    Task<List<UTXO>> GetAll();
 
-    Task<(bool, string?)> AddAsync(FMUTXO type);
+    Task<(bool, string?)> AddAsync(UTXO type);
 
-    Task<(bool, string?)> AddRangeAsync(List<FMUTXO> type);
+    Task<(bool, string?)> AddRangeAsync(List<UTXO> type);
 
-    (bool, string?) Remove(FMUTXO type);
+    (bool, string?) Remove(UTXO type);
 
-    (bool, string?) RemoveRange(List<FMUTXO> types);
+    (bool, string?) RemoveRange(List<UTXO> types);
 
-    (bool, string?) Update(FMUTXO type);
+    (bool, string?) Update(UTXO type);
 
     /// <summary>
     /// Gets the current list of UTXOs locked on requests ChannelOperationRequest / WalletWithdrawalRequest by passing its id if wants to remove it from the resulting set
     /// </summary>
     /// <returns></returns>
-    Task<List<FMUTXO>> GetLockedUTXOs(int? ignoredWalletWithdrawalRequestId = null, int? ignoredChannelOperationRequestId = null);
+    Task<List<UTXO>> GetLockedUTXOs(int? ignoredWalletWithdrawalRequestId = null, int? ignoredChannelOperationRequestId = null);
 }
