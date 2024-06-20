@@ -80,7 +80,7 @@ namespace NodeGuard.Data.Models
         }
     }
     
-    public class UTXOTag
+    public class UTXOTag : Entity
     {
         public string Key { get; set; }
         public string Value { get; set; }
