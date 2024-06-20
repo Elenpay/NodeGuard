@@ -137,8 +137,11 @@ namespace NodeGuard.Data.Repositories
                                 x.Status == ChannelOperationRequestStatus.OnChainConfirmationPending)
                     .SelectMany(x => x.Utxos).ToListAsync();
             }
-
-            var result = walletWithdrawalRequestsLockedUTXOs.Union(channelOperationRequestsLockedUTXOs).ToList();
+            
+            var frozenUTXOs = await applicationDbContext.FMUTXOs.Where(x => x.IsFrozen).ToListAsync();
+            
+            var result = walletWithdrawalRequestsLockedUTXOs.Union(channelOperationRequestsLockedUTXOs).Union(frozenUTXOs).ToList();
+            
 
             return result;
         }
