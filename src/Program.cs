@@ -105,7 +105,7 @@ namespace NodeGuard
             builder.Services.AddTransient<INodeRepository, NodeRepository>();
             builder.Services.AddTransient<IWalletRepository, WalletRepository>();
             builder.Services.AddTransient<IInternalWalletRepository, InternalWalletRepository>();
-            builder.Services.AddTransient<IUTXORepository, FUTXORepository>();
+            builder.Services.AddTransient<IUTXORepository, UTXORepository>();
             builder.Services
                 .AddTransient<IWalletWithdrawalRequestPsbtRepository, WalletWithdrawalRequestPsbtRepository>();
             builder.Services.AddTransient<IWalletWithdrawalRequestRepository, WalletWithdrawalRequestRepository>();

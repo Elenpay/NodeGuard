@@ -23,14 +23,14 @@ using Microsoft.EntityFrameworkCore;
 
 namespace NodeGuard.Data.Repositories
 {
-    public class FUTXORepository : IUTXORepository
+    public class UTXORepository : IUTXORepository
     {
         private readonly IRepository<UTXO> _repository;
-        private readonly ILogger<FUTXORepository> _logger;
+        private readonly ILogger<UTXORepository> _logger;
         private readonly IDbContextFactory<ApplicationDbContext> _dbContextFactory;
 
-        public FUTXORepository(IRepository<UTXO> repository,
-            ILogger<FUTXORepository> logger,
+        public UTXORepository(IRepository<UTXO> repository,
+            ILogger<UTXORepository> logger,
             IDbContextFactory<ApplicationDbContext> dbContextFactory)
         {
             _repository = repository;

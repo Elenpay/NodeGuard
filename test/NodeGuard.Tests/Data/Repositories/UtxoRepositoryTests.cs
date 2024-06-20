@@ -4,7 +4,7 @@ using Microsoft.EntityFrameworkCore;
 
 namespace NodeGuard.Data.Repositories;
 
-public class FUTXORepositoryTests
+public class UtxoRepositoryTests
 {
     private readonly Random _random = new();
 
@@ -24,7 +24,7 @@ public class FUTXORepositoryTests
     public async Task GetLockedUTXOs_emptyArgs()
     {
         var dbContextFactory = SetupDbContextFactory();
-        var futxoRepository = new FUTXORepository(null, null, dbContextFactory.Object);
+        var futxoRepository = new UTXORepository(null, null, dbContextFactory.Object);
 
         var context = await dbContextFactory.Object.CreateDbContextAsync();
 
@@ -50,7 +50,7 @@ public class FUTXORepositoryTests
     public async Task GetLockedUTXOs_ignoreWithdrawals()
     {
         var dbContextFactory = SetupDbContextFactory();
-        var futxoRepository = new FUTXORepository(null, null, dbContextFactory.Object);
+        var futxoRepository = new UTXORepository(null, null, dbContextFactory.Object);
 
         var context = dbContextFactory.Object.CreateDbContext();
 
@@ -79,7 +79,7 @@ public class FUTXORepositoryTests
     public async Task GetLockedUTXOs_ignoreChannels()
     {
         var dbContextFactory = SetupDbContextFactory();
-        var futxoRepository = new FUTXORepository(null, null, dbContextFactory.Object);
+        var futxoRepository = new UTXORepository(null, null, dbContextFactory.Object);
 
         var context = dbContextFactory.Object.CreateDbContext();
 
@@ -108,7 +108,7 @@ public class FUTXORepositoryTests
     public async Task GetLockedUTXOs_failedChannels()
     {
         var dbContextFactory = SetupDbContextFactory();
-        var futxoRepository = new FUTXORepository(null, null, dbContextFactory.Object);
+        var futxoRepository = new UTXORepository(null, null, dbContextFactory.Object);
 
         var context = dbContextFactory.Object.CreateDbContext();
 
@@ -137,7 +137,7 @@ public class FUTXORepositoryTests
     public async Task GetLockedUTXOs_failedCWithdrawals()
     {
         var dbContextFactory = SetupDbContextFactory();
-        var futxoRepository = new FUTXORepository(null, null, dbContextFactory.Object);
+        var futxoRepository = new UTXORepository(null, null, dbContextFactory.Object);
 
         var context = dbContextFactory.Object.CreateDbContext();
 
