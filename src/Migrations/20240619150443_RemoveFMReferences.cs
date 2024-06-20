@@ -7,7 +7,7 @@ using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 namespace NodeGuard.Migrations
 {
     /// <inheritdoc />
-    public partial class removefmreferences : Migration
+    public partial class RemoveFMReferences : Migration
     {
         /// <inheritdoc />
         protected override void Up(MigrationBuilder migrationBuilder)

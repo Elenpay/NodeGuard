@@ -14,8 +14,8 @@ using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 namespace NodeGuard.Migrations
 {
     [DbContext(typeof(ApplicationDbContext))]
-    [Migration("20240619142749_remove-fm-references")]
-    partial class removefmreferences
+    [Migration("20240619150443_RemoveFMReferences")]
+    partial class RemoveFMReferences
     {
         /// <inheritdoc />
         protected override void BuildTargetModel(ModelBuilder modelBuilder)
