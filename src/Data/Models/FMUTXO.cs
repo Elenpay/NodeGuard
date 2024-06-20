@@ -29,11 +29,20 @@ namespace NodeGuard.Data.Models
         public uint OutputIndex { get; set; }
 
         public long SatsAmount { get; set; }
+        
+        public string Address { get; set; }
+        
+        public bool IsFrozen { get; set; }
+        
+        public UTXOTag Tag { get; set; }
 
         #region Relationships
 
+        // M-N Because if the UTXO is used in a request that gets cancelled,
+        // the UTXO should be unlocked and assigned to another request
         public List<ChannelOperationRequest> ChannelOperationRequests { get; set; }
 
+        // Idem as ChannelOperationRequests
         public List<WalletWithdrawalRequest> WalletWithdrawalRequests { get; set; }
 
         #endregion Relationships
@@ -69,5 +78,11 @@ namespace NodeGuard.Data.Models
         {
             return !Equals(left, right);
         }
+    }
+    
+    public class UTXOTag
+    {
+        public string Key { get; set; }
+        public string Value { get; set; }
     }
 }
