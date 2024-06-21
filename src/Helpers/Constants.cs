@@ -61,6 +61,7 @@ public class Constants
     // Crons & Jobs
     public static readonly string MONITOR_WITHDRAWALS_CRON = "10 0/5 * * * ?";
     public static readonly string MONITOR_CHANNELS_CRON = "0 0 */1 * * ?";
+    public static readonly string REGISTER_UTXOS_CRON = "* * * * * ?";
     public static readonly string JOB_RETRY_INTERVAL_LIST_IN_MINUTES = "1,2,5,10,20";
 
 
@@ -169,6 +170,8 @@ public class Constants
         MONITOR_WITHDRAWALS_CRON = Environment.GetEnvironmentVariable("MONITOR_WITHDRAWALS_CRON") ?? MONITOR_WITHDRAWALS_CRON;
 
         MONITOR_CHANNELS_CRON = Environment.GetEnvironmentVariable("MONITOR_CHANNELS_CRON") ?? MONITOR_CHANNELS_CRON;
+        
+        REGISTER_UTXOS_CRON = Environment.GetEnvironmentVariable("REGISTER_UTXOS_CRON") ?? REGISTER_UTXOS_CRON;
 
         JOB_RETRY_INTERVAL_LIST_IN_MINUTES = Environment.GetEnvironmentVariable("JOB_RETRY_INTERVAL_LIST_IN_MINUTES") ?? JOB_RETRY_INTERVAL_LIST_IN_MINUTES;
 

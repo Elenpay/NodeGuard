@@ -269,6 +269,15 @@ namespace NodeGuard
                     opts.ForJob(nameof(MonitorChannelsJob)).WithIdentity($"{nameof(MonitorChannelsJob)}Trigger")
                         .StartNow().WithCronSchedule(Constants.MONITOR_CHANNELS_CRON);
                 });
+                
+                // RegisterUTXOsJob
+                q.AddJob<RegisterUTXOsJob>(opts => { opts.WithIdentity(nameof(RegisterUTXOsJob)); });
+                
+                q.AddTrigger(opts =>
+                {
+                    opts.ForJob(nameof(RegisterUTXOsJob)).WithIdentity($"{nameof(RegisterUTXOsJob)}Trigger")
+                        .StartNow().WithCronSchedule(Constants.REGISTER_UTXOS_CRON);
+                });
             });
 
             // ASP.NET Core hosting
