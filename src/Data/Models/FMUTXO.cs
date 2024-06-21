@@ -30,11 +30,11 @@ namespace NodeGuard.Data.Models
 
         public long SatsAmount { get; set; }
         
-        public string Address { get; set; }
+        public string? Address { get; set; }
         
         public bool IsFrozen { get; set; }
         
-        public UTXOTag Tag { get; set; }
+        public UTXOTag? Tag { get; set; }
 
         #region Relationships
 
