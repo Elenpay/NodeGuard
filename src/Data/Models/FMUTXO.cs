@@ -17,6 +17,7 @@
  *
  */
 
+using System.ComponentModel.DataAnnotations.Schema;
 using NBitcoin;
 using NBXplorer.Models;
 
@@ -37,9 +38,7 @@ namespace NodeGuard.Data.Models
         
         public bool IsFrozen { get; set; }
         
-        public int? TagId { get; set; }
-        
-        public UTXOTag? Tag { get; set; }
+        public List<UTXOTag>? Tags { get; set; }
         
         #region Relationships
 
@@ -55,6 +54,7 @@ namespace NodeGuard.Data.Models
 
         #endregion Relationships
         
+        [NotMapped]
         public bool IsSpent => ChannelOperationRequests.Any(x => x.Status == ChannelOperationRequestStatus.OnChainConfirmed) ||
                                WalletWithdrawalRequests.Any(x => x.Status == WalletWithdrawalRequestStatus.OnChainConfirmed);
 

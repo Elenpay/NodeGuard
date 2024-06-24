@@ -26,12 +26,6 @@ namespace NodeGuard.Migrations
                 defaultValue: false);
 
             migrationBuilder.AddColumn<int>(
-                name: "TagId",
-                table: "FMUTXOs",
-                type: "integer",
-                nullable: true);
-
-            migrationBuilder.AddColumn<int>(
                 name: "WalletId",
                 table: "FMUTXOs",
                 type: "integer",
@@ -46,30 +40,29 @@ namespace NodeGuard.Migrations
                         .Annotation("Npgsql:ValueGenerationStrategy", NpgsqlValueGenerationStrategy.IdentityByDefaultColumn),
                     Key = table.Column<string>(type: "text", nullable: false),
                     Value = table.Column<string>(type: "text", nullable: false),
+                    FMUTXOId = table.Column<int>(type: "integer", nullable: true),
                     CreationDatetime = table.Column<DateTimeOffset>(type: "timestamp with time zone", nullable: false),
                     UpdateDatetime = table.Column<DateTimeOffset>(type: "timestamp with time zone", nullable: false)
                 },
                 constraints: table =>
                 {
                     table.PrimaryKey("PK_UTXOTags", x => x.Id);
+                    table.ForeignKey(
+                        name: "FK_UTXOTags_FMUTXOs_FMUTXOId",
+                        column: x => x.FMUTXOId,
+                        principalTable: "FMUTXOs",
+                        principalColumn: "Id");
                 });
-
-            migrationBuilder.CreateIndex(
-                name: "IX_FMUTXOs_TagId",
-                table: "FMUTXOs",
-                column: "TagId");
 
             migrationBuilder.CreateIndex(
                 name: "IX_FMUTXOs_WalletId",
                 table: "FMUTXOs",
                 column: "WalletId");
 
-            migrationBuilder.AddForeignKey(
-                name: "FK_FMUTXOs_UTXOTags_TagId",
-                table: "FMUTXOs",
-                column: "TagId",
-                principalTable: "UTXOTags",
-                principalColumn: "Id");
+            migrationBuilder.CreateIndex(
+                name: "IX_UTXOTags_FMUTXOId",
+                table: "UTXOTags",
+                column: "FMUTXOId");
 
             migrationBuilder.AddForeignKey(
                 name: "FK_FMUTXOs_Wallets_WalletId",
@@ -84,19 +77,11 @@ namespace NodeGuard.Migrations
         protected override void Down(MigrationBuilder migrationBuilder)
         {
             migrationBuilder.DropForeignKey(
-                name: "FK_FMUTXOs_UTXOTags_TagId",
-                table: "FMUTXOs");
-
-            migrationBuilder.DropForeignKey(
                 name: "FK_FMUTXOs_Wallets_WalletId",
                 table: "FMUTXOs");
 
             migrationBuilder.DropTable(
                 name: "UTXOTags");
-
-            migrationBuilder.DropIndex(
-                name: "IX_FMUTXOs_TagId",
-                table: "FMUTXOs");
 
             migrationBuilder.DropIndex(
                 name: "IX_FMUTXOs_WalletId",
@@ -108,10 +93,6 @@ namespace NodeGuard.Migrations
 
             migrationBuilder.DropColumn(
                 name: "IsFrozen",
-                table: "FMUTXOs");
-
-            migrationBuilder.DropColumn(
-                name: "TagId",
                 table: "FMUTXOs");
 
             migrationBuilder.DropColumn(

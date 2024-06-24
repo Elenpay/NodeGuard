@@ -14,7 +14,7 @@ using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 namespace NodeGuard.Migrations
 {
     [DbContext(typeof(ApplicationDbContext))]
-    [Migration("20240624161738_UtxoFreezing")]
+    [Migration("20240624163324_UtxoFreezing")]
     partial class UtxoFreezing
     {
         /// <inheritdoc />
@@ -537,9 +537,6 @@ namespace NodeGuard.Migrations
                     b.Property<long>("SatsAmount")
                         .HasColumnType("bigint");
 
-                    b.Property<int?>("TagId")
-                        .HasColumnType("integer");
-
                     b.Property<string>("TxId")
                         .IsRequired()
                         .HasColumnType("text");
@@ -551,8 +548,6 @@ namespace NodeGuard.Migrations
                         .HasColumnType("integer");
 
                     b.HasKey("Id");
-
-                    b.HasIndex("TagId");
 
                     b.HasIndex("WalletId");
 
@@ -762,6 +757,9 @@ namespace NodeGuard.Migrations
                     b.Property<DateTimeOffset>("CreationDatetime")
                         .HasColumnType("timestamp with time zone");
 
+                    b.Property<int?>("FMUTXOId")
+                        .HasColumnType("integer");
+
                     b.Property<string>("Key")
                         .IsRequired()
                         .HasColumnType("text");
@@ -774,6 +772,8 @@ namespace NodeGuard.Migrations
                         .HasColumnType("text");
 
                     b.HasKey("Id");
+
+                    b.HasIndex("FMUTXOId");
 
                     b.ToTable("UTXOTags");
                 });
@@ -1159,17 +1159,11 @@ namespace NodeGuard.Migrations
 
             modelBuilder.Entity("NodeGuard.Data.Models.FMUTXO", b =>
                 {
-                    b.HasOne("NodeGuard.Data.Models.UTXOTag", "Tag")
-                        .WithMany()
-                        .HasForeignKey("TagId");
-
                     b.HasOne("NodeGuard.Data.Models.Wallet", "Wallet")
                         .WithMany()
                         .HasForeignKey("WalletId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
-
-                    b.Navigation("Tag");
 
                     b.Navigation("Wallet");
                 });
@@ -1231,6 +1225,13 @@ namespace NodeGuard.Migrations
                     b.Navigation("ReturningFundsWallet");
                 });
 
+            modelBuilder.Entity("NodeGuard.Data.Models.UTXOTag", b =>
+                {
+                    b.HasOne("NodeGuard.Data.Models.FMUTXO", null)
+                        .WithMany("Tags")
+                        .HasForeignKey("FMUTXOId");
+                });
+
             modelBuilder.Entity("NodeGuard.Data.Models.Wallet", b =>
                 {
                     b.HasOne("NodeGuard.Data.Models.InternalWallet", "InternalWallet")
@@ -1284,6 +1285,11 @@ namespace NodeGuard.Migrations
             modelBuilder.Entity("NodeGuard.Data.Models.ChannelOperationRequest", b =>
                 {
                     b.Navigation("ChannelOperationRequestPsbts");
+                });
+
+            modelBuilder.Entity("NodeGuard.Data.Models.FMUTXO", b =>
+                {
+                    b.Navigation("Tags");
                 });
 
             modelBuilder.Entity("NodeGuard.Data.Models.Node", b =>
