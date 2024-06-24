@@ -50,6 +50,13 @@ namespace NodeGuard.Data.Repositories
             throw new NotImplementedException();
         }
 
+        public async Task<List<FMUTXO>> GetByWalletId(int walletId)
+        {
+            await using var applicationDbContext = await _dbContextFactory.CreateDbContextAsync();
+            
+            return await applicationDbContext.FMUTXOs.Where(x => x.Wallet.Id == walletId).ToListAsync();
+        }
+
         public async Task<(bool, string?)> AddAsync(FMUTXO type)
         {
             await using var applicationDbContext = await _dbContextFactory.CreateDbContextAsync();

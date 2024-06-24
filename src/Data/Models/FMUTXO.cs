@@ -35,7 +35,7 @@ namespace NodeGuard.Data.Models
         public bool IsFrozen { get; set; }
         
         public UTXOTag? Tag { get; set; }
-
+        
         #region Relationships
 
         // M-N Because if the UTXO is used in a request that gets cancelled,
@@ -44,6 +44,8 @@ namespace NodeGuard.Data.Models
 
         // Idem as ChannelOperationRequests
         public List<WalletWithdrawalRequest> WalletWithdrawalRequests { get; set; }
+        
+        public Wallet Wallet { get; set; }
 
         #endregion Relationships
 

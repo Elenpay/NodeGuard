@@ -26,6 +26,8 @@ public interface IFMUTXORepository
     Task<FMUTXO?> GetById(int id);
 
     Task<List<FMUTXO>> GetAll();
+    
+    Task<List<FMUTXO>> GetByWalletId(int walletId);
 
     Task<(bool, string?)> AddAsync(FMUTXO type);
 

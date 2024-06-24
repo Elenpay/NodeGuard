@@ -38,11 +38,27 @@ public class RegisterUTXOsJob : IJob
             }
             utxos.RemoveDuplicateUTXOs();
 
-            var fmUtxos = utxos.GetUnspentUTXOs().Select(x => _mapper.Map<UTXO, FMUTXO>(x)).ToList();
-            var (success, message) = await _fmutxoRepository.AddRangeAsync(fmUtxos);
-            if (!success)
+            var existingUtxos = await _fmutxoRepository.GetByWalletId(wallet.Id);
+
+            var newUtxos = utxos.GetUnspentUTXOs()
+                .Where(x => !existingUtxos.Any(y => x.Equals(y))).ToList();
+
+            if (newUtxos.Any())
             {
-                _logger.LogError("Error adding UTXOs to database for wallet {WalletId}: {Message}", wallet.Id, message);
+                var fmUtxos = newUtxos.Select(x => _mapper.Map<UTXO, FMUTXO>(x)).ToList();
+                foreach (var fmUtxo in fmUtxos)
+                {
+                    fmUtxo.Wallet = wallet;
+                }
+                var (success, message) = await _fmutxoRepository.AddRangeAsync(fmUtxos);
+                if (!success)
+                {
+                    _logger.LogError("Error adding UTXOs to database for wallet {WalletId}: {Message}", wallet.Id, message);
+                }
+            }
+            else
+            {
+                _logger.LogInformation("No new UTXOs found for wallet {WalletId}", wallet.Id);
             }
         }
     }
