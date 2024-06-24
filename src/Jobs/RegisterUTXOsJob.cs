@@ -41,7 +41,7 @@ public class RegisterUTXOsJob : IJob
             var existingUtxos = await _fmutxoRepository.GetByWalletId(wallet.Id);
 
             var newUtxos = utxos.GetUnspentUTXOs()
-                .Where(x => !existingUtxos.Any(y => x.Equals(y))).ToList();
+                .Where(x => !existingUtxos.Any(y => y.Equals(x))).ToList();
 
             if (newUtxos.Any())
             {

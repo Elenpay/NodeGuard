@@ -17,6 +17,9 @@
  *
  */
 
+using NBitcoin;
+using NBXplorer.Models;
+
 namespace NodeGuard.Data.Models
 {
     /// <summary>
@@ -67,6 +70,12 @@ namespace NodeGuard.Data.Models
             if (ReferenceEquals(null, other)) return false;
             if (ReferenceEquals(this, other)) return true;
             return TxId == other.TxId && OutputIndex == other.OutputIndex && SatsAmount == other.SatsAmount;
+        }
+
+        public bool Equals(UTXO? other)
+        {
+            if (ReferenceEquals(null, other)) return false;
+            return TxId == other.Outpoint.Hash.ToString() && OutputIndex == other.Outpoint.N && SatsAmount == ((Money)other.Value).Satoshi;
         }
 
         public override int GetHashCode()
