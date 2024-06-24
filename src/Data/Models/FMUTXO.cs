@@ -48,6 +48,9 @@ namespace NodeGuard.Data.Models
         public Wallet Wallet { get; set; }
 
         #endregion Relationships
+        
+        public bool IsSpent => ChannelOperationRequests.Any(x => x.Status == ChannelOperationRequestStatus.OnChainConfirmed) ||
+                               WalletWithdrawalRequests.Any(x => x.Status == WalletWithdrawalRequestStatus.OnChainConfirmed);
 
         public override string ToString()
         {
