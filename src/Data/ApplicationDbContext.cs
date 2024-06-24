@@ -107,6 +107,8 @@ namespace NodeGuard.Data
         public DbSet<InternalWallet> InternalWallets { get; set; }
 
         public DbSet<FMUTXO> FMUTXOs { get; set; }
+        
+        public DbSet<UTXOTag> UTXOTags { get; set; }
 
         public DbSet<LiquidityRule> LiquidityRules { get; set; }
         

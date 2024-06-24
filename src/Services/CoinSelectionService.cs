@@ -113,7 +113,8 @@ public class CoinSelectionService: ICoinSelectionService
     public async Task LockUTXOs(List<UTXO> selectedUTXOs, IBitcoinRequest bitcoinRequest, BitcoinRequestType requestType)
     {
         // We "lock" the PSBT to the channel operation request by adding to its UTXOs collection for later checking
-        var utxos = selectedUTXOs.Select(x => _mapper.Map<UTXO, FMUTXO>(x)).ToList();
+        var selectedFMUTXOs = selectedUTXOs.Select(x => _mapper.Map<UTXO, FMUTXO>(x)).ToList();
+        var utxos = await _fmutxoRepository.GetFromUTXOs(selectedFMUTXOs);
 
         var addUTXOsOperation = await GetRepository(requestType).AddUTXOs(bitcoinRequest, utxos);
         if (!addUTXOsOperation.Item1)

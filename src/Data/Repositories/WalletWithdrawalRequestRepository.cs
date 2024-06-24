@@ -36,13 +36,15 @@ namespace NodeGuard.Data.Repositories
         private readonly IMapper _mapper;
         private readonly NotificationService _notificationService;
         private readonly INBXplorerService _nBXplorerService;
+        private readonly IFMUTXORepository _fmutxoRepository;
 
         public WalletWithdrawalRequestRepository(IRepository<WalletWithdrawalRequest> repository,
             ILogger<WalletWithdrawalRequestRepository> logger,
             IDbContextFactory<ApplicationDbContext> dbContextFactory,
             IMapper mapper,
             NotificationService notificationService,
-            INBXplorerService nBXplorerService
+            INBXplorerService nBXplorerService,
+            IFMUTXORepository fmutxoRepository
             )
         {
             _repository = repository;
@@ -51,6 +53,7 @@ namespace NodeGuard.Data.Repositories
             _mapper = mapper;
             _notificationService = notificationService;
             _nBXplorerService = nBXplorerService;
+            _fmutxoRepository = fmutxoRepository;
         }
 
         public async Task<WalletWithdrawalRequest?> GetById(int id)
@@ -209,14 +212,7 @@ namespace NodeGuard.Data.Repositories
                     .SingleOrDefaultAsync(x => x.Id == type.Id);
                 if (request != null)
                 {
-                    if (!request.UTXOs.Any())
-                    {
-                        request.UTXOs = utxos;
-                    }
-                    else
-                    {
-                        request.UTXOs.AddRange(utxos.Except(request.UTXOs));
-                    }
+                    request.UTXOs = utxos;
 
                     applicationDbContext.Update(request);
 

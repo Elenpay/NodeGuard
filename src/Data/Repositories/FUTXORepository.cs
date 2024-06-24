@@ -17,9 +17,12 @@
  *
  */
 
-﻿using NodeGuard.Data.Models;
+using AutoMapper;
+using NodeGuard.Data.Models;
 using NodeGuard.Data.Repositories.Interfaces;
 using Microsoft.EntityFrameworkCore;
+using NBitcoin;
+using NBXplorer.Models;
 
 namespace NodeGuard.Data.Repositories
 {
@@ -55,6 +58,22 @@ namespace NodeGuard.Data.Repositories
             await using var applicationDbContext = await _dbContextFactory.CreateDbContextAsync();
             
             return await applicationDbContext.FMUTXOs.Where(x => x.Wallet.Id == walletId).ToListAsync();
+        }
+
+        public async Task<List<FMUTXO>> GetFromUTXOs(List<FMUTXO> utxos)
+        {
+            await using var applicationDbContext = await _dbContextFactory.CreateDbContextAsync();
+
+            var newUtxos = await applicationDbContext.FMUTXOs
+                .Where(x => utxos.Any(y => x.Equals(y)))
+                .ToListAsync();
+            
+            if (newUtxos.Count != utxos.Count)
+            {
+                _logger.LogWarning("Some UTXOs were not found in the database");
+            }   
+
+            return newUtxos;
         }
 
         public async Task<(bool, string?)> AddAsync(FMUTXO type)

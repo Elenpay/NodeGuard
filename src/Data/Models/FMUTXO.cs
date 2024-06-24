@@ -37,6 +37,8 @@ namespace NodeGuard.Data.Models
         
         public bool IsFrozen { get; set; }
         
+        public int? TagId { get; set; }
+        
         public UTXOTag? Tag { get; set; }
         
         #region Relationships
@@ -48,6 +50,7 @@ namespace NodeGuard.Data.Models
         // Idem as ChannelOperationRequests
         public List<WalletWithdrawalRequest> WalletWithdrawalRequests { get; set; }
         
+        public int WalletId { get; set; }
         public Wallet Wallet { get; set; }
 
         #endregion Relationships

@@ -772,7 +772,7 @@ namespace NodeGuard.Migrations
 
                     b.HasKey("Id");
 
-                    b.ToTable("UTXOTag");
+                    b.ToTable("UTXOTags");
                 });
 
             modelBuilder.Entity("NodeGuard.Data.Models.Wallet", b =>

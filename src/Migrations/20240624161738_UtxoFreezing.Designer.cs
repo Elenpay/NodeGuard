@@ -14,8 +14,8 @@ using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 namespace NodeGuard.Migrations
 {
     [DbContext(typeof(ApplicationDbContext))]
-    [Migration("20240620165130_NewAttributesUTXOs")]
-    partial class NewAttributesUTXOs
+    [Migration("20240624161738_UtxoFreezing")]
+    partial class UtxoFreezing
     {
         /// <inheritdoc />
         protected override void BuildTargetModel(ModelBuilder modelBuilder)
@@ -523,7 +523,6 @@ namespace NodeGuard.Migrations
                     NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
 
                     b.Property<string>("Address")
-                        .IsRequired()
                         .HasColumnType("text");
 
                     b.Property<DateTimeOffset>("CreationDatetime")
@@ -538,7 +537,7 @@ namespace NodeGuard.Migrations
                     b.Property<long>("SatsAmount")
                         .HasColumnType("bigint");
 
-                    b.Property<int>("TagId")
+                    b.Property<int?>("TagId")
                         .HasColumnType("integer");
 
                     b.Property<string>("TxId")
@@ -548,9 +547,14 @@ namespace NodeGuard.Migrations
                     b.Property<DateTimeOffset>("UpdateDatetime")
                         .HasColumnType("timestamp with time zone");
 
+                    b.Property<int>("WalletId")
+                        .HasColumnType("integer");
+
                     b.HasKey("Id");
 
                     b.HasIndex("TagId");
+
+                    b.HasIndex("WalletId");
 
                     b.ToTable("FMUTXOs");
                 });
@@ -771,7 +775,7 @@ namespace NodeGuard.Migrations
 
                     b.HasKey("Id");
 
-                    b.ToTable("UTXOTag");
+                    b.ToTable("UTXOTags");
                 });
 
             modelBuilder.Entity("NodeGuard.Data.Models.Wallet", b =>
@@ -1157,11 +1161,17 @@ namespace NodeGuard.Migrations
                 {
                     b.HasOne("NodeGuard.Data.Models.UTXOTag", "Tag")
                         .WithMany()
-                        .HasForeignKey("TagId")
+                        .HasForeignKey("TagId");
+
+                    b.HasOne("NodeGuard.Data.Models.Wallet", "Wallet")
+                        .WithMany()
+                        .HasForeignKey("WalletId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
 
                     b.Navigation("Tag");
+
+                    b.Navigation("Wallet");
                 });
 
             modelBuilder.Entity("NodeGuard.Data.Models.Key", b =>

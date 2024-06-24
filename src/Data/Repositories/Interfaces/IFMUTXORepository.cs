@@ -17,7 +17,8 @@
  *
  */
 
-﻿using NodeGuard.Data.Models;
+using NBXplorer.Models;
+using NodeGuard.Data.Models;
 
 namespace NodeGuard.Data.Repositories.Interfaces;
 
@@ -28,6 +29,8 @@ public interface IFMUTXORepository
     Task<List<FMUTXO>> GetAll();
     
     Task<List<FMUTXO>> GetByWalletId(int walletId);
+    
+    Task<List<FMUTXO>> GetFromUTXOs(List<FMUTXO> utxos);
 
     Task<(bool, string?)> AddAsync(FMUTXO type);
 

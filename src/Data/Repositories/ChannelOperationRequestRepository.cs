@@ -33,16 +33,19 @@ namespace NodeGuard.Data.Repositories
         private readonly IDbContextFactory<ApplicationDbContext> _dbContextFactory;
         private readonly IMapper _mapper;
         private readonly NotificationService _notificationService;
+        private readonly IFMUTXORepository _fmutxoRepository;
 
         public ChannelOperationRequestRepository(IRepository<ChannelOperationRequest> repository,
             ILogger<ChannelOperationRequestRepository> logger,
-            IDbContextFactory<ApplicationDbContext> dbContextFactory, IMapper mapper, NotificationService notificationService)
+            IDbContextFactory<ApplicationDbContext> dbContextFactory, IMapper mapper,
+            NotificationService notificationService, IFMUTXORepository fmutxoRepository)
         {
             _repository = repository;
             _logger = logger;
             _dbContextFactory = dbContextFactory;
             _mapper = mapper;
             _notificationService = notificationService;
+            _fmutxoRepository = fmutxoRepository;
         }
 
         public async Task<ChannelOperationRequest?> GetById(int id)
@@ -173,14 +176,7 @@ namespace NodeGuard.Data.Repositories
                     .SingleOrDefaultAsync(x => x.Id == type.Id);
                 if (request != null)
                 {
-                    if (!request.Utxos.Any())
-                    {
-                        request.Utxos = utxos;
-                    }
-                    else
-                    {
-                        request.Utxos.AddRange(utxos.Except(request.Utxos));
-                    }
+                    request.Utxos = utxos;
 
                     applicationDbContext.Update(request);
 
