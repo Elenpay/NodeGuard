@@ -13,7 +13,7 @@ public interface INBXplorerService
 {
     public Task TrackAsync(DerivationStrategyBase derivationStrategyBase, CancellationToken cancellation = default);
 
-    public Task TrackAsync(TrackedSource trackedSource, CancellationToken cancellation = default);
+    public Task TrackAsync(TrackedSource trackedSource, TrackWalletRequest trackWalletRequest, CancellationToken cancellation = default);
 
     public Task<TransactionResult?> GetTransactionAsync(uint256 txId, CancellationToken cancellation = default);
 
@@ -36,7 +36,7 @@ public interface INBXplorerService
 
     public Task<BroadcastResult> BroadcastAsync(Transaction tx, bool testMempoolAccept,
         CancellationToken cancellation = default);
-    
+
     public Task<GetTransactionsResponse> GetTransactionsAsync(DerivationStrategyBase derivationStrategy);
 
     public Task ScanUTXOSetAsync(DerivationStrategyBase derivationStrategy,
@@ -100,10 +100,10 @@ public class NBXplorerService : INBXplorerService
         await client.TrackAsync(derivationStrategyBase, cancellation: cancellation);
     }
 
-    public async Task TrackAsync(TrackedSource trackedSource, CancellationToken cancellation = default)
+    public async Task TrackAsync(TrackedSource trackedSource, TrackWalletRequest trackWalletRequest, CancellationToken cancellation = default)
     {
         var client = await LightningHelper.CreateNBExplorerClient();
-        await client.TrackAsync(trackedSource, cancellation);
+        await client.TrackAsync(trackedSource, trackWalletRequest, cancellation);
     }
 
     public async Task<TransactionResult?> GetTransactionAsync(uint256 txId, CancellationToken cancellation = default)
@@ -209,7 +209,7 @@ public class NBXplorerService : INBXplorerService
             {
                 var feerate = new GetFeeRateResult
                 {
-                    FeeRate = new FeeRate((decimal) recommendedFees.FastestFee),
+                    FeeRate = new FeeRate((decimal)recommendedFees.FastestFee),
                     BlockCount = 1 // 60 mins / 10 mins
                 };
 
