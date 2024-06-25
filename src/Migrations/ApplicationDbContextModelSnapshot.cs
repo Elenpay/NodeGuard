@@ -754,7 +754,7 @@ namespace NodeGuard.Migrations
                     b.Property<DateTimeOffset>("CreationDatetime")
                         .HasColumnType("timestamp with time zone");
 
-                    b.Property<int?>("FMUTXOId")
+                    b.Property<int>("FMUTXOId")
                         .HasColumnType("integer");
 
                     b.Property<string>("Key")
@@ -1224,9 +1224,13 @@ namespace NodeGuard.Migrations
 
             modelBuilder.Entity("NodeGuard.Data.Models.UTXOTag", b =>
                 {
-                    b.HasOne("NodeGuard.Data.Models.FMUTXO", null)
+                    b.HasOne("NodeGuard.Data.Models.FMUTXO", "FMUTXO")
                         .WithMany("Tags")
-                        .HasForeignKey("FMUTXOId");
+                        .HasForeignKey("FMUTXOId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("FMUTXO");
                 });
 
             modelBuilder.Entity("NodeGuard.Data.Models.Wallet", b =>

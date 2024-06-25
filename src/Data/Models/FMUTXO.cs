@@ -101,5 +101,7 @@ namespace NodeGuard.Data.Models
     {
         public string Key { get; set; }
         public string Value { get; set; }
+        public int FMUTXOId { get; set; }
+        public FMUTXO FMUTXO { get; set; }
     }
 }

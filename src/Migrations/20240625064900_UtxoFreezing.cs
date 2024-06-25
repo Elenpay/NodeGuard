@@ -40,7 +40,7 @@ namespace NodeGuard.Migrations
                         .Annotation("Npgsql:ValueGenerationStrategy", NpgsqlValueGenerationStrategy.IdentityByDefaultColumn),
                     Key = table.Column<string>(type: "text", nullable: false),
                     Value = table.Column<string>(type: "text", nullable: false),
-                    FMUTXOId = table.Column<int>(type: "integer", nullable: true),
+                    FMUTXOId = table.Column<int>(type: "integer", nullable: false),
                     CreationDatetime = table.Column<DateTimeOffset>(type: "timestamp with time zone", nullable: false),
                     UpdateDatetime = table.Column<DateTimeOffset>(type: "timestamp with time zone", nullable: false)
                 },
@@ -51,7 +51,8 @@ namespace NodeGuard.Migrations
                         name: "FK_UTXOTags_FMUTXOs_FMUTXOId",
                         column: x => x.FMUTXOId,
                         principalTable: "FMUTXOs",
-                        principalColumn: "Id");
+                        principalColumn: "Id",
+                        onDelete: ReferentialAction.Cascade);
                 });
 
             migrationBuilder.CreateIndex(
