@@ -3,7 +3,7 @@ version: '3.4'
 services:
   nodeguard_postgres:
     container_name: nodeguard_postgres
-    image: postgres:13
+    image: postgres:16
     restart: always
     environment:
       POSTGRES_DB: nodeguard
@@ -41,7 +41,7 @@ services:
       
   nbxplorer_postgres:
     container_name: nbxplorer_postgres
-    image: postgres:13
+    image: postgres:16
     restart: always
     environment:
       POSTGRES_DB: nbxplorer
