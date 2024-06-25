@@ -72,7 +72,7 @@ namespace NodeGuard.Services
             if (wallet == null) throw new ArgumentNullException(nameof(wallet));
 
             var balance = await _nbXplorerService.GetBalanceAsync(wallet.GetDerivationStrategy(), default);
-            var confirmedBalanceMoney = (Money) balance.Confirmed;
+            var confirmedBalanceMoney = (Money)balance.Confirmed;
 
             return (confirmedBalanceMoney.ToUnit(MoneyUnit.BTC), confirmedBalanceMoney.Satoshi);
         }
@@ -149,7 +149,7 @@ namespace NodeGuard.Services
             {
                 var balanceResponse = await _nbXplorerService.GetBalanceAsync(derivationStrategy);
 
-                walletWithdrawalRequest.Amount = ((Money) balanceResponse.Confirmed).ToUnit(MoneyUnit.BTC);
+                walletWithdrawalRequest.Amount = ((Money)balanceResponse.Confirmed).ToUnit(MoneyUnit.BTC);
 
                 var update = _walletWithdrawalRequestRepository.Update(walletWithdrawalRequest);
                 if (!update.Item1)
@@ -217,7 +217,7 @@ namespace NodeGuard.Services
                 var builder = txBuilder;
                 builder.AddCoins(scriptCoins);
 
-                var changelessAmount = selectedUTXOs.Sum(u => (Money) u.Value);
+                var changelessAmount = selectedUTXOs.Sum(u => (Money)u.Value);
                 var amount = new Money(walletWithdrawalRequest.SatsAmount, MoneyUnit.Satoshi);
                 var destination = BitcoinAddress.Create(walletWithdrawalRequest.DestinationAddress, nbXplorerNetwork);
 
@@ -452,7 +452,7 @@ namespace NodeGuard.Services
                     walletWithdrawalRequest.DestinationAddress,
                     CurrentNetworkHelper.GetCurrentNetwork()));
 
-                await _nbXplorerService.TrackAsync(trackedSourceAddress, default);
+                await _nbXplorerService.TrackAsync(trackedSourceAddress, new TrackWalletRequest{}, default);
             }
             catch (Exception e)
             {
