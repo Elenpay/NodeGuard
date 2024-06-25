@@ -9,8 +9,6 @@ namespace NodeGuard.Migrations
         protected override void Up(MigrationBuilder migrationBuilder)
         {
             string query = @"
-BEGIN TRANSACTION;
-
 UPDATE public.""Channels"" AS c
 SET
     ""SourceNodeId"" = cor.""SourceNodeId"",
@@ -26,8 +24,6 @@ FROM (
     ORDER BY ""CreationDatetime""
 ) AS cor
 WHERE c.""Id"" = cor.""ChannelId"";
-
-COMMIT TRANSACTION;
 ";
 
             migrationBuilder.Sql(query);
