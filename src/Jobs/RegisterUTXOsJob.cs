@@ -32,10 +32,6 @@ public class RegisterUTXOsJob : IJob
         foreach (var wallet in wallets)
         {
             var utxos = await _nbXplorerService.GetUTXOsAsync(wallet.GetDerivationStrategy());
-            if (!utxos.GetUnspentUTXOs().Any())
-            {
-                _logger.LogError("Error on job {JobName} getting UTXOs for wallet {WalletId}", nameof(RegisterUTXOsJob), wallet.Id);
-            }
             utxos.RemoveDuplicateUTXOs();
 
             var existingUtxos = await _fmutxoRepository.GetByWalletId(wallet.Id);
@@ -49,6 +45,8 @@ public class RegisterUTXOsJob : IJob
                 foreach (var fmUtxo in fmUtxos)
                 {
                     fmUtxo.WalletId = wallet.Id;
+                    fmUtxo.SetCreationDatetime();
+                    fmUtxo.SetUpdateDatetime();
                 }
                 var (success, message) = await _fmutxoRepository.AddRangeAsync(fmUtxos);
                 if (!success)
