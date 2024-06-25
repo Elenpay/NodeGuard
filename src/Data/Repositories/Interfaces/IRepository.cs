@@ -49,7 +49,7 @@
         /// </summary>
         /// <param name="T"></param>
         /// <returns>A tuple (bool, string). The bool represents the call success and the string any possible message.</returns>
-        public Task<(bool, string?)> AddRangeAsync(List<T> T, ApplicationDbContext applicationDbContext);
+        public Task<(bool, string?)> AddRangeAsync<T>(List<T> entities, ApplicationDbContext applicationDbContext) where T : class;
 
         /// <summary>
         ///Removes an existing entity of <see cref="IRepository{T}"></see>
