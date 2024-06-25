@@ -18,6 +18,7 @@
  */
 
 using System.ComponentModel.DataAnnotations.Schema;
+using Blazorise.Extensions;
 using NBitcoin;
 using NBXplorer.Models;
 
@@ -55,8 +56,9 @@ namespace NodeGuard.Data.Models
         #endregion Relationships
         
         [NotMapped]
-        public bool IsSpent => ChannelOperationRequests.Any(x => x.Status == ChannelOperationRequestStatus.OnChainConfirmed) ||
-                               WalletWithdrawalRequests.Any(x => x.Status == WalletWithdrawalRequestStatus.OnChainConfirmed);
+        public bool IsSpent => (!ChannelOperationRequests.IsNullOrEmpty() || !WalletWithdrawalRequests.IsNullOrEmpty())
+                               && (ChannelOperationRequests.Any(x => x.Status == ChannelOperationRequestStatus.OnChainConfirmed) || 
+                                   WalletWithdrawalRequests.Any(x => x.Status == WalletWithdrawalRequestStatus.OnChainConfirmed));
 
         public override string ToString()
         {

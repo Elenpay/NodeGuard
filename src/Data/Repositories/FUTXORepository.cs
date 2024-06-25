@@ -57,7 +57,8 @@ namespace NodeGuard.Data.Repositories
         {
             await using var applicationDbContext = await _dbContextFactory.CreateDbContextAsync();
             
-            return await applicationDbContext.FMUTXOs.Where(x => x.Wallet.Id == walletId).ToListAsync();
+            return await applicationDbContext.FMUTXOs.Where(x => x.Wallet.Id == walletId)
+                .Include(x => x.Tags).ToListAsync();
         }
 
         public async Task<List<FMUTXO>> GetFromUTXOs(List<FMUTXO> utxos)
