@@ -48,7 +48,7 @@ public class RegisterUTXOsJob : IJob
                 var fmUtxos = newUtxos.Select(x => _mapper.Map<UTXO, FMUTXO>(x)).ToList();
                 foreach (var fmUtxo in fmUtxos)
                 {
-                    fmUtxo.Wallet = wallet;
+                    fmUtxo.WalletId = wallet.Id;
                 }
                 var (success, message) = await _fmutxoRepository.AddRangeAsync(fmUtxos);
                 if (!success)
