@@ -45,7 +45,6 @@
         "TRANSACTION_CONFIRMATION_MINIMUM_BLOCKS": "6",
         "MONITOR_WITHDRAWALS_CRON": "0 */1 * * * ?",
         "MONITOR_CHANNELS_CRON": "0 0 */1 * * ?",
-        "REGISTER_UTXOS_CRON": "* * * * * ?",
         "COINGECKO_ENDPOINT": "https://pro-api.coingecko.com/api/v3/coins/markets?vs_currency=usd&ids=bitcoin",
         "COINGECKO_KEY": "TBD",
         "HTTP1_LISTEN_PORT": "38080",

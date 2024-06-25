@@ -53,6 +53,8 @@ public class RegisterUTXOsJob : IJob
                 {
                     _logger.LogError("Error adding UTXOs to database for wallet {WalletId}: {Message}", wallet.Id, message);
                 }
+                
+                _logger.LogInformation("Added {Count} new UTXOs to wallet {WalletId}", newUtxos.Count, wallet.Id);
             }
             else
             {
