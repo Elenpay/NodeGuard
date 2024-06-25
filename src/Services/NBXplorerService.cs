@@ -13,7 +13,7 @@ public interface INBXplorerService
 {
     public Task TrackAsync(DerivationStrategyBase derivationStrategyBase, CancellationToken cancellation = default);
 
-    public Task TrackAsync(DerivationStrategyBase derivationStrategyBase, TrackWalletRequest trackWalletRequest, CancellationToken cancellation = default);
+    public Task TrackAsync(TrackedSource trackedSource, TrackWalletRequest trackWalletRequest, CancellationToken cancellation = default);
 
     public Task<TransactionResult?> GetTransactionAsync(uint256 txId, CancellationToken cancellation = default);
 
@@ -100,10 +100,10 @@ public class NBXplorerService : INBXplorerService
         await client.TrackAsync(derivationStrategyBase, cancellation: cancellation);
     }
 
-    public async Task TrackAsync(DerivationStrategyBase derivationStrategyBase, TrackWalletRequest trackWalletRequest, CancellationToken cancellation = default)
+    public async Task TrackAsync(TrackedSource trackedSource, TrackWalletRequest trackWalletRequest, CancellationToken cancellation = default)
     {
         var client = await LightningHelper.CreateNBExplorerClient();
-        await client.TrackAsync(derivationStrategyBase, trackWalletRequest, cancellation);
+        await client.TrackAsync(trackedSource, trackWalletRequest, cancellation);
     }
 
     public async Task<TransactionResult?> GetTransactionAsync(uint256 txId, CancellationToken cancellation = default)

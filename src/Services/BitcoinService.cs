@@ -452,7 +452,7 @@ namespace NodeGuard.Services
                     walletWithdrawalRequest.DestinationAddress,
                     CurrentNetworkHelper.GetCurrentNetwork()));
 
-                await _nbXplorerService.TrackAsync(walletWithdrawalRequest.Wallet.GetDerivationStrategy(), new TrackWalletRequest{}, default);
+                await _nbXplorerService.TrackAsync(trackedSourceAddress, new TrackWalletRequest{}, default);
             }
             catch (Exception e)
             {
