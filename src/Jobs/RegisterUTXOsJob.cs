@@ -9,6 +9,10 @@ using ILogger = Microsoft.Build.Framework.ILogger;
 
 namespace NodeGuard.Jobs;
 
+/// <summary>
+/// Job for the lifetime of the application that adds the UTXOs of the wallets to the database
+/// </summary>
+/// <returns></returns>
 public class RegisterUTXOsJob : IJob
 {
     private readonly ILogger<RegisterUTXOsJob> _logger;
