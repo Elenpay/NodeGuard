@@ -30,7 +30,7 @@ public interface IFMUTXORepository
     
     Task<List<FMUTXO>> GetByWalletId(int walletId);
     
-    Task<FMUTXO> GetByOutpoint(string hash, uint outputIndex);
+    Task<FMUTXO?> GetByOutpoint(string hash, uint outputIndex);
 
     Task<(bool, string?)> AddAsync(FMUTXO type);
 
