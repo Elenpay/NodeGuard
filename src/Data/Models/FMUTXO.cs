@@ -37,11 +37,14 @@ namespace NodeGuard.Data.Models
         
         public string? Address { get; set; }
         
+        // This  
         public bool IsFrozen { get; set; }
         
-        public List<UTXOTag>? Tags { get; set; }
         
         #region Relationships
+        
+        // 
+        public List<UTXOTag>? Tags { get; set; }
 
         // M-N Because if the UTXO is used in a request that gets cancelled,
         // the UTXO should be unlocked and assigned to another request
