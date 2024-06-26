@@ -120,7 +120,7 @@ public class CoinSelectionService: ICoinSelectionService
 
         var utxosToSave = new List<FMUTXO>();
         var utxosToAddToTransaction = new List<FMUTXO>();
-        // We check the selected UTXOs against the ones we have in the database to see if they are already there
+        // Since the UTXOs to lock (selectedUTXOs) come directly from nbxplorer, we check if we already registered them in our database with the RegisterUTXOsJob
         foreach (var fmutxo in selectedFMUTXOs)
         {
             if (utxos.Contains(fmutxo))
