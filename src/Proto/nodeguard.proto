@@ -328,6 +328,7 @@ message GetAvailableUtxosRequest {
 message Utxo {
   int64 amount = 1;
   string outpoint = 2;
+  string address = 3;
 }
 
 message GetAvailableUtxosResponse {

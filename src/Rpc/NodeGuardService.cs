@@ -917,12 +917,14 @@ public class NodeGuardService : Nodeguard.NodeGuardService.NodeGuardServiceBase,
         var confirmedUtxos = utxos.Confirmed.UTXOs.Select(utxo => new Utxo()
         {
             Amount = (Money)utxo.Value,
-            Outpoint = utxo.Outpoint.ToString()
+            Outpoint = utxo.Outpoint.ToString(),
+            Address = utxo.Address.ToString()
         });
         var unconfirmedUtxos = utxos.Unconfirmed.UTXOs.Select(utxo => new Utxo()
         {
             Amount = (Money)utxo.Value,
-            Outpoint = utxo.Outpoint.ToString()
+            Outpoint = utxo.Outpoint.ToString(),
+            Address = utxo.Address.ToString()
         });
 
         return new GetAvailableUtxosResponse()
