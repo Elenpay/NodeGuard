@@ -62,7 +62,7 @@ namespace NodeGuard.Automapper
                 .ForMember(x => x.UserRequestor, opt => opt.Ignore())
                 .ForMember(x => x.UTXOs, opt => opt.Ignore());
 
-            CreateMap<UTXO, FMUTXO>()
+            CreateMap<UTXO, Data.Models.UTXO>()
                 .ForMember(x => x.TxId, opt => opt.MapFrom(x => x.Outpoint.Hash.ToString()))
                 .ForMember(x => x.OutputIndex, opt => opt.MapFrom(x => x.Outpoint.N))
                 .ForMember(x => x.SatsAmount, opt => opt.MapFrom(x => ((Money)x.Value).Satoshi));

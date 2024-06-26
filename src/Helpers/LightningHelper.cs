@@ -23,6 +23,7 @@ using Google.Protobuf;
 using NBitcoin;
 using NBXplorer;
 using NBXplorer.Models;
+using UTXO = NBXplorer.Models.UTXO;
 
 namespace NodeGuard.Helpers
 {

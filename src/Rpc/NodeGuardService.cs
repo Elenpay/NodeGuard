@@ -16,6 +16,7 @@ using Nodeguard;
 using Quartz;
 using LiquidityRule = NodeGuard.Data.Models.LiquidityRule;
 using Node = Nodeguard.Node;
+using UTXO = NBXplorer.Models.UTXO;
 using Wallet = NodeGuard.Data.Models.Wallet;
 
 namespace NodeGuard.Rpc;
@@ -71,7 +72,7 @@ public class NodeGuardService : Nodeguard.NodeGuardService.NodeGuardServiceBase,
     private readonly ICoinSelectionService _coinSelectionService;
     private readonly IScheduler _scheduler;
     private readonly ILightningService _lightningService;
-    private readonly IFMUTXORepository _fmutxoRepository;
+    private readonly IUTXORepository _utxoRepository;
 
     public NodeGuardService(ILogger<NodeGuardService> logger,
         ILiquidityRuleRepository liquidityRuleRepository,
@@ -86,7 +87,7 @@ public class NodeGuardService : Nodeguard.NodeGuardService.NodeGuardServiceBase,
         IChannelRepository channelRepository,
         ICoinSelectionService coinSelectionService,
         ILightningService lightningService,
-        IFMUTXORepository fmutxoRepository
+        IUTXORepository utxoRepository
     )
     {
         _logger = logger;
@@ -102,7 +103,7 @@ public class NodeGuardService : Nodeguard.NodeGuardService.NodeGuardServiceBase,
         _channelRepository = channelRepository;
         _coinSelectionService = coinSelectionService;
         _lightningService = lightningService;
-        _fmutxoRepository = fmutxoRepository;
+        _utxoRepository = utxoRepository;
         _scheduler = Task.Run(() => _schedulerFactory.GetScheduler()).Result;
     }
 
@@ -891,7 +892,7 @@ public class NodeGuardService : Nodeguard.NodeGuardService.NodeGuardServiceBase,
             throw new Exception("Derivation strategy not found for wallet with id {walletId}");
         }
 
-        var lockedUtxos = await _fmutxoRepository.GetLockedUTXOs();
+        var lockedUtxos = await _utxoRepository.GetLockedUTXOs();
         var utxos = await _nbXplorerService.GetUTXOsByLimitAsync(
             derivationStrategy,
             coinSelectionStrategy,

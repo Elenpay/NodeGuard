@@ -137,7 +137,7 @@ namespace NodeGuard.Data.Models
 
         public bool IsChannelPrivate { get; set; }
 
-        public List<FMUTXO> Utxos { get; set; }
+        public List<UTXO> Utxos { get; set; }
 
         #endregion Relationships
 

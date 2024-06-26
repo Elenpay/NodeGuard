@@ -32,6 +32,7 @@ using NBitcoin;
 using NBXplorer.DerivationStrategy;
 using Microsoft.EntityFrameworkCore;
 using Channel = NodeGuard.Data.Models.Channel;
+using UTXO = NBXplorer.Models.UTXO;
 
 namespace NodeGuard.Services
 {

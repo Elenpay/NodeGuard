@@ -199,7 +199,7 @@ namespace NodeGuard.Data.Models
 
         public List<WalletWithdrawalRequestPSBT> WalletWithdrawalRequestPSBTs { get; set; }
 
-        public List<FMUTXO> UTXOs { get; set; }
+        public List<UTXO> UTXOs { get; set; }
 
         #endregion Relationships
 

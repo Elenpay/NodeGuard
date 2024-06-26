@@ -4,7 +4,7 @@ using Microsoft.EntityFrameworkCore;
 
 namespace NodeGuard.Data.Repositories;
 
-public class FUTXORepositoryTests
+public class UtxoRepositoryTests
 {
     private readonly Random _random = new();
 
@@ -24,7 +24,7 @@ public class FUTXORepositoryTests
     public async Task GetLockedUTXOs_emptyArgs()
     {
         var dbContextFactory = SetupDbContextFactory();
-        var futxoRepository = new FUTXORepository(null, null, dbContextFactory.Object);
+        var futxoRepository = new UTXORepository(null, null, dbContextFactory.Object);
 
         var context = await dbContextFactory.Object.CreateDbContextAsync();
 
@@ -33,12 +33,12 @@ public class FUTXORepositoryTests
             Description = "1",
             DestinationAddress = "1",
             Status = WalletWithdrawalRequestStatus.Pending,
-            UTXOs = new List<FMUTXO> { new () { TxId = "1"} }
+            UTXOs = new List<UTXO> { new () { TxId = "1"} }
         });
         context.ChannelOperationRequests.Add(new ChannelOperationRequest
         {
             Status = ChannelOperationRequestStatus.Pending,
-            Utxos = new List<FMUTXO> { new () { TxId = "2"} }
+            Utxos = new List<UTXO> { new () { TxId = "2"} }
         });
         await context.SaveChangesAsync();
 
@@ -50,7 +50,7 @@ public class FUTXORepositoryTests
     public async Task GetLockedUTXOs_ignoreWithdrawals()
     {
         var dbContextFactory = SetupDbContextFactory();
-        var futxoRepository = new FUTXORepository(null, null, dbContextFactory.Object);
+        var futxoRepository = new UTXORepository(null, null, dbContextFactory.Object);
 
         var context = dbContextFactory.Object.CreateDbContext();
 
@@ -60,13 +60,13 @@ public class FUTXORepositoryTests
             Description = "1",
             DestinationAddress = "1",
             Status = WalletWithdrawalRequestStatus.Pending,
-            UTXOs = new List<FMUTXO> { new () { TxId = "1"} }
+            UTXOs = new List<UTXO> { new () { TxId = "1"} }
         });
         context.ChannelOperationRequests.Add(new ChannelOperationRequest
         {
             Id = 2,
             Status = ChannelOperationRequestStatus.Pending,
-            Utxos = new List<FMUTXO> { new () { TxId = "2"} }
+            Utxos = new List<UTXO> { new () { TxId = "2"} }
         });
         await context.SaveChangesAsync();
 
@@ -79,7 +79,7 @@ public class FUTXORepositoryTests
     public async Task GetLockedUTXOs_ignoreChannels()
     {
         var dbContextFactory = SetupDbContextFactory();
-        var futxoRepository = new FUTXORepository(null, null, dbContextFactory.Object);
+        var futxoRepository = new UTXORepository(null, null, dbContextFactory.Object);
 
         var context = dbContextFactory.Object.CreateDbContext();
 
@@ -89,13 +89,13 @@ public class FUTXORepositoryTests
             Description = "1",
             DestinationAddress = "1",
             Status = WalletWithdrawalRequestStatus.Pending,
-            UTXOs = new List<FMUTXO> { new () { TxId = "1"} }
+            UTXOs = new List<UTXO> { new () { TxId = "1"} }
         });
         context.ChannelOperationRequests.Add(new ChannelOperationRequest
         {
             Id = 2,
             Status = ChannelOperationRequestStatus.Pending,
-            Utxos = new List<FMUTXO> { new () { TxId = "2"} }
+            Utxos = new List<UTXO> { new () { TxId = "2"} }
         });
         await context.SaveChangesAsync();
 
@@ -108,7 +108,7 @@ public class FUTXORepositoryTests
     public async Task GetLockedUTXOs_failedChannels()
     {
         var dbContextFactory = SetupDbContextFactory();
-        var futxoRepository = new FUTXORepository(null, null, dbContextFactory.Object);
+        var futxoRepository = new UTXORepository(null, null, dbContextFactory.Object);
 
         var context = dbContextFactory.Object.CreateDbContext();
 
@@ -118,13 +118,13 @@ public class FUTXORepositoryTests
             Description = "1",
             DestinationAddress = "1",
             Status = WalletWithdrawalRequestStatus.Failed,
-            UTXOs = new List<FMUTXO> { new () { TxId = "1"} }
+            UTXOs = new List<UTXO> { new () { TxId = "1"} }
         });
         context.ChannelOperationRequests.Add(new ChannelOperationRequest
         {
             Id = 2,
             Status = ChannelOperationRequestStatus.Pending,
-            Utxos = new List<FMUTXO> { new () { TxId = "2"} }
+            Utxos = new List<UTXO> { new () { TxId = "2"} }
         });
         await context.SaveChangesAsync();
 
@@ -137,7 +137,7 @@ public class FUTXORepositoryTests
     public async Task GetLockedUTXOs_failedCWithdrawals()
     {
         var dbContextFactory = SetupDbContextFactory();
-        var futxoRepository = new FUTXORepository(null, null, dbContextFactory.Object);
+        var futxoRepository = new UTXORepository(null, null, dbContextFactory.Object);
 
         var context = dbContextFactory.Object.CreateDbContext();
 
@@ -147,13 +147,13 @@ public class FUTXORepositoryTests
             Description = "1",
             DestinationAddress = "1",
             Status = WalletWithdrawalRequestStatus.Pending,
-            UTXOs = new List<FMUTXO> { new () { TxId = "1"} }
+            UTXOs = new List<UTXO> { new () { TxId = "1"} }
         });
         context.ChannelOperationRequests.Add(new ChannelOperationRequest
         {
             Id = 2,
             Status = ChannelOperationRequestStatus.Failed,
-            Utxos = new List<FMUTXO> { new () { TxId = "2"} }
+            Utxos = new List<UTXO> { new () { TxId = "2"} }
         });
         await context.SaveChangesAsync();
 

@@ -27,6 +27,7 @@ using NBitcoin;
 using NBXplorer.DerivationStrategy;
 using NBXplorer.Models;
 using NSubstitute.Exceptions;
+using UTXO = NodeGuard.Data.Models.UTXO;
 
 // ReSharper disable All
 
@@ -256,7 +257,7 @@ namespace NodeGuard.Services
             }
 
             // We "lock" the PSBT to the channel operation request by adding to its UTXOs collection for later checking
-            var utxos = selectedUTXOs.Select(x => _mapper.Map<UTXO, FMUTXO>(x)).ToList();
+            var utxos = selectedUTXOs.Select(x => _mapper.Map<NBXplorer.Models.UTXO, UTXO>(x)).ToList();
 
             var addUTXOSOperation = await _walletWithdrawalRequestRepository.AddUTXOs(walletWithdrawalRequest, utxos);
             if (!addUTXOSOperation.Item1)
