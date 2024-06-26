@@ -17,12 +17,9 @@
  *
  */
 
-using AutoMapper;
 using NodeGuard.Data.Models;
 using NodeGuard.Data.Repositories.Interfaces;
 using Microsoft.EntityFrameworkCore;
-using NBitcoin;
-using NBXplorer.Models;
 
 namespace NodeGuard.Data.Repositories
 {
