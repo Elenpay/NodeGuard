@@ -119,15 +119,18 @@ public class CoinSelectionService: ICoinSelectionService
         var utxos = await _fmutxoRepository.GetByWalletId(bitcoinRequest.Wallet.Id);
 
         var utxosToSave = new List<FMUTXO>();
-        var utxosToAdd = new List<FMUTXO>();
+        var utxosToAddToTransaction = new List<FMUTXO>();
+        // We check the selected UTXOs against the ones we have in the database to see if they are already there
         foreach (var fmutxo in selectedFMUTXOs)
         {
             if (utxos.Contains(fmutxo))
             {
-                utxosToAdd.Add(fmutxo);
+                // If they are in the DB we add them to the transaction
+                utxosToAddToTransaction.Add(fmutxo);
             }
             else
             {
+                // If they are not in the DB we add them
                 fmutxo.WalletId = bitcoinRequest.Wallet.Id;
                 fmutxo.SetCreationDatetime();
                 fmutxo.SetUpdateDatetime();
@@ -135,32 +138,35 @@ public class CoinSelectionService: ICoinSelectionService
             }
         }
 
+        // If there's any UTXO to save we do it
         if (utxosToSave.Any())
         {
             (bool success, string? reason) = await _fmutxoRepository.AddRangeAsync(utxosToSave);
             if (!success)
             {
                 _logger.LogError($"Could not save the utxos that were not selected for request:{bitcoinRequest.Id}");
-                utxosToAdd = new List<FMUTXO>();
+                utxosToAddToTransaction = new List<FMUTXO>();
             }
 
             foreach (var fmutxo in utxosToSave)
             {
+                // We get the final UTXO from the DB to add to the transaction
                 var finalUtxo = await _fmutxoRepository.GetByOutpoint(fmutxo.TxId, fmutxo.OutputIndex);
-                utxosToAdd.Add(finalUtxo);
+                utxosToAddToTransaction.Add(finalUtxo);
             }
         }
 
-        if (utxosToAdd.Count < selectedUTXOs.Count)
+        // If we couldn't save the UTXOs we fail to construct the transaction
+        if (utxosToAddToTransaction.Count < selectedUTXOs.Count)
         {
-            utxosToAdd = new List<FMUTXO>();
+            utxosToAddToTransaction = new List<FMUTXO>();
         }
         
-        var addUTXOsOperation = await GetRepository(requestType).AddUTXOs(bitcoinRequest, utxosToAdd);
+        var addUTXOsOperation = await GetRepository(requestType).AddUTXOs(bitcoinRequest, utxosToAddToTransaction);
         if (!addUTXOsOperation.Item1)
         {
             _logger.LogError(
-                $"Could not add the following utxos({utxosToAdd.Humanize()}) to op request:{bitcoinRequest.Id}");
+                $"Could not add the following utxos({utxosToAddToTransaction.Humanize()}) to op request:{bitcoinRequest.Id}");
         }
     }
 
