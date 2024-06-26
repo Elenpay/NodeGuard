@@ -47,6 +47,8 @@ public interface INodeGuardService
 
     Task<GetAvailableUtxosResponse> GetAvailableUtxos(GetAvailableUtxosRequest request, ServerCallContext context);
 
+    Task<GetAllUtxosResponse> GetAllUtxos(GetAllUtxosRequest request, ServerCallContext context);
+
     Task<GetWithdrawalsRequestStatusResponse> GetWithdrawalsRequestStatus(GetWithdrawalsRequestStatusRequest request, ServerCallContext context);
 
     Task<GetChannelResponse> GetChannel(GetChannelRequest request, ServerCallContext context);
@@ -871,6 +873,42 @@ public class NodeGuardService : Nodeguard.NodeGuardService.NodeGuardServiceBase,
             return false;
 
         return true;
+    }
+
+    public override async Task<GetAllUtxosResponse> GetAllUtxos(GetAllUtxosRequest request, ServerCallContext context)
+    {
+        List<FMUTXO> fmutxos;
+        // Check if the user sent a wallet id, else we get all utxos
+        if (request.WalletId == 0)
+        {
+            fmutxos = await _fmutxoRepository.GetAll();
+        }
+        else
+        {
+            fmutxos = await _fmutxoRepository.GetByWalletId(request.WalletId);
+        }
+
+        // Check if user wants the list to contain the locked utxos
+        if (!request.IncludeLocked)
+        {
+            var lockedUtxos = await _fmutxoRepository.GetLockedUTXOs();
+            Console.WriteLine(lockedUtxos.Count);
+            Console.WriteLine(fmutxos.Count);
+            fmutxos = fmutxos.Except(lockedUtxos).ToList();
+        }
+
+        var utxos = fmutxos.Select(utxo => new Utxo()
+        {
+            Amount = new Money(utxo.SatsAmount),
+            // We follow the same convention as GetAvailableUtxos for displaying outpoints
+            Outpoint = $"{utxo.TxId}-{utxo.OutputIndex}",
+            Address = utxo.Address?.ToString()
+        });
+
+        return new GetAllUtxosResponse()
+        {
+            Utxos = { utxos }
+        };
     }
 
     public override async Task<GetAvailableUtxosResponse> GetAvailableUtxos(GetAvailableUtxosRequest request, ServerCallContext context)
