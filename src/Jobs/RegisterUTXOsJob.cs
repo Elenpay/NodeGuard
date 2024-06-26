@@ -35,6 +35,12 @@ public class RegisterUTXOsJob : IJob
         var wallets = await _walletRepository.GetAll();
         foreach (var wallet in wallets)
         {
+            if (wallet.GetDerivationStrategy() == null)
+            {
+                _logger.LogWarning("Wallet {WalletId} has no derivation strategy", wallet.Id);
+                continue;
+            }
+
             var utxos = await _nbXplorerService.GetUTXOsAsync(wallet.GetDerivationStrategy());
             utxos.RemoveDuplicateUTXOs();
 
@@ -52,17 +58,19 @@ public class RegisterUTXOsJob : IJob
                     fmUtxo.SetCreationDatetime();
                     fmUtxo.SetUpdateDatetime();
                 }
+
                 var (success, message) = await _fmutxoRepository.AddRangeAsync(fmUtxos);
                 if (!success)
                 {
-                    _logger.LogError("Error adding UTXOs to database for wallet {WalletId}: {Message}", wallet.Id, message);
+                    _logger.LogError("Error adding UTXOs to database for wallet {WalletId}: {Message}", wallet.Id,
+                        message);
                 }
-                
-                _logger.LogInformation("Added {Count} new UTXOs to wallet {WalletId}", newUtxos.Count, wallet.Id);
+
+                _logger.LogDebug("Added {Count} new UTXOs to wallet {WalletId}", newUtxos.Count, wallet.Id);
             }
             else
             {
-                _logger.LogInformation("No new UTXOs found for wallet {WalletId}", wallet.Id);
+                _logger.LogDebug("No new UTXOs found for wallet {WalletId}", wallet.Id);
             }
         }
     }
