@@ -51,7 +51,7 @@ services:
     volumes:
       - nbxplorer_postgres_data:/var/lib/postgresql/data
     ports:
-      - 5433:5432
+      - 35432:5432
 
 
 
