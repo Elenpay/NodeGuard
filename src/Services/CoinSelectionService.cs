@@ -150,7 +150,7 @@ public class CoinSelectionService: ICoinSelectionService
 
             foreach (var fmutxo in utxosToSave)
             {
-                // We get the final UTXO from the DB to add to the transaction
+                // We refetch the UTXOs from the DB so we can have them with the id
                 var finalUtxo = await _fmutxoRepository.GetByOutpoint(fmutxo.TxId, fmutxo.OutputIndex);
                 utxosToAddToTransaction.Add(finalUtxo);
             }
