@@ -61,28 +61,12 @@ namespace NodeGuard.Data.Repositories
                 .Include(x => x.Tags).ToListAsync();
         }
 
-        public async Task<List<FMUTXO>> GetFromUTXOs(List<FMUTXO> utxos)
+        public async Task<FMUTXO?> GetByOutpoint(string hash, uint outputIndex)
         {
             await using var applicationDbContext = await _dbContextFactory.CreateDbContextAsync();
-            
-            var allUtxos = await applicationDbContext.FMUTXOs
-                .ToListAsync();
 
-            List<FMUTXO> newUtxos = new List<FMUTXO>();
-            foreach (var utxo in allUtxos)
-            {
-                if (utxos.Contains(utxo))
-                {
-                    newUtxos.Add(utxo);
-                }
-            }
-            
-            if (newUtxos.Count < utxos.Count)
-            {
-                _logger.LogWarning("Some UTXOs were not found in the database");
-            }   
-
-            return newUtxos;
+            return await applicationDbContext.FMUTXOs.Where(x => x.TxId == hash && x.OutputIndex == outputIndex)
+                .Include(x => x.Tags).FirstOrDefaultAsync();
         }
 
         public async Task<(bool, string?)> AddAsync(FMUTXO type)

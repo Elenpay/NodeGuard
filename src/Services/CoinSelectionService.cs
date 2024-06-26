@@ -18,6 +18,8 @@
  */
 
 using AutoMapper;
+using Blazorise;
+using Blazorise.Extensions;
 using NodeGuard.Data.Models;
 using NodeGuard.Data.Repositories.Interfaces;
 using NodeGuard.Helpers;
@@ -114,13 +116,51 @@ public class CoinSelectionService: ICoinSelectionService
     {
         // We "lock" the PSBT to the channel operation request by adding to its UTXOs collection for later checking
         var selectedFMUTXOs = selectedUTXOs.Select(x => _mapper.Map<UTXO, FMUTXO>(x)).ToList();
-        var utxos = await _fmutxoRepository.GetFromUTXOs(selectedFMUTXOs);
+        var utxos = await _fmutxoRepository.GetByWalletId(bitcoinRequest.Wallet.Id);
 
-        var addUTXOsOperation = await GetRepository(requestType).AddUTXOs(bitcoinRequest, utxos);
+        var utxosToSave = new List<FMUTXO>();
+        var utxosToAdd = new List<FMUTXO>();
+        foreach (var fmutxo in selectedFMUTXOs)
+        {
+            if (utxos.Contains(fmutxo))
+            {
+                utxosToAdd.Add(fmutxo);
+            }
+            else
+            {
+                fmutxo.WalletId = bitcoinRequest.Wallet.Id;
+                fmutxo.SetCreationDatetime();
+                fmutxo.SetUpdateDatetime();
+                utxosToSave.Add(fmutxo);
+            }
+        }
+
+        if (utxosToSave.Any())
+        {
+            (bool success, string? reason) = await _fmutxoRepository.AddRangeAsync(utxosToSave);
+            if (!success)
+            {
+                _logger.LogError($"Could not save the utxos that were not selected for request:{bitcoinRequest.Id}");
+                utxosToAdd = new List<FMUTXO>();
+            }
+
+            foreach (var fmutxo in utxosToSave)
+            {
+                var finalUtxo = await _fmutxoRepository.GetByOutpoint(fmutxo.TxId, fmutxo.OutputIndex);
+                utxosToAdd.Add(finalUtxo);
+            }
+        }
+
+        if (utxosToAdd.Count < selectedUTXOs.Count)
+        {
+            utxosToAdd = new List<FMUTXO>();
+        }
+        
+        var addUTXOsOperation = await GetRepository(requestType).AddUTXOs(bitcoinRequest, utxosToAdd);
         if (!addUTXOsOperation.Item1)
         {
             _logger.LogError(
-                $"Could not add the following utxos({utxos.Humanize()}) to op request:{bitcoinRequest.Id}");
+                $"Could not add the following utxos({utxosToAdd.Humanize()}) to op request:{bitcoinRequest.Id}");
         }
     }
 
