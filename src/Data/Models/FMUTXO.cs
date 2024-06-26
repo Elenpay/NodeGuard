@@ -35,15 +35,16 @@ namespace NodeGuard.Data.Models
 
         public long SatsAmount { get; set; }
         
+        // Bitcoin address of the UTXO
         public string? Address { get; set; }
         
-        // This  
+        // Indicates if this UTXO is frozen and can't be used in any operation 
         public bool IsFrozen { get; set; }
         
         
         #region Relationships
         
-        // 
+        // Tags assigned to the UTXO
         public List<UTXOTag>? Tags { get; set; }
 
         // M-N Because if the UTXO is used in a request that gets cancelled,
