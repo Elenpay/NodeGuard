@@ -144,8 +144,7 @@ public class CoinSelectionService: ICoinSelectionService
             (bool success, string? reason) = await _fmutxoRepository.AddRangeAsync(utxosToSave);
             if (!success)
             {
-                _logger.LogError($"Could not save the utxos that were not selected for request:{bitcoinRequest.Id}");
-                utxosToAddToTransaction = new List<FMUTXO>();
+                throw new Exception($"Could not save the utxos that were not selected for request:{bitcoinRequest.Id}. Reason:{reason}");
             }
 
             foreach (var fmutxo in utxosToSave)
@@ -154,12 +153,6 @@ public class CoinSelectionService: ICoinSelectionService
                 var finalUtxo = await _fmutxoRepository.GetByOutpoint(fmutxo.TxId, fmutxo.OutputIndex);
                 utxosToAddToTransaction.Add(finalUtxo);
             }
-        }
-
-        // If we couldn't save the UTXOs we fail to construct the transaction
-        if (utxosToAddToTransaction.Count < selectedUTXOs.Count)
-        {
-            utxosToAddToTransaction = new List<FMUTXO>();
         }
         
         var addUTXOsOperation = await GetRepository(requestType).AddUTXOs(bitcoinRequest, utxosToAddToTransaction);
