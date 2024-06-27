@@ -17,8 +17,6 @@
  *
  */
 
-using System.ComponentModel.DataAnnotations.Schema;
-using Blazorise.Extensions;
 using NBitcoin;
 using NBXplorer.Models;
 
