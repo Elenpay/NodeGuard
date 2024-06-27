@@ -996,6 +996,7 @@ public class NodeGuardService : Nodeguard.NodeGuardService.NodeGuardServiceBase,
         var fmutxos = new List<FMUTXO>();
         foreach (var outpoint in request.UtxosOutpoints)
         {
+            // Outpoint format is txid:outputIndex
             var outpointArray = outpoint.Split(':');
             if (outpointArray.Length != 2)
             {
