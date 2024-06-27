@@ -210,12 +210,12 @@ namespace NodeGuard.Data.Repositories
                 if (request != null)
                 {
                     if (!request.UTXOs.Any())
-                    {	
-                        request.UTXOs = utxos;	
-                    }	
-                    else	
-                    {	
-                        request.UTXOs.AddRange(utxos.Except(request.UTXOs));	
+                    {
+                        request.UTXOs = utxos;
+                    }
+                    else
+                    {
+                        request.UTXOs.AddRange(utxos.Except(request.UTXOs));
                     }
 
                     applicationDbContext.Update(request);

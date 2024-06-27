@@ -36,8 +36,7 @@ namespace NodeGuard.Data.Repositories
 
         public ChannelOperationRequestRepository(IRepository<ChannelOperationRequest> repository,
             ILogger<ChannelOperationRequestRepository> logger,
-            IDbContextFactory<ApplicationDbContext> dbContextFactory, IMapper mapper,
-            NotificationService notificationService)
+            IDbContextFactory<ApplicationDbContext> dbContextFactory, IMapper mapper, NotificationService notificationService)
         {
             _repository = repository;
             _logger = logger;
@@ -175,12 +174,12 @@ namespace NodeGuard.Data.Repositories
                 if (request != null)
                 {
                     if (!request.Utxos.Any())
-                    {	
-                        request.Utxos = utxos;	
-                    }	
-                    else	
-                    {	
-                        request.Utxos.AddRange(utxos.Except(request.Utxos));	
+                    {
+                        request.Utxos = utxos;
+                    }
+                    else
+                    {
+                        request.Utxos.AddRange(utxos.Except(request.Utxos));
                     }
 
                     applicationDbContext.Update(request);
