@@ -40,7 +40,7 @@ namespace NodeGuard.Data.Models
         public List<WalletWithdrawalRequest> WalletWithdrawalRequests { get; set; }
 
         #endregion Relationships
-        
+
         public override string ToString()
         {
             return $"{TxId}:{OutputIndex}";
