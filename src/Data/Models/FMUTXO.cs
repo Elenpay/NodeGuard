@@ -32,7 +32,7 @@ namespace NodeGuard.Data.Models
         public uint OutputIndex { get; set; }
 
         public long SatsAmount { get; set; }
-        
+
         #region Relationships
 
         // M-N Because if the UTXO is used in a request that gets cancelled,
