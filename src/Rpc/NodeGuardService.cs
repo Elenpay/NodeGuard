@@ -892,8 +892,6 @@ public class NodeGuardService : Nodeguard.NodeGuardService.NodeGuardServiceBase,
         if (!request.IncludeLocked)
         {
             var lockedUtxos = await _fmutxoRepository.GetLockedUTXOs();
-            Console.WriteLine(lockedUtxos.Count);
-            Console.WriteLine(fmutxos.Count);
             fmutxos = fmutxos.Except(lockedUtxos).ToList();
         }
 
