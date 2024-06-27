@@ -1006,7 +1006,7 @@ public class NodeGuardService : Nodeguard.NodeGuardService.NodeGuardServiceBase,
             {
                 throw new RpcException(new Status(StatusCode.InvalidArgument, $"OutputIndex of {outpoint} is not a number"));
             }
-            var fmutxo = await _fmutxoRepository.GetByOutpoint(outpointArray[0], outputIndex);
+            var fmutxo = await _fmutxoRepository.GetByOutpoint(txid, outputIndex);
             if (fmutxo == null)
             {
                 throw new RpcException(new Status(StatusCode.NotFound, $"UTXO {outpoint} not found"));    
