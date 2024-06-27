@@ -103,6 +103,26 @@ namespace NodeGuard.Data.Repositories
             return (rowsChanged, null);
         }
 
+        public (bool, string?) UpdateRange<T>(List<T> type, ApplicationDbContext applicationDbContext) where T : class
+        {
+            if (type == null) throw new ArgumentNullException(nameof(type));
+            
+            var rowsChanged = false;
+            try
+            {
+                applicationDbContext.UpdateRange(type);
+                var saveChanges = applicationDbContext.SaveChanges();
+                rowsChanged = saveChanges > 0;
+            }
+            catch (Exception e)
+            {
+                _logger.LogError(e, "Error on repository");
+                return (false, e.Message);
+            }
+            
+            return (rowsChanged, null);
+        }
+
         public (bool, string?) Remove(T type, ApplicationDbContext applicationDbContext)
         {
             if (type == null) throw new ArgumentNullException(nameof(type));

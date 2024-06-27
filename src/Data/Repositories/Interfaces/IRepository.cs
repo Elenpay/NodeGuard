@@ -72,5 +72,13 @@
         /// <param name="applicationDbContext"></param>
         /// <returns>A tuple (bool, string). The bool represents the call success and the string any possible message.</returns>
         public (bool, string) Update(T type, ApplicationDbContext applicationDbContext);
+
+        /// <summary>
+        /// Updates a collection of entities of <see cref="IRepository{T}"></see>
+        /// </summary>
+        /// <param name="type"></param>
+        /// <param name="applicationDbContext"></param>
+        /// <returns>A tuple (bool, string). The bool represents the call success and the string any possible message.</returns>
+        public (bool, string?) UpdateRange<T>(List<T> type, ApplicationDbContext applicationDbContext) where T : class;
     }
 }

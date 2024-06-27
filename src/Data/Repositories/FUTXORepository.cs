@@ -105,6 +105,18 @@ namespace NodeGuard.Data.Repositories
             return _repository.Update(type, applicationDbContext);
         }
 
+        public (bool, string?) UpdateRange(List<FMUTXO> types)
+        {
+            using var applicationDbContext = _dbContextFactory.CreateDbContext();
+            
+            foreach (var type in types)
+            {
+                type.SetUpdateDatetime();
+            }
+            
+            return _repository.UpdateRange(types, applicationDbContext);
+        }
+
         public async Task<List<FMUTXO>> GetLockedUTXOs(int? ignoredWalletWithdrawalRequestId = null, int? ignoredChannelOperationRequestId = null)
         {
             await using var applicationDbContext = await _dbContextFactory.CreateDbContextAsync();
