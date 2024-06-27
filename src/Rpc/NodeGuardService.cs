@@ -47,7 +47,7 @@ public interface INodeGuardService
 
     Task<GetAvailableUtxosResponse> GetAvailableUtxos(GetAvailableUtxosRequest request, ServerCallContext context);
 
-    Task<GetAllUtxosResponse> GetAllUtxos(GetAllUtxosRequest request, ServerCallContext context);
+    Task<GetUtxosResponse> GetUtxos(GetUtxosRequest request, ServerCallContext context);
 
     Task<GetWithdrawalsRequestStatusResponse> GetWithdrawalsRequestStatus(GetWithdrawalsRequestStatusRequest request, ServerCallContext context);
 
@@ -875,7 +875,7 @@ public class NodeGuardService : Nodeguard.NodeGuardService.NodeGuardServiceBase,
         return true;
     }
 
-    public override async Task<GetAllUtxosResponse> GetAllUtxos(GetAllUtxosRequest request, ServerCallContext context)
+    public override async Task<GetUtxosResponse> GetUtxos(GetUtxosRequest request, ServerCallContext context)
     {
         List<FMUTXO> fmutxos;
         // Check if the user sent a wallet id, else we get all utxos
@@ -903,9 +903,9 @@ public class NodeGuardService : Nodeguard.NodeGuardService.NodeGuardServiceBase,
             Address = utxo.Address?.ToString()
         });
 
-        return new GetAllUtxosResponse()
+        return new GetUtxosResponse()
         {
-            Utxos = { utxos }
+            Confirmed = { utxos }
         };
     }
 

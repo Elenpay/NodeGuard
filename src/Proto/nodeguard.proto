@@ -60,9 +60,9 @@ service NodeGuardService {
   rpc GetAvailableUtxos(GetAvailableUtxosRequest) returns (GetAvailableUtxosResponse);
 
   /*
-  Gets a list of all UTXOs
+  Gets a list of UTXOs
   */
-  rpc GetAllUtxos(GetAllUtxosRequest) returns (GetAllUtxosResponse);
+  rpc GetUtxos(GetUtxosRequest) returns (GetUtxosResponse);
 
   /*
   Gets the status for the provided withdrawals request ids
@@ -317,14 +317,14 @@ enum COIN_SELECTION_STRATEGY
     UP_TO_AMOUNT = 3;
 }
 
-message GetAllUtxosRequest {
+message GetUtxosRequest {
   // optionally filter by wallet_id
   optional int32 wallet_id = 1;
   optional bool include_locked = 2;
 }
 
-message GetAllUtxosResponse {
-  repeated Utxo utxos = 1;
+message GetUtxosResponse {
+  repeated Utxo confirmed = 1;
 }
 
 message GetAvailableUtxosRequest {
