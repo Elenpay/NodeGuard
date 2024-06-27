@@ -19,7 +19,7 @@ namespace NodeGuard.Migrations
         {
 #pragma warning disable 612, 618
             modelBuilder
-                .HasAnnotation("ProductVersion", "8.0.6")
+                .HasAnnotation("ProductVersion", "8.0.0")
                 .HasAnnotation("Relational:MaxIdentifierLength", 63);
 
             NpgsqlModelBuilderExtensions.UseIdentityByDefaultColumns(modelBuilder);
@@ -36,7 +36,7 @@ namespace NodeGuard.Migrations
 
                     b.HasIndex("UsersId");
 
-                    b.ToTable("ApplicationUserNode");
+                    b.ToTable("ApplicationUserNode", (string)null);
                 });
 
             modelBuilder.Entity("ChannelOperationRequestFMUTXO", b =>
@@ -51,7 +51,7 @@ namespace NodeGuard.Migrations
 
                     b.HasIndex("UtxosId");
 
-                    b.ToTable("ChannelOperationRequestFMUTXO");
+                    b.ToTable("ChannelOperationRequestFMUTXO", (string)null);
                 });
 
             modelBuilder.Entity("FMUTXOWalletWithdrawalRequest", b =>
@@ -66,7 +66,7 @@ namespace NodeGuard.Migrations
 
                     b.HasIndex("WalletWithdrawalRequestsId");
 
-                    b.ToTable("FMUTXOWalletWithdrawalRequest");
+                    b.ToTable("FMUTXOWalletWithdrawalRequest", (string)null);
                 });
 
             modelBuilder.Entity("KeyWallet", b =>
@@ -81,7 +81,7 @@ namespace NodeGuard.Migrations
 
                     b.HasIndex("WalletsId");
 
-                    b.ToTable("KeyWallet");
+                    b.ToTable("KeyWallet", (string)null);
                 });
 
             modelBuilder.Entity("Microsoft.AspNetCore.Identity.IdentityRole", b =>
@@ -329,7 +329,7 @@ namespace NodeGuard.Migrations
 
                     b.HasIndex("CreatorId");
 
-                    b.ToTable("ApiTokens");
+                    b.ToTable("ApiTokens", (string)null);
                 });
 
             modelBuilder.Entity("NodeGuard.Data.Models.Channel", b =>
@@ -386,7 +386,7 @@ namespace NodeGuard.Migrations
 
                     b.HasIndex("SourceNodeId");
 
-                    b.ToTable("Channels");
+                    b.ToTable("Channels", (string)null);
                 });
 
             modelBuilder.Entity("NodeGuard.Data.Models.ChannelOperationRequest", b =>
@@ -466,7 +466,7 @@ namespace NodeGuard.Migrations
 
                     b.HasIndex("WalletId");
 
-                    b.ToTable("ChannelOperationRequests");
+                    b.ToTable("ChannelOperationRequests", (string)null);
                 });
 
             modelBuilder.Entity("NodeGuard.Data.Models.ChannelOperationRequestPSBT", b =>
@@ -508,7 +508,7 @@ namespace NodeGuard.Migrations
 
                     b.HasIndex("UserSignerId");
 
-                    b.ToTable("ChannelOperationRequestPSBTs");
+                    b.ToTable("ChannelOperationRequestPSBTs", (string)null);
                 });
 
             modelBuilder.Entity("NodeGuard.Data.Models.FMUTXO", b =>
@@ -519,14 +519,8 @@ namespace NodeGuard.Migrations
 
                     NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
 
-                    b.Property<string>("Address")
-                        .HasColumnType("text");
-
                     b.Property<DateTimeOffset>("CreationDatetime")
                         .HasColumnType("timestamp with time zone");
-
-                    b.Property<bool>("IsFrozen")
-                        .HasColumnType("boolean");
 
                     b.Property<long>("OutputIndex")
                         .HasColumnType("bigint");
@@ -541,14 +535,9 @@ namespace NodeGuard.Migrations
                     b.Property<DateTimeOffset>("UpdateDatetime")
                         .HasColumnType("timestamp with time zone");
 
-                    b.Property<int>("WalletId")
-                        .HasColumnType("integer");
-
                     b.HasKey("Id");
 
-                    b.HasIndex("WalletId");
-
-                    b.ToTable("FMUTXOs");
+                    b.ToTable("FMUTXOs", (string)null);
                 });
 
             modelBuilder.Entity("NodeGuard.Data.Models.InternalWallet", b =>
@@ -580,7 +569,7 @@ namespace NodeGuard.Migrations
 
                     b.HasKey("Id");
 
-                    b.ToTable("InternalWallets");
+                    b.ToTable("InternalWallets", (string)null);
                 });
 
             modelBuilder.Entity("NodeGuard.Data.Models.Key", b =>
@@ -635,7 +624,7 @@ namespace NodeGuard.Migrations
 
                     b.HasIndex("UserId");
 
-                    b.ToTable("Keys");
+                    b.ToTable("Keys", (string)null);
                 });
 
             modelBuilder.Entity("NodeGuard.Data.Models.LiquidityRule", b =>
@@ -690,7 +679,7 @@ namespace NodeGuard.Migrations
 
                     b.HasIndex("SwapWalletId");
 
-                    b.ToTable("LiquidityRules");
+                    b.ToTable("LiquidityRules", (string)null);
                 });
 
             modelBuilder.Entity("NodeGuard.Data.Models.Node", b =>
@@ -740,39 +729,7 @@ namespace NodeGuard.Migrations
 
                     b.HasIndex("ReturningFundsWalletId");
 
-                    b.ToTable("Nodes");
-                });
-
-            modelBuilder.Entity("NodeGuard.Data.Models.UTXOTag", b =>
-                {
-                    b.Property<int>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("integer");
-
-                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
-
-                    b.Property<DateTimeOffset>("CreationDatetime")
-                        .HasColumnType("timestamp with time zone");
-
-                    b.Property<int>("FMUTXOId")
-                        .HasColumnType("integer");
-
-                    b.Property<string>("Key")
-                        .IsRequired()
-                        .HasColumnType("text");
-
-                    b.Property<DateTimeOffset>("UpdateDatetime")
-                        .HasColumnType("timestamp with time zone");
-
-                    b.Property<string>("Value")
-                        .IsRequired()
-                        .HasColumnType("text");
-
-                    b.HasKey("Id");
-
-                    b.HasIndex("FMUTXOId");
-
-                    b.ToTable("UTXOTags");
+                    b.ToTable("Nodes", (string)null);
                 });
 
             modelBuilder.Entity("NodeGuard.Data.Models.Wallet", b =>
@@ -845,7 +802,7 @@ namespace NodeGuard.Migrations
                     b.HasIndex("InternalWalletSubDerivationPath", "InternalWalletMasterFingerprint")
                         .IsUnique();
 
-                    b.ToTable("Wallets");
+                    b.ToTable("Wallets", (string)null);
                 });
 
             modelBuilder.Entity("NodeGuard.Data.Models.WalletWithdrawalRequest", b =>
@@ -909,7 +866,7 @@ namespace NodeGuard.Migrations
 
                     b.HasIndex("WalletId");
 
-                    b.ToTable("WalletWithdrawalRequests");
+                    b.ToTable("WalletWithdrawalRequests", (string)null);
                 });
 
             modelBuilder.Entity("NodeGuard.Data.Models.WalletWithdrawalRequestPSBT", b =>
@@ -951,7 +908,7 @@ namespace NodeGuard.Migrations
 
                     b.HasIndex("WalletWithdrawalRequestId");
 
-                    b.ToTable("WalletWithdrawalRequestPSBTs");
+                    b.ToTable("WalletWithdrawalRequestPSBTs", (string)null);
                 });
 
             modelBuilder.Entity("NodeGuard.Data.Models.ApplicationUser", b =>
@@ -1154,17 +1111,6 @@ namespace NodeGuard.Migrations
                     b.Navigation("UserSigner");
                 });
 
-            modelBuilder.Entity("NodeGuard.Data.Models.FMUTXO", b =>
-                {
-                    b.HasOne("NodeGuard.Data.Models.Wallet", "Wallet")
-                        .WithMany()
-                        .HasForeignKey("WalletId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
-
-                    b.Navigation("Wallet");
-                });
-
             modelBuilder.Entity("NodeGuard.Data.Models.Key", b =>
                 {
                     b.HasOne("NodeGuard.Data.Models.InternalWallet", "InternalWallet")
@@ -1222,17 +1168,6 @@ namespace NodeGuard.Migrations
                     b.Navigation("ReturningFundsWallet");
                 });
 
-            modelBuilder.Entity("NodeGuard.Data.Models.UTXOTag", b =>
-                {
-                    b.HasOne("NodeGuard.Data.Models.FMUTXO", "FMUTXO")
-                        .WithMany("Tags")
-                        .HasForeignKey("FMUTXOId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
-
-                    b.Navigation("FMUTXO");
-                });
-
             modelBuilder.Entity("NodeGuard.Data.Models.Wallet", b =>
                 {
                     b.HasOne("NodeGuard.Data.Models.InternalWallet", "InternalWallet")
@@ -1286,11 +1221,6 @@ namespace NodeGuard.Migrations
             modelBuilder.Entity("NodeGuard.Data.Models.ChannelOperationRequest", b =>
                 {
                     b.Navigation("ChannelOperationRequestPsbts");
-                });
-
-            modelBuilder.Entity("NodeGuard.Data.Models.FMUTXO", b =>
-                {
-                    b.Navigation("Tags");
                 });
 
             modelBuilder.Entity("NodeGuard.Data.Models.Node", b =>
