@@ -50,6 +50,8 @@ public interface INodeGuardService
     Task<GetWithdrawalsRequestStatusResponse> GetWithdrawalsRequestStatus(GetWithdrawalsRequestStatusRequest request, ServerCallContext context);
 
     Task<GetChannelResponse> GetChannel(GetChannelRequest request, ServerCallContext context);
+    
+    Task<FreezeUtxosResponse> FreezeUtxos(FreezeUtxosRequest request, ServerCallContext context);
 }
 
 /// <summary>
@@ -983,7 +985,45 @@ public class NodeGuardService : Nodeguard.NodeGuardService.NodeGuardServiceBase,
 
         return result;
     }
-    
+
+    public override async Task<FreezeUtxosResponse> FreezeUtxos(FreezeUtxosRequest request, ServerCallContext context)
+    {
+        if (request.UtxosOutpoints == null || request.UtxosOutpoints.Count == 0)
+        {
+            throw new RpcException(new Status(StatusCode.InvalidArgument, "Utxos are required"));
+        }
+        
+        var fmutxos = new List<FMUTXO>();
+        foreach (var outpoint in request.UtxosOutpoints)
+        {
+            var outpointArray = outpoint.Split(':');
+            if (outpointArray.Length != 2)
+            {
+                throw new RpcException(new Status(StatusCode.InvalidArgument, $"UTXO {outpoint} is malformed"));
+            }
+            var txid = outpointArray[0];
+            if (!uint.TryParse(outpointArray[1], out var outputIndex))
+            {
+                throw new RpcException(new Status(StatusCode.InvalidArgument, $"OutputIndex of {outpoint} is not a number"));
+            }
+            var fmutxo = await _fmutxoRepository.GetByOutpoint(outpointArray[0], outputIndex);
+            if (fmutxo == null)
+            {
+                throw new RpcException(new Status(StatusCode.NotFound, $"UTXO {outpoint} not found"));    
+            }
+            fmutxo.IsFrozen = true;
+            fmutxos.Add(fmutxo);
+        }
+        
+        var (success, reason) = _fmutxoRepository.UpdateRange(fmutxos);
+        if (!success)
+        {
+            throw new RpcException(new Status(StatusCode.Internal, $"Error freezing UTXOs: {reason}"));
+        }
+        
+        return new FreezeUtxosResponse();
+    }
+
     private bool ValidateBitcoinAddress(string address)
     {
         try

@@ -68,6 +68,11 @@ service NodeGuardService {
   Gets a channel by id
    */
   rpc GetChannel(GetChannelRequest) returns (GetChannelResponse);
+  
+  /*
+  Freezes UTXOs
+   */
+  rpc FreezeUtxos(FreezeUtxosRequest) returns (FreezeUtxosResponse);
 }
 
 message GetLiquidityRulesRequest {
@@ -373,4 +378,12 @@ message GetChannelResponse {
   bool created_by_nodeguard = 7;
   bool is_automated_liquidity_enabled = 8;
   bool is_private = 9;
+}
+
+message FreezeUtxosRequest {
+  // Outpoints for the UTXOs to freeze in format txid:outputIndex
+  repeated string utxos_outpoints = 1;
+}
+
+message FreezeUtxosResponse {
 }
