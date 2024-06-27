@@ -35,17 +35,7 @@ namespace NodeGuard.Data.Models
 
         public long SatsAmount { get; set; }
         
-        // Bitcoin address of the UTXO
-        public string? Address { get; set; }
-        
-        // Indicates if this UTXO is frozen and can't be used in any operation 
-        public bool IsFrozen { get; set; }
-        
-        
         #region Relationships
-        
-        // Tags assigned to the UTXO
-        public List<UTXOTag>? Tags { get; set; }
 
         // M-N Because if the UTXO is used in a request that gets cancelled,
         // the UTXO should be unlocked and assigned to another request
@@ -53,9 +43,6 @@ namespace NodeGuard.Data.Models
 
         // Idem as ChannelOperationRequests
         public List<WalletWithdrawalRequest> WalletWithdrawalRequests { get; set; }
-        
-        public int WalletId { get; set; }
-        public Wallet Wallet { get; set; }
 
         #endregion Relationships
         public override string ToString()
