@@ -877,31 +877,19 @@ public class NodeGuardService : Nodeguard.NodeGuardService.NodeGuardServiceBase,
 
     public override async Task<GetUtxosResponse> GetUtxos(GetUtxosRequest request, ServerCallContext context)
     {
-        List<FMUTXO> fmutxos;
-        // Check if the user sent a wallet id, else we get all utxos
-        if (request.WalletId == 0)
+        var wallets = await _walletRepository.GetAvailableWallets();
+        List<Utxo> utxos = new();
+        foreach (var wallet in wallets)
         {
-            fmutxos = await _fmutxoRepository.GetAll();
+            var walletUtxos = await _fmutxoRepository.GetByWalletId(wallet.Id);
+            utxos.AddRange(walletUtxos.Select(utxo => new Utxo()
+            {
+                Amount = new Money(utxo.SatsAmount),
+                // We follow the same convention as GetAvailableUtxos for displaying outpoints
+                Outpoint = $"{utxo.TxId}-{utxo.OutputIndex}",
+                Address = utxo.Address?.ToString()
+            }));
         }
-        else
-        {
-            fmutxos = await _fmutxoRepository.GetByWalletId(request.WalletId);
-        }
-
-        // Check if user wants the list to contain the locked utxos
-        if (!request.IncludeLocked)
-        {
-            var lockedUtxos = await _fmutxoRepository.GetLockedUTXOs();
-            fmutxos = fmutxos.Except(lockedUtxos).ToList();
-        }
-
-        var utxos = fmutxos.Select(utxo => new Utxo()
-        {
-            Amount = new Money(utxo.SatsAmount),
-            // We follow the same convention as GetAvailableUtxos for displaying outpoints
-            Outpoint = $"{utxo.TxId}-{utxo.OutputIndex}",
-            Address = utxo.Address?.ToString()
-        });
 
         return new GetUtxosResponse()
         {
@@ -949,6 +937,9 @@ public class NodeGuardService : Nodeguard.NodeGuardService.NodeGuardServiceBase,
             request.ClosestTo,
             ignoreOutpoints
             );
+
+        // TODO: check if they are not registered
+        // go to database, get all utxos, compare and remove the ones that are not registered/tagged
 
         var confirmedUtxos = utxos.Confirmed.UTXOs.Select(utxo => new Utxo()
         {

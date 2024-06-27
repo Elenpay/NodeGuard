@@ -318,9 +318,6 @@ enum COIN_SELECTION_STRATEGY
 }
 
 message GetUtxosRequest {
-  // optionally filter by wallet_id
-  optional int32 wallet_id = 1;
-  optional bool include_locked = 2;
 }
 
 message GetUtxosResponse {
