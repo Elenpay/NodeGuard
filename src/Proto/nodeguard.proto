@@ -381,7 +381,7 @@ message GetChannelResponse {
 }
 
 message FreezeUtxosRequest {
-  // Outpoints for the UTXOs to freeze in format txid:outputIndex
+  // Outpoints for the UTXOs to freeze in format txid-outputIndex
   repeated string utxos_outpoints = 1;
 }
 
