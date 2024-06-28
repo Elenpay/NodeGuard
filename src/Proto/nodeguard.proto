@@ -68,6 +68,11 @@ service NodeGuardService {
   Gets a channel by id
    */
   rpc GetChannel(GetChannelRequest) returns (GetChannelResponse);
+  
+  /*
+  Adds tags
+   */
+  rpc AddTags(AddTagsRequest) returns (AddTagsResponse);
 }
 
 message GetLiquidityRulesRequest {
@@ -373,4 +378,17 @@ message GetChannelResponse {
   bool created_by_nodeguard = 7;
   bool is_automated_liquidity_enabled = 8;
   bool is_private = 9;
+}
+
+message Tag {
+  string key = 1;
+  string value = 2;
+  string utxo_outpoint = 3; // Format txid-outputIndex
+}
+
+message AddTagsRequest {
+  repeated Tag tags = 1;
+}
+
+message AddTagsResponse {
 }
