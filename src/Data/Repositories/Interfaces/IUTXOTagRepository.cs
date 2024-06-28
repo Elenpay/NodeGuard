@@ -6,6 +6,8 @@ public interface IUTXOTagRepository
 {
     Task<UTXOTag?> GetByOutpoint(string outpoint);
     
+    Task<UTXOTag?> GetTagByKeyAndOutpoint(string key, string outpoint);
+    
     Task<(bool, string?)> AddAsync(UTXOTag type);
 
     Task<(bool, string?)> AddRangeAsync(List<UTXOTag> type);
