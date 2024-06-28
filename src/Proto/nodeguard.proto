@@ -57,7 +57,7 @@ service NodeGuardService {
   /*
   Gets a list of available UTXOs for a wallet
    */
-  rpc GetAvailableUtxos(GetAvailableUtxosRequest) returns (GetAvailableUtxosResponse);
+  rpc GetAvailableUtxos(GetAvailableUtxosRequest) returns (GetUtxosResponse);
 
   /*
   Gets a list of UTXOs
@@ -318,10 +318,8 @@ enum COIN_SELECTION_STRATEGY
 }
 
 message GetUtxosRequest {
-}
-
-message GetUtxosResponse {
-  repeated Utxo confirmed = 1;
+  // Wallet ID as stored in the NG's database
+  optional int32 wallet_id = 1;
 }
 
 message GetAvailableUtxosRequest {
@@ -343,7 +341,7 @@ message Utxo {
   string address = 3;
 }
 
-message GetAvailableUtxosResponse {
+message GetUtxosResponse {
   repeated Utxo confirmed = 1;
   repeated Utxo unconfirmed = 2;
 }
