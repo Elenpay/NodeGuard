@@ -965,9 +965,6 @@ public class NodeGuardService : Nodeguard.NodeGuardService.NodeGuardServiceBase,
             ignoreOutpoints
             );
 
-        // TODO: check if they are not registered
-        // go to database, get all utxos, compare and remove the ones that are not registered/tagged
-
         var confirmedUtxos = utxos.Confirmed.UTXOs.Select(utxo => new Utxo()
         {
             Amount = (Money)utxo.Value,
