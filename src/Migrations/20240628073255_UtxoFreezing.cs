@@ -27,6 +27,7 @@ namespace NodeGuard.Migrations
                 constraints: table =>
                 {
                     table.PrimaryKey("PK_UTXOTags", x => x.Id);
+                    table.UniqueConstraint("Unique_UTXOTags_Key_Outpoint", x => new { x.Key, x.Outpoint });
                 });
         }
 
