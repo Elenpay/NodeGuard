@@ -33,11 +33,11 @@ public class UTXOTagRepository : IUTXOTagRepository
         return await applicationDbContext.UTXOTags.FirstOrDefaultAsync(x => x.Key == key && x.Outpoint == outpoint);
     }
 
-    public Task<List<UTXOTag>> GetByKeyValue(string key, string value)
+    public async Task<List<UTXOTag>> GetByKeyValue(string key, string value)
     {
-        using var applicationDbContext = _dbContextFactory.CreateDbContext();
+        await using var applicationDbContext = await _dbContextFactory.CreateDbContextAsync();
         
-        return applicationDbContext.UTXOTags
+        return await applicationDbContext.UTXOTags
             .Where(x => x.Key == key && x.Value == value).ToListAsync();
     }
 
