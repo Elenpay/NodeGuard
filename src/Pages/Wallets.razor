@@ -22,7 +22,7 @@
 @inject ISchedulerFactory SchedulerFactory
 @inject IPriceConversionService PriceConversionService
 @inject INBXplorerService NBXplorerService
-@inject IFMUTXORepository FMUTXORepository
+@inject IUTXOTagRepository UTXOTagRepository
 
 @attribute [Authorize(Roles = "NodeManager, FinanceManager, Superadmin")]
 
@@ -576,7 +576,7 @@
                             <TableBody>
                                 @if (_detailsUTXOs.Any())
                                 {
-                                    foreach (var (utxo, tags, isFrozen) in _detailsUTXOs)
+                                    foreach (var (_, utxo, tags, isFrozen) in _detailsUTXOs)
                                     {
                                         <TableRow>
                                             <TableRowHeader>
@@ -842,7 +842,7 @@
 
     private Modal? _detailsModal;
     private GetBalanceResponse? _walletBalance;
-    private List<(UTXO, List<UTXOTag>, bool)> _detailsUTXOs = new();
+    private List<(OutPoint, UTXO, List<UTXOTag>, bool)> _detailsUTXOs = new();
     private GetTransactionsResponse? _detailsTransactions;
     private List<BitcoinAddress> _firstDetailsAddresses = new();
 
@@ -1144,14 +1144,22 @@
         }
 
         var nbxplorerUtxos = await NBXplorerService.GetUTXOsAsync(derivationStrategyBase);
-        var fmutxos = await FMUTXORepository.GetByWalletId(wallet.Id);
         nbxplorerUtxos.RemoveDuplicateUTXOs();
 
-        _detailsUTXOs = nbxplorerUtxos.Confirmed.UTXOs.Select(x =>
-            fmutxos
-                .Where(fmutxo => x.Outpoint.Hash.ToString() == fmutxo.TxId && x.Outpoint.N == fmutxo.OutputIndex)
-                .Select(u => (x, u.Tags ?? new(), u.IsFrozen))
-                .FirstOrDefault()).ToList();
+        var tagsMap = new Dictionary<OutPoint, List<UTXOTag>>();
+
+        foreach(var utxo in nbxplorerUtxos.Confirmed.UTXOs) {
+            var tags = await UTXOTagRepository.GetByOutpoint(utxo.Outpoint.ToString());
+            tagsMap[utxo.Outpoint] = tags;
+        }
+
+        _detailsUTXOs = nbxplorerUtxos.Confirmed.UTXOs
+            .Select((u) => (
+                u.Outpoint,
+                u,
+                tagsMap[u.Outpoint].Where(t => t.Key != Constants.IsFrozenTag).ToList(),
+                tagsMap[u.Outpoint].Any(t => t.Key == Constants.IsFrozenTag && t.Value == "true")
+            )).ToList();
 
         _detailsTransactions = await NBXplorerService.GetTransactionsAsync(derivationStrategyBase);
 
@@ -1698,30 +1706,25 @@
 
     private async Task ToggleUtxoFreeze(bool newValue, UTXO utxo)
     {
-        var fmutxo = await FMUTXORepository.GetByOutpoint(utxo.Outpoint.Hash.ToString(), utxo.Outpoint.N);
-        if (fmutxo != null)
+        var tag = await UTXOTagRepository.GetByKeyAndOutpoint(Constants.IsFrozenTag, utxo.Outpoint.ToString());
+        var (saved, _) = UTXOTagRepository.Update(new UTXOTag {Key = Constants.IsFrozenTag, Value = newValue ? "true" : "false", Outpoint = utxo.Outpoint.ToString(), Id = tag?.Id ?? 0 });
+        if (!saved)
         {
-            fmutxo.IsFrozen = newValue;
-            var (saved, _) = FMUTXORepository.Update(fmutxo);
-            if (!saved)
-            {
-                ToastService.ShowError("Error while updating the UTXO status");
-                return;
-            }
-
-            // Updated the UI
-            _detailsUTXOs = _detailsUTXOs.Select(x =>
-            {
-                if (x.Item1.Outpoint.Hash == utxo.Outpoint.Hash && x.Item1.Outpoint.N == utxo.Outpoint.N)
-                {
-                    x.Item3 = newValue;
-                }
-
-                return x;
-            }).ToList();
-
-            StateHasChanged();
+            ToastService.ShowError("Error while updating the UTXO status");
+            return;
         }
+
+        // Updated the UI
+        _detailsUTXOs = _detailsUTXOs.Select(x =>
+        {
+            if (x.Item1 == utxo.Outpoint)
+            {
+                x.Item4 = newValue;
+            }
+            return x;
+        }).ToList();
+
+        StateHasChanged();
     }
 
     private Task OnSelectedTabChanged(string name)
