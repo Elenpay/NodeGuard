@@ -50,6 +50,8 @@ public interface INodeGuardService
     Task<GetWithdrawalsRequestStatusResponse> GetWithdrawalsRequestStatus(GetWithdrawalsRequestStatusRequest request, ServerCallContext context);
 
     Task<GetChannelResponse> GetChannel(GetChannelRequest request, ServerCallContext context);
+    
+    Task<AddTagsResponse> AddTags(AddTagsRequest request, ServerCallContext context);
 }
 
 /// <summary>
@@ -994,7 +996,45 @@ public class NodeGuardService : Nodeguard.NodeGuardService.NodeGuardServiceBase,
 
         return result;
     }
-    
+
+    public async Task<AddTagsResponse> AddTags(AddTagsRequest request, ServerCallContext context)
+    {
+        if (request.Tags.Count == 0)
+        {
+            throw new RpcException(new Status(StatusCode.InvalidArgument, "Tags are required"));
+        }
+        
+        foreach (var tag in request.Tags)
+        {
+            var utxo = tag.UtxoOutpoint.Split("-");
+            if (utxo.Length != 2)
+            {
+                throw new RpcException(new Status(StatusCode.InvalidArgument, $"Invalid outpoint {tag.UtxoOutpoint}"));
+            }
+
+            if (!uint.TryParse(utxo[1], out _))
+            {
+                throw new RpcException(new Status(StatusCode.InvalidArgument, $"Invalid output index {tag.UtxoOutpoint}"));
+            }
+        }
+        
+        var tags = request.Tags.Select(tag => new UTXOTag
+        {
+            Outpoint = tag.UtxoOutpoint,
+            Key = tag.Key,
+            Value = tag.Value
+        }).ToList();
+        
+        var result = await _utxoTagRepository.AddRangeAsync(tags);
+
+        if (!result.Item1)
+        {
+            throw new RpcException(new Status(StatusCode.Internal, "Error adding tags"));
+        }
+        
+        return new AddTagsResponse();
+    }
+
     private bool ValidateBitcoinAddress(string address)
     {
         try
