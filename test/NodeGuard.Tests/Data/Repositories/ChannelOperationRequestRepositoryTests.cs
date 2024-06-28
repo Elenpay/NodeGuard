@@ -42,7 +42,7 @@ public class ChannelOperationRequestRepositoryTests
         await context.ChannelOperationRequests.AddAsync(request1);
         await context.SaveChangesAsync();
 
-        var channelOperationRequestRepository = new ChannelOperationRequestRepository(repository.Object, null, dbContextFactory.Object, null, null, null);
+        var channelOperationRequestRepository = new ChannelOperationRequestRepository(repository.Object, null, dbContextFactory.Object, null, null);
 
         // Act
         var result = await channelOperationRequestRepository.AddAsync(request1);
@@ -79,7 +79,7 @@ public class ChannelOperationRequestRepositoryTests
         await context.ChannelOperationRequests.AddAsync(request1);
         await context.SaveChangesAsync();
 
-        var channelOperationRequestRepository = new ChannelOperationRequestRepository(repository.Object, null, dbContextFactoryObject, null, null, null);
+        var channelOperationRequestRepository = new ChannelOperationRequestRepository(repository.Object, null, dbContextFactoryObject, null, null);
 
         // Act
         var result = await channelOperationRequestRepository.AddAsync(request1);
@@ -116,7 +116,7 @@ public class ChannelOperationRequestRepositoryTests
         await context.ChannelOperationRequests.AddAsync(request1);
         await context.SaveChangesAsync();
 
-        var channelOperationRequestRepository = new ChannelOperationRequestRepository(repository.Object, null, dbContextFactoryObject, null, null, null);
+        var channelOperationRequestRepository = new ChannelOperationRequestRepository(repository.Object, null, dbContextFactoryObject, null, null);
 
         // Act
         var result = await channelOperationRequestRepository.AddAsync(request1);

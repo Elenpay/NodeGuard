@@ -18,8 +18,6 @@
  */
 
 using AutoMapper;
-using Blazorise;
-using Blazorise.Extensions;
 using NodeGuard.Data.Models;
 using NodeGuard.Data.Repositories.Interfaces;
 using NodeGuard.Helpers;
@@ -84,6 +82,7 @@ public class CoinSelectionService: ICoinSelectionService
     private readonly INBXplorerService _nbXplorerService;
     private readonly IChannelOperationRequestRepository _channelOperationRequestRepository;
     private readonly IWalletWithdrawalRequestRepository _walletWithdrawalRequestRepository;
+    private readonly IUTXOTagRepository _utxoTagRepository;
 
     public CoinSelectionService(
         ILogger<BitcoinService> logger,
@@ -91,7 +90,8 @@ public class CoinSelectionService: ICoinSelectionService
         IFMUTXORepository fmutxoRepository,
         INBXplorerService nbXplorerService,
         IChannelOperationRequestRepository channelOperationRequestRepository,
-        IWalletWithdrawalRequestRepository walletWithdrawalRequestRepository
+        IWalletWithdrawalRequestRepository walletWithdrawalRequestRepository,
+        IUTXOTagRepository utxoTagRepository
     )
     {
         _logger = logger;
@@ -100,6 +100,7 @@ public class CoinSelectionService: ICoinSelectionService
         _nbXplorerService = nbXplorerService;
         _channelOperationRequestRepository = channelOperationRequestRepository;
         _walletWithdrawalRequestRepository = walletWithdrawalRequestRepository;
+        _utxoTagRepository = utxoTagRepository;
     }
 
     private IBitcoinRequestRepository GetRepository(BitcoinRequestType requestType)
@@ -115,51 +116,13 @@ public class CoinSelectionService: ICoinSelectionService
     public async Task LockUTXOs(List<UTXO> selectedUTXOs, IBitcoinRequest bitcoinRequest, BitcoinRequestType requestType)
     {
         // We "lock" the PSBT to the channel operation request by adding to its UTXOs collection for later checking
-        var selectedFMUTXOs = selectedUTXOs.Select(x => _mapper.Map<UTXO, FMUTXO>(x)).ToList();
-        var utxos = await _fmutxoRepository.GetByWalletId(bitcoinRequest.Wallet.Id);
+        var utxos = selectedUTXOs.Select(x => _mapper.Map<UTXO, FMUTXO>(x)).ToList();
 
-        var utxosToSave = new List<FMUTXO>();
-        var utxosToAddToTransaction = new List<FMUTXO>();
-        // Since the UTXOs to lock (selectedUTXOs) come directly from nbxplorer, we check if we already registered them in our database with the RegisterUTXOsJob
-        foreach (var fmutxo in selectedFMUTXOs)
-        {
-            if (utxos.Contains(fmutxo))
-            {
-                // If they are in the DB we add them to the transaction
-                utxosToAddToTransaction.Add(fmutxo);
-            }
-            else
-            {
-                // If they are not in the DB we add them
-                fmutxo.WalletId = bitcoinRequest.Wallet.Id;
-                fmutxo.SetCreationDatetime();
-                fmutxo.SetUpdateDatetime();
-                utxosToSave.Add(fmutxo);
-            }
-        }
-
-        // If there's any UTXO to save we do it
-        if (utxosToSave.Any())
-        {
-            (bool success, string? reason) = await _fmutxoRepository.AddRangeAsync(utxosToSave);
-            if (!success)
-            {
-                throw new Exception($"Could not save the utxos that were not selected for request:{bitcoinRequest.Id}. Reason:{reason}");
-            }
-
-            foreach (var fmutxo in utxosToSave)
-            {
-                // We refetch the UTXOs from the DB so we can have them with the id
-                var finalUtxo = await _fmutxoRepository.GetByOutpoint(fmutxo.TxId, fmutxo.OutputIndex);
-                utxosToAddToTransaction.Add(finalUtxo);
-            }
-        }
-        
-        var addUTXOsOperation = await GetRepository(requestType).AddUTXOs(bitcoinRequest, utxosToAddToTransaction);
+        var addUTXOsOperation = await GetRepository(requestType).AddUTXOs(bitcoinRequest, utxos);
         if (!addUTXOsOperation.Item1)
         {
             _logger.LogError(
-                $"Could not add the following utxos({utxosToAddToTransaction.Humanize()}) to op request:{bitcoinRequest.Id}");
+                $"Could not add the following utxos({utxos.Humanize()}) to op request:{bitcoinRequest.Id}");
         }
     }
 
@@ -180,19 +143,25 @@ public class CoinSelectionService: ICoinSelectionService
         return utxos.Confirmed.UTXOs.Where(utxo => lockedUTXOsList.Contains(utxo.Outpoint.ToString())).ToList();
     }
 
-    private async Task<List<UTXO>> FilterUnlockedUTXOs(UTXOChanges? utxoChanges)
+    private async Task<List<UTXO>> FilterLockedFrozenUTXOs(UTXOChanges? utxoChanges)
     {
         var lockedUTXOs = await _fmutxoRepository.GetLockedUTXOs();
+        var frozenUTXOs = await _utxoTagRepository.GetByKeyValue(Constants.IsFrozenTag, "true");
+        var listLocked = lockedUTXOs.Select(utxo => $"{utxo.TxId}-{utxo.OutputIndex}").ToList(); 
+        var listFrozen = frozenUTXOs.Select(utxo => utxo.Outpoint).ToList();
+        var frozenAndLockedOutpoints = new List<string>();
+        frozenAndLockedOutpoints.AddRange(listLocked);
+        frozenAndLockedOutpoints.AddRange(listFrozen);
+        
         utxoChanges.RemoveDuplicateUTXOs();
 
         var availableUTXOs = new List<UTXO>();
         foreach (var utxo in utxoChanges.Confirmed.UTXOs)
         {
-            var fmUtxo = _mapper.Map<UTXO, FMUTXO>(utxo);
 
-            if (lockedUTXOs.Contains(fmUtxo))
+            if (frozenAndLockedOutpoints.Contains(utxo.Outpoint.ToString()))
             {
-                _logger.LogInformation("Removing UTXO: {Utxo} from UTXO set as it is locked", fmUtxo.ToString());
+                _logger.LogInformation("Removing UTXO: {Utxo} from UTXO set as it is locked", utxo.Outpoint.ToString());
             }
             else
             {
@@ -206,7 +175,7 @@ public class CoinSelectionService: ICoinSelectionService
     public async Task<List<UTXO>> GetAvailableUTXOsAsync(DerivationStrategyBase derivationStrategy)
     {
         var utxoChanges = await _nbXplorerService.GetUTXOsAsync(derivationStrategy);
-        return await FilterUnlockedUTXOs(utxoChanges);
+        return await FilterLockedFrozenUTXOs(utxoChanges);
     }
 
     public async Task<List<UTXO>> GetAvailableUTXOsAsync(DerivationStrategyBase derivationStrategy, CoinSelectionStrategy strategy, int limit, long amount, long closestTo)
@@ -220,7 +189,7 @@ public class CoinSelectionService: ICoinSelectionService
         {
             utxoChanges = await _nbXplorerService.GetUTXOsAsync(derivationStrategy);
         }
-        return await FilterUnlockedUTXOs(utxoChanges);
+        return await FilterLockedFrozenUTXOs(utxoChanges);
     }
 
     /// <summary>

@@ -50,22 +50,6 @@ namespace NodeGuard.Data.Repositories
             throw new NotImplementedException();
         }
 
-        public async Task<List<FMUTXO>> GetByWalletId(int walletId)
-        {
-            await using var applicationDbContext = await _dbContextFactory.CreateDbContextAsync();
-            
-            return await applicationDbContext.FMUTXOs.Where(x => x.Wallet.Id == walletId)
-                .Include(x => x.Tags).ToListAsync();
-        }
-
-        public async Task<FMUTXO?> GetByOutpoint(string hash, uint outputIndex)
-        {
-            await using var applicationDbContext = await _dbContextFactory.CreateDbContextAsync();
-
-            return await applicationDbContext.FMUTXOs.Where(x => x.TxId == hash && x.OutputIndex == outputIndex)
-                .Include(x => x.Tags).FirstOrDefaultAsync();
-        }
-
         public async Task<(bool, string?)> AddAsync(FMUTXO type)
         {
             await using var applicationDbContext = await _dbContextFactory.CreateDbContextAsync();
@@ -165,11 +149,8 @@ namespace NodeGuard.Data.Repositories
                                 x.Status == ChannelOperationRequestStatus.OnChainConfirmationPending)
                     .SelectMany(x => x.Utxos).ToListAsync();
             }
-            
-            var frozenUTXOs = await applicationDbContext.FMUTXOs.Where(x => x.IsFrozen).ToListAsync();
-            
-            var result = walletWithdrawalRequestsLockedUTXOs.Union(channelOperationRequestsLockedUTXOs).Union(frozenUTXOs).ToList();
-            
+
+            var result = walletWithdrawalRequestsLockedUTXOs.Union(channelOperationRequestsLockedUTXOs).ToList();
 
             return result;
         }

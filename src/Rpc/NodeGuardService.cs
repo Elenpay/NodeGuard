@@ -74,6 +74,7 @@ public class NodeGuardService : Nodeguard.NodeGuardService.NodeGuardServiceBase,
     private readonly IScheduler _scheduler;
     private readonly ILightningService _lightningService;
     private readonly IFMUTXORepository _fmutxoRepository;
+    private readonly IUTXOTagRepository _utxoTagRepository;
 
     public NodeGuardService(ILogger<NodeGuardService> logger,
         ILiquidityRuleRepository liquidityRuleRepository,
@@ -88,7 +89,8 @@ public class NodeGuardService : Nodeguard.NodeGuardService.NodeGuardServiceBase,
         IChannelRepository channelRepository,
         ICoinSelectionService coinSelectionService,
         ILightningService lightningService,
-        IFMUTXORepository fmutxoRepository
+        IFMUTXORepository fmutxoRepository,
+        IUTXOTagRepository utxoTagRepository
     )
     {
         _logger = logger;
@@ -105,6 +107,7 @@ public class NodeGuardService : Nodeguard.NodeGuardService.NodeGuardServiceBase,
         _coinSelectionService = coinSelectionService;
         _lightningService = lightningService;
         _fmutxoRepository = fmutxoRepository;
+        _utxoTagRepository = utxoTagRepository;
         _scheduler = Task.Run(() => _schedulerFactory.GetScheduler()).Result;
     }
 
@@ -894,13 +897,21 @@ public class NodeGuardService : Nodeguard.NodeGuardService.NodeGuardServiceBase,
         }
 
         var lockedUtxos = await _fmutxoRepository.GetLockedUTXOs();
+        var frozenUtxos = await _utxoTagRepository.GetByKeyValue(Constants.IsFrozenTag, "true");
+
+        var ignoreOutpoints = new List<string>();
+        var listLocked = lockedUtxos.Select(utxo => $"{utxo.TxId}-{utxo.OutputIndex}").ToList(); 
+        var listFrozen = frozenUtxos.Select(utxo => utxo.Outpoint).ToList();
+        ignoreOutpoints.AddRange(listLocked);
+        ignoreOutpoints.AddRange(listFrozen);
+        
         var utxos = await _nbXplorerService.GetUTXOsByLimitAsync(
             derivationStrategy,
             coinSelectionStrategy,
             request.Limit,
             request.Amount,
             request.ClosestTo,
-            lockedUtxos.Select(utxo => $"{utxo.TxId}-{utxo.OutputIndex}").ToList()
+            ignoreOutpoints
             );
 
         var confirmedUtxos = utxos.Confirmed.UTXOs.Select(utxo => new Utxo()

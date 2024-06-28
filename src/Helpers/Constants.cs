@@ -61,7 +61,6 @@ public class Constants
     // Crons & Jobs
     public static readonly string MONITOR_WITHDRAWALS_CRON = "10 0/5 * * * ?";
     public static readonly string MONITOR_CHANNELS_CRON = "0 0 */1 * * ?";
-    public static readonly string REGISTER_UTXOS_CRON = "0 * * * * ?";
     public static readonly string JOB_RETRY_INTERVAL_LIST_IN_MINUTES = "1,2,5,10,20";
 
 
@@ -86,7 +85,9 @@ public class Constants
     /// Max ratio of the tx total input sum that could be used as fee
     /// </summary>
     public static decimal MAX_TX_FEE_RATIO =0.5m;
-
+    
+    public static string IsFrozenTag = "frozen";
+    
     private static string? GetEnvironmentalVariableOrThrowIfNotTesting(string envVariableName, string? errorMessage = null)
     {
         // If it is a command from ef or a test, ignore the empty env variables
@@ -170,8 +171,6 @@ public class Constants
         MONITOR_WITHDRAWALS_CRON = Environment.GetEnvironmentVariable("MONITOR_WITHDRAWALS_CRON") ?? MONITOR_WITHDRAWALS_CRON;
 
         MONITOR_CHANNELS_CRON = Environment.GetEnvironmentVariable("MONITOR_CHANNELS_CRON") ?? MONITOR_CHANNELS_CRON;
-        
-        REGISTER_UTXOS_CRON = Environment.GetEnvironmentVariable("REGISTER_UTXOS_CRON") ?? REGISTER_UTXOS_CRON;
 
         JOB_RETRY_INTERVAL_LIST_IN_MINUTES = Environment.GetEnvironmentVariable("JOB_RETRY_INTERVAL_LIST_IN_MINUTES") ?? JOB_RETRY_INTERVAL_LIST_IN_MINUTES;
 

@@ -14,7 +14,7 @@ using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 namespace NodeGuard.Migrations
 {
     [DbContext(typeof(ApplicationDbContext))]
-    [Migration("20240625095217_UtxoFreezing")]
+    [Migration("20240628073255_UtxoFreezing")]
     partial class UtxoFreezing
     {
         /// <inheritdoc />
@@ -522,14 +522,8 @@ namespace NodeGuard.Migrations
 
                     NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
 
-                    b.Property<string>("Address")
-                        .HasColumnType("text");
-
                     b.Property<DateTimeOffset>("CreationDatetime")
                         .HasColumnType("timestamp with time zone");
-
-                    b.Property<bool>("IsFrozen")
-                        .HasColumnType("boolean");
 
                     b.Property<long>("OutputIndex")
                         .HasColumnType("bigint");
@@ -544,12 +538,7 @@ namespace NodeGuard.Migrations
                     b.Property<DateTimeOffset>("UpdateDatetime")
                         .HasColumnType("timestamp with time zone");
 
-                    b.Property<int>("WalletId")
-                        .HasColumnType("integer");
-
                     b.HasKey("Id");
-
-                    b.HasIndex("WalletId");
 
                     b.ToTable("FMUTXOs");
                 });
@@ -757,10 +746,11 @@ namespace NodeGuard.Migrations
                     b.Property<DateTimeOffset>("CreationDatetime")
                         .HasColumnType("timestamp with time zone");
 
-                    b.Property<int>("FMUTXOId")
-                        .HasColumnType("integer");
-
                     b.Property<string>("Key")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<string>("Outpoint")
                         .IsRequired()
                         .HasColumnType("text");
 
@@ -772,8 +762,6 @@ namespace NodeGuard.Migrations
                         .HasColumnType("text");
 
                     b.HasKey("Id");
-
-                    b.HasIndex("FMUTXOId");
 
                     b.ToTable("UTXOTags");
                 });
@@ -1157,17 +1145,6 @@ namespace NodeGuard.Migrations
                     b.Navigation("UserSigner");
                 });
 
-            modelBuilder.Entity("NodeGuard.Data.Models.FMUTXO", b =>
-                {
-                    b.HasOne("NodeGuard.Data.Models.Wallet", "Wallet")
-                        .WithMany()
-                        .HasForeignKey("WalletId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
-
-                    b.Navigation("Wallet");
-                });
-
             modelBuilder.Entity("NodeGuard.Data.Models.Key", b =>
                 {
                     b.HasOne("NodeGuard.Data.Models.InternalWallet", "InternalWallet")
@@ -1225,17 +1202,6 @@ namespace NodeGuard.Migrations
                     b.Navigation("ReturningFundsWallet");
                 });
 
-            modelBuilder.Entity("NodeGuard.Data.Models.UTXOTag", b =>
-                {
-                    b.HasOne("NodeGuard.Data.Models.FMUTXO", "FMUTXO")
-                        .WithMany("Tags")
-                        .HasForeignKey("FMUTXOId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
-
-                    b.Navigation("FMUTXO");
-                });
-
             modelBuilder.Entity("NodeGuard.Data.Models.Wallet", b =>
                 {
                     b.HasOne("NodeGuard.Data.Models.InternalWallet", "InternalWallet")
@@ -1289,11 +1255,6 @@ namespace NodeGuard.Migrations
             modelBuilder.Entity("NodeGuard.Data.Models.ChannelOperationRequest", b =>
                 {
                     b.Navigation("ChannelOperationRequestPsbts");
-                });
-
-            modelBuilder.Entity("NodeGuard.Data.Models.FMUTXO", b =>
-                {
-                    b.Navigation("Tags");
                 });
 
             modelBuilder.Entity("NodeGuard.Data.Models.Node", b =>
