@@ -31,7 +31,7 @@ public class Colors
     public static string GetColor(int index)
     {
         // Ensure the index is within the range of available colors
-        int colorIndex = Math.Abs(index) % CommonColors.Count;
+        var colorIndex = Math.Abs(index) % CommonColors.Count;
         return CommonColors[colorIndex];
     }
 }
