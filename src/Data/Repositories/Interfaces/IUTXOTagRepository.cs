@@ -4,7 +4,7 @@ namespace NodeGuard.Data.Repositories.Interfaces;
 
 public interface IUTXOTagRepository
 {
-    Task<UTXOTag?> GetByOutpoint(string outpoint);
+    Task<List<UTXOTag>> GetByOutpoint(string outpoint);
     
     Task<UTXOTag?> GetByKeyAndOutpoint(string key, string outpoint);
     
