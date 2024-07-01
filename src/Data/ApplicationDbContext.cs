@@ -83,6 +83,10 @@ namespace NodeGuard.Data
                     );
             }
 
+            modelBuilder.Entity<UTXOTag>()
+                .HasIndex(u => new { u.Key, u.Outpoint })
+                .IsUnique();
+
             base.OnModelCreating(modelBuilder);
         }
 
