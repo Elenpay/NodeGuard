@@ -997,7 +997,7 @@ public class NodeGuardService : Nodeguard.NodeGuardService.NodeGuardServiceBase,
         return result;
     }
 
-    public async Task<AddTagsResponse> AddTags(AddTagsRequest request, ServerCallContext context)
+    public override async Task<AddTagsResponse> AddTags(AddTagsRequest request, ServerCallContext context)
     {
         if (request.Tags.Count == 0)
         {
