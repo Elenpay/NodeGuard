@@ -19,11 +19,11 @@ public class UTXOTagRepository : IUTXOTagRepository
         _dbContextFactory = dbContextFactory;
     }
     
-    public async Task<UTXOTag?> GetByOutpoint(string outpoint)
+    public async Task<List<UTXOTag>> GetByOutpoint(string outpoint)
     {
         await using var applicationDbContext = await _dbContextFactory.CreateDbContextAsync();
         
-        return await applicationDbContext.UTXOTags.FirstOrDefaultAsync(x => x.Outpoint == outpoint);
+        return await applicationDbContext.UTXOTags.Where(x => x.Outpoint == outpoint).ToListAsync();
     }
 
     public async Task<UTXOTag?> GetByKeyAndOutpoint(string key, string outpoint)
