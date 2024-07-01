@@ -65,19 +65,20 @@ namespace NodeGuard.Data.Repositories
             return (rowsChanged, null);
         }
 
-        public async Task<(bool, string?)> AddRangeAsync(List<T> T, ApplicationDbContext applicationDbContext)
+        public async Task<(bool, string?)> AddRangeAsync<T>(List<T> entities, ApplicationDbContext applicationDbContext) where T : class
         {
-            if (T == null) throw new ArgumentNullException(nameof(T));
+            if (entities == null) throw new ArgumentNullException(nameof(entities));
 
             var rowsChanged = false;
             try
             {
-                await applicationDbContext.AddRangeAsync(T);
+                await applicationDbContext.AddRangeAsync(entities);
                 rowsChanged = await applicationDbContext.SaveChangesAsync() > 0;
             }
             catch (Exception e)
             {
                 _logger.LogError(e, "Error on repository");
+                return (false, e.Message);
             }
 
             return (rowsChanged, null);

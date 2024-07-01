@@ -17,7 +17,7 @@
  *
  */
 
-﻿using NodeGuard.Data.Models;
+using NodeGuard.Data.Models;
 using NodeGuard.Data.Repositories.Interfaces;
 using Microsoft.EntityFrameworkCore;
 
