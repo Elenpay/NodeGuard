@@ -47,7 +47,9 @@ namespace NodeGuard.Data.Repositories
 
         public async Task<List<FMUTXO>> GetAll()
         {
-            throw new NotImplementedException();
+            await using var applicationDbContext = await _dbContextFactory.CreateDbContextAsync();
+
+            return await applicationDbContext.FMUTXOs.ToListAsync();
         }
 
         public async Task<(bool, string?)> AddAsync(FMUTXO type)

@@ -55,9 +55,14 @@ service NodeGuardService {
   rpc AddLiquidityRule(AddLiquidityRuleRequest) returns (AddLiquidityRuleResponse);
 
   /*
-  Gets a list of available UTXOs for a wallet
+  Gets a list of available UTXOs for a single wallet
    */
-  rpc GetAvailableUtxos(GetAvailableUtxosRequest) returns (GetAvailableUtxosResponse);
+  rpc GetAvailableUtxos(GetAvailableUtxosRequest) returns (GetUtxosResponse);
+
+  /*
+  Gets a list of all UTXOs from all available wallets
+  */
+  rpc GetUtxos(GetUtxosRequest) returns (GetUtxosResponse);
 
   /*
   Gets the status for the provided withdrawals request ids
@@ -312,6 +317,9 @@ enum COIN_SELECTION_STRATEGY
     UP_TO_AMOUNT = 3;
 }
 
+message GetUtxosRequest {
+}
+
 message GetAvailableUtxosRequest {
   // Wallet ID as stored in the NG's database
   int32 wallet_id = 1;
@@ -328,9 +336,10 @@ message GetAvailableUtxosRequest {
 message Utxo {
   int64 amount = 1;
   string outpoint = 2;
+  string address = 3;
 }
 
-message GetAvailableUtxosResponse {
+message GetUtxosResponse {
   repeated Utxo confirmed = 1;
   repeated Utxo unconfirmed = 2;
 }
