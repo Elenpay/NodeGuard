@@ -70,7 +70,7 @@ service NodeGuardService {
   rpc GetChannel(GetChannelRequest) returns (GetChannelResponse);
   
   /*
-  Adds tags
+  Adds tags to UTXOs under the treasury
    */
   rpc AddTags(AddTagsRequest) returns (AddTagsResponse);
 }
