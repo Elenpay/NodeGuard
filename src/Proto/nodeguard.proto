@@ -55,12 +55,12 @@ service NodeGuardService {
   rpc AddLiquidityRule(AddLiquidityRuleRequest) returns (AddLiquidityRuleResponse);
 
   /*
-  Gets a list of available UTXOs for a wallet
+  Gets a list of available UTXOs for a single wallet
    */
   rpc GetAvailableUtxos(GetAvailableUtxosRequest) returns (GetUtxosResponse);
 
   /*
-  Gets a list of UTXOs
+  Gets a list of all UTXOs from all available wallets
   */
   rpc GetUtxos(GetUtxosRequest) returns (GetUtxosResponse);
 
