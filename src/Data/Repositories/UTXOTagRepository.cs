@@ -53,8 +53,51 @@ public class UTXOTagRepository : IUTXOTagRepository
     public async Task<(bool, string?)> AddRangeAsync(List<UTXOTag> type)
     {
         await using var applicationDbContext = await _dbContextFactory.CreateDbContextAsync();
-        
+
+        foreach (var t in type)
+        {
+            t.SetCreationDatetime();
+        }
+
         return await _repository.AddRangeAsync(type, applicationDbContext);
+    }
+
+    public async Task<(bool, string?)> UpsertRangeAsync(List<UTXOTag> entities)
+    {
+        await using var dbContext = await _dbContextFactory.CreateDbContextAsync();
+
+        // Load existing entities based on composite keys in a single query
+        var tags = entities.Select(e => e.Key).ToList();
+        var utxoIds = entities.Select(e => e.Outpoint).ToList();
+
+        var existingEntities = await dbContext.UTXOTags
+            .Where(e => tags.Contains(e.Key) && utxoIds.Contains(e.Outpoint))
+            .ToListAsync();
+
+        foreach (var entity in entities)
+        {
+            var existingEntity = existingEntities
+                .FirstOrDefault(e => e.Key == entity.Key && e.Outpoint == entity.Outpoint);
+
+            if (existingEntity == null)
+            {
+                // New entity, set CreatedAt
+                entity.SetCreationDatetime();
+                dbContext.UTXOTags.Add(entity);
+            }
+            else
+            {
+                // Existing entity, set UpdatedAt and update properties
+                existingEntity.SetUpdateDatetime();
+                existingEntity.Key = entity.Key;
+                existingEntity.Value = entity.Value;
+                existingEntity.Outpoint = entity.Outpoint;
+                dbContext.Entry(existingEntity).State = EntityState.Modified;
+            }
+        }
+
+        var result = await dbContext.SaveChangesAsync();
+        return result > 0 ? (true, null) : (false, "Failed to save changes");
     }
 
     public (bool, string?) Remove(UTXOTag type)

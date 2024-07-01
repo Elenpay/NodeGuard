@@ -1006,16 +1006,12 @@ public class NodeGuardService : Nodeguard.NodeGuardService.NodeGuardServiceBase,
         
         foreach (var tag in request.Tags)
         {
-            var utxo = tag.UtxoOutpoint.Split("-");
-            if (utxo.Length != 2)
-            {
-                throw new RpcException(new Status(StatusCode.InvalidArgument, $"Invalid outpoint {tag.UtxoOutpoint}"));
-            }
-
-            if (!uint.TryParse(utxo[1], out _))
+            if (!OutPoint.TryParse(tag.UtxoOutpoint, out var outpoint))
             {
                 throw new RpcException(new Status(StatusCode.InvalidArgument, $"Invalid output index {tag.UtxoOutpoint}"));
             }
+            // We overwrite the tag with the correct outpoint format, because OutPoint.TryParse also accepts `:` as separator
+            tag.UtxoOutpoint = outpoint!.ToString();
         }
         
         var tags = request.Tags.Select(tag => new UTXOTag
@@ -1024,9 +1020,8 @@ public class NodeGuardService : Nodeguard.NodeGuardService.NodeGuardServiceBase,
             Key = tag.Key,
             Value = tag.Value
         }).ToList();
-        
-        var result = await _utxoTagRepository.AddRangeAsync(tags);
 
+        var result = await _utxoTagRepository.UpsertRangeAsync(tags);
         if (!result.Item1)
         {
             throw new RpcException(new Status(StatusCode.Internal, "Error adding tags"));
