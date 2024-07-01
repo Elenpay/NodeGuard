@@ -318,8 +318,6 @@ enum COIN_SELECTION_STRATEGY
 }
 
 message GetUtxosRequest {
-  // Wallet ID as stored in the NG's database
-  optional int32 wallet_id = 1;
 }
 
 message GetAvailableUtxosRequest {
