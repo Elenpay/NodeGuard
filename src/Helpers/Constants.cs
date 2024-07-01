@@ -86,7 +86,7 @@ public class Constants
     /// </summary>
     public static decimal MAX_TX_FEE_RATIO =0.5m;
     
-    public static string IsFrozenTag = "frozen";
+    public const string IsFrozenTag = "frozen";
     
     private static string? GetEnvironmentalVariableOrThrowIfNotTesting(string envVariableName, string? errorMessage = null)
     {
