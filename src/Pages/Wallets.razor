@@ -592,10 +592,6 @@
                                                         <Badge Style=@($"background-color: {Colors.GetColor(data.i)}") Pill>@data.tag.Key:@data.tag.Value</Badge>
                                                     }
                                                 }
-                                                else
-                                                {
-                                                    @("No tags")
-                                                }
                                             </TableRowCell>
                                             <TableRowCell>
                                                 <Check TValue="bool" Checked="@isFrozen" CheckedChanged="@((b) => ToggleUtxoFreeze(b, utxo))"></Check>
@@ -1132,6 +1128,7 @@
     /// Loads the modal with the balance of the wallet, the utxos and the transactions
     private async Task LoadAndOpenDetailsModal(Wallet? wallet)
     {
+        _selectedTab = "Balance";
         if (wallet == null) return;
 
         _walletBalance = await LightningService.GetWalletBalance(wallet);
