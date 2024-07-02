@@ -91,3 +91,14 @@ docker-down:
 # Stops the development docker containers and removes the volumes, add DOCKER_COMPOSE_FILE to override the default file
 docker-rm:
     cd {{DOCKER_DIR}} && docker compose -f {{DOCKER_COMPOSE_FILE}} down -v
+
+
+##########
+# Dapr #
+##########
+
+dapr-run:
+    dapr run --app-id nodeguard --app-port 50051 --dapr-grpc-port 33601 -- dotnet run --project src/NodeGuard.csproj --launch-profile "NodeGuard local debug"
+    
+dapr-stop:
+    ps -ef | grep '[d]apr.*--app-id nodeguard' | awk '{print $2}' | xargs -r kill -9 && killall -9 NodeGuard
