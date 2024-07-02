@@ -12,3 +12,8 @@ remove-migration:
 mine:
     while true; do docker exec polar-n1-backend1 bitcoin-cli -regtest -rpcuser=polaruser -rpcpassword=polarpass -generate 1; sleep 60; done
 
+dapr-run:
+    dapr run --app-id nodeguard --app-port 50051 --dapr-grpc-port 33601 -- dotnet run --project src/NodeGuard.csproj --launch-profile "NodeGuard local debug"
+    
+dapr-stop:
+    ps -ef | grep '[d]apr.*--app-id nodeguard' | awk '{print $2}' | xargs -r kill -9 && killall -9 NodeGuard
