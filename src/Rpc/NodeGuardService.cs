@@ -1,5 +1,4 @@
 using AutoMapper;
-using Blazorise;
 using NodeGuard.Data.Models;
 using NodeGuard.Data.Repositories;
 using NodeGuard.Data.Repositories.Interfaces;
@@ -7,15 +6,12 @@ using NodeGuard.Helpers;
 using NodeGuard.Jobs;
 using NodeGuard.Services;
 using Grpc.Core;
-using Microsoft.EntityFrameworkCore.Infrastructure;
 using NBitcoin;
-using NBitcoin.RPC;
 using NBXplorer.DerivationStrategy;
 using NBXplorer.Models;
 using Nodeguard;
 using Quartz;
 using LiquidityRule = NodeGuard.Data.Models.LiquidityRule;
-using Node = Nodeguard.Node;
 using Wallet = NodeGuard.Data.Models.Wallet;
 
 namespace NodeGuard.Rpc;
@@ -45,11 +41,15 @@ public interface INodeGuardService
 
     Task<AddLiquidityRuleResponse> AddLiquidityRule(AddLiquidityRuleRequest request, ServerCallContext context);
 
-    Task<GetAvailableUtxosResponse> GetAvailableUtxos(GetAvailableUtxosRequest request, ServerCallContext context);
+    Task<GetUtxosResponse> GetAvailableUtxos(GetAvailableUtxosRequest request, ServerCallContext context);
+
+    Task<GetUtxosResponse> GetUtxos(GetUtxosRequest request, ServerCallContext context);
 
     Task<GetWithdrawalsRequestStatusResponse> GetWithdrawalsRequestStatus(GetWithdrawalsRequestStatusRequest request, ServerCallContext context);
 
     Task<GetChannelResponse> GetChannel(GetChannelRequest request, ServerCallContext context);
+    
+    Task<AddTagsResponse> AddTags(AddTagsRequest request, ServerCallContext context);
 }
 
 /// <summary>
@@ -72,6 +72,7 @@ public class NodeGuardService : Nodeguard.NodeGuardService.NodeGuardServiceBase,
     private readonly IScheduler _scheduler;
     private readonly ILightningService _lightningService;
     private readonly IFMUTXORepository _fmutxoRepository;
+    private readonly IUTXOTagRepository _utxoTagRepository;
 
     public NodeGuardService(ILogger<NodeGuardService> logger,
         ILiquidityRuleRepository liquidityRuleRepository,
@@ -86,7 +87,8 @@ public class NodeGuardService : Nodeguard.NodeGuardService.NodeGuardServiceBase,
         IChannelRepository channelRepository,
         ICoinSelectionService coinSelectionService,
         ILightningService lightningService,
-        IFMUTXORepository fmutxoRepository
+        IFMUTXORepository fmutxoRepository,
+        IUTXOTagRepository utxoTagRepository
     )
     {
         _logger = logger;
@@ -103,6 +105,7 @@ public class NodeGuardService : Nodeguard.NodeGuardService.NodeGuardServiceBase,
         _coinSelectionService = coinSelectionService;
         _lightningService = lightningService;
         _fmutxoRepository = fmutxoRepository;
+        _utxoTagRepository = utxoTagRepository;
         _scheduler = Task.Run(() => _schedulerFactory.GetScheduler()).Result;
     }
 
@@ -122,7 +125,7 @@ public class NodeGuardService : Nodeguard.NodeGuardService.NodeGuardServiceBase,
             var liquidityRules = await _liquidityRuleRepository.GetByNodePubKey(request.NodePubkey);
             result = new GetLiquidityRulesResponse()
             {
-                LiquidityRules = {liquidityRules.Select(x => _mapper.Map<Nodeguard.LiquidityRule>(x)).ToList()}
+                LiquidityRules = { liquidityRules.Select(x => _mapper.Map<Nodeguard.LiquidityRule>(x)).ToList() }
             };
         }
         catch (Exception e)
@@ -257,7 +260,9 @@ public class NodeGuardService : Nodeguard.NodeGuardService.NodeGuardServiceBase,
             }
 
             //Template PSBT generation with SIGHASH_ALL
-            var psbt = await _bitcoinService.GenerateTemplatePSBT(withdrawalRequest ?? throw new ArgumentException(nameof(withdrawalRequest)));
+            var psbt = await _bitcoinService.GenerateTemplatePSBT(withdrawalRequest ??
+                                                                  throw new ArgumentException(
+                                                                      nameof(withdrawalRequest)));
 
             //If the wallet is hot, we send the withdrawal request to the node
             if (wallet.IsHotWallet)
@@ -311,10 +316,12 @@ public class NodeGuardService : Nodeguard.NodeGuardService.NodeGuardServiceBase,
             var (success, error) = _walletWithdrawalRequestRepository.Update(withdrawalRequest);
             if (!success)
             {
-                _logger.LogError(error, "Error updating status of withdrawal request {RequestId} for wallet {WalletId}", withdrawalRequest.Id, withdrawalRequest.WalletId);
+                _logger.LogError(error, "Error updating status of withdrawal request {RequestId} for wallet {WalletId}",
+                    withdrawalRequest.Id, withdrawalRequest.WalletId);
             }
         }
     }
+
     public override async Task<GetAvailableWalletsResponse> GetAvailableWallets(GetAvailableWalletsRequest request,
         ServerCallContext context)
     {
@@ -419,7 +426,7 @@ public class NodeGuardService : Nodeguard.NodeGuardService.NodeGuardServiceBase,
 
             var response = new GetNodesResponse()
             {
-                Nodes = {mappedNodes}
+                Nodes = { mappedNodes }
             };
             return response;
         }
@@ -453,7 +460,8 @@ public class NodeGuardService : Nodeguard.NodeGuardService.NodeGuardServiceBase,
 
         if (request.MempoolFeeRate == FEES_TYPE.CustomFee && request.CustomFeeRate == 0)
         {
-            throw new RpcException(new Status(StatusCode.InvalidArgument, "Mempool fee rate configuration is not valid"));
+            throw new RpcException(
+                new Status(StatusCode.InvalidArgument, "Mempool fee rate configuration is not valid"));
         }
 
         if (request.Changeless && request.UtxosOutpoints.Count == 0)
@@ -487,7 +495,8 @@ public class NodeGuardService : Nodeguard.NodeGuardService.NodeGuardServiceBase,
                 FEES_TYPE.HourFee => MempoolRecommendedFeesType.HourFee,
                 FEES_TYPE.HalfHourFee => MempoolRecommendedFeesType.HalfHourFee,
                 FEES_TYPE.CustomFee => MempoolRecommendedFeesType.CustomFee,
-                _ => throw new ArgumentOutOfRangeException(nameof(request.MempoolFeeRate), request.MempoolFeeRate, "Unknown status")
+                _ => throw new ArgumentOutOfRangeException(nameof(request.MempoolFeeRate), request.MempoolFeeRate,
+                    "Unknown status")
             };
 
             if (feeType == MempoolRecommendedFeesType.CustomFee && !request.HasCustomFeeRate)
@@ -528,7 +537,8 @@ public class NodeGuardService : Nodeguard.NodeGuardService.NodeGuardServiceBase,
                     BitcoinRequestType.ChannelOperation);
             }
 
-            var (templatePsbt, noUtxosAvailable) = (await _lightningService.GenerateTemplatePSBT(channelOperationRequest));
+            var (templatePsbt, noUtxosAvailable) =
+                (await _lightningService.GenerateTemplatePSBT(channelOperationRequest));
             if (templatePsbt == null)
             {
                 channelOperationRequest.Status = ChannelOperationRequestStatus.Failed;
@@ -579,7 +589,8 @@ public class NodeGuardService : Nodeguard.NodeGuardService.NodeGuardServiceBase,
         };
     }
 
-    public override async Task<CloseChannelResponse> CloseChannel(CloseChannelRequest request, ServerCallContext context)
+    public override async Task<CloseChannelResponse> CloseChannel(CloseChannelRequest request,
+        ServerCallContext context)
     {
         //Get channel by its chan_id (id of the ln implementation)
         var channel = await _channelRepository.GetByChanId(request.ChannelId);
@@ -643,9 +654,11 @@ public class NodeGuardService : Nodeguard.NodeGuardService.NodeGuardServiceBase,
         return new CloseChannelResponse();
     }
 
-    public override async Task<GetChannelOperationRequestResponse> GetChannelOperationRequest(GetChannelOperationRequestRequest request, ServerCallContext context)
+    public override async Task<GetChannelOperationRequestResponse> GetChannelOperationRequest(
+        GetChannelOperationRequestRequest request, ServerCallContext context)
     {
-        var channelOperationRequest = await _channelOperationRequestRepository.GetById(request.ChannelOperationRequestId);
+        var channelOperationRequest =
+            await _channelOperationRequestRepository.GetById(request.ChannelOperationRequestId);
 
         if (channelOperationRequest == null)
         {
@@ -664,14 +677,16 @@ public class NodeGuardService : Nodeguard.NodeGuardService.NodeGuardServiceBase,
             ChannelOperationRequestStatus.OnChainConfirmed => CHANNEL_OPERATION_STATUS.OnchainConfirmed,
             ChannelOperationRequestStatus.Failed => CHANNEL_OPERATION_STATUS.Failed,
             ChannelOperationRequestStatus.FinalizingPSBT => CHANNEL_OPERATION_STATUS.FinalizingPsbt,
-            _ => throw new ArgumentOutOfRangeException(nameof(channelOperationRequest.Status), channelOperationRequest.Status, "Unknown status")
+            _ => throw new ArgumentOutOfRangeException(nameof(channelOperationRequest.Status),
+                channelOperationRequest.Status, "Unknown status")
         };
 
         var type = channelOperationRequest.RequestType switch
         {
             OperationRequestType.Open => CHANNEL_OPERATION_TYPE.OpenChannel,
             OperationRequestType.Close => CHANNEL_OPERATION_TYPE.CloseChannel,
-            _ => throw new ArgumentOutOfRangeException(nameof(channelOperationRequest.RequestType), channelOperationRequest.RequestType, "Unknown type")
+            _ => throw new ArgumentOutOfRangeException(nameof(channelOperationRequest.RequestType),
+                channelOperationRequest.RequestType, "Unknown type")
         };
 
         var result = new GetChannelOperationRequestResponse
@@ -699,7 +714,8 @@ public class NodeGuardService : Nodeguard.NodeGuardService.NodeGuardServiceBase,
         return result;
     }
 
-    public override async Task<AddLiquidityRuleResponse> AddLiquidityRule(AddLiquidityRuleRequest request, ServerCallContext context)
+    public override async Task<AddLiquidityRuleResponse> AddLiquidityRule(AddLiquidityRuleRequest request,
+        ServerCallContext context)
     {
         var channel = await _channelRepository.GetById(request.ChannelId);
         if (channel == null)
@@ -717,6 +733,7 @@ public class NodeGuardService : Nodeguard.NodeGuardService.NodeGuardServiceBase,
         {
             throw new RpcException(new Status(StatusCode.NotFound, "Source node not found"));
         }
+
         var destination = await _nodeRepository.GetById(channel.DestinationNodeId);
         if (destination == null)
         {
@@ -737,8 +754,9 @@ public class NodeGuardService : Nodeguard.NodeGuardService.NodeGuardServiceBase,
         if (request.IsReverseSwapWalletRule)
         {
             if (!request.HasReverseSwapWalletId)
-                throw new RpcException(new Status(StatusCode.FailedPrecondition, "WalletId is required for wallet rules"));
-            
+                throw new RpcException(new Status(StatusCode.FailedPrecondition,
+                    "WalletId is required for wallet rules"));
+
             var wallet = await _walletRepository.GetById(request.ReverseSwapWalletId);
             if (wallet == null)
                 throw new RpcException(new Status(StatusCode.NotFound, "Wallet not found"));
@@ -746,7 +764,8 @@ public class NodeGuardService : Nodeguard.NodeGuardService.NodeGuardServiceBase,
         else
         {
             if (!request.HasReverseSwapAddress)
-                throw new RpcException(new Status(StatusCode.FailedPrecondition, "Address is required for address rules"));
+                throw new RpcException(new Status(StatusCode.FailedPrecondition,
+                    "Address is required for address rules"));
             if (!ValidateBitcoinAddress(request.ReverseSwapAddress))
                 throw new RpcException(new Status(StatusCode.InvalidArgument, "Invalid address"));
         }
@@ -777,7 +796,7 @@ public class NodeGuardService : Nodeguard.NodeGuardService.NodeGuardServiceBase,
             liquidityRule.RebalanceTarget = (decimal)request.RebalanceTarget;
 
         if (!(ValidateLocalBalance(liquidityRule) && ValidateRemoteBalance(liquidityRule) &&
-            ValidateTargetBalance(liquidityRule)))
+              ValidateTargetBalance(liquidityRule)))
         {
             throw new RpcException(new Status(StatusCode.InvalidArgument, "Invalid rule"));
         }
@@ -798,6 +817,7 @@ public class NodeGuardService : Nodeguard.NodeGuardService.NodeGuardServiceBase,
                 throw new RpcException(new Status(StatusCode.Internal, "Error updating liquidity rule"));
             }
         }
+
         _channelRepository.Update(channel);
 
         return new AddLiquidityRuleResponse()
@@ -868,7 +888,43 @@ public class NodeGuardService : Nodeguard.NodeGuardService.NodeGuardServiceBase,
         return true;
     }
 
-    public override async Task<GetAvailableUtxosResponse> GetAvailableUtxos(GetAvailableUtxosRequest request, ServerCallContext context)
+    public override async Task<GetUtxosResponse> GetUtxos(GetUtxosRequest request, ServerCallContext context)
+    {
+        var wallets = await _walletRepository.GetAvailableWallets();
+        List<Utxo> confirmed = [];
+        List<Utxo> unconfirmed = [];
+        foreach (var wallet in wallets)
+        {
+            var derivationStrategy = wallet.GetDerivationStrategy();
+            if (derivationStrategy == null)
+            {
+                continue;
+            }
+
+            var walletUtxos = await _nbXplorerService.GetUTXOsAsync(derivationStrategy);
+
+            confirmed.AddRange(walletUtxos.Confirmed.UTXOs.Select(utxo => new Utxo()
+            {
+                Amount = (Money)utxo.Value,
+                Outpoint = utxo.Outpoint.ToString(),
+                Address = utxo.Address.ToString()
+            }));
+            unconfirmed.AddRange(walletUtxos.Unconfirmed.UTXOs.Select(utxo => new Utxo()
+            {
+                Amount = (Money)utxo.Value,
+                Outpoint = utxo.Outpoint.ToString(),
+                Address = utxo.Address.ToString()
+            }));
+        }
+
+        return new GetUtxosResponse()
+        {
+            Confirmed = { confirmed },
+            Unconfirmed = { unconfirmed }
+        };
+    }
+
+    public override async Task<GetUtxosResponse> GetAvailableUtxos(GetAvailableUtxosRequest request, ServerCallContext context)
     {
         var wallet = await _walletRepository.GetById(request.WalletId);
         if (wallet == null)
@@ -892,27 +948,37 @@ public class NodeGuardService : Nodeguard.NodeGuardService.NodeGuardServiceBase,
         }
 
         var lockedUtxos = await _fmutxoRepository.GetLockedUTXOs();
+        var frozenUtxos = await _utxoTagRepository.GetByKeyValue(Constants.IsFrozenTag, "true");
+
+        var ignoreOutpoints = new List<string>();
+        var listLocked = lockedUtxos.Select(utxo => $"{utxo.TxId}-{utxo.OutputIndex}").ToList();
+        var listFrozen = frozenUtxos.Select(utxo => utxo.Outpoint).ToList();
+        ignoreOutpoints.AddRange(listLocked);
+        ignoreOutpoints.AddRange(listFrozen);
+
         var utxos = await _nbXplorerService.GetUTXOsByLimitAsync(
             derivationStrategy,
             coinSelectionStrategy,
             request.Limit,
             request.Amount,
             request.ClosestTo,
-            lockedUtxos.Select(utxo => $"{utxo.TxId}-{utxo.OutputIndex}").ToList()
+            ignoreOutpoints
             );
 
         var confirmedUtxos = utxos.Confirmed.UTXOs.Select(utxo => new Utxo()
         {
             Amount = (Money)utxo.Value,
-            Outpoint = utxo.Outpoint.ToString()
+            Outpoint = utxo.Outpoint.ToString(),
+            Address = utxo.Address.ToString()
         });
         var unconfirmedUtxos = utxos.Unconfirmed.UTXOs.Select(utxo => new Utxo()
         {
             Amount = (Money)utxo.Value,
-            Outpoint = utxo.Outpoint.ToString()
+            Outpoint = utxo.Outpoint.ToString(),
+            Address = utxo.Address.ToString()
         });
 
-        return new GetAvailableUtxosResponse()
+        return new GetUtxosResponse()
         {
             Confirmed = { confirmedUtxos },
             Unconfirmed = { unconfirmedUtxos },
@@ -983,7 +1049,40 @@ public class NodeGuardService : Nodeguard.NodeGuardService.NodeGuardServiceBase,
 
         return result;
     }
-    
+
+    public override async Task<AddTagsResponse> AddTags(AddTagsRequest request, ServerCallContext context)
+    {
+        if (request.Tags.Count == 0)
+        {
+            throw new RpcException(new Status(StatusCode.InvalidArgument, "Tags are required"));
+        }
+        
+        foreach (var tag in request.Tags)
+        {
+            if (!OutPoint.TryParse(tag.UtxoOutpoint, out var outpoint))
+            {
+                throw new RpcException(new Status(StatusCode.InvalidArgument, $"Invalid output index {tag.UtxoOutpoint}"));
+            }
+            // We overwrite the tag with the correct outpoint format, because OutPoint.TryParse also accepts `:` as separator
+            tag.UtxoOutpoint = outpoint!.ToString();
+        }
+        
+        var tags = request.Tags.Select(tag => new UTXOTag
+        {
+            Outpoint = tag.UtxoOutpoint,
+            Key = tag.Key,
+            Value = tag.Value
+        }).ToList();
+
+        var result = await _utxoTagRepository.UpsertRangeAsync(tags);
+        if (!result.Item1)
+        {
+            throw new RpcException(new Status(StatusCode.Internal, "Error adding tags"));
+        }
+        
+        return new AddTagsResponse();
+    }
+
     private bool ValidateBitcoinAddress(string address)
     {
         try

@@ -34,7 +34,7 @@ public class Constants
     public static bool ALLOW_SIMULTANEOUS_CHANNEL_OPENING_OPERATIONS; // Not readonly so we can change it in tests
 
     // Connections
-    public static readonly string POSTGRES_CONNECTIONSTRING = "Host=localhost;Port=5432;Database=nodeguard;Username=rw_dev;Password=rw_dev";
+    public static readonly string POSTGRES_CONNECTIONSTRING = "Host=localhost;Port=25432;Database=nodeguard;Username=rw_dev;Password=rw_dev";
     public static readonly string NBXPLORER_URI;
     public static readonly string? NBXPLORER_BTCRPCURL;
     public static readonly string ALICE_HOST;
@@ -85,7 +85,9 @@ public class Constants
     /// Max ratio of the tx total input sum that could be used as fee
     /// </summary>
     public static decimal MAX_TX_FEE_RATIO =0.5m;
-
+    
+    public const string IsFrozenTag = "frozen";
+    
     private static string? GetEnvironmentalVariableOrThrowIfNotTesting(string envVariableName, string? errorMessage = null)
     {
         // If it is a command from ef or a test, ignore the empty env variables
