@@ -99,7 +99,7 @@ docker-rm:
 
 # Execute NodeGuard with a Dapr sidecar
 dapr-run:
-    dapr run --app-id nodeguard --app-port 50051 --dapr-grpc-port 33601 -- dotnet run --project src/NodeGuard.csproj --launch-profile "NodeGuard local debug"
+    dapr run --app-id nodeguard --app-port 50051 --app-protocol grpc --dapr-grpc-port 33601 -- dotnet run --project src/NodeGuard.csproj --launch-profile "NodeGuard local debug"
     
 # Stop NodeGuard with Dapr sidecar and the server which stays running in the background
 dapr-stop:
