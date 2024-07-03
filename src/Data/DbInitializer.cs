@@ -387,7 +387,8 @@ namespace NodeGuard.Data
                 {
                     { "BTCPay", "9Hoz0PMYCsnPUzPO/JbJu8UdaKaAHJsh946xH20UzA0=" },
                     { "X", "C+ktTkMGQupY9LY3IkpyqQQ2pDa7idaeSUKUnm+RawI=" },
-                    { "Liquidator", "8rvSsUGeyXXdDQrHctcTey/xtHdZQEn945KHwccKp9Q=" }
+                    { "Liquidator", "8rvSsUGeyXXdDQrHctcTey/xtHdZQEn945KHwccKp9Q=" },
+                    { "ElenPay", "2otDr3IrdARnarQZU8RO0ImQko6CDICyLmGUflKUQWA=" }
                 };
                 
                 var existingTokens = applicationDbContext.ApiTokens.Where(token => authenticatedServices.Keys.Contains(token.Name)).ToList();
