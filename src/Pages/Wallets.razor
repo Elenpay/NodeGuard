@@ -589,7 +589,7 @@
                                                 {
                                                     foreach (var data in tags.Select((tag, i) => new {tag, i}))
                                                     {
-                                                        <Badge Style=@($"background-color: {Colors.GetColor(data.i)}") Pill>@data.tag.Key:@data.tag.Value</Badge>
+                                                        <Badge Color="Color.Secondary" Pill>@data.tag.Value</Badge>
                                                     }
                                                 }
                                             </TableRowCell>
