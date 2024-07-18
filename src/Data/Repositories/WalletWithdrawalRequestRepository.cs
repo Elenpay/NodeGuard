@@ -76,6 +76,14 @@ namespace NodeGuard.Data.Repositories
             return await applicationDbContext.WalletWithdrawalRequests.Where(wr => ids.Contains(wr.Id)).ToListAsync();
         }
 
+        public async Task<List<WalletWithdrawalRequest>> GetByReferenceIds(List<string> referenceIds)
+        {
+            await using var applicationDbContext = await _dbContextFactory.CreateDbContextAsync();
+
+            return await applicationDbContext.WalletWithdrawalRequests.Where(wr => !string.IsNullOrEmpty(wr.ReferenceId) && referenceIds.Contains(wr.ReferenceId)).ToListAsync();
+        }
+
+
         public async Task<List<WalletWithdrawalRequest>> GetAll()
         {
             await using var applicationDbContext = await _dbContextFactory.CreateDbContextAsync();
@@ -102,7 +110,7 @@ namespace NodeGuard.Data.Repositories
                 .AsSplitQuery()
                 .ToListAsync();
         }
-        
+
         public async Task<List<WalletWithdrawalRequest>> GetAllUnsignedPendingRequests()
         {
             await using var applicationDbContext = await _dbContextFactory.CreateDbContextAsync();
@@ -124,7 +132,7 @@ namespace NodeGuard.Data.Repositories
             type.SetUpdateDatetime();
 
             //Verify that the wallet has enough funds calling nbxplorer
-            var wallet = await applicationDbContext.Wallets.Include(x=> x.Keys).SingleOrDefaultAsync(x => x.Id == type.WalletId);
+            var wallet = await applicationDbContext.Wallets.Include(x => x.Keys).SingleOrDefaultAsync(x => x.Id == type.WalletId);
 
             if (wallet == null)
             {
@@ -149,7 +157,7 @@ namespace NodeGuard.Data.Repositories
 
             var requestMoneyAmount = new Money(type.Amount, MoneyUnit.BTC);
 
-            if ((Money) balance.Confirmed < requestMoneyAmount)
+            if ((Money)balance.Confirmed < requestMoneyAmount)
             {
                 return (false, $"The wallet {type.Wallet.Name} does not have enough funds to complete this withdrawal request. The wallet has {balance.Confirmed} BTC and the withdrawal request is for {requestMoneyAmount} BTC.");
             }
@@ -248,7 +256,7 @@ namespace NodeGuard.Data.Repositories
             }
             catch (Exception e)
             {
-                _logger.LogError(e, "Error while getting UTXOs from wallet withdrawal request: {RequestId}",  request.Id);
+                _logger.LogError(e, "Error while getting UTXOs from wallet withdrawal request: {RequestId}", request.Id);
                 result.Item1 = false;
             }
 

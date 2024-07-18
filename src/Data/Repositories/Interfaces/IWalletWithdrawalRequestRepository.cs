@@ -21,18 +21,19 @@ using NodeGuard.Data.Models;
 
 namespace NodeGuard.Data.Repositories.Interfaces;
 
-public interface IWalletWithdrawalRequestRepository: IBitcoinRequestRepository
+public interface IWalletWithdrawalRequestRepository : IBitcoinRequestRepository
 {
     Task<WalletWithdrawalRequest?> GetById(int id);
 
     Task<List<WalletWithdrawalRequest>> GetByIds(List<int> ids);
+    Task<List<WalletWithdrawalRequest>> GetByReferenceIds(List<string> referenceIds);
 
     Task<List<WalletWithdrawalRequest>> GetAll();
 
     Task<List<WalletWithdrawalRequest>> GetUnsignedPendingRequestsByUser(string userId);
-    
+
     Task<List<WalletWithdrawalRequest>> GetAllUnsignedPendingRequests();
-    
+
     Task<(bool, string?)> AddAsync(WalletWithdrawalRequest type);
 
     Task<(bool, string?)> AddRangeAsync(List<WalletWithdrawalRequest> type);
