@@ -124,7 +124,7 @@ namespace NodeGuard.Data.Models
         /// For additional info required by the requestor
         /// </summary>
         public string? RequestMetadata { get; set; }
-        
+
         /// <summary>
         /// Recommended fee type selected by the user to be applied at the moment of the operation, this cannot be changed once the template PSBT is created nor signed
         /// </summary>
@@ -200,6 +200,11 @@ namespace NodeGuard.Data.Models
         public List<WalletWithdrawalRequestPSBT> WalletWithdrawalRequestPSBTs { get; set; }
 
         public List<FMUTXO> UTXOs { get; set; }
+
+        /// <summary>
+        /// This is a optional field that you can used to link withdrawals with externally-generated IDs (e.g. a withdrawal/settlement that belongs to an elenpay store)
+        /// </summary>
+        public string? ReferenceId { get; set; }
 
         #endregion Relationships
 
