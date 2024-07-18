@@ -58,6 +58,9 @@ build:
 run:
     cd {{PROJECT_DIR}} && dotnet run
 
+stop:
+    killall -9 NodeGuard
+
 test:
     dotnet test
 
