@@ -70,6 +70,11 @@ service NodeGuardService {
   rpc GetWithdrawalsRequestStatus(GetWithdrawalsRequestStatusRequest) returns (GetWithdrawalsRequestStatusResponse);
 
   /*
+  Gets the status for the provided withdrawals request reference ids
+   */
+  rpc GetWithdrawalsRequestStatusByReferenceIds(GetWithdrawalsRequestStatusByReferenceIdsRequest) returns (GetWithdrawalsRequestStatusResponse);
+
+  /*
   Gets a channel by id
    */
   rpc GetChannel(GetChannelRequest) returns (GetChannelResponse);
@@ -361,10 +366,15 @@ message WithdrawalRequest {
   int32 request_id = 1;
   WITHDRAWAL_REQUEST_STATUS status = 2;
   optional string reject_or_cancel_reason = 3;
+  optional string reference_id = 4;
 }
 
 message GetWithdrawalsRequestStatusResponse {
   repeated WithdrawalRequest withdrawal_requests = 1;
+}
+
+message GetWithdrawalsRequestStatusByReferenceIdsRequest {
+  repeated string reference_ids = 1;
 }
 
 message GetChannelRequest {
