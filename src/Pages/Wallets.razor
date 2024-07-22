@@ -579,17 +579,17 @@
                                     foreach (var (_, utxo, tags, isFrozen) in _detailsUTXOs)
                                     {
                                         <TableRow>
-                                            <TableRowHeader>
+                                            <TableRowHeader class="utxo-tags">
                                                 <a href="@($"{Environment.GetEnvironmentVariable("MEMPOOL_ENDPOINT")}/tx/{utxo.Outpoint.Hash}#vout={utxo.Outpoint.N}")" target="_blank">@utxo.Outpoint </a>
                                             </TableRowHeader>
                                             <TableRowCell>@utxo.Confirmations</TableRowCell>
                                             <TableRowCell>@($"{utxo.Value} BTC")</TableRowCell>
-                                            <TableRowCell>
+                                            <TableRowCell class="utxo-tags">
                                                 @if (tags.Any())
                                                 {
                                                     foreach (var data in tags.Select((tag, i) => new {tag, i}))
                                                     {
-                                                        <Badge Color="Color.Secondary" Pill>@data.tag.Value</Badge>
+                                                        <Badge class="utxo-tag" Color="Color.Secondary" Pill>@data.tag.Value</Badge>
                                                     }
                                                 }
                                             </TableRowCell>
