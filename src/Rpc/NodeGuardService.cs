@@ -47,8 +47,10 @@ public interface INodeGuardService
 
     Task<GetWithdrawalsRequestStatusResponse> GetWithdrawalsRequestStatus(GetWithdrawalsRequestStatusRequest request, ServerCallContext context);
 
+    Task<GetWithdrawalsRequestStatusResponse> GetWithdrawalsRequestStatusByReferenceIds(GetWithdrawalsRequestStatusByReferenceIdsRequest request, ServerCallContext context);
+
     Task<GetChannelResponse> GetChannel(GetChannelRequest request, ServerCallContext context);
-    
+
     Task<AddTagsResponse> AddTags(AddTagsRequest request, ServerCallContext context);
 }
 
@@ -1001,21 +1003,33 @@ public class NodeGuardService : Nodeguard.NodeGuardService.NodeGuardServiceBase,
         };
     }
 
-    public override async Task<GetWithdrawalsRequestStatusResponse> GetWithdrawalsRequestStatus(GetWithdrawalsRequestStatusRequest request, ServerCallContext context)
+    private GetWithdrawalsRequestStatusResponse GetWithdrawalsRequestStatusResponse(List<WalletWithdrawalRequest>? withdrawalRequests)
     {
-        var withdrawalRequests = await _walletWithdrawalRequestRepository.GetByIds(request.RequestIds.ToList());
         return new GetWithdrawalsRequestStatusResponse()
         {
             WithdrawalRequests =
             {
-                withdrawalRequests.Select(wr => new WithdrawalRequest
+                withdrawalRequests?.Select(wr => new WithdrawalRequest
                 {
                     RequestId = wr.Id,
                     Status = GetStatus(wr.Status),
-                    RejectOrCancelReason = wr.RejectCancelDescription ?? ""
+                    RejectOrCancelReason = wr.RejectCancelDescription ?? "",
+                    ReferenceId = wr.ReferenceId
                 }).ToList()
             }
         };
+    }
+
+    public override async Task<GetWithdrawalsRequestStatusResponse> GetWithdrawalsRequestStatus(GetWithdrawalsRequestStatusRequest request, ServerCallContext context)
+    {
+        var withdrawalRequests = await _walletWithdrawalRequestRepository.GetByIds(request.RequestIds.ToList());
+        return GetWithdrawalsRequestStatusResponse(withdrawalRequests);
+    }
+
+    public override async Task<GetWithdrawalsRequestStatusResponse> GetWithdrawalsRequestStatusByReferenceIds(GetWithdrawalsRequestStatusByReferenceIdsRequest request, ServerCallContext context)
+    {
+        var withdrawalRequests = await _walletWithdrawalRequestRepository.GetByReferenceIds(request.ReferenceIds.ToList());
+        return GetWithdrawalsRequestStatusResponse(withdrawalRequests);
     }
 
     public override async Task<GetChannelResponse> GetChannel(GetChannelRequest request, ServerCallContext context)
@@ -1056,7 +1070,7 @@ public class NodeGuardService : Nodeguard.NodeGuardService.NodeGuardServiceBase,
         {
             throw new RpcException(new Status(StatusCode.InvalidArgument, "Tags are required"));
         }
-        
+
         foreach (var tag in request.Tags)
         {
             if (!OutPoint.TryParse(tag.UtxoOutpoint, out var outpoint))
@@ -1066,7 +1080,7 @@ public class NodeGuardService : Nodeguard.NodeGuardService.NodeGuardServiceBase,
             // We overwrite the tag with the correct outpoint format, because OutPoint.TryParse also accepts `:` as separator
             tag.UtxoOutpoint = outpoint!.ToString();
         }
-        
+
         var tags = request.Tags.Select(tag => new UTXOTag
         {
             Outpoint = tag.UtxoOutpoint,
@@ -1079,7 +1093,7 @@ public class NodeGuardService : Nodeguard.NodeGuardService.NodeGuardServiceBase,
         {
             throw new RpcException(new Status(StatusCode.Internal, "Error adding tags"));
         }
-        
+
         return new AddTagsResponse();
     }
 
