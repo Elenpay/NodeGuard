@@ -228,7 +228,8 @@ public class NodeGuardService : Nodeguard.NodeGuardService.NodeGuardServiceBase,
                 RequestMetadata = request.RequestMetadata,
                 Changeless = request.Changeless,
                 MempoolRecommendedFeesType = (MempoolRecommendedFeesType)request.MempoolFeeRate,
-                CustomFeeRate = request.CustomFeeRate
+                CustomFeeRate = request.CustomFeeRate,
+                ReferenceId = request.ReferenceId
             };
 
             //Save withdrawal request
