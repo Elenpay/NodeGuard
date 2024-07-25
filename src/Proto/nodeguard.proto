@@ -132,6 +132,8 @@ message RequestWithdrawalRequest {
   FEES_TYPE mempool_fee_rate = 8;
   // Fee rate in sat/vbyte
   optional int32 custom_fee_rate = 9;
+  // Exteneral reference id for the withdrawal
+  optional string reference_id = 10;
 }
 
 message RequestWithdrawalResponse {
