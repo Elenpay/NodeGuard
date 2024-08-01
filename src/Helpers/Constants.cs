@@ -84,10 +84,14 @@ public class Constants
     /// <summary>
     /// Max ratio of the tx total input sum that could be used as fee
     /// </summary>
-    public static decimal MAX_TX_FEE_RATIO =0.5m;
-    
+    public static decimal MAX_TX_FEE_RATIO = 0.5m;
+
     public const string IsFrozenTag = "frozen";
-    
+
+    //  Constants for the NBXplorer API
+    public static int SCAN_GAP_LIMIT = 1000;
+    public static int SCAN_BATCH_SIZE = 1000;
+
     private static string? GetEnvironmentalVariableOrThrowIfNotTesting(string envVariableName, string? errorMessage = null)
     {
         // If it is a command from ef or a test, ignore the empty env variables
@@ -95,7 +99,8 @@ public class Constants
         var ignoreMissingVar = command == "ef" || (command != null && command.Contains("test"));
 
         var envVariable = Environment.GetEnvironmentVariable(envVariableName);
-        if (!ignoreMissingVar && envVariable == null) {
+        if (!ignoreMissingVar && envVariable == null)
+        {
             throw new EnvironmentalVariableMissingException(errorMessage ?? envVariableName);
         }
         return envVariable;
@@ -116,7 +121,7 @@ public class Constants
         ALLOW_SIMULTANEOUS_CHANNEL_OPENING_OPERATIONS = Environment.GetEnvironmentVariable("ALLOW_SIMULTANEOUS_CHANNEL_OPENING_OPERATIONS") == "true";
 
         // Connections
-        POSTGRES_CONNECTIONSTRING =  Environment.GetEnvironmentVariable("POSTGRES_CONNECTIONSTRING") ?? POSTGRES_CONNECTIONSTRING;
+        POSTGRES_CONNECTIONSTRING = Environment.GetEnvironmentVariable("POSTGRES_CONNECTIONSTRING") ?? POSTGRES_CONNECTIONSTRING;
 
         NBXPLORER_URI = GetEnvironmentalVariableOrThrowIfNotTesting("NBXPLORER_URI");
 
@@ -166,7 +171,7 @@ public class Constants
         }
 
         API_TOKEN_SALT = Environment.GetEnvironmentVariable("API_TOKEN_SALT") ?? "H/fCx1+maAFMcdi6idIYEg==";
-        
+
         // Crons & Jobs
         MONITOR_WITHDRAWALS_CRON = Environment.GetEnvironmentVariable("MONITOR_WITHDRAWALS_CRON") ?? MONITOR_WITHDRAWALS_CRON;
 
@@ -218,18 +223,25 @@ public class Constants
 
         //Sat/vb ratio
         var minSatPerVbRatioEnv = Environment.GetEnvironmentVariable("MIN_SAT_PER_VB_RATIO");
-        MIN_SAT_PER_VB_RATIO = minSatPerVbRatioEnv!= null ? decimal.Parse(minSatPerVbRatioEnv) : MIN_SAT_PER_VB_RATIO;
+        MIN_SAT_PER_VB_RATIO = minSatPerVbRatioEnv != null ? decimal.Parse(minSatPerVbRatioEnv) : MIN_SAT_PER_VB_RATIO;
 
         var maxSatPerVbRatioEnv = Environment.GetEnvironmentVariable("MAX_SAT_PER_VB_RATIO");
-        MAX_SAT_PER_VB_RATIO = maxSatPerVbRatioEnv!= null ? decimal.Parse(maxSatPerVbRatioEnv) : MAX_SAT_PER_VB_RATIO;
+        MAX_SAT_PER_VB_RATIO = maxSatPerVbRatioEnv != null ? decimal.Parse(maxSatPerVbRatioEnv) : MAX_SAT_PER_VB_RATIO;
+
+        //NBXplorer scan
+        var scanGapLimit = Environment.GetEnvironmentVariable("SCAN_GAP_LIMIT");
+        SCAN_GAP_LIMIT = scanGapLimit != null ? int.Parse(scanGapLimit) : SCAN_GAP_LIMIT;
+
+        var scanBatchSize = Environment.GetEnvironmentVariable("SCAN_BATCH_SIZE");
+        SCAN_BATCH_SIZE = scanBatchSize != null ? int.Parse(scanBatchSize) : SCAN_BATCH_SIZE;
 
     }
 
 }
 
-public class EnvironmentalVariableMissingException: ArgumentNullException
+public class EnvironmentalVariableMissingException : ArgumentNullException
 {
-    public EnvironmentalVariableMissingException(string message): base(message + " must be set")
+    public EnvironmentalVariableMissingException(string message) : base(message + " must be set")
     {
     }
 }
