@@ -181,7 +181,7 @@ public class CoinSelectionService: ICoinSelectionService
     public async Task<List<UTXO>> GetAvailableUTXOsAsync(DerivationStrategyBase derivationStrategy, CoinSelectionStrategy strategy, int limit, long amount, long closestTo)
     {
         UTXOChanges utxoChanges;
-        if (Constants.NBXPLORER_ENABLE_CUSTOM_BACKEND && limit > 0)
+        if (Constants.NBXPLORER_ENABLE_CUSTOM_BACKEND)
         {
             utxoChanges = await _nbXplorerService.GetUTXOsByLimitAsync(derivationStrategy, strategy, limit, amount, closestTo);
         }

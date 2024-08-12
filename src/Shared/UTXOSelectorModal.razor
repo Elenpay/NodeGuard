@@ -85,6 +85,8 @@
                                   @bind-SelectedRows="SelectedUTXOs"
                                   Responsive
                                   FixedHeader
+                                  @* Hack to turn off pagination completely in blazorise *@
+                                  PageSize="1000000000"
                                   FixedHeaderDataGridMaxHeight="400px"
                                   >
                             <DataGridMultiSelectColumn Width="30px"></DataGridMultiSelectColumn>
