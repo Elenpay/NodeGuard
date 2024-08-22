@@ -39,7 +39,7 @@ services:
     command: ["--noauth"]
     volumes:
     - "bitcoin_datadir:/root/.bitcoin"
-      
+
   nbxplorer_postgres:
     container_name: nbxplorer_postgres
     image: postgres:16
