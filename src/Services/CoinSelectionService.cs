@@ -67,6 +67,11 @@ public interface ICoinSelectionService
     /// <param name="bitcoinRequest"></param>
     /// <param name="requestType"></param>
     public Task<List<UTXO>> GetLockedUTXOsForRequest(IBitcoinRequest bitcoinRequest, BitcoinRequestType requestType);
+    
+    /// <summary>
+    /// Gets the frozen UTXOs
+    /// </summary>
+    public Task<List<string>> GetFrozenUTXOs();
 
     public Task<(List<ICoin> coins, List<UTXO> selectedUTXOs)> GetTxInputCoins(
         List<UTXO> availableUTXOs,
@@ -146,9 +151,8 @@ public class CoinSelectionService: ICoinSelectionService
     private async Task<List<UTXO>> FilterLockedFrozenUTXOs(UTXOChanges? utxoChanges)
     {
         var lockedUTXOs = await _fmutxoRepository.GetLockedUTXOs();
-        var frozenUTXOs = await _utxoTagRepository.GetByKeyValue(Constants.IsFrozenTag, "true");
         var listLocked = lockedUTXOs.Select(utxo => $"{utxo.TxId}-{utxo.OutputIndex}").ToList(); 
-        var listFrozen = frozenUTXOs.Select(utxo => utxo.Outpoint).ToList();
+        var listFrozen = await GetFrozenUTXOs();
         var frozenAndLockedOutpoints = new List<string>();
         frozenAndLockedOutpoints.AddRange(listLocked);
         frozenAndLockedOutpoints.AddRange(listFrozen);
@@ -170,6 +174,25 @@ public class CoinSelectionService: ICoinSelectionService
         }
 
         return availableUTXOs;
+    }
+    
+    public async Task<List<string>> GetFrozenUTXOs()
+    {
+        var frozenUTXOs = await _utxoTagRepository.GetByKeyValue(Constants.IsFrozenTag, "true");
+        var manuallyFrozenUTXOs = await _utxoTagRepository.GetByKeyValue(Constants.IsManuallyFrozenTag, "true");
+        var manuallyUnfrozenUTXOs = await _utxoTagRepository.GetByKeyValue(Constants.IsManuallyFrozenTag, "false");
+        var listFrozen = frozenUTXOs.Select(utxo => utxo.Outpoint).ToList();
+        var listManuallyFrozen = manuallyFrozenUTXOs.Select(utxo => utxo.Outpoint).ToList();
+        var listManuallyUnfrozen = manuallyUnfrozenUTXOs.Select(utxo => utxo.Outpoint).ToList();
+
+        // Merge manually frozen and frozen UTXOs and remove manually unfrozen UTXOs
+        List<string> frozenUTXOsList =
+            listFrozen
+            .Union(listManuallyFrozen)
+            .Except(listManuallyUnfrozen)
+            .ToList();
+        
+        return frozenUTXOsList;
     }
 
     public async Task<List<UTXO>> GetAvailableUTXOsAsync(DerivationStrategyBase derivationStrategy)

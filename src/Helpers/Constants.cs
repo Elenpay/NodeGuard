@@ -87,6 +87,7 @@ public class Constants
     public static decimal MAX_TX_FEE_RATIO = 0.5m;
 
     public const string IsFrozenTag = "frozen";
+    public const string IsManuallyFrozenTag = "manually_frozen";
 
     //  Constants for the NBXplorer API
     public static int SCAN_GAP_LIMIT = 1000;
