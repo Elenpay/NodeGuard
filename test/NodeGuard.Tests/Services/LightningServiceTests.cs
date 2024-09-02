@@ -406,7 +406,7 @@ namespace NodeGuard.Services
             var nodes = new List<Node> { destinationNode };
 
             nodeRepository
-                .Setup(x => x.GetAllManagedByNodeGuard())
+                .Setup(x => x.GetAllManagedByNodeGuard(It.IsAny<bool>()))
                 .Returns(Task.FromResult(nodes));
 
             var lightningClientService = new Mock<ILightningClientService>();
@@ -597,7 +597,7 @@ namespace NodeGuard.Services
             var nodes = new List<Node> { destinationNode };
 
             nodeRepository
-                .Setup(x => x.GetAllManagedByNodeGuard())
+                .Setup(x => x.GetAllManagedByNodeGuard(It.IsAny<bool>()))
                 .Returns(Task.FromResult(nodes));
 
             var lightningClient = new Mock<ILightningClientService>();
@@ -810,7 +810,7 @@ namespace NodeGuard.Services
             var nodes = new List<Node> { destinationNode };
 
             nodeRepository
-                .Setup(x => x.GetAllManagedByNodeGuard())
+                .Setup(x => x.GetAllManagedByNodeGuard(It.IsAny<bool>()))
                 .Returns(Task.FromResult(nodes));
 
             var lightningClient = new Mock<ILightningClientService>();
@@ -1029,7 +1029,7 @@ namespace NodeGuard.Services
             var nodes = new List<Node> { destinationNode };
 
             nodeRepository
-                .Setup(x => x.GetAllManagedByNodeGuard())
+                .Setup(x => x.GetAllManagedByNodeGuard(It.IsAny<bool>()))
                 .Returns(Task.FromResult(nodes));
 
             var lightningClient = new Mock<ILightningClientService>();
@@ -1242,7 +1242,7 @@ namespace NodeGuard.Services
             var nodes = new List<Node> { destinationNode };
 
             nodeRepository
-                .Setup(x => x.GetAllManagedByNodeGuard())
+                .Setup(x => x.GetAllManagedByNodeGuard(It.IsAny<bool>()))
                 .Returns(Task.FromResult(nodes));
 
             var lightningClient = new Mock<ILightningClientService>();
@@ -1588,7 +1588,7 @@ namespace NodeGuard.Services
             var nodeRepository = new Mock<INodeRepository>();
             var lightningClientService = new Mock<ILightningClientService>();
 
-            nodeRepository.Setup(x => x.GetAllManagedByNodeGuard()).ReturnsAsync(
+            nodeRepository.Setup(x => x.GetAllManagedByNodeGuard(It.IsAny<bool>())).ReturnsAsync(
                 new List<Node>()
                 {
                     new()
@@ -1632,7 +1632,7 @@ namespace NodeGuard.Services
             var nodeRepository = new Mock<INodeRepository>();
             var lightningClientService = new Mock<ILightningClientService>();
 
-            nodeRepository.Setup(x => x.GetAllManagedByNodeGuard()).ReturnsAsync(
+            nodeRepository.Setup(x => x.GetAllManagedByNodeGuard(It.IsAny<bool>())).ReturnsAsync(
                 new List<Node>()
                 {
                     new()
@@ -1676,7 +1676,7 @@ namespace NodeGuard.Services
             var nodeRepository = new Mock<INodeRepository>();
             var lightningClientService = new Mock<ILightningClientService>();
 
-            nodeRepository.Setup(x => x.GetAllManagedByNodeGuard()).ReturnsAsync(
+            nodeRepository.Setup(x => x.GetAllManagedByNodeGuard(It.IsAny<bool>())).ReturnsAsync(
                 new List<Node>()
                 {
                     new()
@@ -1743,7 +1743,7 @@ namespace NodeGuard.Services
             var nodeRepository = new Mock<INodeRepository>();
             var lightningClientService = new Mock<ILightningClientService>();
 
-            nodeRepository.Setup(x => x.GetAllManagedByNodeGuard()).ReturnsAsync(
+            nodeRepository.Setup(x => x.GetAllManagedByNodeGuard(It.IsAny<bool>())).ReturnsAsync(
                 new List<Node>()
                 {
                     new()
