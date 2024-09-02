@@ -97,7 +97,7 @@ public class NodeChannelSuscribeJob : IJob
         {
             _logger.LogError(e, "Error while subscribing for the channel updates of node {NodeId}", nodeId);
             //Sleep to avoid massive requests
-            await Task.Delay(1000);
+            await Task.Delay(5000);
             
             throw new JobExecutionException(e, true);
         }

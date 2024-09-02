@@ -23,7 +23,7 @@ public class NodeSubscriptorJob : IJob
         _logger.LogInformation("Starting {JobName}... ", nameof(NodeSubscriptorJob));
         try
         {
-            var managedNodes = await _nodeRepository.GetAllManagedByNodeGuard();
+            var managedNodes = await _nodeRepository.GetAllManagedByNodeGuard(false);
 
             var scheduler = await _schedulerFactory.GetScheduler();
             
