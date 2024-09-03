@@ -1107,7 +1107,7 @@ namespace NodeGuard.Rpc
             };
 
             nodeRepositoryMock.Setup(repo => repo.GetAll()).ReturnsAsync(sampleNodes);
-            nodeRepositoryMock.Setup(repo => repo.GetAllManagedByNodeGuard()).ReturnsAsync(new List<Node>());
+            nodeRepositoryMock.Setup(repo => repo.GetAllManagedByNodeGuard(It.IsAny<bool>())).ReturnsAsync(new List<Node>());
 
             var service = new NodeGuardService(
                 _logger.Object, new Mock<ILiquidityRuleRepository>().Object,
@@ -1135,7 +1135,7 @@ namespace NodeGuard.Rpc
             // Assert
             response.Nodes.Count.Should().Be(sampleNodes.Count);
             nodeRepositoryMock.Verify(repo => repo.GetAll(), Times.Once);
-            nodeRepositoryMock.Verify(repo => repo.GetAllManagedByNodeGuard(), Times.Never);
+            nodeRepositoryMock.Verify(repo => repo.GetAllManagedByNodeGuard(It.IsAny<bool>()), Times.Never);
         }
 
         [Fact]
@@ -1150,7 +1150,7 @@ namespace NodeGuard.Rpc
             };
 
             nodeRepositoryMock.Setup(repo => repo.GetAll()).ReturnsAsync(new List<Node>());
-            nodeRepositoryMock.Setup(repo => repo.GetAllManagedByNodeGuard()).ReturnsAsync(sampleNodes);
+            nodeRepositoryMock.Setup(repo => repo.GetAllManagedByNodeGuard(It.IsAny<bool>())).ReturnsAsync(sampleNodes);
 
             var service = new NodeGuardService(
                 _logger.Object, new Mock<ILiquidityRuleRepository>().Object,
@@ -1178,7 +1178,7 @@ namespace NodeGuard.Rpc
             // Assert
             response.Nodes.Count.Should().Be(sampleNodes.Count);
             nodeRepositoryMock.Verify(repo => repo.GetAll(), Times.Never);
-            nodeRepositoryMock.Verify(repo => repo.GetAllManagedByNodeGuard(), Times.Once);
+            nodeRepositoryMock.Verify(repo => repo.GetAllManagedByNodeGuard(It.IsAny<bool>()), Times.Once);
         }
 
 

@@ -22,7 +22,7 @@ public class MonitorChannelsJob : IJob
         _logger.LogInformation("Starting {JobName}... ", nameof(MonitorChannelsJob));
         try
         {
-            var managedNodes = await _nodeRepository.GetAllManagedByNodeGuard();
+            var managedNodes = await _nodeRepository.GetAllManagedByNodeGuard(false);
 
             var scheduler = await _schedulerFactory.GetScheduler();
 
