@@ -951,11 +951,9 @@ public class NodeGuardService : Nodeguard.NodeGuardService.NodeGuardServiceBase,
         }
 
         var lockedUtxos = await _fmutxoRepository.GetLockedUTXOs();
-        var frozenUtxos = await _utxoTagRepository.GetByKeyValue(Constants.IsFrozenTag, "true");
-
         var ignoreOutpoints = new List<string>();
         var listLocked = lockedUtxos.Select(utxo => $"{utxo.TxId}-{utxo.OutputIndex}").ToList();
-        var listFrozen = frozenUtxos.Select(utxo => utxo.Outpoint).ToList();
+        var listFrozen = await _coinSelectionService.GetFrozenUTXOs();
         ignoreOutpoints.AddRange(listLocked);
         ignoreOutpoints.AddRange(listFrozen);
 

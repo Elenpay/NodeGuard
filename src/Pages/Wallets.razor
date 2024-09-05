@@ -1154,8 +1154,16 @@
             .Select((u) => (
                 u.Outpoint,
                 u,
-                tagsMap[u.Outpoint].Where(t => t.Key != Constants.IsFrozenTag).ToList(),
-                tagsMap[u.Outpoint].Any(t => t.Key == Constants.IsFrozenTag && t.Value == "true")
+                tagsMap[u.Outpoint]
+                    .Where(t => t.Key != Constants.IsFrozenTag && t.Key != Constants.IsManuallyFrozenTag)
+                    .ToList(),
+                // Check if the UTXO is frozen, has been manually frozen or has been manually unfrozen
+                (tagsMap[u.Outpoint]
+                     .Any(t => t.Key == Constants.IsFrozenTag && t.Value == "true") ||
+                 tagsMap[u.Outpoint]
+                     .Any(t => t.Key == Constants.IsManuallyFrozenTag && t.Value == "true")) &&
+                !tagsMap[u.Outpoint]
+                    .Any(t => t.Key == Constants.IsManuallyFrozenTag && t.Value == "false")
             )).ToList();
 
         _detailsTransactions = await NBXplorerService.GetTransactionsAsync(derivationStrategyBase);
@@ -1703,8 +1711,8 @@
 
     private async Task ToggleUtxoFreeze(bool newValue, UTXO utxo)
     {
-        var tag = await UTXOTagRepository.GetByKeyAndOutpoint(Constants.IsFrozenTag, utxo.Outpoint.ToString());
-        var (saved, _) = UTXOTagRepository.Update(new UTXOTag {Key = Constants.IsFrozenTag, Value = newValue ? "true" : "false", Outpoint = utxo.Outpoint.ToString(), Id = tag?.Id ?? 0 });
+        var tag = await UTXOTagRepository.GetByKeyAndOutpoint(Constants.IsManuallyFrozenTag, utxo.Outpoint.ToString());
+        var (saved, _) = UTXOTagRepository.Update(new UTXOTag {Key = Constants.IsManuallyFrozenTag, Value = newValue ? "true" : "false", Outpoint = utxo.Outpoint.ToString(), Id = tag?.Id ?? 0 });
         if (!saved)
         {
             ToastService.ShowError("Error while updating the UTXO status");
