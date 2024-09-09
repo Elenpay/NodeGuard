@@ -404,7 +404,6 @@ namespace NodeGuard.Services
                 if (transactionCheckResult != TransactionCheckResult.Success)
                 {
                     _logger.LogError("Invalid tx check reason: {Reason}", transactionCheckResult.Humanize());
-                    throw new InvalidOperationException($"Invalid tx check reason: {transactionCheckResult.Humanize()}");
                 }
 
                 var node = (await _nodeRepository.GetAllManagedByNodeGuard()).FirstOrDefault();
@@ -453,7 +452,7 @@ namespace NodeGuard.Services
                     walletWithdrawalRequest.DestinationAddress,
                     CurrentNetworkHelper.GetCurrentNetwork()));
 
-                await _nbXplorerService.TrackAsync(trackedSourceAddress, new TrackWalletRequest{}, default);
+                await _nbXplorerService.TrackAsync(trackedSourceAddress, new TrackWalletRequest { }, default);
             }
             catch (Exception e)
             {
