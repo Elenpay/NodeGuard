@@ -404,6 +404,7 @@ namespace NodeGuard.Services
                 if (transactionCheckResult != TransactionCheckResult.Success)
                 {
                     _logger.LogError("Invalid tx check reason: {Reason}", transactionCheckResult.Humanize());
+                    throw new InvalidOperationException($"Invalid tx check reason: {transactionCheckResult.Humanize()}");
                 }
 
                 var node = (await _nodeRepository.GetAllManagedByNodeGuard()).FirstOrDefault();
