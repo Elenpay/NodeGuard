@@ -66,7 +66,6 @@ public class PerformWithdrawalJob : IJob
             }
 
             _logger.LogError(e, "Error on {JobName}", nameof(PerformWithdrawalJob));
-            throw new JobExecutionException(e, false);
         }
 
         _logger.LogInformation("{JobName} ended", nameof(PerformWithdrawalJob));

@@ -272,8 +272,7 @@ public class NodeGuardService : Nodeguard.NodeGuardService.NodeGuardServiceBase,
             {
                 var map = new JobDataMap();
                 map.Put("withdrawalRequestId", withdrawalRequest.Id);
-                var retryList = RetriableJob.ParseRetryListFromString(Constants.JOB_RETRY_INTERVAL_LIST_IN_MINUTES);
-                var job = RetriableJob.Create<PerformWithdrawalJob>(map, withdrawalRequest.Id.ToString(), retryList);
+                var job = SimpleJob.Create<PerformWithdrawalJob>(map, withdrawalRequest.Id.ToString());
                 await _scheduler.ScheduleJob(job.Job, job.Trigger);
             }
 
