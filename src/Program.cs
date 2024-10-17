@@ -222,7 +222,7 @@ namespace NodeGuard
                         .WithIdentity($"{nameof(SweepAllNodesWalletsJob)}Trigger")
                         .StartNow().WithSimpleSchedule(scheduleBuilder =>
                         {
-                            scheduleBuilder.WithIntervalInMinutes(1).RepeatForever();
+                            scheduleBuilder.WithIntervalInMinutes(60).RepeatForever();
                         });
                 });
 
