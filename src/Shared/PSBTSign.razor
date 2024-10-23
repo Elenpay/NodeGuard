@@ -84,7 +84,7 @@
         {
             var streamRef =
                 await JS.InvokeAsync<IJSStreamReference>("getText", _PSBTField);
-            var stream = await streamRef.OpenReadStreamAsync(maxAllowedSize: 50_000);
+            var stream = await streamRef.OpenReadStreamAsync(maxAllowedSize: 1024L * 1024L); // 1MB
             var streamReader = new StreamReader(stream);
 
             return await streamReader.ReadToEndAsync();
