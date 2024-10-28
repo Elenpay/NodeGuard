@@ -75,6 +75,7 @@ public class Constants
     public static readonly decimal MAXIMUM_WITHDRAWAL_BTC_AMOUNT = 21_000_000;
     public static readonly int TRANSACTION_CONFIRMATION_MINIMUM_BLOCKS;
     public static readonly long ANCHOR_CLOSINGS_MINIMUM_SATS;
+    public static readonly long MINIMUM_SWEEP_TRANSACTION_AMOUNT_SATS = 5_000_000; //5M sats
     public static readonly string DEFAULT_DERIVATION_PATH = "48'/1'";
     public static readonly int SESSION_TIMEOUT_MILLISECONDS = 3_600_000;
 
@@ -85,6 +86,11 @@ public class Constants
     /// Max ratio of the tx total input sum that could be used as fee
     /// </summary>
     public static decimal MAX_TX_FEE_RATIO = 0.5m;
+
+    /// <summary>
+    /// The target number of confirmations blocks (fee rate) for the sweep transaction
+    /// </summary>
+    public static int SWEEP_CONF_TARGET = 6;
 
     public const string IsFrozenTag = "frozen";
     public const string IsManuallyFrozenTag = "manually_frozen";
@@ -216,6 +222,13 @@ public class Constants
 
         var anchorClosingMinSats = GetEnvironmentalVariableOrThrowIfNotTesting("ANCHOR_CLOSINGS_MINIMUM_SATS");
         if (anchorClosingMinSats != null) ANCHOR_CLOSINGS_MINIMUM_SATS = long.Parse(anchorClosingMinSats); // Check https://github.com/lightningnetwork/lnd/issues/6505#issuecomment-1120364460 to understand, we need 100K+ to support anchor channel closings
+
+        var sweepConfTarget = Environment.GetEnvironmentVariable("SWEEP_CONF_TARGET");
+        if (sweepConfTarget != null) SWEEP_CONF_TARGET = int.Parse(sweepConfTarget);
+
+        var minSweepTransactionAmount = Environment.GetEnvironmentVariable("MINIMUM_SWEEP_TRANSACTION_AMOUNT_SATS");
+        if (minSweepTransactionAmount != null) MINIMUM_SWEEP_TRANSACTION_AMOUNT_SATS = long.Parse(minSweepTransactionAmount);
+
 
         DEFAULT_DERIVATION_PATH = GetEnvironmentalVariableOrThrowIfNotTesting("DEFAULT_DERIVATION_PATH") ?? DEFAULT_DERIVATION_PATH;
 
