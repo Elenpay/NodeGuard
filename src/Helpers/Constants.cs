@@ -75,7 +75,7 @@ public class Constants
     public static readonly decimal MAXIMUM_WITHDRAWAL_BTC_AMOUNT = 21_000_000;
     public static readonly int TRANSACTION_CONFIRMATION_MINIMUM_BLOCKS;
     public static readonly long ANCHOR_CLOSINGS_MINIMUM_SATS;
-    public static readonly long MINIMUM_SWEEP_TRANSACTION_AMOUNT_SATS = 5_000_000; //5M sats
+    public static readonly long MINIMUM_SWEEP_TRANSACTION_AMOUNT_SATS = 25_000_000; //25M sats
     public static readonly string DEFAULT_DERIVATION_PATH = "48'/1'";
     public static readonly int SESSION_TIMEOUT_MILLISECONDS = 3_600_000;
 
