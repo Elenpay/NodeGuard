@@ -33,7 +33,7 @@
                   @ref="_walletsDataGrid"
                   @bind-SelectedRow="_selectedWallet"
                   Data="_wallets"
-                  Editable="@_isFinanceManager"
+                  Editable="true"
                   EditMode="DataGridEditMode.Popup"
                   Responsive="true"
                   ResizeMode="TableResizeMode.Columns"
@@ -55,8 +55,7 @@
             <DataGridColumns>
                 <DataGridCommandColumn TItem="Wallet">
                     <NewCommandTemplate>
-                        @if (_isFinanceManager)
-                        {
+                        <AuthorizeView Roles="Superadmin,FinanceManager">
                             <Dropdown>
                                 <DropdownToggle Color="Color.Primary">
                                 </DropdownToggle>
@@ -67,19 +66,20 @@
 
                                 </DropdownMenu>
                             </Dropdown>
-                        }
-
+                        </AuthorizeView>
                     </NewCommandTemplate>
                     <EditCommandTemplate>
                         <Dropdown @onclick:stopPropagation="true">
                             <DropdownToggle Color="Color.Primary">
                             </DropdownToggle>
                             <DropdownMenu>
+                                 <AuthorizeView Roles="Superadmin,FinanceManager">
+                                    <DropdownItem Clicked="context.Clicked">Edit</DropdownItem>
+                                    <DropdownItem Disabled="!context.Item.IsFinalised || context.Item.IsWatchOnly" Clicked="@(() => ShowTransferFundsModal(context.Item))">Transfer funds</DropdownItem>
+                                </AuthorizeView>
 
-                                <DropdownItem Clicked="context.Clicked">Edit</DropdownItem>
                                 <DropdownItem Disabled="!context.Item.IsFinalised" Clicked="@(() => LoadAndOpenDetailsModal(context.Item))">Details</DropdownItem>
                                 <DropdownItem Disabled="!context.Item.IsFinalised" Clicked="@(() => LoadAndOpenModalTextModalUnusedAddress(context.Item))">Get address</DropdownItem>
-                                <DropdownItem Disabled="!context.Item.IsFinalised || context.Item.IsWatchOnly" Clicked="@(() => ShowTransferFundsModal(context.Item))">Transfer funds</DropdownItem>
                                 <DropdownItem Disabled="!context.Item.IsFinalised" Clicked="@(() => RescanWallet(context.Item))">Rescan wallet</DropdownItem>
                                 <DropdownItem Disabled="!context.Item.IsFinalised" Clicked="@(() => LoadAndOpenExportOutputDescriptor(context.Item))">Export output descriptor</DropdownItem>
 
@@ -784,8 +784,6 @@
     private Modal _finaliseModalRef;
     private Wallet? _selectedWalletToFinalise;
 
-    private bool _isFinanceManager = false;
-
     private decimal _btcPrice;
 
     private Check<bool> _hotWalletCheckComponent;
@@ -862,10 +860,6 @@
         }
         if (LoggedUser != null)
         {
-            if (ClaimsPrincipal.IsInRole(ApplicationUserRole.FinanceManager.ToString()))
-            {
-                _isFinanceManager = true;
-            }
             await GetData();
         }
     }
