@@ -33,7 +33,7 @@
                   @ref="_walletsDataGrid"
                   @bind-SelectedRow="_selectedWallet"
                   Data="_wallets"
-                  Editable="@_isFinanceManager"
+                  Editable="true"
                   EditMode="DataGridEditMode.Popup"
                   Responsive="true"
                   ResizeMode="TableResizeMode.Columns"
@@ -55,31 +55,29 @@
             <DataGridColumns>
                 <DataGridCommandColumn TItem="Wallet">
                     <NewCommandTemplate>
-                        @if (_isFinanceManager)
-                        {
+                       @if (_isFinanceManager){
                             <Dropdown>
                                 <DropdownToggle Color="Color.Primary">
                                 </DropdownToggle>
                                 <DropdownMenu>
-
                                     <DropdownItem Clicked="context.Clicked">New</DropdownItem>
                                     <DropdownItem Clicked="@(() => ShowImportWalletModal())">Import Wallet</DropdownItem>
-
                                 </DropdownMenu>
                             </Dropdown>
                         }
-
                     </NewCommandTemplate>
                     <EditCommandTemplate>
                         <Dropdown @onclick:stopPropagation="true">
                             <DropdownToggle Color="Color.Primary">
                             </DropdownToggle>
                             <DropdownMenu>
+                                @if (_isFinanceManager){
+                                    <DropdownItem Clicked="context.Clicked">Edit</DropdownItem>
+                                    <DropdownItem Disabled="!context.Item.IsFinalised || context.Item.IsWatchOnly" Clicked="@(() => ShowTransferFundsModal(context.Item))">Transfer funds</DropdownItem>
+                                }
 
-                                <DropdownItem Clicked="context.Clicked">Edit</DropdownItem>
                                 <DropdownItem Disabled="!context.Item.IsFinalised" Clicked="@(() => LoadAndOpenDetailsModal(context.Item))">Details</DropdownItem>
                                 <DropdownItem Disabled="!context.Item.IsFinalised" Clicked="@(() => LoadAndOpenModalTextModalUnusedAddress(context.Item))">Get address</DropdownItem>
-                                <DropdownItem Disabled="!context.Item.IsFinalised || context.Item.IsWatchOnly" Clicked="@(() => ShowTransferFundsModal(context.Item))">Transfer funds</DropdownItem>
                                 <DropdownItem Disabled="!context.Item.IsFinalised" Clicked="@(() => RescanWallet(context.Item))">Rescan wallet</DropdownItem>
                                 <DropdownItem Disabled="!context.Item.IsFinalised" Clicked="@(() => LoadAndOpenExportOutputDescriptor(context.Item))">Export output descriptor</DropdownItem>
 
@@ -212,12 +210,12 @@
             <Field>
                 <FieldLabel>Select the Finance user(s) who will be a co-approver</FieldLabel>
                 <SelectList TItem="ApplicationUser"
-                            TValue="string"
-                            Data="@_financeManagers"
-                            TextField="@((item) => item.UserName)"
-                            ValueField="@((item) => item.Id)"
-                            SelectedValueChanged="@OnSelectedFinanceManager"
-                            DefaultItemText="Choose the approver"/>
+                TValue="string"
+                Data="@_financeManagers"
+                TextField="@((item) => item.UserName)"
+                ValueField="@((item) => item.Id)"
+                SelectedValueChanged="@OnSelectedFinanceManager"
+                DefaultItemText="Choose the approver"/>
 
             </Field>
             @if (_selectedFinanceManager != null && _selectedFinanceManagerAvailableKeys.Any())
@@ -225,12 +223,12 @@
                 <Field>
                     <FieldLabel>Select the Finance user(s) key</FieldLabel>
                     <SelectList TItem="Key"
-                                TValue="int"
-                                Data="@_selectedFinanceManagerAvailableKeys"
-                                TextField="@((item) => $"{item.Name}-{StringHelper.TruncateHeadAndTail(item.XPUB, 10)}")"
-                                ValueField="@((item) => item.Id)"
-                                SelectedValueChanged="@OnSelectedWalletKey"
-                                DefaultItemText="Choose the key of the manager"/>
+                    TValue="int"
+                    Data="@_selectedFinanceManagerAvailableKeys"
+                    TextField="@((item) => $"{item.Name}-{StringHelper.TruncateHeadAndTail(item.XPUB, 10)}")"
+                    ValueField="@((item) => item.Id)"
+                    SelectedValueChanged="@OnSelectedWalletKey"
+                    DefaultItemText="Choose the key of the manager"/>
                 </Field>
             }
             else
@@ -485,14 +483,14 @@
                                 </FieldLabel>
                                 <FieldBody>
                                     <SelectList TItem="Wallet"
-                                                TValue="int"
-                                                DefaultItemDisabled
-                                                Data="_walletsForTransfer"
-                                                TextField="@((item) => item.Name)"
-                                                ValueField="@((item) => item.Id)"
-                                                SelectedValue="@_selectedTransferWalletId"
-                                                SelectedValueChanged="(id) => OnSelectedWallet(id)"
-                                                DefaultItemText="Choose the wallet">
+                                    TValue="int"
+                                    DefaultItemDisabled
+                                    Data="_walletsForTransfer"
+                                    TextField="@((item) => item.Name)"
+                                    ValueField="@((item) => item.Id)"
+                                    SelectedValue="@_selectedTransferWalletId"
+                                    SelectedValueChanged="(id) => OnSelectedWallet(id)"
+                                    DefaultItemText="Choose the wallet">
                                         <Feedback>
                                             <ValidationError>You must select a valid wallet</ValidationError>
                                         </Feedback>
@@ -726,8 +724,8 @@
                 @("Output descriptor: " + StringHelper.TruncateHeadAndTail(_outputDescriptorContentModal, 25))
                 <Button Color="Color.Primary" Clicked="@(()=> CopyStrToClipboard(_outputDescriptorContentModal, "Output Descriptor"))">Copy</Button>
             </Paragraph>
-                @("Wallet derivation strategy (NBITCOIN): " + StringHelper.TruncateHeadAndTail(_derivationScheme, 25))
-                <Button Color="Color.Primary" Clicked="@(()=> CopyStrToClipboard(_derivationScheme, "Derivation Strategy"))">Copy</Button>
+            @("Wallet derivation strategy (NBITCOIN): " + StringHelper.TruncateHeadAndTail(_derivationScheme, 25))
+            <Button Color="Color.Primary" Clicked="@(()=> CopyStrToClipboard(_derivationScheme, "Derivation Strategy"))">Copy</Button>
         </ModalBody>
         <ModalFooter>
             <Button Color="Color.Secondary" Clicked="@CloseExportOutputDescriptorModal">Close</Button>
@@ -736,18 +734,18 @@
 </Modal>
 
 <ConfirmationModal
-    @ref="_multisigTransferModal"
-    Title="Transferring from a multisig wallet"
-    Body="Your transfer request was succesfully done. Please, go to Withdrawals page to sign for this transfer."
-    CancelLabel="Yes, understood"
-    OnCancel="CloseMultisigTransferModal"/>
+@ref="_multisigTransferModal"
+Title="Transferring from a multisig wallet"
+Body="Your transfer request was succesfully done. Please, go to Withdrawals page to sign for this transfer."
+CancelLabel="Yes, understood"
+OnCancel="CloseMultisigTransferModal"/>
 <ConfirmationModal
-    @ref="_hotWalletTransferModal"
-    Title="Are you sure?"
-    Body="You're about to transfer funds from this wallet. This means that the system will automatically use the funds in it without the need of manual approval. Are you sure you want to perform this operation?"
-    OkLabel="Yes, understood"
-    OnCancel="CloseHotWalletTransferModal"
-    OnSubmit="TransferFundsHotWallet"/>
+@ref="_hotWalletTransferModal"
+Title="Are you sure?"
+Body="You're about to transfer funds from this wallet. This means that the system will automatically use the funds in it without the need of manual approval. Are you sure you want to perform this operation?"
+OkLabel="Yes, understood"
+OnCancel="CloseHotWalletTransferModal"
+OnSubmit="TransferFundsHotWallet"/>
 
 @code {
 
