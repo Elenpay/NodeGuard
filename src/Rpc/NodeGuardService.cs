@@ -28,6 +28,8 @@ public interface INodeGuardService
 
     Task<GetAvailableWalletsResponse>
         GetAvailableWallets(GetAvailableWalletsRequest request, ServerCallContext context);
+    
+    Task<GetWalletBalanceResponse> GetWalletBalance(GetWalletBalanceRequest request, ServerCallContext context);
 
     Task<GetNodesResponse> GetNodes(GetNodesRequest request, ServerCallContext context);
 
@@ -377,6 +379,28 @@ public class NodeGuardService : Nodeguard.NodeGuardService.NodeGuardServiceBase,
             throw new RpcException(new Status(StatusCode.Internal, e.Message));
         }
     }
+    
+    public override async Task<GetWalletBalanceResponse> GetWalletBalance(GetWalletBalanceRequest request, ServerCallContext context)
+    {
+        var wallet = await _walletRepository.GetById(request.WalletId);
+        if (wallet == null)
+        {
+            throw new RpcException(new Status(StatusCode.NotFound, "Wallet not found"));
+        }
+
+        var balance = await _lightningService.GetWalletBalance(wallet);
+        if (balance == null)
+        {
+            throw new RpcException(new Status(StatusCode.Internal, "Error getting wallet balance"));
+        }
+
+        return new GetWalletBalanceResponse
+        {
+            ConfirmedBalance = ((Money)balance.Confirmed).Satoshi,
+            UnconfirmedBalance = ((Money)balance.Unconfirmed).Satoshi
+        };
+    }
+
 
     public override async Task<AddNodeResponse> AddNode(AddNodeRequest request, ServerCallContext context)
     {
