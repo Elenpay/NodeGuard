@@ -382,23 +382,31 @@ public class NodeGuardService : Nodeguard.NodeGuardService.NodeGuardServiceBase,
     
     public override async Task<GetWalletBalanceResponse> GetWalletBalance(GetWalletBalanceRequest request, ServerCallContext context)
     {
-        var wallet = await _walletRepository.GetById(request.WalletId);
-        if (wallet == null)
+        try
         {
-            throw new RpcException(new Status(StatusCode.NotFound, "Wallet not found"));
-        }
+            var wallet = await _walletRepository.GetById(request.WalletId);
+            if (wallet == null)
+            {
+                throw new RpcException(new Status(StatusCode.NotFound, "Wallet not found"));
+            }
 
-        var balance = await _lightningService.GetWalletBalance(wallet);
-        if (balance == null)
-        {
-            throw new RpcException(new Status(StatusCode.Internal, "Error getting wallet balance"));
+            var balance = await _lightningService.GetWalletBalance(wallet);
+            if (balance == null)
+            {
+                throw new RpcException(new Status(StatusCode.Internal, "Error getting wallet balance"));
+            }
+            
+            return new GetWalletBalanceResponse
+            {
+                ConfirmedBalance = ((Money)balance.Confirmed).Satoshi,
+                UnconfirmedBalance = ((Money)balance.Unconfirmed).Satoshi
+            };
         }
-
-        return new GetWalletBalanceResponse
+        catch (Exception e)
         {
-            ConfirmedBalance = ((Money)balance.Confirmed).Satoshi,
-            UnconfirmedBalance = ((Money)balance.Unconfirmed).Satoshi
-        };
+            _logger?.LogError(e, "Error getting wallet balance through gRPC");
+            throw new RpcException(new Status(StatusCode.Internal, e.Message));
+        }
     }
 
 
