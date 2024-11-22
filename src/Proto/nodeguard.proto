@@ -34,6 +34,12 @@ service NodeGuardService {
     Gets a list of available wallets
   */
   rpc GetAvailableWallets(GetAvailableWalletsRequest) returns (GetAvailableWalletsResponse);
+  
+  /*
+    Get balance from a specific wallet
+  */
+  rpc GetWalletBalance(GetWalletBalanceRequest) returns (GetWalletBalanceResponse);
+  
   /*
     Opens a channel to a given node
    */
@@ -166,6 +172,17 @@ message Wallet  {
 }
 message GetAvailableWalletsResponse {
   repeated Wallet wallets = 1;
+}
+
+message GetWalletBalanceRequest {
+  int32 wallet_id = 1;
+}
+
+message GetWalletBalanceResponse {
+  // Confirmed balance in satoshis
+  int64 confirmed_balance = 1;
+  // Unconfirmed balance in satoshis
+  int64 unconfirmed_balance = 2;
 }
 
 message AddNodeRequest{
