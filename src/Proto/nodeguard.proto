@@ -386,6 +386,7 @@ message WithdrawalRequest {
   WITHDRAWAL_REQUEST_STATUS status = 2;
   optional string reject_or_cancel_reason = 3;
   optional string reference_id = 4;
+  uint64 confirmations = 5;
 }
 
 message GetWithdrawalsRequestStatusResponse {

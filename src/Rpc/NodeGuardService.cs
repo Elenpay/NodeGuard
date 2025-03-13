@@ -1033,33 +1033,41 @@ public class NodeGuardService : Nodeguard.NodeGuardService.NodeGuardServiceBase,
         };
     }
 
-    private GetWithdrawalsRequestStatusResponse GetWithdrawalsRequestStatusResponse(List<WalletWithdrawalRequest>? withdrawalRequests)
+    private async Task<GetWithdrawalsRequestStatusResponse> GetWithdrawalsRequestStatusResponse(List<WalletWithdrawalRequest> withdrawalRequests)
     {
+        var withdrawalsResponses = new List<WithdrawalRequest>();
+        foreach (var withdrawalRequest in withdrawalRequests)
+        {
+            var nbxplorerStatus = await _nbXplorerService.GetTransactionAsync(uint256.Parse(withdrawalRequest.TxId));
+
+            withdrawalsResponses.Add(new WithdrawalRequest
+            {
+                RequestId = withdrawalRequest.Id,
+                Status = GetStatus(withdrawalRequest.Status),
+                RejectOrCancelReason = withdrawalRequest.RejectCancelDescription ?? "",
+                ReferenceId = withdrawalRequest.ReferenceId,
+                Confirmations = (ulong)(nbxplorerStatus?.Confirmations ?? 0),
+            });
+        }
+
         return new GetWithdrawalsRequestStatusResponse()
         {
-            WithdrawalRequests =
-            {
-                withdrawalRequests?.Select(wr => new WithdrawalRequest
-                {
-                    RequestId = wr.Id,
-                    Status = GetStatus(wr.Status),
-                    RejectOrCancelReason = wr.RejectCancelDescription ?? "",
-                    ReferenceId = wr.ReferenceId
-                }).ToList()
-            }
+            WithdrawalRequests = { withdrawalsResponses }
         };
     }
 
     public override async Task<GetWithdrawalsRequestStatusResponse> GetWithdrawalsRequestStatus(GetWithdrawalsRequestStatusRequest request, ServerCallContext context)
     {
         var withdrawalRequests = await _walletWithdrawalRequestRepository.GetByIds(request.RequestIds.ToList());
-        return GetWithdrawalsRequestStatusResponse(withdrawalRequests);
+
+        return await GetWithdrawalsRequestStatusResponse(withdrawalRequests);
     }
 
     public override async Task<GetWithdrawalsRequestStatusResponse> GetWithdrawalsRequestStatusByReferenceIds(GetWithdrawalsRequestStatusByReferenceIdsRequest request, ServerCallContext context)
     {
         var withdrawalRequests = await _walletWithdrawalRequestRepository.GetByReferenceIds(request.ReferenceIds.ToList());
-        return GetWithdrawalsRequestStatusResponse(withdrawalRequests);
+
+        return await GetWithdrawalsRequestStatusResponse(withdrawalRequests);
     }
 
     public override async Task<GetChannelResponse> GetChannel(GetChannelRequest request, ServerCallContext context)
