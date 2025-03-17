@@ -1047,6 +1047,7 @@ public class NodeGuardService : Nodeguard.NodeGuardService.NodeGuardServiceBase,
                 RejectOrCancelReason = withdrawalRequest.RejectCancelDescription ?? "",
                 ReferenceId = withdrawalRequest.ReferenceId,
                 Confirmations = (ulong)(nbxplorerStatus?.Confirmations ?? 0),
+                TxId = withdrawalRequest.TxId,
             });
         }
 
