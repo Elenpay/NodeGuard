@@ -387,7 +387,7 @@ message WithdrawalRequest {
   optional string reject_or_cancel_reason = 3;
   optional string reference_id = 4;
   uint64 confirmations = 5;
-  string tx_id = 6;
+  optional string tx_id = 6;
 }
 
 message GetWithdrawalsRequestStatusResponse {
