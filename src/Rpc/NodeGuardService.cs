@@ -1038,7 +1038,12 @@ public class NodeGuardService : Nodeguard.NodeGuardService.NodeGuardServiceBase,
         var withdrawalsResponses = new List<WithdrawalRequest>();
         foreach (var withdrawalRequest in withdrawalRequests)
         {
-            var nbxplorerStatus = await _nbXplorerService.GetTransactionAsync(uint256.Parse(withdrawalRequest.TxId));
+            ulong confirmations = 0;
+            if (withdrawalRequest.TxId != null)
+            {
+                var nbxplorerStatus = await _nbXplorerService.GetTransactionAsync(uint256.Parse(withdrawalRequest.TxId));
+                confirmations = (ulong)(nbxplorerStatus?.Confirmations ?? 0);
+            }
 
             withdrawalsResponses.Add(new WithdrawalRequest
             {
@@ -1046,7 +1051,7 @@ public class NodeGuardService : Nodeguard.NodeGuardService.NodeGuardServiceBase,
                 Status = GetStatus(withdrawalRequest.Status),
                 RejectOrCancelReason = withdrawalRequest.RejectCancelDescription ?? "",
                 ReferenceId = withdrawalRequest.ReferenceId,
-                Confirmations = (ulong)(nbxplorerStatus?.Confirmations ?? 0),
+                Confirmations = confirmations,
                 TxId = withdrawalRequest.TxId,
             });
         }
