@@ -324,7 +324,7 @@
             </DataGridColumn>
             <DataGridColumn TItem="WalletWithdrawalRequest" Editable="true" Validator="DestinationAddressValidator" Field="@nameof(WalletWithdrawalRequest.DestinationAddress)" Caption="@nameof(WalletWithdrawalRequest.DestinationAddress).Humanize()" Sortable="false" Displayable="@IsAllRequestsColumnVisible(AllWithdrawalsColumnName.DestinationAddress)">
                 <DisplayTemplate>
-                    @StringHelper.TruncateHeadAndTail(context.DestinationAddress, 10)
+                    @context.DestinationAddress
                     @* TODO Copy and explorer buttons *@
                 </DisplayTemplate>
             </DataGridColumn>
