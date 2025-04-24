@@ -137,7 +137,7 @@
             </DataGridColumn>
             <DataGridColumn TItem="WalletWithdrawalRequest" Filterable="false" PopupFieldColumnSize="ColumnSize.Is12" Editable="true" Validator="DestinationAddressValidator" Field="@nameof(WalletWithdrawalRequest.DestinationAddress)" Caption="@nameof(WalletWithdrawalRequest.DestinationAddress).Humanize()" Sortable="false" Displayable="@IsPendingRequestsColumnVisible(PendingWithdrawalsColumnName.DestinationAddress)">
                 <DisplayTemplate>
-                    @StringHelper.TruncateHeadAndTail(context.DestinationAddress, 10)
+                    @context.DestinationAddress
                     @* TODO Copy and explorer buttons *@
                 </DisplayTemplate>
             </DataGridColumn>
