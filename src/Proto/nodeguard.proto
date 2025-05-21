@@ -116,6 +116,7 @@ message LiquidityRule {
 
 message GetNewWalletAddressRequest {
   int32 wallet_id = 1;
+  bool reserve = 2; // If set to true, the returned address will be marked as used
 }
 
 message GetNewWalletAddressResponse {
