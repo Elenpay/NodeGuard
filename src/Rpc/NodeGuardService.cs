@@ -28,7 +28,7 @@ public interface INodeGuardService
 
     Task<GetAvailableWalletsResponse>
         GetAvailableWallets(GetAvailableWalletsRequest request, ServerCallContext context);
-    
+
     Task<GetWalletBalanceResponse> GetWalletBalance(GetWalletBalanceRequest request, ServerCallContext context);
 
     Task<GetNodesResponse> GetNodes(GetNodesRequest request, ServerCallContext context);
@@ -154,7 +154,7 @@ public class NodeGuardService : Nodeguard.NodeGuardService.NodeGuardServiceBase,
         var btcAddress = await _nbXplorerService.GetUnusedAsync(wallet.GetDerivationStrategy(),
             DerivationFeature.Deposit,
             0,
-            false, default);
+            request.Reserve, context.CancellationToken);
 
         if (btcAddress == null)
         {
@@ -379,7 +379,7 @@ public class NodeGuardService : Nodeguard.NodeGuardService.NodeGuardServiceBase,
             throw new RpcException(new Status(StatusCode.Internal, e.Message));
         }
     }
-    
+
     public override async Task<GetWalletBalanceResponse> GetWalletBalance(GetWalletBalanceRequest request, ServerCallContext context)
     {
         try
@@ -395,7 +395,7 @@ public class NodeGuardService : Nodeguard.NodeGuardService.NodeGuardServiceBase,
             {
                 throw new RpcException(new Status(StatusCode.Internal, "Error getting wallet balance"));
             }
-            
+
             return new GetWalletBalanceResponse
             {
                 ConfirmedBalance = ((Money)balance.Confirmed).Satoshi,
