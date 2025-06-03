@@ -58,17 +58,6 @@
                 <DisplayTemplate>
                     <Button Color="Color.Success" hidden="@(!_isFinanceManager)" Clicked="() => ShowApprovalModal(context)">Approve</Button>
                 </DisplayTemplate>
-                <DisplayTemplate>
-                    @{
-                        var canBumpfee = context.Status == WalletWithdrawalRequestStatus.OnChainConfirmationPending;
-                        var isRequestor = LoggedUser?.Id == context.UserRequestorId;
-                    }
-
-                    @if (canBumpfee && isRequestor)
-                    {
-                        <Button Color="Color.Secondary" hidden="@(!_isFinanceManager)" Clicked="() => ShowBumpfeeModal(context)">Bumpfee</Button>
-                    }
-                </DisplayTemplate>
             </DataGridColumn>
             <DataGridColumn TItem="WalletWithdrawalRequest" Filterable="false" Caption="" Sortable="false" Displayable="true">
                 <DisplayTemplate>
@@ -389,6 +378,20 @@
                     }
                 </DisplayTemplate>
             </DataGridColumn>
+            <DataGridColumn TItem="WalletWithdrawalRequest" Caption="Actions" Displayable="true">
+                <DisplayTemplate>
+                    @if (_isNodeManager && ShowActionDropdown(context).Result)
+                    {
+                        <Dropdown>
+                            <DropdownToggle Color="Color.Primary">
+                            </DropdownToggle>
+                            <DropdownMenu>
+                                <DropdownItem Clicked="() => ShowBumpfeeModal(context)">Bumpfee</DropdownItem>
+                            </DropdownMenu>
+                        </Dropdown>
+                    }
+                </DisplayTemplate>
+            </DataGridColumn>
             <DataGridColumn TItem="WalletWithdrawalRequest" Displayable="true">
                 <FilterTemplate>
                     <ColumnLayout @ref="_allRequestsColumnLayout" Columns="@_allRequestsColumns" ColumnType="AllWithdrawalsColumnName" OnUpdate="@OnColumnLayoutUpdate"/>
@@ -421,8 +424,7 @@
 
 <BumpfeeModal
     @ref="_bumpfeeRef"
-    WithdrawalRequest="_selectedRequest"
-    ApproveBumpfeeRequest="async () => await SubmitConfirmationModal()"/>
+    WithdrawalRequest="_selectedRequest"/>
 
 <CancelOrRejectPopup
     @ref="@_rejectCancelModalRef"
@@ -1054,6 +1056,21 @@
             StateHasChanged();
             return;
         }
+    }
+
+    private async Task<bool> ShowActionDropdown(WalletWithdrawalRequest walletWithdrawalRequest)
+    {
+        if (!string.IsNullOrEmpty(walletWithdrawalRequest.TxId)) {
+            try {
+                var getTxResult = await NBXplorerService.GetTransactionAsync(uint256.Parse(walletWithdrawalRequest.TxId), default);
+                return walletWithdrawalRequest.Status == WalletWithdrawalRequestStatus.OnChainConfirmationPending && getTxResult.Confirmations == long.Parse("0");
+            }catch (Exception e)
+            {
+                throw new Exception(e.Message);
+            }
+        }
+
+        return string.IsNullOrEmpty(walletWithdrawalRequest.TxId);
     }
 
     private void OnColumnLayoutUpdate()

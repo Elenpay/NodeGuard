@@ -14,7 +14,7 @@
             <Fields Flex="Flex.JustifyContent.Center">
                 <Field>
                     <FieldLabel>@nameof(WalletWithdrawalRequest.Description)</FieldLabel>
-                    <MemoEdit Rows="4" @bind-Text="@(WithdrawalRequest?.Description ?? String.Empty)" Disabled="true" ElementId="withdrawal-description"></MemoEdit>
+                    <MemoEdit Rows="4" Disabled="true" ElementId="withdrawal-description">@(WithdrawalRequest?.Description ?? String.Empty)</MemoEdit>
                 </Field>
                 <Field>
                     <FieldLabel>@nameof(WalletWithdrawalRequest.WalletId)</FieldLabel>
@@ -30,7 +30,7 @@
                 </Field>
                 <Field>
                     <FieldLabel>@nameof(WalletWithdrawalRequest.WithdrawAllFunds)</FieldLabel>
-                    <Check TValue="bool" @bind-Value="@(WithdrawalRequest?.WithdrawAllFunds ?? false)" Disabled />
+                    <Check TValue="bool" Checked="@(WithdrawalRequest?.WithdrawAllFunds ?? false)" Disabled />
                 </Field>
                 <Field>
                     <FieldLabel>Wallet Balance</FieldLabel>
@@ -41,7 +41,7 @@
                 </Field>
                 <Field>
                     <FieldLabel>@nameof(WalletWithdrawalRequest.Amount)</FieldLabel>
-                    <NumericPicker TValue="decimal" @bind-Value="@(WithdrawalRequest?.Amount ?? 0)" Step="0.00001m" CurrencySymbol="₿ " Decimals="8" DecimalSeparator="," Disabled></NumericPicker>
+                    <NumericPicker TValue="decimal" Value="@(WithdrawalRequest?.Amount ?? 0)" Step="0.00001m" CurrencySymbol="₿ " Decimals="8" DecimalSeparator="," Disabled></NumericPicker>
                     <FieldHelp>
                         @{
                             var amountToShow = _amount < Constants.MAXIMUM_WITHDRAWAL_BTC_AMOUNT
@@ -98,9 +98,6 @@
     [Parameter]
     public WalletWithdrawalRequest? WithdrawalRequest { get; set; }
 
-    [Parameter]
-    public Action ApproveBumpfeeRequest { get; set; }
-
     private decimal? _selectedWalletBalance;
     private decimal _btcPrice;
 
@@ -120,8 +117,6 @@
     
     public async Task ShowModal()
     {
-        ValidationErrors = string.Empty;
-        await JsRuntime.InvokeAsync<string>("clearText");
         var walletId = WithdrawalRequest?.WalletId ?? -1;
         if (walletId != -1) {
             var wallet = await WalletRepository.GetById(walletId);
