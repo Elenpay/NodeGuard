@@ -1,0 +1,147 @@
+@using NBitcoin
+@using Microsoft.CodeAnalysis.Text
+@using System.Xml.Schema
+@using JSException = Microsoft.JSInterop.JSException
+@using System.Runtime.InteropServices.JavaScript
+@inject IJSRuntime JS
+<Modal @ref="_modalRef">
+    <ModalContent Centered>
+        <ModalHeader>
+            <ModalTitle>Bumpfee tx: @(ChannelRequest?.Id ?? WithdrawalRequest?.Id ?? 0)</ModalTitle>
+            <CloseButton />
+        </ModalHeader>
+        <ModalBody>
+            <Fields Flex="Flex.JustifyContent.Center">
+                <Field>
+                    <FieldLabel>@nameof(WalletWithdrawalRequest.Description)</FieldLabel>
+                    <MemoEdit Rows="4" @bind-Text="@(WithdrawalRequest?.Description ?? String.Empty)" Disabled="true" ElementId="withdrawal-description"></MemoEdit>
+                </Field>
+                <Field>
+                    <FieldLabel>@nameof(WalletWithdrawalRequest.WalletId)</FieldLabel>
+                    <SelectList TItem="Wallet"
+                                        TValue="string"
+                                        Disabled="true"
+                                        SelectedValue="@(WithdrawalRequest?.Wallet.Name ?? String.Empty)"
+                                        DefaultItemText="Choose the wallet"></SelectList>
+                </Field>
+                <Field>
+                    <FieldLabel>@nameof(WalletWithdrawalRequest.DestinationAddress)</FieldLabel>
+                    <input type="text" disabled="true" value="@(WithdrawalRequest?.DestinationAddress ?? "")" />
+                </Field>
+                <Field>
+                    <FieldLabel>@nameof(WalletWithdrawalRequest.WithdrawAllFunds)</FieldLabel>
+                    <Check TValue="bool" @bind-Value="@(WithdrawalRequest?.WithdrawAllFunds ?? false)" Disabled />
+                </Field>
+                <Field>
+                    <FieldLabel>Wallet Balance</FieldLabel>
+                    @if (_selectedWalletBalance != null)
+                    {
+                        <p>@($"{_selectedWalletBalance:f8} BTC ({Math.Round(PriceConversionService.BtcToUsdConversion((decimal) _selectedWalletBalance, _btcPrice), 2)} USD)")</p>
+                    }
+                </Field>
+                <Field>
+                    <FieldLabel>@nameof(WalletWithdrawalRequest.Amount)</FieldLabel>
+                    <NumericPicker TValue="decimal" @bind-Value="@(WithdrawalRequest?.Amount ?? 0)" Step="0.00001m" CurrencySymbol="₿ " Decimals="8" DecimalSeparator="," Disabled></NumericPicker>
+                    <FieldHelp>
+                        @{
+                            var amountToShow = _amount < Constants.MAXIMUM_WITHDRAWAL_BTC_AMOUNT
+                                ? _amount
+                                : Constants.MAXIMUM_WITHDRAWAL_BTC_AMOUNT;
+                            var convertedAmount = Math.Round(PriceConversionService.SatToUsdConversion(new Money(amountToShow, MoneyUnit.BTC).Satoshi, _btcPrice), 2);
+                        }
+                        @($"Minimum {_minimumWithdrawalAmount:f8} BTC. Current amount: {convertedAmount} USD")
+                    </FieldHelp>
+                    <div class="mb-3">
+                        <Button Color="Color.Primary" Disabled>Select Coins</Button> or use
+                        <Button Color="Color.Primary" Disabled>Default Coin Selection</Button>
+                    </div>
+                </Field>
+                <Field>
+                    <FieldLabel>@nameof(WalletWithdrawalRequest.CustomFeeRate)</FieldLabel>
+                    <div class="d-flex">
+                        <Select TValue="MempoolRecommendedFeesType" SelectedValue="_selectedMempoolRecommendedFeesType" SelectedValueChanged="async (value) => await OnMempoolFeeRateChange(value)">
+                            <SelectGroup Label="Mempool.space fee">
+                                <SelectItem Value="MempoolRecommendedFeesType.FastestFee">Fastest Fee</SelectItem>
+                                <SelectItem Value="MempoolRecommendedFeesType.EconomyFee">Economy Fee</SelectItem>
+                                <SelectItem Value="MempoolRecommendedFeesType.HourFee">Hour Fee</SelectItem>
+                                <SelectItem Value="MempoolRecommendedFeesType.HalfHourFee">Half Hour Fee</SelectItem>
+                            </SelectGroup>
+                            <SelectItem Value="MempoolRecommendedFeesType.CustomFee">Custom</SelectItem>
+                        </Select>
+                        <NumericPicker TValue="long" @bind-Value="@_customSatPerVbAmount" CurrencySymbolPlacement="CurrencySymbolPlacement.Suffix" CurrencySymbol=" sats/vb" Min="1" Disabled="@(_selectedMempoolRecommendedFeesType != MempoolRecommendedFeesType.CustomFee)">
+                        </NumericPicker>
+                    </div>
+                    <FieldHelp>@(_selectedMempoolRecommendedFeesType != MempoolRecommendedFeesType.CustomFee ? "Fees may change by the time the request is first signed" : "")</FieldHelp>
+                </Field>
+            </Fields>
+        </ModalBody>
+        <ModalFooter>
+            <Button Color="Color.Secondary" Clicked="@HideModal">Cancel</Button>
+            <Button id="approve-button" Color="Color.Primary" Clicked="@HandleOnClick">
+                Approve
+            </Button>
+        </ModalFooter>
+    </ModalContent>
+</Modal>
+
+@inject IJSRuntime JsRuntime
+@inject IBitcoinService BitcoinService
+@inject IPriceConversionService PriceConversionService
+@inject INBXplorerService NBXplorerService
+@inject IWalletRepository WalletRepository
+@code {
+    [Inject]
+    public IToastService ToastService { get; set; }
+
+    [Parameter]
+    public ChannelOperationRequest? ChannelRequest { get; set; }
+    [Parameter]
+    public WalletWithdrawalRequest? WithdrawalRequest { get; set; }
+
+    [Parameter]
+    public Action ApproveBumpfeeRequest { get; set; }
+
+    private decimal? _selectedWalletBalance;
+    private decimal _btcPrice;
+
+    private static readonly decimal _minimumWithdrawalAmount = Constants.MINIMUM_WITHDRAWAL_BTC_AMOUNT;
+
+    private decimal _amount { get; set; } = _minimumWithdrawalAmount;
+
+    private MempoolRecommendedFeesType _selectedMempoolRecommendedFeesType;
+    private long _customSatPerVbAmount = 1;
+
+    private Modal? _modalRef;
+
+    private async Task HandleOnClick()
+    {
+        await HideModal();
+    }
+    
+    public async Task ShowModal()
+    {
+        ValidationErrors = string.Empty;
+        await JsRuntime.InvokeAsync<string>("clearText");
+        var walletId = WithdrawalRequest?.WalletId ?? -1;
+        if (walletId != -1) {
+            var wallet = await WalletRepository.GetById(walletId);
+            var (balance, _) = await BitcoinService.GetWalletConfirmedBalance(wallet);
+            _selectedWalletBalance = balance;
+        }
+        _btcPrice = await PriceConversionService.GetBtcToUsdPrice();
+        if (_modalRef != null)
+            await _modalRef.Show();
+    }
+
+    public async Task HideModal()
+    {
+        if (_modalRef != null)
+            await _modalRef.Close(CloseReason.UserClosing);
+    }
+
+    private async Task OnMempoolFeeRateChange(MempoolRecommendedFeesType value)
+    {
+        _selectedMempoolRecommendedFeesType = value;
+        _customSatPerVbAmount = (long?)await NBXplorerService.GetFeesByType(_selectedMempoolRecommendedFeesType) ?? 1;
+    }
+}

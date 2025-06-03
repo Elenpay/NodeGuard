@@ -58,6 +58,17 @@
                 <DisplayTemplate>
                     <Button Color="Color.Success" hidden="@(!_isFinanceManager)" Clicked="() => ShowApprovalModal(context)">Approve</Button>
                 </DisplayTemplate>
+                <DisplayTemplate>
+                    @{
+                        var canBumpfee = context.Status == WalletWithdrawalRequestStatus.OnChainConfirmationPending;
+                        var isRequestor = LoggedUser?.Id == context.UserRequestorId;
+                    }
+
+                    @if (canBumpfee && isRequestor)
+                    {
+                        <Button Color="Color.Secondary" hidden="@(!_isFinanceManager)" Clicked="() => ShowBumpfeeModal(context)">Bumpfee</Button>
+                    }
+                </DisplayTemplate>
             </DataGridColumn>
             <DataGridColumn TItem="WalletWithdrawalRequest" Filterable="false" Caption="" Sortable="false" Displayable="true">
                 <DisplayTemplate>
@@ -408,6 +419,11 @@
     TemplatePsbtString="@_templatePsbtString"
     ApproveRequestDelegate="async () => await ApproveRequestDelegate()"/>
 
+<BumpfeeModal
+    @ref="_bumpfeeRef"
+    WithdrawalRequest="_selectedRequest"
+    ApproveBumpfeeRequest="async () => await SubmitConfirmationModal()"/>
+
 <CancelOrRejectPopup
     @ref="@_rejectCancelModalRef"
     Title='@("Wallet withdrawal:" + _selectedRequest?.Id)'
@@ -454,6 +470,7 @@
     private List<UTXO> _selectedUTXOs = new();
     private WalletWithdrawalRequest? _selectedRequest;
     private PSBTSign? _psbtSignRef;
+    private BumpfeeModal _bumpfeeRef;
     private string _signedPSBT;
     private string? _templatePsbtString;
     private int? _selectedWalletId;
@@ -754,6 +771,13 @@
         {
             ToastService.ShowError("Error while generating PSBT template for the request");
         }
+    }
+
+    private async Task ShowBumpfeeModal(WalletWithdrawalRequest walletWithdrawalRequest)
+    {
+        _selectedRequest = walletWithdrawalRequest;
+
+        await _bumpfeeRef.ShowModal();
     }
 
     private async Task Approve()
