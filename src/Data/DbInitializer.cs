@@ -325,29 +325,27 @@ namespace NodeGuard.Data
                     var singlesigFundCoins = Money.Coins(20m); //20BTC
                     var singleSigBIP39FundCoins = Money.Coins(20m); //20BTC
 
+                    var lastEventId = evts.LastEventId;
+                    logger?.LogInformation(lastEventId.ToString());
+                    
                     minerRPC.SendToAddress(legacyMultisigAddress, legacyMultisigFundCoins);
                     minerRPC.SendToAddress(multisigAddress, multisigFundCoins);
                     minerRPC.SendToAddress(singlesigAddress, singlesigFundCoins);
                     minerRPC.SendToAddress(singleSigBIP39Address, singleSigBIP39FundCoins);
 
-                    // Create a lot of utxos and send them to the single sig wallet
-                    // Random r = new Random();
-                    // for (var i = 0; i < 1000; i++)
-                    // {
-                    //     var keypath = nbxplorerClient.GetUnused(singlesigDerivationStrategy, DerivationFeature.Deposit);
-                    //     decimal coin = r.Next(536, 10000000);
-                    //     var randomCoint = Money.Coins(coin / 100000000); //20BTC
-                    //     minerRPC.SendToAddress(keypath.Address, randomCoint);
-                    // }
-
                     //6 blocks to confirm
                     minerRPC.Generate(6);
-
-                    WaitNbxplorerNotification(evts, legacyMultisigDerivationStrategy);
-                    WaitNbxplorerNotification(evts, multisigDerivationStrategy);
-                    WaitNbxplorerNotification(evts, singlesigDerivationStrategy);
-                    WaitNbxplorerNotification(evts, singleSigBIP39DerivationStrategy);
-
+                    
+                    var notification1 = WaitNbxplorerNotification(evts, legacyMultisigDerivationStrategy, lastEventId);
+                    var notification2 = WaitNbxplorerNotification(evts, multisigDerivationStrategy, lastEventId);
+                    var notification3 = WaitNbxplorerNotification(evts, singlesigDerivationStrategy, lastEventId);
+                    var notification4 = WaitNbxplorerNotification(evts, singleSigBIP39DerivationStrategy, lastEventId);
+                    if (notification1 == null || notification2 == null || notification3 == null ||
+                        notification4 == null)
+                    {
+                        throw new Exception("Wallets are not initialized");
+                    }
+                    
                     var legacyMultisigBalance = nbxplorerClient.GetBalance(legacyMultisigDerivationStrategy);
                     var multisigBalance = nbxplorerClient.GetBalance(multisigDerivationStrategy);
                     var singleSigbalance = nbxplorerClient.GetBalance(singlesigDerivationStrategy);
@@ -471,17 +469,19 @@ namespace NodeGuard.Data
             return apiToken;
         }
 
-        private static NewTransactionEvent WaitNbxplorerNotification(LongPollingNotificationSession evts, DerivationStrategyBase derivationStrategy)
+        private static NewTransactionEvent? WaitNbxplorerNotification(LongPollingNotificationSession evts, DerivationStrategyBase derivationStrategy, long lastEventId)
         {
-            while (true)
+            var events = evts.GetEvents(lastEventId);
+            foreach (var evt in events)
             {
-                var evt = evts.NextEvent();
                 if (evt is NewTransactionEvent tx)
                 {
                     if (tx.DerivationStrategy == derivationStrategy)
                         return tx;
                 }
             }
+
+            return null;
         }
     }
 }
