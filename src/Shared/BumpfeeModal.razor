@@ -4,7 +4,9 @@
 @using JSException = Microsoft.JSInterop.JSException
 @using System.Runtime.InteropServices.JavaScript
 @inject IJSRuntime JS
-<Modal @ref="_modalRef">
+@if (WithdrawalRequest != null)
+{
+    <Modal @ref="_modalRef">
     <ModalContent Centered>
         <ModalHeader>
             <ModalTitle>Bumpfee tx: @(ChannelRequest?.Id ?? WithdrawalRequest?.Id ?? 0)</ModalTitle>
@@ -82,7 +84,8 @@
             </Button>
         </ModalFooter>
     </ModalContent>
-</Modal>
+    </Modal>
+}
 
 @inject IJSRuntime JsRuntime
 @inject IBitcoinService BitcoinService

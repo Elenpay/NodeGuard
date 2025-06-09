@@ -380,7 +380,7 @@
             </DataGridColumn>
             <DataGridColumn TItem="WalletWithdrawalRequest" Caption="Actions" Displayable="true">
                 <DisplayTemplate>
-                    @if (_isNodeManager && ShowActionDropdown(context).Result)
+                    @if (_isFinanceManager && ShowActionDropdown(context).Result)
                     {
                         <Dropdown>
                             <DropdownToggle Color="Color.Primary">
@@ -1063,7 +1063,10 @@
         if (!string.IsNullOrEmpty(walletWithdrawalRequest.TxId)) {
             try {
                 var getTxResult = await NBXplorerService.GetTransactionAsync(uint256.Parse(walletWithdrawalRequest.TxId), default);
-                return walletWithdrawalRequest.Status == WalletWithdrawalRequestStatus.OnChainConfirmationPending && getTxResult.Confirmations == long.Parse("0");
+                var showCondition = walletWithdrawalRequest.Status == WalletWithdrawalRequestStatus.OnChainConfirmationPending && getTxResult.Confirmations == (int) 0;
+                if (showCondition == false) {
+                    ToastService.ShowError("Cannot show dropdown");
+                }
             }catch (Exception e)
             {
                 throw new Exception(e.Message);
