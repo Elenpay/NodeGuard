@@ -4,9 +4,9 @@
 @using JSException = Microsoft.JSInterop.JSException
 @using System.Runtime.InteropServices.JavaScript
 @inject IJSRuntime JS
-@if (WithdrawalRequest != null)
-{
-    <Modal @ref="_modalRef">
+<Modal @ref="_modalRef">
+    @if (WithdrawalRequest != null) 
+    {
     <ModalContent Centered>
         <ModalHeader>
             <ModalTitle>Bumpfee tx: @(ChannelRequest?.Id ?? WithdrawalRequest?.Id ?? 0)</ModalTitle>
@@ -14,50 +14,6 @@
         </ModalHeader>
         <ModalBody>
             <Fields Flex="Flex.JustifyContent.Center">
-                <Field>
-                    <FieldLabel>@nameof(WalletWithdrawalRequest.Description)</FieldLabel>
-                    <MemoEdit Rows="4" Disabled="true" ElementId="withdrawal-description">@(WithdrawalRequest?.Description ?? String.Empty)</MemoEdit>
-                </Field>
-                <Field>
-                    <FieldLabel>@nameof(WalletWithdrawalRequest.WalletId)</FieldLabel>
-                    <SelectList TItem="Wallet"
-                                        TValue="string"
-                                        Disabled="true"
-                                        SelectedValue="@(WithdrawalRequest?.Wallet.Name ?? String.Empty)"
-                                        DefaultItemText="Choose the wallet"></SelectList>
-                </Field>
-                <Field>
-                    <FieldLabel>@nameof(WalletWithdrawalRequest.DestinationAddress)</FieldLabel>
-                    <input type="text" disabled="true" value="@(WithdrawalRequest?.DestinationAddress ?? "")" />
-                </Field>
-                <Field>
-                    <FieldLabel>@nameof(WalletWithdrawalRequest.WithdrawAllFunds)</FieldLabel>
-                    <Check TValue="bool" Checked="@(WithdrawalRequest?.WithdrawAllFunds ?? false)" Disabled />
-                </Field>
-                <Field>
-                    <FieldLabel>Wallet Balance</FieldLabel>
-                    @if (_selectedWalletBalance != null)
-                    {
-                        <p>@($"{_selectedWalletBalance:f8} BTC ({Math.Round(PriceConversionService.BtcToUsdConversion((decimal) _selectedWalletBalance, _btcPrice), 2)} USD)")</p>
-                    }
-                </Field>
-                <Field>
-                    <FieldLabel>@nameof(WalletWithdrawalRequest.Amount)</FieldLabel>
-                    <NumericPicker TValue="decimal" Value="@(WithdrawalRequest?.Amount ?? 0)" Step="0.00001m" CurrencySymbol="₿ " Decimals="8" DecimalSeparator="," Disabled></NumericPicker>
-                    <FieldHelp>
-                        @{
-                            var amountToShow = _amount < Constants.MAXIMUM_WITHDRAWAL_BTC_AMOUNT
-                                ? _amount
-                                : Constants.MAXIMUM_WITHDRAWAL_BTC_AMOUNT;
-                            var convertedAmount = Math.Round(PriceConversionService.SatToUsdConversion(new Money(amountToShow, MoneyUnit.BTC).Satoshi, _btcPrice), 2);
-                        }
-                        @($"Minimum {_minimumWithdrawalAmount:f8} BTC. Current amount: {convertedAmount} USD")
-                    </FieldHelp>
-                    <div class="mb-3">
-                        <Button Color="Color.Primary" Disabled>Select Coins</Button> or use
-                        <Button Color="Color.Primary" Disabled>Default Coin Selection</Button>
-                    </div>
-                </Field>
                 <Field>
                     <FieldLabel>@nameof(WalletWithdrawalRequest.CustomFeeRate)</FieldLabel>
                     <div class="d-flex">
@@ -84,8 +40,8 @@
             </Button>
         </ModalFooter>
     </ModalContent>
-    </Modal>
-}
+    }
+</Modal>
 
 @inject IJSRuntime JsRuntime
 @inject IBitcoinService BitcoinService

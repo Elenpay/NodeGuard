@@ -380,15 +380,15 @@
             </DataGridColumn>
             <DataGridColumn TItem="WalletWithdrawalRequest" Caption="Actions" Displayable="true">
                 <DisplayTemplate>
-                    @if (_isFinanceManager && ShowActionDropdown(context).Result)
+                    @if (_isFinanceManager && context.Status == WalletWithdrawalRequestStatus.OnChainConfirmationPending)
                     {
-                        <Dropdown>
-                            <DropdownToggle Color="Color.Primary">
-                            </DropdownToggle>
-                            <DropdownMenu>
-                                <DropdownItem Clicked="() => ShowBumpfeeModal(context)">Bumpfee</DropdownItem>
-                            </DropdownMenu>
-                        </Dropdown>
+                            <Dropdown>
+                                <DropdownToggle Color="Color.Primary">
+                                </DropdownToggle>
+                                <DropdownMenu>
+                                    <DropdownItem Clicked="async () => await ShowBumpfeeModal(context)">Bump fee</DropdownItem>
+                                </DropdownMenu>
+                            </Dropdown>
                     }
                 </DisplayTemplate>
             </DataGridColumn>
@@ -472,7 +472,7 @@
     private List<UTXO> _selectedUTXOs = new();
     private WalletWithdrawalRequest? _selectedRequest;
     private PSBTSign? _psbtSignRef;
-    private BumpfeeModal _bumpfeeRef;
+    private BumpfeeModal? _bumpfeeRef;
     private string _signedPSBT;
     private string? _templatePsbtString;
     private int? _selectedWalletId;
@@ -776,10 +776,37 @@
     }
 
     private async Task ShowBumpfeeModal(WalletWithdrawalRequest walletWithdrawalRequest)
-    {
-        _selectedRequest = walletWithdrawalRequest;
+    {   
+        ulong confirmations = 0;
+        if (!string.IsNullOrEmpty(walletWithdrawalRequest.TxId)) {
+            try
+            {
+                var nbxplorerStatus = await NBXplorerService.GetTransactionAsync(uint256.Parse(walletWithdrawalRequest.TxId));
+                confirmations = (ulong)(nbxplorerStatus?.Confirmations ?? 0);
+            }
+            catch (Exception)
+            {
+                ToastService.ShowError("Error getting confirmations");
+                return;
+            }
+        }
+        
+        if (confirmations > 0)
+        {
+            ToastService.ShowError("Bumpfee can only be used for transactions with no confirmations. " +
+                                   "This transaction has already been mined.");
+            return;
+        }
+        
+        try {
+            _selectedRequest = walletWithdrawalRequest;
 
-        await _bumpfeeRef.ShowModal();
+            if (_bumpfeeRef != null) await _bumpfeeRef.ShowModal();
+        }
+        catch (Exception)
+        {
+            ToastService.ShowError("Error while creating bumpfee modal");
+        }
     }
 
     private async Task Approve()
@@ -1060,20 +1087,20 @@
 
     private async Task<bool> ShowActionDropdown(WalletWithdrawalRequest walletWithdrawalRequest)
     {
+        ulong confirmations = 0;
         if (!string.IsNullOrEmpty(walletWithdrawalRequest.TxId)) {
             try {
-                var getTxResult = await NBXplorerService.GetTransactionAsync(uint256.Parse(walletWithdrawalRequest.TxId), default);
-                var showCondition = walletWithdrawalRequest.Status == WalletWithdrawalRequestStatus.OnChainConfirmationPending && getTxResult.Confirmations == (int) 0;
-                if (showCondition == false) {
-                    ToastService.ShowError("Cannot show dropdown");
-                }
-            }catch (Exception e)
+                var nbxplorerStatus = await NBXplorerService.GetTransactionAsync(uint256.Parse(walletWithdrawalRequest.TxId));
+                confirmations = (ulong)(nbxplorerStatus?.Confirmations ?? 0);
+                return walletWithdrawalRequest.Status == WalletWithdrawalRequestStatus.OnChainConfirmationPending && confirmations.Equals((ulong) 0);
+            }
+            catch (Exception)
             {
-                throw new Exception(e.Message);
+                ToastService.ShowError("Error while showing bumpfee action");
             }
         }
 
-        return string.IsNullOrEmpty(walletWithdrawalRequest.TxId);
+        return false;
     }
 
     private void OnColumnLayoutUpdate()
