@@ -71,6 +71,11 @@
 
     private async Task HandleOnClick()
     {
+
+        long _currentSatsPerVbAmount = (long?)await NBXplorerService.GetFeesByType(WithdrawalRequest.MempoolRecommendedFeesType) ?? 1;
+        if (_customSatPerVbAmount <= _currentSatsPerVbAmount) {
+            ToastService.ShowError("Fee must be greater than the current one");
+        }
         await HideModal();
     }
     
