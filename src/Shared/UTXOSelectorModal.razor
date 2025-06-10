@@ -227,15 +227,9 @@
         {
              minimumValue = new Money(Constants.MINIMUM_CHANNEL_CAPACITY_SATS).ToUnit(MoneyUnit.BTC);
         }
-        var maxChannelRegtestValue = new Money(Constants.MAXIMUM_CHANNEL_CAPACITY_SATS_REGTEST).ToUnit(MoneyUnit.BTC);
         if (selectedUTXOsValue < minimumValue)
         {
             e.ErrorText = $"The combined amount of the UTXOs selected must be greater than {minimumValue:f8} BTC";
-            e.Status = ValidationStatus.Error;
-        }
-        else if (selectedUTXOsValue > maxChannelRegtestValue && network == Network.RegTest && IsWalletWithdrawalValidation)
-        {
-            e.ErrorText = $"The combined amount of the UTXOs selected must be lower than {maxChannelRegtestValue:f8} BTC";
             e.Status = ValidationStatus.Error;
         }
         else
