@@ -73,8 +73,9 @@ namespace NodeGuard.Data.Models
     {
         public WalletWithdrawalRequestStatus Status { get; set; }
 
+        [Obsolete("This is not used anymore, use the WalletWithdrawalRequestDestinations instead")]
         /// <summary>
-        /// base58 address of the output of the request
+        /// base58 address of the output of the request, its mutually exclusive with the WalletWithdrawalRequestDestinations
         /// </summary>
         public string DestinationAddress { get; set; }
 
@@ -90,11 +91,11 @@ namespace NodeGuard.Data.Models
 
         public string? RejectCancelDescription { get; set; }
 
+        [Obsolete("This is not used anymore, use the WalletWithdrawalRequestDestinations instead")]
         /// <summary>
-        /// TX amount in BTC
+        /// TX amount in BTC, its mutually exclusive with the WalletWithdrawalRequestDestinations
         /// </summary>
         ///
-
         public decimal Amount { get; set; }
 
         /// <summary>
@@ -104,11 +105,20 @@ namespace NodeGuard.Data.Models
         public bool AreAllRequiredHumanSignaturesCollected => CheckSignatures();
 
         [NotMapped]
+        /// <summary>
+        /// This indicates if the request is a legacy request, meaning that it has no destinations and only a single address and amount
+        /// </summary>
+#pragma warning disable CS0618 // Type or member is obsolete
+        public bool IsLegacy => Amount > 0 && string.IsNullOrEmpty(DestinationAddress) &&
+                                (WalletWithdrawalRequestDestinations == null || WalletWithdrawalRequestDestinations?.Count == 0);
+#pragma warning restore CS0618 // Type or member is obsolete
+
+        [NotMapped]
         public int NumberOfSignaturesCollected =>
-            WalletWithdrawalRequestPSBTs == null
-                ? 0
-                : WalletWithdrawalRequestPSBTs.Count(x =>
-                    !x.IsTemplatePSBT && !x.IsFinalisedPSBT && !x.IsInternalWalletPSBT);
+    WalletWithdrawalRequestPSBTs == null
+        ? 0
+        : WalletWithdrawalRequestPSBTs.Count(x =>
+            !x.IsTemplatePSBT && !x.IsFinalisedPSBT && !x.IsInternalWalletPSBT);
 
         /// <summary>
         /// This indicates if the user requested a changeless operation by selecting UTXOs
@@ -205,6 +215,11 @@ namespace NodeGuard.Data.Models
         /// This is a optional field that you can used to link withdrawals with externally-generated IDs (e.g. a withdrawal/settlement that belongs to an elenpay store)
         /// </summary>
         public string? ReferenceId { get; set; }
+
+        /// <summary>
+        /// List of destinations for the withdrawal request, if any, the amounts and dest on this entity is mutually exclusive with the WalletWithdrawalRequestDestinations
+        /// </summary>
+        public List<WalletWithdrawalRequestDestination>? WalletWithdrawalRequestDestinations { get; set; }
 
         #endregion Relationships
 

@@ -106,6 +106,8 @@ namespace NodeGuard.Data
 
         public DbSet<WalletWithdrawalRequestPSBT> WalletWithdrawalRequestPSBTs { get; set; }
 
+        public DbSet<WalletWithdrawalRequestDestination> WalletWithdrawalRequestDestinations { get; set; }
+
         public DbSet<Channel> Channels { get; set; }
 
         public DbSet<InternalWallet> InternalWallets { get; set; }
