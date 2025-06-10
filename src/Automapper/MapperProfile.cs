@@ -65,7 +65,7 @@ namespace NodeGuard.Automapper
             CreateMap<UTXO, FMUTXO>()
                 .ForMember(x => x.TxId, opt => opt.MapFrom(x => x.Outpoint.Hash.ToString()))
                 .ForMember(x => x.OutputIndex, opt => opt.MapFrom(x => x.Outpoint.N))
-                .ForMember(x => x.SatsAmount, opt => opt.MapFrom(x => ((Money) x.Value).Satoshi));
+                .ForMember(x => x.SatsAmount, opt => opt.MapFrom(x => ((Money)x.Value).Satoshi));
 
             CreateMap<LiquidityRule, Nodeguard.LiquidityRule>()
                 .ForMember(x => x.MinimumLocalBalance, opt => opt.MapFrom(x => x.MinimumLocalBalance ?? 0))
@@ -76,7 +76,8 @@ namespace NodeGuard.Automapper
                 .ForMember(x => x.SwapWalletId, opt => opt.MapFrom(x => x.SwapWalletId))
                 .ForMember(x => x.ReverseSwapWalletId, opt => opt.MapFrom(x => x.ReverseSwapWalletId ?? 0))
                 .ForMember(x => x.RebalanceTarget, opt => opt.MapFrom(x => x.RebalanceTarget ?? 0))
-                .ForMember(x => x.NodePubkey, opt => opt.MapFrom(x => x.Node.PubKey));
+                .ForMember(x => x.NodePubkey, opt => opt.MapFrom(x => x.Node.PubKey))
+                .ForMember(x => x.RemoteNodePubkey, opt => opt.MapFrom(x => x.RemoteNodePubkey ?? string.Empty));
 
             CreateMap<LiquidityRule, LiquidityRule>()
                 .ForMember(x => x.SwapWallet, opt => opt.Ignore())

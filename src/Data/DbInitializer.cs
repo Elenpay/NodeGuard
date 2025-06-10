@@ -216,12 +216,11 @@ namespace NodeGuard.Data
                     //Testing node from Polar (ALICE) LND 0.15.5 -> check devnetwork.zip polar file
                     var alice = new Node
                     {
-                        ChannelAdminMacaroon =
-                            "0201036c6e6402f801030a108cdfeb2614b8335c11aebb358f888d6d1201301a160a0761646472657373120472656164120577726974651a130a04696e666f120472656164120577726974651a170a08696e766f69636573120472656164120577726974651a210a086d616361726f6f6e120867656e6572617465120472656164120577726974651a160a076d657373616765120472656164120577726974651a170a086f6666636861696e120472656164120577726974651a160a076f6e636861696e120472656164120577726974651a140a057065657273120472656164120577726974651a180a067369676e6572120867656e657261746512047265616400000620c999e1a30842cbae3f79bd633b19d5ec0d2b6ebdc4880f6f5d5c230ce38f26ab",
+                        ChannelAdminMacaroon = Constants.ALICE_MACAROON,
                         Endpoint = Constants.ALICE_HOST,
                         Name = "Alice",
                         CreationDatetime = DateTimeOffset.UtcNow,
-                        PubKey = "02dc2ae598a02fc1e9709a23b68cd51d7fa14b1132295a4d75aa4f5acd23ee9527",
+                        PubKey = Constants.ALICE_PUBKEY,
                         Users = new List<ApplicationUser>(),
                         AutosweepEnabled = false
 
@@ -232,12 +231,11 @@ namespace NodeGuard.Data
                     //Testing node from Polar (CAROL) LND 0.15.5 -> check devnetwork.zip polar file
                     var carol = new Node
                     {
-                        ChannelAdminMacaroon =
-                            "0201036c6e6402f801030a101ec5b6370c166f6c8e2853164109145a1201301a160a0761646472657373120472656164120577726974651a130a04696e666f120472656164120577726974651a170a08696e766f69636573120472656164120577726974651a210a086d616361726f6f6e120867656e6572617465120472656164120577726974651a160a076d657373616765120472656164120577726974651a170a086f6666636861696e120472656164120577726974651a160a076f6e636861696e120472656164120577726974651a140a057065657273120472656164120577726974651a180a067369676e6572120867656e6572617465120472656164000006208e957e78ec39e7810fad25cfc43850b8e9e7c079843b8ec7bb5522bba12230d6",
+                        ChannelAdminMacaroon = Constants.CAROL_MACAROON,
                         Endpoint = Constants.CAROL_HOST,
                         Name = "Carol",
                         CreationDatetime = DateTimeOffset.UtcNow,
-                        PubKey = "03650f49929d84d9a6d9b5a66235c603a1a0597dd609f7cd3b15052382cf9bb1b4",
+                        PubKey = Constants.CAROL_PUBKEY,
                         Users = new List<ApplicationUser>(),
                         AutosweepEnabled = false
 
@@ -248,12 +246,11 @@ namespace NodeGuard.Data
                     //Bob node from Polar (BOB) LND 0.15.5 -> check devnetwork.zip polar file
                     var bob = new Node
                     {
-                        ChannelAdminMacaroon =
-                            "0201036c6e6402f801030a10e0e89a68f9e2398228a995890637d2531201301a160a0761646472657373120472656164120577726974651a130a04696e666f120472656164120577726974651a170a08696e766f69636573120472656164120577726974651a210a086d616361726f6f6e120867656e6572617465120472656164120577726974651a160a076d657373616765120472656164120577726974651a170a086f6666636861696e120472656164120577726974651a160a076f6e636861696e120472656164120577726974651a140a057065657273120472656164120577726974651a180a067369676e6572120867656e657261746512047265616400000620b85ae6b693338987cd65eda60a24573e962301b2a91d8f7c5625650d6368751f",
+                        ChannelAdminMacaroon = Constants.BOB_MACAROON,
                         Endpoint = Constants.BOB_HOST,
                         Name = "Bob",
                         CreationDatetime = DateTimeOffset.UtcNow,
-                        PubKey = "038644c6b13cdfc59bc97c2cc2b1418ced78f6d01da94f3bfd5fdf8b197335ea84",
+                        PubKey = Constants.BOB_PUBKEY,
                         Users = new List<ApplicationUser>(),
                         AutosweepEnabled = false
                     };
@@ -328,29 +325,27 @@ namespace NodeGuard.Data
                     var singlesigFundCoins = Money.Coins(20m); //20BTC
                     var singleSigBIP39FundCoins = Money.Coins(20m); //20BTC
 
+                    var lastEventId = evts.LastEventId;
+                    logger?.LogInformation(lastEventId.ToString());
+                    
                     minerRPC.SendToAddress(legacyMultisigAddress, legacyMultisigFundCoins);
                     minerRPC.SendToAddress(multisigAddress, multisigFundCoins);
                     minerRPC.SendToAddress(singlesigAddress, singlesigFundCoins);
                     minerRPC.SendToAddress(singleSigBIP39Address, singleSigBIP39FundCoins);
 
-                    // Create a lot of utxos and send them to the single sig wallet
-                    // Random r = new Random();
-                    // for (var i = 0; i < 1000; i++)
-                    // {
-                    //     var keypath = nbxplorerClient.GetUnused(singlesigDerivationStrategy, DerivationFeature.Deposit);
-                    //     decimal coin = r.Next(536, 10000000);
-                    //     var randomCoint = Money.Coins(coin / 100000000); //20BTC
-                    //     minerRPC.SendToAddress(keypath.Address, randomCoint);
-                    // }
-
                     //6 blocks to confirm
                     minerRPC.Generate(6);
-
-                    WaitNbxplorerNotification(evts, legacyMultisigDerivationStrategy);
-                    WaitNbxplorerNotification(evts, multisigDerivationStrategy);
-                    WaitNbxplorerNotification(evts, singlesigDerivationStrategy);
-                    WaitNbxplorerNotification(evts, singleSigBIP39DerivationStrategy);
-
+                    
+                    var notification1 = WaitNbxplorerNotification(evts, legacyMultisigDerivationStrategy, lastEventId);
+                    var notification2 = WaitNbxplorerNotification(evts, multisigDerivationStrategy, lastEventId);
+                    var notification3 = WaitNbxplorerNotification(evts, singlesigDerivationStrategy, lastEventId);
+                    var notification4 = WaitNbxplorerNotification(evts, singleSigBIP39DerivationStrategy, lastEventId);
+                    if (notification1 == null || notification2 == null || notification3 == null ||
+                        notification4 == null)
+                    {
+                        throw new Exception("Wallets are not initialized");
+                    }
+                    
                     var legacyMultisigBalance = nbxplorerClient.GetBalance(legacyMultisigDerivationStrategy);
                     var multisigBalance = nbxplorerClient.GetBalance(multisigDerivationStrategy);
                     var singleSigbalance = nbxplorerClient.GetBalance(singlesigDerivationStrategy);
@@ -387,7 +382,8 @@ namespace NodeGuard.Data
                 {
                     { "BTCPay", "9Hoz0PMYCsnPUzPO/JbJu8UdaKaAHJsh946xH20UzA0=" },
                     { "X", "C+ktTkMGQupY9LY3IkpyqQQ2pDa7idaeSUKUnm+RawI=" },
-                    { "Liquidator", "8rvSsUGeyXXdDQrHctcTey/xtHdZQEn945KHwccKp9Q=" }
+                    { "Liquidator", "8rvSsUGeyXXdDQrHctcTey/xtHdZQEn945KHwccKp9Q=" },
+                    { "ElenPay", "2otDr3IrdARnarQZU8RO0ImQko6CDICyLmGUflKUQWA=" }
                 };
                 
                 var existingTokens = applicationDbContext.ApiTokens.Where(token => authenticatedServices.Keys.Contains(token.Name)).ToList();
@@ -473,17 +469,19 @@ namespace NodeGuard.Data
             return apiToken;
         }
 
-        private static NewTransactionEvent WaitNbxplorerNotification(LongPollingNotificationSession evts, DerivationStrategyBase derivationStrategy)
+        private static NewTransactionEvent? WaitNbxplorerNotification(LongPollingNotificationSession evts, DerivationStrategyBase derivationStrategy, long lastEventId)
         {
-            while (true)
+            var events = evts.GetEvents(lastEventId);
+            foreach (var evt in events)
             {
-                var evt = evts.NextEvent();
                 if (evt is NewTransactionEvent tx)
                 {
                     if (tx.DerivationStrategy == derivationStrategy)
                         return tx;
                 }
             }
+
+            return null;
         }
     }
 }

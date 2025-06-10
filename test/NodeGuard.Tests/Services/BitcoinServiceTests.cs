@@ -8,6 +8,7 @@ using Microsoft.Extensions.Logging;
 using NBitcoin;
 using NBXplorer.DerivationStrategy;
 using NBXplorer.Models;
+using NSubstitute;
 using NSubstitute.Exceptions;
 using Key = NodeGuard.Data.Models.Key;
 
@@ -146,6 +147,7 @@ public class BitcoinServiceTests
         var walletWithdrawalRequestPsbtRepository = new Mock<IWalletWithdrawalRequestPsbtRepository>();
         var fmutxoRepository = new Mock<IFMUTXORepository>();
         var nbXplorerService = new Mock<INBXplorerService>();
+        var utxoTagRepository = new Mock<IUTXOTagRepository>();
         var mapper = new Mock<IMapper>();
         walletWithdrawalRequestRepository
             .Setup((w) => w.GetById(It.IsAny<int>()))
@@ -183,7 +185,10 @@ public class BitcoinServiceTests
         fmutxoRepository
             .Setup(x => x.GetLockedUTXOs(null, null))
             .ReturnsAsync(new List<FMUTXO>());
-        var coinSelectionService = new CoinSelectionService(_logger, mapper.Object, fmutxoRepository.Object, nbXplorerService.Object, null, walletWithdrawalRequestRepository.Object);
+        utxoTagRepository
+            .Setup(x => x.GetByKeyValue(It.IsAny<string>(), It.IsAny<string>()))
+            .ReturnsAsync(new List<UTXOTag>());
+        var coinSelectionService = new CoinSelectionService(_logger, mapper.Object, fmutxoRepository.Object, nbXplorerService.Object, null, walletWithdrawalRequestRepository.Object, utxoTagRepository.Object);
 
         var bitcoinService = new BitcoinService(_logger, mapper.Object, walletWithdrawalRequestRepository.Object, walletWithdrawalRequestPsbtRepository.Object, null, null, nbXplorerService.Object, coinSelectionService);
 
@@ -214,6 +219,7 @@ public class BitcoinServiceTests
         var walletWithdrawalRequestPsbtRepository = new Mock<IWalletWithdrawalRequestPsbtRepository>();
         var fmutxoRepository = new Mock<IFMUTXORepository>();
         var nbXplorerService = new Mock<INBXplorerService>();
+        var utxoTagRepository = new Mock<IUTXOTagRepository>();
         var mapper = new Mock<IMapper>();
         walletWithdrawalRequestRepository
             .Setup((w) => w.GetById(It.IsAny<int>()))
@@ -251,8 +257,11 @@ public class BitcoinServiceTests
         fmutxoRepository
             .Setup(x => x.GetLockedUTXOs(null , null))
             .ReturnsAsync(new List<FMUTXO>());
+        utxoTagRepository
+            .Setup(x => x.GetByKeyValue(It.IsAny<string>(), It.IsAny<string>()))
+            .ReturnsAsync(new List<UTXOTag>());
 
-        var coinSelectionService = new CoinSelectionService(_logger, mapper.Object, fmutxoRepository.Object, nbXplorerService.Object, null, walletWithdrawalRequestRepository.Object);
+        var coinSelectionService = new CoinSelectionService(_logger, mapper.Object, fmutxoRepository.Object, nbXplorerService.Object, null, walletWithdrawalRequestRepository.Object, utxoTagRepository.Object);
 
         var bitcoinService = new BitcoinService(_logger, mapper.Object, walletWithdrawalRequestRepository.Object, walletWithdrawalRequestPsbtRepository.Object, null, null, nbXplorerService.Object, coinSelectionService);
 
@@ -283,6 +292,7 @@ public class BitcoinServiceTests
         var walletWithdrawalRequestPsbtRepository = new Mock<IWalletWithdrawalRequestPsbtRepository>();
         var fmutxoRepository = new Mock<IFMUTXORepository>();
         var nbXplorerService = new Mock<INBXplorerService>();
+        var utxoTagRepository = new Mock<IUTXOTagRepository>();
         var mapper = new Mock<IMapper>();
         walletWithdrawalRequestRepository
             .Setup((w) => w.GetById(It.IsAny<int>()))
@@ -319,8 +329,11 @@ public class BitcoinServiceTests
         fmutxoRepository
             .Setup(x => x.GetLockedUTXOs(null, null))
             .ReturnsAsync(new List<FMUTXO>());
+        utxoTagRepository
+            .Setup(x => x.GetByKeyValue(It.IsAny<string>(), It.IsAny<string>()))
+            .ReturnsAsync(new List<UTXOTag>());
 
-        var coinSelectionService = new CoinSelectionService(_logger, mapper.Object, fmutxoRepository.Object, nbXplorerService.Object, null, walletWithdrawalRequestRepository.Object);
+        var coinSelectionService = new CoinSelectionService(_logger, mapper.Object, fmutxoRepository.Object, nbXplorerService.Object, null, walletWithdrawalRequestRepository.Object, utxoTagRepository.Object);
 
         var bitcoinService = new BitcoinService(_logger, mapper.Object, walletWithdrawalRequestRepository.Object, walletWithdrawalRequestPsbtRepository.Object, null, null, nbXplorerService.Object, coinSelectionService);
 
@@ -331,7 +344,275 @@ public class BitcoinServiceTests
         var psbt = PSBT.Parse("cHNidP8BAIkBAAAAAQAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA/////wD/////AkBCDwAAAAAAIgAgPaPWaBQgTxHOMVfMfpX21blroUe8KAd6w2gLRelFuiCsUYkAAAAAACIAIDx3862ZOy+vKdDZ4oysyRZX0HARoqQ9LqqK2ukxoopiAAAAAE8BBDWHzwN9uUaNAAAAAYPR/OiA1LbTzxbLPvbXvtAwckIG3g+0T1zblR/ZodaiA5zBFsigPpL8htN/KJ/Ph8SPvQA/K+mSNXTSA0hgvPNuEO0CEMgwAACAAQAAgAEAAAAAAQEfgJaYAAAAAAAWABTpOvUBMqNMfl7P81etji6x4fXrMyIGA3uD9HVjgF5E+eQhHp+Na6femVYpc4bCA4DmimehAdWcGO0CEMgwAACAAQAAgAEAAAAAAAAAAAAAAAAAAA==", Network.RegTest);
         result.Should().BeEquivalentTo(psbt);
     }
+    
+    [Fact]
+    async Task GenerateTemplatePSBT_SingleSigFailsFrozenUTXO()
+    {
+        // Arrange
+        var wallet = CreateWallet.SingleSig(_internalWallet);
+        var withdrawalRequest = new WalletWithdrawalRequest()
+        {
+            Id = 1,
+            Status = WalletWithdrawalRequestStatus.Pending,
+            Wallet = wallet,
+            WalletWithdrawalRequestPSBTs = new List<WalletWithdrawalRequestPSBT>(),
+            Amount = 0.01m,
+            DestinationAddress = "bcrt1q8k3av6q5yp83rn332lx8a90k6kukhg28hs5qw7krdq95t629hgsqk6ztmf"
+        };
 
+        var walletWithdrawalRequestRepository = new Mock<IWalletWithdrawalRequestRepository>();
+        var walletWithdrawalRequestPsbtRepository = new Mock<IWalletWithdrawalRequestPsbtRepository>();
+        var fmutxoRepository = new Mock<IFMUTXORepository>();
+        var nbXplorerService = new Mock<INBXplorerService>();
+        var utxoTagRepository = new Mock<IUTXOTagRepository>();
+        var mapper = new Mock<IMapper>();
+        walletWithdrawalRequestRepository
+            .Setup((w) => w.GetById(It.IsAny<int>()))
+            .ReturnsAsync(withdrawalRequest);
+        walletWithdrawalRequestRepository
+            .Setup((w) => w.AddUTXOs(It.IsAny<WalletWithdrawalRequest>(), It.IsAny<List<FMUTXO>>()))
+            .ReturnsAsync((true, null));
+        walletWithdrawalRequestPsbtRepository
+            .Setup((w) => w.AddAsync(It.IsAny<WalletWithdrawalRequestPSBT>()))
+            .ReturnsAsync((true, null));
+        nbXplorerService
+            .Setup(x => x.GetStatusAsync(default))
+            .ReturnsAsync(new StatusResult() { IsFullySynched = true });
+        nbXplorerService
+            .Setup(x => x.GetUnusedAsync(It.IsAny<DerivationStrategyBase>(), DerivationFeature.Change, 0, false, default))
+            .ReturnsAsync(new KeyPathInformation() { Address = BitcoinAddress.Create("bcrt1q83ml8tve8vh672wsm83getxfzetaquq352jr6t423tdwjvdz3f3qe4r4t7", Network.RegTest) });
+        nbXplorerService
+            .Setup(x => x.GetUTXOsAsync(It.IsAny<DerivationStrategyBase>(), default))
+            .ReturnsAsync(new UTXOChanges()
+            {
+                Confirmed = new UTXOChange()
+                {
+                    UTXOs = new List<UTXO>()
+                    {
+                        new UTXO()
+                        {
+                            Outpoint = new OutPoint(1234, 1),
+                            Value = new Money((long)10000000),
+                            ScriptPubKey = wallet.GetDerivationStrategy().GetDerivation(KeyPath.Parse("0/0")).ScriptPubKey,
+                            KeyPath = KeyPath.Parse("0/0")
+                        }
+                    }
+                }
+            });
+        fmutxoRepository
+            .Setup(x => x.GetLockedUTXOs(null, null))
+            .ReturnsAsync(new List<FMUTXO>());
+        utxoTagRepository
+            .SetupSequence(x => x.GetByKeyValue(It.IsAny<string>(), It.IsAny<string>()))
+            .ReturnsAsync(new List<UTXOTag>()
+            {
+                new UTXOTag()
+                {
+                    Key = Constants.IsFrozenTag,
+                    Value = "true",
+                    Outpoint = "00000000000000000000000000000000000000000000000000000000000004d2-1"
+                }
+            })
+            .ReturnsAsync(new List<UTXOTag>())
+            .ReturnsAsync(new List<UTXOTag>());
+
+        var coinSelectionService = new CoinSelectionService(_logger, mapper.Object, fmutxoRepository.Object, nbXplorerService.Object, null, walletWithdrawalRequestRepository.Object, utxoTagRepository.Object);
+
+        var bitcoinService = new BitcoinService(_logger, mapper.Object, walletWithdrawalRequestRepository.Object, walletWithdrawalRequestPsbtRepository.Object, null, null, nbXplorerService.Object, coinSelectionService);
+
+        // Act
+        var act = () => bitcoinService.GenerateTemplatePSBT(withdrawalRequest);
+
+        // Assert
+        await act
+            .Should()
+            .ThrowAsync<NoUTXOsAvailableException>()
+            .WithMessage("Exception of type 'NodeGuard.Helpers.NoUTXOsAvailableException' was thrown.");
+    }
+
+    [Fact]
+    async Task GenerateTemplatePSBT_SingleSigSuccessManuallyUnfrozenUTXO()
+    {
+        // Arrange
+        var wallet = CreateWallet.SingleSig(_internalWallet);
+        var withdrawalRequest = new WalletWithdrawalRequest()
+        {
+            Id = 1,
+            Status = WalletWithdrawalRequestStatus.Pending,
+            Wallet = wallet,
+            WalletWithdrawalRequestPSBTs = new List<WalletWithdrawalRequestPSBT>(),
+            Amount = 0.01m,
+            DestinationAddress = "bcrt1q8k3av6q5yp83rn332lx8a90k6kukhg28hs5qw7krdq95t629hgsqk6ztmf"
+        };
+
+        var walletWithdrawalRequestRepository = new Mock<IWalletWithdrawalRequestRepository>();
+        var walletWithdrawalRequestPsbtRepository = new Mock<IWalletWithdrawalRequestPsbtRepository>();
+        var fmutxoRepository = new Mock<IFMUTXORepository>();
+        var nbXplorerService = new Mock<INBXplorerService>();
+        var utxoTagRepository = new Mock<IUTXOTagRepository>();
+        var mapper = new Mock<IMapper>();
+        walletWithdrawalRequestRepository
+            .Setup((w) => w.GetById(It.IsAny<int>()))
+            .ReturnsAsync(withdrawalRequest);
+        walletWithdrawalRequestRepository
+            .Setup((w) => w.AddUTXOs(It.IsAny<WalletWithdrawalRequest>(), It.IsAny<List<FMUTXO>>()))
+            .ReturnsAsync((true, null));
+        walletWithdrawalRequestPsbtRepository
+            .Setup((w) => w.AddAsync(It.IsAny<WalletWithdrawalRequestPSBT>()))
+            .ReturnsAsync((true, null));
+        nbXplorerService
+            .Setup(x => x.GetStatusAsync(default))
+            .ReturnsAsync(new StatusResult() { IsFullySynched = true });
+        nbXplorerService
+            .Setup(x => x.GetUnusedAsync(It.IsAny<DerivationStrategyBase>(), DerivationFeature.Change, 0, false, default))
+            .ReturnsAsync(new KeyPathInformation() { Address = BitcoinAddress.Create("bcrt1q83ml8tve8vh672wsm83getxfzetaquq352jr6t423tdwjvdz3f3qe4r4t7", Network.RegTest) });
+        nbXplorerService
+            .Setup(x => x.GetUTXOsAsync(It.IsAny<DerivationStrategyBase>(), default))
+            .ReturnsAsync(new UTXOChanges()
+            {
+                Confirmed = new UTXOChange()
+                {
+                    UTXOs = new List<UTXO>()
+                    {
+                        new UTXO()
+                        {
+                            Outpoint = new OutPoint(1234, 1),
+                            Value = new Money((long)10000000),
+                            ScriptPubKey = wallet.GetDerivationStrategy().GetDerivation(KeyPath.Parse("0/0")).ScriptPubKey,
+                            KeyPath = KeyPath.Parse("0/0")
+                        }
+                    }
+                }
+            });
+        fmutxoRepository
+            .Setup(x => x.GetLockedUTXOs(null, null))
+            .ReturnsAsync(new List<FMUTXO>());
+        utxoTagRepository
+            .SetupSequence(x => x.GetByKeyValue(It.IsAny<string>(), It.IsAny<string>()))
+            .ReturnsAsync(new List<UTXOTag>()
+            {
+                new UTXOTag()
+                {
+                    Key = Constants.IsFrozenTag,
+                    Value = "false",
+                    Outpoint = "00000000000000000000000000000000000000000000000000000000000004d2-1"
+                }
+            })
+            .ReturnsAsync(new List<UTXOTag>())
+            .ReturnsAsync(new List<UTXOTag>()
+            {
+                new UTXOTag()
+                {
+                    Key = Constants.IsManuallyFrozenTag,
+                    Value = "true",
+                    Outpoint = "00000000000000000000000000000000000000000000000000000000000004d2-1"
+                }
+            });
+
+        var coinSelectionService = new CoinSelectionService(_logger, mapper.Object, fmutxoRepository.Object, nbXplorerService.Object, null, walletWithdrawalRequestRepository.Object, utxoTagRepository.Object);
+
+        var bitcoinService = new BitcoinService(_logger, mapper.Object, walletWithdrawalRequestRepository.Object, walletWithdrawalRequestPsbtRepository.Object, null, null, nbXplorerService.Object, coinSelectionService);
+
+        // Act
+        var result = await bitcoinService.GenerateTemplatePSBT(withdrawalRequest);
+
+        // Assert
+        var psbt = PSBT.Parse("cHNidP8BAIkBAAAAAdIEAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAQAAAAD/////AkBCDwAAAAAAIgAgPaPWaBQgTxHOMVfMfpX21blroUe8KAd6w2gLRelFuiCsUYkAAAAAACIAIDx3862ZOy+vKdDZ4oysyRZX0HARoqQ9LqqK2ukxoopiAAAAAE8BBDWHzwN9uUaNAAAAAYPR/OiA1LbTzxbLPvbXvtAwckIG3g+0T1zblR/ZodaiA5zBFsigPpL8htN/KJ/Ph8SPvQA/K+mSNXTSA0hgvPNuEO0CEMgwAACAAQAAgAEAAAAAAQEfgJaYAAAAAAAWABTpOvUBMqNMfl7P81etji6x4fXrMyIGA3uD9HVjgF5E+eQhHp+Na6femVYpc4bCA4DmimehAdWcGO0CEMgwAACAAQAAgAEAAAAAAAAAAAAAAAAAAA==", Network.RegTest);
+        result.Should().BeEquivalentTo(psbt);
+    }
+    
+    [Fact]
+    async Task GenerateTemplatePSBT_SingleSigFailsManuallyFrozenUTXO()
+    {
+        // Arrange
+        var wallet = CreateWallet.SingleSig(_internalWallet);
+        var withdrawalRequest = new WalletWithdrawalRequest()
+        {
+            Id = 1,
+            Status = WalletWithdrawalRequestStatus.Pending,
+            Wallet = wallet,
+            WalletWithdrawalRequestPSBTs = new List<WalletWithdrawalRequestPSBT>(),
+            Amount = 0.01m,
+            DestinationAddress = "bcrt1q8k3av6q5yp83rn332lx8a90k6kukhg28hs5qw7krdq95t629hgsqk6ztmf"
+        };
+
+        var walletWithdrawalRequestRepository = new Mock<IWalletWithdrawalRequestRepository>();
+        var walletWithdrawalRequestPsbtRepository = new Mock<IWalletWithdrawalRequestPsbtRepository>();
+        var fmutxoRepository = new Mock<IFMUTXORepository>();
+        var nbXplorerService = new Mock<INBXplorerService>();
+        var utxoTagRepository = new Mock<IUTXOTagRepository>();
+        var mapper = new Mock<IMapper>();
+        walletWithdrawalRequestRepository
+            .Setup((w) => w.GetById(It.IsAny<int>()))
+            .ReturnsAsync(withdrawalRequest);
+        walletWithdrawalRequestRepository
+            .Setup((w) => w.AddUTXOs(It.IsAny<WalletWithdrawalRequest>(), It.IsAny<List<FMUTXO>>()))
+            .ReturnsAsync((true, null));
+        walletWithdrawalRequestPsbtRepository
+            .Setup((w) => w.AddAsync(It.IsAny<WalletWithdrawalRequestPSBT>()))
+            .ReturnsAsync((true, null));
+        nbXplorerService
+            .Setup(x => x.GetStatusAsync(default))
+            .ReturnsAsync(new StatusResult() { IsFullySynched = true });
+        nbXplorerService
+            .Setup(x => x.GetUnusedAsync(It.IsAny<DerivationStrategyBase>(), DerivationFeature.Change, 0, false, default))
+            .ReturnsAsync(new KeyPathInformation() { Address = BitcoinAddress.Create("bcrt1q83ml8tve8vh672wsm83getxfzetaquq352jr6t423tdwjvdz3f3qe4r4t7", Network.RegTest) });
+        nbXplorerService
+            .Setup(x => x.GetUTXOsAsync(It.IsAny<DerivationStrategyBase>(), default))
+            .ReturnsAsync(new UTXOChanges()
+            {
+                Confirmed = new UTXOChange()
+                {
+                    UTXOs = new List<UTXO>()
+                    {
+                        new UTXO()
+                        {
+                            Outpoint = new OutPoint(1234, 1),
+                            Value = new Money((long)10000000),
+                            ScriptPubKey = wallet.GetDerivationStrategy().GetDerivation(KeyPath.Parse("0/0")).ScriptPubKey,
+                            KeyPath = KeyPath.Parse("0/0")
+                        }
+                    }
+                }
+            });
+        fmutxoRepository
+            .Setup(x => x.GetLockedUTXOs(null, null))
+            .ReturnsAsync(new List<FMUTXO>());
+        utxoTagRepository
+            .SetupSequence(x => x.GetByKeyValue(It.IsAny<string>(), It.IsAny<string>()))
+            .ReturnsAsync(new List<UTXOTag>()
+            {
+                new UTXOTag()
+                {
+                    Key = Constants.IsFrozenTag,
+                    Value = "false",
+                    Outpoint = "00000000000000000000000000000000000000000000000000000000000004d2-1"
+                }
+            })
+            .ReturnsAsync(new List<UTXOTag>()
+            {
+                new UTXOTag()
+                {
+                    Key = Constants.IsManuallyFrozenTag,
+                    Value = "true",
+                    Outpoint = "00000000000000000000000000000000000000000000000000000000000004d2-1"
+                }
+            })
+            .ReturnsAsync(new List<UTXOTag>());
+        var coinSelectionService = new CoinSelectionService(_logger, mapper.Object, fmutxoRepository.Object, nbXplorerService.Object, null, walletWithdrawalRequestRepository.Object, utxoTagRepository.Object);
+
+        var bitcoinService = new BitcoinService(_logger, mapper.Object, walletWithdrawalRequestRepository.Object, walletWithdrawalRequestPsbtRepository.Object, null, null, nbXplorerService.Object, coinSelectionService);
+
+        // Act
+        var act = () => bitcoinService.GenerateTemplatePSBT(withdrawalRequest);
+
+        // Assert
+        await act
+            .Should()
+            .ThrowAsync<NoUTXOsAvailableException>()
+            .WithMessage("Exception of type 'NodeGuard.Helpers.NoUTXOsAvailableException' was thrown.");
+    }
+    
     [Fact]
     async Task GenerateTemplatePSBT_Changeless_SingleSigSucceeds()
     {
@@ -363,6 +644,7 @@ public class BitcoinServiceTests
         var walletWithdrawalRequestRepository = new Mock<IWalletWithdrawalRequestRepository>();
         var walletWithdrawalRequestPsbtRepository = new Mock<IWalletWithdrawalRequestPsbtRepository>();
         var fmutxoRepository = new Mock<IFMUTXORepository>();
+        var utxoTagRepository = new Mock<IUTXOTagRepository>();
         var nbXplorerService = new Mock<INBXplorerService>();
         var mapper = new Mock<IMapper>();
         walletWithdrawalRequestRepository
@@ -380,6 +662,9 @@ public class BitcoinServiceTests
         nbXplorerService
             .Setup(x => x.GetUnusedAsync(It.IsAny<DerivationStrategyBase>(), DerivationFeature.Change, 0, false, default))
             .ReturnsAsync(new KeyPathInformation() { Address = BitcoinAddress.Create("bcrt1q83ml8tve8vh672wsm83getxfzetaquq352jr6t423tdwjvdz3f3qe4r4t7", Network.RegTest) });
+        utxoTagRepository
+            .Setup(x => x.GetByKeyValue(It.IsAny<string>(), It.IsAny<string>()))
+            .ReturnsAsync(new List<UTXOTag>());
         nbXplorerService
             .Setup(x => x.GetUTXOsAsync(It.IsAny<DerivationStrategyBase>(), default))
             .ReturnsAsync(new UTXOChanges()
@@ -399,7 +684,7 @@ public class BitcoinServiceTests
             .Setup(x => x.GetUTXOs(It.IsAny<IBitcoinRequest>()))
             .ReturnsAsync((true, fmUtxos));
 
-        var coinSelectionService = new CoinSelectionService(_logger, mapper.Object, fmutxoRepository.Object, nbXplorerService.Object, null, walletWithdrawalRequestRepository.Object);
+        var coinSelectionService = new CoinSelectionService(_logger, mapper.Object, fmutxoRepository.Object, nbXplorerService.Object, null, walletWithdrawalRequestRepository.Object, utxoTagRepository.Object);
 
         var bitcoinService = new BitcoinService(_logger, mapper.Object, walletWithdrawalRequestRepository.Object, walletWithdrawalRequestPsbtRepository.Object, null, null, nbXplorerService.Object, coinSelectionService);
 
@@ -472,7 +757,7 @@ public class BitcoinServiceTests
             .Setup(x => x.BroadcastAsync(It.IsAny<Transaction>(), default, default))
             .ReturnsAsync(new BroadcastResult() { Success = true });
         nodeRepository
-            .Setup(x => x.GetAllManagedByNodeGuard())
+            .Setup(x => x.GetAllManagedByNodeGuard(It.IsAny<bool>()))
             .Returns(Task.FromResult(new List<Node>() {node}));
         var bitcoinService = new BitcoinService(_logger, null, walletWithdrawalRequestRepository.Object, null, nodeRepository.Object, null, nbXplorerService.Object, null);
 
@@ -552,7 +837,7 @@ public class BitcoinServiceTests
             .Setup(x => x.BroadcastAsync(It.IsAny<Transaction>(), default, default))
             .ReturnsAsync(new BroadcastResult() { Success = true });
         nodeRepository
-            .Setup(x => x.GetAllManagedByNodeGuard())
+            .Setup(x => x.GetAllManagedByNodeGuard(It.IsAny<bool>()))
             .Returns(Task.FromResult(new List<Node>() {node}));
         var bitcoinService = new BitcoinService(_logger, null, walletWithdrawalRequestRepository.Object, null, nodeRepository.Object, null, nbXplorerService.Object, null);
 
@@ -632,7 +917,7 @@ public class BitcoinServiceTests
             .Setup(x => x.BroadcastAsync(It.IsAny<Transaction>(), default, default))
             .ReturnsAsync(new BroadcastResult() { Success = true });
         nodeRepository
-            .Setup(x => x.GetAllManagedByNodeGuard())
+            .Setup(x => x.GetAllManagedByNodeGuard(It.IsAny<bool>()))
             .Returns(Task.FromResult(new List<Node>() {node}));
         var bitcoinService = new BitcoinService(_logger, null, walletWithdrawalRequestRepository.Object, null, nodeRepository.Object, null, nbXplorerService.Object, null);
 

@@ -137,7 +137,7 @@
             </DataGridColumn>
             <DataGridColumn TItem="WalletWithdrawalRequest" Filterable="false" PopupFieldColumnSize="ColumnSize.Is12" Editable="true" Validator="DestinationAddressValidator" Field="@nameof(WalletWithdrawalRequest.DestinationAddress)" Caption="@nameof(WalletWithdrawalRequest.DestinationAddress).Humanize()" Sortable="false" Displayable="@IsPendingRequestsColumnVisible(PendingWithdrawalsColumnName.DestinationAddress)">
                 <DisplayTemplate>
-                    @StringHelper.TruncateHeadAndTail(context.DestinationAddress, 10)
+                    @context.DestinationAddress
                     @* TODO Copy and explorer buttons *@
                 </DisplayTemplate>
             </DataGridColumn>
@@ -324,7 +324,7 @@
             </DataGridColumn>
             <DataGridColumn TItem="WalletWithdrawalRequest" Editable="true" Validator="DestinationAddressValidator" Field="@nameof(WalletWithdrawalRequest.DestinationAddress)" Caption="@nameof(WalletWithdrawalRequest.DestinationAddress).Humanize()" Sortable="false" Displayable="@IsAllRequestsColumnVisible(AllWithdrawalsColumnName.DestinationAddress)">
                 <DisplayTemplate>
-                    @StringHelper.TruncateHeadAndTail(context.DestinationAddress, 10)
+                    @context.DestinationAddress
                     @* TODO Copy and explorer buttons *@
                 </DisplayTemplate>
             </DataGridColumn>
@@ -1012,8 +1012,7 @@
             var map = new JobDataMap();
             map.Put("withdrawalRequestId", _selectedRequest.Id);
 
-            var retryList = RetriableJob.ParseRetryListFromString(Constants.JOB_RETRY_INTERVAL_LIST_IN_MINUTES);
-            var job = RetriableJob.Create<PerformWithdrawalJob>(map, _selectedRequest.Id.ToString(), retryList);
+            var job = SimpleJob.Create<PerformWithdrawalJob>(map, _selectedRequest.Id.ToString());
             await scheduler.ScheduleJob(job.Job, job.Trigger);
 
             if (_selectedRequest != null)

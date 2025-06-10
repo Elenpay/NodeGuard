@@ -52,23 +52,20 @@ public class PerformWithdrawalJob : IJob
         var withdrawalRequestId = data.GetInt("withdrawalRequestId");
         try
         {
-            await RetriableJob.Execute(context, async () =>
-            {
-                var withdrawalRequest = await _walletWithdrawalRequestRepository.GetById(withdrawalRequestId);
-                await _bitcoinService.PerformWithdrawal(withdrawalRequest);
-            });
+            var withdrawalRequest = await _walletWithdrawalRequestRepository.GetById(withdrawalRequestId);
+            await _bitcoinService.PerformWithdrawal(withdrawalRequest!);
         }
         catch (Exception e)
         {
-            await RetriableJob.OnFail(context, async () =>
+            var request = await _walletWithdrawalRequestRepository.GetById(withdrawalRequestId);
+            request!.Status = WalletWithdrawalRequestStatus.Failed;
+            var (updated, _) = _walletWithdrawalRequestRepository.Update(request);
+            if (!updated)
             {
-                var request = await _walletWithdrawalRequestRepository.GetById(withdrawalRequestId);
-                request.Status = WalletWithdrawalRequestStatus.Failed;
-                _walletWithdrawalRequestRepository.Update(request);
-            });
+                _logger.LogError("Failed to update withdrawal request status to failed");
+            }
 
             _logger.LogError(e, "Error on {JobName}", nameof(PerformWithdrawalJob));
-            throw new JobExecutionException(e, false);
         }
 
         _logger.LogInformation("{JobName} ended", nameof(PerformWithdrawalJob));

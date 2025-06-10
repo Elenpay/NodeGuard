@@ -17,7 +17,7 @@
  *
  */
 
-﻿using NodeGuard.Data.Models;
+using NodeGuard.Data.Models;
 
 namespace NodeGuard.Data.Repositories.Interfaces;
 

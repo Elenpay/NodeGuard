@@ -404,7 +404,7 @@ namespace NodeGuard.Data.Repositories
 
             //Since already existing wallet's utxos are not tracked by NBXplorer, we need to rescan the UTXO set for this wallet
             //This is a long running operation in nbxplorer and should be queried in the background
-            await _nbXplorerService.ScanUTXOSetAsync(derivationStrategyBase, 1000, 30000, null, default);
+            await _nbXplorerService.ScanUTXOSetAsync(derivationStrategyBase, Constants.SCAN_BATCH_SIZE, Constants.SCAN_GAP_LIMIT, null, default);
         }
 
         public async Task<(bool, string?)> ImportWatchOnlyWallet(string name, string? description, string outputDescriptor, string? userId = null)

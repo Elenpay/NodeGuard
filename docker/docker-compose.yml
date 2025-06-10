@@ -1,9 +1,10 @@
 version: '3.4'
 
+name: nodeguard
 services:
   nodeguard_postgres:
     container_name: nodeguard_postgres
-    image: postgres:13
+    image: postgres:16
     restart: always
     environment:
       POSTGRES_DB: nodeguard
@@ -13,7 +14,7 @@ services:
     volumes:
       - nodeguard_postgres_data:/var/lib/postgresql/data
     ports:
-      - 5432:5432
+      - 25432:5432
 
   nbxplorer:
     restart: unless-stopped
@@ -27,9 +28,7 @@ services:
       NBXPLORER_BIND: 0.0.0.0:32838
       NBXPLORER_TRIMEVENTS: 10000
       NBXPLORER_SIGNALFILESDIR: /datadir
-      #Keeping dbtrie for dev until it is fully removed since we would need to modify nbxplorer docker image to wait for the db to be ready
-      NBXPLORER_DBTRIE: 1
-      # NBXPLORER_POSTGRES: Host=nodeguard_postgres;Port=5432;Database=nbxplorer;Username=rw_dev;Password=rw_dev
+      NBXPLORER_POSTGRES: Host=nbxplorer_postgres;Port=5432;Database=nbxplorer;Username=rw_dev;Password=rw_dev
       NBXPLORER_CHAINS: "btc"
       NBXPLORER_BTCRPCUSER: "polaruser"
       NBXPLORER_BTCRPCPASSWORD: "polarpass"
@@ -39,10 +38,25 @@ services:
     volumes:
     - "bitcoin_datadir:/root/.bitcoin"
 
+  nbxplorer_postgres:
+    container_name: nbxplorer_postgres
+    image: postgres:16
+    restart: always
+    environment:
+      POSTGRES_DB: nbxplorer
+      POSTGRES_USER: rw_dev
+      POSTGRES_PASSWORD: rw_dev
+      TZ: Europe/Madrid
+    volumes:
+      - nbxplorer_postgres_data:/var/lib/postgresql/data
+    ports:
+      - 35432:5432
+
 
 
 volumes:
     nodeguard_postgres_data:
     bitcoin_datadir:
     nbxplorer_datadir:
+    nbxplorer_postgres_data:
     nodeguard_data_keys_dir:

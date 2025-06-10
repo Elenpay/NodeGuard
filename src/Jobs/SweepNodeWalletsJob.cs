@@ -44,7 +44,7 @@ public class SweepNodeWalletsJob : IJob
         INBXplorerService nbXplorerService,
         ILightningClientService lightningClientService)
     {
-       
+
         _logger = logger;
         _nodeRepository = nodeRepository;
         _walletRepository = walletRepository;
@@ -66,7 +66,7 @@ public class SweepNodeWalletsJob : IJob
         #region Local functions
 
         async Task SweepFunds(Node node, Wallet wallet, Lightning.LightningClient lightningClient
-            ,List<Utxo> utxos)
+            , List<Utxo> utxos)
         {
             if (node == null) throw new ArgumentNullException(nameof(node));
             if (wallet == null) throw new ArgumentNullException(nameof(wallet));
@@ -81,9 +81,9 @@ public class SweepNodeWalletsJob : IJob
             if (node.ChannelAdminMacaroon != null)
             {
                 var lndChangeAddress = await lightningClient.NewAddressAsync(new NewAddressRequest
-                    {
-                        Type = AddressType.UnusedWitnessPubkeyHash
-                    },
+                {
+                    Type = AddressType.UnusedWitnessPubkeyHash
+                },
                     new Metadata
                     {
                         {
@@ -92,21 +92,21 @@ public class SweepNodeWalletsJob : IJob
                     });
                 var totalSatsAvailable = utxos.Sum(x => x.AmountSat);
 
-                if (returningAddress != null && lndChangeAddress != null && utxos.Any() && totalSatsAvailable > requiredAnchorChannelClosingAmount)
+                if (returningAddress != null && lndChangeAddress != null && utxos.Any() && totalSatsAvailable > Constants.MINIMUM_SWEEP_TRANSACTION_AMOUNT_SATS)
                 {
-                    var sweepedFundsAmount = (long)((totalSatsAvailable - requiredAnchorChannelClosingAmount) * 0.9); // We should let requiredAnchorChannelClosingAmount sats as a UTXO in  in the hot wallet for channel closings
+                    // We need to maintain onchain balance to be at least RequiredAnchorChannelClosingAmount but also we apply a 10% buffer to pay for this sweep fees and let some more money on the wallet
+                    var sweepedFundsAmount = (long)((totalSatsAvailable - requiredAnchorChannelClosingAmount) * 0.9); 
                     var sendManyResponse = await lightningClient.SendManyAsync(new SendManyRequest()
-                        {
-                            AddrToAmount =
+                    {
+                        AddrToAmount =
                             {
                                 {returningAddress.Address.ToString(), sweepedFundsAmount}, //Sweeped funds
-                                {lndChangeAddress.Address, requiredAnchorChannelClosingAmount},
                             },
-                            MinConfs = 1,
-                            Label = $"Hot wallet Sweep tx on {DateTime.UtcNow.ToString("O")} to walletId:{wallet.Id}",
-                            SpendUnconfirmed = false,
-                            TargetConf = 1 // 1 for now TODO Maybe this can be set as a global env var for all the Target blocks of the FM..
-                        },
+                        MinConfs = 6,
+                        Label = $"Hot wallet Sweep tx on {DateTime.UtcNow.ToString("O")} to walletId:{wallet.Id}",
+                        SpendUnconfirmed = false,
+                        TargetConf = Constants.SWEEP_CONF_TARGET
+                    },
                         new Metadata
                         {
                             {
@@ -157,9 +157,9 @@ public class SweepNodeWalletsJob : IJob
 
         try
         {
-          
+
             var client = _lightningClientService.GetLightningClient(node.Endpoint);
-            
+
             var unspentResponse = await client.ListUnspentAsync(new ListUnspentRequest { MinConfs = 1, MaxConfs = Int32.MaxValue }, new Metadata
             {
                 {

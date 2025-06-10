@@ -32,8 +32,11 @@ namespace NodeGuard.Data.Models
 
         #region Relationships
 
+        // M-N Because if the UTXO is used in a request that gets cancelled,
+        // the UTXO should be unlocked and assigned to another request
         public List<ChannelOperationRequest> ChannelOperationRequests { get; set; }
 
+        // Idem as ChannelOperationRequests
         public List<WalletWithdrawalRequest> WalletWithdrawalRequests { get; set; }
 
         #endregion Relationships

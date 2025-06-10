@@ -34,6 +34,12 @@ service NodeGuardService {
     Gets a list of available wallets
   */
   rpc GetAvailableWallets(GetAvailableWalletsRequest) returns (GetAvailableWalletsResponse);
+  
+  /*
+    Get balance from a specific wallet
+  */
+  rpc GetWalletBalance(GetWalletBalanceRequest) returns (GetWalletBalanceResponse);
+  
   /*
     Opens a channel to a given node
    */
@@ -55,9 +61,14 @@ service NodeGuardService {
   rpc AddLiquidityRule(AddLiquidityRuleRequest) returns (AddLiquidityRuleResponse);
 
   /*
-  Gets a list of available UTXOs for a wallet
+  Gets a list of available UTXOs for a single wallet
    */
-  rpc GetAvailableUtxos(GetAvailableUtxosRequest) returns (GetAvailableUtxosResponse);
+  rpc GetAvailableUtxos(GetAvailableUtxosRequest) returns (GetUtxosResponse);
+
+  /*
+  Gets a list of all UTXOs from all available wallets
+  */
+  rpc GetUtxos(GetUtxosRequest) returns (GetUtxosResponse);
 
   /*
   Gets the status for the provided withdrawals request ids
@@ -65,9 +76,19 @@ service NodeGuardService {
   rpc GetWithdrawalsRequestStatus(GetWithdrawalsRequestStatusRequest) returns (GetWithdrawalsRequestStatusResponse);
 
   /*
+  Gets the status for the provided withdrawals request reference ids
+   */
+  rpc GetWithdrawalsRequestStatusByReferenceIds(GetWithdrawalsRequestStatusByReferenceIdsRequest) returns (GetWithdrawalsRequestStatusResponse);
+
+  /*
   Gets a channel by id
    */
   rpc GetChannel(GetChannelRequest) returns (GetChannelResponse);
+  
+  /*
+  Adds tags to UTXOs under the treasury
+   */
+  rpc AddTags(AddTagsRequest) returns (AddTagsResponse);
 }
 
 message GetLiquidityRulesRequest {
@@ -80,6 +101,7 @@ message GetLiquidityRulesResponse {
 
 message LiquidityRule {
   uint64 channel_id = 1;
+  // Public key of the node that is the managed node of the channel
   string node_pubkey = 2;
   int32 swap_wallet_id = 3;
   optional int32 reverse_swap_wallet_id = 4;
@@ -88,10 +110,13 @@ message LiquidityRule {
   float rebalance_target = 7;
   optional string reverse_swap_address = 8;
   bool is_reverse_swap_wallet_rule = 9;
+  // Public key of the node that is the counterparty of the channel
+  string remote_node_pubkey = 10;
 }
 
 message GetNewWalletAddressRequest {
   int32 wallet_id = 1;
+  bool reserve = 2; // If set to true, the returned address will be marked as used
 }
 
 message GetNewWalletAddressResponse {
@@ -114,6 +139,8 @@ message RequestWithdrawalRequest {
   FEES_TYPE mempool_fee_rate = 8;
   // Fee rate in sat/vbyte
   optional int32 custom_fee_rate = 9;
+  // External reference id for the withdrawal request
+  optional string reference_id = 10;
 }
 
 message RequestWithdrawalResponse {
@@ -146,6 +173,17 @@ message Wallet  {
 }
 message GetAvailableWalletsResponse {
   repeated Wallet wallets = 1;
+}
+
+message GetWalletBalanceRequest {
+  int32 wallet_id = 1;
+}
+
+message GetWalletBalanceResponse {
+  // Confirmed balance in satoshis
+  int64 confirmed_balance = 1;
+  // Unconfirmed balance in satoshis
+  int64 unconfirmed_balance = 2;
 }
 
 message AddNodeRequest{
@@ -304,6 +342,9 @@ enum COIN_SELECTION_STRATEGY
     UP_TO_AMOUNT = 3;
 }
 
+message GetUtxosRequest {
+}
+
 message GetAvailableUtxosRequest {
   // Wallet ID as stored in the NG's database
   int32 wallet_id = 1;
@@ -320,9 +361,10 @@ message GetAvailableUtxosRequest {
 message Utxo {
   int64 amount = 1;
   string outpoint = 2;
+  string address = 3;
 }
 
-message GetAvailableUtxosResponse {
+message GetUtxosResponse {
   repeated Utxo confirmed = 1;
   repeated Utxo unconfirmed = 2;
 }
@@ -344,10 +386,17 @@ message WithdrawalRequest {
   int32 request_id = 1;
   WITHDRAWAL_REQUEST_STATUS status = 2;
   optional string reject_or_cancel_reason = 3;
+  optional string reference_id = 4;
+  uint64 confirmations = 5;
+  optional string tx_id = 6;
 }
 
 message GetWithdrawalsRequestStatusResponse {
   repeated WithdrawalRequest withdrawal_requests = 1;
+}
+
+message GetWithdrawalsRequestStatusByReferenceIdsRequest {
+  repeated string reference_ids = 1;
 }
 
 message GetChannelRequest {
@@ -370,4 +419,17 @@ message GetChannelResponse {
   bool created_by_nodeguard = 7;
   bool is_automated_liquidity_enabled = 8;
   bool is_private = 9;
+}
+
+message Tag {
+  string key = 1;
+  string value = 2;
+  string utxo_outpoint = 3; // Format txid-outputIndex
+}
+
+message AddTagsRequest {
+  repeated Tag tags = 1;
+}
+
+message AddTagsResponse {
 }

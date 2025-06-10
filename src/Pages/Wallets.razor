@@ -21,8 +21,8 @@
 @inject ILocalStorageService LocalStorageService
 @inject ISchedulerFactory SchedulerFactory
 @inject IPriceConversionService PriceConversionService
-@inject IInternalWalletRepository InternalWalletRepository
 @inject INBXplorerService NBXplorerService
+@inject IUTXOTagRepository UTXOTagRepository
 
 @attribute [Authorize(Roles = "NodeManager, FinanceManager, Superadmin")]
 
@@ -33,7 +33,7 @@
                   @ref="_walletsDataGrid"
                   @bind-SelectedRow="_selectedWallet"
                   Data="_wallets"
-                  Editable="@_isFinanceManager"
+                  Editable="true"
                   EditMode="DataGridEditMode.Popup"
                   Responsive="true"
                   ResizeMode="TableResizeMode.Columns"
@@ -55,31 +55,29 @@
             <DataGridColumns>
                 <DataGridCommandColumn TItem="Wallet">
                     <NewCommandTemplate>
-                        @if (_isFinanceManager)
-                        {
+                       @if (_isFinanceManager){
                             <Dropdown>
                                 <DropdownToggle Color="Color.Primary">
                                 </DropdownToggle>
                                 <DropdownMenu>
-
                                     <DropdownItem Clicked="context.Clicked">New</DropdownItem>
                                     <DropdownItem Clicked="@(() => ShowImportWalletModal())">Import Wallet</DropdownItem>
-
                                 </DropdownMenu>
                             </Dropdown>
                         }
-
                     </NewCommandTemplate>
                     <EditCommandTemplate>
                         <Dropdown @onclick:stopPropagation="true">
                             <DropdownToggle Color="Color.Primary">
                             </DropdownToggle>
                             <DropdownMenu>
+                                @if (_isFinanceManager){
+                                    <DropdownItem Clicked="context.Clicked">Edit</DropdownItem>
+                                    <DropdownItem Disabled="!context.Item.IsFinalised || context.Item.IsWatchOnly" Clicked="@(() => ShowTransferFundsModal(context.Item))">Transfer funds</DropdownItem>
+                                }
 
-                                <DropdownItem Clicked="context.Clicked">Edit</DropdownItem>
                                 <DropdownItem Disabled="!context.Item.IsFinalised" Clicked="@(() => LoadAndOpenDetailsModal(context.Item))">Details</DropdownItem>
                                 <DropdownItem Disabled="!context.Item.IsFinalised" Clicked="@(() => LoadAndOpenModalTextModalUnusedAddress(context.Item))">Get address</DropdownItem>
-                                <DropdownItem Disabled="!context.Item.IsFinalised || context.Item.IsWatchOnly" Clicked="@(() => ShowTransferFundsModal(context.Item))">Transfer funds</DropdownItem>
                                 <DropdownItem Disabled="!context.Item.IsFinalised" Clicked="@(() => RescanWallet(context.Item))">Rescan wallet</DropdownItem>
                                 <DropdownItem Disabled="!context.Item.IsFinalised" Clicked="@(() => LoadAndOpenExportOutputDescriptor(context.Item))">Export output descriptor</DropdownItem>
 
@@ -212,12 +210,12 @@
             <Field>
                 <FieldLabel>Select the Finance user(s) who will be a co-approver</FieldLabel>
                 <SelectList TItem="ApplicationUser"
-                            TValue="string"
-                            Data="@_financeManagers"
-                            TextField="@((item) => item.UserName)"
-                            ValueField="@((item) => item.Id)"
-                            SelectedValueChanged="@OnSelectedFinanceManager"
-                            DefaultItemText="Choose the approver"/>
+                TValue="string"
+                Data="@_financeManagers"
+                TextField="@((item) => item.UserName)"
+                ValueField="@((item) => item.Id)"
+                SelectedValueChanged="@OnSelectedFinanceManager"
+                DefaultItemText="Choose the approver"/>
 
             </Field>
             @if (_selectedFinanceManager != null && _selectedFinanceManagerAvailableKeys.Any())
@@ -225,12 +223,12 @@
                 <Field>
                     <FieldLabel>Select the Finance user(s) key</FieldLabel>
                     <SelectList TItem="Key"
-                                TValue="int"
-                                Data="@_selectedFinanceManagerAvailableKeys"
-                                TextField="@((item) => $"{item.Name}-{StringHelper.TruncateHeadAndTail(item.XPUB, 10)}")"
-                                ValueField="@((item) => item.Id)"
-                                SelectedValueChanged="@OnSelectedWalletKey"
-                                DefaultItemText="Choose the key of the manager"/>
+                    TValue="int"
+                    Data="@_selectedFinanceManagerAvailableKeys"
+                    TextField="@((item) => $"{item.Name}-{StringHelper.TruncateHeadAndTail(item.XPUB, 10)}")"
+                    ValueField="@((item) => item.Id)"
+                    SelectedValueChanged="@OnSelectedWalletKey"
+                    DefaultItemText="Choose the key of the manager"/>
                 </Field>
             }
             else
@@ -485,14 +483,14 @@
                                 </FieldLabel>
                                 <FieldBody>
                                     <SelectList TItem="Wallet"
-                                                TValue="int"
-                                                DefaultItemDisabled
-                                                Data="_walletsForTransfer"
-                                                TextField="@((item) => item.Name)"
-                                                ValueField="@((item) => item.Id)"
-                                                SelectedValue="@_selectedTransferWalletId"
-                                                SelectedValueChanged="(id) => OnSelectedWallet(id)"
-                                                DefaultItemText="Choose the wallet">
+                                    TValue="int"
+                                    DefaultItemDisabled
+                                    Data="_walletsForTransfer"
+                                    TextField="@((item) => item.Name)"
+                                    ValueField="@((item) => item.Id)"
+                                    SelectedValue="@_selectedTransferWalletId"
+                                    SelectedValueChanged="(id) => OnSelectedWallet(id)"
+                                    DefaultItemText="Choose the wallet">
                                         <Feedback>
                                             <ValidationError>You must select a valid wallet</ValidationError>
                                         </Feedback>
@@ -524,7 +522,7 @@
             <CloseButton/>
         </ModalHeader>
         <ModalBody>
-            <Tabs FullWidth="true" Justified="true" SelectedTab="Balance">
+            <Tabs FullWidth="true" Justified="true" SelectedTab="@_selectedTab" SelectedTabChanged="@OnSelectedTabChanged">
                 <Items>
                     <Tab Name="Balance">On-chain Balance</Tab>
                     <Tab Name="UTXOS">Coins/UTXOs</Tab>
@@ -569,19 +567,33 @@
                                     <TableHeaderCell>Outpoint</TableHeaderCell>
                                     <TableHeaderCell>Confirmations</TableHeaderCell>
                                     <TableHeaderCell>Value</TableHeaderCell>
+                                    <TableHeaderCell>Tags</TableHeaderCell>
+                                    <TableHeaderCell>Freeze</TableHeaderCell>
                                 </TableRow>
                             </TableHeader>
                             <TableBody>
-                                @if (_detailsUTXOs?.Confirmed.UTXOs != null && _detailsUTXOs.Confirmed.UTXOs.Any())
+                                @if (_detailsUTXOs.Any())
                                 {
-                                    foreach (var utxo in _detailsUTXOs?.Confirmed.UTXOs)
+                                    foreach (var (_, utxo, tags, isFrozen) in _detailsUTXOs)
                                     {
                                         <TableRow>
-                                            <TableRowHeader>
+                                            <TableRowHeader class="utxo-tags">
                                                 <a href="@($"{Environment.GetEnvironmentVariable("MEMPOOL_ENDPOINT")}/tx/{utxo.Outpoint.Hash}#vout={utxo.Outpoint.N}")" target="_blank">@utxo.Outpoint </a>
                                             </TableRowHeader>
                                             <TableRowCell>@utxo.Confirmations</TableRowCell>
-                                            <TableRowCell>@($"{@utxo.Value} BTC")</TableRowCell>
+                                            <TableRowCell>@($"{utxo.Value} BTC")</TableRowCell>
+                                            <TableRowCell class="utxo-tags">
+                                                @if (tags.Any())
+                                                {
+                                                    foreach (var data in tags.Select((tag, i) => new {tag, i}))
+                                                    {
+                                                        <Badge class="utxo-tag" Color="Color.Secondary" Pill>@data.tag.Value</Badge>
+                                                    }
+                                                }
+                                            </TableRowCell>
+                                            <TableRowCell>
+                                                <Check TValue="bool" Checked="@isFrozen" CheckedChanged="@((b) => ToggleUtxoFreeze(b, utxo))"></Check>
+                                            </TableRowCell>
                                         </TableRow>
                                     }
                                 }
@@ -712,8 +724,8 @@
                 @("Output descriptor: " + StringHelper.TruncateHeadAndTail(_outputDescriptorContentModal, 25))
                 <Button Color="Color.Primary" Clicked="@(()=> CopyStrToClipboard(_outputDescriptorContentModal, "Output Descriptor"))">Copy</Button>
             </Paragraph>
-                @("Wallet derivation strategy (NBITCOIN): " + StringHelper.TruncateHeadAndTail(_derivationScheme, 25))
-                <Button Color="Color.Primary" Clicked="@(()=> CopyStrToClipboard(_derivationScheme, "Derivation Strategy"))">Copy</Button>
+            @("Wallet derivation strategy (NBITCOIN): " + StringHelper.TruncateHeadAndTail(_derivationScheme, 25))
+            <Button Color="Color.Primary" Clicked="@(()=> CopyStrToClipboard(_derivationScheme, "Derivation Strategy"))">Copy</Button>
         </ModalBody>
         <ModalFooter>
             <Button Color="Color.Secondary" Clicked="@CloseExportOutputDescriptorModal">Close</Button>
@@ -722,18 +734,18 @@
 </Modal>
 
 <ConfirmationModal
-    @ref="_multisigTransferModal"
-    Title="Transferring from a multisig wallet"
-    Body="Your transfer request was succesfully done. Please, go to Withdrawals page to sign for this transfer."
-    CancelLabel="Yes, understood"
-    OnCancel="CloseMultisigTransferModal"/>
+@ref="_multisigTransferModal"
+Title="Transferring from a multisig wallet"
+Body="Your transfer request was succesfully done. Please, go to Withdrawals page to sign for this transfer."
+CancelLabel="Yes, understood"
+OnCancel="CloseMultisigTransferModal"/>
 <ConfirmationModal
-    @ref="_hotWalletTransferModal"
-    Title="Are you sure?"
-    Body="You're about to transfer funds from this wallet. This means that the system will automatically use the funds in it without the need of manual approval. Are you sure you want to perform this operation?"
-    OkLabel="Yes, understood"
-    OnCancel="CloseHotWalletTransferModal"
-    OnSubmit="TransferFundsHotWallet"/>
+@ref="_hotWalletTransferModal"
+Title="Are you sure?"
+Body="You're about to transfer funds from this wallet. This means that the system will automatically use the funds in it without the need of manual approval. Are you sure you want to perform this operation?"
+OkLabel="Yes, understood"
+OnCancel="CloseHotWalletTransferModal"
+OnSubmit="TransferFundsHotWallet"/>
 
 @code {
 
@@ -746,6 +758,7 @@
     private List<ApplicationUser> _financeManagers = new();
 
     private Modal _modalRef;
+    private string _selectedTab = "Balance";
 
     private List<Wallet> _wallets = new();
 
@@ -823,7 +836,7 @@
 
     private Modal? _detailsModal;
     private GetBalanceResponse? _walletBalance;
-    private UTXOChanges? _detailsUTXOs;
+    private List<(OutPoint, UTXO, List<UTXOTag>, bool)> _detailsUTXOs = new();
     private GetTransactionsResponse? _detailsTransactions;
     private List<BitcoinAddress> _firstDetailsAddresses = new();
 
@@ -1111,40 +1124,63 @@
     }
 
     /// Loads the modal with the balance of the wallet, the utxos and the transactions
-    private async Task LoadAndOpenDetailsModal(Wallet wallet)
+    private async Task LoadAndOpenDetailsModal(Wallet? wallet)
     {
-        if (wallet != null)
+        _selectedTab = "Balance";
+        if (wallet == null) return;
+
+        _walletBalance = await LightningService.GetWalletBalance(wallet);
+        var derivationStrategyBase = wallet.GetDerivationStrategy();
+
+        if (derivationStrategyBase == null)
         {
-            _walletBalance = await LightningService.GetWalletBalance(wallet);
-            var derivationStrategyBase = wallet.GetDerivationStrategy();
+            ToastService.ShowError("Error while getting the wallet on-chain balance, try rescanning it");
+            return;
+        }
 
-            if (derivationStrategyBase == null)
-            {
-                ToastService.ShowError("Error while getting the wallet on-chain balance, try rescanning it");
-                return;
-            }
+        var nbxplorerUtxos = await NBXplorerService.GetUTXOsAsync(derivationStrategyBase);
+        nbxplorerUtxos.RemoveDuplicateUTXOs();
 
-            _detailsUTXOs = await NBXplorerService.GetUTXOsAsync(derivationStrategyBase);
-            _detailsUTXOs.RemoveDuplicateUTXOs();
-            
-            _detailsTransactions = await NBXplorerService.GetTransactionsAsync(derivationStrategyBase);
-            
-            //Lets generate the 10 first addresses
-            _firstDetailsAddresses = new List<BitcoinAddress>();
-            
-            for (int i = 0; i < 10; i++)
-            {
-                _firstDetailsAddresses.Add(wallet.GetDerivationStrategy().GetDerivation(new KeyPath($"0/{i}")).ScriptPubKey.GetDestinationAddress(CurrentNetworkHelper.GetCurrentNetwork()));
-            }
+        var tagsMap = new Dictionary<OutPoint, List<UTXOTag>>();
 
-            if (_walletBalance == null || _detailsUTXOs == null || _detailsTransactions == null)
-            {
-                ToastService.ShowError("Error while getting the wallet on-chain balance");
-            }
-            else
-            {
-                await _detailsModal?.Show();
-            }
+        foreach(var utxo in nbxplorerUtxos.Confirmed.UTXOs) {
+            var tags = await UTXOTagRepository.GetByOutpoint(utxo.Outpoint.ToString());
+            tagsMap[utxo.Outpoint] = tags;
+        }
+
+        _detailsUTXOs = nbxplorerUtxos.Confirmed.UTXOs
+            .Select((u) => (
+                u.Outpoint,
+                u,
+                tagsMap[u.Outpoint]
+                    .Where(t => t.Key != Constants.IsFrozenTag && t.Key != Constants.IsManuallyFrozenTag)
+                    .ToList(),
+                // Check if the UTXO is frozen, has been manually frozen or has been manually unfrozen
+                (tagsMap[u.Outpoint]
+                     .Any(t => t.Key == Constants.IsFrozenTag && t.Value == "true") ||
+                 tagsMap[u.Outpoint]
+                     .Any(t => t.Key == Constants.IsManuallyFrozenTag && t.Value == "true")) &&
+                !tagsMap[u.Outpoint]
+                    .Any(t => t.Key == Constants.IsManuallyFrozenTag && t.Value == "false")
+            )).ToList();
+
+        _detailsTransactions = await NBXplorerService.GetTransactionsAsync(derivationStrategyBase);
+
+        //Lets generate the 10 first addresses
+        _firstDetailsAddresses = new List<BitcoinAddress>();
+
+        for (int i = 0; i < 10; i++)
+        {
+            _firstDetailsAddresses.Add(wallet.GetDerivationStrategy().GetDerivation(new KeyPath($"0/{i}")).ScriptPubKey.GetDestinationAddress(CurrentNetworkHelper.GetCurrentNetwork()));
+        }
+
+        if (_walletBalance == null || _detailsUTXOs == null || _detailsTransactions == null)
+        {
+            ToastService.ShowError("Error while getting the wallet on-chain balance");
+        }
+        else
+        {
+            await _detailsModal?.Show();
         }
     }
     
@@ -1381,9 +1417,10 @@
         var withdrawalRequest = new WalletWithdrawalRequest
         {
             UserRequestorId = LoggedUser != null ? LoggedUser.Id : string.Empty,
-            Description = @$"Funds transferred from {_sourceWalletName} to {_targetWalletName}",
+            Description = $"Funds transferred from {_sourceWalletName} to {_targetWalletName}",
             WithdrawAllFunds = _transferAllFunds,
             DestinationAddress = targetBitcoinAddress.ToString(),
+            MempoolRecommendedFeesType = MempoolRecommendedFeesType.HourFee,
             Amount = _amountToTransfer,
             WalletId = _sourceTransferWallet.Id,
             Status = _sourceTransferWallet.IsHotWallet
@@ -1450,8 +1487,7 @@
             var map = new JobDataMap();
             map.Put("withdrawalRequestId", withdrawalRequest.Id);
 
-            var retryList = RetriableJob.ParseRetryListFromString(Constants.JOB_RETRY_INTERVAL_LIST_IN_MINUTES);
-            var job = RetriableJob.Create<PerformWithdrawalJob>(map, withdrawalRequest.Id.ToString(), retryList);
+            var job = SimpleJob.Create<PerformWithdrawalJob>(map, withdrawalRequest.Id.ToString());
             await scheduler.ScheduleJob(job.Job, job.Trigger);
 
             if (withdrawalRequest != null)
@@ -1670,4 +1706,33 @@
         _derivationScheme = string.Empty;
     }
 
+    private async Task ToggleUtxoFreeze(bool newValue, UTXO utxo)
+    {
+        var tag = await UTXOTagRepository.GetByKeyAndOutpoint(Constants.IsManuallyFrozenTag, utxo.Outpoint.ToString());
+        var (saved, _) = UTXOTagRepository.Update(new UTXOTag {Key = Constants.IsManuallyFrozenTag, Value = newValue ? "true" : "false", Outpoint = utxo.Outpoint.ToString(), Id = tag?.Id ?? 0 });
+        if (!saved)
+        {
+            ToastService.ShowError("Error while updating the UTXO status");
+            return;
+        }
+
+        // Updated the UI
+        _detailsUTXOs = _detailsUTXOs.Select(x =>
+        {
+            if (x.Item1 == utxo.Outpoint)
+            {
+                x.Item4 = newValue;
+            }
+            return x;
+        }).ToList();
+
+        StateHasChanged();
+    }
+
+    private Task OnSelectedTabChanged(string name)
+    {
+        _selectedTab = name;
+
+        return Task.CompletedTask;
+    }
 }

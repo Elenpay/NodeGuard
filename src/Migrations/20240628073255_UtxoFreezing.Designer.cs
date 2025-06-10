@@ -3,6 +3,7 @@ using System;
 using System.Collections.Generic;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using NodeGuard.Data;
 using NodeGuard.Helpers;
@@ -13,9 +14,11 @@ using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 namespace NodeGuard.Migrations
 {
     [DbContext(typeof(ApplicationDbContext))]
-    partial class ApplicationDbContextModelSnapshot : ModelSnapshot
+    [Migration("20240628073255_UtxoFreezing")]
+    partial class UtxoFreezing
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -760,9 +763,6 @@ namespace NodeGuard.Migrations
 
                     b.HasKey("Id");
 
-                    b.HasIndex("Key", "Outpoint")
-                        .IsUnique();
-
                     b.ToTable("UTXOTags");
                 });
 
@@ -869,9 +869,6 @@ namespace NodeGuard.Migrations
 
                     b.Property<int>("MempoolRecommendedFeesType")
                         .HasColumnType("integer");
-
-                    b.Property<string>("ReferenceId")
-                        .HasColumnType("text");
 
                     b.Property<string>("RejectCancelDescription")
                         .HasColumnType("text");

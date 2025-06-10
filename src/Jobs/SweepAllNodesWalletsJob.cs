@@ -46,7 +46,7 @@ namespace NodeGuard.Jobs
             _logger.LogInformation("Starting {JobName}... ", nameof(SweepAllNodesWalletsJob));
             try
             {
-                var managedNodes = await _nodeRepository.GetAllManagedByNodeGuard();
+                var managedNodes = await _nodeRepository.GetAllManagedByNodeGuard(false);
 
                 var scheduler = await _schedulerFactory.GetScheduler();
                 foreach (var managedNode in managedNodes.Where(managedNode => managedNode.ChannelAdminMacaroon != null && managedNode.AutosweepEnabled))

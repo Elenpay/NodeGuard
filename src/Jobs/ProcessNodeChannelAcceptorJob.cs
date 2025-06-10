@@ -240,7 +240,7 @@ public class ProcessNodeChannelAcceptorJob : IJob
             _logger.LogError(e, "Error on {JobName}", nameof(ProcessNodeChannelAcceptorJob));
             
             //Sleep to avoid massive requests
-            await Task.Delay(1000);
+            await Task.Delay(5000);
 
             throw new JobExecutionException(e, true);
 

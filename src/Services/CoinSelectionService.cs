@@ -67,6 +67,11 @@ public interface ICoinSelectionService
     /// <param name="bitcoinRequest"></param>
     /// <param name="requestType"></param>
     public Task<List<UTXO>> GetLockedUTXOsForRequest(IBitcoinRequest bitcoinRequest, BitcoinRequestType requestType);
+    
+    /// <summary>
+    /// Gets the frozen UTXOs
+    /// </summary>
+    public Task<List<string>> GetFrozenUTXOs();
 
     public Task<(List<ICoin> coins, List<UTXO> selectedUTXOs)> GetTxInputCoins(
         List<UTXO> availableUTXOs,
@@ -82,6 +87,7 @@ public class CoinSelectionService: ICoinSelectionService
     private readonly INBXplorerService _nbXplorerService;
     private readonly IChannelOperationRequestRepository _channelOperationRequestRepository;
     private readonly IWalletWithdrawalRequestRepository _walletWithdrawalRequestRepository;
+    private readonly IUTXOTagRepository _utxoTagRepository;
 
     public CoinSelectionService(
         ILogger<BitcoinService> logger,
@@ -89,7 +95,8 @@ public class CoinSelectionService: ICoinSelectionService
         IFMUTXORepository fmutxoRepository,
         INBXplorerService nbXplorerService,
         IChannelOperationRequestRepository channelOperationRequestRepository,
-        IWalletWithdrawalRequestRepository walletWithdrawalRequestRepository
+        IWalletWithdrawalRequestRepository walletWithdrawalRequestRepository,
+        IUTXOTagRepository utxoTagRepository
     )
     {
         _logger = logger;
@@ -98,6 +105,7 @@ public class CoinSelectionService: ICoinSelectionService
         _nbXplorerService = nbXplorerService;
         _channelOperationRequestRepository = channelOperationRequestRepository;
         _walletWithdrawalRequestRepository = walletWithdrawalRequestRepository;
+        _utxoTagRepository = utxoTagRepository;
     }
 
     private IBitcoinRequestRepository GetRepository(BitcoinRequestType requestType)
@@ -140,19 +148,24 @@ public class CoinSelectionService: ICoinSelectionService
         return utxos.Confirmed.UTXOs.Where(utxo => lockedUTXOsList.Contains(utxo.Outpoint.ToString())).ToList();
     }
 
-    private async Task<List<UTXO>> FilterUnlockedUTXOs(UTXOChanges? utxoChanges)
+    private async Task<List<UTXO>> FilterLockedFrozenUTXOs(UTXOChanges? utxoChanges)
     {
         var lockedUTXOs = await _fmutxoRepository.GetLockedUTXOs();
+        var listLocked = lockedUTXOs.Select(utxo => $"{utxo.TxId}-{utxo.OutputIndex}").ToList(); 
+        var listFrozen = await GetFrozenUTXOs();
+        var frozenAndLockedOutpoints = new List<string>();
+        frozenAndLockedOutpoints.AddRange(listLocked);
+        frozenAndLockedOutpoints.AddRange(listFrozen);
+        
         utxoChanges.RemoveDuplicateUTXOs();
 
         var availableUTXOs = new List<UTXO>();
         foreach (var utxo in utxoChanges.Confirmed.UTXOs)
         {
-            var fmUtxo = _mapper.Map<UTXO, FMUTXO>(utxo);
 
-            if (lockedUTXOs.Contains(fmUtxo))
+            if (frozenAndLockedOutpoints.Contains(utxo.Outpoint.ToString()))
             {
-                _logger.LogInformation("Removing UTXO: {Utxo} from UTXO set as it is locked", fmUtxo.ToString());
+                _logger.LogInformation("Removing UTXO: {Utxo} from UTXO set as it is locked", utxo.Outpoint.ToString());
             }
             else
             {
@@ -162,11 +175,30 @@ public class CoinSelectionService: ICoinSelectionService
 
         return availableUTXOs;
     }
+    
+    public async Task<List<string>> GetFrozenUTXOs()
+    {
+        var frozenUTXOs = await _utxoTagRepository.GetByKeyValue(Constants.IsFrozenTag, "true");
+        var manuallyFrozenUTXOs = await _utxoTagRepository.GetByKeyValue(Constants.IsManuallyFrozenTag, "true");
+        var manuallyUnfrozenUTXOs = await _utxoTagRepository.GetByKeyValue(Constants.IsManuallyFrozenTag, "false");
+        var listFrozen = frozenUTXOs.Select(utxo => utxo.Outpoint).ToList();
+        var listManuallyFrozen = manuallyFrozenUTXOs.Select(utxo => utxo.Outpoint).ToList();
+        var listManuallyUnfrozen = manuallyUnfrozenUTXOs.Select(utxo => utxo.Outpoint).ToList();
+
+        // Merge manually frozen and frozen UTXOs and remove manually unfrozen UTXOs
+        List<string> frozenUTXOsList =
+            listFrozen
+            .Union(listManuallyFrozen)
+            .Except(listManuallyUnfrozen)
+            .ToList();
+        
+        return frozenUTXOsList;
+    }
 
     public async Task<List<UTXO>> GetAvailableUTXOsAsync(DerivationStrategyBase derivationStrategy)
     {
         var utxoChanges = await _nbXplorerService.GetUTXOsAsync(derivationStrategy);
-        return await FilterUnlockedUTXOs(utxoChanges);
+        return await FilterLockedFrozenUTXOs(utxoChanges);
     }
 
     public async Task<List<UTXO>> GetAvailableUTXOsAsync(DerivationStrategyBase derivationStrategy, CoinSelectionStrategy strategy, int limit, long amount, long closestTo)
@@ -180,7 +212,7 @@ public class CoinSelectionService: ICoinSelectionService
         {
             utxoChanges = await _nbXplorerService.GetUTXOsAsync(derivationStrategy);
         }
-        return await FilterUnlockedUTXOs(utxoChanges);
+        return await FilterLockedFrozenUTXOs(utxoChanges);
     }
 
     /// <summary>

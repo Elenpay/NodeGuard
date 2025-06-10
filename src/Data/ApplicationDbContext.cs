@@ -83,6 +83,10 @@ namespace NodeGuard.Data
                     );
             }
 
+            modelBuilder.Entity<UTXOTag>()
+                .HasIndex(u => new { u.Key, u.Outpoint })
+                .IsUnique();
+
             base.OnModelCreating(modelBuilder);
         }
 
@@ -107,6 +111,8 @@ namespace NodeGuard.Data
         public DbSet<InternalWallet> InternalWallets { get; set; }
 
         public DbSet<FMUTXO> FMUTXOs { get; set; }
+        
+        public DbSet<UTXOTag> UTXOTags { get; set; }
 
         public DbSet<LiquidityRule> LiquidityRules { get; set; }
         
