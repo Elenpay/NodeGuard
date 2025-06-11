@@ -135,9 +135,9 @@
                     @ShowRequestor(context)
                 </DisplayTemplate>
             </DataGridColumn>
-            <DataGridColumn TItem="WalletWithdrawalRequest" Filterable="false" PopupFieldColumnSize="ColumnSize.Is12" Editable="true" Validator="DestinationAddressValidator" Field="@nameof(WalletWithdrawalRequest.DestinationAddress)" Caption="@nameof(WalletWithdrawalRequest.DestinationAddress).Humanize()" Sortable="false" Displayable="@IsPendingRequestsColumnVisible(PendingWithdrawalsColumnName.DestinationAddress)">
+            <DataGridColumn TItem="WalletWithdrawalRequest" Filterable="false" PopupFieldColumnSize="ColumnSize.Is12" Editable="true" Validator="DestinationAddressValidator" Field="@nameof(WalletWithdrawalRequest.WalletWithdrawalRequestDestinations)" Caption="Destination Address" Sortable="false" Displayable="@IsPendingRequestsColumnVisible(PendingWithdrawalsColumnName.DestinationAddress)">
                 <DisplayTemplate>
-                    @context.DestinationAddress
+                    @context.WalletWithdrawalRequestDestinations?.FirstOrDefault()?.Address
                     @* TODO Copy and explorer buttons *@
                 </DisplayTemplate>
             </DataGridColumn>
@@ -322,9 +322,9 @@
                     @ShowRequestor(context)
                 </DisplayTemplate>
             </DataGridColumn>
-            <DataGridColumn TItem="WalletWithdrawalRequest" Editable="true" Validator="DestinationAddressValidator" Field="@nameof(WalletWithdrawalRequest.DestinationAddress)" Caption="@nameof(WalletWithdrawalRequest.DestinationAddress).Humanize()" Sortable="false" Displayable="@IsAllRequestsColumnVisible(AllWithdrawalsColumnName.DestinationAddress)">
+            <DataGridColumn TItem="WalletWithdrawalRequest" Editable="true" Validator="DestinationAddressValidator" Field="@nameof(WalletWithdrawalRequest.WalletWithdrawalRequestDestinations)" Caption="@nameof(WalletWithdrawalRequest.WalletWithdrawalRequestDestinations).Humanize()" Sortable="false" Displayable="@IsAllRequestsColumnVisible(AllWithdrawalsColumnName.DestinationAddress)">
                 <DisplayTemplate>
-                    @context.DestinationAddress
+                    @context.WalletWithdrawalRequestDestinations?.FirstOrDefault()?.Address
                     @* TODO Copy and explorer buttons *@
                 </DisplayTemplate>
             </DataGridColumn>
@@ -573,7 +573,6 @@
         if (arg.Item == null) return;
         var amount = _selectedUTXOs.Count > 0 ? SelectedUTXOsValue() : _amount;
         arg.Item.Wallet = await WalletRepository.GetById(arg.Item.WalletId);
-        arg.Item.Amount = amount;
         arg.Item.Changeless = _selectedUTXOs.Count > 0;
         arg.Item.WithdrawAllFunds = _isCheckedAllFunds || _amount == _selectedRequestWalletBalance;
         arg.Item.MempoolRecommendedFeesType = _selectedMempoolRecommendedFeesType;
