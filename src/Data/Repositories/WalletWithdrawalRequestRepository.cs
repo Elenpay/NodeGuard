@@ -159,7 +159,7 @@ namespace NodeGuard.Data.Repositories
                 return (false, "Balance could not be retrieved from the wallet.");
             }
 
-            var requestMoneyAmount = new Money(type.Amount, MoneyUnit.BTC);
+            var requestMoneyAmount = new Money(type.TotalAmount, MoneyUnit.BTC);
 
             if ((Money)balance.Confirmed < requestMoneyAmount)
             {

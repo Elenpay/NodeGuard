@@ -171,7 +171,7 @@ namespace NodeGuard.Data.Models
         }
 
         [NotMapped]
-        public decimal Amount =>
+        public decimal TotalAmount =>
             WalletWithdrawalRequestDestinations?.Sum(x => x.Amount) ?? 0m;
 
         [NotMapped]

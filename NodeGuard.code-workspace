@@ -7,5 +7,7 @@
 			"path": "src"
 		}
 	],
-	"settings": {}
+	"settings": {
+		"editor.formatOnSave": false
+	}
 }
