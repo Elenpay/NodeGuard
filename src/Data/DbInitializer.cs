@@ -74,12 +74,13 @@ namespace NodeGuard.Data
                 {
                     applicationDbContext.Database.Migrate();
                     dataprotectionKeysContext.Database.Migrate();
-                    
+
                     isConnected = true;
                 }
                 catch (Exception e)
                 {
                     logger.LogError(e, "Error while migrating");
+                    throw new Exception("Error while migrating the database", e);
                 }
 
                 Thread.Sleep(1_000);
@@ -327,7 +328,7 @@ namespace NodeGuard.Data
 
                     var lastEventId = evts.LastEventId;
                     logger?.LogInformation(lastEventId.ToString());
-                    
+
                     minerRPC.SendToAddress(legacyMultisigAddress, legacyMultisigFundCoins);
                     minerRPC.SendToAddress(multisigAddress, multisigFundCoins);
                     minerRPC.SendToAddress(singlesigAddress, singlesigFundCoins);
@@ -335,7 +336,7 @@ namespace NodeGuard.Data
 
                     //6 blocks to confirm
                     minerRPC.Generate(6);
-                    
+
                     var notification1 = WaitNbxplorerNotification(evts, legacyMultisigDerivationStrategy, lastEventId);
                     var notification2 = WaitNbxplorerNotification(evts, multisigDerivationStrategy, lastEventId);
                     var notification3 = WaitNbxplorerNotification(evts, singlesigDerivationStrategy, lastEventId);
@@ -345,7 +346,7 @@ namespace NodeGuard.Data
                     {
                         throw new Exception("Wallets are not initialized");
                     }
-                    
+
                     var legacyMultisigBalance = nbxplorerClient.GetBalance(legacyMultisigDerivationStrategy);
                     var multisigBalance = nbxplorerClient.GetBalance(multisigDerivationStrategy);
                     var singleSigbalance = nbxplorerClient.GetBalance(singlesigDerivationStrategy);
@@ -376,7 +377,7 @@ namespace NodeGuard.Data
                     applicationDbContext.Add(testingSinglesigWallet);
                     applicationDbContext.Add(testingSingleSigBIP39Wallet);
                 }
-                
+
                 // API Tokens generation for services
                 var authenticatedServices = new Dictionary<string, string>
                 {
@@ -385,10 +386,10 @@ namespace NodeGuard.Data
                     { "Liquidator", "8rvSsUGeyXXdDQrHctcTey/xtHdZQEn945KHwccKp9Q=" },
                     { "ElenPay", "2otDr3IrdARnarQZU8RO0ImQko6CDICyLmGUflKUQWA=" }
                 };
-                
+
                 var existingTokens = applicationDbContext.ApiTokens.Where(token => authenticatedServices.Keys.Contains(token.Name)).ToList();
 
-                
+
                 if (existingTokens.Count != authenticatedServices.Count && adminUser != null)
                 {
                     foreach (var service in authenticatedServices)
@@ -462,7 +463,7 @@ namespace NodeGuard.Data
                 IsBlocked = false,
                 CreatorId = userId
             };
-            
+
             apiToken.SetCreationDatetime();
             apiToken.SetUpdateDatetime();
 
