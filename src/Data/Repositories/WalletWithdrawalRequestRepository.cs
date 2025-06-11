@@ -64,6 +64,7 @@ namespace NodeGuard.Data.Repositories
                 .ThenInclude(x => x.Keys)
                 .Include(x => x.UserRequestor)
                 .Include(x => x.WalletWithdrawalRequestPSBTs)
+                .Include(x => x.WalletWithdrawalRequestDestinations)
                 .SingleOrDefaultAsync(x => x.Id == id);
 
             return request;
@@ -92,6 +93,7 @@ namespace NodeGuard.Data.Repositories
                 .Include(x => x.Wallet).ThenInclude(x => x.Keys)
                 .Include(x => x.UserRequestor)
                 .Include(x => x.WalletWithdrawalRequestPSBTs)
+                .Include(x => x.WalletWithdrawalRequestDestinations)
                 .AsSplitQuery()
                 .ToListAsync();
         }
@@ -104,6 +106,7 @@ namespace NodeGuard.Data.Repositories
                 .Include(x => x.Wallet).ThenInclude(x => x.Keys)
                 .Include(x => x.UserRequestor)
                 .Include(x => x.WalletWithdrawalRequestPSBTs)
+                .Include(x => x.WalletWithdrawalRequestDestinations)
                 .Where(request => request.Wallet != null
                                 && request.Wallet.Keys.Count(key => userId == key.UserId) > request.WalletWithdrawalRequestPSBTs.Count(req => req.SignerId == userId)
                                 && (request.Status == WalletWithdrawalRequestStatus.Pending || request.Status == WalletWithdrawalRequestStatus.PSBTSignaturesPending))
@@ -119,6 +122,7 @@ namespace NodeGuard.Data.Repositories
                 .Include(x => x.Wallet).ThenInclude(x => x.Keys)
                 .Include(x => x.UserRequestor)
                 .Include(x => x.WalletWithdrawalRequestPSBTs)
+                .Include(x => x.WalletWithdrawalRequestDestinations)
                 .Where(request => request.Status == WalletWithdrawalRequestStatus.Pending || request.Status == WalletWithdrawalRequestStatus.PSBTSignaturesPending)
                 .AsSplitQuery()
                 .ToListAsync();
@@ -272,6 +276,7 @@ namespace NodeGuard.Data.Repositories
                                   || request.Status == WalletWithdrawalRequestStatus.Pending
                                   || request.Status == WalletWithdrawalRequestStatus.PSBTSignaturesPending)
                 .Include(request => request.Wallet)
+                .Include(x => x.WalletWithdrawalRequestDestinations)
                 .ToListAsync();
 
             return walletWithdrawalRequests;
@@ -284,6 +289,7 @@ namespace NodeGuard.Data.Repositories
             var walletWithdrawalRequests = await applicationDbContext.WalletWithdrawalRequests
                 .Where(request => request.Status == WalletWithdrawalRequestStatus.OnChainConfirmationPending)
                 .Include(request => request.Wallet)
+                .Include(x => x.WalletWithdrawalRequestDestinations)
                 .ToListAsync();
 
             return walletWithdrawalRequests;
