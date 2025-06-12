@@ -424,7 +424,8 @@
 
 <BumpfeeModal
     @ref="_bumpfeeRef"
-    WithdrawalRequest="_selectedRequest"/>
+    WithdrawalRequest="_selectedRequest"
+    SubmitBumpfeeModal="@SubmitBumpfeeModal"/>
 
 <CancelOrRejectPopup
     @ref="@_rejectCancelModalRef"
@@ -877,6 +878,68 @@
             await _psbtSignRef.HideModal();
             await GetData();
             StateHasChanged();
+        }
+    }
+
+    private async Task CreateNewWithdrawal(WalletWithdrawalRequest newRequest)
+    {
+        if (newRequest.Wallet.IsHotWallet)
+        {
+            await GetData();
+            _selectedRequest = newRequest;
+            await _confirmationModal.ShowModal();
+            return;
+        }
+
+        newRequest.Wallet = null;
+        var addResult = await WalletWithdrawalRequestRepository.AddAsync(newRequest);
+
+
+        if (addResult.Item1)
+        {
+            ToastService.ShowSuccess("Success");
+            await GetData();
+
+            if (_selectedUTXOs.Count > 0)
+            {
+                await CoinSelectionService.LockUTXOs(_selectedUTXOs, newRequest, BitcoinRequestType.WalletWithdrawal);
+            }
+
+            _utxoSelectorModalRef.ClearModal();
+        }
+        else
+        {
+            ToastService.ShowError("Something went wrong");
+            _userPendingRequests.Remove(newRequest);
+        }
+    }
+
+    private async Task Bumpfee(WalletWithdrawalRequest request)
+    {
+        try
+        {
+            await CreateNewWithdrawal(request);
+            StateHasChanged();
+        } catch {
+            ToastService.ShowError("Something went wrong");
+        }
+    }
+
+    private async void SubmitBumpfeeModal()
+    {
+        if (_bumpfeeRef != null && _bumpfeeRef.WithdrawalRequest != null)
+        {
+            _selectedMempoolRecommendedFeesType = _bumpfeeRef.WithdrawalRequest.MempoolRecommendedFeesType;
+            if (_bumpfeeRef.WithdrawalRequest.CustomFeeRate != null)
+                _customSatPerVbAmount = (long)_bumpfeeRef.WithdrawalRequest.CustomFeeRate;
+            if (_selectedRequest != null) {
+                await Bumpfee(_selectedRequest);
+            } else {
+                ToastService.ShowError("Error while getting the withdrawal");
+            }
+            await _bumpfeeRef.HideModal();
+        } else {
+            ToastService.ShowError("Something went wrong");
         }
     }
 

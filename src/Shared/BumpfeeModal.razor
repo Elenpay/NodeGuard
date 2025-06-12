@@ -57,6 +57,9 @@
     [Parameter]
     public WalletWithdrawalRequest? WithdrawalRequest { get; set; }
 
+    [Parameter]
+    public Action SubmitBumpfeeModal { get; set; }
+
     private decimal? _selectedWalletBalance;
     private decimal _btcPrice;
 
@@ -75,8 +78,11 @@
         long _currentSatsPerVbAmount = (long?)await NBXplorerService.GetFeesByType(WithdrawalRequest.MempoolRecommendedFeesType) ?? 1;
         if (_customSatPerVbAmount <= _currentSatsPerVbAmount) {
             ToastService.ShowError("Fee must be greater than the current one");
+        } else {
+            WithdrawalRequest.MempoolRecommendedFeesType = _selectedMempoolRecommendedFeesType;
+            WithdrawalRequest.CustomFeeRate = _customSatPerVbAmount;
+            SubmitBumpfeeModal?.Invoke();
         }
-        await HideModal();
     }
     
     public async Task ShowModal()
