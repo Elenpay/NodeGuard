@@ -135,11 +135,19 @@
                     @ShowRequestor(context)
                 </DisplayTemplate>
             </DataGridColumn>
-            <DataGridColumn TItem="WalletWithdrawalRequest" Filterable="false" PopupFieldColumnSize="ColumnSize.Is12" Editable="true" Validator="DestinationAddressValidator" Field="@nameof(WalletWithdrawalRequest.WalletWithdrawalRequestDestinations)" Caption="Destination Address" Sortable="false" Displayable="@IsPendingRequestsColumnVisible(PendingWithdrawalsColumnName.DestinationAddress)">
+            <DataGridColumn TItem="WalletWithdrawalRequest" Filterable="false" PopupFieldColumnSize="ColumnSize.Is12" Editable="true" Validator="DestinationAddressValidator" Caption="Destination Address" Sortable="false" Displayable="@IsPendingRequestsColumnVisible(PendingWithdrawalsColumnName.DestinationAddress)">
                 <DisplayTemplate>
-                    @context.WalletWithdrawalRequestDestinations?.FirstOrDefault()?.Address
-                    @* TODO Copy and explorer buttons *@
+                    @(context.WalletWithdrawalRequestDestinations?.FirstOrDefault()?.Address ?? "No address provided")
                 </DisplayTemplate>
+                <EditTemplate>
+                    <Validation Validator="@DestinationAddressValidator">
+                        <TextEdit Text="@_destinationAddress" TextChanged="(text) => OnDestinationAddressChanged(context, text)">
+                            <Feedback>
+                                <ValidationError/>
+                            </Feedback>
+                        </TextEdit>
+                    </Validation>
+                </EditTemplate>
             </DataGridColumn>
             <DataGridColumn TItem="WalletWithdrawalRequest" PopupFieldColumnSize="ColumnSize.Is6" Field="@nameof(WalletWithdrawalRequest.WithdrawAllFunds)" Caption="@nameof(WalletWithdrawalRequest.WithdrawAllFunds).Humanize(LetterCasing.Sentence)" Editable="true" Displayable="false">
                 <EditTemplate>
@@ -154,10 +162,10 @@
                     }
                 </EditTemplate>
             </DataGridColumn>
-            <DataGridColumn TItem="WalletWithdrawalRequest" Filterable="false" PopupFieldColumnSize="ColumnSize.Is12" Editable="true" Field="@nameof(WalletWithdrawalRequest.Amount)" Caption="Amount" Sortable="false" Displayable="@IsPendingRequestsColumnVisible(PendingWithdrawalsColumnName.Amount)">
+            <DataGridColumn TItem="WalletWithdrawalRequest" Filterable="false" PopupFieldColumnSize="ColumnSize.Is12" Editable="true" Caption="Amount" Sortable="false" Displayable="@IsPendingRequestsColumnVisible(PendingWithdrawalsColumnName.Amount)">
                 <DisplayTemplate>
                     @{
-                        @($"{context.Amount:f8} BTC ({Math.Round(PriceConversionService.BtcToUsdConversion(context.Amount, _btcPrice), 2)} USD)")
+                        @($"{context.TotalAmount:f8} BTC ({Math.Round(PriceConversionService.BtcToUsdConversion(context.TotalAmount, _btcPrice), 2)} USD)")
                     }
                 </DisplayTemplate>
                 <EditTemplate>
@@ -328,10 +336,10 @@
                     @* TODO Copy and explorer buttons *@
                 </DisplayTemplate>
             </DataGridColumn>
-            <DataGridColumn TItem="WalletWithdrawalRequest" Editable="true" Field="@nameof(WalletWithdrawalRequest.Amount)" Caption="Amount (BTC)" Sortable="false" Displayable="@IsAllRequestsColumnVisible(AllWithdrawalsColumnName.Amount)">
+            <DataGridColumn TItem="WalletWithdrawalRequest" Editable="false" Field="@nameof(WalletWithdrawalRequest.TotalAmount)" Caption="Amount (BTC)" Sortable="false" Displayable="@IsAllRequestsColumnVisible(AllWithdrawalsColumnName.Amount)">
                 <DisplayTemplate>
                     @{
-                        @($"{context.Amount:f8} BTC ({Math.Round(PriceConversionService.BtcToUsdConversion(context.Amount, _btcPrice), 2)} USD)")
+                        @($"{context.TotalAmount:f8} BTC ({Math.Round(PriceConversionService.BtcToUsdConversion(context.TotalAmount, _btcPrice), 2)} USD)")
                     }
                 </DisplayTemplate>
 
@@ -477,6 +485,7 @@
     private bool _isCheckedAllFunds;
     private MempoolRecommendedFeesType _selectedMempoolRecommendedFeesType;
     private long _customSatPerVbAmount = 1;
+    private string _destinationAddress = string.Empty;
 
     public abstract class PendingWithdrawalsColumnName
     {
@@ -577,6 +586,20 @@
         arg.Item.WithdrawAllFunds = _isCheckedAllFunds || _amount == _selectedRequestWalletBalance;
         arg.Item.MempoolRecommendedFeesType = _selectedMempoolRecommendedFeesType;
         arg.Item.CustomFeeRate = _customSatPerVbAmount;
+        
+        // Set the destination address and amount from the UI properties
+        if (!string.IsNullOrEmpty(_destinationAddress))
+        {
+            arg.Item.WalletWithdrawalRequestDestinations = new List<WalletWithdrawalRequestDestination>
+            {
+                new WalletWithdrawalRequestDestination
+                {
+                    Address = _destinationAddress,
+                    Amount = amount
+                }
+            };
+        }
+        
         if (arg.Item.Wallet.IsHotWallet)
         {
             await GetData();
@@ -694,10 +717,10 @@
         {
             var balance = await BitcoinService.GetWalletConfirmedBalance(wallet);
 
-            if (arg.Item.Amount > balance.Item1)
+            if (arg.Item.TotalAmount > balance.Item1)
             {
                 ToastService.ShowError(
-                    $"The confirmed balance({balance.Item1:f8} BTC) for the selected wallet is less than the amount requested to withdraw ({arg.Item.Amount:f8} BTC)");
+                    $"The confirmed balance({balance.Item1:f8} BTC) for the selected wallet is less than the amount requested to withdraw ({arg.Item.TotalAmount:f8} BTC)");
                 await GetData();
                 return true;
             }
@@ -729,6 +752,7 @@
         {
             obj.UserRequestorId = LoggedUser.Id;
             _selectedRequestWalletBalance = null;
+            _destinationAddress = string.Empty;
         }
     }
 
@@ -1062,6 +1086,14 @@
         await OnMempoolFeeRateChange(_selectedMempoolRecommendedFeesType);
 
         _amount = _minimumWithdrawalAmount;
+        _destinationAddress = string.Empty;
+    }
+
+    private void OnDestinationAddressChanged(CellEditContext<WalletWithdrawalRequest> context, string text)
+    {
+        _destinationAddress = text;
+        var amount = _selectedUTXOs.Count > 0 ? SelectedUTXOsValue() : _amount;
+        context.CellValue = new List<WalletWithdrawalRequestDestination> { new() { Address = text, Amount = amount } };
     }
 
 }
