@@ -222,13 +222,13 @@ public class NodeGuardService : Nodeguard.NodeGuardService.NodeGuardServiceBase,
             {
                 WalletId = request.WalletId,
                 WalletWithdrawalRequestDestinations =
-                {
+                [
                     new WalletWithdrawalRequestDestination()
                     {
                         Address = request.Address,
                         Amount = amount,
                     }
-                },
+                ],
                 Description = request.Description,
                 Status = wallet.IsHotWallet
                     ? WalletWithdrawalRequestStatus.PSBTSignaturesPending
