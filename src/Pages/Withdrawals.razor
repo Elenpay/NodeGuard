@@ -135,13 +135,13 @@
                     @ShowRequestor(context)
                 </DisplayTemplate>
             </DataGridColumn>
-            <DataGridColumn TItem="WalletWithdrawalRequest" Filterable="false" PopupFieldColumnSize="ColumnSize.Is12" Editable="true" Validator="DestinationAddressValidator" Caption="Destination Address" Sortable="false" Displayable="@IsPendingRequestsColumnVisible(PendingWithdrawalsColumnName.DestinationAddress)">
+            <DataGridColumn TItem="WalletWithdrawalRequest" Filterable="false" PopupFieldColumnSize="ColumnSize.Is12" Editable="true" Validator="DestinationAddressValidator" Field="@nameof(WalletWithdrawalRequest.WalletWithdrawalRequestDestinations)" Caption="Destination Address" Sortable="false" Displayable="@IsPendingRequestsColumnVisible(PendingWithdrawalsColumnName.DestinationAddress)">
                 <DisplayTemplate>
                     @(context.WalletWithdrawalRequestDestinations?.FirstOrDefault()?.Address ?? "No address provided")
                 </DisplayTemplate>
                 <EditTemplate>
                     <Validation Validator="@DestinationAddressValidator">
-                        <TextEdit Text="@_destinationAddress" TextChanged="(text) => OnDestinationAddressChanged(context, text)">
+                        <TextEdit Text="@(GetDestinationAddressFromCellValue(context.CellValue))" TextChanged="(text) => OnDestinationAddressChanged(context, text)">
                             <Feedback>
                                 <ValidationError/>
                             </Feedback>
@@ -330,7 +330,7 @@
                     @ShowRequestor(context)
                 </DisplayTemplate>
             </DataGridColumn>
-            <DataGridColumn TItem="WalletWithdrawalRequest" Editable="true" Validator="DestinationAddressValidator" Field="@nameof(WalletWithdrawalRequest.WalletWithdrawalRequestDestinations)" Caption="@nameof(WalletWithdrawalRequest.WalletWithdrawalRequestDestinations).Humanize()" Sortable="false" Displayable="@IsAllRequestsColumnVisible(AllWithdrawalsColumnName.DestinationAddress)">
+            <DataGridColumn TItem="WalletWithdrawalRequest" Editable="true" Validator="DestinationAddressValidator" Field="@nameof(WalletWithdrawalRequest.WalletWithdrawalRequestDestinations)" Caption="Destination Address" Sortable="false" Displayable="@IsAllRequestsColumnVisible(AllWithdrawalsColumnName.DestinationAddress)">
                 <DisplayTemplate>
                     @context.WalletWithdrawalRequestDestinations?.FirstOrDefault()?.Address
                     @* TODO Copy and explorer buttons *@
@@ -485,7 +485,6 @@
     private bool _isCheckedAllFunds;
     private MempoolRecommendedFeesType _selectedMempoolRecommendedFeesType;
     private long _customSatPerVbAmount = 1;
-    private string _destinationAddress = string.Empty;
 
     public abstract class PendingWithdrawalsColumnName
     {
@@ -586,19 +585,6 @@
         arg.Item.WithdrawAllFunds = _isCheckedAllFunds || _amount == _selectedRequestWalletBalance;
         arg.Item.MempoolRecommendedFeesType = _selectedMempoolRecommendedFeesType;
         arg.Item.CustomFeeRate = _customSatPerVbAmount;
-        
-        // Set the destination address and amount from the UI properties
-        if (!string.IsNullOrEmpty(_destinationAddress))
-        {
-            arg.Item.WalletWithdrawalRequestDestinations = new List<WalletWithdrawalRequestDestination>
-            {
-                new WalletWithdrawalRequestDestination
-                {
-                    Address = _destinationAddress,
-                    Amount = amount
-                }
-            };
-        }
         
         if (arg.Item.Wallet.IsHotWallet)
         {
@@ -752,7 +738,6 @@
         {
             obj.UserRequestorId = LoggedUser.Id;
             _selectedRequestWalletBalance = null;
-            _destinationAddress = string.Empty;
         }
     }
 
@@ -1086,14 +1071,21 @@
         await OnMempoolFeeRateChange(_selectedMempoolRecommendedFeesType);
 
         _amount = _minimumWithdrawalAmount;
-        _destinationAddress = string.Empty;
     }
 
     private void OnDestinationAddressChanged(CellEditContext<WalletWithdrawalRequest> context, string text)
     {
-        _destinationAddress = text;
         var amount = _selectedUTXOs.Count > 0 ? SelectedUTXOsValue() : _amount;
         context.CellValue = new List<WalletWithdrawalRequestDestination> { new() { Address = text, Amount = amount } };
+    }
+
+    private string GetDestinationAddressFromCellValue(object cellValue)
+    {
+        if (cellValue is List<WalletWithdrawalRequestDestination> destinations && destinations.Any())
+        {
+            return destinations.First().Address ?? string.Empty;
+        }
+        return string.Empty;
     }
 
 }
