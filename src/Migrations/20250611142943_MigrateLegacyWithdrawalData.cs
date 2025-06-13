@@ -58,27 +58,6 @@ namespace NodeGuard.Migrations
         /// <inheritdoc />
         protected override void Down(MigrationBuilder migrationBuilder)
         {
-            // Rollback: Delete the migrated destinations in an explicit transaction
-            migrationBuilder.Sql(@"
-                BEGIN;
-                
-                -- Delete only the migrated destinations (those that match legacy withdrawal requests)
-                DELETE FROM ""WalletWithdrawalRequestDestinations""
-                WHERE ""WalletWithdrawalRequestId"" IN (
-                    SELECT ""Id"" FROM ""WalletWithdrawalRequests""
-                    WHERE ""Amount"" > 0 AND ""DestinationAddress"" IS NOT NULL AND ""DestinationAddress"" != ''
-                )
-                AND ""Address"" IN (
-                    SELECT ""DestinationAddress"" FROM ""WalletWithdrawalRequests""
-                    WHERE ""Amount"" > 0 AND ""DestinationAddress"" IS NOT NULL AND ""DestinationAddress"" != ''
-                )
-                AND ""Amount"" IN (
-                    SELECT ""Amount"" FROM ""WalletWithdrawalRequests""
-                    WHERE ""Amount"" > 0 AND ""DestinationAddress"" IS NOT NULL AND ""DestinationAddress"" != ''
-                );
-                
-                COMMIT;
-            ");
         }
     }
 }
