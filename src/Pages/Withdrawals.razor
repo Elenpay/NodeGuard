@@ -193,7 +193,7 @@
             </DataGridColumn>
             <DataGridColumn TItem="WalletWithdrawalRequest" Filterable="false" PopupFieldColumnSize="ColumnSize.Is12" Editable="true" Field="@nameof(WalletWithdrawalRequest.CustomFeeRate)" Caption="Fee rate" Sortable="false" Displayable="@IsPendingRequestsColumnVisible(PendingWithdrawalsColumnName.FeeRate)">
                 <DisplayTemplate>
-                    @(context.MempoolRecommendedFeesType == MempoolRecommendedFeesType.CustomFee ? $"{context.CustomFeeRate} sats/vb" : context.MempoolRecommendedFeesType.Humanize())
+                    @(context.MempoolRecommendedFeesType == MempoolRecommendedFeesType.CustomFee ? $"Custom fee ({context.CustomFeeRate} sats/vb)" : $"{context.MempoolRecommendedFeesType.Humanize()} ({context.CustomFeeRate} sats/vb)")
                 </DisplayTemplate>
                 <EditTemplate>
                     <div class="d-flex">
@@ -338,7 +338,7 @@
             </DataGridColumn>
             <DataGridColumn TItem="WalletWithdrawalRequest" Filterable="true" Editable="false" Field="@nameof(WalletWithdrawalRequest.CustomFeeRate)" Caption="Fee rate" Sortable="false" Displayable="@IsAllRequestsColumnVisible(PendingWithdrawalsColumnName.FeeRate)">
                             <DisplayTemplate>
-                                @(context.MempoolRecommendedFeesType == MempoolRecommendedFeesType.CustomFee ? $"{context.CustomFeeRate} sats/vb" : context.MempoolRecommendedFeesType.Humanize())
+                                @(context.MempoolRecommendedFeesType == MempoolRecommendedFeesType.CustomFee ? $"Custom fee ({context.CustomFeeRate} sats/vb)" : $"{context.MempoolRecommendedFeesType.Humanize()} ({context.CustomFeeRate} sats/vb)")
                             </DisplayTemplate>
             </DataGridColumn>
             <DataGridColumn TItem="WalletWithdrawalRequest" Field="@nameof(WalletWithdrawalRequest.WalletId)" Caption="Signatures Collected" Sortable="false" Displayable="@IsAllRequestsColumnVisible(AllWithdrawalsColumnName.SignaturesCollected)">
