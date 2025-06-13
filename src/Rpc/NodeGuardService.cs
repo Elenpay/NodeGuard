@@ -221,8 +221,14 @@ public class NodeGuardService : Nodeguard.NodeGuardService.NodeGuardServiceBase,
             withdrawalRequest = new WalletWithdrawalRequest()
             {
                 WalletId = request.WalletId,
-                Amount = amount,
-                DestinationAddress = request.Address,
+                WalletWithdrawalRequestDestinations =
+                [
+                    new WalletWithdrawalRequestDestination()
+                    {
+                        Address = request.Address,
+                        Amount = amount,
+                    }
+                ],
                 Description = request.Description,
                 Status = wallet.IsHotWallet
                     ? WalletWithdrawalRequestStatus.PSBTSignaturesPending

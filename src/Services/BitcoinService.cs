@@ -149,7 +149,17 @@ namespace NodeGuard.Services
             {
                 var balanceResponse = await _nbXplorerService.GetBalanceAsync(derivationStrategy);
 
-                walletWithdrawalRequest.Amount = ((Money)balanceResponse.Confirmed).ToUnit(MoneyUnit.BTC);
+                var firstDestination = walletWithdrawalRequest.WalletWithdrawalRequestDestinations?.FirstOrDefault();
+                if (firstDestination != null)
+                {
+                    firstDestination.Amount = ((Money)balanceResponse.Confirmed).ToUnit(MoneyUnit.BTC);
+                }
+                else
+                {
+                    _logger.LogError(
+                        "Cannot set the amount for a full withdrawal of the wallet funds, no destination address was provided");
+                    throw new ArgumentException("No destination address was provided for the full withdrawal request");
+                }
 
                 var update = _walletWithdrawalRequestRepository.Update(walletWithdrawalRequest);
                 if (!update.Item1)
@@ -219,7 +229,12 @@ namespace NodeGuard.Services
 
                 var changelessAmount = selectedUTXOs.Sum(u => (Money)u.Value);
                 var amount = new Money(walletWithdrawalRequest.SatsAmount, MoneyUnit.Satoshi);
-                var destination = BitcoinAddress.Create(walletWithdrawalRequest.DestinationAddress, nbXplorerNetwork);
+                var destinationAddress = walletWithdrawalRequest.WalletWithdrawalRequestDestinations?.FirstOrDefault()?.Address;
+                if (string.IsNullOrEmpty(destinationAddress))
+                {
+                    throw new ArgumentException("Destination address is null or empty.");
+                }
+                var destination = BitcoinAddress.Create(destinationAddress, nbXplorerNetwork);
 
                 builder.SetSigningOptions(SigHash.All)
                     .SetChange(changeAddress.Address)
@@ -448,11 +463,19 @@ namespace NodeGuard.Services
                 }
 
                 //We track the destination address
-                var trackedSourceAddress = TrackedSource.Create(BitcoinAddress.Create(
-                    walletWithdrawalRequest.DestinationAddress,
-                    CurrentNetworkHelper.GetCurrentNetwork()));
+                var destination = walletWithdrawalRequest.WalletWithdrawalRequestDestinations?.FirstOrDefault();
 
-                await _nbXplorerService.TrackAsync(trackedSourceAddress, new TrackWalletRequest { }, default);
+                if (destination?.Address != null)
+                {
+                    var trackedSourceAddress = TrackedSource.Create(
+                        BitcoinAddress.Create(destination.Address, CurrentNetworkHelper.GetCurrentNetwork()));
+
+                    await _nbXplorerService.TrackAsync(trackedSourceAddress, new TrackWalletRequest { }, default);
+                }
+                else
+                {
+                    _logger.LogWarning("No valid destination address found to track for withdrawal request id: {RequestId}", walletWithdrawalRequest.Id);
+                }
             }
             catch (Exception e)
             {

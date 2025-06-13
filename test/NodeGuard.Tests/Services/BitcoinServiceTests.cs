@@ -139,8 +139,14 @@ public class BitcoinServiceTests
             Status = WalletWithdrawalRequestStatus.Pending,
             Wallet = wallet,
             WalletWithdrawalRequestPSBTs = new List<WalletWithdrawalRequestPSBT>(),
-            Amount = 0.01m,
-            DestinationAddress = "bcrt1q8k3av6q5yp83rn332lx8a90k6kukhg28hs5qw7krdq95t629hgsqk6ztmf"
+            WalletWithdrawalRequestDestinations = new List<WalletWithdrawalRequestDestination>
+            {
+                new WalletWithdrawalRequestDestination
+                {
+                    Address = "bcrt1q8k3av6q5yp83rn332lx8a90k6kukhg28hs5qw7krdq95t629hgsqk6ztmf",
+                    Amount = 0.01m
+                }
+            }
         };
 
         var walletWithdrawalRequestRepository = new Mock<IWalletWithdrawalRequestRepository>();
@@ -211,8 +217,14 @@ public class BitcoinServiceTests
             Status = WalletWithdrawalRequestStatus.Pending,
             Wallet = wallet,
             WalletWithdrawalRequestPSBTs = new List<WalletWithdrawalRequestPSBT>(),
-            Amount = 0.01m,
-            DestinationAddress = "bcrt1q8k3av6q5yp83rn332lx8a90k6kukhg28hs5qw7krdq95t629hgsqk6ztmf"
+            WalletWithdrawalRequestDestinations = new List<WalletWithdrawalRequestDestination>
+            {
+                new WalletWithdrawalRequestDestination
+                {
+                    Address = "bcrt1q8k3av6q5yp83rn332lx8a90k6kukhg28hs5qw7krdq95t629hgsqk6ztmf",
+                    Amount = 0.01m
+                }
+            }
         };
 
         var walletWithdrawalRequestRepository = new Mock<IWalletWithdrawalRequestRepository>();
@@ -284,8 +296,14 @@ public class BitcoinServiceTests
             Status = WalletWithdrawalRequestStatus.Pending,
             Wallet = wallet,
             WalletWithdrawalRequestPSBTs = new List<WalletWithdrawalRequestPSBT>(),
-            Amount = 0.01m,
-            DestinationAddress = "bcrt1q8k3av6q5yp83rn332lx8a90k6kukhg28hs5qw7krdq95t629hgsqk6ztmf"
+            WalletWithdrawalRequestDestinations = new List<WalletWithdrawalRequestDestination>
+            {
+                new WalletWithdrawalRequestDestination
+                {
+                    Address = "bcrt1q8k3av6q5yp83rn332lx8a90k6kukhg28hs5qw7krdq95t629hgsqk6ztmf",
+                    Amount = 0.01m
+                }
+            }
         };
 
         var walletWithdrawalRequestRepository = new Mock<IWalletWithdrawalRequestRepository>();
@@ -356,8 +374,14 @@ public class BitcoinServiceTests
             Status = WalletWithdrawalRequestStatus.Pending,
             Wallet = wallet,
             WalletWithdrawalRequestPSBTs = new List<WalletWithdrawalRequestPSBT>(),
-            Amount = 0.01m,
-            DestinationAddress = "bcrt1q8k3av6q5yp83rn332lx8a90k6kukhg28hs5qw7krdq95t629hgsqk6ztmf"
+            WalletWithdrawalRequestDestinations = new List<WalletWithdrawalRequestDestination>
+            {
+                new WalletWithdrawalRequestDestination
+                {
+                    Address = "bcrt1q8k3av6q5yp83rn332lx8a90k6kukhg28hs5qw7krdq95t629hgsqk6ztmf",
+                    Amount = 0.01m
+                }
+            }
         };
 
         var walletWithdrawalRequestRepository = new Mock<IWalletWithdrawalRequestRepository>();
@@ -441,8 +465,14 @@ public class BitcoinServiceTests
             Status = WalletWithdrawalRequestStatus.Pending,
             Wallet = wallet,
             WalletWithdrawalRequestPSBTs = new List<WalletWithdrawalRequestPSBT>(),
-            Amount = 0.01m,
-            DestinationAddress = "bcrt1q8k3av6q5yp83rn332lx8a90k6kukhg28hs5qw7krdq95t629hgsqk6ztmf"
+            WalletWithdrawalRequestDestinations = new List<WalletWithdrawalRequestDestination>
+            {
+                new WalletWithdrawalRequestDestination
+                {
+                    Address = "bcrt1q8k3av6q5yp83rn332lx8a90k6kukhg28hs5qw7krdq95t629hgsqk6ztmf",
+                    Amount = 0.01m
+                }
+            }
         };
 
         var walletWithdrawalRequestRepository = new Mock<IWalletWithdrawalRequestRepository>();
@@ -532,8 +562,14 @@ public class BitcoinServiceTests
             Status = WalletWithdrawalRequestStatus.Pending,
             Wallet = wallet,
             WalletWithdrawalRequestPSBTs = new List<WalletWithdrawalRequestPSBT>(),
-            Amount = 0.01m,
-            DestinationAddress = "bcrt1q8k3av6q5yp83rn332lx8a90k6kukhg28hs5qw7krdq95t629hgsqk6ztmf"
+            WalletWithdrawalRequestDestinations = new List<WalletWithdrawalRequestDestination>
+            {
+                new WalletWithdrawalRequestDestination
+                {
+                    Address = "bcrt1q8k3av6q5yp83rn332lx8a90k6kukhg28hs5qw7krdq95t629hgsqk6ztmf",
+                    Amount = 0.01m
+                }
+            }
         };
 
         var walletWithdrawalRequestRepository = new Mock<IWalletWithdrawalRequestRepository>();
@@ -636,8 +672,14 @@ public class BitcoinServiceTests
             Status = WalletWithdrawalRequestStatus.Pending,
             Wallet = wallet,
             WalletWithdrawalRequestPSBTs = new List<WalletWithdrawalRequestPSBT>(),
-            Amount = 0.09m,
-            DestinationAddress = "bcrt1q8k3av6q5yp83rn332lx8a90k6kukhg28hs5qw7krdq95t629hgsqk6ztmf",
+            WalletWithdrawalRequestDestinations = new List<WalletWithdrawalRequestDestination>
+            {
+                new WalletWithdrawalRequestDestination
+                {
+                    Address = "bcrt1q8k3av6q5yp83rn332lx8a90k6kukhg28hs5qw7krdq95t629hgsqk6ztmf",
+                    Amount = 0.09m
+                }
+            },
             Changeless = true,
         };
 
@@ -718,8 +760,14 @@ public class BitcoinServiceTests
             Status = WalletWithdrawalRequestStatus.PSBTSignaturesPending,
             Wallet = wallet,
             WalletWithdrawalRequestPSBTs = walletWithdrawalRequestPSBTs,
-            Amount = 0.01m,
-            DestinationAddress = "bcrt1q8k3av6q5yp83rn332lx8a90k6kukhg28hs5qw7krdq95t629hgsqk6ztmf"
+            WalletWithdrawalRequestDestinations = new List<WalletWithdrawalRequestDestination>
+            {
+                new WalletWithdrawalRequestDestination
+                {
+                    Address = "bcrt1q8k3av6q5yp83rn332lx8a90k6kukhg28hs5qw7krdq95t629hgsqk6ztmf",
+                    Amount = 0.01m
+                }
+            }
         };
         var node = new Node()
         {
@@ -798,8 +846,14 @@ public class BitcoinServiceTests
             Status = WalletWithdrawalRequestStatus.PSBTSignaturesPending,
             Wallet = wallet,
             WalletWithdrawalRequestPSBTs = walletWithdrawalRequestPSBTs,
-            Amount = 0.01m,
-            DestinationAddress = "bcrt1q8k3av6q5yp83rn332lx8a90k6kukhg28hs5qw7krdq95t629hgsqk6ztmf"
+            WalletWithdrawalRequestDestinations = new List<WalletWithdrawalRequestDestination>
+            {
+                new WalletWithdrawalRequestDestination
+                {
+                    Address = "bcrt1q8k3av6q5yp83rn332lx8a90k6kukhg28hs5qw7krdq95t629hgsqk6ztmf",
+                    Amount = 0.01m
+                }
+            }
         };
         var node = new Node()
         {
@@ -878,8 +932,14 @@ public class BitcoinServiceTests
             Status = WalletWithdrawalRequestStatus.PSBTSignaturesPending,
             Wallet = wallet,
             WalletWithdrawalRequestPSBTs = walletWithdrawalRequestPSBTs,
-            Amount = 0.01m,
-            DestinationAddress = "bcrt1q8k3av6q5yp83rn332lx8a90k6kukhg28hs5qw7krdq95t629hgsqk6ztmf"
+            WalletWithdrawalRequestDestinations = new List<WalletWithdrawalRequestDestination>
+            {
+                new WalletWithdrawalRequestDestination
+                {
+                    Address = "bcrt1q8k3av6q5yp83rn332lx8a90k6kukhg28hs5qw7krdq95t629hgsqk6ztmf",
+                    Amount = 0.01m
+                }
+            }
         };
         var node = new Node()
         {

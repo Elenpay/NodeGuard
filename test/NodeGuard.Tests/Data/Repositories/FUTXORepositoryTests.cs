@@ -24,15 +24,22 @@ public class FUTXORepositoryTests
     public async Task GetLockedUTXOs_emptyArgs()
     {
         var dbContextFactory = SetupDbContextFactory();
-        var futxoRepository = new FUTXORepository(null, null, dbContextFactory.Object);
+        var futxoRepository = new FUTXORepository(null!, null!, dbContextFactory.Object);
 
         var context = await dbContextFactory.Object.CreateDbContextAsync();
 
         context.WalletWithdrawalRequests.Add(new WalletWithdrawalRequest
         {
             Description = "1",
-            DestinationAddress = "1",
             Status = WalletWithdrawalRequestStatus.Pending,
+            WalletWithdrawalRequestDestinations = new List<WalletWithdrawalRequestDestination>
+            {
+                new WalletWithdrawalRequestDestination
+                {
+                    Address = "1",
+                    Amount = 0.01m
+                }
+            },
             UTXOs = new List<FMUTXO> { new () { TxId = "1"} }
         });
         context.ChannelOperationRequests.Add(new ChannelOperationRequest
@@ -50,7 +57,7 @@ public class FUTXORepositoryTests
     public async Task GetLockedUTXOs_ignoreWithdrawals()
     {
         var dbContextFactory = SetupDbContextFactory();
-        var futxoRepository = new FUTXORepository(null, null, dbContextFactory.Object);
+        var futxoRepository = new FUTXORepository(null!, null!, dbContextFactory.Object);
 
         var context = dbContextFactory.Object.CreateDbContext();
 
@@ -58,8 +65,15 @@ public class FUTXORepositoryTests
         {
             Id = 1,
             Description = "1",
-            DestinationAddress = "1",
             Status = WalletWithdrawalRequestStatus.Pending,
+            WalletWithdrawalRequestDestinations = new List<WalletWithdrawalRequestDestination>
+            {
+                new WalletWithdrawalRequestDestination
+                {
+                    Address = "1",
+                    Amount = 0.01m
+                }
+            },
             UTXOs = new List<FMUTXO> { new () { TxId = "1"} }
         });
         context.ChannelOperationRequests.Add(new ChannelOperationRequest
@@ -79,7 +93,7 @@ public class FUTXORepositoryTests
     public async Task GetLockedUTXOs_ignoreChannels()
     {
         var dbContextFactory = SetupDbContextFactory();
-        var futxoRepository = new FUTXORepository(null, null, dbContextFactory.Object);
+        var futxoRepository = new FUTXORepository(null!, null!, dbContextFactory.Object);
 
         var context = dbContextFactory.Object.CreateDbContext();
 
@@ -87,8 +101,15 @@ public class FUTXORepositoryTests
         {
             Id = 1,
             Description = "1",
-            DestinationAddress = "1",
             Status = WalletWithdrawalRequestStatus.Pending,
+            WalletWithdrawalRequestDestinations = new List<WalletWithdrawalRequestDestination>
+            {
+                new WalletWithdrawalRequestDestination
+                {
+                    Address = "1",
+                    Amount = 0.01m
+                }
+            },
             UTXOs = new List<FMUTXO> { new () { TxId = "1"} }
         });
         context.ChannelOperationRequests.Add(new ChannelOperationRequest
@@ -108,7 +129,7 @@ public class FUTXORepositoryTests
     public async Task GetLockedUTXOs_failedChannels()
     {
         var dbContextFactory = SetupDbContextFactory();
-        var futxoRepository = new FUTXORepository(null, null, dbContextFactory.Object);
+        var futxoRepository = new FUTXORepository(null!, null!, dbContextFactory.Object);
 
         var context = dbContextFactory.Object.CreateDbContext();
 
@@ -116,8 +137,15 @@ public class FUTXORepositoryTests
         {
             Id = 1,
             Description = "1",
-            DestinationAddress = "1",
             Status = WalletWithdrawalRequestStatus.Failed,
+            WalletWithdrawalRequestDestinations = new List<WalletWithdrawalRequestDestination>
+            {
+                new WalletWithdrawalRequestDestination
+                {
+                    Address = "1",
+                    Amount = 0.01m
+                }
+            },
             UTXOs = new List<FMUTXO> { new () { TxId = "1"} }
         });
         context.ChannelOperationRequests.Add(new ChannelOperationRequest
@@ -145,8 +173,15 @@ public class FUTXORepositoryTests
         {
             Id = 1,
             Description = "1",
-            DestinationAddress = "1",
             Status = WalletWithdrawalRequestStatus.Pending,
+            WalletWithdrawalRequestDestinations = new List<WalletWithdrawalRequestDestination>
+            {
+                new WalletWithdrawalRequestDestination
+                {
+                    Address = "1",
+                    Amount = 0.01m
+                }
+            },
             UTXOs = new List<FMUTXO> { new () { TxId = "1"} }
         });
         context.ChannelOperationRequests.Add(new ChannelOperationRequest

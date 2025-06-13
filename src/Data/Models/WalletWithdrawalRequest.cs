@@ -73,12 +73,6 @@ namespace NodeGuard.Data.Models
     {
         public WalletWithdrawalRequestStatus Status { get; set; }
 
-        [Obsolete("This is not used anymore, use the WalletWithdrawalRequestDestinations instead")]
-        /// <summary>
-        /// base58 address of the output of the request, its mutually exclusive with the WalletWithdrawalRequestDestinations
-        /// </summary>
-        public string DestinationAddress { get; set; }
-
         /// <summary>
         /// Description by the requestor
         /// </summary>
@@ -91,27 +85,11 @@ namespace NodeGuard.Data.Models
 
         public string? RejectCancelDescription { get; set; }
 
-        [Obsolete("This is not used anymore, use the WalletWithdrawalRequestDestinations instead")]
-        /// <summary>
-        /// TX amount in BTC, its mutually exclusive with the WalletWithdrawalRequestDestinations
-        /// </summary>
-        ///
-        public decimal Amount { get; set; }
-
         /// <summary>
         /// Checks if all the threshold signatures are collected, including the internal wallet key (even if not signed yet)
         /// </summary>
         [NotMapped]
         public bool AreAllRequiredHumanSignaturesCollected => CheckSignatures();
-
-        [NotMapped]
-        /// <summary>
-        /// This indicates if the request is a legacy request, meaning that it has no destinations and only a single address and amount
-        /// </summary>
-#pragma warning disable CS0618 // Type or member is obsolete
-        public bool IsLegacy => Amount > 0 && string.IsNullOrEmpty(DestinationAddress) &&
-                                (WalletWithdrawalRequestDestinations == null || WalletWithdrawalRequestDestinations?.Count == 0);
-#pragma warning restore CS0618 // Type or member is obsolete
 
         [NotMapped]
         public int NumberOfSignaturesCollected =>
@@ -193,7 +171,11 @@ namespace NodeGuard.Data.Models
         }
 
         [NotMapped]
-        public long SatsAmount => new Money(Amount, MoneyUnit.BTC).Satoshi;
+        public decimal TotalAmount =>
+            WalletWithdrawalRequestDestinations?.Sum(x => x.Amount) ?? 0m;
+
+        [NotMapped]
+        public long SatsAmount => new Money(WalletWithdrawalRequestDestinations?.Sum(x => x.Amount) ?? 0m, MoneyUnit.BTC).Satoshi;
 
         #region Relationships
 

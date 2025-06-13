@@ -28,7 +28,7 @@
                     <div class="text-danger">@ValidationErrors</div>
                 </Field>
             </Fields>
-            <Fields Visibility="Visibility.Invisible" Style="height: 0" ElementId="channel-amount">@(ChannelRequest?.Amount ?? WithdrawalRequest?.Amount)</Fields>
+            <Fields Visibility="Visibility.Invisible" Style="height: 0" ElementId="channel-amount">@(ChannelRequest?.Amount ?? WithdrawalRequest?.TotalAmount)</Fields>
             <Fields Visibility="Visibility.Invisible" Style="height: 0"  ElementId="request-type">@GetRequestType()</Fields>
             <Field id="approve-with-extension">Or click on your nodeguard signing extension to automatically sign</Field>
         </ModalBody>
