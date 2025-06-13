@@ -79,7 +79,6 @@ namespace NodeGuard.Data
                 }
                 catch (Exception e)
                 {
-                    logger.LogError(e, "Error while migrating");
                     throw new Exception("Error while migrating the database", e);
                 }
 
