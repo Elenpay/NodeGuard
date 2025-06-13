@@ -463,9 +463,7 @@ namespace NodeGuard.Services
                 }
 
                 //We track the destination address
-                var destination = walletWithdrawalRequest.WalletWithdrawalRequestDestinations != null
-                    ? walletWithdrawalRequest.WalletWithdrawalRequestDestinations.FirstOrDefault()
-                    : null;
+                var destination = walletWithdrawalRequest.WalletWithdrawalRequestDestinations?.FirstOrDefault();
 
                 if (destination?.Address != null)
                 {
