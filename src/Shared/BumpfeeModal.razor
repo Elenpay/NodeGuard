@@ -3,13 +3,12 @@
 @using System.Xml.Schema
 @using JSException = Microsoft.JSInterop.JSException
 @using System.Runtime.InteropServices.JavaScript
-@inject IJSRuntime JS
 <Modal @ref="_modalRef">
     @if (WithdrawalRequest != null) 
     {
     <ModalContent Centered>
         <ModalHeader>
-            <ModalTitle>Bumpfee tx: @(ChannelRequest?.Id ?? WithdrawalRequest?.Id ?? 0)</ModalTitle>
+            <ModalTitle>Bumpfee Withdrawal</ModalTitle>
             <CloseButton />
         </ModalHeader>
         <ModalBody>
@@ -43,7 +42,6 @@
     }
 </Modal>
 
-@inject IJSRuntime JsRuntime
 @inject IBitcoinService BitcoinService
 @inject IPriceConversionService PriceConversionService
 @inject INBXplorerService NBXplorerService
@@ -58,14 +56,10 @@
     public WalletWithdrawalRequest? WithdrawalRequest { get; set; }
 
     [Parameter]
-    public Action SubmitBumpfeeModal { get; set; }
+    public Action<WalletWithdrawalRequest> SubmitBumpfeeModal { get; set; }
 
     private decimal? _selectedWalletBalance;
     private decimal _btcPrice;
-
-    private static readonly decimal _minimumWithdrawalAmount = Constants.MINIMUM_WITHDRAWAL_BTC_AMOUNT;
-
-    private decimal _amount { get; set; } = _minimumWithdrawalAmount;
 
     private MempoolRecommendedFeesType _selectedMempoolRecommendedFeesType;
     private long _customSatPerVbAmount = 1;
@@ -79,9 +73,15 @@
         if (_customSatPerVbAmount <= _currentSatsPerVbAmount) {
             ToastService.ShowError("Fee must be greater than the current one");
         } else {
-            WithdrawalRequest.MempoolRecommendedFeesType = _selectedMempoolRecommendedFeesType;
-            WithdrawalRequest.CustomFeeRate = _customSatPerVbAmount;
-            SubmitBumpfeeModal?.Invoke();
+            WalletWithdrawalRequest newRequest = new WalletWithdrawalRequest();
+            newRequest.Description = WithdrawalRequest.Description;
+            newRequest.DestinationAddress = WithdrawalRequest.DestinationAddress;
+            newRequest.Amount = WithdrawalRequest.Amount;
+            newRequest.Changeless = WithdrawalRequest.Changeless;
+            newRequest.WithdrawAllFunds = WithdrawalRequest.WithdrawAllFunds;
+            newRequest.MempoolRecommendedFeesType = _selectedMempoolRecommendedFeesType;
+            newRequest.CustomFeeRate = _customSatPerVbAmount;
+            SubmitBumpfeeModal?.Invoke(newRequest);
         }
     }
     

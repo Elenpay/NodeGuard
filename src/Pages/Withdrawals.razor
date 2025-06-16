@@ -883,6 +883,8 @@
 
     private async Task CreateNewWithdrawal(WalletWithdrawalRequest newRequest)
     {
+        _selectedMempoolRecommendedFeesType = newRequest.MempoolRecommendedFeesType;
+        _customSatPerVbAmount = (long)newRequest.CustomFeeRate;
         if (newRequest.Wallet.IsHotWallet)
         {
             await GetData();
@@ -916,27 +918,19 @@
 
     private async Task Bumpfee(WalletWithdrawalRequest request)
     {
-        try
-        {
+        try {
             await CreateNewWithdrawal(request);
-            StateHasChanged();
         } catch {
-            ToastService.ShowError("Something went wrong");
+            ToastService.ShowError("Could not bump the withdrawal");
         }
     }
 
-    private async void SubmitBumpfeeModal()
+    private async void SubmitBumpfeeModal(WalletWithdrawalRequest newRequest)
     {
-        if (_bumpfeeRef != null && _bumpfeeRef.WithdrawalRequest != null)
-        {
-            _selectedMempoolRecommendedFeesType = _bumpfeeRef.WithdrawalRequest.MempoolRecommendedFeesType;
-            if (_bumpfeeRef.WithdrawalRequest.CustomFeeRate != null)
-                _customSatPerVbAmount = (long)_bumpfeeRef.WithdrawalRequest.CustomFeeRate;
-            if (_selectedRequest != null) {
-                await Bumpfee(_selectedRequest);
-            } else {
-                ToastService.ShowError("Error while getting the withdrawal");
-            }
+        if (newRequest != null && _bumpfeeRef != null) {
+            newRequest.WalletId = _selectedRequest.WalletId;
+            newRequest.Wallet = await WalletRepository.GetById(newRequest.WalletId);
+            await Bumpfee(newRequest);
             await _bumpfeeRef.HideModal();
         } else {
             ToastService.ShowError("Something went wrong");
