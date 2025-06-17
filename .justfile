@@ -24,7 +24,7 @@ set dotenv-load := true
 # Aliases #
 ###########
 
-# alias i := install
+alias i := install
 alias b := build
 alias r := run
 alias t := test
@@ -40,12 +40,12 @@ alias drm := docker-rm
 # All#
 #######
 
-# Everything necessary to install the project
-# [macos]
-# install:
-#     #!/usr/bin/env bash
-#     set -euxo pipefail
-#     # Add your installation steps here
+Everything necessary to install the project
+[macos]
+install:
+    #!/usr/bin/env bash
+    set -euxo pipefail
+    # Add your installation steps here
 
 
 ##########
