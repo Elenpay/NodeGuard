@@ -81,6 +81,7 @@
             newRequest.WithdrawAllFunds = WithdrawalRequest.WithdrawAllFunds;
             newRequest.MempoolRecommendedFeesType = _selectedMempoolRecommendedFeesType;
             newRequest.CustomFeeRate = _customSatPerVbAmount;
+            newRequest.UserRequestorId = WithdrawalRequest.UserRequestorId;
             SubmitBumpfeeModal?.Invoke(newRequest);
         }
     }

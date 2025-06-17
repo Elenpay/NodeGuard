@@ -378,7 +378,7 @@
                     }
                 </DisplayTemplate>
             </DataGridColumn>
-            <DataGridColumn TItem="WalletWithdrawalRequest" Caption="Actions" Displayable="true">
+            <DataGridColumn TItem="WalletWithdrawalRequest" Caption="Actions" Displayable="@IsAllRequestsColumnVisible(AllWithdrawalsColumnName.Actions)">
                 <DisplayTemplate>
                     @if (_isFinanceManager && context.Status == WalletWithdrawalRequestStatus.OnChainConfirmationPending)
                     {
@@ -389,6 +389,20 @@
                                     <DropdownItem Clicked="async () => await ShowBumpfeeModal(context)">Bump fee</DropdownItem>
                                 </DropdownMenu>
                             </Dropdown>
+                    }
+                </DisplayTemplate>
+            </DataGridColumn>
+            <DataGridColumn TItem="WalletWithdrawalRequest" Caption="Parent Tx" Displayable="@IsAllRequestsColumnVisible(AllWithdrawalsColumnName.ParentTx)">
+                <DisplayTemplate>
+                    @{
+                        if (!string.IsNullOrEmpty(context.RequestMetadata))
+                        {
+                            var metadata = JsonConvert.DeserializeObject<Dictionary<string, string>>(context.RequestMetadata);
+                            if (metadata != null && metadata.TryGetValue("bumpOfTxId", out var parentTxId))
+                            {
+                                <a href="@(mempoolUrl + "/tx/" + parentTxId)" target="_blank">Original tx</a>
+                            }
+                        }
                     }
                 </DisplayTemplate>
             </DataGridColumn>
@@ -525,6 +539,8 @@
         public static readonly ColumnDefault CreationDate = new("Creation Date");
         public static readonly ColumnDefault UpdateDate = new("Update Date");
         public static readonly ColumnDefault Links = new("Links");
+        public static readonly ColumnDefault Actions = new("Actions");
+        public static readonly ColumnDefault ParentTx = new("Parent Tx");
     }
 
     protected override async Task OnInitializedAsync()
@@ -930,6 +946,14 @@
         if (newRequest != null && _bumpfeeRef != null) {
             newRequest.WalletId = _selectedRequest.WalletId;
             newRequest.Wallet = await WalletRepository.GetById(newRequest.WalletId);
+            if (!string.IsNullOrEmpty(_selectedRequest?.TxId))
+            {
+                var metadata = new Dictionary<string, string>
+                {
+                    { "bumpOfTxId", _selectedRequest.TxId }
+                };
+                newRequest.RequestMetadata = JsonConvert.SerializeObject(metadata);
+            }
             await Bumpfee(newRequest);
             await _bumpfeeRef.HideModal();
         } else {
