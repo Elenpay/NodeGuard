@@ -177,13 +177,6 @@ namespace NodeGuard.Services
                 await _coinSelectionService.GetLockedUTXOsForRequest(walletWithdrawalRequest,
                     BitcoinRequestType.WalletWithdrawal);
 
-            if (walletWithdrawalRequest.Changeless && previouslyLockedUTXOs.Count == 0)
-            {
-                _logger.LogError(
-                    "Cannot generate base template PSBT for withdrawal request: {RequestId}, no UTXOs were provided for the changeless operation",
-                    walletWithdrawalRequest.Id);
-                throw new ArgumentException();
-            }
 
             var availableUTXOs = previouslyLockedUTXOs.Count > 0
                 ? previouslyLockedUTXOs
@@ -204,109 +197,104 @@ namespace NodeGuard.Services
             var nbXplorerNetwork = CurrentNetworkHelper.GetCurrentNetwork();
 
             PSBT? originalPSBT = null;
-            try
+
+            //We got enough inputs to fund the TX so time to build the PSBT
+
+            var network = CurrentNetworkHelper.GetCurrentNetwork();
+            var txBuilder = nbXplorerNetwork.CreateTransactionBuilder();
+
+            //We get the mempool.space recommended fees, the custom or use the bitcoin core (nbxplorer) one if not available
+            var feerate = await _nbXplorerService.GetFeesByType(walletWithdrawalRequest.MempoolRecommendedFeesType)
+                            ?? walletWithdrawalRequest.CustomFeeRate
+                            ?? (await LightningHelper.GetFeeRateResult(network, _nbXplorerService)).FeeRate
+                            .SatoshiPerByte;
+            var feeRateResult = new FeeRate(feerate);
+
+            var changeAddress = await _nbXplorerService.GetUnusedAsync(derivationStrategy, DerivationFeature.Change,
+                0, false, default);
+
+            if (changeAddress == null)
             {
-                //We got enough inputs to fund the TX so time to build the PSBT
+                _logger.LogError("Change address was not found for wallet: {WalletId}",
+                    walletWithdrawalRequest.Wallet.Id);
+                throw new ArgumentNullException(
+                    $"Change address was not found for wallet: {walletWithdrawalRequest.Wallet.Id}");
+            }
 
-                var network = CurrentNetworkHelper.GetCurrentNetwork();
-                var txBuilder = nbXplorerNetwork.CreateTransactionBuilder();
+            var builder = txBuilder;
+            builder.AddCoins(scriptCoins);
 
-                //We get the mempool.space recommended fees, the custom or use the bitcoin core (nbxplorer) one if not available
-                var feerate = await _nbXplorerService.GetFeesByType(walletWithdrawalRequest.MempoolRecommendedFeesType)
-                              ?? walletWithdrawalRequest.CustomFeeRate
-                              ?? (await LightningHelper.GetFeeRateResult(network, _nbXplorerService)).FeeRate
-                              .SatoshiPerByte;
-                var feeRateResult = new FeeRate(feerate);
+            var changelessAmount = selectedUTXOs.Sum(u => (Money)u.Value);
+            var destinations = walletWithdrawalRequest.WalletWithdrawalRequestDestinations?.ToList();
+            if (destinations == null || !destinations.Any())
+            {
+                throw new ArgumentException("No destination addresses provided.");
+            }
 
-                var changeAddress = await _nbXplorerService.GetUnusedAsync(derivationStrategy, DerivationFeature.Change,
-                    0, false, default);
+            builder.SetSigningOptions(SigHash.All)
+                .SetChange(changeAddress.Address)
+                .SendEstimatedFees(feeRateResult);
 
-                if (changeAddress == null)
+            // We preserve the output order when testing so the psbt doesn't change
+            var command = Assembly.GetEntryAssembly()?.GetName().Name?.ToLowerInvariant();
+            builder.ShuffleOutputs = command != "ef" && (command != null && !command.Contains("test"));
+
+            if (walletWithdrawalRequest.WithdrawAllFunds)
+            {
+                // For withdraw all funds, send to the first destination only and check there's only one destination
+                if (destinations.Count > 1)
                 {
-                    _logger.LogError("Change address was not found for wallet: {WalletId}",
-                        walletWithdrawalRequest.Wallet.Id);
-                    throw new ArgumentNullException(
-                        $"Change address was not found for wallet: {walletWithdrawalRequest.Wallet.Id}");
+                    throw new ArgumentException("Withdraw all funds can only have one destination address.");
                 }
 
-                var builder = txBuilder;
-                builder.AddCoins(scriptCoins);
-
-                var changelessAmount = selectedUTXOs.Sum(u => (Money)u.Value);
-                var destinations = walletWithdrawalRequest.WalletWithdrawalRequestDestinations?.ToList();
-                if (destinations == null || !destinations.Any())
+                var firstDestination = destinations.First();
+                if (string.IsNullOrEmpty(firstDestination.Address))
                 {
-                    throw new ArgumentException("No destination addresses provided.");
+                    throw new ArgumentException("First destination address is null or empty.");
+                }
+                var firstDestinationAddress = BitcoinAddress.Create(firstDestination.Address, nbXplorerNetwork);
+                builder.SendAll(firstDestinationAddress);
+            }
+            else if (walletWithdrawalRequest.Changeless)
+            {
+                // Changeless transactions can only have one destination
+                if (destinations.Count > 1)
+                {
+                    throw new ArgumentException("Changeless transactions can only have one destination address.");
                 }
 
-                builder.SetSigningOptions(SigHash.All)
-                    .SetChange(changeAddress.Address)
-                    .SendEstimatedFees(feeRateResult);
-
-                // We preserve the output order when testing so the psbt doesn't change
-                var command = Assembly.GetEntryAssembly()?.GetName().Name?.ToLowerInvariant();
-                builder.ShuffleOutputs = command != "ef" && (command != null && !command.Contains("test"));
-
-                if (walletWithdrawalRequest.WithdrawAllFunds)
+                var destination = destinations.First();
+                if (string.IsNullOrEmpty(destination.Address))
                 {
-                    // For withdraw all funds, send to the first destination only and check there's only one destination
-                    if (destinations.Count > 1)
-                    {
-                        throw new ArgumentException("Withdraw all funds can only have one destination address.");
-                    }
-                    
-                    var firstDestination = destinations.First();
-                    if (string.IsNullOrEmpty(firstDestination.Address))
-                    {
-                        throw new ArgumentException("First destination address is null or empty.");
-                    }
-                    var firstDestinationAddress = BitcoinAddress.Create(firstDestination.Address, nbXplorerNetwork);
-                    builder.SendAll(firstDestinationAddress);
+                    throw new ArgumentException("Destination address is null or empty.");
                 }
-                else if (walletWithdrawalRequest.Changeless)
+                var destinationAddress = BitcoinAddress.Create(destination.Address, nbXplorerNetwork);
+                builder.Send(destinationAddress, changelessAmount);
+                builder.SubtractFees();
+            }
+            else
+            {
+                // Handle multiple destinations for regular transactions
+                foreach (var dest in destinations)
                 {
-                    // Changeless transactions can only have one destination
-                    if (destinations.Count > 1)
-                    {
-                        throw new ArgumentException("Changeless transactions can only have one destination address.");
-                    }
-                    
-                    var destination = destinations.First();
-                    if (string.IsNullOrEmpty(destination.Address))
+                    if (string.IsNullOrEmpty(dest.Address))
                     {
                         throw new ArgumentException("Destination address is null or empty.");
                     }
-                    var destinationAddress = BitcoinAddress.Create(destination.Address, nbXplorerNetwork);
-                    builder.Send(destinationAddress, changelessAmount);
-                    builder.SubtractFees();
-                }
-                else
-                {
-                    // Handle multiple destinations for regular transactions
-                    foreach (var dest in destinations)
-                    {
-                        if (string.IsNullOrEmpty(dest.Address))
-                        {
-                            throw new ArgumentException("Destination address is null or empty.");
-                        }
-                        var destinationAddress = BitcoinAddress.Create(dest.Address, nbXplorerNetwork);
-                        var amount = new Money(dest.Amount, MoneyUnit.BTC);
-                        builder.Send(destinationAddress, amount);
-                    }
-
-                    builder.SendAllRemainingToChange();
+                    var destinationAddress = BitcoinAddress.Create(dest.Address, nbXplorerNetwork);
+                    var amount = new Money(dest.Amount, MoneyUnit.BTC);
+                    builder.Send(destinationAddress, amount);
                 }
 
-                originalPSBT = builder.BuildPSBT(false);
+                builder.SendAllRemainingToChange();
+            }
 
-                //Additional fields to support PSBT signing with a HW or the Remote Signer
-                originalPSBT = LightningHelper.AddDerivationData(walletWithdrawalRequest.Wallet, originalPSBT,
-                    selectedUTXOs, scriptCoins, _logger);
-            }
-            catch (Exception e)
-            {
-                _logger.LogError(e, "Error while generating base PSBT");
-            }
+            originalPSBT = builder.BuildPSBT(false);
+
+            //Additional fields to support PSBT signing with a HW or the Remote Signer
+            originalPSBT = LightningHelper.AddDerivationData(walletWithdrawalRequest.Wallet, originalPSBT,
+                selectedUTXOs, scriptCoins, _logger);
+
 
             // We "lock" the PSBT to the channel operation request by adding to its UTXOs collection for later checking
             var utxos = selectedUTXOs.Select(x => _mapper.Map<UTXO, FMUTXO>(x)).ToList();
