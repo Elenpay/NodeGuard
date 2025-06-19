@@ -170,6 +170,34 @@ public class NodeGuardService : Nodeguard.NodeGuardService.NodeGuardServiceBase,
         return getNewWalletAddressResponse;
     }
 
+    private void ValidateWithdrawalDestinations(IList<Destination> destinations, bool isChangeless = false)
+    {
+        if (destinations == null || destinations.Count == 0)
+        {
+            throw new RpcException(new Status(StatusCode.InvalidArgument, "At least one destination must be provided"));
+        }
+
+        // Changeless transactions can only have one destination
+        if (isChangeless && destinations.Count > 1)
+        {
+            throw new RpcException(new Status(StatusCode.InvalidArgument, "Changeless transactions can only have one destination"));
+        }
+
+        foreach (var destination in destinations)
+        {
+            if (destination.AmountSats <= 0)
+            {
+                throw new RpcException(new Status(StatusCode.InvalidArgument, "Amount must be greater than 0"));
+            }
+
+            if (string.IsNullOrEmpty(destination.Address))
+            {
+                throw new RpcException(new Status(StatusCode.InvalidArgument,
+                    "A destination address must be provided"));
+            }
+        }
+    }
+
     public override async Task<RequestWithdrawalResponse> RequestWithdrawal(RequestWithdrawalRequest request,
         ServerCallContext context)
     {
@@ -184,19 +212,8 @@ public class NodeGuardService : Nodeguard.NodeGuardService.NodeGuardServiceBase,
                 throw new RpcException(new Status(StatusCode.NotFound, "Wallet not found"));
             }
 
-            if (request.Amount <= 0)
-            {
-                throw new RpcException(new Status(StatusCode.InvalidArgument, "Amount must be greater than 0"));
-            }
-
-            if (request.Address == "")
-            {
-                throw new RpcException(new Status(StatusCode.InvalidArgument,
-                    "A destination address must be provided"));
-            }
-
-            //Create withdrawal request
-            var amount = new Money(request.Amount, MoneyUnit.Satoshi).ToUnit(MoneyUnit.BTC);
+            // Validate destinations
+            ValidateWithdrawalDestinations(request.Destinations, request.Changeless);
 
             var outpoints = new List<OutPoint>();
             var utxos = new List<UTXO>();
@@ -215,20 +232,20 @@ public class NodeGuardService : Nodeguard.NodeGuardService.NodeGuardServiceBase,
                     throw new RpcException(new Status(StatusCode.Internal, "Derivation strategy not found"));
 
                 utxos = await _coinSelectionService.GetUTXOsByOutpointAsync(derivationStrategyBase, outpoints);
-                amount = utxos.Sum(u => ((Money)u.Value).ToUnit(MoneyUnit.BTC));
+      
             }
+
+            // Create destination objects for the withdrawal request
+            var withdrawalDestinations = request.Destinations.Select(d => new WalletWithdrawalRequestDestination()
+            {
+                Address = d.Address,
+                Amount = new Money(d.AmountSats, MoneyUnit.Satoshi).ToDecimal(MoneyUnit.BTC),
+            }).ToList();
 
             withdrawalRequest = new WalletWithdrawalRequest()
             {
                 WalletId = request.WalletId,
-                WalletWithdrawalRequestDestinations =
-                [
-                    new WalletWithdrawalRequestDestination()
-                    {
-                        Address = request.Address,
-                        Amount = amount,
-                    }
-                ],
+                WalletWithdrawalRequestDestinations = withdrawalDestinations,
                 Description = request.Description,
                 Status = wallet.IsHotWallet
                     ? WalletWithdrawalRequestStatus.PSBTSignaturesPending
@@ -261,7 +278,7 @@ public class NodeGuardService : Nodeguard.NodeGuardService.NodeGuardServiceBase,
                     BitcoinRequestType.WalletWithdrawal);
             }
 
-            //Update to refresh from db
+            // Update to refresh from db
             withdrawalRequest = await _walletWithdrawalRequestRepository.GetById(withdrawalRequest.Id);
 
             if (!withdrawalSaved.Item1)
@@ -270,12 +287,12 @@ public class NodeGuardService : Nodeguard.NodeGuardService.NodeGuardServiceBase,
                 throw new RpcException(new Status(StatusCode.Internal, "Error saving withdrawal request for wallet"));
             }
 
-            //Template PSBT generation with SIGHASH_ALL
+            // Template PSBT generation with SIGHASH_ALL
             var psbt = await _bitcoinService.GenerateTemplatePSBT(withdrawalRequest ??
                                                                   throw new ArgumentException(
                                                                       nameof(withdrawalRequest)));
 
-            //If the wallet is hot, we send the withdrawal request to the node
+            // If the wallet is hot, we send the withdrawal request to the embedded or remote signer
             if (wallet.IsHotWallet)
             {
                 var map = new JobDataMap();

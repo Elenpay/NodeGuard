@@ -81,7 +81,12 @@ namespace NodeGuard.Services
         {
             if (walletWithdrawalRequest == null) throw new ArgumentNullException(nameof(walletWithdrawalRequest));
 
-            walletWithdrawalRequest = await _walletWithdrawalRequestRepository.GetById(walletWithdrawalRequest.Id);
+            var fetchedWithdrawalRequest = await _walletWithdrawalRequestRepository.GetById(walletWithdrawalRequest.Id);
+            if (fetchedWithdrawalRequest == null)
+            {
+                throw new InvalidOperationException($"Withdrawal request with Id {walletWithdrawalRequest.Id} not found.");
+            }
+            walletWithdrawalRequest = fetchedWithdrawalRequest;
 
             if (walletWithdrawalRequest.Status != WalletWithdrawalRequestStatus.Pending
                 && walletWithdrawalRequest.Status != WalletWithdrawalRequestStatus.PSBTSignaturesPending)
@@ -228,13 +233,11 @@ namespace NodeGuard.Services
                 builder.AddCoins(scriptCoins);
 
                 var changelessAmount = selectedUTXOs.Sum(u => (Money)u.Value);
-                var amount = new Money(walletWithdrawalRequest.SatsAmount, MoneyUnit.Satoshi);
-                var destinationAddress = walletWithdrawalRequest.WalletWithdrawalRequestDestinations?.FirstOrDefault()?.Address;
-                if (string.IsNullOrEmpty(destinationAddress))
+                var destinations = walletWithdrawalRequest.WalletWithdrawalRequestDestinations?.ToList();
+                if (destinations == null || !destinations.Any())
                 {
-                    throw new ArgumentException("Destination address is null or empty.");
+                    throw new ArgumentException("No destination addresses provided.");
                 }
-                var destination = BitcoinAddress.Create(destinationAddress, nbXplorerNetwork);
 
                 builder.SetSigningOptions(SigHash.All)
                     .SetChange(changeAddress.Address)
@@ -246,14 +249,49 @@ namespace NodeGuard.Services
 
                 if (walletWithdrawalRequest.WithdrawAllFunds)
                 {
-                    builder.SendAll(destination);
+                    // For withdraw all funds, send to the first destination only and check there's only one destination
+                    if (destinations.Count > 1)
+                    {
+                        throw new ArgumentException("Withdraw all funds can only have one destination address.");
+                    }
+                    
+                    var firstDestination = destinations.First();
+                    if (string.IsNullOrEmpty(firstDestination.Address))
+                    {
+                        throw new ArgumentException("First destination address is null or empty.");
+                    }
+                    var firstDestinationAddress = BitcoinAddress.Create(firstDestination.Address, nbXplorerNetwork);
+                    builder.SendAll(firstDestinationAddress);
+                }
+                else if (walletWithdrawalRequest.Changeless)
+                {
+                    // Changeless transactions can only have one destination
+                    if (destinations.Count > 1)
+                    {
+                        throw new ArgumentException("Changeless transactions can only have one destination address.");
+                    }
+                    
+                    var destination = destinations.First();
+                    if (string.IsNullOrEmpty(destination.Address))
+                    {
+                        throw new ArgumentException("Destination address is null or empty.");
+                    }
+                    var destinationAddress = BitcoinAddress.Create(destination.Address, nbXplorerNetwork);
+                    builder.Send(destinationAddress, changelessAmount);
+                    builder.SubtractFees();
                 }
                 else
                 {
-                    builder.Send(destination, walletWithdrawalRequest.Changeless ? changelessAmount : amount);
-                    if (walletWithdrawalRequest.Changeless)
+                    // Handle multiple destinations for regular transactions
+                    foreach (var dest in destinations)
                     {
-                        builder.SubtractFees();
+                        if (string.IsNullOrEmpty(dest.Address))
+                        {
+                            throw new ArgumentException("Destination address is null or empty.");
+                        }
+                        var destinationAddress = BitcoinAddress.Create(dest.Address, nbXplorerNetwork);
+                        var amount = new Money(dest.Amount, MoneyUnit.BTC);
+                        builder.Send(destinationAddress, amount);
                     }
 
                     builder.SendAllRemainingToChange();
