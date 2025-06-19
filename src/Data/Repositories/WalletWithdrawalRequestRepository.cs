@@ -135,6 +135,13 @@ namespace NodeGuard.Data.Repositories
             type.SetCreationDatetime();
             type.SetUpdateDatetime();
 
+            // Set the types for the destinations
+            type.WalletWithdrawalRequestDestinations?.ForEach(destination =>
+            {
+                destination.SetCreationDatetime();
+                destination.SetUpdateDatetime();
+            });
+
             //Verify that the wallet has enough funds calling nbxplorer
             var wallet = await applicationDbContext.Wallets.Include(x => x.Keys).SingleOrDefaultAsync(x => x.Id == type.WalletId);
 

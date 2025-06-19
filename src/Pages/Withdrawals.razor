@@ -585,6 +585,14 @@
         arg.Item.WithdrawAllFunds = _isCheckedAllFunds || _amount == _selectedRequestWalletBalance;
         arg.Item.MempoolRecommendedFeesType = _selectedMempoolRecommendedFeesType;
         arg.Item.CustomFeeRate = _customSatPerVbAmount;
+        arg.Item.WalletWithdrawalRequestDestinations = new List<WalletWithdrawalRequestDestination>
+        {
+            new WalletWithdrawalRequestDestination
+            {
+                Address = arg.Item.WalletWithdrawalRequestDestinations?.FirstOrDefault()?.Address ?? "",
+                Amount = amount
+            }
+        };
         
         if (arg.Item.Wallet.IsHotWallet)
         {
@@ -1075,8 +1083,7 @@
 
     private void OnDestinationAddressChanged(CellEditContext<WalletWithdrawalRequest> context, string text)
     {
-        var amount = _selectedUTXOs.Count > 0 ? SelectedUTXOsValue() : _amount;
-        context.CellValue = new List<WalletWithdrawalRequestDestination> { new() { Address = text, Amount = amount } };
+        context.CellValue = new List<WalletWithdrawalRequestDestination> { new() { Address = text, Amount = 0m } };
     }
 
     private string GetDestinationAddressFromCellValue(object cellValue)
