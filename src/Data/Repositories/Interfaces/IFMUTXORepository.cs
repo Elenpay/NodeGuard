@@ -37,6 +37,8 @@ public interface IFMUTXORepository
 
     (bool, string?) Update(FMUTXO type);
 
+    (bool, string?) UpdateAll(List<FMUTXO> types);
+
     /// <summary>
     /// Gets the current list of UTXOs locked on requests ChannelOperationRequest / WalletWithdrawalRequest by passing its id if wants to remove it from the resulting set
     /// </summary>

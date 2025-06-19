@@ -91,6 +91,20 @@ namespace NodeGuard.Data.Repositories
             return _repository.Update(type, applicationDbContext);
         }
 
+        public (bool, string?) UpdateAll(List<FMUTXO> types)
+        {
+            (bool, string?) result = (true, null);
+            foreach (FMUTXO type in types)
+            {
+                result = Update(type);
+                if (!result.Item1)
+                {
+                    return (false, "An error ocurred while updating the utxos");
+                }
+            }
+            return result;
+        }
+
         public async Task<List<FMUTXO>> GetLockedUTXOs(int? ignoredWalletWithdrawalRequestId = null, int? ignoredChannelOperationRequestId = null)
         {
             await using var applicationDbContext = await _dbContextFactory.CreateDbContextAsync();

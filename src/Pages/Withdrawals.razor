@@ -471,6 +471,7 @@
 @inject ILocalStorageService LocalStorageService
 @inject IPriceConversionService PriceConversionService
 @inject INBXplorerService NBXplorerService
+@inject IFMUTXORepository FMUTXORepository
 @code {
 
     [CascadingParameter] private ApplicationUser? LoggedUser { get; set; }
@@ -1081,6 +1082,16 @@
                 }
 
                 ToastService.ShowSuccess("Withdrawal request created!");
+
+                if (_selectedRequest.BumpingId != null) {
+                    WalletWithdrawalRequest originalRequest = await WalletWithdrawalRequestRepository.GetById((int)_selectedRequest.BumpingId);
+                    WalletWithdrawalRequest bumpedRequest = await WalletWithdrawalRequestRepository.GetById(_selectedRequest.Id);
+
+                    originalRequest.UTXOs.ForEach(u => u.WalletWithdrawalRequests.Add(bumpedRequest));
+                    bumpedRequest.UTXOs = originalRequest.UTXOs;
+                    FMUTXORepository.UpdateAll(originalRequest.UTXOs);
+                    WalletWithdrawalRequestRepository.Update(bumpedRequest);
+                }
 
                 if (_selectedUTXOs.Count > 0)
                 {
