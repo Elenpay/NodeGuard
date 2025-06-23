@@ -162,7 +162,7 @@
                         <Button Color="Color.Primary" Disabled="@(!_selectedWalletId.HasValue)" Clicked="@OpenCoinSelectionModal">Select Coins</Button> or use
                         <Button Color="Color.Primary" Disabled="@(_selectedUTXOs.Count == 0)" Clicked="@ClearSelectedUTXOs">Default Coin Selection</Button>
                     </div>
-                    <Check TValue="bool" @bind-Checked="_isChangeless" Disabled="@(_selectedUTXOs.Count == 0)">Changeless transaction</Check>
+                    <Check TValue="bool" Checked="_isChangeless" CheckedChanged="OnChangelessChanged" Disabled="@(_selectedUTXOs.Count == 0)">Changeless transaction</Check>
                     @if (_selectedWalletId.HasValue && _selectedUTXOs.Count > 0)
                     {
                         if (_isChangeless)
@@ -1060,6 +1060,19 @@
     private async Task RefreshChannelRequestsInformation()
     {
         await FetchRequests();
+        StateHasChanged();
+    }
+
+    private async Task OnChangelessChanged(bool value)
+    {
+        _isChangeless = value;
+        
+        // Manually trigger validation when changeless state changes
+        if (_changelessValidation != null)
+        {
+            await _changelessValidation.ValidateAsync();
+        }
+        
         StateHasChanged();
     }
 }
