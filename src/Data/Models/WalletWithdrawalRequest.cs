@@ -204,8 +204,6 @@ namespace NodeGuard.Data.Models
 
         public int? BumpingId { get; set; }
 
-        public WalletWithdrawalRequest? Bumping { get; set; }
-
         public List<WalletWithdrawalRequestPSBT> WalletWithdrawalRequestPSBTs { get; set; }
 
         public List<FMUTXO> UTXOs { get; set; }

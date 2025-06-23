@@ -84,7 +84,6 @@
             newRequest.CustomFeeRate = _customSatPerVbAmount;
             newRequest.UserRequestorId = WithdrawalRequest.UserRequestorId;
             newRequest.BumpingId = WithdrawalRequest.Id;
-            newRequest.Bumping = WithdrawalRequest;
             SubmitBumpfeeModal?.Invoke(newRequest);
         }
     }

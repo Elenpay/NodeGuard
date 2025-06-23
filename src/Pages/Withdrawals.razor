@@ -1085,11 +1085,16 @@
 
                 if (_selectedRequest.BumpingId != null) {
                     WalletWithdrawalRequest originalRequest = await WalletWithdrawalRequestRepository.GetById((int)_selectedRequest.BumpingId);
+                    List<FMUTXO> mUTXOs = await FMUTXORepository.GetLockedUTXOsByRequestId(originalRequest.Id);
                     WalletWithdrawalRequest bumpedRequest = await WalletWithdrawalRequestRepository.GetById(_selectedRequest.Id);
 
-                    originalRequest.UTXOs.ForEach(u => u.WalletWithdrawalRequests.Add(bumpedRequest));
-                    bumpedRequest.UTXOs = originalRequest.UTXOs;
-                    FMUTXORepository.UpdateAll(originalRequest.UTXOs);
+                    mUTXOs.ForEach(u => {
+                        if (u.WalletWithdrawalRequests.Contains(originalRequest)) {
+                            u.WalletWithdrawalRequests.Add(bumpedRequest);
+                            bumpedRequest.UTXOs.Add(u);
+                        }
+                    });
+                    FMUTXORepository.UpdateAll(mUTXOs);
                     WalletWithdrawalRequestRepository.Update(bumpedRequest);
                 }
 
