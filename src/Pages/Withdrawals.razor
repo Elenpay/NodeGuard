@@ -1088,13 +1088,19 @@
                     List<FMUTXO> mUTXOs = await FMUTXORepository.GetLockedUTXOsByRequestId(originalRequest.Id);
                     WalletWithdrawalRequest bumpedRequest = await WalletWithdrawalRequestRepository.GetById(_selectedRequest.Id);
 
+                    if (bumpedRequest.UTXOs == null) {
+                        bumpedRequest.UTXOs = new List<FMUTXO>();
+                    }
+
                     mUTXOs.ForEach(u => {
-                        if (u.WalletWithdrawalRequests.Contains(originalRequest)) {
-                            u.WalletWithdrawalRequests.Add(bumpedRequest);
-                            bumpedRequest.UTXOs.Add(u);
+                        if (u.WalletWithdrawalRequests == null) {
+                            u.WalletWithdrawalRequests = new List<WalletWithdrawalRequest>();
                         }
+
+                        u.WalletWithdrawalRequests.Add(bumpedRequest);
+                        bumpedRequest.UTXOs.Add(u);
+                        FMUTXORepository.Update(u);
                     });
-                    FMUTXORepository.UpdateAll(mUTXOs);
                     WalletWithdrawalRequestRepository.Update(bumpedRequest);
                 }
 
