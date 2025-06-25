@@ -63,7 +63,12 @@ namespace NodeGuard.Data.Models
         /// <summary>
         /// The PSBT is being signed by NodeGuard after all human required signatures have been collected
         /// </summary>
-        FinalizingPSBT = 7
+        FinalizingPSBT = 7,
+
+        /// <summary>
+        /// The tx was bumped by Replace by Fee (RBF) method
+        /// </summary>
+        Bumped = 8
     }
 
     /// <summary>
@@ -196,6 +201,8 @@ namespace NodeGuard.Data.Models
         public int WalletId { get; set; }
 
         public Wallet Wallet { get; set; }
+
+        public int? BumpingId { get; set; }
 
         public List<WalletWithdrawalRequestPSBT> WalletWithdrawalRequestPSBTs { get; set; }
 

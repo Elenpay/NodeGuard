@@ -42,4 +42,9 @@ public interface IFMUTXORepository
     /// </summary>
     /// <returns></returns>
     Task<List<FMUTXO>> GetLockedUTXOs(int? ignoredWalletWithdrawalRequestId = null, int? ignoredChannelOperationRequestId = null);
+    /// <summary>
+    /// Gets the current list of UTXOs locked on requests ChannelOperationRequest / WalletWithdrawalRequest by passing its id 
+    /// </summary>
+    /// <returns></returns>
+    Task<List<FMUTXO>> GetLockedUTXOsByRequestId(int? walletWithdrawalRequestId = null, int? channelOperationRequestId = null);
 }
