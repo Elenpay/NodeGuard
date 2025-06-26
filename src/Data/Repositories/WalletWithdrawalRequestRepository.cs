@@ -64,6 +64,7 @@ namespace NodeGuard.Data.Repositories
                 .ThenInclude(x => x.Keys)
                 .Include(x => x.UserRequestor)
                 .Include(x => x.WalletWithdrawalRequestPSBTs)
+                .Include(x => x.UTXOs)
                 .SingleOrDefaultAsync(x => x.Id == id);
 
             return request;

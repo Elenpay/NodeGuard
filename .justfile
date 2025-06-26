@@ -40,7 +40,7 @@ alias drm := docker-rm
 # All#
 #######
 
-Everything necessary to install the project
+# Everything necessary to install the project
 [macos]
 install:
     #!/usr/bin/env bash

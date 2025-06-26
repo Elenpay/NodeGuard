@@ -223,7 +223,8 @@ namespace NodeGuard.Services
 
                 builder.SetSigningOptions(SigHash.All)
                     .SetChange(changeAddress.Address)
-                    .SendEstimatedFees(feeRateResult);
+                    .SendEstimatedFees(feeRateResult)
+                    .SetOptInRBF(true);
 
                 // We preserve the output order when testing so the psbt doesn't change
                 var command = Assembly.GetEntryAssembly()?.GetName().Name?.ToLowerInvariant();

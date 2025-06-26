@@ -816,14 +816,6 @@
             return;
         }
 
-        if (walletWithdrawalRequest.Changeless)
-        {
-            //Si la transaccion es changeless para bumpear la fee reduciremos el output
-
-            ToastService.ShowWarning("This transaction is changeless and cannot be bumped. Please cancel it and create a new one with a higher fee.");
-            return;
-        }
-        
         try {
             _selectedRequest = walletWithdrawalRequest;
 
@@ -955,6 +947,7 @@
         if (newRequest != null && _bumpfeeRef != null) {
             newRequest.WalletId = _selectedRequest.WalletId;
             newRequest.Wallet = await WalletRepository.GetById(newRequest.WalletId);
+            decimal newFeeRate = (decimal)(newRequest.CustomFeeRate ?? 0m);
             if (!string.IsNullOrEmpty(_selectedRequest?.TxId))
             {
                 var metadata = new Dictionary<string, string>
@@ -962,9 +955,10 @@
                     { "bumpOfTxId", _selectedRequest.TxId }
                 };
                 newRequest.RequestMetadata = JsonConvert.SerializeObject(metadata);
-            @*}
-             if(newRequest.Changeless){
-                //Si es changeless cambiaremos el output a output = output - diffFee donde diffFee es la diferencia entre el fee actual y el nuevo fee
+            }
+            if(newRequest.Changeless)
+            {
+                //Whether we change the output to output = output - diffFee where diffFee is the difference between the current fee and the new fee
                 var txInfo = await NBXplorerService.GetTransactionAsync(uint256.Parse(_selectedRequest.TxId));
                 var tx = txInfo.Transaction;
                 long vSize = tx.GetVirtualSize();
@@ -993,7 +987,7 @@
                 }
 
                 decimal oldFee = (vSize * oldFeeRate) / 100_000_000m;    
-                decimal newFee = (vSize * _customSatPerVbAmount) / 100_000_000m;
+                decimal newFee = (vSize * newFeeRate) / 100_000_000m;
                 decimal feeDiff = newFee - oldFee;
 
                 if (newRequest.Amount <= feeDiff)
@@ -1003,7 +997,7 @@
                 }
 
                 newRequest.Amount -= feeDiff;
-                ToastService.ShowInfo($"Changeless bump: reduced output by {feeDiff:f8} BTC to increase the fee."); *@
+                ToastService.ShowInfo($"Changeless bump: reduced output by {feeDiff:f8} BTC to increase the fee."); 
 
             }
             await Bumpfee(newRequest);
@@ -1013,6 +1007,7 @@
         }
     }
 
+    
     private async Task ApproveRequestDelegate()
     {
         if (_selectedRequest != null)
@@ -1143,15 +1138,17 @@
                         bumpedRequest.UTXOs = new List<FMUTXO>();
                     }
 
+                    bumpedRequest.UTXOs = mUTXOs;
+                    List<OutPoint> outpoints = new List<OutPoint>();
                     mUTXOs.ForEach(u => {
-                        if (u.WalletWithdrawalRequests == null) {
-                            u.WalletWithdrawalRequests = new List<WalletWithdrawalRequest>();
-                        }
-
-                        u.WalletWithdrawalRequests.Add(bumpedRequest);
-                        bumpedRequest.UTXOs.Add(u);
-                        FMUTXORepository.Update(u);
+                        OutPoint o;
+                        if (OutPoint.TryParse($"{u.TxId}:{u.OutputIndex}", out o))
+                            outpoints.Add(o);
+                        else
+                            throw new Exception(); // To-Do
                     });
+                    _selectedUTXOs = await CoinSelectionService.GetUTXOsByOutpointAsync(originalRequest.Wallet.GetDerivationStrategy(), outpoints);
+
                     WalletWithdrawalRequestRepository.Update(bumpedRequest);
                 }
 

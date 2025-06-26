@@ -902,6 +902,8 @@ namespace NodeGuard.Migrations
 
                     b.HasKey("Id");
 
+                    b.HasIndex("BumpingId");
+
                     b.HasIndex("UserRequestorId");
 
                     b.HasIndex("WalletId");
@@ -1219,6 +1221,10 @@ namespace NodeGuard.Migrations
 
             modelBuilder.Entity("NodeGuard.Data.Models.WalletWithdrawalRequest", b =>
                 {
+                    b.HasOne("NodeGuard.Data.Models.WalletWithdrawalRequest", "Bumping")
+                        .WithMany()
+                        .HasForeignKey("BumpingId");
+
                     b.HasOne("NodeGuard.Data.Models.ApplicationUser", "UserRequestor")
                         .WithMany("WalletWithdrawalRequests")
                         .HasForeignKey("UserRequestorId");
@@ -1228,6 +1234,8 @@ namespace NodeGuard.Migrations
                         .HasForeignKey("WalletId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
+
+                    b.Navigation("Bumping");
 
                     b.Navigation("UserRequestor");
 
