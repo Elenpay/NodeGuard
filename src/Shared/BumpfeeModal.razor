@@ -29,6 +29,35 @@
                         </NumericPicker>
                     </div>
                     <FieldHelp>@(_selectedMempoolRecommendedFeesType != MempoolRecommendedFeesType.CustomFee ? "Fees may change by the time the request is first signed" : "")</FieldHelp>
+                    <FieldLabel class="mt-3">Last fee used</FieldLabel>
+                    <div class="d-flex">
+                        <Select TValue="MempoolRecommendedFeesType"
+                                SelectedValue="@(WithdrawalRequest?.MempoolRecommendedFeesType ?? MempoolRecommendedFeesType.FastestFee)">
+                            @if (WithdrawalRequest != null)
+                            {
+                                var lastFeeType = WithdrawalRequest.MempoolRecommendedFeesType;
+                                var lastFeeLabel = lastFeeType switch
+                                {
+                                    MempoolRecommendedFeesType.FastestFee => "Fastest Fee",
+                                    MempoolRecommendedFeesType.EconomyFee => "Economy Fee",
+                                    MempoolRecommendedFeesType.HourFee => "Hour Fee",
+                                    MempoolRecommendedFeesType.HalfHourFee => "Half Hour Fee",
+                                    MempoolRecommendedFeesType.CustomFee => "Custom",
+                                    _ => lastFeeType.ToString()
+                                };
+                                <SelectItem Value="@lastFeeType">@lastFeeLabel</SelectItem>
+                            }
+                        </Select>
+                        <NumericPicker TValue="long"
+                                       Value="@(WithdrawalRequest != null ? (long)WithdrawalRequest.CustomFeeRate : 0)"
+                                       CurrencySymbolPlacement="CurrencySymbolPlacement.Suffix"
+                                       CurrencySymbol=" sats/vb"
+                                       Min="1"
+                                       Disabled="true">
+                        </NumericPicker>
+                    </div>
+                    <FieldHelp>@(_selectedMempoolRecommendedFeesType != MempoolRecommendedFeesType.CustomFee ? "Fees must be greater than the current one" : "")</FieldHelp>
+
                 </Field>
             </Fields>
         </ModalBody>
