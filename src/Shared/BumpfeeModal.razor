@@ -101,7 +101,7 @@
     {
         long _currentSatsPerVbAmount = (long?)await NBXplorerService.GetFeesByType(WithdrawalRequest.MempoolRecommendedFeesType) ?? 1;
         if (_customSatPerVbAmount <= _currentSatsPerVbAmount) {
-            ToastService.ShowError("Fee must be greater than the current one");
+            ToastService.ShowError($"Fee must be greater than the current one ({_currentSatsPerVbAmount} sats/vB)");
         } else {
             WalletWithdrawalRequest newRequest = new WalletWithdrawalRequest();
             newRequest.Description = WithdrawalRequest.Description;
