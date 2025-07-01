@@ -378,20 +378,6 @@
                     }
                 </DisplayTemplate>
             </DataGridColumn>
-            <DataGridColumn TItem="WalletWithdrawalRequest" Caption="Actions" Displayable="@IsAllRequestsColumnVisible(AllWithdrawalsColumnName.Actions)">
-                <DisplayTemplate>
-                    @if (_isFinanceManager && context.Status == WalletWithdrawalRequestStatus.OnChainConfirmationPending)
-                    {
-                            <Dropdown>
-                                <DropdownToggle Color="Color.Primary">
-                                </DropdownToggle>
-                                <DropdownMenu>
-                                    <DropdownItem Clicked="async () => await ShowBumpfeeModal(context)">Bump fee</DropdownItem>
-                                </DropdownMenu>
-                            </Dropdown>
-                    }
-                </DisplayTemplate>
-            </DataGridColumn>
             <DataGridColumn TItem="WalletWithdrawalRequest" Caption="Parent Tx" Displayable="@IsAllRequestsColumnVisible(AllWithdrawalsColumnName.ParentTx)">
                 <DisplayTemplate>
                     @{
@@ -406,6 +392,21 @@
                     }
                 </DisplayTemplate>
             </DataGridColumn>
+            <DataGridColumn TItem="WalletWithdrawalRequest" Caption="Actions" Displayable="@IsAllRequestsColumnVisible(AllWithdrawalsColumnName.Actions)">
+                <DisplayTemplate>
+                    @if (_isFinanceManager && context.Status == WalletWithdrawalRequestStatus.OnChainConfirmationPending)
+                    {
+                            <Dropdown>
+                                <DropdownToggle Color="Color.Primary">
+                                </DropdownToggle>
+                                <DropdownMenu>
+                                    <DropdownItem Clicked="async () => await ShowBumpfeeModal(context)">Bump fee</DropdownItem>
+                                </DropdownMenu>
+                            </Dropdown>
+                    }
+                </DisplayTemplate>
+            </DataGridColumn>
+            
             <DataGridColumn TItem="WalletWithdrawalRequest" Displayable="true">
                 <FilterTemplate>
                     <ColumnLayout @ref="_allRequestsColumnLayout" Columns="@_allRequestsColumns" ColumnType="AllWithdrawalsColumnName" OnUpdate="@OnColumnLayoutUpdate"/>
@@ -816,6 +817,13 @@
             return;
         }
 
+        //If its changeless show a toast
+        if (walletWithdrawalRequest.Changeless)
+        {
+            ToastService.ShowError("Fee bumping is not supported for changeless transactions. Please create a new withdrawal with higher fees instead.");
+            return;
+        }
+
         try {
             _selectedRequest = walletWithdrawalRequest;
 
@@ -947,7 +955,19 @@
         if (newRequest != null && _bumpfeeRef != null) {
             newRequest.WalletId = _selectedRequest.WalletId;
             newRequest.Wallet = await WalletRepository.GetById(newRequest.WalletId);
-            decimal newFeeRate = (decimal)(newRequest.CustomFeeRate ?? 0m);
+                
+            // Use either the custom fee rate or the recommended fee rate based on mempool fee type
+            decimal newFeeRate;
+            if (newRequest.MempoolRecommendedFeesType == MempoolRecommendedFeesType.CustomFee && newRequest.CustomFeeRate.HasValue)
+            {
+                newFeeRate = (decimal)newRequest.CustomFeeRate.Value;
+            }
+            else
+            {
+                // Use the recommended fee rate from NBXplorer service based on the selected mempool fee type
+                var recommendedFeeRate = await GetRecommendedFeeRate(newRequest.MempoolRecommendedFeesType);
+                newFeeRate = (decimal)recommendedFeeRate;
+            }
             if (!string.IsNullOrEmpty(_selectedRequest?.TxId))
             {
                 var metadata = new Dictionary<string, string>
@@ -958,53 +978,36 @@
             }
             if(newRequest.Changeless)
             {
-                //Whether we change the output to output = output - diffFee where diffFee is the difference between the current fee and the new fee
-                var txInfo = await NBXplorerService.GetTransactionAsync(uint256.Parse(_selectedRequest.TxId));
-                var tx = txInfo.Transaction;
-                long vSize = tx.GetVirtualSize();
-                decimal oldFeeRate;
-
-                if (_selectedRequest.MempoolRecommendedFeesType == MempoolRecommendedFeesType.CustomFee)
-                {
-                    if (!_selectedRequest.CustomFeeRate.HasValue)
-                    {
-                        ToastService.ShowError("Custom fee rate not found.");
-                        return;
-                    }
-
-                    oldFeeRate = _selectedRequest.CustomFeeRate.Value;
-                }
-                else
-                {
-                    var fetchedRate = await NBXplorerService.GetFeesByType(_selectedRequest.MempoolRecommendedFeesType);
-                    if (!fetchedRate.HasValue)
-                    {
-                        ToastService.ShowError("Could not fetch original mempool fee rate.");
-                        return;
-                    }
-
-                    oldFeeRate = fetchedRate.Value;
-                }
-
-                decimal oldFee = (vSize * oldFeeRate) / 100_000_000m;    
-                decimal newFee = (vSize * newFeeRate) / 100_000_000m;
-                decimal feeDiff = newFee - oldFee;
-
-                if (newRequest.Amount <= feeDiff)
-                {
-                    ToastService.ShowError("Cannot bump fee: the increased fee exceeds the amount being sent.");
-                    return;
-                }
-
-                newRequest.Amount -= feeDiff;
-                ToastService.ShowInfo($"Changeless bump: reduced output by {feeDiff:f8} BTC to increase the fee."); 
-
+                /* 
+                 * CHANGELESS FEE BUMPING IS NOT SUPPORTED
+                 * 
+                 * Previous attempts to implement changeless fee bumping have failed due to:
+                 * 1. Double fee calculation issues - the UI calculates fees and NBitcoin also calculates fees,
+                 *    leading to "NotEnoughFundsException" when the total exceeds available input value.
+                 * 2. Precision mismatches between decimal calculations in the UI and NBitcoin's satoshi-based calculations.
+                 * 3. Complex UTXO selection and validation logic that doesn't account for changeless scenarios properly.
+                 * 4. NBitcoin's transaction builder expecting standard fee estimation patterns, not explicit fee amounts.
+                 *
+                 * Attempted solutions that didn't work:
+                 * - Calculating fees in satoshis for precision matching
+                 * - Explicitly setting fees with builder.SendFees() 
+                 * - Validating UTXO availability with unconfirmed UTXOs
+                 * - Custom fee calculation logic for changeless transactions
+                 *
+                 * For now, changeless transactions cannot be fee-bumped. Users should create a new 
+                 * transaction with higher fees instead.
+                 */
             }
             await Bumpfee(newRequest);
             await _bumpfeeRef.HideModal();
         } else {
             ToastService.ShowError("Something went wrong");
         }
+    }
+
+    private async Task<long> GetRecommendedFeeRate(MempoolRecommendedFeesType feeType)
+    {
+        return (long?)await NBXplorerService.GetFeesByType(feeType) ?? 1;
     }
 
     
