@@ -5,7 +5,7 @@
 namespace NodeGuard.Migrations
 {
     /// <inheritdoc />
-    public partial class AddBumpingRequest : Migration
+    public partial class BumpingRequest : Migration
     {
         /// <inheritdoc />
         protected override void Up(MigrationBuilder migrationBuilder)

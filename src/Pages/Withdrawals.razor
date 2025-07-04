@@ -1151,8 +1151,10 @@
                             throw new Exception(); // To-Do
                     });
                     _selectedUTXOs = await CoinSelectionService.GetUTXOsByOutpointAsync(originalRequest.Wallet.GetDerivationStrategy(), outpoints);
+                    originalRequest.Status = WalletWithdrawalRequestStatus.Bumped;
 
                     WalletWithdrawalRequestRepository.Update(bumpedRequest);
+                    WalletWithdrawalRequestRepository.Update(originalRequest);
                 }
 
                 if (_selectedUTXOs.Count > 0)
