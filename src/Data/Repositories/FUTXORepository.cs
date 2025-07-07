@@ -91,30 +91,17 @@ namespace NodeGuard.Data.Repositories
             return _repository.Update(type, applicationDbContext);
         }
 
-        public async Task<List<FMUTXO>> GetLockedUTXOsByRequestId(int? walletWithdrawalRequestId = null, int? channelOperationRequestId = null)
+        public async Task<List<FMUTXO>> GetLockedUTXOsByWithdrawalId(int walletWithdrawalRequestId)
         {
             await using var applicationDbContext = await _dbContextFactory.CreateDbContextAsync();
 
-            var walletWithdrawalRequestsLockedUTXOs = new List<FMUTXO>();
-            if (walletWithdrawalRequestId != null)
-            {
-                walletWithdrawalRequestsLockedUTXOs = await applicationDbContext.WalletWithdrawalRequests
-                    .Include(x => x.UTXOs)
-                    .Where(x => x.Id == walletWithdrawalRequestId)
-                    .SelectMany(x => x.UTXOs).ToListAsync();
-            }
-
-            var channelOperationRequestsLockedUTXOs = new List<FMUTXO>();
-
-            if (channelOperationRequestId != null)
-            {
-                walletWithdrawalRequestsLockedUTXOs = await applicationDbContext.ChannelOperationRequests
-                    .Include(x => x.Utxos)
-                    .Where(x => x.Id == walletWithdrawalRequestId)
-                    .SelectMany(x => x.Utxos).ToListAsync();
-            }
-            
-            var result = walletWithdrawalRequestsLockedUTXOs.Union(channelOperationRequestsLockedUTXOs).ToList();
+            var result = new List<FMUTXO>();
+            result = await applicationDbContext.WalletWithdrawalRequests
+                .Include(x => x.UTXOs)
+                .Where(x => x.Id == walletWithdrawalRequestId)
+                .SelectMany(x => x.UTXOs)
+                .Include(x => x.WalletWithdrawalRequests)
+                .ToListAsync();
 
             return result;
         }

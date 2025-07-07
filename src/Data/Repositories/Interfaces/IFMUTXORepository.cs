@@ -46,5 +46,5 @@ public interface IFMUTXORepository
     /// Gets the current list of UTXOs locked on requests ChannelOperationRequest / WalletWithdrawalRequest by passing its id 
     /// </summary>
     /// <returns></returns>
-    Task<List<FMUTXO>> GetLockedUTXOsByRequestId(int? walletWithdrawalRequestId = null, int? channelOperationRequestId = null);
+    Task<List<FMUTXO>> GetLockedUTXOsByWithdrawalId(int walletWithdrawalRequestId);
 }
