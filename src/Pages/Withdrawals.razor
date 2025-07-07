@@ -817,13 +817,12 @@
             return;
         }
 
-        //If its changeless show a toast
-        if (walletWithdrawalRequest.Changeless)
+        @* if (walletWithdrawalRequest.Changeless)
         {
             ToastService.ShowError("Fee bumping is not supported for changeless transactions. Please create a new withdrawal with higher fees instead.");
             return;
-        }
-
+        } *@
+        
         try {
             _selectedRequest = walletWithdrawalRequest;
 
@@ -976,27 +975,48 @@
                 };
                 newRequest.RequestMetadata = JsonConvert.SerializeObject(metadata);
             }
-            if(newRequest.Changeless)
-            {
-                /* 
-                 * CHANGELESS FEE BUMPING IS NOT SUPPORTED
-                 * 
-                 * Previous attempts to implement changeless fee bumping have failed due to:
-                 * 1. Double fee calculation issues - the UI calculates fees and NBitcoin also calculates fees,
-                 *    leading to "NotEnoughFundsException" when the total exceeds available input value.
-                 * 2. Precision mismatches between decimal calculations in the UI and NBitcoin's satoshi-based calculations.
-                 * 3. Complex UTXO selection and validation logic that doesn't account for changeless scenarios properly.
-                 * 4. NBitcoin's transaction builder expecting standard fee estimation patterns, not explicit fee amounts.
-                 *
-                 * Attempted solutions that didn't work:
-                 * - Calculating fees in satoshis for precision matching
-                 * - Explicitly setting fees with builder.SendFees() 
-                 * - Validating UTXO availability with unconfirmed UTXOs
-                 * - Custom fee calculation logic for changeless transactions
-                 *
-                 * For now, changeless transactions cannot be fee-bumped. Users should create a new 
-                 * transaction with higher fees instead.
-                 */
+             if(newRequest.Changeless){
+                //Si es changeless cambiaremos el output a output = output - diffFee donde diffFee es la diferencia entre el fee actual y el nuevo fee
+                var txInfo = await NBXplorerService.GetTransactionAsync(uint256.Parse(_selectedRequest.TxId));
+                var tx = txInfo.Transaction;
+                long vSize = tx.GetVirtualSize();
+                decimal oldFeeRate;
+
+                if (_selectedRequest.MempoolRecommendedFeesType == MempoolRecommendedFeesType.CustomFee)
+                {
+                    if (!_selectedRequest.CustomFeeRate.HasValue)
+                    {
+                        ToastService.ShowError("Custom fee rate not found.");
+                        return;
+                    }
+
+                    oldFeeRate = _selectedRequest.CustomFeeRate.Value;
+                }
+                else
+                {
+                    var fetchedRate = await NBXplorerService.GetFeesByType(_selectedRequest.MempoolRecommendedFeesType);
+                    if (!fetchedRate.HasValue)
+                    {
+                        ToastService.ShowError("Could not fetch original mempool fee rate.");
+                        return;
+                    }
+
+                    oldFeeRate = fetchedRate.Value;
+                }
+
+                decimal oldFee = (vSize * oldFeeRate) / 100_000_000m;    
+                decimal newFee = (vSize * newFeeRate) / 100_000_000m;
+                decimal feeDiff = newFee - oldFee;
+
+                if (newRequest.Amount <= feeDiff)
+                {
+                    ToastService.ShowError("Cannot bump fee: the increased fee exceeds the amount being sent.");
+                    return;
+                }
+
+                newRequest.Amount -= feeDiff;
+                ToastService.ShowInfo($"Changeless bump: reduced output by {feeDiff:f8} BTC to increase the fee."); 
+
             }
             await Bumpfee(newRequest);
             await _bumpfeeRef.HideModal();
@@ -1134,7 +1154,7 @@
 
                 if (_selectedRequest.BumpingId != null) {
                     WalletWithdrawalRequest originalRequest = await WalletWithdrawalRequestRepository.GetById((int)_selectedRequest.BumpingId);
-                    List<FMUTXO> mUTXOs = await FMUTXORepository.GetLockedUTXOsByRequestId(originalRequest.Id);
+                    List<FMUTXO> mUTXOs = await FMUTXORepository.GetLockedUTXOsByWithdrawalId(originalRequest.Id);
                     WalletWithdrawalRequest bumpedRequest = await WalletWithdrawalRequestRepository.GetById(_selectedRequest.Id);
 
                     if (bumpedRequest.UTXOs == null) {

@@ -217,7 +217,7 @@ namespace NodeGuard.Services
                 var builder = txBuilder;
                 builder.AddCoins(scriptCoins);
 
-                var changelessAmount = selectedUTXOs.Sum(u => (Money)u.Value);
+                
                 var amount = new Money(walletWithdrawalRequest.SatsAmount, MoneyUnit.Satoshi);
                 var destination = BitcoinAddress.Create(walletWithdrawalRequest.DestinationAddress, nbXplorerNetwork);
 
@@ -236,7 +236,7 @@ namespace NodeGuard.Services
                 }
                 else
                 {
-                    builder.Send(destination, walletWithdrawalRequest.Changeless ? changelessAmount : amount);
+                    builder.Send(destination, amount);
                     if (walletWithdrawalRequest.Changeless)
                     {
                         builder.SubtractFees();
