@@ -31,12 +31,8 @@ WHERE c.""Id"" = cor.""ChannelId"";
 
         protected override void Down(MigrationBuilder migrationBuilder)
         {
-            string query = @"
-BEGIN TRANSACTION;
-    UPDATE public.""Channels"" SET ""SourceNodeId"" = 1, ""DestinationNodeId"" = 1;
-COMMIT;";
+            string query = @"UPDATE public.""Channels"" SET ""SourceNodeId"" = 1, ""DestinationNodeId"" = 1;";
             migrationBuilder.Sql(query);
-
         }
     }
 }

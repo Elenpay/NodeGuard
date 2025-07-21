@@ -10,10 +10,8 @@ namespace NodeGuard.Migrations
         /// <inheritdoc />
         protected override void Up(MigrationBuilder migrationBuilder)
         {
-            // Execute data migration in an explicit transaction
+            // Execute data migration
             migrationBuilder.Sql(@"
-                BEGIN;
-                
                 -- Step 1: Migrate existing data from Amount and DestinationAddress to WalletWithdrawalRequestDestinations
                 INSERT INTO ""WalletWithdrawalRequestDestinations"" (""Amount"", ""Address"", ""WalletWithdrawalRequestId"", ""CreationDatetime"", ""UpdateDatetime"")
                 SELECT 
@@ -24,8 +22,10 @@ namespace NodeGuard.Migrations
                     ""UpdateDatetime""
                 FROM ""WalletWithdrawalRequests""
                 WHERE ""Amount"" > 0 AND ""DestinationAddress"" IS NOT NULL AND ""DestinationAddress"" != '';
-                
-                -- Step 2: Verify migration was successful - if any records failed to migrate, rollback
+            ");
+
+            // Step 2: Verify migration was successful
+            migrationBuilder.Sql(@"
                 DO $$
                 DECLARE
                     original_count INTEGER;
@@ -50,8 +50,6 @@ namespace NodeGuard.Migrations
                     -- Log success
                     RAISE NOTICE 'Successfully migrated % legacy withdrawal records to destinations table', original_count;
                 END $$;
-                
-                COMMIT;
             ");
         }
 
