@@ -79,11 +79,6 @@ namespace NodeGuard.Data.Models
         public WalletWithdrawalRequestStatus Status { get; set; }
 
         /// <summary>
-        /// base58 address of the output of the request
-        /// </summary>
-        public string DestinationAddress { get; set; }
-
-        /// <summary>
         /// Description by the requestor
         /// </summary>
         public string Description { get; set; }
@@ -96,13 +91,6 @@ namespace NodeGuard.Data.Models
         public string? RejectCancelDescription { get; set; }
 
         /// <summary>
-        /// TX amount in BTC
-        /// </summary>
-        ///
-
-        public decimal Amount { get; set; }
-
-        /// <summary>
         /// Checks if all the threshold signatures are collected, including the internal wallet key (even if not signed yet)
         /// </summary>
         [NotMapped]
@@ -110,10 +98,10 @@ namespace NodeGuard.Data.Models
 
         [NotMapped]
         public int NumberOfSignaturesCollected =>
-            WalletWithdrawalRequestPSBTs == null
-                ? 0
-                : WalletWithdrawalRequestPSBTs.Count(x =>
-                    !x.IsTemplatePSBT && !x.IsFinalisedPSBT && !x.IsInternalWalletPSBT);
+    WalletWithdrawalRequestPSBTs == null
+        ? 0
+        : WalletWithdrawalRequestPSBTs.Count(x =>
+            !x.IsTemplatePSBT && !x.IsFinalisedPSBT && !x.IsInternalWalletPSBT);
 
         /// <summary>
         /// This indicates if the user requested a changeless operation by selecting UTXOs
@@ -188,7 +176,11 @@ namespace NodeGuard.Data.Models
         }
 
         [NotMapped]
-        public long SatsAmount => new Money(Amount, MoneyUnit.BTC).Satoshi;
+        public decimal TotalAmount =>
+            WalletWithdrawalRequestDestinations?.Sum(x => x.Amount) ?? 0m;
+
+        [NotMapped]
+        public long SatsAmount => new Money(WalletWithdrawalRequestDestinations?.Sum(x => x.Amount) ?? 0m, MoneyUnit.BTC).Satoshi;
 
         #region Relationships
 
@@ -214,6 +206,11 @@ namespace NodeGuard.Data.Models
         /// This is a optional field that you can used to link withdrawals with externally-generated IDs (e.g. a withdrawal/settlement that belongs to an elenpay store)
         /// </summary>
         public string? ReferenceId { get; set; }
+
+        /// <summary>
+        /// List of destinations for the withdrawal request, if any, the amounts and dest on this entity is mutually exclusive with the WalletWithdrawalRequestDestinations
+        /// </summary>
+        public List<WalletWithdrawalRequestDestination>? WalletWithdrawalRequestDestinations { get; set; }
 
         #endregion Relationships
 

@@ -135,11 +135,19 @@
                     @ShowRequestor(context)
                 </DisplayTemplate>
             </DataGridColumn>
-            <DataGridColumn TItem="WalletWithdrawalRequest" Filterable="false" PopupFieldColumnSize="ColumnSize.Is12" Editable="true" Validator="DestinationAddressValidator" Field="@nameof(WalletWithdrawalRequest.DestinationAddress)" Caption="@nameof(WalletWithdrawalRequest.DestinationAddress).Humanize()" Sortable="false" Displayable="@IsPendingRequestsColumnVisible(PendingWithdrawalsColumnName.DestinationAddress)">
+            <DataGridColumn TItem="WalletWithdrawalRequest" Filterable="false" PopupFieldColumnSize="ColumnSize.Is12" Editable="true" Validator="DestinationAddressValidator" Field="@nameof(WalletWithdrawalRequest.WalletWithdrawalRequestDestinations)" Caption="Destination Address" Sortable="false" Displayable="@IsPendingRequestsColumnVisible(PendingWithdrawalsColumnName.DestinationAddress)">
                 <DisplayTemplate>
-                    @context.DestinationAddress
-                    @* TODO Copy and explorer buttons *@
+                    @(context.WalletWithdrawalRequestDestinations?.FirstOrDefault()?.Address ?? "No address provided")
                 </DisplayTemplate>
+                <EditTemplate>
+                    <Validation Validator="@DestinationAddressValidator">
+                        <TextEdit Text="@(GetDestinationAddressFromCellValue(context.CellValue))" TextChanged="(text) => OnDestinationAddressChanged(context, text)">
+                            <Feedback>
+                                <ValidationError/>
+                            </Feedback>
+                        </TextEdit>
+                    </Validation>
+                </EditTemplate>
             </DataGridColumn>
             <DataGridColumn TItem="WalletWithdrawalRequest" PopupFieldColumnSize="ColumnSize.Is6" Field="@nameof(WalletWithdrawalRequest.WithdrawAllFunds)" Caption="@nameof(WalletWithdrawalRequest.WithdrawAllFunds).Humanize(LetterCasing.Sentence)" Editable="true" Displayable="false">
                 <EditTemplate>
@@ -154,10 +162,10 @@
                     }
                 </EditTemplate>
             </DataGridColumn>
-            <DataGridColumn TItem="WalletWithdrawalRequest" Filterable="false" PopupFieldColumnSize="ColumnSize.Is12" Editable="true" Field="@nameof(WalletWithdrawalRequest.Amount)" Caption="Amount" Sortable="false" Displayable="@IsPendingRequestsColumnVisible(PendingWithdrawalsColumnName.Amount)">
+            <DataGridColumn TItem="WalletWithdrawalRequest" Filterable="false" PopupFieldColumnSize="ColumnSize.Is12" Editable="true" Caption="Amount" Sortable="false" Displayable="@IsPendingRequestsColumnVisible(PendingWithdrawalsColumnName.Amount)">
                 <DisplayTemplate>
                     @{
-                        @($"{context.Amount:f8} BTC ({Math.Round(PriceConversionService.BtcToUsdConversion(context.Amount, _btcPrice), 2)} USD)")
+                        @($"{context.TotalAmount:f8} BTC ({Math.Round(PriceConversionService.BtcToUsdConversion(context.TotalAmount, _btcPrice), 2)} USD)")
                     }
                 </DisplayTemplate>
                 <EditTemplate>
@@ -322,16 +330,16 @@
                     @ShowRequestor(context)
                 </DisplayTemplate>
             </DataGridColumn>
-            <DataGridColumn TItem="WalletWithdrawalRequest" Editable="true" Validator="DestinationAddressValidator" Field="@nameof(WalletWithdrawalRequest.DestinationAddress)" Caption="@nameof(WalletWithdrawalRequest.DestinationAddress).Humanize()" Sortable="false" Displayable="@IsAllRequestsColumnVisible(AllWithdrawalsColumnName.DestinationAddress)">
+            <DataGridColumn TItem="WalletWithdrawalRequest" Editable="true" Validator="DestinationAddressValidator" Field="@nameof(WalletWithdrawalRequest.WalletWithdrawalRequestDestinations)" Caption="Destination Address" Sortable="false" Displayable="@IsAllRequestsColumnVisible(AllWithdrawalsColumnName.DestinationAddress)">
                 <DisplayTemplate>
-                    @context.DestinationAddress
+                    @context.WalletWithdrawalRequestDestinations?.FirstOrDefault()?.Address
                     @* TODO Copy and explorer buttons *@
                 </DisplayTemplate>
             </DataGridColumn>
-            <DataGridColumn TItem="WalletWithdrawalRequest" Editable="true" Field="@nameof(WalletWithdrawalRequest.Amount)" Caption="Amount (BTC)" Sortable="false" Displayable="@IsAllRequestsColumnVisible(AllWithdrawalsColumnName.Amount)">
+            <DataGridColumn TItem="WalletWithdrawalRequest" Editable="false" Field="@nameof(WalletWithdrawalRequest.TotalAmount)" Caption="Amount (BTC)" Sortable="false" Displayable="@IsAllRequestsColumnVisible(AllWithdrawalsColumnName.Amount)">
                 <DisplayTemplate>
                     @{
-                        @($"{context.Amount:f8} BTC ({Math.Round(PriceConversionService.BtcToUsdConversion(context.Amount, _btcPrice), 2)} USD)")
+                        @($"{context.TotalAmount:f8} BTC ({Math.Round(PriceConversionService.BtcToUsdConversion(context.TotalAmount, _btcPrice), 2)} USD)")
                     }
                 </DisplayTemplate>
 
@@ -446,7 +454,7 @@
 <UTXOSelectorModal
     @ref="_utxoSelectorModalRef"
     OnClose="@OnCloseCoinSelectionModal"
-    IsWalletWithdrawalValidation="false"/>
+    IsWalletWithdrawalValidation="true"/>
 
 @inject IToastService ToastService
 @inject IWalletWithdrawalRequestRepository WalletWithdrawalRequestRepository
@@ -459,6 +467,7 @@
 @inject IPriceConversionService PriceConversionService
 @inject INBXplorerService NBXplorerService
 @inject IFMUTXORepository FMUTXORepository
+@inject IWalletWithdrawalRequestDestinationRepository WalletWithdrawalRequestDestinationRepository
 @code {
 
     [CascadingParameter] private ApplicationUser? LoggedUser { get; set; }
@@ -596,11 +605,19 @@
         if (arg.Item == null) return;
         var amount = _selectedUTXOs.Count > 0 ? SelectedUTXOsValue() : _amount;
         arg.Item.Wallet = await WalletRepository.GetById(arg.Item.WalletId);
-        arg.Item.Amount = amount;
         arg.Item.Changeless = _selectedUTXOs.Count > 0;
         arg.Item.WithdrawAllFunds = _isCheckedAllFunds || _amount == _selectedRequestWalletBalance;
         arg.Item.MempoolRecommendedFeesType = _selectedMempoolRecommendedFeesType;
         arg.Item.CustomFeeRate = _customSatPerVbAmount;
+        arg.Item.WalletWithdrawalRequestDestinations = new List<WalletWithdrawalRequestDestination>
+        {
+            new WalletWithdrawalRequestDestination
+            {
+                Address = arg.Item.WalletWithdrawalRequestDestinations?.FirstOrDefault()?.Address ?? "",
+                Amount = amount
+            }
+        };
+        
         if (arg.Item.Wallet.IsHotWallet)
         {
             await GetData();
@@ -718,10 +735,10 @@
         {
             var balance = await BitcoinService.GetWalletConfirmedBalance(wallet);
 
-            if (arg.Item.Amount > balance.Item1)
+            if (arg.Item.TotalAmount > balance.Item1)
             {
                 ToastService.ShowError(
-                    $"The confirmed balance({balance.Item1:f8} BTC) for the selected wallet is less than the amount requested to withdraw ({arg.Item.Amount:f8} BTC)");
+                    $"The confirmed balance({balance.Item1:f8} BTC) for the selected wallet is less than the amount requested to withdraw ({arg.Item.TotalAmount:f8} BTC)");
                 await GetData();
                 return true;
             }
@@ -957,43 +974,20 @@
                 var txInfo = await NBXplorerService.GetTransactionAsync(uint256.Parse(_selectedRequest.TxId));
                 var tx = txInfo.Transaction;
                 long vSize = tx.GetVirtualSize();
-                decimal oldFeeRate;
-
-                if (_selectedRequest.MempoolRecommendedFeesType == MempoolRecommendedFeesType.CustomFee)
-                {
-                    if (!_selectedRequest.CustomFeeRate.HasValue)
-                    {
-                        ToastService.ShowError("Custom fee rate not found.");
-                        return;
-                    }
-
-                    oldFeeRate = _selectedRequest.CustomFeeRate.Value;
-                }
-                else
-                {
-                    var fetchedRate = await NBXplorerService.GetFeesByType(_selectedRequest.MempoolRecommendedFeesType);
-                    if (!fetchedRate.HasValue)
-                    {
-                        ToastService.ShowError("Could not fetch original mempool fee rate.");
-                        return;
-                    }
-
-                    oldFeeRate = fetchedRate.Value;
-                }
+                decimal oldFeeRate = _selectedRequest.CustomFeeRate ?? 1;
 
                 decimal oldFee = (vSize * oldFeeRate) / 100_000_000m;    
                 decimal newFee = (vSize * newFeeRate) / 100_000_000m;
                 decimal feeDiff = newFee - oldFee;
 
-                if (newRequest.Amount <= feeDiff)
+                var amount = newRequest.WalletWithdrawalRequestDestinations.Sum(x => x.Amount);
+                if (amount <= feeDiff)
                 {
                     ToastService.ShowError("Cannot bump fee: the increased fee exceeds the amount being sent.");
                     return;
                 }
-
                 
                 ToastService.ShowInfo($"Changeless bump: reduced output by {feeDiff:f8} BTC to increase the fee."); 
-
             }
             await Bumpfee(newRequest);
             await _bumpfeeRef.HideModal();
@@ -1129,14 +1123,33 @@
 
                 if (_selectedRequest.BumpingId != null) {
                     WalletWithdrawalRequest originalRequest = await WalletWithdrawalRequestRepository.GetById((int)_selectedRequest.BumpingId);
-                    List<FMUTXO> mUTXOs = await FMUTXORepository.GetLockedUTXOsByWithdrawalId(originalRequest.Id);
-                    WalletWithdrawalRequest bumpedRequest = await WalletWithdrawalRequestRepository.GetById(_selectedRequest.Id);
-
-                    if (bumpedRequest.UTXOs == null) {
-                        bumpedRequest.UTXOs = new List<FMUTXO>();
+                    if (originalRequest == null)
+                    {
+                        throw new ShowToUserException("Original withdrawal request not found");
                     }
 
-                    bumpedRequest.UTXOs = mUTXOs;
+                    // Get destinations from the original request
+                    List<WalletWithdrawalRequestDestination> originalDestinations = await WalletWithdrawalRequestDestinationRepository.GetByWalletWithdrawalRequestId(originalRequest.Id);
+                    if (originalDestinations == null || originalDestinations.Count == 0)
+                    {
+                        throw new ShowToUserException("Original withdrawal request destinations not found");
+                    }
+
+                    _selectedRequest.WalletWithdrawalRequestDestinations = originalDestinations.Select(d => new WalletWithdrawalRequestDestination
+                    {
+                        Address = d.Address,
+                        Amount = d.Amount,
+                        WalletWithdrawalRequestId = _selectedRequest.Id
+                    }).ToList();
+
+                    // Get utxos from the original request
+                    List<FMUTXO> mUTXOs = await FMUTXORepository.GetLockedUTXOsByWithdrawalId(originalRequest.Id);
+
+                    if (_selectedRequest.UTXOs == null) {
+                        _selectedRequest.UTXOs = new List<FMUTXO>();
+                    }
+
+                    _selectedRequest.UTXOs = mUTXOs;
                     List<OutPoint> outpoints = new List<OutPoint>();
                     mUTXOs.ForEach(u => {
                         OutPoint o;
@@ -1148,8 +1161,17 @@
                     _selectedUTXOs = await CoinSelectionService.GetUTXOsByOutpointAsync(originalRequest.Wallet.GetDerivationStrategy(), outpoints);
                     originalRequest.Status = WalletWithdrawalRequestStatus.Bumped;
 
-                    WalletWithdrawalRequestRepository.Update(bumpedRequest);
-                    WalletWithdrawalRequestRepository.Update(originalRequest);
+                    var updateResult = WalletWithdrawalRequestRepository.Update(_selectedRequest);
+                    if (!updateResult.Item1)
+                    {
+                        ToastService.ShowError("Something went wrong");
+                    }
+
+                    updateResult = WalletWithdrawalRequestRepository.Update(originalRequest);
+                    if (!updateResult.Item1)
+                    {
+                        ToastService.ShowError("Something went wrong");
+                    }
                 }
                 _selectedRequest.Changeless = _selectedUTXOs.Count > 0;
 
@@ -1288,6 +1310,20 @@
         await OnMempoolFeeRateChange(_selectedMempoolRecommendedFeesType);
 
         _amount = _minimumWithdrawalAmount;
+    }
+
+    private void OnDestinationAddressChanged(CellEditContext<WalletWithdrawalRequest> context, string text)
+    {
+        context.CellValue = new List<WalletWithdrawalRequestDestination> { new() { Address = text, Amount = 0m } };
+    }
+
+    private string GetDestinationAddressFromCellValue(object cellValue)
+    {
+        if (cellValue is List<WalletWithdrawalRequestDestination> destinations && destinations.Any())
+        {
+            return destinations.First().Address ?? string.Empty;
+        }
+        return string.Empty;
     }
 
 }

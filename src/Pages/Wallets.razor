@@ -1419,9 +1419,15 @@ OnSubmit="TransferFundsHotWallet"/>
             UserRequestorId = LoggedUser != null ? LoggedUser.Id : string.Empty,
             Description = $"Funds transferred from {_sourceWalletName} to {_targetWalletName}",
             WithdrawAllFunds = _transferAllFunds,
-            DestinationAddress = targetBitcoinAddress.ToString(),
             MempoolRecommendedFeesType = MempoolRecommendedFeesType.HourFee,
-            Amount = _amountToTransfer,
+            WalletWithdrawalRequestDestinations = new List<WalletWithdrawalRequestDestination>
+            {
+                new WalletWithdrawalRequestDestination
+                {
+                    Address = targetBitcoinAddress.ToString(),
+                    Amount = _amountToTransfer,
+                }
+            },
             WalletId = _sourceTransferWallet.Id,
             Status = _sourceTransferWallet.IsHotWallet
                 ? WalletWithdrawalRequestStatus.PSBTSignaturesPending

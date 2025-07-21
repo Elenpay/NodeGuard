@@ -632,9 +632,13 @@ namespace NodeGuard.Rpc
             var requestWithdrawalRequest = new RequestWithdrawalRequest
             {
                 WalletId = wallet.Id,
-                Amount = 100,
                 Description = $"Request Withdrawal Test {DateTime.Now}",
-                Address = "bcrt1q590shaxaf5u08ml8jwlzghz99dup3z9592vxal",
+                Destinations = { new Destination
+                {
+                    Address = "bcrt1q590shaxaf5u08ml8jwlzghz99dup3z9592vxal",
+                    AmountSats = new Money(1, MoneyUnit.BTC).Satoshi
+                }
+                }
             };
 
             //Act
