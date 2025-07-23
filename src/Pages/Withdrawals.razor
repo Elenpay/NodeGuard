@@ -1315,7 +1315,7 @@
         if (!string.IsNullOrEmpty(walletWithdrawalRequest.TxId)) {
             try {
                 var nbxplorerStatus = await NBXplorerService.GetTransactionAsync(uint256.Parse(walletWithdrawalRequest.TxId));
-                confirmations = (ulong)(nbxplorerStatus?.Confirmations ?? 0);
+                confirmations = (ulong)(nbxplorerStatus?.Confirmations ?? throw new Exception("Failed to get confirmations"));
                 return walletWithdrawalRequest.Status == WalletWithdrawalRequestStatus.OnChainConfirmationPending && confirmations.Equals((ulong) 0);
             }
             catch (Exception)
