@@ -97,9 +97,12 @@
     private async Task HandleOnClick()
     {
         var oldFee = WithdrawalRequest?.CustomFeeRate ?? 0;
-        if (_customSatPerVbAmount <= oldFee) {
+        if (_customSatPerVbAmount <= oldFee)
+        {
             ToastService.ShowError($"Fee must be greater than the current one ({oldFee} sats/vB)");
-        } else {
+        }
+        else
+        {
             WalletWithdrawalRequest newRequest = new WalletWithdrawalRequest();
             newRequest.Description = WithdrawalRequest.Description;
             newRequest.Changeless = WithdrawalRequest.Changeless;
@@ -115,7 +118,8 @@
     public async Task ShowModal()
     {
         var walletId = WithdrawalRequest?.WalletId ?? -1;
-        if (walletId != -1) {
+        if (walletId != -1)
+        {
             var wallet = await WalletRepository.GetById(walletId);
             var (balance, _) = await BitcoinService.GetWalletConfirmedBalance(wallet);
             _selectedWalletBalance = balance;

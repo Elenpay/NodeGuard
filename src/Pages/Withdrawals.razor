@@ -799,11 +799,12 @@
     private async Task ShowBumpfeeModal(WalletWithdrawalRequest walletWithdrawalRequest)
     {   
         ulong confirmations = 0;
-        if (!string.IsNullOrEmpty(walletWithdrawalRequest.TxId)) {
+        if (!string.IsNullOrEmpty(walletWithdrawalRequest.TxId))
+        {
             try
             {
                 var nbxplorerStatus = await NBXplorerService.GetTransactionAsync(uint256.Parse(walletWithdrawalRequest.TxId));
-                confirmations = (ulong)(nbxplorerStatus?.Confirmations ?? 0);
+                confirmations = (ulong)(nbxplorerStatus?.Confirmations ?? throw new Exception("Failed to get confirmations"));
             }
             catch (Exception)
             {
@@ -819,13 +820,16 @@
             return;
         }
 
-        @* if (walletWithdrawalRequest.Changeless)
+
+        // NOTE: Revisit this when full RBF is implemented because we could add a UTXO
+        if (walletWithdrawalRequest.Changeless)
         {
             ToastService.ShowError("Fee bumping is not supported for changeless transactions. Please create a new withdrawal with higher fees instead.");
             return;
-        } *@
+        }
         
-        try {
+        try
+        {
             _selectedRequest = walletWithdrawalRequest;
 
             if (_bumpfeeRef != null) await _bumpfeeRef.ShowModal();
@@ -944,16 +948,20 @@
 
     private async Task Bumpfee(WalletWithdrawalRequest request)
     {
-        try {
+        try
+        {
             await CreateNewWithdrawal(request);
-        } catch {
+        }
+        catch
+        {
             ToastService.ShowError("Could not bump the withdrawal");
         }
     }
 
     private async void SubmitBumpfeeModal(WalletWithdrawalRequest newRequest)
     {
-        if (newRequest != null && _bumpfeeRef != null) {
+        if (newRequest != null && _bumpfeeRef != null)
+        {
             newRequest.WalletId = _selectedRequest.WalletId;
             newRequest.Wallet = await WalletRepository.GetById(newRequest.WalletId);
                 
@@ -998,14 +1006,17 @@
 
             // If the request is changeless, show an error
             // NOTE: Revisit this when full RBF is implemented because we could add a UTXO
-            if (newRequest.Changeless){
+            if (newRequest.Changeless)
+            {
                 ToastService.ShowError("Fee bumping is not supported for changeless transactions. Please create a new withdrawal with higher fees instead.");
                 return;
             }
             
             await Bumpfee(newRequest);
             await _bumpfeeRef.HideModal();
-        } else {
+        }
+        else
+        {
             ToastService.ShowError("Something went wrong");
         }
     }
@@ -1134,7 +1145,8 @@
                     throw new ShowToUserException(createWithdrawalResult.Item2);
                 }
 
-                if (_selectedRequest.BumpingId != null) {
+                if (_selectedRequest.BumpingId != null)
+                {
                     WalletWithdrawalRequest originalRequest = await WalletWithdrawalRequestRepository.GetById((int)_selectedRequest.BumpingId);
                     if (originalRequest == null)
                     {
@@ -1169,7 +1181,7 @@
                         if (OutPoint.TryParse($"{u.TxId}:{u.OutputIndex}", out o))
                             outpoints.Add(o);
                         else
-                            throw new Exception(); // To-Do
+                            throw new FormatException("Failed to parse OutPoint from TxId and OutputIndex");
                     });
                     _selectedUTXOs = await CoinSelectionService.GetUTXOsByOutpointAsync(originalRequest.Wallet.GetDerivationStrategy(), outpoints);
                     originalRequest.Status = WalletWithdrawalRequestStatus.Bumped;
