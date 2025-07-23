@@ -30,8 +30,6 @@ services:
       NBXPLORER_BIND: 0.0.0.0:32838
       NBXPLORER_TRIMEVENTS: 10000
       NBXPLORER_SIGNALFILESDIR: /datadir
-      #Keeping dbtrie for dev until it is fully removed since we would need to modify nbxplorer docker image to wait for the db to be ready
-      NBXPLORER_DBTRIE: 0
       NBXPLORER_POSTGRES: Host=nbxplorer_postgres;Port=5432;Database=nbxplorer;Username=rw_dev;Password=rw_dev
       NBXPLORER_CHAINS: "btc"
       NBXPLORER_BTCRPCUSER: "polaruser"
