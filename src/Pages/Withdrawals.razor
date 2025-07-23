@@ -1170,10 +1170,6 @@
                     // Get utxos from the original request
                     List<FMUTXO> mUTXOs = await FMUTXORepository.GetLockedUTXOsByWithdrawalId(originalRequest.Id);
 
-                    if (_selectedRequest.UTXOs == null) {
-                        _selectedRequest.UTXOs = new List<FMUTXO>();
-                    }
-
                     _selectedRequest.UTXOs = mUTXOs;
                     List<OutPoint> outpoints = new List<OutPoint>();
                     mUTXOs.ForEach(u => {
