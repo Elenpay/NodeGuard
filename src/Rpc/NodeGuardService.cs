@@ -1003,10 +1003,19 @@ public class NodeGuardService : Nodeguard.NodeGuardService.NodeGuardServiceBase,
             throw new Exception("Derivation strategy not found for wallet with id {walletId}");
         }
 
-        var lockedUtxos = await _fmutxoRepository.GetLockedUTXOs();
+        var walletUtxos = await _nbXplorerService.GetUTXOsAsync(derivationStrategy);
+        var lockedUtxos = await _fmutxoRepository.GetLockedUTXOsByWalletId(wallet.Id);
         var ignoreOutpoints = new List<string>();
         var listLocked = lockedUtxos.Select(utxo => $"{utxo.TxId}-{utxo.OutputIndex}").ToList();
         var listFrozen = await _coinSelectionService.GetFrozenUTXOs();
+
+        // filter frozen list by only including UTXOs that belong to the wallet
+        // TODO: find a way to add wallet id to the UTXOTag model
+        listFrozen = listFrozen
+            .Where(utxo => walletUtxos.Confirmed.UTXOs.Any(u => u.Outpoint.ToString() == utxo) ||
+                           walletUtxos.Unconfirmed.UTXOs.Any(u => u.Outpoint.ToString() == utxo))
+                           .ToList();
+
         ignoreOutpoints.AddRange(listLocked);
         ignoreOutpoints.AddRange(listFrozen);
 

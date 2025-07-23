@@ -159,5 +159,31 @@ namespace NodeGuard.Data.Repositories
 
             return result;
         }
+        
+        public async Task<List<FMUTXO>> GetLockedUTXOsByWalletId(int walletId)
+        {
+            await using var applicationDbContext = await _dbContextFactory.CreateDbContextAsync();
+
+            var walletWithdrawalRequestsLockedUTXOs = await applicationDbContext.WalletWithdrawalRequests
+                    .Include(x => x.UTXOs)
+                    .Where(x => x.Status == WalletWithdrawalRequestStatus.Pending ||
+                                x.Status == WalletWithdrawalRequestStatus.PSBTSignaturesPending ||
+                                x.Status == WalletWithdrawalRequestStatus.FinalizingPSBT ||
+                                x.Status == WalletWithdrawalRequestStatus.OnChainConfirmationPending)
+                    .Where(x => x.WalletId == walletId)
+                    .SelectMany(x => x.UTXOs)
+                    .ToListAsync();
+
+            var channelOperationRequestsLockedUTXOs = await applicationDbContext.ChannelOperationRequests.Include(x => x.Utxos)
+                    .Where(x => x.Status == ChannelOperationRequestStatus.Pending ||
+                                x.Status == ChannelOperationRequestStatus.PSBTSignaturesPending ||
+                                x.Status == ChannelOperationRequestStatus.FinalizingPSBT ||
+                                x.Status == ChannelOperationRequestStatus.OnChainConfirmationPending)
+                    .Where(x => x.WalletId == walletId)
+                    .SelectMany(x => x.Utxos)
+                    .ToListAsync();
+
+            return walletWithdrawalRequestsLockedUTXOs.Union(channelOperationRequestsLockedUTXOs).ToList();
+        }
     }
 }
