@@ -999,7 +999,7 @@
                 var inputAmount = Money.Satoshis(_selectedRequest.UTXOs.Sum(x => x.SatsAmount)).ToDecimal(MoneyUnit.BTC); // Convert to BTC
                 if (inputAmount <= newFee + _selectedRequest.TotalAmount)
                 {
-                    ToastService.ShowError("The new fee plus the amount exceeds the sum of the selected UTXOs. Please lower the fee rate.");
+                    ToastService.ShowError("The new fee plus the amount exceeds the sum of the selected UTXOs or returns dust. Please lower the fee rate.");
                     return;
                 }
             }
