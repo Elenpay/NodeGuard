@@ -232,7 +232,7 @@ public class NodeGuardService : Nodeguard.NodeGuardService.NodeGuardServiceBase,
                     throw new RpcException(new Status(StatusCode.Internal, "Derivation strategy not found"));
 
                 utxos = await _coinSelectionService.GetUTXOsByOutpointAsync(derivationStrategyBase, outpoints);
-      
+
             }
 
             // Create destination objects for the withdrawal request
@@ -963,13 +963,15 @@ public class NodeGuardService : Nodeguard.NodeGuardService.NodeGuardServiceBase,
             {
                 Amount = (Money)utxo.Value,
                 Outpoint = utxo.Outpoint.ToString(),
-                Address = utxo.Address.ToString()
+                Address = utxo.Address.ToString(),
+                WalletId = wallet.Id
             }));
             unconfirmed.AddRange(walletUtxos.Unconfirmed.UTXOs.Select(utxo => new Utxo()
             {
                 Amount = (Money)utxo.Value,
                 Outpoint = utxo.Outpoint.ToString(),
-                Address = utxo.Address.ToString()
+                Address = utxo.Address.ToString(),
+                WalletId = wallet.Id
             }));
         }
 
