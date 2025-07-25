@@ -94,7 +94,7 @@
 
     private Modal? _modalRef;
 
-    private async Task HandleOnClick()
+    private void HandleOnClick()
     {
         var oldFee = WithdrawalRequest?.CustomFeeRate ?? 0;
         if (_customSatPerVbAmount <= oldFee)
