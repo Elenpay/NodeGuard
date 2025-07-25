@@ -58,6 +58,29 @@ public class PerformWithdrawalJob : IJob
         catch (Exception e)
         {
             var request = await _walletWithdrawalRequestRepository.GetById(withdrawalRequestId);
+
+            // If an error occurs and the wd was bumping another one, we need to update the status of the withdrawal request to previous status
+            if (request == null && request!.BumpingId.HasValue)
+            {
+                var bumped = await _walletWithdrawalRequestRepository.GetById(request.BumpingId.Value);
+                if (bumped == null)
+                {
+                    _logger.LogError("Failed to find withdrawal request with ID {WithdrawalRequestId}", withdrawalRequestId);
+                    return;
+                }
+
+                bumped.Status = WalletWithdrawalRequestStatus.OnChainConfirmationPending;
+                var (ok, _) = _walletWithdrawalRequestRepository.Update(bumped);
+                if (!ok)
+                {
+                    _logger.LogError("Failed to update withdrawal request status to OnChainConfirmationPending for ID {WithdrawalRequestId}", withdrawalRequestId);
+                }
+                else
+                {
+                    _logger.LogInformation("Updated withdrawal request status to OnChainConfirmationPending for ID {WithdrawalRequestId}", withdrawalRequestId);
+                }
+            }
+
             request!.Status = WalletWithdrawalRequestStatus.Failed;
             var (updated, _) = _walletWithdrawalRequestRepository.Update(request);
             if (!updated)
