@@ -18,6 +18,7 @@
  */
 using System.Globalization;
 using System.Reflection;
+using NBitcoin;
 using NodeGuard.Helpers;
 
 public class Constants
@@ -75,7 +76,7 @@ public class Constants
     public static readonly long MINIMUM_SWEEP_TRANSACTION_AMOUNT_SATS = 25_000_000; //25M sats
     public static readonly string DEFAULT_DERIVATION_PATH = "48'/1'";
     public static readonly int SESSION_TIMEOUT_MILLISECONDS = 3_600_000;
-    public static readonly decimal BITCOIN_DUST = 0.00000546m; // 546 satoshi in BTC
+    public static readonly Money BITCOIN_DUST = new Money(0.00000546m, MoneyUnit.BTC); // 546 satoshi in BTC
 
     //Sat/vb ratio
     public static decimal MIN_SAT_PER_VB_RATIO = 0.9m;
