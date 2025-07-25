@@ -201,7 +201,7 @@
             </DataGridColumn>
             <DataGridColumn TItem="WalletWithdrawalRequest" Filterable="false" PopupFieldColumnSize="ColumnSize.Is12" Editable="true" Field="@nameof(WalletWithdrawalRequest.CustomFeeRate)" Caption="Fee rate" Sortable="false" Displayable="@IsPendingRequestsColumnVisible(PendingWithdrawalsColumnName.FeeRate)">
                 <DisplayTemplate>
-                    @(context.MempoolRecommendedFeesType == MempoolRecommendedFeesType.CustomFee ? $"Custom fee ({context.CustomFeeRate} sats/vb)" : $"{context.MempoolRecommendedFeesType.Humanize()} ({context.CustomFeeRate} sats/vb)")
+                    @(context.MempoolRecommendedFeesType == MempoolRecommendedFeesType.CustomFee ? $"Custom fee ({context.CustomFeeRate} sat/vb)" : $"{context.MempoolRecommendedFeesType.Humanize()} ({context.CustomFeeRate} sat/vb)")
                 </DisplayTemplate>
                 <EditTemplate>
                     <div class="d-flex">
@@ -214,7 +214,7 @@
                             </SelectGroup>
                             <SelectItem Value="MempoolRecommendedFeesType.CustomFee">Custom</SelectItem>
                         </Select>
-                        <NumericPicker TValue="long" @bind-Value="@_customSatPerVbAmount" CurrencySymbolPlacement="CurrencySymbolPlacement.Suffix" CurrencySymbol=" sats/vb" Min="1" Disabled="@(_selectedMempoolRecommendedFeesType != MempoolRecommendedFeesType.CustomFee)">
+                        <NumericPicker TValue="long" @bind-Value="@_customSatPerVbAmount" CurrencySymbolPlacement="CurrencySymbolPlacement.Suffix" CurrencySymbol=" sat/vb" Min="1" Disabled="@(_selectedMempoolRecommendedFeesType != MempoolRecommendedFeesType.CustomFee)">
                             <Feedback>
                                 <ValidationError/>
                             </Feedback>
@@ -346,7 +346,7 @@
             </DataGridColumn>
             <DataGridColumn TItem="WalletWithdrawalRequest" Filterable="true" Editable="false" Field="@nameof(WalletWithdrawalRequest.CustomFeeRate)" Caption="Fee rate" Sortable="false" Displayable="@IsAllRequestsColumnVisible(PendingWithdrawalsColumnName.FeeRate)">
                             <DisplayTemplate>
-                                @(context.MempoolRecommendedFeesType == MempoolRecommendedFeesType.CustomFee ? $"Custom fee ({context.CustomFeeRate} sats/vb)" : $"{context.MempoolRecommendedFeesType.Humanize()} ({context.CustomFeeRate} sats/vb)")
+                                @(context.MempoolRecommendedFeesType == MempoolRecommendedFeesType.CustomFee ? $"Custom fee ({context.CustomFeeRate} sat/vb)" : $"{context.MempoolRecommendedFeesType.Humanize()} ({context.CustomFeeRate} sat/vb)")
                             </DisplayTemplate>
             </DataGridColumn>
             <DataGridColumn TItem="WalletWithdrawalRequest" Field="@nameof(WalletWithdrawalRequest.WalletId)" Caption="Signatures Collected" Sortable="false" Displayable="@IsAllRequestsColumnVisible(AllWithdrawalsColumnName.SignaturesCollected)">

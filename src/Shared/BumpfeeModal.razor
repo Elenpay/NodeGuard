@@ -22,7 +22,7 @@
                             </SelectGroup>
                             <SelectItem Value="MempoolRecommendedFeesType.CustomFee">Custom</SelectItem>
                         </Select>
-                        <NumericPicker TValue="long" @bind-Value="@_customSatPerVbAmount" CurrencySymbolPlacement="CurrencySymbolPlacement.Suffix" CurrencySymbol=" sats/vb" Min="1" Disabled="@(_selectedMempoolRecommendedFeesType != MempoolRecommendedFeesType.CustomFee)">
+                        <NumericPicker TValue="long" @bind-Value="@_customSatPerVbAmount" CurrencySymbolPlacement="CurrencySymbolPlacement.Suffix" CurrencySymbol=" sat/vb" Min="1" Disabled="@(_selectedMempoolRecommendedFeesType != MempoolRecommendedFeesType.CustomFee)">
                         </NumericPicker>
                     </div>
                     <FieldHelp>@(_selectedMempoolRecommendedFeesType != MempoolRecommendedFeesType.CustomFee ? "Fees may change by the time the request is first signed" : "")</FieldHelp>
@@ -48,7 +48,7 @@
                         <NumericPicker TValue="long"
                                        Value="@(WithdrawalRequest != null ? (long)WithdrawalRequest.CustomFeeRate : 0)"
                                        CurrencySymbolPlacement="CurrencySymbolPlacement.Suffix"
-                                       CurrencySymbol=" sats/vb"
+                                       CurrencySymbol=" sat/vb"
                                        Min="1"
                                        Disabled="true">
                         </NumericPicker>
@@ -99,7 +99,7 @@
         var oldFee = WithdrawalRequest?.CustomFeeRate ?? 0;
         if (_customSatPerVbAmount <= oldFee)
         {
-            ToastService.ShowError($"Fee must be greater than the current one ({oldFee} sats/vB)");
+            ToastService.ShowError($"Fee must be greater than the current one ({oldFee} sat/vb)");
         }
         else
         {
