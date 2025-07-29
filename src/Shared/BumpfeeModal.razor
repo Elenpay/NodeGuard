@@ -22,7 +22,12 @@
                             </SelectGroup>
                             <SelectItem Value="MempoolRecommendedFeesType.CustomFee">Custom</SelectItem>
                         </Select>
-                        <NumericPicker TValue="long" @bind-Value="@_customSatPerVbAmount" CurrencySymbolPlacement="CurrencySymbolPlacement.Suffix" CurrencySymbol=" sat/vb" Min="1" Disabled="@(_selectedMempoolRecommendedFeesType != MempoolRecommendedFeesType.CustomFee)">
+                        <NumericPicker TValue="long"
+                                    @bind-Value="@_customSatPerVbAmount"
+                                    CurrencySymbolPlacement="CurrencySymbolPlacement.Suffix"
+                                    CurrencySymbol=" sat/vb"
+                                    Min="1"
+                                    Disabled="@(_selectedMempoolRecommendedFeesType != MempoolRecommendedFeesType.CustomFee)">
                         </NumericPicker>
                     </div>
                     <FieldHelp>@(_selectedMempoolRecommendedFeesType != MempoolRecommendedFeesType.CustomFee ? "Fees may change by the time the request is first signed" : "")</FieldHelp>
@@ -54,6 +59,11 @@
                         </NumericPicker>
                     </div>
                     <FieldHelp>@(_selectedMempoolRecommendedFeesType != MempoolRecommendedFeesType.CustomFee ? "Fees must be greater than the current one" : "")</FieldHelp>
+                    @if (_txVSize != 0)
+                    {
+                        <FieldHelp>@(_txVSize * _customSatPerVbAmount) sats will be approximately used as fees in the transaction.</FieldHelp>
+                        <FieldHelp>And that's @(100 * (_txVSize * _customSatPerVbAmount) / _utxosInputSatsAmount)% of the input UTXOs</FieldHelp>
+                    }
 
                 </Field>
             </Fields>
@@ -93,6 +103,25 @@
     private long _customSatPerVbAmount = 1;
 
     private Modal? _modalRef;
+
+    private long _txVSize;
+    private long _utxosInputSatsAmount;
+
+    protected override async Task OnParametersSetAsync()
+    {
+        if (WithdrawalRequest != null)
+        {
+            var txInfo = await NBXplorerService.GetTransactionAsync(uint256.Parse(WithdrawalRequest.TxId));
+            if (txInfo != null)
+            {
+                var tx = txInfo.Transaction;
+                _txVSize = tx.GetVirtualSize();
+            }
+
+            if (WithdrawalRequest.UTXOs != null)
+                _utxosInputSatsAmount = WithdrawalRequest.UTXOs.Sum(x => x.SatsAmount);
+        }
+    }
 
     private void HandleOnClick()
     {

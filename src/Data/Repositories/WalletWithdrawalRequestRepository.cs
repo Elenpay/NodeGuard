@@ -95,6 +95,7 @@ namespace NodeGuard.Data.Repositories
                 .Include(x => x.UserRequestor)
                 .Include(x => x.WalletWithdrawalRequestPSBTs)
                 .Include(x => x.WalletWithdrawalRequestDestinations)
+                .Include(x => x.UTXOs)
                 .AsSplitQuery()
                 .ToListAsync();
         }
