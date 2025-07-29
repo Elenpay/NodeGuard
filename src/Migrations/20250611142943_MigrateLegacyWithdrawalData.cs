@@ -22,10 +22,8 @@ namespace NodeGuard.Migrations
                     ""UpdateDatetime""
                 FROM ""WalletWithdrawalRequests""
                 WHERE ""Amount"" > 0 AND ""DestinationAddress"" IS NOT NULL AND ""DestinationAddress"" != '';
-            ");
-
-            // Step 2: Verify migration was successful
-            migrationBuilder.Sql(@"
+            
+                -- Step 2: Verify migration was successful - if any records failed to migrate, rollback
                 DO $$
                 DECLARE
                     original_count INTEGER;

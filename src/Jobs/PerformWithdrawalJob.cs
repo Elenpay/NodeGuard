@@ -60,9 +60,9 @@ public class PerformWithdrawalJob : IJob
             var request = await _walletWithdrawalRequestRepository.GetById(withdrawalRequestId);
 
             // If an error occurs and the wd was bumping another one, we need to update the status of the withdrawal request to previous status
-            if (request != null && request!.BumpingId.HasValue)
+            if (request != null && request!.BumpingWalletWithdrawalRequestId.HasValue)
             {
-                var bumped = await _walletWithdrawalRequestRepository.GetById(request.BumpingId.Value);
+                var bumped = await _walletWithdrawalRequestRepository.GetById(request.BumpingWalletWithdrawalRequestId.Value);
                 if (bumped == null)
                 {
                     _logger.LogError("Failed to find withdrawal request with ID {WithdrawalRequestId}", withdrawalRequestId);

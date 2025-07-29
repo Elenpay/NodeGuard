@@ -1145,9 +1145,9 @@
                     throw new ShowToUserException(createWithdrawalResult.Item2);
                 }
 
-                if (_selectedRequest.BumpingId != null)
+                if (_selectedRequest.BumpingWalletWithdrawalRequestId != null)
                 {
-                    WalletWithdrawalRequest originalRequest = await WalletWithdrawalRequestRepository.GetById((int)_selectedRequest.BumpingId);
+                    WalletWithdrawalRequest originalRequest = await WalletWithdrawalRequestRepository.GetById((int)_selectedRequest.BumpingWalletWithdrawalRequestId);
                     if (originalRequest == null)
                     {
                         throw new ShowToUserException("Original withdrawal request not found");
@@ -1260,9 +1260,9 @@
 
     private async Task ResetStatusBumpedIfError(WalletWithdrawalRequest request)
     {
-        if (request.BumpingId != null)
+        if (request.BumpingWalletWithdrawalRequestId != null)
         {
-            var bumpedRequest = await WalletWithdrawalRequestRepository.GetById(request.BumpingId.Value);
+            var bumpedRequest = await WalletWithdrawalRequestRepository.GetById(request.BumpingWalletWithdrawalRequestId.Value);
 
             if (bumpedRequest != null)
             {

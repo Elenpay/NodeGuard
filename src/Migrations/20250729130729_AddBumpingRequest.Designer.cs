@@ -14,8 +14,8 @@ using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 namespace NodeGuard.Migrations
 {
     [DbContext(typeof(ApplicationDbContext))]
-    [Migration("20250702080756_BumpingRequest")]
-    partial class BumpingRequest
+    [Migration("20250729130729_AddBumpingRequest")]
+    partial class AddBumpingRequest
     {
         /// <inheritdoc />
         protected override void BuildTargetModel(ModelBuilder modelBuilder)
@@ -850,10 +850,7 @@ namespace NodeGuard.Migrations
 
                     NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
 
-                    b.Property<decimal>("Amount")
-                        .HasColumnType("numeric");
-
-                    b.Property<int?>("BumpingId")
+                    b.Property<int?>("BumpingWalletWithdrawalRequestId")
                         .HasColumnType("integer");
 
                     b.Property<bool>("Changeless")
@@ -866,10 +863,6 @@ namespace NodeGuard.Migrations
                         .HasColumnType("numeric");
 
                     b.Property<string>("Description")
-                        .IsRequired()
-                        .HasColumnType("text");
-
-                    b.Property<string>("DestinationAddress")
                         .IsRequired()
                         .HasColumnType("text");
 
@@ -905,13 +898,44 @@ namespace NodeGuard.Migrations
 
                     b.HasKey("Id");
 
-                    b.HasIndex("BumpingId");
+                    b.HasIndex("BumpingWalletWithdrawalRequestId");
 
                     b.HasIndex("UserRequestorId");
 
                     b.HasIndex("WalletId");
 
                     b.ToTable("WalletWithdrawalRequests");
+                });
+
+            modelBuilder.Entity("NodeGuard.Data.Models.WalletWithdrawalRequestDestination", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
+
+                    b.Property<string>("Address")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<decimal>("Amount")
+                        .HasColumnType("numeric");
+
+                    b.Property<DateTimeOffset>("CreationDatetime")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateTimeOffset>("UpdateDatetime")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<int>("WalletWithdrawalRequestId")
+                        .HasColumnType("integer");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("WalletWithdrawalRequestId");
+
+                    b.ToTable("WalletWithdrawalRequestDestinations");
                 });
 
             modelBuilder.Entity("NodeGuard.Data.Models.WalletWithdrawalRequestPSBT", b =>
@@ -1224,9 +1248,9 @@ namespace NodeGuard.Migrations
 
             modelBuilder.Entity("NodeGuard.Data.Models.WalletWithdrawalRequest", b =>
                 {
-                    b.HasOne("NodeGuard.Data.Models.WalletWithdrawalRequest", "Bumping")
+                    b.HasOne("NodeGuard.Data.Models.WalletWithdrawalRequest", "BumpingWalletWithdrawalRequest")
                         .WithMany()
-                        .HasForeignKey("BumpingId");
+                        .HasForeignKey("BumpingWalletWithdrawalRequestId");
 
                     b.HasOne("NodeGuard.Data.Models.ApplicationUser", "UserRequestor")
                         .WithMany("WalletWithdrawalRequests")
@@ -1238,11 +1262,22 @@ namespace NodeGuard.Migrations
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
 
-                    b.Navigation("Bumping");
+                    b.Navigation("BumpingWalletWithdrawalRequest");
 
                     b.Navigation("UserRequestor");
 
                     b.Navigation("Wallet");
+                });
+
+            modelBuilder.Entity("NodeGuard.Data.Models.WalletWithdrawalRequestDestination", b =>
+                {
+                    b.HasOne("NodeGuard.Data.Models.WalletWithdrawalRequest", "WalletWithdrawalRequest")
+                        .WithMany("WalletWithdrawalRequestDestinations")
+                        .HasForeignKey("WalletWithdrawalRequestId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("WalletWithdrawalRequest");
                 });
 
             modelBuilder.Entity("NodeGuard.Data.Models.WalletWithdrawalRequestPSBT", b =>
@@ -1292,6 +1327,8 @@ namespace NodeGuard.Migrations
 
             modelBuilder.Entity("NodeGuard.Data.Models.WalletWithdrawalRequest", b =>
                 {
+                    b.Navigation("WalletWithdrawalRequestDestinations");
+
                     b.Navigation("WalletWithdrawalRequestPSBTs");
                 });
 

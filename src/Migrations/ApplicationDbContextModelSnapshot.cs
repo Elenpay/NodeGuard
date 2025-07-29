@@ -36,7 +36,7 @@ namespace NodeGuard.Migrations
 
                     b.HasIndex("UsersId");
 
-                    b.ToTable("ApplicationUserNode", (string)null);
+                    b.ToTable("ApplicationUserNode");
                 });
 
             modelBuilder.Entity("ChannelOperationRequestFMUTXO", b =>
@@ -51,7 +51,7 @@ namespace NodeGuard.Migrations
 
                     b.HasIndex("UtxosId");
 
-                    b.ToTable("ChannelOperationRequestFMUTXO", (string)null);
+                    b.ToTable("ChannelOperationRequestFMUTXO");
                 });
 
             modelBuilder.Entity("FMUTXOWalletWithdrawalRequest", b =>
@@ -66,7 +66,7 @@ namespace NodeGuard.Migrations
 
                     b.HasIndex("WalletWithdrawalRequestsId");
 
-                    b.ToTable("FMUTXOWalletWithdrawalRequest", (string)null);
+                    b.ToTable("FMUTXOWalletWithdrawalRequest");
                 });
 
             modelBuilder.Entity("KeyWallet", b =>
@@ -81,7 +81,7 @@ namespace NodeGuard.Migrations
 
                     b.HasIndex("WalletsId");
 
-                    b.ToTable("KeyWallet", (string)null);
+                    b.ToTable("KeyWallet");
                 });
 
             modelBuilder.Entity("Microsoft.AspNetCore.Identity.IdentityRole", b =>
@@ -329,7 +329,7 @@ namespace NodeGuard.Migrations
 
                     b.HasIndex("CreatorId");
 
-                    b.ToTable("ApiTokens", (string)null);
+                    b.ToTable("ApiTokens");
                 });
 
             modelBuilder.Entity("NodeGuard.Data.Models.Channel", b =>
@@ -386,7 +386,7 @@ namespace NodeGuard.Migrations
 
                     b.HasIndex("SourceNodeId");
 
-                    b.ToTable("Channels", (string)null);
+                    b.ToTable("Channels");
                 });
 
             modelBuilder.Entity("NodeGuard.Data.Models.ChannelOperationRequest", b =>
@@ -466,7 +466,7 @@ namespace NodeGuard.Migrations
 
                     b.HasIndex("WalletId");
 
-                    b.ToTable("ChannelOperationRequests", (string)null);
+                    b.ToTable("ChannelOperationRequests");
                 });
 
             modelBuilder.Entity("NodeGuard.Data.Models.ChannelOperationRequestPSBT", b =>
@@ -508,7 +508,7 @@ namespace NodeGuard.Migrations
 
                     b.HasIndex("UserSignerId");
 
-                    b.ToTable("ChannelOperationRequestPSBTs", (string)null);
+                    b.ToTable("ChannelOperationRequestPSBTs");
                 });
 
             modelBuilder.Entity("NodeGuard.Data.Models.FMUTXO", b =>
@@ -537,7 +537,7 @@ namespace NodeGuard.Migrations
 
                     b.HasKey("Id");
 
-                    b.ToTable("FMUTXOs", (string)null);
+                    b.ToTable("FMUTXOs");
                 });
 
             modelBuilder.Entity("NodeGuard.Data.Models.InternalWallet", b =>
@@ -569,7 +569,7 @@ namespace NodeGuard.Migrations
 
                     b.HasKey("Id");
 
-                    b.ToTable("InternalWallets", (string)null);
+                    b.ToTable("InternalWallets");
                 });
 
             modelBuilder.Entity("NodeGuard.Data.Models.Key", b =>
@@ -624,7 +624,7 @@ namespace NodeGuard.Migrations
 
                     b.HasIndex("UserId");
 
-                    b.ToTable("Keys", (string)null);
+                    b.ToTable("Keys");
                 });
 
             modelBuilder.Entity("NodeGuard.Data.Models.LiquidityRule", b =>
@@ -679,7 +679,7 @@ namespace NodeGuard.Migrations
 
                     b.HasIndex("SwapWalletId");
 
-                    b.ToTable("LiquidityRules", (string)null);
+                    b.ToTable("LiquidityRules");
                 });
 
             modelBuilder.Entity("NodeGuard.Data.Models.Node", b =>
@@ -729,7 +729,7 @@ namespace NodeGuard.Migrations
 
                     b.HasIndex("ReturningFundsWalletId");
 
-                    b.ToTable("Nodes", (string)null);
+                    b.ToTable("Nodes");
                 });
 
             modelBuilder.Entity("NodeGuard.Data.Models.UTXOTag", b =>
@@ -763,7 +763,7 @@ namespace NodeGuard.Migrations
                     b.HasIndex("Key", "Outpoint")
                         .IsUnique();
 
-                    b.ToTable("UTXOTags", (string)null);
+                    b.ToTable("UTXOTags");
                 });
 
             modelBuilder.Entity("NodeGuard.Data.Models.Wallet", b =>
@@ -836,7 +836,7 @@ namespace NodeGuard.Migrations
                     b.HasIndex("InternalWalletSubDerivationPath", "InternalWalletMasterFingerprint")
                         .IsUnique();
 
-                    b.ToTable("Wallets", (string)null);
+                    b.ToTable("Wallets");
                 });
 
             modelBuilder.Entity("NodeGuard.Data.Models.WalletWithdrawalRequest", b =>
@@ -847,10 +847,7 @@ namespace NodeGuard.Migrations
 
                     NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
 
-                    b.Property<decimal>("Amount")
-                        .HasColumnType("numeric");
-
-                    b.Property<int?>("BumpingId")
+                    b.Property<int?>("BumpingWalletWithdrawalRequestId")
                         .HasColumnType("integer");
 
                     b.Property<bool>("Changeless")
@@ -863,10 +860,6 @@ namespace NodeGuard.Migrations
                         .HasColumnType("numeric");
 
                     b.Property<string>("Description")
-                        .IsRequired()
-                        .HasColumnType("text");
-
-                    b.Property<string>("DestinationAddress")
                         .IsRequired()
                         .HasColumnType("text");
 
@@ -902,13 +895,13 @@ namespace NodeGuard.Migrations
 
                     b.HasKey("Id");
 
-                    b.HasIndex("BumpingId");
+                    b.HasIndex("BumpingWalletWithdrawalRequestId");
 
                     b.HasIndex("UserRequestorId");
 
                     b.HasIndex("WalletId");
 
-                    b.ToTable("WalletWithdrawalRequests", (string)null);
+                    b.ToTable("WalletWithdrawalRequests");
                 });
 
             modelBuilder.Entity("NodeGuard.Data.Models.WalletWithdrawalRequestDestination", b =>
@@ -939,7 +932,7 @@ namespace NodeGuard.Migrations
 
                     b.HasIndex("WalletWithdrawalRequestId");
 
-                    b.ToTable("WalletWithdrawalRequestDestinations", (string)null);
+                    b.ToTable("WalletWithdrawalRequestDestinations");
                 });
 
             modelBuilder.Entity("NodeGuard.Data.Models.WalletWithdrawalRequestPSBT", b =>
@@ -981,7 +974,7 @@ namespace NodeGuard.Migrations
 
                     b.HasIndex("WalletWithdrawalRequestId");
 
-                    b.ToTable("WalletWithdrawalRequestPSBTs", (string)null);
+                    b.ToTable("WalletWithdrawalRequestPSBTs");
                 });
 
             modelBuilder.Entity("NodeGuard.Data.Models.ApplicationUser", b =>
@@ -1252,9 +1245,9 @@ namespace NodeGuard.Migrations
 
             modelBuilder.Entity("NodeGuard.Data.Models.WalletWithdrawalRequest", b =>
                 {
-                    b.HasOne("NodeGuard.Data.Models.WalletWithdrawalRequest", "Bumping")
+                    b.HasOne("NodeGuard.Data.Models.WalletWithdrawalRequest", "BumpingWalletWithdrawalRequest")
                         .WithMany()
-                        .HasForeignKey("BumpingId");
+                        .HasForeignKey("BumpingWalletWithdrawalRequestId");
 
                     b.HasOne("NodeGuard.Data.Models.ApplicationUser", "UserRequestor")
                         .WithMany("WalletWithdrawalRequests")
@@ -1266,7 +1259,7 @@ namespace NodeGuard.Migrations
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
 
-                    b.Navigation("Bumping");
+                    b.Navigation("BumpingWalletWithdrawalRequest");
 
                     b.Navigation("UserRequestor");
 

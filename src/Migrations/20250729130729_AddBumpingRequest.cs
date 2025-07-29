@@ -5,26 +5,26 @@
 namespace NodeGuard.Migrations
 {
     /// <inheritdoc />
-    public partial class BumpingRequest : Migration
+    public partial class AddBumpingRequest : Migration
     {
         /// <inheritdoc />
         protected override void Up(MigrationBuilder migrationBuilder)
         {
             migrationBuilder.AddColumn<int>(
-                name: "BumpingId",
+                name: "BumpingWalletWithdrawalRequestId",
                 table: "WalletWithdrawalRequests",
                 type: "integer",
                 nullable: true);
 
             migrationBuilder.CreateIndex(
-                name: "IX_WalletWithdrawalRequests_BumpingId",
+                name: "IX_WalletWithdrawalRequests_BumpingWalletWithdrawalRequestId",
                 table: "WalletWithdrawalRequests",
-                column: "BumpingId");
+                column: "BumpingWalletWithdrawalRequestId");
 
             migrationBuilder.AddForeignKey(
-                name: "FK_WalletWithdrawalRequests_WalletWithdrawalRequests_BumpingId",
+                name: "FK_WalletWithdrawalRequests_WalletWithdrawalRequests_BumpingWa~",
                 table: "WalletWithdrawalRequests",
-                column: "BumpingId",
+                column: "BumpingWalletWithdrawalRequestId",
                 principalTable: "WalletWithdrawalRequests",
                 principalColumn: "Id");
         }
@@ -33,15 +33,15 @@ namespace NodeGuard.Migrations
         protected override void Down(MigrationBuilder migrationBuilder)
         {
             migrationBuilder.DropForeignKey(
-                name: "FK_WalletWithdrawalRequests_WalletWithdrawalRequests_BumpingId",
+                name: "FK_WalletWithdrawalRequests_WalletWithdrawalRequests_BumpingWa~",
                 table: "WalletWithdrawalRequests");
 
             migrationBuilder.DropIndex(
-                name: "IX_WalletWithdrawalRequests_BumpingId",
+                name: "IX_WalletWithdrawalRequests_BumpingWalletWithdrawalRequestId",
                 table: "WalletWithdrawalRequests");
 
             migrationBuilder.DropColumn(
-                name: "BumpingId",
+                name: "BumpingWalletWithdrawalRequestId",
                 table: "WalletWithdrawalRequests");
         }
     }
