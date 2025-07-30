@@ -27,6 +27,7 @@
                                     CurrencySymbolPlacement="CurrencySymbolPlacement.Suffix"
                                     CurrencySymbol=" sat/vb"
                                     Min="1"
+                                    Max="200"
                                     Disabled="@(_selectedMempoolRecommendedFeesType != MempoolRecommendedFeesType.CustomFee)">
                         </NumericPicker>
                     </div>
@@ -111,11 +112,14 @@
     {
         if (WithdrawalRequest != null)
         {
-            var txInfo = await NBXplorerService.GetTransactionAsync(uint256.Parse(WithdrawalRequest.TxId));
-            if (txInfo != null)
+            if (WithdrawalRequest.TxId != null)
             {
-                var tx = txInfo.Transaction;
-                _txVSize = tx.GetVirtualSize();
+                var txInfo = await NBXplorerService.GetTransactionAsync(uint256.Parse(WithdrawalRequest.TxId));
+                if (txInfo != null)
+                {
+                    var tx = txInfo.Transaction;
+                    _txVSize = tx.GetVirtualSize();
+                }
             }
 
             if (WithdrawalRequest.UTXOs != null)
