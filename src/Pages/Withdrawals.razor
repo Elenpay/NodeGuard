@@ -1101,15 +1101,28 @@
 
     private bool CustomRequestorFilter(object itemvalue, object searchvalue)
     {
-        if (itemvalue is string metadata && searchvalue is string search)
+        if (searchvalue is not string search || string.IsNullOrWhiteSpace(search))
         {
+            return true;
+        }
+
+        if (itemvalue is string metadata)
+        {
+            try
+            {
             var requestMetadata = JsonConvert.DeserializeObject<Dictionary<string, string>>(metadata);
             if (requestMetadata != null && requestMetadata.TryGetValue("userName", out var userName))
             {
                 return userName.Contains(search, StringComparison.OrdinalIgnoreCase);
             }
+            }
+            catch (JsonException)
+            {
+                // If deserialization fails, we assume the filter does not match
+                return false;
+            }
         }
-        return true;
-    }
 
+        return false;
+    }
 }
