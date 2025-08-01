@@ -1,0 +1,176 @@
+@using NBitcoin
+@using JSException = Microsoft.JSInterop.JSException
+<Modal @ref="_modalRef">
+    @if (WithdrawalRequest != null) 
+    {
+    <ModalContent Centered>
+        <ModalHeader>
+            <ModalTitle>Request fee bump</ModalTitle>
+            <CloseButton />
+        </ModalHeader>
+        <ModalBody>
+            <Fields Flex="Flex.JustifyContent.Center">
+                <Field>
+                    <FieldLabel>New fee rate</FieldLabel>
+                    <div class="d-flex">
+                        <Select TValue="MempoolRecommendedFeesType" SelectedValue="_selectedMempoolRecommendedFeesType" SelectedValueChanged="async (value) => await OnMempoolFeeRateChange(value)">
+                            <SelectGroup Label="Mempool.space fee">
+                                <SelectItem Value="MempoolRecommendedFeesType.FastestFee">Fastest Fee</SelectItem>
+                                <SelectItem Value="MempoolRecommendedFeesType.EconomyFee">Economy Fee</SelectItem>
+                                <SelectItem Value="MempoolRecommendedFeesType.HourFee">Hour Fee</SelectItem>
+                                <SelectItem Value="MempoolRecommendedFeesType.HalfHourFee">Half Hour Fee</SelectItem>
+                            </SelectGroup>
+                            <SelectItem Value="MempoolRecommendedFeesType.CustomFee">Custom</SelectItem>
+                        </Select>
+                        <NumericPicker TValue="long"
+                                    @bind-Value="@_customSatPerVbAmount"
+                                    CurrencySymbolPlacement="CurrencySymbolPlacement.Suffix"
+                                    CurrencySymbol=" sat/vb"
+                                    Min="1"
+                                    Max="200"
+                                    Disabled="@(_selectedMempoolRecommendedFeesType != MempoolRecommendedFeesType.CustomFee)">
+                        </NumericPicker>
+                    </div>
+                    <FieldHelp>@(_selectedMempoolRecommendedFeesType != MempoolRecommendedFeesType.CustomFee ? "Fees may change by the time the request is first signed" : "")</FieldHelp>
+                    <FieldLabel class="mt-3">Last fee used</FieldLabel>
+                    <div class="d-flex">
+                        <Select TValue="MempoolRecommendedFeesType"
+                                SelectedValue="@(WithdrawalRequest?.MempoolRecommendedFeesType ?? MempoolRecommendedFeesType.FastestFee)" Disabled="true">
+                            @if (WithdrawalRequest != null)
+                            {
+                                var lastFeeType = WithdrawalRequest.MempoolRecommendedFeesType;
+                                var lastFeeLabel = lastFeeType switch
+                                {
+                                    MempoolRecommendedFeesType.FastestFee => "Fastest Fee",
+                                    MempoolRecommendedFeesType.EconomyFee => "Economy Fee",
+                                    MempoolRecommendedFeesType.HourFee => "Hour Fee",
+                                    MempoolRecommendedFeesType.HalfHourFee => "Half Hour Fee",
+                                    MempoolRecommendedFeesType.CustomFee => "Custom",
+                                    _ => lastFeeType.ToString()
+                                };
+                                <SelectItem Value="@lastFeeType">@lastFeeLabel</SelectItem>
+                            }
+                        </Select>
+                        <NumericPicker TValue="long"
+                                       Value="@(WithdrawalRequest != null ? (long)WithdrawalRequest.CustomFeeRate : 0)"
+                                       CurrencySymbolPlacement="CurrencySymbolPlacement.Suffix"
+                                       CurrencySymbol=" sat/vb"
+                                       Min="1"
+                                       Disabled="true">
+                        </NumericPicker>
+                    </div>
+                    <FieldHelp>@(_selectedMempoolRecommendedFeesType != MempoolRecommendedFeesType.CustomFee ? "Fees must be greater than the current one" : "")</FieldHelp>
+                    @if (_txVSize != 0)
+                    {
+                        <FieldHelp>@(_txVSize * _customSatPerVbAmount) sats will be approximately used as fees in the transaction.</FieldHelp>
+                        <FieldHelp>And that's @(100 * (_txVSize * _customSatPerVbAmount) / _utxosInputSatsAmount)% of the input UTXOs</FieldHelp>
+                    }
+
+                </Field>
+            </Fields>
+        </ModalBody>
+        <ModalFooter>
+            <Button Color="Color.Secondary" Clicked="@HideModal">Cancel</Button>
+            <Button id="approve-button" Color="Color.Primary" Clicked="@HandleOnClick">
+                Approve
+            </Button>
+        </ModalFooter>
+    </ModalContent>
+    }
+</Modal>
+
+@inject IBitcoinService BitcoinService
+@inject IPriceConversionService PriceConversionService
+@inject INBXplorerService NBXplorerService
+@inject IWalletWithdrawalRequestRepository WalletWithdrawalRequestRepository
+@inject IWalletRepository WalletRepository
+@inject IFMUTXORepository FMUTXORepository
+@code {
+    [Inject]
+    public IToastService ToastService { get; set; }
+
+    [Parameter]
+    public ChannelOperationRequest? ChannelRequest { get; set; }
+    [Parameter]
+    public WalletWithdrawalRequest? WithdrawalRequest { get; set; }
+
+    [Parameter]
+    public Action<WalletWithdrawalRequest> SubmitBumpfeeModal { get; set; }
+
+    private decimal? _selectedWalletBalance;
+    private decimal _btcPrice;
+
+    private MempoolRecommendedFeesType _selectedMempoolRecommendedFeesType;
+    private long _customSatPerVbAmount = 1;
+
+    private Modal? _modalRef;
+
+    private long _txVSize;
+    private long _utxosInputSatsAmount;
+
+    protected override async Task OnParametersSetAsync()
+    {
+        if (WithdrawalRequest != null)
+        {
+            if (WithdrawalRequest.TxId != null)
+            {
+                var txInfo = await NBXplorerService.GetTransactionAsync(uint256.Parse(WithdrawalRequest.TxId));
+                if (txInfo != null)
+                {
+                    var tx = txInfo.Transaction;
+                    _txVSize = tx.GetVirtualSize();
+                }
+            }
+
+            if (WithdrawalRequest.UTXOs != null)
+                _utxosInputSatsAmount = WithdrawalRequest.UTXOs.Sum(x => x.SatsAmount);
+        }
+    }
+
+    private void HandleOnClick()
+    {
+        var oldFee = WithdrawalRequest?.CustomFeeRate ?? 0;
+        if (_customSatPerVbAmount <= oldFee)
+        {
+            ToastService.ShowError($"Fee must be greater than the current one ({oldFee} sat/vb)");
+        }
+        else
+        {
+            var newRequest = new WalletWithdrawalRequest();
+            newRequest.Description = WithdrawalRequest.Description;
+            newRequest.Changeless = WithdrawalRequest.Changeless;
+            newRequest.WithdrawAllFunds = WithdrawalRequest.WithdrawAllFunds;
+            newRequest.MempoolRecommendedFeesType = _selectedMempoolRecommendedFeesType;
+            newRequest.CustomFeeRate = _customSatPerVbAmount;
+            newRequest.UserRequestorId = WithdrawalRequest.UserRequestorId;
+            newRequest.BumpingWalletWithdrawalRequestId = WithdrawalRequest.Id;
+            SubmitBumpfeeModal?.Invoke(newRequest);
+        }
+    }
+    
+    public async Task ShowModal()
+    {
+        var walletId = WithdrawalRequest?.WalletId ?? -1;
+        if (walletId != -1)
+        {
+            var wallet = await WalletRepository.GetById(walletId);
+            var (balance, _) = await BitcoinService.GetWalletConfirmedBalance(wallet);
+            _selectedWalletBalance = balance;
+        }
+        _btcPrice = await PriceConversionService.GetBtcToUsdPrice();
+        if (_modalRef != null)
+            await _modalRef.Show();
+    }
+
+    public async Task HideModal()
+    {
+        if (_modalRef != null)
+            await _modalRef.Close(CloseReason.UserClosing);
+    }
+
+    private async Task OnMempoolFeeRateChange(MempoolRecommendedFeesType value)
+    {
+        _selectedMempoolRecommendedFeesType = value;
+        _customSatPerVbAmount = (long?)await NBXplorerService.GetFeesByType(_selectedMempoolRecommendedFeesType) ?? 1;
+    }
+}

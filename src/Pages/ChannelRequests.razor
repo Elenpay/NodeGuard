@@ -182,7 +182,7 @@
             </DataGridColumn>
             <DataGridColumn TItem="ChannelOperationRequest" Displayable="@IsPendingRequestsColumnVisible(PendingChannelsColumnName.FeeRates)" Editable="true" Caption="Fee Rate" PopupFieldColumnSize="ColumnSize.Is12">
                 <DisplayTemplate>
-                    @(context.MempoolRecommendedFeesType == MempoolRecommendedFeesType.CustomFee ? $"{context.FeeRate} sats/vb" : _selectedMempoolRecommendedFeesType.ToString().Humanize())
+                    @(context.MempoolRecommendedFeesType == MempoolRecommendedFeesType.CustomFee ? $"{context.FeeRate} sat/vb" : _selectedMempoolRecommendedFeesType.ToString().Humanize())
                 </DisplayTemplate>
                 <EditTemplate>
                     <div class="d-flex">
@@ -195,7 +195,7 @@
                             </SelectGroup>
                             <SelectItem Value="MempoolRecommendedFeesType.CustomFee">Custom</SelectItem>
                         </Select>
-                        <NumericPicker TValue="long" @bind-Value="@_customSatPerVbAmount" CurrencySymbolPlacement="CurrencySymbolPlacement.Suffix" CurrencySymbol=" sats/vb" Min="1" Disabled="@(_selectedMempoolRecommendedFeesType != MempoolRecommendedFeesType.CustomFee)">
+                        <NumericPicker TValue="long" @bind-Value="@_customSatPerVbAmount" CurrencySymbolPlacement="CurrencySymbolPlacement.Suffix" CurrencySymbol=" sat/vb" Min="1" Disabled="@(_selectedMempoolRecommendedFeesType != MempoolRecommendedFeesType.CustomFee)">
                             <Feedback>
                                 <ValidationError/>
                             </Feedback>
@@ -318,7 +318,7 @@
         </DataGridColumn>
         <DataGridColumn TItem="ChannelOperationRequest" Field="@nameof(ChannelOperationRequest.FeeRate)" Caption="Fee Rate" Displayable="@IsAllRequestsColumnVisible(AllChannelsColumnName.FeeRates)">
             <DisplayTemplate>
-                @(context.FeeRate != null ? $"{context.FeeRate} sats/vbyte" : _selectedMempoolRecommendedFeesType.ToString().Humanize())
+                @(context.FeeRate != null ? $"{context.FeeRate} sat/vbyte" : _selectedMempoolRecommendedFeesType.ToString().Humanize())
             </DisplayTemplate>
         </DataGridColumn>
         <DataGridColumn TItem="ChannelOperationRequest" Field="@nameof(ChannelOperationRequest.IsChannelPrivate)" Caption="Private" Displayable="@IsAllRequestsColumnVisible(AllChannelsColumnName.Private)"></DataGridColumn>

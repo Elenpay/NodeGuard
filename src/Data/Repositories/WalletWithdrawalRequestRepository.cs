@@ -65,6 +65,7 @@ namespace NodeGuard.Data.Repositories
                 .Include(x => x.UserRequestor)
                 .Include(x => x.WalletWithdrawalRequestPSBTs)
                 .Include(x => x.WalletWithdrawalRequestDestinations)
+                .Include(x => x.UTXOs)
                 .SingleOrDefaultAsync(x => x.Id == id);
 
             return request;
@@ -94,6 +95,7 @@ namespace NodeGuard.Data.Repositories
                 .Include(x => x.UserRequestor)
                 .Include(x => x.WalletWithdrawalRequestPSBTs)
                 .Include(x => x.WalletWithdrawalRequestDestinations)
+                .Include(x => x.UTXOs)
                 .AsSplitQuery()
                 .ToListAsync();
         }

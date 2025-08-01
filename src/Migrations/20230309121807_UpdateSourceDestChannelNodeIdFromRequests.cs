@@ -36,7 +36,6 @@ BEGIN TRANSACTION;
     UPDATE public.""Channels"" SET ""SourceNodeId"" = 1, ""DestinationNodeId"" = 1;
 COMMIT;";
             migrationBuilder.Sql(query);
-
         }
     }
 }
