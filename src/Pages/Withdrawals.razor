@@ -201,7 +201,7 @@
             </DataGridColumn>
             <DataGridColumn TItem="WalletWithdrawalRequest" Filterable="false" PopupFieldColumnSize="ColumnSize.Is12" Editable="true" Field="@nameof(WalletWithdrawalRequest.CustomFeeRate)" Caption="Fee rate" Sortable="false" Displayable="@IsPendingRequestsColumnVisible(PendingWithdrawalsColumnName.FeeRate)">
                 <DisplayTemplate>
-                    @(context.MempoolRecommendedFeesType == MempoolRecommendedFeesType.CustomFee ? $"{context.CustomFeeRate} sats/vb" : context.MempoolRecommendedFeesType.Humanize())
+                    @(context.MempoolRecommendedFeesType == MempoolRecommendedFeesType.CustomFee ? $"Custom fee ({context.CustomFeeRate} sat/vb)" : $"{context.MempoolRecommendedFeesType.Humanize()} ({context.CustomFeeRate} sat/vb)")
                 </DisplayTemplate>
                 <EditTemplate>
                     <div class="d-flex">
@@ -214,7 +214,7 @@
                             </SelectGroup>
                             <SelectItem Value="MempoolRecommendedFeesType.CustomFee">Custom</SelectItem>
                         </Select>
-                        <NumericPicker TValue="long" @bind-Value="@_customSatPerVbAmount" CurrencySymbolPlacement="CurrencySymbolPlacement.Suffix" CurrencySymbol=" sats/vb" Min="1" Disabled="@(_selectedMempoolRecommendedFeesType != MempoolRecommendedFeesType.CustomFee)">
+                        <NumericPicker TValue="long" @bind-Value="@_customSatPerVbAmount" CurrencySymbolPlacement="CurrencySymbolPlacement.Suffix" CurrencySymbol=" sat/vb" Min="1" Disabled="@(_selectedMempoolRecommendedFeesType != MempoolRecommendedFeesType.CustomFee)">
                             <Feedback>
                                 <ValidationError/>
                             </Feedback>
@@ -346,7 +346,7 @@
             </DataGridColumn>
             <DataGridColumn TItem="WalletWithdrawalRequest" Filterable="true" Editable="false" Field="@nameof(WalletWithdrawalRequest.CustomFeeRate)" Caption="Fee rate" Sortable="false" Displayable="@IsAllRequestsColumnVisible(PendingWithdrawalsColumnName.FeeRate)">
                             <DisplayTemplate>
-                                @(context.MempoolRecommendedFeesType == MempoolRecommendedFeesType.CustomFee ? $"{context.CustomFeeRate} sats/vb" : context.MempoolRecommendedFeesType.Humanize())
+                                @(context.MempoolRecommendedFeesType == MempoolRecommendedFeesType.CustomFee ? $"Custom fee ({context.CustomFeeRate} sat/vb)" : $"{context.MempoolRecommendedFeesType.Humanize()} ({context.CustomFeeRate} sat/vb)")
                             </DisplayTemplate>
             </DataGridColumn>
             <DataGridColumn TItem="WalletWithdrawalRequest" Field="@nameof(WalletWithdrawalRequest.WalletId)" Caption="Signatures Collected" Sortable="false" Displayable="@IsAllRequestsColumnVisible(AllWithdrawalsColumnName.SignaturesCollected)">
@@ -386,6 +386,21 @@
                     }
                 </DisplayTemplate>
             </DataGridColumn>
+            <DataGridColumn TItem="WalletWithdrawalRequest" Caption="Actions" Displayable="@IsAllRequestsColumnVisible(AllWithdrawalsColumnName.Actions)">
+                <DisplayTemplate>
+                    @if (_isFinanceManager && context.Status == WalletWithdrawalRequestStatus.OnChainConfirmationPending)
+                    {
+                            <Dropdown>
+                                <DropdownToggle Color="Color.Primary">
+                                </DropdownToggle>
+                                <DropdownMenu>
+                                    <DropdownItem Clicked="async () => await ShowBumpfeeModal(context)">Bump fee</DropdownItem>
+                                </DropdownMenu>
+                            </Dropdown>
+                    }
+                </DisplayTemplate>
+            </DataGridColumn>
+            
             <DataGridColumn TItem="WalletWithdrawalRequest" Displayable="true">
                 <FilterTemplate>
                     <ColumnLayout @ref="_allRequestsColumnLayout" Columns="@_allRequestsColumns" ColumnType="AllWithdrawalsColumnName" OnUpdate="@OnColumnLayoutUpdate"/>
@@ -415,6 +430,11 @@
     SigHashMode="SigHash.All"
     TemplatePsbtString="@_templatePsbtString"
     ApproveRequestDelegate="async () => await ApproveRequestDelegate()"/>
+
+<BumpfeeModal
+    @ref="_bumpfeeRef"
+    WithdrawalRequest="_selectedRequest"
+    SubmitBumpfeeModal="@SubmitBumpfeeModal"/>
 
 <CancelOrRejectPopup
     @ref="@_rejectCancelModalRef"
@@ -446,6 +466,8 @@
 @inject ILocalStorageService LocalStorageService
 @inject IPriceConversionService PriceConversionService
 @inject INBXplorerService NBXplorerService
+@inject IFMUTXORepository FMUTXORepository
+@inject IWalletWithdrawalRequestDestinationRepository WalletWithdrawalRequestDestinationRepository
 @code {
 
     [CascadingParameter] private ApplicationUser? LoggedUser { get; set; }
@@ -462,6 +484,7 @@
     private List<UTXO> _selectedUTXOs = new();
     private WalletWithdrawalRequest? _selectedRequest;
     private PSBTSign? _psbtSignRef;
+    private BumpfeeModal? _bumpfeeRef;
     private string _signedPSBT;
     private string? _templatePsbtString;
     private int? _selectedWalletId;
@@ -513,6 +536,7 @@
         public static readonly ColumnDefault CreationDate = new("Creation Date");
         public static readonly ColumnDefault UpdateDate = new("Update Date");
         public static readonly ColumnDefault Links = new("Links");
+        public static readonly ColumnDefault Actions = new("Actions");
     }
 
     protected override async Task OnInitializedAsync()
@@ -760,6 +784,11 @@
         //PSBT Generation
         try
         {
+            if (_selectedRequest.BumpingWalletWithdrawalRequestId != null)
+            {
+                await CopyBumpedRequestData(_selectedRequest);
+            }
+
             var templatePSBT = await BitcoinService.GenerateTemplatePSBT(walletWithdrawalRequest);
 
             //TODO Save template PSBT (?)
@@ -773,6 +802,50 @@
         catch (Exception)
         {
             ToastService.ShowError("Error while generating PSBT template for the request");
+        }
+    }
+
+    private async Task ShowBumpfeeModal(WalletWithdrawalRequest walletWithdrawalRequest)
+    {   
+        ulong confirmations = 0;
+        if (!string.IsNullOrEmpty(walletWithdrawalRequest.TxId))
+        {
+            try
+            {
+                var nbxplorerStatus = await NBXplorerService.GetTransactionAsync(uint256.Parse(walletWithdrawalRequest.TxId));
+                confirmations = (ulong)(nbxplorerStatus?.Confirmations ?? throw new Exception("Failed to get confirmations"));
+            }
+            catch (Exception)
+            {
+                ToastService.ShowError("Error getting confirmations");
+                return;
+            }
+        }
+        
+        if (confirmations > 0)
+        {
+            ToastService.ShowError("Bumpfee can only be used for transactions with no confirmations. " +
+                                   "This transaction has already been mined.");
+            return;
+        }
+
+
+        // NOTE: Revisit this when full RBF is implemented because we could add a UTXO
+        if (walletWithdrawalRequest.Changeless)
+        {
+            ToastService.ShowError("Fee bumping is not supported for changeless transactions. Please create a new withdrawal with higher fees instead.");
+            return;
+        }
+        
+        try
+        {
+            _selectedRequest = walletWithdrawalRequest;
+
+            if (_bumpfeeRef != null) await _bumpfeeRef.ShowModal();
+        }
+        catch (Exception)
+        {
+            ToastService.ShowError("Error while creating bumpfee modal");
         }
     }
 
@@ -847,6 +920,122 @@
         }
     }
 
+    private async Task CreateNewWithdrawal(WalletWithdrawalRequest newRequest)
+    {
+        _selectedMempoolRecommendedFeesType = newRequest.MempoolRecommendedFeesType;
+        _customSatPerVbAmount = (long)newRequest.CustomFeeRate;
+        if (newRequest.Wallet.IsHotWallet)
+        {
+            await GetData();
+            _selectedRequest = newRequest;
+            await _confirmationModal.ShowModal();
+            return;
+        }
+
+        newRequest.Wallet = null;
+        var addResult = await WalletWithdrawalRequestRepository.AddAsync(newRequest);
+
+
+        if (addResult.Item1)
+        {
+            ToastService.ShowSuccess("Success");
+            await GetData();
+
+            if (_selectedUTXOs.Count > 0)
+            {
+                await CoinSelectionService.LockUTXOs(_selectedUTXOs, newRequest, BitcoinRequestType.WalletWithdrawal);
+            }
+
+            _utxoSelectorModalRef.ClearModal();
+        }
+        else
+        {
+            ToastService.ShowError("Something went wrong");
+            _userPendingRequests.Remove(newRequest);
+        }
+    }
+
+    private async Task Bumpfee(WalletWithdrawalRequest request)
+    {
+        try
+        {
+            await CreateNewWithdrawal(request);
+        }
+        catch
+        {
+            ToastService.ShowError("Could not bump the withdrawal");
+        }
+    }
+
+    private async void SubmitBumpfeeModal(WalletWithdrawalRequest newRequest)
+    {
+        if (newRequest != null && _bumpfeeRef != null)
+        {
+            newRequest.WalletId = _selectedRequest.WalletId;
+            newRequest.Wallet = await WalletRepository.GetById(newRequest.WalletId);
+                
+            // Use either the custom fee rate or the recommended fee rate based on mempool fee type
+            decimal newFeeRate;
+            if (newRequest.MempoolRecommendedFeesType == MempoolRecommendedFeesType.CustomFee && newRequest.CustomFeeRate.HasValue)
+            {
+                newFeeRate = (decimal)newRequest.CustomFeeRate.Value;
+            }
+            else
+            {
+                // Use the recommended fee rate from NBXplorer service based on the selected mempool fee type
+                var recommendedFeeRate = await GetRecommendedFeeRate(newRequest.MempoolRecommendedFeesType);
+                newFeeRate = (decimal)recommendedFeeRate;
+            }
+
+            // If the new fee plus the amount exceeds the utxo sum value, show an error
+            // NOTE: revisit this when full rbf because we could add a UTXO
+            var txInfo = await NBXplorerService.GetTransactionAsync(uint256.Parse(_selectedRequest.TxId));
+            var tx = txInfo.Transaction;
+            long vSize = tx.GetVirtualSize();
+            decimal newFee = (vSize * newFeeRate) / 100_000_000m;
+
+            // Retrieve from database to get the UTXOs
+            _selectedRequest = await WalletWithdrawalRequestRepository.GetById(_selectedRequest.Id);
+
+            if (_selectedRequest == null)
+            {
+                ToastService.ShowError("Withdrawal request not found");
+                return;
+            }
+
+            if (_selectedRequest.UTXOs != null && _selectedRequest.UTXOs.Count > 0)
+            {
+                var inputAmount = Money.Satoshis(_selectedRequest.UTXOs.Sum(x => x.SatsAmount)).ToDecimal(MoneyUnit.BTC); // Convert to BTC
+                if (inputAmount <= newFee + _selectedRequest.TotalAmount + Constants.BITCOIN_DUST.ToDecimal(MoneyUnit.BTC))
+                {
+                    ToastService.ShowError("The new fee plus the amount exceeds the sum of the selected UTXOs or returns dust. Please lower the fee rate.");
+                    return;
+                }
+            }
+
+            // If the request is changeless, show an error
+            // NOTE: Revisit this when full RBF is implemented because we could add a UTXO
+            if (newRequest.Changeless)
+            {
+                ToastService.ShowError("Fee bumping is not supported for changeless transactions. Please create a new withdrawal with higher fees instead.");
+                return;
+            }
+            
+            await Bumpfee(newRequest);
+            await _bumpfeeRef.HideModal();
+        }
+        else
+        {
+            ToastService.ShowError("Something went wrong");
+        }
+    }
+
+    private async Task<long> GetRecommendedFeeRate(MempoolRecommendedFeesType feeType)
+    {
+        return (long?)await NBXplorerService.GetFeesByType(feeType) ?? 1;
+    }
+
+    
     private async Task ApproveRequestDelegate()
     {
         if (_selectedRequest != null)
@@ -870,7 +1059,6 @@
             {
                 ToastService.ShowError("Something went wrong");
             }
-
 
             await HideRejectCancelModal();
         }
@@ -954,17 +1142,24 @@
         if (_selectedRequest != null)
         {
             try
-            {
+            {   
                 _selectedRequest.Wallet = null;
-                _selectedRequest.Changeless = _selectedUTXOs.Count > 0;
                 _selectedRequest.WithdrawAllFunds = _isCheckedAllFunds || _amount == _selectedRequestWalletBalance;
                 _selectedRequest.MempoolRecommendedFeesType = _selectedMempoolRecommendedFeesType;
                 _selectedRequest.CustomFeeRate = _customSatPerVbAmount;
+                
                 var createWithdrawalResult = await WalletWithdrawalRequestRepository.AddAsync(_selectedRequest);
                 if (!createWithdrawalResult.Item1)
                 {
                     throw new ShowToUserException(createWithdrawalResult.Item2);
                 }
+
+                if (_selectedRequest.BumpingWalletWithdrawalRequestId != null)
+                {
+                    await CopyBumpedRequestData(_selectedRequest);
+                }
+
+                _selectedRequest.Changeless = _selectedUTXOs.Count > 0;
 
                 ToastService.ShowSuccess("Withdrawal request created!");
 
@@ -1011,14 +1206,36 @@
             catch (NoUTXOsAvailableException e)
             {
                 CleanUp("No UTXOs available for withdrawals were found for this wallet");
+                await ResetStatusBumpedIfError(_selectedRequest);
             }
             catch (ShowToUserException e)
             {
                 CleanUp(e.Message);
+                await ResetStatusBumpedIfError(_selectedRequest);
             }
             catch
             {
                 CleanUp("Something went wrong");
+                await ResetStatusBumpedIfError(_selectedRequest);
+            }
+        }
+    }
+
+    private async Task ResetStatusBumpedIfError(WalletWithdrawalRequest request)
+    {
+        if (request.BumpingWalletWithdrawalRequestId != null)
+        {
+            var bumpedRequest = await WalletWithdrawalRequestRepository.GetById(request.BumpingWalletWithdrawalRequestId.Value);
+
+            if (bumpedRequest != null)
+            {
+                bumpedRequest.Status = WalletWithdrawalRequestStatus.OnChainConfirmationPending;
+                var updateResult = WalletWithdrawalRequestRepository.Update(bumpedRequest);
+                if (!updateResult.Item1)
+                {
+                    ToastService.ShowError("Error while updating the bumped request, please contact a superadmin for troubleshooting");
+                    return;
+                }
             }
         }
     }
@@ -1050,6 +1267,27 @@
             StateHasChanged();
             return;
         }
+    }
+
+    private async Task<bool> ShowActionDropdown(WalletWithdrawalRequest walletWithdrawalRequest)
+    {
+        ulong confirmations = 0;
+        if (!string.IsNullOrEmpty(walletWithdrawalRequest.TxId))
+        {
+            try
+            {
+                var nbxplorerStatus = await NBXplorerService.GetTransactionAsync(uint256.Parse(walletWithdrawalRequest.TxId));
+                confirmations = (ulong)(nbxplorerStatus?.Confirmations ?? throw new Exception("Failed to get confirmations"));
+                return walletWithdrawalRequest.Status == WalletWithdrawalRequestStatus.OnChainConfirmationPending && confirmations.Equals((ulong) 0);
+            }
+            catch (Exception)
+            {
+                ToastService.ShowError("Error while showing bumpfee action");
+                return false;
+            }
+        }
+
+        return false;
     }
 
     private void OnColumnLayoutUpdate()
@@ -1124,5 +1362,57 @@
         }
 
         return false;
+    }
+    
+    private async Task CopyBumpedRequestData(WalletWithdrawalRequest request)
+    {
+        WalletWithdrawalRequest originalRequest = await WalletWithdrawalRequestRepository.GetById((int)_selectedRequest.BumpingWalletWithdrawalRequestId);
+        if (originalRequest == null)
+        {
+            throw new ShowToUserException("Original withdrawal request not found");
+        }
+
+        // Get destinations from the original request
+        List<WalletWithdrawalRequestDestination> originalDestinations = await WalletWithdrawalRequestDestinationRepository.GetByWalletWithdrawalRequestId(originalRequest.Id);
+        if (originalDestinations == null || originalDestinations.Count == 0)
+        {
+            throw new ShowToUserException("Original withdrawal request destinations not found");
+        }
+
+        _selectedRequest.WalletWithdrawalRequestDestinations = originalDestinations.Select(d => new WalletWithdrawalRequestDestination
+        {
+            Address = d.Address,
+            Amount = d.Amount,
+            WalletWithdrawalRequestId = _selectedRequest.Id
+        }).ToList();
+
+        // Get utxos from the original request
+        List<FMUTXO> mUTXOs = await FMUTXORepository.GetLockedUTXOsByWithdrawalId(originalRequest.Id);
+
+        _selectedRequest.UTXOs = mUTXOs;
+        List<OutPoint> outpoints = new List<OutPoint>();
+        mUTXOs.ForEach(u => {
+            OutPoint o;
+            if (OutPoint.TryParse($"{u.TxId}:{u.OutputIndex}", out o))
+                outpoints.Add(o);
+            else
+                throw new FormatException("Failed to parse OutPoint from TxId and OutputIndex");
+        });
+        _selectedUTXOs = await CoinSelectionService.GetUTXOsByOutpointAsync(originalRequest.Wallet.GetDerivationStrategy(), outpoints);
+        originalRequest.Status = WalletWithdrawalRequestStatus.Bumped;
+
+        var updateResult = WalletWithdrawalRequestRepository.Update(_selectedRequest);
+        if (!updateResult.Item1)
+        {
+            ToastService.ShowError("Something went wrong");
+            return;
+        }
+
+        updateResult = WalletWithdrawalRequestRepository.Update(originalRequest);
+        if (!updateResult.Item1)
+        {
+            ToastService.ShowError("Something went wrong");
+            return;
+        }
     }
 }

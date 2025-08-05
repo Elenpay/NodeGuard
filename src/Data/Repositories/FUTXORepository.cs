@@ -91,6 +91,21 @@ namespace NodeGuard.Data.Repositories
             return _repository.Update(type, applicationDbContext);
         }
 
+        public async Task<List<FMUTXO>> GetLockedUTXOsByWithdrawalId(int walletWithdrawalRequestId)
+        {
+            await using var applicationDbContext = await _dbContextFactory.CreateDbContextAsync();
+
+            var result = new List<FMUTXO>();
+            result = await applicationDbContext.WalletWithdrawalRequests
+                .Include(x => x.UTXOs)
+                .Where(x => x.Id == walletWithdrawalRequestId)
+                .SelectMany(x => x.UTXOs)
+                .Include(x => x.WalletWithdrawalRequests)
+                .ToListAsync();
+
+            return result;
+        }
+
         public async Task<List<FMUTXO>> GetLockedUTXOs(int? ignoredWalletWithdrawalRequestId = null, int? ignoredChannelOperationRequestId = null)
         {
             await using var applicationDbContext = await _dbContextFactory.CreateDbContextAsync();
