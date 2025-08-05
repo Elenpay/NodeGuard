@@ -60,12 +60,12 @@ namespace NodeGuard.Data
                 .HasForeignKey(lr => lr.ReverseSwapWalletId);
 
             modelBuilder.Entity<Node>().HasIndex(x => x.PubKey).IsUnique();
-            modelBuilder.Entity<Wallet>().HasIndex(x => new {x.InternalWalletSubDerivationPath, x.InternalWalletMasterFingerprint}).IsUnique();
-            
-            
+            modelBuilder.Entity<Wallet>().HasIndex(x => new { x.InternalWalletSubDerivationPath, x.InternalWalletMasterFingerprint }).IsUnique();
+
+
             //There should be only one Liquidity Rule per Channel
             modelBuilder.Entity<LiquidityRule>().HasIndex(x => x.ChannelId).IsUnique();
-            
+
             modelBuilder.Entity<ApplicationUser>().HasIndex(x => x.NormalizedUserName).IsUnique();
 
 
@@ -113,11 +113,13 @@ namespace NodeGuard.Data
         public DbSet<InternalWallet> InternalWallets { get; set; }
 
         public DbSet<FMUTXO> FMUTXOs { get; set; }
-        
+
         public DbSet<UTXOTag> UTXOTags { get; set; }
 
         public DbSet<LiquidityRule> LiquidityRules { get; set; }
-        
+
         public DbSet<APIToken> ApiTokens { get; set; }
+
+        public DbSet<SwapOut> SwapOuts { get; set; }
     }
 }
