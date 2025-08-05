@@ -45,7 +45,7 @@ namespace NodeGuard.Data.Repositories
 
          var request = await context.SwapOuts
             .Include(s => s.DestinationWallet)
-            .Include(s => s.UserRequestorId)
+            .Include(s => s.UserRequestor)
             .SingleOrDefaultAsync(s => s.Id == id);
 
          return request;
@@ -57,7 +57,7 @@ namespace NodeGuard.Data.Repositories
 
          var swaps = await context.SwapOuts
             .Include(s => s.DestinationWallet)
-            .Include(s => s.UserRequestorId)
+            .Include(s => s.UserRequestor)
             .Where(s => ids.Contains(s.Id))
             .ToListAsync();
 
@@ -70,7 +70,7 @@ namespace NodeGuard.Data.Repositories
 
          var swaps = await context.SwapOuts
             .Include(s => s.DestinationWallet)
-            .Include(s => s.UserRequestorId)
+            .Include(s => s.UserRequestor)
             .ToListAsync();
 
          return swaps;
@@ -82,7 +82,7 @@ namespace NodeGuard.Data.Repositories
 
          var swaps = await context.SwapOuts
             .Include(s => s.DestinationWallet)
-            .Include(s => s.UserRequestorId)
+            .Include(s => s.UserRequestor)
             .Where(s => s.Provider == provider)
             .ToListAsync();
 

@@ -62,11 +62,7 @@ namespace NodeGuard.Data.Models
       /// Calculated property to convert to btc
       /// </summary>
       [NotMapped]
-      public decimal Amount
-      {
-         get => new Money(SatsAmount, MoneyUnit.Satoshi).ToDecimal(MoneyUnit.BTC);
-         set { }
-      }
+      public decimal Amount => new Money(SatsAmount, MoneyUnit.Satoshi).ToDecimal(MoneyUnit.BTC);
 
       /// <summary>
       /// The address where the funds are sent to
