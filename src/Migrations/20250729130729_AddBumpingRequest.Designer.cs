@@ -3,6 +3,7 @@ using System;
 using System.Collections.Generic;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using NodeGuard.Data;
 using NodeGuard.Helpers;
@@ -13,9 +14,11 @@ using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 namespace NodeGuard.Migrations
 {
     [DbContext(typeof(ApplicationDbContext))]
-    partial class ApplicationDbContextModelSnapshot : ModelSnapshot
+    [Migration("20250729130729_AddBumpingRequest")]
+    partial class AddBumpingRequest
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -732,66 +735,6 @@ namespace NodeGuard.Migrations
                     b.ToTable("Nodes");
                 });
 
-            modelBuilder.Entity("NodeGuard.Data.Models.SwapOut", b =>
-                {
-                    b.Property<int>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("integer");
-
-                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
-
-                    b.Property<DateTimeOffset>("CreationDatetime")
-                        .HasColumnType("timestamp with time zone");
-
-                    b.Property<int?>("DestinationWalletId")
-                        .HasColumnType("integer");
-
-                    b.Property<string>("ErrorDetails")
-                        .HasColumnType("text");
-
-                    b.Property<bool>("IsManual")
-                        .HasColumnType("boolean");
-
-                    b.Property<long?>("LightningFeeSats")
-                        .HasColumnType("bigint");
-
-                    b.Property<long?>("OnChainFeeSats")
-                        .HasColumnType("bigint");
-
-                    b.Property<int>("Provider")
-                        .HasColumnType("integer");
-
-                    b.Property<string>("ProviderId")
-                        .IsRequired()
-                        .HasColumnType("text");
-
-                    b.Property<long>("SatsAmount")
-                        .HasColumnType("bigint");
-
-                    b.Property<long?>("ServiceFeeSats")
-                        .HasColumnType("bigint");
-
-                    b.Property<int>("Status")
-                        .HasColumnType("integer");
-
-                    b.Property<string>("TxId")
-                        .HasColumnType("text");
-
-                    b.Property<DateTimeOffset>("UpdateDatetime")
-                        .HasColumnType("timestamp with time zone");
-
-                    b.Property<string>("UserRequestorId")
-                        .HasColumnType("text");
-
-                    b.HasKey("Id");
-
-                    b.HasIndex("DestinationWalletId");
-
-                    b.HasIndex("UserRequestorId");
-
-                    b.ToTable("SwapOuts");
-                });
-
             modelBuilder.Entity("NodeGuard.Data.Models.UTXOTag", b =>
                 {
                     b.Property<int>("Id")
@@ -1292,21 +1235,6 @@ namespace NodeGuard.Migrations
                         .HasForeignKey("ReturningFundsWalletId");
 
                     b.Navigation("ReturningFundsWallet");
-                });
-
-            modelBuilder.Entity("NodeGuard.Data.Models.SwapOut", b =>
-                {
-                    b.HasOne("NodeGuard.Data.Models.Wallet", "DestinationWallet")
-                        .WithMany()
-                        .HasForeignKey("DestinationWalletId");
-
-                    b.HasOne("NodeGuard.Data.Models.ApplicationUser", "UserRequestor")
-                        .WithMany()
-                        .HasForeignKey("UserRequestorId");
-
-                    b.Navigation("DestinationWallet");
-
-                    b.Navigation("UserRequestor");
                 });
 
             modelBuilder.Entity("NodeGuard.Data.Models.Wallet", b =>

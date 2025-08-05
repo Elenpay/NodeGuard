@@ -201,7 +201,7 @@ public class BitcoinServiceTests
         var result = await bitcoinService.GenerateTemplatePSBT(withdrawalRequest);
 
         // Assert
-        var psbt = PSBT.Parse("cHNidP8BAIkBAAAAAQAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA/////wD/////AkBCDwAAAAAAIgAgPaPWaBQgTxHOMVfMfpX21blroUe8KAd6w2gLRelFuiAYUYkAAAAAACIAIDx3862ZOy+vKdDZ4oysyRZX0HARoqQ9LqqK2ukxoopiAAAAAE8BBDWHzwMvESQsgAAAAfw77kI6AYzrbSJqBmMojtD7XuD6nXkKs3DQMOBHMObIA4COLhzUgr3QcZaUPFqBM9Fpr4YCK2uwOBdxZE7AdETXEB/M5N4wAACAAQAAgAEAAIBPAQQ1h88DVqwD9IAAAAH5CK5KZrD/oasUtVrwzkjypwIly5AQkC1pAa+QuT6PgQJRrxXgW7i36sGJWz9fR//v7NgyGgLvIimPidCiA33wYBBg86CzMAAAgAEAAIABAACATwEENYfPA325Ro2AAAAB9SJwx2h6Ovs1HvTxuaMMEPO205IXBoOuqUiME5oRyZgDIiOFIzjqZ/v9jcNSqyYl55ondkYhI2vxwCEwkNNInp8Q7QIQyDAAAIABAACAAQAAgAABASuAlpgAAAAAACIAILNTGKQyViCBs/y3kcG+Q/3NcIIypkqLb3/EMmN57BDEAQVpUiEC2FTFYM/mwE4L60Q0G2p5QElV7YlMD7fcgoJEH79pLLEhAwJn/wsRl0hvcYj5Y3Bv3uQlxZ57pBZ9KSeuEPVNmjS/IQMaU3fyWsF+N0FpN8hSusDj6bESvd9YR509kdgWMLKLj1OuIgYC2FTFYM/mwE4L60Q0G2p5QElV7YlMD7fcgoJEH79pLLEYH8zk3jAAAIABAACAAQAAgAAAAAAAAAAAIgYDAmf/CxGXSG9xiPljcG/e5CXFnnukFn0pJ64Q9U2aNL8YYPOgszAAAIABAACAAQAAgAAAAAAAAAAAIgYDGlN38lrBfjdBaTfIUrrA4+mxEr3fWEedPZHYFjCyi48Y7QIQyDAAAIABAACAAQAAgAAAAAAAAAAAAAAA", Network.RegTest);
+        var psbt = PSBT.Parse("cHNidP8BAIkBAAAAAQAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA/////wD9////AkBCDwAAAAAAIgAgPaPWaBQgTxHOMVfMfpX21blroUe8KAd6w2gLRelFuiAYUYkAAAAAACIAIDx3862ZOy+vKdDZ4oysyRZX0HARoqQ9LqqK2ukxoopiAAAAAE8BBDWHzwMvESQsgAAAAfw77kI6AYzrbSJqBmMojtD7XuD6nXkKs3DQMOBHMObIA4COLhzUgr3QcZaUPFqBM9Fpr4YCK2uwOBdxZE7AdETXEB/M5N4wAACAAQAAgAEAAIBPAQQ1h88DVqwD9IAAAAH5CK5KZrD/oasUtVrwzkjypwIly5AQkC1pAa+QuT6PgQJRrxXgW7i36sGJWz9fR//v7NgyGgLvIimPidCiA33wYBBg86CzMAAAgAEAAIABAACATwEENYfPA325Ro2AAAAB9SJwx2h6Ovs1HvTxuaMMEPO205IXBoOuqUiME5oRyZgDIiOFIzjqZ/v9jcNSqyYl55ondkYhI2vxwCEwkNNInp8Q7QIQyDAAAIABAACAAQAAgAABASuAlpgAAAAAACIAILNTGKQyViCBs/y3kcG+Q/3NcIIypkqLb3/EMmN57BDEAQVpUiEC2FTFYM/mwE4L60Q0G2p5QElV7YlMD7fcgoJEH79pLLEhAwJn/wsRl0hvcYj5Y3Bv3uQlxZ57pBZ9KSeuEPVNmjS/IQMaU3fyWsF+N0FpN8hSusDj6bESvd9YR509kdgWMLKLj1OuIgYC2FTFYM/mwE4L60Q0G2p5QElV7YlMD7fcgoJEH79pLLEYH8zk3jAAAIABAACAAQAAgAAAAAAAAAAAIgYDAmf/CxGXSG9xiPljcG/e5CXFnnukFn0pJ64Q9U2aNL8YYPOgszAAAIABAACAAQAAgAAAAAAAAAAAIgYDGlN38lrBfjdBaTfIUrrA4+mxEr3fWEedPZHYFjCyi48Y7QIQyDAAAIABAACAAQAAgAAAAAAAAAAAAAAA", Network.RegTest);
         result.Should().BeEquivalentTo(psbt);
     }
 
@@ -266,7 +266,7 @@ public class BitcoinServiceTests
                 }
             });
         fmutxoRepository
-            .Setup(x => x.GetLockedUTXOs(null , null))
+            .Setup(x => x.GetLockedUTXOs(null, null))
             .ReturnsAsync(new List<FMUTXO>());
         utxoTagRepository
             .Setup(x => x.GetByKeyValue(It.IsAny<string>(), It.IsAny<string>()))
@@ -280,7 +280,7 @@ public class BitcoinServiceTests
         var result = await bitcoinService.GenerateTemplatePSBT(withdrawalRequest);
 
         // Assert
-        var psbt = PSBT.Parse("cHNidP8BAIkBAAAAAQAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA/////wD/////AkBCDwAAAAAAIgAgPaPWaBQgTxHOMVfMfpX21blroUe8KAd6w2gLRelFuiAYUYkAAAAAACIAIDx3862ZOy+vKdDZ4oysyRZX0HARoqQ9LqqK2ukxoopiAAAAAE8BBDWHzwMvESQsgAAAAfw77kI6AYzrbSJqBmMojtD7XuD6nXkKs3DQMOBHMObIA4COLhzUgr3QcZaUPFqBM9Fpr4YCK2uwOBdxZE7AdETXEB/M5N4wAACAAQAAgAEAAIBPAQQ1h88DVqwD9IAAAAH5CK5KZrD/oasUtVrwzkjypwIly5AQkC1pAa+QuT6PgQJRrxXgW7i36sGJWz9fR//v7NgyGgLvIimPidCiA33wYBBg86CzMAAAgAEAAIABAACATwEENYfPA325Ro0AAAAAgN63GqLxTu1/NyL0SV4a0Hn1n8Dzg+Wye9nbb16ZISADr+s+pcKnDcSqKHKWSl4v8Rcq80ZqG/7QObYmZUl/xUYQ7QIQyDAAAIABAACAAAAAAAABASuAlpgAAAAAACIAINCp0IUCw4KZ8J/JokbAV1TBQtK4m6WLzUomP5VBhszOAQVpUiEC2FTFYM/mwE4L60Q0G2p5QElV7YlMD7fcgoJEH79pLLEhAwJn/wsRl0hvcYj5Y3Bv3uQlxZ57pBZ9KSeuEPVNmjS/IQNvzitZiz5ksZFSQuRibjPP4pwo+OWOqZLBL2x5ZrFVqVOuIgYC2FTFYM/mwE4L60Q0G2p5QElV7YlMD7fcgoJEH79pLLEYH8zk3jAAAIABAACAAQAAgAAAAAAAAAAAIgYDAmf/CxGXSG9xiPljcG/e5CXFnnukFn0pJ64Q9U2aNL8YYPOgszAAAIABAACAAQAAgAAAAAAAAAAAIgYDb84rWYs+ZLGRUkLkYm4zz+KcKPjljqmSwS9seWaxVakY7QIQyDAAAIABAACAAAAAAAAAAAAAAAAAAAAA", Network.RegTest);
+        var psbt = PSBT.Parse("cHNidP8BAIkBAAAAAQAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA/////wD9////AkBCDwAAAAAAIgAgPaPWaBQgTxHOMVfMfpX21blroUe8KAd6w2gLRelFuiAYUYkAAAAAACIAIDx3862ZOy+vKdDZ4oysyRZX0HARoqQ9LqqK2ukxoopiAAAAAE8BBDWHzwMvESQsgAAAAfw77kI6AYzrbSJqBmMojtD7XuD6nXkKs3DQMOBHMObIA4COLhzUgr3QcZaUPFqBM9Fpr4YCK2uwOBdxZE7AdETXEB/M5N4wAACAAQAAgAEAAIBPAQQ1h88DVqwD9IAAAAH5CK5KZrD/oasUtVrwzkjypwIly5AQkC1pAa+QuT6PgQJRrxXgW7i36sGJWz9fR//v7NgyGgLvIimPidCiA33wYBBg86CzMAAAgAEAAIABAACATwEENYfPA325Ro0AAAAAgN63GqLxTu1/NyL0SV4a0Hn1n8Dzg+Wye9nbb16ZISADr+s+pcKnDcSqKHKWSl4v8Rcq80ZqG/7QObYmZUl/xUYQ7QIQyDAAAIABAACAAAAAAAABASuAlpgAAAAAACIAINCp0IUCw4KZ8J/JokbAV1TBQtK4m6WLzUomP5VBhszOAQVpUiEC2FTFYM/mwE4L60Q0G2p5QElV7YlMD7fcgoJEH79pLLEhAwJn/wsRl0hvcYj5Y3Bv3uQlxZ57pBZ9KSeuEPVNmjS/IQNvzitZiz5ksZFSQuRibjPP4pwo+OWOqZLBL2x5ZrFVqVOuIgYC2FTFYM/mwE4L60Q0G2p5QElV7YlMD7fcgoJEH79pLLEYH8zk3jAAAIABAACAAQAAgAAAAAAAAAAAIgYDAmf/CxGXSG9xiPljcG/e5CXFnnukFn0pJ64Q9U2aNL8YYPOgszAAAIABAACAAQAAgAAAAAAAAAAAIgYDb84rWYs+ZLGRUkLkYm4zz+KcKPjljqmSwS9seWaxVakY7QIQyDAAAIABAACAAAAAAAAAAAAAAAAAAAAA", Network.RegTest);
         result.Should().BeEquivalentTo(psbt);
     }
 
@@ -358,10 +358,10 @@ public class BitcoinServiceTests
         var result = await bitcoinService.GenerateTemplatePSBT(withdrawalRequest);
 
         // Assert
-        var psbt = PSBT.Parse("cHNidP8BAIkBAAAAAQAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA/////wD/////AkBCDwAAAAAAIgAgPaPWaBQgTxHOMVfMfpX21blroUe8KAd6w2gLRelFuiCsUYkAAAAAACIAIDx3862ZOy+vKdDZ4oysyRZX0HARoqQ9LqqK2ukxoopiAAAAAE8BBDWHzwN9uUaNAAAAAYPR/OiA1LbTzxbLPvbXvtAwckIG3g+0T1zblR/ZodaiA5zBFsigPpL8htN/KJ/Ph8SPvQA/K+mSNXTSA0hgvPNuEO0CEMgwAACAAQAAgAEAAAAAAQEfgJaYAAAAAAAWABTpOvUBMqNMfl7P81etji6x4fXrMyIGA3uD9HVjgF5E+eQhHp+Na6femVYpc4bCA4DmimehAdWcGO0CEMgwAACAAQAAgAEAAAAAAAAAAAAAAAAAAA==", Network.RegTest);
+        var psbt = PSBT.Parse("cHNidP8BAIkBAAAAAQAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA/////wD9////AkBCDwAAAAAAIgAgPaPWaBQgTxHOMVfMfpX21blroUe8KAd6w2gLRelFuiCsUYkAAAAAACIAIDx3862ZOy+vKdDZ4oysyRZX0HARoqQ9LqqK2ukxoopiAAAAAE8BBDWHzwN9uUaNAAAAAYPR/OiA1LbTzxbLPvbXvtAwckIG3g+0T1zblR/ZodaiA5zBFsigPpL8htN/KJ/Ph8SPvQA/K+mSNXTSA0hgvPNuEO0CEMgwAACAAQAAgAEAAAAAAQEfgJaYAAAAAAAWABTpOvUBMqNMfl7P81etji6x4fXrMyIGA3uD9HVjgF5E+eQhHp+Na6femVYpc4bCA4DmimehAdWcGO0CEMgwAACAAQAAgAEAAAAAAAAAAAAAAAAAAA==", Network.RegTest);
         result.Should().BeEquivalentTo(psbt);
     }
-    
+
     [Fact]
     async Task GenerateTemplatePSBT_SingleSigFailsFrozenUTXO()
     {
@@ -546,10 +546,10 @@ public class BitcoinServiceTests
         var result = await bitcoinService.GenerateTemplatePSBT(withdrawalRequest);
 
         // Assert
-        var psbt = PSBT.Parse("cHNidP8BAIkBAAAAAdIEAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAQAAAAD/////AkBCDwAAAAAAIgAgPaPWaBQgTxHOMVfMfpX21blroUe8KAd6w2gLRelFuiCsUYkAAAAAACIAIDx3862ZOy+vKdDZ4oysyRZX0HARoqQ9LqqK2ukxoopiAAAAAE8BBDWHzwN9uUaNAAAAAYPR/OiA1LbTzxbLPvbXvtAwckIG3g+0T1zblR/ZodaiA5zBFsigPpL8htN/KJ/Ph8SPvQA/K+mSNXTSA0hgvPNuEO0CEMgwAACAAQAAgAEAAAAAAQEfgJaYAAAAAAAWABTpOvUBMqNMfl7P81etji6x4fXrMyIGA3uD9HVjgF5E+eQhHp+Na6femVYpc4bCA4DmimehAdWcGO0CEMgwAACAAQAAgAEAAAAAAAAAAAAAAAAAAA==", Network.RegTest);
+        var psbt = PSBT.Parse("cHNidP8BAIkBAAAAAdIEAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAQAAAAD9////AkBCDwAAAAAAIgAgPaPWaBQgTxHOMVfMfpX21blroUe8KAd6w2gLRelFuiCsUYkAAAAAACIAIDx3862ZOy+vKdDZ4oysyRZX0HARoqQ9LqqK2ukxoopiAAAAAE8BBDWHzwN9uUaNAAAAAYPR/OiA1LbTzxbLPvbXvtAwckIG3g+0T1zblR/ZodaiA5zBFsigPpL8htN/KJ/Ph8SPvQA/K+mSNXTSA0hgvPNuEO0CEMgwAACAAQAAgAEAAAAAAQEfgJaYAAAAAAAWABTpOvUBMqNMfl7P81etji6x4fXrMyIGA3uD9HVjgF5E+eQhHp+Na6femVYpc4bCA4DmimehAdWcGO0CEMgwAACAAQAAgAEAAAAAAAAAAAAAAAAAAA==", Network.RegTest);
         result.Should().BeEquivalentTo(psbt);
     }
-    
+
     [Fact]
     async Task GenerateTemplatePSBT_SingleSigFailsManuallyFrozenUTXO()
     {
@@ -647,7 +647,7 @@ public class BitcoinServiceTests
             .ThrowAsync<NoUTXOsAvailableException>()
             .WithMessage("Exception of type 'NodeGuard.Helpers.NoUTXOsAvailableException' was thrown.");
     }
-    
+
     [Fact]
     async Task GenerateTemplatePSBT_Changeless_SingleSigSucceeds()
     {
@@ -716,7 +716,7 @@ public class BitcoinServiceTests
                 }
             });
 
-        var fmUtxos = utxos.Select(x => new FMUTXO() { TxId = x.Outpoint.Hash.ToString(), OutputIndex = 1}).ToList();
+        var fmUtxos = utxos.Select(x => new FMUTXO() { TxId = x.Outpoint.Hash.ToString(), OutputIndex = 1 }).ToList();
         fmutxoRepository
             .Setup(x => x.GetLockedUTXOs(null, null))
             .ReturnsAsync(fmUtxos);
@@ -733,7 +733,7 @@ public class BitcoinServiceTests
         var result = await bitcoinService.GenerateTemplatePSBT(withdrawalRequest);
 
         // Assert
-        var psbt = PSBT.Parse("cHNidP8BAF4BAAAAAdIKH+sAAAAAjKlUqwAAAAAAAAAAAAAAAAAAAAAAAAAAAQAAAAD/////AZiUmAAAAAAAIgAgPaPWaBQgTxHOMVfMfpX21blroUe8KAd6w2gLRelFuiAAAAAATwEENYfPA325Ro0AAAABg9H86IDUttPPFss+9te+0DByQgbeD7RPXNuVH9mh1qIDnMEWyKA+kvyG038on8+HxI+9AD8r6ZI1dNIDSGC8824Q7QIQyDAAAIABAACAAQAAAAABAR+AlpgAAAAAABYAFOk69QEyo0x+Xs/zV62OLrHh9eszIgYDe4P0dWOAXkT55CEen41rp96ZVilzhsIDgOaKZ6EB1ZwY7QIQyDAAAIABAACAAQAAAAAAAAAAAAAAAAA=", Network.RegTest);
+        var psbt = PSBT.Parse("cHNidP8BAF4BAAAAAdIKH+sAAAAAjKlUqwAAAAAAAAAAAAAAAAAAAAAAAAAAAQAAAAD9////AZiUmAAAAAAAIgAgPaPWaBQgTxHOMVfMfpX21blroUe8KAd6w2gLRelFuiAAAAAATwEENYfPA325Ro0AAAABg9H86IDUttPPFss+9te+0DByQgbeD7RPXNuVH9mh1qIDnMEWyKA+kvyG038on8+HxI+9AD8r6ZI1dNIDSGC8824Q7QIQyDAAAIABAACAAQAAAAABAR+AlpgAAAAAABYAFOk69QEyo0x+Xs/zV62OLrHh9eszIgYDe4P0dWOAXkT55CEen41rp96ZVilzhsIDgOaKZ6EB1ZwY7QIQyDAAAIABAACAAQAAAAAAAAAAAAAAAAA=", Network.RegTest);
         result.Should().BeEquivalentTo(psbt);
     }
 
@@ -805,7 +805,7 @@ public class BitcoinServiceTests
             .ReturnsAsync(new BroadcastResult() { Success = true });
         nodeRepository
             .Setup(x => x.GetAllManagedByNodeGuard(It.IsAny<bool>()))
-            .Returns(Task.FromResult(new List<Node>() {node}));
+            .Returns(Task.FromResult(new List<Node>() { node }));
         var bitcoinService = new BitcoinService(_logger, null, walletWithdrawalRequestRepository.Object, null, nodeRepository.Object, null, nbXplorerService.Object, null);
 
         // Act
@@ -891,7 +891,7 @@ public class BitcoinServiceTests
             .ReturnsAsync(new BroadcastResult() { Success = true });
         nodeRepository
             .Setup(x => x.GetAllManagedByNodeGuard(It.IsAny<bool>()))
-            .Returns(Task.FromResult(new List<Node>() {node}));
+            .Returns(Task.FromResult(new List<Node>() { node }));
         var bitcoinService = new BitcoinService(_logger, null, walletWithdrawalRequestRepository.Object, null, nodeRepository.Object, null, nbXplorerService.Object, null);
 
         // Act
@@ -977,7 +977,7 @@ public class BitcoinServiceTests
             .ReturnsAsync(new BroadcastResult() { Success = true });
         nodeRepository
             .Setup(x => x.GetAllManagedByNodeGuard(It.IsAny<bool>()))
-            .Returns(Task.FromResult(new List<Node>() {node}));
+            .Returns(Task.FromResult(new List<Node>() { node }));
         var bitcoinService = new BitcoinService(_logger, null, walletWithdrawalRequestRepository.Object, null, nodeRepository.Object, null, nbXplorerService.Object, null);
 
         // Act
@@ -1072,17 +1072,17 @@ public class BitcoinServiceTests
 
         // Assert
         result.Should().NotBeNull();
-        
+
         // Verify that the PSBT has the expected number of outputs
         // 3 destination outputs + 1 change output = 4 total outputs
         result.Outputs.Count.Should().Be(4);
-        
+
         // Verify destination amounts are present (order may vary due to shuffling)
         var outputValues = result.Outputs.Select(o => o.Value).ToList();
         outputValues.Should().Contain(new Money(0.005m, MoneyUnit.BTC));
         outputValues.Should().Contain(new Money(0.003m, MoneyUnit.BTC));
         outputValues.Should().Contain(new Money(0.002m, MoneyUnit.BTC));
-        
+
         // Verify that there is a change output (should be greater than the destination amounts)
         var changeOutput = outputValues.Where(v => v > new Money(0.005m, MoneyUnit.BTC)).FirstOrDefault();
         changeOutput.Should().NotBeNull();
@@ -1118,7 +1118,7 @@ public class BitcoinServiceTests
         var nbXplorerService = new Mock<INBXplorerService>();
         var utxoTagRepository = new Mock<IUTXOTagRepository>();
         var mapper = new Mock<IMapper>();
-        
+
         walletWithdrawalRequestRepository
             .Setup((w) => w.GetById(It.IsAny<int>()))
             .ReturnsAsync(withdrawalRequest);
@@ -1211,7 +1211,7 @@ public class BitcoinServiceTests
         var nbXplorerService = new Mock<INBXplorerService>();
         var utxoTagRepository = new Mock<IUTXOTagRepository>();
         var mapper = new Mock<IMapper>();
-        
+
         walletWithdrawalRequestRepository
             .Setup((w) => w.GetById(It.IsAny<int>()))
             .ReturnsAsync(withdrawalRequest);
@@ -1303,7 +1303,7 @@ public class BitcoinServiceTests
         var nbXplorerService = new Mock<INBXplorerService>();
         var utxoTagRepository = new Mock<IUTXOTagRepository>();
         var mapper = new Mock<IMapper>();
-        
+
         walletWithdrawalRequestRepository
             .Setup((w) => w.GetById(It.IsAny<int>()))
             .ReturnsAsync(withdrawalRequest);
@@ -1401,7 +1401,7 @@ public class BitcoinServiceTests
 
         var walletWithdrawalRequestRepository = new Mock<IWalletWithdrawalRequestRepository>();
         var nbXplorerService = new Mock<INBXplorerService>();
-        
+
         walletWithdrawalRequestRepository
             .Setup((w) => w.GetById(It.IsAny<int>()))
             .ReturnsAsync(withdrawalRequest);

@@ -59,6 +59,87 @@ services:
       timeout: 5s
       retries: 5
 
+  mempool-frontend-btc:
+    profiles: ["mempool"]
+    environment:
+      FRONTEND_HTTP_PORT: "8080"
+      BACKEND_MAINNET_HTTP_HOST: "mempool-backend-btc"
+      LIQUID_ENABLED: false
+      LIQUID_TESTNET_ENABLED: false
+    image: mempool/frontend:latest
+    container_name: 40swap_mempool_frontend_btc
+    user: "1000:1000"
+    restart: always
+    command: "./wait-for mempool-db-btc:3306 --timeout=720 -- nginx -g 'daemon off;'"
+    ports:
+      - 7084:8080
+
+  mempool-backend-btc:
+    profiles: ["mempool"]
+    environment:
+      MEMPOOL_BACKEND: "electrum"
+      CORE_RPC_HOST: "host.docker.internal"
+      CORE_RPC_PORT: "18443"
+      CORE_RPC_USERNAME: "polaruser"
+      CORE_RPC_PASSWORD: "polarpass"
+      DATABASE_ENABLED: "true"
+      DATABASE_HOST: "mempool-db-btc"
+      DATABASE_DATABASE: "mempool_btc"
+      DATABASE_USERNAME: "mempool"
+      DATABASE_PASSWORD: "mempool"
+      STATISTICS_ENABLED: "true"
+      ELECTRUM_HOST: "electrumx"
+      ELECTRUM_PORT: "50001"
+      ELECTRUM_TLS_ENABLED: "false"
+    image: mempool/backend:latest
+    container_name: 40swap_mempool_backend_btc
+    user: "1000:1000"
+    restart: always
+    command: "./wait-for-it.sh mempool-db-btc:3306 --timeout=720 --strict -- ./start.sh"
+    depends_on:
+      - mempool-db-btc
+    volumes:
+      - mempool-backend-btc-data:/backend/cache
+
+  mempool-db-btc:
+    profiles: ["mempool"]
+    environment:
+      MYSQL_DATABASE: "mempool_btc"
+      MYSQL_USER: "mempool"
+      MYSQL_PASSWORD: "mempool"
+      MYSQL_ROOT_PASSWORD: "admin"
+    image: mariadb:10.5.8
+    container_name: 40swap_mempool_db_btc
+    restart: always
+    volumes:
+      - mempool-db-btc-data:/var/lib/mysql
+
+  electrumx:
+    profiles: ["mempool"]
+    image: andgohq/electrumx:1.8.7
+    container_name: 40swap_electrumx
+    command: ["wait-for-it.sh", "host.docker.internal:18443", "--", "init"]
+    ports:
+      - "51002:50002"
+      - "51001:50001"
+    expose:
+      - "50001"
+      - "50002"
+    volumes:
+      - electrumx-data:/data
+    environment:
+      # bitcoind is valid
+      - DAEMON_URL=http://polaruser:polarpass@host.docker.internal:18443
+      - COIN=BitcoinSegwit
+      - NET=regtest
+      # 127.0.0.1 or electrumx is valid for RPC_HOST
+      - RPC_HOST=electrumx
+      - RPC_PORT=18443
+      - HOST=electrumx
+      - TCP_PORT=50001
+      - SSL_PORT=50002
+    restart: always
+
 volumes:
   nodeguard_postgres_data:
   bitcoin_datadir:
