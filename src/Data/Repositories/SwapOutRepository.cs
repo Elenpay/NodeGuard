@@ -76,19 +76,6 @@ namespace NodeGuard.Data.Repositories
          return swaps;
       }
 
-      public async Task<List<SwapOut>> GetByProvider(SwapOutProvider provider)
-      {
-         await using var context = await _dbContextFactory.CreateDbContextAsync();
-
-         var swaps = await context.SwapOuts
-            .Include(s => s.DestinationWallet)
-            .Include(s => s.UserRequestor)
-            .Where(s => s.Provider == provider)
-            .ToListAsync();
-
-         return swaps;
-      }
-
       public async Task<(bool, string?)> AddAsync(SwapOut swap)
       {
          await using var context = await _dbContextFactory.CreateDbContextAsync();

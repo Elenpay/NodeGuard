@@ -26,7 +26,6 @@ public interface ISwapOutRepository
    Task<SwapOut?> GetById(int id);
    Task<List<SwapOut>> GetByIds(List<int> ids);
    Task<List<SwapOut>> GetAll();
-   Task<List<SwapOut>> GetByProvider(SwapOutProvider provider);
    Task<(bool, string?)> AddAsync(SwapOut swap);
    Task<(bool, string?)> AddRangeAsync(List<SwapOut> swaps);
    (bool, string?) Remove(SwapOut swap);
