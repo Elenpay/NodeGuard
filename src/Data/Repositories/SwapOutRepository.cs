@@ -99,20 +99,6 @@ namespace NodeGuard.Data.Repositories
          return await _repository.AddRangeAsync(swaps, context);
       }
 
-      public (bool, string?) Remove(SwapOut swap)
-      {
-         using var context = _dbContextFactory.CreateDbContext();
-
-         return _repository.Remove(swap, context);
-      }
-
-      public (bool, string?) RemoveRange(List<SwapOut> swaps)
-      {
-         using var context = _dbContextFactory.CreateDbContext();
-
-         return _repository.RemoveRange(swaps, context);
-      }
-
       public (bool, string?) Update(SwapOut swap)
       {
          using var context = _dbContextFactory.CreateDbContext();
