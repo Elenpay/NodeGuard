@@ -92,10 +92,10 @@ namespace NodeGuard.Data.Models
 
       public Money OnChainFee => new Money(OnChainFeeSats ?? 0, MoneyUnit.Satoshi);
 
-      public long? TotalFeesSats =>
+      public long TotalFeesSats =>
          (ServiceFeeSats ?? 0) + (LightningFeeSats ?? 0) + (OnChainFeeSats ?? 0);
 
-      public Money TotalFees => new Money(TotalFeesSats ?? 0, MoneyUnit.Satoshi);
+      public Money TotalFees => new Money(TotalFeesSats, MoneyUnit.Satoshi);
 
       /// <summary>
       /// Error details if the swap failed
