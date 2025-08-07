@@ -43,12 +43,12 @@ namespace NodeGuard.Data.Repositories
       {
          await using var context = await _dbContextFactory.CreateDbContextAsync();
 
-         var request = await context.SwapOuts
+         var swap = await context.SwapOuts
             .Include(s => s.DestinationWallet)
             .Include(s => s.UserRequestor)
             .SingleOrDefaultAsync(s => s.Id == id);
 
-         return request;
+         return swap;
       }
 
       public async Task<List<SwapOut>> GetByIds(List<int> ids)
