@@ -27,16 +27,12 @@ namespace NodeGuard.Data.Repositories
    public class SwapOutRepository : ISwapOutRepository
    {
       private readonly IRepository<SwapOut> _repository;
-      private readonly ILogger<SwapOutRepository> _logger;
       private readonly IDbContextFactory<ApplicationDbContext> _dbContextFactory;
-      private readonly IMapper _mapper;
 
-      public SwapOutRepository(IRepository<SwapOut> repository, ILogger<SwapOutRepository> logger, IDbContextFactory<ApplicationDbContext> dbContextFactory, IMapper mapper)
+      public SwapOutRepository(IRepository<SwapOut> repository, IDbContextFactory<ApplicationDbContext> dbContextFactory)
       {
          _repository = repository;
-         _logger = logger;
          _dbContextFactory = dbContextFactory;
-         _mapper = mapper;
       }
 
       public async Task<SwapOut?> GetById(int id)
