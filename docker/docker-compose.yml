@@ -146,6 +146,3 @@ volumes:
   nbxplorer_datadir:
   nbxplorer_postgres_data:
   nodeguard_data_keys_dir:
-  mempool-backend-btc-data:
-  mempool-db-btc-data:
-  electrumx-data:
