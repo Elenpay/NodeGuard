@@ -111,6 +111,7 @@ namespace NodeGuard
                 .AddTransient<IWalletWithdrawalRequestPsbtRepository, WalletWithdrawalRequestPsbtRepository>();
             builder.Services.AddTransient<IWalletWithdrawalRequestRepository, WalletWithdrawalRequestRepository>();
             builder.Services.AddTransient<IWalletWithdrawalRequestDestinationRepository, WalletWithdrawalRequestDestinationRepository>();
+            builder.Services.AddTransient<ISwapOutRepository, SwapOutRepository>();
             builder.Services.AddTransient<IRemoteSignerService, RemoteSignerServiceService>();
             builder.Services.AddTransient<ILiquidityRuleRepository, LiquidityRuleRepository>();
             builder.Services.AddTransient<ICoinSelectionService, CoinSelectionService>();

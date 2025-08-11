@@ -3,6 +3,7 @@ using System;
 using System.Collections.Generic;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using NodeGuard.Data;
 using NodeGuard.Helpers;
@@ -13,9 +14,11 @@ using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 namespace NodeGuard.Migrations
 {
     [DbContext(typeof(ApplicationDbContext))]
-    partial class ApplicationDbContextModelSnapshot : ModelSnapshot
+    [Migration("20250805114247_AddSwapOuts")]
+    partial class AddSwapOuts
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -907,9 +910,6 @@ namespace NodeGuard.Migrations
 
                     NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
 
-                    b.Property<int?>("BumpingWalletWithdrawalRequestId")
-                        .HasColumnType("integer");
-
                     b.Property<bool>("Changeless")
                         .HasColumnType("boolean");
 
@@ -954,8 +954,6 @@ namespace NodeGuard.Migrations
                         .HasColumnType("boolean");
 
                     b.HasKey("Id");
-
-                    b.HasIndex("BumpingWalletWithdrawalRequestId");
 
                     b.HasIndex("UserRequestorId");
 
@@ -1320,10 +1318,6 @@ namespace NodeGuard.Migrations
 
             modelBuilder.Entity("NodeGuard.Data.Models.WalletWithdrawalRequest", b =>
                 {
-                    b.HasOne("NodeGuard.Data.Models.WalletWithdrawalRequest", "BumpingWalletWithdrawalRequest")
-                        .WithMany()
-                        .HasForeignKey("BumpingWalletWithdrawalRequestId");
-
                     b.HasOne("NodeGuard.Data.Models.ApplicationUser", "UserRequestor")
                         .WithMany("WalletWithdrawalRequests")
                         .HasForeignKey("UserRequestorId");
@@ -1333,8 +1327,6 @@ namespace NodeGuard.Migrations
                         .HasForeignKey("WalletId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
-
-                    b.Navigation("BumpingWalletWithdrawalRequest");
 
                     b.Navigation("UserRequestor");
 
