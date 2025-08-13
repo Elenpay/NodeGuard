@@ -844,9 +844,7 @@
                                    "This transaction has already been mined.");
             return;
         }
-
-
-        // NOTE: Revisit this when full RBF is implemented because we could add a UTXO
+        
         if (request.Changeless && request.WalletWithdrawalRequestDestinations!.Count > 1)
         {
             ToastService.ShowError("Fee bumping is not supported for changeless transactions. Please create a new withdrawal with higher fees instead.");
@@ -1032,7 +1030,6 @@
                 }
 
                 // If the request is changeless, show an error
-                // NOTE: Revisit this when full RBF is implemented because we could add a UTXO
                 if (_selectedRequest.Changeless && _selectedRequest.WalletWithdrawalRequestDestinations!.Count > 1)
                 {
                     ToastService.ShowError("Fee bumping is not supported for changeless transactions. Please create a new withdrawal with higher fees instead.");
