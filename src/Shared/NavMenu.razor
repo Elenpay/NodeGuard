@@ -11,54 +11,62 @@
 
 <div>
     <nav class="flex-column">
+    <div class="nav-item px-3">
+        <NavLink class="nav-link" href="" Match="NavLinkMatch.All">
+            <span class="oi oi-home " aria-hidden="true"></span> Home
+        </NavLink>
+    </div>
+
+    <AuthorizeView Roles="Superadmin,NodeManager,FinanceManager">
         <div class="nav-item px-3">
-            <NavLink class="nav-link" href="" Match="NavLinkMatch.All">
-                <span class="oi oi-home " aria-hidden="true"></span> Home
+            <NavLink class="nav-link" href="wallets">
+                <span class="oi oi-briefcase " aria-hidden="true"></span> Wallets
             </NavLink>
         </div>
+    </AuthorizeView>
 
-        <AuthorizeView Roles="Superadmin,NodeManager,FinanceManager">
-            <div class="nav-item px-3">
-                <NavLink class="nav-link" href="wallets">
-                    <span class="oi oi-briefcase " aria-hidden="true"></span> Wallets
-                </NavLink>
-            </div>
-        </AuthorizeView>
-
-        <AuthorizeView Roles="Superadmin">
-            <div class="nav-item px-3">
-                <NavLink class="nav-link" href="users">
-                    <span class="oi oi-people" aria-hidden="true"></span> Users
-                </NavLink>
-            </div>
-        </AuthorizeView>
+    <AuthorizeView Roles="Superadmin">
+        <div class="nav-item px-3">
+            <NavLink class="nav-link" href="users">
+                <span class="oi oi-people" aria-hidden="true"></span> Users
+            </NavLink>
+        </div>
+    </AuthorizeView>
         
-        <AuthorizeView Roles="Superadmin">
-            <div class="nav-item px-3">
-                <NavLink class="nav-link" href="apis">
-                    <span class="oi oi-code" aria-hidden="true"></span> API
-                </NavLink>
-            </div>
-        </AuthorizeView>
-
-        <AuthorizeView Roles="Superadmin,FinanceManager,NodeManager">
-            <div class="nav-item px-3">
-                <NavLink class="nav-link" href="channel-requests">
-                    <span class="oi oi-bell" aria-hidden="true"></span> Channel Requests
-                </NavLink>
-            </div>
-            <div class="nav-item px-3">
-                <NavLink class="nav-link" href="withdrawals">
-                    <span class="oi oi-plus" aria-hidden="true"></span> Withdrawals
-                </NavLink>
-            </div>
-        </AuthorizeView>
-
+    <AuthorizeView Roles="Superadmin">
         <div class="nav-item px-3">
-            <NavLink class="nav-link" href="nodes">
-                <span class="oi oi-layers" aria-hidden="true"></span> Nodes
+            <NavLink class="nav-link" href="apis">
+                <span class="oi oi-code" aria-hidden="true"></span> API
             </NavLink>
         </div>
+    </AuthorizeView>
+
+    <AuthorizeView Roles="Superadmin,FinanceManager,NodeManager">
+        <div class="nav-item px-3">
+            <NavLink class="nav-link" href="channel-requests">
+                <span class="oi oi-bell" aria-hidden="true"></span> Channel Requests
+            </NavLink>
+        </div>
+        <div class="nav-item px-3">
+            <NavLink class="nav-link" href="withdrawals">
+                <span class="oi oi-plus" aria-hidden="true"></span> Withdrawals
+            </NavLink>
+        </div>
+    </AuthorizeView>
+
+    <div class="nav-item px-3">
+        <NavLink class="nav-link" href="nodes">
+            <span class="oi oi-layers" aria-hidden="true"></span> Nodes
+        </NavLink>
+    </div>
+
+    <AuthorizeView Roles="Superadmin,FinanceManager">
+        <div class="nav-item px-3">
+            <NavLink class="nav-link" href="swaps">
+                <span class="oi oi-layers" aria-hidden="true"></span> Swaps
+            </NavLink>
+        </div>
+    </AuthorizeView>
 
         <AuthorizeView Roles="NodeManager">
             <div class="nav-item px-3">
