@@ -1387,8 +1387,8 @@
         {
             var txInfo = await NBXplorerService.GetTransactionAsync(uint256.Parse(originalRequest.TxId));
             var tx = txInfo.Transaction;
-            long vSize = tx.GetVirtualSize();
-            decimal newFee = (vSize * request.CustomFeeRate!.Value) / 100_000_000m;
+            var vSize = tx.GetVirtualSize();
+            var newFee = (vSize * request.CustomFeeRate!.Value) / 100_000_000m;
         
             var inputAmount = Money.Satoshis(originalRequest.UTXOs.Sum(x => x.SatsAmount)).ToDecimal(MoneyUnit.BTC); // Convert to BTC
             if (inputAmount < newFee + request.TotalAmount + Constants.BITCOIN_DUST.ToDecimal(MoneyUnit.BTC))
