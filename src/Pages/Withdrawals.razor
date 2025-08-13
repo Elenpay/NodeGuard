@@ -648,14 +648,20 @@
             _userPendingRequests.Remove(arg.Item);
         }
     }
+    
+    class RequestMetadata
+    {
+        public string userName { get; set; }
+    }
 
     private string ShowRequestor(WalletWithdrawalRequest walletWithdrawalRequest)
     {
         if (walletWithdrawalRequest.RequestMetadata != null)
         {
-            var requestMetadata = JsonConvert.DeserializeObject<Dictionary<string, string>>(walletWithdrawalRequest.RequestMetadata);
-            if (requestMetadata != null && requestMetadata.TryGetValue("userName", out var userName))
+            var requestMetadata = JsonConvert.DeserializeObject<RequestMetadata>(walletWithdrawalRequest.RequestMetadata);
+            if (requestMetadata != null)
             {
+                var userName = requestMetadata.userName;
                 if (ValidationHelper.IsValidEmail(userName))
                 {
                     var atIndex = userName.IndexOf('@');
@@ -769,9 +775,9 @@
         if (LoggedUser != null)
         {
             obj.UserRequestorId = LoggedUser.Id;
-            obj.RequestMetadata = JsonConvert.SerializeObject(new Dictionary<string, string>
+            obj.RequestMetadata = JsonConvert.SerializeObject(new RequestMetadata
             {
-                { "userName", LoggedUser.UserName ?? "" },
+                userName = LoggedUser.UserName ?? "",
             });
             _selectedRequestWalletBalance = null;
         }
