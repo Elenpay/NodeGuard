@@ -1404,6 +1404,7 @@
                 else
                 {
                     // If the difference is positive, it means that the input amount is not enough to cover the output and the fee
+                    // so we reduce the output amount to cover the fees
                     request.WalletWithdrawalRequestDestinations[0].Amount -= diff;
                 }
             }
