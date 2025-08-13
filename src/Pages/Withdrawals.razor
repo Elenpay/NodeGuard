@@ -1031,7 +1031,7 @@
                     }
                 }
 
-                // If the request is changeless, show an error
+                // If the request is changeless and it has more than 1 output, show an error
                 if (_selectedRequest.Changeless && _selectedRequest.WalletWithdrawalRequestDestinations!.Count > 1)
                 {
                     ToastService.ShowError("Fee bumping is not supported for changeless transactions. Please create a new withdrawal with higher fees instead.");
