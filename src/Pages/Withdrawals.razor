@@ -1381,34 +1381,6 @@
                 Amount = d.Amount,
                 WalletWithdrawalRequestId = request.Id
             }).ToList();
-        
-        // Check if output + new fee > inputs when bumping a non changeless request
-        if (request.WalletWithdrawalRequestDestinations.Count == 1 && !request.Changeless)
-        {
-            var txInfo = await NBXplorerService.GetTransactionAsync(uint256.Parse(originalRequest.TxId));
-            var tx = txInfo.Transaction;
-            var vSize = tx.GetVirtualSize();
-            var newFee = (vSize * request.CustomFeeRate!.Value) / 100_000_000m;
-        
-            var inputAmount = Money.Satoshis(originalRequest.UTXOs.Sum(x => x.SatsAmount)).ToDecimal(MoneyUnit.BTC); // Convert to BTC
-            if (inputAmount < newFee + request.TotalAmount + Constants.BITCOIN_DUST.ToDecimal(MoneyUnit.BTC))
-            {
-                var diff = newFee + request.TotalAmount - inputAmount;
-                
-                if (diff < 0)
-                {
-                    // If the difference is negative, it means that the input amount is enough to cover the output and the fee
-                    // but it's going to generate dust, so we add it to the amount sent
-                    request.WalletWithdrawalRequestDestinations[0].Amount += Math.Abs(diff);
-                }
-                else
-                {
-                    // If the difference is positive, it means that the input amount is not enough to cover the output and the fee
-                    // so we reduce the output amount to cover the fees
-                    request.WalletWithdrawalRequestDestinations[0].Amount -= diff;
-                }
-            }
-        }
 
         // Get utxos from the original request
         List<FMUTXO> mUTXOs = await FMUTXORepository.GetLockedUTXOsByWithdrawalId(originalRequest.Id);
