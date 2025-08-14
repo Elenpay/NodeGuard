@@ -803,12 +803,32 @@
 
     private async Task ShowBumpfeeModal(WalletWithdrawalRequest walletWithdrawalRequest)
     {   
+        if (walletWithdrawalRequest == null)
+        {
+            ToastService.ShowError("Invalid request");
+            return;
+        }
+            
+        var request = await WalletWithdrawalRequestRepository.GetById(walletWithdrawalRequest.Id);
+        if (request == null)
+        {
+            ToastService.ShowError("Request not found");
+            return;
+        }
+        
+        // We check in case that someone tries to bump a request that is not in the right state
+        if (request.Status != WalletWithdrawalRequestStatus.OnChainConfirmationPending)
+        {
+            ToastService.ShowError("Bumpfee can only be used for transactions that are pending on-chain confirmation.");
+            return;
+        }
+        
         ulong confirmations = 0;
-        if (!string.IsNullOrEmpty(walletWithdrawalRequest.TxId))
+        if (!string.IsNullOrEmpty(request.TxId))
         {
             try
             {
-                var nbxplorerStatus = await NBXplorerService.GetTransactionAsync(uint256.Parse(walletWithdrawalRequest.TxId));
+                var nbxplorerStatus = await NBXplorerService.GetTransactionAsync(uint256.Parse(request.TxId));
                 confirmations = (ulong)(nbxplorerStatus?.Confirmations ?? throw new Exception("Failed to get confirmations"));
             }
             catch (Exception)
@@ -824,10 +844,8 @@
                                    "This transaction has already been mined.");
             return;
         }
-
-
-        // NOTE: Revisit this when full RBF is implemented because we could add a UTXO
-        if (walletWithdrawalRequest.Changeless)
+        
+        if (request.Changeless && request.WalletWithdrawalRequestDestinations!.Count > 1)
         {
             ToastService.ShowError("Fee bumping is not supported for changeless transactions. Please create a new withdrawal with higher fees instead.");
             return;
@@ -835,7 +853,7 @@
         
         try
         {
-            _selectedRequest = walletWithdrawalRequest;
+            _selectedRequest = request;
 
             if (_bumpfeeRef != null) await _bumpfeeRef.ShowModal();
         }
@@ -965,64 +983,73 @@
 
     private async void SubmitBumpfeeModal(WalletWithdrawalRequest newRequest)
     {
-        if (newRequest != null && _bumpfeeRef != null)
+        try
         {
-            newRequest.WalletId = _selectedRequest.WalletId;
-            newRequest.Wallet = await WalletRepository.GetById(newRequest.WalletId);
-                
-            // Use either the custom fee rate or the recommended fee rate based on mempool fee type
-            decimal newFeeRate;
-            if (newRequest.MempoolRecommendedFeesType == MempoolRecommendedFeesType.CustomFee && newRequest.CustomFeeRate.HasValue)
+            if (newRequest != null && _bumpfeeRef != null)
             {
-                newFeeRate = (decimal)newRequest.CustomFeeRate.Value;
+                newRequest.WalletId = _selectedRequest.WalletId;
+                newRequest.Wallet = await WalletRepository.GetById(newRequest.WalletId);
+                    
+                // Use either the custom fee rate or the recommended fee rate based on mempool fee type
+                decimal newFeeRate;
+                if (newRequest.MempoolRecommendedFeesType == MempoolRecommendedFeesType.CustomFee && newRequest.CustomFeeRate.HasValue)
+                {
+                    newFeeRate = (decimal)newRequest.CustomFeeRate.Value;
+                }
+                else
+                {
+                    // Use the recommended fee rate from NBXplorer service based on the selected mempool fee type
+                    var recommendedFeeRate = await GetRecommendedFeeRate(newRequest.MempoolRecommendedFeesType);
+                    newFeeRate = (decimal)recommendedFeeRate;
+                }
+
+                // If the new fee plus the amount exceeds the utxo sum value, show an error
+                // NOTE: revisit this when full rbf because we could add a UTXO
+                var txInfo = await NBXplorerService.GetTransactionAsync(uint256.Parse(_selectedRequest.TxId));
+                var tx = txInfo.Transaction;
+                long vSize = tx.GetVirtualSize();
+                decimal newFee = (vSize * newFeeRate) / 100_000_000m;
+
+                // Retrieve from database to get the UTXOs
+                _selectedRequest = await WalletWithdrawalRequestRepository.GetById(_selectedRequest.Id);
+
+                if (_selectedRequest == null)
+                {
+                    ToastService.ShowError("Withdrawal request not found");
+                    return;
+                }
+
+                // This enables wds that have only one destination to be bumped by reducing the destination amount
+                if (_selectedRequest.UTXOs != null && _selectedRequest.UTXOs.Count > 0 && _selectedRequest.WalletWithdrawalRequestDestinations!.Count > 1)
+                {
+                    var inputAmount = Money.Satoshis(_selectedRequest.UTXOs.Sum(x => x.SatsAmount)).ToDecimal(MoneyUnit.BTC); // Convert to BTC
+                    // Check if the new fee plus the amount exceeds the sum of the selected UTXOs or returns dust
+                    if (inputAmount < newFee + _selectedRequest.TotalAmount + Constants.BITCOIN_DUST.ToDecimal(MoneyUnit.BTC))
+                    {
+                        ToastService.ShowError("The new fee plus the amount exceeds the sum of the selected UTXOs or returns dust. Please lower the fee rate.");
+                        return;
+                    }
+                }
+
+                // If the request is changeless and it has more than 1 output, show an error
+                if (_selectedRequest.Changeless && _selectedRequest.WalletWithdrawalRequestDestinations!.Count > 1)
+                {
+                    ToastService.ShowError("Fee bumping is not supported for changeless transactions. Please create a new withdrawal with higher fees instead.");
+                    return;
+                }
+                
+                await Bumpfee(newRequest);
+                await _bumpfeeRef.HideModal();
             }
             else
             {
-                // Use the recommended fee rate from NBXplorer service based on the selected mempool fee type
-                var recommendedFeeRate = await GetRecommendedFeeRate(newRequest.MempoolRecommendedFeesType);
-                newFeeRate = (decimal)recommendedFeeRate;
+                ToastService.ShowError("Something went wrong");
             }
-
-            // If the new fee plus the amount exceeds the utxo sum value, show an error
-            // NOTE: revisit this when full rbf because we could add a UTXO
-            var txInfo = await NBXplorerService.GetTransactionAsync(uint256.Parse(_selectedRequest.TxId));
-            var tx = txInfo.Transaction;
-            long vSize = tx.GetVirtualSize();
-            decimal newFee = (vSize * newFeeRate) / 100_000_000m;
-
-            // Retrieve from database to get the UTXOs
-            _selectedRequest = await WalletWithdrawalRequestRepository.GetById(_selectedRequest.Id);
-
-            if (_selectedRequest == null)
-            {
-                ToastService.ShowError("Withdrawal request not found");
-                return;
-            }
-
-            if (_selectedRequest.UTXOs != null && _selectedRequest.UTXOs.Count > 0)
-            {
-                var inputAmount = Money.Satoshis(_selectedRequest.UTXOs.Sum(x => x.SatsAmount)).ToDecimal(MoneyUnit.BTC); // Convert to BTC
-                if (inputAmount <= newFee + _selectedRequest.TotalAmount + Constants.BITCOIN_DUST.ToDecimal(MoneyUnit.BTC))
-                {
-                    ToastService.ShowError("The new fee plus the amount exceeds the sum of the selected UTXOs or returns dust. Please lower the fee rate.");
-                    return;
-                }
-            }
-
-            // If the request is changeless, show an error
-            // NOTE: Revisit this when full RBF is implemented because we could add a UTXO
-            if (newRequest.Changeless)
-            {
-                ToastService.ShowError("Fee bumping is not supported for changeless transactions. Please create a new withdrawal with higher fees instead.");
-                return;
-            }
-            
-            await Bumpfee(newRequest);
-            await _bumpfeeRef.HideModal();
         }
-        else
+        catch (Exception)
         {
-            ToastService.ShowError("Something went wrong");
+            ToastService.ShowError($"Something went wrong");
+            await _bumpfeeRef.HideModal();
         }
     }
 
@@ -1335,7 +1362,7 @@
 
     private async Task CopyBumpedRequestData(WalletWithdrawalRequest request)
     {
-        WalletWithdrawalRequest originalRequest = await WalletWithdrawalRequestRepository.GetById((int)_selectedRequest.BumpingWalletWithdrawalRequestId);
+        WalletWithdrawalRequest originalRequest = await WalletWithdrawalRequestRepository.GetById((int)request.BumpingWalletWithdrawalRequestId);
         if (originalRequest == null)
         {
             throw new ShowToUserException("Original withdrawal request not found");
@@ -1348,17 +1375,17 @@
             throw new ShowToUserException("Original withdrawal request destinations not found");
         }
 
-        _selectedRequest.WalletWithdrawalRequestDestinations = originalDestinations.Select(d => new WalletWithdrawalRequestDestination
-        {
-            Address = d.Address,
-            Amount = d.Amount,
-            WalletWithdrawalRequestId = _selectedRequest.Id
-        }).ToList();
+        request.WalletWithdrawalRequestDestinations = originalDestinations.Select(d => new WalletWithdrawalRequestDestination
+            {
+                Address = d.Address,
+                Amount = d.Amount,
+                WalletWithdrawalRequestId = request.Id
+            }).ToList();
 
         // Get utxos from the original request
         List<FMUTXO> mUTXOs = await FMUTXORepository.GetLockedUTXOsByWithdrawalId(originalRequest.Id);
 
-        _selectedRequest.UTXOs = mUTXOs;
+        request.UTXOs = mUTXOs;
         List<OutPoint> outpoints = new List<OutPoint>();
         mUTXOs.ForEach(u => {
             OutPoint o;
@@ -1370,7 +1397,7 @@
         _selectedUTXOs = await CoinSelectionService.GetUTXOsByOutpointAsync(originalRequest.Wallet.GetDerivationStrategy(), outpoints);
         originalRequest.Status = WalletWithdrawalRequestStatus.Bumped;
 
-        var updateResult = WalletWithdrawalRequestRepository.Update(_selectedRequest);
+        var updateResult = WalletWithdrawalRequestRepository.Update(request);
         if (!updateResult.Item1)
         {
             ToastService.ShowError("Something went wrong");
