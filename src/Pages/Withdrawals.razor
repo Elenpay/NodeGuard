@@ -7,7 +7,7 @@
 @using NodeGuard.Jobs
 @using Google.Protobuf
 @using NBXplorer.Models
-@using Newtonsoft.Json
+@using System.Text.Json
 @using NodeGuard.Helpers;
 @using Polly
 @attribute [Authorize(Roles = "Superadmin,NodeManager,FinanceManager")]
@@ -653,7 +653,7 @@
     {
         if (walletWithdrawalRequest.RequestMetadata != null)
         {
-            var requestMetadata = JsonConvert.DeserializeObject<Dictionary<string, string>>(walletWithdrawalRequest.RequestMetadata);
+            var requestMetadata = JsonSerializer.Deserialize<Dictionary<string, string>>(walletWithdrawalRequest.RequestMetadata);
             if (requestMetadata != null && requestMetadata.TryGetValue("userName", out var userName))
             {
                 if (ValidationHelper.IsValidEmail(userName))
@@ -769,9 +769,9 @@
         if (LoggedUser != null)
         {
             obj.UserRequestorId = LoggedUser.Id;
-            obj.RequestMetadata = JsonConvert.SerializeObject(new Dictionary<string, string>
+            obj.RequestMetadata = JsonSerializer.Serialize(new 
             {
-                { "userName", LoggedUser.UserName ?? "" },
+                userName = LoggedUser.UserName ?? ""
             });
             _selectedRequestWalletBalance = null;
         }
@@ -1348,7 +1348,7 @@
         {
             try
             {
-            var requestMetadata = JsonConvert.DeserializeObject<Dictionary<string, string>>(metadata);
+            var requestMetadata = JsonSerializer.Deserialize<Dictionary<string, string>>(metadata);
             if (requestMetadata != null && requestMetadata.TryGetValue("userName", out var userName))
             {
                 return userName.Contains(search, StringComparison.OrdinalIgnoreCase);
