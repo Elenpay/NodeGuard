@@ -70,6 +70,7 @@
     <Protobuf Include="Proto\lightning.proto" GrpcServices="Client" />
     <Protobuf Include="Proto\signer.proto" GrpcServices="Client" />
     <Protobuf Include="Proto\walletkit.proto" GrpcServices="Client" />
+    <Protobuf Include="Proto\loop.proto" GrpcServices="Client" />
     <Protobuf Include="Proto\nodeguard.proto" GrpcServices="Server" />
   </ItemGroup>
 
