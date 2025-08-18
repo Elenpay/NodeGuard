@@ -1,5 +1,3 @@
-version: "3.4"
-
 name: nodeguard
 services:
   nodeguard_postgres:
