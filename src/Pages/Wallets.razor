@@ -7,6 +7,7 @@
 @using NBitcoin
 @using NBXplorer.DerivationStrategy
 @using NBXplorer.Models
+@using System.Text.Json
 @using Quartz
 @using Field = Blazorise.Field
 @using Key = NodeGuard.Data.Models.Key
@@ -1417,6 +1418,10 @@ OnSubmit="TransferFundsHotWallet"/>
         var withdrawalRequest = new WalletWithdrawalRequest
         {
             UserRequestorId = LoggedUser != null ? LoggedUser.Id : string.Empty,
+            RequestMetadata = JsonSerializer.Serialize(new 
+            {
+                userName = LoggedUser?.UserName ?? ""
+            }),
             Description = $"Funds transferred from {_sourceWalletName} to {_targetWalletName}",
             WithdrawAllFunds = _transferAllFunds,
             MempoolRecommendedFeesType = MempoolRecommendedFeesType.HourFee,
