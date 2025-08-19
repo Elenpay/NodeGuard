@@ -1,0 +1,3 @@
+[submodule "loop"]
+	path = loop
+	url = https://github.com/lightninglabs/loop.git
