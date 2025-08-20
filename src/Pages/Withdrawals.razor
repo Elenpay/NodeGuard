@@ -651,7 +651,7 @@
 
     private string ShowRequestor(WalletWithdrawalRequest walletWithdrawalRequest)
     {
-        if (!walletWithdrawalRequest.RequestMetadata.IsNullOrEmpty())
+        if (!string.IsNullOrEmpty(walletWithdrawalRequest.RequestMetadata))
         {
             var requestMetadata = JsonSerializer.Deserialize<Dictionary<string, string>>(walletWithdrawalRequest.RequestMetadata);
             if (requestMetadata != null && requestMetadata.TryGetValue("userName", out var userName))
