@@ -223,7 +223,6 @@ namespace NodeGuard.Data
                         PubKey = Constants.ALICE_PUBKEY,
                         Users = new List<ApplicationUser>(),
                         AutosweepEnabled = false
-
                     };
 
                     _ = Task.Run(() => nodeRepository.AddAsync(alice)).Result;
@@ -237,8 +236,9 @@ namespace NodeGuard.Data
                         CreationDatetime = DateTimeOffset.UtcNow,
                         PubKey = Constants.CAROL_PUBKEY,
                         Users = new List<ApplicationUser>(),
-                        AutosweepEnabled = false
-
+                        AutosweepEnabled = false,
+                        LoopEndpoint = Constants.CAROL_LOOP,
+                        LoopMacaroon = Constants.CAROL_LOOP_MACAROON
                     };
 
                     _ = Task.Run(() => nodeRepository.AddAsync(carol)).Result;
@@ -252,7 +252,9 @@ namespace NodeGuard.Data
                         CreationDatetime = DateTimeOffset.UtcNow,
                         PubKey = Constants.BOB_PUBKEY,
                         Users = new List<ApplicationUser>(),
-                        AutosweepEnabled = false
+                        AutosweepEnabled = false,
+                        LoopEndpoint = Constants.BOB_LOOP,
+                        LoopMacaroon = Constants.BOB_LOOP_MACAROON
                     };
 
                     _ = Task.Run(() => nodeRepository.AddAsync(bob)).Result;
