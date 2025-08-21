@@ -62,6 +62,10 @@ namespace NodeGuard.Data.Models
         [NotMapped]
         public bool IsManaged => Endpoint != null;
 
+        public string? LoopEndpoint { get; set; }
+
+        public string? LoopMacaroon { get; set; }
+
         #region Relationships
 
         public ICollection<ChannelOperationRequest> ChannelOperationRequestsAsSource { get; set; }
