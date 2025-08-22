@@ -128,6 +128,8 @@ namespace NodeGuard
             builder.Services.AddTransient<IBitcoinService, BitcoinService>();
             builder.Services.AddTransient<NotificationService, NotificationService>();
             builder.Services.AddTransient<INBXplorerService, NBXplorerService>();
+            builder.Services.AddTransient<ILoopService, LoopService>();
+            builder.Services.AddTransient<ISwapsService, SwapsService>();
 
             //DbContext
             var dataSourceBuilder = new NpgsqlDataSourceBuilder(Constants.POSTGRES_CONNECTIONSTRING);
