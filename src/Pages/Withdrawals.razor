@@ -779,14 +779,35 @@
 
     private async Task ShowApprovalModal(WalletWithdrawalRequest walletWithdrawalRequest)
     {
-        _selectedRequest = walletWithdrawalRequest;
+        _selectedRequest = await WalletWithdrawalRequestRepository.GetById(walletWithdrawalRequest.Id);
 
         //PSBT Generation
         try
         {
             if (_selectedRequest.BumpingWalletWithdrawalRequestId != null)
             {
-                await CopyBumpedRequestData(_selectedRequest);
+                List<OutPoint> outpoints = new List<OutPoint>();
+                _selectedRequest.UTXOs.ForEach(u => {
+                    OutPoint o;
+                    if (OutPoint.TryParse($"{u.TxId}:{u.OutputIndex}", out o))
+                        outpoints.Add(o);
+                    else
+                        throw new FormatException("Failed to parse OutPoint from TxId and OutputIndex");
+                });
+                _selectedUTXOs = await CoinSelectionService.GetUTXOsByOutpointAsync(_selectedRequest.Wallet.GetDerivationStrategy(), outpoints);
+
+                // Update the status of the old withdrawal request
+                if (_selectedRequest.BumpingWalletWithdrawalRequestId != null)
+                {
+                    _selectedRequest.BumpingWalletWithdrawalRequest = await WalletWithdrawalRequestRepository.GetById(_selectedRequest.BumpingWalletWithdrawalRequestId.Value);
+                    _selectedRequest.BumpingWalletWithdrawalRequest.Status = WalletWithdrawalRequestStatus.Bumped;
+                    var updateResultOldWithdrawal = WalletWithdrawalRequestRepository.Update(_selectedRequest.BumpingWalletWithdrawalRequest);
+                    if (!updateResultOldWithdrawal.Item1)
+                    {
+                        ToastService.ShowError("Something went wrong");
+                    return;
+                }
+            }
             }
 
             var templatePSBT = await BitcoinService.GenerateTemplatePSBT(walletWithdrawalRequest);
@@ -942,19 +963,19 @@
     {
         _selectedMempoolRecommendedFeesType = newRequest.MempoolRecommendedFeesType;
         _customSatPerVbAmount = (long)newRequest.CustomFeeRate;
+        _selectedRequest = newRequest;
         if (newRequest.Wallet.IsHotWallet)
         {
             await GetData();
-            _selectedRequest = newRequest;
             await _confirmationModal.ShowModal();
             return;
         }
 
         newRequest.Wallet = null;
-        var addResult = await WalletWithdrawalRequestRepository.AddAsync(newRequest);
+        var updateResult = WalletWithdrawalRequestRepository.Update(newRequest);
 
 
-        if (addResult.Item1)
+        if (updateResult.Item1)
         {
             ToastService.ShowSuccess("Success");
             await GetData();
@@ -991,7 +1012,6 @@
         {
             if (newRequest != null && _bumpfeeRef != null)
             {
-                newRequest.WalletId = _selectedRequest.WalletId;
                 newRequest.Wallet = await WalletRepository.GetById(newRequest.WalletId);
                     
                 // Use either the custom fee rate or the recommended fee rate based on mempool fee type
@@ -1087,6 +1107,9 @@
                 ToastService.ShowError("Something went wrong");
             }
 
+            // In case that is a bump, we return the old request status to pending confirmation.
+            await ResetStatusBumpedIfError(_selectedRequest);
+
             await HideRejectCancelModal();
         }
     }
@@ -1170,20 +1193,40 @@
         {
             try
             {   
-                _selectedRequest.Wallet = null;
+                _selectedRequest.Wallet = await WalletRepository.GetById(_selectedRequest.WalletId);
                 _selectedRequest.WithdrawAllFunds = _isCheckedAllFunds || _amount == _selectedRequestWalletBalance;
                 _selectedRequest.MempoolRecommendedFeesType = _selectedMempoolRecommendedFeesType;
                 _selectedRequest.CustomFeeRate = _customSatPerVbAmount;
                 
-                var createWithdrawalResult = await WalletWithdrawalRequestRepository.AddAsync(_selectedRequest);
-                if (!createWithdrawalResult.Item1)
+                var updateResult = WalletWithdrawalRequestRepository.Update(_selectedRequest);
+                if (!updateResult.Item1)
                 {
-                    throw new ShowToUserException(createWithdrawalResult.Item2);
+                    throw new ShowToUserException(updateResult.Item2);
                 }
 
                 if (_selectedRequest.BumpingWalletWithdrawalRequestId != null)
                 {
-                    await CopyBumpedRequestData(_selectedRequest);
+                    List<OutPoint> outpoints = new List<OutPoint>();
+                    _selectedRequest.UTXOs.ForEach(u => {
+                        OutPoint o;
+                        if (OutPoint.TryParse($"{u.TxId}:{u.OutputIndex}", out o))
+                            outpoints.Add(o);
+                        else
+                            throw new FormatException("Failed to parse OutPoint from TxId and OutputIndex");
+                    });
+                    _selectedUTXOs = await CoinSelectionService.GetUTXOsByOutpointAsync(_selectedRequest.Wallet.GetDerivationStrategy(), outpoints);
+
+                    // Update the status of the original withdrawal request
+                    if (_selectedRequest.BumpingWalletWithdrawalRequestId != null) {
+                        _selectedRequest.BumpingWalletWithdrawalRequest = await WalletWithdrawalRequestRepository.GetById(_selectedRequest.BumpingWalletWithdrawalRequestId.Value);
+                        _selectedRequest.BumpingWalletWithdrawalRequest.Status = WalletWithdrawalRequestStatus.Bumped;
+                        var updateResultOldWithdrawal = WalletWithdrawalRequestRepository.Update(_selectedRequest.BumpingWalletWithdrawalRequest);
+                        if (!updateResultOldWithdrawal.Item1)
+                        {
+                            ToastService.ShowError("Something went wrong");
+                            return;
+                        }
+                    }
                 }
 
                 _selectedRequest.Changeless = _selectedUTXOs.Count > 0;
@@ -1389,57 +1432,5 @@
         }
 
         return false;
-    }
-    
-    private async Task CopyBumpedRequestData(WalletWithdrawalRequest request)
-    {
-        WalletWithdrawalRequest originalRequest = await WalletWithdrawalRequestRepository.GetById((int)request.BumpingWalletWithdrawalRequestId);
-        if (originalRequest == null)
-        {
-            throw new ShowToUserException("Original withdrawal request not found");
-        }
-
-        // Get destinations from the original request
-        List<WalletWithdrawalRequestDestination> originalDestinations = await WalletWithdrawalRequestDestinationRepository.GetByWalletWithdrawalRequestId(originalRequest.Id);
-        if (originalDestinations == null || originalDestinations.Count == 0)
-        {
-            throw new ShowToUserException("Original withdrawal request destinations not found");
-        }
-
-        request.WalletWithdrawalRequestDestinations = originalDestinations.Select(d => new WalletWithdrawalRequestDestination
-            {
-                Address = d.Address,
-                Amount = d.Amount,
-                WalletWithdrawalRequestId = request.Id
-            }).ToList();
-
-        // Get utxos from the original request
-        List<FMUTXO> mUTXOs = await FMUTXORepository.GetLockedUTXOsByWithdrawalId(originalRequest.Id);
-
-        request.UTXOs = mUTXOs;
-        List<OutPoint> outpoints = new List<OutPoint>();
-        mUTXOs.ForEach(u => {
-            OutPoint o;
-            if (OutPoint.TryParse($"{u.TxId}:{u.OutputIndex}", out o))
-                outpoints.Add(o);
-            else
-                throw new FormatException("Failed to parse OutPoint from TxId and OutputIndex");
-        });
-        _selectedUTXOs = await CoinSelectionService.GetUTXOsByOutpointAsync(originalRequest.Wallet.GetDerivationStrategy(), outpoints);
-        originalRequest.Status = WalletWithdrawalRequestStatus.Bumped;
-
-        var updateResult = WalletWithdrawalRequestRepository.Update(request);
-        if (!updateResult.Item1)
-        {
-            ToastService.ShowError("Something went wrong");
-            return;
-        }
-
-        updateResult = WalletWithdrawalRequestRepository.Update(originalRequest);
-        if (!updateResult.Item1)
-        {
-            ToastService.ShowError("Something went wrong");
-            return;
-        }
     }
 }
