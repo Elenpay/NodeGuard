@@ -22,9 +22,9 @@ using NBitcoin;
 
 namespace NodeGuard.Data.Models
 {
-   public enum SwapOutProvider
+   public enum SwapProvider
    {
-      Boltz,
+      Loop,
    }
 
    public enum SwapOutStatus
@@ -36,7 +36,7 @@ namespace NodeGuard.Data.Models
 
    public class SwapOut : Entity
    {
-      public SwapOutProvider Provider { get; set; }
+      public SwapProvider Provider { get; set; }
 
       /// <summary>
       /// The ID of the swap in the provider's system
