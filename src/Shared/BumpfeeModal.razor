@@ -52,7 +52,7 @@
                             }
                         </Select>
                         <NumericPicker TValue="long"
-                                       Value="@(WithdrawalRequest != null ? (long)WithdrawalRequest.CustomFeeRate : 0)"
+                                       Value="@(WithdrawalRequest != null ? (long)(WithdrawalRequest.CustomFeeRate ?? 0) : 0)"
                                        CurrencySymbolPlacement="CurrencySymbolPlacement.Suffix"
                                        CurrencySymbol=" sat/vb"
                                        Min="1"
@@ -87,14 +87,12 @@
 @inject ICoinSelectionService CoinSelectionService
 @inject IWalletRepository WalletRepository
 @inject IFMUTXORepository FMUTXORepository
+@inject IToastService ToastService
 @code {
-    [Inject]
-    public IToastService ToastService { get; set; }
-
     [Parameter]
     public ChannelOperationRequest? ChannelRequest { get; set; }
     [Parameter]
-    public WalletWithdrawalRequest? WithdrawalRequest { get; set; }
+    public required WalletWithdrawalRequest WithdrawalRequest { get; set; }
 
     [Parameter]
     public Action<WalletWithdrawalRequest> SubmitBumpfeeModal { get; set; }
@@ -131,7 +129,7 @@
 
     private async void HandleOnClick()
     {
-        var oldFee = WithdrawalRequest?.CustomFeeRate ?? 0;
+        var oldFee = WithdrawalRequest.CustomFeeRate ?? 0;
         if (_customSatPerVbAmount <= oldFee)
         {
             ToastService.ShowError($"Fee must be greater than the current one ({oldFee} sat/vb)");
@@ -139,7 +137,13 @@
         else
         {
             var newRequest = new WalletWithdrawalRequest();
-            newRequest.Description = WithdrawalRequest.Description;
+            if (WithdrawalRequest.Description.StartsWith("Bump of request"))
+            {
+                var formerDescription = WithdrawalRequest.Description.Substring(WithdrawalRequest.Description.IndexOf(":") + 1);
+                WithdrawalRequest.Description = formerDescription.Trim();
+            }
+
+            newRequest.Description = $"Bump of request {WithdrawalRequest.Id}: {WithdrawalRequest.Description}";
             newRequest.Changeless = WithdrawalRequest.Changeless;
             newRequest.WithdrawAllFunds = WithdrawalRequest.WithdrawAllFunds;
             newRequest.MempoolRecommendedFeesType = _selectedMempoolRecommendedFeesType;
@@ -150,7 +154,7 @@
             newRequest.WalletId = WithdrawalRequest.WalletId;
 
             // Get destinations from the original request
-            List<WalletWithdrawalRequestDestination> originalDestinations = await WalletWithdrawalRequestDestinationRepository.GetByWalletWithdrawalRequestId(WithdrawalRequest.Id);
+            var originalDestinations = await WalletWithdrawalRequestDestinationRepository.GetByWalletWithdrawalRequestId(WithdrawalRequest.Id);
             if (originalDestinations == null || originalDestinations.Count == 0)
             {
                 throw new ShowToUserException("Original withdrawal request destinations not found");
@@ -173,18 +177,11 @@
             newRequest = await WalletWithdrawalRequestRepository.GetById(newRequest.Id);
 
             // Get utxos from the original request
-            List<FMUTXO> mUTXOs = await FMUTXORepository.GetLockedUTXOsByWithdrawalId(WithdrawalRequest.Id);
+            var mUTXOs = await FMUTXORepository.GetLockedUTXOsByWithdrawalId(WithdrawalRequest.Id);
 
-            newRequest.UTXOs = mUTXOs;
-            List<OutPoint> outpoints = new List<OutPoint>();
-            mUTXOs.ForEach(u => {
-                OutPoint o;
-                if (OutPoint.TryParse($"{u.TxId}:{u.OutputIndex}", out o))
-                    outpoints.Add(o);
-                else
-                    throw new FormatException("Failed to parse OutPoint from TxId and OutputIndex");
-            });
-            var UTXOs = await CoinSelectionService.GetUTXOsByOutpointAsync(WithdrawalRequest.Wallet.GetDerivationStrategy(), outpoints);
+            newRequest!.UTXOs = mUTXOs;
+            var outpoints = mUTXOs.Select(u => OutPoint.Parse($"{u.TxId}:{u.OutputIndex}")).ToList();
+            var UTXOs = await CoinSelectionService.GetUTXOsByOutpointAsync(WithdrawalRequest.Wallet.GetDerivationStrategy()!, outpoints);
 
             await CoinSelectionService.LockUTXOs(UTXOs, newRequest, BitcoinRequestType.WalletWithdrawal);
 
