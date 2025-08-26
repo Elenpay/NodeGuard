@@ -784,32 +784,6 @@
         //PSBT Generation
         try
         {
-            if (_selectedRequest.BumpingWalletWithdrawalRequestId != null)
-            {
-                List<OutPoint> outpoints = new List<OutPoint>();
-                _selectedRequest.UTXOs.ForEach(u => {
-                    OutPoint o;
-                    if (OutPoint.TryParse($"{u.TxId}:{u.OutputIndex}", out o))
-                        outpoints.Add(o);
-                    else
-                        throw new FormatException("Failed to parse OutPoint from TxId and OutputIndex");
-                });
-                _selectedUTXOs = await CoinSelectionService.GetUTXOsByOutpointAsync(_selectedRequest.Wallet.GetDerivationStrategy(), outpoints);
-
-                // Update the status of the old withdrawal request
-                if (_selectedRequest.BumpingWalletWithdrawalRequestId != null)
-                {
-                    _selectedRequest.BumpingWalletWithdrawalRequest = await WalletWithdrawalRequestRepository.GetById(_selectedRequest.BumpingWalletWithdrawalRequestId.Value);
-                    _selectedRequest.BumpingWalletWithdrawalRequest.Status = WalletWithdrawalRequestStatus.Bumped;
-                    var updateResultOldWithdrawal = WalletWithdrawalRequestRepository.Update(_selectedRequest.BumpingWalletWithdrawalRequest);
-                    if (!updateResultOldWithdrawal.Item1)
-                    {
-                        ToastService.ShowError("Something went wrong");
-                    return;
-                }
-            }
-            }
-
             var templatePSBT = await BitcoinService.GenerateTemplatePSBT(walletWithdrawalRequest);
 
             //TODO Save template PSBT (?)
@@ -819,6 +793,10 @@
         catch (NoUTXOsAvailableException)
         {
             ToastService.ShowError("No UTXOs available for withdrawals were found for this wallet");
+        }
+        catch (BumpingException e)
+        {
+            ToastService.ShowError(e.Message);
         }
         catch (Exception)
         {
@@ -926,6 +904,10 @@
                             if (_selectedRequest != null)
                             {
                                 CreateJob();
+                                if (_selectedRequest?.BumpingWalletWithdrawalRequestId != null)
+                                {
+                                    await UpdateBumpWalletWithdrawalRequest();
+                                }
                             }
                         }
                         catch
@@ -1064,6 +1046,7 @@
                 
                 await Bumpfee(newRequest);
                 await _bumpfeeRef.HideModal();
+                StateHasChanged();
             }
             else
             {
@@ -1177,6 +1160,30 @@
         await _confirmationModal.CloseModal();
     }
 
+    private async Task UpdateBumpWalletWithdrawalRequest()
+    {
+        if (_selectedRequest == null) throw new BumpingException("Invalid request");
+        
+        var outpoints = _selectedRequest.UTXOs.Select(u => OutPoint.Parse($"{u.TxId}:{u.OutputIndex}")).ToList();
+        _selectedUTXOs = await CoinSelectionService.GetUTXOsByOutpointAsync(_selectedRequest.Wallet.GetDerivationStrategy()!, outpoints);
+
+        // Update the status of the old withdrawal request
+        if (_selectedRequest.BumpingWalletWithdrawalRequestId != null)
+        {
+            _selectedRequest.BumpingWalletWithdrawalRequest = await WalletWithdrawalRequestRepository.GetById(_selectedRequest.BumpingWalletWithdrawalRequestId.Value);
+            if (_selectedRequest.BumpingWalletWithdrawalRequest == null)
+            {
+                throw new BumpingException("Could not find bumping withdrawal request");
+            }
+            _selectedRequest.BumpingWalletWithdrawalRequest.Status = WalletWithdrawalRequestStatus.Bumped;
+            var updateResultOldWithdrawal = WalletWithdrawalRequestRepository.Update(_selectedRequest.BumpingWalletWithdrawalRequest);
+            if (!updateResultOldWithdrawal.Item1)
+            {
+                throw new BumpingException("Something went wrong");
+            }
+        }
+    }
+
     private async Task SubmitConfirmationModal()
     {
         async Task CleanUp(string errorMessage)
@@ -1206,27 +1213,7 @@
 
                 if (_selectedRequest.BumpingWalletWithdrawalRequestId != null)
                 {
-                    List<OutPoint> outpoints = new List<OutPoint>();
-                    _selectedRequest.UTXOs.ForEach(u => {
-                        OutPoint o;
-                        if (OutPoint.TryParse($"{u.TxId}:{u.OutputIndex}", out o))
-                            outpoints.Add(o);
-                        else
-                            throw new FormatException("Failed to parse OutPoint from TxId and OutputIndex");
-                    });
-                    _selectedUTXOs = await CoinSelectionService.GetUTXOsByOutpointAsync(_selectedRequest.Wallet.GetDerivationStrategy(), outpoints);
-
-                    // Update the status of the original withdrawal request
-                    if (_selectedRequest.BumpingWalletWithdrawalRequestId != null) {
-                        _selectedRequest.BumpingWalletWithdrawalRequest = await WalletWithdrawalRequestRepository.GetById(_selectedRequest.BumpingWalletWithdrawalRequestId.Value);
-                        _selectedRequest.BumpingWalletWithdrawalRequest.Status = WalletWithdrawalRequestStatus.Bumped;
-                        var updateResultOldWithdrawal = WalletWithdrawalRequestRepository.Update(_selectedRequest.BumpingWalletWithdrawalRequest);
-                        if (!updateResultOldWithdrawal.Item1)
-                        {
-                            ToastService.ShowError("Something went wrong");
-                            return;
-                        }
-                    }
+                    await UpdateBumpWalletWithdrawalRequest();
                 }
 
                 _selectedRequest.Changeless = _selectedUTXOs.Count > 0;
@@ -1279,6 +1266,11 @@
                 await ResetStatusBumpedIfError(_selectedRequest);
             }
             catch (ShowToUserException e)
+            {
+                CleanUp(e.Message);
+                await ResetStatusBumpedIfError(_selectedRequest);
+            }
+            catch (BumpingException e)
             {
                 CleanUp(e.Message);
                 await ResetStatusBumpedIfError(_selectedRequest);
