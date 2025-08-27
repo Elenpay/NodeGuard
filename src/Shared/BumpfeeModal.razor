@@ -88,6 +88,7 @@
 @inject IWalletRepository WalletRepository
 @inject IFMUTXORepository FMUTXORepository
 @inject IToastService ToastService
+@inject ILogger<BumpfeeModal> Logger
 @code {
     [Parameter]
     public ChannelOperationRequest? ChannelRequest { get; set; }
@@ -170,6 +171,7 @@
             var addResult = await WalletWithdrawalRequestRepository.AddAsync(newRequest);
             if (!addResult.Item1)
             {
+                Logger.LogError("Error creating a new withdrawal request for bumping fee: {Error}", addResult.Item2);
                 ToastService.ShowError("Something went wrong");
                 return;
             }
@@ -188,6 +190,7 @@
             var updateResult = WalletWithdrawalRequestRepository.Update(newRequest);
             if (!updateResult.Item1)
             {
+                Logger.LogError("Error creating a new withdrawal request for bumping fee: {Error}", updateResult.Item2);
                 ToastService.ShowError("Something went wrong");
                 return;
             }
