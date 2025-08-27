@@ -795,6 +795,14 @@
         {
             ToastService.ShowError(e.Message);
         }
+        catch (ShowToUserException e)
+        {
+            ToastService.ShowError(e.Message);
+            _selectedRequest.Status = WalletWithdrawalRequestStatus.Failed;
+            WalletWithdrawalRequestRepository.Update(_selectedRequest);
+            await GetData();
+            StateHasChanged();
+        }
         catch (Exception)
         {
             ToastService.ShowError("Error while generating PSBT template for the request");
