@@ -1,0 +1,96 @@
+name: loop
+
+x-loop-service: &loop-service
+  profiles: ["loop"]
+  volumes:
+    - ./init:/init
+  restart: unless-stopped
+
+x-loopd-service: &loopd-service
+  <<: *loop-service
+  image: lightninglabs/loop:v0.31.2-beta
+
+services:
+  loopserver:
+    <<: *loop-service
+    hostname: loopserver
+    restart: unless-stopped
+    ports:
+      - "11009:11009"
+    image: lightninglabs/loopserver:latest
+    volumes:
+      - ./init:/init
+      - shared_data:/shared
+    command:
+      - "daemon"
+      - "--maxamt=5000000"
+      - "--lnd.host=alice:10009"
+      - "--lnd.macaroonpath=/shared/lnd/alice/admin.macaroon"
+      - "--lnd.tlspath=/shared/lnd/alice/tls.cert"
+      - "--bitcoin.host=bitcoind:18443"
+      - "--bitcoin.user=polaruser"
+      - "--bitcoin.password=polarpass"
+      - "--bitcoin.zmqpubrawblock=tcp://bitcoind:28334"
+      - "--bitcoin.zmqpubrawtx=tcp://bitcoind:28335"
+      - "--insecure"
+    # entrypoint: ["tail", "-f", "/dev/null"]
+    depends_on:
+      - alice
+
+  loopd-bob:
+    <<: *loopd-service
+    ports:
+      - "11010:11010"
+      - "8088:8081"
+    volumes:
+      - bob_lnd_data:/root/.lnd
+      - ./init/volumes/loop/bob:/root/.loop
+      - ./init:/init
+    command:
+      - "loopd"
+      - "--network=regtest"
+      - "--debuglevel=debug"
+      - "--rpclisten=0.0.0.0:11010"
+      - "--restlisten=0.0.0.0:8081"
+      - "--server.host=loopserver:11009"
+      - "--server.notls"
+      - "--lnd.host=bob:10009"
+      - "--lnd.macaroonpath=/root/.lnd/data/chain/bitcoin/regtest/admin.macaroon"
+      - "--lnd.tlspath=/root/.lnd/tls.cert"
+    depends_on:
+      - bob
+
+  loopd-carol:
+    <<: *loopd-service
+    ports:
+      - "11011:11010"
+      - "8089:8081"
+    volumes:
+      - carol_lnd_data:/root/.lnd
+      - ./init/volumes/loop/carol:/root/.loop
+      - ./init:/init
+    command:
+      - "loopd"
+      - "--network=regtest"
+      - "--debuglevel=debug"
+      - "--rpclisten=0.0.0.0:11010"
+      - "--restlisten=0.0.0.0:8081"
+      - "--server.host=loopserver:11009"
+      - "--server.notls"
+      - "--lnd.host=carol:10009"
+      - "--lnd.macaroonpath=/root/.lnd/data/chain/bitcoin/regtest/admin.macaroon"
+      - "--lnd.tlspath=/root/.lnd/tls.cert"
+    depends_on:
+      - carol
+
+volumes:
+  alice_datadir:
+  bob_datadir:
+  carol_datadir:
+  alice_lnd_data:
+  bob_lnd_data:
+  carol_lnd_data:
+  loopserver_data:
+  bob_loop_datadir:
+  carol_loop_datadir:
+  shared_data:

@@ -56,7 +56,12 @@ build:
     cd {{PROJECT_DIR}} && dotnet build
 
 run:
+    ./docker/extract-macaroons.sh
     cd {{PROJECT_DIR}} && dotnet run
+
+watch:
+    ./docker/extract-macaroons.sh
+    cd {{PROJECT_DIR}} && dotnet watch
 
 stop:
     killall -9 NodeGuard

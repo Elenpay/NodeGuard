@@ -93,6 +93,7 @@ namespace NodeGuard.Data
                 //Miner setup
                 var minerRPC = new RPCClient(new NetworkCredential(Constants.NBXPLORER_BTCRPCUSER, Constants.NBXPLORER_BTCRPCPASSWORD), new Uri(Constants.NBXPLORER_BTCRPCURL!),
                     nbXplorerNetwork);
+
                 var factory = new DerivationStrategyFactory(nbXplorerNetwork);
                 //Users
                 ApplicationUser? adminUser = null;
@@ -211,57 +212,98 @@ namespace NodeGuard.Data
 
                 var nodes = Task.Run(() => nodeRepository.GetAll()).Result;
 
-                if (!nodes.Any() && Constants.IS_DEV_ENVIRONMENT)
+                if (Constants.IS_DEV_ENVIRONMENT)
                 {
-                    //Testing node from Polar (ALICE) LND 0.15.5 -> check devnetwork.zip polar file
-                    var alice = new Node
+                    try
                     {
-                        ChannelAdminMacaroon = Constants.ALICE_MACAROON,
-                        Endpoint = Constants.ALICE_HOST,
-                        Name = "Alice",
-                        CreationDatetime = DateTimeOffset.UtcNow,
-                        PubKey = Constants.ALICE_PUBKEY,
-                        Users = new List<ApplicationUser>(),
-                        AutosweepEnabled = false
-
-                    };
-
-                    _ = Task.Run(() => nodeRepository.AddAsync(alice)).Result;
-
-                    //Testing node from Polar (CAROL) LND 0.15.5 -> check devnetwork.zip polar file
-                    var carol = new Node
+                        minerRPC.UnloadWallet();
+                        minerRPC.LoadWallet("default");
+                    } catch
                     {
-                        ChannelAdminMacaroon = Constants.CAROL_MACAROON,
-                        Endpoint = Constants.CAROL_HOST,
-                        Name = "Carol",
-                        CreationDatetime = DateTimeOffset.UtcNow,
-                        PubKey = Constants.CAROL_PUBKEY,
-                        Users = new List<ApplicationUser>(),
-                        AutosweepEnabled = false
+                        logger!.LogInformation("Default wallet already loaded");
+                    }
 
-                    };
-
-                    _ = Task.Run(() => nodeRepository.AddAsync(carol)).Result;
-
-                    //Bob node from Polar (BOB) LND 0.15.5 -> check devnetwork.zip polar file
-                    var bob = new Node
+                    var alice = nodes.FirstOrDefault(n => n.Name == "Alice");
+                    if (alice == null)
                     {
-                        ChannelAdminMacaroon = Constants.BOB_MACAROON,
-                        Endpoint = Constants.BOB_HOST,
-                        Name = "Bob",
-                        CreationDatetime = DateTimeOffset.UtcNow,
-                        PubKey = Constants.BOB_PUBKEY,
-                        Users = new List<ApplicationUser>(),
-                        AutosweepEnabled = false
-                    };
+                        alice = new Node
+                        {
+                            ChannelAdminMacaroon = Constants.ALICE_MACAROON,
+                            Endpoint = Constants.ALICE_HOST,
+                            Name = "Alice",
+                            CreationDatetime = DateTimeOffset.UtcNow,
+                            PubKey = Constants.ALICE_PUBKEY,
+                            Users = new List<ApplicationUser>(),
+                            AutosweepEnabled = false
 
-                    _ = Task.Run(() => nodeRepository.AddAsync(bob)).Result;
+                        };
+                        _ = Task.Run(() => nodeRepository.AddAsync(alice)).Result;
+                    }
+                    else
+                    {
+                        //Update macaroon and endpoint in case they changed
+                        alice.ChannelAdminMacaroon = Constants.ALICE_MACAROON;
+                        alice.Endpoint = Constants.ALICE_HOST;
+                        alice.PubKey = Constants.ALICE_PUBKEY;
+                        alice.UpdateDatetime = DateTimeOffset.UtcNow;
+                        nodeRepository.Update(alice);
+                    }
 
-                    //Add user to the channel
+                    var carol = nodes.FirstOrDefault(n => n.Name == "Carol");
+                    if (carol == null)
+                    {
+                        carol = new Node
+                        {
+                            ChannelAdminMacaroon = Constants.CAROL_MACAROON,
+                            Endpoint = Constants.CAROL_HOST,
+                            Name = "Carol",
+                            CreationDatetime = DateTimeOffset.UtcNow,
+                            PubKey = Constants.CAROL_PUBKEY,
+                            Users = new List<ApplicationUser>(),
+                            AutosweepEnabled = false
 
-                    adminUser.Nodes = new List<Node> { alice, carol, bob };
+                        };
+                        _ = Task.Run(() => nodeRepository.AddAsync(carol)).Result;
+                    }
+                    else
+                    {
+                        carol.ChannelAdminMacaroon = Constants.CAROL_MACAROON;
+                        carol.Endpoint = Constants.CAROL_HOST;
+                        carol.PubKey = Constants.CAROL_PUBKEY;
+                        carol.UpdateDatetime = DateTimeOffset.UtcNow;
+                        nodeRepository.Update(carol);
+                    }
 
-                    var carolUpdateResult = applicationDbContext.Update(adminUser);
+
+                    var bob = nodes.FirstOrDefault(n => n.Name == "Bob");
+                    if (bob == null)
+                    {
+                        bob = new Node
+                        {
+                            ChannelAdminMacaroon = Constants.BOB_MACAROON,
+                            Endpoint = Constants.BOB_HOST,
+                            Name = "Bob",
+                            CreationDatetime = DateTimeOffset.UtcNow,
+                            PubKey = Constants.BOB_PUBKEY,
+                            Users = new List<ApplicationUser>(),
+                            AutosweepEnabled = false
+                        };
+                        _ = Task.Run(() => nodeRepository.AddAsync(bob)).Result;
+                    }
+                    else
+                    {
+                        bob.ChannelAdminMacaroon = Constants.BOB_MACAROON;
+                        bob.Endpoint = Constants.BOB_HOST;
+                        bob.PubKey = Constants.BOB_PUBKEY;
+                        bob.UpdateDatetime = DateTimeOffset.UtcNow;
+                        nodeRepository.Update(bob);
+                    }
+
+                    alice.Users.Add(adminUser!);
+                    carol.Users.Add(adminUser!);
+                    bob.Users.Add(adminUser!);
+
+                    _ = applicationDbContext.SaveChanges();
                 }
 
                 var internalWallet = applicationDbContext.InternalWallets.FirstOrDefault();

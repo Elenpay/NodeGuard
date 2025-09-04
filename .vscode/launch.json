@@ -13,6 +13,7 @@
             "program": "${workspaceFolder}/src/bin/Debug/net8.0/NodeGuard.dll",
             "args": [],
             "cwd": "${workspaceFolder}/src",
+            "envFile": "${workspaceFolder}/src/nodeguard-macaroons.env",
             "stopAtEntry": false,
             // Enable launching a web browser when ASP.NET Core starts. For more information: https://aka.ms/VSCode-CS-LaunchJson-WebBrowser
             "serverReadyAction": {
@@ -21,7 +22,7 @@
             },
             "env": {
                 "ASPNETCORE_ENVIRONMENT": "Development",
-                "POSTGRES_CONNECTIONSTRING": "Host=127.0.0.1;Port=25432;Database=nodeguard;Username=rw_dev;Password=rw_dev",
+                "POSTGRES_CONNECTIONSTRING": "User ID=postgres;Host=127.0.0.1;Port=25432;Database=nodeguard;",
                 "BITCOIN_NETWORK": "REGTEST",
                 "MAXIMUM_WITHDRAWAL_BTC_AMOUNT": "21000000",
                 "NBXPLORER_ENABLE_CUSTOM_BACKEND": "true",
