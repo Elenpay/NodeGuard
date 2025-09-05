@@ -144,8 +144,8 @@ echo -e "${GREEN}=== Extracting Loop Macaroons ===${NC}"
 
 # Bob Loop
 echo "# Bob Loop Admin Macaroon" >> "${OUTPUT_FILE}"
-if docker ps --format "table {{.Names}}" | grep -q "docker-loopd-bob-1"; then
-    if BOB_LOOP_MACAROON=$(extract_macaroon "docker-loopd-bob-1" "${LOOP_ROOT}/regtest/loop.macaroon"); then
+if docker ps --format "table {{.Names}}" | grep -q "nodeguard-loopd-bob-1"; then
+    if BOB_LOOP_MACAROON=$(extract_macaroon "nodeguard-loopd-bob-1" "${LOOP_ROOT}/regtest/loop.macaroon"); then
         echo "BOB_LOOP_MACAROON=\"${BOB_LOOP_MACAROON}\"" >> "${OUTPUT_FILE}"
         echo -e "${GREEN}✓ Bob Loop macaroon extracted${NC}"
     else
@@ -161,8 +161,8 @@ echo "" >> "${OUTPUT_FILE}"
 
 # Carol Loop
 echo "# Carol Loop Admin Macaroon" >> "${OUTPUT_FILE}"
-if docker ps --format "table {{.Names}}" | grep -q "docker-loopd-carol-1"; then
-    if CAROL_LOOP_MACAROON=$(extract_macaroon "docker-loopd-carol-1" "${LOOP_ROOT}/regtest/loop.macaroon"); then
+if docker ps --format "table {{.Names}}" | grep -q "nodeguard-loopd-carol-1"; then
+    if CAROL_LOOP_MACAROON=$(extract_macaroon "nodeguard-loopd-carol-1" "${LOOP_ROOT}/regtest/loop.macaroon"); then
         echo "CAROL_LOOP_MACAROON=\"${CAROL_LOOP_MACAROON}\"" >> "${OUTPUT_FILE}"
         echo -e "${GREEN}✓ Carol Loop macaroon extracted${NC}"
     else

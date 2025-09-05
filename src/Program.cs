@@ -54,7 +54,10 @@ namespace NodeGuard
         {
             AppContext.SetSwitch("Npgsql.EnableLegacyTimestampBehavior", true);
 
-            if (Constants.IS_DEV_ENVIRONMENT)
+            // We can't use Constants.IS_DEV_ENVIRONMENT here because it will load the static constructor and it will load the env values
+            // Before we actually read the whole env file
+            var isDevEnvironment = Environment.GetEnvironmentVariable("IS_DEV_ENVIRONMENT") == "true";
+            if (isDevEnvironment)
             {
                 DotNetEnv.Env.Load("nodeguard-macaroons.env");
             }

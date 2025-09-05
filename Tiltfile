@@ -1,9 +1,7 @@
 ci_settings(readiness_timeout = '10m')
 
 docker_compose([
-  "./docker/docker-compose.yml",
-  "./docker/docker-compose.polar.yml",
-  "./docker/docker-compose.loop.yml"
+  "./docker-compose.yml",
 ], profiles = ["polar", "loop", "mempool"])
 
 # Labels are used to group containers on the UI.
