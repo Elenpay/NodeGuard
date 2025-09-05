@@ -2,26 +2,29 @@ using System.Collections.Concurrent;
 using System.Diagnostics.CodeAnalysis;
 using Google.Protobuf;
 using Grpc.Core;
+using Grpc.Core.Interceptors;
 using Grpc.Net.Client;
 using Looprpc;
 using Microsoft.Extensions.Logging.Abstractions;
 using NodeGuard.Data.Models;
+using NSubstitute.Extensions;
 
 namespace NodeGuard.Services;
 
 public interface ILoopService
 {
     GrpcChannel CreateClient(string endpoint);
-    SwapClient.SwapClientClient GetClient(string endpoint);
-    Task<bool> PingAsync(Node node, SwapClient.SwapClientClient? client = null);
-    Task<SwapResponse> CreateSwapOutAsync(Node node, SwapOutRequest request, SwapClient.SwapClientClient? client = null);
-    Task<SwapResponse> GetSwapAsync(Node node, string swapId, SwapClient.SwapClientClient? client = null);
+    SwapClient.SwapClientClient GetClient(Node node);
+    Task<bool> PingAsync(Node node, CancellationToken cancellationToken = default);
+    Task<SwapResponse> CreateSwapOutAsync(Node node, SwapOutRequest request, CancellationToken cancellationToken= default);
+    Task<SwapResponse> GetSwapAsync(Node node, string swapId, CancellationToken cancellationToken= default);
 }
 
 public class LoopService : ILoopService
 {
     private readonly ILogger<LoopService> _logger;
-    private readonly ConcurrentDictionary<string, GrpcChannel> _clients = new();
+    private readonly ConcurrentDictionary<string, GrpcChannel> _channels = new();
+    private readonly ConcurrentDictionary<string, SwapClient.SwapClientClient> _clients = new();
 
     public LoopService(ILogger<LoopService> logger)
     {
@@ -54,38 +57,32 @@ public class LoopService : ILoopService
         return channel;
     }
     
-    public SwapClient.SwapClientClient GetClient(string endpoint)
-    {
-        if (string.IsNullOrWhiteSpace(endpoint))
-        {
-            throw new ArgumentException("Endpoint cannot be null or empty.", nameof(endpoint));
-        }
-
-        // Use a thread-safe dictionary to cache clients
-        return new SwapClient.SwapClientClient(_clients.GetOrAdd(endpoint, CreateClient(endpoint)));
-    }
-
-    public async Task<bool> PingAsync(Node node, SwapClient.SwapClientClient? client = null)
+    public SwapClient.SwapClientClient GetClient(Node node)
     {
         if (string.IsNullOrEmpty(node.LoopEndpoint) || string.IsNullOrEmpty(node.LoopMacaroon))
         {
             throw new ArgumentException("Node Loop endpoint or macaroon is not set.");
         }
 
-        client ??= GetClient(node.LoopEndpoint);
-
-        // Ping the Loop server to check connectivity
-        // var response = client.GetInfo(new GetInfoRequest(),
-        // new Metadata
-        // {
-        //  { "macaroon", node.LoopMacaroon }
-        // });
-
-        var response = await client.GetInfoAsync(new GetInfoRequest(),
-        new Metadata
+        var clientKey = $"{node.LoopEndpoint}";
+        return _clients.GetOrAdd(clientKey, _ =>
         {
-            { "macaroon", node.LoopMacaroon }
+            var channel = _channels.GetOrAdd(node.LoopEndpoint, CreateClient(node.LoopEndpoint));
+            var invoker = channel.Intercept(new GRPCMacaroonInterceptor(node.LoopMacaroon));
+            return new SwapClient.SwapClientClient(invoker);
         });
+    }
+
+    public async Task<bool> PingAsync(Node node, CancellationToken cancellationToken= default)
+    {
+        if (string.IsNullOrEmpty(node.LoopEndpoint) || string.IsNullOrEmpty(node.LoopMacaroon))
+        {
+            throw new ArgumentException("Node Loop endpoint or macaroon is not set.");
+        }
+
+        var client = GetClient(node);
+
+        var response = await client.GetInfoAsync(new GetInfoRequest(), null, null, cancellationToken);
         if (string.IsNullOrEmpty(response.Version))
         {
             return false;
@@ -94,19 +91,20 @@ public class LoopService : ILoopService
         return true;
     }
 
-    public async Task<SwapResponse> CreateSwapOutAsync(Node node, SwapOutRequest request, SwapClient.SwapClientClient? client = null)
+    public async Task<SwapResponse> CreateSwapOutAsync(Node node, SwapOutRequest request, CancellationToken cancellationToken= default)
     {
         if (string.IsNullOrEmpty(node.LoopEndpoint) || string.IsNullOrEmpty(node.LoopMacaroon))
         {
             throw new ArgumentException("Node Loop endpoint or macaroon is not set.");
         }
 
-        client ??= GetClient(node.LoopEndpoint);
+        var client = GetClient(node);
 
         var loopReq = new LoopOutRequest
         {
             Amt = request.Amount,
             Dest = request.Address,
+            MaxPrepayAmt = 5000, // Satoshis
         };
 
         if (request.MaxFees.HasValue)
@@ -121,26 +119,25 @@ public class LoopService : ILoopService
             _logger.LogDebug("Outgoing channels set: {Channels}", string.Join(", ", request.ChannelsOut));
         }
 
-        // Request loop out
         _logger.LogInformation("Creating Loop Out request for amount {Amount} to address {Address}", request.Amount, request.Address);
-        var response = await client.LoopOutAsync(loopReq);
+        var response = await client.LoopOutAsync(loopReq, null, null, cancellationToken);
 
-        return await GetSwapAsync(node, response.IdBytes.ToStringUtf8(), client);
+        return await GetSwapAsync(node, Convert.ToHexString(response.IdBytes.ToByteArray()).ToLowerInvariant(), cancellationToken);
     }
 
-    public async Task<SwapResponse> GetSwapAsync(Node node, string swapId, SwapClient.SwapClientClient? client = null)
+    public async Task<SwapResponse> GetSwapAsync(Node node, string swapId, CancellationToken cancellationToken= default)
     {
         if (string.IsNullOrEmpty(node.LoopEndpoint) || string.IsNullOrEmpty(node.LoopMacaroon))
         {
             throw new ArgumentException("Node Loop endpoint or macaroon is not set.");
         }
 
-        client ??= GetClient(node.LoopEndpoint);
+        var client = GetClient(node);
 
         var response = await client.SwapInfoAsync(new SwapInfoRequest
         {
-            Id = ByteString.CopyFromUtf8(swapId),
-        });
+            Id = ByteString.CopyFrom(Convert.FromHexString(swapId)),
+        }, null, null, cancellationToken);
 
         return new SwapResponse
         {
