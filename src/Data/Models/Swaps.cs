@@ -22,6 +22,10 @@ using NBitcoin;
 
 namespace NodeGuard.Data.Models
 {
+   public enum SwapDirection
+   {
+      Out,
+   }
    public enum SwapProvider
    {
       Loop,
@@ -41,7 +45,7 @@ namespace NodeGuard.Data.Models
       /// <summary>
       /// The ID of the swap in the provider's system
       /// </summary>
-      public string ProviderId { get; set; }
+      public string? ProviderId { get; set; }
 
       /// <summary>
       /// The current status of the swap

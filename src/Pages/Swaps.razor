@@ -4,128 +4,125 @@
 @attribute [Authorize(Roles = "Superadmin,NodeManager,FinanceManager")]
 
 <Row>
-
-<Column ColumnSize="ColumnSize.Is12">
-    <h3>Swaps</h3>
-    <DataGrid TItem="SwapOut"
-              @ref="_swapsDatagrid"
-              Data="@_swapRequests"
-              Filterable="true"
-              FilterMethod="DataGridFilterMethod.Contains"
-              Editable="false"
-              Responsive="true"
-              ResizeMode="TableResizeMode.Columns"
-              ShowPager="true"
-              ShowPageSizes="true"
-              Narrow="true"
-              PageSize="25">
-        <DataGridColumns>
-         <DataGridCommandColumn TItem="SwapOut" Filterable="false" Sortable="false">
-            <NewCommandTemplate>
-               <Button Color="Color.Success" TextColor="TextColor.Light" Clicked="@(async () => {} // TODO
-               )">New</Button>
-            </NewCommandTemplate>
-         </DataGridCommandColumn>
-            <DataGridColumn TItem="SwapOut" Field="@nameof(SwapOut.Id)" Caption="#" Sortable="false" Displayable="true"/>
-            <DataGridColumn TItem="SwapOut" Editable="true" Field="@nameof(SwapOut.DestinationWalletId)" Caption="@nameof(SwapOut.DestinationWallet)" Sortable="false" Displayable="@IsColumnVisible(SwapsColumnName.DestinationWallet)">
-                <DisplayTemplate>
-                    @if (context.DestinationWallet != null)
-                    {
-                        @($"{context.DestinationWallet.Name} ({context.DestinationWallet.MofN}-of-{context.DestinationWallet.Keys.Count})")
-                    }
-                </DisplayTemplate>
-                <EditTemplate>
-                    @if (context.CellValue == null || (int) context.CellValue == 0)
-                    {
-                        <SelectList TItem="Wallet"
-                                    TValue="int"
-                                    Data="@_availableWallets"
-                                    TextField="@((item) => item.Name)"
-                                    ValueField="@((item) => item.Id)"
-                                    SelectedValueChanged="(id) => context.CellValue = id"
-                                    DefaultItemText="Choose the wallet"/>
-                    }
-                    else
-                    {
-                        <SelectList TItem="Wallet"
-                                    TValue="int"
-                                    Data="@_availableWallets"
-                                    TextField="@((item) => item.Name)"
-                                    ValueField="@((item) => item.Id)"
-                                    SelectedValue="(int) context.CellValue"
-                                    SelectedValueChanged="(id) => context.CellValue = id"/>
-                    }
-                </EditTemplate>
-            </DataGridColumn>
-            <DataGridColumn TItem="SwapOut" Editable="false" Field="@nameof(SwapOut.UserRequestor)" Caption="Requestor" Sortable="true" Displayable="@IsColumnVisible(SwapsColumnName.Requestor)">
-                <DisplayTemplate>
-                     @context.UserRequestor?.UserName ?? "Unknown"
-                </DisplayTemplate>
-            </DataGridColumn>
-            <DataGridColumn TItem="SwapOut" Editable="false" Field="@nameof(SwapOut.Amount)" Caption="Amount (BTC)" Sortable="false" Displayable="@IsColumnVisible(SwapsColumnName.Amount)">
-                <DisplayTemplate>
-                    @{
-                        @($"{context.Amount:f8} BTC ({Math.Round(PriceConversionService.BtcToUsdConversion(context.Amount, _btcPrice), 2)} USD)")
-                    }
-                </DisplayTemplate>
-
-            </DataGridColumn>
-            <DataGridColumn TItem="SwapOut" Filterable="true" Editable="false" Field="@nameof(SwapOut.TotalFees)" Caption="Total Fees" Sortable="false" Displayable="@IsColumnVisible(SwapsColumnName.TotalFee)">
-                            <DisplayTemplate>
-                                @context.TotalFees.ToUnit(NBitcoin.MoneyUnit.BTC).ToString("f8") BTC
-                                <Tooltip>
-                                    <span>Service Fees: @context.ServiceFee.ToUnit(NBitcoin.MoneyUnit.BTC).ToString("f8") BTC</span>
-                                    <span>Lightning Network Fees: @context.LightningFee.ToUnit(NBitcoin.MoneyUnit.BTC).ToString("f8") BTC</span>
-                                    <span>On-Chain Fees: @context.OnChainFee.ToUnit(NBitcoin.MoneyUnit.BTC).ToString("f8") BTC</span>
-                                </Tooltip>
-                            </DisplayTemplate>
-            </DataGridColumn>
-            <DataGridColumn TItem="SwapOut" Field="@nameof(SwapOut.Status).Humanize(LetterCasing.Sentence)" Caption="Status" Sortable="false" Displayable="@IsColumnVisible(SwapsColumnName.Status)">
-                <DisplayTemplate>
-                    <Tooltip Visibility=@(string.IsNullOrWhiteSpace(context.ErrorDetails) ? Visibility.Invisible : Visibility.Visible) Text=@context.ErrorDetails Placement="TooltipPlacement.Top">
-                        <span>@context?.Status.Humanize()</span>
-                    </Tooltip>
-                </DisplayTemplate>
-            </DataGridColumn>
-            <DataGridColumn TItem="SwapOut" Field="@nameof(SwapOut.CreationDatetime)" Caption="Creation Date" Sortable="true" SortDirection="SortDirection.Descending" Displayable="@IsColumnVisible(SwapsColumnName.CreationDate)">
-                <DisplayTemplate>
-                    @context.CreationDatetime.Humanize()
-                </DisplayTemplate>
-            </DataGridColumn>
-            <DataGridColumn TItem="SwapOut" Field="@nameof(SwapOut.UpdateDatetime)" Caption="Update date" Sortable="true" Displayable="@IsColumnVisible(SwapsColumnName.UpdateDate)">
-                <DisplayTemplate>
-                    @context.UpdateDatetime.Humanize()
-                </DisplayTemplate>
-            </DataGridColumn>
-            <DataGridColumn TItem="SwapOut" Field="@nameof(SwapOut.TxId)" Caption="Links" Sortable="false" Displayable="@IsColumnVisible(SwapsColumnName.Links)">
-                <DisplayTemplate>
-                    @if (Constants.MEMPOOL_ENDPOINT != null && !string.IsNullOrEmpty(context.TxId))
-                    {
-                        <a href="@(Constants.MEMPOOL_ENDPOINT + "/tx/" + context.TxId)" target="_blank">See in explorer</a>
-                    }
-                </DisplayTemplate>
-            </DataGridColumn>
-            <DataGridColumn TItem="SwapOut" Displayable="true">
-                <FilterTemplate>
-                    <ColumnLayout @ref="_swapsColumnLayout" Columns="@_swapsColumns" ColumnType="SwapsColumnName" OnUpdate="@OnColumnLayoutUpdate"/>
-                </FilterTemplate>
-            </DataGridColumn>
-        </DataGridColumns>
-        <EmptyTemplate>
-            <div class="box">
-                No records were found.
-            </div>
-        </EmptyTemplate>
-        <LoadingTemplate>
-            <div class="box">
-                <progress class="progress is-small is-primary" max="100"></progress>
-            </div>
-        </LoadingTemplate>
-    </DataGrid>
-
-</Column>
-
+    <Column ColumnSize="ColumnSize.Is12">
+        <h3>Swaps</h3>
+        <DataGrid TItem="SwapOut"
+                @ref="_swapsDatagrid"
+                Data="@_swapRequests"
+                Filterable="true"
+                FilterMethod="DataGridFilterMethod.Contains"
+                Editable="true"
+                Responsive="true"
+                ResizeMode="TableResizeMode.Columns"
+                ShowPager="true"
+                ShowPageSizes="true"
+                Narrow="true"
+                PageSize="25">
+            <DataGridColumns>
+            <DataGridCommandColumn TItem="SwapOut" Filterable="false" Sortable="false">
+                <NewCommandTemplate>
+                <Button Color="Color.Success" TextColor="TextColor.Light" Clicked="NewSwap">New</Button>
+                </NewCommandTemplate>
+            </DataGridCommandColumn>
+                <DataGridColumn TItem="SwapOut" Field="@nameof(SwapOut.Id)" Caption="#" Sortable="false" Displayable="true"/>
+                <DataGridColumn TItem="SwapOut" Editable="true" Field="@nameof(SwapOut.DestinationWalletId)" Caption="@nameof(SwapOut.DestinationWallet)" Sortable="false" Displayable="@IsColumnVisible(SwapsColumnName.DestinationWallet)">
+                    <DisplayTemplate>
+                        @if (context.DestinationWallet != null)
+                        {
+                            @($"{context.DestinationWallet.Name} ({context.DestinationWallet.MofN}-of-{context.DestinationWallet.Keys.Count})")
+                        }
+                    </DisplayTemplate>
+                    <EditTemplate>
+                        @if (context.CellValue == null || (int) context.CellValue == 0)
+                        {
+                            <SelectList TItem="Wallet"
+                                        TValue="int"
+                                        Data="@_availableWallets"
+                                        TextField="@((item) => item.Name)"
+                                        ValueField="@((item) => item.Id)"
+                                        SelectedValueChanged="(id) => context.CellValue = id"
+                                        DefaultItemText="Choose the wallet"/>
+                        }
+                        else
+                        {
+                            <SelectList TItem="Wallet"
+                                        TValue="int"
+                                        Data="@_availableWallets"
+                                        TextField="@((item) => item.Name)"
+                                        ValueField="@((item) => item.Id)"
+                                        SelectedValue="(int) context.CellValue"
+                                        SelectedValueChanged="(id) => context.CellValue = id"/>
+                        }
+                    </EditTemplate>
+                </DataGridColumn>
+                <DataGridColumn TItem="SwapOut" Editable="false" Field="@nameof(SwapOut.UserRequestor)" Caption="Requestor" Sortable="true" Displayable="@IsColumnVisible(SwapsColumnName.Requestor)">
+                    <DisplayTemplate>
+                        @context.UserRequestor?.UserName ?? "Unknown"
+                    </DisplayTemplate>
+                </DataGridColumn>
+                <DataGridColumn TItem="SwapOut" Editable="false" Field="@nameof(SwapOut.Amount)" Caption="Amount (BTC)" Sortable="false" Displayable="@IsColumnVisible(SwapsColumnName.Amount)">
+                    <DisplayTemplate>
+                        @{
+                            @($"{context.Amount:f8} BTC ({Math.Round(PriceConversionService.BtcToUsdConversion(context.Amount, _btcPrice), 2)} USD)")
+                        }
+                    </DisplayTemplate>
+                </DataGridColumn>
+                <DataGridColumn TItem="SwapOut" Filterable="true" Editable="false" Field="@nameof(SwapOut.TotalFees)" Caption="Total Fees" Sortable="false" Displayable="@IsColumnVisible(SwapsColumnName.TotalFee)">
+                                <DisplayTemplate>
+                                    @context.TotalFees.ToUnit(NBitcoin.MoneyUnit.BTC).ToString("f8") BTC
+                                    <Tooltip>
+                                        <span>Service Fees: @context.ServiceFee.ToUnit(NBitcoin.MoneyUnit.BTC).ToString("f8") BTC</span>
+                                        <span>Lightning Network Fees: @context.LightningFee.ToUnit(NBitcoin.MoneyUnit.BTC).ToString("f8") BTC</span>
+                                        <span>On-Chain Fees: @context.OnChainFee.ToUnit(NBitcoin.MoneyUnit.BTC).ToString("f8") BTC</span>
+                                    </Tooltip>
+                                </DisplayTemplate>
+                </DataGridColumn>
+                <DataGridColumn TItem="SwapOut" Field="@nameof(SwapOut.Status).Humanize(LetterCasing.Sentence)" Caption="Status" Sortable="false" Displayable="@IsColumnVisible(SwapsColumnName.Status)">
+                    <DisplayTemplate>
+                        <Tooltip Visibility=@(string.IsNullOrWhiteSpace(context.ErrorDetails) ? Visibility.Invisible : Visibility.Visible) Text=@context.ErrorDetails Placement="TooltipPlacement.Top">
+                            <span>@context?.Status.Humanize()</span>
+                        </Tooltip>
+                    </DisplayTemplate>
+                </DataGridColumn>
+                <DataGridColumn TItem="SwapOut" Field="@nameof(SwapOut.CreationDatetime)" Caption="Creation Date" Sortable="true" SortDirection="SortDirection.Descending" Displayable="@IsColumnVisible(SwapsColumnName.CreationDate)">
+                    <DisplayTemplate>
+                        @context.CreationDatetime.Humanize()
+                    </DisplayTemplate>
+                </DataGridColumn>
+                <DataGridColumn TItem="SwapOut" Field="@nameof(SwapOut.UpdateDatetime)" Caption="Update date" Sortable="true" Displayable="@IsColumnVisible(SwapsColumnName.UpdateDate)">
+                    <DisplayTemplate>
+                        @context.UpdateDatetime.Humanize()
+                    </DisplayTemplate>
+                </DataGridColumn>
+                <DataGridColumn TItem="SwapOut" Field="@nameof(SwapOut.TxId)" Caption="Links" Sortable="false" Displayable="@IsColumnVisible(SwapsColumnName.Links)">
+                    <DisplayTemplate>
+                        @if (Constants.MEMPOOL_ENDPOINT != null && !string.IsNullOrEmpty(context.TxId))
+                        {
+                            <a href="@(Constants.MEMPOOL_ENDPOINT + "/tx/" + context.TxId)" target="_blank">See in explorer</a>
+                        }
+                    </DisplayTemplate>
+                </DataGridColumn>
+                <DataGridColumn TItem="SwapOut" Displayable="true">
+                    <FilterTemplate>
+                        <ColumnLayout @ref="_swapsColumnLayout" Columns="@_swapsColumns" ColumnType="SwapsColumnName" OnUpdate="@OnColumnLayoutUpdate"/>
+                    </FilterTemplate>
+                </DataGridColumn>
+            </DataGridColumns>
+            <EmptyTemplate>
+                <div class="box">
+                    No records were found.
+                </div>
+            </EmptyTemplate>
+            <LoadingTemplate>
+                <div class="box">
+                    <progress class="progress is-small is-primary" max="100"></progress>
+                </div>
+            </LoadingTemplate>
+        </DataGrid>
+    </Column>
 </Row>
+
+<NewSwapModal @ref="_newSwapModal"></NewSwapModal>
 
 @inject ILocalStorageService LocalStorageService
 @inject IPriceConversionService PriceConversionService
@@ -135,13 +132,14 @@
 
    [CascadingParameter] private ClaimsPrincipal? ClaimsPrincipal { get; set; }
 
-   private DataGrid<SwapOut> _swapsDatagrid;
+   private DataGrid<SwapOut> _swapsDatagrid = new();
    private List<SwapOut> _swapRequests = new();
    private List<Wallet> _availableWallets = new();
    private decimal _btcPrice;
    private Dictionary<string, bool> _swapsColumns = new();
    private bool _columnsLoaded;
-   private ColumnLayout<SwapsColumnName> _swapsColumnLayout;
+   private ColumnLayout<SwapsColumnName> _swapsColumnLayout = new();
+   public required NewSwapModal _newSwapModal;
 
    public abstract class SwapsColumnName
    {
@@ -195,6 +193,9 @@
         StateHasChanged();
     }
 
+    private async Task NewSwap() {
+        await _newSwapModal.Show();
+    }
 }
 
    

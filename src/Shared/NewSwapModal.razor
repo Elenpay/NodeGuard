@@ -1,0 +1,183 @@
+@using NBitcoin
+@using JSException = Microsoft.JSInterop.JSException
+<Modal @ref="_modalRef">
+    <ModalContent Centered>
+        <ModalHeader>
+            <ModalTitle>New swap</ModalTitle>
+            <CloseButton />
+        </ModalHeader>
+        <ModalBody>
+            <Fields Flex="Flex.Column">
+                <Field>
+                    <FieldLabel>Swap provider</FieldLabel>
+                    <div class="d-flex">
+                        <Select TValue="string" @bind-Value="_selectedProvider">
+                            @foreach (var provider in Enum.GetValues<SwapProvider>())
+                            {
+                                <SelectItem Value="@provider.ToString()">@provider.ToString()</SelectItem>
+                            }
+                        </Select>
+                    </div>
+                </Field>
+                <Field>
+                    <FieldLabel>Swap direction</FieldLabel>
+                    <div class="d-flex">
+                        <Select TValue="string" @bind-Value="_selectedDirection">
+                            @foreach (var direction in Enum.GetValues<SwapDirection>())
+                            {
+                                <SelectItem Value="@direction.ToString()">@direction.ToString()</SelectItem>
+                            }
+                        </Select>
+                    </div>
+                </Field>
+                <Field>
+                    <FieldLabel>Amount</FieldLabel>
+                    <div class="d-flex">
+                        <NumericPicker TValue="long"
+                                    CurrencySymbolPlacement="CurrencySymbolPlacement.Suffix"
+                                    CurrencySymbol=" BTC"
+                                    Min="1">
+                        </NumericPicker>
+                    </div>
+                </Field>
+                @if (_selectedDirection == SwapDirection.Out)
+                {
+                    @RenderNodeSelector("Origin Node")
+                    @RenderWalletSelector("Destination Wallet")
+                }
+                else
+                {
+                    @RenderWalletSelector("Origin Wallet")
+                    @RenderNodeSelector("Destination Node")
+                }
+                <Field>
+                    <FieldLabel>Max Fees</FieldLabel>
+                    <div class="d-flex">
+                        <NumericPicker TValue="long"
+                                    CurrencySymbolPlacement="CurrencySymbolPlacement.Suffix"
+                                    CurrencySymbol=" BTC"
+                                    Min="1">
+                        </NumericPicker>
+                    </div>
+                </Field>
+            </Fields>
+        </ModalBody>
+        <ModalFooter>
+            <Button Color="Color.Primary" Disabled="@(_selectedWallet is null)" Clicked="OnCreateSwap">Create swap</Button>
+            <Button Color="Color.Secondary" ModalClose>Cancel</Button>
+        </ModalFooter>
+    </ModalContent>
+</Modal>
+
+@inject ISwapsService SwapsService
+@inject IToastService ToastService
+@inject IWalletRepository WalletRepository
+@inject INodeRepository NodeRepository
+@inject ILogger<NewSwapModal> Logger
+@implements IDisposable
+@code {
+    [CascadingParameter] public required ApplicationUser LoggedUser { get; set; }
+    public required Modal _modalRef;
+    private SwapDirection _selectedDirection = SwapDirection.Out;
+    private SwapProvider _selectedProvider = SwapProvider.Loop;
+    private List<Wallet> _availableWallets = new();
+    private Wallet? _selectedWallet;
+    private List<Node> _availableNodes = new();
+    private Node? _selectedNode;
+
+    protected override async Task OnInitializedAsync()
+    {
+        try
+        {
+            _availableWallets = await WalletRepository.GetAvailableWallets();
+            _availableNodes = await NodeRepository.GetAllManagedByUser(LoggedUser.Id);
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Unexpected error loading wallets");
+            ToastService.ShowError("Something went wrong");
+        }
+    }
+
+    public async Task Show()
+    {
+        await _modalRef.Show();
+    }
+
+    private void OnSelectedWallet(Wallet wallet)
+    {
+        _selectedWallet = wallet; 
+    }
+
+    public void Dispose()
+    {
+        throw new NotImplementedException();
+    }
+
+    private async Task OnCreateSwap()
+    {
+        try
+        {
+            if (_selectedDirection != SwapDirection.Out)
+            {
+                ToastService.ShowWarning("Only swap out is supported for now");
+                return;
+            }
+
+            var swapRequest = new SwapOutRequest
+            {
+            };
+            var node = new Node();
+
+            var response = await SwapsService.CreateSwapOutAsync(node, _selectedProvider, swapRequest);
+
+            ToastService.ShowSuccess("Swap created successfully");
+            StateHasChanged();
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Error creating swap");
+            ToastService.ShowError("Failed to create swap");
+        }
+
+        await _modalRef.Hide();
+    }
+    
+    private RenderFragment RenderWalletSelector(string label)
+    {
+        return @<Field>
+                    <FieldLabel>@label</FieldLabel>
+                    <div class="d-flex">
+                        <SelectList TItem="Wallet"
+                                    TValue="Wallet"
+                                    Data="@_availableWallets"
+                                    Bind-Value="@_selectedWallet"
+                                    TextField="@((item) => item.Name)"
+                                    DefaultItemText="Choose the wallet">
+                                <Feedback>
+                                    <ValidationError/>
+                                </Feedback>
+                        </SelectList>
+                    </div>
+                </Field>;
+    }
+
+    private RenderFragment RenderNodeSelector(string label)
+    {
+        return @<Field>
+                    <FieldLabel>@label</FieldLabel>
+                    <div class="d-flex">
+                        <SelectList TItem="Node"
+                                    TValue="Node"
+                                    Data="@_availableNodes"
+                                    Bind-Value="@_selectedNode"
+                                    TextField="@((item) => item.Name)"
+                                    DefaultItemText="Choose the node">
+                            <Feedback>
+                                <ValidationError/>
+                            </Feedback>
+                        </SelectList>
+                    </div>
+                </Field>;
+    }
+}
