@@ -138,74 +138,9 @@ services:
       - SSL_PORT=50002
     restart: always
 
-  loopserver:
-    hostname: loopserver
-    ports:
-      - "11009:11009"
-    image: lightninglabs/loopserver:latest
-    restart: unless-stopped
-    command:
-      - "daemon"
-      - "--maxamt=5000000"
-      - "--lnd.host=host.docker.internal:10001"
-      - "--lnd.macaroondir=/home/loopserver/.lnd/data/chain/bitcoin/regtest"
-      - "--lnd.tlspath=/home/loopserver/.lnd/tls.cert"
-      - "--bitcoin.host=host.docker.internal:18443"
-      - "--bitcoin.user=polaruser"
-      - "--bitcoin.password=polarpass"
-      - "--bitcoin.zmqpubrawblock=tcp://host.docker.internal:28334"
-      - "--bitcoin.zmqpubrawtx=tcp://host.docker.internal:29335"
-    volumes:
-      - ../devnetwork.polar/volumes/lnd/alice:/home/loopserver/.lnd
-
-  loopd-bob:
-    image: loopd
-    build:
-      context: ../loop
-      dockerfile: Dockerfile
-    restart: unless-stopped
-    ports:
-      - "11010:11010"
-      - "8088:8081"
-    volumes:
-      - "../devnetwork.polar/volumes/lnd/bob:/root/.lnd"
-    command:
-      - "loopd"
-      - "--network=regtest"
-      - "--debuglevel=debug"
-      - "--server.host=loopserver:11009"
-      - "--server.notls"
-      - "--lnd.host=host.docker.internal:10002"
-      - "--lnd.macaroonpath=/root/.lnd/data/chain/bitcoin/regtest/admin.macaroon"
-      - "--lnd.tlspath=/root/.lnd/tls.cert"
-
-  loopd-carol:
-    image: loopd
-    build:
-      context: ../loop
-      dockerfile: Dockerfile
-    restart: unless-stopped
-    ports:
-      - "11011:11010"
-      - "8089:8081"
-    volumes:
-      - "../devnetwork.polar/volumes/lnd/carol:/root/.lnd"
-    command:
-      - "loopd"
-      - "--network=regtest"
-      - "--debuglevel=debug"
-      - "--server.host=loopserver:11009"
-      - "--server.notls"
-      - "--lnd.host=host.docker.internal:10003"
-      - "--lnd.macaroonpath=/root/.lnd/data/chain/bitcoin/regtest/admin.macaroon"
-      - "--lnd.tlspath=/root/.lnd/tls.cert"
-
 volumes:
   nodeguard_postgres_data:
   bitcoin_datadir:
   nbxplorer_datadir:
   nbxplorer_postgres_data:
   nodeguard_data_keys_dir:
-  mempool-backend-btc-data:
-  electrumx-data:
-  mempool-db-btc-data:
