@@ -1,3 +1,6 @@
+# Bitcoin related commands
+mod bitcoin 'docker/bitcoin'
+
 #####################
 # Project variables #
 #####################
@@ -56,7 +59,12 @@ build:
     cd {{PROJECT_DIR}} && dotnet build
 
 run:
-    cd {{PROJECT_DIR}} && dotnet run
+    ./docker/extract-macaroons.sh
+    cd {{PROJECT_DIR}} && IS_DEV_ENVIRONMENT=true dotnet run
+
+watch:
+    ./docker/extract-macaroons.sh
+    cd {{PROJECT_DIR}} && IS_DEV_ENVIRONMENT=true dotnet watch
 
 stop:
     killall -9 NodeGuard
@@ -95,6 +103,8 @@ docker-down:
 docker-rm:
     cd {{DOCKER_DIR}} && docker compose -f {{DOCKER_COMPOSE_FILE}} down -v
 
+prune-volumes:
+    docker volume prune -a -f
 
 ##########
 # Dapr #

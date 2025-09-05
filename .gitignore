@@ -9,6 +9,14 @@ src/NodeGuard.csproj.user
 test/NodeGuard.Tests/bin
 test/NodeGuard.Tests/obj
 # Files created by Polar runs
-devnetwork.polar/
+devnetwork*/
 docker/volumes
+**/logs/
+# Ignore all macaroons except admin.macaroon
+docker/bitcoin/init/volumes/
+docker/bitcoin/init/shared/
+docker/loop/
 .DS_Store
+chan-backup-archives/
+# NodeGuard macaroon environment file
+src/nodeguard-macaroons.env

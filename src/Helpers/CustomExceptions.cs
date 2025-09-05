@@ -33,3 +33,8 @@ public class NotEnoughBalanceInWalletException : Exception
 {
    public NotEnoughBalanceInWalletException(string? message = null): base(message) {}
 }
+
+public class BumpingException : Exception
+{
+   public BumpingException(string? message = null): base(message) {}
+}

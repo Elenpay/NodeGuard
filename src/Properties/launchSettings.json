@@ -15,7 +15,7 @@
       "hotReloadEnabled": true,
       "environmentVariables": {
         "ASPNETCORE_ENVIRONMENT": "Development",
-        "POSTGRES_CONNECTIONSTRING": "Host=127.0.0.1;Port=25432;Database=nodeguard;Username=rw_dev;Password=rw_dev",
+        "POSTGRES_CONNECTIONSTRING": "Host=127.0.0.1;Port=25432;Database=nodeguard;User ID=postgres;",
         "BITCOIN_NETWORK": "REGTEST",
         "MAXIMUM_WITHDRAWAL_BTC_AMOUNT": "21000000",
         "NBXPLORER_ENABLE_CUSTOM_BACKEND": "true",

@@ -177,6 +177,13 @@ namespace NodeGuard.Services
                 await _coinSelectionService.GetLockedUTXOsForRequest(walletWithdrawalRequest,
                     BitcoinRequestType.WalletWithdrawal);
 
+            // Edge case: If you bumped a multisig transaction and a block was mined in between, the utxo is now unlocked, so we need to fail here
+            // So a new withdrawal isn't performed with a new utxo
+            if (previouslyLockedUTXOs.Count == 0 && walletWithdrawalRequest.BumpingWalletWithdrawalRequestId != null)
+            {
+                throw new ShowToUserException($"Cannot generate a template PSBT for an already confirmed bumped transaction. The UTXO for request {walletWithdrawalRequest.BumpingWalletWithdrawalRequestId} is already confirmed");
+            }
+
 
             var availableUTXOs = previouslyLockedUTXOs.Count > 0
                 ? previouslyLockedUTXOs
