@@ -54,6 +54,9 @@ namespace NodeGuard.Data
             var userManager = serviceProvider.GetRequiredService<UserManager<ApplicationUser>>();
             var roleManager = serviceProvider.GetService<RoleManager<IdentityRole>>();
 
+            if (roleManager == null)
+                throw new Exception("Role manager is not initialized");
+
             var nbXplorerNetwork = CurrentNetworkHelper.GetCurrentNetwork();
 
             var provider = new NBXplorerNetworkProvider(nbXplorerNetwork.ChainName);
@@ -206,9 +209,12 @@ namespace NodeGuard.Data
                 }
                 else
                 {
-                    adminUser = applicationDbContext.ApplicationUsers.FirstOrDefault(u => u.UserName == "admin");
+                    adminUser = applicationDbContext.ApplicationUsers.Include(a => a.Nodes).FirstOrDefault(u => u.UserName == "admin");
                     financeUser = applicationDbContext.ApplicationUsers.FirstOrDefault(u => u.UserName == "financemanager");
                 }
+
+                if (adminUser == null || financeUser == null)
+                    throw new Exception("Could't create admin or finance user");
 
                 var nodes = Task.Run(() => nodeRepository.GetAll()).Result;
 
@@ -299,9 +305,10 @@ namespace NodeGuard.Data
                         nodeRepository.Update(bob);
                     }
 
-                    alice.Users.Add(adminUser!);
-                    carol.Users.Add(adminUser!);
-                    bob.Users.Add(adminUser!);
+                    if (adminUser.Nodes == null) adminUser.Nodes = [];
+                    if (!adminUser.Nodes.Any(n => n.Name == alice.Name)) adminUser.Nodes.Add(alice);
+                    if (!adminUser.Nodes.Any(n => n.Name == bob.Name)) adminUser.Nodes.Add(bob);
+                    if (!adminUser.Nodes.Any(n => n.Name == carol.Name)) adminUser.Nodes.Add(carol);
 
                     _ = applicationDbContext.SaveChanges();
                 }
@@ -345,6 +352,10 @@ namespace NodeGuard.Data
                     var multisigDerivationStrategy = testingMultisigWallet.GetDerivationStrategy();
                     var singlesigDerivationStrategy = testingSinglesigWallet.GetDerivationStrategy();
                     var singleSigBIP39DerivationStrategy = testingSingleSigBIP39Wallet.GetDerivationStrategy();
+
+                    if (legacyMultisigDerivationStrategy == null || multisigDerivationStrategy == null ||
+                        singlesigDerivationStrategy == null || singleSigBIP39DerivationStrategy == null)
+                        throw new Exception("Can't get derivation strategy of the wallets");
                     //Nbxplorer tracking of the multisig derivation scheme
 
                     nbxplorerClient.Track(legacyMultisigDerivationStrategy);
@@ -451,7 +462,7 @@ namespace NodeGuard.Data
             applicationDbContext.SaveChanges();
         }
 
-        private static void SetRoles(RoleManager<IdentityRole>? roleManager)
+        private static void SetRoles(RoleManager<IdentityRole> roleManager)
         {
             const ApplicationUserRole nodeManager = ApplicationUserRole.NodeManager;
 
