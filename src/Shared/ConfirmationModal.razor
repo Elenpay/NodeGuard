@@ -5,7 +5,7 @@
             <CloseButton />
         </ModalHeader>
         <ModalBody>
-            @Body
+            @((MarkupString)Body)
         </ModalBody>
         <ModalFooter>
             <Button Color="Color.Secondary" Clicked="@OnCancel">@CancelLabel</Button>
