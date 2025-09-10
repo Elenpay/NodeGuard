@@ -124,6 +124,7 @@ namespace NodeGuard
             builder.Services.AddTransient<ICoinSelectionService, CoinSelectionService>();
             builder.Services.AddTransient<IPriceConversionService, PriceConversionService>();
             builder.Services.AddSingleton<ILightningClientService, LightningClientService>();
+            builder.Services.AddSingleton<ILightningRouterService, LightningRouterService>();
 
             //BlazoredToast
             builder.Services.AddBlazoredToast();
