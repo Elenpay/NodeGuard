@@ -11,12 +11,17 @@ NODE=$1
 TARGET=/root/.lnd/data/chain/bitcoin/regtest
 
 # Creates a wallet using the specified node name as seed.
-lndinit -v init-wallet \
-    --network regtest \
-    --secret-source=file \
-    --file.seed=/init/seed.$NODE \
-    --file.wallet-password=/init/passwd \
-    --init-file.output-wallet-dir=$TARGET
+if [ ! -d "$TARGET" ]; then
+    echo "Initializing wallet for $NODE (TARGET directory does not exist)"
+    lndinit -v init-wallet \
+        --network regtest \
+        --secret-source=file \
+        --file.seed=/init/seed.$NODE \
+        --file.wallet-password=/init/passwd \
+        --init-file.output-wallet-dir=$TARGET
+else
+    echo "Skipping lndinit for $NODE (TARGET directory already exists: $TARGET)"
+fi
 
 echo "$NODE initialized"
 

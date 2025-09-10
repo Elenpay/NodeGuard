@@ -229,14 +229,14 @@ namespace NodeGuard.Data
                         logger!.LogInformation("Default wallet already loaded");
                     }
 
-                    var alice = nodes.FirstOrDefault(n => n.Name == "Alice");
+                    var alice = nodes.FirstOrDefault(n => n.Name == "alice");
                     if (alice == null)
                     {
                         alice = new Node
                         {
                             ChannelAdminMacaroon = Constants.ALICE_MACAROON,
                             Endpoint = Constants.ALICE_HOST,
-                            Name = "Alice",
+                            Name = "alice",
                             CreationDatetime = DateTimeOffset.UtcNow,
                             PubKey = Constants.ALICE_PUBKEY,
                             Users = new List<ApplicationUser>(),
@@ -255,14 +255,14 @@ namespace NodeGuard.Data
                         nodeRepository.Update(alice);
                     }
 
-                    var carol = nodes.FirstOrDefault(n => n.Name == "Carol");
+                    var carol = nodes.FirstOrDefault(n => n.Name == "carol");
                     if (carol == null)
                     {
                         carol = new Node
                         {
                             ChannelAdminMacaroon = Constants.CAROL_MACAROON,
                             Endpoint = Constants.CAROL_HOST,
-                            Name = "Carol",
+                            Name = "carol",
                             CreationDatetime = DateTimeOffset.UtcNow,
                             PubKey = Constants.CAROL_PUBKEY,
                             Users = new List<ApplicationUser>(),
@@ -276,19 +276,21 @@ namespace NodeGuard.Data
                         carol.ChannelAdminMacaroon = Constants.CAROL_MACAROON;
                         carol.Endpoint = Constants.CAROL_HOST;
                         carol.PubKey = Constants.CAROL_PUBKEY;
+                        carol.LoopEndpoint = Constants.CAROL_LOOP_HOST;
+                        carol.LoopMacaroon = Constants.CAROL_LOOP_MACAROON;
                         carol.UpdateDatetime = DateTimeOffset.UtcNow;
                         nodeRepository.Update(carol);
                     }
 
 
-                    var bob = nodes.FirstOrDefault(n => n.Name == "Bob");
+                    var bob = nodes.FirstOrDefault(n => n.Name == "bob");
                     if (bob == null)
                     {
                         bob = new Node
                         {
                             ChannelAdminMacaroon = Constants.BOB_MACAROON,
                             Endpoint = Constants.BOB_HOST,
-                            Name = "Bob",
+                            Name = "bob",
                             CreationDatetime = DateTimeOffset.UtcNow,
                             PubKey = Constants.BOB_PUBKEY,
                             Users = new List<ApplicationUser>(),
@@ -301,6 +303,8 @@ namespace NodeGuard.Data
                         bob.ChannelAdminMacaroon = Constants.BOB_MACAROON;
                         bob.Endpoint = Constants.BOB_HOST;
                         bob.PubKey = Constants.BOB_PUBKEY;
+                        bob.LoopEndpoint = Constants.BOB_LOOP_HOST;
+                        bob.LoopMacaroon = Constants.BOB_LOOP_MACAROON;
                         bob.UpdateDatetime = DateTimeOffset.UtcNow;
                         nodeRepository.Update(bob);
                     }

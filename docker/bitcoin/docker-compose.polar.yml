@@ -30,7 +30,7 @@ services:
   alice:
     <<: *lnd-node
     container_name: polar-n1-alice
-    entrypoint: /init/init.sh alice
+    entrypoint: /init/lnd-entrypoint.sh alice
     volumes:
       - ./init:/init
       - alice_lnd_data:/root/.lnd
@@ -43,7 +43,7 @@ services:
   bob:
     <<: *lnd-node
     container_name: polar-n1-bob
-    entrypoint: /init/init.sh bob
+    entrypoint: /init/lnd-entrypoint.sh bob
     volumes:
       - ./init:/init
       - bob_lnd_data:/root/.lnd
@@ -53,7 +53,7 @@ services:
   carol:
     <<: *lnd-node
     container_name: polar-n1-carol
-    entrypoint: /init/init.sh carol
+    entrypoint: /init/lnd-entrypoint.sh carol
     volumes:
       - ./init:/init
       - carol_lnd_data:/root/.lnd

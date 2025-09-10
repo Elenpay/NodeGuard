@@ -105,13 +105,13 @@ public class Constants
     public static readonly string BOB_PUBKEY = string.Empty;
     public static readonly string BOB_HOST = string.Empty;
     public static readonly string BOB_MACAROON = string.Empty;
-    public static readonly string BOB_LOOP = string.Empty;
+    public static readonly string BOB_LOOP_HOST = string.Empty;
     public static readonly string BOB_LOOP_MACAROON = string.Empty;
 
     public static readonly string CAROL_PUBKEY = string.Empty;
     public static readonly string CAROL_HOST = string.Empty;
     public static readonly string CAROL_MACAROON = string.Empty;
-    public static readonly string CAROL_LOOP = string.Empty;
+    public static readonly string CAROL_LOOP_HOST = string.Empty;
     public static readonly string CAROL_LOOP_MACAROON = string.Empty;
 
 
@@ -267,13 +267,13 @@ public class Constants
         BOB_PUBKEY = Environment.GetEnvironmentVariable("BOB_PUBKEY") ?? BOB_PUBKEY;
         BOB_HOST = Environment.GetEnvironmentVariable("BOB_HOST") ?? BOB_HOST;
         BOB_MACAROON = Environment.GetEnvironmentVariable("BOB_MACAROON") ?? BOB_MACAROON;
-        BOB_LOOP = Environment.GetEnvironmentVariable("BOB_LOOP") ?? BOB_LOOP;
+        BOB_LOOP_HOST = Environment.GetEnvironmentVariable("BOB_LOOP_HOST") ?? BOB_LOOP_HOST;
         BOB_LOOP_MACAROON = Environment.GetEnvironmentVariable("BOB_LOOP_MACAROON") ?? BOB_LOOP_MACAROON;
 
         CAROL_PUBKEY = Environment.GetEnvironmentVariable("CAROL_PUBKEY") ?? CAROL_PUBKEY;
         CAROL_HOST = Environment.GetEnvironmentVariable("CAROL_HOST") ?? CAROL_HOST;
         CAROL_MACAROON = Environment.GetEnvironmentVariable("CAROL_MACAROON") ?? CAROL_MACAROON;
-        CAROL_LOOP = Environment.GetEnvironmentVariable("CAROL_LOOP") ?? CAROL_LOOP;
+        CAROL_LOOP_HOST = Environment.GetEnvironmentVariable("CAROL_LOOP_HOST") ?? CAROL_LOOP_HOST;
         CAROL_LOOP_MACAROON = Environment.GetEnvironmentVariable("CAROL_LOOP_MACAROON") ?? CAROL_LOOP_MACAROON;
     }
 

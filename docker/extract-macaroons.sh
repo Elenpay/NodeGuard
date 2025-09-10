@@ -234,7 +234,7 @@ echo "" >> "${OUTPUT_FILE}"
 # Bob
 echo "# Bob LND Host and Pubkey" >> "${OUTPUT_FILE}"
 echo "BOB_HOST=\"localhost:10002\"" >> "${OUTPUT_FILE}"
-echo "BOB_LOOP=\"localhost:11010\"" >> "${OUTPUT_FILE}"
+echo "BOB_LOOP_HOST=\"localhost:11010\"" >> "${OUTPUT_FILE}"
 if BOB_PUBKEY=$(extract_pubkey "polar-n1-bob"); then
     echo "BOB_PUBKEY=\"${BOB_PUBKEY}\"" >> "${OUTPUT_FILE}"
     echo -e "${GREEN}✓ Bob pubkey extracted${NC}"
@@ -248,7 +248,7 @@ echo "" >> "${OUTPUT_FILE}"
 # Carol
 echo "# Carol LND Host and Pubkey" >> "${OUTPUT_FILE}"
 echo "CAROL_HOST=\"localhost:10003\"" >> "${OUTPUT_FILE}"
-echo "CAROL_LOOP=\"localhost:11011\"" >> "${OUTPUT_FILE}"
+echo "CAROL_LOOP_HOST=\"localhost:11011\"" >> "${OUTPUT_FILE}"
 if CAROL_PUBKEY=$(extract_pubkey "polar-n1-carol"); then
     echo "CAROL_PUBKEY=\"${CAROL_PUBKEY}\"" >> "${OUTPUT_FILE}"
     echo -e "${GREEN}✓ Carol pubkey extracted${NC}"

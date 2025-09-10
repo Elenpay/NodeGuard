@@ -114,7 +114,7 @@ generateemptyblock:
 lncli *cmd:
     #!/usr/bin/env bash
     node=$(go tool gum choose alice bob carol)
-    docker exec polar-n1-$node lncli --network regtest -lnddir /home/lnd/.lnd/ {{cmd}}
+    docker exec polar-n1-$node lncli --network regtest -lnddir /root/.lnd/ {{cmd}}
 
 lnd *cmd:
     just lncli  {{cmd}}
