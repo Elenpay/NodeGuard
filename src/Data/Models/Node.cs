@@ -73,6 +73,8 @@ namespace NodeGuard.Data.Models
 
         public ICollection<ApplicationUser> Users { get; set; }
 
+        public List<SwapOut> SwapOuts { get; set; }
+
         #endregion Relationships
     }
 }

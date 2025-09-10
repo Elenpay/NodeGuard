@@ -20,101 +20,106 @@
 using System.ComponentModel.DataAnnotations.Schema;
 using NBitcoin;
 
-namespace NodeGuard.Data.Models
+namespace NodeGuard.Data.Models;
+
+public enum SwapDirection
 {
-   public enum SwapDirection
-   {
-      Out,
-   }
-   public enum SwapProvider
-   {
-      Loop,
-   }
+   Out,
+}
+public enum SwapProvider
+{
+   Loop,
+}
 
-   public enum SwapOutStatus
-   {
-      Pending,
-      Completed,
-      Failed,
-   }
+public enum SwapOutStatus
+{
+   Pending,
+   Completed,
+   Failed,
+}
 
-   public class SwapOut : Entity
-   {
-      public SwapProvider Provider { get; set; }
 
-      /// <summary>
-      /// The ID of the swap in the provider's system
-      /// </summary>
-      public string? ProviderId { get; set; }
+public class SwapOut : Entity
+{
+   public SwapProvider Provider { get; set; }
 
-      /// <summary>
-      /// The current status of the swap
-      /// </summary>
-      public SwapOutStatus Status { get; set; }
+   /// <summary>
+   /// The ID of the swap in the provider's system
+   /// </summary>
+   public string? ProviderId { get; set; }
 
-      /// <summary>
-      /// Whether the swap is manual or automatic
-      /// </summary>
-      public bool IsManual { get; set; }
+   /// <summary>
+   /// The current status of the swap
+   /// </summary>
+   public SwapOutStatus Status { get; set; }
 
-      /// <summary>
-      /// Amount in satoshis
-      /// </summary>
-      public long SatsAmount { get; set; }
+   /// <summary>
+   /// Whether the swap is manual or automatic
+   /// </summary>
+   public bool IsManual { get; set; }
 
-      /// <summary>
-      /// Calculated property to convert to btc
-      /// </summary>
-      [NotMapped]
-      public decimal Amount => new Money(SatsAmount, MoneyUnit.Satoshi).ToDecimal(MoneyUnit.BTC);
+   /// <summary>
+   /// Amount in satoshis
+   /// </summary>
+   public long SatsAmount { get; set; }
 
-      /// <summary>
-      /// The address where the funds are sent to
-      /// </summary>
-      public int? DestinationWalletId { get; set; }
+   /// <summary>
+   /// Calculated property to convert to btc
+   /// </summary>
+   [NotMapped]
+   public decimal Amount => new Money(SatsAmount, MoneyUnit.Satoshi).ToDecimal(MoneyUnit.BTC);
 
-      public Wallet? DestinationWallet { get; set; }
+   /// <summary>
+   /// The address where the funds are sent to
+   /// </summary>
+   public int? DestinationWalletId { get; set; }
 
-      /// <summary>
-      /// Fees charged by the swap provider
-      /// </summary>
-      public long? ServiceFeeSats { get; set; }
+   public Wallet? DestinationWallet { get; set; }
 
-      public Money ServiceFee => new Money(ServiceFeeSats ?? 0, MoneyUnit.Satoshi);
+   /// <summary>
+   /// The node that executed the swap
+   /// </summary>
+   public int? NodeId { get; set; }
+   public Node? Node { get; set; }
 
-      /// <summary>
-      /// Fees charged by the lightning network for the swap
-      /// </summary>
-      public long? LightningFeeSats { get; set; }
+   /// <summary>
+   /// Fees charged by the swap provider
+   /// </summary>
+   public long? ServiceFeeSats { get; set; }
 
-      public Money LightningFee => new Money(LightningFeeSats ?? 0, MoneyUnit.Satoshi);
+   public Money ServiceFee => new Money(ServiceFeeSats ?? 0, MoneyUnit.Satoshi);
 
-      /// <summary>
-      /// Fees charged by the on-chain network for the swap
-      /// </summary>
-      public long? OnChainFeeSats { get; set; }
+   /// <summary>
+   /// Fees charged by the lightning network for the swap
+   /// </summary>
+   public long? LightningFeeSats { get; set; }
 
-      public Money OnChainFee => new Money(OnChainFeeSats ?? 0, MoneyUnit.Satoshi);
+   public Money LightningFee => new Money(LightningFeeSats ?? 0, MoneyUnit.Satoshi);
 
-      public long TotalFeesSats =>
-         (ServiceFeeSats ?? 0) + (LightningFeeSats ?? 0) + (OnChainFeeSats ?? 0);
+   /// <summary>
+   /// Fees charged by the on-chain network for the swap
+   /// </summary>
+   public long? OnChainFeeSats { get; set; }
 
-      public Money TotalFees => new Money(TotalFeesSats, MoneyUnit.Satoshi);
+   public Money OnChainFee => new Money(OnChainFeeSats ?? 0, MoneyUnit.Satoshi);
 
-      /// <summary>
-      /// Error details if the swap failed
-      /// </summary>
-      public string? ErrorDetails { get; set; }
+   public long TotalFeesSats =>
+      (ServiceFeeSats ?? 0) + (LightningFeeSats ?? 0) + (OnChainFeeSats ?? 0);
 
-      public string? UserRequestorId { get; set; }
+   public Money TotalFees => new Money(TotalFeesSats, MoneyUnit.Satoshi);
 
-      public ApplicationUser? UserRequestor { get; set; }
+   /// <summary>
+   /// Error details if the swap failed
+   /// </summary>
+   public string? ErrorDetails { get; set; }
 
-      /// <summary>
-      /// The Transaction ID of the swap
-      /// </summary>
-      public string? TxId { get; set; }
+   public string? UserRequestorId { get; set; }
 
-   }
+   public ApplicationUser? UserRequestor { get; set; }
+
+   /// <summary>
+   /// The Transaction ID of the swap
+   /// </summary>
+   public string? TxId { get; set; }
 
 }
