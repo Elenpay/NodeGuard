@@ -65,6 +65,8 @@ services:
     image: alpine:latest
     container_name: polar-n1-setup
     depends_on:
+      bitcoind:
+        condition: service_healthy
       alice:
         condition: service_healthy
       bob:

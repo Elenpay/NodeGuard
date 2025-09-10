@@ -31,12 +31,14 @@ using NBXplorer.DerivationStrategy;
 using NBXplorer.Models;
 using NodeGuard.Data.Repositories;
 using Key = NodeGuard.Data.Models.Key;
+using System.Threading.Tasks;
+using Grpc.Core;
 
 namespace NodeGuard.Data
 {
     public static class DbInitializer
     {
-        public static void Initialize(IServiceProvider serviceProvider)
+        public static async Task Initialize(IServiceProvider serviceProvider)
         {
             //DI
             var applicationDbContext = serviceProvider.GetRequiredService<ApplicationDbContext>();
@@ -222,11 +224,14 @@ namespace NodeGuard.Data
                 {
                     try
                     {
-                        minerRPC.UnloadWallet();
-                        minerRPC.LoadWallet("default");
-                    } catch
+                        await minerRPC.UnloadWalletAsync(""); // RPCErrorCode.RPC_WALLET_NOT_FOUND if already unloaded
+                        await minerRPC.LoadWalletAsync("default"); // RPCErrorCode.RPC_WALLET_ALREADY_LOADED if already loaded
+                    } catch (RPCException e) when (e.RPCCode == RPCErrorCode.RPC_WALLET_ALREADY_LOADED || e.RPCCode == RPCErrorCode.RPC_WALLET_NOT_FOUND)
                     {
-                        logger!.LogInformation("Default wallet already loaded");
+                        // Ignore these errors
+                    } catch (Exception e)
+                    {
+                        throw new Exception("Error while loading default wallet in bitcoind", e);
                     }
 
                     var alice = nodes.FirstOrDefault(n => n.Name == "alice");
