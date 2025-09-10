@@ -61,6 +61,12 @@ public class Constants
     public static readonly string MONITOR_WITHDRAWALS_CRON = "10 0/5 * * * ?";
     public static readonly string MONITOR_CHANNELS_CRON = "0 0 */1 * * ?";
     public static readonly string JOB_RETRY_INTERVAL_LIST_IN_MINUTES = "1,2,5,10,20";
+    /// <summary>
+    /// The interval in minutes for the SweepAllNodesWalletsJob to run. 
+    /// This job sweeps funds from all lightning node wallets. Default is 15 minutes.
+    /// Can be configured via SWEEP_ALL_NODES_WALLETS_INTERVAL_MINUTES environment variable.
+    /// </summary>
+    public static readonly int SWEEP_ALL_NODES_WALLETS_INTERVAL_MINUTES = 15;
 
     // Observability
     public static readonly string? OTEL_EXPORTER_ENDPOINT;
@@ -195,6 +201,9 @@ public class Constants
         MONITOR_CHANNELS_CRON = Environment.GetEnvironmentVariable("MONITOR_CHANNELS_CRON") ?? MONITOR_CHANNELS_CRON;
 
         JOB_RETRY_INTERVAL_LIST_IN_MINUTES = Environment.GetEnvironmentVariable("JOB_RETRY_INTERVAL_LIST_IN_MINUTES") ?? JOB_RETRY_INTERVAL_LIST_IN_MINUTES;
+
+        var sweepIntervalMinutes = Environment.GetEnvironmentVariable("SWEEP_ALL_NODES_WALLETS_INTERVAL_MINUTES");
+        if (sweepIntervalMinutes != null) SWEEP_ALL_NODES_WALLETS_INTERVAL_MINUTES = int.Parse(sweepIntervalMinutes);
 
 
         // Observability
