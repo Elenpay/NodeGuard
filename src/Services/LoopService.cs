@@ -18,6 +18,7 @@ public interface ILoopService
     Task<bool> PingAsync(Node node, CancellationToken cancellationToken = default);
     Task<SwapResponse> CreateSwapOutAsync(Node node, SwapOutRequest request, CancellationToken cancellationToken= default);
     Task<SwapResponse> GetSwapAsync(Node node, string swapId, CancellationToken cancellationToken= default);
+    Task<OutQuoteResponse> LoopOutQuoteAsync(Node node, QuoteRequest request, CancellationToken cancellationToken = default);
 }
 
 public class LoopService : ILoopService
@@ -158,5 +159,20 @@ public class LoopService : ILoopService
                 _ => throw new ArgumentOutOfRangeException()
             }
         };
+    }
+
+    public async Task<OutQuoteResponse> LoopOutQuoteAsync(Node node, QuoteRequest request, CancellationToken cancellationToken = default)
+    {
+        if (string.IsNullOrEmpty(node.LoopEndpoint) || string.IsNullOrEmpty(node.LoopMacaroon))
+        {
+            throw new ArgumentException("Node Loop endpoint or macaroon is not set.");
+        }
+
+        var client = GetClient(node);
+
+        _logger.LogInformation("Requesting Loop Out quote for amount {Amount} satoshis", request.Amt);
+        var response = await client.LoopOutQuoteAsync(request, null, null, cancellationToken);
+
+        return response;
     }
 }
