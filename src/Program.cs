@@ -282,6 +282,23 @@ namespace NodeGuard
                     opts.ForJob(nameof(MonitorChannelsJob)).WithIdentity($"{nameof(MonitorChannelsJob)}Trigger")
                         .StartNow().WithCronSchedule(Constants.MONITOR_CHANNELS_CRON);
                 });
+
+                // Monitor SSwaps Job
+                q.AddJob<MonitorSwapsJob>(opts =>
+                {
+                    opts.DisallowConcurrentExecution();
+                    opts.WithIdentity(nameof(MonitorSwapsJob));
+                });
+
+                q.AddTrigger(opts =>
+                {
+                    opts.ForJob(nameof(MonitorSwapsJob))
+                        .WithIdentity($"{nameof(MonitorSwapsJob)}Trigger")
+                        .StartNow().WithSimpleSchedule(scheduleBuilder =>
+                        {
+                            scheduleBuilder.WithIntervalInMinutes(1).RepeatForever();
+                        });
+                });
             });
 
             // ASP.NET Core hosting
