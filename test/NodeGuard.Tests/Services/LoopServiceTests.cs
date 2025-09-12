@@ -67,7 +67,7 @@ namespace NodeGuard.Services
             {
                 Amount = 250000,
                 Address = "bcrt1qm7yjlmepcljpqt43g0jr9l409yy07hfyv8pjf2",  // Replace with actual address
-                MaxFees = 5000
+                MaxServiceFees = 5000
             };
 
             // Act

@@ -1,13 +1,10 @@
 using System.Collections.Concurrent;
-using System.Diagnostics.CodeAnalysis;
 using Google.Protobuf;
-using Grpc.Core;
 using Grpc.Core.Interceptors;
 using Grpc.Net.Client;
 using Looprpc;
 using Microsoft.Extensions.Logging.Abstractions;
 using NodeGuard.Data.Models;
-using NSubstitute.Extensions;
 
 namespace NodeGuard.Services;
 
@@ -18,7 +15,7 @@ public interface ILoopService
     Task<bool> PingAsync(Node node, CancellationToken cancellationToken = default);
     Task<SwapResponse> CreateSwapOutAsync(Node node, SwapOutRequest request, CancellationToken cancellationToken= default);
     Task<SwapResponse> GetSwapAsync(Node node, string swapId, CancellationToken cancellationToken= default);
-    Task<OutQuoteResponse> LoopOutQuoteAsync(Node node, QuoteRequest request, CancellationToken cancellationToken = default);
+    Task<OutQuoteResponse> LoopOutQuoteAsync(Node node, long amt, int confTarget, CancellationToken cancellationToken = default);
 }
 
 public class LoopService : ILoopService
@@ -101,16 +98,44 @@ public class LoopService : ILoopService
 
         var client = GetClient(node);
 
+        const long FeeRateTotalParts = 1_000_000;
+        // Define route independent max routing fees. We have currently no way
+        // to get a reliable estimate of the routing fees. Best we can do is
+        // the minimum routing fees, which is not very indicative.
+        var maxRoutingFeeBase = 10;
+
+        var maxRoutingFeeRate = 20000;
+
+                // CalcFee returns the swap fee for a given swap amount.
+        var calcFee = (long amount, long feeBase, long feeRate) => {
+            return feeBase + amount * feeRate / FeeRateTotalParts;
+        };
+
+        // Took from loopd/cmd/loop/main.go
+        var getMaxRoutingFee = (long amt) => {
+            return calcFee(amt, maxRoutingFeeBase, maxRoutingFeeRate);
+        };
+
         var loopReq = new LoopOutRequest
         {
             Amt = request.Amount,
             Dest = request.Address,
+            MaxMinerFee = request.MaxMinerFees ?? 0,
+            MaxPrepayAmt = request.PrepayAmtSat ?? 0,
+            MaxSwapFee = request.MaxServiceFees ?? 0,
+            MaxPrepayRoutingFee = getMaxRoutingFee(request.PrepayAmtSat ?? 0),
+            MaxSwapRoutingFee = request.MaxRoutingFees ?? getMaxRoutingFee(request.Amount),
+            SweepConfTarget = request.SweepConfTarget,
+            HtlcConfirmations = 3,
+            SwapPublicationDeadline = (ulong)DateTimeOffset.UtcNow.AddMinutes(request.SwapPublicationDeadlineMinutes).ToUnixTimeSeconds(),
+            Label = $"Loop Out {request.Amount} sats on date {DateTime.UtcNow} to {request.Address} via NodeGuard",
+            Initiator = "NodeGuard",
         };
 
-        if (request.MaxFees.HasValue)
+        if (request.MaxServiceFees.HasValue)
         {
-            loopReq.MaxSwapFee = request.MaxFees.Value;
-            _logger.LogDebug("Max fees set to {MaxFees}", request.MaxFees.Value);
+            loopReq.MaxSwapFee = (long)request.MaxServiceFees.Value;
+            _logger.LogDebug("Max fees set to {MaxFees}", request.MaxServiceFees.Value);
         }
 
         if (request.ChannelsOut != null && request.ChannelsOut.Length > 0)
@@ -160,7 +185,7 @@ public class LoopService : ILoopService
         };
     }
 
-    public async Task<OutQuoteResponse> LoopOutQuoteAsync(Node node, QuoteRequest request, CancellationToken cancellationToken = default)
+    public async Task<OutQuoteResponse> LoopOutQuoteAsync(Node node, long amt, int confTarget, CancellationToken cancellationToken = default)
     {
         if (string.IsNullOrEmpty(node.LoopEndpoint) || string.IsNullOrEmpty(node.LoopMacaroon))
         {
@@ -169,9 +194,15 @@ public class LoopService : ILoopService
 
         var client = GetClient(node);
 
-        _logger.LogInformation("Requesting Loop Out quote for amount {Amount} satoshis", request.Amt);
-        var response = await client.LoopOutQuoteAsync(request, null, null, cancellationToken);
+        var quoteRequest = new QuoteRequest
+         {
+            Amt = amt,
+            ConfTarget = 6,
+            ExternalHtlc = true,
+            Private = false
+         };
 
-        return response;
+        _logger.LogInformation("Requesting Loop Out quote for amount {Amount} satoshis", quoteRequest.Amt);
+        return await client.LoopOutQuoteAsync(quoteRequest, null, null, cancellationToken);
     }
 }
