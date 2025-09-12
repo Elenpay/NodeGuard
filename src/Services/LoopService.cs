@@ -105,7 +105,6 @@ public class LoopService : ILoopService
         {
             Amt = request.Amount,
             Dest = request.Address,
-            MaxPrepayAmt = 5000, // Satoshis
         };
 
         if (request.MaxFees.HasValue)
