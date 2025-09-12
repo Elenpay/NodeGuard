@@ -66,7 +66,22 @@ namespace NodeGuard.Data.Repositories
 
          var swaps = await context.SwapOuts
             .Include(s => s.DestinationWallet)
+            .ThenInclude(w => w!.Keys)
             .Include(s => s.UserRequestor)
+            .Include(s => s.Node)
+            .ToListAsync();
+
+         return swaps;
+      }
+
+      public async Task<List<SwapOut>> GetAllPending()
+      {
+         await using var context = await _dbContextFactory.CreateDbContextAsync();
+
+         var swaps = await context.SwapOuts
+            .Include(s => s.DestinationWallet)
+            .Include(s => s.UserRequestor)
+            .Where(s => s.Status == SwapOutStatus.Pending)
             .ToListAsync();
 
          return swaps;

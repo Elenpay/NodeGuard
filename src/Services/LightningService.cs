@@ -31,6 +31,7 @@ using System.Security.Cryptography;
 using NodeGuard.Data;
 using NodeGuard.Helpers;
 using Microsoft.EntityFrameworkCore;
+using Routerrpc;
 using Channel = NodeGuard.Data.Models.Channel;
 using Transaction = NBitcoin.Transaction;
 
@@ -117,6 +118,30 @@ namespace NodeGuard.Services
         /// <param name="closeAddress"></param>
         /// <returns></returns>
         public Task<Channel> CreateChannel(Node source, int destId, ChannelPoint channelPoint, long satsAmount, string? closeAddress = null);
+
+        /// <summary>
+        /// Lists all channels for a given node
+        /// </summary>
+        /// <param name="node"></param>
+        /// <returns></returns>
+        public Task<ListChannelsResponse?> ListChannels(Node node);
+
+        /// <summary>
+        /// Gets the channel balance for a given node
+        /// </summary>
+        /// <param name="node"></param>
+        /// <returns></returns>
+        public Task<ChannelBalanceResponse?> ChannelBalanceAsync(Node node);
+
+        /// <summary>
+        /// Estimates the routing fee for a payment
+        /// </summary>
+        /// <param name="destPubkey">The destination node pubkey</param>
+        /// <param name="amountSat">The amount in satoshis</param>
+        /// <param name="paymentRequest">Optional payment request</param>
+        /// <param name="timeout">Optional timeout in seconds</param>
+        /// <returns></returns>
+        public Task<RouteFeeResponse?> EstimateRouteFee(string destPubkey, long amountSat, string? paymentRequest = null, uint timeout = 30);
     }
 
     public class LightningService : ILightningService
@@ -131,6 +156,7 @@ namespace NodeGuard.Services
         private readonly INBXplorerService _nbXplorerService;
         private readonly ICoinSelectionService _coinSelectionService;
         private readonly ILightningClientService _lightningClientService;
+        private readonly ILightningRouterService _lightningRouterService;
 
         public LightningService(ILogger<LightningService> logger,
             IChannelOperationRequestRepository channelOperationRequestRepository,
@@ -141,7 +167,8 @@ namespace NodeGuard.Services
             IRemoteSignerService remoteSignerService,
             INBXplorerService nbXplorerService,
             ICoinSelectionService coinSelectionService,
-            ILightningClientService lightningClientService
+            ILightningClientService lightningClientService,
+            ILightningRouterService lightningRouterService
         )
 
         {
@@ -155,6 +182,7 @@ namespace NodeGuard.Services
             _nbXplorerService = nbXplorerService;
             _coinSelectionService = coinSelectionService;
             _lightningClientService = lightningClientService;
+            _lightningRouterService = lightningRouterService;
         }
 
         /// <summary>
@@ -1360,6 +1388,77 @@ namespace NodeGuard.Services
             }
 
             return result;
+        }
+
+        public async Task<ListChannelsResponse?> ListChannels(Node node)
+        {
+            if (node == null) throw new ArgumentNullException(nameof(node));
+
+            try
+            {
+                return await _lightningClientService.ListChannels(node);
+            }
+            catch (Exception e)
+            {
+                _logger.LogError(e, "Error while listing channels for node: {NodeId}", node.Id);
+                return null;
+            }
+        }
+
+        public async Task<ChannelBalanceResponse?> ChannelBalanceAsync(Node node)
+        {
+            if (node == null) throw new ArgumentNullException(nameof(node));
+
+            try
+            {
+                return await _lightningClientService.ChannelBalanceAsync(node);
+            }
+            catch (Exception e)
+            {
+                _logger.LogError(e, "Error while getting channel balance for node: {NodeId}", node.Id);
+                return null;
+            }
+        }
+
+        public async Task<RouteFeeResponse?> EstimateRouteFee(string destPubkey, long amountSat, string? paymentRequest = null, uint timeout = 30)
+        {
+            if (string.IsNullOrWhiteSpace(destPubkey))
+                throw new ArgumentException("Value cannot be null or whitespace.", nameof(destPubkey));
+
+            if (amountSat <= 0)
+                throw new ArgumentException("Amount must be greater than zero.", nameof(amountSat));
+
+            var node = (await _nodeRepository.GetAllManagedByNodeGuard()).FirstOrDefault();
+            if (node == null)
+            {
+                _logger.LogError("No managed node found on the system");
+                return null;
+            }
+
+            try
+            {
+                var routeFeeRequest = new RouteFeeRequest
+                {
+                    AmtSat = amountSat,
+                    Timeout = timeout
+                };
+
+                if (!string.IsNullOrWhiteSpace(paymentRequest))
+                {
+                    routeFeeRequest.PaymentRequest = paymentRequest;
+                }
+                else
+                {
+                    routeFeeRequest.Dest = ByteString.CopyFrom(Convert.FromHexString(destPubkey));
+                }
+
+                return await _lightningRouterService.EstimateRouteFee(node, routeFeeRequest);
+            }
+            catch (Exception e)
+            {
+                _logger.LogError(e, "Error while estimating route fee for destination: {DestPubkey}", destPubkey);
+                return null;
+            }
         }
     }
 }

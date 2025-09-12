@@ -51,6 +51,24 @@ namespace NodeGuard.Helpers
             return result;
         }
 
+        /// <summary>
+        /// Truncates the tail of the string to show only numberOfCharactersToDisplay from head and dots in the end.
+        /// </summary>
+        /// <param name="str"></param>
+        /// <param name="numberOfCharactersToDisplay"></param>
+        /// <returns></returns>
+        public static string TruncateTail(string? str, int numberOfCharactersToDisplay)
+        {
+            if (string.IsNullOrWhiteSpace(str))
+            {
+                return string.Empty;
+            }
+            var truncationString = "...";
+            var result = str.Truncate(numberOfCharactersToDisplay + truncationString.Length, truncationString, Truncator.FixedLength, TruncateFrom.Right);
+            return result;
+        }
+
+
         public static bool IsTrue(string? str)
         {
             if (string.IsNullOrWhiteSpace(str))

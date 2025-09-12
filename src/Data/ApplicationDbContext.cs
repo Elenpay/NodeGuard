@@ -59,6 +59,15 @@ namespace NodeGuard.Data
                 .WithMany(wallet => wallet.LiquidityRulesAsReverseSwapWallet)
                 .HasForeignKey(lr => lr.ReverseSwapWalletId);
 
+            modelBuilder.Entity<SwapOut>()
+                .HasOne(so => so.DestinationWallet)
+                .WithMany(w => w.SwapOuts)
+                .HasForeignKey(so => so.DestinationWalletId);
+            modelBuilder.Entity<SwapOut>()
+                .HasOne(so => so.Node)
+                .WithMany(u => u.SwapOuts)
+                .HasForeignKey(so => so.NodeId);
+
             modelBuilder.Entity<Node>().HasIndex(x => x.PubKey).IsUnique();
             modelBuilder.Entity<Wallet>().HasIndex(x => new { x.InternalWalletSubDerivationPath, x.InternalWalletMasterFingerprint }).IsUnique();
 

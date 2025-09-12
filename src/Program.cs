@@ -124,6 +124,7 @@ namespace NodeGuard
             builder.Services.AddTransient<ICoinSelectionService, CoinSelectionService>();
             builder.Services.AddTransient<IPriceConversionService, PriceConversionService>();
             builder.Services.AddSingleton<ILightningClientService, LightningClientService>();
+            builder.Services.AddSingleton<ILightningRouterService, LightningRouterService>();
 
             //BlazoredToast
             builder.Services.AddBlazoredToast();
@@ -135,6 +136,8 @@ namespace NodeGuard
             builder.Services.AddTransient<IBitcoinService, BitcoinService>();
             builder.Services.AddTransient<NotificationService, NotificationService>();
             builder.Services.AddTransient<INBXplorerService, NBXplorerService>();
+            builder.Services.AddTransient<ILoopService, LoopService>();
+            builder.Services.AddTransient<ISwapsService, SwapsService>();
 
             //DbContext
             var dataSourceBuilder = new NpgsqlDataSourceBuilder(Constants.POSTGRES_CONNECTIONSTRING);
@@ -278,6 +281,23 @@ namespace NodeGuard
                 {
                     opts.ForJob(nameof(MonitorChannelsJob)).WithIdentity($"{nameof(MonitorChannelsJob)}Trigger")
                         .StartNow().WithCronSchedule(Constants.MONITOR_CHANNELS_CRON);
+                });
+
+                // Monitor SSwaps Job
+                q.AddJob<MonitorSwapsJob>(opts =>
+                {
+                    opts.DisallowConcurrentExecution();
+                    opts.WithIdentity(nameof(MonitorSwapsJob));
+                });
+
+                q.AddTrigger(opts =>
+                {
+                    opts.ForJob(nameof(MonitorSwapsJob))
+                        .WithIdentity($"{nameof(MonitorSwapsJob)}Trigger")
+                        .StartNow().WithSimpleSchedule(scheduleBuilder =>
+                        {
+                            scheduleBuilder.WithIntervalInMinutes(1).RepeatForever();
+                        });
                 });
             });
 

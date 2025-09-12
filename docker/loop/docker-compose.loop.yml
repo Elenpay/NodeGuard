@@ -20,6 +20,7 @@ services:
     command:
       - "daemon"
       - "--maxamt=5000000"
+      - "--batcher_cutoff_time=1m"
       - "--lnd.host=alice:10009"
       - "--lnd.macaroonpath=/shared/lnd/alice/admin.macaroon"
       - "--lnd.tlspath=/shared/lnd/alice/tls.cert"
