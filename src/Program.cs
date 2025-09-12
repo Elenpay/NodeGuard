@@ -50,7 +50,7 @@ namespace NodeGuard
 {
     public class Program
     {
-        public static void Main(string[] args)
+        public static async Task Main(string[] args)
         {
             AppContext.SetSwitch("Npgsql.EnableLegacyTimestampBehavior", true);
 
@@ -353,7 +353,7 @@ namespace NodeGuard
                 var servicesProvider = scope.ServiceProvider;
                 try
                 {
-                    DbInitializer.Initialize(servicesProvider);
+                    await DbInitializer.Initialize(servicesProvider);
                 }
                 catch (Exception ex)
                 {

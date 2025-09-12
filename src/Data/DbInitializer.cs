@@ -30,9 +30,6 @@ using NBXplorer;
 using NBXplorer.DerivationStrategy;
 using NBXplorer.Models;
 using NodeGuard.Data.Repositories;
-using Key = NodeGuard.Data.Models.Key;
-using System.Threading.Tasks;
-using Grpc.Core;
 
 namespace NodeGuard.Data
 {
@@ -218,7 +215,7 @@ namespace NodeGuard.Data
                 if (adminUser == null || financeUser == null)
                     throw new Exception("Could't create admin or finance user");
 
-                var nodes = Task.Run(() => nodeRepository.GetAll()).Result;
+                var nodes = await nodeRepository.GetAll();
 
                 if (Constants.IS_DEV_ENVIRONMENT)
                 {
@@ -248,7 +245,7 @@ namespace NodeGuard.Data
                             AutosweepEnabled = false
 
                         };
-                        _ = Task.Run(() => nodeRepository.AddAsync(alice)).Result;
+                        _ = await nodeRepository.AddAsync(alice);
                     }
                     else
                     {
@@ -274,7 +271,7 @@ namespace NodeGuard.Data
                             AutosweepEnabled = false
 
                         };
-                        _ = Task.Run(() => nodeRepository.AddAsync(carol)).Result;
+                        _ = await nodeRepository.AddAsync(carol);
                     }
                     else
                     {
@@ -301,7 +298,7 @@ namespace NodeGuard.Data
                             Users = new List<ApplicationUser>(),
                             AutosweepEnabled = false
                         };
-                        _ = Task.Run(() => nodeRepository.AddAsync(bob)).Result;
+                        _ = await nodeRepository.AddAsync(bob);
                     }
                     else
                     {
@@ -319,7 +316,7 @@ namespace NodeGuard.Data
                     if (!adminUser.Nodes.Any(n => n.Name == bob.Name)) adminUser.Nodes.Add(bob);
                     if (!adminUser.Nodes.Any(n => n.Name == carol.Name)) adminUser.Nodes.Add(carol);
 
-                    _ = applicationDbContext.SaveChanges();
+                    _ = await applicationDbContext.SaveChangesAsync();
                 }
 
                 var internalWallet = applicationDbContext.InternalWallets.FirstOrDefault();
@@ -329,7 +326,7 @@ namespace NodeGuard.Data
                     internalWallet = CreateWallet.CreateInternalWallet(logger);
 
                     applicationDbContext.Add(internalWallet);
-                    applicationDbContext.SaveChanges();
+                    await applicationDbContext.SaveChangesAsync();
                 }
 
                 if (!applicationDbContext.Wallets.Any() && adminUser != null)
@@ -468,7 +465,7 @@ namespace NodeGuard.Data
                 }
             }
 
-            applicationDbContext.SaveChanges();
+            await applicationDbContext.SaveChangesAsync();
         }
 
         private static void SetRoles(RoleManager<IdentityRole> roleManager)
@@ -533,14 +530,24 @@ namespace NodeGuard.Data
 
         private static NewTransactionEvent? WaitNbxplorerNotification(LongPollingNotificationSession evts, DerivationStrategyBase derivationStrategy, long lastEventId)
         {
-            var events = evts.GetEvents(lastEventId);
-            foreach (var evt in events)
+            var retryCount = 10;
+            while (true)
             {
-                if (evt is NewTransactionEvent tx)
+                var events = evts.GetEvents(lastEventId);
+                foreach (var evt in events)
                 {
-                    if (tx.DerivationStrategy == derivationStrategy)
-                        return tx;
+                    if (evt is NewTransactionEvent tx)
+                    {
+                        if (tx.DerivationStrategy == derivationStrategy)
+                            return tx;
+                    }
+                    lastEventId = evt.EventId;
                 }
+
+                if (retryCount-- == 0)
+                    break;
+                    
+                Thread.Sleep(1_000);
             }
 
             return null;
