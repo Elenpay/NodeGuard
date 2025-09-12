@@ -192,7 +192,7 @@
             ToastService.ShowSuccess("Swap created successfully");
             StateHasChanged();
         }
-        catch (RpcException ex) when (ex.StatusCode == StatusCode.OutOfRange)
+        catch (RpcException ex)
         {
             ToastService.ShowError(ex.Status.Detail);
         }
@@ -224,37 +224,49 @@
     {
         ArgumentNullException.ThrowIfNull(_selectedWallet, nameof(_selectedWallet));
         ArgumentNullException.ThrowIfNull(_selectedNode, nameof(_selectedNode));
-        var quote = await SwapsService.GetSwapOutQuoteAsync(_selectedNode, _selectedProvider, new SwapOutQuoteRequest{
-            Amount = (long)(_amountBtc * 100_000_000m),
-        });
-
-        var serviceFee = new Money(quote.ServiceFees);
-        var offChainFee = new Money(quote.OffChainFees);
-        var onChainFee = new Money(quote.OnChainFees);
-        var totalFees = new Money(quote.ServiceFees + quote.OffChainFees + quote.OnChainFees);
-        
-        _confirmationModalBody = $"You are about to create a new swap with the following details:<br><br>" +
-            $"<strong>- Provider:</strong> {_selectedProvider}<br>" +
-            $"<strong>- Direction:</strong> {_selectedDirection}<br>" +
-            $"<strong>- Amount:</strong> {FormatBtcWithUsd(_amountBtc)}<br>" +
-            $"<strong>- Estimated Fees:</strong><br>" +
-            $"&nbsp;&nbsp;&nbsp;&nbsp;<strong>• Service Fee:</strong> {FormatBtcWithUsd(serviceFee.ToUnit(MoneyUnit.BTC))}<br>" +
-            $"&nbsp;&nbsp;&nbsp;&nbsp;<strong>• Off-Chain Fee:</strong> {FormatBtcWithUsd(offChainFee.ToUnit(MoneyUnit.BTC))}<br>" +
-            $"&nbsp;&nbsp;&nbsp;&nbsp;<strong>• On-Chain Fee:</strong> {FormatBtcWithUsd(onChainFee.ToUnit(MoneyUnit.BTC))}<br>" +
-            $"&nbsp;&nbsp;&nbsp;&nbsp;<strong>• Total:</strong> {FormatBtcWithUsd(totalFees.ToUnit(MoneyUnit.BTC))}<br>" +
-            $"<strong>- Origin Node:</strong> {_selectedNode?.Name}<br>" +
-            $"<strong>- Destination Wallet:</strong> {_selectedWallet?.Name}<br><br>" +
-            "<br>" +
-            $"<strong>- Estimated total cost:</strong> {FormatBtcWithUsd((Money.FromUnit(_amountBtc, MoneyUnit.BTC) + totalFees).ToUnit(MoneyUnit.BTC))}<br>";
-
-        if (!quote.CouldEstimateRoutingFees)
+        try
         {
-            _confirmationModalBody += "<br>" + $"<span style='color: orange;'><strong>Warning:</strong> Routing fees could not be estimated. The actual fees might be higher than the estimated ones.</span><br><br>";
-        }
-            
-        _confirmationModalBody += $"<br>Please confirm that you want to proceed.";
+            var quote = await SwapsService.GetSwapOutQuoteAsync(_selectedNode, _selectedProvider, new SwapOutQuoteRequest{
+                Amount = (long)(_amountBtc * 100_000_000m),
+            });
 
-        await _confirmationModal.ShowModal();
+            var serviceFee = new Money(quote.ServiceFees);
+            var offChainFee = new Money(quote.OffChainFees);
+            var onChainFee = new Money(quote.OnChainFees);
+            var totalFees = new Money(quote.ServiceFees + quote.OffChainFees + quote.OnChainFees);
+            
+            _confirmationModalBody = $"You are about to create a new swap with the following details:<br><br>" +
+                $"<strong>- Provider:</strong> {_selectedProvider}<br>" +
+                $"<strong>- Direction:</strong> {_selectedDirection}<br>" +
+                $"<strong>- Amount:</strong> {FormatBtcWithUsd(_amountBtc)}<br>" +
+                $"<strong>- Estimated Fees:</strong><br>" +
+                $"&nbsp;&nbsp;&nbsp;&nbsp;<strong>• Service Fee:</strong> {FormatBtcWithUsd(serviceFee.ToUnit(MoneyUnit.BTC))}<br>" +
+                $"&nbsp;&nbsp;&nbsp;&nbsp;<strong>• Off-Chain Fee:</strong> {FormatBtcWithUsd(offChainFee.ToUnit(MoneyUnit.BTC))}<br>" +
+                $"&nbsp;&nbsp;&nbsp;&nbsp;<strong>• On-Chain Fee:</strong> {FormatBtcWithUsd(onChainFee.ToUnit(MoneyUnit.BTC))}<br>" +
+                $"&nbsp;&nbsp;&nbsp;&nbsp;<strong>• Total:</strong> {FormatBtcWithUsd(totalFees.ToUnit(MoneyUnit.BTC))}<br>" +
+                $"<strong>- Origin Node:</strong> {_selectedNode?.Name}<br>" +
+                $"<strong>- Destination Wallet:</strong> {_selectedWallet?.Name}<br><br>" +
+                "<br>" +
+                $"<strong>- Estimated total cost:</strong> {FormatBtcWithUsd((Money.FromUnit(_amountBtc, MoneyUnit.BTC) + totalFees).ToUnit(MoneyUnit.BTC))}<br>";
+
+            if (!quote.CouldEstimateRoutingFees)
+            {
+                _confirmationModalBody += "<br>" + $"<span style='color: orange;'><strong>Warning:</strong> Routing fees could not be estimated. The actual fees might be higher than the estimated ones.</span><br><br>";
+            }
+                
+            _confirmationModalBody += $"<br>Please confirm that you want to proceed.";
+
+            await _confirmationModal.ShowModal();
+        }
+        catch (RpcException ex)
+        {
+            ToastService.ShowError(ex.Status.Detail);
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Error getting swap quote");
+            ToastService.ShowError("Failed to get swap quote, please try again later");
+        }
     }
 
     private async Task CloseConfirmationModal()
