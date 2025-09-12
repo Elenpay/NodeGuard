@@ -1,61 +1,5 @@
-name: nodeguard
+name: mempool
 services:
-  nodeguard_postgres:
-    container_name: nodeguard_postgres
-    image: postgres:16
-    restart: always
-    environment:
-      POSTGRES_DB: nodeguard
-      POSTGRES_USER: rw_dev
-      POSTGRES_PASSWORD: rw_dev
-      TZ: Europe/Madrid
-    volumes:
-      - nodeguard_postgres_data:/var/lib/postgresql/data
-    ports:
-      - 25432:5432
-
-  nbxplorer:
-    restart: unless-stopped
-    image: ghcr.io/elenpay/nbxplorer:elenpay-develop
-    platform: linux/amd64
-    hostname: nbxplorer
-    ports:
-      - "32838:32838"
-    depends_on:
-      - nbxplorer_postgres
-    environment:
-      NBXPLORER_NETWORK: regtest
-      NBXPLORER_BIND: 0.0.0.0:32838
-      NBXPLORER_TRIMEVENTS: 10000
-      NBXPLORER_SIGNALFILESDIR: /datadir
-      NBXPLORER_POSTGRES: Host=nbxplorer_postgres;Port=5432;Database=nbxplorer;Username=rw_dev;Password=rw_dev
-      NBXPLORER_CHAINS: "btc"
-      NBXPLORER_BTCRPCUSER: "polaruser"
-      NBXPLORER_BTCRPCPASSWORD: "polarpass"
-      NBXPLORER_BTCRPCURL: http://host.docker.internal:18443/
-      NBXPLORER_BTCNODEENDPOINT: host.docker.internal:19444
-    command: ["--noauth"]
-    volumes:
-      - "bitcoin_datadir:/root/.bitcoin"
-
-  nbxplorer_postgres:
-    container_name: nbxplorer_postgres
-    image: postgres:16
-    restart: always
-    environment:
-      POSTGRES_DB: nbxplorer
-      POSTGRES_USER: rw_dev
-      POSTGRES_PASSWORD: rw_dev
-      TZ: Europe/Madrid
-    volumes:
-      - nbxplorer_postgres_data:/var/lib/postgresql/data
-    ports:
-      - 35432:5432
-    healthcheck:
-      test: ["CMD", "pg_isready", "-U", "rw_dev"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
 
   mempool-frontend-btc:
     profiles: ["mempool"]
@@ -97,7 +41,7 @@ services:
     depends_on:
       - mempool-db-btc
     volumes:
-      - mempool-backend-btc-data:/backend/cache
+      - mempool_backend_btc_data:/backend/cache
 
   mempool-db-btc:
     profiles: ["mempool"]
@@ -110,7 +54,7 @@ services:
     container_name: 40swap_mempool_db_btc
     restart: always
     volumes:
-      - mempool-db-btc-data:/var/lib/mysql
+      - mempool_db_btc_data:/var/lib/mysql
 
   electrumx:
     profiles: ["mempool"]
@@ -124,7 +68,7 @@ services:
       - "50001"
       - "50002"
     volumes:
-      - electrumx-data:/data
+      - electrumx_data:/data
     environment:
       # bitcoind is valid
       - DAEMON_URL=http://polaruser:polarpass@host.docker.internal:18443
@@ -139,8 +83,6 @@ services:
     restart: always
 
 volumes:
-  nodeguard_postgres_data:
-  bitcoin_datadir:
-  nbxplorer_datadir:
-  nbxplorer_postgres_data:
-  nodeguard_data_keys_dir:
+  mempool_backend_btc_data:
+  electrumx_data:
+  mempool_db_btc_data:

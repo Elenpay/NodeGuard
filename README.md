@@ -34,19 +34,19 @@ TODO
 
 # Dev environment quickstart
 
-1. Run polar regtest network with Polar, import devnetwork.zip (in the root of this repo) and start it
-2. Open FundsManager.sln with Visual Studio or your favourite IDE/EDITOR
-3. Set startup project to docker-compose
-4. Run
+Run `tilt up` to run the whole infrastructure, then `just run` to run the project.
 
-##Requirements
+## Requirements
 
 - VS Code / Visual Studio
 - Docker desktop
 - Dotnet SDK 6+
 - Dotnet-ef global tool
-- [Polar lightning](https://lightningpolar.com/)
 - AWS Lambda function + AWS credentials for the Remote FundsManagerSigner, check [this](#trusted-coordinator-signing)
+- Tilt
+- Docker
+- (Optional) [Polar lightning](https://lightningpolar.com/)
+- (Optional) Go go 1.24.3 or later (for using the interactive commands in the .justfile)
 
 
 ## Migrations
@@ -72,27 +72,38 @@ dotnet tool install -g dotnet-ef
 
 ## Developing
 
-### Visual Studio
-Launch the FundsManager Docker VS task
-Launch The FundsManager VS task
+## Running the infrastructure
 
-### Rider/IntelliJ
-Import and start `devnetwork.polar.zip` in polar
-Launch the FundsManager Docker NOVS task
-Launch The FundsManager NOVS task
+### Using Tilt
+1. Install [tilt](https://docs.tilt.dev/install.html)
+2. Run `tilt up` on your terminal
 
-### Visual Studio Code
-Import and start `devnetwork.polar.zip` in polar
-Start docker compose from terminal (see below)
-Then, start the vscode launch configuration `Launch against running docker-compose env (DEV)`
-Navigate to http://localhost:38080/
+### Using docker compose
 
-### Starting docker compose from terminal
-Start all the dependencies in docker-compose by running:
-```bash
-cd docker
-docker-compose -f docker-compose.dev-novs.yml up -d
-```
+1. If you want to run a lightweight version of the project use `docker compose --profile polar up -d` on your terminal. Add `--profile loop` and `--profile mempool` if you need to run them too
+
+### Using polar
+
+1. You can run the Polar network by importing the `devnetwork.zip` into it. Then you have to run `docker compose up -d` for the rest of the needed containers to start.
+
+## Running the project
+
+### Using the terminal
+
+1. Run `just run` to build and run the project or `just watch` for hot reload on your terminal
+
+### Using Visual Studio Code
+
+1. Run the Debug NG launch setting on your terminal
+
+### Using Rider/IntelliJ
+
+1. You can run the task `NodeGuard local debug` that is in the `launchSettings.json` from any other IDE, just make sure you run first `./docker/extract-macaroons.sh` after starting the infrastructure so NodeGuard can get the latest macaroons
+
+## Navigating NodeGuard
+
+1. After completing the previous steps, navigate to `http://localhost:38080` to log in
+
 
 # Security 
 Check [Security.md](SECURITY.md)

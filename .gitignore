@@ -9,6 +9,7 @@ src/NodeGuard.csproj.user
 test/NodeGuard.Tests/bin
 test/NodeGuard.Tests/obj
 # Files created by Polar runs
-devnetwork.polar/
-docker/volumes
+devnetwork*/
 .DS_Store
+# NodeGuard macaroon environment file
+src/nodeguard-macaroons.env

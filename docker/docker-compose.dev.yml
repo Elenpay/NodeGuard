@@ -1,0 +1,66 @@
+name: nodeguard
+
+include:
+  - ./bitcoin/docker-compose.polar.yml
+
+services:
+  nbxplorer:
+    restart: unless-stopped
+    image: ghcr.io/elenpay/nbxplorer:elenpay-develop
+    platform: linux/amd64
+    hostname: nbxplorer
+    ports:
+      - "32838:32838"
+    depends_on:
+      - postgres
+      - bitcoind
+    environment:
+      NBXPLORER_NETWORK: regtest
+      NBXPLORER_BIND: 0.0.0.0:32838
+      NBXPLORER_TRIMEVENTS: 10000
+      NBXPLORER_SIGNALFILESDIR: /datadir
+      NBXPLORER_POSTGRES: User ID=postgres;Host=postgres;Port=5432;Database=nbxplorer;
+      NBXPLORER_CHAINS: "btc"
+      NBXPLORER_BTCRPCUSER: "polaruser"
+      NBXPLORER_BTCRPCPASSWORD: "polarpass"
+      NBXPLORER_BTCRPCURL: http://bitcoind:18443
+      NBXPLORER_BTCNODEENDPOINT: bitcoind:18444
+    command: ["--noauth"]
+    volumes:
+      - "bitcoin_datadir:/root/.bitcoin"
+      - "nbxplorer_datadir:/datadir"
+    healthcheck:
+      # Check via /proc/net if we are connected to the bitcoin node at port 18444.
+      # NOTE: this could be improved by calling curl <endpoint> but this machine does not have it
+      # installed.
+      test:
+        [
+          "CMD-SHELL",
+          "cat /proc/net/tcp /proc/net/tcp6 | awk '{print $3}' | grep $(printf ':%X' 18444)",
+        ]
+      interval: 1s
+      timeout: 3m
+      retries: 180
+
+  postgres:
+    container_name: postgres
+    image: postgres:16
+    restart: always
+    environment:
+      POSTGRES_HOST_AUTH_METHOD: trust
+      TZ: Europe/Madrid
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    ports:
+      - 25432:5432
+    healthcheck:
+      test: ["CMD", "pg_isready", "-U", "postgres"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+
+volumes:
+  postgres_data:
+  bitcoin_datadir:
+  nbxplorer_datadir:

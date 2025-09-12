@@ -11,7 +11,7 @@
                 "/property:GenerateFullPaths=true",
                 "/consoleloggerparameters:NoSummary"
             ],
-            "problemMatcher": "$msCompile"
+            "problemMatcher": "$msCompile",
         },
         {
             "label": "publish",
@@ -36,6 +36,23 @@
                 "${workspaceFolder}/src/NodeGuard.csproj"
             ],
             "problemMatcher": "$msCompile"
+        },
+        {
+            "label": "extract-macaroons",
+            "command": "sh",
+            "type": "process",
+            "args": [
+                "-c",
+                "./docker/extract-macaroons.sh"
+            ]
+        },
+        {
+            "label": "extract-macaroons-and-build",
+            "dependsOrder": "sequence",
+            "dependsOn": [
+                "extract-macaroons",
+                "build"
+            ]
         }
     ]
 }
