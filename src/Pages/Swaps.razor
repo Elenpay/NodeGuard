@@ -34,7 +34,7 @@
                     </DisplayTemplate>
                 </DataGridColumn>
                 <DataGridColumn TItem="SwapOut" Field="@nameof(SwapOut.Provider)" Caption="Provider" Sortable="true" Displayable="true" />
-                <DataGridColumn TItem="SwapOut" Field="@nameof(SwapOut.IsManual)" Caption="Is Maual" Sortable="true" Displayable="true" />
+                <DataGridColumn TItem="SwapOut" Field="@nameof(SwapOut.IsManual)" Caption="Is Manual" Sortable="true" Displayable="true" />
                 <DataGridColumn TItem="SwapOut" Editable="false" Field="@nameof(SwapOut.Node)" Caption="Source Node" Sortable="true" Displayable="@IsColumnVisible(SwapsColumnName.DestinationWallet)">
                     <DisplayTemplate>
                         @(context.Node?.Name ?? "Unknown")

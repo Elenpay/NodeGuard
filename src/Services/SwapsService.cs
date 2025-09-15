@@ -91,7 +91,7 @@ namespace NodeGuard.Services
       {
          var loopResponse = await _loopService.LoopOutQuoteAsync(node, request.Amount, request.ConfTarget, cancellationToken);
 
-         var quoute = new SwapOutQuoteResponse
+         var quote = new SwapOutQuoteResponse
          {
             ServiceFees = loopResponse.SwapFeeSat,
             OnChainFees = loopResponse.HtlcSweepFeeSat,
@@ -104,16 +104,16 @@ namespace NodeGuard.Services
          
          if (lnResponse.FailureReason != Lnrpc.PaymentFailureReason.FailureReasonNone)
          {
-            quoute.CouldEstimateRoutingFees = false;
-            quoute.OffChainFees = 0;
+            quote.CouldEstimateRoutingFees = false;
+            quote.OffChainFees = 0;
          }
          else
          {
-            quoute.CouldEstimateRoutingFees = true;
-            quoute.OffChainFees = lnResponse.RoutingFeeMsat / 1000;
+            quote.CouldEstimateRoutingFees = true;
+            quote.OffChainFees = lnResponse.RoutingFeeMsat / 1000;
          }
 
-         return quoute;
+         return quote;
       }
    }
 }
