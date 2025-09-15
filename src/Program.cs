@@ -333,7 +333,7 @@ namespace NodeGuard
                 var servicesProvider = scope.ServiceProvider;
                 try
                 {
-                    await DbInitializer.Initialize(servicesProvider);
+                    await DbInitializer.InitializeAsync(servicesProvider);
                 }
                 catch (Exception ex)
                 {
