@@ -21,7 +21,6 @@ public class MonitorSwapsJob : IJob
         _nodeRepository = nodeRepository;
         _swapOutRepository = swapOutRepository;
         _swapsService = swapsService;
-        _nodeRepository = nodeRepository;
     }
 
     private void CleanUp(SwapOut swap, string errorMessage)
