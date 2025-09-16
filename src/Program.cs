@@ -296,7 +296,14 @@ namespace NodeGuard
                         .WithIdentity($"{nameof(MonitorSwapsJob)}Trigger")
                         .StartNow().WithSimpleSchedule(scheduleBuilder =>
                         {
-                            scheduleBuilder.WithIntervalInMinutes(1).RepeatForever();
+                            if (Constants.IS_DEV_ENVIRONMENT)
+                            {
+                                scheduleBuilder.WithIntervalInSeconds(1).RepeatForever();
+                            }
+                            else
+                            {
+                                scheduleBuilder.WithIntervalInMinutes(10).RepeatForever();
+                            }
                         });
                 });
             });
