@@ -11,13 +11,13 @@ namespace NodeGuard.Migrations
         protected override void Up(MigrationBuilder migrationBuilder)
         {
             migrationBuilder.AddColumn<string>(
-                name: "LoopEndpoint",
+                name: "LoopdEndpoint",
                 table: "Nodes",
                 type: "text",
                 nullable: true);
 
             migrationBuilder.AddColumn<string>(
-                name: "LoopMacaroon",
+                name: "LoopdMacaroon",
                 table: "Nodes",
                 type: "text",
                 nullable: true);
@@ -27,11 +27,11 @@ namespace NodeGuard.Migrations
         protected override void Down(MigrationBuilder migrationBuilder)
         {
             migrationBuilder.DropColumn(
-                name: "LoopEndpoint",
+                name: "LoopdEndpoint",
                 table: "Nodes");
 
             migrationBuilder.DropColumn(
-                name: "LoopMacaroon",
+                name: "LoopdMacaroon",
                 table: "Nodes");
         }
     }
