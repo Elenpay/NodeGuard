@@ -39,6 +39,7 @@ public enum SwapOutStatus
 }
 
 
+// TODO: When we support SwapOuts, we should rename this to just Swap and reuse this table for both
 public class SwapOut : Entity
 {
    public SwapProvider Provider { get; set; }
