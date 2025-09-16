@@ -283,7 +283,7 @@ namespace NodeGuard
                         .StartNow().WithCronSchedule(Constants.MONITOR_CHANNELS_CRON);
                 });
 
-                // Monitor SSwaps Job
+                // Monitor Swaps Job
                 q.AddJob<MonitorSwapsJob>(opts =>
                 {
                     opts.DisallowConcurrentExecution();
