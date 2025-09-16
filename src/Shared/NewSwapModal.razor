@@ -204,7 +204,7 @@
     public required ConfirmationModal _confirmationModal;
     private SwapDirection _selectedDirection = SwapDirection.Out;
     private SwapProvider _selectedProvider = SwapProvider.Loop;
-    private decimal _amountBtc = 0.00001m;
+    private decimal _amountBtc = 0.0025m;
     private decimal _maxServiceFeesBtc = 0.00001m;
     private List<Wallet> _availableWallets = [];
     private Wallet? _selectedWallet;
@@ -215,10 +215,10 @@
     private string _confirmationModalBody = string.Empty;
     private decimal _btcPrice;
     private bool _showAdvancedOptions = false;
-    private int _swapPublicationDeadlineOffsetMinutes = 60;
+    private int _swapPublicationDeadlineOffsetMinutes = Constants.IS_DEV_ENVIRONMENT ? 1 : 30;
     private int _maxMinerFeesPercent = 0;
     private int _maxRoutingFeesPercent = 1;
-    private int _sweepConfirmationTarget = 400;
+    private int _sweepConfirmationTarget = Constants.IS_DEV_ENVIRONMENT ? 250 : 400;
 
     private CancellationTokenSource? _cancellationTokenSource;
     protected CancellationToken ComponentCancellationToken => (_cancellationTokenSource ??= new()).Token;
