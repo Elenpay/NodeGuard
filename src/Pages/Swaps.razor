@@ -40,7 +40,7 @@
                         @(context.Node?.Name ?? "Unknown")
                     </DisplayTemplate>
                 </DataGridColumn>
-                <DataGridColumn TItem="SwapOut" Editable="true" Field="@nameof(SwapOut.DestinationWalletId)" Caption="@nameof(SwapOut.DestinationWallet)" Sortable="false" Displayable="@IsColumnVisible(SwapsColumnName.DestinationWallet)">
+                <DataGridColumn TItem="SwapOut" Editable="true" Field="@nameof(SwapOut.DestinationWalletId)" Caption="Destination Wallet" Sortable="false" Displayable="@IsColumnVisible(SwapsColumnName.DestinationWallet)">
                     <DisplayTemplate>
                         @($"{context.DestinationWallet?.Name} ({context.DestinationWallet?.MofN}-of-{context.DestinationWallet?.Keys.Count})")
                     </DisplayTemplate>
