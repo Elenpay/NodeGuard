@@ -10,7 +10,7 @@ namespace NodeGuard.Services
       public long? MaxServiceFees { get; set; }
       public long? MaxMinerFees { get; set; }
       public ulong[]? ChannelsOut { get; set; }
-      public long? MaxRoutingFees { get; set; }
+      public int? MaxRoutingFeesPercent { get; set; }
       public long? PrepayAmtSat { get; set; }
       public int SwapPublicationDeadlineMinutes { get; set; } = 60;
       public int SweepConfTarget { get; set; } = 400;

@@ -98,22 +98,25 @@ public class LoopService : ILoopService
 
         var client = GetClient(node);
 
-        const long FeeRateTotalParts = 1_000_000;
-        // Define route independent max routing fees. We have currently no way
+        // Denominator for fee rate calculations, representing parts per million (PPM).
+        const long FeeRateTotalPartsPPM = 1_000_000;
+
+        // Define route independent max routing fee in satoshis. We have currently no way
         // to get a reliable estimate of the routing fees. Best we can do is
         // the minimum routing fees, which is not very indicative.
-        var maxRoutingFeeBase = 10;
+        var maxRoutingFeeBaseSats = 10;
 
-        var maxRoutingFeeRate = 20000;
+        // Rate in parts per million (1%)
+        var maxRoutingFeeRatePPM = 10000;
 
-                // CalcFee returns the swap fee for a given swap amount.
+        // CalcFee returns the swap fee for a given swap amount.
         var calcFee = (long amount, long feeBase, long feeRate) => {
-            return feeBase + amount * feeRate / FeeRateTotalParts;
+            return feeBase + amount * feeRate / FeeRateTotalPartsPPM;
         };
 
         // Took from loopd/cmd/loop/main.go
         var getMaxRoutingFee = (long amt) => {
-            return calcFee(amt, maxRoutingFeeBase, maxRoutingFeeRate);
+            return calcFee(amt, maxRoutingFeeBaseSats, maxRoutingFeeRatePPM);
         };
 
         var loopReq = new LoopOutRequest
@@ -123,8 +126,8 @@ public class LoopService : ILoopService
             MaxMinerFee = request.MaxMinerFees ?? 0,
             MaxPrepayAmt = request.PrepayAmtSat ?? 0,
             MaxSwapFee = request.MaxServiceFees ?? 0,
-            MaxPrepayRoutingFee = getMaxRoutingFee(request.PrepayAmtSat ?? 0),
-            MaxSwapRoutingFee = request.MaxRoutingFees ?? getMaxRoutingFee(request.Amount),
+            MaxPrepayRoutingFee = request.MaxRoutingFeesPercent != null  ? calcFee(request.PrepayAmtSat ?? 0, maxRoutingFeeBaseSats, request.MaxRoutingFeesPercent.Value * 10000) : getMaxRoutingFee(request.PrepayAmtSat ?? 0),
+            MaxSwapRoutingFee = request.MaxRoutingFeesPercent != null ? calcFee(request.Amount, maxRoutingFeeBaseSats, request.MaxRoutingFeesPercent.Value * 10000) : getMaxRoutingFee(request.Amount),
             SweepConfTarget = request.SweepConfTarget,
             HtlcConfirmations = 3,
             SwapPublicationDeadline = (ulong)DateTimeOffset.UtcNow.AddMinutes(request.SwapPublicationDeadlineMinutes).ToUnixTimeSeconds(),

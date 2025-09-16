@@ -59,21 +59,28 @@
                     @RenderNodeSelector("Destination Node")
                 }
                 <Field>
-                    <FieldLabel>Max Service Fees</FieldLabel>
+                    <FieldLabel Class="d-flex">
+                        Max Routing Fees
+                        <Tooltip Class="ml-2" Text="Maximum routing fees in satoshis you are willing to pay for the lightning routing transaction">
+                            <Icon Name="IconName.Info"></Icon>
+                        </Tooltip>
+                    </FieldLabel>
                     <div class="d-flex">
-                        <NumericPicker TValue="decimal"
-                                    @bind-Value="_maxServiceFeesBtc"
+                        <NumericPicker TValue="int"
+                                    @bind-Value="_maxRoutingFeesPercent"
                                     CurrencySymbolPlacement="CurrencySymbolPlacement.Suffix"
-                                    CurrencySymbol=" BTC"
-                                    Decimals="8"
-                                    Step="0.00001000m"
-                                    Min="0.00001000m">
+                                    CurrencySymbol="%"
+                                    Min="0"
+                                    Max="100">
                         </NumericPicker>
                     </div>
                     <FieldHelp>
-                        $@Math.Round(PriceConversionService.BtcToUsdConversion(_maxServiceFeesBtc, _btcPrice), 2)
+                        @{
+                            var amount = _maxRoutingFeesPercent * _amountBtc / 100;
+                        }
+                        @Math.Round(amount, 8) BTC (~@Math.Round(PriceConversionService.BtcToUsdConversion(amount, _btcPrice), 2) USD)
                     </FieldHelp>
-                </Field>
+                </Field>                            
                 <Accordion>
                     <Collapse @bind-Visible="_showAdvancedOptions">
                         <CollapseHeader Class="p-1">
@@ -126,27 +133,20 @@
                                     @Math.Round(amount, 8) BTC (~@Math.Round(PriceConversionService.BtcToUsdConversion(amount, _btcPrice), 2) USD)
                                 </FieldHelp>
                             </Field>
-                            <Field>
-                                <FieldLabel Class="d-flex">
-                                    Max Routing Fees
-                                    <Tooltip Class="ml-2" Text="Maximum routing fees in satoshis you are willing to pay for the lightning routing transaction">
-                                        <Icon Name="IconName.Info"></Icon>
-                                    </Tooltip>
-                                </FieldLabel>
+                             <Field>
+                                <FieldLabel>Max Service Fees</FieldLabel>
                                 <div class="d-flex">
-                                    <NumericPicker TValue="int"
-                                                @bind-Value="_maxRoutingFeesPercent"
+                                    <NumericPicker TValue="decimal"
+                                                @bind-Value="_maxServiceFeesBtc"
                                                 CurrencySymbolPlacement="CurrencySymbolPlacement.Suffix"
-                                                CurrencySymbol="%"
-                                                Min="0"
-                                                Max="100">
+                                                CurrencySymbol=" BTC"
+                                                Decimals="8"
+                                                Step="0.00001000m"
+                                                Min="0.00001000m">
                                     </NumericPicker>
                                 </div>
                                 <FieldHelp>
-                                    @{
-                                        var amount = _maxRoutingFeesPercent * _amountBtc / 100;
-                                    }
-                                    @Math.Round(amount, 8) BTC (~@Math.Round(PriceConversionService.BtcToUsdConversion(amount, _btcPrice), 2) USD)
+                                    $@Math.Round(PriceConversionService.BtcToUsdConversion(_maxServiceFeesBtc, _btcPrice), 2)
                                 </FieldHelp>
                             </Field>
                             <Field>
@@ -217,7 +217,7 @@
     private bool _showAdvancedOptions = false;
     private int _swapPublicationDeadlineOffsetMinutes = 60;
     private int _maxMinerFeesPercent = 0;
-    private int _maxRoutingFeesPercent = 0;
+    private int _maxRoutingFeesPercent = 1;
     private int _sweepConfirmationTarget = 400;
 
     private CancellationTokenSource? _cancellationTokenSource;
@@ -269,6 +269,7 @@
                 Address = btcAddress.Address.ToString(),
                 SwapPublicationDeadlineMinutes = _swapPublicationDeadlineOffsetMinutes,
                 SweepConfTarget = _sweepConfirmationTarget,
+                MaxRoutingFeesPercent = _maxRoutingFeesPercent
             };
 
             if (_maxMinerFeesPercent == 0)
@@ -278,11 +279,6 @@
             else
             {
                 swapRequest.MaxMinerFees = _maxMinerFeesPercent * amount.Satoshi / 100;
-            }
-
-            if (_maxRoutingFeesPercent > 0)
-            {
-                swapRequest.MaxRoutingFees = _maxRoutingFeesPercent * amount.Satoshi / 100;
             }
 
             var response = await SwapsService.CreateSwapOutAsync(_selectedNode, _selectedProvider, swapRequest, ComponentCancellationToken);
