@@ -33,6 +33,11 @@ public interface INodeRepository
     Task<List<Node>> GetAll();
 
     Task<List<Node>> GetAllManagedByUser(string userId);
+    /// <summary>
+    /// Get all nodes that are configured to work with Loopd by checking if the endpoint and macaroon are set in the database.
+    /// </summary>
+    /// <param name="userId"></param>
+    /// <returns>A list of nodes configured for Loopd</returns>
     Task<List<Node>> GetAllLoopdConfigured(string? userId = null);
 
     Task<List<Node>> GetAllManagedByNodeGuard(bool withDisabled = true);
