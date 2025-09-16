@@ -35,7 +35,7 @@ namespace NodeGuard.Data
 {
     public static class DbInitializer
     {
-        public static async Task Initialize(IServiceProvider serviceProvider)
+        public static async Task InitializeAsync(IServiceProvider serviceProvider)
         {
             //DI
             var applicationDbContext = serviceProvider.GetRequiredService<ApplicationDbContext>();
@@ -267,6 +267,8 @@ namespace NodeGuard.Data
                             Name = "carol",
                             CreationDatetime = DateTimeOffset.UtcNow,
                             PubKey = Constants.CAROL_PUBKEY,
+                            LoopdEndpoint = Constants.CAROL_LOOPD_HOST,
+                            LoopdMacaroon = Constants.CAROL_LOOPD_MACAROON,
                             Users = new List<ApplicationUser>(),
                             AutosweepEnabled = false
 
@@ -278,8 +280,8 @@ namespace NodeGuard.Data
                         carol.ChannelAdminMacaroon = Constants.CAROL_MACAROON;
                         carol.Endpoint = Constants.CAROL_HOST;
                         carol.PubKey = Constants.CAROL_PUBKEY;
-                        carol.LoopEndpoint = Constants.CAROL_LOOP_HOST;
-                        carol.LoopMacaroon = Constants.CAROL_LOOP_MACAROON;
+                        carol.LoopdEndpoint = Constants.CAROL_LOOPD_HOST;
+                        carol.LoopdMacaroon = Constants.CAROL_LOOPD_MACAROON;
                         carol.UpdateDatetime = DateTimeOffset.UtcNow;
                         nodeRepository.Update(carol);
                     }
@@ -295,6 +297,8 @@ namespace NodeGuard.Data
                             Name = "bob",
                             CreationDatetime = DateTimeOffset.UtcNow,
                             PubKey = Constants.BOB_PUBKEY,
+                            LoopdEndpoint = Constants.BOB_LOOPD_HOST,
+                            LoopdMacaroon = Constants.BOB_LOOPD_MACAROON,
                             Users = new List<ApplicationUser>(),
                             AutosweepEnabled = false
                         };
@@ -305,8 +309,8 @@ namespace NodeGuard.Data
                         bob.ChannelAdminMacaroon = Constants.BOB_MACAROON;
                         bob.Endpoint = Constants.BOB_HOST;
                         bob.PubKey = Constants.BOB_PUBKEY;
-                        bob.LoopEndpoint = Constants.BOB_LOOP_HOST;
-                        bob.LoopMacaroon = Constants.BOB_LOOP_MACAROON;
+                        bob.LoopdEndpoint = Constants.BOB_LOOPD_HOST;
+                        bob.LoopdMacaroon = Constants.BOB_LOOPD_MACAROON;
                         bob.UpdateDatetime = DateTimeOffset.UtcNow;
                         nodeRepository.Update(bob);
                     }

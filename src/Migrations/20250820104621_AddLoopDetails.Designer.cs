@@ -711,10 +711,10 @@ namespace NodeGuard.Migrations
                     b.Property<bool>("IsNodeDisabled")
                         .HasColumnType("boolean");
 
-                    b.Property<string>("LoopEndpoint")
+                    b.Property<string>("LoopdEndpoint")
                         .HasColumnType("text");
 
-                    b.Property<string>("LoopMacaroon")
+                    b.Property<string>("LoopdMacaroon")
                         .HasColumnType("text");
 
                     b.Property<string>("Name")

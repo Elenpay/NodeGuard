@@ -93,18 +93,15 @@ mine:
 
 # Builds and runs the development docker containers in the background, add DOCKER_COMPOSE_FILE to override the default file
 docker-up *args:
-    cd {{DOCKER_DIR}} && docker compose -f {{DOCKER_COMPOSE_FILE}} up --build -d {{args}}
+    docker compose --profile polar --profile loop -f {{DOCKER_COMPOSE_FILE}} up --build -d {{args}}
 
 # Stops the development docker containers, add DOCKER_COMPOSE_FILE to override the default file
 docker-down:
-    cd {{DOCKER_DIR}} && docker compose -f {{DOCKER_COMPOSE_FILE}} down
+    docker compose --profile polar --profile loop -f {{DOCKER_COMPOSE_FILE}} down
 
 # Stops the development docker containers and removes the volumes, add DOCKER_COMPOSE_FILE to override the default file
 docker-rm:
-    cd {{DOCKER_DIR}} && docker compose -f {{DOCKER_COMPOSE_FILE}} down -v
-
-prune-volumes:
-    docker volume prune -a -f
+    docker compose --profile polar --profile loop -f {{DOCKER_COMPOSE_FILE}} down -v
 
 ##########
 # Dapr #

@@ -3,5 +3,5 @@
 include:
   - ./docker/docker-compose.dev.yml
   - ./docker/bitcoin/docker-compose.polar.yml
-  - ./docker/loop/docker-compose.loop.yml
-  - ./docker/mempool/docker-compose.mempool.yml
+  - ./docker/loop/docker-compose.yml
+  - ./docker/mempool/docker-compose.yml
