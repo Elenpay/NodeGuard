@@ -1,3 +1,6 @@
+# Bitcoin related commands
+mod bitcoin 'docker/bitcoin'
+
 #####################
 # Project variables #
 #####################
@@ -56,7 +59,12 @@ build:
     cd {{PROJECT_DIR}} && dotnet build
 
 run:
-    cd {{PROJECT_DIR}} && dotnet run
+    ./docker/extract-macaroons.sh
+    cd {{PROJECT_DIR}} && IS_DEV_ENVIRONMENT=true dotnet run
+
+watch:
+    ./docker/extract-macaroons.sh
+    cd {{PROJECT_DIR}} && IS_DEV_ENVIRONMENT=true dotnet watch
 
 stop:
     killall -9 NodeGuard
@@ -85,16 +93,15 @@ mine:
 
 # Builds and runs the development docker containers in the background, add DOCKER_COMPOSE_FILE to override the default file
 docker-up *args:
-    cd {{DOCKER_DIR}} && docker compose -f {{DOCKER_COMPOSE_FILE}} up --build -d {{args}}
+    docker compose --profile polar --profile loop -f {{DOCKER_COMPOSE_FILE}} up --build -d {{args}}
 
 # Stops the development docker containers, add DOCKER_COMPOSE_FILE to override the default file
 docker-down:
-    cd {{DOCKER_DIR}} && docker compose -f {{DOCKER_COMPOSE_FILE}} down
+    docker compose --profile polar --profile loop -f {{DOCKER_COMPOSE_FILE}} down
 
 # Stops the development docker containers and removes the volumes, add DOCKER_COMPOSE_FILE to override the default file
 docker-rm:
-    cd {{DOCKER_DIR}} && docker compose -f {{DOCKER_COMPOSE_FILE}} down -v
-
+    docker compose --profile polar --profile loop -f {{DOCKER_COMPOSE_FILE}} down -v
 
 ##########
 # Dapr #

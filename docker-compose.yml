@@ -1,0 +1,7 @@
+# This docker-compose.yml is a composition of all we need to run our
+# infrastructure dependencies.
+include:
+  - ./docker/docker-compose.dev.yml
+  - ./docker/bitcoin/docker-compose.polar.yml
+  - ./docker/loop/docker-compose.yml
+  - ./docker/mempool/docker-compose.yml

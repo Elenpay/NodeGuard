@@ -40,7 +40,6 @@ using OpenTelemetry.Metrics;
 using OpenTelemetry.Exporter;
 using Serilog;
 using Serilog.Events;
-using Serilog.Formatting.Json;
 using NodeGuard.Helpers;
 using NodeGuard.Rpc;
 using Microsoft.AspNetCore.Server.Kestrel.Core;
@@ -51,9 +50,17 @@ namespace NodeGuard
 {
     public class Program
     {
-        public static void Main(string[] args)
+        public static async Task Main(string[] args)
         {
             AppContext.SetSwitch("Npgsql.EnableLegacyTimestampBehavior", true);
+
+            // We can't use Constants.IS_DEV_ENVIRONMENT here because it will load the static constructor and it will load the env values
+            // Before we actually read the whole env file
+            var isDevEnvironment = Environment.GetEnvironmentVariable("IS_DEV_ENVIRONMENT") == "true";
+            if (isDevEnvironment)
+            {
+                DotNetEnv.Env.Load("nodeguard-macaroons.env");
+            }
 
             var builder = WebApplication.CreateBuilder(args);
 
@@ -277,8 +284,11 @@ namespace NodeGuard
             // ASP.NET Core hosting
             builder.Services.AddQuartzServer(options =>
             {
-                // when shutting down we want jobs to complete gracefully
-                options.WaitForJobsToComplete = true;
+                // when shutting down we want jobs to complete gracefully but with a timeout
+                if (!Constants.IS_DEV_ENVIRONMENT)
+                {
+                    options.WaitForJobsToComplete = true;
+                }
                 options.AwaitApplicationStarted = true;
             });
 
@@ -323,7 +333,7 @@ namespace NodeGuard
                 var servicesProvider = scope.ServiceProvider;
                 try
                 {
-                    DbInitializer.Initialize(servicesProvider);
+                    await DbInitializer.InitializeAsync(servicesProvider);
                 }
                 catch (Exception ex)
                 {

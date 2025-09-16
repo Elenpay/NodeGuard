@@ -30,13 +30,12 @@ using NBXplorer;
 using NBXplorer.DerivationStrategy;
 using NBXplorer.Models;
 using NodeGuard.Data.Repositories;
-using Key = NodeGuard.Data.Models.Key;
 
 namespace NodeGuard.Data
 {
     public static class DbInitializer
     {
-        public static void Initialize(IServiceProvider serviceProvider)
+        public static async Task InitializeAsync(IServiceProvider serviceProvider)
         {
             //DI
             var applicationDbContext = serviceProvider.GetRequiredService<ApplicationDbContext>();
@@ -53,6 +52,9 @@ namespace NodeGuard.Data
             //Nbxplorer setup & check
             var userManager = serviceProvider.GetRequiredService<UserManager<ApplicationUser>>();
             var roleManager = serviceProvider.GetService<RoleManager<IdentityRole>>();
+
+            if (roleManager == null)
+                throw new Exception("Role manager is not initialized");
 
             var nbXplorerNetwork = CurrentNetworkHelper.GetCurrentNetwork();
 
@@ -93,6 +95,7 @@ namespace NodeGuard.Data
                 //Miner setup
                 var minerRPC = new RPCClient(new NetworkCredential(Constants.NBXPLORER_BTCRPCUSER, Constants.NBXPLORER_BTCRPCPASSWORD), new Uri(Constants.NBXPLORER_BTCRPCURL!),
                     nbXplorerNetwork);
+
                 var factory = new DerivationStrategyFactory(nbXplorerNetwork);
                 //Users
                 ApplicationUser? adminUser = null;
@@ -205,63 +208,119 @@ namespace NodeGuard.Data
                 }
                 else
                 {
-                    adminUser = applicationDbContext.ApplicationUsers.FirstOrDefault(u => u.UserName == "admin");
+                    adminUser = applicationDbContext.ApplicationUsers.Include(a => a.Nodes).FirstOrDefault(u => u.UserName == "admin");
                     financeUser = applicationDbContext.ApplicationUsers.FirstOrDefault(u => u.UserName == "financemanager");
                 }
 
-                var nodes = Task.Run(() => nodeRepository.GetAll()).Result;
+                if (adminUser == null || financeUser == null)
+                    throw new Exception("Could't create admin or finance user");
 
-                if (!nodes.Any() && Constants.IS_DEV_ENVIRONMENT)
+                var nodes = await nodeRepository.GetAll();
+
+                if (Constants.IS_DEV_ENVIRONMENT)
                 {
-                    //Testing node from Polar (ALICE) LND 0.15.5 -> check devnetwork.zip polar file
-                    var alice = new Node
+                    try
                     {
-                        ChannelAdminMacaroon = Constants.ALICE_MACAROON,
-                        Endpoint = Constants.ALICE_HOST,
-                        Name = "Alice",
-                        CreationDatetime = DateTimeOffset.UtcNow,
-                        PubKey = Constants.ALICE_PUBKEY,
-                        Users = new List<ApplicationUser>(),
-                        AutosweepEnabled = false
-
-                    };
-
-                    _ = Task.Run(() => nodeRepository.AddAsync(alice)).Result;
-
-                    //Testing node from Polar (CAROL) LND 0.15.5 -> check devnetwork.zip polar file
-                    var carol = new Node
+                        await minerRPC.UnloadWalletAsync(""); // RPCErrorCode.RPC_WALLET_NOT_FOUND if already unloaded
+                        await minerRPC.LoadWalletAsync("default"); // RPCErrorCode.RPC_WALLET_ALREADY_LOADED if already loaded
+                    } catch (RPCException e) when (e.RPCCode == RPCErrorCode.RPC_WALLET_ALREADY_LOADED || e.RPCCode == RPCErrorCode.RPC_WALLET_NOT_FOUND)
                     {
-                        ChannelAdminMacaroon = Constants.CAROL_MACAROON,
-                        Endpoint = Constants.CAROL_HOST,
-                        Name = "Carol",
-                        CreationDatetime = DateTimeOffset.UtcNow,
-                        PubKey = Constants.CAROL_PUBKEY,
-                        Users = new List<ApplicationUser>(),
-                        AutosweepEnabled = false
-
-                    };
-
-                    _ = Task.Run(() => nodeRepository.AddAsync(carol)).Result;
-
-                    //Bob node from Polar (BOB) LND 0.15.5 -> check devnetwork.zip polar file
-                    var bob = new Node
+                        // Ignore these errors
+                    } catch (Exception e)
                     {
-                        ChannelAdminMacaroon = Constants.BOB_MACAROON,
-                        Endpoint = Constants.BOB_HOST,
-                        Name = "Bob",
-                        CreationDatetime = DateTimeOffset.UtcNow,
-                        PubKey = Constants.BOB_PUBKEY,
-                        Users = new List<ApplicationUser>(),
-                        AutosweepEnabled = false
-                    };
+                        throw new Exception("Error while loading default wallet in bitcoind", e);
+                    }
 
-                    _ = Task.Run(() => nodeRepository.AddAsync(bob)).Result;
+                    var alice = nodes.FirstOrDefault(n => n.Name == "alice");
+                    if (alice == null)
+                    {
+                        alice = new Node
+                        {
+                            ChannelAdminMacaroon = Constants.ALICE_MACAROON,
+                            Endpoint = Constants.ALICE_HOST,
+                            Name = "alice",
+                            CreationDatetime = DateTimeOffset.UtcNow,
+                            PubKey = Constants.ALICE_PUBKEY,
+                            Users = new List<ApplicationUser>(),
+                            AutosweepEnabled = false
 
-                    //Add user to the channel
+                        };
+                        _ = await nodeRepository.AddAsync(alice);
+                    }
+                    else
+                    {
+                        //Update macaroon and endpoint in case they changed
+                        alice.ChannelAdminMacaroon = Constants.ALICE_MACAROON;
+                        alice.Endpoint = Constants.ALICE_HOST;
+                        alice.PubKey = Constants.ALICE_PUBKEY;
+                        alice.UpdateDatetime = DateTimeOffset.UtcNow;
+                        nodeRepository.Update(alice);
+                    }
 
-                    adminUser.Nodes = new List<Node> { alice, carol, bob };
+                    var carol = nodes.FirstOrDefault(n => n.Name == "carol");
+                    if (carol == null)
+                    {
+                        carol = new Node
+                        {
+                            ChannelAdminMacaroon = Constants.CAROL_MACAROON,
+                            Endpoint = Constants.CAROL_HOST,
+                            Name = "carol",
+                            CreationDatetime = DateTimeOffset.UtcNow,
+                            PubKey = Constants.CAROL_PUBKEY,
+                            LoopdEndpoint = Constants.CAROL_LOOPD_HOST,
+                            LoopdMacaroon = Constants.CAROL_LOOPD_MACAROON,
+                            Users = new List<ApplicationUser>(),
+                            AutosweepEnabled = false
 
-                    var carolUpdateResult = applicationDbContext.Update(adminUser);
+                        };
+                        _ = await nodeRepository.AddAsync(carol);
+                    }
+                    else
+                    {
+                        carol.ChannelAdminMacaroon = Constants.CAROL_MACAROON;
+                        carol.Endpoint = Constants.CAROL_HOST;
+                        carol.PubKey = Constants.CAROL_PUBKEY;
+                        carol.LoopdEndpoint = Constants.CAROL_LOOPD_HOST;
+                        carol.LoopdMacaroon = Constants.CAROL_LOOPD_MACAROON;
+                        carol.UpdateDatetime = DateTimeOffset.UtcNow;
+                        nodeRepository.Update(carol);
+                    }
+
+
+                    var bob = nodes.FirstOrDefault(n => n.Name == "bob");
+                    if (bob == null)
+                    {
+                        bob = new Node
+                        {
+                            ChannelAdminMacaroon = Constants.BOB_MACAROON,
+                            Endpoint = Constants.BOB_HOST,
+                            Name = "bob",
+                            CreationDatetime = DateTimeOffset.UtcNow,
+                            PubKey = Constants.BOB_PUBKEY,
+                            LoopdEndpoint = Constants.BOB_LOOPD_HOST,
+                            LoopdMacaroon = Constants.BOB_LOOPD_MACAROON,
+                            Users = new List<ApplicationUser>(),
+                            AutosweepEnabled = false
+                        };
+                        _ = await nodeRepository.AddAsync(bob);
+                    }
+                    else
+                    {
+                        bob.ChannelAdminMacaroon = Constants.BOB_MACAROON;
+                        bob.Endpoint = Constants.BOB_HOST;
+                        bob.PubKey = Constants.BOB_PUBKEY;
+                        bob.LoopdEndpoint = Constants.BOB_LOOPD_HOST;
+                        bob.LoopdMacaroon = Constants.BOB_LOOPD_MACAROON;
+                        bob.UpdateDatetime = DateTimeOffset.UtcNow;
+                        nodeRepository.Update(bob);
+                    }
+
+                    if (adminUser.Nodes == null) adminUser.Nodes = [];
+                    if (!adminUser.Nodes.Any(n => n.Name == alice.Name)) adminUser.Nodes.Add(alice);
+                    if (!adminUser.Nodes.Any(n => n.Name == bob.Name)) adminUser.Nodes.Add(bob);
+                    if (!adminUser.Nodes.Any(n => n.Name == carol.Name)) adminUser.Nodes.Add(carol);
+
+                    _ = await applicationDbContext.SaveChangesAsync();
                 }
 
                 var internalWallet = applicationDbContext.InternalWallets.FirstOrDefault();
@@ -271,7 +330,7 @@ namespace NodeGuard.Data
                     internalWallet = CreateWallet.CreateInternalWallet(logger);
 
                     applicationDbContext.Add(internalWallet);
-                    applicationDbContext.SaveChanges();
+                    await applicationDbContext.SaveChangesAsync();
                 }
 
                 if (!applicationDbContext.Wallets.Any() && adminUser != null)
@@ -303,6 +362,10 @@ namespace NodeGuard.Data
                     var multisigDerivationStrategy = testingMultisigWallet.GetDerivationStrategy();
                     var singlesigDerivationStrategy = testingSinglesigWallet.GetDerivationStrategy();
                     var singleSigBIP39DerivationStrategy = testingSingleSigBIP39Wallet.GetDerivationStrategy();
+
+                    if (legacyMultisigDerivationStrategy == null || multisigDerivationStrategy == null ||
+                        singlesigDerivationStrategy == null || singleSigBIP39DerivationStrategy == null)
+                        throw new Exception("Can't get derivation strategy of the wallets");
                     //Nbxplorer tracking of the multisig derivation scheme
 
                     nbxplorerClient.Track(legacyMultisigDerivationStrategy);
@@ -406,10 +469,10 @@ namespace NodeGuard.Data
                 }
             }
 
-            applicationDbContext.SaveChanges();
+            await applicationDbContext.SaveChangesAsync();
         }
 
-        private static void SetRoles(RoleManager<IdentityRole>? roleManager)
+        private static void SetRoles(RoleManager<IdentityRole> roleManager)
         {
             const ApplicationUserRole nodeManager = ApplicationUserRole.NodeManager;
 
@@ -471,14 +534,24 @@ namespace NodeGuard.Data
 
         private static NewTransactionEvent? WaitNbxplorerNotification(LongPollingNotificationSession evts, DerivationStrategyBase derivationStrategy, long lastEventId)
         {
-            var events = evts.GetEvents(lastEventId);
-            foreach (var evt in events)
+            var retryCount = 10;
+            while (true)
             {
-                if (evt is NewTransactionEvent tx)
+                var events = evts.GetEvents(lastEventId);
+                foreach (var evt in events)
                 {
-                    if (tx.DerivationStrategy == derivationStrategy)
-                        return tx;
+                    if (evt is NewTransactionEvent tx)
+                    {
+                        if (tx.DerivationStrategy == derivationStrategy)
+                            return tx;
+                    }
+                    lastEventId = evt.EventId;
                 }
+
+                if (retryCount-- == 0)
+                    break;
+                    
+                Thread.Sleep(1_000);
             }
 
             return null;
