@@ -232,7 +232,7 @@
     protected override async Task OnInitializedAsync()
     {
         _availableWallets = await ToastOnException.ExecuteAsync(() => WalletRepository.GetAvailableWallets(), Logger, ToastService, "Unexpected error loading wallets, please try again later", new());
-        _availableNodes = await ToastOnException.ExecuteAsync(() => NodeRepository.GetAllLoopConfigured(LoggedUser.Id), Logger, ToastService, "Unexpected error loading nodes, please try again later", new());
+        _availableNodes = await ToastOnException.ExecuteAsync(() => NodeRepository.GetAllLoopdConfigured(LoggedUser.Id), Logger, ToastService, "Unexpected error loading nodes, please try again later", new());
         _btcPrice = await PriceConversionService.GetBtcToUsdPrice();
     }
 

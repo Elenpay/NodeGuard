@@ -33,7 +33,7 @@ public interface INodeRepository
     Task<List<Node>> GetAll();
 
     Task<List<Node>> GetAllManagedByUser(string userId);
-    Task<List<Node>> GetAllLoopConfigured(string? userId = null);
+    Task<List<Node>> GetAllLoopdConfigured(string? userId = null);
 
     Task<List<Node>> GetAllManagedByNodeGuard(bool withDisabled = true);
 

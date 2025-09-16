@@ -57,25 +57,25 @@ public class LoopService : ILoopService
     
     public SwapClient.SwapClientClient GetClient(Node node)
     {
-        if (string.IsNullOrEmpty(node.LoopEndpoint) || string.IsNullOrEmpty(node.LoopMacaroon))
+        if (string.IsNullOrEmpty(node.LoopdEndpoint) || string.IsNullOrEmpty(node.LoopdMacaroon))
         {
-            throw new ArgumentException("Node Loop endpoint or macaroon is not set.");
+            throw new ArgumentException("Node Loopd endpoint or macaroon is not set.");
         }
 
-        var clientKey = $"{node.LoopEndpoint}";
+        var clientKey = $"{node.LoopdEndpoint}";
         return _clients.GetOrAdd(clientKey, _ =>
         {
-            var channel = _channels.GetOrAdd(node.LoopEndpoint, CreateClient(node.LoopEndpoint));
-            var invoker = channel.Intercept(new GRPCMacaroonInterceptor(node.LoopMacaroon));
+            var channel = _channels.GetOrAdd(node.LoopdEndpoint, CreateClient(node.LoopdEndpoint));
+            var invoker = channel.Intercept(new GRPCMacaroonInterceptor(node.LoopdMacaroon));
             return new SwapClient.SwapClientClient(invoker);
         });
     }
 
     public async Task<bool> PingAsync(Node node, CancellationToken cancellationToken= default)
     {
-        if (string.IsNullOrEmpty(node.LoopEndpoint) || string.IsNullOrEmpty(node.LoopMacaroon))
+        if (string.IsNullOrEmpty(node.LoopdEndpoint) || string.IsNullOrEmpty(node.LoopdMacaroon))
         {
-            throw new ArgumentException("Node Loop endpoint or macaroon is not set.");
+            throw new ArgumentException("Node Loopd endpoint or macaroon is not set.");
         }
 
         var client = GetClient(node);
@@ -91,9 +91,9 @@ public class LoopService : ILoopService
 
     public async Task<SwapResponse> CreateSwapOutAsync(Node node, SwapOutRequest request, CancellationToken cancellationToken= default)
     {
-        if (string.IsNullOrEmpty(node.LoopEndpoint) || string.IsNullOrEmpty(node.LoopMacaroon))
+        if (string.IsNullOrEmpty(node.LoopdEndpoint) || string.IsNullOrEmpty(node.LoopdMacaroon))
         {
-            throw new ArgumentException("Node Loop endpoint or macaroon is not set.");
+            throw new ArgumentException("Node Loopd endpoint or macaroon is not set.");
         }
 
         var client = GetClient(node);
@@ -152,9 +152,9 @@ public class LoopService : ILoopService
 
     public async Task<SwapResponse> GetSwapAsync(Node node, string swapId, CancellationToken cancellationToken= default)
     {
-        if (string.IsNullOrEmpty(node.LoopEndpoint) || string.IsNullOrEmpty(node.LoopMacaroon))
+        if (string.IsNullOrEmpty(node.LoopdEndpoint) || string.IsNullOrEmpty(node.LoopdMacaroon))
         {
-            throw new ArgumentException("Node Loop endpoint or macaroon is not set.");
+            throw new ArgumentException("Node Loopd endpoint or macaroon is not set.");
         }
 
         var client = GetClient(node);
@@ -187,9 +187,9 @@ public class LoopService : ILoopService
 
     public async Task<OutQuoteResponse> LoopOutQuoteAsync(Node node, long amt, int confTarget, CancellationToken cancellationToken = default)
     {
-        if (string.IsNullOrEmpty(node.LoopEndpoint) || string.IsNullOrEmpty(node.LoopMacaroon))
+        if (string.IsNullOrEmpty(node.LoopdEndpoint) || string.IsNullOrEmpty(node.LoopdMacaroon))
         {
-            throw new ArgumentException("Node Loop endpoint or macaroon is not set.");
+            throw new ArgumentException("Node Loopd endpoint or macaroon is not set.");
         }
 
         var client = GetClient(node);

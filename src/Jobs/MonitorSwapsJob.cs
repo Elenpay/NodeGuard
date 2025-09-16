@@ -40,7 +40,7 @@ public class MonitorSwapsJob : IJob
         _logger.LogInformation("Starting {JobName}... ", nameof(MonitorSwapsJob));
         try
         {
-            var managedNodes = await _nodeRepository.GetAllLoopConfigured(null);
+            var managedNodes = await _nodeRepository.GetAllLoopdConfigured(null);
 
             var scheduler = await _schedulerFactory.GetScheduler();
 

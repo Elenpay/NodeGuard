@@ -68,11 +68,11 @@
                 <DataGridColumn TItem="Node" Filterable="false" Editable="true" Field="@nameof(Node.Description)" Caption="@nameof(Node.Description)" Sortable="false" Displayable="@IsColumnVisible(NodesColumnName.Description)"/>
                 <DataGridColumn TItem="Node" Filterable="false" Editable="true" Field="@nameof(Node.ChannelAdminMacaroon)" Validator="ValidationRule.IsNotEmpty" Caption="Macaroon" CellsEditableOnNewCommand="true" CellsEditableOnEditCommand="false" Displayable="false" Sortable="false"/>
                 <DataGridColumn TItem="Node" Filterable="false" Editable="true" Field="@nameof(Node.Endpoint)" Validator="ValidationRule.IsNotEmpty" Caption="@nameof(Node.Endpoint)" Sortable="false" Displayable="@IsColumnVisible(NodesColumnName.Endpoint)"/>
-                <DataGridColumn TItem="Node" Filterable="false" Editable="true" Field="@nameof(Node.LoopEndpoint)" Caption="Loop Endpoint" Sortable="false" Validator="ValidationRule.IsNotEmpty" Displayable="@IsColumnVisible(NodesColumnName.LoopEndpoint)">
+                <DataGridColumn TItem="Node" Filterable="false" Editable="true" Field="@nameof(Node.LoopdEndpoint)" Caption="Loopd Endpoint" Sortable="false" Validator="ValidationRule.IsNotEmpty" Displayable="@IsColumnVisible(NodesColumnName.LoopdEndpoint)">
                     <DisplayTemplate>
-                        @if (context.LoopEndpoint != null)
+                        @if (context.LoopdEndpoint != null)
                         {
-                            <span>@context.LoopEndpoint</span>
+                            <span>@context.LoopdEndpoint</span>
                         }
                         else
                         {
@@ -81,7 +81,7 @@
                     </DisplayTemplate>
                 </DataGridColumn>
                 <DataGridColumn TItem="Node" Filterable="false" Editable="true"
-                    Field="@nameof(Node.LoopMacaroon)" Validator="ValidationRule.IsNotEmpty" Caption="Loop Macaroon"
+                    Field="@nameof(Node.LoopdMacaroon)" Validator="ValidationRule.IsNotEmpty" Caption="Loopd Macaroon"
                     CellsEditableOnNewCommand="true" CellsEditableOnEditCommand="false" Displayable="false"
                     Sortable="false" />
                 <DataGridNumericColumn TItem="Node" Filterable="false" Editable="false" Caption="Outbound Open Channels" Sortable="false" Displayable="@IsColumnVisible(NodesColumnName.OutboundOpenChannels)">
@@ -213,7 +213,7 @@
         public static readonly ColumnDefault CreationDate = new("Creation Date");
         public static readonly ColumnDefault UpdateDate = new("Update Date");
         public static readonly ColumnDefault Users = new("Users");
-        public static readonly ColumnDefault LoopEndpoint = new("Loop Endpoint");
+        public static readonly ColumnDefault LoopdEndpoint = new("Loopd Endpoint");
     }
 
     protected override async Task OnInitializedAsync()

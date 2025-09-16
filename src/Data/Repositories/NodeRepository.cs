@@ -143,7 +143,7 @@ namespace NodeGuard.Data.Repositories
                 .ToListAsync();
         }
 
-        public async Task<List<Node>> GetAllLoopConfigured(string? userId = null)
+        public async Task<List<Node>> GetAllLoopdConfigured(string? userId = null)
         {
             await using var applicationDbContext = await _dbContextFactory.CreateDbContextAsync();
 
@@ -152,7 +152,7 @@ namespace NodeGuard.Data.Repositories
                 .Include(x => x.ChannelOperationRequestsAsDestination)
                 .Include(x => x.ChannelOperationRequestsAsSource)
                 .Where(node => node.Endpoint != null)
-                .Where(node => !string.IsNullOrEmpty(node.LoopEndpoint) && !string.IsNullOrEmpty(node.LoopMacaroon));
+                .Where(node => !string.IsNullOrEmpty(node.LoopdEndpoint) && !string.IsNullOrEmpty(node.LoopdMacaroon));
 
             if (!string.IsNullOrEmpty(userId)) {
                 query = query.Where(node => node.Users.Any(user => user.Id == userId));
