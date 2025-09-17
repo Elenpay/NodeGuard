@@ -38,6 +38,7 @@ alias rm := remove-migration
 alias du := docker-up
 alias ddn := docker-down
 alias drm := docker-rm
+alias up := update-protos
 
 #######
 # All#
@@ -86,6 +87,10 @@ remove-migration:
     cd {{PROJECT_DIR}} && dotnet ef migrations remove --context ApplicationDbContext
 mine:
     while true; do docker exec polar-n1-backend1 bitcoin-cli -regtest -rpcuser=polaruser -rpcpassword=polarpass -generate 1; sleep 60; done
+
+# Update protobuf definitions from LND and Loop repositories
+update-protos:
+    ./src/Proto/update-protos.sh
 
 ##########
 # Docker #
