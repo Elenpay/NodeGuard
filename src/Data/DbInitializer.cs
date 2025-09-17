@@ -217,19 +217,20 @@ namespace NodeGuard.Data
 
                 var nodes = await nodeRepository.GetAll();
 
+                try
+                {
+                    await minerRPC.UnloadWalletAsync(""); // RPCErrorCode.RPC_WALLET_NOT_FOUND if already unloaded
+                    await minerRPC.LoadWalletAsync("default"); // RPCErrorCode.RPC_WALLET_ALREADY_LOADED if already loaded
+                } catch (RPCException e) when (e.RPCCode == RPCErrorCode.RPC_WALLET_ALREADY_LOADED || e.RPCCode == RPCErrorCode.RPC_WALLET_NOT_FOUND)
+                {
+                    // Ignore these errors
+                } catch (Exception e)
+                {
+                    throw new Exception("Error while loading default wallet in bitcoind", e);
+                }
+                
                 if (Constants.IS_DEV_ENVIRONMENT)
                 {
-                    try
-                    {
-                        await minerRPC.UnloadWalletAsync(""); // RPCErrorCode.RPC_WALLET_NOT_FOUND if already unloaded
-                        await minerRPC.LoadWalletAsync("default"); // RPCErrorCode.RPC_WALLET_ALREADY_LOADED if already loaded
-                    } catch (RPCException e) when (e.RPCCode == RPCErrorCode.RPC_WALLET_ALREADY_LOADED || e.RPCCode == RPCErrorCode.RPC_WALLET_NOT_FOUND)
-                    {
-                        // Ignore these errors
-                    } catch (Exception e)
-                    {
-                        throw new Exception("Error while loading default wallet in bitcoind", e);
-                    }
 
                     var alice = nodes.FirstOrDefault(n => n.Name == "alice");
                     if (alice == null)
