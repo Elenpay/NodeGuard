@@ -34,6 +34,7 @@ public interface ILightningClientService
 {
     public Lightning.LightningClient GetLightningClient(string? endpoint);
     public Task<ListChannelsResponse?> ListChannels(Node node, Lightning.LightningClient? client = null);
+    public Task<ChannelBalanceResponse?> ChannelBalanceAsync(Node node, Lightning.LightningClient? client = null);
     public AsyncServerStreamingCall<CloseStatusUpdate>? CloseChannel(Node node, Channel channel, bool forceClose = false, Lightning.LightningClient? client = null);
     public AsyncServerStreamingCall<ChannelEventUpdate> SubscribeChannelEvents(Node node, Lightning.LightningClient? client = null);
     public Task<LightningNode?> GetNodeInfo(Node node, string pubKey, Lightning.LightningClient? client = null);
@@ -121,6 +122,28 @@ public class LightningClientService : ILightningClientService
         }
 
         return listChannelsResponse;
+    }
+
+    public async Task<ChannelBalanceResponse?> ChannelBalanceAsync(Node node, Lightning.LightningClient? client = null)
+    {
+        ChannelBalanceResponse? channelBalanceResponse = null;
+        try
+        {
+            client ??= GetLightningClient(node.Endpoint);
+            channelBalanceResponse = await client.ChannelBalanceAsync(new ChannelBalanceRequest(),
+                new Metadata
+                {
+                    {
+                        "macaroon", node.ChannelAdminMacaroon
+                    }
+                });
+        }
+        catch (Exception e)
+        {
+            _logger.LogError(e, "Error while getting channel balance for node {NodeId}", node.Id);
+            return null;
+        }
+        return channelBalanceResponse;
     }
 
     public AsyncServerStreamingCall<CloseStatusUpdate>? CloseChannel(Node node, Channel channel, bool forceClose = false, Lightning.LightningClient? client = null)

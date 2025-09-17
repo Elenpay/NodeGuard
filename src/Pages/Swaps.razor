@@ -1,0 +1,209 @@
+@page "/swaps"
+@using System.Security.Claims
+@using Humanizer
+@attribute [Authorize(Roles = "Superadmin,NodeManager,FinanceManager")]
+
+<Row>
+    <Column ColumnSize="ColumnSize.Is12">
+        <h3>Swaps</h3>
+        <DataGrid TItem="SwapOut"
+                @ref="_swapsDatagrid"
+                Data="@_swapRequests"
+                Filterable="true"
+                FilterMethod="DataGridFilterMethod.Contains"
+                Editable="true"
+                Responsive="true"
+                ResizeMode="TableResizeMode.Columns"
+                ShowPager="true"
+                ShowPageSizes="true"
+                Narrow="true"
+                PageSize="25">
+            <DataGridColumns>
+            <DataGridCommandColumn TItem="SwapOut" Filterable="false" Sortable="false">
+                <NewCommandTemplate>
+                    <Button Color="Color.Success" TextColor="TextColor.Light" Clicked="NewSwap">New</Button>
+                </NewCommandTemplate>
+                <EditCommandTemplate></EditCommandTemplate>
+                <DeleteCommandTemplate></DeleteCommandTemplate>
+            </DataGridCommandColumn>
+                <DataGridColumn TItem="SwapOut" Field="@nameof(SwapOut.ProviderId)" Caption="#" Sortable="false" Displayable="true">
+                    <DisplayTemplate>
+                        <Tooltip Text="@context.ProviderId?.ToLowerInvariant()" Placement="TooltipPlacement.Top">
+                            @StringHelper.TruncateTail(context.ProviderId?.ToLowerInvariant(), 10)
+                        </Tooltip>
+                    </DisplayTemplate>
+                </DataGridColumn>
+                <DataGridColumn TItem="SwapOut" Field="@nameof(SwapOut.Provider)" Caption="Provider" Sortable="true" Displayable="true" />
+                <DataGridColumn TItem="SwapOut" Field="@nameof(SwapOut.IsManual)" Caption="Is Manual" Sortable="true" Displayable="true" />
+                <DataGridColumn TItem="SwapOut" Editable="false" Field="@nameof(SwapOut.Node)" Caption="Source Node" Sortable="true" Displayable="@IsColumnVisible(SwapsColumnName.DestinationWallet)">
+                    <DisplayTemplate>
+                        @(context.Node?.Name ?? "Unknown")
+                    </DisplayTemplate>
+                </DataGridColumn>
+                <DataGridColumn TItem="SwapOut" Editable="true" Field="@nameof(SwapOut.DestinationWalletId)" Caption="Destination Wallet" Sortable="false" Displayable="@IsColumnVisible(SwapsColumnName.DestinationWallet)">
+                    <DisplayTemplate>
+                        @($"{context.DestinationWallet?.Name} ({context.DestinationWallet?.MofN}-of-{context.DestinationWallet?.Keys.Count})")
+                    </DisplayTemplate>
+                </DataGridColumn>
+                <DataGridColumn TItem="SwapOut" Editable="false" Field="@nameof(SwapOut.UserRequestor)" Caption="Requestor" Sortable="true" Displayable="@IsColumnVisible(SwapsColumnName.Requestor)">
+                    <DisplayTemplate>
+                        @(context.UserRequestor?.UserName ?? "Unknown")
+                    </DisplayTemplate>
+                </DataGridColumn>
+                <DataGridColumn TItem="SwapOut" Editable="false" Field="@nameof(SwapOut.Amount)" Caption="Amount (BTC)" Sortable="false" Displayable="@IsColumnVisible(SwapsColumnName.Amount)">
+                    <DisplayTemplate>
+                        @($"{context.Amount:f8} BTC ({Math.Round(PriceConversionService.BtcToUsdConversion(context.Amount, _btcPrice), 2)} USD)")
+                    </DisplayTemplate>
+                </DataGridColumn>
+                <DataGridColumn TItem="SwapOut" Filterable="true" Editable="false" Field="@nameof(SwapOut.TotalFees)" Caption="Total Fees" Sortable="false" Displayable="@IsColumnVisible(SwapsColumnName.TotalFee)">
+                    <DisplayTemplate>
+                        <Tooltip Text="@GetFeesBreakdown(context)" Placement="TooltipPlacement.Top">
+                            @context.TotalFees.ToUnit(NBitcoin.MoneyUnit.BTC).ToString("f8") BTC
+                        </Tooltip>
+                    </DisplayTemplate>
+                </DataGridColumn>
+                <DataGridColumn TItem="SwapOut" Field="@nameof(SwapOut.Status).Humanize(LetterCasing.Sentence)" Caption="Status" Sortable="false" Displayable="@IsColumnVisible(SwapsColumnName.Status)">
+                    <DisplayTemplate>
+                        <Tooltip Text="@context.ErrorDetails" Placement="TooltipPlacement.Top">
+                            <span>@context.Status.Humanize()</span>
+                        </Tooltip>
+                    </DisplayTemplate>
+                </DataGridColumn>
+                <DataGridColumn TItem="SwapOut" Field="@nameof(SwapOut.CreationDatetime)" Caption="Creation Date" Sortable="true" SortDirection="SortDirection.Descending" Displayable="@IsColumnVisible(SwapsColumnName.CreationDate)">
+                    <DisplayTemplate>
+                        @context.CreationDatetime.Humanize()
+                    </DisplayTemplate>
+                </DataGridColumn>
+                <DataGridColumn TItem="SwapOut" Field="@nameof(SwapOut.UpdateDatetime)" Caption="Update date" Sortable="true" Displayable="@IsColumnVisible(SwapsColumnName.UpdateDate)">
+                    <DisplayTemplate>
+                        @context.UpdateDatetime.Humanize()
+                    </DisplayTemplate>
+                </DataGridColumn>
+                <DataGridColumn TItem="SwapOut" Field="@nameof(SwapOut.TxId)" Caption="Links" Sortable="false" Displayable="@IsColumnVisible(SwapsColumnName.Links)">
+                    <DisplayTemplate>
+                        @if (Constants.MEMPOOL_ENDPOINT != null && !string.IsNullOrEmpty(context.TxId))
+                        {
+                            <a href="@(Constants.MEMPOOL_ENDPOINT + "/tx/" + context.TxId)" target="_blank">See in explorer</a>
+                        }
+                    </DisplayTemplate>
+                </DataGridColumn>
+                <DataGridColumn TItem="SwapOut" Displayable="true">
+                    <FilterTemplate>
+                        <ColumnLayout @ref="_swapsColumnLayout" Columns="@_swapsColumns" ColumnType="SwapsColumnName" OnUpdate="@OnColumnLayoutUpdate"/>
+                    </FilterTemplate>
+                </DataGridColumn>
+            </DataGridColumns>
+            <EmptyTemplate>
+                <div class="box">
+                    No records were found.
+                </div>
+            </EmptyTemplate>
+            <LoadingTemplate>
+                <div class="box">
+                    <progress class="progress is-small is-primary" max="100"></progress>
+                </div>
+            </LoadingTemplate>
+        </DataGrid>
+    </Column>
+</Row>
+
+<NewSwapModal @ref="_newSwapModal" OnSwapCreatedAsync="OnSwapCreated"></NewSwapModal>
+
+@inject ILocalStorageService LocalStorageService
+@inject IPriceConversionService PriceConversionService
+@inject IWalletRepository WalletRepository
+@inject INodeRepository NodeRepository
+@inject ISwapOutRepository SwapOutRepository 
+@inject IToastService ToastService
+@code {
+   [CascadingParameter] private ApplicationUser? LoggedUser { get; set; }
+
+   [CascadingParameter] private ClaimsPrincipal? ClaimsPrincipal { get; set; }
+
+   private DataGrid<SwapOut> _swapsDatagrid = new();
+   private List<SwapOut> _swapRequests = new();
+   private List<Wallet> _availableWallets = new();
+   private List<Node> _availableNodes = new();
+   private decimal _btcPrice;
+   private Dictionary<string, bool> _swapsColumns = new();
+   private bool _columnsLoaded;
+   private ColumnLayout<SwapsColumnName> _swapsColumnLayout = new();
+   public required NewSwapModal _newSwapModal;
+
+   public abstract class SwapsColumnName
+   {
+      public static readonly ColumnDefault DestinationWallet = new("Destination Wallet");
+      public static readonly ColumnDefault Requestor = new("Requestor");
+      public static readonly ColumnDefault Amount = new("Amount (BTC)");
+      public static readonly ColumnDefault TotalFee = new("Total Fee (BTC)");
+      public static readonly ColumnDefault Status = new("Status");
+      public static readonly ColumnDefault CreationDate = new("Creation Date");
+      public static readonly ColumnDefault UpdateDate = new("Update Date");
+      public static readonly ColumnDefault Links = new("Links");
+   }
+
+   protected override async Task OnInitializedAsync()
+   {
+      if (LoggedUser == null) return;
+      _btcPrice = await PriceConversionService.GetBtcToUsdPrice();
+      if (_btcPrice == 0)
+      {
+         ToastService.ShowError("Bitcoin price in USD could not be retrieved.");
+      }
+      _availableNodes = await NodeRepository.GetAllManagedByUser(LoggedUser.Id);
+      _swapRequests = await SwapOutRepository.GetAll();
+   }
+
+   protected override async Task OnAfterRenderAsync(bool firstRender)
+   {
+      if (!firstRender && !_columnsLoaded)
+      {
+         await LoadColumnLayout();
+      }
+   }
+
+   private bool IsColumnVisible(ColumnDefault column)
+   {
+      if (_swapsColumnLayout == null)
+      {
+         return true;
+      }
+
+      return _swapsColumnLayout.IsColumnVisible(column);
+   }
+
+   private void OnColumnLayoutUpdate()
+   {
+      StateHasChanged();
+   }
+
+   private async Task LoadColumnLayout()
+    {
+        _swapsColumns = await LocalStorageService.LoadStorage(nameof(SwapsColumnName), ColumnHelpers.GetColumnsDictionary<SwapsColumnName>());
+        _columnsLoaded = true;
+        StateHasChanged();
+    }
+
+    private async Task NewSwap() {
+        _newSwapModal.Clear();
+        StateHasChanged();
+        await _newSwapModal.Show();
+    }
+
+    private string GetFeesBreakdown(SwapOut context)
+    {
+        return $"<div>" +
+               $"<span>Service Fees: {context.ServiceFee.ToUnit(NBitcoin.MoneyUnit.BTC).ToString("f8")} BTC</span><br/>" +
+               $"<span>Lightning Network Fees: {context.LightningFee.ToUnit(NBitcoin.MoneyUnit.BTC).ToString("f8")} BTC</span><br/>" +
+               $"<span>On-Chain Fees: {context.OnChainFee.ToUnit(NBitcoin.MoneyUnit.BTC).ToString("f8")} BTC</span>" +
+               $"</div>";
+    }
+
+    private async Task OnSwapCreated()
+    {
+        _swapRequests = await SwapOutRepository.GetAll();
+        StateHasChanged();
+    }
+}
+
+   

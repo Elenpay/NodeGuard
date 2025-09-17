@@ -8,10 +8,9 @@
     <DockerDefaultTargetOS>Linux</DockerDefaultTargetOS>
     <DockerfileContext>.</DockerfileContext>
     <DockerComposeProjectPath>..\..\docker\docker-compose.dcproj</DockerComposeProjectPath>
-	<CheckForOverflowUnderflow>true</CheckForOverflowUnderflow>
-	<Company>Elenpay</Company>
-	<Product>NodeGuard</Product>
-
+    <CheckForOverflowUnderflow>true</CheckForOverflowUnderflow>
+    <Company>Elenpay</Company>
+    <Product>NodeGuard</Product>
   </PropertyGroup>
 
 
@@ -74,6 +73,7 @@
     <Protobuf Include="Proto\loop.proto" GrpcServices="Client" ProtoRoot="Proto"/>
     <Protobuf Include="Proto\swapserverrpc\common.proto" GrpcServices="Client" ProtoRoot="Proto"/>
     <Protobuf Include="Proto\nodeguard.proto" GrpcServices="Server" ProtoRoot="Proto"/>
+    <Protobuf Include="Proto\router.proto" GrpcServices="Client" ProtoRoot="Proto"/>
   </ItemGroup>
 
   <ItemGroup>
