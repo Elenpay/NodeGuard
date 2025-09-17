@@ -11,6 +11,7 @@
     <CheckForOverflowUnderflow>true</CheckForOverflowUnderflow>
     <Company>Elenpay</Company>
     <Product>NodeGuard</Product>
+    <EnforceCodeStyleInBuild>true</EnforceCodeStyleInBuild>
   </PropertyGroup>
 
 

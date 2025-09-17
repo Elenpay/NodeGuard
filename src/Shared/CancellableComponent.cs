@@ -1,4 +1,5 @@
 namespace NodeGuard.Shared;
+
 using Microsoft.AspNetCore.Components;
 
 /// <summary>
@@ -14,7 +15,9 @@ public abstract class CancellableComponent : ComponentBase, IDisposable
     /// </summary>
     protected CancellationToken ComponentCancellationToken => (_cancellationTokenSource ??= new()).Token;
 
-    /// <inheritdoc />
+    /// <summary>
+    /// Disposes the component and cancels the associated cancellation token.
+    /// </summary>
     public virtual void Dispose()
     {
         if (_cancellationTokenSource == null)
