@@ -1,36 +1,34 @@
-/*
- * NodeGuard
- * Copyright (C) 2023  Elenpay
- *
- * This program is free software: you can redistribute it and/or modify
- * it under the terms of the GNU Affero General Public License as published by
- * the Free Software Foundation, either version 3 of the License, or
- * (at your option) any later version.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU Affero General Public License for more details.
- *
- * You should have received a copy of the GNU Affero General Public License
- * along with this program.  If not, see http://www.gnu.org/licenses/.
- *
- */
+// NodeGuard
+// Copyright (C) 2025  Elenpay
+//
+// This program is free software: you can redistribute it and/or modify
+// it under the terms of the GNU Affero General Public License as published by
+// the Free Software Foundation, either version 3 of the License, or
+// (at your option) any later version.
+//
+// This program is distributed in the hope that it will be useful,
+// but WITHOUT ANY WARRANTY, without even the implied warranty of
+// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+// GNU Affero General Public License for more details.
+//
+// You should have received a copy of the GNU Affero General Public License
+// along with this program.  If not, see http://www.gnu.org/licenses/.
 
-using System.Diagnostics;
+
+
 using System.Runtime.InteropServices;
-using NodeGuard.Data.Models;
-using NodeGuard.Data.Repositories.Interfaces;
+using System.Security.Cryptography;
 using Google.Protobuf;
 using Grpc.Core;
 using Lnrpc;
+using Microsoft.EntityFrameworkCore;
 using NBitcoin;
 using NBXplorer.DerivationStrategy;
 using NBXplorer.Models;
-using System.Security.Cryptography;
 using NodeGuard.Data;
+using NodeGuard.Data.Models;
+using NodeGuard.Data.Repositories.Interfaces;
 using NodeGuard.Helpers;
-using Microsoft.EntityFrameworkCore;
 using Routerrpc;
 using Channel = NodeGuard.Data.Models.Channel;
 using Transaction = NBitcoin.Transaction;
@@ -200,6 +198,7 @@ namespace NodeGuard.Services
         /// <param name="Psbt"></param>
         public record RemoteSignerResponse(string? Psbt);
 
+        [Obsolete]
         public async Task OpenChannel(ChannelOperationRequest channelOperationRequest)
         {
             await using var context = await _dbContextFactory.CreateDbContextAsync();
@@ -368,8 +367,8 @@ namespace NodeGuard.Services
                                         }
                                     }
 
-                                    var finalSignedPSBT = await SignWithInternalWallet(channelOperationRequest, fundedPSBT, derivationStrategyBase, channelfundingTx, network);    
-                                    
+                                    var finalSignedPSBT = await SignWithInternalWallet(channelOperationRequest, fundedPSBT, derivationStrategyBase, channelfundingTx, network);
+
                                     //Null check
                                     if (finalSignedPSBT is null)
                                     {
@@ -721,9 +720,9 @@ namespace NodeGuard.Services
             var upfrontShutdownScriptReq =
                 remoteNodeInfo.Features.ContainsKey((uint)FeatureBit.UpfrontShutdownScriptReq);
             if (upfrontShutdownScriptOpt && remoteNodeInfo.Features[(uint)FeatureBit.UpfrontShutdownScriptOpt] is
-                    { IsKnown: true } ||
+                { IsKnown: true } ||
                 upfrontShutdownScriptReq && remoteNodeInfo.Features[(uint)FeatureBit.UpfrontShutdownScriptReq] is
-                    { IsKnown: true })
+                { IsKnown: true })
             {
                 var address = await GetCloseAddress(channelOperationRequest, derivationStrategyBase, _nbXplorerService,
                     _logger);
@@ -787,7 +786,7 @@ namespace NodeGuard.Services
             OperationRequestType requestype, ILogger? _logger = null)
         {
             if (channelOperationRequest == null) throw new ArgumentNullException(nameof(channelOperationRequest));
-            
+
             //If the wallet is watch only, we cannot open a channel as there is no way securely sign the PSBT with SIGHASH_NONE (the internal wallet is not there)
             if (channelOperationRequest.Wallet != null && channelOperationRequest.Wallet.IsWatchOnly)
             {
@@ -805,8 +804,8 @@ namespace NodeGuard.Services
                 $"Invalid request. Requested ${channelOperationRequest.RequestType.ToString()} on ${requestype.ToString()} method";
 
             _logger?.LogError(requestInvalid);
-            
-           
+
+
             throw new ArgumentOutOfRangeException(requestInvalid);
         }
 

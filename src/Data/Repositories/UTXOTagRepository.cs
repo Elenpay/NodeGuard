@@ -1,3 +1,19 @@
+// NodeGuard
+// Copyright (C) 2025  Elenpay
+//
+// This program is free software: you can redistribute it and/or modify
+// it under the terms of the GNU Affero General Public License as published by
+// the Free Software Foundation, either version 3 of the License, or
+// (at your option) any later version.
+//
+// This program is distributed in the hope that it will be useful,
+// but WITHOUT ANY WARRANTY, without even the implied warranty of
+// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+// GNU Affero General Public License for more details.
+//
+// You should have received a copy of the GNU Affero General Public License
+// along with this program.  If not, see http://www.gnu.org/licenses/.
+
 using Microsoft.EntityFrameworkCore;
 using NodeGuard.Data.Models;
 using NodeGuard.Data.Repositories.Interfaces;
@@ -9,7 +25,7 @@ public class UTXOTagRepository : IUTXOTagRepository
     private readonly IRepository<UTXOTag> _repository;
     private readonly ILogger<UTXOTagRepository> _logger;
     private readonly IDbContextFactory<ApplicationDbContext> _dbContextFactory;
-    
+
     public UTXOTagRepository(IRepository<UTXOTag> repository,
         ILogger<UTXOTagRepository> logger,
         IDbContextFactory<ApplicationDbContext> dbContextFactory)
@@ -18,25 +34,25 @@ public class UTXOTagRepository : IUTXOTagRepository
         _logger = logger;
         _dbContextFactory = dbContextFactory;
     }
-    
+
     public async Task<List<UTXOTag>> GetByOutpoint(string outpoint)
     {
         await using var applicationDbContext = await _dbContextFactory.CreateDbContextAsync();
-        
+
         return await applicationDbContext.UTXOTags.Where(x => x.Outpoint == outpoint).ToListAsync();
     }
 
     public async Task<UTXOTag?> GetByKeyAndOutpoint(string key, string outpoint)
     {
         await using var applicationDbContext = await _dbContextFactory.CreateDbContextAsync();
-        
+
         return await applicationDbContext.UTXOTags.FirstOrDefaultAsync(x => x.Key == key && x.Outpoint == outpoint);
     }
 
     public async Task<List<UTXOTag>> GetByKeyValue(string key, string value)
     {
         await using var applicationDbContext = await _dbContextFactory.CreateDbContextAsync();
-        
+
         return await applicationDbContext.UTXOTags
             .Where(x => x.Key == key && x.Value == value).ToListAsync();
     }
@@ -44,9 +60,9 @@ public class UTXOTagRepository : IUTXOTagRepository
     public async Task<(bool, string?)> AddAsync(UTXOTag type)
     {
         await using var applicationDbContext = await _dbContextFactory.CreateDbContextAsync();
-        
+
         type.SetCreationDatetime();
-        
+
         return await _repository.AddAsync(type, applicationDbContext);
     }
 
@@ -103,14 +119,14 @@ public class UTXOTagRepository : IUTXOTagRepository
     public (bool, string?) Remove(UTXOTag type)
     {
         using var applicationDbContext = _dbContextFactory.CreateDbContext();
-        
+
         return _repository.Remove(type, applicationDbContext);
     }
 
     public (bool, string?) RemoveRange(List<UTXOTag> types)
     {
         using var applicationDbContext = _dbContextFactory.CreateDbContext();
-        
+
         return _repository.RemoveRange(types, applicationDbContext);
     }
 
@@ -119,7 +135,7 @@ public class UTXOTagRepository : IUTXOTagRepository
         using var applicationDbContext = _dbContextFactory.CreateDbContext();
 
         type.SetUpdateDatetime();
-        
+
         return _repository.Update(type, applicationDbContext);
     }
 }

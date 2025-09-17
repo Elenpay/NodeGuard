@@ -1,36 +1,35 @@
-/*
- * NodeGuard
- * Copyright (C) 2023  Elenpay
- *
- * This program is free software: you can redistribute it and/or modify
- * it under the terms of the GNU Affero General Public License as published by
- * the Free Software Foundation, either version 3 of the License, or
- * (at your option) any later version.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU Affero General Public License for more details.
- *
- * You should have received a copy of the GNU Affero General Public License
- * along with this program.  If not, see http://www.gnu.org/licenses/.
- *
- */
+// NodeGuard
+// Copyright (C) 2025  Elenpay
+//
+// This program is free software: you can redistribute it and/or modify
+// it under the terms of the GNU Affero General Public License as published by
+// the Free Software Foundation, either version 3 of the License, or
+// (at your option) any later version.
+//
+// This program is distributed in the hope that it will be useful,
+// but WITHOUT ANY WARRANTY, without even the implied warranty of
+// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+// GNU Affero General Public License for more details.
+//
+// You should have received a copy of the GNU Affero General Public License
+// along with this program.  If not, see http://www.gnu.org/licenses/.
+
+
 
 using System.Security.Cryptography;
+using FluentAssertions;
+using Google.Protobuf;
+using Lnrpc;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
+using NBitcoin;
+using NBXplorer.DerivationStrategy;
+using NBXplorer.Models;
 using NodeGuard.Data;
 using NodeGuard.Data.Models;
 using NodeGuard.Data.Repositories.Interfaces;
-using NodeGuard.TestHelpers;
-using NBXplorer.Models;
-using FluentAssertions;
 using NodeGuard.Helpers;
-using Google.Protobuf;
-using Lnrpc;
-using NBitcoin;
-using NBXplorer.DerivationStrategy;
-using Microsoft.EntityFrameworkCore;
+using NodeGuard.TestHelpers;
 using Channel = NodeGuard.Data.Models.Channel;
 
 namespace NodeGuard.Services
@@ -72,6 +71,7 @@ namespace NodeGuard.Services
         }
 
         [Fact]
+        [Obsolete]
         public async Task OpenChannel_ChannelOperationRequestNotFound()
         {
             // Arrange
@@ -297,7 +297,7 @@ namespace NodeGuard.Services
             var nbXplorerMock = new Mock<INBXplorerService>();
             //Mock to return a wallet address
             var keyPathInformation = new KeyPathInformation()
-                { Address = BitcoinAddress.Create("bcrt1q590shaxaf5u08ml8jwlzghz99dup3z9592vxal", Network.RegTest) };
+            { Address = BitcoinAddress.Create("bcrt1q590shaxaf5u08ml8jwlzghz99dup3z9592vxal", Network.RegTest) };
 
             nbXplorerMock
                 .Setup(x => x.GetUnusedAsync(It.IsAny<DerivationStrategyBase>(), It.IsAny<DerivationFeature>(),
@@ -355,6 +355,7 @@ namespace NodeGuard.Services
         }
 
         [Fact]
+        [Obsolete]
         public async Task OpenChannel_SuccessLegacyMultiSig()
         {
             // Arrange
@@ -497,7 +498,7 @@ namespace NodeGuard.Services
                 .ReturnsAsync((true, ""));
 
             lightningClientService.Setup(
-                x => x.FundingStateStepVerify(It.IsAny<Node>(), It.IsAny<PSBT>(), It.IsAny<byte[]>(), It.IsAny<Lightning.LightningClient>()));            lightningClientService.Setup(
+                x => x.FundingStateStepVerify(It.IsAny<Node>(), It.IsAny<PSBT>(), It.IsAny<byte[]>(), It.IsAny<Lightning.LightningClient>())); lightningClientService.Setup(
                 x => x.FundingStateStepFinalize(It.IsAny<Node>(), It.IsAny<PSBT>(), It.IsAny<byte[]>(), It.IsAny<Lightning.LightningClient>()));
             // Mock channel repository
             var channelRepository = new Mock<IChannelRepository>();
@@ -547,6 +548,7 @@ namespace NodeGuard.Services
         }
 
         [Fact]
+        [Obsolete]
         public async Task OpenChannel_SuccessMultiSig()
         {
             // Arrange
@@ -700,7 +702,7 @@ namespace NodeGuard.Services
                     It.IsAny<PSBT>(),
                     It.IsAny<byte[]>(),
                     It.IsAny<Lightning.LightningClient>()
-                ));            lightningClient
+                )); lightningClient
                 .Setup(x => x.FundingStateStepFinalize(
                     It.IsAny<Node>(),
                     It.IsAny<PSBT>(),
@@ -760,6 +762,7 @@ namespace NodeGuard.Services
         }
 
         [Fact]
+        [Obsolete]
         public async Task OpenChannel_SuccessSingleSigBip39()
         {
             // Arrange
@@ -974,6 +977,7 @@ namespace NodeGuard.Services
         /// This means that we need in in a m-of-n multisig, m-1 signatures so nodeguard is that last one to sign to avoid leaking signatures with SIGHASH_NONE
         /// </summary>
         [Fact]
+        [Obsolete]
         public async Task OpenChannel_FailedIncorrectNumberOfHumanSigs()
         {
             // Arrange
@@ -1192,6 +1196,7 @@ namespace NodeGuard.Services
         }
 
         [Fact]
+        [Obsolete]
         public async Task OpenChannel_SuccessSingleSig()
         {
             // Arrange
@@ -1621,7 +1626,7 @@ namespace NodeGuard.Services
             };
 
             lightningClientService.Setup(x => x.ListChannels(It.IsAny<Node>(), null)).ReturnsAsync(listChannelsResponse);
-            var lightningService = new LightningService(null, null, nodeRepository.Object, null, null, null, null, null ,null, lightningClientService.Object, null);
+            var lightningService = new LightningService(null, null, nodeRepository.Object, null, null, null, null, null, null, lightningClientService.Object, null);
 
             // Act
             var channelStatus = await lightningService.GetChannelsState();
@@ -1665,7 +1670,7 @@ namespace NodeGuard.Services
             };
 
             lightningClientService.Setup(x => x.ListChannels(It.IsAny<Node>(), null)).ReturnsAsync(listChannelsResponse);
-            var lightningService = new LightningService(null, null, nodeRepository.Object, null, null, null, null, null ,null, lightningClientService.Object, null);
+            var lightningService = new LightningService(null, null, nodeRepository.Object, null, null, null, null, null, null, lightningClientService.Object, null);
 
             // Act
             var channelStatus = await lightningService.GetChannelsState();
@@ -1732,7 +1737,7 @@ namespace NodeGuard.Services
             lightningClientService.SetupSequence(x => x.ListChannels(It.IsAny<Node>(), null))
                 .ReturnsAsync(listChannelsResponse1)
                 .ReturnsAsync(listChannelsResponse2);
-            var lightningService = new LightningService(null, null, nodeRepository.Object, null, null, null, null, null ,null, lightningClientService.Object, null);
+            var lightningService = new LightningService(null, null, nodeRepository.Object, null, null, null, null, null, null, lightningClientService.Object, null);
 
             // Act
             var channelStatus = await lightningService.GetChannelsState();
@@ -1799,7 +1804,7 @@ namespace NodeGuard.Services
             lightningClientService.SetupSequence(x => x.ListChannels(It.IsAny<Node>(), null))
                 .ReturnsAsync(listChannelsResponse1)
                 .ReturnsAsync(listChannelsResponse2);
-            var lightningService = new LightningService(null, null, nodeRepository.Object, null, null, null, null, null ,null, lightningClientService.Object, null);
+            var lightningService = new LightningService(null, null, nodeRepository.Object, null, null, null, null, null, null, lightningClientService.Object, null);
 
             // Act
             var channelStatus = await lightningService.GetChannelsState();

@@ -1,30 +1,29 @@
-/*
- * NodeGuard
- * Copyright (C) 2023  Elenpay
- *
- * This program is free software: you can redistribute it and/or modify
- * it under the terms of the GNU Affero General Public License as published by
- * the Free Software Foundation, either version 3 of the License, or
- * (at your option) any later version.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU Affero General Public License for more details.
- *
- * You should have received a copy of the GNU Affero General Public License
- * along with this program.  If not, see http://www.gnu.org/licenses/.
- *
- */
+// NodeGuard
+// Copyright (C) 2025  Elenpay
+//
+// This program is free software: you can redistribute it and/or modify
+// it under the terms of the GNU Affero General Public License as published by
+// the Free Software Foundation, either version 3 of the License, or
+// (at your option) any later version.
+//
+// This program is distributed in the hope that it will be useful,
+// but WITHOUT ANY WARRANTY, without even the implied warranty of
+// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+// GNU Affero General Public License for more details.
+//
+// You should have received a copy of the GNU Affero General Public License
+// along with this program.  If not, see http://www.gnu.org/licenses/.
+
+
 
 using AutoMapper;
-using NodeGuard.Data.Models;
-using NodeGuard.Data.Repositories.Interfaces;
-using NodeGuard.Helpers;
 using Humanizer;
 using NBitcoin;
 using NBXplorer.DerivationStrategy;
 using NBXplorer.Models;
+using NodeGuard.Data.Models;
+using NodeGuard.Data.Repositories.Interfaces;
+using NodeGuard.Helpers;
 
 namespace NodeGuard.Services;
 
@@ -67,7 +66,7 @@ public interface ICoinSelectionService
     /// <param name="bitcoinRequest"></param>
     /// <param name="requestType"></param>
     public Task<List<UTXO>> GetLockedUTXOsForRequest(IBitcoinRequest bitcoinRequest, BitcoinRequestType requestType);
-    
+
     /// <summary>
     /// Gets the frozen UTXOs
     /// </summary>
@@ -79,7 +78,7 @@ public interface ICoinSelectionService
         DerivationStrategyBase derivationStrategy);
 }
 
-public class CoinSelectionService: ICoinSelectionService
+public class CoinSelectionService : ICoinSelectionService
 {
     private readonly ILogger<BitcoinService> _logger;
     private readonly IMapper _mapper;
@@ -110,12 +109,12 @@ public class CoinSelectionService: ICoinSelectionService
 
     private IBitcoinRequestRepository GetRepository(BitcoinRequestType requestType)
     {
-       return requestType switch
-       {
-           BitcoinRequestType.ChannelOperation => _channelOperationRequestRepository,
-           BitcoinRequestType.WalletWithdrawal => _walletWithdrawalRequestRepository,
-           _ => throw new NotImplementedException()
-       };
+        return requestType switch
+        {
+            BitcoinRequestType.ChannelOperation => _channelOperationRequestRepository,
+            BitcoinRequestType.WalletWithdrawal => _walletWithdrawalRequestRepository,
+            _ => throw new NotImplementedException()
+        };
     }
 
     public async Task LockUTXOs(List<UTXO> selectedUTXOs, IBitcoinRequest bitcoinRequest, BitcoinRequestType requestType)
@@ -151,12 +150,12 @@ public class CoinSelectionService: ICoinSelectionService
     private async Task<List<UTXO>> FilterLockedFrozenUTXOs(UTXOChanges? utxoChanges)
     {
         var lockedUTXOs = await _fmutxoRepository.GetLockedUTXOs();
-        var listLocked = lockedUTXOs.Select(utxo => $"{utxo.TxId}-{utxo.OutputIndex}").ToList(); 
+        var listLocked = lockedUTXOs.Select(utxo => $"{utxo.TxId}-{utxo.OutputIndex}").ToList();
         var listFrozen = await GetFrozenUTXOs();
         var frozenAndLockedOutpoints = new List<string>();
         frozenAndLockedOutpoints.AddRange(listLocked);
         frozenAndLockedOutpoints.AddRange(listFrozen);
-        
+
         utxoChanges.RemoveDuplicateUTXOs();
 
         var availableUTXOs = new List<UTXO>();
@@ -175,7 +174,7 @@ public class CoinSelectionService: ICoinSelectionService
 
         return availableUTXOs;
     }
-    
+
     public async Task<List<string>> GetFrozenUTXOs()
     {
         var frozenUTXOs = await _utxoTagRepository.GetByKeyValue(Constants.IsFrozenTag, "true");
@@ -191,7 +190,7 @@ public class CoinSelectionService: ICoinSelectionService
             .Union(listManuallyFrozen)
             .Except(listManuallyUnfrozen)
             .ToList();
-        
+
         return frozenUTXOsList;
     }
 

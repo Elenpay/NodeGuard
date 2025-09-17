@@ -1,6 +1,22 @@
+// NodeGuard
+// Copyright (C) 2025  Elenpay
+//
+// This program is free software: you can redistribute it and/or modify
+// it under the terms of the GNU Affero General Public License as published by
+// the Free Software Foundation, either version 3 of the License, or
+// (at your option) any later version.
+//
+// This program is distributed in the hope that it will be useful,
+// but WITHOUT ANY WARRANTY, without even the implied warranty of
+// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+// GNU Affero General Public License for more details.
+//
+// You should have received a copy of the GNU Affero General Public License
+// along with this program.  If not, see http://www.gnu.org/licenses/.
+
 using FluentAssertions;
-using NodeGuard.Data.Models;
 using Microsoft.EntityFrameworkCore;
+using NodeGuard.Data.Models;
 
 namespace NodeGuard.Data.Repositories;
 
@@ -9,16 +25,16 @@ public class FUTXORepositoryTests
     private readonly Random _random = new();
 
     private Mock<IDbContextFactory<ApplicationDbContext>> SetupDbContextFactory()
-        {
-            var dbContextFactory = new Mock<IDbContextFactory<ApplicationDbContext>>();
-            var options = new DbContextOptionsBuilder<ApplicationDbContext>()
-                .UseInMemoryDatabase(databaseName: "FUTXORepositoryTest" + _random.Next())
-                .Options;
-            var context = ()=> new ApplicationDbContext(options);
-            dbContextFactory.Setup(x => x.CreateDbContext()).Returns(context);
-            dbContextFactory.Setup(x => x.CreateDbContextAsync(default)).ReturnsAsync(context);
-            return dbContextFactory;
-        }
+    {
+        var dbContextFactory = new Mock<IDbContextFactory<ApplicationDbContext>>();
+        var options = new DbContextOptionsBuilder<ApplicationDbContext>()
+            .UseInMemoryDatabase(databaseName: "FUTXORepositoryTest" + _random.Next())
+            .Options;
+        var context = () => new ApplicationDbContext(options);
+        dbContextFactory.Setup(x => x.CreateDbContext()).Returns(context);
+        dbContextFactory.Setup(x => x.CreateDbContextAsync(default)).ReturnsAsync(context);
+        return dbContextFactory;
+    }
 
     [Fact]
     public async Task GetLockedUTXOs_emptyArgs()
@@ -40,12 +56,12 @@ public class FUTXORepositoryTests
                     Amount = 0.01m
                 }
             },
-            UTXOs = new List<FMUTXO> { new () { TxId = "1"} }
+            UTXOs = new List<FMUTXO> { new() { TxId = "1" } }
         });
         context.ChannelOperationRequests.Add(new ChannelOperationRequest
         {
             Status = ChannelOperationRequestStatus.Pending,
-            Utxos = new List<FMUTXO> { new () { TxId = "2"} }
+            Utxos = new List<FMUTXO> { new() { TxId = "2" } }
         });
         await context.SaveChangesAsync();
 
@@ -74,13 +90,13 @@ public class FUTXORepositoryTests
                     Amount = 0.01m
                 }
             },
-            UTXOs = new List<FMUTXO> { new () { TxId = "1"} }
+            UTXOs = new List<FMUTXO> { new() { TxId = "1" } }
         });
         context.ChannelOperationRequests.Add(new ChannelOperationRequest
         {
             Id = 2,
             Status = ChannelOperationRequestStatus.Pending,
-            Utxos = new List<FMUTXO> { new () { TxId = "2"} }
+            Utxos = new List<FMUTXO> { new() { TxId = "2" } }
         });
         await context.SaveChangesAsync();
 
@@ -110,17 +126,17 @@ public class FUTXORepositoryTests
                     Amount = 0.01m
                 }
             },
-            UTXOs = new List<FMUTXO> { new () { TxId = "1"} }
+            UTXOs = new List<FMUTXO> { new() { TxId = "1" } }
         });
         context.ChannelOperationRequests.Add(new ChannelOperationRequest
         {
             Id = 2,
             Status = ChannelOperationRequestStatus.Pending,
-            Utxos = new List<FMUTXO> { new () { TxId = "2"} }
+            Utxos = new List<FMUTXO> { new() { TxId = "2" } }
         });
         await context.SaveChangesAsync();
 
-        var result = await futxoRepository.GetLockedUTXOs( null, 2);
+        var result = await futxoRepository.GetLockedUTXOs(null, 2);
         result.Should().HaveCount(1);
         result[0].Id.Should().Be(1);
     }
@@ -146,13 +162,13 @@ public class FUTXORepositoryTests
                     Amount = 0.01m
                 }
             },
-            UTXOs = new List<FMUTXO> { new () { TxId = "1"} }
+            UTXOs = new List<FMUTXO> { new() { TxId = "1" } }
         });
         context.ChannelOperationRequests.Add(new ChannelOperationRequest
         {
             Id = 2,
             Status = ChannelOperationRequestStatus.Pending,
-            Utxos = new List<FMUTXO> { new () { TxId = "2"} }
+            Utxos = new List<FMUTXO> { new() { TxId = "2" } }
         });
         await context.SaveChangesAsync();
 
@@ -182,13 +198,13 @@ public class FUTXORepositoryTests
                     Amount = 0.01m
                 }
             },
-            UTXOs = new List<FMUTXO> { new () { TxId = "1"} }
+            UTXOs = new List<FMUTXO> { new() { TxId = "1" } }
         });
         context.ChannelOperationRequests.Add(new ChannelOperationRequest
         {
             Id = 2,
             Status = ChannelOperationRequestStatus.Failed,
-            Utxos = new List<FMUTXO> { new () { TxId = "2"} }
+            Utxos = new List<FMUTXO> { new() { TxId = "2" } }
         });
         await context.SaveChangesAsync();
 

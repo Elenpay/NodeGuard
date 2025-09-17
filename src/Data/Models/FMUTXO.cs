@@ -1,21 +1,20 @@
-/*
- * NodeGuard
- * Copyright (C) 2023  Elenpay
- *
- * This program is free software: you can redistribute it and/or modify
- * it under the terms of the GNU Affero General Public License as published by
- * the Free Software Foundation, either version 3 of the License, or
- * (at your option) any later version.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU Affero General Public License for more details.
- *
- * You should have received a copy of the GNU Affero General Public License
- * along with this program.  If not, see http://www.gnu.org/licenses/.
- *
- */
+// NodeGuard
+// Copyright (C) 2025  Elenpay
+//
+// This program is free software: you can redistribute it and/or modify
+// it under the terms of the GNU Affero General Public License as published by
+// the Free Software Foundation, either version 3 of the License, or
+// (at your option) any later version.
+//
+// This program is distributed in the hope that it will be useful,
+// but WITHOUT ANY WARRANTY, without even the implied warranty of
+// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+// GNU Affero General Public License for more details.
+//
+// You should have received a copy of the GNU Affero General Public License
+// along with this program.  If not, see http://www.gnu.org/licenses/.
+
+
 
 namespace NodeGuard.Data.Models
 {
@@ -24,7 +23,7 @@ namespace NodeGuard.Data.Models
     /// </summary>
     public class FMUTXO : Entity, IEquatable<FMUTXO>
     {
-        public string TxId { get; set; }
+        public required string TxId { get; set; }
 
         public uint OutputIndex { get; set; }
 
@@ -34,10 +33,10 @@ namespace NodeGuard.Data.Models
 
         // M-N Because if the UTXO is used in a request that gets cancelled,
         // the UTXO should be unlocked and assigned to another request
-        public List<ChannelOperationRequest> ChannelOperationRequests { get; set; }
+        public required List<ChannelOperationRequest> ChannelOperationRequests { get; set; }
 
         // Idem as ChannelOperationRequests
-        public List<WalletWithdrawalRequest> WalletWithdrawalRequests { get; set; }
+        public required List<WalletWithdrawalRequest> WalletWithdrawalRequests { get; set; }
 
         #endregion Relationships
 

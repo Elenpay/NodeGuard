@@ -1,29 +1,28 @@
-/*
- * NodeGuard
- * Copyright (C) 2023  Elenpay
- *
- * This program is free software: you can redistribute it and/or modify
- * it under the terms of the GNU Affero General Public License as published by
- * the Free Software Foundation, either version 3 of the License, or
- * (at your option) any later version.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU Affero General Public License for more details.
- *
- * You should have received a copy of the GNU Affero General Public License
- * along with this program.  If not, see http://www.gnu.org/licenses/.
- *
- */
+// NodeGuard
+// Copyright (C) 2025  Elenpay
+//
+// This program is free software: you can redistribute it and/or modify
+// it under the terms of the GNU Affero General Public License as published by
+// the Free Software Foundation, either version 3 of the License, or
+// (at your option) any later version.
+//
+// This program is distributed in the hope that it will be useful,
+// but WITHOUT ANY WARRANTY, without even the implied warranty of
+// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+// GNU Affero General Public License for more details.
+//
+// You should have received a copy of the GNU Affero General Public License
+// along with this program.  If not, see http://www.gnu.org/licenses/.
+
+
 
 using FluentAssertions;
-using NodeGuard.Data.Models;
-using NodeGuard.Data.Repositories.Interfaces;
-using NodeGuard.Services;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 using NBXplorer.DerivationStrategy;
+using NodeGuard.Data.Models;
+using NodeGuard.Data.Repositories.Interfaces;
+using NodeGuard.Services;
 using NodeGuard.TestHelpers;
 
 
@@ -39,7 +38,7 @@ public class WalletRepositoryTests
         var options = new DbContextOptionsBuilder<ApplicationDbContext>()
             .UseInMemoryDatabase(databaseName: "WalletRepositoryTest" + _random.Next())
             .Options;
-        var context = ()=> new ApplicationDbContext(options);
+        var context = () => new ApplicationDbContext(options);
         dbContextFactory.Setup(x => x.CreateDbContext()).Returns(context);
         dbContextFactory.Setup(x => x.CreateDbContextAsync(default)).ReturnsAsync(context);
         return dbContextFactory;
@@ -60,7 +59,7 @@ public class WalletRepositoryTests
         var walletRepository = new WalletRepository(null, null, dbContextFactory.Object, null, null, null);
         var result = await walletRepository.GetNextSubderivationPath();
         result.Should().Be("0");
-   }
+    }
 
     [Fact]
     public async Task GetNextSubderivationPath_ReturnNextIfNoPrevSubDerivPath()

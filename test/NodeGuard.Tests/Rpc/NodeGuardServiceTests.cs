@@ -1,30 +1,24 @@
-/*
- * NodeGuard
- * Copyright (C) 2023  Elenpay
- *
- * This program is free software: you can redistribute it and/or modify
- * it under the terms of the GNU Affero General Public License as published by
- * the Free Software Foundation, either version 3 of the License, or
- * (at your option) any later version.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU Affero General Public License for more details.
- *
- * You should have received a copy of the GNU Affero General Public License
- * along with this program.  If not, see http://www.gnu.org/licenses/.
- */
+// NodeGuard
+// Copyright (C) 2025  Elenpay
+//
+// This program is free software: you can redistribute it and/or modify
+// it under the terms of the GNU Affero General Public License as published by
+// the Free Software Foundation, either version 3 of the License, or
+// (at your option) any later version.
+//
+// This program is distributed in the hope that it will be useful,
+// but WITHOUT ANY WARRANTY, without even the implied warranty of
+// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+// GNU Affero General Public License for more details.
+//
+// You should have received a copy of the GNU Affero General Public License
+// along with this program.  If not, see http://www.gnu.org/licenses/.
+
+
 
 using System.Collections.Specialized;
 using AutoMapper;
 using FluentAssertions;
-using NodeGuard.Automapper;
-using NodeGuard.Data;
-using NodeGuard.Data.Models;
-using NodeGuard.Data.Repositories;
-using NodeGuard.Data.Repositories.Interfaces;
-using NodeGuard.Services;
 using Grpc.Core;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
@@ -32,6 +26,12 @@ using NBitcoin;
 using NBXplorer.DerivationStrategy;
 using NBXplorer.Models;
 using Nodeguard;
+using NodeGuard.Automapper;
+using NodeGuard.Data;
+using NodeGuard.Data.Models;
+using NodeGuard.Data.Repositories;
+using NodeGuard.Data.Repositories.Interfaces;
+using NodeGuard.Services;
 using Quartz;
 using Quartz.Impl;
 using Channel = NodeGuard.Data.Models.Channel;
@@ -67,9 +67,9 @@ namespace NodeGuard.Rpc
             var destPubKey = "destPubKey";
             var walletId = 1;
 
-            nodeRepositoryMock.Setup(repo => repo.GetByPubkey(sourcePubKey)).ReturnsAsync((Node) null);
+            nodeRepositoryMock.Setup(repo => repo.GetByPubkey(sourcePubKey)).ReturnsAsync((Node)null);
             nodeRepositoryMock.Setup(repo => repo.GetByPubkey(destPubKey))
-                .ReturnsAsync(new Node {Id = 2, PubKey = destPubKey});
+                .ReturnsAsync(new Node { Id = 2, PubKey = destPubKey });
 
             var service = new NodeGuardService(_logger.Object, new Mock<ILiquidityRuleRepository>().Object,
                 new Mock<IWalletRepository>().Object,
@@ -109,8 +109,8 @@ namespace NodeGuard.Rpc
             var walletId = 1;
 
             nodeRepositoryMock.Setup(repo => repo.GetByPubkey(sourcePubKey))
-                .ReturnsAsync(new Node {Id = 1, PubKey = sourcePubKey});
-            nodeRepositoryMock.Setup(repo => repo.GetByPubkey(destPubKey)).ReturnsAsync((Node) null);
+                .ReturnsAsync(new Node { Id = 1, PubKey = sourcePubKey });
+            nodeRepositoryMock.Setup(repo => repo.GetByPubkey(destPubKey)).ReturnsAsync((Node)null);
 
             var service = new NodeGuardService(_logger.Object, new Mock<ILiquidityRuleRepository>().Object,
                 new Mock<IWalletRepository>().Object,
@@ -154,11 +154,11 @@ namespace NodeGuard.Rpc
             var psbt = PSBT.FromTransaction(Transaction.Create(Network.RegTest), Network.RegTest);
 
             nodeRepositoryMock.Setup(repo => repo.GetByPubkey(sourcePubKey))
-                .ReturnsAsync(new Node {Id = 1, PubKey = sourcePubKey});
+                .ReturnsAsync(new Node { Id = 1, PubKey = sourcePubKey });
             nodeRepositoryMock.Setup(repo => repo.GetByPubkey(destPubKey))
-                .ReturnsAsync(new Node {Id = 2, PubKey = destPubKey});
+                .ReturnsAsync(new Node { Id = 2, PubKey = destPubKey });
             walletRepositoryMock.Setup(repo => repo.GetById(walletId))
-                .ReturnsAsync(new Wallet {Id = walletId});
+                .ReturnsAsync(new Wallet { Id = walletId });
             channelOperationRequestRepositoryMock.Setup(repo => repo.AddAsync(It.IsAny<ChannelOperationRequest>()))
                 .ReturnsAsync((true, null));
             lightningServiceMock.Setup(service => service.GenerateTemplatePSBT(new ChannelOperationRequest()))
@@ -218,13 +218,13 @@ namespace NodeGuard.Rpc
             var sourcePubKey = "sourcePubKey";
             var destPubKey = "destPubKey";
             var walletId = 1;
-            var wallet = new Wallet() {Id = walletId};
+            var wallet = new Wallet() { Id = walletId };
             var psbt = PSBT.FromTransaction(Transaction.Create(Network.RegTest), Network.RegTest);
 
             nodeRepositoryMock.Setup(repo => repo.GetByPubkey(sourcePubKey))
-                .ReturnsAsync(new Node {Id = 1, PubKey = sourcePubKey});
+                .ReturnsAsync(new Node { Id = 1, PubKey = sourcePubKey });
             nodeRepositoryMock.Setup(repo => repo.GetByPubkey(destPubKey))
-                .ReturnsAsync(new Node {Id = 2, PubKey = destPubKey});
+                .ReturnsAsync(new Node { Id = 2, PubKey = destPubKey });
             walletRepositoryMock.Setup(repo => repo.GetById(walletId))
                 .ReturnsAsync(wallet);
             coinSelectionServiceMock.Setup(service => service.GetUTXOsByOutpointAsync(wallet.GetDerivationStrategy(),
@@ -295,12 +295,12 @@ namespace NodeGuard.Rpc
             var sourcePubKey = "sourcePubKey";
             var destPubKey = "destPubKey";
             var walletId = 1;
-            var wallet = new Wallet() {Id = walletId};
+            var wallet = new Wallet() { Id = walletId };
 
             nodeRepositoryMock.Setup(repo => repo.GetByPubkey(sourcePubKey))
-                .ReturnsAsync(new Node {Id = 1, PubKey = sourcePubKey});
+                .ReturnsAsync(new Node { Id = 1, PubKey = sourcePubKey });
             nodeRepositoryMock.Setup(repo => repo.GetByPubkey(destPubKey))
-                .ReturnsAsync(new Node {Id = 2, PubKey = destPubKey});
+                .ReturnsAsync(new Node { Id = 2, PubKey = destPubKey });
             walletRepositoryMock.Setup(repo => repo.GetById(walletId))
                 .ReturnsAsync(wallet);
 
@@ -391,7 +391,7 @@ namespace NodeGuard.Rpc
 
             ulong channelId = 1234;
 
-            channelRepositoryMock.Setup(repo => repo.GetByChanId(It.IsAny<ulong>())).ReturnsAsync((Channel) null);
+            channelRepositoryMock.Setup(repo => repo.GetByChanId(It.IsAny<ulong>())).ReturnsAsync((Channel)null);
 
             var service = new NodeGuardService(
                 _logger.Object, new Mock<ILiquidityRuleRepository>().Object,
@@ -476,7 +476,7 @@ namespace NodeGuard.Rpc
                     RebalanceTarget = 0.5M,
                     ChannelId = 1,
                     SwapWalletId = 1,
-                    ReverseSwapWalletId = 1, 
+                    ReverseSwapWalletId = 1,
                     SwapWallet = new Wallet(),
                     ReverseSwapWallet = new Wallet(),
                     NodeId = 0,
@@ -519,7 +519,7 @@ namespace NodeGuard.Rpc
             result.LiquidityRules.Should().NotBeEmpty();
 
             result.LiquidityRules.First().MinimumLocalBalance.Should()
-                .Be((float) (liquidityRules.First().MinimumLocalBalance));
+                .Be((float)(liquidityRules.First().MinimumLocalBalance));
         }
 
         [Fact]
@@ -652,7 +652,8 @@ namespace NodeGuard.Rpc
         }
 
         [Fact]
-        public async Task RequestWithdrawal_NoWallet()
+        [Obsolete]
+        public Task RequestWithdrawal_NoWallet()
         {
             //Arrange
             var wallet = InitMockRequestWithdrawal(out var walletRepository,
@@ -666,7 +667,7 @@ namespace NodeGuard.Rpc
                 out var walletWithdrawalRequestRepository,
                 out _);
 
-            walletRepository.Setup(x => x.GetById(It.IsAny<int>())).ReturnsAsync((Wallet) null);
+            walletRepository.Setup(x => x.GetById(It.IsAny<int>())).ReturnsAsync((Wallet)null);
 
             var requestWithdrawalRequest = new RequestWithdrawalRequest
             {
@@ -690,10 +691,12 @@ namespace NodeGuard.Rpc
 
             //Assert
             resp.Should().ThrowAsync<RpcException>();
+            return Task.CompletedTask;
         }
 
         [Fact]
-        public async Task RequestWithdrawal_NoAvailableUTXOs()
+        [Obsolete]
+        public Task RequestWithdrawal_NoAvailableUTXOs()
         {
             //Arrange
             var wallet = InitMockRequestWithdrawal(out var walletRepository,
@@ -732,10 +735,12 @@ namespace NodeGuard.Rpc
 
             //Assert
             resp.Should().ThrowAsync<RpcException>();
+            return Task.CompletedTask;
         }
 
         [Fact]
-        public async Task RequestWithdrawal_FailureRepoSave()
+        [Obsolete]
+        public Task RequestWithdrawal_FailureRepoSave()
         {
             //Arrange
             var wallet = InitMockRequestWithdrawal(out var walletRepository,
@@ -774,10 +779,12 @@ namespace NodeGuard.Rpc
 
             //Assert
             resp.Should().ThrowAsync<RpcException>();
+            return Task.CompletedTask;
         }
 
         [Fact]
-        public async Task RequestWithdrawal_NullTemplatePSBT()
+        [Obsolete]
+        public Task RequestWithdrawal_NullTemplatePSBT()
         {
             //Arrange
             var wallet = InitMockRequestWithdrawal(out var walletRepository,
@@ -816,6 +823,7 @@ namespace NodeGuard.Rpc
 
             //Assert
             resp.Should().ThrowAsync<RpcException>();
+            return Task.CompletedTask;
         }
 
         private Wallet InitMockRequestWithdrawal(out Mock<IWalletRepository> walletRepository,
@@ -875,7 +883,7 @@ namespace NodeGuard.Rpc
 
             bitcoinService = new Mock<IBitcoinService>();
 
-            utxoChanges.Confirmed = new UTXOChange() {UTXOs = utxoList};
+            utxoChanges.Confirmed = new UTXOChange() { UTXOs = utxoList };
 
             bitcoinService.Setup(x => x.GenerateTemplatePSBT(It.IsAny<WalletWithdrawalRequest>()))
                 .ReturnsAsync(psbt);
@@ -1273,7 +1281,7 @@ namespace NodeGuard.Rpc
 
             var request = new GetAvailableWalletsRequest()
             {
-                Id = {1, 3}
+                Id = { 1, 3 }
             };
             var nodeGuardService = new NodeGuardService(null, null, walletRepository, null, null, null, null,
                 scheduleFactory.Object, new Mock<INodeRepository>().Object,
@@ -1296,7 +1304,7 @@ namespace NodeGuard.Rpc
             var request = new GetAvailableWalletsRequest()
             {
                 WalletType = WALLET_TYPE.Hot,
-                Id = {1, 3}
+                Id = { 1, 3 }
             };
             var nodeGuardService =
                 new NodeGuardService(null, null, null, null, null, null, null, scheduleFactory.Object, null,

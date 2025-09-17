@@ -1,26 +1,25 @@
-/*
- * NodeGuard
- * Copyright (C) 2023  Elenpay
- *
- * This program is free software: you can redistribute it and/or modify
- * it under the terms of the GNU Affero General Public License as published by
- * the Free Software Foundation, either version 3 of the License, or
- * (at your option) any later version.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU Affero General Public License for more details.
- *
- * You should have received a copy of the GNU Affero General Public License
- * along with this program.  If not, see http://www.gnu.org/licenses/.
- *
- */
+// NodeGuard
+// Copyright (C) 2025  Elenpay
+//
+// This program is free software: you can redistribute it and/or modify
+// it under the terms of the GNU Affero General Public License as published by
+// the Free Software Foundation, either version 3 of the License, or
+// (at your option) any later version.
+//
+// This program is distributed in the hope that it will be useful,
+// but WITHOUT ANY WARRANTY, without even the implied warranty of
+// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+// GNU Affero General Public License for more details.
+//
+// You should have received a copy of the GNU Affero General Public License
+// along with this program.  If not, see http://www.gnu.org/licenses/.
 
-using NodeGuard.Data.Repositories.Interfaces;
-using NodeGuard.Services;
+
+
 using Grpc.Core;
 using Lnrpc;
+using NodeGuard.Data.Repositories.Interfaces;
+using NodeGuard.Services;
 using Quartz;
 using Channel = NodeGuard.Data.Models.Channel;
 using Node = NodeGuard.Data.Models.Node;
@@ -87,18 +86,18 @@ public class NodeChannelSuscribeJob : IJob
                     _logger.LogError(e, "Error reading and update event of node {NodeId}", nodeId);
                     throw new JobExecutionException(e, true);
                 }
-                
-              
+
+
             }
-            
-         
+
+
         }
         catch (Exception e)
         {
             _logger.LogError(e, "Error while subscribing for the channel updates of node {NodeId}", nodeId);
             //Sleep to avoid massive requests
             await Task.Delay(5000);
-            
+
             throw new JobExecutionException(e, true);
         }
 

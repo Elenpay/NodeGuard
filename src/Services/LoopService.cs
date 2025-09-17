@@ -1,3 +1,19 @@
+// NodeGuard
+// Copyright (C) 2025  Elenpay
+//
+// This program is free software: you can redistribute it and/or modify
+// it under the terms of the GNU Affero General Public License as published by
+// the Free Software Foundation, either version 3 of the License, or
+// (at your option) any later version.
+//
+// This program is distributed in the hope that it will be useful,
+// but WITHOUT ANY WARRANTY, without even the implied warranty of
+// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+// GNU Affero General Public License for more details.
+//
+// You should have received a copy of the GNU Affero General Public License
+// along with this program.  If not, see http://www.gnu.org/licenses/.
+
 using System.Collections.Concurrent;
 using Google.Protobuf;
 using Grpc.Core.Interceptors;
@@ -13,8 +29,8 @@ public interface ILoopService
     GrpcChannel CreateClient(string endpoint);
     SwapClient.SwapClientClient GetClient(Node node);
     Task<bool> PingAsync(Node node, CancellationToken cancellationToken = default);
-    Task<SwapResponse> CreateSwapOutAsync(Node node, SwapOutRequest request, CancellationToken cancellationToken= default);
-    Task<SwapResponse> GetSwapAsync(Node node, string swapId, CancellationToken cancellationToken= default);
+    Task<SwapResponse> CreateSwapOutAsync(Node node, SwapOutRequest request, CancellationToken cancellationToken = default);
+    Task<SwapResponse> GetSwapAsync(Node node, string swapId, CancellationToken cancellationToken = default);
     Task<OutQuoteResponse> LoopOutQuoteAsync(Node node, long amt, int confTarget, CancellationToken cancellationToken = default);
 }
 
@@ -54,7 +70,7 @@ public class LoopService : ILoopService
 
         return channel;
     }
-    
+
     public SwapClient.SwapClientClient GetClient(Node node)
     {
         if (string.IsNullOrEmpty(node.LoopdEndpoint) || string.IsNullOrEmpty(node.LoopdMacaroon))
@@ -71,7 +87,7 @@ public class LoopService : ILoopService
         });
     }
 
-    public async Task<bool> PingAsync(Node node, CancellationToken cancellationToken= default)
+    public async Task<bool> PingAsync(Node node, CancellationToken cancellationToken = default)
     {
         if (string.IsNullOrEmpty(node.LoopdEndpoint) || string.IsNullOrEmpty(node.LoopdMacaroon))
         {
@@ -89,7 +105,7 @@ public class LoopService : ILoopService
         return true;
     }
 
-    public async Task<SwapResponse> CreateSwapOutAsync(Node node, SwapOutRequest request, CancellationToken cancellationToken= default)
+    public async Task<SwapResponse> CreateSwapOutAsync(Node node, SwapOutRequest request, CancellationToken cancellationToken = default)
     {
         if (string.IsNullOrEmpty(node.LoopdEndpoint) || string.IsNullOrEmpty(node.LoopdMacaroon))
         {
@@ -110,12 +126,14 @@ public class LoopService : ILoopService
         var maxRoutingFeeRatePPM = 10000;
 
         // CalcFee returns the swap fee for a given swap amount.
-        var calcFee = (long amount, long feeBase, long feeRate) => {
+        var calcFee = (long amount, long feeBase, long feeRate) =>
+        {
             return feeBase + amount * feeRate / FeeRateTotalPartsPPM;
         };
 
         // Took from loopd/cmd/loop/main.go
-        var getMaxRoutingFee = (long amt) => {
+        var getMaxRoutingFee = (long amt) =>
+        {
             return calcFee(amt, maxRoutingFeeBaseSats, maxRoutingFeeRatePPM);
         };
 
@@ -126,7 +144,7 @@ public class LoopService : ILoopService
             MaxMinerFee = request.MaxMinerFees ?? 0,
             MaxPrepayAmt = request.PrepayAmtSat ?? 0,
             MaxSwapFee = request.MaxServiceFees ?? 0,
-            MaxPrepayRoutingFee = request.MaxRoutingFeesPercent != null  ? calcFee(request.PrepayAmtSat ?? 0, maxRoutingFeeBaseSats, request.MaxRoutingFeesPercent.Value * 10000) : getMaxRoutingFee(request.PrepayAmtSat ?? 0),
+            MaxPrepayRoutingFee = request.MaxRoutingFeesPercent != null ? calcFee(request.PrepayAmtSat ?? 0, maxRoutingFeeBaseSats, request.MaxRoutingFeesPercent.Value * 10000) : getMaxRoutingFee(request.PrepayAmtSat ?? 0),
             MaxSwapRoutingFee = request.MaxRoutingFeesPercent != null ? calcFee(request.Amount, maxRoutingFeeBaseSats, request.MaxRoutingFeesPercent.Value * 10000) : getMaxRoutingFee(request.Amount),
             SweepConfTarget = request.SweepConfTarget,
             HtlcConfirmations = 3,
@@ -153,7 +171,7 @@ public class LoopService : ILoopService
         return await GetSwapAsync(node, Convert.ToHexString(response.IdBytes.ToByteArray()).ToLowerInvariant(), cancellationToken);
     }
 
-    public async Task<SwapResponse> GetSwapAsync(Node node, string swapId, CancellationToken cancellationToken= default)
+    public async Task<SwapResponse> GetSwapAsync(Node node, string swapId, CancellationToken cancellationToken = default)
     {
         if (string.IsNullOrEmpty(node.LoopdEndpoint) || string.IsNullOrEmpty(node.LoopdMacaroon))
         {
@@ -198,12 +216,12 @@ public class LoopService : ILoopService
         var client = GetClient(node);
 
         var quoteRequest = new QuoteRequest
-         {
+        {
             Amt = amt,
             ConfTarget = 6,
             ExternalHtlc = true,
             Private = false
-         };
+        };
 
         _logger.LogInformation("Requesting Loop Out quote for amount {Amount} satoshis", quoteRequest.Amt);
         return await client.LoopOutQuoteAsync(quoteRequest, null, null, cancellationToken);

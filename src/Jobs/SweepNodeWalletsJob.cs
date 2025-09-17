@@ -1,30 +1,27 @@
-/*
- * NodeGuard
- * Copyright (C) 2023  Elenpay
- *
- * This program is free software: you can redistribute it and/or modify
- * it under the terms of the GNU Affero General Public License as published by
- * the Free Software Foundation, either version 3 of the License, or
- * (at your option) any later version.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU Affero General Public License for more details.
- *
- * You should have received a copy of the GNU Affero General Public License
- * along with this program.  If not, see http://www.gnu.org/licenses/.
- *
- */
+// NodeGuard
+// Copyright (C) 2025  Elenpay
+//
+// This program is free software: you can redistribute it and/or modify
+// it under the terms of the GNU Affero General Public License as published by
+// the Free Software Foundation, either version 3 of the License, or
+// (at your option) any later version.
+//
+// This program is distributed in the hope that it will be useful,
+// but WITHOUT ANY WARRANTY, without even the implied warranty of
+// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+// GNU Affero General Public License for more details.
+//
+// You should have received a copy of the GNU Affero General Public License
+// along with this program.  If not, see http://www.gnu.org/licenses/.
 
-using NodeGuard.Data.Models;
-using NodeGuard.Data.Repositories.Interfaces;
-using NodeGuard.Helpers;
-using NodeGuard.Services;
+
+
 using Grpc.Core;
-using Grpc.Net.Client;
 using Lnrpc;
 using NBXplorer.DerivationStrategy;
+using NodeGuard.Data.Models;
+using NodeGuard.Data.Repositories.Interfaces;
+using NodeGuard.Services;
 using Quartz;
 
 namespace NodeGuard.Jobs;
@@ -95,7 +92,7 @@ public class SweepNodeWalletsJob : IJob
                 if (returningAddress != null && lndChangeAddress != null && utxos.Any() && totalSatsAvailable > Constants.MINIMUM_SWEEP_TRANSACTION_AMOUNT_SATS)
                 {
                     // We need to maintain onchain balance to be at least RequiredAnchorChannelClosingAmount but also we apply a 10% buffer to pay for this sweep fees and let some more money on the wallet
-                    var sweepedFundsAmount = (long)((totalSatsAvailable - requiredAnchorChannelClosingAmount) * 0.9); 
+                    var sweepedFundsAmount = (long)((totalSatsAvailable - requiredAnchorChannelClosingAmount) * 0.9);
                     var sendManyResponse = await lightningClient.SendManyAsync(new SendManyRequest()
                     {
                         AddrToAmount =

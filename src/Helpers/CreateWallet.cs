@@ -1,23 +1,22 @@
-/*
- * NodeGuard
- * Copyright (C) 2023  Elenpay
- *
- * This program is free software: you can redistribute it and/or modify
- * it under the terms of the GNU Affero General Public License as published by
- * the Free Software Foundation, either version 3 of the License, or
- * (at your option) any later version.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU Affero General Public License for more details.
- *
- * You should have received a copy of the GNU Affero General Public License
- * along with this program.  If not, see http://www.gnu.org/licenses/.
- *
- */
-using NodeGuard.Data.Models;
+// NodeGuard
+// Copyright (C) 2025  Elenpay
+//
+// This program is free software: you can redistribute it and/or modify
+// it under the terms of the GNU Affero General Public License as published by
+// the Free Software Foundation, either version 3 of the License, or
+// (at your option) any later version.
+//
+// This program is distributed in the hope that it will be useful,
+// but WITHOUT ANY WARRANTY, without even the implied warranty of
+// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+// GNU Affero General Public License for more details.
+//
+// You should have received a copy of the GNU Affero General Public License
+// along with this program.  If not, see http://www.gnu.org/licenses/.
+
+
 using NBitcoin;
+using NodeGuard.Data.Models;
 using Key = NodeGuard.Data.Models.Key;
 
 namespace NodeGuard.TestHelpers;
@@ -35,7 +34,7 @@ public static class CreateWallet
         };
         // force the saving of the master fingerprint
         internalWallet.MasterFingerprint = internalWallet.MasterFingerprint;
-                    
+
         logger?.LogInformation("Internal wallet setup, seed: {MnemonicString}", internalWallet.MnemonicString);
         return internalWallet;
     }
@@ -47,9 +46,9 @@ public static class CreateWallet
             Name = "NodeGuard Co-signing Key",
             XPUB = internalWallet.GetXpubForAccount(accountId),
             InternalWalletId = internalWallet.Id,
-            Path = internalWallet.GetKeyPathForAccount(accountId), 
+            Path = internalWallet.GetKeyPathForAccount(accountId),
             MasterFingerprint = internalWallet.MasterFingerprint
-        }; 
+        };
     }
 
     public static Key CreateUserKey(string keyName, string userId, string walletSeed)
@@ -71,7 +70,7 @@ public static class CreateWallet
             MasterFingerprint = accountKeyPath1.MasterFingerprint.ToString(),
         };
     }
-    
+
     public static Wallet SingleSig(InternalWallet internalWallet, string accountId = "1")
     {
         var internalWalletKey = CreateInternalKey(internalWallet, accountId);
@@ -143,13 +142,13 @@ public static class CreateWallet
             "social mango annual basic work brain economy one safe physical junk other toy valid load cook napkin maple runway island oil fan legend stem";
         var wallet2Seed =
             "solar goat auto bachelor chronic input twin depth fork scale divorce fury mushroom column image sauce car public artist announce treat spend jacket physical";
-        
+
         logger?.LogInformation("Wallet 1 seed: {MnemonicString}", wallet1Seed);
         logger?.LogInformation("Wallet 2 seed: {MnemonicString}", wallet2Seed);
 
         var user1Key = CreateUserKey("Key 1", user1, wallet1Seed);
         var user2Key = CreateUserKey("Key 2", user2, wallet2Seed);
-            
+
         return MultiSig(internalWallet, accountId, user1Key, user2Key);
     }
 

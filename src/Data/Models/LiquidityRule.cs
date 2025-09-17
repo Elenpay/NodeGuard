@@ -1,3 +1,19 @@
+// NodeGuard
+// Copyright (C) 2025  Elenpay
+//
+// This program is free software: you can redistribute it and/or modify
+// it under the terms of the GNU Affero General Public License as published by
+// the Free Software Foundation, either version 3 of the License, or
+// (at your option) any later version.
+//
+// This program is distributed in the hope that it will be useful,
+// but WITHOUT ANY WARRANTY, without even the implied warranty of
+// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+// GNU Affero General Public License for more details.
+//
+// You should have received a copy of the GNU Affero General Public License
+// along with this program.  If not, see http://www.gnu.org/licenses/.
+
 using System.ComponentModel.DataAnnotations.Schema;
 
 namespace NodeGuard.Data.Models;
@@ -30,23 +46,23 @@ public class LiquidityRule : Entity
     #region Relationships
 
     public int ChannelId { get; set; }
-    public Channel Channel { get; set; }
+    public required Channel Channel { get; set; }
 
     public int SwapWalletId { get; set; }
-    public Wallet SwapWallet { get; set; }
+    public required Wallet SwapWallet { get; set; }
 
     public int? ReverseSwapWalletId { get; set; }
     public Wallet? ReverseSwapWallet { get; set; }
 
     public int NodeId { get; set; }
-    public Node Node { get; set; }
+    public required Node Node { get; set; }
 
     /// <summary>
     /// The pubkey of the node that is the remote counterparty of the channel
     /// </summary>
     [NotMapped]
     public string? RemoteNodePubkey => Channel?.SourceNode?.PubKey != Node.PubKey ? Channel?.SourceNode?.PubKey : Channel?.DestinationNode?.PubKey;
-    
+
     #endregion
 
 }

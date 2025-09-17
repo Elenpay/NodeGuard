@@ -1,18 +1,30 @@
-// Licensed to the .NET Foundation under one or more agreements.
-// The .NET Foundation licenses this file to you under the MIT license.
+// NodeGuard
+// Copyright (C) 2025  Elenpay
+//
+// This program is free software: you can redistribute it and/or modify
+// it under the terms of the GNU Affero General Public License as published by
+// the Free Software Foundation, either version 3 of the License, or
+// (at your option) any later version.
+//
+// This program is distributed in the hope that it will be useful,
+// but WITHOUT ANY WARRANTY, without even the implied warranty of
+// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+// GNU Affero General Public License for more details.
+//
+// You should have received a copy of the GNU Affero General Public License
+// along with this program.  If not, see http://www.gnu.org/licenses/.
+
 #nullable disable
 
-using System;
 using System.ComponentModel.DataAnnotations;
 using System.Text;
 using System.Text.Encodings.Web;
-using System.Threading.Tasks;
-using NodeGuard.Data.Models;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Identity.UI.Services;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.RazorPages;
 using Microsoft.AspNetCore.WebUtilities;
+using NodeGuard.Data.Models;
 
 namespace NodeGuard.Areas.Identity.Pages.Account.Manage
 {
@@ -87,9 +99,9 @@ namespace NodeGuard.Areas.Identity.Pages.Account.Manage
             IsEmailConfirmed = await _userManager.IsEmailConfirmedAsync(user);
         }
 
-        public async Task<IActionResult> OnGetAsync()
+        public Task<IActionResult> OnGetAsync()
         {
-            return NotFound();
+            return Task.FromResult<IActionResult>(NotFound());
             //var user = await _userManager.GetUserAsync(User);
             //if (user == null)
             //{
@@ -100,9 +112,9 @@ namespace NodeGuard.Areas.Identity.Pages.Account.Manage
             //return Page();
         }
 
-        public async Task<IActionResult> OnPostChangeEmailAsync()
+        public Task<IActionResult> OnPostChangeEmailAsync()
         {
-            return NotFound();
+            return Task.FromResult<IActionResult>(NotFound());
 
             //var user = await _userManager.GetUserAsync(User);
             //if (user == null)

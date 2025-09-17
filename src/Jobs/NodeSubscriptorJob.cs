@@ -1,4 +1,19 @@
-using NodeGuard.Data.Repositories;
+// NodeGuard
+// Copyright (C) 2025  Elenpay
+//
+// This program is free software: you can redistribute it and/or modify
+// it under the terms of the GNU Affero General Public License as published by
+// the Free Software Foundation, either version 3 of the License, or
+// (at your option) any later version.
+//
+// This program is distributed in the hope that it will be useful,
+// but WITHOUT ANY WARRANTY, without even the implied warranty of
+// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+// GNU Affero General Public License for more details.
+//
+// You should have received a copy of the GNU Affero General Public License
+// along with this program.  If not, see http://www.gnu.org/licenses/.
+
 using NodeGuard.Data.Repositories.Interfaces;
 using NodeGuard.Helpers;
 using Quartz;
@@ -26,7 +41,7 @@ public class NodeSubscriptorJob : IJob
             var managedNodes = await _nodeRepository.GetAllManagedByNodeGuard(false);
 
             var scheduler = await _schedulerFactory.GetScheduler();
-            
+
             foreach (var managedNode in managedNodes)
             {
                 if (managedNode.ChannelAdminMacaroon != null)
@@ -35,7 +50,7 @@ public class NodeSubscriptorJob : IJob
                     map.Put("nodeId", managedNode.Id.ToString());
                     var job = SimpleJob.Create<NodeChannelSuscribeJob>(map, managedNode.Id.ToString());
                     await scheduler.ScheduleJob(job.Job, job.Trigger);
-                    
+
                     var jobUpateResult = _nodeRepository.Update(managedNode);
                 }
             }
@@ -45,7 +60,7 @@ public class NodeSubscriptorJob : IJob
             _logger.LogError(e, "Error on {JobName}", nameof(NodeSubscriptorJob));
             throw new JobExecutionException(e, false);
         }
-        
+
         _logger.LogInformation("{JobName} ended", nameof(NodeSubscriptorJob));
     }
 }
