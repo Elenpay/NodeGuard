@@ -1,0 +1,499 @@
+@using Grpc.Core
+@using NBXplorer.DerivationStrategy
+@using NBitcoin
+@using Blazorise
+<Modal @ref="_modalRef">
+    <ModalContent Centered>
+        <ModalHeader>
+            <ModalTitle>New swap</ModalTitle>
+            <CloseButton />
+        </ModalHeader>
+        <ModalBody Class="overflow-y-auto" Style="max-height: 70vh;">
+            <Fields Flex="Flex.Column">
+                <Field>
+                    <FieldLabel>Swap provider</FieldLabel>
+                    <div class="d-flex">
+                        <Select TValue="string" @bind-Value="_selectedProvider">
+                            @foreach (var provider in Enum.GetValues<SwapProvider>())
+                            {
+                                <SelectItem Value="@provider.ToString()">@provider.ToString()</SelectItem>
+                            }
+                        </Select>
+                    </div>
+                </Field>
+                <Field>
+                    <FieldLabel>Swap direction</FieldLabel>
+                    <div class="d-flex">
+                        <Select TValue="string" @bind-Value="_selectedDirection">
+                            @foreach (var direction in Enum.GetValues<SwapDirection>())
+                            {
+                                <SelectItem Value="@direction.ToString()">@direction.ToString()</SelectItem>
+                            }
+                        </Select>
+                    </div>
+                </Field>
+                <Field>
+                    <FieldLabel>Amount</FieldLabel>
+                    <div class="d-flex">
+                        <NumericPicker TValue="decimal"
+                                    @bind-Value="_amountBtc"
+                                    CurrencySymbolPlacement="CurrencySymbolPlacement.Suffix"
+                                    CurrencySymbol=" BTC"
+                                    Decimals="8"
+                                    Step="0.00001000m"
+                                    Min="0.00001000m">
+                        </NumericPicker>
+                    </div>
+                    <FieldHelp>
+                        $@Math.Round(PriceConversionService.BtcToUsdConversion(_amountBtc, _btcPrice), 2)
+                    </FieldHelp>
+                </Field>
+                @if (_selectedDirection == SwapDirection.Out)
+                {
+                    @RenderNodeSelector("Origin Node")
+                    @RenderWalletSelector("Destination Wallet")
+                }
+                else
+                {
+                    @RenderWalletSelector("Origin Wallet")
+                    @RenderNodeSelector("Destination Node")
+                }
+                <Field>
+                    <FieldLabel Class="d-flex">
+                        Max Routing Fees
+                        <Tooltip Class="ml-2" Text="Maximum routing fees in satoshis you are willing to pay for the lightning routing transaction">
+                            <Icon Name="IconName.Info"></Icon>
+                        </Tooltip>
+                    </FieldLabel>
+                    <div class="d-flex">
+                        <NumericPicker TValue="int"
+                                    @bind-Value="_maxRoutingFeesPercent"
+                                    CurrencySymbolPlacement="CurrencySymbolPlacement.Suffix"
+                                    CurrencySymbol="%"
+                                    Min="0"
+                                    Max="100">
+                        </NumericPicker>
+                    </div>
+                    <FieldHelp>
+                        @{
+                            var amount = _maxRoutingFeesPercent * _amountBtc / 100;
+                        }
+                        @Math.Round(amount, 8) BTC (~@Math.Round(PriceConversionService.BtcToUsdConversion(amount, _btcPrice), 2) USD)
+                    </FieldHelp>
+                </Field>                            
+                <Accordion>
+                    <Collapse @bind-Visible="_showAdvancedOptions">
+                        <CollapseHeader Class="p-1">
+                            <Heading Size="HeadingSize.Is5">
+                                <AccordionToggle Class="font-weight-bold d-flex justify-content-between align-items-center w-100">
+                                    Advanced parameters (optional)
+                                    <Icon Name="@(_showAdvancedOptions ? IconName.ChevronUp : IconName.ChevronDown)" Class="ml-2"></Icon>
+                                </AccordionToggle>
+                            </Heading>
+                        </CollapseHeader>
+                        <CollapseBody>
+                           <Field>
+                                <FieldLabel Class="d-flex">
+                                    Swap publication deadline offset
+                                    <Tooltip Class="ml-2" Text="Maximum time for the swap provider to publish the swap">
+                                        <Icon Name="IconName.Info"></Icon>
+                                    </Tooltip>
+                                </FieldLabel>
+                                <div class="d-flex">
+                                    <NumericPicker TValue="int"
+                                                @bind-Value="_swapPublicationDeadlineOffsetMinutes"
+                                                CurrencySymbolPlacement="CurrencySymbolPlacement.Suffix"
+                                                CurrencySymbol="min"
+                                                DefaultValue="60"
+                                                Step="1"
+                                                Min="0">
+                                    </NumericPicker>
+                                </div>
+                            </Field>
+                            <Field>
+                                <FieldLabel Class="d-flex">
+                                    Max Miner Fees
+                                    <Tooltip Class="ml-2" Text="Maximum miner fees in satoshis per vbyte you are willing to pay for the sweep transaction">
+                                        <Icon Name="IconName.Info"></Icon>
+                                    </Tooltip>
+                                </FieldLabel>
+                                <div class="d-flex">
+                                    <NumericPicker TValue="int"
+                                                @bind-Value="_maxMinerFeesPercent"
+                                                CurrencySymbolPlacement="CurrencySymbolPlacement.Suffix"
+                                                CurrencySymbol="%"
+                                                Min="0"
+                                                Max="100">
+                                    </NumericPicker>
+                                </div>
+                                <FieldHelp>
+                                    @{
+                                        var amount = _maxMinerFeesPercent * _amountBtc / 100;
+                                    }
+                                    @Math.Round(amount, 8) BTC (~@Math.Round(PriceConversionService.BtcToUsdConversion(amount, _btcPrice), 2) USD)
+                                </FieldHelp>
+                            </Field>
+                             <Field>
+                                <FieldLabel>Max Service Fees</FieldLabel>
+                                <div class="d-flex">
+                                    <NumericPicker TValue="decimal"
+                                                @bind-Value="_maxServiceFeesBtc"
+                                                CurrencySymbolPlacement="CurrencySymbolPlacement.Suffix"
+                                                CurrencySymbol=" BTC"
+                                                Decimals="8"
+                                                Step="0.00001000m"
+                                                Min="0.00001000m">
+                                    </NumericPicker>
+                                </div>
+                                <FieldHelp>
+                                    $@Math.Round(PriceConversionService.BtcToUsdConversion(_maxServiceFeesBtc, _btcPrice), 2)
+                                </FieldHelp>
+                            </Field>
+                            <Field>
+                                <FieldLabel Class="d-flex">
+                                    Sweep confirmation target
+                                    <Tooltip Class="ml-2" Text="Block height when the swap will expire if the contract wasn't able to be fullfilled">
+                                        <Icon Name="IconName.Info"></Icon>
+                                    </Tooltip>
+                                </FieldLabel>
+                                <div class="d-flex">
+                                    <NumericPicker TValue="int"
+                                                @bind-Value="_sweepConfirmationTarget"
+                                                DefaultValue="400"
+                                                Step="1"
+                                                Min="0">
+                                    </NumericPicker>
+                                </div>
+                            </Field> 
+                        </CollapseBody>
+                    </Collapse>
+                </Accordion>
+            </Fields>
+        </ModalBody>
+        <ModalFooter>
+            <Button Color="Color.Secondary" Clicked="OnCancelSwap">Cancel</Button>
+            <Button Color="Color.Primary" Disabled="@(_selectedWallet is null || _selectedNode is null)" Clicked="ShowConfirmationModal">Create swap</Button>
+        </ModalFooter>
+    </ModalContent>
+</Modal>
+
+<ConfirmationModal
+    @ref="_confirmationModal"
+    Title="Are you sure?"
+    Body="@_confirmationModalBody"
+    OkLabel="Yes, I am sure"
+    OnCancel="@CloseConfirmationModal"
+    OnSubmit="@OnCreateSwap"/>
+
+@inject ISwapsService SwapsService
+@inject IToastService ToastService
+@inject IWalletRepository WalletRepository
+@inject INodeRepository NodeRepository
+@inject ISwapOutRepository SwapOutRepository
+@inject INBXplorerService NBXplorerService
+@inject ILightningService LightningService
+@inject IBitcoinService BitcoinService
+@inject IPriceConversionService PriceConversionService
+@inject ILogger<NewSwapModal> Logger
+@inherits CancellableComponent
+@code {
+    [CascadingParameter] public required ApplicationUser LoggedUser { get; set; }
+    [Parameter] public Action? OnSwapCreated { get; set; }
+    [Parameter] public Func<Task>? OnSwapCreatedAsync { get; set; }
+    public required Modal _modalRef;
+    public required ConfirmationModal _confirmationModal;
+    private SwapDirection _selectedDirection = SwapDirection.Out;
+    private SwapProvider _selectedProvider = SwapProvider.Loop;
+    private decimal _amountBtc = 0.0025m;
+    private decimal _maxServiceFeesBtc = 0.00001m;
+    private List<Wallet> _availableWallets = [];
+    private Wallet? _selectedWallet;
+    private string? _amountInWalletBtc;
+    private List<Node> _availableNodes = [];
+    private Node? _selectedNode;
+    private string? _amountInNodeBtc;
+    private string _confirmationModalBody = string.Empty;
+    private decimal _btcPrice;
+    private bool _showAdvancedOptions = false;
+    private int _swapPublicationDeadlineOffsetMinutes = Constants.IS_DEV_ENVIRONMENT ? 1 : 30;
+    private int _maxMinerFeesPercent = 0;
+    private int _maxRoutingFeesPercent = 1;
+    private int _sweepConfirmationTarget = Constants.IS_DEV_ENVIRONMENT ? 250 : 400;
+
+    private CancellationTokenSource? _cancellationTokenSource;
+    protected CancellationToken ComponentCancellationToken => (_cancellationTokenSource ??= new()).Token;
+
+    private string FormatBtcWithUsd(decimal btcAmount)
+    {
+        var usdAmount = Math.Round(PriceConversionService.BtcToUsdConversion(btcAmount, _btcPrice), 2);
+        return $"{btcAmount:f8} BTC (${usdAmount:f2})";
+    }
+
+    protected override async Task OnInitializedAsync()
+    {
+        _availableWallets = await ToastOnException.ExecuteAsync(() => WalletRepository.GetAvailableWallets(), Logger, ToastService, "Unexpected error loading wallets, please try again later", new());
+        _availableNodes = await ToastOnException.ExecuteAsync(() => NodeRepository.GetAllLoopdConfigured(LoggedUser.Id), Logger, ToastService, "Unexpected error loading nodes, please try again later", new());
+        _btcPrice = await PriceConversionService.GetBtcToUsdPrice();
+    }
+
+    public async Task Show()
+    {
+        await _modalRef.Show();
+    }
+
+    private async Task OnCreateSwap()
+    {
+        try
+        {
+            if (_selectedDirection != SwapDirection.Out)
+            {
+                ToastService.ShowWarning("Only swap out is supported for now");
+                return;
+            }
+
+            ArgumentNullException.ThrowIfNull(_selectedNode, nameof(_selectedNode)); 
+            ArgumentNullException.ThrowIfNull(_selectedWallet, nameof(_selectedWallet));
+
+            var derivationStrategy = _selectedWallet.GetDerivationStrategy();
+            ArgumentNullException.ThrowIfNull(derivationStrategy, nameof(derivationStrategy));
+
+            var btcAddress = await NBXplorerService.GetUnusedAsync(derivationStrategy, DerivationFeature.Deposit, 0, true, ComponentCancellationToken);
+            ArgumentNullException.ThrowIfNull(btcAddress, nameof(btcAddress));
+
+            var amount = NBitcoin.Money.FromUnit(_amountBtc, NBitcoin.MoneyUnit.BTC);
+            var swapRequest = new SwapOutRequest
+            {
+                Amount = amount,
+                MaxServiceFees = NBitcoin.Money.FromUnit(_maxServiceFeesBtc, NBitcoin.MoneyUnit.BTC),
+                PrepayAmtSat = _confirmationModal.GetData<long>("PrepayAmtSat"),
+                Address = btcAddress.Address.ToString(),
+                SwapPublicationDeadlineMinutes = _swapPublicationDeadlineOffsetMinutes,
+                SweepConfTarget = _sweepConfirmationTarget,
+                MaxRoutingFeesPercent = _maxRoutingFeesPercent
+            };
+
+            if (_maxMinerFeesPercent == 0)
+            {
+                swapRequest.MaxMinerFees = _confirmationModal.GetData<long>("HtlcSweepFeeSat") * 250;
+            }
+            else
+            {
+                swapRequest.MaxMinerFees = _maxMinerFeesPercent * amount.Satoshi / 100;
+            }
+
+            var response = await SwapsService.CreateSwapOutAsync(_selectedNode, _selectedProvider, swapRequest, ComponentCancellationToken);
+
+            var saved = SwapOutRepository.AddAsync(new SwapOut
+            {
+                Provider = _selectedProvider,
+                ProviderId = Convert.ToHexString(response.Id),
+                Status = response.Status,
+                IsManual = true,
+                SatsAmount = response.Amount,
+                DestinationWalletId = _selectedWallet.Id,
+                NodeId = _selectedNode.Id,
+                ServiceFeeSats = response.ServerFee,
+                LightningFeeSats = response.OffchainFee,
+                OnChainFeeSats = response.OnchainFee,
+                UserRequestorId = LoggedUser.Id,
+            });
+
+            ToastService.ShowSuccess("Swap created successfully");
+
+            await _confirmationModal.CloseModal();
+            await _modalRef.Hide();
+
+            if (OnSwapCreated != null)
+            {
+                OnSwapCreated.Invoke();
+            }
+            if (OnSwapCreatedAsync != null)
+            {
+                await OnSwapCreatedAsync.Invoke();
+            }
+
+            StateHasChanged();
+        }
+        catch (RpcException ex)
+        {
+            ToastService.ShowError(ex.Status.Detail);
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Error creating swap");
+            ToastService.ShowError("Failed to create swap");
+        }
+
+
+    }
+
+    private async Task OnCancelSwap()
+    {
+        await _modalRef.Hide();
+    }
+
+    private async Task ShowConfirmationModal()
+    {
+        ArgumentNullException.ThrowIfNull(_selectedWallet, nameof(_selectedWallet));
+        ArgumentNullException.ThrowIfNull(_selectedNode, nameof(_selectedNode));
+        try
+        {
+            var request = new SwapOutQuoteRequest{
+                Amount = (long)(_amountBtc * 100_000_000m),
+                ConfTarget = (int)_sweepConfirmationTarget
+            };
+            var quote = await SwapsService.GetSwapOutQuoteAsync(_selectedNode, _selectedProvider, request, ComponentCancellationToken);
+
+            var serviceFee = new Money(quote.ServiceFees);
+            var offChainFee = new Money(quote.OffChainFees);
+            var onChainFee = new Money(quote.OnChainFees);
+            var totalFees = new Money(quote.ServiceFees + quote.OffChainFees + quote.OnChainFees);
+            
+            _confirmationModalBody = $"You are about to create a new swap with the following details:<br><br>" +
+                $"<strong>- Provider:</strong> {_selectedProvider}<br>" +
+                $"<strong>- Direction:</strong> {_selectedDirection}<br>" +
+                $"<strong>- Amount:</strong> {FormatBtcWithUsd(_amountBtc)}<br>" +
+                $"<strong>- Estimated Fees:</strong><br>" +
+                $"&nbsp;&nbsp;&nbsp;&nbsp;<strong>• Service Fee:</strong> {FormatBtcWithUsd(serviceFee.ToUnit(MoneyUnit.BTC))}<br>" +
+                $"&nbsp;&nbsp;&nbsp;&nbsp;<strong>• Off-Chain Fee:</strong> {FormatBtcWithUsd(offChainFee.ToUnit(MoneyUnit.BTC))}<br>" +
+                $"&nbsp;&nbsp;&nbsp;&nbsp;<strong>• On-Chain Fee:</strong> {FormatBtcWithUsd(onChainFee.ToUnit(MoneyUnit.BTC))}<br>" +
+                $"&nbsp;&nbsp;&nbsp;&nbsp;<strong>• Total:</strong> {FormatBtcWithUsd(totalFees.ToUnit(MoneyUnit.BTC))}<br>" +
+                $"<strong>- Origin Node:</strong> {_selectedNode?.Name}<br>" +
+                $"<strong>- Destination Wallet:</strong> {_selectedWallet?.Name}<br><br>" +
+                "<br>" +
+                $"<strong>- Estimated total cost:</strong> {FormatBtcWithUsd((Money.FromUnit(_amountBtc, MoneyUnit.BTC) + totalFees).ToUnit(MoneyUnit.BTC))}<br>";
+
+            if (!quote.CouldEstimateRoutingFees)
+            {
+                _confirmationModalBody += "<br>" + $"<span style='color: orange;'><strong>Warning:</strong> Routing fees could not be estimated. The actual fees might be higher than the estimated ones.</span><br><br>";
+            }
+                
+            _confirmationModalBody += $"<br>Please confirm that you want to proceed.";
+            var data = new Dictionary<string, object>
+            {
+                { "HtlcSweepFeeSat", quote.HtlcSweepFeeSat },
+                { "PrepayAmtSat", quote.PrepayAmtSat }
+            };
+            await _confirmationModal.ShowModal(data);
+        }
+        catch (RpcException ex)
+        {
+            ToastService.ShowError(ex.Status.Detail);
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Error getting swap quote");
+            ToastService.ShowError("Failed to get swap quote, please try again later");
+        }
+    }
+
+    private async Task CloseConfirmationModal()
+    {
+        await _confirmationModal.CloseModal();
+    }
+
+    public void Clear() {
+        _selectedProvider = SwapProvider.Loop;
+        _selectedDirection = SwapDirection.Out;
+        _selectedNode = null;
+        _selectedWallet = null;
+    }
+    
+    private async Task OnWalletChanged(int walletId)
+    {
+        var selectedWallet = _availableWallets.FirstOrDefault(x => x.Id == walletId);
+        
+        if (selectedWallet != null)
+        {
+            var (balance, _) = await BitcoinService.GetWalletConfirmedBalance(selectedWallet);
+            _amountInWalletBtc = balance.ToString("f8");
+        }
+        else
+        {
+            _amountInWalletBtc = "0.00000000";
+        }
+        
+        _selectedWallet = selectedWallet;
+        StateHasChanged();
+    }
+
+    private async Task OnNodeChanged(int nodeId)
+    {
+        var selectedNode = _availableNodes.FirstOrDefault(x => x.Id == nodeId);
+        _selectedNode = selectedNode;
+
+        if (selectedNode != null)
+        {
+            var balance = await LightningService.ChannelBalanceAsync(selectedNode);
+            _amountInNodeBtc = new Money(balance?.LocalBalance.Sat ?? 0).ToUnit(MoneyUnit.BTC).ToString("f8");
+        }
+        else
+        {
+            _amountInNodeBtc = "0.00000000";
+        }
+
+        StateHasChanged();
+    }
+
+    private RenderFragment RenderWalletSelector(string label)
+    {
+        return @<Field>
+                    <FieldLabel>@label</FieldLabel>
+                    <div>
+                        <SelectList TItem="Wallet"
+                                    TValue="int"
+                                    Data="@_availableWallets"
+                                    SelectedValue="@(_selectedWallet?.Id ?? 0)"
+                                    TextField="@((item) => item.Name)"
+                                    ValueField="@((item) => item.Id)"
+                                    SelectedValueChanged="OnWalletChanged"
+                                    DefaultItemText="Choose the wallet">
+                                <Feedback>
+                                    <ValidationError/>
+                                </Feedback>
+                        </SelectList>
+                        <FieldHelp>
+                            @if (_selectedWallet != null)
+                            {
+                                @(($"Amount in wallet: {FormatBtcWithUsd(decimal.Parse(_amountInWalletBtc ?? "0"))}"))
+                            }
+                            else
+                            {
+                                @("-")
+                            }
+                        </FieldHelp>
+                    </div>
+                </Field>;
+    }
+
+    private RenderFragment RenderNodeSelector(string label)
+    {
+        return @<Field>
+                    <FieldLabel>@label</FieldLabel>
+                    <div>
+                        <SelectList TItem="Node"
+                                    TValue="int"
+                                    Data="@_availableNodes"
+                                    SelectedValue="@(_selectedNode?.Id ?? 0)"
+                                    TextField="@((item) => item.Name)"
+                                    ValueField="@((item) => item.Id)"
+                                    SelectedValueChanged="OnNodeChanged"
+                                    DefaultItemText="Choose the node">
+                            <Feedback>
+                                <ValidationError/>
+                            </Feedback>
+                        </SelectList>
+                        <FieldHelp>
+                            @if (_selectedNode != null)
+                            {
+                                @(($"Amount in node: {FormatBtcWithUsd(decimal.Parse(_amountInNodeBtc ?? "0"))}"))
+                            }
+                            else
+                            {
+                                @("-")
+                            }
+                        </FieldHelp>
+                    </div>
+                </Field>;
+    }
+}

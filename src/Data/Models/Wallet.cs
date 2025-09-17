@@ -133,6 +133,8 @@ namespace NodeGuard.Data.Models
         
         public ICollection<LiquidityRule> LiquidityRulesAsReverseSwapWallet { get; set; }
 
+        public List<SwapOut> SwapOuts { get; set; }
+
         #endregion Relationships
 
         /// <summary>

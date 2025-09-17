@@ -5,7 +5,7 @@
             <CloseButton />
         </ModalHeader>
         <ModalBody>
-            @Body
+            @((MarkupString)Body)
         </ModalBody>
         <ModalFooter>
             <Button Color="Color.Secondary" Clicked="@OnCancel">@CancelLabel</Button>
@@ -31,20 +31,32 @@
     [Parameter] 
     public string OkLabel { get; set; } = "Ok";
 
-    private Modal? _modalRef { get; set; }
+    public required Modal _modalRef { get; set; }
 
     [Parameter, EditorRequired]
     public EventCallback OnCancel { get; set; }
     [Parameter]
     public EventCallback OnSubmit { get; set; }
 
+    private Dictionary<string, object> _data = new();
+
     public async Task CloseModal()
     {
         await _modalRef.Close(CloseReason.UserClosing);
     }
 
-    public async Task ShowModal()
+    public async Task ShowModal(Dictionary<string, object> data = default!)
     {
+        _data = data ?? new Dictionary<string, object>();
         await _modalRef.Show();
+    }
+
+    public T GetData<T>(string key)
+    {
+        if (_data.TryGetValue(key, out var value) && value is T tValue)
+        {
+            return tValue;
+        }
+        return default!;
     }
 }

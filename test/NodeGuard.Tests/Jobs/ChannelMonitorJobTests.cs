@@ -132,7 +132,7 @@ public class ChannelMonitorJobTests
         var lightningClientService = new Mock<ILightningClientService>() { CallBase = true };
         lightningClientService.Setup(x => x.ListChannels(It.IsAny<Node>(), It.IsAny<Lightning.LightningClient>())).ReturnsAsync(listChannelsResponse);
 
-        var lightningService = new LightningService(null, null, null, null, null, null, null, null, null, lightningClientService.Object);
+        var lightningService = new LightningService(null, null, null, null, null, null, null, null, null, lightningClientService.Object, null);
 
         var channelMonitorJob = new ChannelMonitorJob(logger.Object, dbContextFactory.Object, null, lightningService, lightningClientService.Object);
 
@@ -195,7 +195,7 @@ public class ChannelMonitorJobTests
         var lightningClientService = new Mock<ILightningClientService>() { CallBase = true };
         lightningClientService.Setup(x => x.ListChannels(It.IsAny<Node>(), It.IsAny<Lightning.LightningClient>())).ReturnsAsync(listChannelsResponse);
 
-        var lightningService = new LightningService(null, null, null, null, null, null, null, null, null, lightningClientService.Object);
+        var lightningService = new LightningService(null, null, null, null, null, null, null, null, null, lightningClientService.Object, null);
 
         var channelMonitorJob = new ChannelMonitorJob(logger.Object, dbContextFactory.Object, null, lightningService, lightningClientService.Object);
 

@@ -83,7 +83,7 @@ namespace NodeGuard.Services
                 .ReturnsAsync(null as ChannelOperationRequest);
 
             var lightningService = new LightningService(_logger, channelOperationRequestRepository.Object, null,
-                dbContextFactory.Object, null, null, null, new Mock<INBXplorerService>().Object, null, null);
+                dbContextFactory.Object, null, null, null, new Mock<INBXplorerService>().Object, null, null, null);
 
             var operationRequest = new ChannelOperationRequest
             {
@@ -536,7 +536,8 @@ namespace NodeGuard.Services
                 null,
                 GetNBXplorerServiceFullyMocked(utxoChanges).Object,
                 null,
-                lightningClientService.Object);
+                lightningClientService.Object,
+                null);
 
             // Act
             var act = async () => await lightningService.OpenChannel(operationRequest);
@@ -748,7 +749,8 @@ namespace NodeGuard.Services
                 null,
                 GetNBXplorerServiceFullyMocked(utxoChanges).Object,
                 null,
-                lightningClient.Object);
+                lightningClient.Object,
+                null);
 
             // Act
             var act = async () => await lightningService.OpenChannel(operationRequest);
@@ -957,7 +959,8 @@ namespace NodeGuard.Services
                 null,
                 GetNBXplorerServiceFullyMocked(utxoChanges).Object,
                 null,
-                lightningClient.Object);
+                lightningClient.Object,
+                null);
 
             // Act
             var act = async () => await lightningService.OpenChannel(operationRequest);
@@ -1178,7 +1181,8 @@ namespace NodeGuard.Services
                 null,
                 GetNBXplorerServiceFullyMocked(utxoChanges).Object,
                 null,
-                lightningClientService.Object);
+                lightningClientService.Object,
+                null);
 
             // Act
             var act = async () => await lightningService.OpenChannel(operationRequest);
@@ -1394,7 +1398,8 @@ namespace NodeGuard.Services
                 null,
                 GetNBXplorerServiceFullyMocked(utxoChanges).Object,
                 null,
-                lightningClient.Object);
+                lightningClient.Object,
+                null);
 
             // Act
             var act = async () => await lightningService.OpenChannel(operationRequest);
@@ -1474,7 +1479,8 @@ namespace NodeGuard.Services
                 null,
                 null,
                 null,
-                lightningClientService.Object);
+                lightningClientService.Object,
+                null);
 
             // Act
             var act = async () => await lightningService.CloseChannel(operationRequest);
@@ -1496,7 +1502,7 @@ namespace NodeGuard.Services
                 "cHNidP8BAFIBAAAAAeh7YDXyZE11vXb0yRqCkrxY7VpHH1WVMHwaCWYMv/pCAQAAAAD/////AUjf9QUAAAAAFgAULTCtUNMojFQZ8oa6fpbXbDhK2EYAAAAATwEENYfPA325Ro0AAAABg9H86IDUttPPFss+9te+0DByQgbeD7RPXNuVH9mh1qIDnMEWyKA+kvyG038on8+HxI+9AD8r6ZI1dNIDSGC8824Q7QIQyDAAAIABAACAAQAAAAABAR8A4fUFAAAAABYAFOk69QEyo0x+Xs/zV62OLrHh9eszAQMEAgAAAAAA";
 
             var combinedPsbt = LightningHelper.CombinePSBTs(new[] { psbt });
-            var lightningService = new LightningService(_logger, null, null, null, null, null, null, null, null, null);
+            var lightningService = new LightningService(_logger, null, null, null, null, null, null, null, null, null, null);
             var pendingChannelId = RandomNumberGenerator.GetBytes(32);
             var derivationStrategyBase = LightningService.GetDerivationStrategyBase(channelOperationRequest);
             var node = new LightningNode()
@@ -1549,7 +1555,7 @@ namespace NodeGuard.Services
                 "cHNidP8BAFIBAAAAAeh7YDXyZE11vXb0yRqCkrxY7VpHH1WVMHwaCWYMv/pCAQAAAAD/////AUjf9QUAAAAAFgAULTCtUNMojFQZ8oa6fpbXbDhK2EYAAAAATwEENYfPA325Ro0AAAABg9H86IDUttPPFss+9te+0DByQgbeD7RPXNuVH9mh1qIDnMEWyKA+kvyG038on8+HxI+9AD8r6ZI1dNIDSGC8824Q7QIQyDAAAIABAACAAQAAAAABAR8A4fUFAAAAABYAFOk69QEyo0x+Xs/zV62OLrHh9eszAQMEAgAAAAAA";
 
             var combinedPsbt = LightningHelper.CombinePSBTs(new[] { psbt });
-            var lightningService = new LightningService(_logger, null, null, null, null, null, null, nbXplorerMock.Object, null, null);
+            var lightningService = new LightningService(_logger, null, null, null, null, null, null, nbXplorerMock.Object, null, null, null);
             var pendingChannelId = RandomNumberGenerator.GetBytes(32);
             var derivationStrategyBase = LightningService.GetDerivationStrategyBase(channelOperationRequest);
 
@@ -1615,7 +1621,7 @@ namespace NodeGuard.Services
             };
 
             lightningClientService.Setup(x => x.ListChannels(It.IsAny<Node>(), null)).ReturnsAsync(listChannelsResponse);
-            var lightningService = new LightningService(null, null, nodeRepository.Object, null, null, null, null, null ,null, lightningClientService.Object);
+            var lightningService = new LightningService(null, null, nodeRepository.Object, null, null, null, null, null ,null, lightningClientService.Object, null);
 
             // Act
             var channelStatus = await lightningService.GetChannelsState();
@@ -1659,7 +1665,7 @@ namespace NodeGuard.Services
             };
 
             lightningClientService.Setup(x => x.ListChannels(It.IsAny<Node>(), null)).ReturnsAsync(listChannelsResponse);
-            var lightningService = new LightningService(null, null, nodeRepository.Object, null, null, null, null, null ,null, lightningClientService.Object);
+            var lightningService = new LightningService(null, null, nodeRepository.Object, null, null, null, null, null ,null, lightningClientService.Object, null);
 
             // Act
             var channelStatus = await lightningService.GetChannelsState();
@@ -1726,7 +1732,7 @@ namespace NodeGuard.Services
             lightningClientService.SetupSequence(x => x.ListChannels(It.IsAny<Node>(), null))
                 .ReturnsAsync(listChannelsResponse1)
                 .ReturnsAsync(listChannelsResponse2);
-            var lightningService = new LightningService(null, null, nodeRepository.Object, null, null, null, null, null ,null, lightningClientService.Object);
+            var lightningService = new LightningService(null, null, nodeRepository.Object, null, null, null, null, null ,null, lightningClientService.Object, null);
 
             // Act
             var channelStatus = await lightningService.GetChannelsState();
@@ -1793,7 +1799,7 @@ namespace NodeGuard.Services
             lightningClientService.SetupSequence(x => x.ListChannels(It.IsAny<Node>(), null))
                 .ReturnsAsync(listChannelsResponse1)
                 .ReturnsAsync(listChannelsResponse2);
-            var lightningService = new LightningService(null, null, nodeRepository.Object, null, null, null, null, null ,null, lightningClientService.Object);
+            var lightningService = new LightningService(null, null, nodeRepository.Object, null, null, null, null, null ,null, lightningClientService.Object, null);
 
             // Act
             var channelStatus = await lightningService.GetChannelsState();
