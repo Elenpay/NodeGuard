@@ -1,30 +1,29 @@
-/*
- * NodeGuard
- * Copyright (C) 2023  Elenpay
- *
- * This program is free software: you can redistribute it and/or modify
- * it under the terms of the GNU Affero General Public License as published by
- * the Free Software Foundation, either version 3 of the License, or
- * (at your option) any later version.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU Affero General Public License for more details.
- *
- * You should have received a copy of the GNU Affero General Public License
- * along with this program.  If not, see http://www.gnu.org/licenses/.
- *
- */
+// NodeGuard
+// Copyright (C) 2025  Elenpay
+//
+// This program is free software: you can redistribute it and/or modify
+// it under the terms of the GNU Affero General Public License as published by
+// the Free Software Foundation, either version 3 of the License, or
+// (at your option) any later version.
+//
+// This program is distributed in the hope that it will be useful,
+// but WITHOUT ANY WARRANTY, without even the implied warranty of
+// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+// GNU Affero General Public License for more details.
+//
+// You should have received a copy of the GNU Affero General Public License
+// along with this program.  If not, see http://www.gnu.org/licenses/.
 
-using NodeGuard.Data.Models;
-using NodeGuard.Data.Repositories.Interfaces;
-using NodeGuard.Helpers;
-using NodeGuard.Services;
+
+
 using Microsoft.EntityFrameworkCore;
 using NBitcoin;
 using NBXplorer.DerivationStrategy;
 using Nodeguard;
+using NodeGuard.Data.Models;
+using NodeGuard.Data.Repositories.Interfaces;
+using NodeGuard.Helpers;
+using NodeGuard.Services;
 using Key = NodeGuard.Data.Models.Key;
 using Wallet = NodeGuard.Data.Models.Wallet;
 
@@ -387,7 +386,8 @@ namespace NodeGuard.Data.Repositories
             return (true, null);
         }
 
-        public async Task TrackAndScanWallet(Wallet wallet){
+        public async Task TrackAndScanWallet(Wallet wallet)
+        {
 
             var derivationStrategyBase = wallet.GetDerivationStrategy();
             if (derivationStrategyBase == null)
@@ -426,7 +426,7 @@ namespace NodeGuard.Data.Repositories
                     CreationDatetime = DateTimeOffset.UtcNow,
                     Name = "Imported key from output descriptor",
                     XPUB = x.Item1.ToString() ?? throw new InvalidOperationException(),
-                    Description =null,
+                    Description = null,
                     MasterFingerprint = x.Item2.MasterFingerprint.ToString(),
                     Path = x.Item2.KeyPath.ToString(),
                     IsBIP39ImportedKey = false,

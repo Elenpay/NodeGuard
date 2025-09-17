@@ -1,5 +1,19 @@
-using System.Text;
-using Humanizer;
+// NodeGuard
+// Copyright (C) 2025  Elenpay
+//
+// This program is free software: you can redistribute it and/or modify
+// it under the terms of the GNU Affero General Public License as published by
+// the Free Software Foundation, either version 3 of the License, or
+// (at your option) any later version.
+//
+// This program is distributed in the hope that it will be useful,
+// but WITHOUT ANY WARRANTY, without even the implied warranty of
+// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+// GNU Affero General Public License for more details.
+//
+// You should have received a copy of the GNU Affero General Public License
+// along with this program.  If not, see http://www.gnu.org/licenses/.
+
 using NBitcoin;
 using NBitcoin.Scripting;
 using NBXplorer.DerivationStrategy;
@@ -50,7 +64,7 @@ public static class WalletParser
                     "Legacy multisig is not supported, please use segwit multisig instead.");
             case OutputDescriptor.WPKH wpkh:
                 return ExtractFromPkProvider(wpkh.PkProvider, "");
-            case OutputDescriptor.WSH {Inner: OutputDescriptor.Multi multi}:
+            case OutputDescriptor.WSH { Inner: OutputDescriptor.Multi multi }:
                 return ExtractFromMulti(multi);
             case OutputDescriptor.WSH:
                 throw new FormatException("wsh descriptors are only supported with multisig");
@@ -61,14 +75,14 @@ public static class WalletParser
         (DerivationStrategyBase, (BitcoinExtPubKey, RootedKeyPath)[]) ExtractFromMulti(OutputDescriptor.Multi multi)
         {
             var multiPkProviders = multi.PkProviders;
-            
+
             var xpubs = multiPkProviders.Select(provider => ExtractFromPkProvider(provider)).ToArray();
 
             var xpubsStrings = xpubs.Select(tuple => tuple.Item1.ToString()).ToArray();
-            
-            if(multi.IsSorted)
+
+            if (multi.IsSorted)
                 xpubsStrings = xpubsStrings.OrderBy(x => x).ToArray();
-            
+
             var extractFromMulti = (
                 Parse(
                     $"{multi.Threshold}-of-{(string.Join('-', xpubsStrings))}{(multi.IsSorted ? "" : "-[keeporder]")}"),
@@ -95,7 +109,7 @@ public static class WalletParser
                     var innerResult = ExtractFromPkProvider(origin.Inner, suffix);
                     var bitcoinExtPubKey = innerResult.Item1.GetExtPubKeys().First().GetWif(currentNetwork);
                     var rootedKeyPath = origin.KeyOriginInfo;
-                    return (innerResult.Item1, new[] {(extPubKey: bitcoinExtPubKey, KeyOriginInfo: rootedKeyPath)});
+                    return (innerResult.Item1, new[] { (extPubKey: bitcoinExtPubKey, KeyOriginInfo: rootedKeyPath) });
                 default:
                     throw new ArgumentOutOfRangeException();
             }
@@ -145,7 +159,7 @@ public static class WalletParser
                 KeyPath.Parse(key.Path)
             );
             pubKeyProvider = PubKeyProvider.NewOrigin(rootedKeyPath, pubKeyProvider);
-            
+
             switch (wallet.WalletAddressType)
             {
                 case WalletAddressType.NativeSegwit:
@@ -189,7 +203,7 @@ public static class WalletParser
                 pubKeyProviders,
                 !wallet.IsUnSortedMultiSig,
                 network);
-            
+
             switch (wallet.WalletAddressType)
             {
                 case WalletAddressType.NativeSegwit:
@@ -207,7 +221,7 @@ public static class WalletParser
 
         return outputDescriptor is not null ? outputDescriptor.ToString() : throw new Exception("Something went wrong");
     }
-    
+
     /// <summary>
     /// Converts a hexadecimal string representation of a master fingerprint into a byte array.
     /// </summary>

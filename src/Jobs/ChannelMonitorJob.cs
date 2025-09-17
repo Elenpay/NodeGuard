@@ -1,29 +1,28 @@
-/*
- * NodeGuard
- * Copyright (C) 2023  Elenpay
- *
- * This program is free software: you can redistribute it and/or modify
- * it under the terms of the GNU Affero General Public License as published by
- * the Free Software Foundation, either version 3 of the License, or
- * (at your option) any later version.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU Affero General Public License for more details.
- *
- * You should have received a copy of the GNU Affero General Public License
- * along with this program.  If not, see http://www.gnu.org/licenses/.
- *
- */
+// NodeGuard
+// Copyright (C) 2025  Elenpay
+//
+// This program is free software: you can redistribute it and/or modify
+// it under the terms of the GNU Affero General Public License as published by
+// the Free Software Foundation, either version 3 of the License, or
+// (at your option) any later version.
+//
+// This program is distributed in the hope that it will be useful,
+// but WITHOUT ANY WARRANTY, without even the implied warranty of
+// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+// GNU Affero General Public License for more details.
+//
+// You should have received a copy of the GNU Affero General Public License
+// along with this program.  If not, see http://www.gnu.org/licenses/.
 
+
+
+using Google.Protobuf;
+using Lnrpc;
+using Microsoft.EntityFrameworkCore;
 using NodeGuard.Data;
 using NodeGuard.Data.Models;
 using NodeGuard.Data.Repositories.Interfaces;
 using NodeGuard.Services;
-using Google.Protobuf;
-using Lnrpc;
-using Microsoft.EntityFrameworkCore;
 using Quartz;
 using Channel = Lnrpc.Channel;
 using ChannelStatus = NodeGuard.Data.Models.Channel.ChannelStatus;
@@ -139,17 +138,18 @@ public class ChannelMonitorJob : IJob
         try
         {
             await using var dbContext = await _dbContextFactory.CreateDbContextAsync();
-            
+
             var channelPoint = channel.ChannelPoint.Split(":");
             var fundingTx = channelPoint[0];
             var outputIndex = Convert.ToUInt32(channelPoint[1]);
 
-            var channelExists = await dbContext.Channels.AnyAsync(c => c.FundingTx.Equals(fundingTx) && c.FundingTxOutputIndex == outputIndex);
+            var channelExists = await dbContext.Channels.AnyAsync(c => c.FundingTx.Equals(fundingTx, StringComparison.Ordinal) && c.FundingTxOutputIndex == outputIndex);
             if (channelExists) return;
 
             var parsedChannelPoint = new ChannelPoint
             {
-                FundingTxidStr = fundingTx, FundingTxidBytes = ByteString.CopyFrom(Convert.FromHexString(fundingTx).Reverse().ToArray()),
+                FundingTxidStr = fundingTx,
+                FundingTxidBytes = ByteString.CopyFrom(Convert.FromHexString(fundingTx).Reverse().ToArray()),
                 OutputIndex = outputIndex
             };
 

@@ -1,21 +1,20 @@
-/*
- * NodeGuard
- * Copyright (C) 2023  Elenpay
- *
- * This program is free software: you can redistribute it and/or modify
- * it under the terms of the GNU Affero General Public License as published by
- * the Free Software Foundation, either version 3 of the License, or
- * (at your option) any later version.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU Affero General Public License for more details.
- *
- * You should have received a copy of the GNU Affero General Public License
- * along with this program.  If not, see http://www.gnu.org/licenses/.
- *
- */
+// NodeGuard
+// Copyright (C) 2025  Elenpay
+//
+// This program is free software: you can redistribute it and/or modify
+// it under the terms of the GNU Affero General Public License as published by
+// the Free Software Foundation, either version 3 of the License, or
+// (at your option) any later version.
+//
+// This program is distributed in the hope that it will be useful,
+// but WITHOUT ANY WARRANTY, without even the implied warranty of
+// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+// GNU Affero General Public License for more details.
+//
+// You should have received a copy of the GNU Affero General Public License
+// along with this program.  If not, see http://www.gnu.org/licenses/.
+
+
 using System.Globalization;
 using System.Reflection;
 using NBitcoin;
@@ -62,7 +61,7 @@ public class Constants
     public static readonly string MONITOR_CHANNELS_CRON = "0 0 */1 * * ?";
     public static readonly string JOB_RETRY_INTERVAL_LIST_IN_MINUTES = "1,2,5,10,20";
     /// <summary>
-    /// The interval in minutes for the SweepAllNodesWalletsJob to run. 
+    /// The interval in minutes for the SweepAllNodesWalletsJob to run.
     /// This job sweeps funds from all lightning node wallets. Default is 15 minutes.
     /// Can be configured via SWEEP_ALL_NODES_WALLETS_INTERVAL_MINUTES environment variable.
     /// </summary>

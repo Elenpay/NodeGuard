@@ -1,55 +1,54 @@
-/*
- * NodeGuard
- * Copyright (C) 2023  Elenpay
- *
- * This program is free software: you can redistribute it and/or modify
- * it under the terms of the GNU Affero General Public License as published by
- * the Free Software Foundation, either version 3 of the License, or
- * (at your option) any later version.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU Affero General Public License for more details.
- *
- * You should have received a copy of the GNU Affero General Public License
- * along with this program.  If not, see http://www.gnu.org/licenses/.
- *
- */
+// NodeGuard
+// Copyright (C) 2025  Elenpay
+//
+// This program is free software: you can redistribute it and/or modify
+// it under the terms of the GNU Affero General Public License as published by
+// the Free Software Foundation, either version 3 of the License, or
+// (at your option) any later version.
+//
+// This program is distributed in the hope that it will be useful,
+// but WITHOUT ANY WARRANTY, without even the implied warranty of
+// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+// GNU Affero General Public License for more details.
+//
+// You should have received a copy of the GNU Affero General Public License
+// along with this program.  If not, see http://www.gnu.org/licenses/.
+
 
 using Blazored.Toast;
 using Blazorise;
 using Blazorise.Bootstrap;
 using Blazorise.Icons.FontAwesome;
+using Microsoft.AspNetCore.Components.Authorization;
+using Microsoft.AspNetCore.DataProtection;
+using Microsoft.AspNetCore.Identity;
+using Microsoft.AspNetCore.Server.Kestrel.Core;
+using Microsoft.EntityFrameworkCore;
 using NodeGuard.Areas.Identity;
 using NodeGuard.Automapper;
 using NodeGuard.Data;
 using NodeGuard.Data.Models;
 using NodeGuard.Data.Repositories;
 using NodeGuard.Data.Repositories.Interfaces;
+using NodeGuard.Helpers;
 using NodeGuard.Jobs;
+using NodeGuard.Rpc;
 using NodeGuard.Services;
-using Microsoft.AspNetCore.Components.Authorization;
-using Microsoft.AspNetCore.DataProtection;
-using Microsoft.AspNetCore.Identity;
-using Microsoft.EntityFrameworkCore;
-using Quartz;
-using OpenTelemetry.Trace;
-using OpenTelemetry.Resources;
-using OpenTelemetry.Metrics;
+using Npgsql;
 using OpenTelemetry.Exporter;
+using OpenTelemetry.Metrics;
+using OpenTelemetry.Resources;
+using OpenTelemetry.Trace;
+using Quartz;
+using Quartz.AspNetCore;
 using Serilog;
 using Serilog.Events;
-using NodeGuard.Helpers;
-using NodeGuard.Rpc;
-using Microsoft.AspNetCore.Server.Kestrel.Core;
-using Npgsql;
-using Quartz.AspNetCore;
 
 namespace NodeGuard
 {
     public class Program
     {
+        [Obsolete]
         public static async Task Main(string[] args)
         {
             AppContext.SetSwitch("Npgsql.EnableLegacyTimestampBehavior", true);

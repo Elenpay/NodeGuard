@@ -1,31 +1,30 @@
-/*
- * NodeGuard
- * Copyright (C) 2023  Elenpay
- *
- * This program is free software: you can redistribute it and/or modify
- * it under the terms of the GNU Affero General Public License as published by
- * the Free Software Foundation, either version 3 of the License, or
- * (at your option) any later version.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU Affero General Public License for more details.
- *
- * You should have received a copy of the GNU Affero General Public License
- * along with this program.  If not, see http://www.gnu.org/licenses/.
- *
- */
+// NodeGuard
+// Copyright (C) 2025  Elenpay
+//
+// This program is free software: you can redistribute it and/or modify
+// it under the terms of the GNU Affero General Public License as published by
+// the Free Software Foundation, either version 3 of the License, or
+// (at your option) any later version.
+//
+// This program is distributed in the hope that it will be useful,
+// but WITHOUT ANY WARRANTY, without even the implied warranty of
+// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+// GNU Affero General Public License for more details.
+//
+// You should have received a copy of the GNU Affero General Public License
+// along with this program.  If not, see http://www.gnu.org/licenses/.
 
-﻿using System.Text;
+
+
+using System.Text;
 using AutoMapper;
-using NodeGuard.Data.Models;
-using NodeGuard.Data.Repositories.Interfaces;
 using Humanizer;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Identity.EntityFrameworkCore;
 using Microsoft.AspNetCore.WebUtilities;
 using Microsoft.EntityFrameworkCore;
+using NodeGuard.Data.Models;
+using NodeGuard.Data.Repositories.Interfaces;
 
 namespace NodeGuard.Data.Repositories
 {
@@ -171,7 +170,7 @@ namespace NodeGuard.Data.Repositories
             var token = await _userManager.GeneratePasswordResetTokenAsync(applicationUser);
 
             var tokenBase64 = WebEncoders.Base64UrlEncode(Encoding.UTF8.GetBytes(token));
-            
+
             if (Constants.FUNDSMANAGER_ENDPOINT == null)
             {
                 _logger.LogError("FUNDSMANAGER_ENDPOINT env var not found");
@@ -227,26 +226,26 @@ namespace NodeGuard.Data.Repositories
                 throw new ArgumentException("Value cannot be null or whitespace.", nameof(username));
             if (string.IsNullOrWhiteSpace(confirmationPassword))
                 throw new ArgumentException("Value cannot be null or whitespace.", nameof(confirmationPassword));
-            
+
             var superadminAddResult = await AddAsync(new ApplicationUser
             {
-                UserName =  username,
+                UserName = username,
                 NormalizedUserName = username.ToUpper(),
             }, confirmationPassword);
-            
+
             if (!superadminAddResult.Item1)
             {
                 var message = $"Error while creating superadmin user:{username}";
                 _logger.LogError(message);
                 return (false, message);
             }
-            
+
             var superadmin = await GetByUsername(username);
             if (superadmin != null)
             {
-                var selectedRoles = new List<ApplicationUserRole>{ApplicationUserRole.Superadmin};
-                
-                var addRole = await UpdateUserRoles( selectedRoles, superadmin);
+                var selectedRoles = new List<ApplicationUserRole> { ApplicationUserRole.Superadmin };
+
+                var addRole = await UpdateUserRoles(selectedRoles, superadmin);
                 if (!addRole.Item1)
                 {
                     var message = $"Error while adding superadmin role to user:{username}";
@@ -370,7 +369,7 @@ namespace NodeGuard.Data.Repositories
                 //Hash the password
                 var passwordHasher = new PasswordHasher<ApplicationUser>();
                 type.PasswordHash = passwordHasher.HashPassword(type, password);
-                
+
             }
 
             var identityResult = await userStore.CreateAsync(type);

@@ -1,3 +1,19 @@
+// NodeGuard
+// Copyright (C) 2025  Elenpay
+//
+// This program is free software: you can redistribute it and/or modify
+// it under the terms of the GNU Affero General Public License as published by
+// the Free Software Foundation, either version 3 of the License, or
+// (at your option) any later version.
+//
+// This program is distributed in the hope that it will be useful,
+// but WITHOUT ANY WARRANTY, without even the implied warranty of
+// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+// GNU Affero General Public License for more details.
+//
+// You should have received a copy of the GNU Affero General Public License
+// along with this program.  If not, see http://www.gnu.org/licenses/.
+
 using System.Collections.Concurrent;
 using Grpc.Core;
 using Grpc.Net.Client;
@@ -33,7 +49,7 @@ public class LightningRouterService : ILightningRouterService
 
         var grpcChannel = GrpcChannel.ForAddress($"https://{endpoint}",
             new GrpcChannelOptions
-                {HttpHandler = httpHandler, LoggerFactory = NullLoggerFactory.Instance});
+            { HttpHandler = httpHandler, LoggerFactory = NullLoggerFactory.Instance });
 
         _logger.LogInformation("New grpc channel created for router endpoint {endpoint}", endpoint);
 

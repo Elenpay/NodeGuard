@@ -1,27 +1,22 @@
-/*
- * NodeGuard
- * Copyright (C) 2023  Elenpay
- *
- * This program is free software: you can redistribute it and/or modify
- * it under the terms of the GNU Affero General Public License as published by
- * the Free Software Foundation, either version 3 of the License, or
- * (at your option) any later version.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU Affero General Public License for more details.
- *
- * You should have received a copy of the GNU Affero General Public License
- * along with this program.  If not, see http://www.gnu.org/licenses/.
- *
- */
+// NodeGuard
+// Copyright (C) 2025  Elenpay
+//
+// This program is free software: you can redistribute it and/or modify
+// it under the terms of the GNU Affero General Public License as published by
+// the Free Software Foundation, either version 3 of the License, or
+// (at your option) any later version.
+//
+// This program is distributed in the hope that it will be useful,
+// but WITHOUT ANY WARRANTY, without even the implied warranty of
+// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+// GNU Affero General Public License for more details.
+//
+// You should have received a copy of the GNU Affero General Public License
+// along with this program.  If not, see http://www.gnu.org/licenses/.
+
+
 
 using System.Net;
-using NodeGuard.Data.Models;
-using NodeGuard.Data.Repositories.Interfaces;
-using NodeGuard.Helpers;
-using NodeGuard.TestHelpers;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
 using NBitcoin;
@@ -29,7 +24,11 @@ using NBitcoin.RPC;
 using NBXplorer;
 using NBXplorer.DerivationStrategy;
 using NBXplorer.Models;
+using NodeGuard.Data.Models;
 using NodeGuard.Data.Repositories;
+using NodeGuard.Data.Repositories.Interfaces;
+using NodeGuard.Helpers;
+using NodeGuard.TestHelpers;
 
 namespace NodeGuard.Data
 {
@@ -223,10 +222,12 @@ namespace NodeGuard.Data
                     {
                         await minerRPC.UnloadWalletAsync(""); // RPCErrorCode.RPC_WALLET_NOT_FOUND if already unloaded
                         await minerRPC.LoadWalletAsync("default"); // RPCErrorCode.RPC_WALLET_ALREADY_LOADED if already loaded
-                    } catch (RPCException e) when (e.RPCCode == RPCErrorCode.RPC_WALLET_ALREADY_LOADED || e.RPCCode == RPCErrorCode.RPC_WALLET_NOT_FOUND)
+                    }
+                    catch (RPCException e) when (e.RPCCode == RPCErrorCode.RPC_WALLET_ALREADY_LOADED || e.RPCCode == RPCErrorCode.RPC_WALLET_NOT_FOUND)
                     {
                         // Ignore these errors
-                    } catch (Exception e)
+                    }
+                    catch (Exception e)
                     {
                         throw new Exception("Error while loading default wallet in bitcoind", e);
                     }
@@ -550,7 +551,7 @@ namespace NodeGuard.Data
 
                 if (retryCount-- == 0)
                     break;
-                    
+
                 Thread.Sleep(1_000);
             }
 

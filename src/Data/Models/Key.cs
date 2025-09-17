@@ -1,21 +1,20 @@
-/*
- * NodeGuard
- * Copyright (C) 2023  Elenpay
- *
- * This program is free software: you can redistribute it and/or modify
- * it under the terms of the GNU Affero General Public License as published by
- * the Free Software Foundation, either version 3 of the License, or
- * (at your option) any later version.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU Affero General Public License for more details.
- *
- * You should have received a copy of the GNU Affero General Public License
- * along with this program.  If not, see http://www.gnu.org/licenses/.
- *
- */
+// NodeGuard
+// Copyright (C) 2025  Elenpay
+//
+// This program is free software: you can redistribute it and/or modify
+// it under the terms of the GNU Affero General Public License as published by
+// the Free Software Foundation, either version 3 of the License, or
+// (at your option) any later version.
+//
+// This program is distributed in the hope that it will be useful,
+// but WITHOUT ANY WARRANTY, without even the implied warranty of
+// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+// GNU Affero General Public License for more details.
+//
+// You should have received a copy of the GNU Affero General Public License
+// along with this program.  If not, see http://www.gnu.org/licenses/.
+
+
 
 using NBitcoin;
 
@@ -23,9 +22,9 @@ namespace NodeGuard.Data.Models
 {
     public class Key : Entity, IEquatable<Key>
     {
-        public string Name { get; set; }
+        public required string Name { get; set; }
 
-        public string XPUB { get; set; }
+        public required string XPUB { get; set; }
 
         public string? Description { get; set; }
 
@@ -39,7 +38,7 @@ namespace NodeGuard.Data.Models
         /// Derivation Path (e.g. m/84'/0'/0')
         /// </summary>
         public string? Path { get; set; }
-        
+
         /// <summary>
         /// Flag to indicate that this key was imported from a BIP39 mnemonic
         /// </summary>
@@ -50,7 +49,7 @@ namespace NodeGuard.Data.Models
         public string? UserId { get; set; }
         public ApplicationUser? User { get; set; }
 
-        public ICollection<Wallet> Wallets { get; set; }
+        public required ICollection<Wallet> Wallets { get; set; }
 
         /// <summary>
         /// The internal wallet where this key belongs (if it were a internal wallet key)
@@ -89,8 +88,8 @@ namespace NodeGuard.Data.Models
         {
             return !Equals(left, right);
         }
-        
-        private sealed class CheckEquality: IEqualityComparer<Key>
+
+        private sealed class CheckEquality : IEqualityComparer<Key>
         {
             public bool Equals(Key? b1, Key? b2)
             {
@@ -103,14 +102,14 @@ namespace NodeGuard.Data.Models
                 throw new NotImplementedException();
             }
         }
-        
+
         private static readonly IEqualityComparer<Key> Comparer = new CheckEquality();
 
-        public static bool Contains(ICollection<Key> source, Key? key) 
+        public static bool Contains(ICollection<Key> source, Key? key)
         {
             return source.Contains(key, Comparer!);
         }
-        
+
         public BitcoinExtPubKey GetBitcoinExtPubKey(Network network)
         {
             return new BitcoinExtPubKey(XPUB, network);

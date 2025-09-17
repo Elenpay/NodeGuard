@@ -1,15 +1,31 @@
+// NodeGuard
+// Copyright (C) 2025  Elenpay
+//
+// This program is free software: you can redistribute it and/or modify
+// it under the terms of the GNU Affero General Public License as published by
+// the Free Software Foundation, either version 3 of the License, or
+// (at your option) any later version.
+//
+// This program is distributed in the hope that it will be useful,
+// but WITHOUT ANY WARRANTY, without even the implied warranty of
+// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+// GNU Affero General Public License for more details.
+//
+// You should have received a copy of the GNU Affero General Public License
+// along with this program.  If not, see http://www.gnu.org/licenses/.
+
 using AutoMapper;
+using Grpc.Core;
+using NBitcoin;
+using NBXplorer.DerivationStrategy;
+using NBXplorer.Models;
+using Nodeguard;
 using NodeGuard.Data.Models;
 using NodeGuard.Data.Repositories;
 using NodeGuard.Data.Repositories.Interfaces;
 using NodeGuard.Helpers;
 using NodeGuard.Jobs;
 using NodeGuard.Services;
-using Grpc.Core;
-using NBitcoin;
-using NBXplorer.DerivationStrategy;
-using NBXplorer.Models;
-using Nodeguard;
 using Quartz;
 using LiquidityRule = NodeGuard.Data.Models.LiquidityRule;
 using Wallet = NodeGuard.Data.Models.Wallet;
@@ -232,7 +248,7 @@ public class NodeGuardService : Nodeguard.NodeGuardService.NodeGuardServiceBase,
                     throw new RpcException(new Status(StatusCode.Internal, "Derivation strategy not found"));
 
                 utxos = await _coinSelectionService.GetUTXOsByOutpointAsync(derivationStrategyBase, outpoints);
-      
+
             }
 
             // Create destination objects for the withdrawal request

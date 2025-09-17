@@ -1,27 +1,25 @@
-/*
- * NodeGuard
- * Copyright (C) 2023  Elenpay
- *
- * This program is free software: you can redistribute it and/or modify
- * it under the terms of the GNU Affero General Public License as published by
- * the Free Software Foundation, either version 3 of the License, or
- * (at your option) any later version.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU Affero General Public License for more details.
- *
- * You should have received a copy of the GNU Affero General Public License
- * along with this program.  If not, see http://www.gnu.org/licenses/.
- *
- */
+// NodeGuard
+// Copyright (C) 2025  Elenpay
+//
+// This program is free software: you can redistribute it and/or modify
+// it under the terms of the GNU Affero General Public License as published by
+// the Free Software Foundation, either version 3 of the License, or
+// (at your option) any later version.
+//
+// This program is distributed in the hope that it will be useful,
+// but WITHOUT ANY WARRANTY, without even the implied warranty of
+// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+// GNU Affero General Public License for more details.
+//
+// You should have received a copy of the GNU Affero General Public License
+// along with this program.  If not, see http://www.gnu.org/licenses/.
+
+
 
 using System.ComponentModel.DataAnnotations.Schema;
-using NodeGuard.Helpers;
 using NBitcoin;
-using NBitcoin.Scripting;
 using NBXplorer.DerivationStrategy;
+using NodeGuard.Helpers;
 
 namespace NodeGuard.Data.Models
 {
@@ -38,7 +36,7 @@ namespace NodeGuard.Data.Models
     /// </summary>
     public class Wallet : Entity
     {
-        public string Name { get; set; }
+        public required string Name { get; set; }
 
         /// <summary>
         /// M-of-N Multisig threshold
@@ -117,8 +115,8 @@ namespace NodeGuard.Data.Models
 
         #region Relationships
 
-        public ICollection<ChannelOperationRequest> ChannelOperationRequestsAsSource { get; set; }
-        public ICollection<Key> Keys { get; set; }
+        public required ICollection<ChannelOperationRequest> ChannelOperationRequestsAsSource { get; set; }
+        public required ICollection<Key> Keys { get; set; }
 
 
         /// <summary>
@@ -129,11 +127,11 @@ namespace NodeGuard.Data.Models
         public InternalWallet? InternalWallet { get; set; }
 
 
-        public ICollection<LiquidityRule> LiquidityRulesAsSwapWallet { get; set; }
-        
-        public ICollection<LiquidityRule> LiquidityRulesAsReverseSwapWallet { get; set; }
+        public required ICollection<LiquidityRule> LiquidityRulesAsSwapWallet { get; set; }
 
-        public List<SwapOut> SwapOuts { get; set; }
+        public required ICollection<LiquidityRule> LiquidityRulesAsReverseSwapWallet { get; set; }
+
+        public required List<SwapOut> SwapOuts { get; set; }
 
         #endregion Relationships
 

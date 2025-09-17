@@ -1,25 +1,22 @@
-/*
- * NodeGuard
- * Copyright (C) 2023  Elenpay
- *
- * This program is free software: you can redistribute it and/or modify
- * it under the terms of the GNU Affero General Public License as published by
- * the Free Software Foundation, either version 3 of the License, or
- * (at your option) any later version.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU Affero General Public License for more details.
- *
- * You should have received a copy of the GNU Affero General Public License
- * along with this program.  If not, see http://www.gnu.org/licenses/.
- *
- */
+// NodeGuard
+// Copyright (C) 2025  Elenpay
+//
+// This program is free software: you can redistribute it and/or modify
+// it under the terms of the GNU Affero General Public License as published by
+// the Free Software Foundation, either version 3 of the License, or
+// (at your option) any later version.
+//
+// This program is distributed in the hope that it will be useful,
+// but WITHOUT ANY WARRANTY, without even the implied warranty of
+// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+// GNU Affero General Public License for more details.
+//
+// You should have received a copy of the GNU Affero General Public License
+// along with this program.  If not, see http://www.gnu.org/licenses/.
+
+
 
 using Quartz;
-using Quartz.Impl;
-using Quartz.Impl.Matchers;
 using Quartz.Impl.Triggers;
 
 namespace NodeGuard.Helpers;
@@ -46,7 +43,7 @@ public class SimpleJob
 
         return new JobAndTrigger(job, trigger);
     }
-    
+
     public static async Task Reschedule<T>(IScheduler scheduler, string identitySuffix) where T : IJob
     {
         try
@@ -57,7 +54,7 @@ public class SimpleJob
                 .WithIdentity($"{typeof(T).Name}Trigger-{identitySuffix}")
                 .StartNow()
                 .Build();
-            
+
             await scheduler.RescheduleJob(triggerKey, trigger);
 
         }
@@ -66,7 +63,7 @@ public class SimpleJob
             Console.WriteLine($"Unexpected error rescheduling job of type {typeof(T).Name} with identity suffix {identitySuffix}: {ex.Message}");
         }
     }
-    
+
     public static async Task DeleteJob<T>(IScheduler scheduler, string identitySuffix) where T : IJob
     {
         try
@@ -85,7 +82,7 @@ public class SimpleJob
         JobKey jobKey = new JobKey($"{typeof(T).Name}-{identitySuffix}");
         return await scheduler.CheckExists(jobKey);
     }
-    
+
 }
 
 public class RetriableJob

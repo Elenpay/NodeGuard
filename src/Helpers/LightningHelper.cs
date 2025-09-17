@@ -1,28 +1,27 @@
-/*
- * NodeGuard
- * Copyright (C) 2023  Elenpay
- *
- * This program is free software: you can redistribute it and/or modify
- * it under the terms of the GNU Affero General Public License as published by
- * the Free Software Foundation, either version 3 of the License, or
- * (at your option) any later version.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU Affero General Public License for more details.
- *
- * You should have received a copy of the GNU Affero General Public License
- * along with this program.  If not, see http://www.gnu.org/licenses/.
- *
- */
+// NodeGuard
+// Copyright (C) 2025  Elenpay
+//
+// This program is free software: you can redistribute it and/or modify
+// it under the terms of the GNU Affero General Public License as published by
+// the Free Software Foundation, either version 3 of the License, or
+// (at your option) any later version.
+//
+// This program is distributed in the hope that it will be useful,
+// but WITHOUT ANY WARRANTY, without even the implied warranty of
+// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+// GNU Affero General Public License for more details.
+//
+// You should have received a copy of the GNU Affero General Public License
+// along with this program.  If not, see http://www.gnu.org/licenses/.
 
-using NodeGuard.Data.Models;
-using NodeGuard.Services;
+
+
 using Google.Protobuf;
 using NBitcoin;
 using NBXplorer;
 using NBXplorer.Models;
+using NodeGuard.Data.Models;
+using NodeGuard.Services;
 
 namespace NodeGuard.Helpers
 {
@@ -120,7 +119,7 @@ namespace NodeGuard.Helpers
         /// </summary>
         /// <returns></returns>
         /// <exception cref="ArgumentNullException"></exception>
-        public static async Task<ExplorerClient> CreateNBExplorerClient()
+        public static Task<ExplorerClient> CreateNBExplorerClient()
         {
             //Nbxplorer api client
             var nbXplorerNetwork = CurrentNetworkHelper.GetCurrentNetwork();
@@ -129,7 +128,7 @@ namespace NodeGuard.Helpers
             var nbxplorerClient = new ExplorerClient(
                 provider.GetFromCryptoCode(nbXplorerNetwork.NetworkSet.CryptoCode),
                 new Uri(Constants.NBXPLORER_URI));
-            return nbxplorerClient;
+            return Task.FromResult(nbxplorerClient);
         }
 
         /// <summary>
@@ -140,7 +139,7 @@ namespace NodeGuard.Helpers
         /// <param name="availableUTXOs"></param>
         /// <param name="logger"></param>
         /// <returns></returns>
-        public static async Task<List<UTXO>> SelectUTXOsByOldest(
+        public static Task<List<UTXO>> SelectUTXOsByOldest(
             Wallet wallet, long satsAmount, List<UTXO> availableUTXOs, ILogger logger)
         {
             if (wallet == null) throw new ArgumentNullException(nameof(wallet));
@@ -154,7 +153,7 @@ namespace NodeGuard.Helpers
             {
                 logger.LogError("The PSBT cannot be generated, no UTXOs are available for walletId: {WalletId}",
                     wallet.Id);
-                return selectedUTXOs;
+                return Task.FromResult(selectedUTXOs);
             }
 
             var utxosStack = new Stack<UTXO>(availableUTXOs.OrderByDescending(x => x.Confirmations));
@@ -168,7 +167,7 @@ namespace NodeGuard.Helpers
                 logger.LogError(
                     "Error, the total UTXOs set balance for walletid: {WalletId} ({AvailableSats} sats) is less than the amount in the request ({RequestedSats} sats)",
                     wallet.Id, totalUTXOsConfirmedSats, satsAmount);
-                return selectedUTXOs;
+                return Task.FromResult(selectedUTXOs);
             }
 
             var utxosSatsAmountAccumulator = 0M;
@@ -190,7 +189,7 @@ namespace NodeGuard.Helpers
                 }
             }
 
-            return selectedUTXOs;
+            return Task.FromResult(selectedUTXOs);
         }
 
         /// <summary>
@@ -199,7 +198,7 @@ namespace NodeGuard.Helpers
         /// <param name="wallet"></param>
         /// <param name="selectedUTXOs"></param>
         /// <returns></returns>
-        public static async Task<List<ICoin>> SelectCoins(Wallet wallet, List<UTXO> selectedUTXOs)
+        public static Task<List<ICoin>> SelectCoins(Wallet wallet, List<UTXO> selectedUTXOs)
         {
             if (wallet == null) throw new ArgumentNullException(nameof(wallet));
             if (wallet == null) throw new ArgumentNullException(nameof(wallet));
@@ -207,7 +206,7 @@ namespace NodeGuard.Helpers
             var derivationStrategy = wallet.GetDerivationStrategy();
 
             //UTXOS to Enumerable of ICOINS
-            return selectedUTXOs.Select<UTXO, ICoin>(x =>
+            return Task.FromResult(selectedUTXOs.Select<UTXO, ICoin>(x =>
                 {
                     var coin = x.AsCoin(derivationStrategy);
                     if (wallet.IsHotWallet)
@@ -217,7 +216,7 @@ namespace NodeGuard.Helpers
 
                     return coin.ToScriptCoin(x.ScriptPubKey);
                 })
-                .ToList();
+                .ToList());
         }
 
         /// <summary>

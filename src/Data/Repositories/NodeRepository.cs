@@ -1,27 +1,26 @@
-/*
- * NodeGuard
- * Copyright (C) 2023  Elenpay
- *
- * This program is free software: you can redistribute it and/or modify
- * it under the terms of the GNU Affero General Public License as published by
- * the Free Software Foundation, either version 3 of the License, or
- * (at your option) any later version.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU Affero General Public License for more details.
- *
- * You should have received a copy of the GNU Affero General Public License
- * along with this program.  If not, see http://www.gnu.org/licenses/.
- *
- */
+// NodeGuard
+// Copyright (C) 2025  Elenpay
+//
+// This program is free software: you can redistribute it and/or modify
+// it under the terms of the GNU Affero General Public License as published by
+// the Free Software Foundation, either version 3 of the License, or
+// (at your option) any later version.
+//
+// This program is distributed in the hope that it will be useful,
+// but WITHOUT ANY WARRANTY, without even the implied warranty of
+// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+// GNU Affero General Public License for more details.
+//
+// You should have received a copy of the GNU Affero General Public License
+// along with this program.  If not, see http://www.gnu.org/licenses/.
+
+
 
 using AutoMapper;
+using Microsoft.EntityFrameworkCore;
 using NodeGuard.Data.Models;
 using NodeGuard.Data.Repositories.Interfaces;
 using NodeGuard.Services;
-using Microsoft.EntityFrameworkCore;
 
 namespace NodeGuard.Data.Repositories
 {
@@ -67,7 +66,7 @@ namespace NodeGuard.Data.Repositories
                 .Include(x => x.ReturningFundsWallet)
                 .SingleOrDefaultAsync(x => x.PubKey == key);
         }
-        
+
 
         public async Task<Node> GetOrCreateByPubKey(string pubKey, ILightningService lightningService)
         {
@@ -102,11 +101,11 @@ namespace NodeGuard.Data.Repositories
 
             return await applicationDbContext.Nodes
                 .Include(node => node.Users)
-                .Include(x=> x.ChannelOperationRequestsAsSource)
+                .Include(x => x.ChannelOperationRequestsAsSource)
                     .ThenInclude(request => request.Channel)
                 .Include(node => node.ChannelOperationRequestsAsDestination)
                     .ThenInclude(request => request.Channel)
-                .Include(x=> x.ReturningFundsWallet)
+                .Include(x => x.ReturningFundsWallet)
                 .ToListAsync();
         }
 
@@ -129,15 +128,15 @@ namespace NodeGuard.Data.Repositories
 
             return resultAsync;
         }
-        
+
         public async Task<List<Node>> GetAllManagedByUser(string userId)
         {
             await using var applicationDbContext = await _dbContextFactory.CreateDbContextAsync();
 
             return await applicationDbContext.Nodes
-                .Include(x=> x.ReturningFundsWallet)
-                .Include(x=> x.ChannelOperationRequestsAsDestination)
-                .Include(x=> x.ChannelOperationRequestsAsSource)
+                .Include(x => x.ReturningFundsWallet)
+                .Include(x => x.ChannelOperationRequestsAsDestination)
+                .Include(x => x.ChannelOperationRequestsAsSource)
                 .Where(node => node.Endpoint != null
                                && node.Users.Any(user => user.Id == userId))
                 .ToListAsync();
@@ -154,7 +153,8 @@ namespace NodeGuard.Data.Repositories
                 .Where(node => node.Endpoint != null)
                 .Where(node => !string.IsNullOrEmpty(node.LoopdEndpoint) && !string.IsNullOrEmpty(node.LoopdMacaroon));
 
-            if (!string.IsNullOrEmpty(userId)) {
+            if (!string.IsNullOrEmpty(userId))
+            {
                 query = query.Where(node => node.Users.Any(user => user.Id == userId));
             }
 
