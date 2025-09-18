@@ -298,7 +298,7 @@ namespace NodeGuard
                         {
                             if (Constants.IS_DEV_ENVIRONMENT)
                             {
-                                scheduleBuilder.WithIntervalInSeconds(1).RepeatForever();
+                                scheduleBuilder.WithIntervalInMinutes(1).RepeatForever();
                             }
                             else
                             {
