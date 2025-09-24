@@ -113,12 +113,14 @@ public class Constants
     public static readonly string BOB_MACAROON = string.Empty;
     public static readonly string BOB_LOOPD_HOST = string.Empty;
     public static readonly string BOB_LOOPD_MACAROON = string.Empty;
+    public static readonly string BOB_LOOPD_TLS_CERT = string.Empty;
 
     public static readonly string CAROL_PUBKEY = string.Empty;
     public static readonly string CAROL_HOST = string.Empty;
     public static readonly string CAROL_MACAROON = string.Empty;
     public static readonly string CAROL_LOOPD_HOST = string.Empty;
     public static readonly string CAROL_LOOPD_MACAROON = string.Empty;
+    public static readonly string CAROL_LOOPD_TLS_CERT = string.Empty;
 
 
     private static string? GetEnvironmentalVariableOrThrowIfNotTesting(string envVariableName, string? errorMessage = null)
@@ -278,12 +280,14 @@ public class Constants
         BOB_MACAROON = Environment.GetEnvironmentVariable("BOB_MACAROON") ?? BOB_MACAROON;
         BOB_LOOPD_HOST = Environment.GetEnvironmentVariable("BOB_LOOPD_HOST") ?? BOB_LOOPD_HOST;
         BOB_LOOPD_MACAROON = Environment.GetEnvironmentVariable("BOB_LOOPD_MACAROON") ?? BOB_LOOPD_MACAROON;
+        BOB_LOOPD_TLS_CERT = Environment.GetEnvironmentVariable("BOB_LOOPD_TLS_CERT") ?? BOB_LOOPD_TLS_CERT;
 
         CAROL_PUBKEY = Environment.GetEnvironmentVariable("CAROL_PUBKEY") ?? CAROL_PUBKEY;
         CAROL_HOST = Environment.GetEnvironmentVariable("CAROL_HOST") ?? CAROL_HOST;
         CAROL_MACAROON = Environment.GetEnvironmentVariable("CAROL_MACAROON") ?? CAROL_MACAROON;
         CAROL_LOOPD_HOST = Environment.GetEnvironmentVariable("CAROL_LOOPD_HOST") ?? CAROL_LOOPD_HOST;
         CAROL_LOOPD_MACAROON = Environment.GetEnvironmentVariable("CAROL_LOOPD_MACAROON") ?? CAROL_LOOPD_MACAROON;
+        CAROL_LOOPD_TLS_CERT = Environment.GetEnvironmentVariable("CAROL_LOOPD_TLS_CERT") ?? CAROL_LOOPD_TLS_CERT;
     }
 
 }

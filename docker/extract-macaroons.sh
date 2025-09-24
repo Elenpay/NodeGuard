@@ -215,6 +215,43 @@ fi
 
 echo "" >> "${OUTPUT_FILE}"
 
+# Add Loopd TLS certificates
+echo -e "${GREEN}=== Extracting Loopd TLS Certificates ===${NC}"
+
+# Bob Loopd TLS
+echo "# Bob Loopd TLS Certificate" >> "${OUTPUT_FILE}"
+if docker ps --format "table {{.Names}}" | grep -q "nodeguard-loopd-bob-1"; then
+    if BOB_LOOPD_TLS=$(extract_tls "nodeguard-loopd-bob-1" "${LOOP_ROOT}/regtest/tls.cert"); then
+        echo "BOB_LOOPD_TLS_CERT=\"${BOB_LOOPD_TLS}\"" >> "${OUTPUT_FILE}"
+        echo -e "${GREEN}✓ Bob Loopd TLS certificate extracted${NC}"
+    else
+        echo "# BOB_LOOPD_TLS_CERT=\"<failed_to_extract>\"" >> "${OUTPUT_FILE}"
+        echo -e "${RED}✗ Failed to extract Bob Loopd TLS certificate${NC}"
+    fi
+else
+    echo "# BOB_LOOPD_TLS_CERT=\"<container_not_running>\"" >> "${OUTPUT_FILE}"
+    echo -e "${YELLOW}⚠ Bob Loopd container not running${NC}"
+fi
+
+echo "" >> "${OUTPUT_FILE}"
+
+# Carol Loopd TLS
+echo "# Carol Loopd TLS Certificate" >> "${OUTPUT_FILE}"
+if docker ps --format "table {{.Names}}" | grep -q "nodeguard-loopd-carol-1"; then
+    if CAROL_LOOPD_TLS=$(extract_tls "nodeguard-loopd-carol-1" "${LOOP_ROOT}/regtest/tls.cert"); then
+        echo "CAROL_LOOPD_TLS_CERT=\"${CAROL_LOOPD_TLS}\"" >> "${OUTPUT_FILE}"
+        echo -e "${GREEN}✓ Carol Loopd TLS certificate extracted${NC}"
+    else
+        echo "# CAROL_LOOPD_TLS_CERT=\"<failed_to_extract>\"" >> "${OUTPUT_FILE}"
+        echo -e "${RED}✗ Failed to extract Carol Loopd TLS certificate${NC}"
+    fi
+else
+    echo "# CAROL_LOOPD_TLS_CERT=\"<container_not_running>\"" >> "${OUTPUT_FILE}"
+    echo -e "${YELLOW}⚠ Carol Loopd container not running${NC}"
+fi
+
+echo "" >> "${OUTPUT_FILE}"
+
 # Add host and pubkey information
 echo -e "${GREEN}=== Adding Host and Pubkey Information ===${NC}"
 
