@@ -66,6 +66,8 @@ namespace NodeGuard.Data.Models
 
         public string? LoopdMacaroon { get; set; }
 
+        public string? LoopdCert { get; set; }
+
         #region Relationships
 
         public ICollection<ChannelOperationRequest> ChannelOperationRequestsAsSource { get; set; }

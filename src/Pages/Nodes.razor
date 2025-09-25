@@ -84,6 +84,28 @@
                     Field="@nameof(Node.LoopdMacaroon)" Validator="ValidationRule.IsNotEmpty" Caption="Loopd Macaroon"
                     CellsEditableOnNewCommand="true" CellsEditableOnEditCommand="false" Displayable="false"
                     Sortable="false" />
+                <DataGridColumn TItem="Node" Filterable="false" Editable="true"
+                    Field="@nameof(Node.LoopdCert)" Caption="Loopd Certificate"
+                    CellsEditableOnNewCommand="true" CellsEditableOnEditCommand="false" Displayable="@IsColumnVisible(NodesColumnName.LoopdCert)"
+                    Sortable="false">
+                    <DisplayTemplate>
+                        @if (!string.IsNullOrEmpty(context.LoopdCert))
+                        {
+                            <span class="text-success">Certificate configured</span>
+                        }
+                        else
+                        {
+                            <span class="text-muted">No certificate</span>
+                        }
+                    </DisplayTemplate>
+                    <EditTemplate>
+                        <MemoEdit Rows="4" Text="@((string)context.CellValue)" TextChanged="(text) => { context.CellValue = text; }" Placeholder="Base64 encoded certificate">
+                            <Feedback>
+                                <ValidationError/>
+                            </Feedback>
+                        </MemoEdit>
+                    </EditTemplate>
+                </DataGridColumn>
                 <DataGridNumericColumn TItem="Node" Filterable="false" Editable="false" Caption="Outbound Open Channels" Sortable="false" Displayable="@IsColumnVisible(NodesColumnName.OutboundOpenChannels)">
                     <DisplayTemplate>
                         @{
@@ -214,6 +236,7 @@
         public static readonly ColumnDefault UpdateDate = new("Update Date");
         public static readonly ColumnDefault Users = new("Users");
         public static readonly ColumnDefault LoopdEndpoint = new("Loopd Endpoint");
+        public static readonly ColumnDefault LoopdCert = new("Loopd Certificate");
     }
 
     protected override async Task OnInitializedAsync()
