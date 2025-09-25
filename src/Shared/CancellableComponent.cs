@@ -14,7 +14,9 @@ public abstract class CancellableComponent : ComponentBase, IDisposable
     /// </summary>
     protected CancellationToken ComponentCancellationToken => (_cancellationTokenSource ??= new()).Token;
 
-    /// <inheritdoc />
+    /// <summary>
+    /// Dispose the component, cancelling the cancellation token if it has been created.
+    /// </summary>
     public virtual void Dispose()
     {
         if (_cancellationTokenSource == null)
