@@ -42,18 +42,20 @@ public class LoopService : ILoopService
         if (!string.IsNullOrEmpty(certificate))
         {
             var base64UrlDecoded = Convert.FromBase64String(certificate);
-            var cert = new X509Certificate2(base64UrlDecoded);
+            var trustedCert = new X509Certificate2(base64UrlDecoded);
 
             handler.ServerCertificateCustomValidationCallback = (sender, serverCert, chain, errors) =>
             {
                 if (serverCert == null || chain == null)
-                {
                     return false;
-                }
-
+                
                 chain.ChainPolicy.VerificationFlags = X509VerificationFlags.AllowUnknownCertificateAuthority;
-
-                return chain.Build(cert);
+                chain.ChainPolicy.RevocationMode = X509RevocationMode.NoCheck;
+                
+                // Add certificate as a trusted root
+                chain.ChainPolicy.ExtraStore.Add(trustedCert);
+                
+                return chain.Build(serverCert);
             };
         }
         else
