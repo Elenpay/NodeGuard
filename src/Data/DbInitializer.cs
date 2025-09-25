@@ -270,6 +270,7 @@ namespace NodeGuard.Data
                             PubKey = Constants.CAROL_PUBKEY,
                             LoopdEndpoint = Constants.CAROL_LOOPD_HOST,
                             LoopdMacaroon = Constants.CAROL_LOOPD_MACAROON,
+                            LoopdCert = Constants.CAROL_LOOPD_TLS_CERT,
                             Users = new List<ApplicationUser>(),
                             AutosweepEnabled = false
 
@@ -283,6 +284,7 @@ namespace NodeGuard.Data
                         carol.PubKey = Constants.CAROL_PUBKEY;
                         carol.LoopdEndpoint = Constants.CAROL_LOOPD_HOST;
                         carol.LoopdMacaroon = Constants.CAROL_LOOPD_MACAROON;
+                        carol.LoopdCert = Constants.CAROL_LOOPD_TLS_CERT;
                         carol.UpdateDatetime = DateTimeOffset.UtcNow;
                         nodeRepository.Update(carol);
                     }
@@ -300,6 +302,7 @@ namespace NodeGuard.Data
                             PubKey = Constants.BOB_PUBKEY,
                             LoopdEndpoint = Constants.BOB_LOOPD_HOST,
                             LoopdMacaroon = Constants.BOB_LOOPD_MACAROON,
+                            LoopdCert = Constants.BOB_LOOPD_TLS_CERT,
                             Users = new List<ApplicationUser>(),
                             AutosweepEnabled = false
                         };
@@ -312,6 +315,7 @@ namespace NodeGuard.Data
                         bob.PubKey = Constants.BOB_PUBKEY;
                         bob.LoopdEndpoint = Constants.BOB_LOOPD_HOST;
                         bob.LoopdMacaroon = Constants.BOB_LOOPD_MACAROON;
+                        bob.LoopdCert = Constants.BOB_LOOPD_TLS_CERT;
                         bob.UpdateDatetime = DateTimeOffset.UtcNow;
                         nodeRepository.Update(bob);
                     }

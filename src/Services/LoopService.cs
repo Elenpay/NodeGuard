@@ -1,4 +1,5 @@
 using System.Collections.Concurrent;
+using System.Security.Cryptography.X509Certificates;
 using Google.Protobuf;
 using Grpc.Core.Interceptors;
 using Grpc.Net.Client;
@@ -10,7 +11,7 @@ namespace NodeGuard.Services;
 
 public interface ILoopService
 {
-    GrpcChannel CreateClient(string endpoint);
+    GrpcChannel CreateClient(string endpoint, string? certificate = null);
     SwapClient.SwapClientClient GetClient(Node node);
     Task<bool> PingAsync(Node node, CancellationToken cancellationToken = default);
     Task<SwapResponse> CreateSwapOutAsync(Node node, SwapOutRequest request, CancellationToken cancellationToken= default);
@@ -29,18 +30,37 @@ public class LoopService : ILoopService
         _logger = logger;
     }
 
-    public GrpcChannel CreateClient(string endpoint)
+    public GrpcChannel CreateClient(string endpoint, string? certificate = null)
     {
         if (string.IsNullOrWhiteSpace(endpoint))
         {
             throw new ArgumentException("Endpoint cannot be null or empty.", nameof(endpoint));
         }
 
-        var handler = new HttpClientHandler
+        var handler = new HttpClientHandler();
+
+        if (!string.IsNullOrEmpty(certificate))
+        {
+            var base64UrlDecoded = Convert.FromBase64String(certificate);
+            var cert = new X509Certificate2(base64UrlDecoded);
+
+            handler.ServerCertificateCustomValidationCallback = (sender, serverCert, chain, errors) =>
+            {
+                if (serverCert == null || chain == null)
+                {
+                    return false;
+                }
+
+                chain.ChainPolicy.VerificationFlags = X509VerificationFlags.AllowUnknownCertificateAuthority;
+
+                return chain.Build(cert);
+            };
+        }
+        else
         {
             // Accept any server certificate for development purposes
-            ServerCertificateCustomValidationCallback = HttpClientHandler.DangerousAcceptAnyServerCertificateValidator
-        };
+            handler.ServerCertificateCustomValidationCallback = HttpClientHandler.DangerousAcceptAnyServerCertificateValidator;
+        }
 
         // Create a new gRPC channel for the specified endpoint
         var channel = GrpcChannel.ForAddress($"https://{endpoint}",
@@ -65,7 +85,7 @@ public class LoopService : ILoopService
         var clientKey = $"{node.LoopdEndpoint}";
         return _clients.GetOrAdd(clientKey, _ =>
         {
-            var channel = _channels.GetOrAdd(node.LoopdEndpoint, CreateClient(node.LoopdEndpoint));
+            var channel = _channels.GetOrAdd(node.LoopdEndpoint, endpoint => CreateClient(endpoint, node.LoopdCert));
             var invoker = channel.Intercept(new GRPCMacaroonInterceptor(node.LoopdMacaroon));
             return new SwapClient.SwapClientClient(invoker);
         });
