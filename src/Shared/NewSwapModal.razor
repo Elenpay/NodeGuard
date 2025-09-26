@@ -378,6 +378,7 @@
         }
         catch (RpcException ex)
         {
+            Logger.LogError(ex, "Error getting swap quote");
             ToastService.ShowError(ex.Status.Detail);
         }
         catch (Exception ex)
