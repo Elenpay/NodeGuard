@@ -230,7 +230,7 @@
     private int _sweepConfirmationTarget = Constants.IS_DEV_ENVIRONMENT ? 250 : 400;
 
     private CancellationTokenSource? _cancellationTokenSource;
-    protected CancellationToken ComponentCancellationToken => (_cancellationTokenSource ??= new()).Token;
+    protected new CancellationToken ComponentCancellationToken => (_cancellationTokenSource ??= new()).Token;
 
     private string FormatBtcWithUsd(decimal btcAmount)
     {
@@ -325,6 +325,7 @@
         }
         catch (RpcException ex)
         {
+            Logger.LogError(ex, "Error creating swap");
             ToastService.ShowError(ex.Status.Detail);
         }
         catch (Exception ex)
