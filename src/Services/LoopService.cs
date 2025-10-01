@@ -147,7 +147,6 @@ public class LoopService : ILoopService
             Dest = request.Address,
             MaxMinerFee = request.MaxMinerFees ?? 0,
             MaxPrepayAmt = request.PrepayAmtSat ?? 0,
-            MaxSwapFee = request.MaxServiceFees ?? 0,
             MaxPrepayRoutingFee = request.MaxRoutingFeesPercent != null  ? calcFee(request.PrepayAmtSat ?? 0, maxRoutingFeeBaseSats, (long)(request.MaxRoutingFeesPercent.Value * 10000)) : getMaxRoutingFee(request.PrepayAmtSat ?? 0),
             MaxSwapRoutingFee = request.MaxRoutingFeesPercent != null ? calcFee(request.Amount, maxRoutingFeeBaseSats, (long)(request.MaxRoutingFeesPercent.Value * 10000)) : getMaxRoutingFee(request.Amount),
             SweepConfTarget = request.SweepConfTarget,
@@ -157,10 +156,10 @@ public class LoopService : ILoopService
             Initiator = "NodeGuard",
         };
 
-        if (request.MaxServiceFees.HasValue)
+        if (request.MaxServiceFeesPercent.HasValue)
         {
-            loopReq.MaxSwapFee = (long)request.MaxServiceFees.Value;
-            _logger.LogDebug("Max fees set to {MaxFees}", request.MaxServiceFees.Value);
+            loopReq.MaxSwapFee = (long)(request.Amount * request.MaxServiceFeesPercent.Value / 100);
+            _logger.LogDebug("Max fees set to {MaxFees}", loopReq.MaxSwapFee);
         }
 
         if (request.ChannelsOut != null && request.ChannelsOut.Length > 0)

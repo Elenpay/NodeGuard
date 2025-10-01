@@ -7,7 +7,7 @@ namespace NodeGuard.Services
    {
       public long Amount { get; set; }
       public string? Address { get; set; }
-      public long? MaxServiceFees { get; set; }
+      public decimal? MaxServiceFeesPercent { get; set; }
       public long? MaxMinerFees { get; set; }
       public ulong[]? ChannelsOut { get; set; }
       public decimal? MaxRoutingFeesPercent { get; set; }

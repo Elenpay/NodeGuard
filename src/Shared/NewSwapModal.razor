@@ -136,21 +136,26 @@
                                     }
                                     @Math.Round(amount, 8) BTC (~@Math.Round(PriceConversionService.BtcToUsdConversion(amount, _btcPrice), 2) USD)
                                 </FieldHelp>
+                                <FieldHelp Style="color: red !important;">Max miner fee is calculated automatically, only change the value if you want to override the default</FieldHelp>
                             </Field>
                              <Field>
                                 <FieldLabel>Max Service Fees</FieldLabel>
                                 <div class="d-flex">
                                     <NumericPicker TValue="decimal"
-                                                @bind-Value="_maxServiceFeesBtc"
+                                                @bind-Value="_maxServiceFeesPercent"
                                                 CurrencySymbolPlacement="CurrencySymbolPlacement.Suffix"
-                                                CurrencySymbol=" BTC"
-                                                Decimals="8"
-                                                Step="0.00001000m"
-                                                Min="0.00001000m">
+                                                CurrencySymbol="%"
+                                                Decimals="2"
+                                                Step="0.1m"
+                                                Min="0"
+                                                Max="100">
                                     </NumericPicker>
                                 </div>
                                 <FieldHelp>
-                                    $@Math.Round(PriceConversionService.BtcToUsdConversion(_maxServiceFeesBtc, _btcPrice), 2)
+                                    @{
+                                        var amount = _maxServiceFeesPercent * _amountBtc / 100;
+                                    }
+                                    @Math.Round(amount, 8) BTC (~@Math.Round(PriceConversionService.BtcToUsdConversion(amount, _btcPrice), 2) USD)
                                 </FieldHelp>
                             </Field>
                             <Field>
@@ -209,7 +214,7 @@
     private SwapDirection _selectedDirection = SwapDirection.Out;
     private SwapProvider _selectedProvider = SwapProvider.Loop;
     private decimal _amountBtc = 0.0025m;
-    private decimal _maxServiceFeesBtc = 0.00001m;
+    private decimal _maxServiceFeesPercent = 0.1m;
     private List<Wallet> _availableWallets = [];
     private Wallet? _selectedWallet;
     private string? _amountInWalletBtc;
@@ -268,7 +273,7 @@
             var swapRequest = new SwapOutRequest
             {
                 Amount = amount,
-                MaxServiceFees = NBitcoin.Money.FromUnit(_maxServiceFeesBtc, NBitcoin.MoneyUnit.BTC),
+                MaxServiceFeesPercent = _maxServiceFeesPercent,
                 PrepayAmtSat = _confirmationModal.GetData<long>("PrepayAmtSat"),
                 Address = btcAddress.Address.ToString(),
                 SwapPublicationDeadlineMinutes = _swapPublicationDeadlineOffsetMinutes,
