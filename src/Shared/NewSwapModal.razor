@@ -344,8 +344,18 @@
 
     private async Task ShowConfirmationModal()
     {
+        var HTLC_SWEEP_FEE_SAT_ON_QUOTE_ERROR = _amountBtc * EnvironmentHelpers.GetOrDefault("HTLC_SWEEP_FEE_SAT_ON_QUOTE_ERROR", 0.015m);
+        var PREPAY_AMT_SAT_ON_QUOTE_ERROR = _amountBtc * EnvironmentHelpers.GetOrDefault("PREPAY_AMT_SAT_ON_QUOTE_ERROR", 0.005m);
+
+        var middleChunkMessage = $"<strong>- Provider:</strong> {_selectedProvider}<br>" +
+                $"<strong>- Direction:</strong> {_selectedDirection}<br>" +
+                $"<strong>- Amount:</strong> {FormatBtcWithUsd(_amountBtc)}<br>" +
+                $"<strong>- Origin Node:</strong> {_selectedNode?.Name}<br>" +
+                $"<strong>- Destination Wallet:</strong> {_selectedWallet?.Name}<br><br>";
+        
         ArgumentNullException.ThrowIfNull(_selectedWallet, nameof(_selectedWallet));
         ArgumentNullException.ThrowIfNull(_selectedNode, nameof(_selectedNode));
+
         try
         {
             var request = new SwapOutQuoteRequest{
@@ -358,27 +368,38 @@
             var offChainFee = new Money(quote.OffChainFees);
             var onChainFee = new Money(quote.OnChainFees);
             var totalFees = new Money(quote.ServiceFees + quote.OffChainFees + quote.OnChainFees);
-            
+
+            var indentation = "&nbsp;&nbsp;&nbsp;&nbsp;";
+
+            var selectedServiceFee = _maxServiceFeesPercent * _amountBtc / 100;
+            var serviceFeeChunkMessage = $"{indentation}<strong>• Service Fee:</strong> {FormatBtcWithUsd(serviceFee.ToUnit(MoneyUnit.BTC))}<br>";
+            if (serviceFee.ToUnit(MoneyUnit.BTC) > selectedServiceFee) {
+                serviceFeeChunkMessage += $"{indentation}<span style='color: orange;'> (You selected: {FormatBtcWithUsd(selectedServiceFee)}, it might not go through)</span><br>";
+            }
+
+            var selectedRoutingFee = _maxRoutingFeesPercent * _amountBtc / 100;
+            var routingFeeChunkMessage = $"{indentation}<strong>• Off-Chain Fee:</strong> {FormatBtcWithUsd(offChainFee.ToUnit(MoneyUnit.BTC))}<br>";
+            if (offChainFee.ToUnit(MoneyUnit.BTC) > selectedRoutingFee) {
+                routingFeeChunkMessage += $"{indentation}<span style='color: orange;'> (You selected: {FormatBtcWithUsd(selectedRoutingFee)}, it might not go through)</span><br>";
+            }
+
             _confirmationModalBody = $"You are about to create a new swap with the following details:<br><br>" +
-                $"<strong>- Provider:</strong> {_selectedProvider}<br>" +
-                $"<strong>- Direction:</strong> {_selectedDirection}<br>" +
-                $"<strong>- Amount:</strong> {FormatBtcWithUsd(_amountBtc)}<br>" +
+                middleChunkMessage +
                 $"<strong>- Estimated Fees:</strong><br>" +
-                $"&nbsp;&nbsp;&nbsp;&nbsp;<strong>• Service Fee:</strong> {FormatBtcWithUsd(serviceFee.ToUnit(MoneyUnit.BTC))}<br>" +
-                $"&nbsp;&nbsp;&nbsp;&nbsp;<strong>• Off-Chain Fee:</strong> {FormatBtcWithUsd(offChainFee.ToUnit(MoneyUnit.BTC))}<br>" +
-                $"&nbsp;&nbsp;&nbsp;&nbsp;<strong>• On-Chain Fee:</strong> {FormatBtcWithUsd(onChainFee.ToUnit(MoneyUnit.BTC))}<br>" +
-                $"&nbsp;&nbsp;&nbsp;&nbsp;<strong>• Total:</strong> {FormatBtcWithUsd(totalFees.ToUnit(MoneyUnit.BTC))}<br>" +
-                $"<strong>- Origin Node:</strong> {_selectedNode?.Name}<br>" +
-                $"<strong>- Destination Wallet:</strong> {_selectedWallet?.Name}<br><br>" +
+                serviceFeeChunkMessage +
+                routingFeeChunkMessage +
+                $"{indentation}<strong>• On-Chain Fee:</strong> {FormatBtcWithUsd(onChainFee.ToUnit(MoneyUnit.BTC))}<br>" +
+                $"{indentation}<strong>• Total:</strong> {FormatBtcWithUsd(totalFees.ToUnit(MoneyUnit.BTC))}<br>" +
                 "<br>" +
-                $"<strong>- Estimated total cost:</strong> {FormatBtcWithUsd((Money.FromUnit(_amountBtc, MoneyUnit.BTC) + totalFees).ToUnit(MoneyUnit.BTC))}<br>";
+                $"<strong>- Estimated total cost:</strong> {FormatBtcWithUsd(totalFees.ToUnit(MoneyUnit.BTC))} (Percentage of total swap: {Math.Round(totalFees.ToUnit(MoneyUnit.BTC) / _amountBtc * 100, 2)}%)<br>";
 
             if (!quote.CouldEstimateRoutingFees)
             {
-                _confirmationModalBody += "<br>" + $"<span style='color: orange;'><strong>Warning:</strong> Routing fees could not be estimated. The actual fees might be higher than the estimated ones.</span><br><br>";
+                _confirmationModalBody += "<br>" + $"<span style='color: orange;'><strong>Warning:</strong> Routing fees could not be estimated. The actual fees will be higher than 0.</span><br><br>";
             }
                 
             _confirmationModalBody += $"<br>Please confirm that you want to proceed.";
+            Console.WriteLine($"PrepayAmtSat: {quote.PrepayAmtSat}, HtlcSweepFeeSat: {quote.HtlcSweepFeeSat}");
             var data = new Dictionary<string, object>
             {
                 { "HtlcSweepFeeSat", quote.HtlcSweepFeeSat },
@@ -389,12 +410,37 @@
         catch (RpcException ex)
         {
             Logger.LogError(ex, "Error getting swap quote");
-            ToastService.ShowError(ex.Status.Detail);
+
+            _confirmationModalBody = "Quote was not successful because of the following error: <br><br>" +
+                $"<span style='color: red;'>{ex.Status.Detail}</span>" + "<br><br>" +
+                "The swap will be created with the following details:<br><br>" +
+                middleChunkMessage +
+                "<span style='color: red'>The fees could not be estimated, the swap might not go through.</span><br><br>" +
+                "<br>Please confirm that you want to proceed.";
+
+            var data = new Dictionary<string, object>
+            {
+                { "HtlcSweepFeeSat", HTLC_SWEEP_FEE_SAT_ON_QUOTE_ERROR },
+                { "PrepayAmtSat", PREPAY_AMT_SAT_ON_QUOTE_ERROR }
+            };
+            await _confirmationModal.ShowModal(data);
         }
         catch (Exception ex)
         {
             Logger.LogError(ex, "Error getting swap quote");
-            ToastService.ShowError("Failed to get swap quote, please try again later");
+            _confirmationModalBody = "Quote was not successful because of an unhandled error: <br><br>" +
+                $"<span style='color: red;'>{ex.Message}</span>" + "<br><br>" +
+                "The swap will be created with the following details:<br><br>" +
+                middleChunkMessage +
+                "<span style='color: red'>The fees could not be estimated, the swap might not go through.</span><br><br>" +
+                "<br>Please confirm that you want to proceed or try again later.";
+
+            var data = new Dictionary<string, object>
+            {
+                { "HtlcSweepFeeSat", HTLC_SWEEP_FEE_SAT_ON_QUOTE_ERROR },
+                { "PrepayAmtSat", PREPAY_AMT_SAT_ON_QUOTE_ERROR }
+            };
+            await _confirmationModal.ShowModal(data);
         }
     }
 
