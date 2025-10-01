@@ -229,9 +229,6 @@
     private decimal _maxRoutingFeesPercent = 0.5m;
     private int _sweepConfirmationTarget = Constants.IS_DEV_ENVIRONMENT ? 250 : 400;
 
-    private CancellationTokenSource? _cancellationTokenSource;
-    protected new CancellationToken ComponentCancellationToken => (_cancellationTokenSource ??= new()).Token;
-
     private string FormatBtcWithUsd(decimal btcAmount)
     {
         var usdAmount = Math.Round(PriceConversionService.BtcToUsdConversion(btcAmount, _btcPrice), 2);
