@@ -366,27 +366,27 @@
             var onChainFee = new Money(quote.OnChainFees);
             var totalFees = new Money(quote.ServiceFees + quote.OffChainFees + quote.OnChainFees);
 
-            var indentation = "&nbsp;&nbsp;&nbsp;&nbsp;";
-
             var selectedServiceFee = _maxServiceFeesPercent * _amountBtc / 100;
-            var serviceFeeChunkMessage = $"{indentation}<strong>• Service Fee:</strong> {FormatBtcWithUsd(serviceFee.ToUnit(MoneyUnit.BTC))}<br>";
+            var serviceFeeChunkMessage = $"<li><strong>Service Fee:</strong> {FormatBtcWithUsd(serviceFee.ToUnit(MoneyUnit.BTC))}</li>";
             if (serviceFee.ToUnit(MoneyUnit.BTC) > selectedServiceFee) {
-                serviceFeeChunkMessage += $"{indentation}<span style='color: orange;'> (You selected: {FormatBtcWithUsd(selectedServiceFee)}, it might not go through)</span><br>";
+                serviceFeeChunkMessage += $"<li style='list-style-type: none;'><span style='color: orange;'> (You selected: {FormatBtcWithUsd(selectedServiceFee)}, it might not go through)</span></li>";
             }
 
             var selectedRoutingFee = _maxRoutingFeesPercent * _amountBtc / 100;
-            var routingFeeChunkMessage = $"{indentation}<strong>• Off-Chain Fee:</strong> {FormatBtcWithUsd(offChainFee.ToUnit(MoneyUnit.BTC))}<br>";
+            var routingFeeChunkMessage = $"<li><strong>Off-Chain Fee:</strong> {FormatBtcWithUsd(offChainFee.ToUnit(MoneyUnit.BTC))}</li>";
             if (offChainFee.ToUnit(MoneyUnit.BTC) > selectedRoutingFee) {
-                routingFeeChunkMessage += $"{indentation}<span style='color: orange;'> (You selected: {FormatBtcWithUsd(selectedRoutingFee)}, it might not go through)</span><br>";
+                routingFeeChunkMessage += $"<li style='list-style-type: none;'><span style='color: orange;'> (You selected: {FormatBtcWithUsd(selectedRoutingFee)}, it might not go through)</span></li>";
             }
 
             _confirmationModalBody = $"You are about to create a new swap with the following details:<br><br>" +
                 middleChunkMessage +
                 $"<strong>- Estimated Fees:</strong><br>" +
+                "<ul>"+
                 serviceFeeChunkMessage +
                 routingFeeChunkMessage +
-                $"{indentation}<strong>• On-Chain Fee:</strong> {FormatBtcWithUsd(onChainFee.ToUnit(MoneyUnit.BTC))}<br>" +
-                $"{indentation}<strong>• Total:</strong> {FormatBtcWithUsd(totalFees.ToUnit(MoneyUnit.BTC))}<br>" +
+                $"<li><strong>On-Chain Fee:</strong> {FormatBtcWithUsd(onChainFee.ToUnit(MoneyUnit.BTC))}</li>" +
+                $"<li><strong>Total:</strong> {FormatBtcWithUsd(totalFees.ToUnit(MoneyUnit.BTC))}</li>" +
+                "<ul>"+
                 "<br>" +
                 $"<strong>- Estimated total cost:</strong> {FormatBtcWithUsd(totalFees.ToUnit(MoneyUnit.BTC))} (Percentage of total swap: {Math.Round(totalFees.ToUnit(MoneyUnit.BTC) / _amountBtc * 100, 2)}%)<br>";
 
