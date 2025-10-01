@@ -66,10 +66,12 @@
                         </Tooltip>
                     </FieldLabel>
                     <div class="d-flex">
-                        <NumericPicker TValue="int"
+                        <NumericPicker TValue="decimal"
                                     @bind-Value="_maxRoutingFeesPercent"
                                     CurrencySymbolPlacement="CurrencySymbolPlacement.Suffix"
                                     CurrencySymbol="%"
+                                    Decimals="2"
+                                    Step="0.1m"
                                     Min="0"
                                     Max="100">
                         </NumericPicker>
@@ -217,7 +219,7 @@
     private bool _showAdvancedOptions = false;
     private int _swapPublicationDeadlineOffsetMinutes = Constants.IS_DEV_ENVIRONMENT ? 1 : 30;
     private int _maxMinerFeesPercent = 0;
-    private int _maxRoutingFeesPercent = 1;
+    private decimal _maxRoutingFeesPercent = 0.5m;
     private int _sweepConfirmationTarget = Constants.IS_DEV_ENVIRONMENT ? 250 : 400;
 
     private CancellationTokenSource? _cancellationTokenSource;
