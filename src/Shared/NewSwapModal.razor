@@ -399,7 +399,6 @@
             }
                 
             _confirmationModalBody += $"<br>Please confirm that you want to proceed.";
-            Console.WriteLine($"PrepayAmtSat: {quote.PrepayAmtSat}, HtlcSweepFeeSat: {quote.HtlcSweepFeeSat}");
             var data = new Dictionary<string, object>
             {
                 { "HtlcSweepFeeSat", quote.HtlcSweepFeeSat },
