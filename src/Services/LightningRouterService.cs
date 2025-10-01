@@ -66,9 +66,9 @@ public class LightningRouterService : ILightningRouterService
 
     public async Task<RouteFeeResponse?> EstimateRouteFee(Node node, RouteFeeRequest routeFeeRequest, Router.RouterClient? client = null)
     {
-        client ??= GetRouterClient(node.Endpoint);
-
         ArgumentNullException.ThrowIfNull(node.ChannelAdminMacaroon, nameof(node.ChannelAdminMacaroon));
+
+        client ??= GetRouterClient(node.Endpoint);
 
         return await client.EstimateRouteFeeAsync(routeFeeRequest,
             new Metadata
