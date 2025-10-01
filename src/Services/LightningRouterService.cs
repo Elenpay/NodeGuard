@@ -3,6 +3,7 @@ using Grpc.Core;
 using Grpc.Net.Client;
 using Microsoft.Extensions.Logging.Abstractions;
 using NodeGuard.Data.Models;
+using NodeGuard.Helpers;
 using Routerrpc;
 
 namespace NodeGuard.Services;
@@ -66,7 +67,7 @@ public class LightningRouterService : ILightningRouterService
 
     public async Task<RouteFeeResponse?> EstimateRouteFee(Node node, RouteFeeRequest routeFeeRequest, Router.RouterClient? client = null)
     {
-        ArgumentNullException.ThrowIfNull(node.ChannelAdminMacaroon, nameof(node.ChannelAdminMacaroon));
+        CustomArgumentNullException.ThrowIfNull(node.ChannelAdminMacaroon, nameof(node.ChannelAdminMacaroon), "LND Macaroon for {NodeName} is not well configured", node.Name);
 
         client ??= GetRouterClient(node.Endpoint);
 
