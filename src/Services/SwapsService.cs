@@ -100,9 +100,8 @@ namespace NodeGuard.Services
          };
 
          var lnResponse = await _lightningService.EstimateRouteFee(node.PubKey, request.Amount, null, 30);
-         ArgumentNullException.ThrowIfNull(lnResponse, nameof(lnResponse));
          
-         if (lnResponse.FailureReason != Lnrpc.PaymentFailureReason.FailureReasonNone)
+         if (lnResponse == null || lnResponse.FailureReason != Lnrpc.PaymentFailureReason.FailureReasonNone)
          {
             quote.CouldEstimateRoutingFees = false;
             quote.OffChainFees = 0;
