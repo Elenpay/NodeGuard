@@ -19,7 +19,7 @@ services:
       - shared_data:/shared
     command:
       - "daemon"
-      - "--maxamt=5000000"
+      - "--maxamt=160000000"
       - "--batcher_cutoff_time=1m"
       - "--lnd.host=alice:10009"
       - "--lnd.macaroonpath=/shared/lnd/alice/admin.macaroon"

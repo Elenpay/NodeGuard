@@ -1,3 +1,5 @@
+using System.Diagnostics.CodeAnalysis;
+
 namespace NodeGuard.Helpers;
 
 public class NoUTXOsAvailableException: Exception {}
@@ -37,4 +39,16 @@ public class NotEnoughBalanceInWalletException : Exception
 public class BumpingException : Exception
 {
    public BumpingException(string? message = null): base(message) {}
+}
+
+public class CustomArgumentNullException : ArgumentNullException
+{
+   public static void ThrowIfNull([NotNull] object? obj, string paramName, string message, params object[] args)
+   {
+      if (obj == null)
+      {
+         string formattedMessage = string.Format(message, args);
+         throw new ArgumentNullException(paramName, formattedMessage);
+      }
+   }
 }

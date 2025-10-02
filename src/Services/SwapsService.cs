@@ -7,10 +7,10 @@ namespace NodeGuard.Services
    {
       public long Amount { get; set; }
       public string? Address { get; set; }
-      public long? MaxServiceFees { get; set; }
+      public decimal? MaxServiceFeesPercent { get; set; }
       public long? MaxMinerFees { get; set; }
       public ulong[]? ChannelsOut { get; set; }
-      public int? MaxRoutingFeesPercent { get; set; }
+      public decimal? MaxRoutingFeesPercent { get; set; }
       public long? PrepayAmtSat { get; set; }
       public int SwapPublicationDeadlineMinutes { get; set; } = 60;
       public int SweepConfTarget { get; set; } = 400;
@@ -100,9 +100,8 @@ namespace NodeGuard.Services
          };
 
          var lnResponse = await _lightningService.EstimateRouteFee(node.PubKey, request.Amount, null, 30);
-         ArgumentNullException.ThrowIfNull(lnResponse, nameof(lnResponse));
          
-         if (lnResponse.FailureReason != Lnrpc.PaymentFailureReason.FailureReasonNone)
+         if (lnResponse == null || lnResponse.FailureReason != Lnrpc.PaymentFailureReason.FailureReasonNone)
          {
             quote.CouldEstimateRoutingFees = false;
             quote.OffChainFees = 0;

@@ -66,10 +66,12 @@
                         </Tooltip>
                     </FieldLabel>
                     <div class="d-flex">
-                        <NumericPicker TValue="int"
+                        <NumericPicker TValue="decimal"
                                     @bind-Value="_maxRoutingFeesPercent"
                                     CurrencySymbolPlacement="CurrencySymbolPlacement.Suffix"
                                     CurrencySymbol="%"
+                                    Decimals="2"
+                                    Step="0.1m"
                                     Min="0"
                                     Max="100">
                         </NumericPicker>
@@ -122,6 +124,8 @@
                                                 @bind-Value="_maxMinerFeesPercent"
                                                 CurrencySymbolPlacement="CurrencySymbolPlacement.Suffix"
                                                 CurrencySymbol="%"
+                                                Decimals="2"
+                                                Step="0.1m"
                                                 Min="0"
                                                 Max="100">
                                     </NumericPicker>
@@ -132,21 +136,26 @@
                                     }
                                     @Math.Round(amount, 8) BTC (~@Math.Round(PriceConversionService.BtcToUsdConversion(amount, _btcPrice), 2) USD)
                                 </FieldHelp>
+                                <FieldHelp Style="color: red !important;">Max miner fee is calculated automatically, only change the value if you want to override the default</FieldHelp>
                             </Field>
                              <Field>
                                 <FieldLabel>Max Service Fees</FieldLabel>
                                 <div class="d-flex">
                                     <NumericPicker TValue="decimal"
-                                                @bind-Value="_maxServiceFeesBtc"
+                                                @bind-Value="_maxServiceFeesPercent"
                                                 CurrencySymbolPlacement="CurrencySymbolPlacement.Suffix"
-                                                CurrencySymbol=" BTC"
-                                                Decimals="8"
-                                                Step="0.00001000m"
-                                                Min="0.00001000m">
+                                                CurrencySymbol="%"
+                                                Decimals="2"
+                                                Step="0.1m"
+                                                Min="0"
+                                                Max="100">
                                     </NumericPicker>
                                 </div>
                                 <FieldHelp>
-                                    $@Math.Round(PriceConversionService.BtcToUsdConversion(_maxServiceFeesBtc, _btcPrice), 2)
+                                    @{
+                                        var amount = _maxServiceFeesPercent * _amountBtc / 100;
+                                    }
+                                    @Math.Round(amount, 8) BTC (~@Math.Round(PriceConversionService.BtcToUsdConversion(amount, _btcPrice), 2) USD)
                                 </FieldHelp>
                             </Field>
                             <Field>
@@ -205,7 +214,7 @@
     private SwapDirection _selectedDirection = SwapDirection.Out;
     private SwapProvider _selectedProvider = SwapProvider.Loop;
     private decimal _amountBtc = 0.0025m;
-    private decimal _maxServiceFeesBtc = 0.00001m;
+    private decimal _maxServiceFeesPercent = 0.1m;
     private List<Wallet> _availableWallets = [];
     private Wallet? _selectedWallet;
     private string? _amountInWalletBtc;
@@ -217,11 +226,8 @@
     private bool _showAdvancedOptions = false;
     private int _swapPublicationDeadlineOffsetMinutes = Constants.IS_DEV_ENVIRONMENT ? 1 : 30;
     private int _maxMinerFeesPercent = 0;
-    private int _maxRoutingFeesPercent = 1;
+    private decimal _maxRoutingFeesPercent = 0.5m;
     private int _sweepConfirmationTarget = Constants.IS_DEV_ENVIRONMENT ? 250 : 400;
-
-    private CancellationTokenSource? _cancellationTokenSource;
-    protected CancellationToken ComponentCancellationToken => (_cancellationTokenSource ??= new()).Token;
 
     private string FormatBtcWithUsd(decimal btcAmount)
     {
@@ -264,7 +270,7 @@
             var swapRequest = new SwapOutRequest
             {
                 Amount = amount,
-                MaxServiceFees = NBitcoin.Money.FromUnit(_maxServiceFeesBtc, NBitcoin.MoneyUnit.BTC),
+                MaxServiceFeesPercent = _maxServiceFeesPercent,
                 PrepayAmtSat = _confirmationModal.GetData<long>("PrepayAmtSat"),
                 Address = btcAddress.Address.ToString(),
                 SwapPublicationDeadlineMinutes = _swapPublicationDeadlineOffsetMinutes,
@@ -316,6 +322,7 @@
         }
         catch (RpcException ex)
         {
+            Logger.LogError(ex, "Error creating swap");
             ToastService.ShowError(ex.Status.Detail);
         }
         catch (Exception ex)
@@ -334,8 +341,35 @@
 
     private async Task ShowConfirmationModal()
     {
+        var HTLC_SWEEP_FEE_SAT_ON_QUOTE_ERROR = _amountBtc * EnvironmentHelpers.GetOrDefault("HTLC_SWEEP_FEE_SAT_ON_QUOTE_ERROR", 0.015m);
+        var PREPAY_AMT_SAT_ON_QUOTE_ERROR = _amountBtc * EnvironmentHelpers.GetOrDefault("PREPAY_AMT_SAT_ON_QUOTE_ERROR", 0.005m);
+
+        var middleChunkMessage = $"<strong>- Provider:</strong> {_selectedProvider}<br>" +
+                $"<strong>- Direction:</strong> {_selectedDirection}<br>" +
+                $"<strong>- Amount:</strong> {FormatBtcWithUsd(_amountBtc)}<br>" +
+                $"<strong>- Origin Node:</strong> {_selectedNode?.Name}<br>" +
+                $"<strong>- Destination Wallet:</strong> {_selectedWallet?.Name}<br><br>";
+        
         ArgumentNullException.ThrowIfNull(_selectedWallet, nameof(_selectedWallet));
         ArgumentNullException.ThrowIfNull(_selectedNode, nameof(_selectedNode));
+
+        var showErrorModal = async (string errorMessage) => {
+            _confirmationModalBody = "Quote was not successful because of the following error: <br><br>" +
+                $"<span style='color: red;'>{errorMessage}</span>" + "<br><br>" +
+                "The swap will be created with the following details:<br><br>" +
+                middleChunkMessage +
+                "<span style='color: red'>The fees could not be estimated, the swap might not go through.</span><br><br>" +
+                "<br>Please confirm that you want to proceed.";
+
+            var data = new Dictionary<string, object>
+            {
+                { "HtlcSweepFeeSat", HTLC_SWEEP_FEE_SAT_ON_QUOTE_ERROR },
+                { "PrepayAmtSat", PREPAY_AMT_SAT_ON_QUOTE_ERROR }
+            };
+
+            await _confirmationModal.ShowModal(data);
+        };
+
         try
         {
             var request = new SwapOutQuoteRequest{
@@ -348,24 +382,34 @@
             var offChainFee = new Money(quote.OffChainFees);
             var onChainFee = new Money(quote.OnChainFees);
             var totalFees = new Money(quote.ServiceFees + quote.OffChainFees + quote.OnChainFees);
-            
+
+            var selectedServiceFee = _maxServiceFeesPercent * _amountBtc / 100;
+            var serviceFeeChunkMessage = $"<li><strong>Service Fee:</strong> {FormatBtcWithUsd(serviceFee.ToUnit(MoneyUnit.BTC))}</li>";
+            if (serviceFee.ToUnit(MoneyUnit.BTC) > selectedServiceFee) {
+                serviceFeeChunkMessage += $"<li style='list-style-type: none;'><span style='color: orange;'> (You selected: {FormatBtcWithUsd(selectedServiceFee)}, it might not go through)</span></li>";
+            }
+
+            var selectedRoutingFee = _maxRoutingFeesPercent * _amountBtc / 100;
+            var routingFeeChunkMessage = $"<li><strong>Off-Chain Fee:</strong> {FormatBtcWithUsd(offChainFee.ToUnit(MoneyUnit.BTC))}</li>";
+            if (offChainFee.ToUnit(MoneyUnit.BTC) > selectedRoutingFee) {
+                routingFeeChunkMessage += $"<li style='list-style-type: none;'><span style='color: orange;'> (You selected: {FormatBtcWithUsd(selectedRoutingFee)}, it might not go through)</span></li>";
+            }
+
             _confirmationModalBody = $"You are about to create a new swap with the following details:<br><br>" +
-                $"<strong>- Provider:</strong> {_selectedProvider}<br>" +
-                $"<strong>- Direction:</strong> {_selectedDirection}<br>" +
-                $"<strong>- Amount:</strong> {FormatBtcWithUsd(_amountBtc)}<br>" +
+                middleChunkMessage +
                 $"<strong>- Estimated Fees:</strong><br>" +
-                $"&nbsp;&nbsp;&nbsp;&nbsp;<strong>• Service Fee:</strong> {FormatBtcWithUsd(serviceFee.ToUnit(MoneyUnit.BTC))}<br>" +
-                $"&nbsp;&nbsp;&nbsp;&nbsp;<strong>• Off-Chain Fee:</strong> {FormatBtcWithUsd(offChainFee.ToUnit(MoneyUnit.BTC))}<br>" +
-                $"&nbsp;&nbsp;&nbsp;&nbsp;<strong>• On-Chain Fee:</strong> {FormatBtcWithUsd(onChainFee.ToUnit(MoneyUnit.BTC))}<br>" +
-                $"&nbsp;&nbsp;&nbsp;&nbsp;<strong>• Total:</strong> {FormatBtcWithUsd(totalFees.ToUnit(MoneyUnit.BTC))}<br>" +
-                $"<strong>- Origin Node:</strong> {_selectedNode?.Name}<br>" +
-                $"<strong>- Destination Wallet:</strong> {_selectedWallet?.Name}<br><br>" +
+                "<ul>"+
+                serviceFeeChunkMessage +
+                routingFeeChunkMessage +
+                $"<li><strong>On-Chain Fee:</strong> {FormatBtcWithUsd(onChainFee.ToUnit(MoneyUnit.BTC))}</li>" +
+                $"<li><strong>Total:</strong> {FormatBtcWithUsd(totalFees.ToUnit(MoneyUnit.BTC))}</li>" +
+                "<ul>"+
                 "<br>" +
-                $"<strong>- Estimated total cost:</strong> {FormatBtcWithUsd((Money.FromUnit(_amountBtc, MoneyUnit.BTC) + totalFees).ToUnit(MoneyUnit.BTC))}<br>";
+                $"<strong>- Estimated total cost:</strong> {FormatBtcWithUsd(totalFees.ToUnit(MoneyUnit.BTC))} (Percentage of total swap: {Math.Round(totalFees.ToUnit(MoneyUnit.BTC) / _amountBtc * 100, 2)}%)<br>";
 
             if (!quote.CouldEstimateRoutingFees)
             {
-                _confirmationModalBody += "<br>" + $"<span style='color: orange;'><strong>Warning:</strong> Routing fees could not be estimated. The actual fees might be higher than the estimated ones.</span><br><br>";
+                _confirmationModalBody += "<br>" + $"<span style='color: orange;'><strong>Warning:</strong> Routing fees could not be estimated. The actual fees will be higher than 0.</span><br><br>";
             }
                 
             _confirmationModalBody += $"<br>Please confirm that you want to proceed.";
@@ -379,12 +423,12 @@
         catch (RpcException ex)
         {
             Logger.LogError(ex, "Error getting swap quote");
-            ToastService.ShowError(ex.Status.Detail);
+            await showErrorModal(ex.Status.Detail);
         }
         catch (Exception ex)
         {
             Logger.LogError(ex, "Error getting swap quote");
-            ToastService.ShowError("Failed to get swap quote, please try again later");
+            await showErrorModal(ex.Message);
         }
     }
 

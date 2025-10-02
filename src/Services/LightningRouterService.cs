@@ -3,6 +3,7 @@ using Grpc.Core;
 using Grpc.Net.Client;
 using Microsoft.Extensions.Logging.Abstractions;
 using NodeGuard.Data.Models;
+using NodeGuard.Helpers;
 using Routerrpc;
 
 namespace NodeGuard.Services;
@@ -66,25 +67,17 @@ public class LightningRouterService : ILightningRouterService
 
     public async Task<RouteFeeResponse?> EstimateRouteFee(Node node, RouteFeeRequest routeFeeRequest, Router.RouterClient? client = null)
     {
-        RouteFeeResponse? routeFeeResponse = null;
-        try
-        {
-            client ??= GetRouterClient(node.Endpoint);
-            routeFeeResponse = await client.EstimateRouteFeeAsync(routeFeeRequest,
-                new Metadata
-                {
-                    {
-                        "macaroon", node.ChannelAdminMacaroon
-                    }
-                });
-        }
-        catch (Exception e)
-        {
-            _logger.LogError(e, "Error while estimating route fee for node {NodeId}", node.Id);
-            return null;
-        }
+        CustomArgumentNullException.ThrowIfNull(node.ChannelAdminMacaroon, nameof(node.ChannelAdminMacaroon), "LND Macaroon for {NodeName} is not well configured", node.Name);
 
-        return routeFeeResponse;
+        client ??= GetRouterClient(node.Endpoint);
+
+        return await client.EstimateRouteFeeAsync(routeFeeRequest,
+            new Metadata
+            {
+                {
+                    "macaroon", node.ChannelAdminMacaroon
+                }
+            });
     }
 }
 
