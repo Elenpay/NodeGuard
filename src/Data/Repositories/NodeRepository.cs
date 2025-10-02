@@ -152,7 +152,10 @@ namespace NodeGuard.Data.Repositories
                 .Include(x => x.ChannelOperationRequestsAsDestination)
                 .Include(x => x.ChannelOperationRequestsAsSource)
                 .Where(node => node.Endpoint != null)
-                .Where(node => !string.IsNullOrEmpty(node.LoopdEndpoint) && !string.IsNullOrEmpty(node.LoopdMacaroon));
+                .Where(node => !string.IsNullOrEmpty(node.LoopdEndpoint) &&
+                    !string.IsNullOrEmpty(node.LoopdMacaroon) &&
+                    !string.IsNullOrEmpty(node.Endpoint) &&
+                    !string.IsNullOrEmpty(node.ChannelAdminMacaroon));
 
             if (!string.IsNullOrEmpty(userId)) {
                 query = query.Where(node => node.Users.Any(user => user.Id == userId));
