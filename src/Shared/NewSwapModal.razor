@@ -353,6 +353,23 @@
         ArgumentNullException.ThrowIfNull(_selectedWallet, nameof(_selectedWallet));
         ArgumentNullException.ThrowIfNull(_selectedNode, nameof(_selectedNode));
 
+        var showErrorModal = async (string errorMessage) => {
+            _confirmationModalBody = "Quote was not successful because of the following error: <br><br>" +
+                $"<span style='color: red;'>{errorMessage}</span>" + "<br><br>" +
+                "The swap will be created with the following details:<br><br>" +
+                middleChunkMessage +
+                "<span style='color: red'>The fees could not be estimated, the swap might not go through.</span><br><br>" +
+                "<br>Please confirm that you want to proceed.";
+
+            var data = new Dictionary<string, object>
+            {
+                { "HtlcSweepFeeSat", HTLC_SWEEP_FEE_SAT_ON_QUOTE_ERROR },
+                { "PrepayAmtSat", PREPAY_AMT_SAT_ON_QUOTE_ERROR }
+            };
+
+            await _confirmationModal.ShowModal(data);
+        };
+
         try
         {
             var request = new SwapOutQuoteRequest{
@@ -406,37 +423,12 @@
         catch (RpcException ex)
         {
             Logger.LogError(ex, "Error getting swap quote");
-
-            _confirmationModalBody = "Quote was not successful because of the following error: <br><br>" +
-                $"<span style='color: red;'>{ex.Status.Detail}</span>" + "<br><br>" +
-                "The swap will be created with the following details:<br><br>" +
-                middleChunkMessage +
-                "<span style='color: red'>The fees could not be estimated, the swap might not go through.</span><br><br>" +
-                "<br>Please confirm that you want to proceed.";
-
-            var data = new Dictionary<string, object>
-            {
-                { "HtlcSweepFeeSat", HTLC_SWEEP_FEE_SAT_ON_QUOTE_ERROR },
-                { "PrepayAmtSat", PREPAY_AMT_SAT_ON_QUOTE_ERROR }
-            };
-            await _confirmationModal.ShowModal(data);
+            await showErrorModal(ex.Status.Detail);
         }
         catch (Exception ex)
         {
             Logger.LogError(ex, "Error getting swap quote");
-            _confirmationModalBody = "Quote was not successful because of an unhandled error: <br><br>" +
-                $"<span style='color: red;'>{ex.Message}</span>" + "<br><br>" +
-                "The swap will be created with the following details:<br><br>" +
-                middleChunkMessage +
-                "<span style='color: red'>The fees could not be estimated, the swap might not go through.</span><br><br>" +
-                "<br>Please confirm that you want to proceed or try again later.";
-
-            var data = new Dictionary<string, object>
-            {
-                { "HtlcSweepFeeSat", HTLC_SWEEP_FEE_SAT_ON_QUOTE_ERROR },
-                { "PrepayAmtSat", PREPAY_AMT_SAT_ON_QUOTE_ERROR }
-            };
-            await _confirmationModal.ShowModal(data);
+            await showErrorModal(ex.Message);
         }
     }
 
