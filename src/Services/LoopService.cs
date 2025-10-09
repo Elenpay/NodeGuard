@@ -196,6 +196,7 @@ public class LoopService : ILoopService
             OffchainFee = response.CostOffchain,
             OnchainFee = response.CostOnchain,
             ServerFee = response.CostServer,
+            ErrorMessage = response.FailureReason.ToString(),
             Status = response.State switch
             {
                 SwapState.Initiated => SwapOutStatus.Pending,

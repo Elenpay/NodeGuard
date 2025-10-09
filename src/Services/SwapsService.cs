@@ -25,6 +25,7 @@ namespace NodeGuard.Services
       public long OnchainFee { get; set; }
       public long ServerFee { get; set; }
       public SwapOutStatus Status { get; set; }
+      public string? ErrorMessage { get; set; }
    }
 
    public class SwapOutQuoteRequest
