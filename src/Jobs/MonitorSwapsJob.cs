@@ -70,6 +70,12 @@ public class MonitorSwapsJob : IJob
                     swap.ServiceFeeSats = response.ServerFee;
                     swap.LightningFeeSats = response.OffchainFee;
                     swap.OnChainFeeSats = response.OnchainFee;
+
+                    if (response.Status == SwapOutStatus.Failed)
+                    {
+                        swap.ErrorDetails = response.ErrorMessage;
+                    }
+
                     var (updated, error) = _swapOutRepository.Update(swap);
                     if (!updated)
                     {

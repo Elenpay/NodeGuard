@@ -403,7 +403,7 @@
                 routingFeeChunkMessage +
                 $"<li><strong>On-Chain Fee:</strong> {FormatBtcWithUsd(onChainFee.ToUnit(MoneyUnit.BTC))}</li>" +
                 $"<li><strong>Total:</strong> {FormatBtcWithUsd(totalFees.ToUnit(MoneyUnit.BTC))}</li>" +
-                "<ul>"+
+                "</ul>"+
                 "<br>" +
                 $"<strong>- Estimated total cost:</strong> {FormatBtcWithUsd(totalFees.ToUnit(MoneyUnit.BTC))} (Percentage of total swap: {Math.Round(totalFees.ToUnit(MoneyUnit.BTC) / _amountBtc * 100, 2)}%)<br>";
 
