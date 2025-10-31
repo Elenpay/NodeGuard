@@ -117,11 +117,11 @@
                         }
                     </DisplayTemplate>
                 </DataGridNumericColumn>
-                <DataGridColumn TItem="Node" Filterable="false" Editable="true" Field="@nameof(Node.ReturningFundsWalletId)" Caption="Returning funds wallet" Sortable="false" Displayable="@IsColumnVisible(NodesColumnName.ReturningFundsWallet)">
+                <DataGridColumn TItem="Node" Filterable="false" Editable="true" Field="@nameof(Node.FundsDestinationWalletId)" Caption="Returning funds wallet" Sortable="false" Displayable="@IsColumnVisible(NodesColumnName.ReturningFundsWallet)">
                     <DisplayTemplate>
-                        @if (context.ReturningFundsWallet != null)
+                        @if (context.FundsDestinationWallet != null)
                         {
-                            @context.ReturningFundsWallet.Name
+                            @context.FundsDestinationWallet.Name
                         }
                     </DisplayTemplate>
                     <EditTemplate>

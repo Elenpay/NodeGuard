@@ -442,7 +442,7 @@ public class NodeGuardService : Nodeguard.NodeGuardService.NodeGuardServiceBase,
             ChannelAdminMacaroon = request.ChannelAdminMacaroon,
             Endpoint = request.Endpoint,
             AutosweepEnabled = request.AutosweepEnabled,
-            ReturningFundsWalletId = request.ReturningFundsWalletId,
+            FundsDestinationWalletId = request.ReturningFundsWalletId,
         };
 
         try

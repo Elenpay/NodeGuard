@@ -169,7 +169,7 @@ public class ProcessNodeChannelAcceptorJob : IJob
                         {
 
                             //Lets find the node's assigned multisig wallet
-                            var returningMultisigWallet = node.ReturningFundsWallet;
+                            var returningMultisigWallet = node.FundsDestinationWallet;
 
                             if (returningMultisigWallet != null)
                             {
@@ -188,7 +188,7 @@ public class ProcessNodeChannelAcceptorJob : IJob
                                     await AcceptChannelOpeningRequestWithUpfrontShutdown(_nBXplorerService,
                                         wallet, resultAcceptor, node, response);
 
-                                    node.ReturningFundsWalletId = wallet.Id;
+                                    node.FundsDestinationWalletId = wallet.Id;
 
                                     //We assign the node's returning wallet
                                     var updateResult = _nodeRepository.Update(node);
