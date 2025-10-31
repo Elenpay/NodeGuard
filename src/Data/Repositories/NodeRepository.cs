@@ -51,7 +51,7 @@ namespace NodeGuard.Data.Repositories
                 .Include(node => node.Users)
                 .ThenInclude(user => user.Keys)
                 .ThenInclude(key => key.Wallets)
-                .Include(x => x.ReturningFundsWallet)
+                .Include(x => x.FundsDestinationWallet)
                 .ThenInclude(x => x.Keys)
                 .SingleOrDefaultAsync(x => x.Id == id);
         }
@@ -64,7 +64,7 @@ namespace NodeGuard.Data.Repositories
                 .Include(node => node.Users)
                 .ThenInclude(user => user.Keys)
                 .ThenInclude(keyObj => keyObj.Wallets)
-                .Include(x => x.ReturningFundsWallet)
+                .Include(x => x.FundsDestinationWallet)
                 .SingleOrDefaultAsync(x => x.PubKey == key);
         }
         
@@ -106,7 +106,7 @@ namespace NodeGuard.Data.Repositories
                     .ThenInclude(request => request.Channel)
                 .Include(node => node.ChannelOperationRequestsAsDestination)
                     .ThenInclude(request => request.Channel)
-                .Include(x=> x.ReturningFundsWallet)
+                .Include(x=> x.FundsDestinationWallet)
                 .ToListAsync();
         }
 
@@ -115,9 +115,9 @@ namespace NodeGuard.Data.Repositories
             await using var applicationDbContext = await _dbContextFactory.CreateDbContextAsync();
 
             var query = applicationDbContext.Nodes
-                .Include(x => x.ReturningFundsWallet)
+                .Include(x => x.FundsDestinationWallet)
                 .ThenInclude(x => x.Keys)
-                .Include(x => x.ReturningFundsWallet)
+                .Include(x => x.FundsDestinationWallet)
                 .Where(node => node.Endpoint != null);
             if (!withDisabled)
             {
@@ -135,7 +135,7 @@ namespace NodeGuard.Data.Repositories
             await using var applicationDbContext = await _dbContextFactory.CreateDbContextAsync();
 
             return await applicationDbContext.Nodes
-                .Include(x=> x.ReturningFundsWallet)
+                .Include(x=> x.FundsDestinationWallet)
                 .Include(x=> x.ChannelOperationRequestsAsDestination)
                 .Include(x=> x.ChannelOperationRequestsAsSource)
                 .Where(node => node.Endpoint != null
@@ -148,7 +148,7 @@ namespace NodeGuard.Data.Repositories
             await using var applicationDbContext = await _dbContextFactory.CreateDbContextAsync();
 
             var query = applicationDbContext.Nodes
-                .Include(x => x.ReturningFundsWallet)
+                .Include(x => x.FundsDestinationWallet)
                 .Include(x => x.ChannelOperationRequestsAsDestination)
                 .Include(x => x.ChannelOperationRequestsAsSource)
                 .Where(node => node.Endpoint != null)

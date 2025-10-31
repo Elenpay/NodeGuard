@@ -18,6 +18,7 @@
  */
 
 using System.ComponentModel.DataAnnotations.Schema;
+using NBitcoin;
 
 namespace NodeGuard.Data.Models
 {
@@ -45,11 +46,12 @@ namespace NodeGuard.Data.Models
         public bool AutosweepEnabled { get; set; } = true;
 
         /// <summary>
-        /// The wallet used on upfront_shutdown_script if the peer supports this
+        /// The destination wallet for funds from this node.
+        /// Used for upfront_shutdown_script if the peer supports this and as the destination wallet for automatic swap outs.
         /// </summary>
-        public int? ReturningFundsWalletId { get; set; }
+        public int? FundsDestinationWalletId { get; set; }
 
-        public Wallet? ReturningFundsWallet { get; set; }
+        public Wallet? FundsDestinationWallet { get; set; }
 
         /// <summary>
         /// enable/disable node
@@ -67,6 +69,56 @@ namespace NodeGuard.Data.Models
         public string? LoopdMacaroon { get; set; }
 
         public string? LoopdCert { get; set; }
+
+        #region Automatic Node level liquidity Management
+
+        /// <summary>
+        /// Enable/disable automatic liquidity management (swap outs and channel openings) for this node
+        /// </summary>
+        public bool AutoLiquidityManagementEnabled { get; set; }
+
+        /// <summary>
+        /// Minimum swap amount in satoshis
+        /// </summary>
+        public long? SwapMinAmountSats { get; set; }
+
+        /// <summary>
+        /// Maximum swap amount in satoshis
+        /// </summary>
+        public long? SwapMaxAmountSats { get; set; }
+
+        /// <summary>
+        /// Maximum number of concurrent swaps to limit HTLC locking
+        /// </summary>
+        public int? MaxSwapsInFlight { get; set; }
+
+        /// <summary>
+        /// Maximum fee ratio (including routing + service fees) acceptable for swaps as a decimal between 0 and 1
+        /// Example: 0.005 = 0.5%
+        /// </summary>
+        public decimal? MaxSwapFeeRatio { get; set; }
+
+        /// <summary>
+        /// Balance threshold in satoshis - when node balance exceeds this, trigger automatic swap out
+        /// </summary>
+        public long? MinimumBalanceThresholdSats { get; set; }
+
+        /// <summary>
+        /// Maximum amount of BTC (in satoshis) that can be spent on swaps over the budget refresh interval
+        /// </summary>
+        public long? SwapBudgetSats { get; set; }
+
+        /// <summary>
+        /// Time interval after which the swap budget is refreshed
+        /// </summary>
+        public TimeSpan? SwapBudgetRefreshInterval { get; set; }
+
+        /// <summary>
+        /// The datetime when the current budget period started
+        /// </summary>
+        public DateTimeOffset? SwapBudgetStartDatetime { get; set; }
+
+        #endregion Automatic Swap Out Configuration
 
         #region Relationships
 
