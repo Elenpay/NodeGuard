@@ -117,39 +117,14 @@
                         }
                     </DisplayTemplate>
                 </DataGridNumericColumn>
-                <DataGridColumn TItem="Node" Filterable="false" Editable="true" Field="@nameof(Node.FundsDestinationWalletId)" Caption="Returning funds wallet" Sortable="false" Displayable="@IsColumnVisible(NodesColumnName.ReturningFundsWallet)">
-                    <DisplayTemplate>
-                        @if (context.FundsDestinationWallet != null)
-                        {
-                            @context.FundsDestinationWallet.Name
-                        }
-                    </DisplayTemplate>
-                    <EditTemplate>
-                        @if (context.CellValue == null)
-                        {
-                            <SelectList TItem="Wallet"
-                                        TValue="int"
-                                        Data="@_availableWallets"
-                                        TextField="@((item) => item.Name)"
-                                        ValueField="@((item) => item.Id)"
-                                        SelectedValueChanged="(id) => context.CellValue = id"
-                                        DefaultItemText="Choose the returning funds wallet"/>
-                        }
-                        else
-                        {
-                            <SelectList TItem="Wallet"
-                                        TValue="int"
-                                        Data="@_availableWallets"
-                                        TextField="@((item) => item.Name)"
-                                        ValueField="@((item) => item.Id)"
-                                        SelectedValue="(int)context.CellValue"
-                                        SelectedValueChanged="(id) => context.CellValue = id"/>
-                        }
-
-                    </EditTemplate>
-                </DataGridColumn>
                 <DataGridColumn TItem="Node" Filterable="false" Editable="false" Field="@nameof(Node.IsNodeDisabled)" Caption="Disabled" Sortable="false" Displayable="@IsColumnVisible(NodesColumnName.Disabled)"></DataGridColumn>
-                <DataGridColumn TItem="Node" Filterable="false" Editable="true" Field="@nameof(Node.AutosweepEnabled)" Caption="Autosweep" Sortable="false" Displayable="@IsColumnVisible(NodesColumnName.Autosweep)"></DataGridColumn>
+                
+                <DataGridColumn TItem="Node" Filterable="false" Caption="Liquidity Config" Sortable="false" Displayable="@IsColumnVisible(NodesColumnName.AutoLiquidityManagement)">
+                    <DisplayTemplate>
+                        <Button Color="Color.Primary" Clicked="@(() => ShowLiquidityManagementModal(context))" Block>Manage</Button>
+                    </DisplayTemplate>
+                </DataGridColumn>
+                
                 <DataGridColumn TItem="Node" Filterable="false" Field="@nameof(Node.CreationDatetime)" Caption="Creation Date" Sortable="true" SortDirection="SortDirection.Descending" Displayable="@IsColumnVisible(NodesColumnName.CreationDate)">
                     <DisplayTemplate>
                         @context.CreationDatetime.Humanize()
@@ -194,6 +169,162 @@
         </ModalFooter>
     </ModalContent>
 </Modal>
+
+<Modal @ref="_nodeLiquidityModal">
+    @if (_selectedNodeForLiquidity != null)
+    {
+        <ModalContent Centered Scrollable Size="ModalSize.ExtraLarge">
+            <ModalHeader>
+                <ModalTitle>Liquidity management for node: @_selectedNodeForLiquidity.Name </ModalTitle>
+                <CloseButton/>
+            </ModalHeader>
+            <ModalBody>
+                <Validations @ref="_nodeLiquidityValidationsRef">                    
+                    <Field>
+                        <FieldLabel>Autosweep</FieldLabel>
+                        <FieldHelp>Automatically sweep channel closing funds to the destination wallet</FieldHelp>
+                        <Check TValue="bool" Checked="@_selectedNodeForLiquidity.AutosweepEnabled" CheckedChanged="@((value) => _selectedNodeForLiquidity.AutosweepEnabled = value)">
+                            Enable automatic sweep of funds
+                        </Check>
+                    </Field>
+                    
+                    <Field>
+                        <Validation Validator="ValidationRule.IsSelected">
+                            <FieldLabel>Funds Destination Wallet</FieldLabel>
+                            <FieldHelp>Wallet to receive on-chain funds from channel closings and swap operations</FieldHelp>
+                            <SelectList TItem="Wallet"
+                                        TValue="int"
+                                        Data="@_availableWallets"
+                                        SelectedValue="_selectedNodeForLiquidity.FundsDestinationWalletId ?? 0"
+                                        TextField="@((item) => item.Name)"
+                                        ValueField="@((item) => item.Id)"
+                                        SelectedValueChanged="@OnSelectedFundsDestinationWalletChanged"
+                                        DefaultItemText="Choose the destination wallet">
+                                <Feedback>
+                                    <ValidationError>A destination wallet must be selected</ValidationError>
+                                </Feedback>
+                            </SelectList>
+                        </Validation>
+                    </Field>
+                    
+                    <Divider Text="Automatic Liquidity Management" TextAlignment="TextAlignment.Start" Type="DividerType.Dashed" />
+                    
+                    <Field>
+                        <FieldLabel>Automatic Liquidity Management</FieldLabel>
+                        <FieldHelp>Enables automatic swap outs based on balance thresholds and configuration below</FieldHelp>
+                        <Check TValue="bool" Checked="@_selectedNodeForLiquidity.AutoLiquidityManagementEnabled" CheckedChanged="OnEnableAutoLiquidityChanged">
+                            Enable automatic liquidity management
+                        </Check>
+                    </Field>
+                    
+                    @if (_selectedNodeForLiquidity.AutoLiquidityManagementEnabled)
+                    {
+                        <Row>
+                            <Column>
+                                <Field>
+                                    <Validation Validator="ValidateMinSwapSize">
+                                        <FieldLabel>Min Swap Size (BTC)</FieldLabel>
+                                        <FieldHelp>Minimum amount for each swap (must be ≥ 0.01 BTC)</FieldHelp>
+                                        <NumericEdit TValue="decimal" @bind-Value="@_minSwapSizeBtc" Min="0.01M" Max="0.5M" Decimals="8" Step="0.01m">
+                                            <Feedback>
+                                                <ValidationError>Min swap size must be ≥ 0.01 BTC and ≤ max swap size</ValidationError>
+                                            </Feedback>
+                                        </NumericEdit>
+                                    </Validation>
+                                </Field>
+                            </Column>
+                            <Column>
+                                <Field>
+                                    <Validation Validator="ValidateMaxSwapSize">
+                                        <FieldLabel>Max Swap Size (BTC)</FieldLabel>
+                                        <FieldHelp>Maximum amount for each swap (must be ≤ 0.5 BTC)</FieldHelp>
+                                        <NumericEdit TValue="decimal" @bind-Value="@_maxSwapSizeBtc" Min="0.01M" Max="0.5M" Decimals="8" Step="0.01m">
+                                            <Feedback>
+                                                <ValidationError>Max swap size must be ≤ 0.5 BTC and ≥ min swap size</ValidationError>
+                                            </Feedback>
+                                        </NumericEdit>
+                                    </Validation>
+                                </Field>
+                            </Column>
+                        </Row>
+                        <Row>
+                            <Column>
+                                <Field>
+                                    <Validation Validator="ValidateMaxSwapsInFlight">
+                                        <FieldLabel>Max Swaps in Flight</FieldLabel>
+                                        <FieldHelp>Maximum concurrent swaps (0-100) to limit HTLC locking</FieldHelp>
+                                        <NumericEdit TValue="int" @bind-Value="_selectedNodeForLiquidity.MaxSwapsInFlight" Min="0" Max="100">
+                                            <Feedback>
+                                                <ValidationError>Must be between 0 and 100</ValidationError>
+                                            </Feedback>
+                                        </NumericEdit>
+                                    </Validation>
+                                </Field>
+                            </Column>
+                            <Column>
+                                <Field>
+                                    <Validation Validator="ValidateMaxSwapFeePercent">
+                                        <FieldLabel>Max Swap Fee (%)</FieldLabel>
+                                        <FieldHelp>Maximum acceptable fee as percentage (e.g., 0.5 = 0.5%)</FieldHelp>
+                                        <NumericEdit TValue="decimal" @bind-Value="@_maxSwapFeePercent" Min="0M" Max="100M" Decimals="2" Step="0.1m">
+                                            <Feedback>
+                                                <ValidationError>Fee percent must be between 0 and 100</ValidationError>
+                                            </Feedback>
+                                        </NumericEdit>
+                                    </Validation>
+                                </Field>
+                            </Column>
+                        </Row>
+                        <Field>
+                            <Validation Validator="ValidateBalanceThreshold">
+                                <FieldLabel>Balance Threshold (BTC)</FieldLabel>
+                                <FieldHelp>Trigger swap out when node balance exceeds this threshold</FieldHelp>
+                                <NumericEdit TValue="decimal" @bind-Value="@_balanceThresholdBtc" Min="0M" Decimals="8" Step="0.1m">
+                                    <Feedback>
+                                        <ValidationError>Balance threshold must be ≥ 0</ValidationError>
+                                    </Feedback>
+                                </NumericEdit>
+                            </Validation>
+                        </Field>
+                        <Row>
+                            <Column>
+                                <Field>
+                                    <Validation Validator="ValidateSwapBudget">
+                                        <FieldLabel>Swap Budget (BTC)</FieldLabel>
+                                        <FieldHelp>Maximum budget per refresh period</FieldHelp>
+                                        <NumericEdit TValue="decimal" @bind-Value="@_swapBudgetBtc" Min="0M" Decimals="8" Step="0.1m">
+                                            <Feedback>
+                                                <ValidationError>Budget must be ≥ 0</ValidationError>
+                                            </Feedback>
+                                        </NumericEdit>
+                                    </Validation>
+                                </Field>
+                            </Column>
+                            <Column>
+                                <Field>
+                                    <Validation Validator="ValidateBudgetRefreshInterval">
+                                        <FieldLabel>Budget Refresh Interval (days)</FieldLabel>
+                                        <FieldHelp>Period after which swap budget is refreshed (minimum 1 day)</FieldHelp>
+                                        <NumericEdit TValue="int" @bind-Value="@_budgetRefreshDays" Min="1">
+                                            <Feedback>
+                                                <ValidationError>Interval must be ≥ 1 day</ValidationError>
+                                            </Feedback>
+                                        </NumericEdit>
+                                    </Validation>
+                                </Field>
+                            </Column>
+                        </Row>
+                    }
+                </Validations>
+            </ModalBody>
+            <ModalFooter>
+                <Button Color="Color.Secondary" Clicked="@CloseLiquidityManagementModal">Cancel</Button>
+                <Button Color="Color.Primary" Clicked="@SaveAndCloseLiquidityManagementModal">Save</Button>
+            </ModalFooter>
+        </ModalContent>
+    }
+</Modal>
+
 @inject INodeRepository NodeRepository
 @inject IToastService ToastService;
 @inject ClipboardService ClipboardService
@@ -221,6 +352,19 @@
     private ColumnLayout<NodesColumnName> NodesColumnLayout;
     private Dictionary<string, bool> NodesColumns = new();
     private bool columnsLoaded;
+    
+    // Liquidity management modal
+    private Modal? _nodeLiquidityModal;
+    private Node? _selectedNodeForLiquidity;
+    private Validations? _nodeLiquidityValidationsRef;
+    
+    // BTC conversion fields for easier editing
+    private decimal _minSwapSizeBtc;
+    private decimal _maxSwapSizeBtc;
+    private decimal _balanceThresholdBtc;
+    private decimal _swapBudgetBtc;
+    private int _budgetRefreshDays;
+    private decimal _maxSwapFeePercent;
 
     public abstract class NodesColumnName
     {
@@ -229,9 +373,17 @@
         public static readonly ColumnDefault Description = new("Description");
         public static readonly ColumnDefault Endpoint = new("Endpoint");
         public static readonly ColumnDefault OutboundOpenChannels = new("Outbound Open Channels");
-        public static readonly ColumnDefault ReturningFundsWallet = new("Returning Funds Wallet");
+        public static readonly ColumnDefault FundsDestinationWallet = new("Funds Destination Wallet");
         public static readonly ColumnDefault Disabled = new("Disabled");
         public static readonly ColumnDefault Autosweep = new("Autosweep");
+        public static readonly ColumnDefault AutoLiquidityManagement = new("Auto Liquidity Management");
+        public static readonly ColumnDefault SwapMinAmount = new("Min Swap Amount",false);
+        public static readonly ColumnDefault SwapMaxAmount = new("Max Swap Amount",false);
+        public static readonly ColumnDefault MaxSwapsInFlight = new("Max Swaps In Flight",false);
+        public static readonly ColumnDefault MaxSwapFeeRatio = new("Max Swap Fee Ratio",false);
+        public static readonly ColumnDefault MinimumBalanceThreshold = new("Minimum Balance Threshold",false);
+        public static readonly ColumnDefault SwapBudget = new("Swap Budget",false);
+        public static readonly ColumnDefault SwapBudgetRefreshInterval = new("Budget Refresh Interval",false);
         public static readonly ColumnDefault CreationDate = new("Creation Date");
         public static readonly ColumnDefault UpdateDate = new("Update Date");
         public static readonly ColumnDefault Users = new("Users");
@@ -323,10 +475,17 @@
         }
         else
         {
+            // Cross-field validation: min ≤ max
+            var minBtc = new NBitcoin.Money(arg.Item.SwapMinAmountSats).ToUnit(NBitcoin.MoneyUnit.BTC);
+            var maxBtc = new NBitcoin.Money(arg.Item.SwapMaxAmountSats).ToUnit(NBitcoin.MoneyUnit.BTC);
+            if (minBtc > maxBtc)
+            {
+                ToastService.ShowError("Min Swap Size must be less than or equal to Max Swap Size");
+                return;
+            }
             Node newNode = arg.Item as Node;
             (bool, string?) addResult;
             var restoredNode = await NodeRepository.GetByPubkey(arg.Item.PubKey);
-         
             if (restoredNode != null)
             {
                 newNode.Id = restoredNode.Id;
@@ -342,7 +501,6 @@
                 ToastService.ShowSuccess($"Node {arg.Item.Name} Created");
                 _nodes = await NodeRepository.GetAll();
                 await CreateJobs(arg.Item);
-
             }
             else
             {
@@ -350,7 +508,6 @@
                 _nodes?.Remove(arg.Item);
             }
         }
-
         await GetData();
     }
 
@@ -362,10 +519,16 @@
         }
         else
         {
+            // Cross-field validation: min ≤ max
+            var minBtc = new NBitcoin.Money(arg.Item.SwapMinAmountSats).ToUnit(NBitcoin.MoneyUnit.BTC);
+            var maxBtc = new NBitcoin.Money(arg.Item.SwapMaxAmountSats).ToUnit(NBitcoin.MoneyUnit.BTC);
+            if (minBtc > maxBtc)
+            {
+                ToastService.ShowError("Min Swap Size must be less than or equal to Max Swap Size");
+                return;
+            }
             arg.Item.UpdateDatetime = DateTimeOffset.Now;
             var updateResult = NodeRepository.Update(arg.Item);
-
-
             if (updateResult.Item1)
             {
                 ToastService.ShowSuccess($"Node {arg.Item.Name} Updated");
@@ -375,7 +538,6 @@
                 ToastService.ShowError("Something went wrong");
             }
         }
-
         await GetData();
     }
 
@@ -510,5 +672,185 @@
             return true;
         }
         return NodesColumnLayout.IsColumnVisible(column);
+    }
+
+    // Liquidity Management Modal Methods
+    private async Task ShowLiquidityManagementModal(Node node)
+    {
+        _selectedNodeForLiquidity = node;
+        
+        // Convert sats to BTC for display
+        _minSwapSizeBtc = (decimal)new NBitcoin.Money(node.SwapMinAmountSats).ToUnit(NBitcoin.MoneyUnit.BTC);
+        _maxSwapSizeBtc = (decimal)new NBitcoin.Money(node.SwapMaxAmountSats).ToUnit(NBitcoin.MoneyUnit.BTC);
+        _balanceThresholdBtc = (decimal)new NBitcoin.Money(node.MinimumBalanceThresholdSats).ToUnit(NBitcoin.MoneyUnit.BTC);
+        _swapBudgetBtc = (decimal)new NBitcoin.Money(node.SwapBudgetSats).ToUnit(NBitcoin.MoneyUnit.BTC);
+        _budgetRefreshDays = node.SwapBudgetRefreshInterval.Days;
+        // Convert ratio from 0-1 to 0-100 for display
+        _maxSwapFeePercent = node.MaxSwapFeeRatio * 100m;
+        
+        if (_nodeLiquidityModal != null) await _nodeLiquidityModal.Show();
+    }
+
+    private async Task CloseLiquidityManagementModal()
+    {
+        if (_nodeLiquidityModal != null) await _nodeLiquidityModal.Close(CloseReason.UserClosing);
+        _selectedNodeForLiquidity = null;
+        await GetData();
+    }
+
+    private async Task SaveAndCloseLiquidityManagementModal()
+    {
+        if (_nodeLiquidityValidationsRef != null && await _nodeLiquidityValidationsRef.ValidateAll())
+        {
+            if (_selectedNodeForLiquidity != null)
+            {
+                // Convert BTC back to sats and percent back to ratio (0-1)
+                _selectedNodeForLiquidity.SwapMinAmountSats = (long)new NBitcoin.Money(_minSwapSizeBtc, NBitcoin.MoneyUnit.BTC).Satoshi;
+                _selectedNodeForLiquidity.SwapMaxAmountSats = (long)new NBitcoin.Money(_maxSwapSizeBtc, NBitcoin.MoneyUnit.BTC).Satoshi;
+                _selectedNodeForLiquidity.MinimumBalanceThresholdSats = (long)new NBitcoin.Money(_balanceThresholdBtc, NBitcoin.MoneyUnit.BTC).Satoshi;
+                _selectedNodeForLiquidity.SwapBudgetSats = (long)new NBitcoin.Money(_swapBudgetBtc, NBitcoin.MoneyUnit.BTC).Satoshi;
+                _selectedNodeForLiquidity.SwapBudgetRefreshInterval = TimeSpan.FromDays(_budgetRefreshDays);
+                // Convert percent (0-100) back to ratio (0-1)
+                _selectedNodeForLiquidity.MaxSwapFeeRatio = _maxSwapFeePercent / 100m;
+                
+                _selectedNodeForLiquidity.UpdateDatetime = DateTimeOffset.Now;
+                var updateResult = NodeRepository.Update(_selectedNodeForLiquidity);
+                
+                if (!updateResult.Item1)
+                {
+                    ToastService.ShowError("Something went wrong");
+                }
+                else
+                {
+                    ToastService.ShowSuccess($"Node {_selectedNodeForLiquidity.Name} liquidity configuration updated successfully");
+                }
+            }
+            
+            await CloseLiquidityManagementModal();
+        }
+        else
+        {
+            ToastService.ShowError("Please fix the validation errors");
+        }
+    }
+
+    private async Task OnEnableAutoLiquidityChanged(bool enabled)
+    {
+        if (_selectedNodeForLiquidity != null)
+        {
+            _selectedNodeForLiquidity.AutoLiquidityManagementEnabled = enabled;
+        }
+    }
+
+    private async Task OnSelectedFundsDestinationWalletChanged(int walletId)
+    {
+        if (_selectedNodeForLiquidity != null)
+        {
+            _selectedNodeForLiquidity.FundsDestinationWalletId = walletId;
+        }
+    }
+
+    // Validation methods
+    private void ValidateMinSwapSize(ValidatorEventArgs arg)
+    {
+        arg.Status = ValidationStatus.Success;
+        
+        if (_minSwapSizeBtc < 0.01m)
+        {
+            arg.Status = ValidationStatus.Error;
+            arg.ErrorText = "Min swap size must be at least 0.01 BTC";
+            return;
+        }
+        
+        if (_minSwapSizeBtc > _maxSwapSizeBtc)
+        {
+            arg.Status = ValidationStatus.Error;
+            arg.ErrorText = "Min swap size must be less than or equal to max swap size";
+        }
+    }
+
+    private void ValidateMaxSwapSize(ValidatorEventArgs arg)
+    {
+        arg.Status = ValidationStatus.Success;
+        
+        if (_maxSwapSizeBtc > 0.5m)
+        {
+            arg.Status = ValidationStatus.Error;
+            arg.ErrorText = "Max swap size must be at most 0.5 BTC";
+            return;
+        }
+        
+        if (_maxSwapSizeBtc < _minSwapSizeBtc)
+        {
+            arg.Status = ValidationStatus.Error;
+            arg.ErrorText = "Max swap size must be greater than or equal to min swap size";
+        }
+    }
+
+    private void ValidateMaxSwapsInFlight(ValidatorEventArgs arg)
+    {
+        arg.Status = ValidationStatus.Success;
+        
+        if (_selectedNodeForLiquidity == null) return;
+        
+        if (_selectedNodeForLiquidity.MaxSwapsInFlight < 0 || _selectedNodeForLiquidity.MaxSwapsInFlight > 100)
+        {
+            arg.Status = ValidationStatus.Error;
+            arg.ErrorText = "Max swaps in flight must be between 0 and 100";
+        }
+    }
+
+    private void ValidateMaxSwapFeePercent(ValidatorEventArgs arg)
+    {
+        arg.Status = ValidationStatus.Success;
+        
+        if (_maxSwapFeePercent < 0m || _maxSwapFeePercent > 100m)
+        {
+            arg.Status = ValidationStatus.Error;
+            arg.ErrorText = "Max swap fee percent must be between 0 and 100";
+        }
+    }
+
+    private void ValidateBalanceThreshold(ValidatorEventArgs arg)
+    {
+        arg.Status = ValidationStatus.Success;
+        
+        if (_selectedNodeForLiquidity?.AutoLiquidityManagementEnabled == true)
+        {
+            if (_balanceThresholdBtc <= 0m)
+            {
+                arg.Status = ValidationStatus.Error;
+                arg.ErrorText = "Balance threshold must be greater than 0 when auto liquidity is enabled";
+                return;
+            }
+        }
+        
+        if (_balanceThresholdBtc < 0m)
+        {
+            arg.Status = ValidationStatus.Error;
+            arg.ErrorText = "Balance threshold must be at least 0";
+        }
+    }
+
+    private void ValidateSwapBudget(ValidatorEventArgs arg)
+    {
+        arg.Status = ValidationStatus.Success;
+        
+        if (_swapBudgetBtc < 0m)
+        {
+            arg.Status = ValidationStatus.Error;
+            arg.ErrorText = "Swap budget must be at least 0";
+        }
+    }
+
+    private void ValidateBudgetRefreshInterval(ValidatorEventArgs arg)
+    {
+        arg.Status = ValidationStatus.Success;
+        
+        if (_budgetRefreshDays < 1)
+        {
+            arg.Status = ValidationStatus.Error;
+            arg.ErrorText = "Budget refresh interval must be at least 1 day";
+        }
     }
 }
