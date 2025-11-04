@@ -465,14 +465,6 @@
         }
         else
         {
-            // Cross-field validation: min ≤ max
-            var minBtc = new NBitcoin.Money(arg.Item.SwapMinAmountSats).ToUnit(NBitcoin.MoneyUnit.BTC);
-            var maxBtc = new NBitcoin.Money(arg.Item.SwapMaxAmountSats).ToUnit(NBitcoin.MoneyUnit.BTC);
-            if (minBtc > maxBtc)
-            {
-                ToastService.ShowError("Min Swap Size must be less than or equal to Max Swap Size");
-                return;
-            }
             Node newNode = arg.Item as Node;
             (bool, string?) addResult;
             var restoredNode = await NodeRepository.GetByPubkey(arg.Item.PubKey);
