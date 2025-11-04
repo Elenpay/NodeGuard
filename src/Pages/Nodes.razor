@@ -682,31 +682,30 @@
 
     private async Task SaveAndCloseLiquidityManagementModal()
     {
-        if (_nodeLiquidityValidationsRef != null && await _nodeLiquidityValidationsRef.ValidateAll())
+        if (_nodeLiquidityValidationsRef != null && await _nodeLiquidityValidationsRef.ValidateAll() && _selectedNodeForLiquidity != null)
         {
-            if (_selectedNodeForLiquidity != null)
+
+            // Convert BTC back to sats and percent back to ratio (0-1)
+            _selectedNodeForLiquidity.SwapMinAmountSats = (long)new NBitcoin.Money(_minSwapSizeBtc, NBitcoin.MoneyUnit.BTC).Satoshi;
+            _selectedNodeForLiquidity.SwapMaxAmountSats = (long)new NBitcoin.Money(_maxSwapSizeBtc, NBitcoin.MoneyUnit.BTC).Satoshi;
+            _selectedNodeForLiquidity.MinimumBalanceThresholdSats = (long)new NBitcoin.Money(_balanceThresholdBtc, NBitcoin.MoneyUnit.BTC).Satoshi;
+            _selectedNodeForLiquidity.SwapBudgetSats = (long)new NBitcoin.Money(_swapBudgetBtc, NBitcoin.MoneyUnit.BTC).Satoshi;
+            _selectedNodeForLiquidity.SwapBudgetRefreshInterval = TimeSpan.FromDays(_budgetRefreshDays);
+            // Convert percent (0-100) back to ratio (0-1)
+            _selectedNodeForLiquidity.MaxSwapFeeRatio = _maxSwapFeePercent / 100m;
+            
+            _selectedNodeForLiquidity.UpdateDatetime = DateTimeOffset.Now;
+            var updateResult = NodeRepository.Update(_selectedNodeForLiquidity);
+            
+            if (!updateResult.Item1)
             {
-                // Convert BTC back to sats and percent back to ratio (0-1)
-                _selectedNodeForLiquidity.SwapMinAmountSats = (long)new NBitcoin.Money(_minSwapSizeBtc, NBitcoin.MoneyUnit.BTC).Satoshi;
-                _selectedNodeForLiquidity.SwapMaxAmountSats = (long)new NBitcoin.Money(_maxSwapSizeBtc, NBitcoin.MoneyUnit.BTC).Satoshi;
-                _selectedNodeForLiquidity.MinimumBalanceThresholdSats = (long)new NBitcoin.Money(_balanceThresholdBtc, NBitcoin.MoneyUnit.BTC).Satoshi;
-                _selectedNodeForLiquidity.SwapBudgetSats = (long)new NBitcoin.Money(_swapBudgetBtc, NBitcoin.MoneyUnit.BTC).Satoshi;
-                _selectedNodeForLiquidity.SwapBudgetRefreshInterval = TimeSpan.FromDays(_budgetRefreshDays);
-                // Convert percent (0-100) back to ratio (0-1)
-                _selectedNodeForLiquidity.MaxSwapFeeRatio = _maxSwapFeePercent / 100m;
-                
-                _selectedNodeForLiquidity.UpdateDatetime = DateTimeOffset.Now;
-                var updateResult = NodeRepository.Update(_selectedNodeForLiquidity);
-                
-                if (!updateResult.Item1)
-                {
-                    ToastService.ShowError("Something went wrong");
-                }
-                else
-                {
-                    ToastService.ShowSuccess($"Node {_selectedNodeForLiquidity.Name} liquidity configuration updated successfully");
-                }
+                ToastService.ShowError("Something went wrong");
             }
+            else
+            {
+                ToastService.ShowSuccess($"Node {_selectedNodeForLiquidity.Name} liquidity configuration updated successfully");
+            }
+            
             
             await CloseLiquidityManagementModal();
         }
