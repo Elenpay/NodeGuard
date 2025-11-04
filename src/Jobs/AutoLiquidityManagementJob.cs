@@ -91,14 +91,8 @@ public class AutoLiquidityManagementJob : IJob
                 try
                 {
                     var result = await ManageNodeLiquidity(node, context.CancellationToken);
-                    if (result == ManageNodeLiquidityResult.Success)
-                    {
-                        _logger.LogInformation("Successfully processed node {NodeName}", node.Name);
-                    }
-                    else
-                    {
-                        _logger.LogDebug("Skipped node {NodeName}: {Reason}", node.Name, result);
-                    }
+                    _logger.LogInformation("Automatic liquidity management job for node {NodeName} resulted in: {Result}", 
+                        node.Name, result);
                 }
                 catch (Exception ex)
                 {
