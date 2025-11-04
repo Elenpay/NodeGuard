@@ -90,6 +90,18 @@ public class Constants
     public static readonly string DEFAULT_DERIVATION_PATH = "48'/1'";
     public static readonly int SESSION_TIMEOUT_MILLISECONDS = 3_600_000;
     public static readonly Money BITCOIN_DUST = new Money(0.00000546m, MoneyUnit.BTC); // 546 satoshi in BTC
+    
+    /// <summary>
+    /// Minimum swap out size in BTC for automatic liquidity management (Swap Out).
+    /// Can be configured via MINIMUM_SWAP_OUT_SIZE_BTC environment variable.
+    /// </summary>
+    public static decimal MINIMUM_SWAP_OUT_SIZE_BTC = 0.01m;
+    
+    /// <summary>
+    /// Maximum swap out size in BTC for automatic liquidity management (Swap Out).
+    /// Can be configured via MAXIMUM_SWAP_OUT_SIZE_BTC environment variable.
+    /// </summary>
+    public static decimal MAXIMUM_SWAP_OUT_SIZE_BTC = 0.5m;
 
     //Sat/vb ratio
     public static decimal MIN_SAT_PER_VB_RATIO = 0.9m;
@@ -264,6 +276,13 @@ public class Constants
 
         var timeout = Environment.GetEnvironmentVariable("SESSION_TIMEOUT_MILLISECONDS");
         if (timeout != null) SESSION_TIMEOUT_MILLISECONDS = int.Parse(timeout);
+
+        // Swap out size limits for automatic liquidity management (Loop Out)
+        var minSwapOutSizeBtc = Environment.GetEnvironmentVariable("MINIMUM_SWAP_OUT_SIZE_BTC");
+        MINIMUM_SWAP_OUT_SIZE_BTC = minSwapOutSizeBtc != null ? decimal.Parse(minSwapOutSizeBtc, NumberStyles.AllowDecimalPoint, CultureInfo.InvariantCulture) : MINIMUM_SWAP_OUT_SIZE_BTC;
+
+        var maxSwapOutSizeBtc = Environment.GetEnvironmentVariable("MAXIMUM_SWAP_OUT_SIZE_BTC");
+        MAXIMUM_SWAP_OUT_SIZE_BTC = maxSwapOutSizeBtc != null ? decimal.Parse(maxSwapOutSizeBtc, NumberStyles.AllowDecimalPoint, CultureInfo.InvariantCulture) : MAXIMUM_SWAP_OUT_SIZE_BTC;
 
         //Sat/vb ratio
         var minSatPerVbRatioEnv = Environment.GetEnvironmentVariable("MIN_SAT_PER_VB_RATIO");
