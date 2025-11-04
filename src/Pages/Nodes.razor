@@ -223,26 +223,40 @@
                             <Column>
                                 <Field>
                                     <Validation Validator="ValidateMinSwapSize">
-                                        <FieldLabel>Min Swap Size (BTC)</FieldLabel>
+                                        <FieldLabel>Min Swap Size</FieldLabel>
                                         <FieldHelp>Minimum amount for each swap (must be ≥ @Constants.MINIMUM_SWAP_OUT_SIZE_BTC BTC)</FieldHelp>
-                                        <NumericEdit TValue="decimal" @bind-Value="@_minSwapSizeBtc" Min="@Constants.MINIMUM_SWAP_OUT_SIZE_BTC" Max="@Constants.MAXIMUM_SWAP_OUT_SIZE_BTC" Decimals="8" Step="0.01m">
+                                        <NumericPicker TValue="decimal" 
+                                                       @bind-Value="@_minSwapSizeBtc" 
+                                                       CurrencySymbolPlacement="CurrencySymbolPlacement.Suffix"
+                                                       CurrencySymbol=" BTC"
+                                                       Decimals="8"
+                                                       Step="0.01m"
+                                                       Min="@Constants.MINIMUM_SWAP_OUT_SIZE_BTC"
+                                                       Max="@Constants.MAXIMUM_SWAP_OUT_SIZE_BTC">
                                             <Feedback>
                                                 <ValidationError>Min swap size must be ≥ @Constants.MINIMUM_SWAP_OUT_SIZE_BTC BTC and ≤ max swap size</ValidationError>
                                             </Feedback>
-                                        </NumericEdit>
+                                        </NumericPicker>
                                     </Validation>
                                 </Field>
                             </Column>
                             <Column>
                                 <Field>
                                     <Validation Validator="ValidateMaxSwapSize">
-                                        <FieldLabel>Max Swap Size (BTC)</FieldLabel>
+                                        <FieldLabel>Max Swap Size</FieldLabel>
                                         <FieldHelp>Maximum amount for each swap (must be ≤ @Constants.MAXIMUM_SWAP_OUT_SIZE_BTC BTC)</FieldHelp>
-                                        <NumericEdit TValue="decimal" @bind-Value="@_maxSwapSizeBtc" Min="@Constants.MINIMUM_SWAP_OUT_SIZE_BTC" Max="@Constants.MAXIMUM_SWAP_OUT_SIZE_BTC" Decimals="8" Step="0.01m">
+                                        <NumericPicker TValue="decimal" 
+                                                       @bind-Value="@_maxSwapSizeBtc" 
+                                                       CurrencySymbolPlacement="CurrencySymbolPlacement.Suffix"
+                                                       CurrencySymbol=" BTC"
+                                                       Decimals="8"
+                                                       Step="0.01m"
+                                                       Min="@Constants.MINIMUM_SWAP_OUT_SIZE_BTC"
+                                                       Max="@Constants.MAXIMUM_SWAP_OUT_SIZE_BTC">
                                             <Feedback>
                                                 <ValidationError>Max swap size must be ≤ @Constants.MAXIMUM_SWAP_OUT_SIZE_BTC BTC and ≥ min swap size</ValidationError>
                                             </Feedback>
-                                        </NumericEdit>
+                                        </NumericPicker>
                                     </Validation>
                                 </Field>
                             </Column>
@@ -261,35 +275,54 @@
                             </Column>
                             <Column>
                                 <Field>
-                                        <FieldLabel>Max Swap Fee (%)</FieldLabel>
+                                        <FieldLabel>Max Swap Fee</FieldLabel>
                                         <FieldHelp>Maximum acceptable fee as percentage (e.g., 0.5 = 0.5%)</FieldHelp>
-                                        <NumericEdit TValue="decimal" @bind-Value="@_maxSwapFeePercent" Min="0M" Max="100M" Decimals="2" Step="0.1m">
+                                        <NumericPicker TValue="decimal" 
+                                                       @bind-Value="@_maxSwapFeePercent" 
+                                                       CurrencySymbolPlacement="CurrencySymbolPlacement.Suffix"
+                                                       CurrencySymbol=" %"
+                                                       Decimals="2"
+                                                       Step="0.1m"
+                                                       Min="0M" 
+                                                       Max="100M">
                                             <Feedback>
                                                 <ValidationError>Fee percent must be between 0 and 100</ValidationError>
                                             </Feedback>
-                                        </NumericEdit>
+                                        </NumericPicker>
                                 </Field>
                             </Column>
                         </Row>
                         <Field>
-                                <FieldLabel>Balance Threshold (BTC)</FieldLabel>
+                                <FieldLabel>Balance Threshold</FieldLabel>
                                 <FieldHelp>Trigger swap out when node balance exceeds this threshold</FieldHelp>
-                                <NumericEdit TValue="decimal" @bind-Value="@_balanceThresholdBtc" Min="0M" Decimals="8" Step="0.1m">
+                                <NumericPicker TValue="decimal" 
+                                               @bind-Value="@_balanceThresholdBtc" 
+                                               CurrencySymbolPlacement="CurrencySymbolPlacement.Suffix"
+                                               CurrencySymbol=" BTC"
+                                               Decimals="8"
+                                               Step="0.1m"
+                                               Min="0M">
                                     <Feedback>
                                         <ValidationError>Balance threshold must be ≥ 0</ValidationError>
                                     </Feedback>
-                                </NumericEdit>
+                                </NumericPicker>
                         </Field>
                         <Row>
                             <Column>
                                 <Field>
-                                        <FieldLabel>Swap Budget (BTC)</FieldLabel>
+                                        <FieldLabel>Swap Budget</FieldLabel>
                                         <FieldHelp>Maximum budget per refresh period</FieldHelp>
-                                        <NumericEdit TValue="decimal" @bind-Value="@_swapBudgetBtc" Min="0M" Decimals="8" Step="0.1m">
+                                        <NumericPicker TValue="decimal" 
+                                                       @bind-Value="@_swapBudgetBtc" 
+                                                       CurrencySymbolPlacement="CurrencySymbolPlacement.Suffix"
+                                                       CurrencySymbol=" BTC"
+                                                       Decimals="8"
+                                                       Step="0.1m"
+                                                       Min="0M">
                                             <Feedback>
                                                 <ValidationError>Budget must be ≥ 0</ValidationError>
                                             </Feedback>
-                                        </NumericEdit>
+                                        </NumericPicker>
                                 </Field>
                             </Column>
                             <Column>
