@@ -238,6 +238,23 @@ namespace NodeGuard
                         });
                 });
 
+                //Auto Liquidity Management Job
+                q.AddJob<AutoLiquidityManagementJob>(opts =>
+                {
+                    opts.DisallowConcurrentExecution();
+                    opts.WithIdentity(nameof(AutoLiquidityManagementJob));
+                });
+
+                q.AddTrigger(opts =>
+                {
+                    opts.ForJob(nameof(AutoLiquidityManagementJob))
+                        .WithIdentity($"{nameof(AutoLiquidityManagementJob)}Trigger")
+                        .StartNow().WithSimpleSchedule(scheduleBuilder =>
+                        {
+                            scheduleBuilder.WithIntervalInMinutes(Constants.AUTO_LIQUIDITY_MANAGEMENT_INTERVAL_MINUTES).RepeatForever();
+                        });
+                });
+
                 //Monitor Withdrawals Job
                 q.AddJob<MonitorWithdrawalsJob>(opts =>
                 {
