@@ -261,7 +261,6 @@
                             </Column>
                             <Column>
                                 <Field>
-                                    <Validation Validator="ValidateMaxSwapFeePercent">
                                         <FieldLabel>Max Swap Fee (%)</FieldLabel>
                                         <FieldHelp>Maximum acceptable fee as percentage (e.g., 0.5 = 0.5%)</FieldHelp>
                                         <NumericEdit TValue="decimal" @bind-Value="@_maxSwapFeePercent" Min="0M" Max="100M" Decimals="2" Step="0.1m">
@@ -269,12 +268,10 @@
                                                 <ValidationError>Fee percent must be between 0 and 100</ValidationError>
                                             </Feedback>
                                         </NumericEdit>
-                                    </Validation>
                                 </Field>
                             </Column>
                         </Row>
                         <Field>
-                            <Validation Validator="ValidateBalanceThreshold">
                                 <FieldLabel>Balance Threshold (BTC)</FieldLabel>
                                 <FieldHelp>Trigger swap out when node balance exceeds this threshold</FieldHelp>
                                 <NumericEdit TValue="decimal" @bind-Value="@_balanceThresholdBtc" Min="0M" Decimals="8" Step="0.1m">
@@ -282,12 +279,10 @@
                                         <ValidationError>Balance threshold must be ≥ 0</ValidationError>
                                     </Feedback>
                                 </NumericEdit>
-                            </Validation>
                         </Field>
                         <Row>
                             <Column>
                                 <Field>
-                                    <Validation Validator="ValidateSwapBudget">
                                         <FieldLabel>Swap Budget (BTC)</FieldLabel>
                                         <FieldHelp>Maximum budget per refresh period</FieldHelp>
                                         <NumericEdit TValue="decimal" @bind-Value="@_swapBudgetBtc" Min="0M" Decimals="8" Step="0.1m">
@@ -295,12 +290,10 @@
                                                 <ValidationError>Budget must be ≥ 0</ValidationError>
                                             </Feedback>
                                         </NumericEdit>
-                                    </Validation>
                                 </Field>
                             </Column>
                             <Column>
                                 <Field>
-                                    <Validation Validator="ValidateBudgetRefreshInterval">
                                         <FieldLabel>Budget Refresh Interval (days)</FieldLabel>
                                         <FieldHelp>Period after which swap budget is refreshed (minimum 1 day)</FieldHelp>
                                         <NumericEdit TValue="int" @bind-Value="@_budgetRefreshDays" Min="1">
@@ -308,7 +301,6 @@
                                                 <ValidationError>Interval must be ≥ 1 day</ValidationError>
                                             </Feedback>
                                         </NumericEdit>
-                                    </Validation>
                                 </Field>
                             </Column>
                         </Row>
@@ -778,57 +770,4 @@
     }
 
 
-    private void ValidateMaxSwapFeePercent(ValidatorEventArgs arg)
-    {
-        arg.Status = ValidationStatus.Success;
-        
-        if (_maxSwapFeePercent < 0m || _maxSwapFeePercent > 100m)
-        {
-            arg.Status = ValidationStatus.Error;
-            arg.ErrorText = "Max swap fee percent must be between 0 and 100";
-        }
-    }
-
-    private void ValidateBalanceThreshold(ValidatorEventArgs arg)
-    {
-        arg.Status = ValidationStatus.Success;
-        
-        if (_selectedNodeForLiquidity?.AutoLiquidityManagementEnabled == true)
-        {
-            if (_balanceThresholdBtc <= 0m)
-            {
-                arg.Status = ValidationStatus.Error;
-                arg.ErrorText = "Balance threshold must be greater than 0 when auto liquidity is enabled";
-                return;
-            }
-        }
-        
-        if (_balanceThresholdBtc < 0m)
-        {
-            arg.Status = ValidationStatus.Error;
-            arg.ErrorText = "Balance threshold must be at least 0";
-        }
-    }
-
-    private void ValidateSwapBudget(ValidatorEventArgs arg)
-    {
-        arg.Status = ValidationStatus.Success;
-        
-        if (_swapBudgetBtc < 0m)
-        {
-            arg.Status = ValidationStatus.Error;
-            arg.ErrorText = "Swap budget must be at least 0";
-        }
-    }
-
-    private void ValidateBudgetRefreshInterval(ValidatorEventArgs arg)
-    {
-        arg.Status = ValidationStatus.Success;
-        
-        if (_budgetRefreshDays < 1)
-        {
-            arg.Status = ValidationStatus.Error;
-            arg.ErrorText = "Budget refresh interval must be at least 1 day";
-        }
-    }
 }
