@@ -224,10 +224,10 @@
                                 <Field>
                                     <Validation Validator="ValidateMinSwapSize">
                                         <FieldLabel>Min Swap Size (BTC)</FieldLabel>
-                                        <FieldHelp>Minimum amount for each swap (must be ≥ 0.01 BTC)</FieldHelp>
-                                        <NumericEdit TValue="decimal" @bind-Value="@_minSwapSizeBtc" Min="0.01M" Max="0.5M" Decimals="8" Step="0.01m">
+                                        <FieldHelp>Minimum amount for each swap (must be ≥ @Constants.MINIMUM_SWAP_OUT_SIZE_BTC BTC)</FieldHelp>
+                                        <NumericEdit TValue="decimal" @bind-Value="@_minSwapSizeBtc" Min="@Constants.MINIMUM_SWAP_OUT_SIZE_BTC" Max="@Constants.MAXIMUM_SWAP_OUT_SIZE_BTC" Decimals="8" Step="0.01m">
                                             <Feedback>
-                                                <ValidationError>Min swap size must be ≥ 0.01 BTC and ≤ max swap size</ValidationError>
+                                                <ValidationError>Min swap size must be ≥ @Constants.MINIMUM_SWAP_OUT_SIZE_BTC BTC and ≤ max swap size</ValidationError>
                                             </Feedback>
                                         </NumericEdit>
                                     </Validation>
@@ -237,10 +237,10 @@
                                 <Field>
                                     <Validation Validator="ValidateMaxSwapSize">
                                         <FieldLabel>Max Swap Size (BTC)</FieldLabel>
-                                        <FieldHelp>Maximum amount for each swap (must be ≤ 0.5 BTC)</FieldHelp>
-                                        <NumericEdit TValue="decimal" @bind-Value="@_maxSwapSizeBtc" Min="0.01M" Max="0.5M" Decimals="8" Step="0.01m">
+                                        <FieldHelp>Maximum amount for each swap (must be ≤ @Constants.MAXIMUM_SWAP_OUT_SIZE_BTC BTC)</FieldHelp>
+                                        <NumericEdit TValue="decimal" @bind-Value="@_maxSwapSizeBtc" Min="@Constants.MINIMUM_SWAP_OUT_SIZE_BTC" Max="@Constants.MAXIMUM_SWAP_OUT_SIZE_BTC" Decimals="8" Step="0.01m">
                                             <Feedback>
-                                                <ValidationError>Max swap size must be ≤ 0.5 BTC and ≥ min swap size</ValidationError>
+                                                <ValidationError>Max swap size must be ≤ @Constants.MAXIMUM_SWAP_OUT_SIZE_BTC BTC and ≥ min swap size</ValidationError>
                                             </Feedback>
                                         </NumericEdit>
                                     </Validation>
@@ -736,10 +736,10 @@
     {
         arg.Status = ValidationStatus.Success;
         
-        if (_minSwapSizeBtc < 0.01m)
+        if (_minSwapSizeBtc < Constants.MINIMUM_SWAP_OUT_SIZE_BTC)
         {
             arg.Status = ValidationStatus.Error;
-            arg.ErrorText = "Min swap size must be at least 0.01 BTC";
+            arg.ErrorText = $"Min swap size must be at least {Constants.MINIMUM_SWAP_OUT_SIZE_BTC} BTC";
             return;
         }
         
@@ -754,10 +754,10 @@
     {
         arg.Status = ValidationStatus.Success;
         
-        if (_maxSwapSizeBtc > 0.5m)
+        if (_maxSwapSizeBtc > Constants.MAXIMUM_SWAP_OUT_SIZE_BTC)
         {
             arg.Status = ValidationStatus.Error;
-            arg.ErrorText = "Max swap size must be at most 0.5 BTC";
+            arg.ErrorText = $"Max swap size must be at most {Constants.MAXIMUM_SWAP_OUT_SIZE_BTC} BTC";
             return;
         }
         
