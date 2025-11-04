@@ -132,14 +132,16 @@ public class AutoLiquidityManagementJob : IJob
         }
 
         var totalBalanceSats = (long)(channelBalance.LocalBalance?.Sat ?? 0);
-        _logger.LogDebug("Node {NodeName} has balance: {Balance} sats, threshold: {Threshold} sats", 
-            node.Name, totalBalanceSats, node.MinimumBalanceThresholdSats);
+        var totalBalanceBtc = new Money(totalBalanceSats, MoneyUnit.Satoshi).ToDecimal(MoneyUnit.BTC);
+        var thresholdBtc = new Money(node.MinimumBalanceThresholdSats, MoneyUnit.Satoshi).ToDecimal(MoneyUnit.BTC);
+        _logger.LogDebug("Node {NodeName} has balance: {Balance} BTC, threshold: {Threshold} BTC", 
+            node.Name, totalBalanceBtc, thresholdBtc);
 
         // Check if balance exceeds threshold
         if (totalBalanceSats <= node.MinimumBalanceThresholdSats)
         {
-            _logger.LogDebug("Node {NodeName} balance {Balance} does not exceed threshold {Threshold}", 
-                node.Name, totalBalanceSats, node.MinimumBalanceThresholdSats);
+            _logger.LogDebug("Node {NodeName} balance {Balance} BTC does not exceed threshold {Threshold} BTC", 
+                node.Name, totalBalanceBtc, thresholdBtc);
             return ManageNodeLiquidityResult.BalanceBelowThreshold;
         }
 
@@ -166,9 +168,11 @@ public class AutoLiquidityManagementJob : IJob
             node.SwapBudgetStartDatetime ?? now);
 
         var remainingFeeBudget = node.SwapBudgetSats - consumedBudgetMoney.Satoshi;
+        var excessBalanceBtc = new Money(excessBalance, MoneyUnit.Satoshi).ToDecimal(MoneyUnit.BTC);
+        var remainingFeeBudgetBtc = new Money(remainingFeeBudget, MoneyUnit.Satoshi).ToDecimal(MoneyUnit.BTC);
         
-        _logger.LogDebug("Node {NodeName} - Excess balance: {Excess} sats, Remaining fee budget: {Budget} sats, Consumed fees: {Consumed} BTC", 
-            node.Name, excessBalance, remainingFeeBudget, consumedBudgetMoney.ToDecimal(MoneyUnit.BTC));
+        _logger.LogDebug("Node {NodeName} - Excess balance: {Excess} BTC, Remaining fee budget: {Budget} BTC, Consumed fees: {Consumed} BTC", 
+            node.Name, excessBalanceBtc, remainingFeeBudgetBtc, consumedBudgetMoney.ToDecimal(MoneyUnit.BTC));
 
         if (remainingFeeBudget <= 0)
         {
@@ -183,15 +187,18 @@ public class AutoLiquidityManagementJob : IJob
         // If we don't have enough to meet the minimum swap size, skip
         if (maxPossibleSwap < node.SwapMinAmountSats)
         {
-            _logger.LogDebug("Node {NodeName} - max possible swap {MaxPossible} is below minimum {Min}. Excess: {Excess}", 
-                node.Name, maxPossibleSwap, node.SwapMinAmountSats, excessBalance);
+            var maxPossibleSwapBtc = new Money(maxPossibleSwap, MoneyUnit.Satoshi).ToDecimal(MoneyUnit.BTC);
+            var minSwapBtc = new Money(node.SwapMinAmountSats, MoneyUnit.Satoshi).ToDecimal(MoneyUnit.BTC);
+            _logger.LogDebug("Node {NodeName} - max possible swap {MaxPossible} BTC is below minimum {Min} BTC. Excess: {Excess} BTC", 
+                node.Name, maxPossibleSwapBtc, minSwapBtc, excessBalanceBtc);
             return ManageNodeLiquidityResult.ExcessBalanceBelowMinimum;
         }
         
         // Swap the maximum we can, ensuring it meets the minimum
         var swapAmount = Math.Max(node.SwapMinAmountSats, maxPossibleSwap);
+        var swapAmountBtc = new Money(swapAmount, MoneyUnit.Satoshi).ToDecimal(MoneyUnit.BTC);
 
-        _logger.LogDebug("Node {NodeName} - Initiating swap for {Amount} sats", node.Name, swapAmount);
+        _logger.LogDebug("Node {NodeName} - Initiating swap for {Amount} BTC", node.Name, swapAmountBtc);
 
         // Get destination address from wallet
         var destinationAddress = await GetDestinationAddressAsync(node, cancellationToken);
@@ -202,8 +209,8 @@ public class AutoLiquidityManagementJob : IJob
         }
 
         // Create swap out request
-        _logger.LogInformation("Initiating automatic swap out for node {NodeName} - Amount: {Amount} sats", 
-            node.Name, swapAmount);
+        _logger.LogInformation("Initiating automatic swap out for node {NodeName} - Amount: {Amount} BTC", 
+            node.Name, swapAmountBtc);
 
         try
         {
