@@ -40,7 +40,7 @@ namespace NodeGuard.Automapper
             CreateMap<Node, Node>()
                 .ForMember(x => x.ChannelOperationRequestsAsDestination, opt => opt.Ignore())
                 .ForMember(x => x.ChannelOperationRequestsAsSource, opt => opt.Ignore())
-                .ForMember(x => x.ReturningFundsWallet, opt => opt.Ignore())
+                .ForMember(x => x.FundsDestinationWallet, opt => opt.Ignore())
                 .ForMember(x => x.Users, opt => opt.Ignore());
 
             CreateMap<Channel, Channel>()
