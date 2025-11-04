@@ -250,7 +250,6 @@
                         <Row>
                             <Column>
                                 <Field>
-                                    <Validation Validator="ValidateMaxSwapsInFlight">
                                         <FieldLabel>Max Swaps in Flight</FieldLabel>
                                         <FieldHelp>Maximum concurrent swaps (0-100) to limit HTLC locking</FieldHelp>
                                         <NumericEdit TValue="int" @bind-Value="_selectedNodeForLiquidity.MaxSwapsInFlight" Min="0" Max="100">
@@ -258,7 +257,6 @@
                                                 <ValidationError>Must be between 0 and 100</ValidationError>
                                             </Feedback>
                                         </NumericEdit>
-                                    </Validation>
                                 </Field>
                             </Column>
                             <Column>
@@ -519,14 +517,6 @@
         }
         else
         {
-            // Cross-field validation: min ≤ max
-            var minBtc = new NBitcoin.Money(arg.Item.SwapMinAmountSats).ToUnit(NBitcoin.MoneyUnit.BTC);
-            var maxBtc = new NBitcoin.Money(arg.Item.SwapMaxAmountSats).ToUnit(NBitcoin.MoneyUnit.BTC);
-            if (minBtc > maxBtc)
-            {
-                ToastService.ShowError("Min Swap Size must be less than or equal to Max Swap Size");
-                return;
-            }
             arg.Item.UpdateDatetime = DateTimeOffset.Now;
             var updateResult = NodeRepository.Update(arg.Item);
             if (updateResult.Item1)
@@ -787,18 +777,6 @@
         }
     }
 
-    private void ValidateMaxSwapsInFlight(ValidatorEventArgs arg)
-    {
-        arg.Status = ValidationStatus.Success;
-        
-        if (_selectedNodeForLiquidity == null) return;
-        
-        if (_selectedNodeForLiquidity.MaxSwapsInFlight < 0 || _selectedNodeForLiquidity.MaxSwapsInFlight > 100)
-        {
-            arg.Status = ValidationStatus.Error;
-            arg.ErrorText = "Max swaps in flight must be between 0 and 100";
-        }
-    }
 
     private void ValidateMaxSwapFeePercent(ValidatorEventArgs arg)
     {
