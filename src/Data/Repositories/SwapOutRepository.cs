@@ -74,6 +74,27 @@ namespace NodeGuard.Data.Repositories
          return swaps;
       }
 
+      public async Task<(List<SwapOut> swaps, int totalCount)> GetPaginatedAsync(int pageNumber, int pageSize)
+      {
+         await using var context = await _dbContextFactory.CreateDbContextAsync();
+
+         var query = context.SwapOuts
+            .Include(s => s.DestinationWallet)
+            .ThenInclude(w => w!.Keys)
+            .Include(s => s.UserRequestor)
+            .Include(s => s.Node)
+            .OrderByDescending(s => s.CreationDatetime);
+
+         var totalCount = await query.CountAsync();
+
+         var swaps = await query
+            .Skip((pageNumber - 1) * pageSize)
+            .Take(pageSize)
+            .ToListAsync();
+
+         return (swaps, totalCount);
+      }
+
       public async Task<List<SwapOut>> GetAllPending()
       {
          await using var context = await _dbContextFactory.CreateDbContextAsync();
