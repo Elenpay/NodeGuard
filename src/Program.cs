@@ -213,13 +213,10 @@ namespace NodeGuard
                     options.UseProperties = false;
                     options.RetryInterval = TimeSpan.FromSeconds(15);
                     options.UsePostgres(Constants.POSTGRES_CONNECTIONSTRING);
-                    options.UseJsonSerializer();
+                    options.UseNewtonsoftJsonSerializer();
                 });
 
                 q.UseDefaultThreadPool(x => { x.MaxConcurrency = 100; });
-
-                //This allows DI in jobs
-                q.UseMicrosoftDependencyInjectionJobFactory();
 
                 //Sweep Job
                 q.AddJob<SweepAllNodesWalletsJob>(opts =>
