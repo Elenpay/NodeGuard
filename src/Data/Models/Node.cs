@@ -80,38 +80,38 @@ namespace NodeGuard.Data.Models
         /// <summary>
         /// Minimum swap amount in satoshis
         /// </summary>
-        public long? SwapMinAmountSats { get; set; }
+        public long SwapMinAmountSats { get; set; }
 
         /// <summary>
         /// Maximum swap amount in satoshis
         /// </summary>
-        public long? SwapMaxAmountSats { get; set; }
+        public long SwapMaxAmountSats { get; set; }
 
         /// <summary>
         /// Maximum number of concurrent swaps to limit HTLC locking
         /// </summary>
-        public int? MaxSwapsInFlight { get; set; }
+        public int MaxSwapsInFlight { get; set; }
 
         /// <summary>
-        /// Maximum fee ratio (including routing + service fees) acceptable for swaps as a decimal between 0 and 1
+        /// Maximum swap routing fee ratio acceptable for swaps as a decimal between 0 and 1
         /// Example: 0.005 = 0.5%
         /// </summary>
-        public decimal? MaxSwapFeeRatio { get; set; }
+        public decimal MaxSwapRoutingFeeRatio { get; set; }
 
         /// <summary>
         /// Balance threshold in satoshis - when node balance exceeds this, trigger automatic swap out
         /// </summary>
-        public long? MinimumBalanceThresholdSats { get; set; }
+        public long MinimumBalanceThresholdSats { get; set; }
 
         /// <summary>
         /// Maximum amount of BTC (in satoshis) that can be spent on swaps over the budget refresh interval
         /// </summary>
-        public long? SwapBudgetSats { get; set; }
+        public long SwapBudgetSats { get; set; }
 
         /// <summary>
         /// Time interval after which the swap budget is refreshed
         /// </summary>
-        public TimeSpan? SwapBudgetRefreshInterval { get; set; }
+        public TimeSpan SwapBudgetRefreshInterval { get; set; }
 
         /// <summary>
         /// The datetime when the current budget period started

@@ -55,7 +55,9 @@
                 "COINGECKO_ENDPOINT": "https://pro-api.coingecko.com/api/v3/coins/markets?vs_currency=usd&ids=bitcoin",
                 "COINGECKO_KEY": "TBD",
                 "HTTP1_LISTEN_PORT": "38080",
-                "API_TOKEN_SALT": "H/fCx1+maAFMcdi6idIYEg=="
+                "API_TOKEN_SALT": "H/fCx1+maAFMcdi6idIYEg==",
+                "AUTO_LIQUIDITY_MANAGEMENT_INTERVAL_MINUTES": "1",
+                "MINIMUM_SWAP_OUT_SIZE_BTC": "0.00250000"
             },
             "sourceFileMap": {
                 "/Views": "${workspaceFolder}/Views"

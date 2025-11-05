@@ -17,6 +17,7 @@
  *
  */
 
+using NBitcoin;
 using NodeGuard.Data.Models;
 
 namespace NodeGuard.Data.Repositories.Interfaces;
@@ -31,4 +32,14 @@ public interface ISwapOutRepository
    Task<(bool, string?)> AddAsync(SwapOut swap);
    Task<(bool, string?)> AddRangeAsync(List<SwapOut> swaps);
    (bool, string?) Update(SwapOut swap);
+   
+   /// <summary>
+   /// Get all swaps that are currently in flight (not completed, failed, or timed out) for a specific node, swaps older than 24 hours are ignored to avoid swaps deadlocks if many are stuck
+   /// </summary>
+   Task<List<SwapOut>> GetInFlightSwapsByNode(int nodeId);
+   
+   /// <summary>
+   /// Calculate the total amount spent on swaps since a specific datetime for budget tracking
+   /// </summary>
+   Task<Money> GetConsumedFeesSince(int nodeId, DateTimeOffset since);
 }

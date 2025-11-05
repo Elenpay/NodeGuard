@@ -213,13 +213,10 @@ namespace NodeGuard
                     options.UseProperties = false;
                     options.RetryInterval = TimeSpan.FromSeconds(15);
                     options.UsePostgres(Constants.POSTGRES_CONNECTIONSTRING);
-                    options.UseJsonSerializer();
+                    options.UseNewtonsoftJsonSerializer();
                 });
 
                 q.UseDefaultThreadPool(x => { x.MaxConcurrency = 100; });
-
-                //This allows DI in jobs
-                q.UseMicrosoftDependencyInjectionJobFactory();
 
                 //Sweep Job
                 q.AddJob<SweepAllNodesWalletsJob>(opts =>
@@ -235,6 +232,23 @@ namespace NodeGuard
                         .StartNow().WithSimpleSchedule(scheduleBuilder =>
                         {
                             scheduleBuilder.WithIntervalInMinutes(Constants.SWEEP_ALL_NODES_WALLETS_INTERVAL_MINUTES).RepeatForever();
+                        });
+                });
+
+                //Auto Liquidity Management Job
+                q.AddJob<AutoLiquidityManagementJob>(opts =>
+                {
+                    opts.DisallowConcurrentExecution();
+                    opts.WithIdentity(nameof(AutoLiquidityManagementJob));
+                });
+
+                q.AddTrigger(opts =>
+                {
+                    opts.ForJob(nameof(AutoLiquidityManagementJob))
+                        .WithIdentity($"{nameof(AutoLiquidityManagementJob)}Trigger")
+                        .StartNow().WithSimpleSchedule(scheduleBuilder =>
+                        {
+                            scheduleBuilder.WithIntervalInMinutes(Constants.AUTO_LIQUIDITY_MANAGEMENT_INTERVAL_MINUTES).RepeatForever();
                         });
                 });
 

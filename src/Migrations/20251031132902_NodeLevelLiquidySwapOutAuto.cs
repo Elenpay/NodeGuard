@@ -22,7 +22,7 @@ namespace NodeGuard.Migrations
             migrationBuilder.RenameColumn(
                 name: "ReturningFundsWalletId",
                 table: "Nodes",
-                newName: "MaxSwapsInFlight");
+                newName: "FundsDestinationWalletId");
 
             migrationBuilder.AddColumn<bool>(
                 name: "AutoLiquidityManagementEnabled",
@@ -32,37 +32,38 @@ namespace NodeGuard.Migrations
                 defaultValue: false);
 
             migrationBuilder.AddColumn<int>(
-                name: "FundsDestinationWalletId",
+                name: "MaxSwapsInFlight",
                 table: "Nodes",
                 type: "integer",
-                nullable: true);
+                nullable: false,
+                defaultValue: 5);
 
             migrationBuilder.AddColumn<decimal>(
                 name: "MaxSwapFeeRatio",
                 table: "Nodes",
                 type: "numeric",
-                nullable: true,
+                nullable: false,
                 defaultValue: 0.005m); // 0.5%
 
             migrationBuilder.AddColumn<long>(
                 name: "MinimumBalanceThresholdSats",
                 table: "Nodes",
                 type: "bigint",
-                nullable: true,
+                nullable: false,
                 defaultValue: 100000000L); // 1 BTC
 
             migrationBuilder.AddColumn<TimeSpan>(
                 name: "SwapBudgetRefreshInterval",
                 table: "Nodes",
                 type: "interval",
-                nullable: true,
+                nullable: false,
                 defaultValue: TimeSpan.FromDays(1));
 
             migrationBuilder.AddColumn<long>(
                 name: "SwapBudgetSats",
                 table: "Nodes",
                 type: "bigint",
-                nullable: true,
+                nullable: false,
                 defaultValue: 500000000L); // 0.5 BTC
 
             migrationBuilder.AddColumn<DateTimeOffset>(
@@ -75,14 +76,14 @@ namespace NodeGuard.Migrations
                 name: "SwapMaxAmountSats",
                 table: "Nodes",
                 type: "bigint",
-                nullable: true,
+                nullable: false,
                 defaultValue: 250000000L); // 0.25 BTC
 
             migrationBuilder.AddColumn<long>(
                 name: "SwapMinAmountSats",
                 table: "Nodes",
                 type: "bigint",
-                nullable: true,
+                nullable: false,
                 defaultValue: 10000000L); // 0.01 BTC
 
             migrationBuilder.CreateIndex(
