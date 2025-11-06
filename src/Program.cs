@@ -238,7 +238,6 @@ namespace NodeGuard
                 //Auto Liquidity Management Job
                 q.AddJob<AutoLiquidityManagementJob>(opts =>
                 {
-                    opts.DisallowConcurrentExecution();
                     opts.WithIdentity(nameof(AutoLiquidityManagementJob));
                 });
 

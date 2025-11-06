@@ -42,6 +42,12 @@ public interface INodeRepository
 
     Task<List<Node>> GetAllManagedByNodeGuard(bool withDisabled = true);
 
+    /// <summary>
+    /// Get all nodes that have auto liquidity management enabled and configured
+    /// </summary>
+    /// <returns>A list of nodes with auto liquidity management enabled</returns>
+    Task<List<Node>> GetAllWithAutoLiquidityEnabled();
+
     Task<(bool, string?)> AddAsync(Node type);
 
     Task<(bool, string?)> AddRangeAsync(List<Node> type);
