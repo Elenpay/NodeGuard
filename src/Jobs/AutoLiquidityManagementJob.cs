@@ -78,11 +78,7 @@ public class AutoLiquidityManagementJob : IJob
         try
         {
             // Get all enabled nodes with auto liquidity management enabled
-            var nodes = await _nodeRepository.GetAllManagedByNodeGuard();
-            var eligibleNodes = nodes.Where(n => 
-                !n.IsNodeDisabled && 
-                n.AutoLiquidityManagementEnabled &&
-                n.FundsDestinationWalletId.HasValue).ToList();
+            var eligibleNodes = await _nodeRepository.GetAllWithAutoLiquidityEnabled();
 
             _logger.LogInformation("Found {Count} nodes with automatic liquidity management enabled", eligibleNodes.Count);
 
