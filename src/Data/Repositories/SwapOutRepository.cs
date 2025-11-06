@@ -17,8 +17,8 @@
  *
  */
 
-using AutoMapper;
 using Microsoft.EntityFrameworkCore;
+using NBitcoin;
 using NodeGuard.Data.Models;
 using NodeGuard.Data.Repositories.Interfaces;
 
@@ -117,6 +117,37 @@ namespace NodeGuard.Data.Repositories
          swap.SetUpdateDatetime();
 
          return _repository.Update(swap, context);
+      }
+
+      public async Task<List<SwapOut>> GetInFlightSwapsByNode(int nodeId)
+      {
+         await using var context = await _dbContextFactory.CreateDbContextAsync();
+
+         // In-flight swaps are those that are pending (not yet completed/failed) created in the last 24 hours
+         // This prevents deadlock if swaps get stuck in pending status
+         var twentyFourHoursAgo = DateTimeOffset.UtcNow.AddHours(-24);
+         var swaps = await context.SwapOuts
+            .Where(s => s.NodeId == nodeId && 
+                       s.Status == SwapOutStatus.Pending &&
+                       s.CreationDatetime >= twentyFourHoursAgo)
+            .ToListAsync();
+
+         return swaps;
+      }
+
+      public async Task<Money> GetConsumedFeesSince(int nodeId, DateTimeOffset since)
+      {
+         await using var context = await _dbContextFactory.CreateDbContextAsync();
+
+         // Sum the total fees of all swaps created since the given datetime for this node
+         // Include both successful and in-flight swaps, but exclude failed ones
+         var consumedBudgetSats = await context.SwapOuts
+            .Where(s => s.NodeId == nodeId && 
+                       s.CreationDatetime >= since &&
+                       s.Status != SwapOutStatus.Failed)
+            .SumAsync(s => (long?)((s.ServiceFeeSats ?? 0) + (s.LightningFeeSats ?? 0) + (s.OnChainFeeSats ?? 0))) ?? 0;
+
+         return new Money(consumedBudgetSats, MoneyUnit.Satoshi);
       }
    }
 }

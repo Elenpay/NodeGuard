@@ -68,6 +68,13 @@ public class Constants
     /// </summary>
     public static readonly int SWEEP_ALL_NODES_WALLETS_INTERVAL_MINUTES = 15;
 
+    /// <summary>
+    /// The interval in minutes for the AutoLiquidityManagementJob to run.
+    /// This job monitors node balances and manages liquidity automatically (swap outs, swap ins, channels). Default is 10 minutes.
+    /// Can be configured via AUTO_LIQUIDITY_MANAGEMENT_INTERVAL_MINUTES environment variable.
+    /// </summary>
+    public static readonly int AUTO_LIQUIDITY_MANAGEMENT_INTERVAL_MINUTES = 10;
+
     // Observability
     public static readonly string? OTEL_EXPORTER_ENDPOINT;
 
@@ -219,6 +226,8 @@ public class Constants
         var sweepIntervalMinutes = Environment.GetEnvironmentVariable("SWEEP_ALL_NODES_WALLETS_INTERVAL_MINUTES");
         if (sweepIntervalMinutes != null) SWEEP_ALL_NODES_WALLETS_INTERVAL_MINUTES = int.Parse(sweepIntervalMinutes);
 
+        var autoLiquidityManagementIntervalMinutes = Environment.GetEnvironmentVariable("AUTO_LIQUIDITY_MANAGEMENT_INTERVAL_MINUTES");
+        if (autoLiquidityManagementIntervalMinutes != null) AUTO_LIQUIDITY_MANAGEMENT_INTERVAL_MINUTES = int.Parse(autoLiquidityManagementIntervalMinutes);
 
         // Observability
         //We need to expand the env-var with %ENV_VAR% for K8S
