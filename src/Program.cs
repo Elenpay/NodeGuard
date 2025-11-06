@@ -247,8 +247,14 @@ namespace NodeGuard
                     opts.ForJob(nameof(AutoLiquidityManagementJob))
                         .WithIdentity($"{nameof(AutoLiquidityManagementJob)}Trigger")
                         .StartNow().WithSimpleSchedule(scheduleBuilder =>
-                        {
-                            scheduleBuilder.WithIntervalInMinutes(Constants.AUTO_LIQUIDITY_MANAGEMENT_INTERVAL_MINUTES).RepeatForever();
+                        {  if (Constants.IS_DEV_ENVIRONMENT)
+                            {
+                                scheduleBuilder.WithIntervalInMinutes(1).RepeatForever();
+                            }
+                            else
+                            {
+                                scheduleBuilder.WithIntervalInMinutes(Constants.AUTO_LIQUIDITY_MANAGEMENT_INTERVAL_MINUTES).RepeatForever();
+                            }
                         });
                 });
 
