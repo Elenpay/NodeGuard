@@ -275,10 +275,10 @@
                             </Column>
                             <Column>
                                 <Field>
-                                        <FieldLabel>Max Swap Fee</FieldLabel>
-                                        <FieldHelp>Maximum acceptable fee as percentage (e.g., 0.5 = 0.5%)</FieldHelp>
+                                        <FieldLabel>Max Swap Routing Fee</FieldLabel>
+                                        <FieldHelp>Maximum acceptable routing fee as percentage</FieldHelp>
                                         <NumericPicker TValue="decimal" 
-                                                       @bind-Value="@_maxSwapFeePercent" 
+                                                       @bind-Value="@_maxSwapRoutingFeePercent" 
                                                        CurrencySymbolPlacement="CurrencySymbolPlacement.Suffix"
                                                        CurrencySymbol=" %"
                                                        Decimals="2"
@@ -387,7 +387,7 @@
     private decimal _balanceThresholdBtc;
     private decimal _swapBudgetBtc;
     private int _budgetRefreshDays;
-    private decimal _maxSwapFeePercent;
+    private decimal _maxSwapRoutingFeePercent;
 
     public abstract class NodesColumnName
     {
@@ -693,7 +693,7 @@
         _swapBudgetBtc = (decimal)new NBitcoin.Money(node.SwapBudgetSats).ToUnit(NBitcoin.MoneyUnit.BTC);
         _budgetRefreshDays = node.SwapBudgetRefreshInterval.Days;
         // Convert ratio from 0-1 to 0-100 for display
-        _maxSwapFeePercent = node.MaxSwapFeeRatio * 100m;
+        _maxSwapRoutingFeePercent = node.MaxSwapRoutingFeeRatio * 100m;
         
         if (_nodeLiquidityModal != null) await _nodeLiquidityModal.Show();
     }
@@ -717,7 +717,7 @@
             _selectedNodeForLiquidity.SwapBudgetSats = (long)new NBitcoin.Money(_swapBudgetBtc, NBitcoin.MoneyUnit.BTC).Satoshi;
             _selectedNodeForLiquidity.SwapBudgetRefreshInterval = TimeSpan.FromDays(_budgetRefreshDays);
             // Convert percent (0-100) back to ratio (0-1)
-            _selectedNodeForLiquidity.MaxSwapFeeRatio = _maxSwapFeePercent / 100m;
+            _selectedNodeForLiquidity.MaxSwapRoutingFeeRatio = _maxSwapRoutingFeePercent / 100m;
             
             _selectedNodeForLiquidity.UpdateDatetime = DateTimeOffset.Now;
             var updateResult = NodeRepository.Update(_selectedNodeForLiquidity);

@@ -93,10 +93,10 @@ namespace NodeGuard.Data.Models
         public int MaxSwapsInFlight { get; set; }
 
         /// <summary>
-        /// Maximum fee ratio (including routing + service fees) acceptable for swaps as a decimal between 0 and 1
+        /// Maximum swap routing fee ratio acceptable for swaps as a decimal between 0 and 1
         /// Example: 0.005 = 0.5%
         /// </summary>
-        public decimal MaxSwapFeeRatio { get; set; }
+        public decimal MaxSwapRoutingFeeRatio { get; set; }
 
         /// <summary>
         /// Balance threshold in satoshis - when node balance exceeds this, trigger automatic swap out
