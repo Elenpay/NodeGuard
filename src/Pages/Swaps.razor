@@ -1,6 +1,7 @@
 @page "/swaps"
 @using System.Security.Claims
 @using Humanizer
+@using Blazorise
 @attribute [Authorize(Roles = "Superadmin,NodeManager,FinanceManager")]
 
 <Row>
@@ -9,6 +10,8 @@
         <DataGrid TItem="SwapOut"
                 @ref="_swapsDatagrid"
                 Data="@_swapRequests"
+                ReadData="@OnReadData"
+                TotalItems="@_totalItems"
                 Filterable="true"
                 FilterMethod="DataGridFilterMethod.Contains"
                 Editable="true"
@@ -47,7 +50,7 @@
                 </DataGridColumn>
                 <DataGridColumn TItem="SwapOut" Editable="false" Field="@nameof(SwapOut.UserRequestor)" Caption="Requestor" Sortable="true" Displayable="@IsColumnVisible(SwapsColumnName.Requestor)">
                     <DisplayTemplate>
-                        @(context.UserRequestor?.UserName ?? "Unknown")
+                        @(context.IsManual ? (context.UserRequestor?.UserName ?? "Unknown") : "Autoswap")
                     </DisplayTemplate>
                 </DataGridColumn>
                 <DataGridColumn TItem="SwapOut" Editable="false" Field="@nameof(SwapOut.Amount)" Caption="Amount (BTC)" Sortable="false" Displayable="@IsColumnVisible(SwapsColumnName.Amount)">
@@ -129,6 +132,9 @@
    private bool _columnsLoaded;
    private ColumnLayout<SwapsColumnName> _swapsColumnLayout = new();
    public required NewSwapModal _newSwapModal;
+   private int _totalItems;
+   private int _currentPage = 1;
+   private int _pageSize = 10;
 
    public abstract class SwapsColumnName
    {
@@ -151,7 +157,17 @@
          ToastService.ShowError("Bitcoin price in USD could not be retrieved.");
       }
       _availableNodes = await NodeRepository.GetAllManagedByUser(LoggedUser.Id);
-      _swapRequests = await SwapOutRepository.GetAll();
+   }
+
+   private async Task OnReadData(DataGridReadDataEventArgs<SwapOut> e)
+   {
+      if (!e.CancellationToken.IsCancellationRequested)
+      {
+         var (swaps, totalCount) = await SwapOutRepository.GetPaginatedAsync(e.Page, e.PageSize);
+
+         _swapRequests = swaps;
+         _totalItems = totalCount;
+      }
    }
 
    protected override async Task OnAfterRenderAsync(bool firstRender)
@@ -201,8 +217,7 @@
 
     private async Task OnSwapCreated()
     {
-        _swapRequests = await SwapOutRepository.GetAll();
-        StateHasChanged();
+        await _swapsDatagrid.Reload();
     }
 }
 
