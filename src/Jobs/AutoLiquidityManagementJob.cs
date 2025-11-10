@@ -215,10 +215,10 @@ public class AutoLiquidityManagementJob : IJob
                 Amount = swapAmount,
                 Address = destinationAddress,
                 MaxRoutingFeesPercent = node.MaxSwapRoutingFeeRatio * 100, // Convert to percentage
-                MaxServiceFeesPercent = 0.1m,
-                MaxMinerFees = 10000,
+                MaxServiceFeesPercent = Constants.SWAP_MAX_SERVICE_FEES_PERCENT,
+                MaxMinerFees = Constants.SWAP_MAX_MINER_FEES_SATS,
                 SweepConfTarget = Constants.SWEEP_CONF_TARGET,
-                PrepayAmtSat = 1337, // As there's no quote and this is a edge-case to prepay, we set a fixed prepay amount
+                PrepayAmtSat = Constants.SWAP_PREPAY_AMOUNT_SATS,
                 SwapPublicationDeadlineMinutes = 30,
             };
 
