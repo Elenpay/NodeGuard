@@ -116,6 +116,21 @@ public class Constants
     /// </summary>
     public static int SWEEP_CONF_TARGET = 6;
 
+    /// <summary>
+    /// Maximum miner fees in satoshis for automatic swap operations
+    /// </summary>
+    public static long SWAP_MAX_MINER_FEES_SATS = 15000;
+    
+    /// <summary>
+    /// Maximum service fees as a percentage for automatic swap operations
+    /// </summary>
+    public static decimal SWAP_MAX_SERVICE_FEES_PERCENT = 0.1m;
+    
+    /// <summary>
+    /// Prepay amount in satoshis for automatic swap operations
+    /// </summary>
+    public static long SWAP_PREPAY_AMOUNT_SATS = 1337;
+
     public const string IsFrozenTag = "frozen";
     public const string IsManuallyFrozenTag = "manually_frozen";
 
@@ -297,6 +312,16 @@ public class Constants
 
         var scanBatchSize = Environment.GetEnvironmentVariable("SCAN_BATCH_SIZE");
         SCAN_BATCH_SIZE = scanBatchSize != null ? int.Parse(scanBatchSize) : SCAN_BATCH_SIZE;
+
+        // Swap configuration
+        var swapMaxMinerFees = Environment.GetEnvironmentVariable("SWAP_MAX_MINER_FEES_SATS");
+        SWAP_MAX_MINER_FEES_SATS = swapMaxMinerFees != null ? long.Parse(swapMaxMinerFees) : SWAP_MAX_MINER_FEES_SATS;
+        
+        var swapMaxServiceFeesPercent = Environment.GetEnvironmentVariable("SWAP_MAX_SERVICE_FEES_PERCENT");
+        SWAP_MAX_SERVICE_FEES_PERCENT = swapMaxServiceFeesPercent != null ? decimal.Parse(swapMaxServiceFeesPercent, NumberStyles.AllowDecimalPoint, CultureInfo.InvariantCulture) : SWAP_MAX_SERVICE_FEES_PERCENT;
+        
+        var swapPrepayAmount = Environment.GetEnvironmentVariable("SWAP_PREPAY_AMOUNT_SATS");
+        SWAP_PREPAY_AMOUNT_SATS = swapPrepayAmount != null ? long.Parse(swapPrepayAmount) : SWAP_PREPAY_AMOUNT_SATS;
 
         // DB Initialization
         ALICE_PUBKEY = Environment.GetEnvironmentVariable("ALICE_PUBKEY") ?? ALICE_PUBKEY;
