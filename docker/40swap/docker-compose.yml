@@ -1,0 +1,91 @@
+name: 40swap
+
+x-40swap-service: &40swap-service
+  profiles: ["40swap"]
+  restart: unless-stopped
+
+services:
+  40swap-postgres-backend:
+    <<: *40swap-service
+    image: "postgres:16.4"
+    container_name: 40swap_postgres_backend
+    ports:
+      - "5434:5432"
+    environment:
+      POSTGRES_USER: "40swap"
+      POSTGRES_PASSWORD: "40swap"
+      POSTGRES_DB: "40swap"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U 40swap"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    volumes:
+      - 40swap-postgres-backend-data:/var/lib/postgresql/data
+
+  40swap-postgres-daemon:
+    <<: *40swap-service
+    image: "postgres:16.4"
+    container_name: 40swap_postgres_daemon
+    ports:
+      - "5435:5432"
+    environment:
+      POSTGRES_USER: "40swap"
+      POSTGRES_PASSWORD: "40swap"
+      POSTGRES_DB: "40swap"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U 40swap"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    volumes:
+      - 40swap-postgres-daemon-data:/var/lib/postgresql/data
+
+  40swap-daemon:
+    <<: *40swap-service
+    image: ghcr.io/40acres/40swap/40swapd:master
+    container_name: 40swap_daemon
+    ports:
+      - "50051:50051"
+    depends_on:
+      40swap-postgres-daemon:
+        condition: service_healthy
+    environment:
+      40SWAPD_DB_HOST: 40swap-postgres-daemon
+      40SWAPD_DB_PORT: 5432
+      40SWAPD_DB_USER: 40swap
+      40SWAPD_DB_PASSWORD: 40swap
+      40SWAPD_DB_NAME: 40swap
+      40SWAPD_GRPC_PORT: 50051
+      40SWAPD_SERVER_URL: http://40swap-backend:7081
+      40SWAPD_REGTEST: "true"
+      40SWAPD_LND_HOST: alice:10009
+      40SWAPD_TLS_CERT: /shared/lnd/alice/tls.cert
+      40SWAPD_MACAROON: /shared/lnd/alice/admin.macaroon
+      MEMPOOL_ENDPOINT: http://mempool-frontend-btc:8080/api
+    volumes:
+      - shared_data:/shared:ro
+
+  40swap-backend:
+    <<: *40swap-service
+    image: ghcr.io/40acres/40swap-server-backend:master-506
+    container_name: 40swap_backend
+    ports:
+      - "7081:7081"
+    depends_on:
+      40swap-postgres-backend:
+        condition: service_healthy
+      nbxplorer:
+        condition: service_started
+    volumes:
+      - shared_data:/shared:ro
+      - bob_lnd_data:/lnd-bob:ro
+      - carol_lnd_data:/lnd-carol:ro
+      - ./40swap.conf.yaml:/etc/40swap/40swap.conf.yaml:ro
+
+volumes:
+  40swap-postgres-backend-data:
+  40swap-postgres-daemon-data:
+  shared_data:
+  bob_lnd_data:
+  carol_lnd_data:
