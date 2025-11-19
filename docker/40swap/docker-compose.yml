@@ -64,7 +64,7 @@ services:
       40SWAPD_MACAROON: /shared/lnd/alice/admin.macaroon
       MEMPOOL_ENDPOINT: http://mempool-frontend-btc:8080/api
     volumes:
-      - shared_data:/shared:ro
+      - alice_lnd_data:/shared:ro
 
   40swap-backend:
     <<: *40swap-service
@@ -78,7 +78,7 @@ services:
       nbxplorer:
         condition: service_started
     volumes:
-      - shared_data:/shared:ro
+      - alice_lnd_data:/shared:ro
       - bob_lnd_data:/lnd-bob:ro
       - carol_lnd_data:/lnd-carol:ro
       - ./40swap.conf.yaml:/etc/40swap/40swap.conf.yaml:ro
@@ -86,6 +86,6 @@ services:
 volumes:
   40swap-postgres-backend-data:
   40swap-postgres-daemon-data:
-  shared_data:
+  alice_lnd_data:
   bob_lnd_data:
   carol_lnd_data:
