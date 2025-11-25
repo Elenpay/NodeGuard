@@ -98,15 +98,15 @@ update-protos:
 
 # Builds and runs the development docker containers in the background, add DOCKER_COMPOSE_FILE to override the default file
 docker-up *args:
-    docker compose --profile polar --profile loop -f {{DOCKER_COMPOSE_FILE}} up --build -d {{args}}
+    docker compose --profile polar --profile loop --profile 40swap -f {{DOCKER_COMPOSE_FILE}} up --build -d {{args}}
 
 # Stops the development docker containers, add DOCKER_COMPOSE_FILE to override the default file
 docker-down:
-    docker compose --profile polar --profile loop -f {{DOCKER_COMPOSE_FILE}} down
+    docker compose --profile polar --profile loop --profile 40swap -f {{DOCKER_COMPOSE_FILE}} down
 
 # Stops the development docker containers and removes the volumes, add DOCKER_COMPOSE_FILE to override the default file
 docker-rm:
-    docker compose --profile polar --profile loop -f {{DOCKER_COMPOSE_FILE}} down -v
+    docker compose --profile polar --profile loop --profile 40swap -f {{DOCKER_COMPOSE_FILE}} down -v
 
 ##########
 # Dapr #

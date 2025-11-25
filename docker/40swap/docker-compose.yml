@@ -32,7 +32,7 @@ services:
     environment:
       POSTGRES_USER: "40swap"
       POSTGRES_PASSWORD: "40swap"
-      POSTGRES_DB: "40swap"
+      POSTGRES_DB: "40swap"  
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U 40swap"]
       interval: 10s
@@ -63,6 +63,7 @@ services:
     <<: *40swap-service
     image: ghcr.io/40acres/40swap/40swapd:master
     container_name: 40swapd_bob
+    user: "0:0"
     depends_on:
       40swapd-postgres-bob:
         condition: service_healthy
@@ -79,6 +80,7 @@ services:
       40SWAPD_TLS_CERT: /root/.lnd/tls.cert
       40SWAPD_MACAROON: /root/.lnd/data/chain/bitcoin/regtest/admin.macaroon
       MEMPOOL_ENDPOINT: http://mempool-frontend-btc:8080/api
+      
     volumes:
       - bob_lnd_data:/root/.lnd:ro
 
@@ -86,6 +88,7 @@ services:
     <<: *40swap-service
     image: ghcr.io/40acres/40swap/40swapd:master
     container_name: 40swapd_carol
+    user: "0:0"
     depends_on:
       40swapd-postgres-carol:
         condition: service_healthy

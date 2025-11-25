@@ -34,10 +34,11 @@ labels = {
 
   '40swap': [
     '40swap-postgres-backend',
-    '40swap-postgres-daemon',
-    '40swap-daemon',
+    '40swapd-postgres-bob',
+    '40swapd-postgres-carol',
+    '40swapd-bob',
+    '40swapd-carol',
     '40swap-backend',
-    '40swap-frontend',
   ],
 }
 
@@ -46,7 +47,7 @@ for (label, services) in labels.items():
     # Mempool and 40swap-frontend services are included but stopped by default (auto_init=False)
     if label == 'mempool':
       dc_resource(s, auto_init=False, labels = [label])
-    elif label == '40swap' and s == '40swap-frontend':
+    elif label == '40swap':
       dc_resource(s, auto_init=False, labels = [label])
     else:
       dc_resource(s, labels = [label])
