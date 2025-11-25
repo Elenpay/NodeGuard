@@ -1,0 +1,125 @@
+syntax = "proto3";
+
+option go_package = "./rpc";
+option csharp_namespace = "FortySwap";
+
+import "google/protobuf/timestamp.proto";
+
+service SwapService {
+  // RPC methods for initiating and querying swaps.
+  rpc SwapIn(SwapInRequest) returns (SwapInResponse); // Initiates a SwapIn operation.
+  rpc SwapOut(SwapOutRequest) returns (SwapOutResponse); // Initiates a SwapOut operation.
+  rpc GetSwapIn(GetSwapInRequest) returns (GetSwapInResponse); // Retrieves the status of a SwapIn.
+  rpc GetSwapOut(GetSwapOutRequest) returns (GetSwapOutResponse); // Retrieves the status of a SwapOut.
+  rpc RecoverReusedSwapAddress(RecoverReusedSwapAddressRequest) returns (RecoverReusedSwapAddressResponse); // Recovers a reused swap address.
+}
+
+// Enum definition for supported blockchain chains.
+enum Chain {
+  BITCOIN = 0; // Bitcoin blockchain.
+  LIQUID = 1;  // Liquid sidechain.
+}
+
+// Enum definition for supported network types.
+enum Network {
+  MAINNET = 0; // Main Bitcoin network.
+  TESTNET = 1; // Bitcoin test network.
+  REGTEST = 2; // Bitcoin regression test network.
+}
+
+// Enum definition for swap statuses.
+enum Status {
+  // Happy path statuses.
+  CREATED = 0; // Swap has been created.
+  INVOICE_PAYMENT_INTENT_RECEIVED = 1; // Payment locked on L2
+  CONTRACT_FUNDED_UNCONFIRMED = 2; // Contract funded but unconfirmed (mempool)
+  CONTRACT_FUNDED = 3; // Contract funded and confirmed.
+  INVOICE_PAID = 4; // L2 invoice has been paid.
+  CONTRACT_CLAIMED_UNCONFIRMED = 5; // Contract claimed but unconfirmed.
+  DONE = 6; // Swap completed successfully.
+
+  // Expiry-related statuses.
+  CONTRACT_REFUNDED_UNCONFIRMED = 7; // Contract refunded but unconfirmed.
+  CONTRACT_EXPIRED = 8; // Contract expired.
+}
+
+// Message definitions for SwapIn operation.
+message SwapInRequest {
+  Chain chain = 1; // Blockchain chain for the swap.
+  optional string invoice = 2; // Invoice to be paid.
+  optional uint64 amount_sats = 3; // Amount in satoshis.
+  optional uint32 expiry = 4; // Expiry time for the swap.
+  string refund_to = 5; // Address to refund in case of failure.
+}
+
+message SwapInResponse {
+  string swap_id = 1; // Unique identifier for the swap.
+  uint64 amount_sats = 2; // Amount in satoshis.
+  string claim_address = 3; // Address to send the funds to.
+  string refund_address = 4; // Address where the funds will be refunded.
+}
+
+// Message definitions for SwapOut operation.
+message SwapOutRequest {
+  Chain chain = 1; // Blockchain chain for the swap.
+  uint64 amount_sats = 2; // Amount in satoshis.
+  string address = 3; // Optional destination address.
+  optional float max_routing_fee_percent = 4; // Maximum routing fee in percentage for the lightning network.
+}
+
+message SwapOutResponse {
+  string swap_id = 1; // Unique identifier for the swap.
+  uint64 amount_sats = 2; // Amount in satoshis.
+}
+
+// Message definitions for querying SwapIn status.
+message GetSwapInRequest {
+  string id = 1; // Unique identifier for the swap.
+}
+
+message GetSwapInResponse {
+  string id = 1; // Unique identifier for the swap.
+  string contract_address = 2; // Address of the contract.
+  google.protobuf.Timestamp created_at = 3; // Timestamp when the swap was created.
+  double input_amount = 4; // Input amount in BTC.
+  optional string lock_tx_id = 5; // Lock transaction txid.
+  optional string outcome = 6; // Outcome of the swap.
+  double output_amount = 7; // Output amount in BTC.
+  string redeem_script = 8; // Redeem script for the contract.
+  Status status = 9; // Current status of the swap.
+  uint32 timeout_block_height = 10; // Block height at which the swap times out.
+  optional string pre_image = 11; // Preimage for the swap.
+  optional string refund_tx_id = 12; // Refund transaction ID.
+  uint64 service_fee_sats = 13; // Service fee in satoshis.
+  uint64 onchain_fee_sats = 14; // On-chain fee in satoshis.
+}
+
+// Message definitions for querying SwapOut status.
+message GetSwapOutRequest {
+  string id = 1; // Unique identifier for the swap.
+}
+
+message GetSwapOutResponse {
+  string id = 1; // Unique identifier for the swap.
+  uint32 timeout_block_height = 2; // Block height at which the swap times out.
+  string invoice = 3; // Invoice associated with the swap.
+  double input_amount = 4; // Input amount in BTC.
+  double output_amount = 5; // Output amount in BTC.
+  Status status = 6; // Current status of the swap.
+  google.protobuf.Timestamp created_at = 7; // Timestamp when the swap was created.
+  optional string outcome = 8; // Outcome of the swap.
+  optional string claim_tx_id = 9; // Claim transaction txid.
+  uint64 service_fee_sats = 10; // Service fee in satoshis.
+  uint64 onchain_fee_sats = 11; // On-chain fee in satoshis.
+  uint64 offchain_fee_sats = 12; // Off-chain (routing) fee in satoshis.
+}
+
+message RecoverReusedSwapAddressRequest {
+  string outpoint = 1; // Outpoint of the transaction to refund
+  optional string refund_to = 2; // Address to refund to
+}
+
+message RecoverReusedSwapAddressResponse {
+  string txid = 1; // Transaction ID of the refund transaction
+  double recovered_amount = 2; // Amount recovered in BTC
+}

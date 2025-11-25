@@ -126,6 +126,7 @@ namespace NodeGuard
             builder.Services.AddSingleton<ILightningClientService, LightningClientService>();
             builder.Services.AddSingleton<ILightningRouterService, LightningRouterService>();
             builder.Services.AddSingleton<ILoopService, LoopService>();
+            builder.Services.AddSingleton<IFortySwapService, FortySwapService>();
 
             //BlazoredToast
             builder.Services.AddBlazoredToast();

@@ -72,6 +72,7 @@
     <Protobuf Include="Proto\walletkit.proto" GrpcServices="Client" ProtoRoot="Proto"/>
     <Protobuf Include="Proto\loop.proto" GrpcServices="Client" ProtoRoot="Proto"/>
     <Protobuf Include="Proto\swapserverrpc\common.proto" GrpcServices="Client" ProtoRoot="Proto"/>
+    <Protobuf Include="Proto\fortyswapd.proto" GrpcServices="Client" ProtoRoot="Proto"/>
     <Protobuf Include="Proto\nodeguard.proto" GrpcServices="Server" ProtoRoot="Proto"/>
     <Protobuf Include="Proto\router.proto" GrpcServices="Client" ProtoRoot="Proto"/>
   </ItemGroup>

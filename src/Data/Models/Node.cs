@@ -70,6 +70,8 @@ namespace NodeGuard.Data.Models
 
         public string? LoopdCert { get; set; }
 
+        public string? FortySwapEndpoint { get; set; }
+
         #region Automatic Node level liquidity Management
 
         /// <summary>
