@@ -49,6 +49,7 @@ public class AutoLiquidityManagementJob : IJob
     private readonly INodeRepository _nodeRepository;
     private readonly ISwapOutRepository _swapOutRepository;
     private readonly ISwapsService _swapsService;
+    private readonly IFortySwapService _fortySwapService;
     private readonly ILightningService _lightningService;
     private readonly IWalletRepository _walletRepository;
     private readonly INBXplorerService _nbXplorerService;
@@ -58,6 +59,7 @@ public class AutoLiquidityManagementJob : IJob
         INodeRepository nodeRepository,
         ISwapOutRepository swapOutRepository,
         ISwapsService swapsService,
+        IFortySwapService fortySwapService,
         ILightningService lightningService,
         IWalletRepository walletRepository,
         INBXplorerService nbXplorerService)
@@ -66,6 +68,7 @@ public class AutoLiquidityManagementJob : IJob
         _nodeRepository = nodeRepository;
         _swapOutRepository = swapOutRepository;
         _swapsService = swapsService;
+        _fortySwapService = fortySwapService;
         _lightningService = lightningService;
         _walletRepository = walletRepository;
         _nbXplorerService = nbXplorerService;
@@ -103,6 +106,34 @@ public class AutoLiquidityManagementJob : IJob
         }
 
         _logger.LogInformation("{JobName} ended", nameof(AutoLiquidityManagementJob));
+    }
+
+    /// <summary>
+    /// Selects a swap provider based on configured weights.
+    /// Uses weighted random selection - higher weight = higher probability.
+    /// </summary>
+    private SwapProvider SelectSwapProvider(Node node)
+    {
+        var loopWeight = node.LoopSwapWeight;
+        var fortySwapWeight = node.FortySwapWeight;
+        var totalWeight = loopWeight + fortySwapWeight;
+
+        if (totalWeight == 0)
+        {
+            _logger.LogWarning("Node {NodeName} has total weight of 0, defaulting to Loop", node.Name);
+            return SwapProvider.Loop;
+        }
+
+        // Weighted random selection
+        var random = new Random();
+        var randomValue = random.Next(0, totalWeight);
+
+        var selectedProvider = randomValue < loopWeight ? SwapProvider.Loop : SwapProvider.FortySwap;
+        
+        _logger.LogDebug("Selected {Provider} for node {NodeName} (Loop weight: {LoopWeight}, 40swap weight: {FortySwapWeight}, random: {Random})",
+            selectedProvider, node.Name, loopWeight, fortySwapWeight, randomValue);
+
+        return selectedProvider;
     }
 
     public async Task<ManageNodeLiquidityResult> ManageNodeLiquidity(Node node, CancellationToken cancellationToken)
@@ -208,6 +239,10 @@ public class AutoLiquidityManagementJob : IJob
         _logger.LogInformation("Initiating automatic swap out for node {NodeName} - Amount: {Amount} BTC", 
             node.Name, swapAmountBtc);
 
+        // Select swap provider based on weights
+        var selectedProvider = SelectSwapProvider(node);
+        _logger.LogInformation("Using {Provider} for swap out on node {NodeName}", selectedProvider, node.Name);
+
         try
         {
             var swapRequest = new SwapOutRequest
@@ -222,18 +257,31 @@ public class AutoLiquidityManagementJob : IJob
                 SwapPublicationDeadlineMinutes = 30,
             };
 
-            var swapResponse = await _swapsService.CreateSwapOutAsync(
-                node,
-                SwapProvider.Loop,
-                swapRequest,
-                cancellationToken);
+            SwapResponse swapResponse;
+            
+            // Call the appropriate service based on selected provider
+            if (selectedProvider == SwapProvider.Loop)
+            {
+                swapResponse = await _swapsService.CreateSwapOutAsync(
+                    node,
+                    SwapProvider.Loop,
+                    swapRequest,
+                    cancellationToken);
+            }
+            else // SwapProvider.FortySwap
+            {
+                swapResponse = await _fortySwapService.CreateSwapOutAsync(
+                    node,
+                    swapRequest,
+                    cancellationToken);
+            }
 
             // Create SwapOut record
             var swapOut = new SwapOut
             {
                 NodeId = node.Id,
                 DestinationWalletId = node.FundsDestinationWalletId!.Value,
-                Provider = SwapProvider.Loop, // TODO Parameterize if more providers are added
+                Provider = selectedProvider,
                 ProviderId = Convert.ToHexString(swapResponse.Id),
                 SatsAmount = swapAmount,
                 ServiceFeeSats = swapResponse.ServerFee,
