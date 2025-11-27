@@ -31,8 +31,8 @@
             </DataGridCommandColumn>
                 <DataGridColumn TItem="SwapOut" Field="@nameof(SwapOut.ProviderId)" Caption="#" Sortable="false" Displayable="true">
                     <DisplayTemplate>
-                        <Tooltip Text="@context.ProviderId?.ToLowerInvariant()" Placement="TooltipPlacement.Top">
-                            @StringHelper.TruncateTail(context.ProviderId?.ToLowerInvariant(), 10)
+                        <Tooltip Text="@context.ProviderId" Placement="TooltipPlacement.Top">
+                            @StringHelper.TruncateTail(context.ProviderId, 10)
                         </Tooltip>
                     </DisplayTemplate>
                 </DataGridColumn>
