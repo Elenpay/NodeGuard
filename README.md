@@ -24,6 +24,7 @@ Current features of NodeGuard are the following:
 - Minimalistic in-browser wallet with [NodeGuard Companion](https://github.com/Elenpay/Nodeguards-Companion) to ease signing of transactions and wallet creation
 - In-browser notification systems for channel approvals
 - Two-factor authentication
+- Manual and automated Swap Outs
 
 # Contributing
 Check [Contributing.md](CONTRIBUTING.md)
