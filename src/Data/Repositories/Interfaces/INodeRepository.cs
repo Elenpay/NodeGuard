@@ -40,6 +40,13 @@ public interface INodeRepository
     /// <returns>A list of nodes configured for Loopd</returns>
     Task<List<Node>> GetAllLoopdConfigured(string? userId = null);
 
+    /// <summary>
+    /// Get all nodes that are configured to work with 40swap by checking if the endpoint is set in the database.
+    /// </summary>
+    /// <param name="userId"></param>
+    /// <returns>A list of nodes configured for 40swap</returns>
+    Task<List<Node>> GetAllFortySwapConfigured(string? userId = null);
+
     Task<List<Node>> GetAllManagedByNodeGuard(bool withDisabled = true);
 
     /// <summary>

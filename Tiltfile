@@ -33,6 +33,7 @@ labels = {
   ],
 
   '40swap': [
+    '40swap-lnd-setup',
     '40swap-postgres-backend',
     '40swapd-postgres-bob',
     '40swapd-postgres-carol',

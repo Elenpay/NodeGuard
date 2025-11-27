@@ -13,10 +13,10 @@
                 <Field>
                     <FieldLabel>Swap provider</FieldLabel>
                     <div class="d-flex">
-                        <Select TValue="string" @bind-Value="_selectedProvider">
+                        <Select TValue="SwapProvider" @bind-Value="_selectedProvider" SelectedValueChanged="OnProviderChanged">
                             @foreach (var provider in Enum.GetValues<SwapProvider>())
                             {
-                                <SelectItem Value="@provider.ToString()">@provider.ToString()</SelectItem>
+                                <SelectItem Value="@provider">@(provider == SwapProvider.FortySwap ? "40swap" : provider.ToString())</SelectItem>
                             }
                         </Select>
                     </div>
@@ -238,12 +238,12 @@
     protected override async Task OnInitializedAsync()
     {
         _availableWallets = await ToastOnException.ExecuteAsync(() => WalletRepository.GetAvailableWallets(), Logger, ToastService, "Unexpected error loading wallets, please try again later", new());
-        _availableNodes = await ToastOnException.ExecuteAsync(() => NodeRepository.GetAllLoopdConfigured(LoggedUser.Id), Logger, ToastService, "Unexpected error loading nodes, please try again later", new());
         _btcPrice = await PriceConversionService.GetBtcToUsdPrice();
     }
 
     public async Task Show()
     {
+        await LoadNodesForProvider(_selectedProvider);
         await _modalRef.Show();
     }
 
@@ -292,7 +292,9 @@
             var saved = SwapOutRepository.AddAsync(new SwapOut
             {
                 Provider = _selectedProvider,
-                ProviderId = Convert.ToHexString(response.Id),
+                ProviderId = _selectedProvider == SwapProvider.Loop 
+                    ? Convert.ToHexString(response.Id)
+                    : System.Text.Encoding.UTF8.GetString(response.Id),
                 Status = response.Status,
                 IsManual = true,
                 SatsAmount = response.Amount,
@@ -344,7 +346,7 @@
         var HTLC_SWEEP_FEE_SAT_ON_QUOTE_ERROR = _amountBtc * EnvironmentHelpers.GetOrDefault("HTLC_SWEEP_FEE_SAT_ON_QUOTE_ERROR", 0.015m);
         var PREPAY_AMT_SAT_ON_QUOTE_ERROR = _amountBtc * EnvironmentHelpers.GetOrDefault("PREPAY_AMT_SAT_ON_QUOTE_ERROR", 0.005m);
 
-        var middleChunkMessage = $"<strong>- Provider:</strong> {_selectedProvider}<br>" +
+        var middleChunkMessage = $"<strong>- Provider:</strong> {(_selectedProvider == SwapProvider.FortySwap ? "40swap" : _selectedProvider.ToString())}<br>" +
                 $"<strong>- Direction:</strong> {_selectedDirection}<br>" +
                 $"<strong>- Amount:</strong> {FormatBtcWithUsd(_amountBtc)}<br>" +
                 $"<strong>- Origin Node:</strong> {_selectedNode?.Name}<br>" +
@@ -437,11 +439,31 @@
         await _confirmationModal.CloseModal();
     }
 
-    public void Clear() {
+    public async Task Clear() {
         _selectedProvider = SwapProvider.Loop;
         _selectedDirection = SwapDirection.Out;
         _selectedNode = null;
         _selectedWallet = null;
+        await LoadNodesForProvider(_selectedProvider);
+    }
+
+    private async Task OnProviderChanged(SwapProvider provider)
+    {
+        _selectedProvider = provider;
+        _selectedNode = null; // Reset selected node when provider changes
+        _amountInNodeBtc = null;
+        await LoadNodesForProvider(provider);
+        StateHasChanged();
+    }
+
+    private async Task LoadNodesForProvider(SwapProvider provider)
+    {
+        _availableNodes = provider switch
+        {
+            SwapProvider.Loop => await ToastOnException.ExecuteAsync(() => NodeRepository.GetAllLoopdConfigured(LoggedUser.Id), Logger, ToastService, "Unexpected error loading Loop nodes, please try again later", new()),
+            SwapProvider.FortySwap => await ToastOnException.ExecuteAsync(() => NodeRepository.GetAllFortySwapConfigured(LoggedUser.Id), Logger, ToastService, "Unexpected error loading 40swap nodes, please try again later", new()),
+            _ => new List<Node>()
+        };
     }
     
     private async Task OnWalletChanged(int walletId)
