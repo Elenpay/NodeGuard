@@ -83,16 +83,18 @@
                         @Math.Round(amount, 8) BTC (~@Math.Round(PriceConversionService.BtcToUsdConversion(amount, _btcPrice), 2) USD)
                     </FieldHelp>
                 </Field>                            
-                <Accordion>
-                    <Collapse @bind-Visible="_showAdvancedOptions">
-                        <CollapseHeader Class="p-1">
-                            <Heading Size="HeadingSize.Is5">
-                                <AccordionToggle Class="font-weight-bold d-flex justify-content-between align-items-center w-100">
-                                    Advanced parameters (optional)
-                                    <Icon Name="@(_showAdvancedOptions ? IconName.ChevronUp : IconName.ChevronDown)" Class="ml-2"></Icon>
-                                </AccordionToggle>
-                            </Heading>
-                        </CollapseHeader>
+                @if (_selectedProvider == SwapProvider.Loop)
+                {
+                    <Accordion>
+                        <Collapse @bind-Visible="_showAdvancedOptions">
+                            <CollapseHeader Class="p-1">
+                                <Heading Size="HeadingSize.Is5">
+                                    <AccordionToggle Class="font-weight-bold d-flex justify-content-between align-items-center w-100">
+                                        Advanced parameters (optional)
+                                        <Icon Name="@(_showAdvancedOptions ? IconName.ChevronUp : IconName.ChevronDown)" Class="ml-2"></Icon>
+                                    </AccordionToggle>
+                                </Heading>
+                            </CollapseHeader>
                         <CollapseBody>
                            <Field>
                                 <FieldLabel Class="d-flex">
@@ -177,6 +179,7 @@
                         </CollapseBody>
                     </Collapse>
                 </Accordion>
+                }
             </Fields>
         </ModalBody>
         <ModalFooter>
@@ -360,7 +363,7 @@
                 $"<span style='color: red;'>{errorMessage}</span>" + "<br><br>" +
                 "The swap will be created with the following details:<br><br>" +
                 middleChunkMessage +
-                "<span style='color: red'>The fees could not be estimated, the swap might not go through.</span><br><br>" +
+                "<span style='color: orange'>The fees could not be estimated. Default values will be used.</span><br><br>" +
                 "<br>Please confirm that you want to proceed.";
 
             var data = new Dictionary<string, object>
@@ -452,6 +455,13 @@
         _selectedProvider = provider;
         _selectedNode = null; // Reset selected node when provider changes
         _amountInNodeBtc = null;
+        
+        // Close advanced options and reset advanced parameters when switching to 40swap
+        if (provider == SwapProvider.FortySwap)
+        {
+            _showAdvancedOptions = false;
+        }
+        
         await LoadNodesForProvider(provider);
         StateHasChanged();
     }
