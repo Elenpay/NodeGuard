@@ -231,6 +231,61 @@
                     
                     @if (_selectedNodeForLiquidity.AutoLiquidityManagementEnabled)
                     {
+                        <Divider Text="Swap Provider Selection Weights" TextAlignment="TextAlignment.Start" Type="DividerType.Dashed" />
+                        
+                        <Alert Color="Color.Info" Visible="true">
+                            <AlertDescription>Configure weights for each swap provider (must sum to 100). Higher weight = higher probability of selection. Set to 0 to disable a provider.</AlertDescription>
+                        </Alert>
+                        
+                        <Row>
+                            <Column>
+                                <Field>
+                                    <Validation Validator="ValidateProviderWeights">
+                                        <FieldLabel>Loop Weight</FieldLabel>
+                                        <FieldHelp>Weight for Loop provider (0-100, must sum to 100 with 40swap)</FieldHelp>
+                                        <NumericEdit TValue="int" 
+                                                     @bind-Value="@_selectedNodeForLiquidity.LoopSwapWeight" 
+                                                     Min="0"
+                                                     Max="100">
+                                            <Feedback>
+                                                <ValidationError />
+                                            </Feedback>
+                                        </NumericEdit>
+                                        @if (string.IsNullOrEmpty(_selectedNodeForLiquidity.LoopdEndpoint) && _selectedNodeForLiquidity.LoopSwapWeight > 0)
+                                        {
+                                            <FieldHelp>
+                                                <Badge Color="Color.Warning">⚠️ Loop endpoint not configured</Badge>
+                                            </FieldHelp>
+                                        }
+                                    </Validation>
+                                </Field>
+                            </Column>
+                            <Column>
+                                <Field>
+                                    <Validation Validator="ValidateProviderWeights">
+                                        <FieldLabel>40swap Weight</FieldLabel>
+                                        <FieldHelp>Weight for 40swap provider (0-100, must sum to 100 with Loop)</FieldHelp>
+                                        <NumericEdit TValue="int" 
+                                                     @bind-Value="@_selectedNodeForLiquidity.FortySwapWeight" 
+                                                     Min="0"
+                                                     Max="100">
+                                            <Feedback>
+                                                <ValidationError />
+                                            </Feedback>
+                                        </NumericEdit>
+                                        @if (string.IsNullOrEmpty(_selectedNodeForLiquidity.FortySwapEndpoint) && _selectedNodeForLiquidity.FortySwapWeight > 0)
+                                        {
+                                            <FieldHelp>
+                                                <Badge Color="Color.Warning">⚠️ 40swap endpoint not configured</Badge>
+                                            </FieldHelp>
+                                        }
+                                    </Validation>
+                                </Field>
+                            </Column>
+                        </Row>
+                        
+                        <Divider Text="Swap Configuration" TextAlignment="TextAlignment.Start" Type="DividerType.Dashed" />
+                        
                         <Row>
                             <Column>
                                 <Field>
@@ -799,6 +854,37 @@
         {
             arg.Status = ValidationStatus.Error;
             arg.ErrorText = "Max swap size must be greater than or equal to min swap size";
+        }
+    }
+
+    private void ValidateProviderWeights(ValidatorEventArgs arg)
+    {
+        arg.Status = ValidationStatus.Success;
+        
+        if (_selectedNodeForLiquidity == null) return;
+        
+        var totalWeight = _selectedNodeForLiquidity.LoopSwapWeight + _selectedNodeForLiquidity.FortySwapWeight;
+        
+        if (totalWeight != 100)
+        {
+            arg.Status = ValidationStatus.Error;
+            arg.ErrorText = $"Weights must sum to 100 (current: {totalWeight})";
+            return;
+        }
+        
+        // Validate that providers with weight > 0 have their endpoints configured
+        if (_selectedNodeForLiquidity.LoopSwapWeight > 0 && string.IsNullOrEmpty(_selectedNodeForLiquidity.LoopdEndpoint))
+        {
+            arg.Status = ValidationStatus.Error;
+            arg.ErrorText = "Loop endpoint must be configured when Loop weight > 0";
+            return;
+        }
+        
+        if (_selectedNodeForLiquidity.FortySwapWeight > 0 && string.IsNullOrEmpty(_selectedNodeForLiquidity.FortySwapEndpoint))
+        {
+            arg.Status = ValidationStatus.Error;
+            arg.ErrorText = "40swap endpoint must be configured when 40swap weight > 0";
+            return;
         }
     }
 
