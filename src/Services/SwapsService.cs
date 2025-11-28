@@ -54,10 +54,12 @@ namespace NodeGuard.Services
    public class SwapsService : ISwapsService
    {
       private readonly ILoopService _loopService;
+      private readonly IFortySwapService _fortySwapService;
       private readonly ILightningService _lightningService;
-      public SwapsService(ILoopService loopService, ILightningService lightningService)
+      public SwapsService(ILoopService loopService, IFortySwapService fortySwapService, ILightningService lightningService)
       {
          _loopService = loopService;
+         _fortySwapService = fortySwapService;
          _lightningService = lightningService;
       }
 
@@ -66,6 +68,7 @@ namespace NodeGuard.Services
          return provider switch
          {
             SwapProvider.Loop => await _loopService.CreateSwapOutAsync(node, request, cancellationToken),
+            SwapProvider.FortySwap => await _fortySwapService.CreateSwapOutAsync(node, request, cancellationToken),
             _ => throw new NotSupportedException($"Swap provider {provider} is not supported.")
          };
       }
@@ -75,6 +78,7 @@ namespace NodeGuard.Services
          return provider switch
          {
             SwapProvider.Loop => await _loopService.GetSwapAsync(node, swapId, cancellationToken),
+            SwapProvider.FortySwap => await _fortySwapService.GetSwapAsync(node, swapId, cancellationToken),
             _ => throw new NotSupportedException($"Swap provider {provider} is not supported.")
          };
       }
@@ -84,6 +88,7 @@ namespace NodeGuard.Services
          return provider switch
          {
             SwapProvider.Loop => await GetLoopQuoteAsync(node, request, cancellationToken),
+            SwapProvider.FortySwap => throw new NotSupportedException("Quote is not supported for 40swap provider."),
             _ => throw new NotSupportedException($"Swap provider {provider} is not supported.")
          };
       }

@@ -29,6 +29,7 @@ public enum SwapDirection
 public enum SwapProvider
 {
    Loop,
+   FortySwap,
 }
 
 public enum SwapOutStatus
