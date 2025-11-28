@@ -16,10 +16,6 @@ nbxplorer:
   baseUrl: http://nbxplorer:32838/v1/cryptos
   fallbackFeeRate: 10
   longPollingTimeoutSeconds: 60
-lnd:
-  socket: 'alice:10009'
-  cert: '/shared/lnd/alice/tls.cert'
-  macaroon: '/shared/lnd/alice/admin.macaroon'
 mempoolBlockExplorer:
   url: http://mempool-frontend-btc:8080
   useFeeEstimator: true

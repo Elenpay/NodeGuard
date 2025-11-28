@@ -5,6 +5,18 @@ x-40swap-service: &40swap-service
   restart: unless-stopped
 
 services:
+  40swap-lnd-setup:
+    <<: *40swap-service
+    image: alpine:latest
+    container_name: 40swap_lnd_setup
+    restart: "no"
+    volumes:
+      - ./lnd-config-setup.sh:/lnd-config-setup.sh:ro
+      - ./40swap.conf.yaml:/config-template/40swap.conf.yaml:ro
+      - alice_lnd_data:/alice_lnd_data:ro
+      - 40swap-lnd-config:/etc/40swap
+    entrypoint: ["/bin/sh", "/lnd-config-setup.sh"]
+
   40swap-postgres-backend:
     <<: *40swap-service
     image: "postgres:16.4"
@@ -32,7 +44,7 @@ services:
     environment:
       POSTGRES_USER: "40swap"
       POSTGRES_PASSWORD: "40swap"
-      POSTGRES_DB: "40swap"
+      POSTGRES_DB: "40swap"  
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U 40swap"]
       interval: 10s
@@ -62,7 +74,12 @@ services:
   40swapd-bob:
     <<: *40swap-service
     image: ghcr.io/40acres/40swap/40swapd:master
+    pull_policy: always
     container_name: 40swapd_bob
+    hostname: 40swapd-bob
+    user: "0:0"
+    ports:
+      - "50053:50051"
     depends_on:
       40swapd-postgres-bob:
         condition: service_healthy
@@ -79,13 +96,19 @@ services:
       40SWAPD_TLS_CERT: /root/.lnd/tls.cert
       40SWAPD_MACAROON: /root/.lnd/data/chain/bitcoin/regtest/admin.macaroon
       MEMPOOL_ENDPOINT: http://mempool-frontend-btc:8080/api
+      
     volumes:
       - bob_lnd_data:/root/.lnd:ro
 
   40swapd-carol:
     <<: *40swap-service
     image: ghcr.io/40acres/40swap/40swapd:master
+    pull_policy: always
     container_name: 40swapd_carol
+    hostname: 40swapd-carol
+    user: "0:0"
+    ports:
+      - "50052:50051"
     depends_on:
       40swapd-postgres-carol:
         condition: service_healthy
@@ -108,17 +131,21 @@ services:
   40swap-backend:
     <<: *40swap-service
     image: ghcr.io/40acres/40swap-server-backend:master-506
+    pull_policy: always
     container_name: 40swap_backend
     depends_on:
       40swap-postgres-backend:
         condition: service_healthy
       nbxplorer:
         condition: service_started
+      40swap-lnd-setup:
+        condition: service_completed_successfully
     volumes:
       - alice_lnd_data:/shared:ro
-      - ./40swap.conf.yaml:/etc/40swap/40swap.conf.yaml:ro
+      - 40swap-lnd-config:/etc/40swap:ro
 
 volumes:
+  40swap-lnd-config:
   40swap-postgres-backend-data:
   40swapd-postgres-bob-data:
   40swapd-postgres-carol-data:

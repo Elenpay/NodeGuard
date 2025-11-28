@@ -80,6 +80,18 @@
                         }
                     </DisplayTemplate>
                 </DataGridColumn>
+                <DataGridColumn TItem="Node" Filterable="false" Editable="true" Field="@nameof(Node.FortySwapEndpoint)" Caption="40swapd Endpoint" Sortable="false" Displayable="@IsColumnVisible(NodesColumnName.FortySwapEndpoint)">
+                    <DisplayTemplate>
+                        @if (context.FortySwapEndpoint != null)
+                        {
+                            <span>@context.FortySwapEndpoint</span>
+                        }
+                        else
+                        {
+                            <span class="text-muted">Not configured</span>
+                        }
+                    </DisplayTemplate>
+                </DataGridColumn>
                 <DataGridColumn TItem="Node" Filterable="false" Editable="true"
                     Field="@nameof(Node.LoopdMacaroon)" Validator="ValidationRule.IsNotEmpty" Caption="Loopd Macaroon"
                     CellsEditableOnNewCommand="true" CellsEditableOnEditCommand="false" Displayable="false"
@@ -412,6 +424,7 @@
         public static readonly ColumnDefault Users = new("Users");
         public static readonly ColumnDefault LoopdEndpoint = new("Loopd Endpoint");
         public static readonly ColumnDefault LoopdCert = new("Loopd Certificate");
+        public static readonly ColumnDefault FortySwapEndpoint = new("40swap Endpoint");
     }
 
     protected override async Task OnInitializedAsync()

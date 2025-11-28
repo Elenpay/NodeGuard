@@ -271,6 +271,7 @@ namespace NodeGuard.Data
                             LoopdEndpoint = Constants.CAROL_LOOPD_HOST,
                             LoopdMacaroon = Constants.CAROL_LOOPD_MACAROON,
                             LoopdCert = Constants.CAROL_LOOPD_TLS_CERT,
+                            FortySwapEndpoint = "localhost:50052",
                             Users = new List<ApplicationUser>(),
                             AutosweepEnabled = false
 
@@ -285,6 +286,7 @@ namespace NodeGuard.Data
                         carol.LoopdEndpoint = Constants.CAROL_LOOPD_HOST;
                         carol.LoopdMacaroon = Constants.CAROL_LOOPD_MACAROON;
                         carol.LoopdCert = Constants.CAROL_LOOPD_TLS_CERT;
+                        carol.FortySwapEndpoint = "localhost:50052";
                         carol.UpdateDatetime = DateTimeOffset.UtcNow;
                         nodeRepository.Update(carol);
                     }
@@ -303,6 +305,7 @@ namespace NodeGuard.Data
                             LoopdEndpoint = Constants.BOB_LOOPD_HOST,
                             LoopdMacaroon = Constants.BOB_LOOPD_MACAROON,
                             LoopdCert = Constants.BOB_LOOPD_TLS_CERT,
+                            FortySwapEndpoint = "localhost:50053",
                             Users = new List<ApplicationUser>(),
                             AutosweepEnabled = false
                         };
@@ -316,6 +319,7 @@ namespace NodeGuard.Data
                         bob.LoopdEndpoint = Constants.BOB_LOOPD_HOST;
                         bob.LoopdMacaroon = Constants.BOB_LOOPD_MACAROON;
                         bob.LoopdCert = Constants.BOB_LOOPD_TLS_CERT;
+                        bob.FortySwapEndpoint = "localhost:50053";
                         bob.UpdateDatetime = DateTimeOffset.UtcNow;
                         nodeRepository.Update(bob);
                     }
