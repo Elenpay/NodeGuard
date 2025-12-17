@@ -37,6 +37,7 @@ public class AutoLiquidityManagementJobTests
     private Mock<INodeRepository> _nodeRepositoryMock;
     private Mock<ISwapOutRepository> _swapOutRepositoryMock;
     private Mock<ISwapsService> _swapsServiceMock;
+    private Mock<IFortySwapService> _fortySwapServiceMock;
     private Mock<ILightningService> _lightningServiceMock;
     private Mock<IWalletRepository> _walletRepositoryMock;
     private Mock<INBXplorerService> _nbXplorerServiceMock;
@@ -48,6 +49,7 @@ public class AutoLiquidityManagementJobTests
         _nodeRepositoryMock = new Mock<INodeRepository>();
         _swapOutRepositoryMock = new Mock<ISwapOutRepository>();
         _swapsServiceMock = new Mock<ISwapsService>();
+        _fortySwapServiceMock = new Mock<IFortySwapService>();
         _lightningServiceMock = new Mock<ILightningService>();
         _walletRepositoryMock = new Mock<IWalletRepository>();
         _nbXplorerServiceMock = new Mock<INBXplorerService>();
@@ -57,6 +59,7 @@ public class AutoLiquidityManagementJobTests
             _nodeRepositoryMock.Object,
             _swapOutRepositoryMock.Object,
             _swapsServiceMock.Object,
+            _fortySwapServiceMock.Object,
             _lightningServiceMock.Object,
             _walletRepositoryMock.Object,
             _nbXplorerServiceMock.Object

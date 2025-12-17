@@ -120,6 +120,19 @@ namespace NodeGuard.Data.Models
         /// </summary>
         public DateTimeOffset? SwapBudgetStartDatetime { get; set; }
 
+        /// <summary>
+        /// Weight for Loop swap provider selection (default 100)
+        /// Higher weight = higher probability of selection
+        /// Example: LoopSwapWeight=90, FortySwapWeight=10 means 90% Loop, 10% 40swap
+        /// </summary>
+        public int LoopSwapWeight { get; set; } = 100;
+
+        /// <summary>
+        /// Weight for 40swap provider selection (default 0)
+        /// Higher weight = higher probability of selection
+        /// </summary>
+        public int FortySwapWeight { get; set; } = 0;
+
         #endregion Automatic Swap Out Configuration
 
         #region Relationships

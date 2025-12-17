@@ -49,6 +49,7 @@ public class AutoLiquidityManagementJob : IJob
     private readonly INodeRepository _nodeRepository;
     private readonly ISwapOutRepository _swapOutRepository;
     private readonly ISwapsService _swapsService;
+    private readonly IFortySwapService _fortySwapService;
     private readonly ILightningService _lightningService;
     private readonly IWalletRepository _walletRepository;
     private readonly INBXplorerService _nbXplorerService;
@@ -58,6 +59,7 @@ public class AutoLiquidityManagementJob : IJob
         INodeRepository nodeRepository,
         ISwapOutRepository swapOutRepository,
         ISwapsService swapsService,
+        IFortySwapService fortySwapService,
         ILightningService lightningService,
         IWalletRepository walletRepository,
         INBXplorerService nbXplorerService)
@@ -66,6 +68,7 @@ public class AutoLiquidityManagementJob : IJob
         _nodeRepository = nodeRepository;
         _swapOutRepository = swapOutRepository;
         _swapsService = swapsService;
+        _fortySwapService = fortySwapService;
         _lightningService = lightningService;
         _walletRepository = walletRepository;
         _nbXplorerService = nbXplorerService;
@@ -87,12 +90,12 @@ public class AutoLiquidityManagementJob : IJob
                 try
                 {
                     var result = await ManageNodeLiquidity(node, context.CancellationToken);
-                    _logger.LogInformation("Automatic liquidity management job for node {NodeName} resulted in: {Result}", 
+                    _logger.LogInformation("Automatic liquidity management job for node {NodeName} resulted in: {Result}",
                         node.Name, result);
                 }
                 catch (Exception ex)
                 {
-                    _logger.LogError(ex, "Error processing automatic swap for node {NodeName} ({NodePubKey})", 
+                    _logger.LogError(ex, "Error processing automatic swap for node {NodeName} ({NodePubKey})",
                         node.Name, node.PubKey);
                 }
             }
@@ -105,13 +108,41 @@ public class AutoLiquidityManagementJob : IJob
         _logger.LogInformation("{JobName} ended", nameof(AutoLiquidityManagementJob));
     }
 
+    /// <summary>
+    /// Selects a swap provider based on configured weights.
+    /// Uses weighted random selection - higher weight = higher probability.
+    /// </summary>
+    private SwapProvider SelectSwapProvider(Node node)
+    {
+        var loopWeight = node.LoopSwapWeight;
+        var fortySwapWeight = node.FortySwapWeight;
+        var totalWeight = loopWeight + fortySwapWeight;
+
+        if (totalWeight == 0)
+        {
+            _logger.LogWarning("Node {NodeName} has total weight of 0, defaulting to Loop", node.Name);
+            return SwapProvider.Loop;
+        }
+
+        // Weighted random selection
+        var random = new Random();
+        var randomValue = random.Next(0, totalWeight);
+
+        var selectedProvider = randomValue < loopWeight ? SwapProvider.Loop : SwapProvider.FortySwap;
+
+        _logger.LogDebug("Selected {Provider} for node {NodeName} (Loop weight: {LoopWeight}, 40swap weight: {FortySwapWeight}, random: {Random})",
+            selectedProvider, node.Name, loopWeight, fortySwapWeight, randomValue);
+
+        return selectedProvider;
+    }
+
     public async Task<ManageNodeLiquidityResult> ManageNodeLiquidity(Node node, CancellationToken cancellationToken)
     {
         _logger.LogDebug("Processing node {NodeName} ({NodePubKey})", node.Name, node.PubKey);
 
         // Check if budget period needs to be refreshed
         var now = DateTimeOffset.UtcNow;
-        if (!node.SwapBudgetStartDatetime.HasValue || 
+        if (!node.SwapBudgetStartDatetime.HasValue ||
             now - node.SwapBudgetStartDatetime.Value >= node.SwapBudgetRefreshInterval)
         {
             _logger.LogInformation("Refreshing swap budget for node {NodeName}", node.Name);
@@ -130,13 +161,13 @@ public class AutoLiquidityManagementJob : IJob
         var totalBalanceSats = (long)(channelBalance.LocalBalance?.Sat ?? 0);
         var totalBalanceBtc = new Money(totalBalanceSats, MoneyUnit.Satoshi).ToDecimal(MoneyUnit.BTC);
         var thresholdBtc = new Money(node.MinimumBalanceThresholdSats, MoneyUnit.Satoshi).ToDecimal(MoneyUnit.BTC);
-        _logger.LogDebug("Node {NodeName} has balance: {Balance} BTC, threshold: {Threshold} BTC", 
+        _logger.LogDebug("Node {NodeName} has balance: {Balance} BTC, threshold: {Threshold} BTC",
             node.Name, totalBalanceBtc, thresholdBtc);
 
         // Check if balance exceeds threshold
         if (totalBalanceSats <= node.MinimumBalanceThresholdSats)
         {
-            _logger.LogDebug("Node {NodeName} balance {Balance} BTC does not exceed threshold {Threshold} BTC", 
+            _logger.LogDebug("Node {NodeName} balance {Balance} BTC does not exceed threshold {Threshold} BTC",
                 node.Name, totalBalanceBtc, thresholdBtc);
             return ManageNodeLiquidityResult.BalanceBelowThreshold;
         }
@@ -145,29 +176,29 @@ public class AutoLiquidityManagementJob : IJob
         var inFlightSwaps = await _swapOutRepository.GetInFlightSwapsByNode(node.Id);
         var inFlightCount = inFlightSwaps.Count;
 
-        _logger.LogDebug("Node {NodeName} has {InFlightCount} swaps in flight, max: {MaxSwapsInFlight}", 
+        _logger.LogDebug("Node {NodeName} has {InFlightCount} swaps in flight, max: {MaxSwapsInFlight}",
             node.Name, inFlightCount, node.MaxSwapsInFlight);
 
         if (inFlightCount >= node.MaxSwapsInFlight)
         {
-            _logger.LogInformation("Node {NodeName} has reached max swaps in flight ({MaxSwapsInFlight})", 
+            _logger.LogInformation("Node {NodeName} has reached max swaps in flight ({MaxSwapsInFlight})",
                 node.Name, node.MaxSwapsInFlight);
             return ManageNodeLiquidityResult.MaxSwapsInFlightReached;
         }
 
         // Calculate how much we can swap
         var excessBalance = totalBalanceSats - node.MinimumBalanceThresholdSats;
-        
+
         // Get consumed fee budget in current period
         var consumedBudgetMoney = await _swapOutRepository.GetConsumedFeesSince(
-            node.Id, 
+            node.Id,
             node.SwapBudgetStartDatetime ?? now);
 
         var remainingFeeBudget = node.SwapBudgetSats - consumedBudgetMoney.Satoshi;
         var excessBalanceBtc = new Money(excessBalance, MoneyUnit.Satoshi).ToDecimal(MoneyUnit.BTC);
         var remainingFeeBudgetBtc = new Money(remainingFeeBudget, MoneyUnit.Satoshi).ToDecimal(MoneyUnit.BTC);
-        
-        _logger.LogDebug("Node {NodeName} - Excess balance: {Excess} BTC, Remaining fee budget: {Budget} BTC, Consumed fees: {Consumed} BTC", 
+
+        _logger.LogDebug("Node {NodeName} - Excess balance: {Excess} BTC, Remaining fee budget: {Budget} BTC, Consumed fees: {Consumed} BTC",
             node.Name, excessBalanceBtc, remainingFeeBudgetBtc, consumedBudgetMoney.ToDecimal(MoneyUnit.BTC));
 
         if (remainingFeeBudget <= 0)
@@ -179,17 +210,17 @@ public class AutoLiquidityManagementJob : IJob
         // Determine swap amount (bounded by min, max, and excess balance)
         // We can only swap what's above the threshold (excess balance)
         var maxPossibleSwap = Math.Min(excessBalance, node.SwapMaxAmountSats);
-        
+
         // If we don't have enough to meet the minimum swap size, skip
         if (maxPossibleSwap < node.SwapMinAmountSats)
         {
             var maxPossibleSwapBtc = new Money(maxPossibleSwap, MoneyUnit.Satoshi).ToDecimal(MoneyUnit.BTC);
             var minSwapBtc = new Money(node.SwapMinAmountSats, MoneyUnit.Satoshi).ToDecimal(MoneyUnit.BTC);
-            _logger.LogDebug("Node {NodeName} - max possible swap {MaxPossible} BTC is below minimum {Min} BTC. Excess: {Excess} BTC", 
+            _logger.LogDebug("Node {NodeName} - max possible swap {MaxPossible} BTC is below minimum {Min} BTC. Excess: {Excess} BTC",
                 node.Name, maxPossibleSwapBtc, minSwapBtc, excessBalanceBtc);
             return ManageNodeLiquidityResult.ExcessBalanceBelowMinimum;
         }
-        
+
         // Swap the maximum we can, ensuring it meets the minimum
         var swapAmount = Math.Max(node.SwapMinAmountSats, maxPossibleSwap);
         var swapAmountBtc = new Money(swapAmount, MoneyUnit.Satoshi).ToDecimal(MoneyUnit.BTC);
@@ -205,8 +236,12 @@ public class AutoLiquidityManagementJob : IJob
         }
 
         // Create swap out request
-        _logger.LogInformation("Initiating automatic swap out for node {NodeName} - Amount: {Amount} BTC", 
+        _logger.LogInformation("Initiating automatic swap out for node {NodeName} - Amount: {Amount} BTC",
             node.Name, swapAmountBtc);
+
+        // Select swap provider based on weights
+        var selectedProvider = SelectSwapProvider(node);
+        _logger.LogInformation("Using {Provider} for swap out on node {NodeName}", selectedProvider, node.Name);
 
         try
         {
@@ -223,10 +258,10 @@ public class AutoLiquidityManagementJob : IJob
             };
 
             var swapResponse = await _swapsService.CreateSwapOutAsync(
-                node,
-                SwapProvider.Loop,
-                swapRequest,
-                cancellationToken);
+                        node,
+                        selectedProvider,
+                        swapRequest,
+                        cancellationToken);
 
             // Create SwapOut record
             var swapOut = new SwapOut
@@ -248,19 +283,19 @@ public class AutoLiquidityManagementJob : IJob
             var (success, error) = await _swapOutRepository.AddAsync(swapOut);
             if (!success)
             {
-                _logger.LogError("Failed to save swap out record for node {NodeName}: {Error}", 
+                _logger.LogError("Failed to save swap out record for node {NodeName}: {Error}",
                     node.Name, error);
                 return ManageNodeLiquidityResult.Error;
             }
-            
-            _logger.LogInformation("Successfully initiated swap out {SwapId} for node {NodeName}", 
+
+            _logger.LogInformation("Successfully initiated swap out {SwapId} for node {NodeName}",
                 swapOut.ProviderId, node.Name);
             return ManageNodeLiquidityResult.Success;
         }
         catch (Exception ex)
         {
             _logger.LogError(ex, "Failed to create swap out for node {NodeName}", node.Name);
-            return ManageNodeLiquidityResult.Error  ;
+            return ManageNodeLiquidityResult.Error;
         }
     }
 
@@ -278,7 +313,7 @@ public class AutoLiquidityManagementJob : IJob
             var wallet = await _walletRepository.GetById(node.FundsDestinationWalletId.Value);
             if (wallet == null)
             {
-                _logger.LogError("Could not find wallet with ID {WalletId} for node {NodeName}", 
+                _logger.LogError("Could not find wallet with ID {WalletId} for node {NodeName}",
                     node.FundsDestinationWalletId.Value, node.Name);
                 return null;
             }
@@ -305,7 +340,7 @@ public class AutoLiquidityManagementJob : IJob
                 return null;
             }
 
-            _logger.LogDebug("Generated deposit address {Address} for node {NodeName} using wallet {WalletName}", 
+            _logger.LogDebug("Generated deposit address {Address} for node {NodeName} using wallet {WalletName}",
                 keyPathInfo.Address, node.Name, wallet.Name);
 
             return keyPathInfo.Address.ToString();
