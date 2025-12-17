@@ -17,12 +17,26 @@
  *
  */
 
+using System.ComponentModel.DataAnnotations;
+using System.Reflection;
 using Humanizer;
 
 namespace NodeGuard.Helpers
 {
     public static class StringHelper
     {
+        /// <summary>
+        /// Gets the Display attribute name for an enum value, or the enum's ToString() if no Display attribute is present.
+        /// </summary>
+        /// <param name="value">The enum value</param>
+        /// <returns>The display name</returns>
+        public static string GetDisplayName(this Enum value)
+        {
+            var field = value.GetType().GetField(value.ToString());
+            var attribute = field?.GetCustomAttribute<DisplayAttribute>();
+            return attribute?.Name ?? value.ToString();
+        }
+        
         /// <summary>
         /// Truncates the string to show only numberOfCharactersToDisplay from head and tail and dots in the middle.
         /// </summary>

@@ -16,7 +16,7 @@
                         <Select TValue="SwapProvider" @bind-Value="_selectedProvider" SelectedValueChanged="OnProviderChanged">
                             @foreach (var provider in Enum.GetValues<SwapProvider>())
                             {
-                                <SelectItem Value="@provider">@(provider == SwapProvider.FortySwap ? "40swap" : provider.ToString())</SelectItem>
+                                <SelectItem Value="@provider">@provider.GetDisplayName()</SelectItem>
                             }
                         </Select>
                     </div>
@@ -347,7 +347,7 @@
         var HTLC_SWEEP_FEE_SAT_ON_QUOTE_ERROR = _amountBtc * EnvironmentHelpers.GetOrDefault("HTLC_SWEEP_FEE_SAT_ON_QUOTE_ERROR", 0.015m);
         var PREPAY_AMT_SAT_ON_QUOTE_ERROR = _amountBtc * EnvironmentHelpers.GetOrDefault("PREPAY_AMT_SAT_ON_QUOTE_ERROR", 0.005m);
 
-        var middleChunkMessage = $"<strong>- Provider:</strong> {(_selectedProvider == SwapProvider.FortySwap ? "40swap" : _selectedProvider.ToString())}<br>" +
+        var middleChunkMessage = $"<strong>- Provider:</strong> {_selectedProvider.GetDisplayName()}<br>" +
                 $"<strong>- Direction:</strong> {_selectedDirection}<br>" +
                 $"<strong>- Amount:</strong> {FormatBtcWithUsd(_amountBtc)}<br>" +
                 $"<strong>- Origin Node:</strong> {_selectedNode?.Name}<br>" +

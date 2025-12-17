@@ -17,6 +17,7 @@
  *
  */
 
+using System.ComponentModel.DataAnnotations;
 using System.ComponentModel.DataAnnotations.Schema;
 using NBitcoin;
 
@@ -29,6 +30,7 @@ public enum SwapDirection
 public enum SwapProvider
 {
    Loop,
+   [Display(Name = "40swap")]
    FortySwap,
 }
 
