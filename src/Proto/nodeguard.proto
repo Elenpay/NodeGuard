@@ -117,6 +117,7 @@ message LiquidityRule {
 message GetNewWalletAddressRequest {
   int32 wallet_id = 1;
   bool reserve = 2; // If set to true, the returned address will be marked as used
+  int32 skip = 3; // Number of unused addresses to skip before returning one
 }
 
 message GetNewWalletAddressResponse {

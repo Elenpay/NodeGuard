@@ -153,7 +153,7 @@ public class NodeGuardService : Nodeguard.NodeGuardService.NodeGuardServiceBase,
 
         var btcAddress = await _nbXplorerService.GetUnusedAsync(wallet.GetDerivationStrategy(),
             DerivationFeature.Deposit,
-            0,
+            request.Skip,
             request.Reserve, context.CancellationToken);
 
         if (btcAddress == null)
