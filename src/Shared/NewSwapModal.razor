@@ -470,8 +470,8 @@
     {
         _availableNodes = provider switch
         {
-            SwapProvider.Loop => await ToastOnException.ExecuteAsync(() => NodeRepository.GetAllLoopdConfigured(LoggedUser.Id), Logger, ToastService, "Unexpected error loading Loop nodes, please try again later", new()),
-            SwapProvider.FortySwap => await ToastOnException.ExecuteAsync(() => NodeRepository.GetAllFortySwapConfigured(LoggedUser.Id), Logger, ToastService, "Unexpected error loading 40swap nodes, please try again later", new()),
+            SwapProvider.Loop => await ToastOnException.ExecuteAsync(() => NodeRepository.GetAllConfiguredByProvider(SwapProvider.Loop, LoggedUser.Id), Logger, ToastService, "Unexpected error loading Loop nodes, please try again later", new()),
+            SwapProvider.FortySwap => await ToastOnException.ExecuteAsync(() => NodeRepository.GetAllConfiguredByProvider(SwapProvider.FortySwap, LoggedUser.Id), Logger, ToastService, "Unexpected error loading 40swap nodes, please try again later", new()),
             _ => new List<Node>()
         };
     }

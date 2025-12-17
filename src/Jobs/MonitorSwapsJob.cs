@@ -40,8 +40,8 @@ public class MonitorSwapsJob : IJob
         _logger.LogInformation("Starting {JobName}... ", nameof(MonitorSwapsJob));
         try
         {
-            var loopNodes = await _nodeRepository.GetAllLoopdConfigured(null);
-            var fortySwapNodes = await _nodeRepository.GetAllFortySwapConfigured(null);
+            var loopNodes = await _nodeRepository.GetAllConfiguredByProvider(SwapProvider.Loop, null);
+            var fortySwapNodes = await _nodeRepository.GetAllConfiguredByProvider(SwapProvider.FortySwap, null);
             var managedNodes = loopNodes.Concat(fortySwapNodes).Distinct().ToList();
 
             var scheduler = await _schedulerFactory.GetScheduler();
