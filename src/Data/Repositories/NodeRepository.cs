@@ -143,7 +143,7 @@ namespace NodeGuard.Data.Repositories
                 .ToListAsync();
         }
 
-        public async Task<List<Node>> GetAllLoopdConfigured(string? userId = null)
+        public async Task<List<Node>> GetAllConfiguredByProvider(SwapProvider provider, string? userId = null)
         {
             await using var applicationDbContext = await _dbContextFactory.CreateDbContextAsync();
 
@@ -151,33 +151,22 @@ namespace NodeGuard.Data.Repositories
                 .Include(x => x.FundsDestinationWallet)
                 .Include(x => x.ChannelOperationRequestsAsDestination)
                 .Include(x => x.ChannelOperationRequestsAsSource)
-                .Where(node => node.Endpoint != null)
-                .Where(node => !string.IsNullOrEmpty(node.LoopdEndpoint) &&
-                    !string.IsNullOrEmpty(node.LoopdMacaroon) &&
+                .Where(node => node.Endpoint != null &&
                     !string.IsNullOrEmpty(node.Endpoint) &&
                     !string.IsNullOrEmpty(node.ChannelAdminMacaroon));
 
-            if (!string.IsNullOrEmpty(userId)) {
-                query = query.Where(node => node.Users.Any(user => user.Id == userId));
-            }
+            query = provider switch
+            {
+                SwapProvider.Loop => query.Where(node => 
+                    !string.IsNullOrEmpty(node.LoopdEndpoint) &&
+                    !string.IsNullOrEmpty(node.LoopdMacaroon)),
+                SwapProvider.FortySwap => query.Where(node => 
+                    !string.IsNullOrEmpty(node.FortySwapEndpoint)),
+                _ => throw new ArgumentException($"Unsupported swap provider: {provider}", nameof(provider))
+            };
 
-            return await query.ToListAsync();
-        }
-
-        public async Task<List<Node>> GetAllFortySwapConfigured(string? userId = null)
-        {
-            await using var applicationDbContext = await _dbContextFactory.CreateDbContextAsync();
-
-            var query = applicationDbContext.Nodes
-                .Include(x => x.FundsDestinationWallet)
-                .Include(x => x.ChannelOperationRequestsAsDestination)
-                .Include(x => x.ChannelOperationRequestsAsSource)
-                .Where(node => node.Endpoint != null)
-                .Where(node => !string.IsNullOrEmpty(node.FortySwapEndpoint) &&
-                    !string.IsNullOrEmpty(node.Endpoint) &&
-                    !string.IsNullOrEmpty(node.ChannelAdminMacaroon));
-
-            if (!string.IsNullOrEmpty(userId)) {
+            if (!string.IsNullOrEmpty(userId))
+            {
                 query = query.Where(node => node.Users.Any(user => user.Id == userId));
             }
 

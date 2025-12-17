@@ -190,7 +190,7 @@ public class LoopService : ILoopService
 
         return new SwapResponse
         {
-            Id = response.IdBytes.ToByteArray(),
+            Id = Convert.ToHexString(response.IdBytes.ToByteArray()),
             HtlcAddress = response.HtlcAddressP2Tr,
             Amount = response.Amt,
             OffchainFee = response.CostOffchain,

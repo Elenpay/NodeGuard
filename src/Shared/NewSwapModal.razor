@@ -16,7 +16,7 @@
                         <Select TValue="SwapProvider" @bind-Value="_selectedProvider" SelectedValueChanged="OnProviderChanged">
                             @foreach (var provider in Enum.GetValues<SwapProvider>())
                             {
-                                <SelectItem Value="@provider">@(provider == SwapProvider.FortySwap ? "40swap" : provider.ToString())</SelectItem>
+                                <SelectItem Value="@provider">@provider.GetDisplayName()</SelectItem>
                             }
                         </Select>
                     </div>
@@ -295,9 +295,7 @@
             var saved = SwapOutRepository.AddAsync(new SwapOut
             {
                 Provider = _selectedProvider,
-                ProviderId = _selectedProvider == SwapProvider.Loop 
-                    ? Convert.ToHexString(response.Id)
-                    : System.Text.Encoding.UTF8.GetString(response.Id),
+                ProviderId = response.Id,
                 Status = response.Status,
                 IsManual = true,
                 SatsAmount = response.Amount,
@@ -349,7 +347,7 @@
         var HTLC_SWEEP_FEE_SAT_ON_QUOTE_ERROR = _amountBtc * EnvironmentHelpers.GetOrDefault("HTLC_SWEEP_FEE_SAT_ON_QUOTE_ERROR", 0.015m);
         var PREPAY_AMT_SAT_ON_QUOTE_ERROR = _amountBtc * EnvironmentHelpers.GetOrDefault("PREPAY_AMT_SAT_ON_QUOTE_ERROR", 0.005m);
 
-        var middleChunkMessage = $"<strong>- Provider:</strong> {(_selectedProvider == SwapProvider.FortySwap ? "40swap" : _selectedProvider.ToString())}<br>" +
+        var middleChunkMessage = $"<strong>- Provider:</strong> {_selectedProvider.GetDisplayName()}<br>" +
                 $"<strong>- Direction:</strong> {_selectedDirection}<br>" +
                 $"<strong>- Amount:</strong> {FormatBtcWithUsd(_amountBtc)}<br>" +
                 $"<strong>- Origin Node:</strong> {_selectedNode?.Name}<br>" +
@@ -470,8 +468,8 @@
     {
         _availableNodes = provider switch
         {
-            SwapProvider.Loop => await ToastOnException.ExecuteAsync(() => NodeRepository.GetAllLoopdConfigured(LoggedUser.Id), Logger, ToastService, "Unexpected error loading Loop nodes, please try again later", new()),
-            SwapProvider.FortySwap => await ToastOnException.ExecuteAsync(() => NodeRepository.GetAllFortySwapConfigured(LoggedUser.Id), Logger, ToastService, "Unexpected error loading 40swap nodes, please try again later", new()),
+            SwapProvider.Loop => await ToastOnException.ExecuteAsync(() => NodeRepository.GetAllConfiguredByProvider(SwapProvider.Loop, LoggedUser.Id), Logger, ToastService, "Unexpected error loading Loop nodes, please try again later", new()),
+            SwapProvider.FortySwap => await ToastOnException.ExecuteAsync(() => NodeRepository.GetAllConfiguredByProvider(SwapProvider.FortySwap, LoggedUser.Id), Logger, ToastService, "Unexpected error loading 40swap nodes, please try again later", new()),
             _ => new List<Node>()
         };
     }

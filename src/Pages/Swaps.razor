@@ -38,7 +38,7 @@
                 </DataGridColumn>
                 <DataGridColumn TItem="SwapOut" Field="@nameof(SwapOut.Provider)" Caption="Provider" Sortable="true" Displayable="true">
                     <DisplayTemplate>
-                        @(context.Provider == SwapProvider.FortySwap ? "40swap" : context.Provider.ToString())
+                        @context.Provider.GetDisplayName()
                     </DisplayTemplate>
                 </DataGridColumn>
                 <DataGridColumn TItem="SwapOut" Field="@nameof(SwapOut.IsManual)" Caption="Is Manual" Sortable="true" Displayable="true" />

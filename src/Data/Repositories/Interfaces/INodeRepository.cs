@@ -33,19 +33,16 @@ public interface INodeRepository
     Task<List<Node>> GetAll();
 
     Task<List<Node>> GetAllManagedByUser(string userId);
+    
     /// <summary>
-    /// Get all nodes that are configured to work with Loopd by checking if the endpoint and macaroon are set in the database.
+    /// Get all nodes that are configured to work with the specified swap provider.
+    /// For Loop: checks if the endpoint and macaroon are set in the database.
+    /// For 40swap: checks if the endpoint is set in the database.
     /// </summary>
-    /// <param name="userId"></param>
-    /// <returns>A list of nodes configured for Loopd</returns>
-    Task<List<Node>> GetAllLoopdConfigured(string? userId = null);
-
-    /// <summary>
-    /// Get all nodes that are configured to work with 40swap by checking if the endpoint is set in the database.
-    /// </summary>
-    /// <param name="userId"></param>
-    /// <returns>A list of nodes configured for 40swap</returns>
-    Task<List<Node>> GetAllFortySwapConfigured(string? userId = null);
+    /// <param name="provider">The swap provider to filter nodes by</param>
+    /// <param name="userId">Optional user ID to filter nodes by user</param>
+    /// <returns>A list of nodes configured for the specified provider</returns>
+    Task<List<Node>> GetAllConfiguredByProvider(SwapProvider provider, string? userId = null);
 
     Task<List<Node>> GetAllManagedByNodeGuard(bool withDisabled = true);
 
