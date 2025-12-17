@@ -329,7 +329,7 @@ public class AutoLiquidityManagementJobTests
 
         var swapResponse = new SwapResponse
         {
-            Id = new byte[] { 1, 2, 3, 4, 5 },
+            Id = "0102030405",
             HtlcAddress = "bcrt1qtest",
             Amount = 25_000_000,
             ServerFee = 30_000,

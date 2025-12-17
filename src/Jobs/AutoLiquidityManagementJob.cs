@@ -268,10 +268,8 @@ public class AutoLiquidityManagementJob : IJob
             {
                 NodeId = node.Id,
                 DestinationWalletId = node.FundsDestinationWalletId!.Value,
-                Provider = selectedProvider,
-                ProviderId = selectedProvider == SwapProvider.Loop
-                    ? Convert.ToHexString(swapResponse.Id)
-                    : System.Text.Encoding.UTF8.GetString(swapResponse.Id),
+                Provider = SwapProvider.Loop, // TODO Parameterize if more providers are added
+                ProviderId = swapResponse.Id,
                 SatsAmount = swapAmount,
                 ServiceFeeSats = swapResponse.ServerFee,
                 OnChainFeeSats = swapResponse.OnchainFee,
