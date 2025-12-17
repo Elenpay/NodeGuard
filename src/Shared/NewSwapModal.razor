@@ -295,9 +295,7 @@
             var saved = SwapOutRepository.AddAsync(new SwapOut
             {
                 Provider = _selectedProvider,
-                ProviderId = _selectedProvider == SwapProvider.Loop 
-                    ? Convert.ToHexString(response.Id)
-                    : System.Text.Encoding.UTF8.GetString(response.Id),
+                ProviderId = response.Id,
                 Status = response.Status,
                 IsManual = true,
                 SatsAmount = response.Amount,

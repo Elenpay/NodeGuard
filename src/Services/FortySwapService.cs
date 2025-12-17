@@ -137,7 +137,7 @@ public class FortySwapService : IFortySwapService
 
         return new SwapResponse
         {
-            Id = System.Text.Encoding.UTF8.GetBytes(swapId),
+            Id = swapId,
             HtlcAddress = string.Empty, // 40swap doesn't expose this directly
             Amount = Money.Coins((decimal)response.InputAmount).Satoshi,
             OffchainFee = (long)response.OffchainFeeSats,
