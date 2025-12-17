@@ -40,7 +40,9 @@ public class MonitorSwapsJob : IJob
         _logger.LogInformation("Starting {JobName}... ", nameof(MonitorSwapsJob));
         try
         {
-            var managedNodes = await _nodeRepository.GetAllLoopdConfigured(null);
+            var loopNodes = await _nodeRepository.GetAllConfiguredByProvider(SwapProvider.Loop, null);
+            var fortySwapNodes = await _nodeRepository.GetAllConfiguredByProvider(SwapProvider.FortySwap, null);
+            var managedNodes = loopNodes.Concat(fortySwapNodes).Distinct().ToList();
 
             var scheduler = await _schedulerFactory.GetScheduler();
 
@@ -56,7 +58,7 @@ public class MonitorSwapsJob : IJob
 
                 ArgumentNullException.ThrowIfNull(swap.ProviderId, nameof(swap.ProviderId));
 
-                var response = await _swapsService.GetSwapAsync(node, SwapProvider.Loop, swap.ProviderId);
+                var response = await _swapsService.GetSwapAsync(node, swap.Provider, swap.ProviderId);
                 if (response == null)
                 {
                     CleanUp(swap, "Swap not found in provider");

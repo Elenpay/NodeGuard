@@ -18,7 +18,7 @@ namespace NodeGuard.Services
 
    public class SwapResponse
    {
-      public required byte[] Id { get; set; }
+      public required string Id { get; set; }
       public required string HtlcAddress { get; set; }
       public long Amount { get; set; }
       public long OffchainFee { get; set; }

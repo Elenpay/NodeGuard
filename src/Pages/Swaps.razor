@@ -31,12 +31,16 @@
             </DataGridCommandColumn>
                 <DataGridColumn TItem="SwapOut" Field="@nameof(SwapOut.ProviderId)" Caption="#" Sortable="false" Displayable="true">
                     <DisplayTemplate>
-                        <Tooltip Text="@context.ProviderId?.ToLowerInvariant()" Placement="TooltipPlacement.Top">
-                            @StringHelper.TruncateTail(context.ProviderId?.ToLowerInvariant(), 10)
+                        <Tooltip Text="@context.ProviderId" Placement="TooltipPlacement.Top">
+                            @StringHelper.TruncateTail(context.ProviderId, 10)
                         </Tooltip>
                     </DisplayTemplate>
                 </DataGridColumn>
-                <DataGridColumn TItem="SwapOut" Field="@nameof(SwapOut.Provider)" Caption="Provider" Sortable="true" Displayable="true" />
+                <DataGridColumn TItem="SwapOut" Field="@nameof(SwapOut.Provider)" Caption="Provider" Sortable="true" Displayable="true">
+                    <DisplayTemplate>
+                        @context.Provider.GetDisplayName()
+                    </DisplayTemplate>
+                </DataGridColumn>
                 <DataGridColumn TItem="SwapOut" Field="@nameof(SwapOut.IsManual)" Caption="Is Manual" Sortable="true" Displayable="true" />
                 <DataGridColumn TItem="SwapOut" Editable="false" Field="@nameof(SwapOut.Node)" Caption="Source Node" Sortable="true" Displayable="@IsColumnVisible(SwapsColumnName.DestinationWallet)">
                     <DisplayTemplate>
