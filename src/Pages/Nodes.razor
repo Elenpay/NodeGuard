@@ -78,31 +78,19 @@
                         }
                     </DisplayTemplate>
                     <EditTemplate>
-                        <MemoEdit Rows="4" Text="" TextChanged="(text) => { if (!string.IsNullOrWhiteSpace(text)) context.CellValue = text; }" Placeholder="Base64 encoded macaroon (leave empty to keep existing)">
+                        <MemoEdit Rows="4" TextChanged="(text) => { if (!string.IsNullOrWhiteSpace(text)) context.CellValue = text; }" Placeholder="Base64 encoded macaroon (leave empty to keep existing)">
                             <Feedback>
                                 <ValidationError/>
                             </Feedback>
                         </MemoEdit>
                     </EditTemplate>
                 </DataGridColumn>
-                <DataGridColumn TItem="Node" Filterable="false" Editable="true" Field="@nameof(Node.Endpoint)" Validator="ValidationRule.IsNotEmpty" Caption="@nameof(Node.Endpoint)" Sortable="false" Displayable="@IsColumnVisible(NodesColumnName.Endpoint)"/>
+                <DataGridColumn TItem="Node" Filterable="false" Editable="true" Field="@nameof(Node.Endpoint)" Validator="ValidationRule.IsNotEmpty" Caption="LND API Endpoint" Sortable="false" Displayable="@IsColumnVisible(NodesColumnName.Endpoint)"/>
                 <DataGridColumn TItem="Node" Filterable="false" Editable="true" Field="@nameof(Node.LoopdEndpoint)" Caption="Loopd Endpoint" Sortable="false" Displayable="@IsColumnVisible(NodesColumnName.LoopdEndpoint)">
                     <DisplayTemplate>
                         @if (context.LoopdEndpoint != null)
                         {
                             <span>@context.LoopdEndpoint</span>
-                        }
-                        else
-                        {
-                            <span class="text-muted">Not configured</span>
-                        }
-                    </DisplayTemplate>
-                </DataGridColumn>
-                <DataGridColumn TItem="Node" Filterable="false" Editable="true" Field="@nameof(Node.FortySwapEndpoint)" Caption="40swapd Endpoint" Sortable="false" Displayable="@IsColumnVisible(NodesColumnName.FortySwapEndpoint)">
-                    <DisplayTemplate>
-                        @if (context.FortySwapEndpoint != null)
-                        {
-                            <span>@context.FortySwapEndpoint</span>
                         }
                         else
                         {
@@ -125,7 +113,7 @@
                         }
                     </DisplayTemplate>
                     <EditTemplate>
-                        <MemoEdit Rows="4" Text="@((string)context.CellValue)" TextChanged="(text) => { context.CellValue = text; }" Placeholder="Base64 encoded macaroon">
+                        <MemoEdit Rows="4" TextChanged="(text) => { if (!string.IsNullOrWhiteSpace(text)) context.CellValue = text; }" Placeholder="Base64 encoded macaroon (leave empty to keep existing)">
                             <Feedback>
                                 <ValidationError/>
                             </Feedback>
@@ -153,6 +141,18 @@
                             </Feedback>
                         </MemoEdit>
                     </EditTemplate>
+                </DataGridColumn>
+                <DataGridColumn TItem="Node" Filterable="false" Editable="true" Field="@nameof(Node.FortySwapEndpoint)" Caption="40swapd Endpoint" Sortable="false" Displayable="@IsColumnVisible(NodesColumnName.FortySwapEndpoint)">
+                    <DisplayTemplate>
+                        @if (context.FortySwapEndpoint != null)
+                        {
+                            <span>@context.FortySwapEndpoint</span>
+                        }
+                        else
+                        {
+                            <span class="text-muted">Not configured</span>
+                        }
+                    </DisplayTemplate>
                 </DataGridColumn>
                 <DataGridNumericColumn TItem="Node" Filterable="false" Editable="false" Caption="Outbound Open Channels" Sortable="false" Displayable="@IsColumnVisible(NodesColumnName.OutboundOpenChannels)">
                     <DisplayTemplate>
