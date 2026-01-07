@@ -67,16 +67,21 @@ public class MonitorSwapsJob : IJob
 
                 if (response.Status != swap.Status)
                 {
-                    _logger.LogInformation("Swap {SwapId} status changed from {OldStatus} to {NewStatus}", swap.Id, swap.Status, response.Status);
+                    if (response.Status == SwapOutStatus.Failed)
+                    {
+                        _logger.LogWarning("Swap {SwapId} status changed from {OldStatus} to {NewStatus}. Error: {ErrorMessage}", 
+                            swap.Id, swap.Status, response.Status, response.ErrorMessage);
+                        swap.ErrorDetails = response.ErrorMessage;
+                    }
+                    else
+                    {
+                        _logger.LogInformation("Swap {SwapId} status changed from {OldStatus} to {NewStatus}", swap.Id, swap.Status, response.Status);
+                    }
+                    
                     swap.Status = response.Status;
                     swap.ServiceFeeSats = response.ServerFee;
                     swap.LightningFeeSats = response.OffchainFee;
                     swap.OnChainFeeSats = response.OnchainFee;
-
-                    if (response.Status == SwapOutStatus.Failed)
-                    {
-                        swap.ErrorDetails = response.ErrorMessage;
-                    }
 
                     var (updated, error) = _swapOutRepository.Update(swap);
                     if (!updated)
