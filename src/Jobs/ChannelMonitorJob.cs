@@ -111,6 +111,8 @@ public class ChannelMonitorJob : IJob
 
     private async Task RefreshExternalNodeData(Node managedNode, Node remoteNode, Lightning.LightningClient lightningClient)
     {
+        if (remoteNode.IsManaged) return; // We dont want to overwrite ng-based aliases to for example, random aliases of nodes we manage
+
         if (_checkedRemoteNodes.Contains(remoteNode.PubKey))
         {
             return;
@@ -122,8 +124,7 @@ public class ChannelMonitorJob : IJob
             return;
         }
 
-        if (remoteNode.Name == nodeInfo.Alias) return;
-
+        if (remoteNode.Name == nodeInfo.Alias) return;   
         remoteNode.Name = nodeInfo.Alias;
         var (updated, error) = _nodeRepository.Update(remoteNode);
         if (!updated)
