@@ -181,7 +181,7 @@ public class BitcoinServiceTests
                         {
                             Outpoint = new OutPoint(),
                             Value = new Money((long)10000000),
-                            ScriptPubKey = wallet.GetDerivationStrategy().GetDerivation(KeyPath.Parse("0/0")).ScriptPubKey,
+                            ScriptPubKey = (wallet.GetDerivationStrategy() as StandardDerivationStrategyBase)!.GetDerivation(KeyPath.Parse("0/0")).ScriptPubKey,
                             KeyPath = KeyPath.Parse("0/0")
                         }
                     }
@@ -259,7 +259,7 @@ public class BitcoinServiceTests
                         {
                             Outpoint = new OutPoint(),
                             Value = new Money((long)10000000),
-                            ScriptPubKey = wallet.GetDerivationStrategy().GetDerivation(KeyPath.Parse("0/0")).ScriptPubKey,
+                            ScriptPubKey = (wallet.GetDerivationStrategy() as StandardDerivationStrategyBase)!.GetDerivation(KeyPath.Parse("0/0")).ScriptPubKey,
                             KeyPath = KeyPath.Parse("0/0")
                         }
                     }
@@ -337,7 +337,7 @@ public class BitcoinServiceTests
                         new UTXO()
                         {
                             Value = new Money((long)10000000),
-                            ScriptPubKey = wallet.GetDerivationStrategy().GetDerivation(KeyPath.Parse("0/0")).ScriptPubKey,
+                            ScriptPubKey = (wallet.GetDerivationStrategy() as StandardDerivationStrategyBase)!.GetDerivation(KeyPath.Parse("0/0")).ScriptPubKey,
                             KeyPath = KeyPath.Parse("0/0")
                         }
                     }
@@ -416,7 +416,7 @@ public class BitcoinServiceTests
                         {
                             Outpoint = new OutPoint(1234, 1),
                             Value = new Money((long)10000000),
-                            ScriptPubKey = wallet.GetDerivationStrategy().GetDerivation(KeyPath.Parse("0/0")).ScriptPubKey,
+                            ScriptPubKey = (wallet.GetDerivationStrategy() as StandardDerivationStrategyBase)!.GetDerivation(KeyPath.Parse("0/0")).ScriptPubKey,
                             KeyPath = KeyPath.Parse("0/0")
                         }
                     }
@@ -507,7 +507,7 @@ public class BitcoinServiceTests
                         {
                             Outpoint = new OutPoint(1234, 1),
                             Value = new Money((long)10000000),
-                            ScriptPubKey = wallet.GetDerivationStrategy().GetDerivation(KeyPath.Parse("0/0")).ScriptPubKey,
+                            ScriptPubKey = (wallet.GetDerivationStrategy() as StandardDerivationStrategyBase)!.GetDerivation(KeyPath.Parse("0/0")).ScriptPubKey,
                             KeyPath = KeyPath.Parse("0/0")
                         }
                     }
@@ -604,7 +604,7 @@ public class BitcoinServiceTests
                         {
                             Outpoint = new OutPoint(1234, 1),
                             Value = new Money((long)10000000),
-                            ScriptPubKey = wallet.GetDerivationStrategy().GetDerivation(KeyPath.Parse("0/0")).ScriptPubKey,
+                            ScriptPubKey = (wallet.GetDerivationStrategy() as StandardDerivationStrategyBase)!.GetDerivation(KeyPath.Parse("0/0")).ScriptPubKey,
                             KeyPath = KeyPath.Parse("0/0")
                         }
                     }
@@ -658,7 +658,7 @@ public class BitcoinServiceTests
             new UTXO()
             {
                 Value = new Money((long)10000000),
-                ScriptPubKey = wallet.GetDerivationStrategy().GetDerivation(KeyPath.Parse("0/0")).ScriptPubKey,
+                ScriptPubKey = (wallet.GetDerivationStrategy() as StandardDerivationStrategyBase)!.GetDerivation(KeyPath.Parse("0/0")).ScriptPubKey,
                 KeyPath = KeyPath.Parse("0/0"),
                 Index = 1,
                 TransactionHash = 12345678901234567890,
@@ -794,7 +794,7 @@ public class BitcoinServiceTests
                         new UTXO()
                         {
                             Value = new Money((long)10000000),
-                            ScriptPubKey = wallet.GetDerivationStrategy().GetDerivation(KeyPath.Parse("0/0")).ScriptPubKey,
+                            ScriptPubKey = (wallet.GetDerivationStrategy() as StandardDerivationStrategyBase)!.GetDerivation(KeyPath.Parse("0/0")).ScriptPubKey,
                             KeyPath = KeyPath.Parse("0/0")
                         }
                     }
@@ -880,7 +880,7 @@ public class BitcoinServiceTests
                         new UTXO()
                         {
                             Value = new Money((long)10000000),
-                            ScriptPubKey = wallet.GetDerivationStrategy().GetDerivation(KeyPath.Parse("0/0")).ScriptPubKey,
+                            ScriptPubKey = (wallet.GetDerivationStrategy() as StandardDerivationStrategyBase)!.GetDerivation(KeyPath.Parse("0/0")).ScriptPubKey,
                             KeyPath = KeyPath.Parse("0/0")
                         }
                     }
@@ -966,7 +966,7 @@ public class BitcoinServiceTests
                         new UTXO()
                         {
                             Value = new Money((long)10000000),
-                            ScriptPubKey = wallet.GetDerivationStrategy().GetDerivation(KeyPath.Parse("0/0")).ScriptPubKey,
+                            ScriptPubKey = (wallet.GetDerivationStrategy() as StandardDerivationStrategyBase)!.GetDerivation(KeyPath.Parse("0/0")).ScriptPubKey,
                             KeyPath = KeyPath.Parse("0/0")
                         }
                     }
@@ -1050,7 +1050,7 @@ public class BitcoinServiceTests
                         new UTXO()
                         {
                             Value = new Money((long)20000000), // 0.2 BTC - enough for multiple outputs plus fees
-                            ScriptPubKey = wallet.GetDerivationStrategy().GetDerivation(KeyPath.Parse("0/0")).ScriptPubKey,
+                            ScriptPubKey = (wallet.GetDerivationStrategy() as StandardDerivationStrategyBase)!.GetDerivation(KeyPath.Parse("0/0")).ScriptPubKey,
                             KeyPath = KeyPath.Parse("0/0")
                         }
                     }
@@ -1151,7 +1151,7 @@ public class BitcoinServiceTests
                         new UTXO()
                         {
                             Value = new Money((long)50000000),
-                            ScriptPubKey = wallet.GetDerivationStrategy().GetDerivation(KeyPath.Parse("0/0")).ScriptPubKey,
+                            ScriptPubKey = (wallet.GetDerivationStrategy() as StandardDerivationStrategyBase)!.GetDerivation(KeyPath.Parse("0/0")).ScriptPubKey,
                             KeyPath = KeyPath.Parse("0/0")
                         }
                     }
@@ -1175,7 +1175,7 @@ public class BitcoinServiceTests
         // The destination amount should have been updated to the full balance
         withdrawalRequest.WalletWithdrawalRequestDestinations.First().Amount.Should().Be(0.5m);
         // For withdraw all funds, verify that all available funds are being sent
-        result.Outputs.Should().HaveCountGreaterOrEqualTo(1);
+        result.Outputs.Should().HaveCountGreaterThanOrEqualTo(1);
     }
 
     [Fact]
@@ -1244,7 +1244,7 @@ public class BitcoinServiceTests
                         new UTXO()
                         {
                             Value = new Money((long)50000000),
-                            ScriptPubKey = wallet.GetDerivationStrategy()!.GetDerivation(KeyPath.Parse("0/0")).ScriptPubKey,
+                            ScriptPubKey = (wallet.GetDerivationStrategy() as StandardDerivationStrategyBase)!.GetDerivation(KeyPath.Parse("0/0")).ScriptPubKey,
                             KeyPath = KeyPath.Parse("0/0")
                         }
                     }
@@ -1330,7 +1330,7 @@ public class BitcoinServiceTests
                         new UTXO()
                         {
                             Value = new Money((long)20000000),
-                            ScriptPubKey = wallet.GetDerivationStrategy()!.GetDerivation(KeyPath.Parse("0/0")).ScriptPubKey,
+                            ScriptPubKey = (wallet.GetDerivationStrategy() as StandardDerivationStrategyBase)!.GetDerivation(KeyPath.Parse("0/0")).ScriptPubKey,
                             KeyPath = KeyPath.Parse("0/0")
                         }
                     }
@@ -1420,7 +1420,7 @@ public class BitcoinServiceTests
                         {
                             Outpoint = new OutPoint(), // This matches the PSBT input
                             Value = new Money((long)10000000),
-                            ScriptPubKey = wallet.GetDerivationStrategy().GetDerivation(KeyPath.Parse("0/0")).ScriptPubKey,
+                            ScriptPubKey = (wallet.GetDerivationStrategy() as StandardDerivationStrategyBase)!.GetDerivation(KeyPath.Parse("0/0")).ScriptPubKey,
                             KeyPath = KeyPath.Parse("0/0")
                         }
                     }
