@@ -10,7 +10,7 @@
             "request": "launch",
             "preLaunchTask": "extract-macaroons-and-build",
             // If you have changed target frameworks, make sure to update the program path.
-            "program": "${workspaceFolder}/src/bin/Debug/net8.0/NodeGuard.dll",
+            "program": "${workspaceFolder}/src/bin/Debug/net10.0/NodeGuard.dll",
             "args": [],
             "cwd": "${workspaceFolder}/src",
             "envFile": "${workspaceFolder}/src/nodeguard-macaroons.env",
