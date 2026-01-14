@@ -1,12 +1,15 @@
 {
 	"folders": [
 		{
+			"name": "NodeGuard",
 			"path": "."
 		},
 		{
+			"name": "src",
 			"path": "src"
 		},
 		{
+			"name": "test",
 			"path": "test"
 		}
 	],

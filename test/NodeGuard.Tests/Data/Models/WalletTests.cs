@@ -3,6 +3,7 @@ using NodeGuard.Data.Models;
 using NodeGuard.TestHelpers;
 using NBitcoin;
 using NBitcoin.Scripting;
+using NBXplorer.DerivationStrategy;
 
 namespace NodeGuard.Tests;
 
@@ -33,7 +34,7 @@ public class WalletTests
         var result = wallet.GetDerivationStrategy();
 
         // Assert
-        var derivation = result!.GetDerivation();
+        var derivation = ((StandardDerivationStrategyBase)result!).GetDerivation(new KeyPath()   );
         derivation.Redeem.Should().BeNull();
         derivation.ScriptPubKey.ToString().Should().Be("0 796cf3de2a828f0fa18f0f7d2cd11ea7273aca1b");
     }
@@ -47,7 +48,7 @@ public class WalletTests
         // Act
         var result = wallet.GetDerivationStrategy();
         // Assert
-        var derivation = result!.GetDerivation();
+        var derivation = ((P2WSHDerivationStrategy)result)!.GetDerivation(new KeyPath());
         derivation.Redeem.ToString().Should().Be(
             "2 " +
             "0251af15e05bb8b7eac1895b3f5f47ffefecd8321a02ef22298f89d0a2037df060 " +
@@ -114,7 +115,7 @@ public class WalletTests
             //Shuffle keys
             testingMultisigWallet.Keys = testingMultisigWallet.Keys.OrderBy(a => Guid.NewGuid()).ToList();
             //We derive address 0/0 and check against the output descriptor by sparrow
-            var script = testingMultisigWallet.GetDerivationStrategy().GetDerivation(new KeyPath("0/0"));
+            var script = ((P2WSHDerivationStrategy)testingMultisigWallet.GetDerivationStrategy()).GetDerivation(new KeyPath("0/0"));
             var outputDescriptor = OutputDescriptor.InferFromScript(script.Redeem, new FlatSigningRepository(), Network.RegTest);
             //We split after the #checksum
             var outputDescriptorString = outputDescriptor.ToString().Split("#", StringSplitOptions.TrimEntries).First();

@@ -23,6 +23,7 @@ using NodeGuard.Helpers;
 using NodeGuard.TestHelpers;
 using NBitcoin;
 using NBXplorer.Models;
+using NBXplorer.DerivationStrategy;
 
 namespace NodeGuard.Tests
 {
@@ -99,7 +100,7 @@ namespace NodeGuard.Tests
             var utxo = new UTXO()
             {
                 Value = new Money((long)10000000000),
-                ScriptPubKey = wallet.GetDerivationStrategy().GetDerivation(KeyPath.Parse("0/0")).ScriptPubKey,
+                ScriptPubKey = ((StandardDerivationStrategyBase)wallet.GetDerivationStrategy()).GetDerivation(KeyPath.Parse("0/0")).ScriptPubKey,
                 KeyPath = KeyPath.Parse("0/0")
             };
             var utxoList = new List<UTXO>() { utxo };
@@ -137,7 +138,7 @@ namespace NodeGuard.Tests
             var utxo = new UTXO()
             {
                 Value = new Money((long)10000000000),
-                ScriptPubKey = wallet.GetDerivationStrategy().GetDerivation(KeyPath.Parse("0/0")).ScriptPubKey,
+                ScriptPubKey = ((StandardDerivationStrategyBase)wallet.GetDerivationStrategy()).GetDerivation(KeyPath.Parse("0/0")).ScriptPubKey,
                 KeyPath = KeyPath.Parse("0/0")
             };
             var utxoList = new List<UTXO>() { utxo };

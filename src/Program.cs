@@ -185,6 +185,9 @@ namespace NodeGuard
                     o.Protocols =
                         HttpProtocols.Http1);
             });
+            
+            // Npgsql JSON mapping is opt-in per https://www.npgsql.org/doc/release-notes/8.0.html#breaking-changes
+            NpgsqlConnection.GlobalTypeMapper.EnableDynamicJson();
 
             //DBContextFactory
             builder.Services.AddDbContextFactory<ApplicationDbContext>(
