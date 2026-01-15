@@ -69,6 +69,7 @@ namespace NodeGuard.Data.Repositories
                 .Include(request => request.SourceNode)
                 .Include(request => request.DestNode)
                 .Include(request => request.ChannelOperationRequestPsbts)
+                .Include(request => request.User)
                 .Include(x => x.Utxos)
                 .AsSplitQuery()
                 .ToListAsync();
@@ -84,6 +85,7 @@ namespace NodeGuard.Data.Repositories
                 .Include(x => x.Wallet).ThenInclude(x => x.Keys)
                 .Include(request => request.DestNode)
                 .Include(request => request.ChannelOperationRequestPsbts)
+                .Include(request => request.User)
                 .Include(x => x.Utxos)
                 .Where(request => request.Wallet != null
                                   && request.Wallet.Keys.Count(key => userId == key.UserId) > request.ChannelOperationRequestPsbts.Count(req => req.UserSignerId == userId)

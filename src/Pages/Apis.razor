@@ -98,6 +98,7 @@
 @inject IAPITokenRepository APITokenRepository
 @inject IToastService ToastService
 @inject ILocalStorageService LocalStorageService
+@inject IAuditService AuditService
 @attribute [Authorize(Roles = "Superadmin")]
 @code {
     
@@ -166,12 +167,24 @@
         if (addResult.Item1)
         {
             await ShowCopyModalToken(arg.Item);
+            await AuditService.LogAsync(
+                AuditActionType.Create,
+                AuditEventType.Success,
+                AuditObjectType.APIToken,
+                arg.Item.Id.ToString(),
+                new { Name = arg.Item.Name });
         }
 
         else
         {
             ToastService.ShowError("Something went wrong");
             _apiTokens.Remove(arg.Item);
+            await AuditService.LogAsync(
+                AuditActionType.Create,
+                AuditEventType.Failure,
+                AuditObjectType.APIToken,
+                null,
+                new { Name = arg.Item.Name, Error = addResult.Item2 });
         }
     }
 
@@ -215,11 +228,22 @@
             if (result)
             {
                 ToastService.ShowSuccess(blockIt ? "Token blocked" : "Token unblocked");
+                await AuditService.LogAsync(
+                    blockIt ? AuditActionType.Block : AuditActionType.Unblock,
+                    AuditEventType.Success,
+                    AuditObjectType.APIToken,
+                    contextItem.Id.ToString(),
+                    new { Name = contextItem.Name });
             }
             else
             {
                 ToastService.ShowError("Something went wrong");
-
+                await AuditService.LogAsync(
+                    blockIt ? AuditActionType.Block : AuditActionType.Unblock,
+                    AuditEventType.Failure,
+                    AuditObjectType.APIToken,
+                    contextItem.Id.ToString(),
+                    new { Name = contextItem.Name });
             }
 
             await GetData();
