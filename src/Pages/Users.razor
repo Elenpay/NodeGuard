@@ -117,6 +117,7 @@
 @inject IToastService ToastService
 @inject INodeRepository NodeRepository
 @inject ILocalStorageService LocalStorageService
+@inject IAuditService AuditService
 @attribute [Authorize(Roles = "Superadmin")]
 @code {
     private List<ApplicationUser> _users = new();
@@ -211,13 +212,24 @@
             if (updateResult.Item1 && updateUserRoles.Item1)
             {
                 ToastService.ShowSuccess("Success");
+                await AuditService.LogAsync(
+                    AuditActionType.Create,
+                    AuditEventType.Success,
+                    AuditObjectType.User,
+                    arg.Item.Id,
+                    new { Username = arg.Item.UserName, Roles = string.Join(", ", _selectedRoles) });
                 await GetData();
             }
             else
             {
                 ToastService.ShowError("Something went wrong");
                 _users.Remove(arg.Item);
-
+                await AuditService.LogAsync(
+                    AuditActionType.Create,
+                    AuditEventType.Failure,
+                    AuditObjectType.User,
+                    null,
+                    new { Username = arg.Item.UserName });
             }
 
         }
@@ -276,10 +288,22 @@
         if (updateResult2.Item1 && clearResult.Item1 && updateUserRoles.Item1)
         {
             ToastService.ShowSuccess("Success");
+            await AuditService.LogAsync(
+                AuditActionType.Update,
+                AuditEventType.Success,
+                AuditObjectType.User,
+                arg.Item.Id,
+                new { Username = arg.Item.UserName, Roles = string.Join(", ", _selectedRoles) });
         }
         else
         {
             ToastService.ShowError("Something went wrong");
+            await AuditService.LogAsync(
+                AuditActionType.Update,
+                AuditEventType.Failure,
+                AuditObjectType.User,
+                arg.Item.Id,
+                new { Username = arg.Item.UserName });
         }
 
         await GetData();
@@ -348,11 +372,22 @@
             if (lockResult.Item1)
             {
                 ToastService.ShowSuccess("User unlocked");
+                await AuditService.LogAsync(
+                    AuditActionType.UnlockUser,
+                    AuditEventType.Success,
+                    AuditObjectType.User,
+                    contextItem.Id,
+                    new { Username = contextItem.UserName });
             }
             else
             {
                 ToastService.ShowError("Something went wrong");
-
+                await AuditService.LogAsync(
+                    AuditActionType.UnlockUser,
+                    AuditEventType.Failure,
+                    AuditObjectType.User,
+                    contextItem.Id,
+                    new { Username = contextItem.UserName });
             }
 
             await GetData();
@@ -369,11 +404,22 @@
             if (lockResult.Item1)
             {
                 ToastService.ShowSuccess("User locked out");
+                await AuditService.LogAsync(
+                    AuditActionType.LockUser,
+                    AuditEventType.Success,
+                    AuditObjectType.User,
+                    contextItem.Id,
+                    new { Username = contextItem.UserName });
             }
             else
             {
                 ToastService.ShowError("Something went wrong");
-
+                await AuditService.LogAsync(
+                    AuditActionType.LockUser,
+                    AuditEventType.Failure,
+                    AuditObjectType.User,
+                    contextItem.Id,
+                    new { Username = contextItem.UserName });
             }
 
             await GetData();
