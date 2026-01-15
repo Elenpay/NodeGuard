@@ -155,17 +155,6 @@
                         }
                     </DisplayTemplate>
                 </DataGridColumn>
-                <DataGridNumericColumn TItem="Node" Filterable="false" Editable="false" Caption="Outbound Open Channels" Sortable="false" Displayable="@IsColumnVisible(NodesColumnName.OutboundOpenChannels)">
-                    <DisplayTemplate>
-                        @{
-                            IEnumerable<int?> associatedChannels = context?.ChannelOperationRequestsAsDestination?
-                                .Where(request => request.ChannelId != null)
-                                .Select(channel => channel.ChannelId)
-                                .Distinct();
-                            @($"{associatedChannels?.Count()}")
-                        }
-                    </DisplayTemplate>
-                </DataGridNumericColumn>
                 <DataGridColumn TItem="Node" Filterable="false" Editable="false" Field="@nameof(Node.IsNodeDisabled)" Caption="Disabled" Sortable="false" Displayable="@IsColumnVisible(NodesColumnName.Disabled)"></DataGridColumn>
                 
                 <DataGridColumn TItem="Node" Filterable="false" Caption="Liquidity Config" Sortable="false" Displayable="@IsColumnVisible(NodesColumnName.AutoLiquidityManagement)">
