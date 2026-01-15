@@ -9,6 +9,7 @@ using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.RazorPages;
 using Microsoft.Extensions.Logging;
+using NodeGuard.Services;
 
 namespace NodeGuard.Areas.Identity.Pages.Account.Manage
 {
@@ -16,13 +17,16 @@ namespace NodeGuard.Areas.Identity.Pages.Account.Manage
     {
         private readonly UserManager<ApplicationUser> _userManager;
         private readonly ILogger<Disable2faModel> _logger;
+        private readonly IAuditService _auditService;
 
         public Disable2faModel(
             UserManager<ApplicationUser> userManager,
-            ILogger<Disable2faModel> logger)
+            ILogger<Disable2faModel> logger,
+            IAuditService auditService)
         {
             _userManager = userManager;
             _logger = logger;
+            _auditService = auditService;
         }
 
         /// <summary>
@@ -63,6 +67,14 @@ namespace NodeGuard.Areas.Identity.Pages.Account.Manage
             }
 
             _logger.LogInformation("User with ID '{UserId}' has disabled 2fa.", _userManager.GetUserId(User));
+            
+            await _auditService.LogAsync(
+                AuditActionType.TwoFactorDisabled,
+                AuditEventType.Success,
+                AuditObjectType.User,
+                user.Id,
+                new { Username = user.UserName });
+
             StatusMessage = "2fa has been disabled. You can reenable 2fa when you setup an authenticator app";
             return RedirectToPage("./TwoFactorAuthentication");
         }

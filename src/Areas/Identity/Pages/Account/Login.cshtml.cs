@@ -15,6 +15,8 @@ using Microsoft.AspNetCore.Identity.UI.Services;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.RazorPages;
 using Microsoft.Extensions.Logging;
+using NodeGuard.Services;
+using NodeGuard.Helpers;
 
 namespace NodeGuard.Areas.Identity.Pages.Account
 {
@@ -22,11 +24,15 @@ namespace NodeGuard.Areas.Identity.Pages.Account
     {
         private readonly SignInManager<ApplicationUser> _signInManager;
         private readonly ILogger<LoginModel> _logger;
+        private readonly IAuditService _auditService;
+        private readonly UserManager<ApplicationUser> _userManager;
 
-        public LoginModel(SignInManager<ApplicationUser> signInManager, ILogger<LoginModel> logger)
+        public LoginModel(SignInManager<ApplicationUser> signInManager, ILogger<LoginModel> logger, IAuditService auditService, UserManager<ApplicationUser> userManager)
         {
             _signInManager = signInManager;
             _logger = logger;
+            _auditService = auditService;
+            _userManager = userManager;
         }
 
         /// <summary>
@@ -128,6 +134,16 @@ namespace NodeGuard.Areas.Identity.Pages.Account
                 if (result.Succeeded)
                 {
                     _logger.LogInformation("User logged in.");
+                    var user = await _userManager.FindByNameAsync(Input.Username);
+                    await _auditService.LogAsync(
+                        AuditActionType.Login,
+                        AuditEventType.Success,
+                        AuditObjectType.User,
+                        user?.Id,
+                        user?.Id,
+                        Input.Username,
+                        HttpContext.GetClientIpAddress(),
+                        new { Username = Input.Username });
                     return LocalRedirect(returnUrl);
                 }
                 if (result.RequiresTwoFactor)
@@ -137,10 +153,28 @@ namespace NodeGuard.Areas.Identity.Pages.Account
                 if (result.IsLockedOut)
                 {
                     _logger.LogWarning("User account locked out.");
+                    await _auditService.LogAsync(
+                        AuditActionType.Login,
+                        AuditEventType.Failure,
+                        AuditObjectType.User,
+                        null,
+                        null,
+                        Input.Username,
+                        HttpContext.GetClientIpAddress(),
+                        new { Username = Input.Username, Reason = "Account locked out" });
                     return RedirectToPage("./Lockout");
                 }
                 else
                 {
+                    await _auditService.LogAsync(
+                        AuditActionType.Login,
+                        AuditEventType.Failure,
+                        AuditObjectType.User,
+                        null,
+                        null,
+                        Input.Username,
+                        HttpContext.GetClientIpAddress(),
+                        new { Username = Input.Username, Reason = "Invalid credentials" });
                     ModelState.AddModelError(string.Empty, "Invalid login attempt.");
                     return Page();
                 }
