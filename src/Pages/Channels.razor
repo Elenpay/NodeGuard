@@ -386,6 +386,7 @@
 @inject INodeRepository NodeRepository
 @inject ILocalStorageService LocalStorageService
 @inject IPriceConversionService PriceConversionService
+@inject IAuditService AuditService
 
 @code {
     private List<Channel>? _channels = new List<Channel>();
@@ -499,13 +500,18 @@
                 channel.SourceNode = await NodeRepository.GetById(channel.SourceNodeId) ?? throw new InvalidOperationException();
                 var result = await ChannelRepository.SafeRemove(channel, forceClose);
 
+                var actionType = forceClose ? AuditActionType.ForceClose : AuditActionType.Close;
                 if (!result.Item1)
                 {
                     ToastService.ShowError("Something went wrong");
+                    await AuditService.LogAsync(actionType, AuditEventType.Failure, AuditObjectType.Channel,
+                        channel.Id.ToString(), $"Failed to {(forceClose ? "force " : "")}close channel. ChanId: {channel.ChanId}");
                 }
                 else
                 {
                     ToastService.ShowSuccess("Channel closed successfully");
+                    await AuditService.LogAsync(actionType, AuditEventType.Success, AuditObjectType.Channel,
+                        channel.Id.ToString(), $"Channel {(forceClose ? "force " : "")}closed. ChanId: {channel.ChanId}");
                     await FetchData();
                 }
             }
@@ -606,10 +612,14 @@
                 if (!updateResult.Item1)
                 {
                     ToastService.ShowError("Something went wrong");
+                    await AuditService.LogAsync(AuditActionType.Update, AuditEventType.Failure, AuditObjectType.Channel,
+                        _selectedChannel.Id.ToString(), $"Failed to update channel. ChanId: {_selectedChannel.ChanId}");
                 }
                 else
                 {
                     ToastService.ShowSuccess("Channel updated successfully");
+                    await AuditService.LogAsync(AuditActionType.Update, AuditEventType.Success, AuditObjectType.Channel,
+                        _selectedChannel.Id.ToString(), $"Channel updated. ChanId: {_selectedChannel.ChanId}");
                 }
             }
 
@@ -622,10 +632,14 @@
                     if (!liquidityRuleResult.Item1)
                     {
                         ToastService.ShowError("Something went wrong");
+                        await AuditService.LogAsync(AuditActionType.Create, AuditEventType.Failure, AuditObjectType.LiquidityRule,
+                            _currentLiquidityRule.ChannelId.ToString(), $"Failed to add liquidity rule for channel. ChannelId: {_currentLiquidityRule.ChannelId}");
                     }
                     else
                     {
                         ToastService.ShowSuccess("Liquidity rule added successfully");
+                        await AuditService.LogAsync(AuditActionType.Create, AuditEventType.Success, AuditObjectType.LiquidityRule,
+                            _currentLiquidityRule.Id.ToString(), $"Liquidity rule created. ChannelId: {_currentLiquidityRule.ChannelId}, MinLocal: {_currentLiquidityRule.MinimumLocalBalance}%, MinRemote: {_currentLiquidityRule.MinimumRemoteBalance}%, Target: {_currentLiquidityRule.RebalanceTarget}%");
                     }
                 }
                 else
@@ -634,10 +648,14 @@
                     if (!liquidityRuleResult.Item1)
                     {
                         ToastService.ShowError("Something went wrong");
+                        await AuditService.LogAsync(AuditActionType.Update, AuditEventType.Failure, AuditObjectType.LiquidityRule,
+                            _currentLiquidityRule.Id.ToString(), $"Failed to update liquidity rule. RuleId: {_currentLiquidityRule.Id}");
                     }
                     else
                     {
                         ToastService.ShowSuccess("Liquidity rule updated successfully");
+                        await AuditService.LogAsync(AuditActionType.Update, AuditEventType.Success, AuditObjectType.LiquidityRule,
+                            _currentLiquidityRule.Id.ToString(), $"Liquidity rule updated. ChannelId: {_currentLiquidityRule.ChannelId}, MinLocal: {_currentLiquidityRule.MinimumLocalBalance}%, MinRemote: {_currentLiquidityRule.MinimumRemoteBalance}%, Target: {_currentLiquidityRule.RebalanceTarget}%");
                     }
                 }
             }
@@ -703,14 +721,19 @@
             }
 
             var updateResult = ChannelRepository.Update(_selectedChannel);
+            var actionType = enabledLiquidityMngmt ? AuditActionType.EnableLiquidityManagement : AuditActionType.DisableLiquidityManagement;
 
             if (!updateResult.Item1)
             {
                 ToastService.ShowError("Something went wrong");
+                await AuditService.LogAsync(actionType, AuditEventType.Failure, AuditObjectType.Channel,
+                    _selectedChannel.Id.ToString(), $"Failed to {(enabledLiquidityMngmt ? "enable" : "disable")} liquidity management. ChanId: {_selectedChannel.ChanId}");
             }
             else
             {
                 ToastService.ShowSuccess("Channel updated successfully");
+                await AuditService.LogAsync(actionType, AuditEventType.Success, AuditObjectType.Channel,
+                    _selectedChannel.Id.ToString(), $"Liquidity management {(enabledLiquidityMngmt ? "enabled" : "disabled")}. ChanId: {_selectedChannel.ChanId}");
             }
         }
     }
@@ -874,10 +897,14 @@
         if (result.Item1)
         {
             ToastService.ShowSuccess("Channel marked as closed");
+            await AuditService.LogAsync(AuditActionType.MarkAsClosed, AuditEventType.Success, AuditObjectType.Channel,
+                contextItem.Id.ToString(), $"Channel marked as closed. ChanId: {contextItem.ChanId}");
         }
         else
         {
             ToastService.ShowError("Something went wrong: " + result.Item2);
+            await AuditService.LogAsync(AuditActionType.MarkAsClosed, AuditEventType.Failure, AuditObjectType.Channel,
+                contextItem.Id.ToString(), $"Failed to mark channel as closed. ChanId: {contextItem.ChanId}. Error: {result.Item2}");
         }
 
         await FetchData();
