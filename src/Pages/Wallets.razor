@@ -24,6 +24,7 @@
 @inject IPriceConversionService PriceConversionService
 @inject INBXplorerService NBXplorerService
 @inject IUTXOTagRepository UTXOTagRepository
+@inject IAuditService AuditService
 
 @attribute [Authorize(Roles = "NodeManager, FinanceManager, Superadmin")]
 
@@ -1329,6 +1330,12 @@ OnSubmit="TransferFundsHotWallet"/>
         if (!result.Item1)
         {
             ToastService.ShowError("Something went wrong while importing the wallet");
+            await AuditService.LogAsync(
+                AuditActionType.Import,
+                AuditEventType.Failure,
+                AuditObjectType.Wallet,
+                null,
+                new { Name = _name, IsWatchOnly = _IsImportWalletModalWatchOnly, Error = result.Item2 });
             return;
         }
 
@@ -1337,6 +1344,12 @@ OnSubmit="TransferFundsHotWallet"/>
 
     //Success
         ToastService.ShowSuccess("Wallet imported successfully");
+        await AuditService.LogAsync(
+            AuditActionType.Import,
+            AuditEventType.Success,
+            AuditObjectType.Wallet,
+            null,
+            new { Name = _name, IsWatchOnly = _IsImportWalletModalWatchOnly });
 
     //Close modal
         await CloseAndCleanImportWalletModal();
@@ -1492,9 +1505,32 @@ OnSubmit="TransferFundsHotWallet"/>
         if (transferSuccess)
         {
             ToastService.ShowSuccess("Funds transferred successfully");
+            await AuditService.LogAsync(
+                AuditActionType.Transfer,
+                AuditEventType.Success,
+                AuditObjectType.Wallet,
+                _sourceTransferWallet?.Id.ToString(),
+                new { 
+                    SourceWallet = _sourceWalletName, 
+                    TargetWallet = _targetWalletName, 
+                    Amount = _amountToTransfer,
+                    AllFunds = _transferAllFunds,
+                    WithdrawalRequestId = withdrawalRequest.Id
+                });
         }
         else
         {
+            await AuditService.LogAsync(
+                AuditActionType.Transfer,
+                AuditEventType.Failure,
+                AuditObjectType.Wallet,
+                _sourceTransferWallet?.Id.ToString(),
+                new { 
+                    SourceWallet = _sourceWalletName, 
+                    TargetWallet = _targetWalletName, 
+                    Amount = _amountToTransfer,
+                    WithdrawalRequestId = withdrawalRequest.Id
+                });
             ToastService.ShowError("Error while transferring funds, please contact a superadmin for troubleshooting");
         }
 

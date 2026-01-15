@@ -207,6 +207,7 @@
 @inject IBitcoinService BitcoinService
 @inject IPriceConversionService PriceConversionService
 @inject ILogger<NewSwapModal> Logger
+@inject IAuditService AuditService
 @inherits CancellableComponent
 @code {
     [CascadingParameter] public required ApplicationUser LoggedUser { get; set; }
@@ -306,6 +307,25 @@
                 OnChainFeeSats = response.OnchainFee,
                 UserRequestorId = LoggedUser.Id,
             });
+
+            // Audit successful manual swap out creation
+            await AuditService.LogAsync(
+                AuditActionType.SwapOutInitiated,
+                AuditEventType.Success,
+                AuditObjectType.SwapOut,
+                response.Id,
+                new
+                {
+                    NodeId = _selectedNode.Id,
+                    NodeName = _selectedNode.Name,
+                    Provider = _selectedProvider.ToString(),
+                    AmountBtc = _amountBtc,
+                    AmountSats = response.Amount,
+                    DestinationWalletId = _selectedWallet.Id,
+                    DestinationWalletName = _selectedWallet.Name,
+                    ProviderId = response.Id,
+                    IsManual = true
+                });
 
             ToastService.ShowSuccess("Swap created successfully");
 

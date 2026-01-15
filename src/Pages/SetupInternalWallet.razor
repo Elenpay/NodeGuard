@@ -1,5 +1,7 @@
 @page "/setup-internal-wallet"
 @using System.Text.RegularExpressions
+@using NodeGuard.Data.Models
+@using NodeGuard.Services
 
 <h3>Internal wallet setup</h3>
 @attribute [Authorize(Roles = "Superadmin")]
@@ -85,6 +87,9 @@
     [Inject]
     public IToastService ToastService { get; set; }
 
+    [Inject]
+    public IAuditService AuditService { get; set; }
+
     private InternalWallet? _internalWallet;
 
     private bool _isRemoteSignerModeEnabled = false;
@@ -154,6 +159,12 @@
             if (updateResult.Item1)
             {
                 ToastService.ShowSuccess("Internal wallet setup completed");
+                await AuditService.LogAsync(
+                    AuditActionType.GenerateInternalWallet,
+                    AuditEventType.Success,
+                    AuditObjectType.InternalWallet,
+                    _internalWallet.Id.ToString(),
+                    new { IsRemoteSigner = _isRemoteSignerModeEnabled });
                 NavigationManager.NavigateTo("/");
             }
             else
