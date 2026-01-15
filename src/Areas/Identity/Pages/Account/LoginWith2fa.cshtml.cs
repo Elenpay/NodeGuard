@@ -7,6 +7,8 @@ using NodeGuard.Data.Models;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.RazorPages;
 using Microsoft.AspNetCore.Identity;
+using NodeGuard.Services;
+using NodeGuard.Helpers;
 
 namespace NodeGuard.Areas.Identity.Pages.Account
 {
@@ -15,15 +17,18 @@ namespace NodeGuard.Areas.Identity.Pages.Account
         private readonly SignInManager<ApplicationUser> _signInManager;
         private readonly UserManager<ApplicationUser> _userManager;
         private readonly ILogger<LoginWith2faModel> _logger;
+        private readonly IAuditService _auditService;
 
         public LoginWith2faModel(
             SignInManager<ApplicationUser> signInManager,
             UserManager<ApplicationUser> userManager,
-            ILogger<LoginWith2faModel> logger)
+            ILogger<LoginWith2faModel> logger,
+            IAuditService auditService)
         {
             _signInManager = signInManager;
             _userManager = userManager;
             _logger = logger;
+            _auditService = auditService;
         }
 
         /// <summary>
@@ -109,16 +114,43 @@ namespace NodeGuard.Areas.Identity.Pages.Account
             if (result.Succeeded)
             {
                 _logger.LogInformation("User with ID '{UserId}' logged in with 2fa.", user.Id);
+                await _auditService.LogAsync(
+                    AuditActionType.TwoFactorLogin,
+                    AuditEventType.Success,
+                    AuditObjectType.User,
+                    userId,
+                    userId,
+                    user.UserName,
+                    HttpContext.GetClientIpAddress(),
+                    new { Username = user.UserName });
                 return LocalRedirect(returnUrl);
             }
             else if (result.IsLockedOut)
             {
                 _logger.LogWarning("User with ID '{UserId}' account locked out.", user.Id);
+                await _auditService.LogAsync(
+                    AuditActionType.TwoFactorLogin,
+                    AuditEventType.Failure,
+                    AuditObjectType.User,
+                    userId,
+                    userId,
+                    user.UserName,
+                    HttpContext.GetClientIpAddress(),
+                    new { Username = user.UserName, Reason = "Account locked out" });
                 return RedirectToPage("./Lockout");
             }
             else
             {
                 _logger.LogWarning("Invalid authenticator code entered for user with ID '{UserId}'.", user.Id);
+                await _auditService.LogAsync(
+                    AuditActionType.TwoFactorLogin,
+                    AuditEventType.Failure,
+                    AuditObjectType.User,
+                    userId,
+                    userId,
+                    user.UserName,
+                    HttpContext.GetClientIpAddress(),
+                    new { Username = user.UserName, Reason = "Invalid authenticator code" });
                 ModelState.AddModelError(string.Empty, "Invalid authenticator code.");
                 return Page();
             }

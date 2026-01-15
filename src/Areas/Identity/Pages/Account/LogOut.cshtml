@@ -1,27 +1,53 @@
 ﻿@page
 @using NodeGuard.Data.Models
 @using Microsoft.AspNetCore.Identity
+@using NodeGuard.Services
+@using NodeGuard.Helpers
+@using System.Security.Claims
 @attribute [IgnoreAntiforgeryToken]
 @inject SignInManager<ApplicationUser> SignInManager
+@inject IAuditService AuditService
+@inject IHttpContextAccessor HttpContextAccessor
 @functions {
     public async Task<IActionResult> OnPost()
     {
         if (SignInManager.IsSignedIn(User))
         {
+            var userId = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+            var username = User.Identity?.Name;
             await SignInManager.SignOutAsync();
+            await AuditService.LogAsync(
+                AuditActionType.Logout,
+                AuditEventType.Success,
+                AuditObjectType.User,
+                userId,
+                userId,
+                username,
+                HttpContextAccessor.HttpContext.GetClientIpAddress(),
+                new { Username = username });
         }
 
         return Redirect("~/");
     }
 
-         public async Task<IActionResult> OnGet()
-     {
-         if (SignInManager.IsSignedIn(User))
-         {
-             await SignInManager.SignOutAsync();
-         }
+    public async Task<IActionResult> OnGet()
+    {
+        if (SignInManager.IsSignedIn(User))
+        {
+            var userId = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+            var username = User.Identity?.Name;
+            await SignInManager.SignOutAsync();
+            await AuditService.LogAsync(
+                AuditActionType.Logout,
+                AuditEventType.Success,
+                AuditObjectType.User,
+                userId,
+                userId,
+                username,
+                HttpContextAccessor.HttpContext.GetClientIpAddress(),
+                new { Username = username });
+        }
 
-         return Redirect("~/");
-     }
-
+        return Redirect("~/");
+    }
 }
