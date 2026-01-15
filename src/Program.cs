@@ -95,6 +95,7 @@ namespace NodeGuard
 
             builder.Services.AddRazorPages();
             builder.Services.AddServerSideBlazor().AddCircuitOptions(options => { options.DetailedErrors = true; });
+            builder.Services.AddHttpContextAccessor();
 
             //Dependency Injection
             builder.Services
@@ -121,6 +122,7 @@ namespace NodeGuard
             builder.Services.AddTransient<ISwapOutRepository, SwapOutRepository>();
             builder.Services.AddTransient<IRemoteSignerService, RemoteSignerServiceService>();
             builder.Services.AddTransient<ILiquidityRuleRepository, LiquidityRuleRepository>();
+            builder.Services.AddTransient<IAuditLogRepository, AuditLogRepository>();
             builder.Services.AddTransient<ICoinSelectionService, CoinSelectionService>();
             builder.Services.AddTransient<IPriceConversionService, PriceConversionService>();
             builder.Services.AddSingleton<ILightningClientService, LightningClientService>();
@@ -139,6 +141,7 @@ namespace NodeGuard
             builder.Services.AddTransient<NotificationService, NotificationService>();
             builder.Services.AddTransient<INBXplorerService, NBXplorerService>();
             builder.Services.AddTransient<ISwapsService, SwapsService>();
+            builder.Services.AddScoped<IAuditService, AuditService>();
 
             //DbContext
             var dataSourceBuilder = new NpgsqlDataSourceBuilder(Constants.POSTGRES_CONNECTIONSTRING);
@@ -328,6 +331,21 @@ namespace NodeGuard
                                 scheduleBuilder.WithIntervalInMinutes(10).RepeatForever();
                             }
                         });
+                });
+
+                // Audit Log Cleanup Job
+                q.AddJob<AuditLogCleanupJob>(opts =>
+                {
+                    opts.DisallowConcurrentExecution();
+                    opts.WithIdentity(nameof(AuditLogCleanupJob));
+                });
+
+                q.AddTrigger(opts =>
+                {
+                    opts.ForJob(nameof(AuditLogCleanupJob))
+                        .WithIdentity($"{nameof(AuditLogCleanupJob)}Trigger")
+                        .StartNow()
+                        .WithCronSchedule(Constants.AUDIT_LOG_CLEANUP_CRON);
                 });
             });
 
