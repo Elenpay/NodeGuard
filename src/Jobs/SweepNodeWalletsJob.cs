@@ -37,12 +37,14 @@ public class SweepNodeWalletsJob : IJob
     private readonly INodeRepository _nodeRepository;
     private readonly IWalletRepository _walletRepository;
     private readonly INBXplorerService _nbXplorerService;
+    private readonly IAuditService _auditService;
 
     public SweepNodeWalletsJob(ILogger<SweepNodeWalletsJob> logger,
         INodeRepository nodeRepository,
         IWalletRepository walletRepository,
         INBXplorerService nbXplorerService,
-        ILightningClientService lightningClientService)
+        ILightningClientService lightningClientService,
+        IAuditService auditService)
     {
 
         _logger = logger;
@@ -50,6 +52,7 @@ public class SweepNodeWalletsJob : IJob
         _walletRepository = walletRepository;
         _nbXplorerService = nbXplorerService;
         _lightningClientService = lightningClientService;
+        _auditService = auditService;
     }
 
     public async Task Execute(IJobExecutionContext context)
@@ -118,6 +121,23 @@ public class SweepNodeWalletsJob : IJob
                         node.Id,
                         sendManyResponse.Txid,
                         returningAddress.Address);
+
+                    // Audit successful wallet sweep
+                    await _auditService.LogSystemAsync(
+                        AuditActionType.WalletSweep,
+                        AuditEventType.Success,
+                        AuditObjectType.Wallet,
+                        wallet.Id.ToString(),
+                        new
+                        {
+                            NodeId = node.Id,
+                            NodeName = node.Name,
+                            WalletId = wallet.Id,
+                            WalletName = wallet.Name,
+                            AmountSats = sweepedFundsAmount,
+                            TxId = sendManyResponse.Txid,
+                            ReturnAddress = returningAddress.Address.ToString()
+                        });
 
                     //TODO We need to store the txid somewhere to monitor it..
                 }
@@ -192,6 +212,22 @@ public class SweepNodeWalletsJob : IJob
                             _logger.LogError(
                                 "Error while adding returning node wallet with id: {WalletId} to node: {NodeName}",
                                 wallet.Id, node.Name);
+                        }
+                        else
+                        {
+                            // Audit successful wallet assignment
+                            await _auditService.LogSystemAsync(
+                                AuditActionType.NodeWalletAssigned,
+                                AuditEventType.Success,
+                                AuditObjectType.Node,
+                                node.Id.ToString(),
+                                new
+                                {
+                                    NodeId = node.Id,
+                                    NodeName = node.Name,
+                                    WalletId = wallet.Id,
+                                    WalletName = wallet.Name
+                                });
                         }
                     }
                     else
