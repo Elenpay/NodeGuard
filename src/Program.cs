@@ -332,6 +332,23 @@ namespace NodeGuard
                             }
                         });
                 });
+
+                // Audit Log Cleanup Job
+                q.AddJob<AuditLogCleanupJob>(opts =>
+                {
+                    opts.DisallowConcurrentExecution();
+                    opts.WithIdentity(nameof(AuditLogCleanupJob));
+                });
+
+                q.AddTrigger(opts =>
+                {
+                    opts.ForJob(nameof(AuditLogCleanupJob))
+                        .WithIdentity($"{nameof(AuditLogCleanupJob)}Trigger")
+                        .StartNow().WithSimpleSchedule(scheduleBuilder =>
+                        {
+                            scheduleBuilder.WithIntervalInHours(24).RepeatForever();                         
+                        });
+                });
             });
 
             // ASP.NET Core hosting

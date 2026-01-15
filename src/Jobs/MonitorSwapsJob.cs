@@ -13,14 +13,16 @@ public class MonitorSwapsJob : IJob
     private readonly INodeRepository _nodeRepository;
     private readonly ISwapOutRepository _swapOutRepository;
     private readonly ISwapsService _swapsService;
+    private readonly IAuditService _auditService;
 
-    public MonitorSwapsJob(ILogger<MonitorSwapsJob> logger, ISchedulerFactory schedulerFactory, INodeRepository nodeRepository, ISwapOutRepository swapOutRepository, ISwapsService swapsService)
+    public MonitorSwapsJob(ILogger<MonitorSwapsJob> logger, ISchedulerFactory schedulerFactory, INodeRepository nodeRepository, ISwapOutRepository swapOutRepository, ISwapsService swapsService, IAuditService auditService)
     {
         _logger = logger;
         _schedulerFactory = schedulerFactory;
         _nodeRepository = nodeRepository;
         _swapOutRepository = swapOutRepository;
         _swapsService = swapsService;
+        _auditService = auditService;
     }
 
     private void CleanUp(SwapOut swap, string errorMessage)
@@ -67,6 +69,8 @@ public class MonitorSwapsJob : IJob
 
                 if (response.Status != swap.Status)
                 {
+                    var oldStatus = swap.Status;
+                    
                     if (response.Status == SwapOutStatus.Failed)
                     {
                         _logger.LogWarning("Swap {SwapId} status changed from {OldStatus} to {NewStatus}. Error: {ErrorMessage}", 
@@ -88,6 +92,31 @@ public class MonitorSwapsJob : IJob
                     {
                         _logger.LogError("Error updating swap {SwapId}: {Error}", swap.Id, error);
                         continue;
+                    }
+
+                    // Audit swap completion (only for successful completions)
+                    if (response.Status == SwapOutStatus.Completed)
+                    {
+                        await _auditService.LogSystemAsync(
+                            AuditActionType.SwapOutCompleted,
+                            AuditEventType.Success,
+                            AuditObjectType.SwapOut,
+                            swap.ProviderId,
+                            new
+                            {
+                                SwapId = swap.Id,
+                                NodeId = swap.NodeId,
+                                Provider = swap.Provider.ToString(),
+                                ProviderId = swap.ProviderId,
+                                AmountSats = swap.SatsAmount,
+                                TotalFeeSats = swap.TotalFees.Satoshi,
+                                ServiceFeeSats = swap.ServiceFeeSats,
+                                LightningFeeSats = swap.LightningFeeSats,
+                                OnChainFeeSats = swap.OnChainFeeSats,
+                                IsManual = swap.IsManual,
+                                OldStatus = oldStatus.ToString(),
+                                NewStatus = response.Status.ToString()
+                            });
                     }
                 }
             }
