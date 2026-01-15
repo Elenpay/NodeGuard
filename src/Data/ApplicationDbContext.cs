@@ -121,5 +121,7 @@ namespace NodeGuard.Data
         public DbSet<APIToken> ApiTokens { get; set; }
 
         public DbSet<SwapOut> SwapOuts { get; set; }
+
+        public DbSet<AuditLog> AuditLogs { get; set; }
     }
 }
