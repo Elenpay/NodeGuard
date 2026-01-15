@@ -95,6 +95,7 @@ namespace NodeGuard
 
             builder.Services.AddRazorPages();
             builder.Services.AddServerSideBlazor().AddCircuitOptions(options => { options.DetailedErrors = true; });
+            builder.Services.AddHttpContextAccessor();
 
             //Dependency Injection
             builder.Services
@@ -121,6 +122,7 @@ namespace NodeGuard
             builder.Services.AddTransient<ISwapOutRepository, SwapOutRepository>();
             builder.Services.AddTransient<IRemoteSignerService, RemoteSignerServiceService>();
             builder.Services.AddTransient<ILiquidityRuleRepository, LiquidityRuleRepository>();
+            builder.Services.AddTransient<IAuditLogRepository, AuditLogRepository>();
             builder.Services.AddTransient<ICoinSelectionService, CoinSelectionService>();
             builder.Services.AddTransient<IPriceConversionService, PriceConversionService>();
             builder.Services.AddSingleton<ILightningClientService, LightningClientService>();
@@ -139,6 +141,7 @@ namespace NodeGuard
             builder.Services.AddTransient<NotificationService, NotificationService>();
             builder.Services.AddTransient<INBXplorerService, NBXplorerService>();
             builder.Services.AddTransient<ISwapsService, SwapsService>();
+            builder.Services.AddScoped<IAuditService, AuditService>();
 
             //DbContext
             var dataSourceBuilder = new NpgsqlDataSourceBuilder(Constants.POSTGRES_CONNECTIONSTRING);
