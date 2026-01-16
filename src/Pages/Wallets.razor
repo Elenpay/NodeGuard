@@ -854,6 +854,11 @@ OnSubmit="TransferFundsHotWallet"/>
 
     protected override async Task OnInitializedAsync()
     {
+        if (LoggedUser != null)
+        {
+            _isFinanceManager = ClaimsPrincipal != null && ClaimsPrincipal.IsInRole(ApplicationUserRole.FinanceManager.ToString());
+        }
+        
         _btcPrice = await PriceConversionService.GetBtcToUsdPrice();
         if (_btcPrice == 0)
         {
@@ -861,10 +866,6 @@ OnSubmit="TransferFundsHotWallet"/>
         }
         if (LoggedUser != null)
         {
-            if (ClaimsPrincipal.IsInRole(ApplicationUserRole.FinanceManager.ToString()))
-            {
-                _isFinanceManager = true;
-            }
             await GetData();
         }
     }
