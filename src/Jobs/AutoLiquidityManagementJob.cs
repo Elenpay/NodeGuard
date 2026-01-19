@@ -268,7 +268,7 @@ public class AutoLiquidityManagementJob : IJob
             {
                 NodeId = node.Id,
                 DestinationWalletId = node.FundsDestinationWalletId!.Value,
-                Provider = SwapProvider.Loop, // TODO Parameterize if more providers are added
+                Provider = selectedProvider,
                 ProviderId = swapResponse.Id,
                 SatsAmount = swapAmount,
                 ServiceFeeSats = swapResponse.ServerFee,
