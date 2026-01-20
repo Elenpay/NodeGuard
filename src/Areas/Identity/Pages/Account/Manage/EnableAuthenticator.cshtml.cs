@@ -14,6 +14,7 @@ using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.RazorPages;
 using Microsoft.Extensions.Logging;
+using NodeGuard.Services;
 
 namespace NodeGuard.Areas.Identity.Pages.Account.Manage
 {
@@ -22,17 +23,20 @@ namespace NodeGuard.Areas.Identity.Pages.Account.Manage
         private readonly UserManager<ApplicationUser> _userManager;
         private readonly ILogger<EnableAuthenticatorModel> _logger;
         private readonly UrlEncoder _urlEncoder;
+        private readonly IAuditService _auditService;
 
         private const string AuthenticatorUriFormat = "otpauth://totp/{0}:{1}?secret={2}&issuer={0}&digits=6";
 
         public EnableAuthenticatorModel(
             UserManager<ApplicationUser> userManager,
             ILogger<EnableAuthenticatorModel> logger,
-            UrlEncoder urlEncoder)
+            UrlEncoder urlEncoder,
+            IAuditService auditService)
         {
             _userManager = userManager;
             _logger = logger;
             _urlEncoder = urlEncoder;
+            _auditService = auditService;
         }
 
         /// <summary>
@@ -128,6 +132,13 @@ namespace NodeGuard.Areas.Identity.Pages.Account.Manage
             await _userManager.SetTwoFactorEnabledAsync(user, true);
             var userId = await _userManager.GetUserIdAsync(user);
             _logger.LogInformation("User with ID '{UserId}' has enabled 2FA with an authenticator app.", userId);
+
+            await _auditService.LogAsync(
+                AuditActionType.TwoFactorEnabled,
+                AuditEventType.Success,
+                AuditObjectType.User,
+                userId,
+                new { Username = user.UserName });
 
             StatusMessage = "Your authenticator app has been verified.";
 
