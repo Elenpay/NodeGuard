@@ -24,6 +24,7 @@
 @inject IPriceConversionService PriceConversionService
 @inject INBXplorerService NBXplorerService
 @inject IUTXOTagRepository UTXOTagRepository
+@inject IAuditService AuditService
 
 @attribute [Authorize(Roles = "NodeManager, FinanceManager, Superadmin")]
 
@@ -910,11 +911,29 @@ OnSubmit="TransferFundsHotWallet"/>
         if (addResult.Item1)
         {
             ToastService.ShowSuccess("Success");
+            await AuditService.LogAsync(
+                AuditActionType.Create,
+                AuditEventType.Success,
+                AuditObjectType.Wallet,
+                arg.Item.Id.ToString(),
+                LoggedUser?.Id,
+                LoggedUser?.UserName,
+                null,
+                new { Name = arg.Item.Name, IsHotWallet = arg.Item.IsHotWallet, MofN = arg.Item.MofN });
             await GetData();
         }
         else
         {
             ToastService.ShowError("Something went wrong");
+            await AuditService.LogAsync(
+                AuditActionType.Create,
+                AuditEventType.Failure,
+                AuditObjectType.Wallet,
+                null,
+                LoggedUser?.Id,
+                LoggedUser?.UserName,
+                null,
+                new { Name = arg.Item.Name, Error = addResult.Item2 });
             _wallets.Remove(arg.Item);
         }
     }
@@ -934,10 +953,28 @@ OnSubmit="TransferFundsHotWallet"/>
             {
                 arg.Cancel = true;
                 ToastService.ShowError("Something went wrong");
+                await AuditService.LogAsync(
+                    AuditActionType.Delete,
+                    AuditEventType.Failure,
+                    AuditObjectType.Wallet,
+                    arg.Item.Id.ToString(),
+                    LoggedUser?.Id,
+                    LoggedUser?.UserName,
+                    null,
+                    new { Name = arg.Item.Name, Error = message });
             }
             else
             {
                 ToastService.ShowSuccess("Success");
+                await AuditService.LogAsync(
+                    AuditActionType.Delete,
+                    AuditEventType.Success,
+                    AuditObjectType.Wallet,
+                    arg.Item.Id.ToString(),
+                    LoggedUser?.Id,
+                    LoggedUser?.UserName,
+                    null,
+                    new { Name = arg.Item.Name });
                 await GetData();
             }
         }
@@ -969,10 +1006,28 @@ OnSubmit="TransferFundsHotWallet"/>
         if (updateResult.Item1)
         {
             ToastService.ShowSuccess("Success");
+            await AuditService.LogAsync(
+                AuditActionType.Update,
+                AuditEventType.Success,
+                AuditObjectType.Wallet,
+                arg.Item.Id.ToString(),
+                LoggedUser?.Id,
+                LoggedUser?.UserName,
+                null,
+                new { Name = arg.Item.Name, IsHotWallet = arg.Item.IsHotWallet });
         }
         else
         {
             ToastService.ShowError("Something went wrong");
+            await AuditService.LogAsync(
+                AuditActionType.Update,
+                AuditEventType.Failure,
+                AuditObjectType.Wallet,
+                arg.Item.Id.ToString(),
+                LoggedUser?.Id,
+                LoggedUser?.UserName,
+                null,
+                new { Name = arg.Item.Name, Error = updateResult.Item2 });
         }
 
         await GetData();
@@ -1032,10 +1087,28 @@ OnSubmit="TransferFundsHotWallet"/>
             if (updateResult.Item1)
             {
                 ToastService.ShowSuccess("Key added");
+                await AuditService.LogAsync(
+                    AuditActionType.AddKey,
+                    AuditEventType.Success,
+                    AuditObjectType.Wallet,
+                    _selectedWallet.Id.ToString(),
+                    LoggedUser?.Id,
+                    LoggedUser?.UserName,
+                    null,
+                    new { WalletName = _selectedWallet.Name, KeyId = _selectedWalletKey.Id });
             }
             else
             {
                 ToastService.ShowError("Error while adding key...");
+                await AuditService.LogAsync(
+                    AuditActionType.AddKey,
+                    AuditEventType.Failure,
+                    AuditObjectType.Wallet,
+                    _selectedWallet.Id.ToString(),
+                    LoggedUser?.Id,
+                    LoggedUser?.UserName,
+                    null,
+                    new { WalletName = _selectedWallet.Name, KeyId = _selectedWalletKey.Id, Error = updateResult.Item2 });
             }
         }
 
@@ -1241,16 +1314,36 @@ OnSubmit="TransferFundsHotWallet"/>
         if (_selectedWalletToFinalise == null || _selectedWalletToFinalise.IsFinalised)
             return;
 
+        var walletId = _selectedWalletToFinalise.Id;
+        var walletName = _selectedWalletToFinalise.Name;
 
         var result = await WalletRepository.FinaliseWallet(_selectedWalletToFinalise);
 
         if (result.Item1)
         {
             ToastService.ShowSuccess("Success");
+            await AuditService.LogAsync(
+                AuditActionType.Finalise,
+                AuditEventType.Success,
+                AuditObjectType.Wallet,
+                walletId.ToString(),
+                LoggedUser?.Id,
+                LoggedUser?.UserName,
+                null,
+                new { Name = walletName });
         }
         else
         {
             ToastService.ShowError("Error while marking wallet as finalised");
+            await AuditService.LogAsync(
+                AuditActionType.Finalise,
+                AuditEventType.Failure,
+                AuditObjectType.Wallet,
+                walletId.ToString(),
+                LoggedUser?.Id,
+                LoggedUser?.UserName,
+                null,
+                new { Name = walletName, Error = result.Item2 });
         }
 
         _selectedWalletToFinalise = null;
@@ -1330,6 +1423,15 @@ OnSubmit="TransferFundsHotWallet"/>
         if (!result.Item1)
         {
             ToastService.ShowError("Something went wrong while importing the wallet");
+            await AuditService.LogAsync(
+                AuditActionType.Import,
+                AuditEventType.Failure,
+                AuditObjectType.Wallet,
+                null,
+                LoggedUser?.Id,
+                LoggedUser?.UserName,
+                null,
+                new { Name = _name, IsWatchOnly = _IsImportWalletModalWatchOnly, Error = result.Item2 });
             return;
         }
 
@@ -1338,6 +1440,15 @@ OnSubmit="TransferFundsHotWallet"/>
 
     //Success
         ToastService.ShowSuccess("Wallet imported successfully");
+        await AuditService.LogAsync(
+            AuditActionType.Import,
+            AuditEventType.Success,
+            AuditObjectType.Wallet,
+            null,
+            LoggedUser?.Id,
+            LoggedUser?.UserName,
+            null,
+            new { Name = _name, IsWatchOnly = _IsImportWalletModalWatchOnly });
 
     //Close modal
         await CloseAndCleanImportWalletModal();
@@ -1493,9 +1604,38 @@ OnSubmit="TransferFundsHotWallet"/>
         if (transferSuccess)
         {
             ToastService.ShowSuccess("Funds transferred successfully");
+            await AuditService.LogAsync(
+                AuditActionType.Transfer,
+                AuditEventType.Success,
+                AuditObjectType.Wallet,
+                _sourceTransferWallet?.Id.ToString(),
+                LoggedUser?.Id,
+                LoggedUser?.UserName,
+                null,
+                new { 
+                    SourceWallet = _sourceWalletName, 
+                    TargetWallet = _targetWalletName, 
+                    Amount = _amountToTransfer,
+                    AllFunds = _transferAllFunds,
+                    WithdrawalRequestId = withdrawalRequest.Id
+                });
         }
         else
         {
+            await AuditService.LogAsync(
+                AuditActionType.Transfer,
+                AuditEventType.Failure,
+                AuditObjectType.Wallet,
+                _sourceTransferWallet?.Id.ToString(),
+                LoggedUser?.Id,
+                LoggedUser?.UserName,
+                null,
+                new { 
+                    SourceWallet = _sourceWalletName, 
+                    TargetWallet = _targetWalletName, 
+                    Amount = _amountToTransfer,
+                    WithdrawalRequestId = withdrawalRequest.Id
+                });
             ToastService.ShowError("Error while transferring funds, please contact a superadmin for troubleshooting");
         }
 
@@ -1741,8 +1881,27 @@ OnSubmit="TransferFundsHotWallet"/>
         if (!saved)
         {
             ToastService.ShowError("Error while updating the UTXO status");
+            await AuditService.LogAsync(
+                newValue ? AuditActionType.FreezeUTXO : AuditActionType.UnfreezeUTXO,
+                AuditEventType.Failure,
+                AuditObjectType.UTXO,
+                utxo.Outpoint.ToString(),
+                LoggedUser?.Id,
+                LoggedUser?.UserName,
+                null,
+                new { WalletId = _selectedWallet?.Id, Outpoint = utxo.Outpoint.ToString() });
             return;
         }
+
+        await AuditService.LogAsync(
+            newValue ? AuditActionType.FreezeUTXO : AuditActionType.UnfreezeUTXO,
+            AuditEventType.Success,
+            AuditObjectType.UTXO,
+            utxo.Outpoint.ToString(),
+            LoggedUser?.Id,
+            LoggedUser?.UserName,
+            null,
+            new { WalletId = _selectedWallet?.Id, Outpoint = utxo.Outpoint.ToString() });
 
         // Updated the UI
         _detailsUTXOs = _detailsUTXOs.Select(x =>
