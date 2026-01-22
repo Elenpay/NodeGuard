@@ -226,6 +226,11 @@
                     }
                 </DisplayTemplate>
             </DataGridColumn>
+            <DataGridColumn TItem="ChannelOperationRequest" Field="User.UserName" Caption="Requestor" Sortable="false" Displayable="@IsPendingRequestsColumnVisible(PendingChannelsColumnName.Requestor)">
+                <DisplayTemplate>
+                    @(context?.User?.UserName ?? "N/A")
+                </DisplayTemplate>
+            </DataGridColumn>
             <DataGridColumn TItem="ChannelOperationRequest" Field="@nameof(ChannelOperationRequest.Status).Humanize(LetterCasing.Sentence)" Caption="Status" Sortable="false" Displayable="@IsPendingRequestsColumnVisible(PendingChannelsColumnName.Status)">
                 <DisplayTemplate>
                     @context?.Status.Humanize()
@@ -338,6 +343,11 @@
                 }
             </DisplayTemplate>
         </DataGridColumn>
+        <DataGridColumn TItem="ChannelOperationRequest" Field="User.UserName" Caption="Requestor" Sortable="false" Displayable="@IsAllRequestsColumnVisible(AllChannelsColumnName.Requestor)">
+            <DisplayTemplate>
+                @(context?.User?.UserName ?? "N/A")
+            </DisplayTemplate>
+        </DataGridColumn>
         <DataGridColumn TItem="ChannelOperationRequest" Field="@nameof(ChannelOperationRequest.Status)" Caption="Status" Sortable="false" Displayable="@IsAllRequestsColumnVisible(AllChannelsColumnName.Status)">
             <DisplayTemplate>
                 <Row Style="white-space: nowrap;">
@@ -443,6 +453,8 @@
 @inject INBXplorerService NBXplorerService
 @inject ILocalStorageService LocalStorageService
 @inject IPriceConversionService PriceConversionService
+@inject IAuditService AuditService
+@inject IHttpContextAccessor HttpContextAccessor
 
 @code {
     private List<ChannelOperationRequest>? _channelRequests;
@@ -514,6 +526,7 @@
         public static readonly ColumnDefault Private = new("Private");
         public static readonly ColumnDefault SignaturesCollected = new("Signatures Collected");
         public static readonly ColumnDefault Status = new("Status");
+        public static readonly ColumnDefault Requestor = new("Requestor");
     }
 
     public abstract class AllChannelsColumnName
@@ -526,6 +539,7 @@
         public static readonly ColumnDefault Private = new("Private");
         public static readonly ColumnDefault SignaturesCollected = new("Signatures Collected");
         public static readonly ColumnDefault Status = new("Status");
+        public static readonly ColumnDefault Requestor = new("Requestor");
         public static readonly ColumnDefault CreationDate = new("Creation Date");
         public static readonly ColumnDefault UpdateDate = new("Update Date");
         public static readonly ColumnDefault Links = new("Links");
@@ -705,6 +719,15 @@
                 if (createChannelResult.Item1)
                 {
                     ToastService.ShowSuccess("Open channel request created!");
+                    await AuditService.LogAsync(
+                        AuditActionType.Create, 
+                        AuditEventType.Success, 
+                        AuditObjectType.ChannelOperationRequest,
+                        request.Id.ToString(),
+                        LoggedUser.Id,
+                        LoggedUser.UserName,
+                        HttpContextAccessor.HttpContext?.GetClientIpAddress(),
+                        new { Amount = amount, SourceNodeId = _selectedSourceNodeId, DestNodeId = _selectedDestNode?.Id, Description = $"Channel open request created. Amount: {amount} BTC, SourceNodeId: {_selectedSourceNodeId}, DestNodeId: {_selectedDestNode?.Id}" });
 
                     if (_selectedUTXOs.Count > 0)
                     {
@@ -714,6 +737,15 @@
                 else
                 {
                     ToastService.ShowError(createChannelResult.Item2);
+                    await AuditService.LogAsync(
+                        AuditActionType.Create, 
+                        AuditEventType.Failure, 
+                        AuditObjectType.ChannelOperationRequest,
+                        null,
+                        LoggedUser.Id,
+                        LoggedUser.UserName,
+                        HttpContextAccessor.HttpContext?.GetClientIpAddress(),
+                        new { Error = createChannelResult.Item2, Description = $"Failed to create channel open request. Error: {createChannelResult.Item2}" });
                 }
                 _utxoSelectorModalRef.ClearModal();
             }
@@ -765,10 +797,30 @@
             if (!jobUpdateResult.Item1)
             {
                 ToastService.ShowError("There has been an error when updating the request");
+                var failActionType = _selectedStatus == ChannelOperationRequestStatus.Rejected ? AuditActionType.Reject : AuditActionType.Cancel;
+                await AuditService.LogAsync(
+                    failActionType, 
+                    AuditEventType.Failure, 
+                    AuditObjectType.ChannelOperationRequest,
+                    _selectedRequest.Id.ToString(),
+                    LoggedUser.Id,
+                    LoggedUser.UserName,
+                    HttpContextAccessor.HttpContext?.GetClientIpAddress(),
+                    new { RequestId = _selectedRequest.Id, Status = _selectedStatus, Description = $"Failed to {_selectedStatus.ToString().ToLower()} channel operation request" });
             }
             else
             {
                 ToastService.ShowSuccess("Request " + _selectedStatus);
+                var successActionType = _selectedStatus == ChannelOperationRequestStatus.Rejected ? AuditActionType.Reject : AuditActionType.Cancel;
+                await AuditService.LogAsync(
+                    successActionType, 
+                    AuditEventType.Success, 
+                    AuditObjectType.ChannelOperationRequest,
+                    _selectedRequest.Id.ToString(),
+                    LoggedUser.Id,
+                    LoggedUser.UserName,
+                    HttpContextAccessor.HttpContext?.GetClientIpAddress(),
+                    new { RequestId = _selectedRequest.Id, Status = _selectedStatus, Reason = _selectedRequest.ClosingReason, Description = $"Channel operation request {_selectedStatus.ToString().ToLower()}" });
                 await FetchRequests();
             }
         }
@@ -835,6 +887,15 @@
             if (addResult.Item1)
             {
                 ToastService.ShowSuccess("Signature collected");
+                await AuditService.LogAsync(
+                    AuditActionType.Sign, 
+                    AuditEventType.Success, 
+                    AuditObjectType.ChannelOperationRequest,
+                    _selectedRequest.Id.ToString(),
+                    LoggedUser.Id,
+                    LoggedUser.UserName,
+                    HttpContextAccessor.HttpContext?.GetClientIpAddress(),
+                    new { RequestId = _selectedRequest.Id, Description = "PSBT signature collected for channel operation request" });
 
                 _selectedRequest = await ChannelOperationRequestRepository.GetById(_selectedRequest.Id);
 
@@ -847,6 +908,15 @@
             else
             {
                 ToastService.ShowError("Error while saving the signature");
+                await AuditService.LogAsync(
+                    AuditActionType.Sign, 
+                    AuditEventType.Failure, 
+                    AuditObjectType.ChannelOperationRequest,
+                    _selectedRequest.Id.ToString(),
+                    LoggedUser.Id,
+                    LoggedUser.UserName,
+                    HttpContextAccessor.HttpContext?.GetClientIpAddress(),
+                    new { RequestId = _selectedRequest.Id, Description = "Failed to save PSBT signature for channel operation request" });
             }
 
             await FetchRequests();
@@ -880,10 +950,28 @@
             if (createChannelResult.Item1)
             {
                 ToastService.ShowSuccess("Open channel request created!");
+                await AuditService.LogAsync(
+                    AuditActionType.Create, 
+                    AuditEventType.Success, 
+                    AuditObjectType.ChannelOperationRequest,
+                    _selectedRequest.Id.ToString(),
+                    LoggedUser.Id,
+                    LoggedUser.UserName,
+                    HttpContextAccessor.HttpContext?.GetClientIpAddress(),
+                    new { Amount = new Money(_selectedRequest.SatsAmount).ToUnit(MoneyUnit.BTC), SourceNodeId = _selectedRequest.SourceNodeId, DestNodeId = _selectedRequest.DestNodeId, IsHotWallet = true, Description = "Hot wallet channel open request created" });
             }
             else
             {
                 ToastService.ShowError(createChannelResult.Item2);
+                await AuditService.LogAsync(
+                    AuditActionType.Create, 
+                    AuditEventType.Failure, 
+                    AuditObjectType.ChannelOperationRequest,
+                    null,
+                    LoggedUser.Id,
+                    LoggedUser.UserName,
+                    HttpContextAccessor.HttpContext?.GetClientIpAddress(),
+                    new { Error = createChannelResult.Item2, IsHotWallet = true, Description = "Failed to create hot wallet channel open request" });
                 _utxoSelectorModalRef.ClearModal();
                 await _approveOperationConfirmationModal.CloseModal();
                 return;
@@ -977,10 +1065,28 @@
             var scheduler = await SchedulerFactory.GetScheduler();
             await scheduler.DeleteJob(new JobKey($"{nameof(ChannelOpenJob)}-{request.Id}"));
             if (!ChannelOperationRequestRepository.Update(request).Item1) throw new Exception();
+            await AuditService.LogAsync(
+                AuditActionType.Update, 
+                AuditEventType.Success, 
+                AuditObjectType.ChannelOperationRequest,
+                request.Id.ToString(),
+                LoggedUser.Id,
+                LoggedUser.UserName,
+                HttpContextAccessor.HttpContext?.GetClientIpAddress(),
+                new { RequestId = request.Id, NewStatus = ChannelOperationRequestStatus.Failed, Description = "Channel operation request marked as failed" });
         }
         catch (Exception? e)
         {
             ToastService.ShowError("Error while marking request as failed");
+            await AuditService.LogAsync(
+                AuditActionType.Update, 
+                AuditEventType.Failure, 
+                AuditObjectType.ChannelOperationRequest,
+                _selectedRequestForMarkingAsFailed?.Id.ToString(),
+                LoggedUser?.Id,
+                LoggedUser?.UserName,
+                HttpContextAccessor.HttpContext?.GetClientIpAddress(),
+                new { RequestId = _selectedRequestForMarkingAsFailed?.Id, Description = "Failed to mark channel operation request as failed" });
         }
         finally
         {
