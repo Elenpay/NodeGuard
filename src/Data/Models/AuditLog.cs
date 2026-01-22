@@ -140,6 +140,12 @@ public enum AuditActionType
     // Swap Operations
     SwapOut,
     SwapIn,
+    SwapOutInitiated,
+    SwapOutCompleted,
+
+    // Wallet Sweep Operations
+    WalletSweep,
+    NodeWalletAssigned,
 
     // Node Operations
     AddNode,

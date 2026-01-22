@@ -53,6 +53,7 @@ public class AutoLiquidityManagementJob : IJob
     private readonly ILightningService _lightningService;
     private readonly IWalletRepository _walletRepository;
     private readonly INBXplorerService _nbXplorerService;
+    private readonly IAuditService _auditService;
 
     public AutoLiquidityManagementJob(
         ILogger<AutoLiquidityManagementJob> logger,
@@ -62,7 +63,8 @@ public class AutoLiquidityManagementJob : IJob
         IFortySwapService fortySwapService,
         ILightningService lightningService,
         IWalletRepository walletRepository,
-        INBXplorerService nbXplorerService)
+        INBXplorerService nbXplorerService,
+        IAuditService auditService)
     {
         _logger = logger;
         _nodeRepository = nodeRepository;
@@ -72,6 +74,7 @@ public class AutoLiquidityManagementJob : IJob
         _lightningService = lightningService;
         _walletRepository = walletRepository;
         _nbXplorerService = nbXplorerService;
+        _auditService = auditService;
     }
 
     public async Task Execute(IJobExecutionContext context)
@@ -290,6 +293,25 @@ public class AutoLiquidityManagementJob : IJob
 
             _logger.LogInformation("Successfully initiated swap out {SwapId} for node {NodeName}",
                 swapOut.ProviderId, node.Name);
+
+            // Audit successful swap out initiation
+            await _auditService.LogSystemAsync(
+                AuditActionType.SwapOutInitiated,
+                AuditEventType.Success,
+                AuditObjectType.SwapOut,
+                swapOut.ProviderId,
+                new
+                {
+                    NodeId = node.Id,
+                    NodeName = node.Name,
+                    Provider = selectedProvider.ToString(),
+                    AmountSats = swapAmount,
+                    DestinationAddress = destinationAddress,
+                    DestinationWalletId = node.FundsDestinationWalletId,
+                    ProviderId = swapResponse.Id,
+                    IsAutomatic = true
+                });
+
             return ManageNodeLiquidityResult.Success;
         }
         catch (Exception ex)

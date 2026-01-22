@@ -75,6 +75,18 @@ public class Constants
     /// </summary>
     public static readonly int AUTO_LIQUIDITY_MANAGEMENT_INTERVAL_MINUTES = 10;
 
+    /// <summary>
+    /// The number of days to retain audit log entries before automatic cleanup.
+    /// Default is 180 days. Can be configured via AUDIT_LOG_RETENTION_DAYS environment variable.
+    /// </summary>
+    public static readonly int AUDIT_LOG_RETENTION_DAYS = 180;
+
+    /// <summary>
+    /// Cron expression for the audit log cleanup job. Default runs daily at 3:00 AM.
+    /// Can be configured via AUDIT_LOG_CLEANUP_CRON environment variable.
+    /// </summary>
+    public static readonly string AUDIT_LOG_CLEANUP_CRON = "0 0 3 * * ?";
+
     // Observability
     public static readonly string? OTEL_EXPORTER_ENDPOINT;
 
@@ -243,6 +255,12 @@ public class Constants
 
         var autoLiquidityManagementIntervalMinutes = Environment.GetEnvironmentVariable("AUTO_LIQUIDITY_MANAGEMENT_INTERVAL_MINUTES");
         if (autoLiquidityManagementIntervalMinutes != null) AUTO_LIQUIDITY_MANAGEMENT_INTERVAL_MINUTES = int.Parse(autoLiquidityManagementIntervalMinutes);
+
+        // Audit Log
+        var auditLogRetentionDays = Environment.GetEnvironmentVariable("AUDIT_LOG_RETENTION_DAYS");
+        if (auditLogRetentionDays != null) AUDIT_LOG_RETENTION_DAYS = int.Parse(auditLogRetentionDays);
+
+        AUDIT_LOG_CLEANUP_CRON = Environment.GetEnvironmentVariable("AUDIT_LOG_CLEANUP_CRON") ?? AUDIT_LOG_CLEANUP_CRON;
 
         // Observability
         //We need to expand the env-var with %ENV_VAR% for K8S
