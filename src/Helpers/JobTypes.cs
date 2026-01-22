@@ -49,35 +49,20 @@ public class SimpleJob
     
     public static async Task Reschedule<T>(IScheduler scheduler, string identitySuffix) where T : IJob
     {
-        try
-        {
-            var triggerKey = new TriggerKey($"{typeof(T).Name}-{identitySuffix}");
+        var triggerKey = new TriggerKey($"{typeof(T).Name}-{identitySuffix}");
 
-            var trigger = TriggerBuilder.Create()
-                .WithIdentity($"{typeof(T).Name}Trigger-{identitySuffix}")
-                .StartNow()
-                .Build();
-            
-            await scheduler.RescheduleJob(triggerKey, trigger);
-
-        }
-        catch (Exception ex)
-        {
-            Console.WriteLine($"Unexpected error rescheduling job of type {typeof(T).Name} with identity suffix {identitySuffix}: {ex.Message}");
-        }
+        var trigger = TriggerBuilder.Create()
+            .WithIdentity($"{typeof(T).Name}Trigger-{identitySuffix}")
+            .StartNow()
+            .Build();
+        
+        await scheduler.RescheduleJob(triggerKey, trigger);
     }
     
     public static async Task DeleteJob<T>(IScheduler scheduler, string identitySuffix) where T : IJob
     {
-        try
-        {
-            JobKey jobKey = new JobKey($"{typeof(T).Name}-{identitySuffix}");
-            await scheduler.DeleteJob(jobKey);
-        }
-        catch (Exception ex)
-        {
-            Console.WriteLine($"Unexpected error occurred while removing the job of type {typeof(T).Name} with identity suffix {identitySuffix}: {ex.Message}");
-        }
+        JobKey jobKey = new JobKey($"{typeof(T).Name}-{identitySuffix}");
+        await scheduler.DeleteJob(jobKey);
     }
 
     public static async Task<bool> IsJobExists<T>(IScheduler scheduler, string identitySuffix) where T : IJob
@@ -181,7 +166,6 @@ public class RetriableJob
 
         var trigger = context.Trigger as SimpleTriggerImpl;
 
-        Console.WriteLine($"ChannelOpenJob-{trigger!.TimesTriggered} {intervals.Length}");
         if (trigger!.TimesTriggered > intervals.Length)
         {
             await callback();

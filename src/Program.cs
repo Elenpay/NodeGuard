@@ -45,6 +45,8 @@ using NodeGuard.Rpc;
 using Microsoft.AspNetCore.Server.Kestrel.Core;
 using Npgsql;
 using Quartz.AspNetCore;
+using Serilog.Formatting.Compact;
+using Serilog.Formatting.Json;
 
 namespace NodeGuard
 {
@@ -64,14 +66,13 @@ namespace NodeGuard
 
             var builder = WebApplication.CreateBuilder(args);
 
-            var jsonFormatter = new LowerCaseJsonFormatter();
 
             Log.Logger = new LoggerConfiguration()
                 .ReadFrom.Configuration(builder.Configuration)
                 .MinimumLevel.Override("Microsoft", LogEventLevel.Warning)
                 .MinimumLevel.Override("System", LogEventLevel.Warning)
                 .Enrich.With(new DatadogLogEnricher())
-                .WriteTo.Console(jsonFormatter)
+                .WriteTo.Console(new JsonFormatter())
                 .CreateLogger();
 
             builder.Host.UseSerilog();
