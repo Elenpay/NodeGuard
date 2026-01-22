@@ -100,6 +100,50 @@ namespace NodeGuard.Data.Repositories
                 .ToListAsync();
         }
 
+        public async Task<(List<WalletWithdrawalRequest> Requests, int TotalCount)> GetPaginatedAsync(int pageNumber, int pageSize, IEnumerable<int>? excludedRequestIds = null)
+        {
+            await using var applicationDbContext = await _dbContextFactory.CreateDbContextAsync();
+
+            if (pageNumber < 1)
+            {
+                pageNumber = 1;
+            }
+
+            if (pageSize < 1)
+            {
+                pageSize = 1;
+            }
+
+            var query = applicationDbContext.WalletWithdrawalRequests
+                .Include(x => x.Wallet).ThenInclude(x => x.Keys)
+                .Include(x => x.UserRequestor)
+                .Include(x => x.WalletWithdrawalRequestPSBTs)
+                .Include(x => x.WalletWithdrawalRequestDestinations)
+                .Include(x => x.UTXOs)
+                .AsSplitQuery()
+                .AsQueryable();
+
+            if (excludedRequestIds != null)
+            {
+                var excludedIds = excludedRequestIds.Where(id => id > 0).Distinct().ToList();
+                if (excludedIds.Count > 0)
+                {
+                    query = query.Where(x => !excludedIds.Contains(x.Id));
+                }
+            }
+
+            query = query.OrderByDescending(x => x.CreationDatetime);
+
+            var totalCount = await query.CountAsync();
+
+            var items = await query
+                .Skip((pageNumber - 1) * pageSize)
+                .Take(pageSize)
+                .ToListAsync();
+
+            return (items, totalCount);
+        }
+
         public async Task<List<WalletWithdrawalRequest>> GetUnsignedPendingRequestsByUser(string userId)
         {
             await using var applicationDbContext = await _dbContextFactory.CreateDbContextAsync();

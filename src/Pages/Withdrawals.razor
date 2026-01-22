@@ -1,6 +1,7 @@
 ﻿@page "/withdrawals"
 @using System.Security.Claims
 @using Blazorise.Extensions
+@using Blazorise.DataGrid
 @using Quartz
 @using Humanizer
 @using NBitcoin
@@ -8,7 +9,10 @@
 @using Google.Protobuf
 @using NBXplorer.Models
 @using System.Text.Json
+@using System.Linq
+@using NodeGuard.Data.Models
 @using NodeGuard.Helpers;
+@using NodeGuard.Services;
 @using Polly
 @attribute [Authorize(Roles = "Superadmin,NodeManager,FinanceManager")]
 
@@ -277,15 +281,17 @@
     <DataGrid TItem="WalletWithdrawalRequest"
               @ref="_allRequestsDatagrid"
               Data="@_withdrawalRequests"
+              ReadData="@OnAllWithdrawalsReadData"
+              TotalItems="@_totalWithdrawalRequests"
               Filterable="true"
               FilterMethod="DataGridFilterMethod.Contains"
               Editable="false"
               Responsive="true"
               ResizeMode="TableResizeMode.Columns"
               ShowPager="true"
-              ShowPageSizes="true"
+              ShowPageSizes="false"
               Narrow="true"
-              PageSize="25">
+              PageSize="@_pageSize">
         <DataGridColumns>
             <DataGridColumn TItem="WalletWithdrawalRequest" Field="@nameof(WalletWithdrawalRequest.Id)" Caption="#" Sortable="false" Displayable="true"/>
             <DataGridColumn TItem="WalletWithdrawalRequest" PopupFieldColumnSize="ColumnSize.Is12" Editable="true" Field="@nameof(WalletWithdrawalRequest.Description)" Caption="@nameof(WalletWithdrawalRequest.Description)" Sortable="false" Displayable="@IsAllRequestsColumnVisible(AllWithdrawalsColumnName.Description)">
@@ -439,6 +445,7 @@
 <CancelOrRejectPopup
     @ref="@_rejectCancelModalRef"
     Title='@("Wallet withdrawal:" + _selectedRequest?.Id)'
+    Reason=""
     Validator="@RejectReasonValidator"
     OnCancel="@HideRejectCancelModal"
     OnSubmit="@RejectOrCancel"/>
@@ -457,6 +464,7 @@
     IsWalletWithdrawalValidation="true"/>
 
 @inject IToastService ToastService
+@inject IAuditService AuditService
 @inject IWalletWithdrawalRequestRepository WalletWithdrawalRequestRepository
 @inject IWalletWithdrawalRequestPsbtRepository WalletWithdrawalRequestPsbtRepository
 @inject IWalletRepository WalletRepository
@@ -480,6 +488,9 @@
     private List<WalletWithdrawalRequest> _userPendingRequests = new();
     private List<Wallet> _availableWallets = new();
     private List<WalletWithdrawalRequest> _withdrawalRequests = new();
+    private int _totalWithdrawalRequests;
+    private int _currentPage = 1;
+    private int _pageSize = 25;
     private string? mempoolUrl = Constants.MEMPOOL_ENDPOINT;
     private bool _isFinanceManager;
     private List<UTXO> _selectedUTXOs = new();
@@ -582,12 +593,82 @@
         {
             _userPendingRequests = await WalletWithdrawalRequestRepository.GetUnsignedPendingRequestsByUser(LoggedUser.Id);
         }
-
-        _withdrawalRequests = (await WalletWithdrawalRequestRepository.GetAll()).Except(_userPendingRequests).ToList();
+        else
+        {
+            _userPendingRequests.Clear();
+        }
 
         _availableWallets = await WalletRepository.GetAvailableWallets(false);
         //TODO Fix BIP39 withdrawals, until then, manual hack to filter them out
         _availableWallets = _availableWallets.Where(x => !x.IsBIP39Imported).ToList();
+
+        await ReloadAllWithdrawalsAsync();
+    }
+
+    private async Task ReloadAllWithdrawalsAsync(System.Threading.CancellationToken cancellationToken = default)
+    {
+        if (_allRequestsDatagrid != null)
+        {
+            await _allRequestsDatagrid.Reload();
+        }
+        else
+        {
+            await LoadAllWithdrawalRequestsAsync(_currentPage, _pageSize, cancellationToken);
+        }
+    }
+
+    private async Task LoadAllWithdrawalRequestsAsync(int pageNumber, int pageSize, System.Threading.CancellationToken cancellationToken)
+    {
+        if (cancellationToken.IsCancellationRequested)
+        {
+            return;
+        }
+
+        var excludedIds = _userPendingRequests.Select(request => request.Id);
+        var (requests, totalCount) = await WalletWithdrawalRequestRepository.GetPaginatedAsync(pageNumber, pageSize, excludedIds);
+
+        if (cancellationToken.IsCancellationRequested)
+        {
+            return;
+        }
+
+        _withdrawalRequests = requests;
+        _totalWithdrawalRequests = totalCount;
+        _currentPage = pageNumber;
+        _pageSize = pageSize;
+    }
+
+    private async Task OnAllWithdrawalsReadData(DataGridReadDataEventArgs<WalletWithdrawalRequest> e)
+    {
+        await LoadAllWithdrawalRequestsAsync(e.Page, e.PageSize, e.CancellationToken);
+    }
+
+    private Task LogWithdrawalAuditAsync(
+        AuditActionType actionType,
+        AuditEventType eventType,
+        WalletWithdrawalRequest? request,
+        string message,
+        object? extraDetails = null)
+    {
+        var destinationDetails = request?.WalletWithdrawalRequestDestinations?.Select(d => new
+        {
+            d.Address,
+            d.Amount
+        });
+
+        var details = new
+        {
+            Message = message,
+            RequestId = request?.Id,
+            WalletId = request?.WalletId,
+            Status = request?.Status.ToString(),
+            Amount = request?.TotalAmount,
+            ReferenceId = request?.ReferenceId,
+            DestinationAddresses = destinationDetails,
+            Extra = extraDetails
+        };
+
+        return AuditService.LogAsync(actionType, eventType, AuditObjectType.WalletWithdrawalRequest, request?.Id.ToString(), details);
     }
 
     private void OnCloseCoinSelectionModal(List<UTXO> selectedUTXOs)
@@ -624,6 +705,7 @@
             await GetData();
             _selectedRequest = arg.Item;
             await _confirmationModal.ShowModal();
+            await LogWithdrawalAuditAsync(AuditActionType.Create, AuditEventType.Attempt, arg.Item, "Hot wallet withdrawal pending confirmation.");
             return;
         }
 
@@ -631,6 +713,7 @@
         var addResult = await WalletWithdrawalRequestRepository.AddAsync(arg.Item);
         if (addResult.Item1)
         {
+            await LogWithdrawalAuditAsync(AuditActionType.Create, AuditEventType.Success, arg.Item, "Withdrawal request created.");
             ToastService.ShowSuccess("Success");
             await GetData();
 
@@ -643,6 +726,7 @@
         }
         else
         {
+            await LogWithdrawalAuditAsync(AuditActionType.Create, AuditEventType.Failure, arg.Item, addResult.Item2 ?? "Failed to create withdrawal request.");
             ToastService.ShowError("Something went wrong");
             _userPendingRequests.Remove(arg.Item);
         }
@@ -683,15 +767,18 @@
     {
         if (arg.Item != null)
         {
-            var (result, _) = WalletWithdrawalRequestRepository.Remove(arg.Item);
+            var (result, errorMessage) = WalletWithdrawalRequestRepository.Remove(arg.Item);
 
             if (!result)
             {
                 arg.Cancel = true;
-                ToastService.ShowError("Something went wrong");
+                var message = errorMessage ?? "Something went wrong";
+                ToastService.ShowError(message);
+                await LogWithdrawalAuditAsync(AuditActionType.Delete, AuditEventType.Failure, arg.Item, message);
             }
             else
             {
+                await LogWithdrawalAuditAsync(AuditActionType.Delete, AuditEventType.Success, arg.Item, "Withdrawal request removed.");
                 ToastService.ShowSuccess("Success");
                 await GetData();
             }
@@ -705,14 +792,17 @@
 
         if (await ValidateBalance(arg)) return;
 
-        var updateResult = WalletWithdrawalRequestRepository.Update(arg.Item);
-        if (updateResult.Item1)
+        var (updated, errorMessage) = WalletWithdrawalRequestRepository.Update(arg.Item);
+        if (updated)
         {
+            await LogWithdrawalAuditAsync(AuditActionType.Update, AuditEventType.Success, arg.Item, "Withdrawal request updated.");
             ToastService.ShowSuccess("Success");
         }
         else
         {
-            ToastService.ShowError("Something went wrong");
+            var message = errorMessage ?? "Something went wrong";
+            await LogWithdrawalAuditAsync(AuditActionType.Update, AuditEventType.Failure, arg.Item, message);
+            ToastService.ShowError(message);
         }
 
         await GetData();
@@ -790,22 +880,27 @@
         catch (NoUTXOsAvailableException)
         {
             ToastService.ShowError("No UTXOs available for withdrawals were found for this wallet");
+            await LogWithdrawalAuditAsync(AuditActionType.Approve, AuditEventType.Failure, _selectedRequest, "No UTXOs available for withdrawal approval.");
         }
         catch (BumpingException e)
         {
             ToastService.ShowError(e.Message);
+            await LogWithdrawalAuditAsync(AuditActionType.Approve, AuditEventType.Failure, _selectedRequest, e.Message);
         }
         catch (ShowToUserException e)
         {
             ToastService.ShowError(e.Message);
             _selectedRequest.Status = WalletWithdrawalRequestStatus.Failed;
             WalletWithdrawalRequestRepository.Update(_selectedRequest);
+            await LogWithdrawalAuditAsync(AuditActionType.Approve, AuditEventType.Failure, _selectedRequest, e.Message);
             await GetData();
             StateHasChanged();
         }
-        catch (Exception)
+        catch (Exception ex)
         {
             ToastService.ShowError("Error while generating PSBT template for the request");
+            var message = string.IsNullOrWhiteSpace(ex.Message) ? "Error while generating PSBT template." : ex.Message;
+            await LogWithdrawalAuditAsync(AuditActionType.Approve, AuditEventType.Failure, _selectedRequest, message);
         }
     }
 
@@ -814,6 +909,7 @@
         if (walletWithdrawalRequest == null)
         {
             ToastService.ShowError("Invalid request");
+            await LogWithdrawalAuditAsync(AuditActionType.BumpFee, AuditEventType.Failure, null, "Invalid bump fee request.");
             return;
         }
             
@@ -821,6 +917,7 @@
         if (request == null)
         {
             ToastService.ShowError("Request not found");
+            await LogWithdrawalAuditAsync(AuditActionType.BumpFee, AuditEventType.Failure, walletWithdrawalRequest, "Withdrawal request not found for bumping.");
             return;
         }
         
@@ -828,6 +925,7 @@
         if (request.Status != WalletWithdrawalRequestStatus.OnChainConfirmationPending)
         {
             ToastService.ShowError("Bumpfee can only be used for transactions that are pending on-chain confirmation.");
+            await LogWithdrawalAuditAsync(AuditActionType.BumpFee, AuditEventType.Failure, request, "Bump requested for withdrawal not pending on-chain confirmation.");
             return;
         }
         
@@ -842,6 +940,7 @@
             catch (Exception)
             {
                 ToastService.ShowError("Error getting confirmations");
+                await LogWithdrawalAuditAsync(AuditActionType.BumpFee, AuditEventType.Failure, request, "Failed to retrieve transaction confirmations for bumping.");
                 return;
             }
         }
@@ -850,12 +949,14 @@
         {
             ToastService.ShowError("Bumpfee can only be used for transactions with no confirmations. " +
                                    "This transaction has already been mined.");
+            await LogWithdrawalAuditAsync(AuditActionType.BumpFee, AuditEventType.Failure, request, "Bump requested for transaction that already has confirmations.");
             return;
         }
         
         if (request.Changeless && request.WalletWithdrawalRequestDestinations!.Count > 1)
         {
             ToastService.ShowError("Fee bumping is not supported for changeless transactions. Please create a new withdrawal with higher fees instead.");
+            await LogWithdrawalAuditAsync(AuditActionType.BumpFee, AuditEventType.Failure, request, "Bump requested for changeless transaction with multiple outputs.");
             return;
         }
         
@@ -865,9 +966,11 @@
 
             if (_bumpfeeRef != null) await _bumpfeeRef.ShowModal();
         }
-        catch (Exception)
+        catch (Exception ex)
         {
             ToastService.ShowError("Error while creating bumpfee modal");
+            var message = string.IsNullOrWhiteSpace(ex.Message) ? "Error while creating bump fee modal." : ex.Message;
+            await LogWithdrawalAuditAsync(AuditActionType.BumpFee, AuditEventType.Failure, request, message);
         }
     }
 
@@ -877,10 +980,12 @@
         {
             _utxoSelectorModalRef.ClearModal();
             ToastService.ShowError("Invalid request");
+            await LogWithdrawalAuditAsync(AuditActionType.Sign, AuditEventType.Failure, _selectedRequest, "Attempted to sign withdrawal request with invalid data.");
         }
         else if (_selectedRequest.WalletWithdrawalRequestPSBTs.Any(x => _psbtSignRef.SignedPSBT.Equals(x.PSBT)))
         {
             ToastService.ShowError("You already signed this request with this key");
+            await LogWithdrawalAuditAsync(AuditActionType.Sign, AuditEventType.Failure, _selectedRequest, "Duplicate signature submission detected.");
         }
         else
         {
@@ -894,6 +999,7 @@
 
             if (addResult.Item1)
             {
+                await LogWithdrawalAuditAsync(AuditActionType.Sign, AuditEventType.Success, _selectedRequest, "PSBT signature stored.");
                 _selectedRequest.Status = WalletWithdrawalRequestStatus.PSBTSignaturesPending;
                 _selectedRequest = await WalletWithdrawalRequestRepository.GetById(_selectedRequest.Id);
 
@@ -915,9 +1021,11 @@
                                 }
                             }
                         }
-                        catch
+                        catch (Exception ex)
                         {
                             failedWithdrawalRequest = true;
+                            var message = string.IsNullOrWhiteSpace(ex.Message) ? "Failed to queue withdrawal." : ex.Message;
+                            await LogWithdrawalAuditAsync(AuditActionType.Approve, AuditEventType.Failure, _selectedRequest, message);
                         }
 
                         if (failedWithdrawalRequest)
@@ -932,12 +1040,16 @@
                 }
                 else
                 {
-                    ToastService.ShowError("Invalid PSBT");
+                    const string invalidPsbtMessage = "Invalid PSBT";
+                    ToastService.ShowError(invalidPsbtMessage);
+                    await LogWithdrawalAuditAsync(AuditActionType.Sign, AuditEventType.Failure, _selectedRequest, invalidPsbtMessage);
                 }
             }
             else
             {
-                ToastService.ShowError("Error while saving the signature");
+                var message = addResult.Item2 ?? "Error while saving the signature";
+                ToastService.ShowError(message);
+                await LogWithdrawalAuditAsync(AuditActionType.Sign, AuditEventType.Failure, _selectedRequest, message);
             }
 
             await _psbtSignRef.HideModal();
@@ -979,6 +1091,7 @@
             }
 
             ToastService.ShowSuccess("Success");
+            await LogWithdrawalAuditAsync(AuditActionType.BumpFee, AuditEventType.Success, _selectedRequest, "Bump withdrawal request created.");
             await GetData();
 
             if (_selectedUTXOs.Count > 0)
@@ -990,13 +1103,16 @@
         }
         catch (ShowToUserException e)
         {
-             ToastService.ShowError(e.Message);
+            ToastService.ShowError(e.Message);
+            await LogWithdrawalAuditAsync(AuditActionType.BumpFee, AuditEventType.Failure, _selectedRequest, e.Message);
             _userPendingRequests.Remove(newRequest);
         }
         catch (Exception e)
         {
             Logger.LogError("Error creating a new withdrawal request for bumping fee: {Error}", e.Message);
+            var message = string.IsNullOrWhiteSpace(e.Message) ? "Something went wrong" : e.Message;
             ToastService.ShowError("Something went wrong");
+            await LogWithdrawalAuditAsync(AuditActionType.BumpFee, AuditEventType.Failure, _selectedRequest, message);
         }
     }
 
@@ -1009,6 +1125,7 @@
         catch
         {
             ToastService.ShowError("Could not bump the withdrawal");
+            await LogWithdrawalAuditAsync(AuditActionType.BumpFee, AuditEventType.Failure, request, "Could not bump the withdrawal.");
         }
     }
 
@@ -1046,6 +1163,7 @@
                 if (_selectedRequest == null)
                 {
                     ToastService.ShowError("Withdrawal request not found");
+                    await LogWithdrawalAuditAsync(AuditActionType.BumpFee, AuditEventType.Failure, _selectedRequest, "Withdrawal request not found while bumping.");
                     return;
                 }
 
@@ -1057,6 +1175,7 @@
                     if (inputAmount < newFee + _selectedRequest.TotalAmount + Constants.BITCOIN_DUST.ToDecimal(MoneyUnit.BTC))
                     {
                         ToastService.ShowError("The new fee plus the amount exceeds the sum of the selected UTXOs or returns dust. Please lower the fee rate.");
+                        await LogWithdrawalAuditAsync(AuditActionType.BumpFee, AuditEventType.Failure, _selectedRequest, "New fee amount exceeds available UTXO value.");
                         return;
                     }
                 }
@@ -1065,6 +1184,7 @@
                 if (_selectedRequest.Changeless && _selectedRequest.WalletWithdrawalRequestDestinations!.Count > 1)
                 {
                     ToastService.ShowError("Fee bumping is not supported for changeless transactions. Please create a new withdrawal with higher fees instead.");
+                    await LogWithdrawalAuditAsync(AuditActionType.BumpFee, AuditEventType.Failure, _selectedRequest, "Fee bump not allowed for changeless multi-output transaction.");
                     return;
                 }
                 
@@ -1075,11 +1195,13 @@
             else
             {
                 ToastService.ShowError("Something went wrong");
+                await LogWithdrawalAuditAsync(AuditActionType.BumpFee, AuditEventType.Failure, newRequest, "Invalid bump fee request parameters.");
             }
         }
         catch (Exception)
         {
             ToastService.ShowError($"Something went wrong");
+            await LogWithdrawalAuditAsync(AuditActionType.BumpFee, AuditEventType.Failure, newRequest, "Unexpected error while bumping withdrawal.");
             await _bumpfeeRef.HideModal();
         }
     }
@@ -1111,7 +1233,16 @@
             if (!updateResult.Item1)
             {
                 Logger.LogError("Error while updating the withdrawal request status to cancelled/rejected: {Error}", updateResult.Item2);
-                ToastService.ShowError("Something went wrong");
+                var message = updateResult.Item2 ?? "Something went wrong";
+                ToastService.ShowError(message);
+                var failureAction = _rejectCancelStatus == WalletWithdrawalRequestStatus.Cancelled ? AuditActionType.Cancel : AuditActionType.Reject;
+                await LogWithdrawalAuditAsync(failureAction, AuditEventType.Failure, _selectedRequest, message);
+            }
+            else
+            {
+                var successAction = _rejectCancelStatus == WalletWithdrawalRequestStatus.Cancelled ? AuditActionType.Cancel : AuditActionType.Reject;
+                var successMessage = successAction == AuditActionType.Cancel ? "Withdrawal request cancelled." : "Withdrawal request rejected.";
+                await LogWithdrawalAuditAsync(successAction, AuditEventType.Success, _selectedRequest, successMessage);
             }
 
             // In case that is a bump, we return the old request status to pending confirmation.
@@ -1189,7 +1320,13 @@
             if (!updateResult.Item1)
             {
                 Logger.LogError("Error while updating the withdrawal request status to cancelled: {Error}", updateResult.Item2);
-                ToastService.ShowError("Something went wrong");
+                var message = updateResult.Item2 ?? "Something went wrong";
+                ToastService.ShowError(message);
+                await LogWithdrawalAuditAsync(AuditActionType.Cancel, AuditEventType.Failure, _selectedRequest, message);
+            }
+            else
+            {
+                await LogWithdrawalAuditAsync(AuditActionType.Cancel, AuditEventType.Success, _selectedRequest, "Withdrawal request cancelled by user.");
             }
             StateHasChanged();
         }
@@ -1227,6 +1364,7 @@
             ToastService.ShowError(errorMessage);
             _selectedRequest.Status = WalletWithdrawalRequestStatus.Failed;
             WalletWithdrawalRequestRepository.Update(_selectedRequest);
+            await LogWithdrawalAuditAsync(AuditActionType.Create, AuditEventType.Failure, _selectedRequest, errorMessage);
             await _confirmationModal.CloseModal();
             await GetData();
             StateHasChanged();
@@ -1266,6 +1404,7 @@
                 _selectedRequest.Changeless = _selectedUTXOs.Count > 0;
 
                 ToastService.ShowSuccess("Withdrawal request created!");
+                await LogWithdrawalAuditAsync(AuditActionType.Create, AuditEventType.Success, _selectedRequest, "Withdrawal request created.");
 
                 if (_selectedUTXOs.Count > 0)
                 {
@@ -1302,7 +1441,6 @@
                 }
 
                 await GetData();
-                _allRequestsDatagrid.Dispose();
                 StateHasChanged();
                 await _confirmationModal.CloseModal();
             }
@@ -1365,12 +1503,15 @@
             {
                 WalletWithdrawalRequestRepository.Update(_selectedRequest);
             }
+            await LogWithdrawalAuditAsync(AuditActionType.Approve, AuditEventType.Success, _selectedRequest, "Withdrawal job scheduled.");
         }
-        catch
+        catch (Exception ex)
         {
             ToastService.ShowError("Error while requesting a withdrawal, please contact a superadmin for troubleshooting");
             _selectedRequest.Status = WalletWithdrawalRequestStatus.Failed;
             WalletWithdrawalRequestRepository.Update(_selectedRequest);
+            var message = string.IsNullOrWhiteSpace(ex.Message) ? "Failed to schedule withdrawal job." : ex.Message;
+            await LogWithdrawalAuditAsync(AuditActionType.Approve, AuditEventType.Failure, _selectedRequest, message);
             await _confirmationModal.CloseModal();
             await GetData();
             StateHasChanged();
