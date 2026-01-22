@@ -1,0 +1,433 @@
+@page "/audittrail"
+@using System.Security.Claims
+@using Humanizer
+@using NodeGuard.Data.Models
+@using NodeGuard.Data.Repositories.Interfaces
+@attribute [Authorize]
+
+<PageTitle>Audit Trail</PageTitle>
+<h3 class="custom-primary">Audit Trail</h3>
+
+<Alert Color="Color.Info" Visible="true">
+    <AlertMessage>
+        <Icon Name="IconName.InfoCircle" /> Audit logs are stored in the database with a retention period of @Constants.AUDIT_LOG_RETENTION_DAYS days.
+        Logs older than this will be automatically cleaned up.
+    </AlertMessage>
+</Alert>
+
+@if (!_hasFullAccess)
+{
+    <Alert Color="Color.Warning" Visible="true">
+        <AlertMessage>
+            <Icon Name="IconName.InfoCircle" /> You are viewing your own audit log entries only. FinanceManager and Superadmin roles have access to all audit logs.
+        </AlertMessage>
+    </Alert>
+}
+
+<Row Class="mb-3">
+    <Column ColumnSize="ColumnSize.Is2">
+        <Field>
+            <FieldLabel>Action Type</FieldLabel>
+            <Select TValue="AuditActionType?" @bind-SelectedValue="_actionTypeFilter">
+                <SelectItem Value="@((AuditActionType?)null)">All Actions</SelectItem>
+                @foreach (var actionType in Enum.GetValues<AuditActionType>())
+                {
+                    <SelectItem Value="@actionType">@actionType.Humanize()</SelectItem>
+                }
+            </Select>
+        </Field>
+    </Column>
+    <Column ColumnSize="ColumnSize.Is2">
+        <Field>
+            <FieldLabel>Event Type</FieldLabel>
+            <Select TValue="AuditEventType?" @bind-SelectedValue="_eventTypeFilter">
+                <SelectItem Value="@((AuditEventType?)null)">All Events</SelectItem>
+                @foreach (var eventType in Enum.GetValues<AuditEventType>())
+                {
+                    <SelectItem Value="@eventType">@eventType.Humanize()</SelectItem>
+                }
+            </Select>
+        </Field>
+    </Column>
+    <Column ColumnSize="ColumnSize.Is2">
+        <Field>
+            <FieldLabel>Object Type</FieldLabel>
+            <Select TValue="AuditObjectType?" @bind-SelectedValue="_objectTypeFilter">
+                <SelectItem Value="@((AuditObjectType?)null)">All Objects</SelectItem>
+                @foreach (var objectType in Enum.GetValues<AuditObjectType>())
+                {
+                    <SelectItem Value="@objectType">@objectType.Humanize()</SelectItem>
+                }
+            </Select>
+        </Field>
+    </Column>
+    @if (_hasFullAccess)
+    {
+        <Column ColumnSize="ColumnSize.Is2">
+            <Field>
+                <FieldLabel>User</FieldLabel>
+                <Select TValue="string?" @bind-SelectedValue="_userIdFilter">
+                    <SelectItem Value="@((string?)null)">All Users</SelectItem>
+                    @foreach (var user in _users)
+                    {
+                        <SelectItem Value="@user.Id">@(user.UserName ?? user.Email ?? user.Id)</SelectItem>
+                    }
+                </Select>
+            </Field>
+        </Column>
+    }
+    <Column ColumnSize="ColumnSize.Is2">
+        <Field>
+            <FieldLabel>From Date</FieldLabel>
+            <DatePicker TValue="DateTime?" @bind-Date="_fromDate" InputMode="DateInputMode.Date" Placeholder="Start date" />
+        </Field>
+    </Column>
+    <Column ColumnSize="ColumnSize.Is2">
+        <Field>
+            <FieldLabel>To Date</FieldLabel>
+            <DatePicker TValue="DateTime?" @bind-Date="_toDate" InputMode="DateInputMode.Date" Placeholder="End date" />
+        </Field>
+    </Column>
+    <Column ColumnSize="ColumnSize.Is2" Class="d-flex align-items-end">
+        <Button Color="Color.Primary" Clicked="ApplyFilters">
+            <Icon Name="IconName.Filter" /> Apply Filters
+        </Button>
+        <Button Color="Color.Secondary" Class="ml-2" Clicked="ClearFilters">
+            <Icon Name="IconName.Times" /> Clear
+        </Button>
+    </Column>
+</Row>
+
+<Row>
+    <Column ColumnSize="ColumnSize.Is12">
+        <DataGrid TItem="AuditLog"
+                  @ref="_auditLogDataGrid"
+                  Data="@_auditLogs"
+                  ReadData="@OnReadData"
+                  TotalItems="@_totalItems"
+                  Responsive="true"
+                  ResizeMode="TableResizeMode.Columns"
+                  ShowPager="true"
+                  ShowPageSizes="true"
+                  PageSize="25"
+                  Narrow="true"
+                  Striped="true"
+                  Hoverable="true">
+            <DataGridColumns>
+                <DataGridColumn TItem="AuditLog" Field="@nameof(AuditLog.Timestamp)" Caption="Timestamp" Sortable="true" SortDirection="SortDirection.Descending">
+                    <DisplayTemplate>
+                        <Tooltip Text="@context.Timestamp.ToString("yyyy-MM-dd HH:mm:ss zzz")">
+                            @context.Timestamp.Humanize()
+                        </Tooltip>
+                    </DisplayTemplate>
+                </DataGridColumn>
+                <DataGridColumn TItem="AuditLog" Field="@nameof(AuditLog.ActionType)" Caption="Action" Sortable="true">
+                    <DisplayTemplate>
+                        <Badge Color="@GetActionBadgeColor(context.ActionType)">
+                            @context.ActionType.Humanize()
+                        </Badge>
+                    </DisplayTemplate>
+                </DataGridColumn>
+                <DataGridColumn TItem="AuditLog" Field="@nameof(AuditLog.EventType)" Caption="Result" Sortable="true">
+                    <DisplayTemplate>
+                        <Badge Color="@GetEventBadgeColor(context.EventType)">
+                            @context.EventType.Humanize()
+                        </Badge>
+                    </DisplayTemplate>
+                </DataGridColumn>
+                <DataGridColumn TItem="AuditLog" Field="@nameof(AuditLog.Username)" Caption="User" Sortable="true">
+                    <DisplayTemplate>
+                        @if (!string.IsNullOrEmpty(context.Username))
+                        {
+                            <Tooltip Text="@($"User ID: {context.UserId}")">
+                                @context.Username
+                            </Tooltip>
+                        }
+                        else
+                        {
+                            <span class="text-muted">System</span>
+                        }
+                    </DisplayTemplate>
+                </DataGridColumn>
+                <DataGridColumn TItem="AuditLog" Field="@nameof(AuditLog.IpAddress)" Caption="IP Address" Sortable="true">
+                    <DisplayTemplate>
+                        @if (!string.IsNullOrEmpty(context.IpAddress))
+                        {
+                            @context.IpAddress
+                        }
+                        else
+                        {
+                            <span class="text-muted">N/A</span>
+                        }
+                    </DisplayTemplate>
+                </DataGridColumn>
+                <DataGridColumn TItem="AuditLog" Field="@nameof(AuditLog.ObjectAffected)" Caption="Object Type" Sortable="true">
+                    <DisplayTemplate>
+                        @context.ObjectAffected.Humanize()
+                    </DisplayTemplate>
+                </DataGridColumn>
+                <DataGridColumn TItem="AuditLog" Field="@nameof(AuditLog.ObjectId)" Caption="Object ID" Sortable="false">
+                    <DisplayTemplate>
+                        @if (!string.IsNullOrEmpty(context.ObjectId))
+                        {
+                            <Tooltip Text="@context.ObjectId">
+                                @StringHelper.TruncateTail(context.ObjectId, 15)
+                            </Tooltip>
+                        }
+                        else
+                        {
+                            <span class="text-muted">N/A</span>
+                        }
+                    </DisplayTemplate>
+                </DataGridColumn>
+                <DataGridColumn TItem="AuditLog" Field="@nameof(AuditLog.Details)" Caption="Details" Sortable="false">
+                    <DisplayTemplate>
+                        @if (!string.IsNullOrEmpty(context.Details))
+                        {
+                            <Button Color="Color.Info" Size="Size.Small" Clicked="() => ShowDetailsModal(context)">
+                                <Icon Name="IconName.Eye" /> View
+                            </Button>
+                        }
+                        else
+                        {
+                            <span class="text-muted">-</span>
+                        }
+                    </DisplayTemplate>
+                </DataGridColumn>
+            </DataGridColumns>
+            <EmptyTemplate>
+                <div class="box">
+                    No audit log entries found.
+                </div>
+            </EmptyTemplate>
+            <LoadingTemplate>
+                <div class="box">
+                    <progress class="progress is-small is-primary" max="100"></progress>
+                </div>
+            </LoadingTemplate>
+        </DataGrid>
+    </Column>
+</Row>
+
+<Modal @ref="_detailsModal">
+    <ModalContent Centered Size="ModalSize.Large">
+        <ModalHeader>
+            <ModalTitle>Audit Log Details</ModalTitle>
+            <CloseButton />
+        </ModalHeader>
+        <ModalBody>
+            @if (_selectedAuditLog != null)
+            {
+                <Table Striped="true" Narrow="true">
+                    <TableBody>
+                        <TableRow>
+                            <TableRowCell><strong>Timestamp</strong></TableRowCell>
+                            <TableRowCell>@_selectedAuditLog.Timestamp.ToString("yyyy-MM-dd HH:mm:ss zzz")</TableRowCell>
+                        </TableRow>
+                        <TableRow>
+                            <TableRowCell><strong>Action</strong></TableRowCell>
+                            <TableRowCell>@_selectedAuditLog.ActionType.Humanize()</TableRowCell>
+                        </TableRow>
+                        <TableRow>
+                            <TableRowCell><strong>Result</strong></TableRowCell>
+                            <TableRowCell>@_selectedAuditLog.EventType.Humanize()</TableRowCell>
+                        </TableRow>
+                        <TableRow>
+                            <TableRowCell><strong>User</strong></TableRowCell>
+                            <TableRowCell>@(_selectedAuditLog.Username ?? "System")</TableRowCell>
+                        </TableRow>
+                        <TableRow>
+                            <TableRowCell><strong>User ID</strong></TableRowCell>
+                            <TableRowCell>@(_selectedAuditLog.UserId ?? "N/A")</TableRowCell>
+                        </TableRow>
+                        <TableRow>
+                            <TableRowCell><strong>IP Address</strong></TableRowCell>
+                            <TableRowCell>@(_selectedAuditLog.IpAddress ?? "N/A")</TableRowCell>
+                        </TableRow>
+                        <TableRow>
+                            <TableRowCell><strong>Object Type</strong></TableRowCell>
+                            <TableRowCell>@_selectedAuditLog.ObjectAffected.Humanize()</TableRowCell>
+                        </TableRow>
+                        <TableRow>
+                            <TableRowCell><strong>Object ID</strong></TableRowCell>
+                            <TableRowCell>@(_selectedAuditLog.ObjectId ?? "N/A")</TableRowCell>
+                        </TableRow>
+                    </TableBody>
+                </Table>
+                @if (!string.IsNullOrEmpty(_selectedAuditLog.Details))
+                {
+                    <h5 class="mt-3">Additional Details (JSON)</h5>
+                    <pre class="bg-light p-3 rounded" style="max-height: 300px; overflow-y: auto;">@FormatJson(_selectedAuditLog.Details)</pre>
+                }
+            }
+        </ModalBody>
+        <ModalFooter>
+            <Button Color="Color.Secondary" Clicked="CloseDetailsModal">Close</Button>
+        </ModalFooter>
+    </ModalContent>
+</Modal>
+
+@inject IAuditLogRepository AuditLogRepository
+@inject IApplicationUserRepository ApplicationUserRepository
+@inject IToastService ToastService
+
+@code {
+    [CascadingParameter]
+    private ApplicationUser? LoggedUser { get; set; }
+
+    [CascadingParameter]
+    private ClaimsPrincipal? ClaimsPrincipal { get; set; }
+
+    private DataGrid<AuditLog>? _auditLogDataGrid;
+    private List<AuditLog> _auditLogs = new();
+    private int _totalItems;
+    private bool _hasFullAccess = false;
+    private List<ApplicationUser> _users = new();
+
+    // Filters
+    private AuditActionType? _actionTypeFilter;
+    private AuditEventType? _eventTypeFilter;
+    private AuditObjectType? _objectTypeFilter;
+    private string? _userIdFilter;
+    private DateTime? _fromDate;
+    private DateTime? _toDate;
+
+    // Details modal
+    private Modal? _detailsModal;
+    private AuditLog? _selectedAuditLog;
+
+    protected override async Task OnInitializedAsync()
+    {
+        if (LoggedUser == null) return;
+
+        // Check if user has full access (FinanceManager or Superadmin)
+        _hasFullAccess = ClaimsPrincipal != null && 
+            (ClaimsPrincipal.IsInRole(ApplicationUserRole.FinanceManager.ToString()) ||
+             ClaimsPrincipal.IsInRole(ApplicationUserRole.Superadmin.ToString()));
+
+        // Load users list for filter if user has full access
+        if (_hasFullAccess)
+        {
+            _users = await ApplicationUserRepository.GetAll();
+        }
+    }
+
+    private async Task OnReadData(DataGridReadDataEventArgs<AuditLog> e)
+    {
+        if (!e.CancellationToken.IsCancellationRequested)
+        {
+            var fromDateOffset = _fromDate.HasValue ? new DateTimeOffset(_fromDate.Value, TimeSpan.Zero) : (DateTimeOffset?)null;
+            var toDateOffset = _toDate.HasValue ? new DateTimeOffset(_toDate.Value.AddDays(1).AddSeconds(-1), TimeSpan.Zero) : (DateTimeOffset?)null;
+
+            // If user doesn't have full access, filter by their user ID
+            // If user has full access, use the selected user filter (if any)
+            var userIdFilter = _hasFullAccess ? _userIdFilter : LoggedUser?.Id;
+
+            var (logs, totalCount) = await AuditLogRepository.GetPaginatedAsync(
+                e.Page,
+                e.PageSize,
+                _actionTypeFilter,
+                _eventTypeFilter,
+                _objectTypeFilter,
+                userIdFilter,
+                fromDateOffset,
+                toDateOffset);
+
+            _auditLogs = logs;
+            _totalItems = totalCount;
+        }
+    }
+
+    private async Task ApplyFilters()
+    {
+        if (_auditLogDataGrid != null)
+        {
+            await _auditLogDataGrid.Reload();
+        }
+    }
+
+    private async Task ClearFilters()
+    {
+        _actionTypeFilter = null;
+        _eventTypeFilter = null;
+        _objectTypeFilter = null;
+        _userIdFilter = null;
+        _fromDate = null;
+        _toDate = null;
+        
+        if (_auditLogDataGrid != null)
+        {
+            await _auditLogDataGrid.Reload();
+        }
+    }
+
+    private async Task ShowDetailsModal(AuditLog auditLog)
+    {
+        _selectedAuditLog = auditLog;
+        if (_detailsModal != null)
+        {
+            await _detailsModal.Show();
+        }
+    }
+
+    private async Task CloseDetailsModal()
+    {
+        _selectedAuditLog = null;
+        if (_detailsModal != null)
+        {
+            await _detailsModal.Hide();
+        }
+    }
+
+    private static Color GetActionBadgeColor(AuditActionType actionType)
+    {
+        return actionType switch
+        {
+            AuditActionType.Create => Color.Success,
+            AuditActionType.Update => Color.Info,
+            AuditActionType.Delete => Color.Danger,
+            AuditActionType.Approve => Color.Success,
+            AuditActionType.Reject => Color.Warning,
+            AuditActionType.Cancel => Color.Secondary,
+            AuditActionType.Login => Color.Primary,
+            AuditActionType.Logout => Color.Secondary,
+            AuditActionType.TwoFactorLogin => Color.Primary,
+            AuditActionType.LoginWithRecoveryCode => Color.Warning,
+            AuditActionType.TwoFactorEnabled => Color.Success,
+            AuditActionType.TwoFactorDisabled => Color.Warning,
+            AuditActionType.TwoFactorReset => Color.Warning,
+            AuditActionType.LockUser => Color.Danger,
+            AuditActionType.UnlockUser => Color.Success,
+            AuditActionType.Transfer => Color.Info,
+            AuditActionType.Close => Color.Warning,
+            AuditActionType.ForceClose => Color.Danger,
+            AuditActionType.Block => Color.Danger,
+            AuditActionType.Unblock => Color.Success,
+            _ => Color.Light
+        };
+    }
+
+    private static Color GetEventBadgeColor(AuditEventType eventType)
+    {
+        return eventType switch
+        {
+            AuditEventType.Success => Color.Success,
+            AuditEventType.Failure => Color.Danger,
+            AuditEventType.Attempt => Color.Warning,
+            _ => Color.Light
+        };
+    }
+
+    private static string FormatJson(string json)
+    {
+        try
+        {
+            var element = System.Text.Json.JsonSerializer.Deserialize<System.Text.Json.JsonElement>(json);
+            return System.Text.Json.JsonSerializer.Serialize(element, new System.Text.Json.JsonSerializerOptions { WriteIndented = true });
+        }
+        catch
+        {
+            return json;
+        }
+    }
+}
