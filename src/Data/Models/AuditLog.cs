@@ -115,13 +115,11 @@ public enum AuditActionType
     // User Management
     LockUser,
     UnlockUser,
-    UpdateRoles,
 
     // Wallet Operations
     Transfer,
     Import,
     Finalise,
-    Rescan,
     FreezeUTXO,
     UnfreezeUTXO,
     AddKey,
@@ -138,8 +136,6 @@ public enum AuditActionType
     Unblock,
 
     // Swap Operations
-    SwapOut,
-    SwapIn,
     SwapOutInitiated,
     SwapOutCompleted,
 

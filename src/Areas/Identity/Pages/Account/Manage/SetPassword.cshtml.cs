@@ -9,6 +9,7 @@ using NodeGuard.Data.Models;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.RazorPages;
+using NodeGuard.Services;
 
 namespace NodeGuard.Areas.Identity.Pages.Account.Manage
 {
@@ -16,13 +17,16 @@ namespace NodeGuard.Areas.Identity.Pages.Account.Manage
     {
         private readonly UserManager<ApplicationUser> _userManager;
         private readonly SignInManager<ApplicationUser> _signInManager;
+        private readonly IAuditService _auditService;
 
         public SetPasswordModel(
             UserManager<ApplicationUser> userManager,
-            SignInManager<ApplicationUser> signInManager)
+            SignInManager<ApplicationUser> signInManager,
+            IAuditService auditService)
         {
             _userManager = userManager;
             _signInManager = signInManager;
+            _auditService = auditService;
         }
 
         /// <summary>
@@ -103,10 +107,22 @@ namespace NodeGuard.Areas.Identity.Pages.Account.Manage
                 {
                     ModelState.AddModelError(string.Empty, error.Description);
                 }
+                await _auditService.LogAsync(
+                    AuditActionType.SetPassword,
+                    AuditEventType.Failure,
+                    AuditObjectType.User,
+                    objectId: user.Id,
+                    new { Username = user.UserName });
                 return Page();
             }
 
             await _signInManager.RefreshSignInAsync(user);
+            await _auditService.LogAsync(
+                AuditActionType.SetPassword,
+                AuditEventType.Success,
+                AuditObjectType.User,
+                objectId: user.Id,
+                new { Username = user.UserName });
             StatusMessage = "Your password has been set.";
 
             return RedirectToPage();

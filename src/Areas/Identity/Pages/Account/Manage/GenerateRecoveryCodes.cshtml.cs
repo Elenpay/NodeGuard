@@ -2,14 +2,11 @@
 // The .NET Foundation licenses this file to you under the MIT license.
 #nullable disable
 
-using System;
-using System.Linq;
-using System.Threading.Tasks;
 using NodeGuard.Data.Models;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.RazorPages;
-using Microsoft.Extensions.Logging;
+using NodeGuard.Services;
 
 namespace NodeGuard.Areas.Identity.Pages.Account.Manage
 {
@@ -17,13 +14,16 @@ namespace NodeGuard.Areas.Identity.Pages.Account.Manage
     {
         private readonly UserManager<ApplicationUser> _userManager;
         private readonly ILogger<GenerateRecoveryCodesModel> _logger;
+        private readonly IAuditService _auditService;
 
         public GenerateRecoveryCodesModel(
             UserManager<ApplicationUser> userManager,
-            ILogger<GenerateRecoveryCodesModel> logger)
+            ILogger<GenerateRecoveryCodesModel> logger,
+            IAuditService auditService)
         {
             _userManager = userManager;
             _logger = logger;
+            _auditService = auditService;
         }
 
         /// <summary>
@@ -76,6 +76,12 @@ namespace NodeGuard.Areas.Identity.Pages.Account.Manage
             RecoveryCodes = recoveryCodes.ToArray();
 
             _logger.LogInformation("User with ID '{UserId}' has generated new 2FA recovery codes.", userId);
+            await _auditService.LogAsync(
+                AuditActionType.GenerateRecoveryCodes,
+                AuditEventType.Success,
+                AuditObjectType.User,
+                objectId: user.Id,
+                new { Username = user.UserName, CodesCount = 10 });
             StatusMessage = "You have generated new recovery codes.";
             return RedirectToPage("./ShowRecoveryCodes");
         }
