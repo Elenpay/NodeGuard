@@ -93,113 +93,6 @@ public class AuditServiceTests
         return httpContext;
     }
 
-    #region LogAsync_FullParameters
-
-    [Fact]
-    public async Task LogAsync_FullParameters_SuccessfulLogging_CallsRepositoryAndLogger()
-    {
-        // Arrange
-        SetupSuccessfulRepository();
-        var service = CreateAuditService();
-        var details = new { Operation = "Test", Value = 123 };
-
-        // Act
-        await service.LogAsync(
-            AuditActionType.Create,
-            AuditEventType.Success,
-            AuditObjectType.User,
-            "object-123",
-            "user-456",
-            "johndoe",
-            "10.0.0.1",
-            details);
-
-        // Assert
-        _auditLogRepositoryMock.Verify(
-            x => x.AddAsync(It.Is<AuditLog>(log =>
-                log.ActionType == AuditActionType.Create &&
-                log.EventType == AuditEventType.Success &&
-                log.ObjectAffected == AuditObjectType.User &&
-                log.ObjectId == "object-123" &&
-                log.UserId == "user-456" &&
-                log.Username == "johndoe" &&
-                log.IpAddress == "10.0.0.1" &&
-                log.Details != null)),
-            Times.Once);
-
-        _loggerMock.Verify(
-            x => x.Log(
-                LogLevel.Information,
-                It.IsAny<EventId>(),
-                It.Is<It.IsAnyType>((v, t) => v.ToString()!.Contains("AUDIT:")),
-                null,
-                It.IsAny<Func<It.IsAnyType, Exception?, string>>()),
-            Times.Once);
-    }
-
-    [Fact]
-    public async Task LogAsync_FullParameters_RepositoryFails_LogsErrorButDoesNotThrow()
-    {
-        // Arrange
-        SetupFailedRepository("Database connection failed");
-        var service = CreateAuditService();
-
-        // Act
-        var act = async () => await service.LogAsync(
-            AuditActionType.Create,
-            AuditEventType.Failure,
-            AuditObjectType.User,
-            "user-123",
-            null);
-
-        // Assert
-        await act.Should().NotThrowAsync();
-
-        _loggerMock.Verify(
-            x => x.Log(
-                LogLevel.Error,
-                It.IsAny<EventId>(),
-                It.Is<It.IsAnyType>((v, t) => v.ToString()!.Contains("Failed to persist audit log")),
-                null,
-                It.IsAny<Func<It.IsAnyType, Exception?, string>>()),
-            Times.Once);
-    }
-
-    [Fact]
-    public async Task LogAsync_FullParameters_ExceptionDuringLogging_CatchesAndLogsError()
-    {
-        // Arrange
-        var service = CreateAuditService();
-        _auditLogRepositoryMock
-            .Setup(x => x.AddAsync(It.IsAny<AuditLog>()))
-            .ThrowsAsync(new InvalidOperationException("Database error"));
-
-        // Act
-        var act = async () => await service.LogAsync(
-            AuditActionType.Create,
-            AuditEventType.Success,
-            AuditObjectType.User,
-            "user-123",
-            "user-456",
-            "johndoe",
-            "10.0.0.1",
-            new { Test = "data" });
-
-        // Assert
-        await act.Should().NotThrowAsync();
-
-        _loggerMock.Verify(
-            x => x.Log(
-                LogLevel.Error,
-                It.IsAny<EventId>(),
-                It.Is<It.IsAnyType>((v, t) => v.ToString()!.Contains("Error logging audit event")),
-                It.IsAny<Exception>(),
-                It.IsAny<Func<It.IsAnyType, Exception?, string>>()),
-            Times.Once);
-    }
-
-    #endregion
-
     #region LogAsync_AutoContext
 
     [Fact]
@@ -227,10 +120,185 @@ public class AuditServiceTests
                 log.IpAddress == "192.168.1.100")),
             Times.Once);
     }
+
+    [Fact]
+    public async Task LogAsync_AutoContext_NoHttpContext_HandlesGracefully()
+    {
+        // Arrange
+        SetupSuccessfulRepository();
+        _httpContextAccessorMock.Setup(x => x.HttpContext).Returns((HttpContext?)null);
+        var service = CreateAuditService();
+
+        // Act
+        await service.LogAsync(
+            AuditActionType.Create,
+            AuditEventType.Success,
+            AuditObjectType.Wallet,
+            "wallet-456",
+            new { Amount = 50000 });
+
+        // Assert
+        _auditLogRepositoryMock.Verify(
+            x => x.AddAsync(It.Is<AuditLog>(log =>
+                log.UserId == null &&
+                log.Username == null &&
+                log.IpAddress == null)),
+            Times.Once);
+    }
+
+    [Fact]
+    public async Task LogAsync_AutoContext_UnauthenticatedUser_HandlesGracefully()
+    {
+        // Arrange
+        SetupSuccessfulRepository();
+        var httpContext = new DefaultHttpContext();
+        httpContext.Connection.RemoteIpAddress = System.Net.IPAddress.Parse("192.168.1.200");
+        _httpContextAccessorMock.Setup(x => x.HttpContext).Returns(httpContext);
+        var service = CreateAuditService();
+
+        // Act
+        await service.LogAsync(
+            AuditActionType.Update,
+            AuditEventType.Success,
+            AuditObjectType.Channel,
+            "channel-789",
+            null);
+
+        // Assert
+        _auditLogRepositoryMock.Verify(
+            x => x.AddAsync(It.Is<AuditLog>(log =>
+                log.UserId == null &&
+                log.Username == null &&
+                log.IpAddress == "192.168.1.200")),
+            Times.Once);
+    }
+
+    [Fact]
+    public async Task LogAsync_AutoContext_RepositoryFails_LogsErrorButDoesNotThrow()
+    {
+        // Arrange
+        SetupFailedRepository("Database connection failed");
+        var httpContext = CreateHttpContextWithUser();
+        _httpContextAccessorMock.Setup(x => x.HttpContext).Returns(httpContext);
+        var service = CreateAuditService();
+
+        // Act
+        var act = async () => await service.LogAsync(
+            AuditActionType.Create,
+            AuditEventType.Failure,
+            AuditObjectType.User,
+            "user-123",
+            null);
+
+        // Assert
+        await act.Should().NotThrowAsync();
+
+        _loggerMock.Verify(
+            x => x.Log(
+                LogLevel.Error,
+                It.IsAny<EventId>(),
+                It.Is<It.IsAnyType>((v, t) => v.ToString()!.Contains("Failed to persist audit log")),
+                null,
+                It.IsAny<Func<It.IsAnyType, Exception?, string>>()),
+            Times.Once);
+    }
+
+    [Fact]
+    public async Task LogAsync_AutoContext_ExceptionDuringLogging_CatchesAndLogsError()
+    {
+        // Arrange
+        var httpContext = CreateHttpContextWithUser();
+        _httpContextAccessorMock.Setup(x => x.HttpContext).Returns(httpContext);
+        var service = CreateAuditService();
+        _auditLogRepositoryMock
+            .Setup(x => x.AddAsync(It.IsAny<AuditLog>()))
+            .ThrowsAsync(new InvalidOperationException("Database error"));
+
+        // Act
+        var act = async () => await service.LogAsync(
+            AuditActionType.Create,
+            AuditEventType.Success,
+            AuditObjectType.User,
+            "user-123",
+            new { Test = "data" });
+
+        // Assert
+        await act.Should().NotThrowAsync();
+
+        _loggerMock.Verify(
+            x => x.Log(
+                LogLevel.Error,
+                It.IsAny<EventId>(),
+                It.Is<It.IsAnyType>((v, t) => v.ToString()!.Contains("Error logging audit event")),
+                It.IsAny<Exception>(),
+                It.IsAny<Func<It.IsAnyType, Exception?, string>>()),
+            Times.Once);
+    }
     
     #endregion
 
     #region LogSystemAsync
+
+    [Fact]
+    public async Task LogSystemAsync_SuccessfulLogging_CreatesAuditLogWithSystemUser()
+    {
+        // Arrange
+        SetupSuccessfulRepository();
+        var service = CreateAuditService();
+
+        // Act
+        await service.LogSystemAsync(
+            AuditActionType.Create,
+            AuditEventType.Success,
+            AuditObjectType.Wallet,
+            "wallet-123",
+            new { AutoGenerated = true });
+
+        // Assert
+        _auditLogRepositoryMock.Verify(
+            x => x.AddAsync(It.Is<AuditLog>(log =>
+                log.ActionType == AuditActionType.Create &&
+                log.EventType == AuditEventType.Success &&
+                log.ObjectAffected == AuditObjectType.Wallet &&
+                log.ObjectId == "wallet-123" &&
+                log.UserId == null &&
+                log.Username == "SYSTEM" &&
+                log.IpAddress == null &&
+                log.Details != null)),
+            Times.Once);
+
+        _loggerMock.Verify(
+            x => x.Log(
+                LogLevel.Information,
+                It.IsAny<EventId>(),
+                It.Is<It.IsAnyType>((v, t) => v.ToString()!.Contains("AUDIT:") && v.ToString()!.Contains("SYSTEM")),
+                null,
+                It.IsAny<Func<It.IsAnyType, Exception?, string>>()),
+            Times.Once);
+    }
+
+    [Fact]
+    public async Task LogSystemAsync_WithoutDetails_LogsSuccessfully()
+    {
+        // Arrange
+        SetupSuccessfulRepository();
+        var service = CreateAuditService();
+
+        // Act
+        await service.LogSystemAsync(
+            AuditActionType.Update,
+            AuditEventType.Success,
+            AuditObjectType.Channel,
+            "channel-456",
+            null);
+
+        // Assert
+        _auditLogRepositoryMock.Verify(
+            x => x.AddAsync(It.Is<AuditLog>(log =>
+                log.Username == "SYSTEM" &&
+                log.Details == null)),
+            Times.Once);
+    }
 
     [Fact]
     public async Task LogSystemAsync_RepositoryFails_LogsErrorButDoesNotThrow()
@@ -255,6 +323,36 @@ public class AuditServiceTests
                 It.IsAny<EventId>(),
                 It.Is<It.IsAnyType>((v, t) => v.ToString()!.Contains("Failed to persist audit log")),
                 null,
+                It.IsAny<Func<It.IsAnyType, Exception?, string>>()),
+            Times.Once);
+    }
+
+    [Fact]
+    public async Task LogSystemAsync_ExceptionDuringLogging_CatchesAndLogsError()
+    {
+        // Arrange
+        var service = CreateAuditService();
+        _auditLogRepositoryMock
+            .Setup(x => x.AddAsync(It.IsAny<AuditLog>()))
+            .ThrowsAsync(new InvalidOperationException("Database error"));
+
+        // Act
+        var act = async () => await service.LogSystemAsync(
+            AuditActionType.Delete,
+            AuditEventType.Success,
+            AuditObjectType.Node,
+            "node-789",
+            new { Reason = "Automated cleanup" });
+
+        // Assert
+        await act.Should().NotThrowAsync();
+
+        _loggerMock.Verify(
+            x => x.Log(
+                LogLevel.Error,
+                It.IsAny<EventId>(),
+                It.Is<It.IsAnyType>((v, t) => v.ToString()!.Contains("Error logging audit event")),
+                It.IsAny<Exception>(),
                 It.IsAny<Func<It.IsAnyType, Exception?, string>>()),
             Times.Once);
     }

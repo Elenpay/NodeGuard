@@ -21,9 +21,6 @@
                 AuditEventType.Success,
                 AuditObjectType.User,
                 userId,
-                userId,
-                username,
-                HttpContextAccessor.HttpContext.GetClientIpAddress(),
                 new { Username = username });
         }
 
@@ -42,9 +39,6 @@
                 AuditEventType.Success,
                 AuditObjectType.User,
                 userId,
-                userId,
-                username,
-                HttpContextAccessor.HttpContext.GetClientIpAddress(),
                 new { Username = username });
         }
 

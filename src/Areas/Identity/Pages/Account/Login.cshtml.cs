@@ -140,9 +140,6 @@ namespace NodeGuard.Areas.Identity.Pages.Account
                         AuditEventType.Success,
                         AuditObjectType.User,
                         user?.Id,
-                        user?.Id,
-                        Input.Username,
-                        HttpContext.GetClientIpAddress(),
                         new { Username = Input.Username });
                     return LocalRedirect(returnUrl);
                 }
@@ -158,9 +155,6 @@ namespace NodeGuard.Areas.Identity.Pages.Account
                         AuditEventType.Failure,
                         AuditObjectType.User,
                         null,
-                        null,
-                        Input.Username,
-                        HttpContext.GetClientIpAddress(),
                         new { Username = Input.Username, Reason = "Account locked out" });
                     return RedirectToPage("./Lockout");
                 }
@@ -171,9 +165,6 @@ namespace NodeGuard.Areas.Identity.Pages.Account
                         AuditEventType.Failure,
                         AuditObjectType.User,
                         null,
-                        null,
-                        Input.Username,
-                        HttpContext.GetClientIpAddress(),
                         new { Username = Input.Username, Reason = "Invalid credentials" });
                     ModelState.AddModelError(string.Empty, "Invalid login attempt.");
                     return Page();

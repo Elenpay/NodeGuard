@@ -724,9 +724,6 @@
                         AuditEventType.Success, 
                         AuditObjectType.ChannelOperationRequest,
                         request.Id.ToString(),
-                        LoggedUser.Id,
-                        LoggedUser.UserName,
-                        HttpContextAccessor.HttpContext?.GetClientIpAddress(),
                         new { Amount = amount, SourceNodeId = _selectedSourceNodeId, DestNodeId = _selectedDestNode?.Id, Description = $"Channel open request created. Amount: {amount} BTC, SourceNodeId: {_selectedSourceNodeId}, DestNodeId: {_selectedDestNode?.Id}" });
 
                     if (_selectedUTXOs.Count > 0)
@@ -742,9 +739,6 @@
                         AuditEventType.Failure, 
                         AuditObjectType.ChannelOperationRequest,
                         null,
-                        LoggedUser.Id,
-                        LoggedUser.UserName,
-                        HttpContextAccessor.HttpContext?.GetClientIpAddress(),
                         new { Error = createChannelResult.Item2, Description = $"Failed to create channel open request. Error: {createChannelResult.Item2}" });
                 }
                 _utxoSelectorModalRef.ClearModal();
@@ -803,9 +797,6 @@
                     AuditEventType.Failure, 
                     AuditObjectType.ChannelOperationRequest,
                     _selectedRequest.Id.ToString(),
-                    LoggedUser.Id,
-                    LoggedUser.UserName,
-                    HttpContextAccessor.HttpContext?.GetClientIpAddress(),
                     new { RequestId = _selectedRequest.Id, Status = _selectedStatus, Description = $"Failed to {_selectedStatus.ToString().ToLower()} channel operation request" });
             }
             else
@@ -817,9 +808,6 @@
                     AuditEventType.Success, 
                     AuditObjectType.ChannelOperationRequest,
                     _selectedRequest.Id.ToString(),
-                    LoggedUser.Id,
-                    LoggedUser.UserName,
-                    HttpContextAccessor.HttpContext?.GetClientIpAddress(),
                     new { RequestId = _selectedRequest.Id, Status = _selectedStatus, Reason = _selectedRequest.ClosingReason, Description = $"Channel operation request {_selectedStatus.ToString().ToLower()}" });
                 await FetchRequests();
             }
@@ -892,9 +880,6 @@
                     AuditEventType.Success, 
                     AuditObjectType.ChannelOperationRequest,
                     _selectedRequest.Id.ToString(),
-                    LoggedUser.Id,
-                    LoggedUser.UserName,
-                    HttpContextAccessor.HttpContext?.GetClientIpAddress(),
                     new { RequestId = _selectedRequest.Id, Description = "PSBT signature collected for channel operation request" });
 
                 _selectedRequest = await ChannelOperationRequestRepository.GetById(_selectedRequest.Id);
@@ -913,9 +898,6 @@
                     AuditEventType.Failure, 
                     AuditObjectType.ChannelOperationRequest,
                     _selectedRequest.Id.ToString(),
-                    LoggedUser.Id,
-                    LoggedUser.UserName,
-                    HttpContextAccessor.HttpContext?.GetClientIpAddress(),
                     new { RequestId = _selectedRequest.Id, Description = "Failed to save PSBT signature for channel operation request" });
             }
 
@@ -955,9 +937,6 @@
                     AuditEventType.Success, 
                     AuditObjectType.ChannelOperationRequest,
                     _selectedRequest.Id.ToString(),
-                    LoggedUser.Id,
-                    LoggedUser.UserName,
-                    HttpContextAccessor.HttpContext?.GetClientIpAddress(),
                     new { Amount = new Money(_selectedRequest.SatsAmount).ToUnit(MoneyUnit.BTC), SourceNodeId = _selectedRequest.SourceNodeId, DestNodeId = _selectedRequest.DestNodeId, IsHotWallet = true, Description = "Hot wallet channel open request created" });
             }
             else
@@ -968,9 +947,6 @@
                     AuditEventType.Failure, 
                     AuditObjectType.ChannelOperationRequest,
                     null,
-                    LoggedUser.Id,
-                    LoggedUser.UserName,
-                    HttpContextAccessor.HttpContext?.GetClientIpAddress(),
                     new { Error = createChannelResult.Item2, IsHotWallet = true, Description = "Failed to create hot wallet channel open request" });
                 _utxoSelectorModalRef.ClearModal();
                 await _approveOperationConfirmationModal.CloseModal();
@@ -1070,9 +1046,6 @@
                 AuditEventType.Success, 
                 AuditObjectType.ChannelOperationRequest,
                 request.Id.ToString(),
-                LoggedUser.Id,
-                LoggedUser.UserName,
-                HttpContextAccessor.HttpContext?.GetClientIpAddress(),
                 new { RequestId = request.Id, NewStatus = ChannelOperationRequestStatus.Failed, Description = "Channel operation request marked as failed" });
         }
         catch (Exception? e)
@@ -1083,9 +1056,6 @@
                 AuditEventType.Failure, 
                 AuditObjectType.ChannelOperationRequest,
                 _selectedRequestForMarkingAsFailed?.Id.ToString(),
-                LoggedUser?.Id,
-                LoggedUser?.UserName,
-                HttpContextAccessor.HttpContext?.GetClientIpAddress(),
                 new { RequestId = _selectedRequestForMarkingAsFailed?.Id, Description = "Failed to mark channel operation request as failed" });
         }
         finally

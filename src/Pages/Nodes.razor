@@ -615,9 +615,6 @@
                     AuditEventType.Success,
                     AuditObjectType.Node,
                     arg.Item.Id.ToString(),
-                    LoggedUser?.Id,
-                    LoggedUser?.UserName,
-                    null,
                     new { Name = arg.Item.Name, PubKey = arg.Item.PubKey });
             }
             else
@@ -628,9 +625,6 @@
                     AuditActionType.AddNode,
                     AuditEventType.Failure,
                     AuditObjectType.Node,
-                    null,
-                    LoggedUser?.Id,
-                    LoggedUser?.UserName,
                     null,
                     new { Name = arg.Item.Name, PubKey = arg.Item.PubKey, Error = addResult.Item2 });
             }
@@ -656,9 +650,6 @@
                     AuditEventType.Success,
                     AuditObjectType.Node,
                     arg.Item.Id.ToString(),
-                    LoggedUser?.Id,
-                    LoggedUser?.UserName,
-                    null,
                     new { Name = arg.Item.Name, PubKey = arg.Item.PubKey });
             }
             else
@@ -669,9 +660,6 @@
                     AuditEventType.Failure,
                     AuditObjectType.Node,
                     arg.Item.Id.ToString(),
-                    LoggedUser?.Id,
-                    LoggedUser?.UserName,
-                    null,
                     new { Name = arg.Item.Name, PubKey = arg.Item.PubKey, Error = updateResult.Item2 });
             }
         }
@@ -722,9 +710,6 @@
                         AuditEventType.Success,
                         AuditObjectType.Node,
                         node.Id.ToString(),
-                        LoggedUser?.Id,
-                        LoggedUser?.UserName,
-                        null,
                         new { NodeName = node.Name, PubKey = node.PubKey });
                     _nodes = await NodeRepository.GetAll();
 

@@ -24,19 +24,6 @@ namespace NodeGuard.Services;
 public interface IAuditService
 {
     /// <summary>
-    /// Log an audit event with all required fields
-    /// </summary>
-    Task LogAsync(
-        AuditActionType actionType,
-        AuditEventType eventType,
-        AuditObjectType objectAffected,
-        string? objectId = null,
-        string? userId = null,
-        string? username = null,
-        string? ipAddress = null,
-        object? details = null);
-
-    /// <summary>
     /// Log an audit event using HttpContext for user and IP extraction
     /// </summary>
     Task LogAsync(
