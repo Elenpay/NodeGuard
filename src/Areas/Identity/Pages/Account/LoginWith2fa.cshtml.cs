@@ -8,7 +8,6 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.RazorPages;
 using Microsoft.AspNetCore.Identity;
 using NodeGuard.Services;
-using NodeGuard.Helpers;
 
 namespace NodeGuard.Areas.Identity.Pages.Account
 {
@@ -118,10 +117,7 @@ namespace NodeGuard.Areas.Identity.Pages.Account
                     AuditActionType.TwoFactorLogin,
                     AuditEventType.Success,
                     AuditObjectType.User,
-                    userId,
-                    userId,
-                    user.UserName,
-                    HttpContext.GetClientIpAddress(),
+                    objectId: userId,
                     new { Username = user.UserName });
                 return LocalRedirect(returnUrl);
             }
@@ -132,10 +128,7 @@ namespace NodeGuard.Areas.Identity.Pages.Account
                     AuditActionType.TwoFactorLogin,
                     AuditEventType.Failure,
                     AuditObjectType.User,
-                    userId,
-                    userId,
-                    user.UserName,
-                    HttpContext.GetClientIpAddress(),
+                    objectId: userId,
                     new { Username = user.UserName, Reason = "Account locked out" });
                 return RedirectToPage("./Lockout");
             }
@@ -146,10 +139,7 @@ namespace NodeGuard.Areas.Identity.Pages.Account
                     AuditActionType.TwoFactorLogin,
                     AuditEventType.Failure,
                     AuditObjectType.User,
-                    userId,
-                    userId,
-                    user.UserName,
-                    HttpContext.GetClientIpAddress(),
+                    objectId: userId,
                     new { Username = user.UserName, Reason = "Invalid authenticator code" });
                 ModelState.AddModelError(string.Empty, "Invalid authenticator code.");
                 return Page();

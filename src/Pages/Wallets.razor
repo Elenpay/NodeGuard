@@ -916,9 +916,6 @@ OnSubmit="TransferFundsHotWallet"/>
                 AuditEventType.Success,
                 AuditObjectType.Wallet,
                 arg.Item.Id.ToString(),
-                LoggedUser?.Id,
-                LoggedUser?.UserName,
-                null,
                 new { Name = arg.Item.Name, IsHotWallet = arg.Item.IsHotWallet, MofN = arg.Item.MofN });
             await GetData();
         }
@@ -929,9 +926,6 @@ OnSubmit="TransferFundsHotWallet"/>
                 AuditActionType.Create,
                 AuditEventType.Failure,
                 AuditObjectType.Wallet,
-                null,
-                LoggedUser?.Id,
-                LoggedUser?.UserName,
                 null,
                 new { Name = arg.Item.Name, Error = addResult.Item2 });
             _wallets.Remove(arg.Item);
@@ -958,9 +952,6 @@ OnSubmit="TransferFundsHotWallet"/>
                     AuditEventType.Failure,
                     AuditObjectType.Wallet,
                     arg.Item.Id.ToString(),
-                    LoggedUser?.Id,
-                    LoggedUser?.UserName,
-                    null,
                     new { Name = arg.Item.Name, Error = message });
             }
             else
@@ -971,9 +962,6 @@ OnSubmit="TransferFundsHotWallet"/>
                     AuditEventType.Success,
                     AuditObjectType.Wallet,
                     arg.Item.Id.ToString(),
-                    LoggedUser?.Id,
-                    LoggedUser?.UserName,
-                    null,
                     new { Name = arg.Item.Name });
                 await GetData();
             }
@@ -1011,9 +999,6 @@ OnSubmit="TransferFundsHotWallet"/>
                 AuditEventType.Success,
                 AuditObjectType.Wallet,
                 arg.Item.Id.ToString(),
-                LoggedUser?.Id,
-                LoggedUser?.UserName,
-                null,
                 new { Name = arg.Item.Name, IsHotWallet = arg.Item.IsHotWallet });
         }
         else
@@ -1024,9 +1009,6 @@ OnSubmit="TransferFundsHotWallet"/>
                 AuditEventType.Failure,
                 AuditObjectType.Wallet,
                 arg.Item.Id.ToString(),
-                LoggedUser?.Id,
-                LoggedUser?.UserName,
-                null,
                 new { Name = arg.Item.Name, Error = updateResult.Item2 });
         }
 
@@ -1092,9 +1074,6 @@ OnSubmit="TransferFundsHotWallet"/>
                     AuditEventType.Success,
                     AuditObjectType.Wallet,
                     _selectedWallet.Id.ToString(),
-                    LoggedUser?.Id,
-                    LoggedUser?.UserName,
-                    null,
                     new { WalletName = _selectedWallet.Name, KeyId = _selectedWalletKey.Id });
             }
             else
@@ -1105,9 +1084,6 @@ OnSubmit="TransferFundsHotWallet"/>
                     AuditEventType.Failure,
                     AuditObjectType.Wallet,
                     _selectedWallet.Id.ToString(),
-                    LoggedUser?.Id,
-                    LoggedUser?.UserName,
-                    null,
                     new { WalletName = _selectedWallet.Name, KeyId = _selectedWalletKey.Id, Error = updateResult.Item2 });
             }
         }
@@ -1327,9 +1303,6 @@ OnSubmit="TransferFundsHotWallet"/>
                 AuditEventType.Success,
                 AuditObjectType.Wallet,
                 walletId.ToString(),
-                LoggedUser?.Id,
-                LoggedUser?.UserName,
-                null,
                 new { Name = walletName });
         }
         else
@@ -1340,9 +1313,6 @@ OnSubmit="TransferFundsHotWallet"/>
                 AuditEventType.Failure,
                 AuditObjectType.Wallet,
                 walletId.ToString(),
-                LoggedUser?.Id,
-                LoggedUser?.UserName,
-                null,
                 new { Name = walletName, Error = result.Item2 });
         }
 
@@ -1428,9 +1398,6 @@ OnSubmit="TransferFundsHotWallet"/>
                 AuditEventType.Failure,
                 AuditObjectType.Wallet,
                 null,
-                LoggedUser?.Id,
-                LoggedUser?.UserName,
-                null,
                 new { Name = _name, IsWatchOnly = _IsImportWalletModalWatchOnly, Error = result.Item2 });
             return;
         }
@@ -1444,9 +1411,6 @@ OnSubmit="TransferFundsHotWallet"/>
             AuditActionType.Import,
             AuditEventType.Success,
             AuditObjectType.Wallet,
-            null,
-            LoggedUser?.Id,
-            LoggedUser?.UserName,
             null,
             new { Name = _name, IsWatchOnly = _IsImportWalletModalWatchOnly });
 
@@ -1609,9 +1573,6 @@ OnSubmit="TransferFundsHotWallet"/>
                 AuditEventType.Success,
                 AuditObjectType.Wallet,
                 _sourceTransferWallet?.Id.ToString(),
-                LoggedUser?.Id,
-                LoggedUser?.UserName,
-                null,
                 new { 
                     SourceWallet = _sourceWalletName, 
                     TargetWallet = _targetWalletName, 
@@ -1627,9 +1588,6 @@ OnSubmit="TransferFundsHotWallet"/>
                 AuditEventType.Failure,
                 AuditObjectType.Wallet,
                 _sourceTransferWallet?.Id.ToString(),
-                LoggedUser?.Id,
-                LoggedUser?.UserName,
-                null,
                 new { 
                     SourceWallet = _sourceWalletName, 
                     TargetWallet = _targetWalletName, 
@@ -1886,9 +1844,6 @@ OnSubmit="TransferFundsHotWallet"/>
                 AuditEventType.Failure,
                 AuditObjectType.UTXO,
                 utxo.Outpoint.ToString(),
-                LoggedUser?.Id,
-                LoggedUser?.UserName,
-                null,
                 new { WalletId = _selectedWallet?.Id, Outpoint = utxo.Outpoint.ToString() });
             return;
         }
@@ -1898,9 +1853,6 @@ OnSubmit="TransferFundsHotWallet"/>
             AuditEventType.Success,
             AuditObjectType.UTXO,
             utxo.Outpoint.ToString(),
-            LoggedUser?.Id,
-            LoggedUser?.UserName,
-            null,
             new { WalletId = _selectedWallet?.Id, Outpoint = utxo.Outpoint.ToString() });
 
         // Updated the UI

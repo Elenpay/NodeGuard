@@ -46,10 +46,31 @@ public class AuditService : IAuditService
         AuditEventType eventType,
         AuditObjectType objectAffected,
         string? objectId = null,
-        string? userId = null,
-        string? username = null,
-        string? ipAddress = null,
         object? details = null)
+    {
+        var (userId, username, ipAddress) = ExtractContextInfo();
+        await LogInternalAsync(actionType, eventType, objectAffected, objectId, userId, username, ipAddress, details);
+    }
+
+    public async Task LogSystemAsync(
+        AuditActionType actionType,
+        AuditEventType eventType,
+        AuditObjectType objectAffected,
+        string? objectId = null,
+        object? details = null)
+    {
+        await LogInternalAsync(actionType, eventType, objectAffected, objectId, null, "SYSTEM", null, details);
+    }
+
+    private async Task LogInternalAsync(
+        AuditActionType actionType,
+        AuditEventType eventType,
+        AuditObjectType objectAffected,
+        string? objectId,
+        string? userId,
+        string? username,
+        string? ipAddress,
+        object? details)
     {
         try
         {
@@ -90,44 +111,6 @@ public class AuditService : IAuditService
         {
             _logger.LogError(ex, "Error logging audit event");
         }
-    }
-
-    public async Task LogAsync(
-        AuditActionType actionType,
-        AuditEventType eventType,
-        AuditObjectType objectAffected,
-        string? objectId = null,
-        object? details = null)
-    {
-        var (userId, username, ipAddress) = ExtractContextInfo();
-        
-        await LogAsync(
-            actionType,
-            eventType,
-            objectAffected,
-            objectId,
-            userId,
-            username,
-            ipAddress,
-            details);
-    }
-
-    public async Task LogSystemAsync(
-        AuditActionType actionType,
-        AuditEventType eventType,
-        AuditObjectType objectAffected,
-        string? objectId = null,
-        object? details = null)
-    {
-        await LogAsync(
-            actionType,
-            eventType,
-            objectAffected,
-            objectId,
-            null, // No user ID for system operations
-            "SYSTEM",
-            null, // No IP address for system operations
-            details);
     }
 
     private (string? UserId, string? Username, string? IpAddress) ExtractContextInfo()
