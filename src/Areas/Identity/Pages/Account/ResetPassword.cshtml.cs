@@ -12,16 +12,19 @@ using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.RazorPages;
 using Microsoft.AspNetCore.WebUtilities;
+using NodeGuard.Services;
 
 namespace NodeGuard.Areas.Identity.Pages.Account
 {
     public class ResetPasswordModel : PageModel
     {
         private readonly UserManager<ApplicationUser> _userManager;
+        private readonly IAuditService _auditService;
 
-        public ResetPasswordModel(UserManager<ApplicationUser> userManager)
+        public ResetPasswordModel(UserManager<ApplicationUser> userManager, IAuditService auditService)
         {
             _userManager = userManager;
+            _auditService = auditService;
         }
 
         /// <summary>
@@ -103,9 +106,21 @@ namespace NodeGuard.Areas.Identity.Pages.Account
             var result = await _userManager.ResetPasswordAsync(user, Input.Code, Input.Password);
             if (result.Succeeded)
             {
+                await _auditService.LogAsync(
+                    AuditActionType.ResetPassword,
+                    AuditEventType.Success,
+                    AuditObjectType.User,
+                    objectId: user.Id,
+                    new { Username = user.UserName });
                 return RedirectToPage("./ResetPasswordConfirmation");
             }
 
+            await _auditService.LogAsync(
+                AuditActionType.ResetPassword,
+                AuditEventType.Failure,
+                AuditObjectType.User,
+                objectId: user.Id,
+                new { Username = user.UserName });
             foreach (var error in result.Errors)
             {
                 ModelState.AddModelError(string.Empty, error.Description);

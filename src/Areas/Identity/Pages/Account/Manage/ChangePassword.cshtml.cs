@@ -2,14 +2,12 @@
 // The .NET Foundation licenses this file to you under the MIT license.
 #nullable disable
 
-using System;
 using System.ComponentModel.DataAnnotations;
-using System.Threading.Tasks;
 using NodeGuard.Data.Models;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.RazorPages;
-using Microsoft.Extensions.Logging;
+using NodeGuard.Services;
 
 namespace NodeGuard.Areas.Identity.Pages.Account.Manage
 {
@@ -18,15 +16,18 @@ namespace NodeGuard.Areas.Identity.Pages.Account.Manage
         private readonly UserManager<ApplicationUser> _userManager;
         private readonly SignInManager<ApplicationUser> _signInManager;
         private readonly ILogger<ChangePasswordModel> _logger;
+        private readonly IAuditService _auditService;
 
         public ChangePasswordModel(
             UserManager<ApplicationUser> userManager,
             SignInManager<ApplicationUser> signInManager,
-            ILogger<ChangePasswordModel> logger)
+            ILogger<ChangePasswordModel> logger,
+            IAuditService auditService)
         {
             _userManager = userManager;
             _signInManager = signInManager;
             _logger = logger;
+            _auditService = auditService;
         }
 
         /// <summary>
@@ -115,11 +116,23 @@ namespace NodeGuard.Areas.Identity.Pages.Account.Manage
                 {
                     ModelState.AddModelError(string.Empty, error.Description);
                 }
+                await _auditService.LogAsync(
+                    AuditActionType.ChangePassword,
+                    AuditEventType.Failure,
+                    AuditObjectType.User,
+                    objectId: user.Id,
+                    new { Username = user.UserName });
                 return Page();
             }
 
             await _signInManager.RefreshSignInAsync(user);
             _logger.LogInformation("User changed their password successfully.");
+            await _auditService.LogAsync(
+                AuditActionType.ChangePassword,
+                AuditEventType.Success,
+                AuditObjectType.User,
+                objectId: user.Id,
+                new { Username = user.UserName });
             StatusMessage = "Your password has been changed.";
 
             return RedirectToPage();
