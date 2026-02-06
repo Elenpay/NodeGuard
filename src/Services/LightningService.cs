@@ -350,7 +350,8 @@ namespace NodeGuard.Services
                                 {
                                     fundedPSBT.AssertSanity();
 
-                                    await ValidateFundedPsbtInputsAsync(channelOperationRequest, fundedPSBT,
+                                    // There's a long standing issue on LND that if you psbt fund a channel and the input is spent the channel is actually created and pending for a long time if not forever and you need to lncli abandonchannel, this is safeguard based on our nbxplorer instance confirmed UTXO set.
+                                    await ValidatePSBTInputsAreSpendable(channelOperationRequest, fundedPSBT,
                                         derivationStrategyBase);
 
                                     //We ensure to SigHash.None
@@ -597,7 +598,16 @@ namespace NodeGuard.Services
             return finalSignedPSBT;
         }
 
-        private async Task ValidateFundedPsbtInputsAsync(ChannelOperationRequest channelOperationRequest,
+
+        /// <summary>
+        /// Validates that all funded PSBT inputs are still present in the confirmed UTXO set.
+        /// This prevents LND from creating long-lived pending channels when inputs are already spent.
+        /// </summary>
+        /// <param name="channelOperationRequest"></param>
+        /// <param name="fundedPSBT"></param>
+        /// <param name="derivationStrategyBase"></param>
+        /// <exception cref="UTXOsNoLongerValidException"></exception>
+        private async Task ValidatePSBTInputsAreSpendable(ChannelOperationRequest channelOperationRequest,
             PSBT fundedPSBT, DerivationStrategyBase derivationStrategyBase)
         {
             var utxos = await _nbXplorerService.GetUTXOsAsync(derivationStrategyBase, default);
