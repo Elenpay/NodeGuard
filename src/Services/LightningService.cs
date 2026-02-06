@@ -209,6 +209,7 @@ namespace NodeGuard.Services
             channelOperationRequest = await _channelOperationRequestRepository.GetById(channelOperationRequest.Id) ??
                                       throw new InvalidOperationException("ChannelOperationRequest not found");
 
+            // If the request already has a txid it means that the open channel flow was already executed and we are probably in a retry, in this case we exit early, in the likely scenario we did not catch the channel opening, the channel monitoring job will create the channel on its own
             if (!string.IsNullOrWhiteSpace(channelOperationRequest.TxId))
             {
                 var statusMessage =
@@ -226,6 +227,15 @@ namespace NodeGuard.Services
                         channelOperationRequest.Id, error);
                 }
 
+                return;
+            }
+
+            // If the request is already failed, we exit early to avoid retrying an already failed request
+            if (channelOperationRequest.Status == ChannelOperationRequestStatus.Failed)
+            {
+                _logger.LogInformation(
+                    "Channel operation request with id: {RequestId} is already marked as failed, skipping execution",
+                    channelOperationRequest.Id);
                 return;
             }
 

@@ -984,6 +984,53 @@ namespace NodeGuard.Services
         }
 
         [Fact]
+        public async Task OpenChannel_ReturnsWhenRequestFailed()
+        {
+            // Arrange
+            var dbContextFactory = new Mock<IDbContextFactory<ApplicationDbContext>>();
+            var options = new DbContextOptionsBuilder<ApplicationDbContext>()
+                .UseInMemoryDatabase(databaseName: "ChannelOpenDb_Failed")
+                .Options;
+            var context = new ApplicationDbContext(options);
+            dbContextFactory.Setup(x => x.CreateDbContextAsync(default)).ReturnsAsync(context);
+
+            var channelOperationRequestRepository = new Mock<IChannelOperationRequestRepository>();
+            var operationRequest = new ChannelOperationRequest
+            {
+                Id = 2,
+                RequestType = OperationRequestType.Open,
+                Status = ChannelOperationRequestStatus.Failed
+            };
+
+            channelOperationRequestRepository
+                .Setup(x => x.GetById(It.IsAny<int>()))
+                .ReturnsAsync(operationRequest);
+
+            var lightningClientService = new Mock<ILightningClientService>();
+
+            var lightningService = new LightningService(_logger,
+                channelOperationRequestRepository.Object,
+                new Mock<INodeRepository>().Object,
+                dbContextFactory.Object,
+                new Mock<IChannelOperationRequestPSBTRepository>().Object,
+                new Mock<IChannelRepository>().Object,
+                null,
+                new Mock<INBXplorerService>().Object,
+                null,
+                lightningClientService.Object,
+                null);
+
+            // Act
+            var act = async () => await lightningService.OpenChannel(operationRequest);
+
+            // Assert
+            await act.Should().NotThrowAsync();
+            lightningClientService.Verify(
+                x => x.GetLightningClient(It.IsAny<string>()),
+                Times.Never);
+        }
+
+        [Fact]
         public async Task OpenChannel_SuccessSingleSigBip39()
         {
             // Arrange
