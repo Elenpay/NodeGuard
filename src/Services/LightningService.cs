@@ -615,19 +615,18 @@ namespace NodeGuard.Services
 
             var confirmedOutpoints = new HashSet<NBitcoin.OutPoint>(
                 utxos.Confirmed.UTXOs.Select(x => x.Outpoint));
-            var missingOutpoints = fundedPSBT.Inputs
+            var alreadySpentOutpoints = fundedPSBT.Inputs
                 .Select(input => input.PrevOut)
                 .Where(outpoint => !confirmedOutpoints.Contains(outpoint))
                 .ToList();
 
-            if (missingOutpoints.Count == 0)
+            if (alreadySpentOutpoints.Count == 0)
             {
                 return;
             }
 
             var errorMessage =
-                $"One or more PSBT inputs are no longer available for channel operation request:{channelOperationRequest.Id}";
-            _logger.LogError(errorMessage);
+                $"One or more PSBT inputs are already spent (not confirmed) for channel operation request:{channelOperationRequest.Id}";
             throw new UTXOsNoLongerValidException(errorMessage);
         }
 
