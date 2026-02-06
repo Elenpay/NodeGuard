@@ -4,7 +4,12 @@ namespace NodeGuard.Helpers;
 
 public class NoUTXOsAvailableException: Exception {}
 
-public class UTXOsNoLongerValidException: Exception {}
+public class UTXOsNoLongerValidException : Exception
+{
+   public UTXOsNoLongerValidException() {}
+
+   public UTXOsNoLongerValidException(string? message) : base(message) {}
+}
 
 public class NBXplorerNotFullySyncedException: Exception
 {

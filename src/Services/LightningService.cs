@@ -209,6 +209,26 @@ namespace NodeGuard.Services
             channelOperationRequest = await _channelOperationRequestRepository.GetById(channelOperationRequest.Id) ??
                                       throw new InvalidOperationException("ChannelOperationRequest not found");
 
+            if (!string.IsNullOrWhiteSpace(channelOperationRequest.TxId))
+            {
+                var statusMessage =
+                    $"Funding tx already set (txid: {channelOperationRequest.TxId}); skipping open flow";
+                _logger.LogInformation(statusMessage);
+
+                channelOperationRequest.Status = ChannelOperationRequestStatus.OnChainConfirmationPending;
+                channelOperationRequest.StatusLogs?.Add(ChannelStatusLog.Info(statusMessage));
+
+                var (isSuccess, error) = _channelOperationRequestRepository.Update(channelOperationRequest);
+                if (!isSuccess)
+                {
+                    _logger.LogWarning(
+                        "Request has a txid, but could not update status for request id: {RequestId} reason: {Reason}",
+                        channelOperationRequest.Id, error);
+                }
+
+                return;
+            }
+
             var (source, destination) = CheckNodesAreValid(channelOperationRequest, _logger);
             var derivationStrategyBase = GetDerivationStrategyBase(channelOperationRequest, _logger);
 
@@ -324,11 +344,14 @@ namespace NodeGuard.Services
                                 }
 
                                 //We got the funded PSBT, we need to tweak the tx outputs and mimick lnd-cli calls
-                                var hexPSBT = Convert.ToHexString((response.PsbtFund.Psbt.ToByteArray()));
+                                var hexPSBT = Convert.ToHexString(response.PsbtFund.Psbt.ToByteArray());
                                 if (PSBT.TryParse(hexPSBT, network,
                                         out var fundedPSBT))
                                 {
                                     fundedPSBT.AssertSanity();
+
+                                    await ValidateFundedPsbtInputsAsync(channelOperationRequest, fundedPSBT,
+                                        derivationStrategyBase);
 
                                     //We ensure to SigHash.None
                                     fundedPSBT.Settings.SigningOptions = new SigningOptions
@@ -572,6 +595,30 @@ namespace NodeGuard.Services
             }
 
             return finalSignedPSBT;
+        }
+
+        private async Task ValidateFundedPsbtInputsAsync(ChannelOperationRequest channelOperationRequest,
+            PSBT fundedPSBT, DerivationStrategyBase derivationStrategyBase)
+        {
+            var utxos = await _nbXplorerService.GetUTXOsAsync(derivationStrategyBase, default);
+            utxos.RemoveDuplicateUTXOs();
+
+            var confirmedOutpoints = new HashSet<NBitcoin.OutPoint>(
+                utxos.Confirmed.UTXOs.Select(x => x.Outpoint));
+            var missingOutpoints = fundedPSBT.Inputs
+                .Select(input => input.PrevOut)
+                .Where(outpoint => !confirmedOutpoints.Contains(outpoint))
+                .ToList();
+
+            if (missingOutpoints.Count == 0)
+            {
+                return;
+            }
+
+            var errorMessage =
+                $"One or more PSBT inputs are no longer available for channel operation request:{channelOperationRequest.Id}";
+            _logger.LogError(errorMessage);
+            throw new UTXOsNoLongerValidException(errorMessage);
         }
 
         public async Task OnStatusChannelOpened(ChannelOperationRequest channelOperationRequest, Node source, ChannelPoint channelPoint, string? closeAddress = null)
