@@ -85,7 +85,7 @@ public class ChannelOpenJob : IJob
         try
         {
             var request = await _channelOperationRequestRepository.GetById(openRequestId);
-            if (e is PeerNotOnlineException or RemoteCanceledFundingException or NotEnoughRoomInUtxosForFeesException)
+            if (e is PeerNotOnlineException or RemoteCanceledFundingException or NotEnoughRoomInUtxosForFeesException or UTXOsNoLongerValidException)
             {
                 request.StatusLogs.Add(ChannelStatusLog.Error(e.Message));
             }
@@ -94,7 +94,7 @@ public class ChannelOpenJob : IJob
                 request.StatusLogs.Add(ChannelStatusLog.Error("Unexpected exception trying to open channel"));
             }
 
-            if (e is RemoteCanceledFundingException)
+            if (e is RemoteCanceledFundingException or UTXOsNoLongerValidException)
             {
                 request.Status = ChannelOperationRequestStatus.Failed;
                 _channelOperationRequestRepository.Update(request);
