@@ -209,6 +209,36 @@ namespace NodeGuard.Services
             channelOperationRequest = await _channelOperationRequestRepository.GetById(channelOperationRequest.Id) ??
                                       throw new InvalidOperationException("ChannelOperationRequest not found");
 
+            // If the request already has a txid it means that the open channel flow was already executed and we are probably in a retry, in this case we exit early, in the likely scenario we did not catch the channel opening, the channel monitoring job will create the channel on its own
+            if (!string.IsNullOrWhiteSpace(channelOperationRequest.TxId))
+            {
+                var statusMessage =
+                    $"Funding tx already set (txid: {channelOperationRequest.TxId}); skipping open flow";
+                _logger.LogInformation(statusMessage);
+
+                channelOperationRequest.Status = ChannelOperationRequestStatus.OnChainConfirmationPending;
+                channelOperationRequest.StatusLogs?.Add(ChannelStatusLog.Info(statusMessage));
+
+                var (isSuccess, error) = _channelOperationRequestRepository.Update(channelOperationRequest);
+                if (!isSuccess)
+                {
+                    _logger.LogWarning(
+                        "Request has a txid, but could not update status for request id: {RequestId} reason: {Reason}",
+                        channelOperationRequest.Id, error);
+                }
+
+                return;
+            }
+
+            // If the request is already failed, we exit early to avoid retrying an already failed request
+            if (channelOperationRequest.Status == ChannelOperationRequestStatus.Failed)
+            {
+                _logger.LogInformation(
+                    "Channel operation request with id: {RequestId} is already marked as failed, skipping execution",
+                    channelOperationRequest.Id);
+                return;
+            }
+
             var (source, destination) = CheckNodesAreValid(channelOperationRequest, _logger);
             var derivationStrategyBase = GetDerivationStrategyBase(channelOperationRequest, _logger);
 
@@ -324,11 +354,15 @@ namespace NodeGuard.Services
                                 }
 
                                 //We got the funded PSBT, we need to tweak the tx outputs and mimick lnd-cli calls
-                                var hexPSBT = Convert.ToHexString((response.PsbtFund.Psbt.ToByteArray()));
+                                var hexPSBT = Convert.ToHexString(response.PsbtFund.Psbt.ToByteArray());
                                 if (PSBT.TryParse(hexPSBT, network,
                                         out var fundedPSBT))
                                 {
                                     fundedPSBT.AssertSanity();
+
+                                    // There's a long standing issue on LND that if you psbt fund a channel and the input is spent the channel is actually created and pending for a long time if not forever and you need to lncli abandonchannel, this is safeguard based on our nbxplorer instance confirmed UTXO set.
+                                    await ValidatePSBTInputsAreSpendable(channelOperationRequest, fundedPSBT,
+                                        derivationStrategyBase);
 
                                     //We ensure to SigHash.None
                                     fundedPSBT.Settings.SigningOptions = new SigningOptions
@@ -572,6 +606,38 @@ namespace NodeGuard.Services
             }
 
             return finalSignedPSBT;
+        }
+
+
+        /// <summary>
+        /// Validates that all funded PSBT inputs are still present in the confirmed UTXO set.
+        /// This prevents LND from creating long-lived pending channels when inputs are already spent.
+        /// </summary>
+        /// <param name="channelOperationRequest"></param>
+        /// <param name="fundedPSBT"></param>
+        /// <param name="derivationStrategyBase"></param>
+        /// <exception cref="UTXOsNoLongerValidException"></exception>
+        private async Task ValidatePSBTInputsAreSpendable(ChannelOperationRequest channelOperationRequest,
+            PSBT fundedPSBT, DerivationStrategyBase derivationStrategyBase)
+        {
+            var utxos = await _nbXplorerService.GetUTXOsAsync(derivationStrategyBase, default);
+            utxos.RemoveDuplicateUTXOs();
+
+            var confirmedOutpoints = new HashSet<NBitcoin.OutPoint>(
+                utxos.Confirmed.UTXOs.Select(x => x.Outpoint));
+            var alreadySpentOutpoints = fundedPSBT.Inputs
+                .Select(input => input.PrevOut)
+                .Where(outpoint => !confirmedOutpoints.Contains(outpoint))
+                .ToList();
+
+            if (alreadySpentOutpoints.Count == 0)
+            {
+                return;
+            }
+
+            var errorMessage =
+                $"One or more PSBT inputs are already spent (not confirmed) for channel operation request:{channelOperationRequest.Id}";
+            throw new UTXOsNoLongerValidException(errorMessage);
         }
 
         public async Task OnStatusChannelOpened(ChannelOperationRequest channelOperationRequest, Node source, ChannelPoint channelPoint, string? closeAddress = null)
