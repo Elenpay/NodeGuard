@@ -12,6 +12,7 @@
 
 <Row>
     <Column ColumnSize="ColumnSize.Is12">
+        @* TODO: Convert this grid to paginated ReadData to avoid loading all records in memory. *@
         <DataGrid TItem="Node"
                   Data="@_nodes"
                   Editable="@_editable"
@@ -194,6 +195,7 @@
             <CloseButton />
         </ModalHeader>
         <ModalBody>
+           @* TODO: Convert this grid to paginated ReadData to avoid loading all records in memory. *@
            <DataGrid TItem="ApplicationUser"
                      Data=@_selectedNode?.Users
                      Sortable="false"

@@ -10,6 +10,7 @@
 
 <Row>
     <Column ColumnSize="ColumnSize.Is12">
+        @* TODO: Convert this grid to paginated ReadData to avoid loading all records in memory. *@
         <DataGrid TItem="APIToken"
                   Data="@_apiTokens"
                   Editable="true"
