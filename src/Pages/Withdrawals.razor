@@ -2,6 +2,7 @@
 @using System.Security.Claims
 @using Blazorise.Extensions
 @using Blazorise.DataGrid
+@using Blazorise.Components
 @using Quartz
 @using Humanizer
 @using NBitcoin
@@ -15,12 +16,14 @@
 @using NodeGuard.Services;
 @using Polly
 @attribute [Authorize(Roles = "Superadmin,NodeManager,FinanceManager")]
+<h3 class="custom-primary">Withdrawals</h3>
 
 <Row>
 @if (_isFinanceManager)
 {
     <Column ColumnSize="ColumnSize.Is12">
     <h3>Withdrawal requests awaiting my signature</h3>
+    @* TODO: Convert this grid to paginated ReadData to avoid loading all records in memory. *@
     <DataGrid TItem="WalletWithdrawalRequest"
               Data="@_userPendingRequests"
               Editable="@_isFinanceManager"
@@ -36,7 +39,6 @@
               ShowPageSizes="true"
               PageSize="25"
               Narrow="true"
-              Filterable="true"
               ShowValidationFeedback="true"
               ShowValidationsSummary="false"
               UseValidation="true">
@@ -78,7 +80,7 @@
                     }
                 </DisplayTemplate>
             </DataGridColumn>
-            <DataGridColumn TItem="WalletWithdrawalRequest" Filterable="false" PopupFieldColumnSize="ColumnSize.Is12" Editable="true" Field="@nameof(WalletWithdrawalRequest.Description)" Caption="@nameof(WalletWithdrawalRequest.Description)" Sortable="false" Displayable="@IsPendingRequestsColumnVisible(PendingWithdrawalsColumnName.Description)">
+            <DataGridColumn TItem="WalletWithdrawalRequest" Filterable="false" PopupFieldColumnSize="ColumnSize.Is12" Editable="true" Field="@nameof(WalletWithdrawalRequest.Description)" Caption="@nameof(WalletWithdrawalRequest.Description)" Sortable="false" Displayable="true">
                 <DisplayTemplate>
                     <Tooltip Text="@context.Description" Placement="TooltipPlacement.Top">
                         @context.Description.Truncate(40)
@@ -94,7 +96,7 @@
                     </Validation>
                 </EditTemplate>
             </DataGridColumn>
-            <DataGridColumn TItem="WalletWithdrawalRequest" Filterable="false" PopupFieldColumnSize="ColumnSize.Is12" Validator="@ValidationRule.IsSelected" Editable="true" Field="@nameof(WalletWithdrawalRequest.WalletId)" Caption="@nameof(WalletWithdrawalRequest.Wallet)" Sortable="false" Displayable="@IsPendingRequestsColumnVisible(PendingWithdrawalsColumnName.Wallet)">
+            <DataGridColumn TItem="WalletWithdrawalRequest" Filterable="false" PopupFieldColumnSize="ColumnSize.Is12" Validator="@ValidationRule.IsSelected" Editable="true" Field="@nameof(WalletWithdrawalRequest.WalletId)" Caption="@nameof(WalletWithdrawalRequest.Wallet)" Sortable="false" Displayable="true">
                 <DisplayTemplate>
                     @if (context.Wallet != null)
                     {
@@ -134,12 +136,12 @@
                     </Validation>
                 </EditTemplate>
             </DataGridColumn>
-            <DataGridColumn TItem="WalletWithdrawalRequest" Filterable="false" Editable="false" Field="@nameof(WalletWithdrawalRequest.RequestMetadata)" Caption="Requestor" Sortable="true" Displayable="@IsPendingRequestsColumnVisible(PendingWithdrawalsColumnName.Requestor)" CustomFilter="CustomRequestorFilter">
+            <DataGridColumn TItem="WalletWithdrawalRequest" Filterable="false" Editable="false" Field="@nameof(WalletWithdrawalRequest.RequestMetadata)" Caption="Requestor" Sortable="true" Displayable="true">
                 <DisplayTemplate>
                     @ShowRequestor(context)
                 </DisplayTemplate>
             </DataGridColumn>
-            <DataGridColumn TItem="WalletWithdrawalRequest" Filterable="false" PopupFieldColumnSize="ColumnSize.Is12" Editable="true" Validator="DestinationAddressValidator" Field="@nameof(WalletWithdrawalRequest.WalletWithdrawalRequestDestinations)" Caption="Destination Address" Sortable="false" Displayable="@IsPendingRequestsColumnVisible(PendingWithdrawalsColumnName.DestinationAddress)">
+            <DataGridColumn TItem="WalletWithdrawalRequest" Filterable="false" PopupFieldColumnSize="ColumnSize.Is12" Editable="true" Validator="DestinationAddressValidator" Field="@nameof(WalletWithdrawalRequest.WalletWithdrawalRequestDestinations)" Caption="Destination Address" Sortable="false" Displayable="true">
                 <DisplayTemplate>
                     @(context.WalletWithdrawalRequestDestinations?.FirstOrDefault()?.Address ?? "No address provided")
                 </DisplayTemplate>
@@ -166,7 +168,7 @@
                     }
                 </EditTemplate>
             </DataGridColumn>
-            <DataGridColumn TItem="WalletWithdrawalRequest" Filterable="false" PopupFieldColumnSize="ColumnSize.Is12" Editable="true" Caption="Amount" Sortable="false" Displayable="@IsPendingRequestsColumnVisible(PendingWithdrawalsColumnName.Amount)">
+            <DataGridColumn TItem="WalletWithdrawalRequest" Filterable="false" PopupFieldColumnSize="ColumnSize.Is12" Editable="true" Caption="Amount" Sortable="false" Displayable="true">
                 <DisplayTemplate>
                     @{
                         @($"{context.TotalAmount:f8} BTC ({Math.Round(PriceConversionService.BtcToUsdConversion(context.TotalAmount, _btcPrice), 2)} USD)")
@@ -203,7 +205,7 @@
                     }
                 </EditTemplate>
             </DataGridColumn>
-            <DataGridColumn TItem="WalletWithdrawalRequest" Filterable="false" PopupFieldColumnSize="ColumnSize.Is12" Editable="true" Field="@nameof(WalletWithdrawalRequest.CustomFeeRate)" Caption="Fee rate" Sortable="false" Displayable="@IsPendingRequestsColumnVisible(PendingWithdrawalsColumnName.FeeRate)">
+            <DataGridColumn TItem="WalletWithdrawalRequest" Filterable="false" PopupFieldColumnSize="ColumnSize.Is12" Editable="true" Field="@nameof(WalletWithdrawalRequest.CustomFeeRate)" Caption="Fee rate" Sortable="false" Displayable="true">
                 <DisplayTemplate>
                     @(context.MempoolRecommendedFeesType == MempoolRecommendedFeesType.CustomFee ? $"Custom fee ({context.CustomFeeRate} sat/vb)" : $"{context.MempoolRecommendedFeesType.Humanize()} ({context.CustomFeeRate} sat/vb)")
                 </DisplayTemplate>
@@ -227,7 +229,7 @@
                     <FieldHelp>@(_selectedMempoolRecommendedFeesType != MempoolRecommendedFeesType.CustomFee ? "Fees may change by the time the request is first signed" : "")</FieldHelp>
                 </EditTemplate>
             </DataGridColumn>
-            <DataGridColumn TItem="WalletWithdrawalRequest" Filterable="false" Field="@nameof(WalletWithdrawalRequest.WalletId)" Caption="Signatures Collected" Sortable="false" Displayable="@IsPendingRequestsColumnVisible(PendingWithdrawalsColumnName.SignaturesCollected)">
+            <DataGridColumn TItem="WalletWithdrawalRequest" Filterable="false" Field="@nameof(WalletWithdrawalRequest.WalletId)" Caption="Signatures Collected" Sortable="false" Displayable="true">
                 <DisplayTemplate>
                     @{
                         if (context.Wallet != null)
@@ -239,25 +241,20 @@
                     }
                 </DisplayTemplate>
             </DataGridColumn>
-            <DataGridColumn TItem="WalletWithdrawalRequest" Filterable="false" Field="@nameof(WalletWithdrawalRequest.Status).Humanize(LetterCasing.Sentence)" Caption="Status" Sortable="false" Displayable="@IsPendingRequestsColumnVisible(PendingWithdrawalsColumnName.Status)">
+            <DataGridColumn TItem="WalletWithdrawalRequest" Filterable="false" Field="@nameof(WalletWithdrawalRequest.Status)" Caption="Status" Sortable="false" Displayable="true">
                 <DisplayTemplate>
                     @context?.Status.Humanize()
                 </DisplayTemplate>
             </DataGridColumn>
-            <DataGridColumn TItem="WalletWithdrawalRequest" Filterable="false" Field="@nameof(WalletWithdrawalRequest.CreationDatetime)" Caption="Creation Date" Sortable="true" SortDirection="SortDirection.Descending" Displayable="@IsPendingRequestsColumnVisible(PendingWithdrawalsColumnName.CreationDate)">
+            <DataGridColumn TItem="WalletWithdrawalRequest" Filterable="false" Field="@nameof(WalletWithdrawalRequest.CreationDatetime)" Caption="Creation Date" Sortable="true" SortDirection="SortDirection.Descending" Displayable="true">
                 <DisplayTemplate>
                     @context.CreationDatetime.Humanize()
                 </DisplayTemplate>
             </DataGridColumn>
-            <DataGridColumn TItem="WalletWithdrawalRequest" Filterable="false" Field="@nameof(WalletWithdrawalRequest.UpdateDatetime)" Caption="Update date" Sortable="true" Displayable="@IsPendingRequestsColumnVisible(PendingWithdrawalsColumnName.UpdateDate)">
+            <DataGridColumn TItem="WalletWithdrawalRequest" Filterable="false" Field="@nameof(WalletWithdrawalRequest.UpdateDatetime)" Caption="Update date" Sortable="true" Displayable="true">
                 <DisplayTemplate>
                     @context.UpdateDatetime.Humanize()
                 </DisplayTemplate>
-            </DataGridColumn>
-            <DataGridColumn TItem="WalletWithdrawalRequest" Displayable="true">
-                <FilterTemplate>
-                    <ColumnLayout @ref="_pendingRequestsColumnLayout" Columns="@_pendingRequestsColumns" ColumnType="PendingWithdrawalsColumnName" OnUpdate="@OnColumnLayoutUpdate"/>
-                </FilterTemplate>
             </DataGridColumn>
         </DataGridColumns>
 
@@ -278,13 +275,78 @@
 
 <Column ColumnSize="ColumnSize.Is12">
     <h3>Withdrawal requests</h3>
+    <Row Class="mb-3" @key="_filtersResetKey">
+        <Column ColumnSize="ColumnSize.Is2">
+            <Field>
+                <FieldLabel>Status</FieldLabel>
+                <Autocomplete TItem="WalletWithdrawalRequestStatus?"
+                              TValue="WalletWithdrawalRequestStatus?"
+                              Data="@_statusOptions"
+                              TextField="@(item => item?.Humanize() ?? "All")"
+                              ValueField="@(item => item)"
+                              @bind-SelectedValue="@_statusFilter"
+                              @bind-SelectedValue:after="OnFiltersChanged"
+                              Placeholder="All Statuses"
+                              FreeTyping="false"
+                              MinLength="0"
+                              Filter="AutocompleteFilter.Contains" />
+            </Field>
+        </Column>
+        <Column ColumnSize="ColumnSize.Is2">
+            <Field>
+                <FieldLabel>Wallet</FieldLabel>
+                <Autocomplete TItem="Wallet"
+                              TValue="int?"
+                              Data="@_availableWallets"
+                              TextField="@(item => item?.Name ?? "All")"
+                              ValueField="@(item => (int?)item?.Id)"
+                              @bind-SelectedValue="@_walletFilter"
+                              @bind-SelectedValue:after="OnFiltersChanged"
+                              Placeholder="All Wallets"
+                              FreeTyping="false"
+                              MinLength="0"
+                              Filter="AutocompleteFilter.Contains" />
+            </Field>
+        </Column>
+        <Column ColumnSize="ColumnSize.Is2">
+            <Field>
+                <FieldLabel>Requestor</FieldLabel>
+                <Autocomplete TItem="ApplicationUser"
+                              TValue="string?"
+                              Data="@_availableUsers"
+                              TextField="@(item => item?.UserName ?? "All")"
+                              ValueField="@(item => item?.Id)"
+                              @bind-SelectedValue="@_userFilter"
+                              @bind-SelectedValue:after="OnFiltersChanged"
+                              Placeholder="All Users"
+                              FreeTyping="false"
+                              MinLength="0"
+                              Filter="AutocompleteFilter.Contains" />
+            </Field>
+        </Column>
+        <Column ColumnSize="ColumnSize.Is2">
+            <Field>
+                <FieldLabel>From Date</FieldLabel>
+                <DatePicker TValue="DateTime?" @bind-Date="@_fromDate" @bind-Date:after="OnFiltersChanged" InputMode="DateInputMode.Date" Placeholder="Start date" />
+            </Field>
+        </Column>
+        <Column ColumnSize="ColumnSize.Is2">
+            <Field>
+                <FieldLabel>To Date</FieldLabel>
+                <DatePicker TValue="DateTime?" @bind-Date="@_toDate" @bind-Date:after="OnFiltersChanged" InputMode="DateInputMode.Date" Placeholder="End date" />
+            </Field>
+        </Column>
+        <Column ColumnSize="ColumnSize.Is2" Class="d-flex align-items-end pb-3">
+            <Button Color="Color.Secondary" Clicked="ClearAllFilters">
+                <Icon Name="IconName.Times" /> Clear
+            </Button>
+        </Column>
+    </Row>
     <DataGrid TItem="WalletWithdrawalRequest"
               @ref="_allRequestsDatagrid"
               Data="@_withdrawalRequests"
               ReadData="@OnAllWithdrawalsReadData"
               TotalItems="@_totalWithdrawalRequests"
-              Filterable="true"
-              FilterMethod="DataGridFilterMethod.Contains"
               Editable="false"
               Responsive="true"
               ResizeMode="TableResizeMode.Columns"
@@ -294,14 +356,14 @@
               PageSize="@_pageSize">
         <DataGridColumns>
             <DataGridColumn TItem="WalletWithdrawalRequest" Field="@nameof(WalletWithdrawalRequest.Id)" Caption="#" Sortable="false" Displayable="true"/>
-            <DataGridColumn TItem="WalletWithdrawalRequest" PopupFieldColumnSize="ColumnSize.Is12" Editable="true" Field="@nameof(WalletWithdrawalRequest.Description)" Caption="@nameof(WalletWithdrawalRequest.Description)" Sortable="false" Displayable="@IsAllRequestsColumnVisible(AllWithdrawalsColumnName.Description)">
+            <DataGridColumn TItem="WalletWithdrawalRequest" PopupFieldColumnSize="ColumnSize.Is12" Editable="true" Field="@nameof(WalletWithdrawalRequest.Description)" Caption="@nameof(WalletWithdrawalRequest.Description)" Sortable="false" Displayable="true">
                 <DisplayTemplate>
                     <Tooltip Text="@context.Description" Placement="TooltipPlacement.Top">
                         @context.Description.Truncate(40)
                     </Tooltip>
                 </DisplayTemplate>
             </DataGridColumn>
-            <DataGridColumn TItem="WalletWithdrawalRequest" Editable="true" Field="@nameof(WalletWithdrawalRequest.WalletId)" Caption="@nameof(WalletWithdrawalRequest.Wallet)" Sortable="false" Displayable="@IsAllRequestsColumnVisible(AllWithdrawalsColumnName.Wallet)">
+            <DataGridColumn TItem="WalletWithdrawalRequest" Editable="true" Field="@nameof(WalletWithdrawalRequest.WalletId)" Caption="@nameof(WalletWithdrawalRequest.Wallet)" Sortable="false" Displayable="true">
                 <DisplayTemplate>
                     @if (context.Wallet != null)
                     {
@@ -331,18 +393,18 @@
                     }
                 </EditTemplate>
             </DataGridColumn>
-            <DataGridColumn TItem="WalletWithdrawalRequest" Editable="false" Field="@nameof(WalletWithdrawalRequest.RequestMetadata)" Caption="Requestor" Sortable="true" Displayable="@IsAllRequestsColumnVisible(AllWithdrawalsColumnName.Requestor)" CustomFilter="@((itemValue, searchValue) => CustomRequestorFilter(itemValue, searchValue))">
+            <DataGridColumn TItem="WalletWithdrawalRequest" Editable="false" Field="@nameof(WalletWithdrawalRequest.RequestMetadata)" Caption="Requestor" Sortable="true" Displayable="true">
                 <DisplayTemplate>
                     @ShowRequestor(context)
                 </DisplayTemplate>
             </DataGridColumn>
-            <DataGridColumn TItem="WalletWithdrawalRequest" Editable="true" Validator="DestinationAddressValidator" Field="@nameof(WalletWithdrawalRequest.WalletWithdrawalRequestDestinations)" Caption="Destination Address" Sortable="false" Displayable="@IsAllRequestsColumnVisible(AllWithdrawalsColumnName.DestinationAddress)">
+            <DataGridColumn TItem="WalletWithdrawalRequest" Editable="true" Validator="DestinationAddressValidator" Field="@nameof(WalletWithdrawalRequest.WalletWithdrawalRequestDestinations)" Caption="Destination Address" Sortable="false" Displayable="true">
                 <DisplayTemplate>
                     @context.WalletWithdrawalRequestDestinations?.FirstOrDefault()?.Address
                     @* TODO Copy and explorer buttons *@
                 </DisplayTemplate>
             </DataGridColumn>
-            <DataGridColumn TItem="WalletWithdrawalRequest" Editable="false" Field="@nameof(WalletWithdrawalRequest.TotalAmount)" Caption="Amount (BTC)" Sortable="false" Displayable="@IsAllRequestsColumnVisible(AllWithdrawalsColumnName.Amount)">
+            <DataGridColumn TItem="WalletWithdrawalRequest" Editable="false" Field="@nameof(WalletWithdrawalRequest.TotalAmount)" Caption="Amount (BTC)" Sortable="false" Displayable="true">
                 <DisplayTemplate>
                     @{
                         @($"{context.TotalAmount:f8} BTC ({Math.Round(PriceConversionService.BtcToUsdConversion(context.TotalAmount, _btcPrice), 2)} USD)")
@@ -350,12 +412,12 @@
                 </DisplayTemplate>
 
             </DataGridColumn>
-            <DataGridColumn TItem="WalletWithdrawalRequest" Filterable="true" Editable="false" Field="@nameof(WalletWithdrawalRequest.CustomFeeRate)" Caption="Fee rate" Sortable="false" Displayable="@IsAllRequestsColumnVisible(PendingWithdrawalsColumnName.FeeRate)">
+            <DataGridColumn TItem="WalletWithdrawalRequest" Editable="false" Field="@nameof(WalletWithdrawalRequest.CustomFeeRate)" Caption="Fee rate" Sortable="false" Displayable="true">
                             <DisplayTemplate>
                                 @(context.MempoolRecommendedFeesType == MempoolRecommendedFeesType.CustomFee ? $"Custom fee ({context.CustomFeeRate} sat/vb)" : $"{context.MempoolRecommendedFeesType.Humanize()} ({context.CustomFeeRate} sat/vb)")
                             </DisplayTemplate>
             </DataGridColumn>
-            <DataGridColumn TItem="WalletWithdrawalRequest" Field="@nameof(WalletWithdrawalRequest.WalletId)" Caption="Signatures Collected" Sortable="false" Displayable="@IsAllRequestsColumnVisible(AllWithdrawalsColumnName.SignaturesCollected)">
+            <DataGridColumn TItem="WalletWithdrawalRequest" Field="@nameof(WalletWithdrawalRequest.WalletId)" Caption="Signatures Collected" Sortable="false" Displayable="true">
                 <DisplayTemplate>
                     @{
                         if (context.Wallet != null)
@@ -367,24 +429,24 @@
                     }
                 </DisplayTemplate>
             </DataGridColumn>
-            <DataGridColumn TItem="WalletWithdrawalRequest" Field="@nameof(WalletWithdrawalRequest.Status).Humanize(LetterCasing.Sentence)" Caption="Status" Sortable="false" Displayable="@IsAllRequestsColumnVisible(AllWithdrawalsColumnName.Status)">
+            <DataGridColumn TItem="WalletWithdrawalRequest" Field="@nameof(WalletWithdrawalRequest.Status)" Caption="Status" Sortable="false" Displayable="true">
                 <DisplayTemplate>
                     <Tooltip Text=@context.RejectCancelDescription Placement="TooltipPlacement.Top">
                         <span>@context?.Status.Humanize()</span>
                     </Tooltip>
                 </DisplayTemplate>
             </DataGridColumn>
-            <DataGridColumn TItem="WalletWithdrawalRequest" Field="@nameof(WalletWithdrawalRequest.CreationDatetime)" Caption="Creation Date" Sortable="true" SortDirection="SortDirection.Descending" Displayable="@IsAllRequestsColumnVisible(AllWithdrawalsColumnName.CreationDate)">
+            <DataGridColumn TItem="WalletWithdrawalRequest" Field="@nameof(WalletWithdrawalRequest.CreationDatetime)" Caption="Creation Date" Sortable="true" SortDirection="SortDirection.Descending" Displayable="true">
                 <DisplayTemplate>
                     @context.CreationDatetime.Humanize()
                 </DisplayTemplate>
             </DataGridColumn>
-            <DataGridColumn TItem="WalletWithdrawalRequest" Field="@nameof(WalletWithdrawalRequest.UpdateDatetime)" Caption="Update date" Sortable="true" Displayable="@IsAllRequestsColumnVisible(AllWithdrawalsColumnName.UpdateDate)">
+            <DataGridColumn TItem="WalletWithdrawalRequest" Field="@nameof(WalletWithdrawalRequest.UpdateDatetime)" Caption="Update date" Sortable="true" Displayable="true">
                 <DisplayTemplate>
                     @context.UpdateDatetime.Humanize()
                 </DisplayTemplate>
             </DataGridColumn>
-            <DataGridColumn TItem="WalletWithdrawalRequest" Field="@nameof(WalletWithdrawalRequest.TxId)" Caption="Links" Sortable="false" Displayable="@IsAllRequestsColumnVisible(AllWithdrawalsColumnName.Links)">
+            <DataGridColumn TItem="WalletWithdrawalRequest" Field="@nameof(WalletWithdrawalRequest.TxId)" Caption="Links" Sortable="false" Displayable="true">
                 <DisplayTemplate>
                     @if (mempoolUrl != null && !string.IsNullOrEmpty(context.TxId))
                     {
@@ -392,7 +454,7 @@
                     }
                 </DisplayTemplate>
             </DataGridColumn>
-            <DataGridColumn TItem="WalletWithdrawalRequest" Caption="Actions" Displayable="@IsAllRequestsColumnVisible(AllWithdrawalsColumnName.Actions)">
+            <DataGridColumn TItem="WalletWithdrawalRequest" Caption="Actions" Displayable="true">
                 <DisplayTemplate>
                     @if (_isFinanceManager && context.Status == WalletWithdrawalRequestStatus.OnChainConfirmationPending)
                     {
@@ -405,12 +467,6 @@
                             </Dropdown>
                     }
                 </DisplayTemplate>
-            </DataGridColumn>
-            
-            <DataGridColumn TItem="WalletWithdrawalRequest" Displayable="true">
-                <FilterTemplate>
-                    <ColumnLayout @ref="_allRequestsColumnLayout" Columns="@_allRequestsColumns" ColumnType="AllWithdrawalsColumnName" OnUpdate="@OnColumnLayoutUpdate"/>
-                </FilterTemplate>
             </DataGridColumn>
         </DataGridColumns>
         <EmptyTemplate>
@@ -476,6 +532,7 @@
 @inject INBXplorerService NBXplorerService
 @inject IFMUTXORepository FMUTXORepository
 @inject IWalletWithdrawalRequestDestinationRepository WalletWithdrawalRequestDestinationRepository
+@inject IApplicationUserRepository ApplicationUserRepository
 @inject ILogger<Withdrawals> Logger
 @code {
 
@@ -484,9 +541,9 @@
 
     [CascadingParameter] private ClaimsPrincipal? ClaimsPrincipal { get; set; }
 
-    private ColumnLayout<PendingWithdrawalsColumnName> _pendingRequestsColumnLayout;
     private List<WalletWithdrawalRequest> _userPendingRequests = new();
     private List<Wallet> _availableWallets = new();
+    private List<ApplicationUser> _availableUsers = new();
     private List<WalletWithdrawalRequest> _withdrawalRequests = new();
     private int _totalWithdrawalRequests;
     private int _currentPage = 1;
@@ -513,43 +570,20 @@
     private WalletWithdrawalRequestStatus? _rejectCancelStatus = WalletWithdrawalRequestStatus.Rejected;
     private decimal? _selectedRequestWalletBalance;
     private decimal _btcPrice;
-    private ColumnLayout<AllWithdrawalsColumnName> _allRequestsColumnLayout;
-    private Dictionary<string, bool> _pendingRequestsColumns = new();
-    private Dictionary<string, bool> _allRequestsColumns = new();
-    private bool _columnsLoaded;
     private bool _isCheckedAllFunds;
     private MempoolRecommendedFeesType _selectedMempoolRecommendedFeesType;
     private long _customSatPerVbAmount = 1;
 
-    public abstract class PendingWithdrawalsColumnName
-    {
-        public static readonly ColumnDefault Description = new("Description");
-        public static readonly ColumnDefault Wallet = new("Wallet");
-        public static readonly ColumnDefault Requestor = new("Requestor");
-        public static readonly ColumnDefault DestinationAddress = new("Destination Address");
-        public static readonly ColumnDefault Amount = new("Amount (BTC)");
-        public static readonly ColumnDefault FeeRate = new("Fee Rate");
-        public static readonly ColumnDefault SignaturesCollected = new("Signatures Collected");
-        public static readonly ColumnDefault Status = new("Status");
-        public static readonly ColumnDefault CreationDate = new("Creation Date");
-        public static readonly ColumnDefault UpdateDate = new("Update Date");
-    }
+    // Filter state
+    private WalletWithdrawalRequestStatus? _statusFilter;
+    private int? _walletFilter;
+    private string? _userFilter;
+    private int _filtersResetKey;
+    private DateTime? _fromDate;
+    private DateTime? _toDate;
 
-    public abstract class AllWithdrawalsColumnName
-    {
-        public static readonly ColumnDefault Description = new("Description");
-        public static readonly ColumnDefault Wallet = new("Wallet");
-        public static readonly ColumnDefault Requestor = new("Requestor");
-        public static readonly ColumnDefault DestinationAddress = new("Destination Address");
-        public static readonly ColumnDefault Amount = new("Amount (BTC)");
-        public static readonly ColumnDefault FeeRate = new("Fee Rate");
-        public static readonly ColumnDefault SignaturesCollected = new("Signatures Collected");
-        public static readonly ColumnDefault Status = new("Status");
-        public static readonly ColumnDefault CreationDate = new("Creation Date");
-        public static readonly ColumnDefault UpdateDate = new("Update Date");
-        public static readonly ColumnDefault Links = new("Links");
-        public static readonly ColumnDefault Actions = new("Actions");
-    }
+    // Filter options
+    private List<WalletWithdrawalRequestStatus?> _statusOptions = new() { null };
 
     protected override async Task OnInitializedAsync()
     {
@@ -562,29 +596,16 @@
         }
 
         _isFinanceManager = ClaimsPrincipal != null && ClaimsPrincipal.IsInRole(ApplicationUserRole.FinanceManager.ToString());
-        await GetData();
-        await LoadColumnLayout();
-    }
 
-    protected override async Task OnAfterRenderAsync(bool firstRender)
-    {
-        if (!firstRender && !_columnsLoaded)
-        {
-            await LoadColumnLayout();
-        }
+        // Initialize enum options
+        _statusOptions.AddRange(Enum.GetValues<WalletWithdrawalRequestStatus>().Cast<WalletWithdrawalRequestStatus?>());
+
+        await GetData();
     }
 
     private decimal SelectedUTXOsValue()
     {
         return _selectedUTXOs.Sum(x => ((Money) x.Value).ToUnit(MoneyUnit.BTC));
-    }
-
-    private async Task LoadColumnLayout()
-    {
-        _allRequestsColumns = await LocalStorageService.LoadStorage(nameof(AllWithdrawalsColumnName), ColumnHelpers.GetColumnsDictionary<AllWithdrawalsColumnName>());
-        _pendingRequestsColumns = await LocalStorageService.LoadStorage(nameof(PendingWithdrawalsColumnName), ColumnHelpers.GetColumnsDictionary<PendingWithdrawalsColumnName>());
-        _columnsLoaded = true;
-        StateHasChanged();
     }
 
     private async Task GetData()
@@ -601,6 +622,8 @@
         _availableWallets = await WalletRepository.GetAvailableWallets(false);
         //TODO Fix BIP39 withdrawals, until then, manual hack to filter them out
         _availableWallets = _availableWallets.Where(x => !x.IsBIP39Imported).ToList();
+
+        _availableUsers = await ApplicationUserRepository.GetAll();
 
         await ReloadAllWithdrawalsAsync();
     }
@@ -625,7 +648,15 @@
         }
 
         var excludedIds = _userPendingRequests.Select(request => request.Id);
-        var (requests, totalCount) = await WalletWithdrawalRequestRepository.GetPaginatedAsync(pageNumber, pageSize, excludedIds);
+        var (requests, totalCount) = await WalletWithdrawalRequestRepository.GetPaginatedAsync(
+            pageNumber,
+            pageSize,
+            excludedIds,
+            status: _statusFilter,
+            walletId: _walletFilter,
+            userId: _userFilter,
+            fromDate: _fromDate.HasValue ? new DateTimeOffset(_fromDate.Value, TimeSpan.Zero) : null,
+            toDate: _toDate.HasValue ? new DateTimeOffset(_toDate.Value.AddDays(1).AddTicks(-1), TimeSpan.Zero) : null);
 
         if (cancellationToken.IsCancellationRequested)
         {
@@ -641,6 +672,22 @@
     private async Task OnAllWithdrawalsReadData(DataGridReadDataEventArgs<WalletWithdrawalRequest> e)
     {
         await LoadAllWithdrawalRequestsAsync(e.Page, e.PageSize, e.CancellationToken);
+    }
+
+    private async Task OnFiltersChanged()
+    {
+        await ReloadAllWithdrawalsAsync();
+    }
+
+    private async Task ClearAllFilters()
+    {
+        _statusFilter = null;
+        _walletFilter = null;
+        _userFilter = null;
+        _fromDate = null;
+        _toDate = null;
+        _filtersResetKey++;
+        await ReloadAllWithdrawalsAsync();
     }
 
     private Task LogWithdrawalAuditAsync(
@@ -1538,31 +1585,6 @@
         }
 
         return false;
-    }
-
-    private void OnColumnLayoutUpdate()
-    {
-        StateHasChanged();
-    }
-
-    private bool IsPendingRequestsColumnVisible(ColumnDefault column)
-    {
-        if (_pendingRequestsColumnLayout == null)
-        {
-            return true;
-        }
-
-        return _pendingRequestsColumnLayout.IsColumnVisible(column);
-    }
-
-    private bool IsAllRequestsColumnVisible(ColumnDefault column)
-    {
-        if (_allRequestsColumnLayout == null)
-        {
-            return true;
-        }
-
-        return _allRequestsColumnLayout.IsColumnVisible(column);
     }
 
     private async Task OnShowNewWalletWithdrawalModal()

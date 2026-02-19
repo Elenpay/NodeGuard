@@ -100,7 +100,15 @@ namespace NodeGuard.Data.Repositories
                 .ToListAsync();
         }
 
-        public async Task<(List<WalletWithdrawalRequest> Requests, int TotalCount)> GetPaginatedAsync(int pageNumber, int pageSize, IEnumerable<int>? excludedRequestIds = null)
+        public async Task<(List<WalletWithdrawalRequest> Requests, int TotalCount)> GetPaginatedAsync(
+            int pageNumber,
+            int pageSize,
+            IEnumerable<int>? excludedRequestIds = null,
+            WalletWithdrawalRequestStatus? status = null,
+            int? walletId = null,
+            string? userId = null,
+            DateTimeOffset? fromDate = null,
+            DateTimeOffset? toDate = null)
         {
             await using var applicationDbContext = await _dbContextFactory.CreateDbContextAsync();
 
@@ -131,6 +139,21 @@ namespace NodeGuard.Data.Repositories
                     query = query.Where(x => !excludedIds.Contains(x.Id));
                 }
             }
+
+            if (status.HasValue)
+                query = query.Where(x => x.Status == status.Value);
+
+            if (walletId.HasValue)
+                query = query.Where(x => x.WalletId == walletId.Value);
+
+            if (!string.IsNullOrEmpty(userId))
+                query = query.Where(x => x.UserRequestorId == userId);
+
+            if (fromDate.HasValue)
+                query = query.Where(x => x.CreationDatetime >= fromDate.Value);
+
+            if (toDate.HasValue)
+                query = query.Where(x => x.CreationDatetime <= toDate.Value);
 
             query = query.OrderByDescending(x => x.CreationDatetime);
 
