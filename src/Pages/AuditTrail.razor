@@ -28,7 +28,7 @@
     <Column ColumnSize="ColumnSize.Is2">
         <Field>
             <FieldLabel>Action Type</FieldLabel>
-            <Select TValue="AuditActionType?" @bind-SelectedValue="_actionTypeFilter">
+            <Select TValue="AuditActionType?" @bind-SelectedValue="_actionTypeFilter" @bind-SelectedValue:after="OnFiltersChanged">
                 <SelectItem Value="@((AuditActionType?)null)">All Actions</SelectItem>
                 @foreach (var actionType in Enum.GetValues<AuditActionType>())
                 {
@@ -40,7 +40,7 @@
     <Column ColumnSize="ColumnSize.Is2">
         <Field>
             <FieldLabel>Event Type</FieldLabel>
-            <Select TValue="AuditEventType?" @bind-SelectedValue="_eventTypeFilter">
+            <Select TValue="AuditEventType?" @bind-SelectedValue="_eventTypeFilter" @bind-SelectedValue:after="OnFiltersChanged">
                 <SelectItem Value="@((AuditEventType?)null)">All Events</SelectItem>
                 @foreach (var eventType in Enum.GetValues<AuditEventType>())
                 {
@@ -52,7 +52,7 @@
     <Column ColumnSize="ColumnSize.Is2">
         <Field>
             <FieldLabel>Object Type</FieldLabel>
-            <Select TValue="AuditObjectType?" @bind-SelectedValue="_objectTypeFilter">
+            <Select TValue="AuditObjectType?" @bind-SelectedValue="_objectTypeFilter" @bind-SelectedValue:after="OnFiltersChanged">
                 <SelectItem Value="@((AuditObjectType?)null)">All Objects</SelectItem>
                 @foreach (var objectType in Enum.GetValues<AuditObjectType>())
                 {
@@ -66,7 +66,7 @@
         <Column ColumnSize="ColumnSize.Is2">
             <Field>
                 <FieldLabel>User</FieldLabel>
-                <Select TValue="string?" @bind-SelectedValue="_userIdFilter">
+                <Select TValue="string?" @bind-SelectedValue="_userIdFilter" @bind-SelectedValue:after="OnFiltersChanged">
                     <SelectItem Value="@((string?)null)">All Users</SelectItem>
                     @foreach (var user in _users)
                     {
@@ -76,23 +76,20 @@
             </Field>
         </Column>
     }
-    <Column ColumnSize="ColumnSize.Is2">
+    <Column ColumnSize="ColumnSize.Is1">
         <Field>
             <FieldLabel>From Date</FieldLabel>
-            <DatePicker TValue="DateTime?" @bind-Date="_fromDate" InputMode="DateInputMode.Date" Placeholder="Start date" />
+            <DatePicker TValue="DateTime?" @bind-Date="_fromDate" @bind-Date:after="OnFiltersChanged" InputMode="DateInputMode.Date" Placeholder="Start date" />
         </Field>
     </Column>
-    <Column ColumnSize="ColumnSize.Is2">
+    <Column ColumnSize="ColumnSize.Is1">
         <Field>
             <FieldLabel>To Date</FieldLabel>
-            <DatePicker TValue="DateTime?" @bind-Date="_toDate" InputMode="DateInputMode.Date" Placeholder="End date" />
+            <DatePicker TValue="DateTime?" @bind-Date="_toDate" @bind-Date:after="OnFiltersChanged" InputMode="DateInputMode.Date" Placeholder="End date" />
         </Field>
     </Column>
-    <Column ColumnSize="ColumnSize.Is2" Class="d-flex align-items-end">
-        <Button Color="Color.Primary" Clicked="ApplyFilters">
-            <Icon Name="IconName.Filter" /> Apply Filters
-        </Button>
-        <Button Color="Color.Secondary" Class="ml-2" Clicked="ClearFilters">
+    <Column ColumnSize="ColumnSize.Is2" Class="d-flex align-items-end pb-3">
+        <Button Color="Color.Secondary" Clicked="ClearFilters">
             <Icon Name="IconName.Times" /> Clear
         </Button>
     </Column>
@@ -338,7 +335,7 @@
         }
     }
 
-    private async Task ApplyFilters()
+    private async Task OnFiltersChanged()
     {
         if (_auditLogDataGrid != null)
         {
