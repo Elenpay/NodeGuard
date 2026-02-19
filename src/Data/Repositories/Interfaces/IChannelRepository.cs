@@ -54,4 +54,18 @@ public interface IChannelRepository
     /// <param name="loggedUserId"></param>
     /// <returns></returns>
     Task<List<Channel>> GetAllManagedByUserNodes(string loggedUserId);
+
+    /// <summary>
+    /// Retrieves paginated channels managed by user with filters
+    /// </summary>
+    Task<(List<Channel>, int)> GetPaginatedAsync(
+        string loggedUserId,
+        int pageNumber,
+        int pageSize,
+        int? statusFilter = null,
+        int? sourceNodeIdFilter = null,
+        int? destinationNodeIdFilter = null,
+        int? walletIdFilter = null,
+        DateTimeOffset? fromDate = null,
+        DateTimeOffset? toDate = null);
 }
