@@ -30,7 +30,15 @@ public interface IWalletWithdrawalRequestRepository : IBitcoinRequestRepository
 
     Task<List<WalletWithdrawalRequest>> GetAll();
 
-    Task<(List<WalletWithdrawalRequest> Requests, int TotalCount)> GetPaginatedAsync(int pageNumber, int pageSize, IEnumerable<int>? excludedRequestIds = null);
+    Task<(List<WalletWithdrawalRequest> Requests, int TotalCount)> GetPaginatedAsync(
+        int pageNumber,
+        int pageSize,
+        IEnumerable<int>? excludedRequestIds = null,
+        WalletWithdrawalRequestStatus? status = null,
+        int? walletId = null,
+        string? userId = null,
+        DateTimeOffset? fromDate = null,
+        DateTimeOffset? toDate = null);
 
     Task<List<WalletWithdrawalRequest>> GetUnsignedPendingRequestsByUser(string userId);
 
