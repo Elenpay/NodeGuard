@@ -60,7 +60,17 @@ namespace NodeGuard.Data.Repositories
          return swaps;
       }
 
-      public async Task<(List<SwapOut> swaps, int totalCount)> GetPaginatedAsync(int pageNumber, int pageSize)
+      public async Task<(List<SwapOut> swaps, int totalCount)> GetPaginatedAsync(
+         int pageNumber,
+         int pageSize,
+         SwapOutStatus? status = null,
+         SwapProvider? provider = null,
+         int? nodeId = null,
+         int? walletId = null,
+         string? userId = null,
+         bool? isManual = null,
+         DateTimeOffset? fromDate = null,
+         DateTimeOffset? toDate = null)
       {
          await using var context = await _dbContextFactory.CreateDbContextAsync();
 
@@ -69,7 +79,33 @@ namespace NodeGuard.Data.Repositories
             .ThenInclude(w => w!.Keys)
             .Include(s => s.UserRequestor)
             .Include(s => s.Node)
-            .OrderByDescending(s => s.CreationDatetime);
+            .AsQueryable();
+
+         if (status.HasValue)
+            query = query.Where(s => s.Status == status.Value);
+
+         if (provider.HasValue)
+            query = query.Where(s => s.Provider == provider.Value);
+
+         if (nodeId.HasValue)
+            query = query.Where(s => s.NodeId == nodeId.Value);
+
+         if (walletId.HasValue)
+            query = query.Where(s => s.DestinationWalletId == walletId.Value);
+
+         if (!string.IsNullOrEmpty(userId))
+            query = query.Where(s => s.UserRequestorId == userId);
+
+         if (isManual.HasValue)
+            query = query.Where(s => s.IsManual == isManual.Value);
+
+         if (fromDate.HasValue)
+            query = query.Where(s => s.CreationDatetime >= fromDate.Value);
+
+         if (toDate.HasValue)
+            query = query.Where(s => s.CreationDatetime <= toDate.Value);
+
+         query = query.OrderByDescending(s => s.CreationDatetime);
 
          var totalCount = await query.CountAsync();
 
