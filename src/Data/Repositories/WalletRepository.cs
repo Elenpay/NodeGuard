@@ -70,6 +70,90 @@ namespace NodeGuard.Data.Repositories
             return await applicationDbContext.Wallets.Include(x => x.InternalWallet).Include(x => x.Keys).ToListAsync();
         }
 
+        public async Task<(List<Wallet> wallets, int totalCount)> GetPaginatedAsync(
+            int pageNumber,
+            int pageSize,
+            string? nameFilter = null,
+            string? statusFilter = null,
+            bool archivedFilter = false,
+            bool compromisedFilter = false,
+            bool hotWalletFilter = false,
+            bool coldWalletFilter = false,
+            bool finalisedFilter = false,
+            DateTimeOffset? fromDate = null,
+            DateTimeOffset? toDate = null)
+        {
+            await using var applicationDbContext = await _dbContextFactory.CreateDbContextAsync();
+
+            var query = applicationDbContext.Wallets
+                .Include(x => x.InternalWallet)
+                .Include(x => x.Keys)
+                .AsQueryable();
+
+            if (!string.IsNullOrWhiteSpace(nameFilter))
+            {
+                query = query.Where(w => w.Name.Contains(nameFilter));
+            }
+
+            switch (statusFilter)
+            {
+                case "Finalised":
+                    query = query.Where(w => w.IsFinalised);
+                    break;
+                case "Not Finalised":
+                    query = query.Where(w => !w.IsFinalised);
+                    break;
+                case "Archived":
+                    query = query.Where(w => w.IsArchived);
+                    break;
+                case "Not Archived":
+                    query = query.Where(w => !w.IsArchived);
+                    break;
+            }
+
+            if (fromDate.HasValue)
+            {
+                query = query.Where(w => w.CreationDatetime >= fromDate.Value);
+            }
+
+            if (toDate.HasValue)
+            {
+                query = query.Where(w => w.CreationDatetime <= toDate.Value);
+            }
+
+            if (!archivedFilter && statusFilter != "Archived")
+            {
+                query = query.Where(w => !w.IsArchived);
+            }
+
+            if (!compromisedFilter)
+            {
+                query = query.Where(w => !w.IsCompromised);
+            }
+
+            var anyPropertyFilter = archivedFilter || compromisedFilter || hotWalletFilter || coldWalletFilter || finalisedFilter;
+            if (anyPropertyFilter)
+            {
+                query = query.Where(w =>
+                    (archivedFilter && w.IsArchived) ||
+                    (compromisedFilter && w.IsCompromised) ||
+                    (hotWalletFilter && w.IsHotWallet) ||
+                    (coldWalletFilter && !w.IsHotWallet) ||
+                    (finalisedFilter && w.IsFinalised));
+            }
+
+            query = query.OrderByDescending(w => w.CreationDatetime);
+
+            var totalCount = await query.CountAsync();
+
+            var wallets = await query
+                .Skip((pageNumber - 1) * pageSize)
+                .Take(pageSize)
+                .ToListAsync();
+
+            return (wallets, totalCount);
+        }
+
         public async Task<List<Wallet>> GetAvailableByType(WALLET_TYPE type)
         {
             await using var applicationDbContext = await _dbContextFactory.CreateDbContextAsync();
