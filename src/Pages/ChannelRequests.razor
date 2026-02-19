@@ -4,6 +4,7 @@
 @using Quartz
 @using Humanizer
 @using NBitcoin
+@using Blazorise.Components
 @using NodeGuard.Jobs
 @using Google.Protobuf
 @using NBXplorer.Models
@@ -287,10 +288,127 @@
     </Tooltip>
 </h3>
 <br/>
+<Row Class="mb-3" @key="_filtersResetKey">
+    <Column ColumnSize="ColumnSize.Is1">
+        <Field>
+            <FieldLabel>Status</FieldLabel>
+            <Autocomplete TItem="ChannelOperationRequestStatus?"
+                          TValue="ChannelOperationRequestStatus?"
+                          Data="@_statusOptions"
+                          TextField="@(item => item?.Humanize() ?? "All")"
+                          ValueField="@(item => item)"
+                          @bind-SelectedValue="@_statusFilter"
+                          @bind-SelectedValue:after="OnFiltersChanged"
+                          Placeholder="All"
+                          FreeTyping="false"
+                          MinLength="0"
+                          Filter="AutocompleteFilter.Contains" />
+        </Field>
+    </Column>
+    <Column ColumnSize="ColumnSize.Is1">
+        <Field>
+            <FieldLabel>Type</FieldLabel>
+            <Autocomplete TItem="OperationRequestType?"
+                          TValue="OperationRequestType?"
+                          Data="@_requestTypeOptions"
+                          TextField="@(item => item?.Humanize() ?? "All")"
+                          ValueField="@(item => item)"
+                          @bind-SelectedValue="@_requestTypeFilter"
+                          @bind-SelectedValue:after="OnFiltersChanged"
+                          Placeholder="All"
+                          FreeTyping="false"
+                          MinLength="0"
+                          Filter="AutocompleteFilter.Contains" />
+        </Field>
+    </Column>
+    <Column ColumnSize="ColumnSize.Is2">
+        <Field>
+            <FieldLabel>Source Node</FieldLabel>
+            <Autocomplete TItem="Node"
+                          TValue="int?"
+                          Data="@_availableNodes"
+                          TextField="@(item => item?.Name ?? "All")"
+                          ValueField="@(item => (int?)item?.Id)"
+                          @bind-SelectedValue="@_sourceNodeFilter"
+                          @bind-SelectedValue:after="OnFiltersChanged"
+                          Placeholder="All"
+                          FreeTyping="false"
+                          MinLength="0"
+                          Filter="AutocompleteFilter.Contains" />
+        </Field>
+    </Column>
+    <Column ColumnSize="ColumnSize.Is2">
+        <Field>
+            <FieldLabel>Dest Node</FieldLabel>
+            <Autocomplete TItem="Node"
+                          TValue="int?"
+                          Data="@_availableNodes"
+                          TextField="@(item => item?.Name ?? "All")"
+                          ValueField="@(item => (int?)item?.Id)"
+                          @bind-SelectedValue="@_destNodeFilter"
+                          @bind-SelectedValue:after="OnFiltersChanged"
+                          Placeholder="All"
+                          FreeTyping="false"
+                          MinLength="0"
+                          Filter="AutocompleteFilter.Contains" />
+        </Field>
+    </Column>
+    <Column ColumnSize="ColumnSize.Is2">
+        <Field>
+            <FieldLabel>Wallet</FieldLabel>
+            <Autocomplete TItem="Wallet"
+                          TValue="int?"
+                          Data="@_allWallets"
+                          TextField="@(item => item?.Name ?? "All")"
+                          ValueField="@(item => (int?)item?.Id)"
+                          @bind-SelectedValue="@_walletFilter"
+                          @bind-SelectedValue:after="OnFiltersChanged"
+                          Placeholder="All"
+                          FreeTyping="false"
+                          MinLength="0"
+                          Filter="AutocompleteFilter.Contains" />
+        </Field>
+    </Column>
+    <Column ColumnSize="ColumnSize.Is1">
+        <Field>
+            <FieldLabel>User</FieldLabel>
+            <Autocomplete TItem="ApplicationUser"
+                          TValue="string?"
+                          Data="@_availableUsers"
+                          TextField="@(item => item?.UserName ?? "All")"
+                          ValueField="@(item => item?.Id)"
+                          @bind-SelectedValue="@_userFilter"
+                          @bind-SelectedValue:after="OnFiltersChanged"
+                          Placeholder="All"
+                          FreeTyping="false"
+                          MinLength="0"
+                          Filter="AutocompleteFilter.Contains" />
+        </Field>
+    </Column>
+    <Column ColumnSize="ColumnSize.Is1">
+        <Field>
+            <FieldLabel>From</FieldLabel>
+            <DatePicker TValue="DateTime?" @bind-Date="@_fromDate" @bind-Date:after="OnFiltersChanged" InputMode="DateInputMode.Date" Placeholder="Start" />
+        </Field>
+    </Column>
+    <Column ColumnSize="ColumnSize.Is1">
+        <Field>
+            <FieldLabel>To</FieldLabel>
+            <DatePicker TValue="DateTime?" @bind-Date="@_toDate" @bind-Date:after="OnFiltersChanged" InputMode="DateInputMode.Date" Placeholder="End" />
+        </Field>
+    </Column>
+    <Column ColumnSize="ColumnSize.Is1" Class="d-flex align-items-end pb-3">
+        <Button Color="Color.Secondary" Clicked="ClearAllFilters">
+            <Icon Name="IconName.Times" /> Clear
+        </Button>
+    </Column>
+</Row>
+@* TODO: Convert this grid to paginated ReadData to avoid loading all records in memory. *@
 <DataGrid TItem="ChannelOperationRequest"
           @ref="@_allRequestsDatagrid"
           Data="@_allRequests"
-          Filterable="true"
+          ReadData="@OnAllRequestsReadData"
+          TotalItems="@_totalAllRequests"
           ShowPager="true"
           ShowPageSizes="true"
           Striped="true">
@@ -455,10 +573,30 @@
 @inject IPriceConversionService PriceConversionService
 @inject IAuditService AuditService
 @inject IHttpContextAccessor HttpContextAccessor
+@inject IApplicationUserRepository ApplicationUserRepository
 
 @code {
     private List<ChannelOperationRequest>? _channelRequests;
     private List<ChannelOperationRequest>? _allRequests;
+    private int _totalAllRequests;
+    private List<ApplicationUser> _availableUsers = new();
+    private List<Node> _availableNodes = new();
+    
+    // Filter state
+    private ChannelOperationRequestStatus? _statusFilter;
+    private OperationRequestType? _requestTypeFilter;
+    private int? _sourceNodeFilter;
+    private int? _destNodeFilter;
+    private int? _walletFilter;
+    private string? _userFilter;
+    private int _filtersResetKey;
+    private DateTime? _fromDate;
+    private DateTime? _toDate;
+    
+    // Filter options
+    private List<ChannelOperationRequestStatus?> _statusOptions = new() { null };
+    private List<OperationRequestType?> _requestTypeOptions = new() { null };
+    
     private ChannelOperationRequest? _selectedRequest;
     private ChannelOperationRequestStatus _selectedStatus;
     private ChannelOperationRequest _selectedRequestForMarkingAsFailed;
@@ -1136,7 +1274,64 @@
     private async Task RefreshChannelRequestsInformation()
     {
         await FetchRequests();
+        if (_allRequestsDatagrid != null)
+        {
+            await _allRequestsDatagrid.Reload();
+        }
         StateHasChanged();
+    }
+    
+    private async Task OnAllRequestsReadData(DataGridReadDataEventArgs<ChannelOperationRequest> e)
+    {
+        if (!e.CancellationToken.IsCancellationRequested)
+        {
+            var fromDateOffset = _fromDate.HasValue ? new DateTimeOffset(_fromDate.Value, TimeSpan.Zero) : (DateTimeOffset?)null;
+            var toDateOffset = _toDate.HasValue ? new DateTimeOffset(_toDate.Value.AddDays(1).AddSeconds(-1), TimeSpan.Zero) : (DateTimeOffset?)null;
+
+            var excludedIds = _channelRequests?.Select(r => r.Id) ?? Enumerable.Empty<int>();
+
+            var (requests, totalCount) = await ChannelOperationRequestRepository.GetPaginatedAsync(
+                e.Page,
+                e.PageSize,
+                _statusFilter,
+                _requestTypeFilter,
+                _sourceNodeFilter,
+                _destNodeFilter,
+                _walletFilter,
+                _userFilter,
+                fromDateOffset,
+                toDateOffset,
+                excludedIds);
+
+            _allRequests = requests;
+            _totalAllRequests = totalCount;
+        }
+    }
+
+    private async Task OnFiltersChanged()
+    {
+        if (_allRequestsDatagrid != null)
+        {
+            await _allRequestsDatagrid.Reload();
+        }
+    }
+
+    private async Task ClearAllFilters()
+    {
+        _statusFilter = null;
+        _requestTypeFilter = null;
+        _sourceNodeFilter = null;
+        _destNodeFilter = null;
+        _walletFilter = null;
+        _userFilter = null;
+        _fromDate = null;
+        _toDate = null;
+        _filtersResetKey++;
+        
+        if (_allRequestsDatagrid != null)
+        {
+            await _allRequestsDatagrid.Reload();
+        }
     }
 
     private async Task OnChangelessChanged(bool value)
