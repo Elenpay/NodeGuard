@@ -357,6 +357,35 @@ namespace NodeGuard.Data.Repositories
             return result;
         }
 
+        public async Task<(List<ApplicationUser> users, int totalCount)> GetPaginatedAsync(
+            int pageNumber,
+            int pageSize,
+            bool includeBanned = false)
+        {
+            await using var applicationDbContext = await _dbContextFactory.CreateDbContextAsync();
+
+            var query = applicationDbContext.ApplicationUsers
+                .Include(user => user.Keys)
+                .Include(user => user.Nodes)
+                .AsQueryable();
+
+            if (!includeBanned)
+            {
+                query = query.Where(x => x.LockoutEnd <= DateTimeOffset.UtcNow || x.LockoutEnd == null);
+            }
+
+            query = query.OrderBy(x => x.UserName);
+
+            var totalCount = await query.CountAsync();
+
+            var users = await query
+                .Skip((pageNumber - 1) * pageSize)
+                .Take(pageSize)
+                .ToListAsync();
+
+            return (users, totalCount);
+        }
+
         public async Task<(bool, string?)> AddAsync(ApplicationUser type, string? password = null)
         {
             await using var applicationDbContext = await _dbContextFactory.CreateDbContextAsync();

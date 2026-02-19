@@ -1,6 +1,7 @@
 ﻿@using Humanizer
 @using Microsoft.AspNetCore.Identity
 @using System.Security.Claims
+@using System.Threading
 @using Blazorise.Extensions
 @using Blazorise
 @using Blazorise.DataGrid
@@ -11,7 +12,10 @@
 <Row>
     <Column ColumnSize="ColumnSize.Is12">
         <DataGrid TItem="ApplicationUser"
+                  @ref="_usersDataGrid"
                   Data="@_users"
+                  ReadData="@OnReadData"
+                  TotalItems="@_totalItems"
                   Editable="true"
                   EditMode="DataGridEditMode.Popup"
                   Responsive="true"
@@ -24,7 +28,7 @@
                   ShowPager="true"
                   ShowPageSizes="true"
                   PageSize="25"
-                  Filterable="true"
+                  Filterable="false"
                   ShowValidationFeedback="true"
                   ShowValidationsSummary="false"
                   UseValidation="true">
@@ -56,7 +60,7 @@
                 </DataGridCommandColumn>
                 <DataGridColumn TItem="ApplicationUser" Editable="true" Field="@nameof(ApplicationUser.UserName)" Caption="Username" Sortable="false" Displayable="@IsColumnVisible(UsersColumnName.Username)" Filterable="false">
                     <EditTemplate>
-                        <Validation Validator="@((ValidatorEventArgs obj) => @ValidationHelper.ValidateUsername(obj, _users, context.Item.Id))">
+                        <Validation AsyncValidator="(args, token) => ValidateUsernameAsync(args, token, context.Item.Id)">
                             <TextEdit Text="@((string)context.CellValue)" TextChanged="(text) => { context.CellValue = text; }">
                                 <Feedback>
                                     <ValidationError/>
@@ -121,6 +125,8 @@
 @attribute [Authorize(Roles = "Superadmin")]
 @code {
     private List<ApplicationUser> _users = new();
+    private DataGrid<ApplicationUser>? _usersDataGrid;
+    private int _totalItems;
 
     [CascadingParameter]
     private ApplicationUser? LoggedUser { get; set; }
@@ -151,17 +157,26 @@
     {
         if (LoggedUser != null)
         {
-            await GetData();
+            await LoadNodesList();
         }
     }
 
-    private async Task GetData()
+    private async Task LoadNodesList()
     {
-
-        _users = await ApplicationUserRepository.GetAll(true);
-
         _nodesList = await NodeRepository.GetAllManagedByNodeGuard();
+    }
 
+    private async Task OnReadData(DataGridReadDataEventArgs<ApplicationUser> e)
+    {
+        if (LoggedUser == null) return;
+
+        var (users, totalCount) = await ApplicationUserRepository.GetPaginatedAsync(
+            e.Page,
+            e.PageSize,
+            includeBanned: true);
+
+        _users = users;
+        _totalItems = totalCount;
     }
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
@@ -218,7 +233,10 @@
                     AuditObjectType.User,
                     arg.Item.Id,
                     new { Username = arg.Item.UserName, Roles = string.Join(", ", _selectedRoles) });
-                await GetData();
+                if (_usersDataGrid != null)
+                {
+                    await _usersDataGrid.Reload();
+                }
             }
             else
             {
@@ -258,7 +276,10 @@
             else
             {
                 ToastService.ShowSuccess("Success");
-                await GetData();
+                if (_usersDataGrid != null)
+                {
+                    await _usersDataGrid.Reload();
+                }
             }
         }
     }
@@ -306,7 +327,10 @@
                 new { Username = arg.Item.UserName });
         }
 
-        await GetData();
+        if (_usersDataGrid != null)
+        {
+            await _usersDataGrid.Reload();
+        }
     }
 
     private void NewItemDefaultSetter(ApplicationUser obj)
@@ -390,7 +414,10 @@
                     new { Username = contextItem.UserName });
             }
 
-            await GetData();
+            if (_usersDataGrid != null)
+            {
+                await _usersDataGrid.Reload();
+            }
         }
     }
 
@@ -422,8 +449,30 @@
                     new { Username = contextItem.UserName });
             }
 
-            await GetData();
-        }    }
+            if (_usersDataGrid != null)
+            {
+                await _usersDataGrid.Reload();
+            }
+        }
+    }
+
+    private async Task ValidateUsernameAsync(ValidatorEventArgs obj, CancellationToken cancellationToken, string currentUserId)
+    {
+        obj.Status = ValidationStatus.Success;
+        if (string.IsNullOrWhiteSpace((string)obj.Value))
+        {
+            obj.ErrorText = "The Username cannot be empty";
+            obj.Status = ValidationStatus.Error;
+            return;
+        }
+
+        var existingUser = await ApplicationUserRepository.GetByUsername(obj.Value.ToString());
+        if (existingUser != null && existingUser.Id != currentUserId)
+        {
+            obj.ErrorText = "A user with the same username already exists";
+            obj.Status = ValidationStatus.Error;
+        }
+    }
 
     private void ValidateRole(ValidatorEventArgs obj)
     {
