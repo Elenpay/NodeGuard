@@ -218,6 +218,82 @@ namespace NodeGuard.Data.Repositories
             return channels;
         }
 
+        public async Task<(List<Channel>, int)> GetPaginatedAsync(
+            string loggedUserId,
+            int pageNumber,
+            int pageSize,
+            int? statusFilter = null,
+            int? sourceNodeIdFilter = null,
+            int? destinationNodeIdFilter = null,
+            int? walletIdFilter = null,
+            DateTimeOffset? fromDate = null,
+            DateTimeOffset? toDate = null)
+        {
+            if (string.IsNullOrWhiteSpace(loggedUserId))
+                throw new ArgumentException("Value cannot be null or whitespace.", nameof(loggedUserId));
+
+            await using var applicationDbContext = await _dbContextFactory.CreateDbContextAsync();
+
+            var query = applicationDbContext.Channels
+                .Include(channel => channel.ChannelOperationRequests).ThenInclude(request => request.SourceNode).ThenInclude(x => x.Users)
+                .Include(channel => channel.ChannelOperationRequests).ThenInclude(request => request.DestNode).ThenInclude(x => x.Users)
+                .Include(channel => channel.ChannelOperationRequests).ThenInclude(request => request.Wallet)
+                .Include(channel => channel.ChannelOperationRequests).ThenInclude(request => request.ChannelOperationRequestPsbts)
+                .Include(x => x.SourceNode)
+                .Include(x => x.DestinationNode)
+                .Include(x => x.LiquidityRules)
+                .ThenInclude(x => x.Node)
+                .Include(x => x.LiquidityRules)
+                .ThenInclude(x => x.SwapWallet)
+                .Include(x => x.LiquidityRules)
+                .ThenInclude(x => x.ReverseSwapWallet)
+                .AsSplitQuery()
+                .Where(x => x.SourceNode.Users.Select(user => user.Id).Contains(loggedUserId) ||
+                            x.DestinationNode.Users.Select(user => user.Id).Contains(loggedUserId));
+
+            // Apply filters
+            if (statusFilter.HasValue)
+            {
+                var status = (Channel.ChannelStatus)statusFilter.Value;
+                query = query.Where(x => x.Status == status);
+            }
+
+            if (sourceNodeIdFilter.HasValue)
+            {
+                query = query.Where(x => x.SourceNodeId == sourceNodeIdFilter.Value);
+            }
+
+            if (destinationNodeIdFilter.HasValue)
+            {
+                query = query.Where(x => x.DestinationNodeId == destinationNodeIdFilter.Value);
+            }
+
+            if (walletIdFilter.HasValue)
+            {
+                query = query.Where(x => x.ChannelOperationRequests.Any(r => r.WalletId == walletIdFilter.Value));
+            }
+
+            if (fromDate.HasValue)
+            {
+                query = query.Where(x => x.CreationDatetime >= fromDate.Value);
+            }
+
+            if (toDate.HasValue)
+            {
+                query = query.Where(x => x.CreationDatetime <= toDate.Value);
+            }
+
+            var totalCount = await query.CountAsync();
+
+            var channels = await query
+                .OrderByDescending(x => x.CreationDatetime)
+                .Skip((pageNumber - 1) * pageSize)
+                .Take(pageSize)
+                .ToListAsync();
+
+            return (channels, totalCount);
+        }
+
 
         public async Task<(bool, string?)> MarkAsClosed(Channel channel)
         {
