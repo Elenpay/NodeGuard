@@ -26,7 +26,17 @@ public interface ISwapOutRepository
 {
    Task<SwapOut?> GetById(int id);
    Task<List<SwapOut>> GetByIds(List<int> ids);
-   Task<(List<SwapOut> swaps, int totalCount)> GetPaginatedAsync(int pageNumber, int pageSize);
+   Task<(List<SwapOut> swaps, int totalCount)> GetPaginatedAsync(
+      int pageNumber,
+      int pageSize,
+      SwapOutStatus? status = null,
+      SwapProvider? provider = null,
+      int? nodeId = null,
+      int? walletId = null,
+      string? userId = null,
+      bool? isManual = null,
+      DateTimeOffset? fromDate = null,
+      DateTimeOffset? toDate = null);
    Task<List<SwapOut>> GetAllPending();
    Task<(bool, string?)> AddAsync(SwapOut swap);
    Task<(bool, string?)> AddRangeAsync(List<SwapOut> swaps);
