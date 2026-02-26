@@ -29,6 +29,11 @@ public interface IApplicationUserRepository
 
     Task<List<ApplicationUser>> GetAll(bool includeBanned = false);
 
+    Task<(List<ApplicationUser> users, int totalCount)> GetPaginatedAsync(
+        int pageNumber,
+        int pageSize,
+        bool includeBanned = false);
+
     Task<(bool, string?)> AddAsync(ApplicationUser type, string? password = null);
 
     Task<(bool, string?)> AddRangeAsync(List<ApplicationUser> type);
