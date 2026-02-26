@@ -695,6 +695,12 @@
         {
             ToastService.ShowError("Bitcoin price in USD could not be retrieved.");
         }
+        _availableNodes = await NodeRepository.GetAll();
+        _availableUsers = await ApplicationUserRepository.GetAll();
+
+        _statusOptions.AddRange(Enum.GetValues<ChannelOperationRequestStatus>().Cast<ChannelOperationRequestStatus?>());
+        _requestTypeOptions.AddRange(Enum.GetValues<OperationRequestType>().Cast<OperationRequestType?>());
+
         await FetchRequests();
         await LoadData();
     }

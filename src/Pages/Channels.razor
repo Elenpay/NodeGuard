@@ -2,6 +2,7 @@
 @using System.Security.Claims
 @using Humanizer
 @using NBitcoin
+@using Blazorise.Components
 @using Channel = NodeGuard.Data.Models.Channel
 @attribute [Authorize(Roles = "NodeManager")]
 <PageTitle>Active Channels</PageTitle>
@@ -13,17 +14,117 @@
 
 <Row>
     <Column ColumnSize="ColumnSize.Is12">
+        <Row Class="mb-3" @key="_filtersResetKey">
+            <Column ColumnSize="ColumnSize.Is1">
+                <Field>
+                    <FieldLabel>Status</FieldLabel>
+                    <Autocomplete TItem="string"
+                                  TValue="string"
+                                  Data="@_statusOptions"
+                                  TextField="@(item => item)"
+                                  ValueField="@(item => item)"
+                                  @bind-SelectedValue="@_statusFilterValue"
+                                  @bind-SelectedValue:after="OnFiltersChanged"
+                                  Placeholder="All"
+                                  FreeTyping="false"
+                                  MinLength="0"
+                                  Filter="AutocompleteFilter.Contains" />
+                </Field>
+            </Column>
+            <Column ColumnSize="ColumnSize.Is2">
+                <Field>
+                    <FieldLabel>Source Node</FieldLabel>
+                    <Autocomplete TItem="Node"
+                                  TValue="int?"
+                                  Data="@_nodes"
+                                  TextField="@(item => item.Name + " (" + StringHelper.TruncateHeadAndTail(item.PubKey, 5) + ")")"
+                                  ValueField="@(item => item.Id)"
+                                  @bind-SelectedValue="@_sourceNodeIdFilterValue"
+                                  @bind-SelectedValue:after="OnFiltersChanged"
+                                  Placeholder="All"
+                                  FreeTyping="false"
+                                  MinLength="0"
+                                  Filter="AutocompleteFilter.Contains" />
+                </Field>
+            </Column>
+            <Column ColumnSize="ColumnSize.Is2">
+                <Field>
+                    <FieldLabel>Dest Node</FieldLabel>
+                    <Autocomplete TItem="Node"
+                                  TValue="int?"
+                                  Data="@_nodes"
+                                  TextField="@(item => item.Name + " (" + StringHelper.TruncateHeadAndTail(item.PubKey, 5) + ")")"
+                                  ValueField="@(item => item.Id)"
+                                  @bind-SelectedValue="@_destinationNodeIdFilterValue"
+                                  @bind-SelectedValue:after="OnFiltersChanged"
+                                  Placeholder="All"
+                                  FreeTyping="false"
+                                  MinLength="0"
+                                  Filter="AutocompleteFilter.Contains" />
+                </Field>
+            </Column>
+            <Column ColumnSize="ColumnSize.Is2">
+                <Field>
+                    <FieldLabel>Wallet</FieldLabel>
+                    <Autocomplete TItem="Wallet"
+                                  TValue="int?"
+                                  Data="@_wallets"
+                                  TextField="@(item => item.Name)"
+                                  ValueField="@(item => item.Id)"
+                                  @bind-SelectedValue="@_walletIdFilterValue"
+                                  @bind-SelectedValue:after="OnFiltersChanged"
+                                  Placeholder="All"
+                                  FreeTyping="false"
+                                  MinLength="0"
+                                  Filter="AutocompleteFilter.Contains" />
+                </Field>
+            </Column>
+            <Column ColumnSize="ColumnSize.Is1">
+                <Field>
+                    <FieldLabel>Availability</FieldLabel>
+                    <Autocomplete TItem="string"
+                                  TValue="string"
+                                  Data="@_availabilityOptions"
+                                  TextField="@(item => item)"
+                                  ValueField="@(item => item)"
+                                  @bind-SelectedValue="@_availabilityFilterValue"
+                                  @bind-SelectedValue:after="OnFiltersChanged"
+                                  Placeholder="All"
+                                  FreeTyping="false"
+                                  MinLength="0"
+                                  Filter="AutocompleteFilter.Contains" />
+                </Field>
+            </Column>
+            <Column ColumnSize="ColumnSize.Is1">
+                <Field>
+                    <FieldLabel>From</FieldLabel>
+                    <DatePicker TValue="DateTimeOffset?" @bind-Date="@_fromDateFilter" @bind-Date:after="OnFiltersChanged" Placeholder="From Date" />
+                </Field>
+            </Column>
+            <Column ColumnSize="ColumnSize.Is1">
+                <Field>
+                    <FieldLabel>To</FieldLabel>
+                    <DatePicker TValue="DateTimeOffset?" @bind-Date="@_toDateFilter" @bind-Date:after="OnFiltersChanged" Placeholder="To Date" />
+                </Field>
+            </Column>
+            <Column ColumnSize="ColumnSize.Is1" Class="d-flex align-items-end pb-3">
+                <Button Color="Color.Secondary" Clicked="@ClearAllFilters">
+                    <Icon Name="IconName.Times" /> Clear
+                </Button>
+            </Column>
+        </Row>
         <DataGrid TItem="Channel"
                   @ref="_channelsDataGridRef"
                   Data="@_channels"
+                  ReadData="@OnReadData"
+                  TotalItems="@_totalItems"
                   Editable
                   EditMode=DataGridEditMode.Inline
                   Responsive
                   ResizeMode="TableResizeMode.Columns"
                   ShowPager="true"
                   ShowPageSizes="true"
-                  PageSize="25"
-                  Filterable="true">
+                  PageSize="25">
             <DataGridColumns>
                 <DataGridCommandColumn TItem="Channel">
                     <NewCommandTemplate>
@@ -49,16 +150,7 @@
                         </Dropdown>
                     </DeleteCommandTemplate>
                 </DataGridCommandColumn>
-                <DataGridColumn TItem="Channel" Field="@nameof(Channel.SourceNodeId)" Caption="Source node" CustomFilter="OnSourceNodeIdFilter" Filterable="true" Sortable="false" Displayable="@IsColumnVisible(ChannelsColumnName.SOURCE_NODE)">
-                    <FilterTemplate>
-                        <Select TValue="int" SelectedValue="@(_sourceNodeIdFilter)" SelectedValueChanged="@(value => { _sourceNodeIdFilter = value; context.TriggerFilterChange(_sourceNodeIdFilter); })">
-                            <SelectItem Value="@(0)">All</SelectItem>
-                            @foreach (var node in _nodes)
-                            {
-                                <SelectItem Value="@(node.Id)">@(node.Name)(@(StringHelper.TruncateHeadAndTail(node.PubKey, 5)))</SelectItem>
-                            }
-                        </Select>
-                    </FilterTemplate>
+                <DataGridColumn TItem="Channel" Field="@nameof(Channel.SourceNodeId)" Caption="Source node" Sortable="false" Displayable="@IsColumnVisible(ChannelsColumnName.SOURCE_NODE)">
                     <DisplayTemplate>
 
                         @if (context.SourceNode != null)
@@ -67,16 +159,7 @@
                         }
                     </DisplayTemplate>
                 </DataGridColumn>
-                <DataGridColumn TItem="Channel" Field="@nameof(Channel.DestinationNodeId)" Caption="Destination node" CustomFilter="OnDestinationNodeIdFilter" Filterable="true" Sortable="false" Displayable="@IsColumnVisible(ChannelsColumnName.DESTINATION_NODE)">
-                    <FilterTemplate>
-                        <Select TValue="int" SelectedValue="@(_destinationNodeIdFilter)" SelectedValueChanged="@(value => { _destinationNodeIdFilter = value; context.TriggerFilterChange(_destinationNodeIdFilter); })">
-                            <SelectItem Value="@(0)">All</SelectItem>
-                            @foreach (var node in _nodes)
-                            {
-                                <SelectItem Value="@(node.Id)">@(node.Name)(@(StringHelper.TruncateHeadAndTail(node.PubKey, 5)))</SelectItem>
-                            }
-                        </Select>
-                    </FilterTemplate>
+                <DataGridColumn TItem="Channel" Field="@nameof(Channel.DestinationNodeId)" Caption="Destination node" Sortable="false" Displayable="@IsColumnVisible(ChannelsColumnName.DESTINATION_NODE)">
                     <DisplayTemplate>
 
                         @if (context.DestinationNode != null)
@@ -85,29 +168,12 @@
                         }
                     </DisplayTemplate>
                 </DataGridColumn>
-                <DataGridColumn TItem="Channel" Field="@nameof(Channel.Status)" Caption="@nameof(Channel.Status)" CustomFilter="OnStatusFilter" Filterable="true" Sortable="false" Displayable="@IsColumnVisible(ChannelsColumnName.STATUS)">
-                    <FilterTemplate>
-                        <Select TValue="string" SelectedValue="@((string) _statusFilter)" SelectedValueChanged="@(value => { _statusFilter = value; context.TriggerFilterChange(_statusFilter); })">
-                            <SelectItem Value="@("")">All</SelectItem>
-                            <SelectItem Value="@(Channel.ChannelStatus.Open.Humanize())">@Channel.ChannelStatus.Open.Humanize()</SelectItem>
-                            <SelectItem Value="@(Channel.ChannelStatus.Closed.Humanize())">@Channel.ChannelStatus.Closed.Humanize()</SelectItem>
-                        </Select>
-                    </FilterTemplate>
+                <DataGridColumn TItem="Channel" Field="@nameof(Channel.Status)" Caption="@nameof(Channel.Status)" Sortable="false" Displayable="@IsColumnVisible(ChannelsColumnName.STATUS)">
                     <DisplayTemplate>
                         @context.Status.ToString("G")
                     </DisplayTemplate>
                 </DataGridColumn>
-                <DataGridColumn TItem="Channel" Field="@nameof(Channel.OpenedWithId)" Caption="Opened with" CustomFilter="OnWalletFilter" Filterable="true" Displayable="@IsColumnVisible(ChannelsColumnName.OPENED_WITH)">
-                    <FilterTemplate>
-                        <Select TValue="int" SelectedValue="@(_filterWalletId)" SelectedValueChanged="@(value => { _filterWalletId = value; context.TriggerFilterChange(_filterWalletId); })">
-                            <SelectItem Value="@(0)">All</SelectItem>
-                            @foreach (var wallet in _wallets)
-                            {
-                                <SelectItem Value="@(wallet.Id)">@wallet.Name</SelectItem>
-                            }
-                              <SelectItem Value="-1">Unknown</SelectItem>
-                        </Select>
-                    </FilterTemplate>
+                <DataGridColumn TItem="Channel" Field="@nameof(Channel.OpenedWithId)" Caption="Opened with" Displayable="@IsColumnVisible(ChannelsColumnName.OPENED_WITH)">
                     <DisplayTemplate>
                         @{
                             Wallet wallet = null;
@@ -148,14 +214,7 @@
                         }
                     </DisplayTemplate>
                 </DataGridColumn>
-                <DataGridColumn TItem="Channel" Field="@nameof(Channel.ChanId)" Caption="Availability" Sortable Filterable CustomFilter="OnAvailabilityFilter" Displayable="@IsColumnVisible(ChannelsColumnName.AVAILABILITY)">
-                    <FilterTemplate>
-                        <Select TValue="int" SelectedValue="@(_availabilityFilter)" SelectedValueChanged="@(value => { _availabilityFilter = value; context.TriggerFilterChange(_availabilityFilter); })">
-                            <SelectItem Value="0">All</SelectItem>
-                            <SelectItem Value="1">Active</SelectItem>
-                            <SelectItem Value="-1">Inactive</SelectItem>
-                        </Select>
-                    </FilterTemplate>
+                <DataGridColumn TItem="Channel" Field="@nameof(Channel.ChanId)" Caption="Availability" Sortable Displayable="@IsColumnVisible(ChannelsColumnName.AVAILABILITY)">
                     <DisplayTemplate>
                         @{
                             var isActive = GetAvailability(context.ChanId);
@@ -211,6 +270,7 @@
             <CloseButton/>
         </ModalHeader>
         <ModalBody>
+            @* TODO: Convert this grid to paginated ReadData to avoid loading all records in memory. *@
             <DataGrid TItem="ChannelOperationRequest"
                       Data=@_selectedChannel?.ChannelOperationRequests
                       Sortable="false"
@@ -398,13 +458,27 @@
     private List<Wallet> _availableWallets = new List<Wallet>();
     private LiquidityRule? _currentLiquidityRule = new LiquidityRule();
     private Validations? _channelManagementValidationsRef;
-    private string _statusFilter = "Open";
-    private int _availabilityFilter = 0;
-    private int _sourceNodeIdFilter;
-    private int _destinationNodeIdFilter;
+    
+    // Server-side filter values
+    private string? _statusFilterValue = "Open";
+    private int? _sourceNodeIdFilterValue;
+    private int? _destinationNodeIdFilterValue;
+    private int? _walletIdFilterValue;
+    private DateTimeOffset? _fromDateFilter;
+    private DateTimeOffset? _toDateFilter;
+    
+    // Client-side availability filter
+    private string? _availabilityFilterValue;
+
+    private int _filtersResetKey;
+    
+    // Filter options
+    private List<string> _statusOptions = new List<string> { "Open", "Closed" };
+    private List<string> _availabilityOptions = new List<string> { "Active", "Inactive" };
+    
     private List<Node> _nodes = new List<Node>();
     private List<Wallet> _wallets = new List<Wallet>();
-    private int _filterWalletId;
+    private int _totalItems;
 
     [CascadingParameter]
     private ApplicationUser? LoggedUser { get; set; }
@@ -446,25 +520,87 @@
         }
         if (LoggedUser != null)
         {
-            await FetchData();
+            _nodes = await NodeRepository.GetAll();
+            _wallets = await WalletRepository.GetAll();
+            _availableWallets = await WalletRepository.GetAvailableWallets(true);
             if (ClaimsPrincipal != null && ClaimsPrincipal.IsInRole(ApplicationUserRole.NodeManager.ToString()))
             {
                 _isUserNodeManager = true;
             }
         }
+        _channelsBalance = await LightningService.GetChannelsState();
+    }
+
+    private async Task OnReadData(DataGridReadDataEventArgs<Channel> e)
+    {
+        if (LoggedUser?.Id == null) return;
+
+        var pageNumber = e.Page;
+        var pageSize = e.PageSize;
+
+        // Parse status filter
+        int? statusFilter = null;
+        if (!string.IsNullOrEmpty(_statusFilterValue))
+        {
+            statusFilter = _statusFilterValue == "Open" ? (int)Channel.ChannelStatus.Open : (int)Channel.ChannelStatus.Closed;
+        }
+
+        var fromDate = _fromDateFilter.HasValue
+            ? new DateTimeOffset(DateTime.SpecifyKind(_fromDateFilter.Value.Date, DateTimeKind.Local)).ToUniversalTime()
+            : (DateTimeOffset?)null;
+        var toDate = _toDateFilter.HasValue
+            ? new DateTimeOffset(DateTime.SpecifyKind(_toDateFilter.Value.Date.AddDays(1).AddTicks(-1), DateTimeKind.Local)).ToUniversalTime()
+            : (DateTimeOffset?)null;
+
+        var (channels, totalCount) = await ChannelRepository.GetPaginatedAsync(
+            LoggedUser.Id,
+            pageNumber,
+            pageSize,
+            statusFilter,
+            _sourceNodeIdFilterValue,
+            _destinationNodeIdFilterValue,
+            _walletIdFilterValue,
+            fromDate,
+            toDate);
+
+        // Apply client-side availability filter
+        if (!string.IsNullOrEmpty(_availabilityFilterValue))
+        {
+            if (_availabilityFilterValue == "Active")
+            {
+                channels = channels.Where(c => GetAvailability(c.ChanId)).ToList();
+            }
+            else if (_availabilityFilterValue == "Inactive")
+            {
+                channels = channels.Where(c => !GetAvailability(c.ChanId)).ToList();
+            }
+        }
+
+        _channels = channels;
+        _totalItems = totalCount;
+    }
+
+    private async Task OnFiltersChanged()
+    {
+        await _channelsDataGridRef.Reload();
     }
 
     private async Task FetchData()
     {
-        _availableWallets = await WalletRepository.GetAvailableWallets(true);
-        if (LoggedUser?.Id != null)
-        {
-            _channels = await ChannelRepository.GetAllManagedByUserNodes(LoggedUser.Id);
-        }
-        _nodes = await NodeRepository.GetAll();
-        _wallets = await WalletRepository.GetAll();
-        _channelsDataGridRef?.FilterData();
-        _channelsBalance = await LightningService.GetChannelsState();
+        await _channelsDataGridRef.Reload();
+    }
+
+    private async Task ClearAllFilters()
+    {
+        _statusFilterValue = null;
+        _sourceNodeIdFilterValue = null;
+        _destinationNodeIdFilterValue = null;
+        _walletIdFilterValue = null;
+        _availabilityFilterValue = null;
+        _fromDateFilter = null;
+        _toDateFilter = null;
+        _filtersResetKey++;
+        await _channelsDataGridRef.Reload();
     }
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
@@ -849,56 +985,6 @@
         }
     }
 
-    private bool OnStatusFilter(object? itemValue, object? searchValue)
-    {
-    //If searchValue is null, we set it to the filter initial value in the field
-        searchValue ??= _statusFilter;
-        if (searchValue is string statusFilter)
-        {
-            return statusFilter == "*" || statusFilter == itemValue?.ToString();
-        }
-
-        return true;
-    }
-
-    private bool OnWalletFilter(object? itemValue, object? searchValue)
-    {
-        if (searchValue == null || searchValue is 0)
-        {
-            return true;
-        }
-        if (searchValue is -1)
-        {
-            return itemValue == null;
-        }
-
-        return itemValue is int itemIntValue && searchValue is int searchIntValue && itemIntValue == searchIntValue;
-    }
-
-    private bool OnSourceNodeIdFilter(object? itemValue, object? searchValue)
-    {
-    //If searchValue is null, we set it to the filter initial value in the field
-        searchValue ??= _sourceNodeIdFilter;
-        if (searchValue is int nodeIdFilter)
-        {
-            return nodeIdFilter == 0 || nodeIdFilter == itemValue as int?;
-        }
-
-        return true;
-    }
-
-    private bool OnDestinationNodeIdFilter(object? itemValue, object? searchValue)
-    {
-    //If searchValue is null, we set it to the filter initial value in the field
-        searchValue ??= _destinationNodeIdFilter;
-        if (searchValue is int nodeIdFilter)
-        {
-            return nodeIdFilter == 0 || nodeIdFilter == itemValue as int?;
-        }
-
-        return true;
-    }
-
 
     private async Task MarkAsClosed(Channel contextItem)
     {
@@ -954,15 +1040,6 @@
         await FetchData();
         _channelsBalance = await LightningService.GetChannelsState();
         StateHasChanged();
-    }
-
-    private bool OnAvailabilityFilter(object? itemvalue, object? searchvalue)
-    {
-        if (searchvalue == null || (int)searchvalue == 0) return true;
-        var isActive = GetAvailability((ulong?)itemvalue);
-        if ((int)searchvalue == 1 && isActive) return true;
-        if ((int)searchvalue == -1 && !isActive) return true;
-        return false;
     }
 
     private string GetBalanceTooltipInformation(Channel channel)
