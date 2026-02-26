@@ -27,6 +27,19 @@ public interface IWalletRepository
     Task<Wallet?> GetById(int id);
 
     Task<List<Wallet>> GetAll();
+
+    Task<(List<Wallet> wallets, int totalCount)> GetPaginatedAsync(
+        int pageNumber,
+        int pageSize,
+        string? nameFilter = null,
+        string? statusFilter = null,
+        bool archivedFilter = false,
+        bool compromisedFilter = false,
+        bool hotWalletFilter = false,
+        bool coldWalletFilter = false,
+        bool finalisedFilter = false,
+        DateTimeOffset? fromDate = null,
+        DateTimeOffset? toDate = null);
     
     Task<List<Wallet>> GetAvailableByType(WALLET_TYPE type);
     
