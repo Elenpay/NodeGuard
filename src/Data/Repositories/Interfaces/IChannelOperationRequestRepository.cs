@@ -44,4 +44,17 @@ public interface IChannelOperationRequestRepository : IBitcoinRequestRepository
     /// </summary>
     /// <returns></returns>
     Task<List<ChannelOperationRequest>> GetPendingRequests();
+
+    Task<(List<ChannelOperationRequest> requests, int totalCount)> GetPaginatedAsync(
+        int pageNumber,
+        int pageSize,
+        ChannelOperationRequestStatus? status = null,
+        OperationRequestType? requestType = null,
+        int? sourceNodeId = null,
+        int? destNodeId = null,
+        int? walletId = null,
+        string? userId = null,
+        DateTimeOffset? fromDate = null,
+        DateTimeOffset? toDate = null,
+        IEnumerable<int>? excludedIds = null);
 }

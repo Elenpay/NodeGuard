@@ -235,5 +235,86 @@ namespace NodeGuard.Data.Repositories
                 .Include(x => x.Utxos).AsSplitQuery()
                 .ToListAsync();
         }
+
+        public async Task<(List<ChannelOperationRequest> requests, int totalCount)> GetPaginatedAsync(
+            int pageNumber,
+            int pageSize,
+            ChannelOperationRequestStatus? status = null,
+            OperationRequestType? requestType = null,
+            int? sourceNodeId = null,
+            int? destNodeId = null,
+            int? walletId = null,
+            string? userId = null,
+            DateTimeOffset? fromDate = null,
+            DateTimeOffset? toDate = null,
+            IEnumerable<int>? excludedIds = null)
+        {
+            await using var applicationDbContext = await _dbContextFactory.CreateDbContextAsync();
+
+            var query = applicationDbContext.ChannelOperationRequests
+                .Include(request => request.Wallet)
+                .Include(request => request.SourceNode)
+                .Include(request => request.DestNode)
+                .Include(request => request.ChannelOperationRequestPsbts)
+                .Include(request => request.User)
+                .Include(x => x.Utxos)
+                .AsSplitQuery()
+                .AsQueryable();
+
+            if (status.HasValue)
+            {
+                query = query.Where(r => r.Status == status.Value);
+            }
+
+            if (requestType.HasValue)
+            {
+                query = query.Where(r => r.RequestType == requestType.Value);
+            }
+
+            if (sourceNodeId.HasValue)
+            {
+                query = query.Where(r => r.SourceNodeId == sourceNodeId.Value);
+            }
+
+            if (destNodeId.HasValue)
+            {
+                query = query.Where(r => r.DestNodeId == destNodeId.Value);
+            }
+
+            if (walletId.HasValue)
+            {
+                query = query.Where(r => r.WalletId == walletId.Value);
+            }
+
+            if (!string.IsNullOrEmpty(userId))
+            {
+                query = query.Where(r => r.UserId == userId);
+            }
+
+            if (fromDate.HasValue)
+            {
+                query = query.Where(r => r.CreationDatetime >= fromDate.Value);
+            }
+
+            if (toDate.HasValue)
+            {
+                query = query.Where(r => r.CreationDatetime <= toDate.Value);
+            }
+
+            if (excludedIds != null && excludedIds.Any())
+            {
+                query = query.Where(r => !excludedIds.Contains(r.Id));
+            }
+
+            var totalCount = await query.CountAsync();
+
+            var requests = await query
+                .OrderByDescending(r => r.CreationDatetime)
+                .Skip((pageNumber - 1) * pageSize)
+                .Take(pageSize)
+                .ToListAsync();
+
+            return (requests, totalCount);
+        }
     }
 }
