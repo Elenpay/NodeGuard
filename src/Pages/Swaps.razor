@@ -2,18 +2,118 @@
 @using System.Security.Claims
 @using Humanizer
 @using Blazorise
+@using Blazorise.Components
 @attribute [Authorize(Roles = "Superadmin,NodeManager,FinanceManager")]
+<h3 class="custom-primary">Swaps</h3>
+
+<Row Class="mb-3" @key="_filtersResetKey">
+    <Column ColumnSize="ColumnSize.Is1">
+        <Field>
+            <FieldLabel>Provider</FieldLabel>
+            <Autocomplete TItem="SwapProvider?"
+                          TValue="SwapProvider?"
+                          Data="@_providerOptions"
+                          TextField="@(item => item?.GetDisplayName() ?? "All")"
+                          ValueField="@(item => item)"
+                          @bind-SelectedValue="@_providerFilter"
+                          @bind-SelectedValue:after="OnFiltersChanged"
+                          Placeholder="All"
+                          FreeTyping="false"
+                          MinLength="0"
+                          Filter="AutocompleteFilter.Contains" />
+        </Field>
+    </Column>
+    <Column ColumnSize="ColumnSize.Is1">
+        <Field>
+            <FieldLabel>Status</FieldLabel>
+            <Autocomplete TItem="SwapOutStatus?"
+                          TValue="SwapOutStatus?"
+                          Data="@_statusOptions"
+                          TextField="@(item => item?.Humanize() ?? "All")"
+                          ValueField="@(item => item)"
+                          @bind-SelectedValue="@_statusFilter"
+                          @bind-SelectedValue:after="OnFiltersChanged"
+                          Placeholder="All"
+                          FreeTyping="false"
+                          MinLength="0"
+                          Filter="AutocompleteFilter.Contains" />
+        </Field>
+    </Column>
+    <Column ColumnSize="ColumnSize.Is2">
+        <Field>
+            <FieldLabel>Source Node</FieldLabel>
+            <Autocomplete TItem="Node"
+                          TValue="int?"
+                          Data="@_availableNodes"
+                          TextField="@(item => item?.Name ?? "All")"
+                          ValueField="@(item => (int?)item?.Id)"
+                          @bind-SelectedValue="@_nodeFilter"
+                          @bind-SelectedValue:after="OnFiltersChanged"
+                          Placeholder="All"
+                          FreeTyping="false"
+                          MinLength="0"
+                          Filter="AutocompleteFilter.Contains" />
+        </Field>
+    </Column>
+    <Column ColumnSize="ColumnSize.Is1">
+        <Field>
+            <FieldLabel>Requestor</FieldLabel>
+            <Autocomplete TItem="ApplicationUser"
+                          TValue="string?"
+                          Data="@_availableUsers"
+                          TextField="@(item => item?.UserName ?? "All")"
+                          ValueField="@(item => item?.Id)"
+                          @bind-SelectedValue="@_userFilter"
+                          @bind-SelectedValue:after="OnFiltersChanged"
+                          Placeholder="All"
+                          FreeTyping="false"
+                          MinLength="0"
+                          Filter="AutocompleteFilter.Contains" />
+        </Field>
+    </Column>
+    <Column ColumnSize="ColumnSize.Is1">
+        <Field>
+            <FieldLabel>Is Manual</FieldLabel>
+            <Autocomplete TItem="BoolOption"
+                          TValue="bool?"
+                          Data="@_isManualOptions"
+                          TextField="@(item => item.Label)"
+                          ValueField="@(item => item.Value)"
+                          @bind-SelectedValue="@_isManualFilter"
+                          @bind-SelectedValue:after="OnFiltersChanged"
+                          Placeholder="All"
+                          FreeTyping="false"
+                          MinLength="0"
+                          Filter="AutocompleteFilter.Contains" />
+        </Field>
+    </Column>
+    <Column ColumnSize="ColumnSize.Is1">
+        <Field>
+            <FieldLabel>From Date</FieldLabel>
+            <DatePicker TValue="DateTime?" @bind-Date="@_fromDate" @bind-Date:after="OnFiltersChanged" InputMode="DateInputMode.Date" Placeholder="Start" />
+        </Field>
+    </Column>
+    <Column ColumnSize="ColumnSize.Is1">
+        <Field>
+            <FieldLabel>To Date</FieldLabel>
+            <DatePicker TValue="DateTime?" @bind-Date="@_toDate" @bind-Date:after="OnFiltersChanged" InputMode="DateInputMode.Date" Placeholder="End" />
+        </Field>
+    </Column>
+    <Column ColumnSize="ColumnSize.Is2" Class="d-flex align-items-end pb-3">
+        <Button Color="Color.Secondary" Clicked="ClearAllFilters">
+            <Icon Name="IconName.Times" /> Clear
+        </Button>
+    </Column>
+</Row>
 
 <Row>
     <Column ColumnSize="ColumnSize.Is12">
-        <h3>Swaps</h3>
         <DataGrid TItem="SwapOut"
                 @ref="_swapsDatagrid"
                 Data="@_swapRequests"
                 ReadData="@OnReadData"
                 TotalItems="@_totalItems"
-                Filterable="true"
-                FilterMethod="DataGridFilterMethod.Contains"
+            Filterable="false"
                 Editable="true"
                 Responsive="true"
                 ResizeMode="TableResizeMode.Columns"
@@ -42,62 +142,57 @@
                     </DisplayTemplate>
                 </DataGridColumn>
                 <DataGridColumn TItem="SwapOut" Field="@nameof(SwapOut.IsManual)" Caption="Is Manual" Sortable="true" Displayable="true" />
-                <DataGridColumn TItem="SwapOut" Editable="false" Field="@nameof(SwapOut.Node)" Caption="Source Node" Sortable="true" Displayable="@IsColumnVisible(SwapsColumnName.DestinationWallet)">
+                <DataGridColumn TItem="SwapOut" Editable="false" Field="@nameof(SwapOut.Node)" Caption="Source Node" Sortable="true" Displayable="true">
                     <DisplayTemplate>
                         @(context.Node?.Name ?? "Unknown")
                     </DisplayTemplate>
                 </DataGridColumn>
-                <DataGridColumn TItem="SwapOut" Editable="true" Field="@nameof(SwapOut.DestinationWalletId)" Caption="Destination Wallet" Sortable="false" Displayable="@IsColumnVisible(SwapsColumnName.DestinationWallet)">
+                <DataGridColumn TItem="SwapOut" Editable="true" Field="@nameof(SwapOut.DestinationWalletId)" Caption="Destination Wallet" Sortable="false" Displayable="true">
                     <DisplayTemplate>
                         @($"{context.DestinationWallet?.Name} ({context.DestinationWallet?.MofN}-of-{context.DestinationWallet?.Keys.Count})")
                     </DisplayTemplate>
                 </DataGridColumn>
-                <DataGridColumn TItem="SwapOut" Editable="false" Field="@nameof(SwapOut.UserRequestor)" Caption="Requestor" Sortable="true" Displayable="@IsColumnVisible(SwapsColumnName.Requestor)">
+                <DataGridColumn TItem="SwapOut" Editable="false" Field="@nameof(SwapOut.UserRequestor)" Caption="Requestor" Sortable="true" Displayable="true">
                     <DisplayTemplate>
                         @(context.IsManual ? (context.UserRequestor?.UserName ?? "Unknown") : "Autoswap")
                     </DisplayTemplate>
                 </DataGridColumn>
-                <DataGridColumn TItem="SwapOut" Editable="false" Field="@nameof(SwapOut.Amount)" Caption="Amount (BTC)" Sortable="false" Displayable="@IsColumnVisible(SwapsColumnName.Amount)">
+                <DataGridColumn TItem="SwapOut" Editable="false" Field="@nameof(SwapOut.Amount)" Caption="Amount (BTC)" Sortable="false" Displayable="true">
                     <DisplayTemplate>
                         @($"{context.Amount:f8} BTC ({Math.Round(PriceConversionService.BtcToUsdConversion(context.Amount, _btcPrice), 2)} USD)")
                     </DisplayTemplate>
                 </DataGridColumn>
-                <DataGridColumn TItem="SwapOut" Filterable="true" Editable="false" Field="@nameof(SwapOut.TotalFees)" Caption="Total Fees" Sortable="false" Displayable="@IsColumnVisible(SwapsColumnName.TotalFee)">
+                <DataGridColumn TItem="SwapOut" Editable="false" Field="@nameof(SwapOut.TotalFees)" Caption="Total Fees" Sortable="false" Displayable="true">
                     <DisplayTemplate>
                         <Tooltip Text="@GetFeesBreakdown(context)" Placement="TooltipPlacement.Top">
                             @context.TotalFees.ToUnit(NBitcoin.MoneyUnit.BTC).ToString("f8") BTC
                         </Tooltip>
                     </DisplayTemplate>
                 </DataGridColumn>
-                <DataGridColumn TItem="SwapOut" Field="@nameof(SwapOut.Status).Humanize(LetterCasing.Sentence)" Caption="Status" Sortable="false" Displayable="@IsColumnVisible(SwapsColumnName.Status)">
+                <DataGridColumn TItem="SwapOut" Field="@nameof(SwapOut.Status)" Caption="Status" Sortable="false" Displayable="true">
                     <DisplayTemplate>
                         <Tooltip Text="@context.ErrorDetails" Placement="TooltipPlacement.Top">
                             <span>@context.Status.Humanize()</span>
                         </Tooltip>
                     </DisplayTemplate>
                 </DataGridColumn>
-                <DataGridColumn TItem="SwapOut" Field="@nameof(SwapOut.CreationDatetime)" Caption="Creation Date" Sortable="true" SortDirection="SortDirection.Descending" Displayable="@IsColumnVisible(SwapsColumnName.CreationDate)">
+                <DataGridColumn TItem="SwapOut" Field="@nameof(SwapOut.CreationDatetime)" Caption="Creation Date" Sortable="true" SortDirection="SortDirection.Descending" Displayable="true">
                     <DisplayTemplate>
                         @context.CreationDatetime.Humanize()
                     </DisplayTemplate>
                 </DataGridColumn>
-                <DataGridColumn TItem="SwapOut" Field="@nameof(SwapOut.UpdateDatetime)" Caption="Update date" Sortable="true" Displayable="@IsColumnVisible(SwapsColumnName.UpdateDate)">
+                <DataGridColumn TItem="SwapOut" Field="@nameof(SwapOut.UpdateDatetime)" Caption="Update date" Sortable="true" Displayable="true">
                     <DisplayTemplate>
                         @context.UpdateDatetime.Humanize()
                     </DisplayTemplate>
                 </DataGridColumn>
-                <DataGridColumn TItem="SwapOut" Field="@nameof(SwapOut.TxId)" Caption="Links" Sortable="false" Displayable="@IsColumnVisible(SwapsColumnName.Links)">
+                <DataGridColumn TItem="SwapOut" Field="@nameof(SwapOut.TxId)" Caption="Links" Sortable="false" Displayable="true">
                     <DisplayTemplate>
                         @if (Constants.MEMPOOL_ENDPOINT != null && !string.IsNullOrEmpty(context.TxId))
                         {
                             <a href="@(Constants.MEMPOOL_ENDPOINT + "/tx/" + context.TxId)" target="_blank">See in explorer</a>
                         }
                     </DisplayTemplate>
-                </DataGridColumn>
-                <DataGridColumn TItem="SwapOut" Displayable="true">
-                    <FilterTemplate>
-                        <ColumnLayout @ref="_swapsColumnLayout" Columns="@_swapsColumns" ColumnType="SwapsColumnName" OnUpdate="@OnColumnLayoutUpdate"/>
-                    </FilterTemplate>
                 </DataGridColumn>
             </DataGridColumns>
             <EmptyTemplate>
@@ -118,9 +213,9 @@
 
 @inject ILocalStorageService LocalStorageService
 @inject IPriceConversionService PriceConversionService
-@inject IWalletRepository WalletRepository
 @inject INodeRepository NodeRepository
-@inject ISwapOutRepository SwapOutRepository 
+@inject ISwapOutRepository SwapOutRepository
+@inject IApplicationUserRepository ApplicationUserRepository
 @inject IToastService ToastService
 @code {
    [CascadingParameter] private ApplicationUser? LoggedUser { get; set; }
@@ -129,27 +224,38 @@
 
    private DataGrid<SwapOut> _swapsDatagrid = new();
    private List<SwapOut> _swapRequests = new();
-   private List<Wallet> _availableWallets = new();
    private List<Node> _availableNodes = new();
+   private List<ApplicationUser> _availableUsers = new();
    private decimal _btcPrice;
-   private Dictionary<string, bool> _swapsColumns = new();
-   private bool _columnsLoaded;
-   private ColumnLayout<SwapsColumnName> _swapsColumnLayout = new();
    public required NewSwapModal _newSwapModal;
    private int _totalItems;
    private int _currentPage = 1;
    private int _pageSize = 10;
 
-   public abstract class SwapsColumnName
+   // Filter state
+    private SwapProvider? _providerFilter;
+    private SwapOutStatus? _statusFilter;
+    private int? _nodeFilter;
+    private string? _userFilter;
+    private bool? _isManualFilter;
+    private int _filtersResetKey;
+   private DateTime? _fromDate;
+   private DateTime? _toDate;
+
+   // Filter options
+   private List<SwapProvider?> _providerOptions = new() { null };
+   private List<SwapOutStatus?> _statusOptions = new() { null };
+   private List<BoolOption> _isManualOptions = new()
    {
-      public static readonly ColumnDefault DestinationWallet = new("Destination Wallet");
-      public static readonly ColumnDefault Requestor = new("Requestor");
-      public static readonly ColumnDefault Amount = new("Amount (BTC)");
-      public static readonly ColumnDefault TotalFee = new("Total Fee (BTC)");
-      public static readonly ColumnDefault Status = new("Status");
-      public static readonly ColumnDefault CreationDate = new("Creation Date");
-      public static readonly ColumnDefault UpdateDate = new("Update Date");
-      public static readonly ColumnDefault Links = new("Links");
+      new BoolOption { Label = "All", Value = null },
+      new BoolOption { Label = "Yes", Value = true },
+      new BoolOption { Label = "No", Value = false }
+   };
+
+   public class BoolOption
+   {
+      public string Label { get; set; } = "";
+      public bool? Value { get; set; }
    }
 
    protected override async Task OnInitializedAsync()
@@ -161,48 +267,57 @@
          ToastService.ShowError("Bitcoin price in USD could not be retrieved.");
       }
       _availableNodes = await NodeRepository.GetAllManagedByUser(LoggedUser.Id);
+      _availableUsers = await ApplicationUserRepository.GetAll();
+
+      // Initialize enum options
+      _providerOptions.AddRange(Enum.GetValues<SwapProvider>().Cast<SwapProvider?>());
+      _statusOptions.AddRange(Enum.GetValues<SwapOutStatus>().Cast<SwapOutStatus?>());
    }
 
    private async Task OnReadData(DataGridReadDataEventArgs<SwapOut> e)
    {
       if (!e.CancellationToken.IsCancellationRequested)
       {
-         var (swaps, totalCount) = await SwapOutRepository.GetPaginatedAsync(e.Page, e.PageSize);
+            var fromDate = _fromDate.HasValue
+                ? new DateTimeOffset(DateTime.SpecifyKind(_fromDate.Value.Date, DateTimeKind.Local)).ToUniversalTime()
+                : (DateTimeOffset?)null;
+            var toDate = _toDate.HasValue
+                ? new DateTimeOffset(DateTime.SpecifyKind(_toDate.Value.Date.AddDays(1).AddTicks(-1), DateTimeKind.Local)).ToUniversalTime()
+                : (DateTimeOffset?)null;
+
+            var (swaps, totalCount) = await SwapOutRepository.GetPaginatedAsync(
+            e.Page,
+            e.PageSize,
+            status: _statusFilter,
+            provider: _providerFilter,
+            nodeId: _nodeFilter,
+            userId: _userFilter,
+            isManual: _isManualFilter,
+                fromDate: fromDate,
+                toDate: toDate);
 
          _swapRequests = swaps;
          _totalItems = totalCount;
       }
    }
 
-   protected override async Task OnAfterRenderAsync(bool firstRender)
-   {
-      if (!firstRender && !_columnsLoaded)
-      {
-         await LoadColumnLayout();
-      }
-   }
-
-   private bool IsColumnVisible(ColumnDefault column)
-   {
-      if (_swapsColumnLayout == null)
-      {
-         return true;
-      }
-
-      return _swapsColumnLayout.IsColumnVisible(column);
-   }
-
-   private void OnColumnLayoutUpdate()
-   {
-      StateHasChanged();
-   }
-
-   private async Task LoadColumnLayout()
+    private async Task OnFiltersChanged()
     {
-        _swapsColumns = await LocalStorageService.LoadStorage(nameof(SwapsColumnName), ColumnHelpers.GetColumnsDictionary<SwapsColumnName>());
-        _columnsLoaded = true;
-        StateHasChanged();
+        await _swapsDatagrid.Reload();
     }
+
+   private async Task ClearAllFilters()
+   {
+      _providerFilter = null;
+      _statusFilter = null;
+      _nodeFilter = null;
+      _userFilter = null;
+      _isManualFilter = null;
+      _fromDate = null;
+      _toDate = null;
+        _filtersResetKey++;
+      await _swapsDatagrid.Reload();
+   }
 
     private async Task NewSwap() {
         _newSwapModal.Clear();
