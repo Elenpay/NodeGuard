@@ -22,7 +22,7 @@
 @if (_isFinanceManager)
 {
     <Column ColumnSize="ColumnSize.Is12">
-    <h3>Withdrawal requests awaiting my signature</h3>
+    <h3>Requests awaiting my signature</h3>
     @* TODO: Convert this grid to paginated ReadData to avoid loading all records in memory. *@
     <DataGrid TItem="WalletWithdrawalRequest"
               Data="@_userPendingRequests"
@@ -274,7 +274,7 @@
 }
 
 <Column ColumnSize="ColumnSize.Is12">
-    <h3>Withdrawal requests</h3>
+    <h3>Requests</h3>
     <Row Class="mb-3" @key="_filtersResetKey">
         <Column ColumnSize="ColumnSize.Is2">
             <Field>
