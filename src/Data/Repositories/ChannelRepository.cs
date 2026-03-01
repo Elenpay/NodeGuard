@@ -225,7 +225,7 @@ namespace NodeGuard.Data.Repositories
             int? statusFilter = null,
             int? sourceNodeIdFilter = null,
             int? destinationNodeIdFilter = null,
-            int? walletIdFilter = null,
+            string? channelIdFilter = null,
             DateTimeOffset? fromDate = null,
             DateTimeOffset? toDate = null)
         {
@@ -268,9 +268,9 @@ namespace NodeGuard.Data.Repositories
                 query = query.Where(x => x.DestinationNodeId == destinationNodeIdFilter.Value);
             }
 
-            if (walletIdFilter.HasValue)
+            if (!string.IsNullOrWhiteSpace(channelIdFilter))
             {
-                query = query.Where(x => x.ChannelOperationRequests.Any(r => r.WalletId == walletIdFilter.Value));
+                query = query.Where(x => x.ChanId.ToString().Contains(channelIdFilter));
             }
 
             if (fromDate.HasValue)

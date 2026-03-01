@@ -15,22 +15,6 @@
 <Row>
     <Column ColumnSize="ColumnSize.Is12">
         <Row Class="mb-3" @key="_filtersResetKey">
-            <Column ColumnSize="ColumnSize.Is1">
-                <Field>
-                    <FieldLabel>Status</FieldLabel>
-                    <Autocomplete TItem="string"
-                                  TValue="string"
-                                  Data="@_statusOptions"
-                                  TextField="@(item => item)"
-                                  ValueField="@(item => item)"
-                                  @bind-SelectedValue="@_statusFilterValue"
-                                  @bind-SelectedValue:after="OnFiltersChanged"
-                                  Placeholder="All"
-                                  FreeTyping="false"
-                                  MinLength="0"
-                                  Filter="AutocompleteFilter.Contains" />
-                </Field>
-            </Column>
             <Column ColumnSize="ColumnSize.Is2">
                 <Field>
                     <FieldLabel>Source Node</FieldLabel>
@@ -63,20 +47,28 @@
                                   Filter="AutocompleteFilter.Contains" />
                 </Field>
             </Column>
-            <Column ColumnSize="ColumnSize.Is2">
+            <Column ColumnSize="ColumnSize.Is1">
                 <Field>
-                    <FieldLabel>Wallet</FieldLabel>
-                    <Autocomplete TItem="Wallet"
-                                  TValue="int?"
-                                  Data="@_wallets"
-                                  TextField="@(item => item.Name)"
-                                  ValueField="@(item => item.Id)"
-                                  @bind-SelectedValue="@_walletIdFilterValue"
+                    <FieldLabel>Status</FieldLabel>
+                    <Autocomplete TItem="string"
+                                  TValue="string"
+                                  Data="@_statusOptions"
+                                  TextField="@(item => item)"
+                                  ValueField="@(item => item)"
+                                  @bind-SelectedValue="@_statusFilterValue"
                                   @bind-SelectedValue:after="OnFiltersChanged"
                                   Placeholder="All"
                                   FreeTyping="false"
                                   MinLength="0"
                                   Filter="AutocompleteFilter.Contains" />
+                </Field>
+            </Column>
+            <Column ColumnSize="ColumnSize.Is2">
+                <Field>
+                    <FieldLabel>Channel Id</FieldLabel>
+                    <TextEdit @bind-Text="@_channelIdFilterValue"
+                              @bind-Text:after="OnFiltersChanged"
+                              Placeholder="All" />
                 </Field>
             </Column>
             <Column ColumnSize="ColumnSize.Is1">
@@ -193,6 +185,13 @@
                         </Button>
                     </DisplayTemplate>
                 </DataGridColumn>
+                <DataGridColumn TItem="Channel" Field="@nameof(Channel.ChanId)" Caption="Channel Id" Sortable="false" Displayable="@IsColumnVisible(ChannelsColumnName.CHANNEL_ID)">
+                    <DisplayTemplate>
+                        <a href="@(Constants.AMBOSS_ENDPOINT + "/edge/" + context.ChanId)" target="_blank">
+                            @context.ChanId
+                        </a>
+                    </DisplayTemplate>
+                </DataGridColumn>
                 <DataGridNumericColumn TItem="Channel" Field="@nameof(Channel.SatsAmount)" Caption="Capacity (BTC)" Filterable="false" Sortable="true" Displayable="@IsColumnVisible(ChannelsColumnName.CAPACITY)">
                     <DisplayTemplate>
                         @{
@@ -246,13 +245,6 @@
                 </DataGridColumn>
                 <DataGridColumn TItem="Channel" Field="@nameof(Channel.CreationDatetime)" Caption="@nameof(Channel.CreationDatetime).Humanize(LetterCasing.Sentence)" Sortable="true" Displayable="@IsColumnVisible(ChannelsColumnName.CREATION_DATE)"/>
                 <DataGridColumn TItem="Channel" Field="@nameof(Channel.UpdateDatetime)" Caption="@nameof(Channel.UpdateDatetime).Humanize(LetterCasing.Sentence)" Sortable="true" Displayable="@IsColumnVisible(ChannelsColumnName.UPDATE_DATE)"/>
-                <DataGridColumn TItem="Channel" Field="@nameof(Channel.ChanId)" Caption="Channel Id" Sortable="false" Displayable="@IsColumnVisible(ChannelsColumnName.CHANNEL_ID)">
-                    <DisplayTemplate>
-                        <a href="@(Constants.AMBOSS_ENDPOINT + "/edge/" + context.ChanId)" target="_blank">
-                            @context.ChanId
-                        </a>
-                    </DisplayTemplate>
-                </DataGridColumn>
                 <DataGridColumn TItem="Channel" Displayable="true">
                     <FilterTemplate>
                         <ColumnLayout @ref="_channelsColumnLayout" Columns="@_channelsColumns" ColumnType="ChannelsColumnName" OnUpdate="@OnColumnLayoutUpdate"/>
@@ -463,7 +455,7 @@
     private string? _statusFilterValue = "Open";
     private int? _sourceNodeIdFilterValue;
     private int? _destinationNodeIdFilterValue;
-    private int? _walletIdFilterValue;
+    private string? _channelIdFilterValue;
     private DateTimeOffset? _fromDateFilter;
     private DateTimeOffset? _toDateFilter;
     
@@ -477,7 +469,6 @@
     private List<string> _availabilityOptions = new List<string> { "Active", "Inactive" };
     
     private List<Node> _nodes = new List<Node>();
-    private List<Wallet> _wallets = new List<Wallet>();
     private int _totalItems;
 
     [CascadingParameter]
@@ -521,7 +512,6 @@
         if (LoggedUser != null)
         {
             _nodes = await NodeRepository.GetAll();
-            _wallets = await WalletRepository.GetAll();
             _availableWallets = await WalletRepository.GetAvailableWallets(true);
             if (ClaimsPrincipal != null && ClaimsPrincipal.IsInRole(ApplicationUserRole.NodeManager.ToString()))
             {
@@ -559,7 +549,7 @@
             statusFilter,
             _sourceNodeIdFilterValue,
             _destinationNodeIdFilterValue,
-            _walletIdFilterValue,
+            _channelIdFilterValue,
             fromDate,
             toDate);
 
@@ -595,7 +585,7 @@
         _statusFilterValue = null;
         _sourceNodeIdFilterValue = null;
         _destinationNodeIdFilterValue = null;
-        _walletIdFilterValue = null;
+        _channelIdFilterValue = null;
         _availabilityFilterValue = null;
         _fromDateFilter = null;
         _toDateFilter = null;
