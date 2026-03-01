@@ -65,7 +65,7 @@ public interface IChannelRepository
         int? statusFilter = null,
         int? sourceNodeIdFilter = null,
         int? destinationNodeIdFilter = null,
-        int? walletIdFilter = null,
+        string? channelIdFilter = null,
         DateTimeOffset? fromDate = null,
         DateTimeOffset? toDate = null);
 }
