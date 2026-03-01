@@ -11,8 +11,8 @@
 @using NodeGuard.Helpers;
 @attribute [Authorize(Roles = "FinanceManager, Superadmin, NodeManager")]
 
-<PageTitle>Channel Operation Requests</PageTitle>
-
+<PageTitle>Channel Requests</PageTitle>
+<h3 class="custom-primary">Channel Requests</h3>
 @if (_isFinanceManager || _isNodeManager)
 {
     <Field Flex="Flex.JustifyContent.Between">
@@ -289,38 +289,6 @@
 </h3>
 <br/>
 <Row Class="mb-3" @key="_filtersResetKey">
-    <Column ColumnSize="ColumnSize.Is1">
-        <Field>
-            <FieldLabel>Status</FieldLabel>
-            <Autocomplete TItem="ChannelOperationRequestStatus?"
-                          TValue="ChannelOperationRequestStatus?"
-                          Data="@_statusOptions"
-                          TextField="@(item => item?.Humanize() ?? "All")"
-                          ValueField="@(item => item)"
-                          @bind-SelectedValue="@_statusFilter"
-                          @bind-SelectedValue:after="OnFiltersChanged"
-                          Placeholder="All"
-                          FreeTyping="false"
-                          MinLength="0"
-                          Filter="AutocompleteFilter.Contains" />
-        </Field>
-    </Column>
-    <Column ColumnSize="ColumnSize.Is1">
-        <Field>
-            <FieldLabel>Type</FieldLabel>
-            <Autocomplete TItem="OperationRequestType?"
-                          TValue="OperationRequestType?"
-                          Data="@_requestTypeOptions"
-                          TextField="@(item => item?.Humanize() ?? "All")"
-                          ValueField="@(item => item)"
-                          @bind-SelectedValue="@_requestTypeFilter"
-                          @bind-SelectedValue:after="OnFiltersChanged"
-                          Placeholder="All"
-                          FreeTyping="false"
-                          MinLength="0"
-                          Filter="AutocompleteFilter.Contains" />
-        </Field>
-    </Column>
     <Column ColumnSize="ColumnSize.Is2">
         <Field>
             <FieldLabel>Source Node</FieldLabel>
@@ -353,7 +321,7 @@
                           Filter="AutocompleteFilter.Contains" />
         </Field>
     </Column>
-    <Column ColumnSize="ColumnSize.Is2">
+    <Column ColumnSize="ColumnSize.Is1">
         <Field>
             <FieldLabel>Wallet</FieldLabel>
             <Autocomplete TItem="Wallet"
@@ -371,13 +339,45 @@
     </Column>
     <Column ColumnSize="ColumnSize.Is1">
         <Field>
-            <FieldLabel>User</FieldLabel>
+            <FieldLabel>Requestor</FieldLabel>
             <Autocomplete TItem="ApplicationUser"
                           TValue="string?"
                           Data="@_availableUsers"
                           TextField="@(item => item?.UserName ?? "All")"
                           ValueField="@(item => item?.Id)"
                           @bind-SelectedValue="@_userFilter"
+                          @bind-SelectedValue:after="OnFiltersChanged"
+                          Placeholder="All"
+                          FreeTyping="false"
+                          MinLength="0"
+                          Filter="AutocompleteFilter.Contains" />
+        </Field>
+    </Column>
+    <Column ColumnSize="ColumnSize.Is2">
+        <Field>
+            <FieldLabel>Status</FieldLabel>
+            <Autocomplete TItem="ChannelOperationRequestStatus?"
+                          TValue="ChannelOperationRequestStatus?"
+                          Data="@_statusOptions"
+                          TextField="@(item => item?.Humanize() ?? "All")"
+                          ValueField="@(item => item)"
+                          @bind-SelectedValue="@_statusFilter"
+                          @bind-SelectedValue:after="OnFiltersChanged"
+                          Placeholder="All"
+                          FreeTyping="false"
+                          MinLength="0"
+                          Filter="AutocompleteFilter.Contains" />
+        </Field>
+    </Column>
+    <Column ColumnSize="ColumnSize.Is1">
+        <Field>
+            <FieldLabel>Type</FieldLabel>
+            <Autocomplete TItem="OperationRequestType?"
+                          TValue="OperationRequestType?"
+                          Data="@_requestTypeOptions"
+                          TextField="@(item => item?.Humanize() ?? "All")"
+                          ValueField="@(item => item)"
+                          @bind-SelectedValue="@_requestTypeFilter"
                           @bind-SelectedValue:after="OnFiltersChanged"
                           Placeholder="All"
                           FreeTyping="false"
@@ -403,15 +403,18 @@
         </Button>
     </Column>
 </Row>
-@* TODO: Convert this grid to paginated ReadData to avoid loading all records in memory. *@
 <DataGrid TItem="ChannelOperationRequest"
           @ref="@_allRequestsDatagrid"
           Data="@_allRequests"
           ReadData="@OnAllRequestsReadData"
           TotalItems="@_totalAllRequests"
+          Responsive="true"
+          ResizeMode="TableResizeMode.Columns"
           ShowPager="true"
           ShowPageSizes="true"
-          Striped="true">
+          Striped="true"
+          Narrow="true"
+          PageSize="@_allRequestsPageSize">
     <ChildContent>
         <DataGridColumn TItem="ChannelOperationRequest" Field="@nameof(ChannelOperationRequest.Id)" Caption="#" Sortable="false" Displayable="true"/>
         <DataGridColumn TItem="ChannelOperationRequest" Field="SourceNode.Name" Caption="Source Node" Sortable="false" Displayable="@IsAllRequestsColumnVisible(AllChannelsColumnName.SourceNode)"/>
@@ -430,7 +433,7 @@
                  }
             </DisplayTemplate>
         </DataGridColumn>
-        <DataGridColumn TItem="ChannelOperationRequest" Field="Wallet.Name" Caption="Source of Funds" Sortable="false" Displayable="@IsAllRequestsColumnVisible(AllChannelsColumnName.SourceOfFunds)"/>
+        <DataGridColumn TItem="ChannelOperationRequest" Field="Wallet.Name" Caption="Wallet" Sortable="false" Displayable="@IsAllRequestsColumnVisible(AllChannelsColumnName.SourceOfFunds)"/>
         <DataGridColumn TItem="ChannelOperationRequest" Field="@nameof(ChannelOperationRequest.Amount)" Caption="Capacity" Sortable="false" Displayable="@IsAllRequestsColumnVisible(AllChannelsColumnName.Capacity)">
             <DisplayTemplate>
                 @{
@@ -577,8 +580,9 @@
 
 @code {
     private List<ChannelOperationRequest>? _channelRequests;
-    private List<ChannelOperationRequest>? _allRequests;
+    private List<ChannelOperationRequest> _allRequests = new();
     private int _totalAllRequests;
+    private const int _allRequestsPageSize = 25;
     private List<ApplicationUser> _availableUsers = new();
     private List<Node> _availableNodes = new();
     
@@ -748,8 +752,6 @@
     {
         if (LoggedUser == null) return;
 
-        _allRequests = await ChannelOperationRequestRepository.GetAll();
-
         if (_isFinanceManager)
         {
             _channelRequests = await ChannelOperationRequestRepository.GetUnsignedPendingRequestsByUser(LoggedUser.Id);
@@ -758,7 +760,10 @@
         {
             _channelRequests = await ChannelOperationRequestRepository.GetPendingRequests();
         }
-        _allRequests = _allRequests.Except(_channelRequests ?? new List<ChannelOperationRequest>()).ToList();
+        else
+        {
+            _channelRequests = new();
+        }
     }
 
     #region New Request Integration
@@ -895,6 +900,7 @@
         }
         await LoadData();
         await FetchRequests();
+        await ReloadAllRequestsGrid();
     }
 
     #endregion
@@ -954,6 +960,7 @@
                     _selectedRequest.Id.ToString(),
                     new { RequestId = _selectedRequest.Id, Status = _selectedStatus, Reason = _selectedRequest.ClosingReason, Description = $"Channel operation request {_selectedStatus.ToString().ToLower()}" });
                 await FetchRequests();
+                await ReloadAllRequestsGrid();
             }
         }
         else
@@ -1046,6 +1053,7 @@
             }
 
             await FetchRequests();
+            await ReloadAllRequestsGrid();
             await _psbtSignRef.HideModal();
             StateHasChanged();
         }
@@ -1118,6 +1126,7 @@
                 _utxoSelectorModalRef.ClearModal();
                 await _approveOperationConfirmationModal.CloseModal();
                 await FetchRequests();
+                await ReloadAllRequestsGrid();
                 StateHasChanged();
                 return;
             }
@@ -1137,6 +1146,7 @@
 
 
             await FetchRequests();
+            await ReloadAllRequestsGrid();
             _utxoSelectorModalRef.ClearModal();
             await _approveOperationConfirmationModal.CloseModal();
         }
@@ -1206,6 +1216,7 @@
         {
             await MarkRequestAsFailedCloseConfirmationModal();
             await FetchRequests();
+            await ReloadAllRequestsGrid();
         }
     }
 
@@ -1280,11 +1291,16 @@
     private async Task RefreshChannelRequestsInformation()
     {
         await FetchRequests();
+        await ReloadAllRequestsGrid();
+        StateHasChanged();
+    }
+
+    private async Task ReloadAllRequestsGrid()
+    {
         if (_allRequestsDatagrid != null)
         {
             await _allRequestsDatagrid.Reload();
         }
-        StateHasChanged();
     }
     
     private async Task OnAllRequestsReadData(DataGridReadDataEventArgs<ChannelOperationRequest> e)
