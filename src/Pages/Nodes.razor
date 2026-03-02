@@ -80,7 +80,7 @@
                         }
                     </DisplayTemplate>
                     <EditTemplate>
-                        <MemoEdit Rows="4" TextChanged="(text) => { if (!string.IsNullOrWhiteSpace(text)) context.CellValue = text; }" Placeholder="Base64 encoded macaroon (leave empty to keep existing)">
+                        <MemoEdit Rows="4" TextChanged="(text) => { if (!string.IsNullOrWhiteSpace(text)) context.CellValue = text; }" Placeholder="Hex encoded macaroon (leave empty to keep existing)">
                             <Feedback>
                                 <ValidationError/>
                             </Feedback>
@@ -115,7 +115,7 @@
                         }
                     </DisplayTemplate>
                     <EditTemplate>
-                        <MemoEdit Rows="4" TextChanged="(text) => { if (!string.IsNullOrWhiteSpace(text)) context.CellValue = text; }" Placeholder="Base64 encoded macaroon (leave empty to keep existing)">
+                        <MemoEdit Rows="4" TextChanged="(text) => { if (!string.IsNullOrWhiteSpace(text)) context.CellValue = text; }" Placeholder="Hex encoded macaroon (leave empty to keep existing)">
                             <Feedback>
                                 <ValidationError/>
                             </Feedback>
