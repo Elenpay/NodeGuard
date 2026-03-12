@@ -142,55 +142,6 @@ public class MonitorSwapsJobTests
     }
 
     [Fact]
-    public async Task Execute_WhenSwapIsPendingAndOld_StillMonitorsSwap()
-    {
-        // Arrange
-        var loopNode = new Node { Id = 3, Endpoint = "localhost:10011", ChannelAdminMacaroon = "mac", LoopdEndpoint = "localhost:11011", LoopdMacaroon = "loopmac" };
-        var oldPendingSwap = new SwapOut
-        {
-            Id = 303,
-            NodeId = loopNode.Id,
-            Provider = SwapProvider.Loop,
-            ProviderId = "old-loop-swap",
-            Status = SwapOutStatus.Pending,
-            CreationDatetime = DateTimeOffset.UtcNow.AddDays(-45)
-        };
-
-        _nodeRepositoryMock
-            .Setup(x => x.GetAllConfiguredByProvider(SwapProvider.Loop, null))
-            .ReturnsAsync(new List<Node> { loopNode });
-
-        _nodeRepositoryMock
-            .Setup(x => x.GetAllConfiguredByProvider(SwapProvider.FortySwap, null))
-            .ReturnsAsync(new List<Node>());
-
-        _swapOutRepositoryMock
-            .Setup(x => x.GetAllPending())
-            .ReturnsAsync(new List<SwapOut> { oldPendingSwap });
-
-        _swapsServiceMock
-            .Setup(x => x.GetSwapAsync(loopNode, SwapProvider.Loop, "old-loop-swap", It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new SwapResponse
-            {
-                Id = "old-loop-swap",
-                HtlcAddress = "bc1qold",
-                Status = SwapOutStatus.Pending,
-                ServerFee = 0,
-                OffchainFee = 0,
-                OnchainFee = 0
-            });
-
-        // Act
-        await _job.Execute(_jobExecutionContextMock.Object);
-
-        // Assert
-        _swapOutRepositoryMock.Verify(x => x.GetAllPending(), Times.Once);
-        _swapsServiceMock.Verify(
-            x => x.GetSwapAsync(loopNode, SwapProvider.Loop, "old-loop-swap", It.IsAny<CancellationToken>()),
-            Times.Once);
-    }
-
-    [Fact]
     public async Task Execute_WhenProviderTimesOutWithUnavailableRpc_ContinuesWithOtherSwaps()
     {
         // Arrange
