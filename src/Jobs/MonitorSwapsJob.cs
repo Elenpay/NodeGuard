@@ -25,16 +25,23 @@ public class MonitorSwapsJob : IJob
         _auditService = auditService;
     }
 
-    private void CleanUp(SwapOut swap, string errorMessage)
+    private async Task LogMonitoringIssueAsync(SwapOut swap, string errorMessage)
     {
-        _logger.LogError("Error processing swap {SwapId}: {ErrorMessage}", swap.Id, errorMessage);
-        swap.Status = SwapOutStatus.Failed;
-        swap.ErrorDetails = errorMessage;
-        var (updated, error) = _swapOutRepository.Update(swap);
-        if (!updated)
-        {
-            _logger.LogError("Error updating swap {SwapId} to Failed status: {Error}", swap.Id, error);
-        }
+        await _auditService.LogSystemAsync(
+            AuditActionType.Update,
+            AuditEventType.Attempt,
+            AuditObjectType.SwapOut,
+            swap.ProviderId ?? swap.Id.ToString(),
+            new
+            {
+                SwapId = swap.Id,
+                NodeId = swap.NodeId,
+                Provider = swap.Provider.ToString(),
+                ProviderId = swap.ProviderId,
+                IsManual = swap.IsManual,
+                CurrentStatus = swap.Status.ToString(),
+                ErrorMessage = errorMessage
+            });
     }
 
     public async Task Execute(IJobExecutionContext context)
@@ -51,73 +58,124 @@ public class MonitorSwapsJob : IJob
             var swaps = await _swapOutRepository.GetAllPending();
             foreach (var swap in swaps)
             {
-                var node = managedNodes.FirstOrDefault(n => n.Id == swap.NodeId);
-                if (node == null)
+                try
                 {
-                    CleanUp(swap, "Node not found or not managed");
-                    continue;
-                }
-
-                ArgumentNullException.ThrowIfNull(swap.ProviderId, nameof(swap.ProviderId));
-
-                var response = await _swapsService.GetSwapAsync(node, swap.Provider, swap.ProviderId);
-                if (response == null)
-                {
-                    CleanUp(swap, "Swap not found in provider");
-                    continue;
-                }
-
-                if (response.Status != swap.Status)
-                {
-                    var oldStatus = swap.Status;
-                    
-                    if (response.Status == SwapOutStatus.Failed)
+                    var node = managedNodes.FirstOrDefault(n => n.Id == swap.NodeId);
+                    if (node == null)
                     {
-                        _logger.LogWarning("Swap {SwapId} status changed from {OldStatus} to {NewStatus}. Error: {ErrorMessage}", 
-                            swap.Id, swap.Status, response.Status, response.ErrorMessage);
-                        swap.ErrorDetails = response.ErrorMessage;
-                    }
-                    else
-                    {
-                        _logger.LogInformation("Swap {SwapId} status changed from {OldStatus} to {NewStatus}", swap.Id, swap.Status, response.Status);
-                    }
-                    
-                    swap.Status = response.Status;
-                    swap.ServiceFeeSats = response.ServerFee;
-                    swap.LightningFeeSats = response.OffchainFee;
-                    swap.OnChainFeeSats = response.OnchainFee;
-
-                    var (updated, error) = _swapOutRepository.Update(swap);
-                    if (!updated)
-                    {
-                        _logger.LogError("Error updating swap {SwapId}: {Error}", swap.Id, error);
+                        await LogMonitoringIssueAsync(swap, "Node not found or not managed");
                         continue;
                     }
 
-                    // Audit swap completion (only for successful completions)
-                    if (response.Status == SwapOutStatus.Completed)
+                    if (string.IsNullOrWhiteSpace(swap.ProviderId))
                     {
-                        await _auditService.LogSystemAsync(
-                            AuditActionType.SwapOutCompleted,
-                            AuditEventType.Success,
-                            AuditObjectType.SwapOut,
-                            swap.ProviderId,
-                            new
-                            {
-                                SwapId = swap.Id,
-                                NodeId = swap.NodeId,
-                                Provider = swap.Provider.ToString(),
-                                ProviderId = swap.ProviderId,
-                                AmountSats = swap.SatsAmount,
-                                TotalFeeSats = swap.TotalFees.Satoshi,
-                                ServiceFeeSats = swap.ServiceFeeSats,
-                                LightningFeeSats = swap.LightningFeeSats,
-                                OnChainFeeSats = swap.OnChainFeeSats,
-                                IsManual = swap.IsManual,
-                                OldStatus = oldStatus.ToString(),
-                                NewStatus = response.Status.ToString()
-                            });
+                        await LogMonitoringIssueAsync(swap, "Swap provider id is missing");
+                        continue;
                     }
+
+                    SwapResponse? response;
+                    try
+                    {
+                        response = await _swapsService.GetSwapAsync(node, swap.Provider, swap.ProviderId);
+                    }
+                    catch (Exception ex)
+                    {
+                        _logger.LogError(ex,
+                            "Error querying provider {Provider} for swap {SwapId}.",
+                            swap.Provider,
+                            swap.Id);
+                        continue;
+                    }
+
+                    if (response == null)
+                    {
+                        await LogMonitoringIssueAsync(swap, "Swap not found in provider");
+                        continue;
+                    }
+
+                    if (response.Status != swap.Status)
+                    {
+                        var oldStatus = swap.Status;
+
+                        if (response.Status == SwapOutStatus.Failed)
+                        {
+                            _logger.LogWarning("Swap {SwapId} status changed from {OldStatus} to {NewStatus}. Error: {ErrorMessage}",
+                                swap.Id, swap.Status, response.Status, response.ErrorMessage);
+                            swap.ErrorDetails = response.ErrorMessage;
+                        }
+                        else
+                        {
+                            _logger.LogInformation("Swap {SwapId} status changed from {OldStatus} to {NewStatus}", swap.Id, swap.Status, response.Status);
+                        }
+
+                        swap.Status = response.Status;
+                        swap.ServiceFeeSats = response.ServerFee;
+                        swap.LightningFeeSats = response.OffchainFee;
+                        swap.OnChainFeeSats = response.OnchainFee;
+
+                        var (updated, error) = _swapOutRepository.Update(swap);
+                        if (!updated)
+                        {
+                            _logger.LogError("Error updating swap {SwapId}: {Error}", swap.Id, error);
+                            continue;
+                        }
+
+                        // Audit swap completion (only for successful completions)
+                        if (response.Status == SwapOutStatus.Completed)
+                        {
+                            await _auditService.LogSystemAsync(
+                                AuditActionType.SwapOutCompleted,
+                                AuditEventType.Success,
+                                AuditObjectType.SwapOut,
+                                swap.ProviderId,
+                                new
+                                {
+                                    SwapId = swap.Id,
+                                    NodeId = swap.NodeId,
+                                    Provider = swap.Provider.ToString(),
+                                    ProviderId = swap.ProviderId,
+                                    AmountSats = swap.SatsAmount,
+                                    TotalFeeSats = swap.TotalFees.Satoshi,
+                                    ServiceFeeSats = swap.ServiceFeeSats,
+                                    LightningFeeSats = swap.LightningFeeSats,
+                                    OnChainFeeSats = swap.OnChainFeeSats,
+                                    IsManual = swap.IsManual,
+                                    OldStatus = oldStatus.ToString(),
+                                    NewStatus = response.Status.ToString()
+                                });
+                        }
+                        else if (response.Status == SwapOutStatus.Failed)
+                        {
+                            await _auditService.LogSystemAsync(
+                                AuditActionType.SwapOutCompleted,
+                                AuditEventType.Failure,
+                                AuditObjectType.SwapOut,
+                                swap.ProviderId,
+                                new
+                                {
+                                    SwapId = swap.Id,
+                                    NodeId = swap.NodeId,
+                                    Provider = swap.Provider.ToString(),
+                                    ProviderId = swap.ProviderId,
+                                    AmountSats = swap.SatsAmount,
+                                    TotalFeeSats = swap.TotalFees.Satoshi,
+                                    ServiceFeeSats = swap.ServiceFeeSats,
+                                    LightningFeeSats = swap.LightningFeeSats,
+                                    OnChainFeeSats = swap.OnChainFeeSats,
+                                    IsManual = swap.IsManual,
+                                    OldStatus = oldStatus.ToString(),
+                                    NewStatus = response.Status.ToString(),
+                                    ErrorMessage = response.ErrorMessage
+                                });
+                        }
+                    }
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogError(ex,
+                        "Unexpected error while processing swap {SwapId} for provider {Provider}. Monitoring will continue for other swaps",
+                        swap.Id,
+                        swap.Provider);
                 }
             }
         }
