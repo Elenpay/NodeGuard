@@ -53,8 +53,6 @@ public class MonitorSwapsJob : IJob
             var fortySwapNodes = await _nodeRepository.GetAllConfiguredByProvider(SwapProvider.FortySwap, null);
             var managedNodes = loopNodes.Concat(fortySwapNodes).Distinct().ToList();
 
-            var scheduler = await _schedulerFactory.GetScheduler();
-
             var swaps = await _swapOutRepository.GetAllPending();
             foreach (var swap in swaps)
             {
