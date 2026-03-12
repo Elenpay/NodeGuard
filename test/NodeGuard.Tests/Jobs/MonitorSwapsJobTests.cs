@@ -18,6 +18,7 @@
  */
 
 using Microsoft.Extensions.Logging;
+using Grpc.Core;
 using NodeGuard.Data.Models;
 using NodeGuard.Data.Repositories.Interfaces;
 using NodeGuard.Services;
@@ -187,5 +188,87 @@ public class MonitorSwapsJobTests
         _swapsServiceMock.Verify(
             x => x.GetSwapAsync(loopNode, SwapProvider.Loop, "old-loop-swap", It.IsAny<CancellationToken>()),
             Times.Once);
+    }
+
+    [Fact]
+    public async Task Execute_WhenProviderTimesOutWithUnavailableRpc_ContinuesWithOtherSwaps()
+    {
+        // Arrange
+        var fortyNode = new Node { Id = 10, Endpoint = "localhost:10010", ChannelAdminMacaroon = "mac", FortySwapEndpoint = "localhost:50051" };
+        var loopNode = new Node { Id = 11, Endpoint = "localhost:10011", ChannelAdminMacaroon = "mac", LoopdEndpoint = "localhost:11011", LoopdMacaroon = "loopmac" };
+
+        var timeoutSwap = new SwapOut
+        {
+            Id = 401,
+            NodeId = fortyNode.Id,
+            Provider = SwapProvider.FortySwap,
+            ProviderId = "40swap-timeout",
+            Status = SwapOutStatus.Pending
+        };
+
+        var healthySwap = new SwapOut
+        {
+            Id = 402,
+            NodeId = loopNode.Id,
+            Provider = SwapProvider.Loop,
+            ProviderId = "loop-ok",
+            Status = SwapOutStatus.Pending
+        };
+
+        _nodeRepositoryMock
+            .Setup(x => x.GetAllConfiguredByProvider(SwapProvider.Loop, null))
+            .ReturnsAsync(new List<Node> { loopNode });
+
+        _nodeRepositoryMock
+            .Setup(x => x.GetAllConfiguredByProvider(SwapProvider.FortySwap, null))
+            .ReturnsAsync(new List<Node> { fortyNode });
+
+        _swapOutRepositoryMock
+            .Setup(x => x.GetAllPending())
+            .ReturnsAsync(new List<SwapOut> { timeoutSwap, healthySwap });
+
+        var timeoutException = new RpcException(new Status(
+            StatusCode.Unavailable,
+            "Error starting gRPC call. HttpRequestException: Connection timed out (example:50051) SocketException: Connection timed out"));
+
+        _swapsServiceMock
+            .Setup(x => x.GetSwapAsync(fortyNode, SwapProvider.FortySwap, "40swap-timeout", It.IsAny<CancellationToken>()))
+            .ThrowsAsync(timeoutException);
+
+        _swapsServiceMock
+            .Setup(x => x.GetSwapAsync(loopNode, SwapProvider.Loop, "loop-ok", It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new SwapResponse
+            {
+                Id = "loop-ok",
+                HtlcAddress = "bc1qok",
+                Status = SwapOutStatus.Completed,
+                ServerFee = 7,
+                OffchainFee = 3,
+                OnchainFee = 9
+            });
+
+        _swapOutRepositoryMock
+            .Setup(x => x.Update(It.IsAny<SwapOut>()))
+            .Returns((true, null));
+
+        // Act
+        await _job.Execute(_jobExecutionContextMock.Object);
+
+        // Assert
+        _swapsServiceMock.Verify(
+            x => x.GetSwapAsync(fortyNode, SwapProvider.FortySwap, "40swap-timeout", It.IsAny<CancellationToken>()),
+            Times.Once);
+
+        _swapsServiceMock.Verify(
+            x => x.GetSwapAsync(loopNode, SwapProvider.Loop, "loop-ok", It.IsAny<CancellationToken>()),
+            Times.Once);
+
+        _swapOutRepositoryMock.Verify(
+            x => x.Update(It.Is<SwapOut>(s => s.Id == healthySwap.Id && s.Status == SwapOutStatus.Completed)),
+            Times.Once);
+
+        _swapOutRepositoryMock.Verify(
+            x => x.Update(It.Is<SwapOut>(s => s.Id == timeoutSwap.Id)),
+            Times.Never);
     }
 }
