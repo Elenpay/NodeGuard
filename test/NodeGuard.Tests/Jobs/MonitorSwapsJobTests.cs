@@ -222,4 +222,140 @@ public class MonitorSwapsJobTests
             x => x.Update(It.Is<SwapOut>(s => s.Id == timeoutSwap.Id)),
             Times.Never);
     }
+
+    [Fact]
+    public async Task Execute_WhenProviderMarksSwapCompleted_UpdatesSwapAndAuditsSuccess()
+    {
+        // Arrange
+        var loopNode = new Node { Id = 21, Endpoint = "localhost:10021", ChannelAdminMacaroon = "mac", LoopdEndpoint = "localhost:11021", LoopdMacaroon = "loopmac" };
+        var pendingSwap = new SwapOut
+        {
+            Id = 501,
+            NodeId = loopNode.Id,
+            Provider = SwapProvider.Loop,
+            ProviderId = "loop-success-501",
+            Status = SwapOutStatus.Pending,
+            SatsAmount = 250_000,
+            IsManual = false
+        };
+
+        _nodeRepositoryMock
+            .Setup(x => x.GetAllConfiguredByProvider(SwapProvider.Loop, null))
+            .ReturnsAsync(new List<Node> { loopNode });
+
+        _nodeRepositoryMock
+            .Setup(x => x.GetAllConfiguredByProvider(SwapProvider.FortySwap, null))
+            .ReturnsAsync(new List<Node>());
+
+        _swapOutRepositoryMock
+            .Setup(x => x.GetAllPending())
+            .ReturnsAsync(new List<SwapOut> { pendingSwap });
+
+        _swapsServiceMock
+            .Setup(x => x.GetSwapAsync(loopNode, SwapProvider.Loop, "loop-success-501", It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new SwapResponse
+            {
+                Id = "loop-success-501",
+                HtlcAddress = "bc1qsuccess",
+                Status = SwapOutStatus.Completed,
+                ServerFee = 10,
+                OffchainFee = 20,
+                OnchainFee = 30
+            });
+
+        _swapOutRepositoryMock
+            .Setup(x => x.Update(It.IsAny<SwapOut>()))
+            .Returns((true, null));
+
+        // Act
+        await _job.Execute(_jobExecutionContextMock.Object);
+
+        // Assert
+        _swapOutRepositoryMock.Verify(
+            x => x.Update(It.Is<SwapOut>(s =>
+                s.Id == pendingSwap.Id &&
+                s.Status == SwapOutStatus.Completed &&
+                s.ServiceFeeSats == 10 &&
+                s.LightningFeeSats == 20 &&
+                s.OnChainFeeSats == 30)),
+            Times.Once);
+
+        _auditServiceMock.Verify(
+            x => x.LogSystemAsync(
+                AuditActionType.SwapOutCompleted,
+                AuditEventType.Success,
+                AuditObjectType.SwapOut,
+                pendingSwap.ProviderId,
+                It.IsAny<object?>()),
+            Times.Once);
+    }
+
+    [Fact]
+    public async Task Execute_WhenProviderMarksSwapFailed_UpdatesSwapAndAuditsFailure()
+    {
+        // Arrange
+        var fortyNode = new Node { Id = 22, Endpoint = "localhost:10022", ChannelAdminMacaroon = "mac", FortySwapEndpoint = "localhost:50052" };
+        var pendingSwap = new SwapOut
+        {
+            Id = 502,
+            NodeId = fortyNode.Id,
+            Provider = SwapProvider.FortySwap,
+            ProviderId = "40swap-failed-502",
+            Status = SwapOutStatus.Pending,
+            SatsAmount = 300_000,
+            IsManual = true
+        };
+
+        _nodeRepositoryMock
+            .Setup(x => x.GetAllConfiguredByProvider(SwapProvider.Loop, null))
+            .ReturnsAsync(new List<Node>());
+
+        _nodeRepositoryMock
+            .Setup(x => x.GetAllConfiguredByProvider(SwapProvider.FortySwap, null))
+            .ReturnsAsync(new List<Node> { fortyNode });
+
+        _swapOutRepositoryMock
+            .Setup(x => x.GetAllPending())
+            .ReturnsAsync(new List<SwapOut> { pendingSwap });
+
+        _swapsServiceMock
+            .Setup(x => x.GetSwapAsync(fortyNode, SwapProvider.FortySwap, "40swap-failed-502", It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new SwapResponse
+            {
+                Id = "40swap-failed-502",
+                HtlcAddress = string.Empty,
+                Status = SwapOutStatus.Failed,
+                ServerFee = 8,
+                OffchainFee = 6,
+                OnchainFee = 4,
+                ErrorMessage = "contract expired"
+            });
+
+        _swapOutRepositoryMock
+            .Setup(x => x.Update(It.IsAny<SwapOut>()))
+            .Returns((true, null));
+
+        // Act
+        await _job.Execute(_jobExecutionContextMock.Object);
+
+        // Assert
+        _swapOutRepositoryMock.Verify(
+            x => x.Update(It.Is<SwapOut>(s =>
+                s.Id == pendingSwap.Id &&
+                s.Status == SwapOutStatus.Failed &&
+                s.ErrorDetails == "contract expired" &&
+                s.ServiceFeeSats == 8 &&
+                s.LightningFeeSats == 6 &&
+                s.OnChainFeeSats == 4)),
+            Times.Once);
+
+        _auditServiceMock.Verify(
+            x => x.LogSystemAsync(
+                AuditActionType.SwapOutCompleted,
+                AuditEventType.Failure,
+                AuditObjectType.SwapOut,
+                pendingSwap.ProviderId,
+                It.IsAny<object?>()),
+            Times.Once);
+    }
 }
