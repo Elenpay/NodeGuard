@@ -18,7 +18,14 @@ FROM build AS publish
 RUN dotnet publish "NodeGuard.csproj" -c Release -o /app/publish
 
 FROM base AS final
+
+# Run as non-root user (dapr nonroot UID/GID)
+RUN groupadd --gid 65532 nonroot && \
+    useradd --uid 65532 --gid 65532 --no-create-home --shell /usr/sbin/nologin nonroot
+
 WORKDIR /app
-COPY --from=publish /app/publish .
-COPY src/Migrations/*.sql Migrations/
+COPY --from=publish --chown=65532:65532 /app/publish .
+COPY --chown=65532:65532 src/Migrations/*.sql Migrations/
+
+USER 65532:65532
 ENTRYPOINT ["dotnet", "NodeGuard.dll"]
