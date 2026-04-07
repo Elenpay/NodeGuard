@@ -328,7 +328,7 @@ service WalletKit {
     */
     rpc FundPsbt (FundPsbtRequest) returns (FundPsbtResponse);
 
-    /*
+    /* lncli: `wallet psbt sign`
     SignPsbt expects a partial transaction with all inputs and outputs fully
     declared and tries to sign all unsigned inputs that have all required fields
     (UTXO information, BIP32 derivation information, witness or sig scripts)
