@@ -87,6 +87,22 @@ namespace NodeGuard.Data
                 .HasIndex(u => new { u.Key, u.Outpoint })
                 .IsUnique();
 
+            modelBuilder.Entity<ForwardingHtlcEvent>()
+                .HasKey(x => new
+                {
+                    x.ManagedNodePubKey,
+                    x.IncomingChannelId,
+                    x.OutgoingChannelId,
+                    x.IncomingHtlcId,
+                    x.OutgoingHtlcId,
+                });
+
+            modelBuilder.Entity<ForwardingHtlcEvent>()
+                .HasIndex(x => x.CreationDatetime);
+
+            modelBuilder.Entity<ForwardingHtlcEvent>()
+                .HasIndex(x => x.EventTimestamp);
+
             base.OnModelCreating(modelBuilder);
         }
 
@@ -123,5 +139,7 @@ namespace NodeGuard.Data
         public DbSet<SwapOut> SwapOuts { get; set; }
 
         public DbSet<AuditLog> AuditLogs { get; set; }
+
+        public DbSet<ForwardingHtlcEvent> ForwardingHtlcEvents { get; set; }
     }
 }
