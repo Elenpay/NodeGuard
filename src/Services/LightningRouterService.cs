@@ -61,7 +61,6 @@ public class LightningRouterService : ILightningRouterService
                 return new Router.RouterClient(newClient);
             }
 
-            _logger.LogInformation("Router client found for endpoint {endpoint}", endpoint);
             return new Router.RouterClient(client);
         }
     }

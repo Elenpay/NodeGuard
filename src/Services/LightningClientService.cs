@@ -96,7 +96,6 @@ public class LightningClientService : ILightningClientService
                 return new Lightning.LightningClient(newClient);
             }
 
-            _logger.LogInformation("Client found for endpoint {endpoint}", endpoint);
             return new Lightning.LightningClient(client);
         }
     }
