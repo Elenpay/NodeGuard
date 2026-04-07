@@ -12,6 +12,7 @@ public interface ILightningRouterService
 {
     public Router.RouterClient GetRouterClient(string? endpoint);
     public Task<RouteFeeResponse?> EstimateRouteFee(Node node, RouteFeeRequest routeFeeRequest, Router.RouterClient? client = null);
+    public AsyncServerStreamingCall<HtlcEvent> SubscribeHtlcEvents(Node node, Router.RouterClient? client = null);
 }
 
 public class LightningRouterService : ILightningRouterService
@@ -72,6 +73,21 @@ public class LightningRouterService : ILightningRouterService
         client ??= GetRouterClient(node.Endpoint);
 
         return await client.EstimateRouteFeeAsync(routeFeeRequest,
+            new Metadata
+            {
+                {
+                    "macaroon", node.ChannelAdminMacaroon
+                }
+            });
+    }
+
+    public AsyncServerStreamingCall<HtlcEvent> SubscribeHtlcEvents(Node node, Router.RouterClient? client = null)
+    {
+        CustomArgumentNullException.ThrowIfNull(node.ChannelAdminMacaroon, nameof(node.ChannelAdminMacaroon), "LND Macaroon for {NodeName} is not well configured", node.Name);
+
+        client ??= GetRouterClient(node.Endpoint);
+
+        return client.SubscribeHtlcEvents(new SubscribeHtlcEventsRequest(),
             new Metadata
             {
                 {

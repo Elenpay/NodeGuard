@@ -124,8 +124,10 @@ namespace NodeGuard
             builder.Services.AddTransient<IRemoteSignerService, RemoteSignerServiceService>();
             builder.Services.AddTransient<ILiquidityRuleRepository, LiquidityRuleRepository>();
             builder.Services.AddTransient<IAuditLogRepository, AuditLogRepository>();
+            builder.Services.AddTransient<IForwardingHtlcEventRepository, ForwardingHtlcEventRepository>();
             builder.Services.AddTransient<ICoinSelectionService, CoinSelectionService>();
             builder.Services.AddTransient<IPriceConversionService, PriceConversionService>();
+            builder.Services.AddTransient<IHtlcMonitoringScheduler, HtlcMonitoringScheduler>();
             builder.Services.AddSingleton<ILightningClientService, LightningClientService>();
             builder.Services.AddSingleton<ILightningRouterService, LightningRouterService>();
             builder.Services.AddSingleton<ILoopService, LoopService>();
@@ -298,6 +300,19 @@ namespace NodeGuard
                 q.AddTrigger(opts =>
                 {
                     opts.ForJob(nameof(NodeSubscriptorJob)).WithIdentity($"{nameof(NodeSubscriptorJob)}Trigger")
+                        .StartNow();
+                });
+
+                // HtlcSubscriptorJob
+                q.AddJob<HtlcSubscriptorJob>(opts =>
+                {
+                    opts.DisallowConcurrentExecution();
+                    opts.WithIdentity(nameof(HtlcSubscriptorJob));
+                });
+
+                q.AddTrigger(opts =>
+                {
+                    opts.ForJob(nameof(HtlcSubscriptorJob)).WithIdentity($"{nameof(HtlcSubscriptorJob)}Trigger")
                         .StartNow();
                 });
 
