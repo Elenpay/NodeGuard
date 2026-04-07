@@ -77,6 +77,7 @@ public class NodeGuardService : Nodeguard.NodeGuardService.NodeGuardServiceBase,
     private readonly ILightningService _lightningService;
     private readonly IFMUTXORepository _fmutxoRepository;
     private readonly IUTXOTagRepository _utxoTagRepository;
+    private readonly IHtlcMonitoringScheduler _htlcMonitoringScheduler;
 
     public NodeGuardService(ILogger<NodeGuardService> logger,
         ILiquidityRuleRepository liquidityRuleRepository,
@@ -92,7 +93,8 @@ public class NodeGuardService : Nodeguard.NodeGuardService.NodeGuardServiceBase,
         ICoinSelectionService coinSelectionService,
         ILightningService lightningService,
         IFMUTXORepository fmutxoRepository,
-        IUTXOTagRepository utxoTagRepository
+        IUTXOTagRepository utxoTagRepository,
+        IHtlcMonitoringScheduler htlcMonitoringScheduler
     )
     {
         _logger = logger;
@@ -110,6 +112,7 @@ public class NodeGuardService : Nodeguard.NodeGuardService.NodeGuardServiceBase,
         _lightningService = lightningService;
         _fmutxoRepository = fmutxoRepository;
         _utxoTagRepository = utxoTagRepository;
+        _htlcMonitoringScheduler = htlcMonitoringScheduler;
         _scheduler = Task.Run(() => _schedulerFactory.GetScheduler()).Result;
     }
 
@@ -151,7 +154,14 @@ public class NodeGuardService : Nodeguard.NodeGuardService.NodeGuardServiceBase,
             throw new RpcException(new Status(StatusCode.NotFound, "Wallet not found"));
         }
 
-        var btcAddress = await _nbXplorerService.GetUnusedAsync(wallet.GetDerivationStrategy(),
+        var derivationStrategy = wallet.GetDerivationStrategy();
+        if (derivationStrategy == null)
+        {
+            _logger.LogError("Derivation strategy not found for wallet with id {walletId}", request.WalletId);
+            throw new RpcException(new Status(StatusCode.Internal, "Derivation strategy not found"));
+        }
+
+        var btcAddress = await _nbXplorerService.GetUnusedAsync(derivationStrategy,
             DerivationFeature.Deposit,
             request.Skip,
             request.Reserve, context.CancellationToken);
@@ -451,6 +461,7 @@ public class NodeGuardService : Nodeguard.NodeGuardService.NodeGuardServiceBase,
 
             if (result.Item1)
             {
+                await _htlcMonitoringScheduler.EnsureNodeWorkerScheduled(node);
                 return new AddNodeResponse();
             }
 
@@ -540,7 +551,13 @@ public class NodeGuardService : Nodeguard.NodeGuardService.NodeGuardServiceBase,
                 }
 
                 // Search the utxos and lock them
-                utxos = await _coinSelectionService.GetUTXOsByOutpointAsync(wallet.GetDerivationStrategy(), outpoints);
+                var derivationStrategy = wallet.GetDerivationStrategy();
+                if (derivationStrategy == null)
+                {
+                    throw new RpcException(new Status(StatusCode.Internal, "Derivation strategy not found"));
+                }
+
+                utxos = await _coinSelectionService.GetUTXOsByOutpointAsync(derivationStrategy, outpoints);
             }
 
             // Get the fee type of the request
