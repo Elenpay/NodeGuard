@@ -43,17 +43,23 @@ namespace NodeGuard.Data.Repositories
             _mapper = mapper;
         }
 
-        public async Task<Node?> GetById(int id)
+        public async Task<Node?> GetById(int id, bool includeRelatedData = true)
         {
             await using var applicationDbContext = await _dbContextFactory.CreateDbContextAsync();
 
-            return await applicationDbContext.Nodes
-                .Include(node => node.Users)
-                .ThenInclude(user => user.Keys)
-                .ThenInclude(key => key.Wallets)
-                .Include(x => x.FundsDestinationWallet)
-                .ThenInclude(x => x.Keys)
-                .SingleOrDefaultAsync(x => x.Id == id);
+            var query = applicationDbContext.Nodes.AsQueryable();
+
+            if (includeRelatedData)
+            {
+                query = query
+                    .Include(node => node.Users)
+                    .ThenInclude(user => user.Keys)
+                    .ThenInclude(key => key.Wallets)
+                    .Include(x => x.FundsDestinationWallet)
+                    .ThenInclude(x => x.Keys);
+            }
+
+            return await query.SingleOrDefaultAsync(x => x.Id == id);
         }
 
         public async Task<Node?> GetByPubkey(string key)

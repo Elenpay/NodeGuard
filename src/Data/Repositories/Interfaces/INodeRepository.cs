@@ -24,7 +24,7 @@ namespace NodeGuard.Data.Repositories.Interfaces;
 
 public interface INodeRepository
 {
-    Task<Node?> GetById(int id);
+    Task<Node?> GetById(int id, bool includeRelatedData = true);
 
     Task<Node?> GetByPubkey(string key);
 

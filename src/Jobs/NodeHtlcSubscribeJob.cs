@@ -70,7 +70,7 @@ public class NodeHtlcSubscribeJob : IJob
 
         try
         {
-            var node = await _nodeRepository.GetById(nodeId);
+            var node = await _nodeRepository.GetById(nodeId, false);
             if (!IsNodeEligible(node))
             {
                 _logger.LogInformation("Node {NodeId} is not eligible for HTLC monitoring", nodeId);
@@ -80,7 +80,7 @@ public class NodeHtlcSubscribeJob : IJob
             var stream = _lightningRouterService.SubscribeHtlcEvents(node!);
             while (await stream.ResponseStream.MoveNext(context.CancellationToken))
             {
-                node = await _nodeRepository.GetById(nodeId);
+                node = await _nodeRepository.GetById(nodeId, false);
 
                 try
                 {
