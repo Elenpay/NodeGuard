@@ -76,8 +76,10 @@ lncli $ALICE openchannel --connect $BOB:9735 $BOB_PUBKEY --local_amt 16000000 --
 echo "Opening a channel from Bob to Carol"
 lncli $BOB openchannel --connect $CAROL:9735 $CAROL_PUBKEY --local_amt 16000000 --push_amt 8000000  
 
-echo "Opening a channel from Carol to Alice"
-lncli $CAROL openchannel --connect $ALICE:9735 $ALICE_PUBKEY --local_amt 16000000 --push_amt 8000000
-
 echo "Confirming channels"
 bitcoin_cli -generate 6 > /dev/null
+
+echo "Setting inbound fees on Bob's channels"
+
+
+lncli $BOB updatechanpolicy --base_fee_msat 0 --fee_rate_ppm 1000 --time_lock_delta 40 --inbound_fee_rate_ppm -1000 --inbound_base_fee_msat 0

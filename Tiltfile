@@ -41,6 +41,10 @@ labels = {
     '40swapd-carol',
     '40swap-backend',
   ],
+
+  'grafana': [
+    'grafana',
+  ],
 }
 
 for (label, services) in labels.items():
@@ -49,6 +53,8 @@ for (label, services) in labels.items():
     if label == 'mempool':
       dc_resource(s, auto_init=False, labels = [label])
     elif label == '40swap':
+      dc_resource(s, auto_init=False, labels = [label])
+    elif label == 'grafana':
       dc_resource(s, auto_init=False, labels = [label])
     else:
       dc_resource(s, labels = [label])

@@ -128,3 +128,18 @@ addinvoice amount:
 payinvoice invoice:
     just lncli payinvoice {{invoice}} -f
 
+# Generate payments from Alice to Carol via Bob every 5s
+generate-payments:
+    #!/usr/bin/env bash
+    echo "Generating payments: Alice → Bob → Carol every 5s (Ctrl+C to stop)"
+    while true; do
+        INVOICE=$(docker exec polar-n1-carol lncli --network regtest -lnddir /root/.lnd/ addinvoice --amt 1000 | jq -r .payment_request)
+        if [ -n "$INVOICE" ] && [ "$INVOICE" != "null" ]; then
+            echo "$(date): Paying 1000 sats Alice → Carol via Bob"
+            docker exec polar-n1-alice lncli --network regtest -lnddir /root/.lnd/ payinvoice --force "$INVOICE"
+        else
+            echo "$(date): Failed to create invoice on Carol, retrying..."
+        fi
+        sleep 5
+    done
+

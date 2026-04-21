@@ -1,0 +1,28 @@
+apiVersion: 1
+
+datasources:
+  - name: NodeGuard PostgreSQL
+    type: postgres
+    uid: nodeguard-postgres
+    url: host.docker.internal:55432
+    user: view
+    jsonData:
+      database: fundsmanager
+      sslmode: disable
+      postgresVersion: 1600
+      timescaledb: false
+    secureJsonData: {}
+    isDefault: true
+    editable: true
+  - name: NodeGuard PostgreSQL Local
+    type: postgres
+    uid: nodeguard-postgres-local
+    url: postgres:5432
+    user: postgres
+    jsonData:
+      database: nodeguard
+      sslmode: disable
+      postgresVersion: 1600
+      timescaledb: false
+    secureJsonData: {}
+    editable: true
