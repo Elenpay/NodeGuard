@@ -1416,7 +1416,7 @@ namespace NodeGuard.Services
 
         public async Task<Dictionary<ulong, ChannelState>> GetChannelsState()
         {
-            var nodes = await _nodeRepository.GetAllManagedByNodeGuard();
+            var nodes = await _nodeRepository.GetAllManagedByNodeGuard(withDisabled: false);
 
             var result = new Dictionary<ulong, ChannelState>();
             foreach (var node in nodes)
