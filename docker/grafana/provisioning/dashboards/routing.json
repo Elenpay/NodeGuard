@@ -3620,10 +3620,10 @@
         "overrides": []
       },
       "gridPos": {
-        "h": 7,
-        "w": 6,
-        "x": 0,
-        "y": 102
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 69
       },
       "id": 30,
       "options": {
@@ -3659,6 +3659,1463 @@
       ],
       "title": "Local Managed Nodes",
       "type": "stat"
+    },
+    {
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "$datasource"
+      },
+      "description": "Settled forwarding revenue grouped by directional channel pair (incoming → outgoing) for the selected window. Direction is preserved.",
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "thresholds"
+          },
+          "custom": {
+            "align": "auto",
+            "cellOptions": {
+              "type": "auto"
+            },
+            "inspect": false
+          },
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          }
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Fee (BTC)"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "currencyBTC"
+              },
+              {
+                "id": "decimals",
+                "value": 8
+              },
+              {
+                "id": "custom.cellOptions",
+                "value": {
+                  "type": "color-background-solid",
+                  "mode": "gradient"
+                }
+              },
+              {
+                "id": "color",
+                "value": {
+                  "mode": "continuous-GrYlRd"
+                }
+              }
+            ]
+          }
+        ]
+      },
+      "gridPos": {
+        "h": 10,
+        "w": 12,
+        "x": 0,
+        "y": 108
+      },
+      "id": 100,
+      "options": {
+        "showHeader": true,
+        "footer": {
+          "show": true,
+          "reducer": [
+            "sum"
+          ],
+          "fields": [
+            "HTLCs Settled",
+            "Fee (BTC)"
+          ]
+        }
+      },
+      "pluginVersion": "12.4.2",
+      "targets": [
+        {
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "$datasource"
+          },
+          "editorMode": "code",
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "WITH channel_status AS (SELECT DISTINCT ON (\"ChanId\") \"ChanId\", CASE \"Status\" WHEN 1 THEN 'Open' WHEN 2 THEN 'Closed' ELSE 'Unknown' END AS status FROM \"Channels\" ORDER BY \"ChanId\", \"CreationDatetime\" DESC), pair_fees AS (SELECT \"ManagedNodeName\", \"IncomingChannelId\", \"OutgoingChannelId\", COALESCE(MAX(\"IncomingPeerAlias\"), '?') || ' -> ' || COALESCE(MAX(\"OutgoingPeerAlias\"), '?') AS pair_label, COUNT(*) AS htlcs, SUM(\"FeeMsat\") AS fee_msat FROM \"ForwardingHtlcEvents\" WHERE $__timeFilter(\"EventTimestamp\") AND \"Outcome\" = 1 AND \"ManagedNodePubKey\" IN ($node) AND \"FeeMsat\" IS NOT NULL GROUP BY \"ManagedNodeName\", \"IncomingChannelId\", \"OutgoingChannelId\") SELECT pf.\"ManagedNodeName\" AS \"Node\", pf.pair_label AS \"Channel Pair\", COALESCE(cs_in.status, '?') AS \"Incoming Status\", COALESCE(cs_out.status, '?') AS \"Outgoing Status\", pf.htlcs AS \"HTLCs Settled\", (pf.fee_msat / 100000000000.0)::numeric(20,8) AS \"Fee (BTC)\" FROM pair_fees pf LEFT JOIN channel_status cs_in ON cs_in.\"ChanId\" = pf.\"IncomingChannelId\" LEFT JOIN channel_status cs_out ON cs_out.\"ChanId\" = pf.\"OutgoingChannelId\" ORDER BY pf.fee_msat DESC LIMIT 50",
+          "refId": "A"
+        }
+      ],
+      "title": "Top Channel Pairs by Settled Fee Revenue",
+      "type": "table"
+    },
+    {
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "$datasource"
+      },
+      "description": "Settled forwarding revenue grouped by directional peer pair (incoming alias → outgoing alias) for the selected window. Direction is preserved.",
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "thresholds"
+          },
+          "custom": {
+            "align": "auto",
+            "cellOptions": {
+              "type": "auto"
+            },
+            "inspect": false
+          },
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          }
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Fee (BTC)"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "currencyBTC"
+              },
+              {
+                "id": "decimals",
+                "value": 8
+              },
+              {
+                "id": "custom.cellOptions",
+                "value": {
+                  "type": "color-background-solid",
+                  "mode": "gradient"
+                }
+              },
+              {
+                "id": "color",
+                "value": {
+                  "mode": "continuous-GrYlRd"
+                }
+              }
+            ]
+          }
+        ]
+      },
+      "gridPos": {
+        "h": 10,
+        "w": 12,
+        "x": 12,
+        "y": 108
+      },
+      "id": 101,
+      "options": {
+        "showHeader": true,
+        "footer": {
+          "show": true,
+          "reducer": [
+            "sum"
+          ],
+          "fields": [
+            "HTLCs settled",
+            "Fee (BTC)"
+          ]
+        }
+      },
+      "pluginVersion": "12.4.2",
+      "targets": [
+        {
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "$datasource"
+          },
+          "editorMode": "code",
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "SELECT \"ManagedNodeName\" AS \"Node\", \"IncomingPeerAlias\" AS \"Incoming Peer\", \"OutgoingPeerAlias\" AS \"Outgoing Peer\", COUNT(*) AS \"HTLCs settled\", (SUM(\"FeeMsat\") / 100000000000.0)::numeric(20,8) AS \"Fee (BTC)\" FROM \"ForwardingHtlcEvents\" WHERE $__timeFilter(\"EventTimestamp\") AND \"Outcome\" = 1 AND \"ManagedNodePubKey\" IN ($node) AND \"FeeMsat\" IS NOT NULL GROUP BY \"ManagedNodeName\", \"IncomingPeerAlias\", \"OutgoingPeerAlias\" ORDER BY 5 DESC LIMIT 50",
+          "refId": "A"
+        }
+      ],
+      "title": "Top Peer Pairs by Settled Fee Revenue",
+      "type": "table"
+    },
+    {
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "$datasource"
+      },
+      "description": "Settled fee revenue (sats) over time, bucketed by Grafana's auto-interval and stacked by managed node.",
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "axisBorderShow": false,
+            "axisCenteredZero": false,
+            "axisColorMode": "text",
+            "axisLabel": "",
+            "axisPlacement": "auto",
+            "barAlignment": 0,
+            "drawStyle": "bars",
+            "fillOpacity": 80,
+            "gradientMode": "none",
+            "hideFrom": {
+              "legend": false,
+              "tooltip": false,
+              "viz": false
+            },
+            "lineInterpolation": "linear",
+            "lineWidth": 1,
+            "pointSize": 5,
+            "scaleDistribution": {
+              "type": "linear"
+            },
+            "showPoints": "never",
+            "spanNulls": false,
+            "stacking": {
+              "group": "A",
+              "mode": "normal"
+            },
+            "thresholdsStyle": {
+              "mode": "off"
+            }
+          },
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          },
+          "unit": "currencyBTC",
+          "decimals": 8
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 24,
+        "x": 0,
+        "y": 118
+      },
+      "id": 102,
+      "options": {
+        "legend": {
+          "calcs": [
+            "sum"
+          ],
+          "displayMode": "table",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "pluginVersion": "12.4.2",
+      "targets": [
+        {
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "$datasource"
+          },
+          "editorMode": "code",
+          "format": "time_series",
+          "rawQuery": true,
+          "rawSql": "SELECT $__timeGroup(\"EventTimestamp\", $__interval, 0) AS \"time\", \"ManagedNodeName\" AS metric, (SUM(\"FeeMsat\") / 100000000000.0)::numeric(20,8) AS value FROM \"ForwardingHtlcEvents\" WHERE $__timeFilter(\"EventTimestamp\") AND \"Outcome\" = 1 AND \"ManagedNodePubKey\" IN ($node) AND \"FeeMsat\" IS NOT NULL GROUP BY 1, \"ManagedNodeName\" ORDER BY 1",
+          "refId": "A"
+        }
+      ],
+      "title": "Settled Fee Revenue Over Time",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "$datasource"
+      },
+      "description": "Annualized yield on liquidity from NodeGuard-opened channels, net of swap costs. Numerator is fee_sats minus the pair's pro-rata share of completed swap-out costs on the same managed node (allocated by fee share). Denominator is each qualifying channel's SatsAmount prorated by the fraction of the window it was open: opened at Channel.CreationDatetime; close time is Channel.ClosedAt when Status = Closed. Channels not opened by NodeGuard contribute revenue but never liquidity. APR can be negative when swap costs exceed routing revenue. APR is null when the pair has no qualifying liquidity.",
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "thresholds"
+          },
+          "custom": {
+            "align": "auto",
+            "cellOptions": {
+              "type": "auto"
+            },
+            "inspect": false
+          },
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          }
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byRegexp",
+              "options": ".+\\(BTC\\)$"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "currencyBTC"
+              },
+              {
+                "id": "decimals",
+                "value": 8
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "APR"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "percentunit"
+              },
+              {
+                "id": "decimals",
+                "value": 2
+              },
+              {
+                "id": "custom.cellOptions",
+                "value": {
+                  "type": "color-background-solid",
+                  "mode": "gradient"
+                }
+              },
+              {
+                "id": "color",
+                "value": {
+                  "mode": "continuous-GrYlRd"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Fee (BTC)"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "currencyBTC"
+              },
+              {
+                "id": "decimals",
+                "value": 8
+              },
+              {
+                "id": "custom.cellOptions",
+                "value": {
+                  "type": "color-background-solid",
+                  "mode": "gradient"
+                }
+              },
+              {
+                "id": "color",
+                "value": {
+                  "mode": "continuous-GrYlRd"
+                }
+              }
+            ]
+          }
+        ]
+      },
+      "gridPos": {
+        "h": 10,
+        "w": 24,
+        "x": 0,
+        "y": 127
+      },
+      "id": 103,
+      "options": {
+        "showHeader": true,
+        "footer": {
+          "show": true,
+          "reducer": [
+            "sum"
+          ],
+          "fields": [
+            "HTLCs settled",
+            "Fee (BTC)",
+            "Swap Cost (BTC)",
+            "Net Revenue (BTC)",
+            "Qualifying Liquidity (BTC)"
+          ]
+        }
+      },
+      "pluginVersion": "12.4.2",
+      "targets": [
+        {
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "$datasource"
+          },
+          "editorMode": "code",
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "WITH bounds AS (SELECT $__timeFrom()::timestamptz AS window_start, $__timeTo()::timestamptz AS window_end, GREATEST(EXTRACT(EPOCH FROM ($__timeTo()::timestamptz - $__timeFrom()::timestamptz)) / 86400.0, 0.000001) AS window_days), pair_fees AS (SELECT \"ManagedNodePubKey\", MAX(\"ManagedNodeName\") AS managed_node_name, \"IncomingChannelId\", \"OutgoingChannelId\", COALESCE(MAX(\"IncomingPeerAlias\"), '?') || ' -> ' || COALESCE(MAX(\"OutgoingPeerAlias\"), '?') AS pair_label, COUNT(*) AS settled_count, ROUND(SUM(\"FeeMsat\") / 1000.0)::bigint AS fee_sats FROM \"ForwardingHtlcEvents\" WHERE $__timeFilter(\"EventTimestamp\") AND \"Outcome\" = 1 AND \"ManagedNodePubKey\" IN ($node) AND \"FeeMsat\" IS NOT NULL GROUP BY \"ManagedNodePubKey\", \"IncomingChannelId\", \"OutgoingChannelId\"), channel_status AS (SELECT DISTINCT ON (\"ChanId\") \"ChanId\", CASE \"Status\" WHEN 1 THEN 'Open' WHEN 2 THEN 'Closed' ELSE 'Unknown' END AS status FROM \"Channels\" ORDER BY \"ChanId\", \"CreationDatetime\" DESC), qualifying_channels AS (SELECT c.\"ChanId\", c.\"SatsAmount\", GREATEST(c.\"CreationDatetime\", b.window_start) AS open_start, LEAST(CASE WHEN c.\"Status\" = 2 THEN COALESCE((to_jsonb(c) ->> 'ClosedAt')::timestamptz, c.\"UpdateDatetime\") ELSE b.window_end END, b.window_end) AS open_end, b.window_days FROM \"Channels\" c CROSS JOIN bounds b WHERE (c.\"CreatedByNodeGuard\" = TRUE OR $liquidityScope = 0)), prorated AS (SELECT \"ChanId\", \"SatsAmount\" * GREATEST(EXTRACT(EPOCH FROM (open_end - open_start)) / 86400.0, 0.0) / window_days AS prorated_sats FROM qualifying_channels), swap_costs AS (SELECT n.\"PubKey\" AS managed_node_pubkey, $applySwapCosts * SUM(COALESCE(s.\"ServiceFeeSats\", 0) + COALESCE(s.\"LightningFeeSats\", 0) + COALESCE(s.\"OnChainFeeSats\", 0)) AS swap_cost_sats FROM \"SwapOuts\" s JOIN \"Nodes\" n ON n.\"Id\" = s.\"NodeId\" CROSS JOIN bounds b WHERE s.\"Status\" = 1 AND s.\"CreationDatetime\" >= b.window_start AND s.\"CreationDatetime\" < b.window_end AND n.\"PubKey\" IN ($node) GROUP BY n.\"PubKey\"), node_fees AS (SELECT \"ManagedNodePubKey\", SUM(fee_sats) AS node_total_fee_sats FROM pair_fees GROUP BY \"ManagedNodePubKey\"), pair_with_liquidity AS (SELECT pf.\"ManagedNodePubKey\", pf.managed_node_name, pf.pair_label, pf.\"IncomingChannelId\", pf.\"OutgoingChannelId\", pf.settled_count, pf.fee_sats, CASE WHEN nf.node_total_fee_sats > 0 THEN ROUND(COALESCE(sc.swap_cost_sats, 0)::numeric * pf.fee_sats / nf.node_total_fee_sats)::bigint ELSE 0 END AS allocated_swap_cost_sats, COALESCE(p_in.prorated_sats, 0) + COALESCE(p_out.prorated_sats, 0) - CASE WHEN pf.\"IncomingChannelId\" = pf.\"OutgoingChannelId\" THEN COALESCE(p_in.prorated_sats, 0) ELSE 0 END AS qualifying_liquidity_sats, COALESCE(cs_in.status, '?') AS incoming_status, COALESCE(cs_out.status, '?') AS outgoing_status FROM pair_fees pf LEFT JOIN prorated p_in ON p_in.\"ChanId\" = pf.\"IncomingChannelId\" LEFT JOIN prorated p_out ON p_out.\"ChanId\" = pf.\"OutgoingChannelId\" LEFT JOIN swap_costs sc ON sc.managed_node_pubkey = pf.\"ManagedNodePubKey\" LEFT JOIN node_fees nf ON nf.\"ManagedNodePubKey\" = pf.\"ManagedNodePubKey\" LEFT JOIN channel_status cs_in ON cs_in.\"ChanId\" = pf.\"IncomingChannelId\" LEFT JOIN channel_status cs_out ON cs_out.\"ChanId\" = pf.\"OutgoingChannelId\") SELECT managed_node_name AS \"Node\", pair_label AS \"Channel Pair\", incoming_status AS \"Incoming Status\", outgoing_status AS \"Outgoing Status\", settled_count AS \"HTLCs settled\", (fee_sats / 100000000.0)::numeric(20,8) AS \"Fee (BTC)\", (allocated_swap_cost_sats / 100000000.0)::numeric(20,8) AS \"Swap Cost (BTC)\", ((fee_sats - allocated_swap_cost_sats) / 100000000.0)::numeric(20,8) AS \"Net Revenue (BTC)\", (qualifying_liquidity_sats / 100000000.0)::numeric(20,8) AS \"Qualifying Liquidity (BTC)\", CASE WHEN qualifying_liquidity_sats > 0 THEN ((fee_sats - allocated_swap_cost_sats)::numeric / qualifying_liquidity_sats) * (365.0 / (SELECT window_days FROM bounds))::numeric ELSE NULL END AS \"APR\" FROM pair_with_liquidity ORDER BY fee_sats DESC LIMIT 50",
+          "refId": "A"
+        }
+      ],
+      "title": "NodeGuard-Liquidity APR by Channel Pair",
+      "type": "table"
+    },
+    {
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "$datasource"
+      },
+      "description": "Annualized yield rolled up to the directional peer pair (incoming alias → outgoing alias), net of swap costs. Numerator is fee_sats minus the pair's pro-rata share of the managed node's completed swap-out costs (allocated by fee share). Denominator is the union of NodeGuard-opened channels that routed inside the pair during the window, each prorated by its open fraction and counted once even if a single channel appears on both sides. Close time uses Channel.ClosedAt when Status = Closed. APR can be negative; null when the pair has no qualifying liquidity.",
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "thresholds"
+          },
+          "custom": {
+            "align": "auto",
+            "cellOptions": {
+              "type": "auto"
+            },
+            "inspect": false
+          },
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          }
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byRegexp",
+              "options": ".+\\(BTC\\)$"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "currencyBTC"
+              },
+              {
+                "id": "decimals",
+                "value": 8
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "APR"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "percentunit"
+              },
+              {
+                "id": "decimals",
+                "value": 2
+              },
+              {
+                "id": "custom.cellOptions",
+                "value": {
+                  "type": "color-background-solid",
+                  "mode": "gradient"
+                }
+              },
+              {
+                "id": "color",
+                "value": {
+                  "mode": "continuous-GrYlRd"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Fee (BTC)"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "currencyBTC"
+              },
+              {
+                "id": "decimals",
+                "value": 8
+              },
+              {
+                "id": "custom.cellOptions",
+                "value": {
+                  "type": "color-background-solid",
+                  "mode": "gradient"
+                }
+              },
+              {
+                "id": "color",
+                "value": {
+                  "mode": "continuous-GrYlRd"
+                }
+              }
+            ]
+          }
+        ]
+      },
+      "gridPos": {
+        "h": 10,
+        "w": 24,
+        "x": 0,
+        "y": 137
+      },
+      "id": 104,
+      "options": {
+        "showHeader": true,
+        "footer": {
+          "show": true,
+          "reducer": [
+            "sum"
+          ],
+          "fields": [
+            "HTLCs settled",
+            "Fee (BTC)",
+            "Swap Cost (BTC)",
+            "Net Revenue (BTC)",
+            "Qualifying Liquidity (BTC)"
+          ]
+        }
+      },
+      "pluginVersion": "12.4.2",
+      "targets": [
+        {
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "$datasource"
+          },
+          "editorMode": "code",
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "WITH bounds AS (SELECT $__timeFrom()::timestamptz AS window_start, $__timeTo()::timestamptz AS window_end, GREATEST(EXTRACT(EPOCH FROM ($__timeTo()::timestamptz - $__timeFrom()::timestamptz)) / 86400.0, 0.000001) AS window_days), peer_pair_events AS (SELECT \"ManagedNodePubKey\", MAX(\"ManagedNodeName\") AS managed_node_name, \"IncomingPeerAlias\" AS incoming_peer, \"OutgoingPeerAlias\" AS outgoing_peer, COUNT(*) AS settled_count, ROUND(SUM(\"FeeMsat\") / 1000.0)::bigint AS fee_sats FROM \"ForwardingHtlcEvents\" WHERE $__timeFilter(\"EventTimestamp\") AND \"Outcome\" = 1 AND \"ManagedNodePubKey\" IN ($node) AND \"FeeMsat\" IS NOT NULL GROUP BY \"ManagedNodePubKey\", \"IncomingPeerAlias\", \"OutgoingPeerAlias\"), peer_pair_channels AS (SELECT DISTINCT f.\"ManagedNodePubKey\", f.\"IncomingPeerAlias\" AS incoming_peer, f.\"OutgoingPeerAlias\" AS outgoing_peer, u.chan_id FROM \"ForwardingHtlcEvents\" f CROSS JOIN LATERAL (VALUES (f.\"IncomingChannelId\"), (f.\"OutgoingChannelId\")) AS u(chan_id) WHERE $__timeFilter(f.\"EventTimestamp\") AND f.\"Outcome\" = 1 AND f.\"ManagedNodePubKey\" IN ($node) AND f.\"FeeMsat\" IS NOT NULL), qualifying_channels AS (SELECT c.\"ChanId\", c.\"SatsAmount\", GREATEST(c.\"CreationDatetime\", b.window_start) AS open_start, LEAST(CASE WHEN c.\"Status\" = 2 THEN COALESCE((to_jsonb(c) ->> 'ClosedAt')::timestamptz, c.\"UpdateDatetime\") ELSE b.window_end END, b.window_end) AS open_end, b.window_days FROM \"Channels\" c CROSS JOIN bounds b WHERE (c.\"CreatedByNodeGuard\" = TRUE OR $liquidityScope = 0)), prorated AS (SELECT \"ChanId\", \"SatsAmount\" * GREATEST(EXTRACT(EPOCH FROM (open_end - open_start)) / 86400.0, 0.0) / window_days AS prorated_sats FROM qualifying_channels), peer_pair_liquidity AS (SELECT ppc.\"ManagedNodePubKey\", ppc.incoming_peer, ppc.outgoing_peer, SUM(p.prorated_sats) AS qualifying_liquidity_sats FROM peer_pair_channels ppc JOIN prorated p ON p.\"ChanId\" = ppc.chan_id GROUP BY ppc.\"ManagedNodePubKey\", ppc.incoming_peer, ppc.outgoing_peer), swap_costs AS (SELECT n.\"PubKey\" AS managed_node_pubkey, $applySwapCosts * SUM(COALESCE(s.\"ServiceFeeSats\", 0) + COALESCE(s.\"LightningFeeSats\", 0) + COALESCE(s.\"OnChainFeeSats\", 0)) AS swap_cost_sats FROM \"SwapOuts\" s JOIN \"Nodes\" n ON n.\"Id\" = s.\"NodeId\" CROSS JOIN bounds b WHERE s.\"Status\" = 1 AND s.\"CreationDatetime\" >= b.window_start AND s.\"CreationDatetime\" < b.window_end AND n.\"PubKey\" IN ($node) GROUP BY n.\"PubKey\"), node_fees AS (SELECT \"ManagedNodePubKey\", SUM(fee_sats) AS node_total_fee_sats FROM peer_pair_events GROUP BY \"ManagedNodePubKey\"), peer_pair_with_alloc AS (SELECT ppe.\"ManagedNodePubKey\", ppe.managed_node_name, ppe.incoming_peer, ppe.outgoing_peer, ppe.settled_count, ppe.fee_sats, CASE WHEN nf.node_total_fee_sats > 0 THEN ROUND(COALESCE(sc.swap_cost_sats, 0)::numeric * ppe.fee_sats / nf.node_total_fee_sats)::bigint ELSE 0 END AS allocated_swap_cost_sats, COALESCE(ppl.qualifying_liquidity_sats, 0) AS qualifying_liquidity_sats FROM peer_pair_events ppe LEFT JOIN peer_pair_liquidity ppl ON ppl.\"ManagedNodePubKey\" = ppe.\"ManagedNodePubKey\" AND ppl.incoming_peer IS NOT DISTINCT FROM ppe.incoming_peer AND ppl.outgoing_peer IS NOT DISTINCT FROM ppe.outgoing_peer LEFT JOIN swap_costs sc ON sc.managed_node_pubkey = ppe.\"ManagedNodePubKey\" LEFT JOIN node_fees nf ON nf.\"ManagedNodePubKey\" = ppe.\"ManagedNodePubKey\") SELECT managed_node_name AS \"Node\", (COALESCE(incoming_peer, '?') || ' -> ' || COALESCE(outgoing_peer, '?')) AS \"Peer Pair\", settled_count AS \"HTLCs settled\", (fee_sats / 100000000.0)::numeric(20,8) AS \"Fee (BTC)\", (allocated_swap_cost_sats / 100000000.0)::numeric(20,8) AS \"Swap Cost (BTC)\", ((fee_sats - allocated_swap_cost_sats) / 100000000.0)::numeric(20,8) AS \"Net Revenue (BTC)\", (qualifying_liquidity_sats / 100000000.0)::numeric(20,8) AS \"Qualifying Liquidity (BTC)\", CASE WHEN qualifying_liquidity_sats > 0 THEN ((fee_sats - allocated_swap_cost_sats)::numeric / qualifying_liquidity_sats) * (365.0 / (SELECT window_days FROM bounds))::numeric ELSE NULL END AS \"APR\" FROM peer_pair_with_alloc ORDER BY fee_sats DESC LIMIT 50",
+          "refId": "A"
+        }
+      ],
+      "title": "NodeGuard-Liquidity APR by Peer Pair",
+      "type": "table"
+    },
+    {
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "$datasource"
+      },
+      "description": "Combined annualized yield across all settled forwards in the window, net of swap costs. Numerator is total fee_sats minus the sum of completed swap-out costs (Service + Lightning + OnChain fees) on the selected nodes in the window. Denominator is the sum of prorated SatsAmount across every distinct NodeGuard-opened channel that routed at least one settled forward in the window (each counted once total). APR can be negative.",
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "thresholds"
+          },
+          "decimals": 2,
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "red",
+                "value": null
+              },
+              {
+                "color": "orange",
+                "value": 0.02
+              },
+              {
+                "color": "yellow",
+                "value": 0.05
+              },
+              {
+                "color": "green",
+                "value": 0.08
+              }
+            ]
+          },
+          "unit": "percentunit"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 7,
+        "w": 8,
+        "x": 0,
+        "y": 100
+      },
+      "id": 105,
+      "options": {
+        "colorMode": "value",
+        "graphMode": "area",
+        "justifyMode": "auto",
+        "orientation": "auto",
+        "percentChangeColorMode": "standard",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "showPercentChange": false,
+        "textMode": "auto",
+        "wideLayout": true
+      },
+      "pluginVersion": "12.4.2",
+      "targets": [
+        {
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "$datasource"
+          },
+          "editorMode": "code",
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "WITH bounds AS (SELECT $__timeFrom()::timestamptz AS window_start, $__timeTo()::timestamptz AS window_end, GREATEST(EXTRACT(EPOCH FROM ($__timeTo()::timestamptz - $__timeFrom()::timestamptz)) / 86400.0, 0.000001) AS window_days), total_fees AS (SELECT COALESCE(ROUND(SUM(\"FeeMsat\") / 1000.0)::bigint, 0) AS fee_sats FROM \"ForwardingHtlcEvents\" WHERE $__timeFilter(\"EventTimestamp\") AND \"Outcome\" = 1 AND \"ManagedNodePubKey\" IN ($node) AND \"FeeMsat\" IS NOT NULL), total_swap_costs AS (SELECT $applySwapCosts * COALESCE(SUM(COALESCE(s.\"ServiceFeeSats\", 0) + COALESCE(s.\"LightningFeeSats\", 0) + COALESCE(s.\"OnChainFeeSats\", 0)), 0) AS swap_cost_sats FROM \"SwapOuts\" s JOIN \"Nodes\" n ON n.\"Id\" = s.\"NodeId\" CROSS JOIN bounds b WHERE s.\"Status\" = 1 AND s.\"CreationDatetime\" >= b.window_start AND s.\"CreationDatetime\" < b.window_end AND n.\"PubKey\" IN ($node)), participating_chans AS (SELECT DISTINCT u.chan_id FROM \"ForwardingHtlcEvents\" f CROSS JOIN LATERAL (VALUES (f.\"IncomingChannelId\"), (f.\"OutgoingChannelId\")) AS u(chan_id) WHERE $__timeFilter(f.\"EventTimestamp\") AND f.\"Outcome\" = 1 AND f.\"ManagedNodePubKey\" IN ($node) AND f.\"FeeMsat\" IS NOT NULL), qualifying_liquidity AS (SELECT COALESCE(SUM(c.\"SatsAmount\" * GREATEST(EXTRACT(EPOCH FROM (LEAST(CASE WHEN c.\"Status\" = 2 THEN COALESCE((to_jsonb(c) ->> 'ClosedAt')::timestamptz, c.\"UpdateDatetime\") ELSE b.window_end END, b.window_end) - GREATEST(c.\"CreationDatetime\", b.window_start))) / 86400.0, 0.0) / b.window_days), 0) AS liquidity_sats FROM \"Channels\" c CROSS JOIN bounds b JOIN participating_chans p ON p.chan_id = c.\"ChanId\" WHERE (c.\"CreatedByNodeGuard\" = TRUE OR $liquidityScope = 0)) SELECT CASE WHEN ql.liquidity_sats > 0 THEN ((tf.fee_sats - tsc.swap_cost_sats)::numeric / ql.liquidity_sats) * (365.0 / b.window_days)::numeric ELSE NULL END AS \"APR\" FROM total_fees tf, total_swap_costs tsc, qualifying_liquidity ql, bounds b",
+          "refId": "A"
+        }
+      ],
+      "title": "Combined NodeGuard-Liquidity APR",
+      "type": "stat"
+    },
+    {
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "$datasource"
+      },
+      "description": "Period yield as a percentage — the actual return on NodeGuard liquidity for the selected window, NOT annualized. Equal to (settled fee revenue − completed swap-out costs) / qualifying_liquidity. The Combined APR panel takes this same value and multiplies by 365/window_days to annualize. Respects the Apply Swap Costs toggle. Can be negative.",
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "thresholds"
+          },
+          "decimals": 4,
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "red",
+                "value": null
+              },
+              {
+                "color": "green",
+                "value": 0
+              }
+            ]
+          },
+          "unit": "percentunit"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 7,
+        "w": 8,
+        "x": 8,
+        "y": 100
+      },
+      "id": 109,
+      "options": {
+        "colorMode": "value",
+        "graphMode": "area",
+        "justifyMode": "auto",
+        "orientation": "auto",
+        "percentChangeColorMode": "standard",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "showPercentChange": false,
+        "textMode": "auto",
+        "wideLayout": true
+      },
+      "pluginVersion": "12.4.2",
+      "targets": [
+        {
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "$datasource"
+          },
+          "editorMode": "code",
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "WITH bounds AS (SELECT $__timeFrom()::timestamptz AS window_start, $__timeTo()::timestamptz AS window_end), total_fees AS (SELECT COALESCE(ROUND(SUM(\"FeeMsat\") / 1000.0)::bigint, 0) AS fee_sats FROM \"ForwardingHtlcEvents\" WHERE $__timeFilter(\"EventTimestamp\") AND \"Outcome\" = 1 AND \"ManagedNodePubKey\" IN ($node) AND \"FeeMsat\" IS NOT NULL), total_swap_costs AS (SELECT $applySwapCosts * COALESCE(SUM(COALESCE(s.\"ServiceFeeSats\", 0) + COALESCE(s.\"LightningFeeSats\", 0) + COALESCE(s.\"OnChainFeeSats\", 0)), 0) AS swap_cost_sats FROM \"SwapOuts\" s JOIN \"Nodes\" n ON n.\"Id\" = s.\"NodeId\" CROSS JOIN bounds b WHERE s.\"Status\" = 1 AND s.\"CreationDatetime\" >= b.window_start AND s.\"CreationDatetime\" < b.window_end AND n.\"PubKey\" IN ($node)), participating_chans AS (SELECT DISTINCT u.chan_id FROM \"ForwardingHtlcEvents\" f CROSS JOIN LATERAL (VALUES (f.\"IncomingChannelId\"), (f.\"OutgoingChannelId\")) AS u(chan_id) WHERE $__timeFilter(f.\"EventTimestamp\") AND f.\"Outcome\" = 1 AND f.\"ManagedNodePubKey\" IN ($node) AND f.\"FeeMsat\" IS NOT NULL), qualifying_liquidity AS (SELECT COALESCE(SUM(c.\"SatsAmount\" * GREATEST(EXTRACT(EPOCH FROM (LEAST(CASE WHEN c.\"Status\" = 2 THEN COALESCE((to_jsonb(c) ->> 'ClosedAt')::timestamptz, c.\"UpdateDatetime\") ELSE b.window_end END, b.window_end) - GREATEST(c.\"CreationDatetime\", b.window_start))) / 86400.0, 0.0) / GREATEST(EXTRACT(EPOCH FROM (b.window_end - b.window_start)) / 86400.0, 0.000001)), 0) AS liquidity_sats FROM \"Channels\" c CROSS JOIN bounds b JOIN participating_chans p ON p.chan_id = c.\"ChanId\" WHERE (c.\"CreatedByNodeGuard\" = TRUE OR $liquidityScope = 0)) SELECT CASE WHEN ql.liquidity_sats > 0 THEN ((tf.fee_sats - tsc.swap_cost_sats)::numeric / ql.liquidity_sats) ELSE NULL END AS \"Raw Yield\" FROM total_fees tf, total_swap_costs tsc, qualifying_liquidity ql",
+          "refId": "A"
+        }
+      ],
+      "title": "Combined Raw Yield",
+      "type": "stat"
+    },
+    {
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "$datasource"
+      },
+      "description": "Per-node annualized yield, net of that node's completed swap-out costs. APR = ((node_fee_sats - node_swap_cost_sats) / node_qualifying_liquidity_sats) * (365 / window_days). A node's qualifying liquidity is the sum of prorated SatsAmount of NodeGuard-opened channels that routed at least one settled forward for that node in the window, each counted once. APR can be negative.",
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "thresholds"
+          },
+          "decimals": 2,
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "red",
+                "value": null
+              },
+              {
+                "color": "orange",
+                "value": 0.02
+              },
+              {
+                "color": "yellow",
+                "value": 0.05
+              },
+              {
+                "color": "green",
+                "value": 0.08
+              }
+            ]
+          },
+          "unit": "percentunit"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 7,
+        "w": 8,
+        "x": 16,
+        "y": 100
+      },
+      "id": 107,
+      "options": {
+        "displayMode": "gradient",
+        "minVizHeight": 16,
+        "minVizWidth": 8,
+        "namePlacement": "auto",
+        "orientation": "horizontal",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": true
+        },
+        "showUnfilled": true,
+        "sizing": "auto",
+        "valueMode": "color"
+      },
+      "pluginVersion": "12.4.2",
+      "targets": [
+        {
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "$datasource"
+          },
+          "editorMode": "code",
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "WITH bounds AS (SELECT $__timeFrom()::timestamptz AS window_start, $__timeTo()::timestamptz AS window_end, GREATEST(EXTRACT(EPOCH FROM ($__timeTo()::timestamptz - $__timeFrom()::timestamptz)) / 86400.0, 0.000001) AS window_days), node_fees AS (SELECT \"ManagedNodePubKey\", MAX(\"ManagedNodeName\") AS managed_node_name, ROUND(SUM(\"FeeMsat\") / 1000.0)::bigint AS fee_sats FROM \"ForwardingHtlcEvents\" WHERE $__timeFilter(\"EventTimestamp\") AND \"Outcome\" = 1 AND \"ManagedNodePubKey\" IN ($node) AND \"FeeMsat\" IS NOT NULL GROUP BY \"ManagedNodePubKey\"), node_swap_costs AS (SELECT n.\"PubKey\" AS managed_node_pubkey, $applySwapCosts * SUM(COALESCE(s.\"ServiceFeeSats\", 0) + COALESCE(s.\"LightningFeeSats\", 0) + COALESCE(s.\"OnChainFeeSats\", 0)) AS swap_cost_sats FROM \"SwapOuts\" s JOIN \"Nodes\" n ON n.\"Id\" = s.\"NodeId\" WHERE s.\"Status\" = 1 AND $__timeFilter(s.\"CreationDatetime\") AND n.\"PubKey\" IN ($node) GROUP BY n.\"PubKey\"), node_participating_chans AS (SELECT DISTINCT f.\"ManagedNodePubKey\", u.chan_id FROM \"ForwardingHtlcEvents\" f CROSS JOIN LATERAL (VALUES (f.\"IncomingChannelId\"), (f.\"OutgoingChannelId\")) AS u(chan_id) WHERE $__timeFilter(f.\"EventTimestamp\") AND f.\"Outcome\" = 1 AND f.\"ManagedNodePubKey\" IN ($node) AND f.\"FeeMsat\" IS NOT NULL), node_liquidity AS (SELECT npc.\"ManagedNodePubKey\", SUM(c.\"SatsAmount\" * GREATEST(EXTRACT(EPOCH FROM (LEAST(CASE WHEN c.\"Status\" = 2 THEN COALESCE((to_jsonb(c) ->> 'ClosedAt')::timestamptz, c.\"UpdateDatetime\") ELSE b.window_end END, b.window_end) - GREATEST(c.\"CreationDatetime\", b.window_start))) / 86400.0, 0.0) / b.window_days) AS liquidity_sats FROM node_participating_chans npc JOIN \"Channels\" c ON c.\"ChanId\" = npc.chan_id CROSS JOIN bounds b WHERE (c.\"CreatedByNodeGuard\" = TRUE OR $liquidityScope = 0) GROUP BY npc.\"ManagedNodePubKey\") SELECT nf.managed_node_name AS \"Node\", CASE WHEN nl.liquidity_sats > 0 THEN ((nf.fee_sats - COALESCE(nsc.swap_cost_sats, 0))::numeric / nl.liquidity_sats) * (365.0 / b.window_days)::numeric ELSE NULL END AS \"APR\" FROM node_fees nf LEFT JOIN node_liquidity nl ON nl.\"ManagedNodePubKey\" = nf.\"ManagedNodePubKey\" LEFT JOIN node_swap_costs nsc ON nsc.managed_node_pubkey = nf.\"ManagedNodePubKey\" CROSS JOIN bounds b ORDER BY \"APR\" DESC NULLS LAST",
+          "refId": "A"
+        }
+      ],
+      "title": "NodeGuard-Liquidity APR by Node",
+      "type": "bargauge"
+    },
+    {
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "$datasource"
+      },
+      "description": "Diagnostic view of swap-out records that drive the swap-cost subtraction in the APR panels above. Includes Pending and Failed swaps for visibility, but only Completed swaps with non-null NodeId are subtracted from APR. Columns expose ServiceFee + LightningFee + OnChainFee components so you can verify the Total Fees figure that flows into the APR numerator.",
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "thresholds"
+          },
+          "custom": {
+            "align": "auto",
+            "cellOptions": {
+              "type": "auto"
+            },
+            "inspect": false
+          },
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          }
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byRegexp",
+              "options": ".+\\(BTC\\)$"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "currencyBTC"
+              },
+              {
+                "id": "decimals",
+                "value": 8
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Status"
+            },
+            "properties": [
+              {
+                "id": "mappings",
+                "value": [
+                  {
+                    "type": "value",
+                    "options": {
+                      "Completed": {
+                        "color": "green",
+                        "index": 0
+                      },
+                      "Pending": {
+                        "color": "yellow",
+                        "index": 1
+                      },
+                      "Failed": {
+                        "color": "red",
+                        "index": 2
+                      }
+                    }
+                  }
+                ]
+              },
+              {
+                "id": "custom.cellOptions",
+                "value": {
+                  "type": "color-text"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Total Fees (BTC)"
+            },
+            "properties": [
+              {
+                "id": "custom.cellOptions",
+                "value": {
+                  "type": "color-background-solid",
+                  "mode": "gradient"
+                }
+              },
+              {
+                "id": "color",
+                "value": {
+                  "mode": "continuous-GrYlRd"
+                }
+              }
+            ]
+          }
+        ]
+      },
+      "gridPos": {
+        "h": 10,
+        "w": 24,
+        "x": 0,
+        "y": 168
+      },
+      "id": 108,
+      "options": {
+        "showHeader": true,
+        "footer": {
+          "show": true,
+          "reducer": [
+            "sum",
+            "count"
+          ],
+          "fields": [
+            "Amount (BTC)",
+            "Total Fees (BTC)"
+          ]
+        }
+      },
+      "pluginVersion": "12.4.2",
+      "targets": [
+        {
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "$datasource"
+          },
+          "editorMode": "code",
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "SELECT s.\"CreationDatetime\" AS \"Date\", COALESCE(n.\"Name\", '(no node)') AS \"Node\", CASE s.\"Provider\" WHEN 0 THEN 'Loop' WHEN 1 THEN '40swap' ELSE '?' END AS \"Provider\", CASE s.\"Status\" WHEN 0 THEN 'Pending' WHEN 1 THEN 'Completed' WHEN 2 THEN 'Failed' ELSE '?' END AS \"Status\", CASE WHEN s.\"IsManual\" THEN 'Manual' ELSE 'Auto' END AS \"Type\", (s.\"SatsAmount\" / 100000000.0)::numeric(20,8) AS \"Amount (BTC)\", ((COALESCE(s.\"ServiceFeeSats\", 0) + COALESCE(s.\"LightningFeeSats\", 0) + COALESCE(s.\"OnChainFeeSats\", 0)) / 100000000.0)::numeric(20,8) AS \"Total Fees (BTC)\" FROM \"SwapOuts\" s LEFT JOIN \"Nodes\" n ON n.\"Id\" = s.\"NodeId\" WHERE $__timeFilter(s.\"CreationDatetime\") AND (s.\"NodeId\" IS NULL OR n.\"PubKey\" IN ($node)) ORDER BY s.\"CreationDatetime\" DESC",
+          "refId": "A"
+        }
+      ],
+      "title": "Recent Swaps (Diagnostic)",
+      "type": "table"
+    },
+    {
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "$datasource"
+      },
+      "description": "Annualized yield attributed to each individual NodeGuard channel. Each settled forward credits BOTH its incoming and outgoing channel with the full fee (full-attribution, same convention as the existing 'Routed fee distribution From/To' panels). Denominator is this channel's prorated SatsAmount alone. Allocated swap cost is the channel's pro-rata share of its managed node's total swap cost (by fee share within the node, double-credit basis). APR can be negative; null when the channel has no qualifying liquidity (i.e. not opened by NodeGuard).",
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "thresholds"
+          },
+          "custom": {
+            "align": "auto",
+            "cellOptions": {
+              "type": "auto"
+            },
+            "inspect": false
+          },
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          }
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byRegexp",
+              "options": ".+\\(BTC\\)$"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "currencyBTC"
+              },
+              {
+                "id": "decimals",
+                "value": 8
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "APR"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "percentunit"
+              },
+              {
+                "id": "decimals",
+                "value": 2
+              },
+              {
+                "id": "custom.cellOptions",
+                "value": {
+                  "type": "color-background-solid",
+                  "mode": "gradient"
+                }
+              },
+              {
+                "id": "color",
+                "value": {
+                  "mode": "continuous-GrYlRd"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Fee (BTC)"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "currencyBTC"
+              },
+              {
+                "id": "decimals",
+                "value": 8
+              },
+              {
+                "id": "custom.cellOptions",
+                "value": {
+                  "type": "color-background-solid",
+                  "mode": "gradient"
+                }
+              },
+              {
+                "id": "color",
+                "value": {
+                  "mode": "continuous-GrYlRd"
+                }
+              }
+            ]
+          }
+        ]
+      },
+      "gridPos": {
+        "h": 10,
+        "w": 24,
+        "x": 0,
+        "y": 147
+      },
+      "id": 110,
+      "options": {
+        "showHeader": true,
+        "footer": {
+          "show": true,
+          "reducer": [
+            "sum"
+          ],
+          "fields": [
+            "HTLC Settled",
+            "Fee (BTC)",
+            "Swap Cost (BTC)",
+            "Net Revenue (BTC)",
+            "Qualifying Liquidity (BTC)"
+          ]
+        }
+      },
+      "pluginVersion": "12.4.2",
+      "targets": [
+        {
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "$datasource"
+          },
+          "editorMode": "code",
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "WITH bounds AS (SELECT $__timeFrom()::timestamptz AS window_start, $__timeTo()::timestamptz AS window_end, GREATEST(EXTRACT(EPOCH FROM ($__timeTo()::timestamptz - $__timeFrom()::timestamptz)) / 86400.0, 0.000001) AS window_days), channel_events AS (SELECT f.\"ManagedNodePubKey\", MAX(f.\"ManagedNodeName\") AS managed_node_name, u.chan_id, MAX(u.peer_alias) AS peer_alias, COUNT(*) AS settled_count, ROUND(SUM(f.\"FeeMsat\") / 1000.0)::bigint AS fee_sats FROM \"ForwardingHtlcEvents\" f CROSS JOIN LATERAL (VALUES (f.\"IncomingChannelId\", f.\"IncomingPeerAlias\"), (f.\"OutgoingChannelId\", f.\"OutgoingPeerAlias\")) AS u(chan_id, peer_alias) WHERE $__timeFilter(f.\"EventTimestamp\") AND f.\"Outcome\" = 1 AND f.\"ManagedNodePubKey\" IN ($node) AND f.\"FeeMsat\" IS NOT NULL GROUP BY f.\"ManagedNodePubKey\", u.chan_id), channel_status AS (SELECT DISTINCT ON (\"ChanId\") \"ChanId\", CASE \"Status\" WHEN 1 THEN 'Open' WHEN 2 THEN 'Closed' ELSE 'Unknown' END AS status FROM \"Channels\" ORDER BY \"ChanId\", \"CreationDatetime\" DESC), qualifying_channels AS (SELECT c.\"ChanId\", c.\"SatsAmount\", GREATEST(c.\"CreationDatetime\", b.window_start) AS open_start, LEAST(CASE WHEN c.\"Status\" = 2 THEN COALESCE((to_jsonb(c) ->> 'ClosedAt')::timestamptz, c.\"UpdateDatetime\") ELSE b.window_end END, b.window_end) AS open_end, b.window_days FROM \"Channels\" c CROSS JOIN bounds b WHERE (c.\"CreatedByNodeGuard\" = TRUE OR $liquidityScope = 0)), prorated AS (SELECT \"ChanId\", \"SatsAmount\" * GREATEST(EXTRACT(EPOCH FROM (open_end - open_start)) / 86400.0, 0.0) / window_days AS prorated_sats FROM qualifying_channels), all_channel_sizes AS (SELECT \"ChanId\", MAX(\"SatsAmount\") AS sats_amount FROM \"Channels\" GROUP BY \"ChanId\"), swap_costs AS (SELECT n.\"PubKey\" AS managed_node_pubkey, $applySwapCosts * SUM(COALESCE(s.\"ServiceFeeSats\", 0) + COALESCE(s.\"LightningFeeSats\", 0) + COALESCE(s.\"OnChainFeeSats\", 0)) AS swap_cost_sats FROM \"SwapOuts\" s JOIN \"Nodes\" n ON n.\"Id\" = s.\"NodeId\" CROSS JOIN bounds b WHERE s.\"Status\" = 1 AND s.\"CreationDatetime\" >= b.window_start AND s.\"CreationDatetime\" < b.window_end AND n.\"PubKey\" IN ($node) GROUP BY n.\"PubKey\"), node_fees AS (SELECT \"ManagedNodePubKey\", SUM(fee_sats) AS node_total_fee_sats FROM channel_events GROUP BY \"ManagedNodePubKey\"), channels_with_meta AS (SELECT ce.\"ManagedNodePubKey\", ce.managed_node_name, ce.chan_id, ce.peer_alias, ce.settled_count, ce.fee_sats, COALESCE(acs.sats_amount, 0) AS channel_size_sats, COALESCE(p.prorated_sats, 0) AS qualifying_liquidity_sats, CASE WHEN nf.node_total_fee_sats > 0 THEN ROUND(COALESCE(sc.swap_cost_sats, 0)::numeric * ce.fee_sats / nf.node_total_fee_sats)::bigint ELSE 0 END AS allocated_swap_cost_sats, COALESCE(cs.status, '?') AS status FROM channel_events ce LEFT JOIN prorated p ON p.\"ChanId\" = ce.chan_id LEFT JOIN all_channel_sizes acs ON acs.\"ChanId\" = ce.chan_id LEFT JOIN swap_costs sc ON sc.managed_node_pubkey = ce.\"ManagedNodePubKey\" LEFT JOIN node_fees nf ON nf.\"ManagedNodePubKey\" = ce.\"ManagedNodePubKey\" LEFT JOIN channel_status cs ON cs.\"ChanId\" = ce.chan_id) SELECT managed_node_name AS \"Node\", COALESCE(peer_alias, '?') AS \"Channel (peer)\", chan_id::text AS \"Chan ID\", status AS \"Status\", (channel_size_sats / 100000000.0)::numeric(20,8) AS \"Channel Size (BTC)\", settled_count AS \"HTLC Settled\", (fee_sats / 100000000.0)::numeric(20,8) AS \"Fee (BTC)\", (allocated_swap_cost_sats / 100000000.0)::numeric(20,8) AS \"Swap Cost (BTC)\", ((fee_sats - allocated_swap_cost_sats) / 100000000.0)::numeric(20,8) AS \"Net Revenue (BTC)\", (qualifying_liquidity_sats / 100000000.0)::numeric(20,8) AS \"Qualifying Liquidity (BTC)\", CASE WHEN qualifying_liquidity_sats > 0 THEN ((fee_sats - allocated_swap_cost_sats)::numeric / qualifying_liquidity_sats) * (365.0 / (SELECT window_days FROM bounds))::numeric ELSE NULL END AS \"APR\" FROM channels_with_meta ORDER BY fee_sats DESC LIMIT 50",
+          "refId": "A"
+        }
+      ],
+      "title": "NodeGuard-Liquidity APR by Channel",
+      "type": "table"
+    },
+    {
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "$datasource"
+      },
+      "description": "Annualized yield attributed to each individual peer (by alias). Each settled forward credits BOTH the incoming and outgoing peer with the full fee (full-attribution). Denominator is the union of NodeGuard-opened channels associated with the peer, each prorated by its open fraction in the window and counted once. Allocated swap cost is the peer's pro-rata share of its managed node's swap cost. APR can be negative; null when the peer has no qualifying NodeGuard liquidity.",
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "thresholds"
+          },
+          "custom": {
+            "align": "auto",
+            "cellOptions": {
+              "type": "auto"
+            },
+            "inspect": false
+          },
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          }
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byRegexp",
+              "options": ".+\\(BTC\\)$"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "currencyBTC"
+              },
+              {
+                "id": "decimals",
+                "value": 8
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "APR"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "percentunit"
+              },
+              {
+                "id": "decimals",
+                "value": 2
+              },
+              {
+                "id": "custom.cellOptions",
+                "value": {
+                  "type": "color-background-solid",
+                  "mode": "gradient"
+                }
+              },
+              {
+                "id": "color",
+                "value": {
+                  "mode": "continuous-GrYlRd"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Fee (BTC)"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "currencyBTC"
+              },
+              {
+                "id": "decimals",
+                "value": 8
+              },
+              {
+                "id": "custom.cellOptions",
+                "value": {
+                  "type": "color-background-solid",
+                  "mode": "gradient"
+                }
+              },
+              {
+                "id": "color",
+                "value": {
+                  "mode": "continuous-GrYlRd"
+                }
+              }
+            ]
+          }
+        ]
+      },
+      "gridPos": {
+        "h": 10,
+        "w": 24,
+        "x": 0,
+        "y": 157
+      },
+      "id": 111,
+      "options": {
+        "showHeader": true,
+        "footer": {
+          "show": true,
+          "reducer": [
+            "sum"
+          ],
+          "fields": [
+            "HTLC Settled",
+            "Fee (BTC)",
+            "Swap Cost (BTC)",
+            "Net Revenue (BTC)",
+            "Qualifying Liquidity (BTC)"
+          ]
+        }
+      },
+      "pluginVersion": "12.4.2",
+      "targets": [
+        {
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "$datasource"
+          },
+          "editorMode": "code",
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "WITH bounds AS (SELECT $__timeFrom()::timestamptz AS window_start, $__timeTo()::timestamptz AS window_end, GREATEST(EXTRACT(EPOCH FROM ($__timeTo()::timestamptz - $__timeFrom()::timestamptz)) / 86400.0, 0.000001) AS window_days), peer_events AS (SELECT f.\"ManagedNodePubKey\", MAX(f.\"ManagedNodeName\") AS managed_node_name, u.peer_alias, COUNT(*) AS settled_count, ROUND(SUM(f.\"FeeMsat\") / 1000.0)::bigint AS fee_sats FROM \"ForwardingHtlcEvents\" f CROSS JOIN LATERAL (VALUES (f.\"IncomingPeerAlias\"), (f.\"OutgoingPeerAlias\")) AS u(peer_alias) WHERE $__timeFilter(f.\"EventTimestamp\") AND f.\"Outcome\" = 1 AND f.\"ManagedNodePubKey\" IN ($node) AND f.\"FeeMsat\" IS NOT NULL GROUP BY f.\"ManagedNodePubKey\", u.peer_alias), peer_chans AS (SELECT DISTINCT f.\"ManagedNodePubKey\", u.peer_alias, u.chan_id FROM \"ForwardingHtlcEvents\" f CROSS JOIN LATERAL (VALUES (f.\"IncomingPeerAlias\", f.\"IncomingChannelId\"), (f.\"OutgoingPeerAlias\", f.\"OutgoingChannelId\")) AS u(peer_alias, chan_id) WHERE $__timeFilter(f.\"EventTimestamp\") AND f.\"Outcome\" = 1 AND f.\"ManagedNodePubKey\" IN ($node) AND f.\"FeeMsat\" IS NOT NULL), qualifying_channels AS (SELECT c.\"ChanId\", c.\"SatsAmount\", GREATEST(c.\"CreationDatetime\", b.window_start) AS open_start, LEAST(CASE WHEN c.\"Status\" = 2 THEN COALESCE((to_jsonb(c) ->> 'ClosedAt')::timestamptz, c.\"UpdateDatetime\") ELSE b.window_end END, b.window_end) AS open_end, b.window_days FROM \"Channels\" c CROSS JOIN bounds b WHERE (c.\"CreatedByNodeGuard\" = TRUE OR $liquidityScope = 0)), prorated AS (SELECT \"ChanId\", \"SatsAmount\" * GREATEST(EXTRACT(EPOCH FROM (open_end - open_start)) / 86400.0, 0.0) / window_days AS prorated_sats FROM qualifying_channels), peer_liquidity AS (SELECT pc.\"ManagedNodePubKey\", pc.peer_alias, SUM(p.prorated_sats) AS qualifying_liquidity_sats FROM peer_chans pc JOIN prorated p ON p.\"ChanId\" = pc.chan_id GROUP BY pc.\"ManagedNodePubKey\", pc.peer_alias), swap_costs AS (SELECT n.\"PubKey\" AS managed_node_pubkey, $applySwapCosts * SUM(COALESCE(s.\"ServiceFeeSats\", 0) + COALESCE(s.\"LightningFeeSats\", 0) + COALESCE(s.\"OnChainFeeSats\", 0)) AS swap_cost_sats FROM \"SwapOuts\" s JOIN \"Nodes\" n ON n.\"Id\" = s.\"NodeId\" CROSS JOIN bounds b WHERE s.\"Status\" = 1 AND s.\"CreationDatetime\" >= b.window_start AND s.\"CreationDatetime\" < b.window_end AND n.\"PubKey\" IN ($node) GROUP BY n.\"PubKey\"), node_fees AS (SELECT \"ManagedNodePubKey\", SUM(fee_sats) AS node_total_fee_sats FROM peer_events GROUP BY \"ManagedNodePubKey\") SELECT pe.managed_node_name AS \"Node\", COALESCE(pe.peer_alias, '?') AS \"Peer\", pe.settled_count AS \"HTLC Settled\", (pe.fee_sats / 100000000.0)::numeric(20,8) AS \"Fee (BTC)\", (CASE WHEN nf.node_total_fee_sats > 0 THEN ROUND(COALESCE(sc.swap_cost_sats, 0)::numeric * pe.fee_sats / nf.node_total_fee_sats)::bigint ELSE 0 END / 100000000.0)::numeric(20,8) AS \"Swap Cost (BTC)\", ((pe.fee_sats - CASE WHEN nf.node_total_fee_sats > 0 THEN ROUND(COALESCE(sc.swap_cost_sats, 0)::numeric * pe.fee_sats / nf.node_total_fee_sats)::bigint ELSE 0 END) / 100000000.0)::numeric(20,8) AS \"Net Revenue (BTC)\", (COALESCE(pl.qualifying_liquidity_sats, 0) / 100000000.0)::numeric(20,8) AS \"Qualifying Liquidity (BTC)\", CASE WHEN pl.qualifying_liquidity_sats > 0 THEN ((pe.fee_sats - CASE WHEN nf.node_total_fee_sats > 0 THEN ROUND(COALESCE(sc.swap_cost_sats, 0)::numeric * pe.fee_sats / nf.node_total_fee_sats)::bigint ELSE 0 END)::numeric / pl.qualifying_liquidity_sats) * (365.0 / (SELECT window_days FROM bounds))::numeric ELSE NULL END AS \"APR\" FROM peer_events pe LEFT JOIN peer_liquidity pl ON pl.\"ManagedNodePubKey\" = pe.\"ManagedNodePubKey\" AND pl.peer_alias IS NOT DISTINCT FROM pe.peer_alias LEFT JOIN swap_costs sc ON sc.managed_node_pubkey = pe.\"ManagedNodePubKey\" LEFT JOIN node_fees nf ON nf.\"ManagedNodePubKey\" = pe.\"ManagedNodePubKey\" ORDER BY pe.fee_sats DESC LIMIT 50",
+          "refId": "A"
+        }
+      ],
+      "title": "NodeGuard-Liquidity APR by Peer",
+      "type": "table"
+    },
+    {
+      "collapsed": false,
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 99
+      },
+      "id": 200,
+      "panels": [],
+      "title": "Yield — Headlines",
+      "type": "row"
+    },
+    {
+      "collapsed": false,
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 107
+      },
+      "id": 201,
+      "panels": [],
+      "title": "Yield — Routing Activity",
+      "type": "row"
+    },
+    {
+      "collapsed": false,
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 126
+      },
+      "id": 202,
+      "panels": [],
+      "title": "Yield — APR Breakdowns",
+      "type": "row"
+    },
+    {
+      "collapsed": false,
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 167
+      },
+      "id": 203,
+      "panels": [],
+      "title": "Yield — Swap Diagnostics",
+      "type": "row"
+    },
+    {
+      "collapsed": false,
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 178
+      },
+      "id": 204,
+      "panels": [],
+      "title": "Yield — APR Trends",
+      "type": "row"
+    },
+    {
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "$datasource"
+      },
+      "description": "Rolling APR (left axis, percent) and rolling-average Qualifying Liquidity (right axis, BTC) per managed node, in the style of \"Profit over time\". Hourly buckets; each plotted point is the rolling APR over the last $aprWindow ending that hour, paired with the average qualifying liquidity deployed over the same rolling window. Designed for self-comparison within a node: visually spot whether adding/removing liquidity tracks with APR moving up or down. Honors $applySwapCosts and $liquidityScope. APR can be negative.",
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "axisBorderShow": false,
+            "axisCenteredZero": false,
+            "axisColorMode": "text",
+            "axisLabel": "",
+            "axisPlacement": "auto",
+            "barAlignment": 0,
+            "drawStyle": "line",
+            "fillOpacity": 0,
+            "gradientMode": "none",
+            "hideFrom": {
+              "legend": false,
+              "tooltip": false,
+              "viz": false
+            },
+            "lineInterpolation": "linear",
+            "lineWidth": 1,
+            "pointSize": 5,
+            "scaleDistribution": {
+              "type": "linear"
+            },
+            "showPoints": "auto",
+            "spanNulls": false,
+            "stacking": {
+              "group": "A",
+              "mode": "none"
+            },
+            "thresholdsStyle": {
+              "mode": "off"
+            }
+          },
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          }
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byRegexp",
+              "options": ".* APR$"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "percentunit"
+              },
+              {
+                "id": "decimals",
+                "value": 2
+              },
+              {
+                "id": "custom.axisPlacement",
+                "value": "left"
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byRegexp",
+              "options": ".* Liquidity \\(BTC\\)$"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "currencyBTC"
+              },
+              {
+                "id": "decimals",
+                "value": 8
+              },
+              {
+                "id": "custom.axisPlacement",
+                "value": "right"
+              },
+              {
+                "id": "custom.lineStyle",
+                "value": {
+                  "fill": "dash",
+                  "dash": [
+                    10,
+                    10
+                  ]
+                }
+              }
+            ]
+          }
+        ]
+      },
+      "gridPos": {
+        "h": 9,
+        "w": 24,
+        "x": 0,
+        "y": 179
+      },
+      "id": 111,
+      "options": {
+        "legend": {
+          "calcs": [
+            "mean",
+            "lastNotNull"
+          ],
+          "displayMode": "table",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "pluginVersion": "12.4.2",
+      "targets": [
+        {
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "$datasource"
+          },
+          "editorMode": "code",
+          "format": "time_series",
+          "rawQuery": true,
+          "rawSql": "WITH days AS (SELECT generate_series(date_trunc('hour', $__timeFrom()::timestamptz), $__timeTo()::timestamptz, INTERVAL '1 hour') AS bucket_start), day_buckets AS (SELECT bucket_start, bucket_start + INTERVAL '1 hour' AS bucket_end FROM days), nodes AS (SELECT \"ManagedNodePubKey\" AS pubkey, MAX(\"ManagedNodeName\") AS node_name FROM \"ForwardingHtlcEvents\" WHERE $__timeFilter(\"EventTimestamp\") AND \"ManagedNodePubKey\" IN ($node) GROUP BY 1), participating_node_chans AS (SELECT DISTINCT f.\"ManagedNodePubKey\" AS pubkey, u.chan_id FROM \"ForwardingHtlcEvents\" f CROSS JOIN LATERAL (VALUES (f.\"IncomingChannelId\"), (f.\"OutgoingChannelId\")) u(chan_id) WHERE $__timeFilter(f.\"EventTimestamp\") AND f.\"Outcome\" = 1 AND f.\"FeeMsat\" IS NOT NULL AND f.\"ManagedNodePubKey\" IN ($node)), day_node_grid AS (SELECT db.bucket_start, db.bucket_end, n.pubkey, n.node_name FROM day_buckets db CROSS JOIN nodes n), day_fees AS (SELECT g.bucket_start, g.pubkey, g.node_name, COALESCE(ROUND(SUM(f.\"FeeMsat\") / 1000.0)::bigint, 0) AS fee_sats FROM day_node_grid g LEFT JOIN \"ForwardingHtlcEvents\" f ON f.\"EventTimestamp\" >= g.bucket_start AND f.\"EventTimestamp\" < g.bucket_end AND f.\"Outcome\" = 1 AND f.\"FeeMsat\" IS NOT NULL AND f.\"ManagedNodePubKey\" = g.pubkey GROUP BY g.bucket_start, g.pubkey, g.node_name), day_swap_costs AS (SELECT g.bucket_start, g.pubkey, $applySwapCosts * COALESCE(SUM(COALESCE(s.\"ServiceFeeSats\", 0) + COALESCE(s.\"LightningFeeSats\", 0) + COALESCE(s.\"OnChainFeeSats\", 0)), 0) AS swap_cost_sats FROM day_node_grid g LEFT JOIN \"Nodes\" n ON n.\"PubKey\" = g.pubkey LEFT JOIN \"SwapOuts\" s ON s.\"NodeId\" = n.\"Id\" AND s.\"Status\" = 1 AND s.\"CreationDatetime\" >= g.bucket_start AND s.\"CreationDatetime\" < g.bucket_end GROUP BY g.bucket_start, g.pubkey), day_liquidity AS (SELECT g.bucket_start, g.pubkey, COALESCE(SUM(c.\"SatsAmount\" * GREATEST(EXTRACT(EPOCH FROM (LEAST(CASE WHEN c.\"Status\" = 2 THEN COALESCE((to_jsonb(c) ->> 'ClosedAt')::timestamptz, c.\"UpdateDatetime\") ELSE g.bucket_end END, g.bucket_end) - GREATEST(c.\"CreationDatetime\", g.bucket_start))) / 86400.0, 0.0)), 0) AS sat_days FROM day_node_grid g LEFT JOIN participating_node_chans pc ON pc.pubkey = g.pubkey LEFT JOIN \"Channels\" c ON c.\"ChanId\" = pc.chan_id AND (c.\"CreatedByNodeGuard\" = TRUE OR $liquidityScope = 0) GROUP BY g.bucket_start, g.pubkey), rolling AS (SELECT df.bucket_start, df.pubkey, df.node_name, SUM(df.fee_sats) OVER w AS r_fee, SUM(COALESCE(dsc.swap_cost_sats, 0)) OVER w AS r_swap, SUM(COALESCE(dl.sat_days, 0)) OVER w AS r_satdays, COUNT(*) OVER w AS r_count FROM day_fees df LEFT JOIN day_swap_costs dsc ON dsc.bucket_start = df.bucket_start AND dsc.pubkey = df.pubkey LEFT JOIN day_liquidity dl ON dl.bucket_start = df.bucket_start AND dl.pubkey = df.pubkey WINDOW w AS (PARTITION BY df.pubkey ORDER BY df.bucket_start ROWS BETWEEN (CASE '$aprWindow' WHEN 'day' THEN 23 WHEN 'week' THEN 167 ELSE 719 END) PRECEDING AND CURRENT ROW)) SELECT t AS \"time\", m AS metric, v AS value FROM (SELECT bucket_start AS t, node_name || ' APR' AS m, CASE WHEN r_satdays > 0 THEN (r_fee - r_swap)::numeric * 365.0 / r_satdays ELSE NULL END AS v FROM rolling UNION ALL SELECT bucket_start AS t, node_name || ' Liquidity (BTC)' AS m, CASE WHEN r_count > 0 THEN (r_satdays * 24.0 / r_count / 100000000.0)::numeric(20,8) ELSE NULL END AS v FROM rolling) sub ORDER BY t, m",
+          "refId": "A"
+        }
+      ],
+      "title": "APR & Qualifying Liquidity over time by managed node",
+      "type": "timeseries"
     }
   ],
   "preload": false,
@@ -3769,6 +5226,98 @@
         "regex": "",
         "regexApplyTo": "value",
         "type": "query"
+      },
+      {
+        "current": {
+          "selected": true,
+          "text": "Yes",
+          "value": "1"
+        },
+        "description": "When set to Yes, APR panels subtract completed swap-out costs (Service + Lightning + OnChain fees) from the routing-revenue numerator. When No, APR is gross routing yield only.",
+        "hide": 0,
+        "includeAll": false,
+        "label": "Apply Swap Costs",
+        "multi": false,
+        "name": "applySwapCosts",
+        "options": [
+          {
+            "selected": true,
+            "text": "Yes",
+            "value": "1"
+          },
+          {
+            "selected": false,
+            "text": "No",
+            "value": "0"
+          }
+        ],
+        "query": "Yes : 1, No : 0",
+        "queryValue": "",
+        "skipUrlSync": false,
+        "type": "custom"
+      },
+      {
+        "current": {
+          "selected": true,
+          "text": "NodeGuard only",
+          "value": "1"
+        },
+        "description": "Liquidity denominator scope. NodeGuard only: only channels opened by NodeGuard (Channel.CreatedByNodeGuard = TRUE) contribute to the qualifying-liquidity sum. All channels: every channel that participated in routing in the window contributes liquidity, regardless of who opened it.",
+        "hide": 0,
+        "includeAll": false,
+        "label": "Liquidity Scope",
+        "multi": false,
+        "name": "liquidityScope",
+        "options": [
+          {
+            "selected": true,
+            "text": "NodeGuard only",
+            "value": "1"
+          },
+          {
+            "selected": false,
+            "text": "All channels",
+            "value": "0"
+          }
+        ],
+        "query": "NodeGuard only : 1, All channels : 0",
+        "queryValue": "",
+        "skipUrlSync": false,
+        "type": "custom"
+      },
+      {
+        "current": {
+          "selected": true,
+          "text": "Day",
+          "value": "day"
+        },
+        "description": "Bucket length used by the APR Trends panels. Each non-overlapping bucket spans this length and APR is annualized to 365 days. Calendar-aligned (day = UTC day, week = ISO week, month = calendar month).",
+        "hide": 0,
+        "includeAll": false,
+        "label": "APR Window",
+        "multi": false,
+        "name": "aprWindow",
+        "options": [
+          {
+            "selected": true,
+            "text": "Day",
+            "value": "day"
+          },
+          {
+            "selected": false,
+            "text": "Week",
+            "value": "week"
+          },
+          {
+            "selected": false,
+            "text": "Month",
+            "value": "month"
+          }
+        ],
+        "query": "Day : day, Week : week, Month : month",
+        "queryValue": "",
+        "skipUrlSync": false,
+        "type": "custom"
       }
     ]
   },
