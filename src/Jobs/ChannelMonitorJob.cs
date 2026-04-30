@@ -206,6 +206,7 @@ public class ChannelMonitorJob : IJob
                 if (channel == null)
                 {
                     openChannel.Status = ChannelStatus.Closed;
+                    openChannel.ClosedAt = DateTimeOffset.UtcNow;
                     await dbContext.SaveChangesAsync();
                 }
             }

@@ -48,6 +48,12 @@ namespace NodeGuard.Data.Models
         public ChannelStatus Status { get; set; }
 
         /// <summary>
+        /// Timestamp at which the channel transitioned to <see cref="ChannelStatus.Closed"/>.
+        /// Null while the channel is open or for channels closed before this column existed.
+        /// </summary>
+        public DateTimeOffset? ClosedAt { get; set; }
+
+        /// <summary>
         /// Indicates if this channel was created by NodeGuard
         /// </summary>
         public bool CreatedByNodeGuard { get; set; }

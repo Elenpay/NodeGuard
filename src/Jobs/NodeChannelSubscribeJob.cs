@@ -166,6 +166,7 @@ public class NodeChannelSuscribeJob : IJob
                 else
                 {
                     channelToClose.Status = Channel.ChannelStatus.Closed;
+                    channelToClose.ClosedAt = DateTimeOffset.UtcNow;
                     var updateChannel = _channelRepository.Update(channelToClose);
                     if (!updateChannel.Item1)
                     {
