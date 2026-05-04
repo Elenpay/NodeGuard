@@ -186,6 +186,8 @@ namespace NodeGuard.Data.Repositories
         {
             using var applicationDbContext = _dbContextFactory.CreateDbContext();
 
+            type.SetUpdateDatetime();
+
             //Automapper to avoid creation of entities
             type = _mapper.Map<Channel, Channel>(type);
 
@@ -340,6 +342,7 @@ namespace NodeGuard.Data.Repositories
             }
 
             channel.Status = Channel.ChannelStatus.Closed;
+            channel.ClosedAt = DateTimeOffset.UtcNow;
 
             var markAsClosed = _repository.Update(channel, applicationDbContext);
 

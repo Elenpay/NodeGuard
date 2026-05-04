@@ -1301,6 +1301,7 @@ namespace NodeGuard.Services
                                     }
 
                                     channel.Status = Channel.ChannelStatus.Closed;
+                                    channel.ClosedAt = DateTimeOffset.UtcNow;
 
                                     var updateChannelResult = _channelRepository.Update(channel);
 
@@ -1331,6 +1332,7 @@ namespace NodeGuard.Services
                         if (channel != null)
                         {
                             channel.Status = Channel.ChannelStatus.Closed;
+                            channel.ClosedAt = DateTimeOffset.UtcNow;
 
                             _channelRepository.Update(channel);
                             _logger.LogInformation(
