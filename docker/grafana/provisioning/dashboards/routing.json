@@ -1,0 +1,3785 @@
+{
+  "annotations": {
+    "list": [
+      {
+        "builtIn": 1,
+        "datasource": {
+          "type": "grafana",
+          "uid": "-- Grafana --"
+        },
+        "enable": true,
+        "hide": true,
+        "iconColor": "rgba(0, 211, 255, 1)",
+        "name": "Annotations & Alerts",
+        "type": "dashboard"
+      }
+    ]
+  },
+  "editable": true,
+  "fiscalYearStartMonth": 0,
+  "graphTooltip": 1,
+  "links": [],
+  "panels": [
+    {
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "$datasource"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "thresholds"
+          },
+          "decimals": 8,
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": 0
+              },
+              {
+                "color": "red",
+                "value": 80
+              }
+            ]
+          },
+          "unit": "currencyBTC"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 7,
+        "w": 4,
+        "x": 0,
+        "y": 0
+      },
+      "id": 3,
+      "options": {
+        "colorMode": "value",
+        "graphMode": "area",
+        "justifyMode": "auto",
+        "orientation": "auto",
+        "percentChangeColorMode": "standard",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": true
+        },
+        "showPercentChange": false,
+        "textMode": "auto",
+        "wideLayout": true
+      },
+      "pluginVersion": "12.4.2",
+      "targets": [
+        {
+          "dataset": "fundsmanager",
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "$datasource"
+          },
+          "editorMode": "builder",
+          "format": "table",
+          "hide": true,
+          "rawSql": "SELECT SUM(\"FeeMsat\") FROM \"ForwardingHtlcEvents\" WHERE ($__timeFilter(\"CreationDatetime\") AND \"Outcome\" = 1 AND \"ManagedNodePubKey\" IN ($node)) LIMIT 50 ",
+          "refId": "A",
+          "sql": {
+            "columns": [
+              {
+                "name": "SUM",
+                "parameters": [
+                  {
+                    "name": "\"FeeMsat\"",
+                    "type": "functionParameter"
+                  }
+                ],
+                "type": "function"
+              }
+            ],
+            "groupBy": [],
+            "limit": 50,
+            "whereJsonTree": {
+              "children1": [
+                {
+                  "id": "bab889bb-89ab-4cde-b012-319d68a9f5ad",
+                  "properties": {
+                    "field": "\"CreationDatetime\"",
+                    "fieldSrc": "field",
+                    "operator": "macros",
+                    "value": [
+                      "timeFilter"
+                    ],
+                    "valueError": [
+                      null
+                    ],
+                    "valueSrc": [
+                      "value"
+                    ],
+                    "valueType": [
+                      "datetime"
+                    ]
+                  },
+                  "type": "rule"
+                },
+                {
+                  "id": "898bb9ba-0123-4456-b89a-b19d6c62b32c",
+                  "properties": {
+                    "field": "\"Outcome\"",
+                    "fieldSrc": "field",
+                    "operator": "equal",
+                    "value": [
+                      1
+                    ],
+                    "valueError": [
+                      null
+                    ],
+                    "valueSrc": [
+                      "value"
+                    ],
+                    "valueType": [
+                      "number"
+                    ]
+                  },
+                  "type": "rule"
+                },
+                {
+                  "id": "b9bb88bb-89ab-4cde-b012-319d6e02759b",
+                  "properties": {
+                    "field": "\"ManagedNodePubKey\"",
+                    "fieldSrc": "field",
+                    "operator": "select_any_in",
+                    "value": [
+                      "$node"
+                    ],
+                    "valueError": [
+                      null
+                    ],
+                    "valueSrc": [
+                      "value"
+                    ],
+                    "valueType": [
+                      "text"
+                    ]
+                  },
+                  "type": "rule"
+                }
+              ],
+              "id": "9ba98b98-0123-4456-b89a-b19d68a8bc01",
+              "type": "group"
+            },
+            "whereString": "($__timeFilter(\"CreationDatetime\") AND \"Outcome\" = 1 AND \"ManagedNodePubKey\" IN ($node))"
+          },
+          "table": "\"ForwardingHtlcEvents\""
+        },
+        {
+          "datasource": {
+            "name": "Expression",
+            "type": "__expr__",
+            "uid": "__expr__"
+          },
+          "expression": "$A/100000000000",
+          "refId": "Node",
+          "type": "math"
+        }
+      ],
+      "title": "Total P&L (Routing)",
+      "type": "stat"
+    },
+    {
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "$datasource"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "thresholds"
+          },
+          "decimals": 8,
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": 0
+              },
+              {
+                "color": "red",
+                "value": 80
+              }
+            ]
+          },
+          "unit": "currencyBTC"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 7,
+        "w": 20,
+        "x": 4,
+        "y": 0
+      },
+      "id": 1,
+      "options": {
+        "colorMode": "value",
+        "graphMode": "area",
+        "justifyMode": "auto",
+        "orientation": "auto",
+        "percentChangeColorMode": "standard",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": true
+        },
+        "showPercentChange": false,
+        "textMode": "auto",
+        "wideLayout": true
+      },
+      "pluginVersion": "12.4.2",
+      "targets": [
+        {
+          "dataset": "fundsmanager",
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "$datasource"
+          },
+          "editorMode": "builder",
+          "format": "table",
+          "hide": true,
+          "rawSql": "SELECT SUM(\"FeeMsat\"), \"ManagedNodeName\" FROM \"ForwardingHtlcEvents\" WHERE ($__timeFilter(\"CreationDatetime\") AND \"Outcome\" = 1 AND \"ManagedNodePubKey\" IN ($node)) GROUP BY \"ManagedNodeName\" LIMIT 50 ",
+          "refId": "A",
+          "sql": {
+            "columns": [
+              {
+                "name": "SUM",
+                "parameters": [
+                  {
+                    "name": "\"FeeMsat\"",
+                    "type": "functionParameter"
+                  }
+                ],
+                "type": "function"
+              },
+              {
+                "parameters": [
+                  {
+                    "name": "\"ManagedNodeName\"",
+                    "type": "functionParameter"
+                  }
+                ],
+                "type": "function"
+              }
+            ],
+            "groupBy": [
+              {
+                "property": {
+                  "name": "\"ManagedNodeName\"",
+                  "type": "string"
+                },
+                "type": "groupBy"
+              }
+            ],
+            "limit": 50,
+            "whereJsonTree": {
+              "children1": [
+                {
+                  "id": "bab889bb-89ab-4cde-b012-319d68a9f5ad",
+                  "properties": {
+                    "field": "\"CreationDatetime\"",
+                    "fieldSrc": "field",
+                    "operator": "macros",
+                    "value": [
+                      "timeFilter"
+                    ],
+                    "valueError": [
+                      null
+                    ],
+                    "valueSrc": [
+                      "value"
+                    ],
+                    "valueType": [
+                      "datetime"
+                    ]
+                  },
+                  "type": "rule"
+                },
+                {
+                  "id": "898bb9ba-0123-4456-b89a-b19d6c62b32c",
+                  "properties": {
+                    "field": "\"Outcome\"",
+                    "fieldSrc": "field",
+                    "operator": "equal",
+                    "value": [
+                      1
+                    ],
+                    "valueError": [
+                      null
+                    ],
+                    "valueSrc": [
+                      "value"
+                    ],
+                    "valueType": [
+                      "number"
+                    ]
+                  },
+                  "type": "rule"
+                },
+                {
+                  "id": "aa9bbb99-cdef-4012-b456-719d6e03b38e",
+                  "properties": {
+                    "field": "\"ManagedNodePubKey\"",
+                    "fieldSrc": "field",
+                    "operator": "select_any_in",
+                    "value": [
+                      "$node"
+                    ],
+                    "valueError": [
+                      null
+                    ],
+                    "valueSrc": [
+                      "value"
+                    ],
+                    "valueType": [
+                      "text"
+                    ]
+                  },
+                  "type": "rule"
+                }
+              ],
+              "id": "9ba98b98-0123-4456-b89a-b19d68a8bc01",
+              "type": "group"
+            },
+            "whereString": "($__timeFilter(\"CreationDatetime\") AND \"Outcome\" = 1 AND \"ManagedNodePubKey\" IN ($node))"
+          },
+          "table": "\"ForwardingHtlcEvents\""
+        },
+        {
+          "datasource": {
+            "name": "Expression",
+            "type": "__expr__",
+            "uid": "__expr__"
+          },
+          "expression": "$A/100000000000",
+          "refId": "Node",
+          "type": "math"
+        }
+      ],
+      "title": "Total P&L per node (Routing)",
+      "type": "stat"
+    },
+    {
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "$datasource"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "thresholds"
+          },
+          "decimals": 8,
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "red",
+                "value": 0
+              },
+              {
+                "color": "red",
+                "value": 80
+              }
+            ]
+          },
+          "unit": "currencyBTC"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 7,
+        "w": 4,
+        "x": 0,
+        "y": 7
+      },
+      "id": 4,
+      "options": {
+        "colorMode": "value",
+        "graphMode": "area",
+        "justifyMode": "auto",
+        "orientation": "auto",
+        "percentChangeColorMode": "standard",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": true
+        },
+        "showPercentChange": false,
+        "textMode": "auto",
+        "wideLayout": true
+      },
+      "pluginVersion": "12.4.2",
+      "targets": [
+        {
+          "dataset": "fundsmanager",
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "$datasource"
+          },
+          "editorMode": "builder",
+          "format": "table",
+          "hide": true,
+          "rawSql": "SELECT SUM(\"FeeMsat\") FROM \"ForwardingHtlcEvents\" WHERE ($__timeFilter(\"CreationDatetime\") AND \"Outcome\" = 2 AND \"ManagedNodePubKey\" IN ($node) AND \"WireFailureCode\" = 15) LIMIT 50 ",
+          "refId": "A",
+          "sql": {
+            "columns": [
+              {
+                "name": "SUM",
+                "parameters": [
+                  {
+                    "name": "\"FeeMsat\"",
+                    "type": "functionParameter"
+                  }
+                ],
+                "type": "function"
+              }
+            ],
+            "groupBy": [],
+            "limit": 50,
+            "whereJsonTree": {
+              "children1": [
+                {
+                  "id": "bab889bb-89ab-4cde-b012-319d68a9f5ad",
+                  "properties": {
+                    "field": "\"CreationDatetime\"",
+                    "fieldSrc": "field",
+                    "operator": "macros",
+                    "value": [
+                      "timeFilter"
+                    ],
+                    "valueError": [
+                      null
+                    ],
+                    "valueSrc": [
+                      "value"
+                    ],
+                    "valueType": [
+                      "datetime"
+                    ]
+                  },
+                  "type": "rule"
+                },
+                {
+                  "id": "898bb9ba-0123-4456-b89a-b19d6c62b32c",
+                  "properties": {
+                    "field": "\"Outcome\"",
+                    "fieldSrc": "field",
+                    "operator": "equal",
+                    "value": [
+                      2
+                    ],
+                    "valueError": [
+                      null
+                    ],
+                    "valueSrc": [
+                      "value"
+                    ],
+                    "valueType": [
+                      "number"
+                    ]
+                  },
+                  "type": "rule"
+                },
+                {
+                  "id": "989bbaba-89ab-4cde-b012-319d6e021913",
+                  "properties": {
+                    "field": "\"ManagedNodePubKey\"",
+                    "fieldSrc": "field",
+                    "operator": "select_any_in",
+                    "value": [
+                      "$node"
+                    ],
+                    "valueError": [
+                      null
+                    ],
+                    "valueSrc": [
+                      "value"
+                    ],
+                    "valueType": [
+                      "text"
+                    ]
+                  },
+                  "type": "rule"
+                },
+                {
+                  "id": "a8b89a8a-0123-4456-b89a-b19d8b54b557",
+                  "properties": {
+                    "field": "\"WireFailureCode\"",
+                    "fieldSrc": "field",
+                    "operator": "equal",
+                    "value": [
+                      15
+                    ],
+                    "valueError": [
+                      null
+                    ],
+                    "valueSrc": [
+                      "value"
+                    ],
+                    "valueType": [
+                      "number"
+                    ]
+                  },
+                  "type": "rule"
+                }
+              ],
+              "id": "9ba98b98-0123-4456-b89a-b19d68a8bc01",
+              "type": "group"
+            },
+            "whereString": "($__timeFilter(\"CreationDatetime\") AND \"Outcome\" = 2 AND \"ManagedNodePubKey\" IN ($node) AND \"WireFailureCode\" = 15)"
+          },
+          "table": "\"ForwardingHtlcEvents\""
+        },
+        {
+          "datasource": {
+            "name": "Expression",
+            "type": "__expr__",
+            "uid": "__expr__"
+          },
+          "expression": "$A/100000000000",
+          "refId": "Node",
+          "type": "math"
+        }
+      ],
+      "title": "Total Potential Missed fees (Routing)",
+      "type": "stat"
+    },
+    {
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "$datasource"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "thresholds"
+          },
+          "decimals": 8,
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "red",
+                "value": 0
+              },
+              {
+                "color": "red",
+                "value": 80
+              }
+            ]
+          },
+          "unit": "currencyBTC"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 7,
+        "w": 20,
+        "x": 4,
+        "y": 7
+      },
+      "id": 2,
+      "options": {
+        "colorMode": "value",
+        "graphMode": "area",
+        "justifyMode": "auto",
+        "orientation": "auto",
+        "percentChangeColorMode": "standard",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": true
+        },
+        "showPercentChange": false,
+        "textMode": "auto",
+        "wideLayout": true
+      },
+      "pluginVersion": "12.4.2",
+      "targets": [
+        {
+          "dataset": "fundsmanager",
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "$datasource"
+          },
+          "editorMode": "builder",
+          "format": "table",
+          "hide": true,
+          "rawSql": "SELECT SUM(\"FeeMsat\"), \"ManagedNodeName\" FROM \"ForwardingHtlcEvents\" WHERE ($__timeFilter(\"CreationDatetime\") AND \"Outcome\" = 2 AND \"ManagedNodePubKey\" IN ($node) AND \"WireFailureCode\" = 15) GROUP BY \"ManagedNodeName\" LIMIT 50 ",
+          "refId": "A",
+          "sql": {
+            "columns": [
+              {
+                "name": "SUM",
+                "parameters": [
+                  {
+                    "name": "\"FeeMsat\"",
+                    "type": "functionParameter"
+                  }
+                ],
+                "type": "function"
+              },
+              {
+                "parameters": [
+                  {
+                    "name": "\"ManagedNodeName\"",
+                    "type": "functionParameter"
+                  }
+                ],
+                "type": "function"
+              }
+            ],
+            "groupBy": [
+              {
+                "property": {
+                  "name": "\"ManagedNodeName\"",
+                  "type": "string"
+                },
+                "type": "groupBy"
+              }
+            ],
+            "limit": 50,
+            "whereJsonTree": {
+              "children1": [
+                {
+                  "id": "bab889bb-89ab-4cde-b012-319d68a9f5ad",
+                  "properties": {
+                    "field": "\"CreationDatetime\"",
+                    "fieldSrc": "field",
+                    "operator": "macros",
+                    "value": [
+                      "timeFilter"
+                    ],
+                    "valueError": [
+                      null
+                    ],
+                    "valueSrc": [
+                      "value"
+                    ],
+                    "valueType": [
+                      "datetime"
+                    ]
+                  },
+                  "type": "rule"
+                },
+                {
+                  "id": "898bb9ba-0123-4456-b89a-b19d6c62b32c",
+                  "properties": {
+                    "field": "\"Outcome\"",
+                    "fieldSrc": "field",
+                    "operator": "equal",
+                    "value": [
+                      2
+                    ],
+                    "valueError": [
+                      null
+                    ],
+                    "valueSrc": [
+                      "value"
+                    ],
+                    "valueType": [
+                      "number"
+                    ]
+                  },
+                  "type": "rule"
+                },
+                {
+                  "id": "8b8988ba-cdef-4012-b456-719d6e04bd82",
+                  "properties": {
+                    "field": "\"ManagedNodePubKey\"",
+                    "fieldSrc": "field",
+                    "operator": "select_any_in",
+                    "value": [
+                      "$node"
+                    ],
+                    "valueError": [
+                      null
+                    ],
+                    "valueSrc": [
+                      "value"
+                    ],
+                    "valueType": [
+                      "text"
+                    ]
+                  },
+                  "type": "rule"
+                },
+                {
+                  "id": "8988aaab-cdef-4012-b456-719d8b58d45d",
+                  "properties": {
+                    "field": "\"WireFailureCode\"",
+                    "fieldSrc": "field",
+                    "operator": "equal",
+                    "value": [
+                      15
+                    ],
+                    "valueError": [
+                      null
+                    ],
+                    "valueSrc": [
+                      "value"
+                    ],
+                    "valueType": [
+                      "number"
+                    ]
+                  },
+                  "type": "rule"
+                }
+              ],
+              "id": "9ba98b98-0123-4456-b89a-b19d68a8bc01",
+              "type": "group"
+            },
+            "whereString": "($__timeFilter(\"CreationDatetime\") AND \"Outcome\" = 2 AND \"ManagedNodePubKey\" IN ($node) AND \"WireFailureCode\" = 15)"
+          },
+          "table": "\"ForwardingHtlcEvents\""
+        },
+        {
+          "datasource": {
+            "name": "Expression",
+            "type": "__expr__",
+            "uid": "__expr__"
+          },
+          "expression": "$A/100000000000",
+          "refId": "Node",
+          "type": "math"
+        }
+      ],
+      "title": "Total Missed Fees per Node (Routing)",
+      "type": "stat"
+    },
+    {
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "$datasource"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "thresholds"
+          },
+          "mappings": [],
+          "max": 100,
+          "min": 0,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "red",
+                "value": 0
+              },
+              {
+                "color": "green",
+                "value": 50
+              }
+            ]
+          },
+          "unit": "percent"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 7,
+        "w": 4,
+        "x": 0,
+        "y": 14
+      },
+      "id": 5,
+      "options": {
+        "minVizHeight": 75,
+        "minVizWidth": 75,
+        "orientation": "auto",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": true
+        },
+        "showThresholdLabels": false,
+        "showThresholdMarkers": true,
+        "sizing": "auto"
+      },
+      "pluginVersion": "12.4.2",
+      "targets": [
+        {
+          "dataset": "fundsmanager",
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "$datasource"
+          },
+          "editorMode": "builder",
+          "format": "table",
+          "hide": true,
+          "rawSql": "SELECT SUM(\"FeeMsat\") FROM \"ForwardingHtlcEvents\" WHERE ($__timeFilter(\"CreationDatetime\") AND \"Outcome\" = 1 AND \"ManagedNodePubKey\" IN ($node)) LIMIT 50 ",
+          "refId": "A",
+          "sql": {
+            "columns": [
+              {
+                "name": "SUM",
+                "parameters": [
+                  {
+                    "name": "\"FeeMsat\"",
+                    "type": "functionParameter"
+                  }
+                ],
+                "type": "function"
+              }
+            ],
+            "groupBy": [],
+            "limit": 50,
+            "whereJsonTree": {
+              "children1": [
+                {
+                  "id": "bab889bb-89ab-4cde-b012-319d68a9f5ad",
+                  "properties": {
+                    "field": "\"CreationDatetime\"",
+                    "fieldSrc": "field",
+                    "operator": "macros",
+                    "value": [
+                      "timeFilter"
+                    ],
+                    "valueError": [
+                      null
+                    ],
+                    "valueSrc": [
+                      "value"
+                    ],
+                    "valueType": [
+                      "datetime"
+                    ]
+                  },
+                  "type": "rule"
+                },
+                {
+                  "id": "898bb9ba-0123-4456-b89a-b19d6c62b32c",
+                  "properties": {
+                    "field": "\"Outcome\"",
+                    "fieldSrc": "field",
+                    "operator": "equal",
+                    "value": [
+                      1
+                    ],
+                    "valueError": [
+                      null
+                    ],
+                    "valueSrc": [
+                      "value"
+                    ],
+                    "valueType": [
+                      "number"
+                    ]
+                  },
+                  "type": "rule"
+                },
+                {
+                  "id": "babbab9b-89ab-4cde-b012-319d6e01b4ee",
+                  "properties": {
+                    "field": "\"ManagedNodePubKey\"",
+                    "fieldSrc": "field",
+                    "operator": "select_any_in",
+                    "value": [
+                      "$node"
+                    ],
+                    "valueError": [
+                      null
+                    ],
+                    "valueSrc": [
+                      "value"
+                    ],
+                    "valueType": [
+                      "text"
+                    ]
+                  },
+                  "type": "rule"
+                }
+              ],
+              "id": "9ba98b98-0123-4456-b89a-b19d68a8bc01",
+              "type": "group"
+            },
+            "whereString": "($__timeFilter(\"CreationDatetime\") AND \"Outcome\" = 1 AND \"ManagedNodePubKey\" IN ($node))"
+          },
+          "table": "\"ForwardingHtlcEvents\""
+        },
+        {
+          "dataset": "fundsmanager",
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "$datasource"
+          },
+          "editorMode": "builder",
+          "format": "table",
+          "hide": true,
+          "rawSql": "SELECT SUM(\"FeeMsat\") FROM \"ForwardingHtlcEvents\" WHERE ($__timeFilter(\"CreationDatetime\") AND \"Outcome\" BETWEEN 1 AND 2 AND \"ManagedNodePubKey\" IN ($node) AND \"WireFailureCode\" = 15) LIMIT 50 ",
+          "refId": "B",
+          "sql": {
+            "columns": [
+              {
+                "name": "SUM",
+                "parameters": [
+                  {
+                    "name": "\"FeeMsat\"",
+                    "type": "functionParameter"
+                  }
+                ],
+                "type": "function"
+              }
+            ],
+            "groupBy": [
+              {
+                "property": {
+                  "type": "string"
+                },
+                "type": "groupBy"
+              }
+            ],
+            "limit": 50,
+            "whereJsonTree": {
+              "children1": [
+                {
+                  "id": "bab889bb-89ab-4cde-b012-319d68a9f5ad",
+                  "properties": {
+                    "field": "\"CreationDatetime\"",
+                    "fieldSrc": "field",
+                    "operator": "macros",
+                    "value": [
+                      "timeFilter"
+                    ],
+                    "valueError": [
+                      null
+                    ],
+                    "valueSrc": [
+                      "value"
+                    ],
+                    "valueType": [
+                      "datetime"
+                    ]
+                  },
+                  "type": "rule"
+                },
+                {
+                  "id": "baaa88b9-89ab-4cde-b012-319d6c6df7e3",
+                  "properties": {
+                    "field": "\"Outcome\"",
+                    "fieldSrc": "field",
+                    "operator": "between",
+                    "value": [
+                      1,
+                      2
+                    ],
+                    "valueError": [
+                      null,
+                      null
+                    ],
+                    "valueSrc": [
+                      "value",
+                      "value"
+                    ],
+                    "valueType": [
+                      "number",
+                      "number"
+                    ]
+                  },
+                  "type": "rule"
+                },
+                {
+                  "id": "9b889a99-cdef-4012-b456-719d6e02e3d5",
+                  "properties": {
+                    "field": "\"ManagedNodePubKey\"",
+                    "fieldSrc": "field",
+                    "operator": "select_any_in",
+                    "value": [
+                      "$node"
+                    ],
+                    "valueError": [
+                      null
+                    ],
+                    "valueSrc": [
+                      "value"
+                    ],
+                    "valueType": [
+                      "text"
+                    ]
+                  },
+                  "type": "rule"
+                },
+                {
+                  "id": "aa9999ba-cdef-4012-b456-719d8b56e86e",
+                  "properties": {
+                    "field": "\"WireFailureCode\"",
+                    "fieldSrc": "field",
+                    "operator": "equal",
+                    "value": [
+                      15
+                    ],
+                    "valueError": [
+                      null
+                    ],
+                    "valueSrc": [
+                      "value"
+                    ],
+                    "valueType": [
+                      "number"
+                    ]
+                  },
+                  "type": "rule"
+                }
+              ],
+              "id": "9ba98b98-0123-4456-b89a-b19d68a8bc01",
+              "type": "group"
+            },
+            "whereString": "($__timeFilter(\"CreationDatetime\") AND \"Outcome\" BETWEEN 1 AND 2 AND \"ManagedNodePubKey\" IN ($node) AND \"WireFailureCode\" = 15)"
+          },
+          "table": "\"ForwardingHtlcEvents\""
+        },
+        {
+          "datasource": {
+            "name": "Expression",
+            "type": "__expr__",
+            "uid": "__expr__"
+          },
+          "expression": "($A/$B)*100",
+          "refId": "C",
+          "type": "math"
+        }
+      ],
+      "title": "% Routed of total",
+      "type": "gauge"
+    },
+    {
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "$datasource"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "axisBorderShow": false,
+            "axisCenteredZero": false,
+            "axisColorMode": "text",
+            "axisLabel": "",
+            "axisPlacement": "auto",
+            "barAlignment": 0,
+            "barWidthFactor": 0.6,
+            "drawStyle": "line",
+            "fillOpacity": 0,
+            "gradientMode": "none",
+            "hideFrom": {
+              "legend": false,
+              "tooltip": false,
+              "viz": false
+            },
+            "insertNulls": false,
+            "lineInterpolation": "linear",
+            "lineWidth": 1,
+            "pointSize": 5,
+            "scaleDistribution": {
+              "type": "linear"
+            },
+            "showPoints": "auto",
+            "showValues": false,
+            "spanNulls": false,
+            "stacking": {
+              "group": "A",
+              "mode": "none"
+            },
+            "thresholdsStyle": {
+              "mode": "off"
+            }
+          },
+          "fieldMinMax": false,
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "red",
+                "value": 0
+              },
+              {
+                "color": "green",
+                "value": 50
+              }
+            ]
+          },
+          "unit": "percentunit"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 7,
+        "w": 20,
+        "x": 4,
+        "y": 14
+      },
+      "id": 6,
+      "interval": "30m",
+      "options": {
+        "legend": {
+          "calcs": [],
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "hideZeros": false,
+          "mode": "single",
+          "sort": "none"
+        }
+      },
+      "pluginVersion": "12.4.2",
+      "targets": [
+        {
+          "dataset": "fundsmanager",
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "$datasource"
+          },
+          "editorMode": "builder",
+          "format": "table",
+          "hide": true,
+          "rawQuery": true,
+          "rawSql": "SELECT $__timeGroup(\"EventTimestamp\",$__interval), SUM(\"FeeMsat\") FROM \"ForwardingHtlcEvents\" WHERE ($__timeFilter(\"CreationDatetime\") AND \"Outcome\" = 2 AND \"ManagedNodePubKey\" IN ($node)) GROUP BY $__timeGroup(\"EventTimestamp\", $__interval, 0) ORDER BY $__timeGroup(\"EventTimestamp\", $__interval, 0) ",
+          "refId": "A",
+          "sql": {
+            "columns": [
+              {
+                "name": "$__timeGroup",
+                "parameters": [
+                  {
+                    "name": "\"EventTimestamp\"",
+                    "type": "functionParameter"
+                  },
+                  {
+                    "name": "$__interval",
+                    "type": "functionParameter"
+                  }
+                ],
+                "type": "function"
+              },
+              {
+                "name": "SUM",
+                "parameters": [
+                  {
+                    "name": "\"FeeMsat\"",
+                    "type": "functionParameter"
+                  }
+                ],
+                "type": "function"
+              }
+            ],
+            "groupBy": [
+              {
+                "property": {
+                  "name": "$__timeGroup(\"EventTimestamp\", $__interval, 0)",
+                  "type": "string"
+                },
+                "type": "groupBy"
+              }
+            ],
+            "orderBy": {
+              "property": {
+                "name": "$__timeGroup(\"EventTimestamp\", $__interval, 0)",
+                "type": "string"
+              },
+              "type": "property"
+            },
+            "whereJsonTree": {
+              "children1": [
+                {
+                  "id": "bab889bb-89ab-4cde-b012-319d68a9f5ad",
+                  "properties": {
+                    "field": "\"CreationDatetime\"",
+                    "fieldSrc": "field",
+                    "operator": "macros",
+                    "value": [
+                      "timeFilter"
+                    ],
+                    "valueError": [
+                      null
+                    ],
+                    "valueSrc": [
+                      "value"
+                    ],
+                    "valueType": [
+                      "datetime"
+                    ]
+                  },
+                  "type": "rule"
+                },
+                {
+                  "id": "898bb9ba-0123-4456-b89a-b19d6c62b32c",
+                  "properties": {
+                    "field": "\"Outcome\"",
+                    "fieldSrc": "field",
+                    "operator": "equal",
+                    "value": [
+                      2
+                    ],
+                    "valueError": [
+                      null
+                    ],
+                    "valueSrc": [
+                      "value"
+                    ],
+                    "valueType": [
+                      "number"
+                    ]
+                  },
+                  "type": "rule"
+                },
+                {
+                  "id": "bb988889-4567-489a-bcde-f19d6e00972c",
+                  "properties": {
+                    "field": "\"ManagedNodePubKey\"",
+                    "fieldSrc": "field",
+                    "operator": "select_any_in",
+                    "value": [
+                      "$node"
+                    ],
+                    "valueError": [
+                      null
+                    ],
+                    "valueSrc": [
+                      "value"
+                    ],
+                    "valueType": [
+                      "text"
+                    ]
+                  },
+                  "type": "rule"
+                }
+              ],
+              "id": "9ba98b98-0123-4456-b89a-b19d68a8bc01",
+              "type": "group"
+            },
+            "whereString": "($__timeFilter(\"CreationDatetime\") AND \"Outcome\" = 2 AND \"ManagedNodePubKey\" IN ($node))"
+          },
+          "table": "\"ForwardingHtlcEvents\""
+        },
+        {
+          "dataset": "fundsmanager",
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "$datasource"
+          },
+          "editorMode": "builder",
+          "format": "table",
+          "hide": true,
+          "rawQuery": true,
+          "rawSql": "SELECT $__timeGroup(\"EventTimestamp\",$__interval), SUM(\"FeeMsat\") FROM \"ForwardingHtlcEvents\" WHERE ($__timeFilter(\"CreationDatetime\") AND \"Outcome\" BETWEEN 1 AND 2 AND \"ManagedNodePubKey\" IN ($node)) GROUP BY $__timeGroup(\"EventTimestamp\", $__interval, 0) ORDER BY $__timeGroup(\"EventTimestamp\", $__interval, 0) ",
+          "refId": "B",
+          "sql": {
+            "columns": [
+              {
+                "name": "$__timeGroup",
+                "parameters": [
+                  {
+                    "name": "\"EventTimestamp\"",
+                    "type": "functionParameter"
+                  },
+                  {
+                    "name": "$__interval",
+                    "type": "functionParameter"
+                  }
+                ],
+                "type": "function"
+              },
+              {
+                "name": "SUM",
+                "parameters": [
+                  {
+                    "name": "\"FeeMsat\"",
+                    "type": "functionParameter"
+                  }
+                ],
+                "type": "function"
+              }
+            ],
+            "groupBy": [
+              {
+                "property": {
+                  "name": "$__timeGroup(\"EventTimestamp\", $__interval, 0)",
+                  "type": "string"
+                },
+                "type": "groupBy"
+              }
+            ],
+            "orderBy": {
+              "property": {
+                "name": "$__timeGroup(\"EventTimestamp\", $__interval, 0)",
+                "type": "string"
+              },
+              "type": "property"
+            },
+            "whereJsonTree": {
+              "children1": [
+                {
+                  "id": "bab889bb-89ab-4cde-b012-319d68a9f5ad",
+                  "properties": {
+                    "field": "\"CreationDatetime\"",
+                    "fieldSrc": "field",
+                    "operator": "macros",
+                    "value": [
+                      "timeFilter"
+                    ],
+                    "valueError": [
+                      null
+                    ],
+                    "valueSrc": [
+                      "value"
+                    ],
+                    "valueType": [
+                      "datetime"
+                    ]
+                  },
+                  "type": "rule"
+                },
+                {
+                  "id": "898bb9ba-0123-4456-b89a-b19d6c62b32c",
+                  "properties": {
+                    "field": "\"Outcome\"",
+                    "fieldSrc": "field",
+                    "operator": "between",
+                    "value": [
+                      1,
+                      2
+                    ],
+                    "valueSrc": [
+                      "value",
+                      "value"
+                    ],
+                    "valueType": [
+                      "number",
+                      "number"
+                    ]
+                  },
+                  "type": "rule"
+                },
+                {
+                  "id": "9b8bba99-0123-4456-b89a-b19d6e0f9072",
+                  "properties": {
+                    "field": "\"ManagedNodePubKey\"",
+                    "fieldSrc": "field",
+                    "operator": "select_any_in",
+                    "value": [
+                      "$node"
+                    ],
+                    "valueError": [
+                      null
+                    ],
+                    "valueSrc": [
+                      "value"
+                    ],
+                    "valueType": [
+                      "text"
+                    ]
+                  },
+                  "type": "rule"
+                }
+              ],
+              "id": "9ba98b98-0123-4456-b89a-b19d68a8bc01",
+              "type": "group"
+            },
+            "whereString": "($__timeFilter(\"CreationDatetime\") AND \"Outcome\" BETWEEN 1 AND 2 AND \"ManagedNodePubKey\" IN ($node))"
+          },
+          "table": "\"ForwardingHtlcEvents\""
+        },
+        {
+          "datasource": {
+            "name": "Expression",
+            "type": "__expr__",
+            "uid": "__expr__"
+          },
+          "expression": "(1-$A/$B)",
+          "refId": "%",
+          "type": "math"
+        }
+      ],
+      "title": "% Routed of total over time",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "$datasource"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "axisBorderShow": false,
+            "axisCenteredZero": false,
+            "axisColorMode": "text",
+            "axisLabel": "",
+            "axisPlacement": "auto",
+            "barAlignment": 0,
+            "barWidthFactor": 0.6,
+            "drawStyle": "line",
+            "fillOpacity": 0,
+            "gradientMode": "none",
+            "hideFrom": {
+              "legend": false,
+              "tooltip": false,
+              "viz": false
+            },
+            "insertNulls": false,
+            "lineInterpolation": "linear",
+            "lineWidth": 1,
+            "pointSize": 5,
+            "scaleDistribution": {
+              "type": "linear"
+            },
+            "showPoints": "auto",
+            "showValues": false,
+            "spanNulls": false,
+            "stacking": {
+              "group": "A",
+              "mode": "none"
+            },
+            "thresholdsStyle": {
+              "mode": "off"
+            }
+          },
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": 0
+              },
+              {
+                "color": "red",
+                "value": 80
+              }
+            ]
+          },
+          "unit": "currencyBTC"
+        },
+        "overrides": [
+          {
+            "__systemRef": "hideSeriesFrom",
+            "matcher": {
+              "id": "byNames",
+              "options": {
+                "mode": "exclude",
+                "names": [
+                  "24h Rolling Avg"
+                ],
+                "prefix": "All except:",
+                "readOnly": true
+              }
+            },
+            "properties": [
+              {
+                "id": "custom.hideFrom",
+                "value": {
+                  "legend": false,
+                  "tooltip": true,
+                  "viz": true
+                }
+              }
+            ]
+          }
+        ]
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 24,
+        "x": 0,
+        "y": 21
+      },
+      "id": 18,
+      "options": {
+        "legend": {
+          "calcs": [],
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "hideZeros": false,
+          "mode": "single",
+          "sort": "none"
+        }
+      },
+      "pluginVersion": "12.4.2",
+      "targets": [
+        {
+          "dataset": "fundsmanager",
+          "editorMode": "code",
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "SELECT\n  $__timeGroup(\"CreationDatetime\", '1h', 0) AS \"time\",\n  \n  -- The raw profit for that specific hour:\n  SUM(\"FeeMsat\") / 1e11 AS \"Hourly Profit\",\n\n  -- The 24-hour rolling average (averages the last 24 one-hour buckets):\n  AVG(SUM(\"FeeMsat\") / 1e11) OVER (\n    ORDER BY $__timeGroup(\"CreationDatetime\", '1h', 0)\n    ROWS BETWEEN 23 PRECEDING AND CURRENT ROW\n  ) AS \"24h Rolling Avg\"\n\nFROM \"ForwardingHtlcEvents\"\nWHERE\n  $__timeFilter(\"CreationDatetime\")\n  AND \"Outcome\" = 1\n  AND \"ManagedNodePubKey\" IN ($node)\nGROUP BY 1\nORDER BY 1",
+          "refId": "A",
+          "sql": {
+            "columns": [
+              {
+                "parameters": [],
+                "type": "function"
+              }
+            ],
+            "groupBy": [
+              {
+                "property": {
+                  "type": "string"
+                },
+                "type": "groupBy"
+              }
+            ],
+            "limit": 50
+          }
+        }
+      ],
+      "title": "Profit over time",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "$datasource"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "axisBorderShow": false,
+            "axisCenteredZero": false,
+            "axisColorMode": "text",
+            "axisLabel": "",
+            "axisPlacement": "auto",
+            "barAlignment": 0,
+            "barWidthFactor": 0.6,
+            "drawStyle": "line",
+            "fillOpacity": 0,
+            "gradientMode": "none",
+            "hideFrom": {
+              "legend": false,
+              "tooltip": false,
+              "viz": false
+            },
+            "insertNulls": false,
+            "lineInterpolation": "linear",
+            "lineWidth": 1,
+            "pointSize": 5,
+            "scaleDistribution": {
+              "type": "linear"
+            },
+            "showPoints": "auto",
+            "showValues": false,
+            "spanNulls": false,
+            "stacking": {
+              "group": "A",
+              "mode": "none"
+            },
+            "thresholdsStyle": {
+              "mode": "off"
+            }
+          },
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "red",
+                "value": 0
+              },
+              {
+                "color": "#dd606e",
+                "value": 80
+              }
+            ]
+          },
+          "unit": "currencyBTC"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 24,
+        "x": 0,
+        "y": 29
+      },
+      "id": 19,
+      "options": {
+        "legend": {
+          "calcs": [],
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "hideZeros": false,
+          "mode": "single",
+          "sort": "none"
+        }
+      },
+      "pluginVersion": "12.4.2",
+      "targets": [
+        {
+          "dataset": "fundsmanager",
+          "editorMode": "code",
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "SELECT\n  $__timeGroup(\"CreationDatetime\", '1h', 0) AS \"time\",\n  \n  -- The raw profit for that specific hour:\n  SUM(\"FeeMsat\") / 1e11 AS \"Missed hourly fee\",\n\n  -- The 24-hour rolling average (averages the last 24 one-hour buckets):\n  AVG(SUM(\"FeeMsat\") / 1e11) OVER (\n    ORDER BY $__timeGroup(\"CreationDatetime\", '1h', 0)\n    ROWS BETWEEN 23 PRECEDING AND CURRENT ROW\n  ) AS \"24h Rolling Avg\"\n\nFROM \"ForwardingHtlcEvents\"\nWHERE\n  $__timeFilter(\"CreationDatetime\")\n  AND \"Outcome\" = 2\n  AND \"ManagedNodePubKey\" IN ($node)\n  AND \"WireFailureCode\" = 15\nGROUP BY 1\nORDER BY 1",
+          "refId": "A",
+          "sql": {
+            "columns": [
+              {
+                "parameters": [],
+                "type": "function"
+              }
+            ],
+            "groupBy": [
+              {
+                "property": {
+                  "type": "string"
+                },
+                "type": "groupBy"
+              }
+            ],
+            "limit": 50
+          }
+        }
+      ],
+      "title": "Missed fee over time",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "$datasource"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "hideFrom": {
+              "legend": false,
+              "tooltip": false,
+              "viz": false
+            }
+          },
+          "mappings": [],
+          "unit": "currencyBTC"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 37
+      },
+      "id": 9,
+      "options": {
+        "displayLabels": [],
+        "legend": {
+          "displayMode": "table",
+          "placement": "right",
+          "showLegend": true,
+          "values": [
+            "percent",
+            "value"
+          ]
+        },
+        "pieType": "pie",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "/^sum / 100000000000$/",
+          "values": true
+        },
+        "sort": "desc",
+        "tooltip": {
+          "hideZeros": false,
+          "mode": "single",
+          "sort": "none"
+        }
+      },
+      "pluginVersion": "12.4.2",
+      "targets": [
+        {
+          "dataset": "fundsmanager",
+          "editorMode": "builder",
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "SELECT SUM(\"FeeMsat\"), \"IncomingPeerAlias\" FROM \"ForwardingHtlcEvents\" WHERE (\"Outcome\" = 1 AND $__timeFilter(\"EventTimestamp\") AND \"ManagedNodePubKey\" IN ($node)) GROUP BY \"IncomingPeerAlias\" ORDER BY SUM(\"FeeMsat\") DESC LIMIT 500 ",
+          "refId": "A",
+          "sql": {
+            "columns": [
+              {
+                "name": "SUM",
+                "parameters": [
+                  {
+                    "name": "\"FeeMsat\"",
+                    "type": "functionParameter"
+                  }
+                ],
+                "type": "function"
+              },
+              {
+                "parameters": [
+                  {
+                    "name": "\"IncomingPeerAlias\"",
+                    "type": "functionParameter"
+                  }
+                ],
+                "type": "function"
+              }
+            ],
+            "groupBy": [
+              {
+                "property": {
+                  "name": "\"IncomingPeerAlias\"",
+                  "type": "string"
+                },
+                "type": "groupBy"
+              }
+            ],
+            "limit": 500,
+            "orderBy": {
+              "property": {
+                "name": "SUM(\"FeeMsat\")",
+                "type": "string"
+              },
+              "type": "property"
+            },
+            "orderByDirection": "DESC",
+            "whereJsonTree": {
+              "children1": [
+                {
+                  "id": "b899889b-cdef-4012-b456-719d6cbd7329",
+                  "properties": {
+                    "field": "\"Outcome\"",
+                    "fieldSrc": "field",
+                    "operator": "equal",
+                    "value": [
+                      1
+                    ],
+                    "valueError": [
+                      null
+                    ],
+                    "valueSrc": [
+                      "value"
+                    ],
+                    "valueType": [
+                      "number"
+                    ]
+                  },
+                  "type": "rule"
+                },
+                {
+                  "id": "aaa89ba8-89ab-4cde-b012-319d6d60ec02",
+                  "properties": {
+                    "field": "\"EventTimestamp\"",
+                    "fieldSrc": "field",
+                    "operator": "macros",
+                    "value": [
+                      "timeFilter"
+                    ],
+                    "valueError": [
+                      null
+                    ],
+                    "valueSrc": [
+                      "value"
+                    ],
+                    "valueType": [
+                      "datetime"
+                    ]
+                  },
+                  "type": "rule"
+                },
+                {
+                  "id": "8ba98b99-cdef-4012-b456-719d6e0c80a5",
+                  "properties": {
+                    "field": "\"ManagedNodePubKey\"",
+                    "fieldSrc": "field",
+                    "operator": "select_any_in",
+                    "value": [
+                      "$node"
+                    ],
+                    "valueError": [
+                      null
+                    ],
+                    "valueSrc": [
+                      "value"
+                    ],
+                    "valueType": [
+                      "text"
+                    ]
+                  },
+                  "type": "rule"
+                }
+              ],
+              "id": "9ba98b98-0123-4456-b89a-b19d68a8bc01",
+              "type": "group"
+            },
+            "whereString": "(\"Outcome\" = 1 AND $__timeFilter(\"EventTimestamp\") AND \"ManagedNodePubKey\" IN ($node))"
+          },
+          "table": "\"ForwardingHtlcEvents\""
+        }
+      ],
+      "title": "Routed fee distribution (From)",
+      "transformations": [
+        {
+          "id": "calculateField",
+          "options": {
+            "binary": {
+              "left": {
+                "matcher": {
+                  "id": "byName",
+                  "options": "sum"
+                }
+              },
+              "operator": "/",
+              "right": {
+                "fixed": "100000000000"
+              }
+            },
+            "mode": "binary",
+            "reduce": {
+              "reducer": "sum"
+            },
+            "replaceFields": false
+          }
+        },
+        {
+          "id": "organize",
+          "options": {
+            "excludeByName": {
+              "sum": true
+            },
+            "includeByName": {},
+            "indexByName": {},
+            "renameByName": {}
+          }
+        }
+      ],
+      "type": "piechart"
+    },
+    {
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "$datasource"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "hideFrom": {
+              "legend": false,
+              "tooltip": false,
+              "viz": false
+            }
+          },
+          "mappings": [],
+          "unit": "currencyBTC"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 37
+      },
+      "id": 13,
+      "options": {
+        "displayLabels": [],
+        "legend": {
+          "displayMode": "table",
+          "placement": "right",
+          "showLegend": true,
+          "values": [
+            "percent",
+            "value"
+          ]
+        },
+        "pieType": "pie",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "/^sum / 100000000000$/",
+          "values": true
+        },
+        "sort": "desc",
+        "tooltip": {
+          "hideZeros": false,
+          "mode": "single",
+          "sort": "none"
+        }
+      },
+      "pluginVersion": "12.4.2",
+      "targets": [
+        {
+          "dataset": "fundsmanager",
+          "editorMode": "builder",
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "SELECT SUM(\"FeeMsat\"), \"OutgoingPeerAlias\" FROM \"ForwardingHtlcEvents\" WHERE (\"Outcome\" = 1 AND $__timeFilter(\"EventTimestamp\") AND \"ManagedNodePubKey\" IN ($node)) GROUP BY \"OutgoingPeerAlias\" ORDER BY SUM(\"FeeMsat\") DESC LIMIT 500 ",
+          "refId": "A",
+          "sql": {
+            "columns": [
+              {
+                "name": "SUM",
+                "parameters": [
+                  {
+                    "name": "\"FeeMsat\"",
+                    "type": "functionParameter"
+                  }
+                ],
+                "type": "function"
+              },
+              {
+                "parameters": [
+                  {
+                    "name": "\"OutgoingPeerAlias\"",
+                    "type": "functionParameter"
+                  }
+                ],
+                "type": "function"
+              }
+            ],
+            "groupBy": [
+              {
+                "property": {
+                  "name": "\"OutgoingPeerAlias\"",
+                  "type": "string"
+                },
+                "type": "groupBy"
+              }
+            ],
+            "limit": 500,
+            "orderBy": {
+              "property": {
+                "name": "SUM(\"FeeMsat\")",
+                "type": "string"
+              },
+              "type": "property"
+            },
+            "orderByDirection": "DESC",
+            "whereJsonTree": {
+              "children1": [
+                {
+                  "id": "b899889b-cdef-4012-b456-719d6cbd7329",
+                  "properties": {
+                    "field": "\"Outcome\"",
+                    "fieldSrc": "field",
+                    "operator": "equal",
+                    "value": [
+                      1
+                    ],
+                    "valueError": [
+                      null
+                    ],
+                    "valueSrc": [
+                      "value"
+                    ],
+                    "valueType": [
+                      "number"
+                    ]
+                  },
+                  "type": "rule"
+                },
+                {
+                  "id": "aaa89ba8-89ab-4cde-b012-319d6d60ec02",
+                  "properties": {
+                    "field": "\"EventTimestamp\"",
+                    "fieldSrc": "field",
+                    "operator": "macros",
+                    "value": [
+                      "timeFilter"
+                    ],
+                    "valueError": [
+                      null
+                    ],
+                    "valueSrc": [
+                      "value"
+                    ],
+                    "valueType": [
+                      "datetime"
+                    ]
+                  },
+                  "type": "rule"
+                },
+                {
+                  "id": "8a8ba9a8-cdef-4012-b456-719d6e0d9a7c",
+                  "properties": {
+                    "field": "\"ManagedNodePubKey\"",
+                    "fieldSrc": "field",
+                    "operator": "select_any_in",
+                    "value": [
+                      "$node"
+                    ],
+                    "valueError": [
+                      null
+                    ],
+                    "valueSrc": [
+                      "value"
+                    ],
+                    "valueType": [
+                      "text"
+                    ]
+                  },
+                  "type": "rule"
+                }
+              ],
+              "id": "9ba98b98-0123-4456-b89a-b19d68a8bc01",
+              "type": "group"
+            },
+            "whereString": "(\"Outcome\" = 1 AND $__timeFilter(\"EventTimestamp\") AND \"ManagedNodePubKey\" IN ($node))"
+          },
+          "table": "\"ForwardingHtlcEvents\""
+        }
+      ],
+      "title": "Routed fee distribution (To)",
+      "transformations": [
+        {
+          "id": "calculateField",
+          "options": {
+            "binary": {
+              "left": {
+                "matcher": {
+                  "id": "byName",
+                  "options": "sum"
+                }
+              },
+              "operator": "/",
+              "right": {
+                "fixed": "100000000000"
+              }
+            },
+            "mode": "binary",
+            "reduce": {
+              "reducer": "sum"
+            },
+            "replaceFields": false
+          }
+        },
+        {
+          "id": "organize",
+          "options": {
+            "excludeByName": {
+              "sum": true
+            },
+            "includeByName": {},
+            "indexByName": {},
+            "renameByName": {}
+          }
+        }
+      ],
+      "type": "piechart"
+    },
+    {
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "$datasource"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "hideFrom": {
+              "legend": false,
+              "tooltip": false,
+              "viz": false
+            }
+          },
+          "mappings": [],
+          "unit": "currencyBTC"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 45
+      },
+      "id": 14,
+      "options": {
+        "displayLabels": [],
+        "legend": {
+          "displayMode": "table",
+          "placement": "right",
+          "showLegend": true,
+          "values": [
+            "percent",
+            "value"
+          ]
+        },
+        "pieType": "pie",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "/^sum / 100000000000$/",
+          "limit": 100,
+          "values": true
+        },
+        "sort": "desc",
+        "tooltip": {
+          "hideZeros": false,
+          "mode": "single",
+          "sort": "none"
+        }
+      },
+      "pluginVersion": "12.4.2",
+      "targets": [
+        {
+          "dataset": "fundsmanager",
+          "editorMode": "builder",
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "SELECT SUM(\"FeeMsat\"), \"IncomingPeerAlias\" FROM \"ForwardingHtlcEvents\" WHERE (\"Outcome\" = 2 AND $__timeFilter(\"EventTimestamp\") AND \"ManagedNodePubKey\" IN ($node)) GROUP BY \"IncomingPeerAlias\" ORDER BY SUM(\"FeeMsat\") DESC LIMIT 100 ",
+          "refId": "A",
+          "sql": {
+            "columns": [
+              {
+                "name": "SUM",
+                "parameters": [
+                  {
+                    "name": "\"FeeMsat\"",
+                    "type": "functionParameter"
+                  }
+                ],
+                "type": "function"
+              },
+              {
+                "parameters": [
+                  {
+                    "name": "\"IncomingPeerAlias\"",
+                    "type": "functionParameter"
+                  }
+                ],
+                "type": "function"
+              }
+            ],
+            "groupBy": [
+              {
+                "property": {
+                  "name": "\"IncomingPeerAlias\"",
+                  "type": "string"
+                },
+                "type": "groupBy"
+              }
+            ],
+            "limit": 100,
+            "orderBy": {
+              "property": {
+                "name": "SUM(\"FeeMsat\")",
+                "type": "string"
+              },
+              "type": "property"
+            },
+            "orderByDirection": "DESC",
+            "whereJsonTree": {
+              "children1": [
+                {
+                  "id": "b899889b-cdef-4012-b456-719d6cbd7329",
+                  "properties": {
+                    "field": "\"Outcome\"",
+                    "fieldSrc": "field",
+                    "operator": "equal",
+                    "value": [
+                      2
+                    ],
+                    "valueError": [
+                      null
+                    ],
+                    "valueSrc": [
+                      "value"
+                    ],
+                    "valueType": [
+                      "number"
+                    ]
+                  },
+                  "type": "rule"
+                },
+                {
+                  "id": "aaa89ba8-89ab-4cde-b012-319d6d60ec02",
+                  "properties": {
+                    "field": "\"EventTimestamp\"",
+                    "fieldSrc": "field",
+                    "operator": "macros",
+                    "value": [
+                      "timeFilter"
+                    ],
+                    "valueError": [
+                      null
+                    ],
+                    "valueSrc": [
+                      "value"
+                    ],
+                    "valueType": [
+                      "datetime"
+                    ]
+                  },
+                  "type": "rule"
+                },
+                {
+                  "id": "b98aba98-cdef-4012-b456-719d6e0e2960",
+                  "properties": {
+                    "field": "\"ManagedNodePubKey\"",
+                    "fieldSrc": "field",
+                    "operator": "select_any_in",
+                    "value": [
+                      "$node"
+                    ],
+                    "valueError": [
+                      null
+                    ],
+                    "valueSrc": [
+                      "value"
+                    ],
+                    "valueType": [
+                      "text"
+                    ]
+                  },
+                  "type": "rule"
+                }
+              ],
+              "id": "9ba98b98-0123-4456-b89a-b19d68a8bc01",
+              "type": "group"
+            },
+            "whereString": "(\"Outcome\" = 2 AND $__timeFilter(\"EventTimestamp\") AND \"ManagedNodePubKey\" IN ($node))"
+          },
+          "table": "\"ForwardingHtlcEvents\""
+        }
+      ],
+      "title": "Missed fee distribution (From)",
+      "transformations": [
+        {
+          "id": "calculateField",
+          "options": {
+            "binary": {
+              "left": {
+                "matcher": {
+                  "id": "byName",
+                  "options": "sum"
+                }
+              },
+              "operator": "/",
+              "right": {
+                "fixed": "100000000000"
+              }
+            },
+            "mode": "binary",
+            "reduce": {
+              "reducer": "sum"
+            },
+            "replaceFields": false
+          }
+        },
+        {
+          "id": "organize",
+          "options": {
+            "excludeByName": {
+              "IncomingPeerAlias": false,
+              "sum": true,
+              "sum / 100000000000": false
+            },
+            "includeByName": {},
+            "indexByName": {},
+            "orderByMode": "manual",
+            "renameByName": {}
+          }
+        }
+      ],
+      "type": "piechart"
+    },
+    {
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "$datasource"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "hideFrom": {
+              "legend": false,
+              "tooltip": false,
+              "viz": false
+            }
+          },
+          "mappings": [],
+          "unit": "currencyBTC"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 45
+      },
+      "id": 15,
+      "options": {
+        "displayLabels": [],
+        "legend": {
+          "displayMode": "table",
+          "placement": "right",
+          "showLegend": true,
+          "values": [
+            "percent",
+            "value"
+          ]
+        },
+        "pieType": "pie",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "/^sum / 100000000000$/",
+          "values": true
+        },
+        "sort": "desc",
+        "tooltip": {
+          "hideZeros": false,
+          "mode": "single",
+          "sort": "none"
+        }
+      },
+      "pluginVersion": "12.4.2",
+      "targets": [
+        {
+          "dataset": "fundsmanager",
+          "editorMode": "builder",
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "SELECT SUM(\"FeeMsat\"), \"OutgoingPeerAlias\" FROM \"ForwardingHtlcEvents\" WHERE (\"Outcome\" = 2 AND $__timeFilter(\"EventTimestamp\") AND \"ManagedNodePubKey\" IN ($node)) GROUP BY \"OutgoingPeerAlias\" ORDER BY SUM(\"FeeMsat\") DESC LIMIT 500 ",
+          "refId": "A",
+          "sql": {
+            "columns": [
+              {
+                "name": "SUM",
+                "parameters": [
+                  {
+                    "name": "\"FeeMsat\"",
+                    "type": "functionParameter"
+                  }
+                ],
+                "type": "function"
+              },
+              {
+                "parameters": [
+                  {
+                    "name": "\"OutgoingPeerAlias\"",
+                    "type": "functionParameter"
+                  }
+                ],
+                "type": "function"
+              }
+            ],
+            "groupBy": [
+              {
+                "property": {
+                  "name": "\"OutgoingPeerAlias\"",
+                  "type": "string"
+                },
+                "type": "groupBy"
+              }
+            ],
+            "limit": 500,
+            "orderBy": {
+              "property": {
+                "name": "SUM(\"FeeMsat\")",
+                "type": "string"
+              },
+              "type": "property"
+            },
+            "orderByDirection": "DESC",
+            "whereJsonTree": {
+              "children1": [
+                {
+                  "id": "b899889b-cdef-4012-b456-719d6cbd7329",
+                  "properties": {
+                    "field": "\"Outcome\"",
+                    "fieldSrc": "field",
+                    "operator": "equal",
+                    "value": [
+                      2
+                    ],
+                    "valueError": [
+                      null
+                    ],
+                    "valueSrc": [
+                      "value"
+                    ],
+                    "valueType": [
+                      "number"
+                    ]
+                  },
+                  "type": "rule"
+                },
+                {
+                  "id": "aaa89ba8-89ab-4cde-b012-319d6d60ec02",
+                  "properties": {
+                    "field": "\"EventTimestamp\"",
+                    "fieldSrc": "field",
+                    "operator": "macros",
+                    "value": [
+                      "timeFilter"
+                    ],
+                    "valueError": [
+                      null
+                    ],
+                    "valueSrc": [
+                      "value"
+                    ],
+                    "valueType": [
+                      "datetime"
+                    ]
+                  },
+                  "type": "rule"
+                },
+                {
+                  "id": "ba9b9b9a-cdef-4012-b456-719d6e0eb039",
+                  "properties": {
+                    "field": "\"ManagedNodePubKey\"",
+                    "fieldSrc": "field",
+                    "operator": "select_any_in",
+                    "value": [
+                      "$node"
+                    ],
+                    "valueError": [
+                      null
+                    ],
+                    "valueSrc": [
+                      "value"
+                    ],
+                    "valueType": [
+                      "text"
+                    ]
+                  },
+                  "type": "rule"
+                }
+              ],
+              "id": "9ba98b98-0123-4456-b89a-b19d68a8bc01",
+              "type": "group"
+            },
+            "whereString": "(\"Outcome\" = 2 AND $__timeFilter(\"EventTimestamp\") AND \"ManagedNodePubKey\" IN ($node))"
+          },
+          "table": "\"ForwardingHtlcEvents\""
+        }
+      ],
+      "title": "Missed fee distribution (To)",
+      "transformations": [
+        {
+          "id": "calculateField",
+          "options": {
+            "binary": {
+              "left": {
+                "matcher": {
+                  "id": "byName",
+                  "options": "sum"
+                }
+              },
+              "operator": "/",
+              "right": {
+                "fixed": "100000000000"
+              }
+            },
+            "mode": "binary",
+            "reduce": {
+              "reducer": "sum"
+            },
+            "replaceFields": false
+          }
+        },
+        {
+          "id": "organize",
+          "options": {
+            "excludeByName": {
+              "sum": true
+            },
+            "includeByName": {},
+            "indexByName": {},
+            "renameByName": {}
+          }
+        }
+      ],
+      "type": "piechart"
+    },
+    {
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "$datasource"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "hideFrom": {
+              "legend": false,
+              "tooltip": false,
+              "viz": false
+            }
+          },
+          "mappings": [],
+          "unit": "currencyBTC"
+        },
+        "overrides": [
+          {
+            "__systemRef": "hideSeriesFrom",
+            "matcher": {
+              "id": "byNames",
+              "options": {
+                "mode": "exclude",
+                "names": [
+                  "sum / 100000000000"
+                ],
+                "prefix": "All except:",
+                "readOnly": true
+              }
+            },
+            "properties": [
+              {
+                "id": "custom.hideFrom",
+                "value": {
+                  "legend": false,
+                  "tooltip": true,
+                  "viz": true
+                }
+              }
+            ]
+          }
+        ]
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 53
+      },
+      "id": 8,
+      "options": {
+        "displayLabels": [],
+        "legend": {
+          "displayMode": "table",
+          "placement": "right",
+          "showLegend": true,
+          "values": [
+            "percent",
+            "value"
+          ]
+        },
+        "pieType": "pie",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "/^sum / 100000000000$/",
+          "values": true
+        },
+        "sort": "desc",
+        "tooltip": {
+          "hideZeros": false,
+          "mode": "single",
+          "sort": "none"
+        }
+      },
+      "pluginVersion": "12.4.2",
+      "targets": [
+        {
+          "dataset": "fundsmanager",
+          "editorMode": "builder",
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "SELECT SUM(\"FeeMsat\"), \"IncomingPeerAlias\", \"OutgoingPeerAlias\" FROM \"ForwardingHtlcEvents\" WHERE (\"Outcome\" = 1 AND $__timeFilter(\"EventTimestamp\") AND \"ManagedNodePubKey\" IN ($node)) GROUP BY \"IncomingPeerAlias\", \"OutgoingPeerAlias\" ORDER BY SUM(\"FeeMsat\") DESC LIMIT 500 ",
+          "refId": "A",
+          "sql": {
+            "columns": [
+              {
+                "name": "SUM",
+                "parameters": [
+                  {
+                    "name": "\"FeeMsat\"",
+                    "type": "functionParameter"
+                  }
+                ],
+                "type": "function"
+              },
+              {
+                "parameters": [
+                  {
+                    "name": "\"IncomingPeerAlias\"",
+                    "type": "functionParameter"
+                  }
+                ],
+                "type": "function"
+              },
+              {
+                "parameters": [
+                  {
+                    "name": "\"OutgoingPeerAlias\"",
+                    "type": "functionParameter"
+                  }
+                ],
+                "type": "function"
+              }
+            ],
+            "groupBy": [
+              {
+                "property": {
+                  "name": "\"IncomingPeerAlias\"",
+                  "type": "string"
+                },
+                "type": "groupBy"
+              },
+              {
+                "property": {
+                  "name": "\"OutgoingPeerAlias\"",
+                  "type": "string"
+                },
+                "type": "groupBy"
+              }
+            ],
+            "limit": 500,
+            "orderBy": {
+              "property": {
+                "name": "SUM(\"FeeMsat\")",
+                "type": "string"
+              },
+              "type": "property"
+            },
+            "orderByDirection": "DESC",
+            "whereJsonTree": {
+              "children1": [
+                {
+                  "id": "b899889b-cdef-4012-b456-719d6cbd7329",
+                  "properties": {
+                    "field": "\"Outcome\"",
+                    "fieldSrc": "field",
+                    "operator": "equal",
+                    "value": [
+                      1
+                    ],
+                    "valueError": [
+                      null
+                    ],
+                    "valueSrc": [
+                      "value"
+                    ],
+                    "valueType": [
+                      "number"
+                    ]
+                  },
+                  "type": "rule"
+                },
+                {
+                  "id": "aaa89ba8-89ab-4cde-b012-319d6d60ec02",
+                  "properties": {
+                    "field": "\"EventTimestamp\"",
+                    "fieldSrc": "field",
+                    "operator": "macros",
+                    "value": [
+                      "timeFilter"
+                    ],
+                    "valueError": [
+                      null
+                    ],
+                    "valueSrc": [
+                      "value"
+                    ],
+                    "valueType": [
+                      "datetime"
+                    ]
+                  },
+                  "type": "rule"
+                },
+                {
+                  "id": "9b8a889a-0123-4456-b89a-b19d6e16b184",
+                  "properties": {
+                    "field": "\"ManagedNodePubKey\"",
+                    "fieldSrc": "field",
+                    "operator": "select_any_in",
+                    "value": [
+                      "$node"
+                    ],
+                    "valueError": [
+                      null
+                    ],
+                    "valueSrc": [
+                      "value"
+                    ],
+                    "valueType": [
+                      "text"
+                    ]
+                  },
+                  "type": "rule"
+                }
+              ],
+              "id": "9ba98b98-0123-4456-b89a-b19d68a8bc01",
+              "type": "group"
+            },
+            "whereString": "(\"Outcome\" = 1 AND $__timeFilter(\"EventTimestamp\") AND \"ManagedNodePubKey\" IN ($node))"
+          },
+          "table": "\"ForwardingHtlcEvents\""
+        }
+      ],
+      "title": "Routed fee distribution (From->To)",
+      "transformations": [
+        {
+          "id": "calculateField",
+          "options": {
+            "alias": "",
+            "binary": {
+              "left": {
+                "matcher": {
+                  "id": "byName",
+                  "options": "sum"
+                }
+              },
+              "operator": "/",
+              "right": {
+                "fixed": "100000000000"
+              }
+            },
+            "mode": "binary",
+            "reduce": {
+              "reducer": "sum"
+            },
+            "replaceFields": false
+          }
+        },
+        {
+          "id": "organize",
+          "options": {
+            "excludeByName": {
+              "sum": true
+            },
+            "includeByName": {},
+            "indexByName": {},
+            "renameByName": {}
+          }
+        }
+      ],
+      "type": "piechart"
+    },
+    {
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "$datasource"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "hideFrom": {
+              "legend": false,
+              "tooltip": false,
+              "viz": false
+            }
+          },
+          "mappings": [],
+          "unit": "currencyBTC"
+        },
+        "overrides": [
+          {
+            "__systemRef": "hideSeriesFrom",
+            "matcher": {
+              "id": "byNames",
+              "options": {
+                "mode": "exclude",
+                "names": [
+                  "sum / 100000000000",
+                  "Kraken 🐙⚡ bfx-lnd0"
+                ],
+                "prefix": "All except:",
+                "readOnly": true
+              }
+            },
+            "properties": [
+              {
+                "id": "custom.hideFrom",
+                "value": {
+                  "legend": false,
+                  "tooltip": true,
+                  "viz": true
+                }
+              }
+            ]
+          }
+        ]
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 53
+      },
+      "id": 16,
+      "options": {
+        "displayLabels": [],
+        "legend": {
+          "displayMode": "table",
+          "placement": "right",
+          "showLegend": true,
+          "values": [
+            "percent",
+            "value"
+          ]
+        },
+        "pieType": "pie",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "/^sum / 100000000000$/",
+          "values": true
+        },
+        "sort": "desc",
+        "tooltip": {
+          "hideZeros": false,
+          "mode": "single",
+          "sort": "none"
+        }
+      },
+      "pluginVersion": "12.4.2",
+      "targets": [
+        {
+          "dataset": "fundsmanager",
+          "editorMode": "builder",
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "SELECT SUM(\"FeeMsat\"), \"IncomingPeerAlias\", \"OutgoingPeerAlias\" FROM \"ForwardingHtlcEvents\" WHERE (\"Outcome\" = 2 AND $__timeFilter(\"EventTimestamp\") AND \"ManagedNodePubKey\" IN ($node)) GROUP BY \"IncomingPeerAlias\", \"OutgoingPeerAlias\" ORDER BY SUM(\"FeeMsat\") DESC LIMIT 500 ",
+          "refId": "A",
+          "sql": {
+            "columns": [
+              {
+                "name": "SUM",
+                "parameters": [
+                  {
+                    "name": "\"FeeMsat\"",
+                    "type": "functionParameter"
+                  }
+                ],
+                "type": "function"
+              },
+              {
+                "parameters": [
+                  {
+                    "name": "\"IncomingPeerAlias\"",
+                    "type": "functionParameter"
+                  }
+                ],
+                "type": "function"
+              },
+              {
+                "parameters": [
+                  {
+                    "name": "\"OutgoingPeerAlias\"",
+                    "type": "functionParameter"
+                  }
+                ],
+                "type": "function"
+              }
+            ],
+            "groupBy": [
+              {
+                "property": {
+                  "name": "\"IncomingPeerAlias\"",
+                  "type": "string"
+                },
+                "type": "groupBy"
+              },
+              {
+                "property": {
+                  "name": "\"OutgoingPeerAlias\"",
+                  "type": "string"
+                },
+                "type": "groupBy"
+              }
+            ],
+            "limit": 500,
+            "orderBy": {
+              "property": {
+                "name": "SUM(\"FeeMsat\")",
+                "type": "string"
+              },
+              "type": "property"
+            },
+            "orderByDirection": "DESC",
+            "whereJsonTree": {
+              "children1": [
+                {
+                  "id": "b899889b-cdef-4012-b456-719d6cbd7329",
+                  "properties": {
+                    "field": "\"Outcome\"",
+                    "fieldSrc": "field",
+                    "operator": "equal",
+                    "value": [
+                      2
+                    ],
+                    "valueError": [
+                      null
+                    ],
+                    "valueSrc": [
+                      "value"
+                    ],
+                    "valueType": [
+                      "number"
+                    ]
+                  },
+                  "type": "rule"
+                },
+                {
+                  "id": "aaa89ba8-89ab-4cde-b012-319d6d60ec02",
+                  "properties": {
+                    "field": "\"EventTimestamp\"",
+                    "fieldSrc": "field",
+                    "operator": "macros",
+                    "value": [
+                      "timeFilter"
+                    ],
+                    "valueError": [
+                      null
+                    ],
+                    "valueSrc": [
+                      "value"
+                    ],
+                    "valueType": [
+                      "datetime"
+                    ]
+                  },
+                  "type": "rule"
+                },
+                {
+                  "id": "bbb99aba-0123-4456-b89a-b19d6e17cc23",
+                  "properties": {
+                    "field": "\"ManagedNodePubKey\"",
+                    "fieldSrc": "field",
+                    "operator": "select_any_in",
+                    "value": [
+                      "$node"
+                    ],
+                    "valueError": [
+                      null
+                    ],
+                    "valueSrc": [
+                      "value"
+                    ],
+                    "valueType": [
+                      "text"
+                    ]
+                  },
+                  "type": "rule"
+                }
+              ],
+              "id": "9ba98b98-0123-4456-b89a-b19d68a8bc01",
+              "type": "group"
+            },
+            "whereString": "(\"Outcome\" = 2 AND $__timeFilter(\"EventTimestamp\") AND \"ManagedNodePubKey\" IN ($node))"
+          },
+          "table": "\"ForwardingHtlcEvents\""
+        }
+      ],
+      "title": "Missed fee distribution (From->To)",
+      "transformations": [
+        {
+          "id": "calculateField",
+          "options": {
+            "alias": "",
+            "binary": {
+              "left": {
+                "matcher": {
+                  "id": "byName",
+                  "options": "sum"
+                }
+              },
+              "operator": "/",
+              "right": {
+                "fixed": "100000000000"
+              }
+            },
+            "mode": "binary",
+            "reduce": {
+              "reducer": "sum"
+            },
+            "replaceFields": false
+          }
+        },
+        {
+          "id": "organize",
+          "options": {
+            "excludeByName": {
+              "sum": true
+            },
+            "includeByName": {},
+            "indexByName": {},
+            "renameByName": {}
+          }
+        }
+      ],
+      "type": "piechart"
+    },
+    {
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "$datasource"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "hideFrom": {
+              "legend": false,
+              "tooltip": false,
+              "viz": false
+            }
+          },
+          "mappings": []
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 61
+      },
+      "id": 21,
+      "options": {
+        "displayLabels": [
+          "percent"
+        ],
+        "legend": {
+          "displayMode": "list",
+          "placement": "right",
+          "showLegend": true
+        },
+        "pieType": "pie",
+        "reduceOptions": {
+          "calcs": [],
+          "fields": "",
+          "values": true
+        },
+        "sort": "desc",
+        "tooltip": {
+          "hideZeros": false,
+          "mode": "single",
+          "sort": "none"
+        }
+      },
+      "pluginVersion": "12.4.2",
+      "targets": [
+        {
+          "dataset": "fundsmanager",
+          "editorMode": "builder",
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "SELECT COUNT(\"CreationDatetime\"), \"IncomingPeerAlias\", \"OutgoingPeerAlias\" FROM \"ForwardingHtlcEvents\" WHERE (\"Outcome\" = 1 AND $__timeFilter(\"EventTimestamp\") AND \"ManagedNodePubKey\" IN ($node)) GROUP BY \"IncomingPeerAlias\", \"OutgoingPeerAlias\" ORDER BY COUNT(\"CreationDatetime\") DESC LIMIT 500 ",
+          "refId": "A",
+          "sql": {
+            "columns": [
+              {
+                "name": "COUNT",
+                "parameters": [
+                  {
+                    "name": "\"CreationDatetime\"",
+                    "type": "functionParameter"
+                  }
+                ],
+                "type": "function"
+              },
+              {
+                "parameters": [
+                  {
+                    "name": "\"IncomingPeerAlias\"",
+                    "type": "functionParameter"
+                  }
+                ],
+                "type": "function"
+              },
+              {
+                "parameters": [
+                  {
+                    "name": "\"OutgoingPeerAlias\"",
+                    "type": "functionParameter"
+                  }
+                ],
+                "type": "function"
+              }
+            ],
+            "groupBy": [
+              {
+                "property": {
+                  "name": "\"IncomingPeerAlias\"",
+                  "type": "string"
+                },
+                "type": "groupBy"
+              },
+              {
+                "property": {
+                  "name": "\"OutgoingPeerAlias\"",
+                  "type": "string"
+                },
+                "type": "groupBy"
+              }
+            ],
+            "limit": 500,
+            "orderBy": {
+              "property": {
+                "name": "COUNT(\"CreationDatetime\")",
+                "type": "string"
+              },
+              "type": "property"
+            },
+            "orderByDirection": "DESC",
+            "whereJsonTree": {
+              "children1": [
+                {
+                  "id": "b899889b-cdef-4012-b456-719d6cbd7329",
+                  "properties": {
+                    "field": "\"Outcome\"",
+                    "fieldSrc": "field",
+                    "operator": "equal",
+                    "value": [
+                      1
+                    ],
+                    "valueError": [
+                      null
+                    ],
+                    "valueSrc": [
+                      "value"
+                    ],
+                    "valueType": [
+                      "number"
+                    ]
+                  },
+                  "type": "rule"
+                },
+                {
+                  "id": "aaa89ba8-89ab-4cde-b012-319d6d60ec02",
+                  "properties": {
+                    "field": "\"EventTimestamp\"",
+                    "fieldSrc": "field",
+                    "operator": "macros",
+                    "value": [
+                      "timeFilter"
+                    ],
+                    "valueError": [
+                      null
+                    ],
+                    "valueSrc": [
+                      "value"
+                    ],
+                    "valueType": [
+                      "datetime"
+                    ]
+                  },
+                  "type": "rule"
+                },
+                {
+                  "id": "8ba98b99-cdef-4012-b456-719d6e0c80a5",
+                  "properties": {
+                    "field": "\"ManagedNodePubKey\"",
+                    "fieldSrc": "field",
+                    "operator": "select_any_in",
+                    "value": [
+                      "$node"
+                    ],
+                    "valueError": [
+                      null
+                    ],
+                    "valueSrc": [
+                      "value"
+                    ],
+                    "valueType": [
+                      "text"
+                    ]
+                  },
+                  "type": "rule"
+                }
+              ],
+              "id": "9ba98b98-0123-4456-b89a-b19d68a8bc01",
+              "type": "group"
+            },
+            "whereString": "(\"Outcome\" = 1 AND $__timeFilter(\"EventTimestamp\") AND \"ManagedNodePubKey\" IN ($node))"
+          },
+          "table": "\"ForwardingHtlcEvents\""
+        }
+      ],
+      "title": "Routed HTLC counted distribution (From->To)",
+      "type": "piechart"
+    },
+    {
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "$datasource"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "hideFrom": {
+              "legend": false,
+              "tooltip": false,
+              "viz": false
+            }
+          },
+          "mappings": []
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 61
+      },
+      "id": 22,
+      "options": {
+        "displayLabels": [
+          "percent"
+        ],
+        "legend": {
+          "displayMode": "list",
+          "placement": "right",
+          "showLegend": true
+        },
+        "pieType": "pie",
+        "reduceOptions": {
+          "calcs": [],
+          "fields": "",
+          "values": true
+        },
+        "sort": "desc",
+        "tooltip": {
+          "hideZeros": false,
+          "mode": "single",
+          "sort": "none"
+        }
+      },
+      "pluginVersion": "12.4.2",
+      "targets": [
+        {
+          "dataset": "fundsmanager",
+          "editorMode": "builder",
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "SELECT COUNT(\"CreationDatetime\"), \"IncomingPeerAlias\", \"OutgoingPeerAlias\" FROM \"ForwardingHtlcEvents\" WHERE (\"Outcome\" = 2 AND $__timeFilter(\"EventTimestamp\") AND \"ManagedNodePubKey\" IN ($node)) GROUP BY \"IncomingPeerAlias\", \"OutgoingPeerAlias\" ORDER BY COUNT(\"CreationDatetime\") DESC LIMIT 500 ",
+          "refId": "A",
+          "sql": {
+            "columns": [
+              {
+                "name": "COUNT",
+                "parameters": [
+                  {
+                    "name": "\"CreationDatetime\"",
+                    "type": "functionParameter"
+                  }
+                ],
+                "type": "function"
+              },
+              {
+                "parameters": [
+                  {
+                    "name": "\"IncomingPeerAlias\"",
+                    "type": "functionParameter"
+                  }
+                ],
+                "type": "function"
+              },
+              {
+                "parameters": [
+                  {
+                    "name": "\"OutgoingPeerAlias\"",
+                    "type": "functionParameter"
+                  }
+                ],
+                "type": "function"
+              }
+            ],
+            "groupBy": [
+              {
+                "property": {
+                  "name": "\"IncomingPeerAlias\"",
+                  "type": "string"
+                },
+                "type": "groupBy"
+              },
+              {
+                "property": {
+                  "name": "\"OutgoingPeerAlias\"",
+                  "type": "string"
+                },
+                "type": "groupBy"
+              }
+            ],
+            "limit": 500,
+            "orderBy": {
+              "property": {
+                "name": "COUNT(\"CreationDatetime\")",
+                "type": "string"
+              },
+              "type": "property"
+            },
+            "orderByDirection": "DESC",
+            "whereJsonTree": {
+              "children1": [
+                {
+                  "id": "b899889b-cdef-4012-b456-719d6cbd7329",
+                  "properties": {
+                    "field": "\"Outcome\"",
+                    "fieldSrc": "field",
+                    "operator": "equal",
+                    "value": [
+                      2
+                    ],
+                    "valueError": [
+                      null
+                    ],
+                    "valueSrc": [
+                      "value"
+                    ],
+                    "valueType": [
+                      "number"
+                    ]
+                  },
+                  "type": "rule"
+                },
+                {
+                  "id": "aaa89ba8-89ab-4cde-b012-319d6d60ec02",
+                  "properties": {
+                    "field": "\"EventTimestamp\"",
+                    "fieldSrc": "field",
+                    "operator": "macros",
+                    "value": [
+                      "timeFilter"
+                    ],
+                    "valueError": [
+                      null
+                    ],
+                    "valueSrc": [
+                      "value"
+                    ],
+                    "valueType": [
+                      "datetime"
+                    ]
+                  },
+                  "type": "rule"
+                },
+                {
+                  "id": "8ba98b99-cdef-4012-b456-719d6e0c80a5",
+                  "properties": {
+                    "field": "\"ManagedNodePubKey\"",
+                    "fieldSrc": "field",
+                    "operator": "select_any_in",
+                    "value": [
+                      "$node"
+                    ],
+                    "valueError": [
+                      null
+                    ],
+                    "valueSrc": [
+                      "value"
+                    ],
+                    "valueType": [
+                      "text"
+                    ]
+                  },
+                  "type": "rule"
+                }
+              ],
+              "id": "9ba98b98-0123-4456-b89a-b19d68a8bc01",
+              "type": "group"
+            },
+            "whereString": "(\"Outcome\" = 2 AND $__timeFilter(\"EventTimestamp\") AND \"ManagedNodePubKey\" IN ($node))"
+          },
+          "table": "\"ForwardingHtlcEvents\""
+        }
+      ],
+      "title": "Missed HTLC counted distribution (From->To)",
+      "type": "piechart"
+    },
+    {
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "$datasource"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "hideFrom": {
+              "legend": false,
+              "tooltip": false,
+              "viz": false
+            }
+          },
+          "mappings": []
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 69
+      },
+      "id": 17,
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "right",
+          "showLegend": true,
+          "values": [
+            "percent",
+            "value"
+          ]
+        },
+        "pieType": "pie",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": true
+        },
+        "sort": "desc",
+        "tooltip": {
+          "hideZeros": false,
+          "mode": "single",
+          "sort": "none"
+        }
+      },
+      "pluginVersion": "12.4.2",
+      "targets": [
+        {
+          "dataset": "fundsmanager",
+          "editorMode": "builder",
+          "format": "table",
+          "rawSql": "SELECT COUNT(\"FailureString\"), \"FailureString\" FROM \"ForwardingHtlcEvents\" WHERE ($__timeFilter(\"EventTimestamp\") AND \"ManagedNodePubKey\" IN ($node)) GROUP BY \"FailureString\" LIMIT 50 ",
+          "refId": "A",
+          "sql": {
+            "columns": [
+              {
+                "name": "COUNT",
+                "parameters": [
+                  {
+                    "name": "\"FailureString\"",
+                    "type": "functionParameter"
+                  }
+                ],
+                "type": "function"
+              },
+              {
+                "parameters": [
+                  {
+                    "name": "\"FailureString\"",
+                    "type": "functionParameter"
+                  }
+                ],
+                "type": "function"
+              }
+            ],
+            "groupBy": [
+              {
+                "property": {
+                  "name": "\"FailureString\"",
+                  "type": "string"
+                },
+                "type": "groupBy"
+              }
+            ],
+            "limit": 50,
+            "whereJsonTree": {
+              "children1": [
+                {
+                  "id": "9ab899ba-cdef-4012-b456-719d73491530",
+                  "properties": {
+                    "field": "\"EventTimestamp\"",
+                    "fieldSrc": "field",
+                    "operator": "macros",
+                    "value": [
+                      "timeFilter"
+                    ],
+                    "valueError": [
+                      null
+                    ],
+                    "valueSrc": [
+                      "value"
+                    ],
+                    "valueType": [
+                      "datetime"
+                    ]
+                  },
+                  "type": "rule"
+                },
+                {
+                  "id": "8abab889-89ab-4cde-b012-319d734a9da7",
+                  "properties": {
+                    "field": "\"ManagedNodePubKey\"",
+                    "fieldSrc": "field",
+                    "operator": "select_any_in",
+                    "value": [
+                      "$node"
+                    ],
+                    "valueError": [
+                      null
+                    ],
+                    "valueSrc": [
+                      "value"
+                    ],
+                    "valueType": [
+                      "text"
+                    ]
+                  },
+                  "type": "rule"
+                }
+              ],
+              "id": "988b8bb9-0123-4456-b89a-b19d6d718135",
+              "type": "group"
+            },
+            "whereString": "($__timeFilter(\"EventTimestamp\") AND \"ManagedNodePubKey\" IN ($node))"
+          },
+          "table": "\"ForwardingHtlcEvents\""
+        }
+      ],
+      "title": "Failure string ",
+      "type": "piechart"
+    },
+    {
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "$datasource"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "thresholds"
+          },
+          "decimals": 0,
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "red",
+                "value": 0
+              },
+              {
+                "color": "green",
+                "value": 1
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 7,
+        "w": 6,
+        "x": 0,
+        "y": 102
+      },
+      "id": 30,
+      "options": {
+        "colorMode": "value",
+        "graphMode": "none",
+        "justifyMode": "auto",
+        "orientation": "auto",
+        "percentChangeColorMode": "standard",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": true
+        },
+        "showPercentChange": false,
+        "textMode": "auto",
+        "wideLayout": true
+      },
+      "pluginVersion": "12.4.2",
+      "targets": [
+        {
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "$datasource"
+          },
+          "editorMode": "code",
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "SELECT COUNT(*) AS value FROM \"Nodes\" WHERE \"ChannelAdminMacaroon\" IS NOT NULL",
+          "refId": "A"
+        }
+      ],
+      "title": "Local Managed Nodes",
+      "type": "stat"
+    }
+  ],
+  "preload": false,
+  "refresh": "1m",
+  "schemaVersion": 42,
+  "tags": [],
+  "templating": {
+    "list": [
+      {
+        "current": {
+          "selected": true,
+          "text": "NodeGuard PostgreSQL",
+          "value": "nodeguard-postgres"
+        },
+        "hide": 0,
+        "includeAll": false,
+        "label": "Datasource",
+        "multi": false,
+        "name": "datasource",
+        "options": [],
+        "query": "grafana-postgresql-datasource",
+        "refresh": 1,
+        "regex": "",
+        "type": "datasource"
+      },
+      {
+        "allowCustomValue": false,
+        "current": {
+          "text": "All",
+          "value": [
+            "$__all"
+          ]
+        },
+        "datasource": {
+          "type": "grafana-postgresql-datasource",
+          "uid": "$datasource"
+        },
+        "definition": "SELECT \"Name\", \"PubKey\" FROM \"Nodes\" WHERE \"ChannelAdminMacaroon\" IS NOT NULL LIMIT 50 ",
+        "includeAll": true,
+        "label": "Node",
+        "multi": true,
+        "name": "node",
+        "options": [],
+        "query": {
+          "dataset": "fundsmanager",
+          "editorMode": "builder",
+          "format": "table",
+          "meta": {
+            "textField": "Name",
+            "valueField": "PubKey"
+          },
+          "query": "SELECT \"Name\", \"PubKey\" FROM \"Nodes\" WHERE \"ChannelAdminMacaroon\" IS NOT NULL LIMIT 50 ",
+          "rawSql": "SELECT \"Name\", \"PubKey\" FROM \"Nodes\" WHERE \"ChannelAdminMacaroon\" IS NOT NULL LIMIT 50 ",
+          "refId": "SQLVariableQueryEditor-VariableQuery",
+          "sql": {
+            "columns": [
+              {
+                "parameters": [
+                  {
+                    "name": "\"Name\"",
+                    "type": "functionParameter"
+                  }
+                ],
+                "type": "function"
+              },
+              {
+                "parameters": [
+                  {
+                    "name": "\"PubKey\"",
+                    "type": "functionParameter"
+                  }
+                ],
+                "type": "function"
+              }
+            ],
+            "groupBy": [
+              {
+                "property": {
+                  "type": "string"
+                },
+                "type": "groupBy"
+              }
+            ],
+            "limit": 50,
+            "whereJsonTree": {
+              "children1": [
+                {
+                  "id": "9b8988b9-0123-4456-b89a-b19d6dff19f6",
+                  "properties": {
+                    "field": "\"ChannelAdminMacaroon\"",
+                    "fieldSrc": "field",
+                    "operator": "is_not_null",
+                    "value": [],
+                    "valueSrc": [],
+                    "valueType": []
+                  },
+                  "type": "rule"
+                }
+              ],
+              "id": "988b8bb9-0123-4456-b89a-b19d6d718135",
+              "type": "group"
+            },
+            "whereString": "\"ChannelAdminMacaroon\" IS NOT NULL"
+          },
+          "table": "\"Nodes\""
+        },
+        "refresh": 1,
+        "regex": "",
+        "regexApplyTo": "value",
+        "type": "query"
+      }
+    ]
+  },
+  "time": {
+    "from": "2026-04-06T22:00:00.000Z",
+    "to": "now"
+  },
+  "timepicker": {},
+  "timezone": "browser",
+  "title": "Routing",
+  "uid": "ad4n8c6",
+  "version": 1,
+  "weekStart": ""
+}
