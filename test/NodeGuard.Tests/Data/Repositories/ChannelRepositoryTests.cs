@@ -27,6 +27,7 @@ using Google.Protobuf;
 using Lnrpc;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
+using NBitcoin;
 using Quartz;
 using Channel = NodeGuard.Data.Models.Channel;
 
@@ -185,5 +186,57 @@ public class ChannelRepositoryTests
         result.Item1.Should().BeFalse();
         channel.Status.Should().Be(Channel.ChannelStatus.Open);
         result.Item2.Should().NotBeNull();
+    }
+
+    [Fact]
+    public async Task GetByOutpoint_ReturnsMatchingChannel()
+    {
+        // Arrange
+        var options = new DbContextOptionsBuilder<ApplicationDbContext>()
+            .UseInMemoryDatabase(databaseName: $"ChannelRepositoryTests_{Guid.NewGuid()}")
+            .Options;
+        var dbContextFactory = new Mock<IDbContextFactory<ApplicationDbContext>>();
+        dbContextFactory
+            .Setup(x => x.CreateDbContextAsync(default))
+            .ReturnsAsync(() => new ApplicationDbContext(options));
+
+        var fundingTx = "0000000000000000000000000000000000000000000000000000000000000001";
+        await using (var context = new ApplicationDbContext(options))
+        {
+            context.Channels.AddRange(
+                new Channel
+                {
+                    Id = 1,
+                    FundingTx = fundingTx,
+                    FundingTxOutputIndex = 2,
+                    ChanId = 100,
+                    Status = Channel.ChannelStatus.Open
+                },
+                new Channel
+                {
+                    Id = 2,
+                    FundingTx = fundingTx,
+                    FundingTxOutputIndex = 3,
+                    ChanId = 101,
+                    Status = Channel.ChannelStatus.Open
+                });
+            await context.SaveChangesAsync();
+        }
+
+        var channelRepository = new ChannelRepository(
+            new Mock<IRepository<Channel>>().Object,
+            new Mock<ILogger<ChannelRepository>>().Object,
+            dbContextFactory.Object,
+            new Mock<IChannelOperationRequestRepository>().Object,
+            new Mock<ISchedulerFactory>().Object,
+            new Mock<IMapper>().Object,
+            new Mock<ILightningClientService>().Object);
+
+        // Act
+        var result = await channelRepository.GetByOutpoint(NBitcoin.OutPoint.Parse($"{fundingTx}:2"));
+
+        // Assert
+        result.Should().NotBeNull();
+        result!.Id.Should().Be(1);
     }
 }

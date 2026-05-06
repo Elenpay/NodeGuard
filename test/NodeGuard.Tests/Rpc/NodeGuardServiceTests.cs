@@ -1163,6 +1163,122 @@ namespace NodeGuard.Rpc
             nodeRepositoryMock.Verify(repo => repo.GetAllManagedByNodeGuard(It.IsAny<bool>()), Times.Once);
         }
 
+        [Fact]
+        public async Task SetChannelFeePolicy_ValidRequest_CallsLightningService()
+        {
+            // Arrange
+            var lightningServiceMock = new Mock<ILightningService>();
+            var service = CreateNodeGuardService(lightningService: lightningServiceMock.Object);
+            var request = new SetChannelFeePolicyRequest
+            {
+                ChanPoint = "0000000000000000000000000000000000000000000000000000000000000001:2",
+                NodePubkey = "managedPubKey",
+                BaseFeeMsat = 1000,
+                FeeRatePpm = 250,
+                TimeLockDelta = 40,
+                InboundFeePolicy = new InboundFeePolicy
+                {
+                    BaseFeeMsat = -100,
+                    FeeRatePpm = -25
+                }
+            };
+
+            // Act
+            var response = await service.SetChannelFeePolicy(request, TestServerCallContext.Create());
+
+            // Assert
+            response.Should().NotBeNull();
+            lightningServiceMock.Verify(x => x.SetChannelFeePolicy(
+                request.ChanPoint,
+                request.NodePubkey,
+                request.BaseFeeMsat,
+                request.FeeRatePpm,
+                request.TimeLockDelta,
+                request.InboundFeePolicy.BaseFeeMsat,
+                request.InboundFeePolicy.FeeRatePpm), Times.Once);
+        }
+
+        [Fact]
+        public async Task SetChannelFeePolicy_WithoutInboundPolicy_PassesNullInboundValues()
+        {
+            // Arrange
+            var lightningServiceMock = new Mock<ILightningService>();
+            var service = CreateNodeGuardService(lightningService: lightningServiceMock.Object);
+            var request = new SetChannelFeePolicyRequest
+            {
+                ChanPoint = "0000000000000000000000000000000000000000000000000000000000000001:2",
+                NodePubkey = "managedPubKey",
+                BaseFeeMsat = 1000,
+                FeeRatePpm = 250,
+                TimeLockDelta = 40
+            };
+
+            // Act
+            await service.SetChannelFeePolicy(request, TestServerCallContext.Create());
+
+            // Assert
+            lightningServiceMock.Verify(x => x.SetChannelFeePolicy(
+                request.ChanPoint,
+                request.NodePubkey,
+                request.BaseFeeMsat,
+                request.FeeRatePpm,
+                request.TimeLockDelta,
+                null,
+                null), Times.Once);
+        }
+
+        [Fact]
+        public async Task SetChannelFeePolicy_ArgumentException_ReturnsInvalidArgument()
+        {
+            // Arrange
+            var lightningServiceMock = new Mock<ILightningService>();
+            lightningServiceMock
+                .Setup(x => x.SetChannelFeePolicy(
+                    It.IsAny<string>(),
+                    It.IsAny<string>(),
+                    It.IsAny<long>(),
+                    It.IsAny<uint>(),
+                    It.IsAny<uint>(),
+                    It.IsAny<int?>(),
+                    It.IsAny<int?>()))
+                .ThrowsAsync(new ArgumentException("invalid chan point"));
+            var service = CreateNodeGuardService(lightningService: lightningServiceMock.Object);
+
+            // Act
+            var act = async () => await service.SetChannelFeePolicy(new SetChannelFeePolicyRequest(), TestServerCallContext.Create());
+
+            // Assert
+            var exception = await act.Should().ThrowAsync<RpcException>();
+            exception.Which.Status.StatusCode.Should().Be(StatusCode.InvalidArgument);
+            exception.Which.Status.Detail.Should().Be("invalid chan point");
+        }
+
+        [Fact]
+        public async Task SetChannelFeePolicy_Exception_ReturnsInternal()
+        {
+            // Arrange
+            var lightningServiceMock = new Mock<ILightningService>();
+            lightningServiceMock
+                .Setup(x => x.SetChannelFeePolicy(
+                    It.IsAny<string>(),
+                    It.IsAny<string>(),
+                    It.IsAny<long>(),
+                    It.IsAny<uint>(),
+                    It.IsAny<uint>(),
+                    It.IsAny<int?>(),
+                    It.IsAny<int?>()))
+                .ThrowsAsync(new Exception("lnd update failed"));
+            var service = CreateNodeGuardService(lightningService: lightningServiceMock.Object);
+
+            // Act
+            var act = async () => await service.SetChannelFeePolicy(new SetChannelFeePolicyRequest(), TestServerCallContext.Create());
+
+            // Assert
+            var exception = await act.Should().ThrowAsync<RpcException>();
+            exception.Which.Status.StatusCode.Should().Be(StatusCode.Internal);
+            exception.Which.Status.Detail.Should().Be("lnd update failed");
+        }
+
 
         [Fact]
         public async Task GetAvailableWallets_ReturnsTypeCold()
