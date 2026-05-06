@@ -89,6 +89,11 @@ service NodeGuardService {
   Adds tags to UTXOs under the treasury
    */
   rpc AddTags(AddTagsRequest) returns (AddTagsResponse);
+  
+  /*
+  Sets the fee policy for a channel
+   */
+  rpc SetChannelFeePolicy(SetChannelFeePolicyRequest) returns (SetChannelFeePolicyResponse);
 }
 
 message GetLiquidityRulesRequest {
@@ -443,4 +448,21 @@ message AddTagsRequest {
 }
 
 message AddTagsResponse {
+}
+
+message SetChannelFeePolicyRequest {
+  string chan_point = 1;
+  int64 base_fee_msat = 2;
+  uint32 fee_rate_ppm = 3;
+  uint32 time_lock_delta = 4;
+  optional InboundFeePolicy inbound_fee_policy = 5;
+  string node_pubkey = 6;
+}
+
+message InboundFeePolicy {
+  int32 base_fee_msat = 1;
+  int32 fee_rate_ppm = 2;
+}
+
+message SetChannelFeePolicyResponse {
 }

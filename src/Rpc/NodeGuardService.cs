@@ -54,6 +54,8 @@ public interface INodeGuardService
     Task<GetChannelResponse> GetChannel(GetChannelRequest request, ServerCallContext context);
 
     Task<AddTagsResponse> AddTags(AddTagsRequest request, ServerCallContext context);
+
+    Task<SetChannelFeePolicyResponse> SetChannelFeePolicy(SetChannelFeePolicyRequest request, ServerCallContext context);
 }
 
 /// <summary>
@@ -1202,5 +1204,22 @@ public class NodeGuardService : Nodeguard.NodeGuardService.NodeGuardServiceBase,
         }
 
         return true;
+    }
+
+    public override async Task<SetChannelFeePolicyResponse> SetChannelFeePolicy(SetChannelFeePolicyRequest request, ServerCallContext context)
+    {
+        try {
+            await _lightningService.SetChannelFeePolicy(request.ChanPoint, request.NodePubkey, request.BaseFeeMsat, request.FeeRatePpm, request.TimeLockDelta, request.InboundFeePolicy?.BaseFeeMsat, request.InboundFeePolicy?.FeeRatePpm);
+        }
+        catch (ArgumentException e)
+        {
+            throw new RpcException(new Status(StatusCode.InvalidArgument, e.Message));
+        }
+        catch (Exception e)
+        {
+            throw new RpcException(new Status(StatusCode.Internal, e.Message));
+        }
+
+        return new SetChannelFeePolicyResponse();
     }
 }
