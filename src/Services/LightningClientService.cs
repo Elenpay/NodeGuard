@@ -44,6 +44,8 @@ public interface ILightningClientService
     public void FundingStateStepVerify(Node node, PSBT finalizedPSBT, byte[] pendingChannelId, Lightning.LightningClient? client = null);
     public void FundingStateStepFinalize(Node node, PSBT finalizedPSBT, byte[] pendingChannelId, Lightning.LightningClient? client = null);
     public void FundingStateStepCancel(Node node, byte[] pendingChannelId, Lightning.LightningClient? client = null);
+
+    public Task<PolicyUpdateResponse?> SetChannelFeePolicy(Node node, NBitcoin.OutPoint chanPoint, long baseFeeMsat, uint feeRatePpm, uint timeLockDelta, int? inboundBaseFeeMsat, int? inboundFeeRatePpm, Lightning.LightningClient? client = null);
 }
 
 public class LightningClientService : ILightningClientService
@@ -335,5 +337,33 @@ public class LightningClientService : ILightningClientService
                     PendingChanId = ByteString.CopyFrom(pendingChannelId)
                 }
             }, new Metadata { { "macaroon", node.ChannelAdminMacaroon } });
+    }
+
+    public async Task<PolicyUpdateResponse?> SetChannelFeePolicy(Node node, NBitcoin.OutPoint chanPoint, long baseFeeMsat, uint feeRatePpm, uint timeLockDelta, int? inboundBaseFeeMsat, int? inboundFeeRatePpm, Lightning.LightningClient? client = null)
+    {
+        client ??= GetLightningClient(node.Endpoint);
+
+        var request = new PolicyUpdateRequest
+        {
+            ChanPoint = new ChannelPoint
+            {
+                FundingTxidStr = chanPoint.Hash.ToString(),
+                OutputIndex = chanPoint.N
+            },
+            BaseFeeMsat = baseFeeMsat,
+            FeeRatePpm = feeRatePpm,
+            TimeLockDelta = timeLockDelta
+        };
+
+        if (inboundBaseFeeMsat.HasValue && inboundFeeRatePpm.HasValue)
+        {
+            request.InboundFee = new InboundFee
+            {
+                BaseFeeMsat = inboundBaseFeeMsat.Value,
+                FeeRatePpm = inboundFeeRatePpm.Value
+            };
+        }
+
+        return await client.UpdateChannelPolicyAsync(request, new Metadata { { "macaroon", node.ChannelAdminMacaroon } });
     }
 }
