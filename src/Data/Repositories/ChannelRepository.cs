@@ -70,6 +70,13 @@ namespace NodeGuard.Data.Repositories
             return await applicationDbContext.Channels.Include(x => x.ChannelOperationRequests).FirstOrDefaultAsync(x => x.ChanId.Equals(chanId));
         }
 
+        public async Task<Channel?> GetByOutpoint(OutPoint outpoint)
+        {
+            await using var applicationDbContext = await _dbContextFactory.CreateDbContextAsync();
+            
+            return await applicationDbContext.Channels.FirstOrDefaultAsync(c => c.FundingTx == outpoint.Hash.ToString() && c.FundingTxOutputIndex == outpoint.N);
+        }
+
         public async Task<List<Channel>> GetAll()
         {
             await using var applicationDbContext = await _dbContextFactory.CreateDbContextAsync();
