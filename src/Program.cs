@@ -121,6 +121,7 @@ namespace NodeGuard
             builder.Services.AddTransient<IWalletWithdrawalRequestRepository, WalletWithdrawalRequestRepository>();
             builder.Services.AddTransient<IWalletWithdrawalRequestDestinationRepository, WalletWithdrawalRequestDestinationRepository>();
             builder.Services.AddTransient<ISwapOutRepository, SwapOutRepository>();
+            builder.Services.AddTransient<IRebalanceRepository, RebalanceRepository>();
             builder.Services.AddTransient<IRemoteSignerService, RemoteSignerServiceService>();
             builder.Services.AddTransient<ILiquidityRuleRepository, LiquidityRuleRepository>();
             builder.Services.AddTransient<IAuditLogRepository, AuditLogRepository>();
@@ -144,6 +145,7 @@ namespace NodeGuard
             builder.Services.AddTransient<NotificationService, NotificationService>();
             builder.Services.AddTransient<INBXplorerService, NBXplorerService>();
             builder.Services.AddTransient<ISwapsService, SwapsService>();
+            builder.Services.AddTransient<IRebalanceService, RebalanceService>();
             builder.Services.AddScoped<IAuditService, AuditService>();
 
             //DbContext
@@ -191,7 +193,7 @@ namespace NodeGuard
                     o.Protocols =
                         HttpProtocols.Http1);
             });
-            
+
             // Npgsql JSON mapping is opt-in per https://www.npgsql.org/doc/release-notes/8.0.html#breaking-changes
             NpgsqlConnection.GlobalTypeMapper.EnableDynamicJson();
 
@@ -256,7 +258,8 @@ namespace NodeGuard
                     opts.ForJob(nameof(AutoLiquidityManagementJob))
                         .WithIdentity($"{nameof(AutoLiquidityManagementJob)}Trigger")
                         .StartNow().WithSimpleSchedule(scheduleBuilder =>
-                        {  if (Constants.IS_DEV_ENVIRONMENT)
+                        {
+                            if (Constants.IS_DEV_ENVIRONMENT)
                             {
                                 scheduleBuilder.WithIntervalInMinutes(1).RepeatForever();
                             }
@@ -348,7 +351,6 @@ namespace NodeGuard
                             }
                         });
                 });
-
                 // Audit Log Cleanup Job
                 q.AddJob<AuditLogCleanupJob>(opts =>
                 {
@@ -362,7 +364,7 @@ namespace NodeGuard
                         .WithIdentity($"{nameof(AuditLogCleanupJob)}Trigger")
                         .StartNow().WithSimpleSchedule(scheduleBuilder =>
                         {
-                            scheduleBuilder.WithIntervalInHours(24).RepeatForever();                         
+                            scheduleBuilder.WithIntervalInHours(24).RepeatForever();
                         });
                 });
             });

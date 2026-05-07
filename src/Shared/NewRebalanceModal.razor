@@ -1,0 +1,597 @@
+@using Grpc.Core
+@using NBitcoin
+@using Blazorise
+@using NodeGuard.Data.Models
+@using NodeGuard.Helpers
+@using NodeGuard.Services
+<Modal @ref="_modalRef">
+    <ModalContent Centered>
+        <ModalHeader>
+            <ModalTitle>New rebalance</ModalTitle>
+            <CloseButton />
+        </ModalHeader>
+        <ModalBody Class="overflow-y-auto" Style="max-height: 75vh;">
+            <Fields Flex="Flex.Column">
+                <Field>
+                    <FieldLabel Class="d-flex">
+                        Source node
+                        <Tooltip Class="ml-2" Text="The managed LND node that initiates the circular self-payment." Placement="TooltipPlacement.Top">
+                            <Icon Name="IconName.Info"/>
+                        </Tooltip>
+                    </FieldLabel>
+                    <SelectList TItem="Node"
+                                TValue="int"
+                                Data="@_availableNodes"
+                                SelectedValue="@(_selectedNode?.Id ?? 0)"
+                                TextField="@((item) => item.Name)"
+                                ValueField="@((item) => item.Id)"
+                                SelectedValueChanged="OnNodeChanged"
+                                DefaultItemText="Choose the source node">
+                    </SelectList>
+                </Field>
+                <Field>
+                    <FieldLabel Class="d-flex">
+                        Source channel <span class="text-muted">(drain)</span>
+                        <Tooltip Class="ml-2" Text="The channel being drained — sats leave on this channel and traverse the network. Required: its current balance is what the target ratio is computed against." Placement="TooltipPlacement.Top">
+                            <Icon Name="IconName.Info"/>
+                        </Tooltip>
+                    </FieldLabel>
+                    <SelectList TItem="PeerOption"
+                                TValue="string"
+                                Data="@_sourcePeerOptions"
+                                SelectedValue="@(_selectedSourcePubkey ?? "")"
+                                TextField="@((item) => item.DisplayName)"
+                                ValueField="@((item) => item.Pubkey)"
+                                SelectedValueChanged="OnSourcePeerChanged"
+                                DefaultItemText="All peers">
+                    </SelectList>
+                    <SelectList TItem="Channel"
+                                TValue="int"
+                                Data="@FilteredSourceChannels"
+                                SelectedValue="@(_selectedSourceChannel?.Id ?? 0)"
+                                TextField="@((item) => FormatChannelOption(item))"
+                                ValueField="@((item) => item.Id)"
+                                SelectedValueChanged="OnSourceChannelChanged"
+                                DefaultItemText="Choose the source channel"
+                                Disabled="@(_selectedNode == null)">
+                    </SelectList>
+                </Field>
+                <Field>
+                    <FieldLabel Class="d-flex">
+                        Receiving peer <span class="text-muted">(optional)</span>
+                        <Tooltip Class="ml-2" Text="Pins LND's LastHopPubkey to this peer — i.e. the rebalanced sats must come back to your node FROM this peer. You cannot pick which specific channel receives: if the peer has multiple channels with you, LND picks one. Leave blank to let LND choose any inbound peer." Placement="TooltipPlacement.Top">
+                            <Icon Name="IconName.Info"/>
+                        </Tooltip>
+                    </FieldLabel>
+                    <SelectList TItem="PeerOption"
+                                TValue="string"
+                                Data="@_peerOptions"
+                                SelectedValue="@(_selectedTargetPubkey ?? "")"
+                                TextField="@((item) => item.DisplayName)"
+                                ValueField="@((item) => item.Pubkey)"
+                                SelectedValueChanged="OnTargetPeerChanged"
+                                DefaultItemText="Any (let LND choose)">
+                    </SelectList>
+                    <FieldHelp>
+                        @if (string.IsNullOrEmpty(_selectedTargetPubkey))
+                        {
+                            <span>No receiving peer pinned — LND will pick any inbound peer that satisfies the cost cap.</span>
+                        }
+                        else if (_targetOutboundPpm.HasValue)
+                        {
+                            <span>Outbound fee rate to this peer: <strong>@_targetOutboundPpm.Value ppm</strong> (for reference only).</span>
+                        }
+                    </FieldHelp>
+                </Field>
+                <Field>
+                    <FieldLabel Class="d-flex">
+                        Target inbound %
+                        <Tooltip Class="ml-2" Text="Desired inbound liquidity ratio of the source channel AFTER the rebalance. 100% = local fully drained. Must be greater than the current inbound %." Placement="TooltipPlacement.Top">
+                            <Icon Name="IconName.Info"/>
+                        </Tooltip>
+                    </FieldLabel>
+                    <NumericPicker TValue="decimal"
+                                   @bind-Value="_targetInboundPct"
+                                   CurrencySymbolPlacement="CurrencySymbolPlacement.Suffix"
+                                   CurrencySymbol="%"
+                                   Decimals="1"
+                                   Step="1m"
+                                   Min="0m"
+                                   Max="100m"/>
+                </Field>
+
+                @if (_sourceLocalSats.HasValue && _sourceRemoteSats.HasValue)
+                {
+                    <div class="rebalance-preview p-3 mb-3" style="border: 1px solid #444; border-radius: 6px;">
+                        <div style="font-weight: 600; margin-bottom: 0.5rem;">Source channel — @_selectedSourceChannel?.ChanId</div>
+                        @RenderBalanceBar("Before", _sourceLocalSats.Value, _sourceRemoteSats.Value)
+                        @RenderBalanceBar("After", SourceLocalAfter, SourceRemoteAfter, isProjection: true)
+
+                        @if (!string.IsNullOrEmpty(_selectedTargetPubkey))
+                        {
+                            <div style="font-size: 0.85em; color: #888; margin-top: 0.5rem;">
+                                Receiving peer pinned: <strong>@_selectedTargetPubkey.Substring(0, 10)…</strong>. The exact channel that lands the sats is LND's call — no per-channel projection possible.
+                            </div>
+                        }
+
+                        <div style="margin-top: 0.75rem; font-size: 0.9em;">
+                            @{
+                                var amount = ComputeAmountSats();
+                            }
+                            @if (amount > 0)
+                            {
+                                <div>Will move <strong>@FormatSats(amount)</strong> from local→remote on the source channel.</div>
+                                <div>Max fee: <strong>@FormatSats(MaxFeeSatsPreview)</strong> (@_maxFeePct.ToString("0.####")% = @PctToPpm(_maxFeePct) ppm).</div>
+                            }
+                            else
+                            {
+                                <div style="color: orange;">Channel is already at or above the requested inbound %. Increase the target above @CurrentInboundPct.ToString("0.0")%.</div>
+                            }
+                        </div>
+                    </div>
+                }
+                else if (_selectedSourceChannel != null)
+                {
+                    <div class="text-muted">Loading current balance…</div>
+                }
+
+                <Field>
+                    <FieldLabel Class="d-flex">
+                        Max fee percent
+                        <Tooltip Class="ml-2" Text="Absolute fee cap as a percentage of the rebalanced amount. 0.05% = 500 ppm. Retries may escalate up to the retry max fee percent." Placement="TooltipPlacement.Top">
+                            <Icon Name="IconName.Info"/>
+                        </Tooltip>
+                    </FieldLabel>
+                    <NumericPicker TValue="decimal"
+                                   @bind-Value="_maxFeePct"
+                                   CurrencySymbolPlacement="CurrencySymbolPlacement.Suffix"
+                                   CurrencySymbol=" %"
+                                   Decimals="4"
+                                   Step="0.001m"
+                                   Min="0m"/>
+                    <FieldHelp>
+                        @($"{_maxFeePct:0.####}% of rebalanced amount = {PctToPpm(_maxFeePct)} ppm.")
+                    </FieldHelp>
+                </Field>
+                <Field>
+                    <FieldLabel Class="d-flex">
+                        Timeout (seconds)
+                        <Tooltip Class="ml-2" Text="How long LND will keep trying to find / settle a path before giving up." Placement="TooltipPlacement.Top">
+                            <Icon Name="IconName.Info"/>
+                        </Tooltip>
+                    </FieldLabel>
+                    <NumericPicker TValue="int"
+                                   @bind-Value="_timeoutSeconds"
+                                   Step="5"
+                                   Min="10"
+                                   Max="600"/>
+                </Field>
+                <Accordion>
+                    <Collapse @bind-Visible="_showAdvanced">
+                        <CollapseHeader Class="p-1">
+                            <Heading Size="HeadingSize.Is6">
+                                <AccordionToggle Class="font-weight-bold d-flex justify-content-between align-items-center w-100">
+                                    Advanced
+                                    <Icon Name="@(_showAdvanced ? IconName.ChevronUp : IconName.ChevronDown)" Class="ml-2"/>
+                                </AccordionToggle>
+                            </Heading>
+                        </CollapseHeader>
+                        <CollapseBody>
+                            <Field>
+                                <FieldLabel Class="d-flex">
+                                    Probe backoff ratio
+                                    <Tooltip Class="ml-2" Text="Multiplier applied to the probe amount after each failure. 0.5 (default) = halve each iteration; 0.8 = next try is 20% smaller (finer-grained, more iterations); 0.3 = next try is 70% smaller (gives up faster). Must be in the open interval (0, 1)." Placement="TooltipPlacement.Top">
+                                        <Icon Name="IconName.Info"/>
+                                    </Tooltip>
+                                </FieldLabel>
+                                <NumericPicker TValue="decimal"
+                                               @bind-Value="_probeBackoffRatio"
+                                               Decimals="2"
+                                               Step="0.05m"
+                                               Min="0.01m"
+                                               Max="0.99m"/>
+                                <FieldHelp>
+                                    @($"Server default: {Constants.REBALANCE_PROBE_BACKOFF_RATIO:0.00}. Higher values = finer-grained probing.")
+                                </FieldHelp>
+                            </Field>
+                            <Field>
+                                <FieldLabel Class="d-flex">
+                                    Max attempts
+                                    <Tooltip Class="ml-2" Text="Maximum number of attempts (including the first try). Each retry is scheduled by Quartz with exponential backoff. Must be ≥ 1." Placement="TooltipPlacement.Top">
+                                        <Icon Name="IconName.Info"/>
+                                    </Tooltip>
+                                </FieldLabel>
+                                <NumericPicker TValue="int"
+                                               @bind-Value="_maxAttempts"
+                                               Step="1"
+                                               Min="1"
+                                               Max="10"/>
+                                <FieldHelp>
+                                    @($"Server default: {Constants.REBALANCE_MAX_ATTEMPTS} attempts.")
+                                </FieldHelp>
+                            </Field>
+                            <Field>
+                                <FieldLabel Class="d-flex">
+                                    Retry max fee %
+                                    <Tooltip Class="ml-2" Text="Absolute fee cap as % of rebalanced amount for retry attempts. 0.075% = 750 ppm. Must be ≥ the initial max fee percent." Placement="TooltipPlacement.Top">
+                                        <Icon Name="IconName.Info"/>
+                                    </Tooltip>
+                                </FieldLabel>
+                                <NumericPicker TValue="decimal"
+                                               @bind-Value="_retryMaxFeePct"
+                                               Decimals="4"
+                                               Step="0.001m"
+                                               Min="0.0001m"
+                                               Max="100m"
+                                               CurrencySymbolPlacement="CurrencySymbolPlacement.Suffix"
+                                               CurrencySymbol=" %"/>
+                                <FieldHelp>
+                                    @if (_retryMaxFeePct < _maxFeePct)
+                                    {
+                                        <span style="color: orange;">Must be ≥ max fee percent (@_maxFeePct.ToString("0.####")%).</span>
+                                    }
+                                    else if (_targetOutboundPpm.HasValue && _targetOutboundPpm.Value > 0)
+                                    {
+                                        @($"{_retryMaxFeePct:0.####}% = {PctToPpm(_retryMaxFeePct)} ppm retry cap.")
+                                    }
+                                    else
+                                    {
+                                        @($"Server default: {Constants.REBALANCE_DEFAULT_RETRY_MAX_FEE_PCT:0.####}% (= {(long)Math.Round(Constants.REBALANCE_DEFAULT_RETRY_MAX_FEE_PCT * 10_000m)} ppm).")
+                                    }
+                                </FieldHelp>
+                            </Field>
+                        </CollapseBody>
+                    </Collapse>
+                </Accordion>
+            </Fields>
+        </ModalBody>
+        <ModalFooter>
+            <Button Color="Color.Secondary" Clicked="OnCancel">Cancel</Button>
+            <Button Color="Color.Primary" Disabled="@(!CanSubmit)" Clicked="OnSubmit">
+                @(_submitting ? "Submitting..." : "Run rebalance")
+            </Button>
+        </ModalFooter>
+    </ModalContent>
+</Modal>
+
+@inject IRebalanceService RebalanceService
+@inject IToastService ToastService
+@inject INodeRepository NodeRepository
+@inject IChannelRepository ChannelRepository
+@inject ILightningService LightningService
+@inject ILogger<NewRebalanceModal> Logger
+@code {
+    [CascadingParameter] public required ApplicationUser LoggedUser { get; set; }
+    [Parameter] public Func<Task>? OnRebalanceCreatedAsync { get; set; }
+
+    public required Modal _modalRef;
+    private List<Node> _availableNodes = new();
+    private List<Channel> _nodeChannels = new();
+    private Dictionary<ulong, (long Local, long Remote)> _channelBalances = new();
+    private List<PeerOption> _sourcePeerOptions = new();
+    private List<PeerOption> _peerOptions = new();
+    private Node? _selectedNode;
+    private Channel? _selectedSourceChannel;
+    private string? _selectedSourcePubkey;
+    private string? _selectedTargetPubkey;
+    private long? _targetOutboundPpm;
+    private long? _sourceLocalSats;
+    private long? _sourceRemoteSats;
+
+    public class PeerOption
+    {
+        public required string Pubkey { get; set; }
+        public required string DisplayName { get; set; }
+    }
+    private decimal _targetInboundPct = 50m;
+    private decimal _maxFeePct = Constants.REBALANCE_DEFAULT_MAX_FEE_PCT;
+    private decimal _retryMaxFeePct = Constants.REBALANCE_DEFAULT_RETRY_MAX_FEE_PCT;
+    private int _timeoutSeconds = 60;
+    private decimal _probeBackoffRatio = (decimal)Constants.REBALANCE_PROBE_BACKOFF_RATIO;
+    private int _maxAttempts = Constants.REBALANCE_MAX_ATTEMPTS;
+    private bool _showAdvanced;
+    private bool _submitting;
+
+    private static long PctToPpm(decimal pct) => Math.Max(1L, (long)Math.Round(pct * 10_000m));
+
+    private List<Channel> FilteredSourceChannels =>
+        string.IsNullOrEmpty(_selectedSourcePubkey)
+            ? _nodeChannels
+            : _nodeChannels.Where(c =>
+                (c.SourceNode?.PubKey == _selectedNode?.PubKey ? c.DestinationNode?.PubKey : c.SourceNode?.PubKey) == _selectedSourcePubkey
+              ).ToList();
+
+    private decimal CurrentInboundPct =>
+        _sourceLocalSats.HasValue && _sourceRemoteSats.HasValue
+            && (_sourceLocalSats.Value + _sourceRemoteSats.Value) > 0
+            ? (decimal)_sourceRemoteSats.Value / (_sourceLocalSats.Value + _sourceRemoteSats.Value) * 100m
+            : 0m;
+
+    private long SourceLocalAfter => _sourceLocalSats.HasValue ? _sourceLocalSats.Value - ComputeAmountSats() : 0;
+    private long SourceRemoteAfter => _sourceRemoteSats.HasValue ? _sourceRemoteSats.Value + ComputeAmountSats() : 0;
+
+    private long MaxFeeSatsPreview => (long)Math.Ceiling((decimal)ComputeAmountSats() * _maxFeePct / 100m);
+
+    private long ComputeAmountSats()
+    {
+        if (!_sourceLocalSats.HasValue || !_sourceRemoteSats.HasValue) return 0;
+        var capacity = _sourceLocalSats.Value + _sourceRemoteSats.Value;
+        if (capacity <= 0) return 0;
+        var targetRemote = (long)Math.Round((decimal)capacity * _targetInboundPct / 100m);
+        var delta = targetRemote - _sourceRemoteSats.Value;
+        return delta > 0 ? delta : 0;
+    }
+
+    private bool CanSubmit =>
+        _selectedNode != null
+        && _selectedSourceChannel != null
+        && _sourceLocalSats.HasValue
+        && ComputeAmountSats() > 0
+        && _maxFeePct > 0m
+        && _probeBackoffRatio > 0m
+        && _probeBackoffRatio < 1m
+        && _maxAttempts >= 1
+        && _retryMaxFeePct >= _maxFeePct
+        && !_submitting;
+
+    private static string FormatSats(long sats)
+    {
+        var btc = (decimal)sats / 100_000_000m;
+        return $"{sats:N0} sats ({btc:f8} BTC)";
+    }
+
+    private RenderFragment RenderBalanceBar(string label, long local, long remote, bool isProjection = false)
+    {
+        var capacity = local + remote;
+        var localPct = capacity > 0 ? (double)local / capacity * 100 : 0;
+        var remotePct = 100 - localPct;
+        var inbound = remotePct.ToString("0.0");
+        var localColor = isProjection ? "#5a8" : "#4a8";
+        var remoteColor = isProjection ? "#85a" : "#74a";
+        var opacity = isProjection ? "0.85" : "1";
+        return @<div style="margin-bottom: 0.4rem;">
+                   <div style="display: flex; font-size: 0.85em; margin-bottom: 0.2rem;">
+                       <span style="width: 3.5rem; color: #aaa;">@label</span>
+                       <span style="flex: 1;">
+                           <span style="color: @localColor;">@local.ToString("N0") local</span>
+                           <span style="color: #888;"> / </span>
+                           <span style="color: @remoteColor;">@remote.ToString("N0") remote</span>
+                           <span style="color: #888;"> · </span>
+                           <span><strong>@inbound%</strong> inbound</span>
+                       </span>
+                   </div>
+                   <div style="display: flex; height: 12px; border-radius: 6px; overflow: hidden; opacity: @opacity;">
+                       <div style="width: @localPct.ToString("0.00")%; background: @localColor;"></div>
+                       <div style="width: @remotePct.ToString("0.00")%; background: @remoteColor;"></div>
+                   </div>
+               </div>;
+    }
+
+    protected override async Task OnInitializedAsync()
+    {
+        _availableNodes = await NodeRepository.GetAllManagedByUser(LoggedUser.Id);
+    }
+
+    public async Task Show() => await _modalRef.Show();
+
+    public void Clear()
+    {
+        _selectedNode = null;
+        _selectedSourceChannel = null;
+        _selectedSourcePubkey = null;
+        _selectedTargetPubkey = null;
+        _targetOutboundPpm = null;
+        _sourceLocalSats = null;
+        _sourceRemoteSats = null;
+        _nodeChannels = new();
+        _channelBalances = new();
+        _sourcePeerOptions = new();
+        _peerOptions = new();
+        _targetInboundPct = 50m;
+        _maxFeePct = Constants.REBALANCE_DEFAULT_MAX_FEE_PCT;
+        _retryMaxFeePct = Constants.REBALANCE_DEFAULT_RETRY_MAX_FEE_PCT;
+        _timeoutSeconds = 60;
+        _probeBackoffRatio = (decimal)Constants.REBALANCE_PROBE_BACKOFF_RATIO;
+        _maxAttempts = Constants.REBALANCE_MAX_ATTEMPTS;
+        _showAdvanced = false;
+        _submitting = false;
+    }
+
+    private async Task OnNodeChanged(int nodeId)
+    {
+        _selectedNode = _availableNodes.FirstOrDefault(n => n.Id == nodeId);
+        _selectedSourceChannel = null;
+        _selectedSourcePubkey = null;
+        _selectedTargetPubkey = null;
+        _targetOutboundPpm = null;
+        _sourceLocalSats = null;
+        _sourceRemoteSats = null;
+        if (_selectedNode != null)
+        {
+            var all = await ChannelRepository.GetAllManagedByUserNodes(LoggedUser.Id);
+            _nodeChannels = all.Where(c =>
+                (c.SourceNode?.Id == _selectedNode.Id || c.DestinationNode?.Id == _selectedNode.Id)
+                && c.Status == Channel.ChannelStatus.Open).ToList();
+
+            _channelBalances = new();
+            try
+            {
+                var listed = await LightningService.ListChannels(_selectedNode);
+                if (listed != null)
+                {
+                    foreach (var lc in listed.Channels)
+                        _channelBalances[lc.ChanId] = (lc.LocalBalance, lc.RemoteBalance);
+                }
+            }
+            catch (Exception ex)
+            {
+                Logger.LogWarning(ex, "Could not pre-load channel balances for node {NodeId}", _selectedNode.Id);
+            }
+
+            _sourcePeerOptions = _nodeChannels
+                .Select(c => c.SourceNode?.PubKey == _selectedNode.PubKey ? c.DestinationNode : c.SourceNode)
+                .Where(n => n != null && !string.IsNullOrEmpty(n.PubKey))
+                .GroupBy(n => n!.PubKey)
+                .Select(g => new PeerOption
+                {
+                    Pubkey = g.Key,
+                    DisplayName = $"{g.First()!.Name ?? g.Key[..10]} · {g.Count()} ch",
+                })
+                .ToList();
+
+            _peerOptions = _nodeChannels
+                .Select(c => c.SourceNode?.PubKey == _selectedNode.PubKey ? c.DestinationNode : c.SourceNode)
+                .Where(n => n != null && !string.IsNullOrEmpty(n.PubKey))
+                .GroupBy(n => n!.PubKey)
+                .Select(g => new PeerOption
+                {
+                    Pubkey = g.Key,
+                    DisplayName = $"{g.First()!.Name ?? g.Key[..10]} · {g.Count()} channel{(g.Count() == 1 ? "" : "s")}",
+                })
+                .ToList();
+        }
+        else
+        {
+            _nodeChannels = new();
+            _sourcePeerOptions = new();
+            _peerOptions = new();
+        }
+        StateHasChanged();
+    }
+
+    private Task OnSourcePeerChanged(string pubkey)
+    {
+        _selectedSourcePubkey = string.IsNullOrEmpty(pubkey) ? null : pubkey;
+        _selectedSourceChannel = null;
+        _sourceLocalSats = null;
+        _sourceRemoteSats = null;
+        StateHasChanged();
+        return Task.CompletedTask;
+    }
+
+    private async Task OnSourceChannelChanged(int channelId)
+    {
+        _selectedSourceChannel = _nodeChannels.FirstOrDefault(c => c.Id == channelId);
+        _sourceLocalSats = null;
+        _sourceRemoteSats = null;
+        if (_selectedSourceChannel != null && _selectedNode != null)
+        {
+            var (local, remote) = await TryGetLiveBalance(_selectedNode, _selectedSourceChannel.ChanId);
+            _sourceLocalSats = local;
+            _sourceRemoteSats = remote;
+        }
+        StateHasChanged();
+    }
+
+    private async Task OnTargetPeerChanged(string? peerPubkey)
+    {
+        _selectedTargetPubkey = string.IsNullOrEmpty(peerPubkey) ? null : peerPubkey;
+        _targetOutboundPpm = null;
+        if (!string.IsNullOrEmpty(_selectedTargetPubkey) && _selectedNode != null)
+        {
+            try
+            {
+                _targetOutboundPpm = await LightningService.GetLocalOutboundFeeRatePpmByPeerAsync(_selectedNode, _selectedTargetPubkey);
+            }
+            catch (Exception e)
+            {
+                Logger.LogWarning(e, "Could not fetch outbound fee rate for receiving peer {Pubkey}", _selectedTargetPubkey);
+            }
+        }
+        StateHasChanged();
+    }
+
+    private static string TrimBtc(decimal btc) =>
+        btc.ToString("0.########").TrimEnd('0').TrimEnd('.');
+
+    private string FormatChannelOption(Channel channel)
+    {
+        var capBtc = (decimal)channel.SatsAmount / 100_000_000m;
+        if (_channelBalances.TryGetValue(channel.ChanId, out var bal))
+        {
+            var capacity = bal.Local + bal.Remote;
+            var inboundPct = capacity > 0 ? (decimal)bal.Remote / capacity * 100m : 0m;
+            var inboundBtc = (decimal)bal.Remote / 100_000_000m;
+            return $"id: {channel.ChanId}  cap: {TrimBtc(capBtc)} BTC  inbound: {TrimBtc(inboundBtc)} BTC ({inboundPct:0.0}%)";
+        }
+        return $"id: {channel.ChanId}  cap: {TrimBtc(capBtc)} BTC";
+    }
+
+    private async Task<(long? local, long? remote)> TryGetLiveBalance(Node node, ulong chanId)
+    {
+        try
+        {
+            var listed = await LightningService.ListChannels(node);
+            var live = listed?.Channels.FirstOrDefault(c => c.ChanId == chanId);
+            if (live == null)
+            {
+                Logger.LogWarning("Channel {ChanId} not found in ListChannels for node {NodeId}", chanId, node.Id);
+                return (null, null);
+            }
+            return (live.LocalBalance, live.RemoteBalance);
+        }
+        catch (Exception e)
+        {
+            Logger.LogWarning(e, "Could not fetch live balance for channel {ChanId}", chanId);
+            return (null, null);
+        }
+    }
+
+    private async Task OnCancel() => await _modalRef.Hide();
+
+    private async Task OnSubmit()
+    {
+        if (!CanSubmit) return;
+
+        var amountSats = ComputeAmountSats();
+        if (amountSats <= 0)
+        {
+            ToastService.ShowWarning("Channel is already at or above the requested inbound %");
+            return;
+        }
+
+        _submitting = true;
+        try
+        {
+            var request = new RebalanceRequest(
+                NodeId: _selectedNode!.Id,
+                SourceChannelId: _selectedSourceChannel!.Id,
+                TargetPubkey: _selectedTargetPubkey,
+                AmountSats: amountSats,
+                MaxFeePct: _maxFeePct > 0m ? (double)_maxFeePct : (double?)null,
+                TimeoutSeconds: _timeoutSeconds,
+                IsManual: true,
+                UserRequestorId: LoggedUser.Id,
+                ProbeBackoffRatio: _probeBackoffRatio > 0m && _probeBackoffRatio < 1m ? (double)_probeBackoffRatio : (double?)null,
+                MaxAttempts: _maxAttempts >= 1 ? _maxAttempts : (int?)null,
+                RetryMaxFeePct: _retryMaxFeePct > 0m ? (double)_retryMaxFeePct : (double?)null);
+
+            var rebalance = await RebalanceService.RebalanceAsync(request);
+
+            if (rebalance.Status == RebalanceStatus.Succeeded)
+            {
+                ToastService.ShowSuccess($"Rebalance succeeded: {rebalance.SatsAmount} sats moved, fee {rebalance.FeePaidSats} sats");
+            }
+            else
+            {
+                ToastService.ShowWarning($"Rebalance ended with status {rebalance.Status}. Check audit log for details.");
+            }
+
+            await _modalRef.Hide();
+            if (OnRebalanceCreatedAsync != null)
+            {
+                await OnRebalanceCreatedAsync.Invoke();
+            }
+        }
+        catch (Exception e)
+        {
+            Logger.LogError(e, "Error creating rebalance");
+            ToastService.ShowError($"Failed to create rebalance: {e.Message}");
+        }
+        finally
+        {
+            _submitting = false;
+            StateHasChanged();
+        }
+    }
+}
