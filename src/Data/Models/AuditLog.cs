@@ -155,7 +155,13 @@ public enum AuditActionType
     BumpFee,
 
     // Signing
-    Sign
+    Sign,
+
+    // Rebalance Operations
+    RebalanceInitiated,
+    RebalanceProbing,
+    RebalanceCompleted,
+    RebalanceRetryScheduled
 }
 
 /// <summary>
@@ -185,5 +191,6 @@ public enum AuditObjectType
     Key,
     UTXO,
     InternalWallet,
-    Session
+    Session,
+    Rebalance
 }

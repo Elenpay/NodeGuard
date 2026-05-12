@@ -13,3 +13,4 @@ devnetwork*/
 .DS_Store
 # NodeGuard macaroon environment file
 src/nodeguard-macaroons.env
+.claude/settings.local.json
