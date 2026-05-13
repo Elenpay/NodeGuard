@@ -328,6 +328,20 @@ namespace NodeGuard
                         .StartNow().WithCronSchedule(Constants.MONITOR_CHANNELS_CRON);
                 });
 
+                // MonitorRebalancesJob
+                q.AddJob<MonitorRebalancesJob>(opts =>
+                {
+                    opts.DisallowConcurrentExecution();
+                    opts.WithIdentity(nameof(MonitorRebalancesJob));
+                });
+
+                q.AddTrigger(opts =>
+                {
+                    opts.ForJob(nameof(MonitorRebalancesJob))
+                        .WithIdentity($"{nameof(MonitorRebalancesJob)}Trigger")
+                        .StartNow().WithCronSchedule(Constants.MONITOR_REBALANCES_CRON);
+                });
+
                 // Monitor Swaps Job
                 q.AddJob<MonitorSwapsJob>(opts =>
                 {
