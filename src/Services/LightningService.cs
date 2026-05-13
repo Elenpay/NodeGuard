@@ -142,6 +142,49 @@ namespace NodeGuard.Services
         /// <param name="timeout">Optional timeout in seconds</param>
         /// <returns></returns>
         public Task<RouteFeeResponse?> EstimateRouteFee(string destPubkey, long amountSat, string? paymentRequest = null, uint timeout = 30);
+
+        /// <summary>
+        /// Adds a self-payable invoice on the given node. Used for circular rebalancing where
+        /// the source node pays itself
+        /// </summary>
+        Task<AddInvoiceResponse?> AddInvoiceAsync(Node node, long amountSats, string memo, long expirySeconds);
+
+        /// <summary>
+        /// Probes a candidate route at the requested amount, reducing the amount until either a route
+        /// works (signaled by IncorrectOrUnknownPaymentDetails at the last hop) or the
+        /// minimum probe amount is reached. Returns the probed amount and the validated
+        /// route, or NoRoute if no route was found.
+        /// </summary>
+        Task<ProbeResult> ProbeRouteAsync(Node node, long amountSats, long feeLimitMsat,
+            ulong? outgoingChanId, string? lastHopPubkeyHex, double probeBackoffRatio, CancellationToken ct);
+
+        /// <summary>
+        /// Sends a self-payment via Routerrpc.SendPaymentV2 with the given constraints and
+        /// drains the streaming response to the terminal Payment update. LND drives MPP and
+        /// internal route iteration / retries; we provide the cost cap (feeLimitMsat) and
+        /// the optional last-hop peer pin (lastHopPubkeyHex; null lets LND pick any inbound
+        /// peer). The dest is implicit in paymentRequest (self-issued invoice).
+        /// </summary>
+        Task<Payment> SendPaymentV2Async(Node node, string paymentRequest, long feeLimitMsat,
+            ulong[]? outgoingChanIds, string? lastHopPubkeyHex, int timeoutSeconds, CancellationToken ct);
+
+        /// <summary>
+        /// Returns the local-outbound fee rate (ppm) of *some* channel with the given peer.
+        /// Used to estimate "the fee we'd charge to forward through this peer" for ppm-cap
+        /// suggestions when the LND request only constrains the peer (LastHopPubkey), not
+        /// a specific channel. If the peer has multiple channels with us, the first one
+        /// returned by ListChannels is used as a representative.
+        /// </summary>
+        Task<long?> GetLocalOutboundFeeRatePpmByPeerAsync(Node node, string peerPubkey);
+    }
+
+    /// <summary>
+    /// Result of <see cref="ILightningService.ProbeRouteAsync"/>.
+    /// </summary>
+    public abstract record ProbeResult
+    {
+        public sealed record Success(long AmountSats, Lnrpc.Route Route) : ProbeResult;
+        public sealed record NoRoute(string? Reason = null) : ProbeResult;
     }
 
     public class LightningService : ILightningService
@@ -402,8 +445,8 @@ namespace NodeGuard.Services
                                         }
                                     }
 
-                                    var finalSignedPSBT = await SignWithInternalWallet(channelOperationRequest, fundedPSBT, derivationStrategyBase, channelfundingTx, network);    
-                                    
+                                    var finalSignedPSBT = await SignWithInternalWallet(channelOperationRequest, fundedPSBT, derivationStrategyBase, channelfundingTx, network);
+
                                     //Null check
                                     if (finalSignedPSBT is null)
                                     {
@@ -787,9 +830,9 @@ namespace NodeGuard.Services
             var upfrontShutdownScriptReq =
                 remoteNodeInfo.Features.ContainsKey((uint)FeatureBit.UpfrontShutdownScriptReq);
             if (upfrontShutdownScriptOpt && remoteNodeInfo.Features[(uint)FeatureBit.UpfrontShutdownScriptOpt] is
-                    { IsKnown: true } ||
+                { IsKnown: true } ||
                 upfrontShutdownScriptReq && remoteNodeInfo.Features[(uint)FeatureBit.UpfrontShutdownScriptReq] is
-                    { IsKnown: true })
+                { IsKnown: true })
             {
                 var address = await GetCloseAddress(channelOperationRequest, derivationStrategyBase, _nbXplorerService,
                     _logger);
@@ -853,7 +896,7 @@ namespace NodeGuard.Services
             OperationRequestType requestype, ILogger? _logger = null)
         {
             if (channelOperationRequest == null) throw new ArgumentNullException(nameof(channelOperationRequest));
-            
+
             //If the wallet is watch only, we cannot open a channel as there is no way securely sign the PSBT with SIGHASH_NONE (the internal wallet is not there)
             if (channelOperationRequest.Wallet != null && channelOperationRequest.Wallet.IsWatchOnly)
             {
@@ -871,8 +914,8 @@ namespace NodeGuard.Services
                 $"Invalid request. Requested ${channelOperationRequest.RequestType.ToString()} on ${requestype.ToString()} method";
 
             _logger?.LogError(requestInvalid);
-            
-           
+
+
             throw new ArgumentOutOfRangeException(requestInvalid);
         }
 
@@ -1527,6 +1570,187 @@ namespace NodeGuard.Services
                 _logger.LogError(e, "Error while estimating route fee for destination: {DestPubkey}", destPubkey);
                 return null;
             }
+        }
+
+        public async Task<AddInvoiceResponse?> AddInvoiceAsync(Node node, long amountSats, string memo, long expirySeconds)
+        {
+            return await _lightningClientService.AddInvoice(node, new Invoice
+            {
+                Memo = memo,
+                Value = amountSats,
+                Expiry = expirySeconds,
+                Private = false,
+            });
+        }
+
+        public async Task<ProbeResult> ProbeRouteAsync(Node node, long amountSats, long feeLimitMsat,
+            ulong? outgoingChanId, string? lastHopPubkeyHex, double probeBackoffRatio, CancellationToken ct)
+        {
+            // Ratio must be in the closed interval [0, 1]. 0 zeroes the next try; 1 never shrinks.
+            var ratio = probeBackoffRatio >= 0.0 && probeBackoffRatio <= 1.0
+                ? probeBackoffRatio
+                : Constants.REBALANCE_PROBE_BACKOFF_RATIO;
+            var amount = amountSats;
+            while (amount >= Constants.REBALANCE_MIN_PROBE_AMOUNT_SATS)
+            {
+                ct.ThrowIfCancellationRequested();
+
+                // Scale fee_limit proportionally to the current probe amount so the cap
+                // tracks the ratio the user accepted at the requested amount.
+                var scaledFeeLimitMsat = amountSats > 0
+                    ? (long)((double)feeLimitMsat * amount / amountSats)
+                    : feeLimitMsat;
+
+                var routesRequest = new QueryRoutesRequest
+                {
+                    Amt = amount,
+                    FeeLimit = new FeeLimit { FixedMsat = scaledFeeLimitMsat },
+                };
+
+                if (outgoingChanId.HasValue)
+                    routesRequest.OutgoingChanIds.Add(outgoingChanId.Value);
+
+                if (!string.IsNullOrEmpty(lastHopPubkeyHex))
+                {
+                    routesRequest.LastHopPubkey = ByteString.CopyFrom(Convert.FromHexString(lastHopPubkeyHex));
+                    routesRequest.PubKey = node.PubKey; // circular: destination is self
+                }
+                else
+                {
+                    // No explicit last hop: dest must still be set; default to self for circular.
+                    routesRequest.PubKey = node.PubKey;
+                }
+
+                var routesResponse = await _lightningClientService.QueryRoutes(node, routesRequest);
+                if (routesResponse == null || routesResponse.Routes.Count == 0)
+                {
+                    amount = (long)(amount * ratio);
+                    continue;
+                }
+
+                var routesToTry = routesResponse.Routes
+                    .Take(Constants.REBALANCE_MAX_PROBE_ROUTES_PER_AMOUNT)
+                    .ToList();
+
+                foreach (var route in routesToTry)
+                {
+                    ct.ThrowIfCancellationRequested();
+
+                    var randomHash = new byte[32];
+                    RandomNumberGenerator.Fill(randomHash);
+
+                    var sendToRouteRequest = new Routerrpc.SendToRouteRequest
+                    {
+                        PaymentHash = ByteString.CopyFrom(randomHash),
+                        Route = route,
+                    };
+
+                    HTLCAttempt? attempt;
+                    try
+                    {
+                        attempt = await _lightningRouterService.SendToRouteV2Async(node, sendToRouteRequest, ct);
+                    }
+                    catch (Exception e)
+                    {
+                        _logger.LogWarning(e, "Probe SendToRouteV2 failed for node {NodeId} amount {Amount}", node.Id, amount);
+                        continue;
+                    }
+
+                    if (attempt?.Failure?.Code == Failure.Types.FailureCode.IncorrectOrUnknownPaymentDetails)
+                    {
+                        // The route worked all the way to the destination; the random hash
+                        // failed at the final hop, which is the probe success signal.
+                        return new ProbeResult.Success(amount, route);
+                    }
+
+                    // Mid-route failure - skip this route and try the next.
+                }
+
+                amount = (long)(amount * ratio);
+            }
+
+            return new ProbeResult.NoRoute("Probe exhausted before reaching minimum amount");
+        }
+        public async Task<Payment> SendPaymentV2Async(Node node, string paymentRequest, long feeLimitMsat,
+            ulong[]? outgoingChanIds, string? lastHopPubkeyHex, int timeoutSeconds, CancellationToken ct)
+        {
+            if (string.IsNullOrEmpty(paymentRequest))
+                throw new ArgumentException("Payment request must not be empty", nameof(paymentRequest));
+
+            var request = new SendPaymentRequest
+            {
+                PaymentRequest = paymentRequest,
+                FeeLimitMsat = feeLimitMsat,
+                TimeoutSeconds = timeoutSeconds > 0 ? timeoutSeconds : 60,
+                AllowSelfPayment = true,            // mandatory for circular self-pay
+                NoInflightUpdates = true,           // we only care about the terminal Payment update
+            };
+
+            if (outgoingChanIds is { Length: > 0 })
+                request.OutgoingChanIds.AddRange(outgoingChanIds);
+
+            if (!string.IsNullOrEmpty(lastHopPubkeyHex))
+                request.LastHopPubkey = ByteString.CopyFrom(Convert.FromHexString(lastHopPubkeyHex));
+
+            try
+            {
+                using var stream = _lightningRouterService.SendPaymentV2(node, request, ct);
+                Payment? terminal = null;
+                await foreach (var update in stream.ResponseStream.ReadAllAsync(ct))
+                {
+                    terminal = update;
+                    if (update.Status != Payment.Types.PaymentStatus.InFlight
+                        && update.Status != Payment.Types.PaymentStatus.Initiated)
+                    {
+                        break;
+                    }
+                }
+
+                return terminal ?? new Payment
+                {
+                    Status = Payment.Types.PaymentStatus.Failed,
+                    FailureReason = PaymentFailureReason.FailureReasonError,
+                };
+            }
+            catch (Exception e)
+            {
+                _logger.LogWarning(e, "SendPaymentV2 failed for node {NodeId}", node.Id);
+                return new Payment
+                {
+                    Status = Payment.Types.PaymentStatus.Failed,
+                    FailureReason = PaymentFailureReason.FailureReasonError,
+                };
+            }
+        }
+
+        public async Task<long?> GetLocalOutboundFeeRatePpmAsync(Node node, ulong chanId)
+        {
+            var edge = await _lightningClientService.GetChanInfo(node, chanId);
+            if (edge == null) return null;
+
+            // The "local" side is the policy whose pubkey matches the node we're rebalancing on.
+            RoutingPolicy? policy = null;
+            if (edge.Node1Pub == node.PubKey) policy = edge.Node1Policy;
+            else if (edge.Node2Pub == node.PubKey) policy = edge.Node2Policy;
+
+            // FeeRateMilliMsat is "milli-msat per msat" which numerically equals ppm.
+            return policy?.FeeRateMilliMsat;
+        }
+
+        public async Task<long?> GetLocalOutboundFeeRatePpmByPeerAsync(Node node, string peerPubkey)
+        {
+            if (string.IsNullOrEmpty(peerPubkey)) return null;
+
+            var listed = await _lightningClientService.ListChannels(node);
+            if (listed == null) return null;
+
+            // Find the first active channel with that peer. LND's LastHopPubkey constrains
+            // only the peer, not a specific channel; this is purely a representative rate.
+            var match = listed.Channels.FirstOrDefault(c => c.Active && c.RemotePubkey == peerPubkey)
+                        ?? listed.Channels.FirstOrDefault(c => c.RemotePubkey == peerPubkey);
+            if (match == null) return null;
+
+            return await GetLocalOutboundFeeRatePpmAsync(node, match.ChanId);
         }
     }
 }

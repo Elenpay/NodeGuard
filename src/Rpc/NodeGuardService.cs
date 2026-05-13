@@ -54,6 +54,12 @@ public interface INodeGuardService
     Task<GetChannelResponse> GetChannel(GetChannelRequest request, ServerCallContext context);
 
     Task<AddTagsResponse> AddTags(AddTagsRequest request, ServerCallContext context);
+
+    Task<RequestRebalanceResponse> RequestRebalance(RequestRebalanceRequest request, ServerCallContext context);
+
+    Task<GetRebalanceResponse> GetRebalance(GetRebalanceRequest request, ServerCallContext context);
+
+    Task<GetRebalancesResponse> GetRebalances(GetRebalancesRequest request, ServerCallContext context);
 }
 
 /// <summary>
@@ -78,6 +84,8 @@ public class NodeGuardService : Nodeguard.NodeGuardService.NodeGuardServiceBase,
     private readonly IFMUTXORepository _fmutxoRepository;
     private readonly IUTXOTagRepository _utxoTagRepository;
     private readonly IHtlcMonitoringScheduler _htlcMonitoringScheduler;
+    private readonly IRebalanceService _rebalanceService;
+    private readonly IRebalanceRepository _rebalanceRepository;
 
     public NodeGuardService(ILogger<NodeGuardService> logger,
         ILiquidityRuleRepository liquidityRuleRepository,
@@ -94,7 +102,9 @@ public class NodeGuardService : Nodeguard.NodeGuardService.NodeGuardServiceBase,
         ILightningService lightningService,
         IFMUTXORepository fmutxoRepository,
         IUTXOTagRepository utxoTagRepository,
-        IHtlcMonitoringScheduler htlcMonitoringScheduler
+        IHtlcMonitoringScheduler htlcMonitoringScheduler,
+        IRebalanceService rebalanceService,
+        IRebalanceRepository rebalanceRepository
     )
     {
         _logger = logger;
@@ -113,6 +123,8 @@ public class NodeGuardService : Nodeguard.NodeGuardService.NodeGuardServiceBase,
         _fmutxoRepository = fmutxoRepository;
         _utxoTagRepository = utxoTagRepository;
         _htlcMonitoringScheduler = htlcMonitoringScheduler;
+        _rebalanceService = rebalanceService;
+        _rebalanceRepository = rebalanceRepository;
         _scheduler = Task.Run(() => _schedulerFactory.GetScheduler()).Result;
     }
 
@@ -1189,6 +1201,159 @@ public class NodeGuardService : Nodeguard.NodeGuardService.NodeGuardServiceBase,
 
         return new AddTagsResponse();
     }
+
+    public override async Task<RequestRebalanceResponse> RequestRebalance(RequestRebalanceRequest request, ServerCallContext context)
+    {
+        if (string.IsNullOrWhiteSpace(request.NodePubkey))
+            throw new RpcException(new Status(StatusCode.InvalidArgument, "node_pubkey is required"));
+
+        if (request.AmountSats <= 0)
+            throw new RpcException(new Status(StatusCode.InvalidArgument, "amount_sats must be > 0"));
+
+        var node = await _nodeRepository.GetByPubkey(request.NodePubkey);
+        if (node == null)
+            throw new RpcException(new Status(StatusCode.NotFound, $"Node with pubkey {request.NodePubkey} not found"));
+
+        var domainRequest = new RebalanceRequest(
+            NodeId: node.Id,
+            SourceChannelId: request.HasSourceChannelId ? request.SourceChannelId : null,
+            TargetPubkey: request.HasTargetPubkey ? request.TargetPubkey : null,
+            AmountSats: request.AmountSats,
+            MaxFeePct: request.HasMaxFeePct ? request.MaxFeePct : null,
+            TimeoutSeconds: request.TimeoutSeconds,
+            IsManual: true,
+            UserRequestorId: null,
+            ProbeBackoffRatio: request.HasProbeBackoffRatio ? request.ProbeBackoffRatio : null,
+            MaxAttempts: request.HasMaxAttempts ? request.MaxAttempts : null,
+            RetryMaxFeePct: request.HasRetryMaxFeePct ? request.RetryMaxFeePct : null);
+
+        Rebalance rebalance;
+        try
+        {
+            rebalance = await _rebalanceService.RebalanceAsync(domainRequest, context.CancellationToken);
+        }
+        catch (ArgumentException ex)
+        {
+            throw new RpcException(new Status(StatusCode.InvalidArgument, ex.Message));
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "RequestRebalance failed for node {NodePubkey}", request.NodePubkey);
+            throw new RpcException(new Status(StatusCode.Internal, $"Rebalance failed: {ex.Message}"));
+        }
+
+        var response = new RequestRebalanceResponse
+        {
+            RebalanceId = rebalance.Id,
+            Status = MapRebalanceStatus(rebalance.Status),
+            AttemptNumber = rebalance.AttemptNumber,
+        };
+        if (rebalance.FeePaidSats.HasValue) response.FeePaidSats = rebalance.FeePaidSats.Value;
+        if (rebalance.EffectivePpm.HasValue) response.EffectivePpm = rebalance.EffectivePpm.Value;
+        if (rebalance.SatsAmount != rebalance.RequestedAmountSats) response.ActualAmountSats = rebalance.SatsAmount;
+        return response;
+    }
+
+    public override async Task<GetRebalanceResponse> GetRebalance(GetRebalanceRequest request, ServerCallContext context)
+    {
+        if (request.RebalanceId <= 0)
+            throw new RpcException(new Status(StatusCode.InvalidArgument, "rebalance_id is required"));
+
+        var rebalance = await _rebalanceRepository.GetById(request.RebalanceId);
+        if (rebalance == null)
+            throw new RpcException(new Status(StatusCode.NotFound, $"Rebalance {request.RebalanceId} not found"));
+
+        return MapRebalance(rebalance);
+    }
+
+    public override async Task<GetRebalancesResponse> GetRebalances(GetRebalancesRequest request, ServerCallContext context)
+    {
+        if (request.PageNumber < 1)
+            throw new RpcException(new Status(StatusCode.InvalidArgument, "page_number must be >= 1"));
+        if (request.PageSize <= 0)
+            throw new RpcException(new Status(StatusCode.InvalidArgument, "page_size must be > 0"));
+
+        int? nodeIdFilter = null;
+        if (request.HasNodePubkey && !string.IsNullOrWhiteSpace(request.NodePubkey))
+        {
+            var node = await _nodeRepository.GetByPubkey(request.NodePubkey);
+            if (node == null)
+                return new GetRebalancesResponse { TotalCount = 0 };
+            nodeIdFilter = node.Id;
+        }
+
+        var statusFilter = request.HasStatus ? MapRebalanceStatus(request.Status) : (RebalanceStatus?)null;
+        var fromDate = request.HasFromUnix ? DateTimeOffset.FromUnixTimeSeconds(request.FromUnix) : (DateTimeOffset?)null;
+        var toDate = request.HasToUnix ? DateTimeOffset.FromUnixTimeSeconds(request.ToUnix) : (DateTimeOffset?)null;
+
+        var (rebalances, totalCount) = await _rebalanceRepository.GetPaginatedAsync(
+            pageNumber: request.PageNumber,
+            pageSize: request.PageSize,
+            status: statusFilter,
+            nodeId: nodeIdFilter,
+            sourceChannelId: request.HasSourceChannelId ? request.SourceChannelId : null,
+            userId: request.HasUserId ? request.UserId : null,
+            isManual: request.HasIsManual ? request.IsManual : null,
+            fromDate: fromDate,
+            toDate: toDate);
+
+        var response = new GetRebalancesResponse { TotalCount = totalCount };
+        response.Rebalances.AddRange(rebalances.Select(MapRebalance));
+        return response;
+    }
+
+    private static GetRebalanceResponse MapRebalance(Rebalance rebalance)
+    {
+        var response = new GetRebalanceResponse
+        {
+            RebalanceId = rebalance.Id,
+            NodePubkey = rebalance.SourceNodePubKey ?? rebalance.Node?.PubKey ?? string.Empty,
+            Status = MapRebalanceStatus(rebalance.Status),
+            IsManual = rebalance.IsManual,
+            AttemptNumber = rebalance.AttemptNumber,
+            RequestedAmountSats = rebalance.RequestedAmountSats,
+            AmountSats = rebalance.SatsAmount,
+            MaxFeePct = rebalance.MaxFeePct,
+            CreationDatetimeUnix = rebalance.CreationDatetime.ToUnixTimeSeconds(),
+            UpdateDatetimeUnix = rebalance.UpdateDatetime.ToUnixTimeSeconds(),
+        };
+        if (rebalance.RetryMaxFeePct.HasValue) response.RetryMaxFeePct = rebalance.RetryMaxFeePct.Value;
+        if (rebalance.FeePaidSats.HasValue) response.FeePaidSats = rebalance.FeePaidSats.Value;
+        if (rebalance.EffectivePpm.HasValue) response.EffectivePpm = rebalance.EffectivePpm.Value;
+        if (rebalance.SourceChanIdLnd.HasValue) response.SourceChanId = rebalance.SourceChanIdLnd.Value;
+        if (rebalance.TargetPubkey != null) response.TargetPubkey = rebalance.TargetPubkey;
+        if (rebalance.ProbeBackoffRatio.HasValue) response.ProbeBackoffRatio = rebalance.ProbeBackoffRatio.Value;
+        if (rebalance.MaxAttempts.HasValue) response.MaxAttempts = rebalance.MaxAttempts.Value;
+        return response;
+    }
+
+    private static REBALANCE_STATUS MapRebalanceStatus(RebalanceStatus status) => status switch
+    {
+        RebalanceStatus.Pending => REBALANCE_STATUS.RebalancePending,
+        RebalanceStatus.Probing => REBALANCE_STATUS.RebalanceProbing,
+        RebalanceStatus.InFlight => REBALANCE_STATUS.RebalanceInFlight,
+        RebalanceStatus.Succeeded => REBALANCE_STATUS.RebalanceSucceeded,
+        RebalanceStatus.Failed => REBALANCE_STATUS.RebalanceFailed,
+        RebalanceStatus.NoRoute => REBALANCE_STATUS.RebalanceNoRoute,
+        RebalanceStatus.Timeout => REBALANCE_STATUS.RebalanceTimeout,
+        RebalanceStatus.InsufficientBalance => REBALANCE_STATUS.RebalanceInsufficientBalance,
+        RebalanceStatus.ExceededFeeLimit => REBALANCE_STATUS.RebalanceExceededFeeLimit,
+        _ => REBALANCE_STATUS.RebalanceFailed,
+    };
+
+    private static RebalanceStatus MapRebalanceStatus(REBALANCE_STATUS status) => status switch
+    {
+        REBALANCE_STATUS.RebalancePending => RebalanceStatus.Pending,
+        REBALANCE_STATUS.RebalanceProbing => RebalanceStatus.Probing,
+        REBALANCE_STATUS.RebalanceInFlight => RebalanceStatus.InFlight,
+        REBALANCE_STATUS.RebalanceSucceeded => RebalanceStatus.Succeeded,
+        REBALANCE_STATUS.RebalanceFailed => RebalanceStatus.Failed,
+        REBALANCE_STATUS.RebalanceNoRoute => RebalanceStatus.NoRoute,
+        REBALANCE_STATUS.RebalanceTimeout => RebalanceStatus.Timeout,
+        REBALANCE_STATUS.RebalanceInsufficientBalance => RebalanceStatus.InsufficientBalance,
+        REBALANCE_STATUS.RebalanceExceededFeeLimit => RebalanceStatus.ExceededFeeLimit,
+        _ => RebalanceStatus.Failed,
+    };
 
     private bool ValidateBitcoinAddress(string address)
     {

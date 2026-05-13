@@ -103,6 +103,12 @@ namespace NodeGuard.Data
             modelBuilder.Entity<ForwardingHtlcEvent>()
                 .HasIndex(x => x.EventTimestamp);
 
+            modelBuilder.Entity<Rebalance>()
+                .HasOne(r => r.SourceChannel)
+                .WithMany()
+                .HasForeignKey(r => r.SourceChannelId)
+                .OnDelete(DeleteBehavior.Restrict);
+
             base.OnModelCreating(modelBuilder);
         }
 
@@ -137,6 +143,8 @@ namespace NodeGuard.Data
         public DbSet<APIToken> ApiTokens { get; set; }
 
         public DbSet<SwapOut> SwapOuts { get; set; }
+
+        public DbSet<Rebalance> Rebalances { get; set; }
 
         public DbSet<AuditLog> AuditLogs { get; set; }
 
