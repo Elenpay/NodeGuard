@@ -36,6 +36,8 @@ public interface ILightningClientService
     public Task<ListChannelsResponse?> ListChannels(Node node, Lightning.LightningClient? client = null);
     public Task<ChannelBalanceResponse?> ChannelBalanceAsync(Node node, Lightning.LightningClient? client = null);
     public Task<ChannelEdge?> GetChanInfo(Node node, ulong chanId, Lightning.LightningClient? client = null);
+    public Task<AddInvoiceResponse?> AddInvoice(Node node, Invoice invoice, Lightning.LightningClient? client = null);
+    public Task<QueryRoutesResponse?> QueryRoutes(Node node, QueryRoutesRequest request, Lightning.LightningClient? client = null);
     public AsyncServerStreamingCall<CloseStatusUpdate>? CloseChannel(Node node, Channel channel, bool forceClose = false, Lightning.LightningClient? client = null);
     public AsyncServerStreamingCall<ChannelEventUpdate> SubscribeChannelEvents(Node node, Lightning.LightningClient? client = null);
     public Task<LightningNode?> GetNodeInfo(Node node, string pubKey, Lightning.LightningClient? client = null);
@@ -70,7 +72,7 @@ public class LightningClientService : ILightningClientService
 
         var grpcChannel = GrpcChannel.ForAddress($"https://{endpoint}",
             new GrpcChannelOptions
-                {HttpHandler = httpHandler, LoggerFactory = NullLoggerFactory.Instance});
+            { HttpHandler = httpHandler, LoggerFactory = NullLoggerFactory.Instance });
 
 
         _logger.LogInformation("New grpc channel created for endpoint {endpoint}", endpoint);
@@ -164,6 +166,45 @@ public class LightningClientService : ILightningClientService
         catch (Exception e)
         {
             _logger.LogError(e, "Error while getting channel info for node {NodeId} and channel {ChannelId}", node.Id, chanId);
+            return null;
+        }
+    }
+
+    public async Task<AddInvoiceResponse?> AddInvoice(Node node, Invoice invoice, Lightning.LightningClient? client = null)
+    {
+        try
+        {
+            client ??= GetLightningClient(node.Endpoint);
+            return await client.AddInvoiceAsync(invoice, new Metadata
+            {
+                { "macaroon", node.ChannelAdminMacaroon }
+            });
+        }
+        catch (Exception e)
+        {
+            _logger.LogError(e, "Error while adding invoice for node {NodeId}", node.Id);
+            return null;
+        }
+    }
+
+    public async Task<QueryRoutesResponse?> QueryRoutes(Node node, QueryRoutesRequest request, Lightning.LightningClient? client = null)
+    {
+        try
+        {
+            client ??= GetLightningClient(node.Endpoint);
+            return await client.QueryRoutesAsync(request, new Metadata
+            {
+                { "macaroon", node.ChannelAdminMacaroon }
+            });
+        }
+        catch (RpcException e)
+        {
+            _logger.LogWarning("QueryRoutes for node {NodeId} returned no routes: {Status}", node.Id, e.Status.Detail);
+            return null;
+        }
+        catch (Exception e)
+        {
+            _logger.LogError(e, "Error while querying routes for node {NodeId}", node.Id);
             return null;
         }
     }

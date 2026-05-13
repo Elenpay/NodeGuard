@@ -1,0 +1,327 @@
+@page "/rebalances"
+@using Humanizer
+@using Blazorise
+@using Blazorise.Components
+@using NodeGuard.Data.Models
+@attribute [Authorize(Roles = "Superadmin,NodeManager,FinanceManager")]
+<h3 class="custom-primary">Rebalances</h3>
+
+<Row Class="mb-3" @key="_filtersResetKey">
+    <Column ColumnSize="ColumnSize.Is2">
+        <Field>
+            <FieldLabel>Status</FieldLabel>
+            <Autocomplete TItem="RebalanceStatus?"
+                          TValue="RebalanceStatus?"
+                          Data="@_statusOptions"
+                          TextField="@(item => item?.Humanize() ?? "All")"
+                          ValueField="@(item => item)"
+                          @bind-SelectedValue="@_statusFilter"
+                          @bind-SelectedValue:after="OnFiltersChanged"
+                          Placeholder="All"
+                          FreeTyping="false"
+                          MinLength="0"
+                          Filter="AutocompleteFilter.Contains" />
+        </Field>
+    </Column>
+    <Column ColumnSize="ColumnSize.Is2">
+        <Field>
+            <FieldLabel>Source Node</FieldLabel>
+            <Autocomplete TItem="Node"
+                          TValue="int?"
+                          Data="@_availableNodes"
+                          TextField="@(item => item?.Name ?? "All")"
+                          ValueField="@(item => (int?)item?.Id)"
+                          @bind-SelectedValue="@_nodeFilter"
+                          @bind-SelectedValue:after="OnFiltersChanged"
+                          Placeholder="All"
+                          FreeTyping="false"
+                          MinLength="0"
+                          Filter="AutocompleteFilter.Contains" />
+        </Field>
+    </Column>
+    <Column ColumnSize="ColumnSize.Is2">
+        <Field>
+            <FieldLabel>Requestor</FieldLabel>
+            <Autocomplete TItem="ApplicationUser"
+                          TValue="string?"
+                          Data="@_availableUsers"
+                          TextField="@(item => item?.UserName ?? "All")"
+                          ValueField="@(item => item?.Id)"
+                          @bind-SelectedValue="@_userFilter"
+                          @bind-SelectedValue:after="OnFiltersChanged"
+                          Placeholder="All"
+                          FreeTyping="false"
+                          MinLength="0"
+                          Filter="AutocompleteFilter.Contains" />
+        </Field>
+    </Column>
+    <Column ColumnSize="ColumnSize.Is1">
+        <Field>
+            <FieldLabel>Is Manual</FieldLabel>
+            <Autocomplete TItem="BoolOption"
+                          TValue="bool?"
+                          Data="@_isManualOptions"
+                          TextField="@(item => item.Label)"
+                          ValueField="@(item => item.Value)"
+                          @bind-SelectedValue="@_isManualFilter"
+                          @bind-SelectedValue:after="OnFiltersChanged"
+                          Placeholder="All"
+                          FreeTyping="false"
+                          MinLength="0"
+                          Filter="AutocompleteFilter.Contains" />
+        </Field>
+    </Column>
+    <Column ColumnSize="ColumnSize.Is1">
+        <Field>
+            <FieldLabel>From Date</FieldLabel>
+            <DatePicker TValue="DateTime?" @bind-Date="@_fromDate" @bind-Date:after="OnFiltersChanged" InputMode="DateInputMode.Date" Placeholder="Start"/>
+        </Field>
+    </Column>
+    <Column ColumnSize="ColumnSize.Is1">
+        <Field>
+            <FieldLabel>To Date</FieldLabel>
+            <DatePicker TValue="DateTime?" @bind-Date="@_toDate" @bind-Date:after="OnFiltersChanged" InputMode="DateInputMode.Date" Placeholder="End"/>
+        </Field>
+    </Column>
+    <Column ColumnSize="ColumnSize.Is2" Class="d-flex align-items-end pb-3">
+        <Button Color="Color.Secondary" Clicked="ClearAllFilters">
+            <Icon Name="IconName.Times"/> Clear
+        </Button>
+    </Column>
+</Row>
+
+<Row>
+    <Column ColumnSize="ColumnSize.Is12">
+        <DataGrid TItem="Rebalance"
+                  @ref="_dataGrid"
+                  Data="@_rebalances"
+                  ReadData="@OnReadData"
+                  TotalItems="@_totalItems"
+                  Filterable="false"
+                  Editable="true"
+                  Responsive="true"
+                  ResizeMode="TableResizeMode.Columns"
+                  ShowPager="true"
+                  ShowPageSizes="true"
+                  Narrow="true"
+                  PageSize="25">
+            <DataGridColumns>
+                <DataGridCommandColumn TItem="Rebalance" Filterable="false" Sortable="false">
+                    <NewCommandTemplate>
+                        <Button Color="Color.Success" TextColor="TextColor.Light" Clicked="NewRebalance">New</Button>
+                    </NewCommandTemplate>
+                    <EditCommandTemplate></EditCommandTemplate>
+                    <DeleteCommandTemplate></DeleteCommandTemplate>
+                </DataGridCommandColumn>
+                <DataGridColumn TItem="Rebalance" Field="@nameof(Rebalance.Node)" Caption="Source Node" Sortable="false" Displayable="true">
+                    <DisplayTemplate>
+                        @(context.Node?.Name ?? "Unknown")
+                    </DisplayTemplate>
+                </DataGridColumn>
+                <DataGridColumn TItem="Rebalance" Caption="Source ChanId" Sortable="false" Displayable="true">
+                    <DisplayTemplate>
+                        @(context.SourceChanIdLnd?.ToString() ?? "Any")
+                    </DisplayTemplate>
+                </DataGridColumn>
+                <DataGridColumn TItem="Rebalance" Caption="Source Peer" Sortable="false" Displayable="true">
+                    <DisplayTemplate>
+                        @{
+                            var sourcePeer = context.SourceChannel == null ? null
+                                : context.SourceChannel.SourceNode?.PubKey == context.SourceNodePubKey
+                                    ? context.SourceChannel.DestinationNode
+                                    : context.SourceChannel.SourceNode;
+                        }
+                        @if (sourcePeer != null)
+                        {
+                            <Tooltip Text="@sourcePeer.PubKey" Placement="TooltipPlacement.Top">
+                                @(sourcePeer.Name ?? StringHelper.TruncateTail(sourcePeer.PubKey, 10))
+                            </Tooltip>
+                        }
+                        else
+                        {
+                            @("—")
+                        }
+                    </DisplayTemplate>
+                </DataGridColumn>
+                <DataGridColumn TItem="Rebalance" Caption="Target Peer" Sortable="false" Displayable="true">
+                    <DisplayTemplate>
+                        @if (!string.IsNullOrEmpty(context.TargetPubkey))
+                        {
+                            <Tooltip Text="@context.TargetPubkey" Placement="TooltipPlacement.Top">
+                                @StringHelper.TruncateTail(context.TargetPubkey, 10)
+                            </Tooltip>
+                        }
+                        else
+                        {
+                            @("Any")
+                        }
+                    </DisplayTemplate>
+                </DataGridColumn>
+                <DataGridColumn TItem="Rebalance" Caption="Requested Amount" Sortable="false" Displayable="true">
+                    <DisplayTemplate>
+                        @($"{context.RequestedAmount:f8} BTC")
+                    </DisplayTemplate>
+                </DataGridColumn>
+                <DataGridColumn TItem="Rebalance" Caption="Actual Amount" Sortable="false" Displayable="true">
+                    <DisplayTemplate>
+                        @($"{context.Amount:f8} BTC ({Math.Round(PriceConversionService.BtcToUsdConversion(context.Amount, _btcPrice), 2)} USD)")
+                    </DisplayTemplate>
+                </DataGridColumn>
+                <DataGridColumn TItem="Rebalance" Field="@nameof(Rebalance.IsManual)" Caption="Is Manual" Sortable="false" Displayable="true"/>
+                <DataGridColumn TItem="Rebalance" Caption="Max Fee Percent" Sortable="false" Displayable="true">
+                    <DisplayTemplate>
+                        <Tooltip Text="@($"{(long)Math.Round(context.MaxFeePct * 10_000):0} ppm")" Placement="TooltipPlacement.Top">
+                            @($"{context.MaxFeePct:0.####}%")
+                        </Tooltip>
+                    </DisplayTemplate>
+                </DataGridColumn>
+                <DataGridColumn TItem="Rebalance" Caption="Fee Paid" Sortable="false" Displayable="true">
+                    <DisplayTemplate>
+                        @if (context.FeePaidSats.HasValue)
+                        {
+                            <Tooltip Text="@("Effective rate: " + (context.EffectivePpm.HasValue ? (context.EffectivePpm.Value / 10_000m).ToString("0.####") + "% (" + context.EffectivePpm.Value + " ppm)" : "-"))" Placement="TooltipPlacement.Top">
+                                @context.FeePaid.ToUnit(NBitcoin.MoneyUnit.BTC).ToString("f8") BTC
+                            </Tooltip>
+                        }
+                        else
+                        {
+                            @("-")
+                        }
+                    </DisplayTemplate>
+                </DataGridColumn>
+                <DataGridColumn TItem="Rebalance" Field="@nameof(Rebalance.Status)" Caption="Status" Sortable="false" Displayable="true">
+                    <DisplayTemplate>
+                        <span>@context.Status.Humanize()</span>
+                    </DisplayTemplate>
+                </DataGridColumn>
+                <DataGridColumn TItem="Rebalance" Field="@nameof(Rebalance.AttemptNumber)" Caption="Attempt" Sortable="false" Displayable="true"/>
+                <DataGridColumn TItem="Rebalance" Field="@nameof(Rebalance.CreationDatetime)" Caption="Creation Date" Sortable="false" Displayable="true">
+                    <DisplayTemplate>
+                        <Tooltip Text="@context.CreationDatetime.Humanize()" Placement="TooltipPlacement.Top">
+                            @context.CreationDatetime.ToString("yyyy-MM-dd HH:mm:ss")
+                        </Tooltip>
+                    </DisplayTemplate>
+                </DataGridColumn>
+                <DataGridColumn TItem="Rebalance" Field="@nameof(Rebalance.UpdateDatetime)" Caption="Update Date" Sortable="false" Displayable="true">
+                    <DisplayTemplate>
+                        <Tooltip Text="@context.UpdateDatetime.Humanize()" Placement="TooltipPlacement.Top">
+                            @context.UpdateDatetime.ToString("yyyy-MM-dd HH:mm:ss")
+                        </Tooltip>
+                    </DisplayTemplate>
+                </DataGridColumn>
+            </DataGridColumns>
+            <EmptyTemplate>
+                <div class="box">No records were found.</div>
+            </EmptyTemplate>
+            <LoadingTemplate>
+                <div class="box">
+                    <progress class="progress is-small is-primary" max="100"></progress>
+                </div>
+            </LoadingTemplate>
+        </DataGrid>
+    </Column>
+</Row>
+
+<NewRebalanceModal @ref="_newRebalanceModal" OnRebalanceCreatedAsync="OnRebalanceCreated"/>
+
+@inject IPriceConversionService PriceConversionService
+@inject INodeRepository NodeRepository
+@inject IRebalanceRepository RebalanceRepository
+@inject IApplicationUserRepository ApplicationUserRepository
+@inject IToastService ToastService
+@code {
+    [CascadingParameter] private ApplicationUser? LoggedUser { get; set; }
+
+    private DataGrid<Rebalance> _dataGrid = new();
+    private List<Rebalance> _rebalances = new();
+    private List<Node> _availableNodes = new();
+    private List<ApplicationUser> _availableUsers = new();
+    private decimal _btcPrice;
+    public required NewRebalanceModal _newRebalanceModal;
+    private int _totalItems;
+    private int _filtersResetKey;
+
+    private RebalanceStatus? _statusFilter;
+    private int? _nodeFilter;
+    private string? _userFilter;
+    private bool? _isManualFilter;
+    private DateTime? _fromDate;
+    private DateTime? _toDate;
+
+    private List<RebalanceStatus?> _statusOptions = new() { null };
+    private List<BoolOption> _isManualOptions = new()
+    {
+        new BoolOption { Label = "All", Value = null },
+        new BoolOption { Label = "Yes", Value = true },
+        new BoolOption { Label = "No", Value = false },
+    };
+
+    public class BoolOption
+    {
+        public string Label { get; set; } = "";
+        public bool? Value { get; set; }
+    }
+
+    protected override async Task OnInitializedAsync()
+    {
+        if (LoggedUser == null) return;
+        _btcPrice = await PriceConversionService.GetBtcToUsdPrice();
+        if (_btcPrice == 0)
+        {
+            ToastService.ShowError("Bitcoin price in USD could not be retrieved.");
+        }
+        _availableNodes = await NodeRepository.GetAllManagedByUser(LoggedUser.Id);
+        _availableUsers = await ApplicationUserRepository.GetAll();
+        _statusOptions.AddRange(Enum.GetValues<RebalanceStatus>().Cast<RebalanceStatus?>());
+    }
+
+    private async Task OnReadData(DataGridReadDataEventArgs<Rebalance> e)
+    {
+        if (e.CancellationToken.IsCancellationRequested) return;
+
+        var fromDate = _fromDate.HasValue
+            ? new DateTimeOffset(DateTime.SpecifyKind(_fromDate.Value.Date, DateTimeKind.Local)).ToUniversalTime()
+            : (DateTimeOffset?)null;
+        var toDate = _toDate.HasValue
+            ? new DateTimeOffset(DateTime.SpecifyKind(_toDate.Value.Date.AddDays(1).AddTicks(-1), DateTimeKind.Local)).ToUniversalTime()
+            : (DateTimeOffset?)null;
+
+        var (rows, total) = await RebalanceRepository.GetPaginatedAsync(
+            e.Page, e.PageSize,
+            status: _statusFilter,
+            nodeId: _nodeFilter,
+            userId: _userFilter,
+            isManual: _isManualFilter,
+            fromDate: fromDate,
+            toDate: toDate);
+
+        _rebalances = rows;
+        _totalItems = total;
+    }
+
+    private async Task OnFiltersChanged() => await _dataGrid.Reload();
+
+    private async Task ClearAllFilters()
+    {
+        _statusFilter = null;
+        _nodeFilter = null;
+        _userFilter = null;
+        _isManualFilter = null;
+        _fromDate = null;
+        _toDate = null;
+        _filtersResetKey++;
+        await _dataGrid.Reload();
+    }
+
+    private async Task NewRebalance()
+    {
+        _newRebalanceModal.Clear();
+        StateHasChanged();
+        await _newRebalanceModal.Show();
+    }
+
+    private async Task OnRebalanceCreated()
+    {
+        await _dataGrid.Reload();
+    }
+}
