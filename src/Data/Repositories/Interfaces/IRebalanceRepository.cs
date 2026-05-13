@@ -38,10 +38,15 @@ public interface IRebalanceRepository
         DateTimeOffset? toDate = null);
 
     /// <summary>
-    /// Get all rebalances currently in flight (Pending/Probing/InFlight). Used by the
-    /// monitor job for stale-state cleanup after process restart.
+    /// Returns rebalances the monitor job should reconcile against LND:
+    /// non-terminal rows (Pending/Probing/InFlight) plus recently-marked terminal failures
+    /// within <paramref name="recentTerminalWindow"/>. Only rows with a stored payment hash
+    /// are returned — without a hash there is nothing to look up in LND.
+    /// The recent-terminal sweep exists because the catch-all in RebalanceService can mark
+    /// a row Failed on transient errors (cancellation, RPC timeout) while LND has actually
+    /// settled the payment. Includes Node so the caller can call LND directly.
     /// </summary>
-    Task<List<Rebalance>> GetAllInFlight();
+    Task<List<Rebalance>> GetReconcilable(TimeSpan recentTerminalWindow);
 
     Task<(bool, string?)> AddAsync(Rebalance rebalance);
 

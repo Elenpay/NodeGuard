@@ -101,14 +101,23 @@ public class RebalanceRepository : IRebalanceRepository
         return (rebalances, totalCount);
     }
 
-    public async Task<List<Rebalance>> GetAllInFlight()
+    public async Task<List<Rebalance>> GetReconcilable(TimeSpan recentTerminalWindow)
     {
         await using var context = await _dbContextFactory.CreateDbContextAsync();
 
+        var terminalCutoff = DateTimeOffset.UtcNow - recentTerminalWindow;
+
         return await context.Rebalances
-            .Where(r => r.Status == RebalanceStatus.Pending
-                        || r.Status == RebalanceStatus.Probing
-                        || r.Status == RebalanceStatus.InFlight)
+            .Include(r => r.Node)
+            .Where(r => r.PaymentHashHex != null
+                        && (r.Status == RebalanceStatus.Pending
+                            || r.Status == RebalanceStatus.Probing
+                            || r.Status == RebalanceStatus.InFlight
+                            || ((r.Status == RebalanceStatus.Failed
+                                 || r.Status == RebalanceStatus.Timeout
+                                 || r.Status == RebalanceStatus.NoRoute
+                                 || r.Status == RebalanceStatus.InsufficientBalance)
+                                && r.UpdateDatetime >= terminalCutoff)))
             .ToListAsync();
     }
 

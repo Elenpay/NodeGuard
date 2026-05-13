@@ -105,6 +105,13 @@ public class Rebalance : Entity
     public string? TargetPubkey { get; set; }
 
     /// <summary>
+    /// Payment hash of the self-invoice. Persisted as soon as the invoice is created so the
+    /// reconciliation job can call <c>Router.TrackPaymentV2</c> after a crash / cancellation
+    /// and resolve the true outcome against LND.
+    /// </summary>
+    public string? PaymentHashHex { get; set; }
+
+    /// <summary>
     /// Persisted for forensic / proof-of-payment lookup; intentionally not exposed via gRPC.
     /// </summary>
     public string? PreimageHex { get; set; }
