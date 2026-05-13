@@ -287,6 +287,46 @@ public class RebalanceServiceTests
     }
 
     [Fact]
+    public async Task ExecuteAsync_PersistsPaymentHashHexBeforePayment()
+    {
+        // The monitor job depends on the payment hash being on the row before SendPaymentV2 is
+        // dispatched — otherwise a process crash mid-stream leaves nothing for the
+        // reconciliation lookup to use.
+        var node = CreateNode();
+        _nodeRepo.Setup(x => x.GetById(node.Id, It.IsAny<bool>())).ReturnsAsync(node);
+        StubRepoForCapture();
+
+        var hashBytes = new byte[] { 0xAB, 0xCD, 0xEF, 0x01 };
+        _lightning.Setup(x => x.AddInvoiceAsync(node, It.IsAny<long>(), It.IsAny<string>(), It.IsAny<long>()))
+            .ReturnsAsync(new AddInvoiceResponse
+            {
+                PaymentRequest = "lnbc...",
+                RHash = Google.Protobuf.ByteString.CopyFrom(hashBytes),
+            });
+
+        string? hashAtProbeTime = null;
+        _lightning.Setup(x => x.ProbeRouteAsync(node, It.IsAny<long>(), It.IsAny<long>(),
+                It.IsAny<ulong?>(), It.IsAny<string?>(), It.IsAny<double>(), It.IsAny<CancellationToken>()))
+            .Callback<Node, long, long, ulong?, string?, double, CancellationToken>((_, _, _, _, _, _, _) =>
+            {
+                // By the time the probe is invoked, the hash must already be on the row.
+                var captured = _rebalanceRepo.Invocations
+                    .Where(i => i.Method.Name == nameof(IRebalanceRepository.Update))
+                    .Select(i => (Rebalance)i.Arguments[0])
+                    .LastOrDefault();
+                hashAtProbeTime = captured?.PaymentHashHex;
+            })
+            .ReturnsAsync(new ProbeResult.NoRoute("test"));
+
+        var service = CreateService();
+        var request = new RebalanceRequest(node.Id, null, null, 100_000, MaxFeePct: 0.05);
+        var result = await service.RebalanceAsync(request);
+
+        result.PaymentHashHex.Should().Be("abcdef01");
+        hashAtProbeTime.Should().Be("abcdef01");
+    }
+
+    [Fact]
     public async Task ExecuteAsync_ProbeNoRoute_StatusNoRoute_RetryScheduled()
     {
         var node = CreateNode();
