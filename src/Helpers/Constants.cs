@@ -102,13 +102,13 @@ public class Constants
     public static readonly string DEFAULT_DERIVATION_PATH = "48'/1'";
     public static readonly int SESSION_TIMEOUT_MILLISECONDS = 3_600_000;
     public static readonly Money BITCOIN_DUST = new Money(0.00000546m, MoneyUnit.BTC); // 546 satoshi in BTC
-    
+
     /// <summary>
     /// Minimum swap out size in BTC for automatic liquidity management (Swap Out).
     /// Can be configured via MINIMUM_SWAP_OUT_SIZE_BTC environment variable.
     /// </summary>
     public static decimal MINIMUM_SWAP_OUT_SIZE_BTC = 0.01m;
-    
+
     /// <summary>
     /// Maximum swap out size in BTC for automatic liquidity management (Swap Out).
     /// Can be configured via MAXIMUM_SWAP_OUT_SIZE_BTC environment variable.
@@ -132,16 +132,65 @@ public class Constants
     /// Maximum miner fees in satoshis for automatic swap operations
     /// </summary>
     public static long SWAP_MAX_MINER_FEES_SATS = 15000;
-    
+
     /// <summary>
     /// Maximum service fees as a percentage for automatic swap operations
     /// </summary>
     public static decimal SWAP_MAX_SERVICE_FEES_PERCENT = 0.1m;
-    
+
     /// <summary>
     /// Prepay amount in satoshis for automatic swap operations
     /// </summary>
     public static long SWAP_PREPAY_AMOUNT_SATS = 1337;
+
+    // Rebalance configuration
+    /// <summary>
+    /// Default max fee cap for an initial rebalance attempt, expressed as a percentage of
+    /// the rebalanced amount. ppm = pct × 10,000. 0.05 = 0.05% = 500 ppm.
+    /// </summary>
+    public static decimal REBALANCE_DEFAULT_MAX_FEE_PCT = 0.05m;
+
+    /// <summary>
+    /// Default max fee cap for retry attempts, expressed as a percentage of the rebalanced
+    /// amount. ppm = pct × 10,000. 0.075 = 0.075% = 750 ppm. More aggressive than the
+    /// initial cap to improve the chance of finding a route on retry.
+    /// </summary>
+    public static decimal REBALANCE_DEFAULT_RETRY_MAX_FEE_PCT = 0.05m;
+
+    /// <summary>
+    /// Maximum number of attempts for a rebalance, including the first try.
+    /// </summary>
+    public static int REBALANCE_MAX_ATTEMPTS = 3;
+
+    /// <summary>
+    /// Delay before the first retry attempt, in seconds. Subsequent attempts use
+    /// REBALANCE_RETRY_BACKOFF_MULTIPLIER for exponential backoff.
+    /// </summary>
+    public static int REBALANCE_INITIAL_RETRY_DELAY_SECONDS = 60;
+
+    /// <summary>
+    /// Multiplier applied to the retry delay for each subsequent retry. With the default
+    /// 2.0 and an initial delay of 60s, retries fire at 60s, 120s, 240s, ...
+    /// </summary>
+    public static double REBALANCE_RETRY_BACKOFF_MULTIPLIER = 2.0;
+
+    /// <summary>
+    /// Smallest amount the probing binary search will halve down to before giving up.
+    /// </summary>
+    public static long REBALANCE_MIN_PROBE_AMOUNT_SATS = 10_000;
+
+    /// <summary>
+    /// Multiplier applied to the probe amount after each failure. Range: (0, 1) exclusive.
+    /// 0.5 (default) = halve the amount each iteration; 0.8 = next try is 20% smaller
+    /// (more iterations, finer granularity); 0.3 = next try is 70% smaller (fewer
+    /// iterations, gives up faster).
+    /// </summary>
+    public static double REBALANCE_PROBE_BACKOFF_RATIO = 0.8;
+
+    /// <summary>
+    /// Maximum number of QueryRoutes-returned routes the prober will try per amount level.
+    /// </summary>
+    public static int REBALANCE_MAX_PROBE_ROUTES_PER_AMOUNT = 6;
 
     public const string IsFrozenTag = "frozen";
     public const string IsManuallyFrozenTag = "manually_frozen";
@@ -334,12 +383,37 @@ public class Constants
         // Swap configuration
         var swapMaxMinerFees = Environment.GetEnvironmentVariable("SWAP_MAX_MINER_FEES_SATS");
         SWAP_MAX_MINER_FEES_SATS = swapMaxMinerFees != null ? long.Parse(swapMaxMinerFees) : SWAP_MAX_MINER_FEES_SATS;
-        
+
         var swapMaxServiceFeesPercent = Environment.GetEnvironmentVariable("SWAP_MAX_SERVICE_FEES_PERCENT");
         SWAP_MAX_SERVICE_FEES_PERCENT = swapMaxServiceFeesPercent != null ? decimal.Parse(swapMaxServiceFeesPercent, NumberStyles.AllowDecimalPoint, CultureInfo.InvariantCulture) : SWAP_MAX_SERVICE_FEES_PERCENT;
-        
+
         var swapPrepayAmount = Environment.GetEnvironmentVariable("SWAP_PREPAY_AMOUNT_SATS");
         SWAP_PREPAY_AMOUNT_SATS = swapPrepayAmount != null ? long.Parse(swapPrepayAmount) : SWAP_PREPAY_AMOUNT_SATS;
+
+        // Rebalance configuration
+        var rebInitialPct = Environment.GetEnvironmentVariable("REBALANCE_DEFAULT_MAX_FEE_PCT");
+        if (rebInitialPct != null) REBALANCE_DEFAULT_MAX_FEE_PCT = decimal.Parse(rebInitialPct, NumberStyles.AllowDecimalPoint, CultureInfo.InvariantCulture);
+
+        var rebRetryPct = Environment.GetEnvironmentVariable("REBALANCE_DEFAULT_RETRY_MAX_FEE_PCT");
+        if (rebRetryPct != null) REBALANCE_DEFAULT_RETRY_MAX_FEE_PCT = decimal.Parse(rebRetryPct, NumberStyles.AllowDecimalPoint, CultureInfo.InvariantCulture);
+
+        var rebMaxAttempts = Environment.GetEnvironmentVariable("REBALANCE_MAX_ATTEMPTS");
+        if (rebMaxAttempts != null) REBALANCE_MAX_ATTEMPTS = int.Parse(rebMaxAttempts);
+
+        var rebInitialDelay = Environment.GetEnvironmentVariable("REBALANCE_INITIAL_RETRY_DELAY_SECONDS");
+        if (rebInitialDelay != null) REBALANCE_INITIAL_RETRY_DELAY_SECONDS = int.Parse(rebInitialDelay);
+
+        var rebBackoff = Environment.GetEnvironmentVariable("REBALANCE_RETRY_BACKOFF_MULTIPLIER");
+        if (rebBackoff != null) REBALANCE_RETRY_BACKOFF_MULTIPLIER = double.Parse(rebBackoff, NumberStyles.AllowDecimalPoint, CultureInfo.InvariantCulture);
+
+        var rebMinProbe = Environment.GetEnvironmentVariable("REBALANCE_MIN_PROBE_AMOUNT_SATS");
+        if (rebMinProbe != null) REBALANCE_MIN_PROBE_AMOUNT_SATS = long.Parse(rebMinProbe);
+
+        var rebProbeBackoff = Environment.GetEnvironmentVariable("REBALANCE_PROBE_BACKOFF_RATIO");
+        if (rebProbeBackoff != null) REBALANCE_PROBE_BACKOFF_RATIO = double.Parse(rebProbeBackoff, NumberStyles.AllowDecimalPoint, CultureInfo.InvariantCulture);
+
+        var rebMaxProbeRoutes = Environment.GetEnvironmentVariable("REBALANCE_MAX_PROBE_ROUTES_PER_AMOUNT");
+        if (rebMaxProbeRoutes != null) REBALANCE_MAX_PROBE_ROUTES_PER_AMOUNT = int.Parse(rebMaxProbeRoutes);
 
         // DB Initialization
         ALICE_PUBKEY = Environment.GetEnvironmentVariable("ALICE_PUBKEY") ?? ALICE_PUBKEY;

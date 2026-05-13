@@ -89,6 +89,21 @@ service NodeGuardService {
   Adds tags to UTXOs under the treasury
    */
   rpc AddTags(AddTagsRequest) returns (AddTagsResponse);
+
+  /*
+  Requests a circular self-payment rebalance on a managed node.
+  */
+  rpc RequestRebalance(RequestRebalanceRequest) returns (RequestRebalanceResponse);
+
+  /*
+  Returns a single rebalance by id.
+  */
+  rpc GetRebalance(GetRebalanceRequest) returns (GetRebalanceResponse);
+
+  /*
+  Returns a paginated list of rebalances with optional filters.
+  */
+  rpc GetRebalances(GetRebalancesRequest) returns (GetRebalancesResponse);
   
   /*
   Sets the fee policy for a channel
@@ -465,4 +480,98 @@ message InboundFeePolicy {
 }
 
 message SetChannelFeePolicyResponse {
+}
+
+enum REBALANCE_STATUS {
+  REBALANCE_PENDING = 0;
+  REBALANCE_PROBING = 1;
+  REBALANCE_IN_FLIGHT = 2;
+  REBALANCE_SUCCEEDED = 3;
+  REBALANCE_FAILED = 4;
+  REBALANCE_NO_ROUTE = 5;
+  REBALANCE_TIMEOUT = 6;
+  REBALANCE_INSUFFICIENT_BALANCE = 7;
+  REBALANCE_EXCEEDED_FEE_LIMIT = 8;
+}
+
+message RequestRebalanceRequest {
+  // Source node pubkey (33-byte hex)
+  string node_pubkey = 1;
+  // Amount in satoshis
+  int64 amount_sats = 2;
+  // Max fee as percentage of amount_sats. 0.05 means 0.05%.
+  // If unset, server defaults to REBALANCE_DEFAULT_MAX_FEE_PCT.
+  optional double max_fee_pct = 3;
+  // Optional max fee cap for retry attempts, expressed as a percentage of the rebalanced amount (not a fraction of the outbound rate). e.g. 0.075 means 0.075% = 750 ppm. If unset, falls back to REBALANCE_DEFAULT_RETRY_MAX_FEE_PCT 
+  optional double retry_max_fee_pct = 4;
+  // Optional NG channel id to use as the outbound channel
+  optional int32 source_channel_id = 5;
+  // Optional explicit last-hop peer pubkey (33-byte hex). If unset, LND picks any
+  // inbound channel that satisfies the cost cap.
+  optional string target_pubkey = 6;
+  // Pathfinding/payment timeout in seconds; 0 → server default (60s)
+  int32 timeout_seconds = 7;
+  // Multiplier applied to the probe amount after each failure. Range: (0, 1) exclusive.
+  // 0.5 = halve (default); 0.8 = next try is 20% smaller (finer-grained, more iterations);
+  // 0.3 = next try is 70% smaller (gives up faster). If unset, falls back to
+  // Constants.REBALANCE_PROBE_BACKOFF_RATIO.
+  optional double probe_backoff_ratio = 8;
+  // Maximum number of attempts (including the first try). Must be >= 1.
+  // If unset, falls back to Constants.REBALANCE_MAX_ATTEMPTS
+  optional int32 max_attempts = 9;
+}
+
+message RequestRebalanceResponse {
+  int32 rebalance_id = 1;
+  REBALANCE_STATUS status = 2;
+  optional int64 fee_paid_sats = 3;
+  optional int64 effective_ppm = 4;
+  // Actual amount used; may be less than amount_sats if the prober reduced the amount.
+  optional int64 actual_amount_sats = 5;
+  int32 attempt_number = 6;
+}
+
+message GetRebalanceRequest {
+  int32 rebalance_id = 1;
+}
+
+message GetRebalanceResponse {
+  int32 rebalance_id = 1;
+  // Source node pubkey (33-byte hex)
+  string node_pubkey = 2;
+  REBALANCE_STATUS status = 3;
+  bool is_manual = 4;
+  int32 attempt_number = 5;
+  int64 requested_amount_sats = 6;
+  int64 amount_sats = 7;
+  // Max fee as percentage of amount_sats. 0.05 means 0.05%.
+  double max_fee_pct = 8;
+  optional double retry_max_fee_pct = 9;
+  optional int64 fee_paid_sats = 10;
+  optional int64 effective_ppm = 11;
+  optional uint64 source_chan_id = 12;
+  optional string target_pubkey = 13;
+  optional double probe_backoff_ratio = 14;
+  optional int32 max_attempts = 15;
+  int64 creation_datetime_unix = 16;
+  int64 update_datetime_unix = 17;
+}
+
+message GetRebalancesRequest {
+  // 1-based page number
+  int32 page_number = 1;
+  int32 page_size = 2;
+  optional REBALANCE_STATUS status = 3;
+  // Optional filter by source node pubkey (33-byte hex)
+  optional string node_pubkey = 4;
+  optional int32 source_channel_id = 5;
+  optional string user_id = 6;
+  optional bool is_manual = 7;
+  optional int64 from_unix = 8;
+  optional int64 to_unix = 9;
+}
+
+message GetRebalancesResponse {
+  repeated GetRebalanceResponse rebalances = 1;
+  int32 total_count = 2;
 }

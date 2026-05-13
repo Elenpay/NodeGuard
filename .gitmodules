@@ -1,0 +1,18 @@
+[submodule "reference-code/charge-lnd"]
+	path = reference-code/charge-lnd
+	url = https://github.com/accumulator/charge-lnd
+[submodule "reference-code/balanceofsatoshis"]
+	path = reference-code/balanceofsatoshis
+	url = https://github.com/alexbosworth/balanceofsatoshis
+[submodule "reference-code/lndg"]
+	path = reference-code/lndg
+	url = https://github.com/cryptosharks131/lndg
+[submodule "reference-code/lnd"]
+	path = reference-code/lnd
+	url = https://github.com/lightningnetwork/lnd
+[submodule "reference-code/bolts"]
+	path = reference-code/bolts
+	url = https://github.com/lightning/bolts
+[submodule "reference-code/rebalance-lnd"]
+	path = reference-code/rebalance-lnd
+	url = https://github.com/C-Otto/rebalance-lnd
