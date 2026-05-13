@@ -183,7 +183,7 @@ public class RebalanceService : IRebalanceService
         {
             var memo = $"NG rebalance #{rebalance.Id} attempt {rebalance.AttemptNumber}";
             var invoice = await _lightningService.AddInvoiceAsync(node, rebalance.SatsAmount, memo,
-                rebalance.TimeoutSeconds + 60);
+                ComputeInvoiceExpirySeconds(rebalance));
             if (invoice == null || string.IsNullOrEmpty(invoice.PaymentRequest))
             {
                 rebalance.Status = RebalanceStatus.Failed;
@@ -323,6 +323,30 @@ public class RebalanceService : IRebalanceService
     /// </summary>
     private static long ComputeFeeLimitMsat(long satsAmount, double maxFeePct)
         => (long)Math.Round(satsAmount * (decimal)maxFeePct * 10m, MidpointRounding.AwayFromZero);
+
+    /// <summary>
+    /// Sizes the self-invoice's expiry to outlive the full retry window — per-attempt
+    /// payment timeout + every backoff gap between retries + a safety buffer. The probe is
+    /// unbounded and an exponential backoff (60s → 120s → 240s) can push later attempts
+    /// well past a short expiry; matching the retry budget guarantees the invoice is still
+    /// honoured by LND when SendPaymentV2 finally fires.
+    /// </summary>
+    private static long ComputeInvoiceExpirySeconds(Rebalance rebalance)
+    {
+        var maxAttempts = Math.Max(1, rebalance.MaxAttempts ?? Constants.REBALANCE_MAX_ATTEMPTS);
+        var initialDelay = Constants.REBALANCE_INITIAL_RETRY_DELAY_SECONDS;
+        var multiplier = Constants.REBALANCE_RETRY_BACKOFF_MULTIPLIER;
+
+        // Mirrors ScheduleRetryIfEligibleAsync: delay between attempt N and N+1 is
+        // initialDelay * multiplier^(N-1). Sum across all retries we might schedule.
+        double totalBackoffSeconds = 0;
+        for (var i = 0; i < maxAttempts - 1; i++)
+        {
+            totalBackoffSeconds += initialDelay * Math.Pow(multiplier, i);
+        }
+
+        return rebalance.TimeoutSeconds + (long)totalBackoffSeconds + 60;
+    }
 
 
     internal static void ApplyTerminalPayment(Rebalance rebalance, Payment payment)

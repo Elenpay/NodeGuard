@@ -287,6 +287,63 @@ public class RebalanceServiceTests
     }
 
     [Fact]
+    public async Task ExecuteAsync_InvoiceExpiryCoversFullRetryWindowPlusBuffer()
+    {
+        // Invoice expiry must outlive the worst-case retry timeline so a delayed attempt
+        // still has a live invoice when SendPaymentV2 fires. With defaults that's
+        // TimeoutSeconds + (initial + initial*mult + ... over MaxAttempts-1 retries) + buffer.
+        var node = CreateNode();
+        _nodeRepo.Setup(x => x.GetById(node.Id, It.IsAny<bool>())).ReturnsAsync(node);
+        StubRepoForCapture();
+
+        long capturedExpiry = 0;
+        _lightning.Setup(x => x.AddInvoiceAsync(node, It.IsAny<long>(), It.IsAny<string>(), It.IsAny<long>()))
+            .Callback<Node, long, string, long>((_, _, _, expiry) => capturedExpiry = expiry)
+            .ReturnsAsync(new AddInvoiceResponse { PaymentRequest = "lnbc..." });
+        _lightning.Setup(x => x.ProbeRouteAsync(node, It.IsAny<long>(), It.IsAny<long>(),
+                It.IsAny<ulong?>(), It.IsAny<string?>(), It.IsAny<double>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new ProbeResult.NoRoute("stop"));
+
+        var service = CreateService();
+        // TimeoutSeconds=60, MaxAttempts=3 → backoff = 60 + 120 = 180 → 60 + 180 + buffer.
+        var request = new RebalanceRequest(node.Id, null, null, 100_000, MaxFeePct: 0.05,
+            TimeoutSeconds: 60, MaxAttempts: 3);
+
+        await service.RebalanceAsync(request);
+
+        long expected = 60
+            + Constants.REBALANCE_INITIAL_RETRY_DELAY_SECONDS
+            + (long)(Constants.REBALANCE_INITIAL_RETRY_DELAY_SECONDS * Constants.REBALANCE_RETRY_BACKOFF_MULTIPLIER)
+            + 60;
+        capturedExpiry.Should().Be(expected);
+        capturedExpiry.Should().BeGreaterThan(60 + 60, "old TimeoutSeconds+60 expiry was demonstrably too short");
+    }
+
+    [Fact]
+    public async Task ExecuteAsync_InvoiceExpiry_MaxAttempts1_OmitsBackoffSum()
+    {
+        var node = CreateNode();
+        _nodeRepo.Setup(x => x.GetById(node.Id, It.IsAny<bool>())).ReturnsAsync(node);
+        StubRepoForCapture();
+
+        long capturedExpiry = 0;
+        _lightning.Setup(x => x.AddInvoiceAsync(node, It.IsAny<long>(), It.IsAny<string>(), It.IsAny<long>()))
+            .Callback<Node, long, string, long>((_, _, _, expiry) => capturedExpiry = expiry)
+            .ReturnsAsync(new AddInvoiceResponse { PaymentRequest = "lnbc..." });
+        _lightning.Setup(x => x.ProbeRouteAsync(node, It.IsAny<long>(), It.IsAny<long>(),
+                It.IsAny<ulong?>(), It.IsAny<string?>(), It.IsAny<double>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new ProbeResult.NoRoute("stop"));
+
+        var service = CreateService();
+        var request = new RebalanceRequest(node.Id, null, null, 100_000, MaxFeePct: 0.05,
+            TimeoutSeconds: 45, MaxAttempts: 1);
+
+        await service.RebalanceAsync(request);
+
+        capturedExpiry.Should().Be(45 + 60);
+    }
+
+    [Fact]
     public async Task ExecuteAsync_PersistsPaymentHashHexBeforePayment()
     {
         // The monitor job depends on the payment hash being on the row before SendPaymentV2 is
