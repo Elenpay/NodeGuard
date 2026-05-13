@@ -70,16 +70,47 @@ ALICE_PUBKEY=$(node_pubkey $ALICE)
 BOB_PUBKEY=$(node_pubkey $BOB)
 CAROL_PUBKEY=$(node_pubkey $CAROL)
 
-echo "Opening a channel from Alice to Bob"
-lncli $ALICE openchannel --connect $BOB:9735 $BOB_PUBKEY --local_amt 16000000 --push_amt 8000000
+# Topology for rebalance-friendly regtest:
+#
+#                  (~13M Alice / ~3M Bob)            (~10M Bob / ~6M Carol)
+#   Alice ---------------------> Bob ---------------------> Carol
+#     ^                                                       |
+#     |  (~6M Alice / ~10M Carol — Alice has real inbound)    |
+#     +-----------------------------------------------------
+ALICE_TO_BOB_LOCAL=16000000
+ALICE_TO_BOB_PUSH=3000000
+BOB_TO_CAROL_LOCAL=16000000
+BOB_TO_CAROL_PUSH=6000000
+CAROL_TO_ALICE_LOCAL=16000000
+CAROL_TO_ALICE_PUSH=10000000
 
-echo "Opening a channel from Bob to Carol"
-lncli $BOB openchannel --connect $CAROL:9735 $CAROL_PUBKEY --local_amt 16000000 --push_amt 8000000  
+echo "Opening a channel from Alice to Bob (heavy on Alice — drain source for rebalance tests)"
+lncli $ALICE openchannel --connect $BOB:9735 $BOB_PUBKEY --local_amt $ALICE_TO_BOB_LOCAL --push_amt $ALICE_TO_BOB_PUSH
+
+echo "Opening a channel from Bob to Carol (middle hop, balanced)"
+lncli $BOB openchannel --connect $CAROL:9735 $CAROL_PUBKEY --local_amt $BOB_TO_CAROL_LOCAL --push_amt $BOB_TO_CAROL_PUSH
+
+echo "Opening a channel from Carol to Alice (return path — Alice gets ~10M inbound from Carol)"
+lncli $CAROL openchannel --connect $ALICE:9735 $ALICE_PUBKEY --local_amt $CAROL_TO_ALICE_LOCAL --push_amt $CAROL_TO_ALICE_PUSH
 
 echo "Confirming channels"
 bitcoin_cli -generate 6 > /dev/null
 
-echo "Setting inbound fees on Bob's channels"
+# Outbound fee rates are distinct per node so routing costs are non-trivial and
+# visible in test assertions:
+#   Alice:  1000 ppm (outbound, not paid by Alice on her own circular payment)
+#   Bob:     400 ppm (paid when forwarding Alice→Carol leg)
+#   Carol:   600 ppm (paid when forwarding Carol→Alice leg)
+# A circular rebalance Alice→Bob→Carol→Alice costs Bob(400) + Carol(600) = ~1000 ppm
+# of the forwarded amount. On 1 000 000 sats that is 1 000 sats in fees — clearly
+# non-zero and easy to assert against. Base fees are 0 on all nodes.
+echo "Setting outbound fee policies on all nodes"
+# Fees are intentionally distinct so routing costs are visible in test assertions:
+#   Alice -> Bob -> Carol -> Alice costs Bob's fee (400 ppm) + Carol's fee (600 ppm) = ~1000 ppm total.
+#   All base fees are 0 so the only cost is proportional to the forwarded amount.
+lncli $ALICE updatechanpolicy --base_fee_msat 0 --fee_rate_ppm 1000 --time_lock_delta 40
+lncli $BOB updatechanpolicy --base_fee_msat 0 --fee_rate_ppm 400 --time_lock_delta 40
+lncli $CAROL updatechanpolicy --base_fee_msat 0 --fee_rate_ppm 600 --time_lock_delta 40
 
-
-lncli $BOB updatechanpolicy --base_fee_msat 0 --fee_rate_ppm 1000 --time_lock_delta 40 --inbound_fee_rate_ppm -1000 --inbound_base_fee_msat 0
+echo "Mining a few extra blocks so gossip can propagate"
+bitcoin_cli -generate 3 > /dev/null
