@@ -910,12 +910,12 @@ namespace NodeGuard.Rpc
                 new Mock<INBXplorerService>().Object);
         }
 
-            private static Mock<IHtlcMonitoringScheduler> CreateHtlcMonitoringSchedulerMock()
-            {
-                var mock = new Mock<IHtlcMonitoringScheduler>();
-                mock.Setup(x => x.EnsureNodeWorkerScheduled(It.IsAny<Node>())).ReturnsAsync(true);
-                return mock;
-            }
+        private static Mock<IHtlcMonitoringScheduler> CreateHtlcMonitoringSchedulerMock()
+        {
+            var mock = new Mock<IHtlcMonitoringScheduler>();
+            mock.Setup(x => x.EnsureNodeWorkerScheduled(It.IsAny<Node>())).ReturnsAsync(true);
+            return mock;
+        }
 
         private static ISchedulerFactory GetSchedulerFactoryMock()
         {
