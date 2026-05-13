@@ -75,7 +75,9 @@ namespace NodeGuard.Rpc
             ILightningService? lightningService = null,
             IFMUTXORepository? fmutxoRepository = null,
             IUTXOTagRepository? utxoTagRepository = null,
-            IHtlcMonitoringScheduler? htlcMonitoringScheduler = null)
+            IHtlcMonitoringScheduler? htlcMonitoringScheduler = null,
+            IRebalanceService? rebalanceService = null,
+            IRebalanceRepository? rebalanceRepository = null)
         {
             return new NodeGuardService(
                 logger ?? _logger.Object,
@@ -93,7 +95,9 @@ namespace NodeGuard.Rpc
                 lightningService ?? new Mock<ILightningService>().Object,
                 fmutxoRepository ?? new Mock<IFMUTXORepository>().Object,
                 utxoTagRepository ?? new Mock<IUTXOTagRepository>().Object,
-                htlcMonitoringScheduler ?? CreateHtlcMonitoringSchedulerMock().Object);
+                htlcMonitoringScheduler ?? CreateHtlcMonitoringSchedulerMock().Object,
+                rebalanceService ?? new Mock<IRebalanceService>().Object,
+                rebalanceRepository ?? new Mock<IRebalanceRepository>().Object);
         }
 
         [Fact]
@@ -1282,6 +1286,302 @@ namespace NodeGuard.Rpc
                 .ThrowAsync<RpcException>()
                 .WithMessage(
                     "Status(StatusCode=\"Internal\", Detail=\"You can't select wallets by type and id at the same time\")");
+        }
+
+        [Fact]
+        public async Task RequestRebalance_NodePubkeyMissing_ThrowsInvalidArgument()
+        {
+            var service = CreateNodeGuardService();
+            var request = new RequestRebalanceRequest { NodePubkey = "", AmountSats = 1000 };
+
+            var act = () => service.RequestRebalance(request, TestServerCallContext.Create());
+
+            (await act.Should().ThrowAsync<RpcException>())
+                .Which.StatusCode.Should().Be(StatusCode.InvalidArgument);
+        }
+
+        [Fact]
+        public async Task RequestRebalance_AmountSatsNotPositive_ThrowsInvalidArgument()
+        {
+            var service = CreateNodeGuardService();
+            var request = new RequestRebalanceRequest { NodePubkey = "pubkey1", AmountSats = 0 };
+
+            var act = () => service.RequestRebalance(request, TestServerCallContext.Create());
+
+            (await act.Should().ThrowAsync<RpcException>())
+                .Which.StatusCode.Should().Be(StatusCode.InvalidArgument);
+        }
+
+        [Fact]
+        public async Task RequestRebalance_NodeNotFound_ThrowsNotFound()
+        {
+            var nodeRepoMock = new Mock<INodeRepository>();
+            nodeRepoMock.Setup(r => r.GetByPubkey("pubkey1")).ReturnsAsync((Node?)null);
+
+            var service = CreateNodeGuardService(nodeRepository: nodeRepoMock.Object);
+            var request = new RequestRebalanceRequest { NodePubkey = "pubkey1", AmountSats = 1000 };
+
+            var act = () => service.RequestRebalance(request, TestServerCallContext.Create());
+
+            (await act.Should().ThrowAsync<RpcException>())
+                .Which.StatusCode.Should().Be(StatusCode.NotFound);
+        }
+
+        [Fact]
+        public async Task RequestRebalance_Success_PassesOptionalsAndReturnsResponse()
+        {
+            var node = new Node { Id = 42, PubKey = "pubkey1" };
+            var nodeRepoMock = new Mock<INodeRepository>();
+            nodeRepoMock.Setup(r => r.GetByPubkey("pubkey1")).ReturnsAsync(node);
+
+            RebalanceRequest? capturedRequest = null;
+            var rebalanceServiceMock = new Mock<IRebalanceService>();
+            rebalanceServiceMock
+                .Setup(s => s.RebalanceAsync(It.IsAny<RebalanceRequest>(), It.IsAny<CancellationToken>()))
+                .Callback<RebalanceRequest, CancellationToken>((r, _) => capturedRequest = r)
+                .ReturnsAsync(new Rebalance
+                {
+                    Id = 7,
+                    NodeId = node.Id,
+                    SourceNodePubKey = node.PubKey,
+                    Status = RebalanceStatus.Succeeded,
+                    AttemptNumber = 1,
+                    RequestedAmountSats = 1000,
+                    SatsAmount = 950,
+                    FeePaidSats = 3,
+                    FeePaidMsat = 3000,
+                });
+
+            var service = CreateNodeGuardService(
+                nodeRepository: nodeRepoMock.Object,
+                rebalanceService: rebalanceServiceMock.Object);
+
+            var request = new RequestRebalanceRequest
+            {
+                NodePubkey = "pubkey1",
+                AmountSats = 1000,
+                MaxFeePct = 0.05,
+                RetryMaxFeePct = 0.1,
+                SourceChannelId = 11,
+                TargetPubkey = "peer-pubkey",
+                TimeoutSeconds = 90,
+                ProbeBackoffRatio = 0.5,
+                MaxAttempts = 4,
+            };
+
+            var response = await service.RequestRebalance(request, TestServerCallContext.Create());
+
+            response.RebalanceId.Should().Be(7);
+            response.Status.Should().Be(REBALANCE_STATUS.RebalanceSucceeded);
+            response.AttemptNumber.Should().Be(1);
+            response.FeePaidSats.Should().Be(3);
+            response.HasActualAmountSats.Should().BeTrue();
+            response.ActualAmountSats.Should().Be(950);
+
+            capturedRequest.Should().NotBeNull();
+            capturedRequest!.NodeId.Should().Be(node.Id);
+            capturedRequest.AmountSats.Should().Be(1000);
+            capturedRequest.MaxFeePct.Should().Be(0.05);
+            capturedRequest.RetryMaxFeePct.Should().Be(0.1);
+            capturedRequest.SourceChannelId.Should().Be(11);
+            capturedRequest.TargetPubkey.Should().Be("peer-pubkey");
+            capturedRequest.TimeoutSeconds.Should().Be(90);
+            capturedRequest.ProbeBackoffRatio.Should().Be(0.5);
+            capturedRequest.MaxAttempts.Should().Be(4);
+            capturedRequest.IsManual.Should().BeTrue();
+        }
+
+        [Fact]
+        public async Task RequestRebalance_DomainArgumentException_ThrowsInvalidArgument()
+        {
+            var node = new Node { Id = 1, PubKey = "pubkey1" };
+            var nodeRepoMock = new Mock<INodeRepository>();
+            nodeRepoMock.Setup(r => r.GetByPubkey("pubkey1")).ReturnsAsync(node);
+
+            var rebalanceServiceMock = new Mock<IRebalanceService>();
+            rebalanceServiceMock
+                .Setup(s => s.RebalanceAsync(It.IsAny<RebalanceRequest>(), It.IsAny<CancellationToken>()))
+                .ThrowsAsync(new ArgumentException("bad ratio"));
+
+            var service = CreateNodeGuardService(
+                nodeRepository: nodeRepoMock.Object,
+                rebalanceService: rebalanceServiceMock.Object);
+
+            var request = new RequestRebalanceRequest { NodePubkey = "pubkey1", AmountSats = 1000 };
+
+            var act = () => service.RequestRebalance(request, TestServerCallContext.Create());
+
+            (await act.Should().ThrowAsync<RpcException>())
+                .Which.StatusCode.Should().Be(StatusCode.InvalidArgument);
+        }
+
+        [Fact]
+        public async Task GetRebalance_InvalidId_ThrowsInvalidArgument()
+        {
+            var service = CreateNodeGuardService();
+            var request = new GetRebalanceRequest { RebalanceId = 0 };
+
+            var act = () => service.GetRebalance(request, TestServerCallContext.Create());
+
+            (await act.Should().ThrowAsync<RpcException>())
+                .Which.StatusCode.Should().Be(StatusCode.InvalidArgument);
+        }
+
+        [Fact]
+        public async Task GetRebalance_NotFound_ThrowsNotFound()
+        {
+            var rebalanceRepoMock = new Mock<IRebalanceRepository>();
+            rebalanceRepoMock.Setup(r => r.GetById(99)).ReturnsAsync((Rebalance?)null);
+
+            var service = CreateNodeGuardService(rebalanceRepository: rebalanceRepoMock.Object);
+
+            var act = () => service.GetRebalance(new GetRebalanceRequest { RebalanceId = 99 },
+                TestServerCallContext.Create());
+
+            (await act.Should().ThrowAsync<RpcException>())
+                .Which.StatusCode.Should().Be(StatusCode.NotFound);
+        }
+
+        [Fact]
+        public async Task GetRebalance_Found_ReturnsMappedResponse()
+        {
+            var rebalance = new Rebalance
+            {
+                Id = 5,
+                NodeId = 1,
+                SourceNodePubKey = "pubkey1",
+                Status = RebalanceStatus.Succeeded,
+                IsManual = true,
+                AttemptNumber = 2,
+                RequestedAmountSats = 1000,
+                SatsAmount = 950,
+                MaxFeePct = 0.05,
+                RetryMaxFeePct = 0.1,
+                FeePaidSats = 3,
+                FeePaidMsat = 3000,
+                SourceChanIdLnd = 123456UL,
+                TargetPubkey = "peer-pubkey",
+                ProbeBackoffRatio = 0.5,
+                MaxAttempts = 4,
+                CreationDatetime = DateTimeOffset.FromUnixTimeSeconds(1_700_000_000),
+                UpdateDatetime = DateTimeOffset.FromUnixTimeSeconds(1_700_000_100),
+            };
+
+            var rebalanceRepoMock = new Mock<IRebalanceRepository>();
+            rebalanceRepoMock.Setup(r => r.GetById(5)).ReturnsAsync(rebalance);
+
+            var service = CreateNodeGuardService(rebalanceRepository: rebalanceRepoMock.Object);
+
+            var response = await service.GetRebalance(new GetRebalanceRequest { RebalanceId = 5 },
+                TestServerCallContext.Create());
+
+            response.RebalanceId.Should().Be(5);
+            response.NodePubkey.Should().Be("pubkey1");
+            response.Status.Should().Be(REBALANCE_STATUS.RebalanceSucceeded);
+            response.IsManual.Should().BeTrue();
+            response.AttemptNumber.Should().Be(2);
+            response.RequestedAmountSats.Should().Be(1000);
+            response.AmountSats.Should().Be(950);
+            response.MaxFeePct.Should().Be(0.05);
+            response.RetryMaxFeePct.Should().Be(0.1);
+            response.FeePaidSats.Should().Be(3);
+            response.EffectivePpm.Should().Be(3000L * 1000L / 950L);
+            response.SourceChanId.Should().Be(123456UL);
+            response.TargetPubkey.Should().Be("peer-pubkey");
+            response.ProbeBackoffRatio.Should().Be(0.5);
+            response.MaxAttempts.Should().Be(4);
+            response.CreationDatetimeUnix.Should().Be(1_700_000_000);
+            response.UpdateDatetimeUnix.Should().Be(1_700_000_100);
+        }
+
+        [Fact]
+        public async Task GetRebalances_InvalidPageNumber_ThrowsInvalidArgument()
+        {
+            var service = CreateNodeGuardService();
+            var request = new GetRebalancesRequest { PageNumber = 0, PageSize = 10 };
+
+            var act = () => service.GetRebalances(request, TestServerCallContext.Create());
+
+            (await act.Should().ThrowAsync<RpcException>())
+                .Which.StatusCode.Should().Be(StatusCode.InvalidArgument);
+        }
+
+        [Fact]
+        public async Task GetRebalances_UnknownNodePubkey_ReturnsEmptyPageWithoutQueryingRepo()
+        {
+            var nodeRepoMock = new Mock<INodeRepository>();
+            nodeRepoMock.Setup(r => r.GetByPubkey("missing")).ReturnsAsync((Node?)null);
+
+            var rebalanceRepoMock = new Mock<IRebalanceRepository>();
+
+            var service = CreateNodeGuardService(
+                nodeRepository: nodeRepoMock.Object,
+                rebalanceRepository: rebalanceRepoMock.Object);
+
+            var response = await service.GetRebalances(
+                new GetRebalancesRequest { PageNumber = 1, PageSize = 10, NodePubkey = "missing" },
+                TestServerCallContext.Create());
+
+            response.TotalCount.Should().Be(0);
+            response.Rebalances.Should().BeEmpty();
+            rebalanceRepoMock.Verify(r => r.GetPaginatedAsync(
+                It.IsAny<int>(), It.IsAny<int>(), It.IsAny<RebalanceStatus?>(), It.IsAny<int?>(),
+                It.IsAny<int?>(), It.IsAny<string?>(), It.IsAny<bool?>(),
+                It.IsAny<DateTimeOffset?>(), It.IsAny<DateTimeOffset?>()), Times.Never);
+        }
+
+        [Fact]
+        public async Task GetRebalances_ResolvesNodePubkeyAndForwardsFilters()
+        {
+            var node = new Node { Id = 42, PubKey = "pubkey1" };
+            var nodeRepoMock = new Mock<INodeRepository>();
+            nodeRepoMock.Setup(r => r.GetByPubkey("pubkey1")).ReturnsAsync(node);
+
+            var rebalances = new List<Rebalance>
+            {
+                new Rebalance
+                {
+                    Id = 1, NodeId = node.Id, SourceNodePubKey = node.PubKey,
+                    Status = RebalanceStatus.Succeeded, AttemptNumber = 1,
+                    RequestedAmountSats = 100, SatsAmount = 100, MaxFeePct = 0.05,
+                    CreationDatetime = DateTimeOffset.FromUnixTimeSeconds(1_700_000_000),
+                    UpdateDatetime = DateTimeOffset.FromUnixTimeSeconds(1_700_000_050),
+                },
+            };
+            var rebalanceRepoMock = new Mock<IRebalanceRepository>();
+            rebalanceRepoMock
+                .Setup(r => r.GetPaginatedAsync(
+                    1, 10,
+                    RebalanceStatus.Succeeded,
+                    node.Id,
+                    77,
+                    "user-1",
+                    true,
+                    It.IsAny<DateTimeOffset?>(),
+                    It.IsAny<DateTimeOffset?>()))
+                .ReturnsAsync((rebalances, 1));
+
+            var service = CreateNodeGuardService(
+                nodeRepository: nodeRepoMock.Object,
+                rebalanceRepository: rebalanceRepoMock.Object);
+
+            var response = await service.GetRebalances(new GetRebalancesRequest
+            {
+                PageNumber = 1,
+                PageSize = 10,
+                Status = REBALANCE_STATUS.RebalanceSucceeded,
+                NodePubkey = "pubkey1",
+                SourceChannelId = 77,
+                UserId = "user-1",
+                IsManual = true,
+                FromUnix = 1_699_000_000,
+                ToUnix = 1_701_000_000,
+            }, TestServerCallContext.Create());
+
+            response.TotalCount.Should().Be(1);
+            response.Rebalances.Should().HaveCount(1);
+            response.Rebalances[0].RebalanceId.Should().Be(1);
+            response.Rebalances[0].NodePubkey.Should().Be("pubkey1");
         }
     }
 }
