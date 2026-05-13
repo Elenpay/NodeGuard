@@ -16,6 +16,7 @@ public interface ILightningRouterService
     public AsyncServerStreamingCall<HtlcEvent> SubscribeHtlcEvents(Node node, Router.RouterClient? client = null);
     public AsyncServerStreamingCall<Payment> SendPaymentV2(Node node, SendPaymentRequest request, CancellationToken cancellationToken, Router.RouterClient? client = null);
     public Task<HTLCAttempt> SendToRouteV2Async(Node node, Routerrpc.SendToRouteRequest request, CancellationToken cancellationToken, Router.RouterClient? client = null);
+    public AsyncServerStreamingCall<Payment> TrackPaymentV2(Node node, TrackPaymentRequest request, CancellationToken cancellationToken, Router.RouterClient? client = null);
 }
 
 public class LightningRouterService : ILightningRouterService
@@ -116,6 +117,17 @@ public class LightningRouterService : ILightningRouterService
         client ??= GetRouterClient(node.Endpoint);
 
         return await client.SendToRouteV2Async(request,
+            new Metadata { { "macaroon", node.ChannelAdminMacaroon } },
+            cancellationToken: cancellationToken);
+    }
+
+    public AsyncServerStreamingCall<Payment> TrackPaymentV2(Node node, TrackPaymentRequest request, CancellationToken cancellationToken, Router.RouterClient? client = null)
+    {
+        CustomArgumentNullException.ThrowIfNull(node.ChannelAdminMacaroon, nameof(node.ChannelAdminMacaroon), "LND Macaroon for {NodeName} is not well configured", node.Name);
+
+        client ??= GetRouterClient(node.Endpoint);
+
+        return client.TrackPaymentV2(request,
             new Metadata { { "macaroon", node.ChannelAdminMacaroon } },
             cancellationToken: cancellationToken);
     }

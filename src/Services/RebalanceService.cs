@@ -195,6 +195,11 @@ public class RebalanceService : IRebalanceService
                 return rebalance;
             }
 
+            // Persist the payment hash before sending so MonitorRebalancesJob can resolve
+            // the true outcome against LND if this process dies mid-stream.
+            rebalance.PaymentHashHex = Convert.ToHexString(invoice.RHash.ToByteArray()).ToLowerInvariant();
+            _rebalanceRepository.Update(rebalance);
+
             var feeLimitMsat = ComputeFeeLimitMsat(rebalance.SatsAmount, rebalance.MaxFeePct);
 
             rebalance.Status = RebalanceStatus.Probing;
@@ -320,7 +325,7 @@ public class RebalanceService : IRebalanceService
         => (long)Math.Round(satsAmount * (decimal)maxFeePct * 10m, MidpointRounding.AwayFromZero);
 
 
-    private static void ApplyTerminalPayment(Rebalance rebalance, Payment payment)
+    internal static void ApplyTerminalPayment(Rebalance rebalance, Payment payment)
     {
         switch (payment.Status)
         {

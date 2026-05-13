@@ -60,6 +60,7 @@ public class Constants
     // Crons & Jobs
     public static readonly string MONITOR_WITHDRAWALS_CRON = "10 0/5 * * * ?";
     public static readonly string MONITOR_CHANNELS_CRON = "0 0 */1 * * ?";
+    public static string MONITOR_REBALANCES_CRON = "30 0/5 * * * ?";
     public static readonly string JOB_RETRY_INTERVAL_LIST_IN_MINUTES = "1,2,5,10,20";
     /// <summary>
     /// The interval in minutes for the SweepAllNodesWalletsJob to run. 
@@ -192,6 +193,13 @@ public class Constants
     /// </summary>
     public static int REBALANCE_MAX_PROBE_ROUTES_PER_AMOUNT = 6;
 
+    /// <summary>
+    /// How far back the MonitorRebalancesJob sweeps for already-terminal-but-possibly-wrong
+    /// rebalances. Caps the window during which a Failed/Timeout/NoRoute row can still be
+    /// corrected by LND truth — old rows are left alone.
+    /// </summary>
+    public static int REBALANCE_RECONCILE_TERMINAL_WINDOW_HOURS = 24;
+
     public const string IsFrozenTag = "frozen";
     public const string IsManuallyFrozenTag = "manually_frozen";
 
@@ -296,6 +304,8 @@ public class Constants
         MONITOR_WITHDRAWALS_CRON = Environment.GetEnvironmentVariable("MONITOR_WITHDRAWALS_CRON") ?? MONITOR_WITHDRAWALS_CRON;
 
         MONITOR_CHANNELS_CRON = Environment.GetEnvironmentVariable("MONITOR_CHANNELS_CRON") ?? MONITOR_CHANNELS_CRON;
+
+        MONITOR_REBALANCES_CRON = Environment.GetEnvironmentVariable("MONITOR_REBALANCES_CRON") ?? MONITOR_REBALANCES_CRON;
 
         JOB_RETRY_INTERVAL_LIST_IN_MINUTES = Environment.GetEnvironmentVariable("JOB_RETRY_INTERVAL_LIST_IN_MINUTES") ?? JOB_RETRY_INTERVAL_LIST_IN_MINUTES;
 
@@ -414,6 +424,9 @@ public class Constants
 
         var rebMaxProbeRoutes = Environment.GetEnvironmentVariable("REBALANCE_MAX_PROBE_ROUTES_PER_AMOUNT");
         if (rebMaxProbeRoutes != null) REBALANCE_MAX_PROBE_ROUTES_PER_AMOUNT = int.Parse(rebMaxProbeRoutes);
+
+        var rebReconcileWindow = Environment.GetEnvironmentVariable("REBALANCE_RECONCILE_TERMINAL_WINDOW_HOURS");
+        if (rebReconcileWindow != null) REBALANCE_RECONCILE_TERMINAL_WINDOW_HOURS = int.Parse(rebReconcileWindow);
 
         // DB Initialization
         ALICE_PUBKEY = Environment.GetEnvironmentVariable("ALICE_PUBKEY") ?? ALICE_PUBKEY;
