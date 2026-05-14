@@ -2209,6 +2209,50 @@ namespace NodeGuard.Services
         }
 
         [Fact]
+        public async Task SetChannelFeePolicy_InboundBaseFeeGreaterThanOutbound_ThrowsArgumentException()
+        {
+            // Arrange
+            var lightningService = new LightningService(_logger, null, null, null, null, null, null, null, null, null, null);
+
+            // Act
+            var act = async () => await lightningService.SetChannelFeePolicy(
+                "0000000000000000000000000000000000000000000000000000000000000001:2",
+                "managedPubKey",
+                baseFeeMsat: 1000,
+                feeRatePpm: 250,
+                timeLockDelta: 40,
+                inboundBaseFeeMsat: 1001,
+                inboundFeeRatePpm: -25);
+
+            // Assert
+            await act.Should()
+                .ThrowAsync<ArgumentException>()
+                .WithMessage("inboundBaseFeeMsat must be lower than baseFeeMsat. (Parameter 'inboundBaseFeeMsat')");
+        }
+
+        [Fact]
+        public async Task SetChannelFeePolicy_InboundFeeRateGreaterThanOutbound_ThrowsArgumentException()
+        {
+            // Arrange
+            var lightningService = new LightningService(_logger, null, null, null, null, null, null, null, null, null, null);
+
+            // Act
+            var act = async () => await lightningService.SetChannelFeePolicy(
+                "0000000000000000000000000000000000000000000000000000000000000001:2",
+                "managedPubKey",
+                baseFeeMsat: 1000,
+                feeRatePpm: 250,
+                timeLockDelta: 40,
+                inboundBaseFeeMsat: -100,
+                inboundFeeRatePpm: 251);
+
+            // Assert
+            await act.Should()
+                .ThrowAsync<ArgumentException>()
+                .WithMessage("inboundFeeRatePpm must be lower than feeRatePpm. (Parameter 'inboundFeeRatePpm')");
+        }
+
+        [Fact]
         public async Task SetChannelFeePolicy_NodeNotParticipant_ThrowsArgumentException()
         {
             // Arrange

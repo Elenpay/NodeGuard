@@ -1786,6 +1786,19 @@ namespace NodeGuard.Services
                 throw new ArgumentException("Both inboundBaseFeeMsat and inboundFeeRatePpm must be provided together for inbound fee policy.");
             }
 
+            if (inboundBaseFeeMsat.HasValue && inboundFeeRatePpm.HasValue)
+            {
+                if (inboundBaseFeeMsat.Value > baseFeeMsat)
+                {
+                    throw new ArgumentException("inboundBaseFeeMsat must be lower than baseFeeMsat.", nameof(inboundBaseFeeMsat));
+                }
+
+                if ((long)inboundFeeRatePpm.Value > feeRatePpm)
+                {
+                    throw new ArgumentException("inboundFeeRatePpm must be lower than feeRatePpm.", nameof(inboundFeeRatePpm));
+                }
+            }
+
             var channel = await _channelRepository.GetByOutpoint(outPoint);
             if (channel == null)
             {
