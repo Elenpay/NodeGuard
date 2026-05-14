@@ -1798,6 +1798,11 @@ namespace NodeGuard.Services
                 throw new ArgumentException("Node not found for the given nodePubKey.", nameof(nodePubKey));
             }
 
+            if (channel.SourceNodeId != node.Id && channel.DestinationNodeId != node.Id)
+            {
+                throw new ArgumentException("The given nodePubKey is not a participant of the channel.", nameof(nodePubKey));
+            }
+
             if (!node.IsManaged || string.IsNullOrWhiteSpace(node.ChannelAdminMacaroon))
             {
                 throw new ArgumentException("The given nodePubKey is not a managed node with channel admin access.", nameof(nodePubKey));
