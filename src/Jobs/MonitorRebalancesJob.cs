@@ -59,6 +59,10 @@ public class MonitorRebalancesJob : IJob
             var window = TimeSpan.FromHours(Constants.REBALANCE_RECONCILE_TERMINAL_WINDOW_HOURS);
             var rebalances = await _rebalanceRepository.GetReconcilable(window);
 
+            _logger.LogInformation(
+                "{JobName} found {Count} reconcilable rebalance(s) within window {WindowHours}h",
+                nameof(MonitorRebalancesJob), rebalances.Count, window.TotalHours);
+
             foreach (var rebalance in rebalances)
             {
                 try
@@ -85,7 +89,12 @@ public class MonitorRebalancesJob : IJob
     private async Task ReconcileAsync(Rebalance rebalance, CancellationToken ct)
     {
         if (string.IsNullOrEmpty(rebalance.PaymentHashHex))
+        {
+            _logger.LogDebug(
+                "Rebalance {RebalanceId} (status={Status}) has no PaymentHashHex; nothing to reconcile against LND",
+                rebalance.Id, rebalance.Status);
             return;
+        }
 
         if (rebalance.Node == null)
         {
@@ -100,10 +109,14 @@ public class MonitorRebalancesJob : IJob
         }
         catch (FormatException)
         {
-            _logger.LogWarning("Rebalance {RebalanceId} has malformed PaymentHashHex; skipping reconciliation",
-                rebalance.Id);
+            _logger.LogWarning("Rebalance {RebalanceId} has malformed PaymentHashHex {PaymentHashHex}; skipping reconciliation",
+                rebalance.Id, rebalance.PaymentHashHex);
             return;
         }
+
+        _logger.LogInformation(
+            "Reconciling rebalance {RebalanceId} (node={NodeId}, status={Status}, hash={PaymentHashHex}, attempt={Attempt}) against LND",
+            rebalance.Id, rebalance.NodeId, rebalance.Status, rebalance.PaymentHashHex, rebalance.AttemptNumber);
 
         var payment = await _lightningService.TrackPaymentV2Async(rebalance.Node, paymentHash, ct);
 
@@ -118,6 +131,9 @@ public class MonitorRebalancesJob : IJob
                 var oldStatus = rebalance.Status;
                 rebalance.Status = RebalanceStatus.Failed;
                 _rebalanceRepository.Update(rebalance);
+                _logger.LogWarning(
+                    "Rebalance {RebalanceId} has no record in LND for hash {PaymentHashHex}; flipping {OldStatus} -> Failed",
+                    rebalance.Id, rebalance.PaymentHashHex, oldStatus);
                 await _auditService.LogSystemAsync(
                     AuditActionType.RebalanceCompleted,
                     AuditEventType.Failure,
@@ -131,13 +147,23 @@ public class MonitorRebalancesJob : IJob
                         NewStatus = rebalance.Status.ToString(),
                     });
             }
+            else
+            {
+                _logger.LogInformation(
+                    "Rebalance {RebalanceId} TrackPaymentV2 returned no payment; row already terminal ({Status}), leaving as-is",
+                    rebalance.Id, rebalance.Status);
+            }
 
             return;
         }
 
         if (IsNonTerminalLndStatus(payment.Status))
         {
-            // LND still in flight — nothing to reconcile yet.
+            // LND still in flight — emitted at info so an operator can spot rebalances stuck
+            // in flight across monitor sweeps (same RebalanceId appearing tick after tick).
+            _logger.LogInformation(
+                "Rebalance {RebalanceId} still {LndStatus} in LND (db status={DbStatus}, attempt={Attempt}, hash={PaymentHashHex}); skipping update",
+                rebalance.Id, payment.Status, rebalance.Status, rebalance.AttemptNumber, rebalance.PaymentHashHex);
             return;
         }
 
@@ -145,13 +171,23 @@ public class MonitorRebalancesJob : IJob
         RebalanceService.ApplyTerminalPayment(rebalance, payment);
 
         if (rebalance.Status == previousStatus)
+        {
+            _logger.LogInformation(
+                "Rebalance {RebalanceId} terminal status {Status} matches LND ({LndStatus}); no update needed",
+                rebalance.Id, rebalance.Status, payment.Status);
             return;
+        }
 
         _rebalanceRepository.Update(rebalance);
 
         var eventType = rebalance.Status == RebalanceStatus.Succeeded
             ? AuditEventType.Success
             : AuditEventType.Failure;
+
+        _logger.LogInformation(
+            "Rebalance {RebalanceId} reconciled: {OldStatus} -> {NewStatus} (LND status={LndStatus}, failureReason={LndFailureReason}, feeSats={FeeSats}, ppm={Ppm})",
+            rebalance.Id, previousStatus, rebalance.Status, payment.Status, payment.FailureReason,
+            rebalance.FeePaidSats, rebalance.EffectivePpm);
 
         await _auditService.LogSystemAsync(
             AuditActionType.RebalanceCompleted,
