@@ -170,6 +170,15 @@ namespace NodeGuard.Services
             ulong[]? outgoingChanIds, string? lastHopPubkeyHex, int timeoutSeconds, CancellationToken ct);
 
         /// <summary>
+        /// Looks up the current state of a payment in LND by hash. Drains the
+        /// <c>Router.TrackPaymentV2</c> stream until a terminal Payment update arrives.
+        /// Returns <c>null</c> when LND reports the payment as unknown (NotFound) or when
+        /// the call errors out — callers should treat <c>null</c> as "no LND truth available"
+        /// rather than synthesising a Failed status. Intended for reconciliation jobs.
+        /// </summary>
+        Task<Payment?> TrackPaymentV2Async(Node node, byte[] paymentHash, CancellationToken ct);
+
+        /// <summary>
         /// Returns the local-outbound fee rate (ppm) of *some* channel with the given peer.
         /// Used to estimate "the fee we'd charge to forward through this peer" for ppm-cap
         /// suggestions when the LND request only constrains the peer (LastHopPubkey), not
@@ -1734,6 +1743,46 @@ namespace NodeGuard.Services
                     Status = Payment.Types.PaymentStatus.Failed,
                     FailureReason = PaymentFailureReason.FailureReasonError,
                 };
+            }
+        }
+
+        public async Task<Payment?> TrackPaymentV2Async(Node node, byte[] paymentHash, CancellationToken ct)
+        {
+            if (paymentHash == null || paymentHash.Length == 0)
+                throw new ArgumentException("Payment hash must not be empty", nameof(paymentHash));
+
+            var request = new TrackPaymentRequest
+            {
+                PaymentHash = ByteString.CopyFrom(paymentHash),
+                NoInflightUpdates = true,
+            };
+
+            try
+            {
+                using var stream = _lightningRouterService.TrackPaymentV2(node, request, ct);
+                Payment? terminal = null;
+                await foreach (var update in stream.ResponseStream.ReadAllAsync(ct))
+                {
+                    terminal = update;
+                    if (update.Status != Payment.Types.PaymentStatus.InFlight
+                        && update.Status != Payment.Types.PaymentStatus.Initiated)
+                    {
+                        break;
+                    }
+                }
+
+                return terminal;
+            }
+            catch (RpcException e) when (e.StatusCode == StatusCode.NotFound)
+            {
+                // LND has no record of this payment hash — caller decides whether that means
+                // "never reached LND" (mark Failed) or "needs another lookup later".
+                return null;
+            }
+            catch (Exception e)
+            {
+                _logger.LogWarning(e, "TrackPaymentV2 failed for node {NodeId}", node.Id);
+                return null;
             }
         }
 
