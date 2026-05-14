@@ -2102,7 +2102,8 @@ namespace NodeGuard.Services
                 Id = 10,
                 ChanId = 123,
                 FundingTx = outPoint.Hash.ToString(),
-                FundingTxOutputIndex = outPoint.N
+                FundingTxOutputIndex = outPoint.N,
+                SourceNodeId = 20
             };
             var node = new Node
             {
@@ -2205,6 +2206,69 @@ namespace NodeGuard.Services
             await act.Should()
                 .ThrowAsync<ArgumentException>()
                 .WithMessage("Both inboundBaseFeeMsat and inboundFeeRatePpm must be provided together for inbound fee policy.");
+        }
+
+        [Fact]
+        public async Task SetChannelFeePolicy_NodeNotParticipant_ThrowsArgumentException()
+        {
+            // Arrange
+            var channelRepository = new Mock<IChannelRepository>();
+            var nodeRepository = new Mock<INodeRepository>();
+            var chanPoint = "0000000000000000000000000000000000000000000000000000000000000001:2";
+            var outPoint = NBitcoin.OutPoint.Parse(chanPoint);
+
+            var channel = new Channel
+            {
+                Id = 11,
+                ChanId = 456,
+                FundingTx = outPoint.Hash.ToString(),
+                FundingTxOutputIndex = outPoint.N,
+                SourceNodeId = 100,
+                DestinationNodeId = 101
+            };
+
+            var node = new Node
+            {
+                Id = 20,
+                PubKey = "managedPubKey",
+                Endpoint = "127.0.0.1:10009",
+                ChannelAdminMacaroon = "test-macaroon"
+            };
+
+            channelRepository
+                .Setup(x => x.GetByOutpoint(It.Is<NBitcoin.OutPoint>(point => point.Hash == outPoint.Hash && point.N == outPoint.N)))
+                .ReturnsAsync(channel);
+            nodeRepository
+                .Setup(x => x.GetByPubkey(node.PubKey))
+                .ReturnsAsync(node);
+
+            var lightningService = new LightningService(
+                _logger,
+                null,
+                nodeRepository.Object,
+                null,
+                null,
+                channelRepository.Object,
+                null,
+                null,
+                null,
+                new Mock<ILightningClientService>().Object,
+                null);
+
+            // Act
+            var act = async () => await lightningService.SetChannelFeePolicy(
+                chanPoint,
+                node.PubKey,
+                baseFeeMsat: 1000,
+                feeRatePpm: 250,
+                timeLockDelta: 40,
+                inboundBaseFeeMsat: null,
+                inboundFeeRatePpm: null);
+
+            // Assert
+            await act.Should()
+                .ThrowAsync<ArgumentException>()
+                .WithMessage("The given nodePubKey is not a participant of the channel. (Parameter 'nodePubKey')");
         }
     }
 }
