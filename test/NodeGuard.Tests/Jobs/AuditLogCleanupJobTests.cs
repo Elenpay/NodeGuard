@@ -220,7 +220,7 @@ public class AuditLogCleanupJobTests
             x => x.Log(
                 LogLevel.Information,
                 It.IsAny<EventId>(),
-                It.Is<It.IsAnyType>((v, t) => 
+                It.Is<It.IsAnyType>((v, t) =>
                     v.ToString().Contains("Deleting audit logs older than") &&
                     v.ToString().Contains($"retention: {Constants.AUDIT_LOG_RETENTION_DAYS} days")),
                 It.IsAny<Exception>(),
@@ -244,7 +244,7 @@ public class AuditLogCleanupJobTests
         // Assert
         capturedCutoffDate.Should().NotBe(DateTimeOffset.MinValue, "repository should be called with a valid cutoff date");
         capturedCutoffDate.Should().BeBefore(DateTimeOffset.UtcNow, "cutoff date should be in the past");
-        
+
         var expectedDaysAgo = DateTimeOffset.UtcNow.AddDays(-Constants.AUDIT_LOG_RETENTION_DAYS);
         var difference = Math.Abs((capturedCutoffDate - expectedDaysAgo).TotalMinutes);
         difference.Should().BeLessThan(1, "cutoff date should match the expected retention calculation");
@@ -256,7 +256,7 @@ public class AuditLogCleanupJobTests
         // Arrange
         var exception1 = new InvalidOperationException("First error");
         var exception2 = new Exception("Second error");
-        
+
         _auditLogRepositoryMock
             .SetupSequence(x => x.DeleteOlderThanAsync(It.IsAny<DateTimeOffset>()))
             .ThrowsAsync(exception1)
