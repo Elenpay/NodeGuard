@@ -1835,6 +1835,16 @@ namespace NodeGuard.Services
                 throw new ArgumentException("Both inboundBaseFeeMsat and inboundFeeRatePpm must be provided together for inbound fee policy.");
             }
 
+            if (inboundBaseFeeMsat.HasValue && inboundBaseFeeMsat.Value > 0)
+            {
+                throw new ArgumentException("Inbound base fee must be lower or equal to zero.", nameof(inboundBaseFeeMsat));
+            }
+
+            if (inboundFeeRatePpm.HasValue && inboundFeeRatePpm.Value > 0)
+            {
+                throw new ArgumentException("Inbound fee rate must be lower or equal to zero.", nameof(inboundFeeRatePpm));
+            }
+
             var channel = await _channelRepository.GetByOutpoint(outPoint);
             if (channel == null)
             {

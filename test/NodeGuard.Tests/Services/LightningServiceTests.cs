@@ -2209,6 +2209,50 @@ namespace NodeGuard.Services
         }
 
         [Fact]
+        public async Task SetChannelFeePolicy_PositiveInboundBaseFee_ThrowsArgumentException()
+        {
+            // Arrange
+            var lightningService = new LightningService(_logger, null, null, null, null, null, null, null, null, null, null);
+
+            // Act
+            var act = async () => await lightningService.SetChannelFeePolicy(
+                "0000000000000000000000000000000000000000000000000000000000000001:2",
+                "managedPubKey",
+                baseFeeMsat: 1000,
+                feeRatePpm: 250,
+                timeLockDelta: 40,
+                inboundBaseFeeMsat: 1,
+                inboundFeeRatePpm: 0);
+
+            // Assert
+            await act.Should()
+                .ThrowAsync<ArgumentException>()
+                .WithMessage("Inbound base fee must be lower or equal to zero. (Parameter 'inboundBaseFeeMsat')");
+        }
+
+        [Fact]
+        public async Task SetChannelFeePolicy_PositiveInboundFeeRate_ThrowsArgumentException()
+        {
+            // Arrange
+            var lightningService = new LightningService(_logger, null, null, null, null, null, null, null, null, null, null);
+
+            // Act
+            var act = async () => await lightningService.SetChannelFeePolicy(
+                "0000000000000000000000000000000000000000000000000000000000000001:2",
+                "managedPubKey",
+                baseFeeMsat: 1000,
+                feeRatePpm: 250,
+                timeLockDelta: 40,
+                inboundBaseFeeMsat: 0,
+                inboundFeeRatePpm: 1);
+
+            // Assert
+            await act.Should()
+                .ThrowAsync<ArgumentException>()
+                .WithMessage("Inbound fee rate must be lower or equal to zero. (Parameter 'inboundFeeRatePpm')");
+        }
+
+        [Fact]
         public async Task SetChannelFeePolicy_NodeNotParticipant_ThrowsArgumentException()
         {
             // Arrange
