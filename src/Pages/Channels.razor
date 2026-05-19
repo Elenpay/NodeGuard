@@ -478,9 +478,9 @@
                                         <Field>
                                             <Validation Validator="ValidateInboundFeePolicy">
                                                 <FieldLabel>Inbound base fee (msat)</FieldLabel>
-                                                <FieldHelp>Optional inbound base fee. LND usually expects negative values.
+                                                <FieldHelp>Optional inbound base fee. When set, it must be zero or below.
                                                 </FieldHelp>
-                                                <NumericEdit TValue="int?" Immediate="false"
+                                                <NumericEdit TValue="int?" Immediate="false" Max="0"
                                                                 @bind-Value="_channelFeePolicy.InboundBaseFeeMsat">
                                                     <Feedback>
                                                         <ValidationError />
@@ -493,9 +493,9 @@
                                         <Field>
                                             <Validation Validator="ValidateInboundFeePolicy">
                                                 <FieldLabel>Inbound fee rate (ppm)</FieldLabel>
-                                                <FieldHelp>Optional inbound proportional fee. LND usually expects negative
-                                                    values.</FieldHelp>
-                                                <NumericEdit TValue="int?" Immediate="false"
+                                                <FieldHelp>Optional inbound proportional fee. When set, it must be zero
+                                                    or below.</FieldHelp>
+                                                <NumericEdit TValue="int?" Immediate="false" Max="0"
                                                                 @bind-Value="_channelFeePolicy.InboundFeeRatePpm">
                                                     <Feedback>
                                                         <ValidationError />
@@ -1223,19 +1223,17 @@
             return;
         }
 
-        if (_channelFeePolicy.InboundBaseFeeMsat.HasValue && _channelFeePolicy.BaseFeeMsat.HasValue &&
-            _channelFeePolicy.InboundBaseFeeMsat.Value > _channelFeePolicy.BaseFeeMsat.Value)
+        if (_channelFeePolicy.InboundBaseFeeMsat.HasValue && _channelFeePolicy.InboundBaseFeeMsat.Value > 0)
         {
             arg1.Status = ValidationStatus.Error;
-            arg1.ErrorText = "Inbound base fee cannot be higher than the base fee.";
+            arg1.ErrorText = "Inbound base fee must be zero or below.";
             return;
         }
 
-        if (_channelFeePolicy.InboundFeeRatePpm.HasValue && _channelFeePolicy.FeeRatePpm.HasValue &&
-            _channelFeePolicy.InboundFeeRatePpm.Value > _channelFeePolicy.FeeRatePpm.Value)
+        if (_channelFeePolicy.InboundFeeRatePpm.HasValue && _channelFeePolicy.InboundFeeRatePpm.Value > 0)
         {
             arg1.Status = ValidationStatus.Error;
-            arg1.ErrorText = "Inbound fee rate cannot be higher than the fee rate.";
+            arg1.ErrorText = "Inbound fee rate must be zero or below.";
         }
     }
 
