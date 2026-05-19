@@ -2079,5 +2079,240 @@ namespace NodeGuard.Services
             channelStatus[0].LocalBalance.Should().Be(500);
             channelStatus[0].RemoteBalance.Should().Be(0);
         }
+
+        [Fact]
+        public async Task SetChannelFeePolicy_ValidRequest_UpdatesPolicyAndStoresAuditLog()
+        {
+            // Arrange
+            var channelRepository = new Mock<IChannelRepository>();
+            var nodeRepository = new Mock<INodeRepository>();
+            var lightningClientService = new Mock<ILightningClientService>();
+            var dbContextFactory = new Mock<IDbContextFactory<ApplicationDbContext>>();
+            var options = new DbContextOptionsBuilder<ApplicationDbContext>()
+                .UseInMemoryDatabase(databaseName: $"SetChannelFeePolicy_{Guid.NewGuid()}")
+                .Options;
+            dbContextFactory
+                .Setup(x => x.CreateDbContextAsync(default))
+                .ReturnsAsync(() => new ApplicationDbContext(options));
+
+            var chanPoint = "0000000000000000000000000000000000000000000000000000000000000001:2";
+            var outPoint = NBitcoin.OutPoint.Parse(chanPoint);
+            var channel = new Channel
+            {
+                Id = 10,
+                ChanId = 123,
+                FundingTx = outPoint.Hash.ToString(),
+                FundingTxOutputIndex = outPoint.N,
+                SourceNodeId = 20
+            };
+            var node = new Node
+            {
+                Id = 20,
+                PubKey = "managedPubKey",
+                Endpoint = "127.0.0.1:10009",
+                ChannelAdminMacaroon = "test-macaroon"
+            };
+
+            channelRepository
+                .Setup(x => x.GetByOutpoint(It.Is<NBitcoin.OutPoint>(point => point.Hash == outPoint.Hash && point.N == outPoint.N)))
+                .ReturnsAsync(channel);
+            nodeRepository
+                .Setup(x => x.GetByPubkey(node.PubKey))
+                .ReturnsAsync(node);
+            lightningClientService
+                .Setup(x => x.SetChannelFeePolicy(
+                    node,
+                    It.Is<NBitcoin.OutPoint>(point => point.Hash == outPoint.Hash && point.N == outPoint.N),
+                    1000,
+                    250,
+                    40,
+                    -100,
+                    -25,
+                    null))
+                .ReturnsAsync(new PolicyUpdateResponse());
+
+            var lightningService = new LightningService(
+                _logger,
+                null,
+                nodeRepository.Object,
+                dbContextFactory.Object,
+                null,
+                channelRepository.Object,
+                null,
+                null,
+                null,
+                lightningClientService.Object,
+                null);
+
+            // Act
+            await lightningService.SetChannelFeePolicy(
+                chanPoint,
+                node.PubKey,
+                baseFeeMsat: 1000,
+                feeRatePpm: 250,
+                timeLockDelta: 40,
+                inboundBaseFeeMsat: -100,
+                inboundFeeRatePpm: -25);
+
+            // Assert
+            lightningClientService.Verify(x => x.SetChannelFeePolicy(
+                node,
+                It.Is<NBitcoin.OutPoint>(point => point.Hash == outPoint.Hash && point.N == outPoint.N),
+                1000,
+                250,
+                40,
+                -100,
+                -25,
+                null), Times.Once);
+
+            await using var assertContext = new ApplicationDbContext(options);
+            var auditLog = await assertContext.AuditLogs.SingleAsync();
+            auditLog.ActionType.Should().Be(AuditActionType.Update);
+            auditLog.EventType.Should().Be(AuditEventType.Success);
+            auditLog.ObjectAffected.Should().Be(AuditObjectType.Channel);
+            auditLog.ObjectId.Should().Be(channel.Id.ToString());
+            auditLog.Username.Should().Be("SYSTEM");
+
+            using var details = System.Text.Json.JsonDocument.Parse(auditLog.Details!);
+            details.RootElement.GetProperty("ChanPoint").GetString().Should().Be(chanPoint);
+            details.RootElement.GetProperty("ChannelId").GetInt32().Should().Be(channel.Id);
+            details.RootElement.GetProperty("ChanId").GetUInt64().Should().Be(channel.ChanId);
+            details.RootElement.GetProperty("NodeId").GetInt32().Should().Be(node.Id);
+            details.RootElement.GetProperty("NodePubKey").GetString().Should().Be(node.PubKey);
+            details.RootElement.GetProperty("BaseFeeMsat").GetInt64().Should().Be(1000);
+            details.RootElement.GetProperty("FeeRatePpm").GetUInt32().Should().Be(250);
+            details.RootElement.GetProperty("TimeLockDelta").GetUInt32().Should().Be(40);
+            details.RootElement.GetProperty("InboundBaseFeeMsat").GetInt32().Should().Be(-100);
+            details.RootElement.GetProperty("InboundFeeRatePpm").GetInt32().Should().Be(-25);
+        }
+
+        [Fact]
+        public async Task SetChannelFeePolicy_InboundPolicyOnlyPartiallyProvided_ThrowsArgumentException()
+        {
+            // Arrange
+            var lightningService = new LightningService(_logger, null, null, null, null, null, null, null, null, null, null);
+
+            // Act
+            var act = async () => await lightningService.SetChannelFeePolicy(
+                "0000000000000000000000000000000000000000000000000000000000000001:2",
+                "managedPubKey",
+                baseFeeMsat: 1000,
+                feeRatePpm: 250,
+                timeLockDelta: 40,
+                inboundBaseFeeMsat: -100,
+                inboundFeeRatePpm: null);
+
+            // Assert
+            await act.Should()
+                .ThrowAsync<ArgumentException>()
+                .WithMessage("Both inboundBaseFeeMsat and inboundFeeRatePpm must be provided together for inbound fee policy.");
+        }
+
+        [Fact]
+        public async Task SetChannelFeePolicy_PositiveInboundBaseFee_ThrowsArgumentException()
+        {
+            // Arrange
+            var lightningService = new LightningService(_logger, null, null, null, null, null, null, null, null, null, null);
+
+            // Act
+            var act = async () => await lightningService.SetChannelFeePolicy(
+                "0000000000000000000000000000000000000000000000000000000000000001:2",
+                "managedPubKey",
+                baseFeeMsat: 1000,
+                feeRatePpm: 250,
+                timeLockDelta: 40,
+                inboundBaseFeeMsat: 1,
+                inboundFeeRatePpm: 0);
+
+            // Assert
+            await act.Should()
+                .ThrowAsync<ArgumentException>()
+                .WithMessage("Inbound base fee must be lower or equal to zero. (Parameter 'inboundBaseFeeMsat')");
+        }
+
+        [Fact]
+        public async Task SetChannelFeePolicy_PositiveInboundFeeRate_ThrowsArgumentException()
+        {
+            // Arrange
+            var lightningService = new LightningService(_logger, null, null, null, null, null, null, null, null, null, null);
+
+            // Act
+            var act = async () => await lightningService.SetChannelFeePolicy(
+                "0000000000000000000000000000000000000000000000000000000000000001:2",
+                "managedPubKey",
+                baseFeeMsat: 1000,
+                feeRatePpm: 250,
+                timeLockDelta: 40,
+                inboundBaseFeeMsat: 0,
+                inboundFeeRatePpm: 1);
+
+            // Assert
+            await act.Should()
+                .ThrowAsync<ArgumentException>()
+                .WithMessage("Inbound fee rate must be lower or equal to zero. (Parameter 'inboundFeeRatePpm')");
+        }
+
+        [Fact]
+        public async Task SetChannelFeePolicy_NodeNotParticipant_ThrowsArgumentException()
+        {
+            // Arrange
+            var channelRepository = new Mock<IChannelRepository>();
+            var nodeRepository = new Mock<INodeRepository>();
+            var chanPoint = "0000000000000000000000000000000000000000000000000000000000000001:2";
+            var outPoint = NBitcoin.OutPoint.Parse(chanPoint);
+
+            var channel = new Channel
+            {
+                Id = 11,
+                ChanId = 456,
+                FundingTx = outPoint.Hash.ToString(),
+                FundingTxOutputIndex = outPoint.N,
+                SourceNodeId = 100,
+                DestinationNodeId = 101
+            };
+
+            var node = new Node
+            {
+                Id = 20,
+                PubKey = "managedPubKey",
+                Endpoint = "127.0.0.1:10009",
+                ChannelAdminMacaroon = "test-macaroon"
+            };
+
+            channelRepository
+                .Setup(x => x.GetByOutpoint(It.Is<NBitcoin.OutPoint>(point => point.Hash == outPoint.Hash && point.N == outPoint.N)))
+                .ReturnsAsync(channel);
+            nodeRepository
+                .Setup(x => x.GetByPubkey(node.PubKey))
+                .ReturnsAsync(node);
+
+            var lightningService = new LightningService(
+                _logger,
+                null,
+                nodeRepository.Object,
+                null,
+                null,
+                channelRepository.Object,
+                null,
+                null,
+                null,
+                new Mock<ILightningClientService>().Object,
+                null);
+
+            // Act
+            var act = async () => await lightningService.SetChannelFeePolicy(
+                chanPoint,
+                node.PubKey,
+                baseFeeMsat: 1000,
+                feeRatePpm: 250,
+                timeLockDelta: 40,
+                inboundBaseFeeMsat: null,
+                inboundFeeRatePpm: null);
+
+            // Assert
+            await act.Should()
+                .ThrowAsync<ArgumentException>()
+                .WithMessage("The given nodePubKey is not a participant of the channel. (Parameter 'nodePubKey')");
+        }
     }
 }

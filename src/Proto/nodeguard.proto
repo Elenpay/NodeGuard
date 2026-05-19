@@ -104,6 +104,11 @@ service NodeGuardService {
   Returns a paginated list of rebalances with optional filters.
   */
   rpc GetRebalances(GetRebalancesRequest) returns (GetRebalancesResponse);
+  
+  /*
+  Sets the fee policy for a channel
+   */
+  rpc SetChannelFeePolicy(SetChannelFeePolicyRequest) returns (SetChannelFeePolicyResponse);
 }
 
 message GetLiquidityRulesRequest {
@@ -458,6 +463,31 @@ message AddTagsRequest {
 }
 
 message AddTagsResponse {
+}
+
+message SetChannelFeePolicyRequest {
+  // Channel point in the format <funding_txid>:<output_index>.
+  string chan_point = 1;
+  // Outbound base fee charged for forwarded HTLCs, in millisatoshis.
+  int64 base_fee_msat = 2;
+  // Outbound proportional fee rate in parts-per-million (ppm).
+  uint32 fee_rate_ppm = 3;
+  // Outbound CLTV delta (final timelock delta) in blocks.
+  uint32 time_lock_delta = 4;
+  // Optional inbound fee policy (peer->this node direction).
+  optional InboundFeePolicy inbound_fee_policy = 5;
+  // Managed node pubkey (33-byte hex) where the policy will be applied.
+  string node_pubkey = 6;
+}
+
+message InboundFeePolicy {
+  // Inbound base fee in millisatoshis. Signed to support discounts/rebates.
+  int32 base_fee_msat = 1;
+  // Inbound proportional fee rate in ppm. Signed to support discounts/rebates.
+  int32 fee_rate_ppm = 2;
+}
+
+message SetChannelFeePolicyResponse {
 }
 
 enum REBALANCE_STATUS {
