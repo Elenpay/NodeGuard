@@ -17,6 +17,7 @@
  *
  */
 
+using NBitcoin;
 using Channel = NodeGuard.Data.Models.Channel;
 
 namespace NodeGuard.Data.Repositories.Interfaces;
@@ -68,4 +69,9 @@ public interface IChannelRepository
         string? channelIdFilter = null,
         DateTimeOffset? fromDate = null,
         DateTimeOffset? toDate = null);
+
+    /// <summary>
+    /// Retrieves the channel by the outpoint
+    /// </summary>
+    Task<Channel?> GetByOutpoint(OutPoint outpoint);
 }

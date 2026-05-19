@@ -18,7 +18,12 @@
  */
 
 using FluentAssertions;
+using Grpc.Core;
+using Lnrpc;
 using Microsoft.Extensions.Logging;
+using NBitcoin;
+using NodeGuard.Data.Models;
+using NodeGuard.TestHelpers;
 
 namespace NodeGuard.Services;
 
@@ -53,5 +58,104 @@ public class LightningClientServiceTests
 
         // Assert
         result.Should().NotBeNull();
+    }
+
+    [Fact]
+    public async Task SetChannelFeePolicy_BuildsPolicyUpdateRequestWithInboundFee()
+    {
+        // Arrange
+        var logger = new Mock<ILogger<LightningClientService>>();
+        var lightningClientService = new LightningClientService(logger.Object);
+        var lightningClient = new Mock<Lightning.LightningClient>();
+        var chanPoint = NBitcoin.OutPoint.Parse("0000000000000000000000000000000000000000000000000000000000000001:2");
+        var node = new Node
+        {
+            Endpoint = "127.0.0.1:10009",
+            ChannelAdminMacaroon = "test-macaroon"
+        };
+
+        PolicyUpdateRequest? capturedRequest = null;
+        Metadata? capturedMetadata = null;
+
+        lightningClient
+            .Setup(x => x.UpdateChannelPolicyAsync(
+                It.IsAny<PolicyUpdateRequest>(),
+                It.IsAny<Metadata>(),
+                It.IsAny<DateTime?>(),
+                It.IsAny<CancellationToken>()))
+            .Callback<PolicyUpdateRequest, Metadata, DateTime?, CancellationToken>((request, metadata, _, _) =>
+            {
+                capturedRequest = request;
+                capturedMetadata = metadata;
+            })
+            .Returns(MockHelpers.CreateAsyncUnaryCall(new PolicyUpdateResponse()));
+
+        // Act
+        var response = await lightningClientService.SetChannelFeePolicy(
+            node,
+            chanPoint,
+            baseFeeMsat: 1000,
+            feeRatePpm: 250,
+            timeLockDelta: 40,
+            inboundBaseFeeMsat: -100,
+            inboundFeeRatePpm: -25,
+            lightningClient.Object);
+
+        // Assert
+        response.Should().NotBeNull();
+        capturedRequest.Should().NotBeNull();
+        capturedRequest!.ChanPoint.FundingTxidStr.Should().Be(chanPoint.Hash.ToString());
+        capturedRequest.ChanPoint.OutputIndex.Should().Be(chanPoint.N);
+        capturedRequest.BaseFeeMsat.Should().Be(1000);
+        capturedRequest.FeeRatePpm.Should().Be(250);
+        capturedRequest.TimeLockDelta.Should().Be(40);
+        capturedRequest.InboundFee.Should().NotBeNull();
+        capturedRequest.InboundFee.BaseFeeMsat.Should().Be(-100);
+        capturedRequest.InboundFee.FeeRatePpm.Should().Be(-25);
+        capturedMetadata.Should().ContainSingle(entry => entry.Key == "macaroon" && entry.Value == "test-macaroon");
+    }
+
+    [Fact]
+    public async Task SetChannelFeePolicy_WithoutInboundFee_DoesNotSetInboundFee()
+    {
+        // Arrange
+        var logger = new Mock<ILogger<LightningClientService>>();
+        var lightningClientService = new LightningClientService(logger.Object);
+        var lightningClient = new Mock<Lightning.LightningClient>();
+        var chanPoint = NBitcoin.OutPoint.Parse("0000000000000000000000000000000000000000000000000000000000000001:2");
+        var node = new Node
+        {
+            Endpoint = "127.0.0.1:10009",
+            ChannelAdminMacaroon = "test-macaroon"
+        };
+
+        PolicyUpdateRequest? capturedRequest = null;
+
+        lightningClient
+            .Setup(x => x.UpdateChannelPolicyAsync(
+                It.IsAny<PolicyUpdateRequest>(),
+                It.IsAny<Metadata>(),
+                It.IsAny<DateTime?>(),
+                It.IsAny<CancellationToken>()))
+            .Callback<PolicyUpdateRequest, Metadata, DateTime?, CancellationToken>((request, _, _, _) =>
+            {
+                capturedRequest = request;
+            })
+            .Returns(MockHelpers.CreateAsyncUnaryCall(new PolicyUpdateResponse()));
+
+        // Act
+        await lightningClientService.SetChannelFeePolicy(
+            node,
+            chanPoint,
+            baseFeeMsat: 1000,
+            feeRatePpm: 250,
+            timeLockDelta: 40,
+            inboundBaseFeeMsat: null,
+            inboundFeeRatePpm: null,
+            lightningClient.Object);
+
+        // Assert
+        capturedRequest.Should().NotBeNull();
+        capturedRequest!.InboundFee.Should().BeNull();
     }
 }

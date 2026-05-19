@@ -34,6 +34,7 @@ using Microsoft.EntityFrameworkCore;
 using Routerrpc;
 using Channel = NodeGuard.Data.Models.Channel;
 using Transaction = NBitcoin.Transaction;
+using OutPoint = NBitcoin.OutPoint;
 
 // ReSharper disable InconsistentNaming
 
@@ -184,7 +185,20 @@ namespace NodeGuard.Services
         /// a specific channel. If the peer has multiple channels with us, the first one
         /// returned by ListChannels is used as a representative.
         /// </summary>
-        Task<long?> GetLocalOutboundFeeRatePpmByPeerAsync(Node node, string peerPubkey);
+        Task<long?> GetLocalOutboundFeeRatePpmByPeerAsync
+        (Node node, string peerPubkey);
+        /// <summary>
+        /// Sets the channel fee policy for a given channel identified by its chanPoint
+        /// </summary>
+        /// <param name="chanPoint"></param>
+        /// <param name="nodePubKey"></param>
+        /// <param name="baseFeeMsat"></param>
+        /// <param name="feeRatePpm"></param>
+        /// <param name="timeLockDelta"></param>
+        /// <param name="inboundBaseFeeMsat"></param>
+        /// <param name="inboundFeeRatePpm"></param>
+        /// <returns></returns>
+        public Task SetChannelFeePolicy(string chanPoint, string nodePubKey, long baseFeeMsat, uint feeRatePpm, uint timeLockDelta, int? inboundBaseFeeMsat, int? inboundFeeRatePpm);
     }
 
     /// <summary>
@@ -1800,6 +1814,107 @@ namespace NodeGuard.Services
             if (match == null) return null;
 
             return await GetLocalOutboundFeeRatePpmAsync(node, match.ChanId);
+        }
+
+        public async Task SetChannelFeePolicy(string chanPoint, string nodePubKey, long baseFeeMsat, uint feeRatePpm, uint timeLockDelta, int? inboundBaseFeeMsat, int? inboundFeeRatePpm)
+        {
+            // Validate chanPoint format
+            if (!OutPoint.TryParse(chanPoint, out var outPoint))
+            {
+                throw new ArgumentException("Invalid chanPoint format.", nameof(chanPoint));
+            }
+
+            if (string.IsNullOrWhiteSpace(nodePubKey))
+            {
+                throw new ArgumentException("Node pubkey is required.", nameof(nodePubKey));
+            }
+
+            // Validate inbound fee policy parameters
+            if (inboundBaseFeeMsat.HasValue != inboundFeeRatePpm.HasValue)
+            {
+                throw new ArgumentException("Both inboundBaseFeeMsat and inboundFeeRatePpm must be provided together for inbound fee policy.");
+            }
+
+            if (inboundBaseFeeMsat.HasValue && inboundBaseFeeMsat.Value > 0)
+            {
+                throw new ArgumentException("Inbound base fee must be lower or equal to zero.", nameof(inboundBaseFeeMsat));
+            }
+
+            if (inboundFeeRatePpm.HasValue && inboundFeeRatePpm.Value > 0)
+            {
+                throw new ArgumentException("Inbound fee rate must be lower or equal to zero.", nameof(inboundFeeRatePpm));
+            }
+
+            var channel = await _channelRepository.GetByOutpoint(outPoint);
+            if (channel == null)
+            {
+                throw new ArgumentException("Channel not found for the given chanPoint.", nameof(chanPoint));
+            }
+
+            var node = await _nodeRepository.GetByPubkey(nodePubKey);
+            if (node == null)
+            {
+                throw new ArgumentException("Node not found for the given nodePubKey.", nameof(nodePubKey));
+            }
+
+            if (channel.SourceNodeId != node.Id && channel.DestinationNodeId != node.Id)
+            {
+                throw new ArgumentException("The given nodePubKey is not a participant of the channel.", nameof(nodePubKey));
+            }
+
+            if (!node.IsManaged || string.IsNullOrWhiteSpace(node.ChannelAdminMacaroon))
+            {
+                throw new ArgumentException("The given nodePubKey is not a managed node with channel admin access.", nameof(nodePubKey));
+            }
+
+            try
+            {
+                var response = await _lightningClientService.SetChannelFeePolicy(node, outPoint, baseFeeMsat, feeRatePpm, timeLockDelta, inboundBaseFeeMsat, inboundFeeRatePpm);
+
+                if (response?.FailedUpdates != null && response.FailedUpdates.Count > 0)
+                {
+                    _logger.LogError("Failed to update fee policy for channel: {ChanPoint}", chanPoint);
+                    throw new Exception($"Failed to update fee policy for channel: {chanPoint}");
+                }
+            }
+            catch (Exception e)
+            {
+                _logger.LogError(e, "Error while setting channel fee policy for chanPoint: {ChanPoint}", chanPoint);
+                throw new Exception($"Error while setting channel fee policy for chanPoint: {chanPoint}");
+            }
+
+            try
+            {
+                await using var applicationDbContext = await _dbContextFactory.CreateDbContextAsync();
+
+                await applicationDbContext.AuditLogs.AddAsync(new AuditLog
+                {
+                    ActionType = AuditActionType.Update,
+                    EventType = AuditEventType.Success,
+                    ObjectAffected = AuditObjectType.Channel,
+                    ObjectId = channel.Id.ToString(),
+                    Username = "SYSTEM",
+                    Details = System.Text.Json.JsonSerializer.Serialize(new
+                    {
+                        ChanPoint = chanPoint,
+                        ChannelId = channel.Id,
+                        channel.ChanId,
+                        NodeId = node.Id,
+                        NodePubKey = node.PubKey,
+                        BaseFeeMsat = baseFeeMsat,
+                        FeeRatePpm = feeRatePpm,
+                        TimeLockDelta = timeLockDelta,
+                        InboundBaseFeeMsat = inboundBaseFeeMsat,
+                        InboundFeeRatePpm = inboundFeeRatePpm
+                    })
+                });
+
+                await applicationDbContext.SaveChangesAsync();
+            }
+            catch (Exception e)
+            {
+                _logger.LogError(e, "Error while saving channel fee policy audit log for chanPoint: {ChanPoint}", chanPoint);
+            }
         }
     }
 }
