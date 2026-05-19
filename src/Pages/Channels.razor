@@ -606,7 +606,7 @@
     {
         public long? BaseFeeMsat { get; set; }
         public long? FeeRatePpm { get; set; }
-        public long? TimeLockDelta { get; set; }
+        public long? TimeLockDelta { get; set; } = Constants.DEFAULT_CHANNEL_FEE_POLICY_TIMELOCK_DELTA_BLOCKS;
         public int? InboundBaseFeeMsat { get; set; }
         public int? InboundFeeRatePpm { get; set; }
     }
