@@ -847,6 +847,30 @@ namespace NodeGuard.Services
                 NodePubkey = ByteString.CopyFrom(Convert.FromHexString(remoteNodeInfo.PubKey)),
             };
 
+            if (channelOperationRequest.InitialChannelBaseFeeMsat.HasValue)
+            {
+                if (channelOperationRequest.InitialChannelBaseFeeMsat.Value < 0)
+                {
+                    throw new ArgumentOutOfRangeException(nameof(channelOperationRequest.InitialChannelBaseFeeMsat),
+                        "Channel base fee must be zero or greater.");
+                }
+
+                openChannelRequest.BaseFee = checked((ulong)channelOperationRequest.InitialChannelBaseFeeMsat.Value);
+                openChannelRequest.UseBaseFee = true;
+            }
+
+            if (channelOperationRequest.InitialChannelFeeRatePpm.HasValue)
+            {
+                if (channelOperationRequest.InitialChannelFeeRatePpm.Value < 0)
+                {
+                    throw new ArgumentOutOfRangeException(nameof(channelOperationRequest.InitialChannelFeeRatePpm),
+                        "Channel fee rate must be zero or greater.");
+                }
+
+                openChannelRequest.FeeRate = checked((ulong)channelOperationRequest.InitialChannelFeeRatePpm.Value);
+                openChannelRequest.UseFeeRate = true;
+            }
+
             // Check features to see if we need or is allowed to add a close address
             var upfrontShutdownScriptOpt =
                 remoteNodeInfo.Features.ContainsKey((uint)FeatureBit.UpfrontShutdownScriptOpt);

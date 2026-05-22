@@ -1859,6 +1859,55 @@ namespace NodeGuard.Services
         }
 
         [Fact]
+        public async Task? CreateOpenChannelRequest_CreatesRequestWithInitialChannelFeePolicy()
+        {
+            // Arrange
+            var wallet = CreateWallet.SingleSig(_internalWallet);
+            var channelOperationRequest = new ChannelOperationRequest
+            {
+                Wallet = wallet,
+                InitialChannelBaseFeeMsat = 1_000,
+                InitialChannelFeeRatePpm = 250
+            };
+            var psbt =
+                "cHNidP8BAFIBAAAAAeh7YDXyZE11vXb0yRqCkrxY7VpHH1WVMHwaCWYMv/pCAQAAAAD/////AUjf9QUAAAAAFgAULTCtUNMojFQZ8oa6fpbXbDhK2EYAAAAATwEENYfPA325Ro0AAAABg9H86IDUttPPFss+9te+0DByQgbeD7RPXNuVH9mh1qIDnMEWyKA+kvyG038on8+HxI+9AD8r6ZI1dNIDSGC8824Q7QIQyDAAAIABAACAAQAAAAABAR8A4fUFAAAAABYAFOk69QEyo0x+Xs/zV62OLrHh9eszAQMEAgAAAAAA";
+
+            var combinedPsbt = LightningHelper.CombinePSBTs(new[] { psbt });
+            var lightningService = new LightningService(_logger, null, null, null, null, null, null, null, null, null, null);
+            var pendingChannelId = RandomNumberGenerator.GetBytes(32);
+            var derivationStrategyBase = LightningService.GetDerivationStrategyBase(channelOperationRequest);
+            var node = new LightningNode()
+            {
+                PubKey = "03650f49929d84d9a6d9b5a66235c603a1a0597dd609f7cd3b15052382cf9bb1b4"
+            };
+
+            // Act
+            var openChannelRequest = await lightningService.CreateOpenChannelRequest(channelOperationRequest, combinedPsbt, node, 1000, pendingChannelId, derivationStrategyBase);
+
+            // Assert
+            openChannelRequest.Should().Be(new OpenChannelRequest()
+            {
+                FundingShim = new FundingShim
+                {
+                    PsbtShim = new PsbtShim
+                    {
+                        BasePsbt = ByteString.FromBase64(combinedPsbt.ToBase64()),
+                        NoPublish = false,
+                        PendingChanId = ByteString.CopyFrom(pendingChannelId)
+                    }
+                },
+                LocalFundingAmount = 1000,
+                Private = false,
+                NodePubkey = ByteString.CopyFrom(Convert.FromHexString("03650f49929d84d9a6d9b5a66235c603a1a0597dd609f7cd3b15052382cf9bb1b4")),
+                CloseAddress = "",
+                BaseFee = 1_000,
+                FeeRate = 250,
+                UseBaseFee = true,
+                UseFeeRate = true,
+            });
+        }
+
+        [Fact]
         public async Task GetChannelsStatus_SourceNodeIsManaged_SourceIsInitiator()
         {
             // Arrange
