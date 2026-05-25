@@ -468,14 +468,17 @@ namespace NodeGuard.Migrations
                     b.Property<decimal?>("FeeRate")
                         .HasColumnType("numeric");
 
+                    b.Property<long?>("InitialChannelBaseFeeMsat")
+                        .HasColumnType("bigint");
+
+                    b.Property<long?>("InitialChannelFeeRatePpm")
+                        .HasColumnType("bigint");
+
                     b.Property<bool>("IsChannelPrivate")
                         .HasColumnType("boolean");
 
                     b.Property<int>("MempoolRecommendedFeesType")
                         .HasColumnType("integer");
-
-                    b.Property<string>("RequestMetadata")
-                        .HasColumnType("text");
 
                     b.Property<int>("RequestType")
                         .HasColumnType("integer");

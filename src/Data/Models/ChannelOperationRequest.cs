@@ -18,8 +18,6 @@
  */
 
 using System.ComponentModel.DataAnnotations.Schema;
-using System.Text.Json;
-using System.Text.Json.Serialization;
 using NodeGuard.Helpers;
 using NBitcoin;
 using NodeGuard.Services;
@@ -75,15 +73,6 @@ namespace NodeGuard.Data.Models
 
     public class ChannelOperationRequest : Entity, IEquatable<ChannelOperationRequest>, IBitcoinRequest
     {
-        private sealed class InitialChannelFeePolicyMetadata
-        {
-            [JsonPropertyName("InitialChannelBaseFeeMsat")]
-            public long? InitialChannelBaseFeeMsat { get; set; }
-
-            [JsonPropertyName("InitialChannelFeeRatePpm")]
-            public long? InitialChannelFeeRatePpm { get; set; }
-        }
-
         /// <summary>
         /// Amount in satoshis
         /// </summary>
@@ -128,9 +117,14 @@ namespace NodeGuard.Data.Models
         public decimal? FeeRate { get; set; }
 
         /// <summary>
-        /// Serialized request metadata for values that must survive approval and job execution.
+        /// Initial base fee in millisatoshis to be applied when the channel is opened.
         /// </summary>
-        public string? RequestMetadata { get; set; }
+        public long? InitialChannelBaseFeeMsat { get; set; }
+
+        /// <summary>
+        /// Initial fee rate in parts per million to be applied when the channel is opened.
+        /// </summary>
+        public long? InitialChannelFeeRatePpm { get; set; }
 
         [Column(TypeName = "jsonb")]
         public List<ChannelStatusLog>? StatusLogs { get; set; } = new();
@@ -171,20 +165,6 @@ namespace NodeGuard.Data.Models
         /// </summary>
         public bool Changeless { get; set; }
 
-        [NotMapped]
-        public long? InitialChannelBaseFeeMsat
-        {
-            get => GetRequestMetadata().InitialChannelBaseFeeMsat;
-            set => SetInitialChannelFeePolicyMetadata(value, InitialChannelFeeRatePpm);
-        }
-
-        [NotMapped]
-        public long? InitialChannelFeeRatePpm
-        {
-            get => GetRequestMetadata().InitialChannelFeeRatePpm;
-            set => SetInitialChannelFeePolicyMetadata(InitialChannelBaseFeeMsat, value);
-        }
-
         /// <summary>
         /// Check that the number of signatures (not finalised psbt nor internal wallet psbt or template psbt are gathered and increases by one to count on the internal wallet signature
         /// </summary>
@@ -215,37 +195,6 @@ namespace NodeGuard.Data.Models
             }
 
             return result;
-        }
-
-        private InitialChannelFeePolicyMetadata GetRequestMetadata()
-        {
-            if (string.IsNullOrWhiteSpace(RequestMetadata))
-            {
-                return new InitialChannelFeePolicyMetadata();
-            }
-
-            try
-            {
-                return JsonSerializer.Deserialize<InitialChannelFeePolicyMetadata>(RequestMetadata) ?? new InitialChannelFeePolicyMetadata();
-            }
-            catch (JsonException)
-            {
-                return new InitialChannelFeePolicyMetadata();
-            }
-        }
-
-        private void SetInitialChannelFeePolicyMetadata(long? initialChannelBaseFeeMsat, long? initialChannelFeeRatePpm)
-        {
-            if (!initialChannelBaseFeeMsat.HasValue && !initialChannelFeeRatePpm.HasValue)
-            {
-                RequestMetadata = null;
-                return;
-            }
-
-            var metadata = GetRequestMetadata();
-            metadata.InitialChannelBaseFeeMsat = initialChannelBaseFeeMsat;
-            metadata.InitialChannelFeeRatePpm = initialChannelFeeRatePpm;
-            RequestMetadata = JsonSerializer.Serialize(metadata);
         }
 
         public override bool Equals(object? obj)

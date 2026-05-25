@@ -14,8 +14,8 @@ using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 namespace NodeGuard.Migrations
 {
     [DbContext(typeof(ApplicationDbContext))]
-    [Migration("20260522125854_AddRequestMetadata")]
-    partial class AddRequestMetadata
+    [Migration("20260525155559_AddInitialChannelFees")]
+    partial class AddInitialChannelFees
     {
         /// <inheritdoc />
         protected override void BuildTargetModel(ModelBuilder modelBuilder)
@@ -471,14 +471,17 @@ namespace NodeGuard.Migrations
                     b.Property<decimal?>("FeeRate")
                         .HasColumnType("numeric");
 
+                    b.Property<long?>("InitialChannelBaseFeeMsat")
+                        .HasColumnType("bigint");
+
+                    b.Property<long?>("InitialChannelFeeRatePpm")
+                        .HasColumnType("bigint");
+
                     b.Property<bool>("IsChannelPrivate")
                         .HasColumnType("boolean");
 
                     b.Property<int>("MempoolRecommendedFeesType")
                         .HasColumnType("integer");
-
-                    b.Property<string>("RequestMetadata")
-                        .HasColumnType("text");
 
                     b.Property<int>("RequestType")
                         .HasColumnType("integer");
