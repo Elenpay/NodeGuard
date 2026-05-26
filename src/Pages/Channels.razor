@@ -1239,10 +1239,10 @@
 
     private static Node? GetManagedChannelNode(Channel channel)
     {
-        if (channel.SourceNode.IsManaged)
+        if (channel.SourceNode.IsManaged && !string.IsNullOrWhiteSpace(channel.SourceNode.ChannelAdminMacaroon))
             return channel.SourceNode;
 
-        if (channel.DestinationNode.IsManaged)
+        if (channel.DestinationNode.IsManaged && !string.IsNullOrWhiteSpace(channel.DestinationNode.ChannelAdminMacaroon))
             return channel.DestinationNode;
 
         return null;
