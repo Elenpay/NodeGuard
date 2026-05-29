@@ -3,6 +3,7 @@
 @using Humanizer
 @using NBitcoin
 @using Blazorise.Components
+@using Lnrpc
 @using Channel = NodeGuard.Data.Models.Channel
 @attribute [Authorize(Roles = "NodeManager")]
 <PageTitle>Active Channels</PageTitle>
@@ -245,6 +246,102 @@
                 </DataGridColumn>
                 <DataGridColumn TItem="Channel" Field="@nameof(Channel.CreationDatetime)" Caption="@nameof(Channel.CreationDatetime).Humanize(LetterCasing.Sentence)" Sortable="true" Displayable="@IsColumnVisible(ChannelsColumnName.CREATION_DATE)"/>
                 <DataGridColumn TItem="Channel" Field="@nameof(Channel.UpdateDatetime)" Caption="@nameof(Channel.UpdateDatetime).Humanize(LetterCasing.Sentence)" Sortable="true" Displayable="@IsColumnVisible(ChannelsColumnName.UPDATE_DATE)"/>
+                <DataGridColumn TItem="Channel" Field="@nameof(Channel.ChanId)" Caption="Fee Policy" Filterable="false" Sortable="false" Displayable="@IsColumnVisible(ChannelsColumnName.FEE_POLICY)">
+                    <DisplayTemplate>
+                        @{
+                            var managedNode = GetManagedChannelNode(context);
+                            var hasCachedPolicy = false;
+                            (RoutingPolicy?, RoutingPolicy?) cachedPolicy = (null, null);
+                            
+                            if (managedNode != null && _channelFeePoliciesCache.TryGetValue(context.ChanId, out var cached))
+                            {
+                                hasCachedPolicy = true;
+                                cachedPolicy = cached;
+                            }
+                            
+                            @if (managedNode == null)
+                            {
+                                <span>—</span>
+                            }
+                            else if (!hasCachedPolicy)
+                            {
+                                <i class="spinner-border spinner-border-sm"></i>
+                            }
+                            else if (cachedPolicy.Item1 != null)
+                            {
+                                <Tooltip Text="@GetFeePolicyTooltip(cachedPolicy.Item1)">
+                                    <Badge Color="Color.Info" Class="me-1" title="Outbound fee rate">
+                                        @($"{cachedPolicy.Item1.FeeRateMilliMsat} ppm")
+                                    </Badge>
+                                    <Badge Color="Color.Info" Class="me-1" title="Outbound base fee">
+                                        @($"{cachedPolicy.Item1.FeeBaseMsat} msat")
+                                    </Badge>
+                                    @if (cachedPolicy.Item1.InboundFeeRateMilliMsat != 0 || cachedPolicy.Item1.InboundFeeBaseMsat != 0)
+                                    {
+                                        <Badge Color="Color.Warning" Class="me-1" title="Inbound fee rate">
+                                            @($"in: {cachedPolicy.Item1.InboundFeeRateMilliMsat} ppm")
+                                        </Badge>
+                                        <Badge Color="Color.Warning" title="Inbound base fee">
+                                            @($"in: {cachedPolicy.Item1.InboundFeeBaseMsat} msat")
+                                        </Badge>
+                                    }
+                                </Tooltip>
+                            }
+                            else
+                            {
+                                <span class="text-muted">—</span>
+                            }
+                        }
+                    </DisplayTemplate>
+                </DataGridColumn>
+                <DataGridColumn TItem="Channel" Field="@nameof(Channel.ChanId)" Caption="Counterparty Fee Policy" Filterable="false" Sortable="false" Displayable="@IsColumnVisible(ChannelsColumnName.COUNTERPARTY_FEE_POLICY)">
+                    <DisplayTemplate>
+                        @{
+                            var managedNodeCp = GetManagedChannelNode(context);
+                            var hasCachedPolicyCp = false;
+                            (RoutingPolicy?, RoutingPolicy?) cachedPolicyCp = (null, null);
+
+                            if (managedNodeCp != null && _channelFeePoliciesCache.TryGetValue(context.ChanId, out var cachedCp))
+                            {
+                                hasCachedPolicyCp = true;
+                                cachedPolicyCp = cachedCp;
+                            }
+
+                            @if (managedNodeCp == null)
+                            {
+                                <span>—</span>
+                            }
+                            else if (!hasCachedPolicyCp)
+                            {
+                                <i class="spinner-border spinner-border-sm"></i>
+                            }
+                            else if (cachedPolicyCp.Item2 != null)
+                            {
+                                <Tooltip Text="@GetFeePolicyTooltip(cachedPolicyCp.Item2)">
+                                    <Badge Color="Color.Secondary" Class="me-1" title="Outbound fee rate">
+                                        @($"{cachedPolicyCp.Item2.FeeRateMilliMsat} ppm")
+                                    </Badge>
+                                    <Badge Color="Color.Secondary" Class="me-1" title="Outbound base fee">
+                                        @($"{cachedPolicyCp.Item2.FeeBaseMsat} msat")
+                                    </Badge>
+                                    @if (cachedPolicyCp.Item2.InboundFeeRateMilliMsat != 0 || cachedPolicyCp.Item2.InboundFeeBaseMsat != 0)
+                                    {
+                                        <Badge Color="Color.Warning" Class="me-1" title="Inbound fee rate">
+                                            @($"in: {cachedPolicyCp.Item2.InboundFeeRateMilliMsat} ppm")
+                                        </Badge>
+                                        <Badge Color="Color.Warning" title="Inbound base fee">
+                                            @($"in: {cachedPolicyCp.Item2.InboundFeeBaseMsat} msat")
+                                        </Badge>
+                                    }
+                                </Tooltip>
+                            }
+                            else
+                            {
+                                <span class="text-muted">—</span>
+                            }
+                        }
+                    </DisplayTemplate>
+                </DataGridColumn>
                 <DataGridColumn TItem="Channel" Displayable="true">
                     <FilterTemplate>
                         <ColumnLayout @ref="_channelsColumnLayout" Columns="@_channelsColumns" ColumnType="ChannelsColumnName" OnUpdate="@OnColumnLayoutUpdate"/>
@@ -426,6 +523,113 @@
                         <TabPanel Name="@ChannelManagementFeePolicyTab">
                             <Validations @ref="_channelFeePolicyValidationsRef">
                                 <p class="mb-4">Apply a new fee policy to outpoint @(_selectedChannelOutpoint ?? "Unknown") using managed node @(_selectedChannelNodePubKey ?? "Unknown").</p>
+                                
+                                @if (_currentFeePolicies.IsLoading)
+                                {
+                                    <Alert Color="Color.Info" Visible="true" class="mb-4">
+                                        <AlertDescription>
+                                            <Spinner Size="SpinnerSize.Small"></Spinner> Loading current fee policies...
+                                        </AlertDescription>
+                                    </Alert>
+                                }
+                                else if (!string.IsNullOrEmpty(_currentFeePolicies.ErrorMessage))
+                                {
+                                    <Alert Color="Color.Warning" Visible="true" class="mb-4">
+                                        <AlertDescription>
+                                            <strong>⚠️ Could not load current policies:</strong> @_currentFeePolicies.ErrorMessage
+                                        </AlertDescription>
+                                    </Alert>
+                                }
+                                else if (_currentFeePolicies.ManagedNodePolicy != null || _currentFeePolicies.CounterpartyPolicy != null)
+                                {
+                                    <Card class="mb-4" Style="background-color: #f8f9fa; border: 1px solid #dee2e6;">
+                                        <CardHeader>
+                                            <CardTitle>Current Fee Policies (Read-Only)</CardTitle>
+                                        </CardHeader>
+                                        <CardBody>
+                                            <Row>
+                                                <Column ColumnSize="ColumnSize.Is6">
+                                                    <h6 class="text-primary font-weight-bold mb-3">📍 Managed Node (@(_selectedChannelNodePubKey?.Substring(0, 8) ?? "Unknown")...)</h6>
+                                                    @if (_currentFeePolicies.ManagedNodePolicy != null)
+                                                    {
+                                                        <Table Borderless="true" class="table-sm">
+                                                            <tbody>
+                                                                <tr>
+                                                                    <td class="fw-bold">Base Fee (msat):</td>
+                                                                    <td><Badge Color="Color.Light">@_currentFeePolicies.ManagedNodePolicy.FeeBaseMsat</Badge></td>
+                                                                </tr>
+                                                                <tr>
+                                                                    <td class="fw-bold">Fee Rate (ppm):</td>
+                                                                    <td><Badge Color="Color.Light">@_currentFeePolicies.ManagedNodePolicy.FeeRateMilliMsat</Badge></td>
+                                                                </tr>
+                                                                <tr>
+                                                                    <td class="fw-bold">Time Lock Delta:</td>
+                                                                    <td><Badge Color="Color.Light">@_currentFeePolicies.ManagedNodePolicy.TimeLockDelta</Badge></td>
+                                                                </tr>
+                                                                @if (_currentFeePolicies.ManagedNodePolicy.InboundFeeRateMilliMsat != 0 || _currentFeePolicies.ManagedNodePolicy.InboundFeeBaseMsat != 0)
+                                                                {
+                                                                    <tr>
+                                                                        <td class="fw-bold">Inbound Base Fee (msat):</td>
+                                                                        <td><Badge Color="Color.Warning">@_currentFeePolicies.ManagedNodePolicy.InboundFeeBaseMsat</Badge></td>
+                                                                    </tr>
+                                                                    <tr>
+                                                                        <td class="fw-bold">Inbound Fee Rate (ppm):</td>
+                                                                        <td><Badge Color="Color.Warning">@_currentFeePolicies.ManagedNodePolicy.InboundFeeRateMilliMsat</Badge></td>
+                                                                    </tr>
+                                                                }
+                                                            </tbody>
+                                                        </Table>
+                                                    }
+                                                    else
+                                                    {
+                                                        <p class="text-muted"><em>No outbound policy found</em></p>
+                                                    }
+                                                </Column>
+                                                <Column ColumnSize="ColumnSize.Is6">
+                                                    <h6 class="text-success font-weight-bold mb-3">🔗 Counterparty Node</h6>
+                                                    @if (_currentFeePolicies.CounterpartyPolicy != null)
+                                                    {
+                                                        <Table Borderless="true" class="table-sm">
+                                                            <tbody>
+                                                                <tr>
+                                                                    <td class="fw-bold">Base Fee (msat):</td>
+                                                                    <td><Badge Color="Color.Light">@_currentFeePolicies.CounterpartyPolicy.FeeBaseMsat</Badge></td>
+                                                                </tr>
+                                                                <tr>
+                                                                    <td class="fw-bold">Fee Rate (ppm):</td>
+                                                                    <td><Badge Color="Color.Light">@_currentFeePolicies.CounterpartyPolicy.FeeRateMilliMsat</Badge></td>
+                                                                </tr>
+                                                                <tr>
+                                                                    <td class="fw-bold">Time Lock Delta:</td>
+                                                                    <td><Badge Color="Color.Light">@_currentFeePolicies.CounterpartyPolicy.TimeLockDelta</Badge></td>
+                                                                </tr>
+                                                                @if (_currentFeePolicies.CounterpartyPolicy.InboundFeeRateMilliMsat != 0 || _currentFeePolicies.CounterpartyPolicy.InboundFeeBaseMsat != 0)
+                                                                {
+                                                                    <tr>
+                                                                        <td class="fw-bold">Inbound Base Fee (msat):</td>
+                                                                        <td><Badge Color="Color.Warning">@_currentFeePolicies.CounterpartyPolicy.InboundFeeBaseMsat</Badge></td>
+                                                                    </tr>
+                                                                    <tr>
+                                                                        <td class="fw-bold">Inbound Fee Rate (ppm):</td>
+                                                                        <td><Badge Color="Color.Warning">@_currentFeePolicies.CounterpartyPolicy.InboundFeeRateMilliMsat</Badge></td>
+                                                                    </tr>
+                                                                }
+                                                            </tbody>
+                                                        </Table>
+                                                    }
+                                                    else
+                                                    {
+                                                        <p class="text-muted"><em>No inbound policy found</em></p>
+                                                    }
+                                                </Column>
+                                            </Row>
+                                        </CardBody>
+                                    </Card>
+                                }
+
+                                <Divider class="my-4"></Divider>
+                                <h6 class="mb-3"><strong>Set New Fee Policy</strong></h6>
+                                
                                 <Row>
                                     <Column>
                                         <Field>
@@ -447,7 +651,7 @@
                                                 <FieldLabel>Fee rate (ppm)</FieldLabel>
                                                 <FieldHelp>Outbound proportional fee in parts per million.</FieldHelp>
                                                 <NumericEdit TValue="long?" Min="0L" Max="@((long)uint.MaxValue)"
-                                                                @bind-Value="_channelFeePolicy.FeeRatePpm">
+                                                                @bind-Value="_channelFeePolicy.FeeRatePpm" >
                                                     <Feedback>
                                                         <ValidationError />
                                                     </Feedback>
@@ -544,6 +748,7 @@
     private Validations? _channelManagementValidationsRef;
     private Validations? _channelFeePolicyValidationsRef;
     private ChannelFeePolicyForm _channelFeePolicy = new();
+    private CurrentFeePolicies _currentFeePolicies = new() { IsLoading = false };
     private string _selectedChannelManagementTab = ChannelManagementLiquidityTab;
     private string? _selectedChannelOutpoint;
     private string? _selectedChannelNodePubKey;
@@ -584,6 +789,9 @@
     private bool _columnsLoaded;
     // This dictionary is used to store the balance of each channel, key is the channel id, value is a tuple with the node id as local in the pair, local balance, remote balance
     private Dictionary<ulong, ChannelState> _channelsBalance = new();
+    // Cache for fee policies by channel ID
+    private Dictionary<ulong, (RoutingPolicy?, RoutingPolicy?)> _channelFeePoliciesCache = new();
+    private bool _isLoadingFeePolicies;
 
     public abstract class ChannelsColumnName
     {
@@ -600,6 +808,8 @@
         public static readonly ColumnDefault CREATION_DATE = new("Creation Date");
         public static readonly ColumnDefault UPDATE_DATE = new("Update Date");
         public static readonly ColumnDefault CHANNEL_ID = new("Channel Id");
+        public static readonly ColumnDefault FEE_POLICY = new("Fee Policy");
+        public static readonly ColumnDefault COUNTERPARTY_FEE_POLICY = new("Counterparty Fee Policy");
     }
 
     private sealed class ChannelFeePolicyForm
@@ -609,6 +819,14 @@
         public long? TimeLockDelta { get; set; } = Constants.DEFAULT_CHANNEL_FEE_POLICY_TIMELOCK_DELTA_BLOCKS;
         public int? InboundBaseFeeMsat { get; set; }
         public int? InboundFeeRatePpm { get; set; }
+    }
+
+    private sealed class CurrentFeePolicies
+    {
+        public RoutingPolicy? ManagedNodePolicy { get; set; }
+        public RoutingPolicy? CounterpartyPolicy { get; set; }
+        public bool IsLoading { get; set; }
+        public string? ErrorMessage { get; set; }
     }
 
     protected override async Task OnInitializedAsync()
@@ -677,6 +895,7 @@
 
         _channels = channels;
         _totalItems = totalCount;
+        _ = Task.Run(async () => await InvokeAsync(LoadAndCacheChannelFeePolicies));
     }
 
     private async Task OnFiltersChanged()
@@ -831,10 +1050,54 @@
         if (_currentLiquidityRule != null) _currentLiquidityRule.ReverseSwapWalletId = arg;
     }
 
-    private Task OnSelectedChannelManagementTabChanged(string tabName)
+    private async Task OnSelectedChannelManagementTabChanged(string tabName)
     {
         _selectedChannelManagementTab = tabName;
-        return Task.CompletedTask;
+        if (tabName == ChannelManagementFeePolicyTab && _selectedChannel != null)
+        {
+            await LoadChannelFeePolicies();
+        }
+    }
+
+    private async Task LoadChannelFeePolicies()
+    {
+        if (_selectedChannel?.ChanId == null)
+        {
+            _currentFeePolicies = new CurrentFeePolicies { ErrorMessage = "Channel ID not available" };
+            return;
+        }
+
+        var node = GetManagedChannelNode(_selectedChannel);
+        if (node == null)
+        {
+            _currentFeePolicies = new CurrentFeePolicies { ErrorMessage = "Managed node not found" };
+            return;
+        }
+
+        _currentFeePolicies.IsLoading = true;
+        _currentFeePolicies.ErrorMessage = null;
+        StateHasChanged();
+
+        try
+        {
+            var result = await LightningService.GetChannelFeePolicy(_selectedChannel.ChanId, node);
+            _currentFeePolicies = new CurrentFeePolicies
+            {
+                ManagedNodePolicy = result.Item1,
+                CounterpartyPolicy = result.Item2,
+                IsLoading = false
+            };
+        }
+        catch (Exception ex)
+        {
+            _currentFeePolicies = new CurrentFeePolicies
+            {
+                ErrorMessage = $"Failed to load fee policies: {ex.Message}",
+                IsLoading = false
+            };
+        }
+
+        StateHasChanged();
     }
 
     private async Task CloseChannelManagementModal()
@@ -971,6 +1234,7 @@
         _selectedChannel = null;
         _currentLiquidityRule = new LiquidityRule();
         _channelFeePolicy = new ChannelFeePolicyForm();
+        _currentFeePolicies = new CurrentFeePolicies { IsLoading = false };
         _selectedChannelManagementTab = ChannelManagementLiquidityTab;
         _selectedChannelOutpoint = null;
         _selectedChannelNodePubKey = null;
@@ -1328,6 +1592,60 @@
             return $"{destination}  - {source}";
         }
         return $"{source}  - {destination}";
+    }
+
+    private string GetFeePolicyTooltip(RoutingPolicy policy)
+    {
+        var outbound = $"Outbound — Base: {policy.FeeBaseMsat} msat | Rate: {policy.FeeRateMilliMsat} ppm | Time Lock: {policy.TimeLockDelta} blocks";
+        var inbound = (policy.InboundFeeRateMilliMsat != 0 || policy.InboundFeeBaseMsat != 0)
+            ? $" | Inbound — Base: {policy.InboundFeeBaseMsat} msat | Rate: {policy.InboundFeeRateMilliMsat} ppm"
+            : "";
+        return outbound + inbound;
+    }
+
+    private async Task LoadAndCacheChannelFeePolicies()
+    {
+        if (_isLoadingFeePolicies) return;
+        _isLoadingFeePolicies = true;
+        try
+        {
+            if (_channels == null || _channels.Count == 0)
+                return;
+
+            foreach (var channel in _channels)
+            {
+                // Skip channels already cached
+                if (_channelFeePoliciesCache.ContainsKey(channel.ChanId))
+                    continue;
+
+                var node = GetManagedChannelNode(channel);
+                if (node == null)
+                {
+                    _channelFeePoliciesCache[channel.ChanId] = (null, null);
+                    continue;
+                }
+
+                try
+                {
+                    var result = await LightningService.GetChannelFeePolicy(channel.ChanId, node);
+                    _channelFeePoliciesCache[channel.ChanId] = result;
+                    await InvokeAsync(StateHasChanged);
+                }
+                catch
+                {
+                    _channelFeePoliciesCache[channel.ChanId] = (null, null);
+                    await InvokeAsync(StateHasChanged);
+                }
+            }
+        }
+        catch
+        {
+            // Silently fail - UI will show spinners
+        }
+        finally
+        {
+            _isLoadingFeePolicies = false;
+        }
     }
     
     private void ValidateBitcoinAddress(ValidatorEventArgs obj)
