@@ -2363,5 +2363,132 @@ namespace NodeGuard.Services
                 .ThrowAsync<ArgumentException>()
                 .WithMessage("The given nodePubKey is not a participant of the channel. (Parameter 'nodePubKey')");
         }
+
+        [Fact]
+        public async Task GetChannelFeePolicy_ReturnsCorrectPolicies_WhenNodeIsNode1()
+        {
+            // Arrange
+            var node = new Node
+            {
+                PubKey = "managedPubKey",
+                Endpoint = "127.0.0.1:10009",
+                ChannelAdminMacaroon = "test-macaroon"
+            };
+
+            var node1Policy = new RoutingPolicy
+            {
+                FeeBaseMsat = 1000,
+                FeeRateMilliMsat = 250,
+                TimeLockDelta = 40
+            };
+            var node2Policy = new RoutingPolicy
+            {
+                FeeBaseMsat = 2000,
+                FeeRateMilliMsat = 500,
+                TimeLockDelta = 80
+            };
+
+            var channelEdge = new ChannelEdge
+            {
+                Node1Pub = "managedPubKey",
+                Node2Pub = "counterpartyPubKey",
+                Node1Policy = node1Policy,
+                Node2Policy = node2Policy
+            };
+
+            var lightningClientService = new Mock<ILightningClientService>();
+            lightningClientService
+                .Setup(x => x.GetChanInfo(node, 123UL, null))
+                .ReturnsAsync(channelEdge);
+
+            var lightningService = new LightningService(
+                _logger, null, null, null, null, null, null, null, null,
+                lightningClientService.Object, null);
+
+            // Act
+            var (managedPolicy, counterpartyPolicy) = await lightningService.GetChannelFeePolicy(123UL, node);
+
+            // Assert
+            managedPolicy.Should().Be(node1Policy);
+            counterpartyPolicy.Should().Be(node2Policy);
+        }
+
+        [Fact]
+        public async Task GetChannelFeePolicy_ReturnsCorrectPolicies_WhenNodeIsNode2()
+        {
+            // Arrange
+            var node = new Node
+            {
+                PubKey = "managedPubKey",
+                Endpoint = "127.0.0.1:10009",
+                ChannelAdminMacaroon = "test-macaroon"
+            };
+
+            var node1Policy = new RoutingPolicy
+            {
+                FeeBaseMsat = 1000,
+                FeeRateMilliMsat = 250,
+                TimeLockDelta = 40
+            };
+            var node2Policy = new RoutingPolicy
+            {
+                FeeBaseMsat = 2000,
+                FeeRateMilliMsat = 500,
+                TimeLockDelta = 80
+            };
+
+            var channelEdge = new ChannelEdge
+            {
+                Node1Pub = "counterpartyPubKey",
+                Node2Pub = "managedPubKey",
+                Node1Policy = node1Policy,
+                Node2Policy = node2Policy
+            };
+
+            var lightningClientService = new Mock<ILightningClientService>();
+            lightningClientService
+                .Setup(x => x.GetChanInfo(node, 456UL, null))
+                .ReturnsAsync(channelEdge);
+
+            var lightningService = new LightningService(
+                _logger, null, null, null, null, null, null, null, null,
+                lightningClientService.Object, null);
+
+            // Act
+            var (managedPolicy, counterpartyPolicy) = await lightningService.GetChannelFeePolicy(456UL, node);
+
+            // Assert
+            managedPolicy.Should().Be(node2Policy);
+            counterpartyPolicy.Should().Be(node1Policy);
+        }
+
+        [Fact]
+        public async Task GetChannelFeePolicy_ThrowsArgumentException_WhenChannelNotFound()
+        {
+            // Arrange
+            var node = new Node
+            {
+                PubKey = "managedPubKey",
+                Endpoint = "127.0.0.1:10009",
+                ChannelAdminMacaroon = "test-macaroon"
+            };
+
+            var lightningClientService = new Mock<ILightningClientService>();
+            lightningClientService
+                .Setup(x => x.GetChanInfo(node, 789UL, null))
+                .ReturnsAsync((ChannelEdge?)null);
+
+            var lightningService = new LightningService(
+                _logger, null, null, null, null, null, null, null, null,
+                lightningClientService.Object, null);
+
+            // Act
+            var act = async () => await lightningService.GetChannelFeePolicy(789UL, node);
+
+            // Assert
+            await act.Should()
+                .ThrowAsync<ArgumentException>()
+                .WithMessage("Channel not found for the given chanId. (Parameter 'chanId')");
+        }
     }
 }
