@@ -187,6 +187,7 @@ namespace NodeGuard.Services
         /// </summary>
         Task<long?> GetLocalOutboundFeeRatePpmByPeerAsync
         (Node node, string peerPubkey);
+        
         /// <summary>
         /// Sets the channel fee policy for a given channel identified by its chanPoint
         /// </summary>
@@ -199,6 +200,14 @@ namespace NodeGuard.Services
         /// <param name="inboundFeeRatePpm"></param>
         /// <returns></returns>
         public Task SetChannelFeePolicy(string chanPoint, string nodePubKey, long baseFeeMsat, uint feeRatePpm, uint timeLockDelta, int? inboundBaseFeeMsat, int? inboundFeeRatePpm);
+
+        /// <summary>
+        /// Gets the channel fee policy for a given channel identified by its chanPoint
+        /// </summary>
+        /// <param name="chanPoint"></param>
+        /// <param name="nodePubKey"></param>
+        /// <returns></returns>
+        public Task<(RoutingPolicy?, RoutingPolicy?)> GetChannelFeePolicy(ulong chanId, Node node);
     }
 
     /// <summary>
@@ -1939,6 +1948,22 @@ namespace NodeGuard.Services
             {
                 _logger.LogError(e, "Error while saving channel fee policy audit log for chanPoint: {ChanPoint}", chanPoint);
             }
+        }
+
+        public async Task<(RoutingPolicy?, RoutingPolicy?)> GetChannelFeePolicy(ulong chanId, Node node)
+        {
+            var info = await _lightningClientService.GetChanInfo(node, chanId);
+            if (info == null)
+            {
+                _logger.LogError("Channel not found for chanId: {ChanId}", chanId);
+                throw new ArgumentException("Channel not found for the given chanId.", nameof(chanId));
+            }
+
+            var managedNodePolicy = info.Node1Pub == node.PubKey ? info.Node1Policy : info.Node2Policy;
+            var counterpartyNodePolicy = info.Node1Pub == node.PubKey ? info.Node2Policy : info.Node1Policy;
+
+            return (managedNodePolicy, counterpartyNodePolicy);
+
         }
     }
 }
