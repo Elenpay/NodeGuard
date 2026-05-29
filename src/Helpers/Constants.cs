@@ -99,6 +99,8 @@ public class Constants
     public static readonly decimal MAXIMUM_WITHDRAWAL_BTC_AMOUNT = 21_000_000;
     public static readonly int TRANSACTION_CONFIRMATION_MINIMUM_BLOCKS;
     public static int DEFAULT_CHANNEL_FEE_POLICY_TIMELOCK_DELTA_BLOCKS = 40;
+    public static long DEFAULT_CHANNEL_FEE_POLICY_BASE_FEE_MSAT = 1000; 
+    public static long DEFAULT_CHANNEL_FEE_POLICY_FEE_RATE_PPM = 500; // 500 ppm = 0.05%
     public static readonly long ANCHOR_CLOSINGS_MINIMUM_SATS;
     public static readonly long MINIMUM_SWEEP_TRANSACTION_AMOUNT_SATS = 25_000_000; //25M sats
     public static readonly string DEFAULT_DERIVATION_PATH = "48'/1'";
@@ -357,6 +359,12 @@ public class Constants
 
         var defaultChannelFeePolicyTimelockDeltaBlocks = Environment.GetEnvironmentVariable("DEFAULT_CHANNEL_FEE_POLICY_TIMELOCK_DELTA_BLOCKS");
         if (defaultChannelFeePolicyTimelockDeltaBlocks != null) DEFAULT_CHANNEL_FEE_POLICY_TIMELOCK_DELTA_BLOCKS = int.Parse(defaultChannelFeePolicyTimelockDeltaBlocks);
+
+        var defaultChannelFeePolicyBaseFeeMsat = Environment.GetEnvironmentVariable("DEFAULT_CHANNEL_FEE_POLICY_BASE_FEE_MSAT");
+        if (defaultChannelFeePolicyBaseFeeMsat != null) DEFAULT_CHANNEL_FEE_POLICY_BASE_FEE_MSAT = long.Parse(defaultChannelFeePolicyBaseFeeMsat);
+
+        var defaultChannelFeePolicyFeeRatePpm = Environment.GetEnvironmentVariable("DEFAULT_CHANNEL_FEE_POLICY_FEE_RATE_PPM");
+        if (defaultChannelFeePolicyFeeRatePpm != null) DEFAULT_CHANNEL_FEE_POLICY_FEE_RATE_PPM = long.Parse(defaultChannelFeePolicyFeeRatePpm);
 
         var anchorClosingMinSats = GetEnvironmentalVariableOrThrowIfNotTesting("ANCHOR_CLOSINGS_MINIMUM_SATS");
         if (anchorClosingMinSats != null) ANCHOR_CLOSINGS_MINIMUM_SATS = long.Parse(anchorClosingMinSats); // Check https://github.com/lightningnetwork/lnd/issues/6505#issuecomment-1120364460 to understand, we need 100K+ to support anchor channel closings

@@ -371,7 +371,7 @@
         <Field>
             <FieldLabel>Requestor</FieldLabel>
             <Autocomplete TItem="ApplicationUser"
-                          TValue="string?"
+                          TValue="string"
                           Data="@_availableUsers"
                           TextField="@(item => item?.UserName ?? "All")"
                           ValueField="@(item => item?.Id)"
@@ -890,8 +890,8 @@
                     Changeless = _isChangeless,
                     MempoolRecommendedFeesType = _selectedMempoolRecommendedFeesType,
                     FeeRate = _selectedMempoolRecommendedFeesType == MempoolRecommendedFeesType.CustomFee ?  _customSatPerVbAmount : null,
-                    InitialChannelBaseFeeMsat = _selectedInitialChannelBaseFeeMsat,
-                    InitialChannelFeeRatePpm = _selectedInitialChannelFeeRatePpm,
+                    InitialChannelBaseFeeMsat = _selectedInitialChannelBaseFeeMsat ?? Constants.DEFAULT_CHANNEL_FEE_POLICY_BASE_FEE_MSAT,
+                    InitialChannelFeeRatePpm = _selectedInitialChannelFeeRatePpm ?? Constants.DEFAULT_CHANNEL_FEE_POLICY_FEE_RATE_PPM,
                 };
 
                 var selectedWallet = await WalletRepository.GetById(_selectedWalletId.Value);
