@@ -205,6 +205,36 @@
                     <FieldHelp>@(_selectedMempoolRecommendedFeesType != MempoolRecommendedFeesType.CustomFee ? "Fees may change by the time the request is processed" : "")</FieldHelp>
                 </EditTemplate>
             </DataGridColumn>
+            <DataGridColumn TItem="ChannelOperationRequest" Displayable="@IsPendingRequestsColumnVisible(PendingChannelsColumnName.ChannelFeePolicy)" Editable="true" Caption="Channel Fee Policy" PopupFieldColumnSize="ColumnSize.Is12">
+                <DisplayTemplate>
+                    @GetInitialChannelFeePolicyDisplayText(context)
+                </DisplayTemplate>
+                <EditTemplate>
+                    <Row>
+                        <Column>
+                            <Field>
+                                <FieldLabel>Base fee (msat)</FieldLabel>
+                                <NumericPicker TValue="long?" @bind-Value="@_selectedInitialChannelBaseFeeMsat" Min="0">
+                                    <Feedback>
+                                        <ValidationError/>
+                                    </Feedback>
+                                </NumericPicker>
+                            </Field>
+                        </Column>
+                        <Column>
+                            <Field>
+                                <FieldLabel>Fee rate (ppm)</FieldLabel>
+                                <NumericPicker TValue="long?" @bind-Value="@_selectedInitialChannelFeeRatePpm" Min="0">
+                                    <Feedback>
+                                        <ValidationError/>
+                                    </Feedback>
+                                </NumericPicker>
+                            </Field>
+                        </Column>
+                    </Row>
+                    <FieldHelp>Optional. When provided, these values are sent to LND as the initial channel routing policy.</FieldHelp>
+                </EditTemplate>
+            </DataGridColumn>
             <DataGridColumn TItem="ChannelOperationRequest" Field="@nameof(ChannelOperationRequest.IsChannelPrivate)" Caption="Private" Displayable="@IsPendingRequestsColumnVisible(PendingChannelsColumnName.Private)" Editable="true">
                 <EditTemplate>
                     <Check TValue="bool" @bind-Checked="_selectedPrivate"></Check>
@@ -341,7 +371,7 @@
         <Field>
             <FieldLabel>Requestor</FieldLabel>
             <Autocomplete TItem="ApplicationUser"
-                          TValue="string?"
+                          TValue="string"
                           Data="@_availableUsers"
                           TextField="@(item => item?.UserName ?? "All")"
                           ValueField="@(item => item?.Id)"
@@ -445,6 +475,11 @@
         <DataGridColumn TItem="ChannelOperationRequest" Field="@nameof(ChannelOperationRequest.FeeRate)" Caption="Fee Rate" Displayable="@IsAllRequestsColumnVisible(AllChannelsColumnName.FeeRates)">
             <DisplayTemplate>
                 @(context.FeeRate != null ? $"{context.FeeRate} sat/vbyte" : _selectedMempoolRecommendedFeesType.ToString().Humanize())
+            </DisplayTemplate>
+        </DataGridColumn>
+        <DataGridColumn TItem="ChannelOperationRequest" Caption="Channel Fee Policy" Displayable="@IsAllRequestsColumnVisible(AllChannelsColumnName.ChannelFeePolicy)">
+            <DisplayTemplate>
+                @GetInitialChannelFeePolicyDisplayText(context)
             </DisplayTemplate>
         </DataGridColumn>
         <DataGridColumn TItem="ChannelOperationRequest" Field="@nameof(ChannelOperationRequest.IsChannelPrivate)" Caption="Private" Displayable="@IsAllRequestsColumnVisible(AllChannelsColumnName.Private)"></DataGridColumn>
@@ -616,6 +651,8 @@
     private List<UTXO> _selectedUTXOs = new();
     private MempoolRecommendedFeesType _selectedMempoolRecommendedFeesType;
     private long _customSatPerVbAmount = 1;
+    private long? _selectedInitialChannelBaseFeeMsat;
+    private long? _selectedInitialChannelFeeRatePpm;
 
     // New Request integration
     private List<Wallet> _allWallets = new List<Wallet>();
@@ -665,6 +702,7 @@
         public static readonly ColumnDefault SourceOfFunds = new("Source of Funds");
         public static readonly ColumnDefault Capacity = new("Capacity");
         public static readonly ColumnDefault FeeRates = new("Fee Rate");
+        public static readonly ColumnDefault ChannelFeePolicy = new("Channel Fee Policy");
         public static readonly ColumnDefault Private = new("Private");
         public static readonly ColumnDefault SignaturesCollected = new("Signatures Collected");
         public static readonly ColumnDefault Status = new("Status");
@@ -678,6 +716,7 @@
         public static readonly ColumnDefault SourceOfFunds = new("Source of Funds");
         public static readonly ColumnDefault Capacity = new("Capacity");
         public static readonly ColumnDefault FeeRates = new("Fee Rate");
+        public static readonly ColumnDefault ChannelFeePolicy = new("Channel Fee Policy");
         public static readonly ColumnDefault Private = new("Private");
         public static readonly ColumnDefault SignaturesCollected = new("Signatures Collected");
         public static readonly ColumnDefault Status = new("Status");
@@ -739,6 +778,8 @@
         _destNodeName = "";
         _selectedDestNode = null;
         _selectedPrivate = false;
+        _selectedInitialChannelBaseFeeMsat = null;
+        _selectedInitialChannelFeeRatePpm = null;
         _selectedWalletId = null;
         _amount = _minimumChannelCapacity;
     }
@@ -848,7 +889,9 @@
                     IsChannelPrivate = _selectedPrivate,
                     Changeless = _isChangeless,
                     MempoolRecommendedFeesType = _selectedMempoolRecommendedFeesType,
-                    FeeRate = _selectedMempoolRecommendedFeesType == MempoolRecommendedFeesType.CustomFee ?  _customSatPerVbAmount : null
+                    FeeRate = _selectedMempoolRecommendedFeesType == MempoolRecommendedFeesType.CustomFee ?  _customSatPerVbAmount : null,
+                    InitialChannelBaseFeeMsat = _selectedInitialChannelBaseFeeMsat ?? Constants.DEFAULT_CHANNEL_FEE_POLICY_BASE_FEE_MSAT,
+                    InitialChannelFeeRatePpm = _selectedInitialChannelFeeRatePpm ?? Constants.DEFAULT_CHANNEL_FEE_POLICY_FEE_RATE_PPM,
                 };
 
                 var selectedWallet = await WalletRepository.GetById(_selectedWalletId.Value);
@@ -1263,6 +1306,23 @@
     {
         _selectedMempoolRecommendedFeesType = value;
         _customSatPerVbAmount = (long?)await NBXplorerService.GetFeesByType(_selectedMempoolRecommendedFeesType) ?? 1;
+    }
+
+    private static string GetInitialChannelFeePolicyDisplayText(ChannelOperationRequest request)
+    {
+        var values = new List<string>();
+
+        if (request.InitialChannelBaseFeeMsat.HasValue)
+        {
+            values.Add($"Base: {request.InitialChannelBaseFeeMsat.Value} msat");
+        }
+
+        if (request.InitialChannelFeeRatePpm.HasValue)
+        {
+            values.Add($"Rate: {request.InitialChannelFeeRatePpm.Value} ppm");
+        }
+
+        return values.Count == 0 ? "Default" : string.Join(" | ", values);
     }
 
     private void OnColumnLayoutUpdate()

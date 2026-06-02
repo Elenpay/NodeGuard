@@ -116,6 +116,16 @@ namespace NodeGuard.Data.Models
         /// </summary>
         public decimal? FeeRate { get; set; }
 
+        /// <summary>
+        /// Initial base fee in millisatoshis to be applied when the channel is opened.
+        /// </summary>
+        public long? InitialChannelBaseFeeMsat { get; set; }
+
+        /// <summary>
+        /// Initial fee rate in parts per million to be applied when the channel is opened.
+        /// </summary>
+        public long? InitialChannelFeeRatePpm { get; set; }
+
         [Column(TypeName = "jsonb")]
         public List<ChannelStatusLog>? StatusLogs { get; set; } = new();
 
