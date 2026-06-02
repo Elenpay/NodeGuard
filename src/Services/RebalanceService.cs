@@ -258,6 +258,23 @@ public class RebalanceService : IRebalanceService
                 AuditObjectType.Rebalance, rebalance.Id.ToString(),
                 new { ProbedAmountSats = success.AmountSats, RouteHops = success.Route.Hops.Count });
 
+            if (success.Route.Hops[^1].PubKey == rebalance.SourceNodePubKey)
+            {
+                _logger.LogInformation(
+                    "Rebalance {RebalanceId} probe route's last hop is the source node itself; treating as NoRoute",
+                    rebalance.Id);
+                rebalance.Status = RebalanceStatus.NoRoute;
+                _rebalanceRepository.Update(rebalance);
+                await _auditService.LogAsync(AuditActionType.RebalanceProbing, AuditEventType.Failure,
+                    AuditObjectType.Rebalance, rebalance.Id.ToString(),
+                    new { Reason = "Probe route's last hop is the source node itself" });
+                await _auditService.LogAsync(AuditActionType.RebalanceCompleted, AuditEventType.Failure,
+                    AuditObjectType.Rebalance, rebalance.Id.ToString(),
+                    new { rebalance.Status });
+                await ScheduleRetryIfEligibleAsync(rebalance);
+                return rebalance;
+            }
+
             if (success.AmountSats < rebalance.SatsAmount)
             {
                 _logger.LogInformation(
