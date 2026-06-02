@@ -230,9 +230,11 @@ public class RebalanceServiceTests
             .ReturnsAsync(new AddInvoiceResponse { PaymentRequest = "lnbc..." });
 
         // Make the rebalance succeed so retry-escalation doesn't bump ppm before assertion.
+        var successRoute = new Lnrpc.Route();
+        successRoute.Hops.Add(new Hop { ChanId = 1, PubKey = peerPubkey });
         _lightning.Setup(x => x.ProbeRouteAsync(node, It.IsAny<long>(), It.IsAny<long>(),
                 It.IsAny<ulong?>(), It.IsAny<string?>(), It.IsAny<double>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new ProbeResult.Success(100_000, new Lnrpc.Route()));
+            .ReturnsAsync(new ProbeResult.Success(100_000, successRoute));
         _lightning.Setup(x => x.SendPaymentV2Async(node, It.IsAny<string>(), It.IsAny<long>(),
             It.IsAny<ulong[]?>(), It.IsAny<string?>(), It.IsAny<int>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(new Payment { Status = Payment.Types.PaymentStatus.Succeeded, FeeMsat = 1000 });
@@ -407,6 +409,41 @@ public class RebalanceServiceTests
     }
 
     [Fact]
+    public async Task ExecuteAsync_ProbeLastHopIsSourceNode_StatusNoRoute_PaymentNotSent()
+    {
+        // A probed route whose final hop is the source node itself describes a same-peer
+        // loop (out and back through the same peer) — that's not a real rebalance, so the
+        // service must flip to NoRoute before dispatching SendPaymentV2 and let the
+        // standard retry escalation take over.
+        var node = CreateNode();
+        _nodeRepo.Setup(x => x.GetById(node.Id, It.IsAny<bool>())).ReturnsAsync(node);
+        StubRepoForCapture();
+        _lightning.Setup(x => x.AddInvoiceAsync(node, It.IsAny<long>(), It.IsAny<string>(), It.IsAny<long>()))
+            .ReturnsAsync(new AddInvoiceResponse { PaymentRequest = "lnbc..." });
+
+        var route = new Lnrpc.Route();
+        route.Hops.Add(new Hop { ChanId = 1, PubKey = "030000000000000000000000000000000000000000000000000000000000000002" });
+        route.Hops.Add(new Hop { ChanId = 2, PubKey = node.PubKey });
+        _lightning.Setup(x => x.ProbeRouteAsync(node, It.IsAny<long>(), It.IsAny<long>(),
+                It.IsAny<ulong?>(), It.IsAny<string?>(), It.IsAny<double>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new ProbeResult.Success(100_000, route));
+
+        var service = CreateService();
+        var request = new RebalanceRequest(node.Id, null, null, 100_000, MaxFeePct: 0.05);
+        var result = await service.RebalanceAsync(request);
+
+        // After scheduling a retry the row is reset to Pending and AttemptNumber is bumped,
+        // matching the regular NoRoute path.
+        result.Status.Should().Be(RebalanceStatus.Pending);
+        result.AttemptNumber.Should().Be(2);
+        _lightning.Verify(x => x.SendPaymentV2Async(It.IsAny<Node>(), It.IsAny<string>(), It.IsAny<long>(),
+                It.IsAny<ulong[]?>(), It.IsAny<string?>(), It.IsAny<int>(), It.IsAny<CancellationToken>()),
+            Times.Never);
+        _scheduler.Verify(s => s.ScheduleJob(It.IsAny<IJobDetail>(), It.IsAny<ITrigger>(), It.IsAny<CancellationToken>()),
+            Times.Once);
+    }
+
+    [Fact]
     public async Task ExecuteAsync_PaymentInsufficientBalance_NoRetryScheduled()
     {
         var node = CreateNode();
@@ -414,9 +451,11 @@ public class RebalanceServiceTests
         StubRepoForCapture();
         _lightning.Setup(x => x.AddInvoiceAsync(node, It.IsAny<long>(), It.IsAny<string>(), It.IsAny<long>()))
             .ReturnsAsync(new AddInvoiceResponse { PaymentRequest = "lnbc..." });
+        var route = new Lnrpc.Route();
+        route.Hops.Add(new Hop { ChanId = 1, PubKey = "030000000000000000000000000000000000000000000000000000000000000002" });
         _lightning.Setup(x => x.ProbeRouteAsync(node, It.IsAny<long>(), It.IsAny<long>(),
                 It.IsAny<ulong?>(), It.IsAny<string?>(), It.IsAny<double>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new ProbeResult.Success(100_000, new Lnrpc.Route()));
+            .ReturnsAsync(new ProbeResult.Success(100_000, route));
         _lightning.Setup(x => x.SendPaymentV2Async(node, It.IsAny<string>(), It.IsAny<long>(),
             It.IsAny<ulong[]?>(), It.IsAny<string?>(), It.IsAny<int>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(new Payment
