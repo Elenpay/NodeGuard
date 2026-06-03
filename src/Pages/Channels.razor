@@ -3,6 +3,7 @@
 @using Humanizer
 @using NBitcoin
 @using Blazorise.Components
+@using Lnrpc
 @using Channel = NodeGuard.Data.Models.Channel
 @attribute [Authorize(Roles = "NodeManager")]
 <PageTitle>Active Channels</PageTitle>
@@ -245,6 +246,102 @@
                 </DataGridColumn>
                 <DataGridColumn TItem="Channel" Field="@nameof(Channel.CreationDatetime)" Caption="@nameof(Channel.CreationDatetime).Humanize(LetterCasing.Sentence)" Sortable="true" Displayable="@IsColumnVisible(ChannelsColumnName.CREATION_DATE)"/>
                 <DataGridColumn TItem="Channel" Field="@nameof(Channel.UpdateDatetime)" Caption="@nameof(Channel.UpdateDatetime).Humanize(LetterCasing.Sentence)" Sortable="true" Displayable="@IsColumnVisible(ChannelsColumnName.UPDATE_DATE)"/>
+                <DataGridColumn TItem="Channel" Field="@nameof(Channel.ChanId)" Caption="Fee Policy" Filterable="false" Sortable="false" Displayable="@IsColumnVisible(ChannelsColumnName.FEE_POLICY)">
+                    <DisplayTemplate>
+                        @{
+                            var managedNode = GetManagedChannelNode(context);
+                            var hasCachedPolicy = false;
+                            (RoutingPolicy?, RoutingPolicy?) cachedPolicy = (null, null);
+                            
+                            if (managedNode != null && _channelFeePoliciesCache.TryGetValue(context.ChanId, out var cached))
+                            {
+                                hasCachedPolicy = true;
+                                cachedPolicy = cached;
+                            }
+                            
+                            @if (managedNode == null)
+                            {
+                                <span>—</span>
+                            }
+                            else if (!hasCachedPolicy)
+                            {
+                                <i class="spinner-border spinner-border-sm"></i>
+                            }
+                            else if (cachedPolicy.Item1 != null)
+                            {
+                                <Tooltip Text="@GetFeePolicyTooltip(cachedPolicy.Item1)">
+                                    <Badge Color="Color.Info" Class="me-1" title="Outbound fee rate">
+                                        @($"{cachedPolicy.Item1.FeeRateMilliMsat} ppm")
+                                    </Badge>
+                                    <Badge Color="Color.Info" Class="me-1" title="Outbound base fee">
+                                        @($"{cachedPolicy.Item1.FeeBaseMsat} msat")
+                                    </Badge>
+                                    @if (cachedPolicy.Item1.InboundFeeRateMilliMsat != 0 || cachedPolicy.Item1.InboundFeeBaseMsat != 0)
+                                    {
+                                        <Badge Color="Color.Warning" Class="me-1" title="Inbound fee rate">
+                                            @($"in: {cachedPolicy.Item1.InboundFeeRateMilliMsat} ppm")
+                                        </Badge>
+                                        <Badge Color="Color.Warning" title="Inbound base fee">
+                                            @($"in: {cachedPolicy.Item1.InboundFeeBaseMsat} msat")
+                                        </Badge>
+                                    }
+                                </Tooltip>
+                            }
+                            else
+                            {
+                                <span class="text-muted">—</span>
+                            }
+                        }
+                    </DisplayTemplate>
+                </DataGridColumn>
+                <DataGridColumn TItem="Channel" Field="@nameof(Channel.ChanId)" Caption="Counterparty Fee Policy" Filterable="false" Sortable="false" Displayable="@IsColumnVisible(ChannelsColumnName.COUNTERPARTY_FEE_POLICY)">
+                    <DisplayTemplate>
+                        @{
+                            var managedNodeCp = GetManagedChannelNode(context);
+                            var hasCachedPolicyCp = false;
+                            (RoutingPolicy?, RoutingPolicy?) cachedPolicyCp = (null, null);
+
+                            if (managedNodeCp != null && _channelFeePoliciesCache.TryGetValue(context.ChanId, out var cachedCp))
+                            {
+                                hasCachedPolicyCp = true;
+                                cachedPolicyCp = cachedCp;
+                            }
+
+                            @if (managedNodeCp == null)
+                            {
+                                <span>—</span>
+                            }
+                            else if (!hasCachedPolicyCp)
+                            {
+                                <i class="spinner-border spinner-border-sm"></i>
+                            }
+                            else if (cachedPolicyCp.Item2 != null)
+                            {
+                                <Tooltip Text="@GetFeePolicyTooltip(cachedPolicyCp.Item2)">
+                                    <Badge Color="Color.Secondary" Class="me-1" title="Outbound fee rate">
+                                        @($"{cachedPolicyCp.Item2.FeeRateMilliMsat} ppm")
+                                    </Badge>
+                                    <Badge Color="Color.Secondary" Class="me-1" title="Outbound base fee">
+                                        @($"{cachedPolicyCp.Item2.FeeBaseMsat} msat")
+                                    </Badge>
+                                    @if (cachedPolicyCp.Item2.InboundFeeRateMilliMsat != 0 || cachedPolicyCp.Item2.InboundFeeBaseMsat != 0)
+                                    {
+                                        <Badge Color="Color.Warning" Class="me-1" title="Inbound fee rate">
+                                            @($"in: {cachedPolicyCp.Item2.InboundFeeRateMilliMsat} ppm")
+                                        </Badge>
+                                        <Badge Color="Color.Warning" title="Inbound base fee">
+                                            @($"in: {cachedPolicyCp.Item2.InboundFeeBaseMsat} msat")
+                                        </Badge>
+                                    }
+                                </Tooltip>
+                            }
+                            else
+                            {
+                                <span class="text-muted">—</span>
+                            }
+                        }
+                    </DisplayTemplate>
+                </DataGridColumn>
                 <DataGridColumn TItem="Channel" Displayable="true">
                     <FilterTemplate>
                         <ColumnLayout @ref="_channelsColumnLayout" Columns="@_channelsColumns" ColumnType="ChannelsColumnName" OnUpdate="@OnColumnLayoutUpdate"/>
@@ -311,116 +408,315 @@
     {
         <ModalContent Centered Scrollable Size="ModalSize.ExtraLarge">
             <ModalHeader>
-                <ModalTitle>Liquidity management for channel: @_selectedChannel.ChanId </ModalTitle>
-                <CloseButton/>
+                <ModalTitle>Manage channel: @_selectedChannel.ChanId</ModalTitle>
+                <CloseButton />
             </ModalHeader>
             <ModalBody>
-                <Field>
-                    <FieldLabel>Enable automated liquidity management</FieldLabel>
-                    <Check TValue="bool" Checked="@_selectedChannel.IsAutomatedLiquidityEnabled" CheckedChanged="OnEnableLiquidityMngmtChanged"></Check>
-                </Field>
-                @if (_selectedChannel.IsAutomatedLiquidityEnabled && _currentLiquidityRule != null)
-                {
-                    <Validations @ref="_channelManagementValidationsRef">
-                        <Field>
-                            <Validation Validator="ValidateLocalBalance">
-                                <FieldLabel>Minimum local balance</FieldLabel>
-                                <FieldHelp>Balance % that will fire a reverse swap if the channel balance goes below this percent (0 means optional)</FieldHelp>
-                                <NumericEdit TValue="decimal?" Min="0M" Max="100M" @bind-Value="_currentLiquidityRule.MinimumLocalBalance">
-                                    <Feedback>
-                                        <ValidationError>The number should be between 0 and 100 and less than minimum remote balance</ValidationError>
-                                    </Feedback>
-                                </NumericEdit>
-                            </Validation>
-                        </Field>
-                        <Field>
-                            <Validation Validator="ValidateRemoteBalance">
-                                <FieldLabel>Minimum remote balance</FieldLabel>
-                                <FieldHelp>Balance % that will fire a swap if the channel balance goes above this percent (0 means optional)</FieldHelp>
-                                <NumericEdit TValue="decimal?" Min="0M" Max="100M" @bind-Value="_currentLiquidityRule.MinimumRemoteBalance">
-                                    <Feedback>
-                                        <ValidationError>The number should be between 0 and 100 and bigger than minimum local balance</ValidationError>
-                                    </Feedback>
-                                </NumericEdit>
-                            </Validation>
-                        </Field>
-                        <Field>
-                            <Validation Validator="ValidateTargetBalance">
-                                <FieldLabel>Target balance</FieldLabel>
-                                <FieldHelp>Desired target balance % after a swap operation is performed</FieldHelp>
-                                <NumericEdit TValue="decimal?" Min="0M" Max="100M" @bind-Value="_currentLiquidityRule.RebalanceTarget">
-                                    <Feedback>
-                                        <ValidationError>The number should be between 0 and 100 and in between minimum local and remote balance (0 means optional)</ValidationError>
-                                    </Feedback>
-                                </NumericEdit>
-                            </Validation>
-                        </Field>
-                        <Row>
-                            <Column>
-                                @* Swaps *@
-                                <Field Style="padding-top: 1.5rem">
-                                    <Validation Validator="ValidationRule.IsSelected">
-                                        <FieldLabel>Wallet to use in SWAPS operations</FieldLabel>
-                                        <SelectList TItem="Wallet"
-                                                    TValue="int"
-                                                    Data="@_availableWallets"
-                                                    SelectedValue="_currentLiquidityRule.SwapWalletId"
-                                                    TextField="@((item) => item.Name)"
-                                                    ValueField="@((item) => item.Id)"
-                                                    SelectedValueChanged="@OnSelectedSwapWalletChanged"
-                                                    DefaultItemText="Choose the wallet to fund or receive the swaps">
+                <Tabs FullWidth="true"
+                        Justified="true" SelectedTab="@_selectedChannelManagementTab"
+                      SelectedTabChanged="@OnSelectedChannelManagementTabChanged">
+                    <Items>
+                        <Tab Name="@ChannelManagementLiquidityTab">Liquidity</Tab>
+                        <Tab Name="@ChannelManagementFeePolicyTab">Fee Policy</Tab>
+                    </Items>
+                    <Content>
+                        <TabPanel Name="@ChannelManagementLiquidityTab">
+                            <Field>
+                                <FieldLabel>Enable automated liquidity management</FieldLabel>
+                                <Check TValue="bool" Checked="@_selectedChannel.IsAutomatedLiquidityEnabled" CheckedChanged="OnEnableLiquidityMngmtChanged"></Check>
+                            </Field>
+                            @if (_selectedChannel.IsAutomatedLiquidityEnabled && _currentLiquidityRule != null)
+                            {
+                                <Validations @ref="_channelManagementValidationsRef">
+                                    <Field>
+                                        <Validation Validator="ValidateLocalBalance">
+                                            <FieldLabel>Minimum local balance</FieldLabel>
+                                            <FieldHelp>Balance % that will fire a reverse swap if the channel balance goes below this percent (0 means optional)</FieldHelp>
+                                            <NumericEdit TValue="decimal?" Min="0M" Max="100M" @bind-Value="_currentLiquidityRule.MinimumLocalBalance">
+                                                <Feedback>
+                                                    <ValidationError>The number should be between 0 and 100 and less than minimum remote balance</ValidationError>
+                                                </Feedback>
+                                            </NumericEdit>
+                                        </Validation>
+                                    </Field>
+                                    <Field>
+                                        <Validation Validator="ValidateRemoteBalance">
+                                            <FieldLabel>Minimum remote balance</FieldLabel>
+                                            <FieldHelp>Balance % that will fire a swap if the channel balance goes above this percent (0 means optional)</FieldHelp>
+                                            <NumericEdit TValue="decimal?" Min="0M" Max="100M" @bind-Value="_currentLiquidityRule.MinimumRemoteBalance">
+                                                <Feedback>
+                                                    <ValidationError>The number should be between 0 and 100 and bigger than minimum local balance</ValidationError>
+                                                </Feedback>
+                                            </NumericEdit>
+                                        </Validation>
+                                    </Field>
+                                    <Field>
+                                        <Validation Validator="ValidateTargetBalance">
+                                            <FieldLabel>Target balance</FieldLabel>
+                                            <FieldHelp>Desired target balance % after a swap operation is performed</FieldHelp>
+                                            <NumericEdit TValue="decimal?" Min="0M" Max="100M" @bind-Value="_currentLiquidityRule.RebalanceTarget">
+                                                <Feedback>
+                                                    <ValidationError>The number should be between 0 and 100 and in between minimum local and remote balance (0 means optional)</ValidationError>
+                                                </Feedback>
+                                            </NumericEdit>
+                                        </Validation>
+                                    </Field>
+                                    <Row>
+                                        <Column>
+                                            @* Swaps *@
+                                            <Field Style="padding-top: 1.5rem">
+                                                <Validation Validator="ValidationRule.IsSelected">
+                                                    <FieldLabel>Wallet to use in SWAPS operations</FieldLabel>
+                                                    <SelectList TItem="Wallet" TValue="int" Data="@_availableWallets"
+                                                                SelectedValue="_currentLiquidityRule.SwapWalletId"
+                                                                TextField="@((item) => item.Name)" ValueField="@((item) => item.Id)"
+                                                                SelectedValueChanged="@OnSelectedSwapWalletChanged"
+                                                                DefaultItemText="Choose the wallet to fund or receive the swaps">
+                                                        <Feedback>
+                                                            <ValidationError>A wallet for swaps operation must be selected as target/origin of funds</ValidationError>
+                                                        </Feedback>
+                                                    </SelectList>
+                                                </Validation>
+                                            </Field>
+                                        </Column>
+                                        <Column>
+                                            @* Reverse swaps *@
+                                            <Field>
+                                                <Switch TValue="bool" Checked="@_currentLiquidityRule.IsReverseSwapWalletRule" CheckedChanged="value => _currentLiquidityRule.IsReverseSwapWalletRule = value">
+                                                    @(_currentLiquidityRule.IsReverseSwapWalletRule ? "Wallet based liquidity rule" : "Address based liquidity rule")
+                                                </Switch>
+                                                @if (_currentLiquidityRule.IsReverseSwapWalletRule)
+                                                {
+                                                    <Validation Validator="ValidationRule.IsSelected">
+                                                        <FieldLabel>Wallet to use in REVERSE SWAPS operations</FieldLabel>
+                                                        <SelectList TItem="Wallet"
+                                                                    TValue="int"
+                                                                    Data="@_availableWallets"
+                                                                    SelectedValue="_currentLiquidityRule.ReverseSwapWalletId ?? 0"
+                                                                    TextField="@((item) => item.Name)"
+                                                                    ValueField="@((item) => item.Id)"
+                                                                    SelectedValueChanged="@OnSelectedReverseSwapWalletChanged"
+                                                                    DefaultItemText="Choose the wallet to fund/receive reverse swap amounts">
+                                                            <Feedback>
+                                                                <ValidationError>A wallet for swaps operation must be selected as target/origin of funds</ValidationError>
+                                                            </Feedback>
+                                                        </SelectList>
+                                                    </Validation>
+                                                }
+                                                else
+                                                {
+                                                    <Validation Validator="@ValidateBitcoinAddress">
+                                                        <FieldLabel>Address to use in REVERSE SWAPS operations</FieldLabel>
+                                                        <TextEdit Text="@((string)_currentLiquidityRule.ReverseSwapAddress)" TextChanged="(text) => _currentLiquidityRule.ReverseSwapAddress = text">
+                                                            <Feedback>
+                                                                <ValidationError>A valid bitcoin address must be provided</ValidationError>
+                                                            </Feedback>
+                                                        </TextEdit>
+                                                    </Validation>
+                                                }
+                                            </Field>
+                                        </Column>
+                                    </Row>
+                                </Validations>
+                            }
+                        </TabPanel>
+                        <TabPanel Name="@ChannelManagementFeePolicyTab">
+                            <Validations @ref="_channelFeePolicyValidationsRef">
+                                <p class="mb-4">Apply a new fee policy to outpoint @(_selectedChannelOutpoint ?? "Unknown") using managed node @(_selectedChannelNodePubKey ?? "Unknown").</p>
+                                
+                                @if (_currentFeePolicies.IsLoading)
+                                {
+                                    <Alert Color="Color.Info" Visible="true" class="mb-4">
+                                        <AlertDescription>
+                                            <Spinner Size="SpinnerSize.Small"></Spinner> Loading current fee policies...
+                                        </AlertDescription>
+                                    </Alert>
+                                }
+                                else if (!string.IsNullOrEmpty(_currentFeePolicies.ErrorMessage))
+                                {
+                                    <Alert Color="Color.Warning" Visible="true" class="mb-4">
+                                        <AlertDescription>
+                                            <strong>⚠️ Could not load current policies:</strong> @_currentFeePolicies.ErrorMessage
+                                        </AlertDescription>
+                                    </Alert>
+                                }
+                                else if (_currentFeePolicies.ManagedNodePolicy != null || _currentFeePolicies.CounterpartyPolicy != null)
+                                {
+                                    <Card class="mb-4" Style="background-color: #f8f9fa; border: 1px solid #dee2e6;">
+                                        <CardHeader>
+                                            <CardTitle>Current Fee Policies (Read-Only)</CardTitle>
+                                        </CardHeader>
+                                        <CardBody>
+                                            <Row>
+                                                <Column ColumnSize="ColumnSize.Is6">
+                                                    <h6 class="text-primary font-weight-bold mb-3">📍 Managed Node (@(_selectedChannelNodePubKey?.Substring(0, 8) ?? "Unknown")...)</h6>
+                                                    @if (_currentFeePolicies.ManagedNodePolicy != null)
+                                                    {
+                                                        <Table Borderless="true" class="table-sm">
+                                                            <tbody>
+                                                                <tr>
+                                                                    <td class="fw-bold">Base Fee (msat):</td>
+                                                                    <td><Badge Color="Color.Light">@_currentFeePolicies.ManagedNodePolicy.FeeBaseMsat</Badge></td>
+                                                                </tr>
+                                                                <tr>
+                                                                    <td class="fw-bold">Fee Rate (ppm):</td>
+                                                                    <td><Badge Color="Color.Light">@_currentFeePolicies.ManagedNodePolicy.FeeRateMilliMsat</Badge></td>
+                                                                </tr>
+                                                                <tr>
+                                                                    <td class="fw-bold">Time Lock Delta:</td>
+                                                                    <td><Badge Color="Color.Light">@_currentFeePolicies.ManagedNodePolicy.TimeLockDelta</Badge></td>
+                                                                </tr>
+                                                                @if (_currentFeePolicies.ManagedNodePolicy.InboundFeeRateMilliMsat != 0 || _currentFeePolicies.ManagedNodePolicy.InboundFeeBaseMsat != 0)
+                                                                {
+                                                                    <tr>
+                                                                        <td class="fw-bold">Inbound Base Fee (msat):</td>
+                                                                        <td><Badge Color="Color.Warning">@_currentFeePolicies.ManagedNodePolicy.InboundFeeBaseMsat</Badge></td>
+                                                                    </tr>
+                                                                    <tr>
+                                                                        <td class="fw-bold">Inbound Fee Rate (ppm):</td>
+                                                                        <td><Badge Color="Color.Warning">@_currentFeePolicies.ManagedNodePolicy.InboundFeeRateMilliMsat</Badge></td>
+                                                                    </tr>
+                                                                }
+                                                            </tbody>
+                                                        </Table>
+                                                    }
+                                                    else
+                                                    {
+                                                        <p class="text-muted"><em>No outbound policy found</em></p>
+                                                    }
+                                                </Column>
+                                                <Column ColumnSize="ColumnSize.Is6">
+                                                    <h6 class="text-success font-weight-bold mb-3">🔗 Counterparty Node</h6>
+                                                    @if (_currentFeePolicies.CounterpartyPolicy != null)
+                                                    {
+                                                        <Table Borderless="true" class="table-sm">
+                                                            <tbody>
+                                                                <tr>
+                                                                    <td class="fw-bold">Base Fee (msat):</td>
+                                                                    <td><Badge Color="Color.Light">@_currentFeePolicies.CounterpartyPolicy.FeeBaseMsat</Badge></td>
+                                                                </tr>
+                                                                <tr>
+                                                                    <td class="fw-bold">Fee Rate (ppm):</td>
+                                                                    <td><Badge Color="Color.Light">@_currentFeePolicies.CounterpartyPolicy.FeeRateMilliMsat</Badge></td>
+                                                                </tr>
+                                                                <tr>
+                                                                    <td class="fw-bold">Time Lock Delta:</td>
+                                                                    <td><Badge Color="Color.Light">@_currentFeePolicies.CounterpartyPolicy.TimeLockDelta</Badge></td>
+                                                                </tr>
+                                                                @if (_currentFeePolicies.CounterpartyPolicy.InboundFeeRateMilliMsat != 0 || _currentFeePolicies.CounterpartyPolicy.InboundFeeBaseMsat != 0)
+                                                                {
+                                                                    <tr>
+                                                                        <td class="fw-bold">Inbound Base Fee (msat):</td>
+                                                                        <td><Badge Color="Color.Warning">@_currentFeePolicies.CounterpartyPolicy.InboundFeeBaseMsat</Badge></td>
+                                                                    </tr>
+                                                                    <tr>
+                                                                        <td class="fw-bold">Inbound Fee Rate (ppm):</td>
+                                                                        <td><Badge Color="Color.Warning">@_currentFeePolicies.CounterpartyPolicy.InboundFeeRateMilliMsat</Badge></td>
+                                                                    </tr>
+                                                                }
+                                                            </tbody>
+                                                        </Table>
+                                                    }
+                                                    else
+                                                    {
+                                                        <p class="text-muted"><em>No inbound policy found</em></p>
+                                                    }
+                                                </Column>
+                                            </Row>
+                                        </CardBody>
+                                    </Card>
+                                }
+
+                                <Divider class="my-4"></Divider>
+                                <h6 class="mb-3"><strong>Set New Fee Policy</strong></h6>
+                                
+                                <Row>
+                                    <Column>
+                                        <Field>
+                                            <Validation Validator="ValidateChannelFeeBaseFeeMsat">
+                                                <FieldLabel>Base fee (msat)</FieldLabel>
+                                                <FieldHelp>Flat outbound fee charged for forwarded payments.</FieldHelp>
+                                                <NumericEdit TValue="long?" Min="0L"
+                                                                @bind-Value="_channelFeePolicy.BaseFeeMsat">
+                                                    <Feedback>
+                                                        <ValidationError />
+                                                    </Feedback>
+                                                </NumericEdit>
+                                            </Validation>
+                                        </Field>
+                                    </Column>
+                                    <Column>
+                                        <Field>
+                                            <Validation Validator="ValidateChannelFeeRatePpm">
+                                                <FieldLabel>Fee rate (ppm)</FieldLabel>
+                                                <FieldHelp>Outbound proportional fee in parts per million.</FieldHelp>
+                                                <NumericEdit TValue="long?" Min="0L" Max="@((long)uint.MaxValue)"
+                                                                @bind-Value="_channelFeePolicy.FeeRatePpm" >
+                                                    <Feedback>
+                                                        <ValidationError />
+                                                    </Feedback>
+                                                </NumericEdit>
+                                            </Validation>
+                                        </Field>
+                                    </Column>
+                                </Row>
+                                <Field>
+                                    <Validation Validator="ValidateChannelFeeTimeLockDelta">
+                                        <FieldLabel>Time lock delta</FieldLabel>
+                                        <FieldHelp>CLTV delta advertised for forwarded HTLCs on this channel.</FieldHelp>
+                                        <NumericEdit TValue="long?" Min="0L" Max="@((long)uint.MaxValue)"
+                                                        @bind-Value="_channelFeePolicy.TimeLockDelta">
                                             <Feedback>
-                                                <ValidationError>A wallet for swaps operation must be selected as target/origin of funds</ValidationError>
+                                                <ValidationError />
                                             </Feedback>
-                                        </SelectList>
+                                        </NumericEdit>
                                     </Validation>
                                 </Field>
-                            </Column>
-                            <Column>
-                                @* Reverse swaps *@
                                 <Field>
-                                    <Switch TValue="bool" Checked="@_currentLiquidityRule.IsReverseSwapWalletRule" CheckedChanged="value => _currentLiquidityRule.IsReverseSwapWalletRule = value">
-                                        @(_currentLiquidityRule.IsReverseSwapWalletRule ? "Wallet based liquidity rule" : "Address based liquidity rule")
-                                    </Switch>
-                                    @if (_currentLiquidityRule.IsReverseSwapWalletRule)
-                                    {
-                                        <Validation Validator="ValidationRule.IsSelected">
-                                            <FieldLabel>Wallet to use in REVERSE SWAPS operations</FieldLabel>
-                                            <SelectList TItem="Wallet"
-                                                        TValue="int"
-                                                        Data="@_availableWallets"
-                                                        SelectedValue="_currentLiquidityRule.ReverseSwapWalletId ?? 0"
-                                                        TextField="@((item) => item.Name)"
-                                                        ValueField="@((item) => item.Id)"
-                                                        SelectedValueChanged="@OnSelectedReverseSwapWalletChanged"
-                                                        DefaultItemText="Choose the wallet to fund/receive reverse swap amounts">
-                                                <Feedback>
-                                                    <ValidationError>A wallet for swaps operation must be selected as target/origin of funds</ValidationError>
-                                                </Feedback>
-                                            </SelectList>
-                                        </Validation>
-                                    }
-                                    else
-                                    {
-                                        <Validation Validator="@ValidateBitcoinAddress">
-                                            <FieldLabel>Address to use in REVERSE SWAPS operations</FieldLabel>
-                                            <TextEdit Text="@((string)_currentLiquidityRule.ReverseSwapAddress)" TextChanged="(text) => _currentLiquidityRule.ReverseSwapAddress = text">
-                                                <Feedback>
-                                                    <ValidationError>A valid bitcoin address must be provided</ValidationError>
-                                                </Feedback>
-                                            </TextEdit>
-                                        </Validation>
-                                    }
+                                    <FieldLabel>Inbound fee policy</FieldLabel>
+                                    <FieldHelp>Optional. Leave both inbound fields blank to keep the current inbound fee
+                                        policy unchanged.</FieldHelp>
                                 </Field>
-                            </Column>
-                        </Row>
-                        
-                    </Validations>
-                }
+                                <Row>
+                                    <Column>
+                                        <Field>
+                                            <Validation Validator="ValidateInboundFeePolicy">
+                                                <FieldLabel>Inbound base fee (msat)</FieldLabel>
+                                                <FieldHelp>Optional inbound base fee. When set, it must be zero or below.
+                                                </FieldHelp>
+                                                <NumericEdit TValue="int?" Immediate="false" Max="0"
+                                                                @bind-Value="_channelFeePolicy.InboundBaseFeeMsat">
+                                                    <Feedback>
+                                                        <ValidationError />
+                                                    </Feedback>
+                                                </NumericEdit>
+                                            </Validation>
+                                        </Field>
+                                    </Column>
+                                    <Column>
+                                        <Field>
+                                            <Validation Validator="ValidateInboundFeePolicy">
+                                                <FieldLabel>Inbound fee rate (ppm)</FieldLabel>
+                                                <FieldHelp>Optional inbound proportional fee. When set, it must be zero
+                                                    or below.</FieldHelp>
+                                                <NumericEdit TValue="int?" Immediate="false" Max="0"
+                                                                @bind-Value="_channelFeePolicy.InboundFeeRatePpm">
+                                                    <Feedback>
+                                                        <ValidationError />
+                                                    </Feedback>
+                                                </NumericEdit>
+                                            </Validation>
+                                        </Field>
+                                    </Column>
+                                </Row>
+                            </Validations>
+                        </TabPanel>
+                    </Content>
+                </Tabs>
             </ModalBody>
             <ModalFooter>
                 <Button Color="Color.Secondary" Clicked="@CloseChannelManagementModal">Cancel</Button>
-                <Button Color="Color.Primary" Clicked="@SaveAndCloseChannelManagementModal">Save</Button>
+                <Button Color="Color.Primary" Clicked="@SaveAndCloseChannelManagementModal">@GetChannelManagementSaveLabel()</Button>
             </ModalFooter>
         </ModalContent>
     }
@@ -450,6 +746,15 @@
     private List<Wallet> _availableWallets = new List<Wallet>();
     private LiquidityRule? _currentLiquidityRule = new LiquidityRule();
     private Validations? _channelManagementValidationsRef;
+    private Validations? _channelFeePolicyValidationsRef;
+    private ChannelFeePolicyForm _channelFeePolicy = new();
+    private CurrentFeePolicies _currentFeePolicies = new() { IsLoading = false };
+    private string _selectedChannelManagementTab = ChannelManagementLiquidityTab;
+    private string? _selectedChannelOutpoint;
+    private string? _selectedChannelNodePubKey;
+
+    private const string ChannelManagementLiquidityTab = "Liquidity";
+    private const string ChannelManagementFeePolicyTab = "FeePolicy";
     
     // Server-side filter values
     private string? _statusFilterValue = "Open";
@@ -484,6 +789,9 @@
     private bool _columnsLoaded;
     // This dictionary is used to store the balance of each channel, key is the channel id, value is a tuple with the node id as local in the pair, local balance, remote balance
     private Dictionary<ulong, ChannelState> _channelsBalance = new();
+    // Cache for fee policies by channel ID
+    private Dictionary<ulong, (RoutingPolicy?, RoutingPolicy?)> _channelFeePoliciesCache = new();
+    private bool _isLoadingFeePolicies;
 
     public abstract class ChannelsColumnName
     {
@@ -500,6 +808,25 @@
         public static readonly ColumnDefault CREATION_DATE = new("Creation Date");
         public static readonly ColumnDefault UPDATE_DATE = new("Update Date");
         public static readonly ColumnDefault CHANNEL_ID = new("Channel Id");
+        public static readonly ColumnDefault FEE_POLICY = new("Fee Policy");
+        public static readonly ColumnDefault COUNTERPARTY_FEE_POLICY = new("Counterparty Fee Policy");
+    }
+
+    private sealed class ChannelFeePolicyForm
+    {
+        public long? BaseFeeMsat { get; set; }
+        public long? FeeRatePpm { get; set; }
+        public long? TimeLockDelta { get; set; } = Constants.DEFAULT_CHANNEL_FEE_POLICY_TIMELOCK_DELTA_BLOCKS;
+        public int? InboundBaseFeeMsat { get; set; }
+        public int? InboundFeeRatePpm { get; set; }
+    }
+
+    private sealed class CurrentFeePolicies
+    {
+        public RoutingPolicy? ManagedNodePolicy { get; set; }
+        public RoutingPolicy? CounterpartyPolicy { get; set; }
+        public bool IsLoading { get; set; }
+        public string? ErrorMessage { get; set; }
     }
 
     protected override async Task OnInitializedAsync()
@@ -568,6 +895,7 @@
 
         _channels = channels;
         _totalItems = totalCount;
+        _ = Task.Run(async () => await InvokeAsync(LoadAndCacheChannelFeePolicies));
     }
 
     private async Task OnFiltersChanged()
@@ -675,11 +1003,11 @@
             var result = -1.0;
             if (_channelsBalance.TryGetValue(channel.ChanId, out var values))
             {
-    // Calculate the capacity as the sum of the second and third values in the tuple
+                // Calculate the capacity as the sum of the second and third values in the tuple
                 var capacity = values.LocalBalance + values.RemoteBalance;
 
-    // Calculate the result as the percentage of the remote balance to the capacity
-                result = (values.RemoteBalance / (double) capacity) * 100;
+                // Calculate the result as the percentage of the remote balance to the capacity
+                result = (values.RemoteBalance / (double)capacity) * 100;
 
 
                 result = Math.Round(result, 2);
@@ -722,6 +1050,56 @@
         if (_currentLiquidityRule != null) _currentLiquidityRule.ReverseSwapWalletId = arg;
     }
 
+    private async Task OnSelectedChannelManagementTabChanged(string tabName)
+    {
+        _selectedChannelManagementTab = tabName;
+        if (tabName == ChannelManagementFeePolicyTab && _selectedChannel != null)
+        {
+            await LoadChannelFeePolicies();
+        }
+    }
+
+    private async Task LoadChannelFeePolicies()
+    {
+        if (_selectedChannel?.ChanId == null)
+        {
+            _currentFeePolicies = new CurrentFeePolicies { ErrorMessage = "Channel ID not available" };
+            return;
+        }
+
+        var node = GetManagedChannelNode(_selectedChannel);
+        if (node == null)
+        {
+            _currentFeePolicies = new CurrentFeePolicies { ErrorMessage = "Managed node not found" };
+            return;
+        }
+
+        _currentFeePolicies.IsLoading = true;
+        _currentFeePolicies.ErrorMessage = null;
+        StateHasChanged();
+
+        try
+        {
+            var result = await LightningService.GetChannelFeePolicy(_selectedChannel.ChanId, node);
+            _currentFeePolicies = new CurrentFeePolicies
+            {
+                ManagedNodePolicy = result.Item1,
+                CounterpartyPolicy = result.Item2,
+                IsLoading = false
+            };
+        }
+        catch (Exception ex)
+        {
+            _currentFeePolicies = new CurrentFeePolicies
+            {
+                ErrorMessage = $"Failed to load fee policies: {ex.Message}",
+                IsLoading = false
+            };
+        }
+
+        StateHasChanged();
+    }
+
     private async Task CloseChannelManagementModal()
     {
         if (_channelLiquidityModal != null) await _channelLiquidityModal.Close(CloseReason.UserClosing);
@@ -731,94 +1109,156 @@
 
     private async Task SaveAndCloseChannelManagementModal()
     {
-        if (_channelManagementValidationsRef != null && await _channelManagementValidationsRef.ValidateAll())
+        if (_selectedChannelManagementTab == ChannelManagementFeePolicyTab)
         {
-    //Save the channel
-            if (_selectedChannel != null)
-            {
-                var updateResult = ChannelRepository.Update(_selectedChannel);
-                if (!updateResult.Item1)
-                {
-                    ToastService.ShowError("Something went wrong");
-                    await AuditService.LogAsync(AuditActionType.Update, AuditEventType.Failure, AuditObjectType.Channel,
-                        _selectedChannel.Id.ToString(),
-                        $"Failed to update channel. ChanId: {_selectedChannel.ChanId}");
-                }
-                else
-                {
-                    ToastService.ShowSuccess("Channel updated successfully");
-                    await AuditService.LogAsync(AuditActionType.Update, AuditEventType.Success, AuditObjectType.Channel,
-                        _selectedChannel.Id.ToString(),
-                        $"Channel updated. ChanId: {_selectedChannel.ChanId}");
-                }
-            }
-
-    //Save the liquidity rule if the liquidity rule id is below or equal zero
-            if (_currentLiquidityRule != null)
-            {
-                if (_currentLiquidityRule.Id <= 0)
-                {
-                    var liquidityRuleResult = await LiquidityRuleRepository.AddAsync(_currentLiquidityRule);
-                    if (!liquidityRuleResult.Item1)
-                    {
-                        ToastService.ShowError("Something went wrong");
-                        await AuditService.LogAsync(AuditActionType.Create, AuditEventType.Failure, AuditObjectType.LiquidityRule,
-                            _currentLiquidityRule.ChannelId.ToString(),
-                            $"Failed to add liquidity rule for channel. ChannelId: {_currentLiquidityRule.ChannelId}");
-                    }
-                    else
-                    {
-                        ToastService.ShowSuccess("Liquidity rule added successfully");
-                        await AuditService.LogAsync(AuditActionType.Create, AuditEventType.Success, AuditObjectType.LiquidityRule,
-                            _currentLiquidityRule.Id.ToString(),
-                            $"Liquidity rule created. ChannelId: {_currentLiquidityRule.ChannelId}, MinLocal: {_currentLiquidityRule.MinimumLocalBalance}%, MinRemote: {_currentLiquidityRule.MinimumRemoteBalance}%, Target: {_currentLiquidityRule.RebalanceTarget}%");
-                    }
-                }
-                else
-                {
-                    var liquidityRuleResult = LiquidityRuleRepository.Update(_currentLiquidityRule);
-                    if (!liquidityRuleResult.Item1)
-                    {
-                        ToastService.ShowError("Something went wrong");
-                        await AuditService.LogAsync(AuditActionType.Update, AuditEventType.Failure, AuditObjectType.LiquidityRule,
-                            _currentLiquidityRule.Id.ToString(),
-                            $"Failed to update liquidity rule. RuleId: {_currentLiquidityRule.Id}");
-                    }
-                    else
-                    {
-                        ToastService.ShowSuccess("Liquidity rule updated successfully");
-                        await AuditService.LogAsync(AuditActionType.Update, AuditEventType.Success, AuditObjectType.LiquidityRule,
-                            _currentLiquidityRule.Id.ToString(),
-                            $"Liquidity rule updated. ChannelId: {_currentLiquidityRule.ChannelId}, MinLocal: {_currentLiquidityRule.MinimumLocalBalance}%, MinRemote: {_currentLiquidityRule.MinimumRemoteBalance}%, Target: {_currentLiquidityRule.RebalanceTarget}%");
-                    }
-                }
-            }
-
-            await CloseChannelManagementModal();
+            await SaveAndCloseChannelFeePolicyTab();
+            return;
         }
-        else
+
+        await SaveAndCloseChannelLiquidityTab();
+    }
+
+    private async Task SaveAndCloseChannelLiquidityTab()
+    {
+        var isValid = _channelManagementValidationsRef == null || await _channelManagementValidationsRef.ValidateAll();
+        if (!isValid)
         {
             ToastService.ShowError("Please fix the errors");
+            return;
+        }
+
+        //Save the channel
+        if (_selectedChannel != null)
+        {
+            var updateResult = ChannelRepository.Update(_selectedChannel);
+            if (!updateResult.Item1)
+            {
+                ToastService.ShowError("Something went wrong");
+                await AuditService.LogAsync(AuditActionType.Update, AuditEventType.Failure, AuditObjectType.Channel,
+                    _selectedChannel.Id.ToString(),
+                    $"Failed to update channel. ChanId: {_selectedChannel.ChanId}");
+            }
+            else
+            {
+                ToastService.ShowSuccess("Channel updated successfully");
+                await AuditService.LogAsync(AuditActionType.Update, AuditEventType.Success, AuditObjectType.Channel,
+                    _selectedChannel.Id.ToString(),
+                    $"Channel updated. ChanId: {_selectedChannel.ChanId}");
+            }
+        }
+
+        //Save the liquidity rule if the liquidity rule id is below or equal zero
+        if (_currentLiquidityRule != null)
+        {
+            if (_currentLiquidityRule.Id <= 0)
+            {
+                var liquidityRuleResult = await LiquidityRuleRepository.AddAsync(_currentLiquidityRule);
+                if (!liquidityRuleResult.Item1)
+                {
+                    ToastService.ShowError("Something went wrong");
+                    await AuditService.LogAsync(AuditActionType.Create, AuditEventType.Failure, AuditObjectType.LiquidityRule,
+                        _currentLiquidityRule.ChannelId.ToString(),
+                        $"Failed to add liquidity rule for channel. ChannelId: {_currentLiquidityRule.ChannelId}");
+                }
+                else
+                {
+                    ToastService.ShowSuccess("Liquidity rule added successfully");
+                    await AuditService.LogAsync(AuditActionType.Create, AuditEventType.Success, AuditObjectType.LiquidityRule,
+                        _currentLiquidityRule.Id.ToString(),
+                        $"Liquidity rule created. ChannelId: {_currentLiquidityRule.ChannelId}, MinLocal: {_currentLiquidityRule.MinimumLocalBalance}%, MinRemote: {_currentLiquidityRule.MinimumRemoteBalance}%, Target: {_currentLiquidityRule.RebalanceTarget}%");
+                }
+            }
+            else
+            {
+                var liquidityRuleResult = LiquidityRuleRepository.Update(_currentLiquidityRule);
+                if (!liquidityRuleResult.Item1)
+                {
+                    ToastService.ShowError("Something went wrong");
+                    await AuditService.LogAsync(AuditActionType.Update, AuditEventType.Failure, AuditObjectType.LiquidityRule,
+                        _currentLiquidityRule.Id.ToString(),
+                        $"Failed to update liquidity rule. RuleId: {_currentLiquidityRule.Id}");
+                }
+                else
+                {
+                    ToastService.ShowSuccess("Liquidity rule updated successfully");
+                    await AuditService.LogAsync(AuditActionType.Update, AuditEventType.Success, AuditObjectType.LiquidityRule,
+                        _currentLiquidityRule.Id.ToString(),
+                        $"Liquidity rule updated. ChannelId: {_currentLiquidityRule.ChannelId}, MinLocal: {_currentLiquidityRule.MinimumLocalBalance}%, MinRemote: {_currentLiquidityRule.MinimumRemoteBalance}%, Target: {_currentLiquidityRule.RebalanceTarget}%");
+                }
+            }
+        }
+
+        await CloseChannelManagementModal();
+    }
+
+    private async Task SaveAndCloseChannelFeePolicyTab()
+    {
+        if (_channelFeePolicyValidationsRef == null || !await _channelFeePolicyValidationsRef.ValidateAll())
+        {
+            ToastService.ShowError("Please fix the errors");
+            return;
+        }
+
+        if (_selectedChannel == null || string.IsNullOrWhiteSpace(_selectedChannelOutpoint) || string.IsNullOrWhiteSpace(_selectedChannelNodePubKey))
+        {
+            ToastService.ShowError("The selected channel could not be resolved for fee policy updates.");
+            return;
+        }
+
+        try
+        {
+            await LightningService.SetChannelFeePolicy(
+                _selectedChannelOutpoint,
+                _selectedChannelNodePubKey,
+                _channelFeePolicy.BaseFeeMsat!.Value,
+                checked((uint)_channelFeePolicy.FeeRatePpm!.Value),
+                checked((uint)_channelFeePolicy.TimeLockDelta!.Value),
+                _channelFeePolicy.InboundBaseFeeMsat,
+                _channelFeePolicy.InboundFeeRatePpm);
+
+            ToastService.ShowSuccess("Channel fee policy updated successfully");
+            await CloseChannelManagementModal();
+        }
+        catch (ArgumentException e)
+        {
+            ToastService.ShowError(e.Message);
+        }
+        catch (Exception e)
+        {
+            ToastService.ShowError(string.IsNullOrWhiteSpace(e.Message) ? "Could not update the channel fee policy." : e.Message);
         }
     }
 
-    private async Task ClearManagementModal()
+    private Task ClearManagementModal()
     {
         _selectedChannel = null;
         _currentLiquidityRule = new LiquidityRule();
+        _channelFeePolicy = new ChannelFeePolicyForm();
+        _currentFeePolicies = new CurrentFeePolicies { IsLoading = false };
+        _selectedChannelManagementTab = ChannelManagementLiquidityTab;
+        _selectedChannelOutpoint = null;
+        _selectedChannelNodePubKey = null;
+        _channelManagementValidationsRef = null;
+        _channelFeePolicyValidationsRef = null;
+        return Task.CompletedTask;
     }
 
     private async Task ShowChannelManagementModal(Channel channel)
     {
         await ClearManagementModal();
 
+        var node = GetManagedChannelNode(channel);
+        if (node == null)
+        {
+            ToastService.ShowError("A managed node with channel admin access could not be resolved for this channel.");
+            return;
+        }
+
         _selectedChannel = channel;
+        _selectedChannelOutpoint = GetChannelOutpoint(channel);
+        _selectedChannelNodePubKey = node.PubKey;
 
-        var destinationNode = channel.DestinationNode;
-        var sourceNode = channel.SourceNode;
-        var node = string.IsNullOrEmpty(sourceNode.ChannelAdminMacaroon) ? destinationNode : sourceNode;
-
-    //If there is a liquidity rule for this channel, we load it, the first one
+        //If there is a liquidity rule for this channel, we load it, the first one
         _currentLiquidityRule = _selectedChannel?.LiquidityRules.FirstOrDefault() ?? new LiquidityRule
         {
             MinimumLocalBalance = 20,
@@ -843,7 +1283,14 @@
             }
             else
             {
-                var node = string.IsNullOrEmpty(_selectedChannel.SourceNode.ChannelAdminMacaroon) ? _selectedChannel.DestinationNode : _selectedChannel.SourceNode;
+                var node = GetManagedChannelNode(_selectedChannel);
+                if (node == null)
+                {
+                    _selectedChannel.IsAutomatedLiquidityEnabled = false;
+                    ToastService.ShowError("A managed node with channel admin access could not be resolved for this channel.");
+                    return;
+                }
+
                 _currentLiquidityRule = _selectedChannel.LiquidityRules.FirstOrDefault() ?? new LiquidityRule
                 {
                     MinimumLocalBalance = 20,
@@ -876,16 +1323,16 @@
 
     private void ValidateTargetBalance(ValidatorEventArgs arg1)
     {
-        if(_currentLiquidityRule == null) return;
-    //Default validation status
+        if (_currentLiquidityRule == null) return;
+        //Default validation status
         arg1.Status = ValidationStatus.Success;
 
-    //If the value is 0 is valid
+        //If the value is 0 is valid
         if (_currentLiquidityRule.RebalanceTarget == 0 || _currentLiquidityRule.RebalanceTarget == null)
         {
             return;
         }
-    //Check that the target balance is between 0 and 100
+        //Check that the target balance is between 0 and 100
         if (_currentLiquidityRule.RebalanceTarget < 0 || _currentLiquidityRule.RebalanceTarget > 100)
         {
             arg1.Status = ValidationStatus.Error;
@@ -893,7 +1340,7 @@
         }
 
 
-    //Check that the rebalancetarget of the current liquidity rule is between the mininum local and minimum remote balance
+        //Check that the rebalancetarget of the current liquidity rule is between the mininum local and minimum remote balance
         if (_currentLiquidityRule.RebalanceTarget < _currentLiquidityRule.MinimumLocalBalance ||
             _currentLiquidityRule.RebalanceTarget > _currentLiquidityRule.MinimumRemoteBalance)
         {
@@ -904,11 +1351,11 @@
 
     private void ValidateRemoteBalance(ValidatorEventArgs arg1)
     {
-        if(_currentLiquidityRule == null) return;
-    //Default validation status
+        if (_currentLiquidityRule == null) return;
+        //Default validation status
         arg1.Status = ValidationStatus.Success;
 
-    //If the minimum local balance is 0 this cannot be 0
+        //If the minimum local balance is 0 this cannot be 0
         if ((_currentLiquidityRule.MinimumLocalBalance == 0 || _currentLiquidityRule.MinimumLocalBalance == null)
             && (_currentLiquidityRule.MinimumRemoteBalance == 0 || _currentLiquidityRule.MinimumRemoteBalance == null))
         {
@@ -916,14 +1363,14 @@
             arg1.ErrorText = "Minimum remote balance cannot be 0 if the minimum local balance is 0";
         }
 
-    //If the value is 0 is valid
+        //If the value is 0 is valid
         if (_currentLiquidityRule.MinimumRemoteBalance == 0 || _currentLiquidityRule.MinimumRemoteBalance == null)
         {
             return;
         }
 
 
-    //Check that the minimum remote balance is between 0 and 100
+        //Check that the minimum remote balance is between 0 and 100
         if (_currentLiquidityRule.MinimumRemoteBalance < 0 || _currentLiquidityRule.MinimumRemoteBalance > 100)
         {
             arg1.Status = ValidationStatus.Error;
@@ -931,7 +1378,7 @@
         }
 
 
-    //Check that the Minimum remote balance must be greater than the minimum local balance
+        //Check that the Minimum remote balance must be greater than the minimum local balance
         if (_currentLiquidityRule.MinimumRemoteBalance <= _currentLiquidityRule.MinimumLocalBalance)
         {
             arg1.Status = ValidationStatus.Error;
@@ -942,9 +1389,9 @@
     private void ValidateLocalBalance(ValidatorEventArgs arg1)
     {
         if (_currentLiquidityRule == null) return;
-    //Default validation status
+        //Default validation status
         arg1.Status = ValidationStatus.Success;
-    //If the minimum remote balance is 0 this cannot be 0
+        //If the minimum remote balance is 0 this cannot be 0
         if ((_currentLiquidityRule.MinimumLocalBalance == 0 || _currentLiquidityRule.MinimumLocalBalance == null)
             && (_currentLiquidityRule.MinimumRemoteBalance == 0 || _currentLiquidityRule.MinimumRemoteBalance == null))
         {
@@ -952,14 +1399,14 @@
             arg1.ErrorText = "Minimum local balance cannot be 0 if the minimum remote balance is 0";
         }
 
-    //If the value is 0 is valid
+        //If the value is 0 is valid
         if (_currentLiquidityRule.MinimumRemoteBalance == 0 || _currentLiquidityRule.MinimumRemoteBalance == null)
         {
             return;
         }
 
 
-    //Check that the balance is between 0 and 100
+        //Check that the balance is between 0 and 100
 
         if (_currentLiquidityRule.MinimumLocalBalance < 0 || _currentLiquidityRule.MinimumLocalBalance > 100)
         {
@@ -967,12 +1414,114 @@
             arg1.ErrorText = "Minimum local balance must be between 0 and 100";
         }
 
-    //Check that the Minimum local balance must be less than the minimum remote balance
+        //Check that the Minimum local balance must be less than the minimum remote balance
         if (_currentLiquidityRule.MinimumLocalBalance >= _currentLiquidityRule.MinimumRemoteBalance)
         {
             arg1.Status = ValidationStatus.Error;
             arg1.ErrorText = "Minimum local balance must be less than the minimum remote balance";
         }
+    }
+
+    private void ValidateChannelFeeBaseFeeMsat(ValidatorEventArgs arg1)
+    {
+        arg1.Status = ValidationStatus.Success;
+
+        if (_channelFeePolicy.BaseFeeMsat == null)
+        {
+            arg1.Status = ValidationStatus.Error;
+            arg1.ErrorText = "Base fee is required.";
+            return;
+        }
+
+        if (_channelFeePolicy.BaseFeeMsat < 0)
+        {
+            arg1.Status = ValidationStatus.Error;
+            arg1.ErrorText = "Base fee must be zero or greater.";
+        }
+    }
+
+    private void ValidateChannelFeeRatePpm(ValidatorEventArgs arg1)
+    {
+        arg1.Status = ValidationStatus.Success;
+
+        if (_channelFeePolicy.FeeRatePpm == null)
+        {
+            arg1.Status = ValidationStatus.Error;
+            arg1.ErrorText = "Fee rate is required.";
+            return;
+        }
+
+        if (_channelFeePolicy.FeeRatePpm < 0 || _channelFeePolicy.FeeRatePpm > uint.MaxValue)
+        {
+            arg1.Status = ValidationStatus.Error;
+            arg1.ErrorText = $"Fee rate must be between 0 and {uint.MaxValue}.";
+        }
+    }
+
+    private void ValidateChannelFeeTimeLockDelta(ValidatorEventArgs arg1)
+    {
+        arg1.Status = ValidationStatus.Success;
+
+        if (_channelFeePolicy.TimeLockDelta == null)
+        {
+            arg1.Status = ValidationStatus.Error;
+            arg1.ErrorText = "Time lock delta is required.";
+            return;
+        }
+
+        if (_channelFeePolicy.TimeLockDelta < 0 || _channelFeePolicy.TimeLockDelta > uint.MaxValue)
+        {
+            arg1.Status = ValidationStatus.Error;
+            arg1.ErrorText = $"Time lock delta must be between 0 and {uint.MaxValue}.";
+        }
+    }
+
+    private void ValidateInboundFeePolicy(ValidatorEventArgs arg1)
+    {
+        arg1.Status = ValidationStatus.Success;
+
+        if (_channelFeePolicy.InboundBaseFeeMsat.HasValue != _channelFeePolicy.InboundFeeRatePpm.HasValue)
+        {
+            arg1.Status = ValidationStatus.Error;
+            arg1.ErrorText = "Inbound base fee and inbound fee rate must be provided together.";
+            return;
+        }
+
+        if (_channelFeePolicy.InboundBaseFeeMsat.HasValue && _channelFeePolicy.InboundBaseFeeMsat.Value > 0)
+        {
+            arg1.Status = ValidationStatus.Error;
+            arg1.ErrorText = "Inbound base fee must be zero or below.";
+            return;
+        }
+
+        if (_channelFeePolicy.InboundFeeRatePpm.HasValue && _channelFeePolicy.InboundFeeRatePpm.Value > 0)
+        {
+            arg1.Status = ValidationStatus.Error;
+            arg1.ErrorText = "Inbound fee rate must be zero or below.";
+        }
+    }
+
+    private static Node? GetManagedChannelNode(Channel channel)
+    {
+        if (channel.SourceNode.IsManaged && !string.IsNullOrWhiteSpace(channel.SourceNode.ChannelAdminMacaroon))
+            return channel.SourceNode;
+
+        if (channel.DestinationNode.IsManaged && !string.IsNullOrWhiteSpace(channel.DestinationNode.ChannelAdminMacaroon))
+            return channel.DestinationNode;
+
+        return null;
+    }
+
+    private static string GetChannelOutpoint(Channel channel)
+    {
+        return $"{channel.FundingTx}:{channel.FundingTxOutputIndex}";
+    }
+
+    private string GetChannelManagementSaveLabel()
+    {
+        return _selectedChannelManagementTab == ChannelManagementFeePolicyTab
+            ? "Apply fee policy"
+            : "Save liquidity settings";
     }
 
 
@@ -1043,6 +1592,60 @@
             return $"{destination}  - {source}";
         }
         return $"{source}  - {destination}";
+    }
+
+    private string GetFeePolicyTooltip(RoutingPolicy policy)
+    {
+        var outbound = $"Outbound — Base: {policy.FeeBaseMsat} msat | Rate: {policy.FeeRateMilliMsat} ppm | Time Lock: {policy.TimeLockDelta} blocks";
+        var inbound = (policy.InboundFeeRateMilliMsat != 0 || policy.InboundFeeBaseMsat != 0)
+            ? $" | Inbound — Base: {policy.InboundFeeBaseMsat} msat | Rate: {policy.InboundFeeRateMilliMsat} ppm"
+            : "";
+        return outbound + inbound;
+    }
+
+    private async Task LoadAndCacheChannelFeePolicies()
+    {
+        if (_isLoadingFeePolicies) return;
+        _isLoadingFeePolicies = true;
+        try
+        {
+            if (_channels == null || _channels.Count == 0)
+                return;
+
+            foreach (var channel in _channels)
+            {
+                // Skip channels already cached
+                if (_channelFeePoliciesCache.ContainsKey(channel.ChanId))
+                    continue;
+
+                var node = GetManagedChannelNode(channel);
+                if (node == null)
+                {
+                    _channelFeePoliciesCache[channel.ChanId] = (null, null);
+                    continue;
+                }
+
+                try
+                {
+                    var result = await LightningService.GetChannelFeePolicy(channel.ChanId, node);
+                    _channelFeePoliciesCache[channel.ChanId] = result;
+                    await InvokeAsync(StateHasChanged);
+                }
+                catch
+                {
+                    _channelFeePoliciesCache[channel.ChanId] = (null, null);
+                    await InvokeAsync(StateHasChanged);
+                }
+            }
+        }
+        catch
+        {
+            // Silently fail - UI will show spinners
+        }
+        finally
+        {
+            _isLoadingFeePolicies = false;
+        }
     }
     
     private void ValidateBitcoinAddress(ValidatorEventArgs obj)

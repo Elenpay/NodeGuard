@@ -1859,6 +1859,55 @@ namespace NodeGuard.Services
         }
 
         [Fact]
+        public async Task? CreateOpenChannelRequest_CreatesRequestWithInitialChannelFeePolicy()
+        {
+            // Arrange
+            var wallet = CreateWallet.SingleSig(_internalWallet);
+            var channelOperationRequest = new ChannelOperationRequest
+            {
+                Wallet = wallet,
+                InitialChannelBaseFeeMsat = 1_000,
+                InitialChannelFeeRatePpm = 250
+            };
+            var psbt =
+                "cHNidP8BAFIBAAAAAeh7YDXyZE11vXb0yRqCkrxY7VpHH1WVMHwaCWYMv/pCAQAAAAD/////AUjf9QUAAAAAFgAULTCtUNMojFQZ8oa6fpbXbDhK2EYAAAAATwEENYfPA325Ro0AAAABg9H86IDUttPPFss+9te+0DByQgbeD7RPXNuVH9mh1qIDnMEWyKA+kvyG038on8+HxI+9AD8r6ZI1dNIDSGC8824Q7QIQyDAAAIABAACAAQAAAAABAR8A4fUFAAAAABYAFOk69QEyo0x+Xs/zV62OLrHh9eszAQMEAgAAAAAA";
+
+            var combinedPsbt = LightningHelper.CombinePSBTs(new[] { psbt });
+            var lightningService = new LightningService(_logger, null, null, null, null, null, null, null, null, null, null);
+            var pendingChannelId = RandomNumberGenerator.GetBytes(32);
+            var derivationStrategyBase = LightningService.GetDerivationStrategyBase(channelOperationRequest);
+            var node = new LightningNode()
+            {
+                PubKey = "03650f49929d84d9a6d9b5a66235c603a1a0597dd609f7cd3b15052382cf9bb1b4"
+            };
+
+            // Act
+            var openChannelRequest = await lightningService.CreateOpenChannelRequest(channelOperationRequest, combinedPsbt, node, 1000, pendingChannelId, derivationStrategyBase);
+
+            // Assert
+            openChannelRequest.Should().Be(new OpenChannelRequest()
+            {
+                FundingShim = new FundingShim
+                {
+                    PsbtShim = new PsbtShim
+                    {
+                        BasePsbt = ByteString.FromBase64(combinedPsbt.ToBase64()),
+                        NoPublish = false,
+                        PendingChanId = ByteString.CopyFrom(pendingChannelId)
+                    }
+                },
+                LocalFundingAmount = 1000,
+                Private = false,
+                NodePubkey = ByteString.CopyFrom(Convert.FromHexString("03650f49929d84d9a6d9b5a66235c603a1a0597dd609f7cd3b15052382cf9bb1b4")),
+                CloseAddress = "",
+                BaseFee = 1_000,
+                FeeRate = 250,
+                UseBaseFee = true,
+                UseFeeRate = true,
+            });
+        }
+
+        [Fact]
         public async Task GetChannelsStatus_SourceNodeIsManaged_SourceIsInitiator()
         {
             // Arrange
@@ -2313,6 +2362,133 @@ namespace NodeGuard.Services
             await act.Should()
                 .ThrowAsync<ArgumentException>()
                 .WithMessage("The given nodePubKey is not a participant of the channel. (Parameter 'nodePubKey')");
+        }
+
+        [Fact]
+        public async Task GetChannelFeePolicy_ReturnsCorrectPolicies_WhenNodeIsNode1()
+        {
+            // Arrange
+            var node = new Node
+            {
+                PubKey = "managedPubKey",
+                Endpoint = "127.0.0.1:10009",
+                ChannelAdminMacaroon = "test-macaroon"
+            };
+
+            var node1Policy = new RoutingPolicy
+            {
+                FeeBaseMsat = 1000,
+                FeeRateMilliMsat = 250,
+                TimeLockDelta = 40
+            };
+            var node2Policy = new RoutingPolicy
+            {
+                FeeBaseMsat = 2000,
+                FeeRateMilliMsat = 500,
+                TimeLockDelta = 80
+            };
+
+            var channelEdge = new ChannelEdge
+            {
+                Node1Pub = "managedPubKey",
+                Node2Pub = "counterpartyPubKey",
+                Node1Policy = node1Policy,
+                Node2Policy = node2Policy
+            };
+
+            var lightningClientService = new Mock<ILightningClientService>();
+            lightningClientService
+                .Setup(x => x.GetChanInfo(node, 123UL, null))
+                .ReturnsAsync(channelEdge);
+
+            var lightningService = new LightningService(
+                _logger, null, null, null, null, null, null, null, null,
+                lightningClientService.Object, null);
+
+            // Act
+            var (managedPolicy, counterpartyPolicy) = await lightningService.GetChannelFeePolicy(123UL, node);
+
+            // Assert
+            managedPolicy.Should().Be(node1Policy);
+            counterpartyPolicy.Should().Be(node2Policy);
+        }
+
+        [Fact]
+        public async Task GetChannelFeePolicy_ReturnsCorrectPolicies_WhenNodeIsNode2()
+        {
+            // Arrange
+            var node = new Node
+            {
+                PubKey = "managedPubKey",
+                Endpoint = "127.0.0.1:10009",
+                ChannelAdminMacaroon = "test-macaroon"
+            };
+
+            var node1Policy = new RoutingPolicy
+            {
+                FeeBaseMsat = 1000,
+                FeeRateMilliMsat = 250,
+                TimeLockDelta = 40
+            };
+            var node2Policy = new RoutingPolicy
+            {
+                FeeBaseMsat = 2000,
+                FeeRateMilliMsat = 500,
+                TimeLockDelta = 80
+            };
+
+            var channelEdge = new ChannelEdge
+            {
+                Node1Pub = "counterpartyPubKey",
+                Node2Pub = "managedPubKey",
+                Node1Policy = node1Policy,
+                Node2Policy = node2Policy
+            };
+
+            var lightningClientService = new Mock<ILightningClientService>();
+            lightningClientService
+                .Setup(x => x.GetChanInfo(node, 456UL, null))
+                .ReturnsAsync(channelEdge);
+
+            var lightningService = new LightningService(
+                _logger, null, null, null, null, null, null, null, null,
+                lightningClientService.Object, null);
+
+            // Act
+            var (managedPolicy, counterpartyPolicy) = await lightningService.GetChannelFeePolicy(456UL, node);
+
+            // Assert
+            managedPolicy.Should().Be(node2Policy);
+            counterpartyPolicy.Should().Be(node1Policy);
+        }
+
+        [Fact]
+        public async Task GetChannelFeePolicy_ThrowsArgumentException_WhenChannelNotFound()
+        {
+            // Arrange
+            var node = new Node
+            {
+                PubKey = "managedPubKey",
+                Endpoint = "127.0.0.1:10009",
+                ChannelAdminMacaroon = "test-macaroon"
+            };
+
+            var lightningClientService = new Mock<ILightningClientService>();
+            lightningClientService
+                .Setup(x => x.GetChanInfo(node, 789UL, null))
+                .ReturnsAsync((ChannelEdge?)null);
+
+            var lightningService = new LightningService(
+                _logger, null, null, null, null, null, null, null, null,
+                lightningClientService.Object, null);
+
+            // Act
+            var act = async () => await lightningService.GetChannelFeePolicy(789UL, node);
+
+            // Assert
+            await act.Should()
+                .ThrowAsync<ArgumentException>()
+                .WithMessage("Channel not found for the given chanId. (Parameter 'chanId')");
         }
     }
 }
