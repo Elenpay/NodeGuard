@@ -5058,20 +5058,7 @@
       },
       "id": 203,
       "panels": [],
-      "title": "Yield — Swap Diagnostics",
-      "type": "row"
-    },
-    {
-      "collapsed": false,
-      "gridPos": {
-        "h": 1,
-        "w": 24,
-        "x": 0,
-        "y": 178
-      },
-      "id": 205,
-      "panels": [],
-      "title": "Yield — Rebalance Diagnostics",
+      "title": "Yield — Swaps & Rebalances Diagnostics",
       "type": "row"
     },
     {
@@ -5092,7 +5079,7 @@
         "type": "grafana-postgresql-datasource",
         "uid": "$datasource"
       },
-      "description": "Rolling APR (left axis, percent) and rolling-average Qualifying Liquidity (right axis, BTC) per managed node, in the style of \"Profit over time\". Hourly buckets; each plotted point is the rolling APR over the last $aprWindow ending that hour, paired with the average qualifying liquidity deployed over the same rolling window. Designed for self-comparison within a node: visually spot whether adding/removing liquidity tracks with APR moving up or down. Honors the Apply Swap Costs, Apply Rebalance Costs, and Liquidity Scope controls. APR can be negative.",
+      "description": "Rolling APR per managed node. Hourly buckets; each plotted point is the rolling APR over the last $aprWindow ending that hour. Honors the Apply Swap Costs, Apply Rebalance Costs, and Liquidity Scope controls. APR can be negative.",
       "fieldConfig": {
         "defaults": {
           "color": {
@@ -5160,36 +5147,6 @@
                 "value": "left"
               }
             ]
-          },
-          {
-            "matcher": {
-              "id": "byRegexp",
-              "options": ".* Liquidity \\(BTC\\)$"
-            },
-            "properties": [
-              {
-                "id": "unit",
-                "value": "currencyBTC"
-              },
-              {
-                "id": "decimals",
-                "value": 8
-              },
-              {
-                "id": "custom.axisPlacement",
-                "value": "right"
-              },
-              {
-                "id": "custom.lineStyle",
-                "value": {
-                  "fill": "dash",
-                  "dash": [
-                    10,
-                    10
-                  ]
-                }
-              }
-            ]
           }
         ]
       },
@@ -5225,11 +5182,107 @@
           "editorMode": "code",
           "format": "time_series",
           "rawQuery": true,
-          "rawSql": "WITH days AS (SELECT generate_series(date_trunc('hour', $__timeFrom()::timestamptz), $__timeTo()::timestamptz, INTERVAL '1 hour') AS bucket_start), day_buckets AS (SELECT bucket_start, bucket_start + INTERVAL '1 hour' AS bucket_end FROM days), nodes AS (SELECT \"ManagedNodePubKey\" AS pubkey, MAX(\"ManagedNodeName\") AS node_name FROM \"ForwardingHtlcEvents\" WHERE $__timeFilter(\"EventTimestamp\") AND \"ManagedNodePubKey\" IN ($node) GROUP BY 1), participating_node_chans AS (SELECT DISTINCT f.\"ManagedNodePubKey\" AS pubkey, u.chan_id FROM \"ForwardingHtlcEvents\" f CROSS JOIN LATERAL (VALUES (f.\"IncomingChannelId\"), (f.\"OutgoingChannelId\")) u(chan_id) WHERE $__timeFilter(f.\"EventTimestamp\") AND f.\"Outcome\" = 1 AND f.\"FeeMsat\" IS NOT NULL AND f.\"ManagedNodePubKey\" IN ($node)), day_node_grid AS (SELECT db.bucket_start, db.bucket_end, n.pubkey, n.node_name FROM day_buckets db CROSS JOIN nodes n), day_fees AS (SELECT g.bucket_start, g.pubkey, g.node_name, COALESCE(ROUND(SUM(f.\"FeeMsat\") / 1000.0)::bigint, 0) AS fee_sats FROM day_node_grid g LEFT JOIN \"ForwardingHtlcEvents\" f ON f.\"EventTimestamp\" >= g.bucket_start AND f.\"EventTimestamp\" < g.bucket_end AND f.\"Outcome\" = 1 AND f.\"FeeMsat\" IS NOT NULL AND f.\"ManagedNodePubKey\" = g.pubkey GROUP BY g.bucket_start, g.pubkey, g.node_name), day_yield_costs AS (SELECT g.bucket_start, g.pubkey, COALESCE(SUM(yc.cost_sats), 0) AS yield_cost_sats FROM day_node_grid g LEFT JOIN \"Nodes\" n ON n.\"PubKey\" = g.pubkey LEFT JOIN (SELECT s.\"NodeId\", s.\"CreationDatetime\" AS cost_time, $applySwapCosts * (COALESCE(s.\"ServiceFeeSats\", 0) + COALESCE(s.\"LightningFeeSats\", 0) + COALESCE(s.\"OnChainFeeSats\", 0)) AS cost_sats FROM \"SwapOuts\" s WHERE s.\"Status\" = 1 AND $__timeFilter(s.\"CreationDatetime\") UNION ALL SELECT r.\"NodeId\", r.\"CreationDatetime\" AS cost_time, $applyRebalanceCosts * COALESCE(r.\"FeePaidSats\", 0) AS cost_sats FROM \"Rebalances\" r WHERE r.\"Status\" = 3 AND r.\"FeePaidSats\" IS NOT NULL AND $__timeFilter(r.\"CreationDatetime\")) yc ON yc.\"NodeId\" = n.\"Id\" AND yc.cost_time >= g.bucket_start AND yc.cost_time < g.bucket_end GROUP BY g.bucket_start, g.pubkey), day_liquidity AS (SELECT g.bucket_start, g.pubkey, COALESCE(SUM(c.\"SatsAmount\" * GREATEST(EXTRACT(EPOCH FROM (LEAST(CASE WHEN c.\"Status\" = 2 THEN COALESCE((to_jsonb(c) ->> 'ClosedAt')::timestamptz, c.\"UpdateDatetime\") ELSE g.bucket_end END, g.bucket_end) - GREATEST(c.\"CreationDatetime\", g.bucket_start))) / 86400.0, 0.0)), 0) AS sat_days FROM day_node_grid g LEFT JOIN participating_node_chans pc ON pc.pubkey = g.pubkey LEFT JOIN \"Channels\" c ON c.\"ChanId\" = pc.chan_id AND (c.\"CreatedByNodeGuard\" = TRUE OR $liquidityScope = 0) GROUP BY g.bucket_start, g.pubkey), rolling AS (SELECT df.bucket_start, df.pubkey, df.node_name, SUM(df.fee_sats) OVER w AS r_fee, SUM(COALESCE(dyc.yield_cost_sats, 0)) OVER w AS r_cost, SUM(COALESCE(dl.sat_days, 0)) OVER w AS r_satdays, COUNT(*) OVER w AS r_count FROM day_fees df LEFT JOIN day_yield_costs dyc ON dyc.bucket_start = df.bucket_start AND dyc.pubkey = df.pubkey LEFT JOIN day_liquidity dl ON dl.bucket_start = df.bucket_start AND dl.pubkey = df.pubkey WINDOW w AS (PARTITION BY df.pubkey ORDER BY df.bucket_start ROWS BETWEEN (CASE '$aprWindow' WHEN 'day' THEN 23 WHEN 'week' THEN 167 ELSE 719 END) PRECEDING AND CURRENT ROW)) SELECT t AS \"time\", m AS metric, v AS value FROM (SELECT bucket_start AS t, node_name || ' APR' AS m, CASE WHEN r_satdays > 0 THEN (r_fee - r_cost)::numeric * 365.0 / r_satdays ELSE NULL END AS v FROM rolling UNION ALL SELECT bucket_start AS t, node_name || ' Liquidity (BTC)' AS m, CASE WHEN r_count > 0 THEN (r_satdays * 24.0 / r_count / 100000000.0)::numeric(20,8) ELSE NULL END AS v FROM rolling) sub ORDER BY t, m",
+          "rawSql": "WITH days AS (SELECT generate_series(date_trunc('hour', $__timeFrom()::timestamptz), $__timeTo()::timestamptz, INTERVAL '1 hour') AS bucket_start), day_buckets AS (SELECT bucket_start, bucket_start + INTERVAL '1 hour' AS bucket_end FROM days), nodes AS (SELECT \"ManagedNodePubKey\" AS pubkey, MAX(\"ManagedNodeName\") AS node_name FROM \"ForwardingHtlcEvents\" WHERE $__timeFilter(\"EventTimestamp\") AND \"ManagedNodePubKey\" IN ($node) GROUP BY 1), participating_node_chans AS (SELECT DISTINCT f.\"ManagedNodePubKey\" AS pubkey, u.chan_id FROM \"ForwardingHtlcEvents\" f CROSS JOIN LATERAL (VALUES (f.\"IncomingChannelId\"), (f.\"OutgoingChannelId\")) u(chan_id) WHERE $__timeFilter(f.\"EventTimestamp\") AND f.\"Outcome\" = 1 AND f.\"FeeMsat\" IS NOT NULL AND f.\"ManagedNodePubKey\" IN ($node)), day_node_grid AS (SELECT db.bucket_start, db.bucket_end, n.pubkey, n.node_name FROM day_buckets db CROSS JOIN nodes n), day_fees AS (SELECT g.bucket_start, g.pubkey, g.node_name, COALESCE(ROUND(SUM(f.\"FeeMsat\") / 1000.0)::bigint, 0) AS fee_sats FROM day_node_grid g LEFT JOIN \"ForwardingHtlcEvents\" f ON f.\"EventTimestamp\" >= g.bucket_start AND f.\"EventTimestamp\" < g.bucket_end AND f.\"Outcome\" = 1 AND f.\"FeeMsat\" IS NOT NULL AND f.\"ManagedNodePubKey\" = g.pubkey GROUP BY g.bucket_start, g.pubkey, g.node_name), day_yield_costs AS (SELECT g.bucket_start, g.pubkey, COALESCE(SUM(yc.cost_sats), 0) AS yield_cost_sats FROM day_node_grid g LEFT JOIN \"Nodes\" n ON n.\"PubKey\" = g.pubkey LEFT JOIN (SELECT s.\"NodeId\", s.\"CreationDatetime\" AS cost_time, $applySwapCosts * (COALESCE(s.\"ServiceFeeSats\", 0) + COALESCE(s.\"LightningFeeSats\", 0) + COALESCE(s.\"OnChainFeeSats\", 0)) AS cost_sats FROM \"SwapOuts\" s WHERE s.\"Status\" = 1 AND $__timeFilter(s.\"CreationDatetime\") UNION ALL SELECT r.\"NodeId\", r.\"CreationDatetime\" AS cost_time, $applyRebalanceCosts * COALESCE(r.\"FeePaidSats\", 0) AS cost_sats FROM \"Rebalances\" r WHERE r.\"Status\" = 3 AND r.\"FeePaidSats\" IS NOT NULL AND $__timeFilter(r.\"CreationDatetime\")) yc ON yc.\"NodeId\" = n.\"Id\" AND yc.cost_time >= g.bucket_start AND yc.cost_time < g.bucket_end GROUP BY g.bucket_start, g.pubkey), day_liquidity AS (SELECT g.bucket_start, g.pubkey, COALESCE(SUM(c.\"SatsAmount\" * GREATEST(EXTRACT(EPOCH FROM (LEAST(CASE WHEN c.\"Status\" = 2 THEN COALESCE((to_jsonb(c) ->> 'ClosedAt')::timestamptz, c.\"UpdateDatetime\") ELSE g.bucket_end END, g.bucket_end) - GREATEST(c.\"CreationDatetime\", g.bucket_start))) / 86400.0, 0.0)), 0) AS sat_days FROM day_node_grid g LEFT JOIN participating_node_chans pc ON pc.pubkey = g.pubkey LEFT JOIN \"Channels\" c ON c.\"ChanId\" = pc.chan_id AND (c.\"CreatedByNodeGuard\" = TRUE OR $liquidityScope = 0) GROUP BY g.bucket_start, g.pubkey), rolling AS (SELECT df.bucket_start, df.pubkey, df.node_name, SUM(df.fee_sats) OVER w AS r_fee, SUM(COALESCE(dyc.yield_cost_sats, 0)) OVER w AS r_cost, SUM(COALESCE(dl.sat_days, 0)) OVER w AS r_satdays, COUNT(*) OVER w AS r_count FROM day_fees df LEFT JOIN day_yield_costs dyc ON dyc.bucket_start = df.bucket_start AND dyc.pubkey = df.pubkey LEFT JOIN day_liquidity dl ON dl.bucket_start = df.bucket_start AND dl.pubkey = df.pubkey WINDOW w AS (PARTITION BY df.pubkey ORDER BY df.bucket_start ROWS BETWEEN (CASE '$aprWindow' WHEN 'day' THEN 23 WHEN 'week' THEN 167 ELSE 719 END) PRECEDING AND CURRENT ROW)) SELECT bucket_start AS \"time\", node_name || ' APR' AS metric, CASE WHEN r_satdays > 0 THEN (r_fee - r_cost)::numeric * 365.0 / r_satdays ELSE NULL END AS value FROM rolling ORDER BY bucket_start, metric",
           "refId": "A"
         }
       ],
-      "title": "APR & Qualifying Liquidity over time by managed node",
+      "title": "APR over time by managed node",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "$datasource"
+      },
+      "description": "Rolling-average Qualifying Liquidity per managed node. Hourly buckets; each plotted point is the average qualifying liquidity deployed over the last $aprWindow ending that hour. Honors the Liquidity Scope control.",
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "axisBorderShow": false,
+            "axisCenteredZero": false,
+            "axisColorMode": "text",
+            "axisLabel": "",
+            "axisPlacement": "auto",
+            "barAlignment": 0,
+            "drawStyle": "line",
+            "fillOpacity": 0,
+            "gradientMode": "none",
+            "hideFrom": {
+              "legend": false,
+              "tooltip": false,
+              "viz": false
+            },
+            "lineInterpolation": "linear",
+            "lineWidth": 1,
+            "pointSize": 5,
+            "scaleDistribution": {
+              "type": "linear"
+            },
+            "showPoints": "auto",
+            "spanNulls": false,
+            "stacking": {
+              "group": "A",
+              "mode": "none"
+            },
+            "thresholdsStyle": {
+              "mode": "off"
+            }
+          },
+          "decimals": 8,
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          },
+          "unit": "currencyBTC"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 9,
+        "w": 24,
+        "x": 0,
+        "y": 199
+      },
+      "id": 206,
+      "options": {
+        "legend": {
+          "calcs": [
+            "mean",
+            "lastNotNull"
+          ],
+          "displayMode": "table",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "pluginVersion": "12.4.2",
+      "targets": [
+        {
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "$datasource"
+          },
+          "editorMode": "code",
+          "format": "time_series",
+          "rawQuery": true,
+          "rawSql": "WITH days AS (SELECT generate_series(date_trunc('hour', $__timeFrom()::timestamptz), $__timeTo()::timestamptz, INTERVAL '1 hour') AS bucket_start), day_buckets AS (SELECT bucket_start, bucket_start + INTERVAL '1 hour' AS bucket_end FROM days), nodes AS (SELECT \"ManagedNodePubKey\" AS pubkey, MAX(\"ManagedNodeName\") AS node_name FROM \"ForwardingHtlcEvents\" WHERE $__timeFilter(\"EventTimestamp\") AND \"ManagedNodePubKey\" IN ($node) GROUP BY 1), participating_node_chans AS (SELECT DISTINCT f.\"ManagedNodePubKey\" AS pubkey, u.chan_id FROM \"ForwardingHtlcEvents\" f CROSS JOIN LATERAL (VALUES (f.\"IncomingChannelId\"), (f.\"OutgoingChannelId\")) u(chan_id) WHERE $__timeFilter(f.\"EventTimestamp\") AND f.\"Outcome\" = 1 AND f.\"FeeMsat\" IS NOT NULL AND f.\"ManagedNodePubKey\" IN ($node)), day_node_grid AS (SELECT db.bucket_start, db.bucket_end, n.pubkey, n.node_name FROM day_buckets db CROSS JOIN nodes n), day_liquidity AS (SELECT g.bucket_start, g.pubkey, g.node_name, COALESCE(SUM(c.\"SatsAmount\" * GREATEST(EXTRACT(EPOCH FROM (LEAST(CASE WHEN c.\"Status\" = 2 THEN COALESCE((to_jsonb(c) ->> 'ClosedAt')::timestamptz, c.\"UpdateDatetime\") ELSE g.bucket_end END, g.bucket_end) - GREATEST(c.\"CreationDatetime\", g.bucket_start))) / 86400.0, 0.0)), 0) AS sat_days FROM day_node_grid g LEFT JOIN participating_node_chans pc ON pc.pubkey = g.pubkey LEFT JOIN \"Channels\" c ON c.\"ChanId\" = pc.chan_id AND (c.\"CreatedByNodeGuard\" = TRUE OR $liquidityScope = 0) GROUP BY g.bucket_start, g.pubkey, g.node_name), rolling AS (SELECT dl.bucket_start, dl.pubkey, dl.node_name, SUM(dl.sat_days) OVER w AS r_satdays, COUNT(*) OVER w AS r_count FROM day_liquidity dl WINDOW w AS (PARTITION BY dl.pubkey ORDER BY dl.bucket_start ROWS BETWEEN (CASE '$aprWindow' WHEN 'day' THEN 23 WHEN 'week' THEN 167 ELSE 719 END) PRECEDING AND CURRENT ROW)) SELECT bucket_start AS \"time\", node_name || ' Liquidity (BTC)' AS metric, CASE WHEN r_count > 0 THEN (r_satdays * 24.0 / r_count / 100000000.0)::numeric(20,8) ELSE NULL END AS value FROM rolling ORDER BY bucket_start, metric",
+          "refId": "A"
+        }
+      ],
+      "title": "Qualifying Liquidity over time by managed node",
       "type": "timeseries"
     }
   ],
