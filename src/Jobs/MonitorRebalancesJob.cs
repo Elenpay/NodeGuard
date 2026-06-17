@@ -159,9 +159,34 @@ public class MonitorRebalancesJob : IJob
             }
             else if (rebalance.Status is RebalanceStatus.Pending or RebalanceStatus.Probing)
             {
+                var window = TimeSpan.FromHours(Constants.REBALANCE_RECONCILE_TERMINAL_WINDOW_HOURS);
+                if (rebalance.UpdateDatetime < DateTimeOffset.UtcNow - window)
+                {
+                    _logger.LogWarning(
+                        "Rebalance {RebalanceId} (status={Status}, hash={PaymentHashHex}) has no record in LND and is older than {WindowHours}h; flipping to Failed",
+                        rebalance.Id, rebalance.Status, rebalance.PaymentHashHex, window.TotalHours);
+                    var oldStatus = rebalance.Status;
+                    rebalance.Status = RebalanceStatus.Failed;
+                    _rebalanceRepository.Update(rebalance);
+                    await _auditService.LogSystemAsync(
+                        AuditActionType.RebalanceCompleted,
+                        AuditEventType.Failure,
+                        AuditObjectType.Rebalance,
+                        rebalance.Id.ToString(),
+                        new
+                        {
+                            Reason = "MonitorReconciliation",
+                            Detail = "LND has no record of this payment hash and the row is older than the reconciliation window",
+                            OldStatus = oldStatus.ToString(),
+                            NewStatus = rebalance.Status.ToString(),
+                        });
+                }
+                else
+                {
                 _logger.LogDebug(
                     "Rebalance {RebalanceId} not yet visible in LND (status={Status}, hash={PaymentHashHex}); local execution still owns it, leaving as-is",
                     rebalance.Id, rebalance.Status, rebalance.PaymentHashHex);
+                }
             }
             else
             {
@@ -170,6 +195,14 @@ public class MonitorRebalancesJob : IJob
                     rebalance.Id, rebalance.Status);
             }
 
+            return;
+        }
+
+        if (rebalance.Status is RebalanceStatus.Pending or RebalanceStatus.Probing)
+        {
+            _logger.LogInformation(
+                "Rebalance {RebalanceId} (status={Status}) has a payment record in LND (status={LndStatus}, hash={PaymentHashHex}); local execution still owns it, leaving as-is",
+                rebalance.Id, rebalance.Status, payment.Status, rebalance.PaymentHashHex);
             return;
         }
 
