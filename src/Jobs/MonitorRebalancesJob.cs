@@ -122,11 +122,21 @@ public class MonitorRebalancesJob : IJob
 
         if (payment == null)
         {
-            // LND returned NotFound (or the call errored). Only act on the NotFound signal
-            // when our row is still in a non-terminal state: in that case LND never saw the
-            // payment, so the optimistic InFlight/Probing/Pending is wrong. For terminal rows
-            // we leave them alone — a transient track error shouldn't reopen a Failed row.
-            if (IsNonTerminal(rebalance.Status))
+            // LND returned NotFound (or the call errored). The right action depends on which
+            // non-terminal state the row is in:
+            //
+            // - Pending/Probing: the local ExecuteAsync persisted PaymentHashHex right after
+            //   AddInvoice, but SendPaymentV2 doesn't fire until after the probe succeeds —
+            //   so "no record in LND" is the EXPECTED state during this window. Flipping the
+            //   row to Failed here would kill an in-progress probe. Leave it alone; the local
+            //   execution is the source of truth until it dispatches SendPaymentV2.
+            //
+            // - InFlight: we believe SendPaymentV2 has been dispatched, so LND should know.
+            //   If it doesn't, the payment never reached LND (process crashed mid-dispatch,
+            //   or LND lost it). Flip to Failed so the row doesn't stay InFlight forever.
+            //
+            // - Terminal statuses: leave alone — a transient track error must not reopen them.
+            if (rebalance.Status == RebalanceStatus.InFlight)
             {
                 var oldStatus = rebalance.Status;
                 rebalance.Status = RebalanceStatus.Failed;
@@ -146,6 +156,12 @@ public class MonitorRebalancesJob : IJob
                         OldStatus = oldStatus.ToString(),
                         NewStatus = rebalance.Status.ToString(),
                     });
+            }
+            else if (rebalance.Status is RebalanceStatus.Pending or RebalanceStatus.Probing)
+            {
+                _logger.LogDebug(
+                    "Rebalance {RebalanceId} not yet visible in LND (status={Status}, hash={PaymentHashHex}); local execution still owns it, leaving as-is",
+                    rebalance.Id, rebalance.Status, rebalance.PaymentHashHex);
             }
             else
             {
@@ -205,11 +221,6 @@ public class MonitorRebalancesJob : IJob
                 rebalance.EffectivePpm,
             });
     }
-
-    private static bool IsNonTerminal(RebalanceStatus status) =>
-        status is RebalanceStatus.Pending
-            or RebalanceStatus.Probing
-            or RebalanceStatus.InFlight;
 
     private static bool IsNonTerminalLndStatus(Payment.Types.PaymentStatus status) =>
         status is Payment.Types.PaymentStatus.Initiated

@@ -150,6 +150,48 @@ public class MonitorRebalancesJobTests
     }
 
     [Fact]
+    public async Task Execute_Probing_LndNotFound_RowLeftAlone()
+    {
+        // ExecuteAsync persists PaymentHashHex right after AddInvoice but does not call
+        // SendPaymentV2 until the probe succeeds. While Status=Probing, "no record in LND" is
+        // the expected state — flipping to Failed here would kill an in-progress probe.
+        var reb = MakeRebalance(RebalanceStatus.Probing);
+        _rebalanceRepo.Setup(r => r.GetReconcilable(It.IsAny<TimeSpan>())).ReturnsAsync(new List<Rebalance> { reb });
+        _lightning.Setup(x => x.TrackPaymentV2Async(It.IsAny<Node>(), It.IsAny<byte[]>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((Payment?)null);
+
+        await CreateJob().Execute(_ctx.Object);
+
+        reb.Status.Should().Be(RebalanceStatus.Probing);
+        _rebalanceRepo.Verify(r => r.Update(It.IsAny<Rebalance>()), Times.Never);
+        _audit.Verify(a => a.LogSystemAsync(
+                AuditActionType.RebalanceCompleted, AuditEventType.Failure,
+                AuditObjectType.Rebalance, It.IsAny<string>(), It.IsAny<object>()),
+            Times.Never);
+    }
+
+    [Fact]
+    public async Task Execute_Pending_LndNotFound_RowLeftAlone()
+    {
+        // Same reasoning as Probing — the brief Pending+hash window inside ExecuteAsync
+        // between AddInvoice and the Status=Probing flip. SendPaymentV2 hasn't fired; LND
+        // can't possibly know about the hash yet.
+        var reb = MakeRebalance(RebalanceStatus.Pending);
+        _rebalanceRepo.Setup(r => r.GetReconcilable(It.IsAny<TimeSpan>())).ReturnsAsync(new List<Rebalance> { reb });
+        _lightning.Setup(x => x.TrackPaymentV2Async(It.IsAny<Node>(), It.IsAny<byte[]>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((Payment?)null);
+
+        await CreateJob().Execute(_ctx.Object);
+
+        reb.Status.Should().Be(RebalanceStatus.Pending);
+        _rebalanceRepo.Verify(r => r.Update(It.IsAny<Rebalance>()), Times.Never);
+        _audit.Verify(a => a.LogSystemAsync(
+                AuditActionType.RebalanceCompleted, AuditEventType.Failure,
+                AuditObjectType.Rebalance, It.IsAny<string>(), It.IsAny<object>()),
+            Times.Never);
+    }
+
+    [Fact]
     public async Task Execute_RecentlyFailed_LndNotFound_RowLeftAlone()
     {
         // Track returning null for an already-terminal row is treated as "no LND truth" —
