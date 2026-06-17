@@ -569,4 +569,141 @@ public class RebalanceServiceTests
                 It.IsAny<object?>()),
             Times.Once);
     }
+
+    /// <summary>
+    /// Builds a retry row simulating the exact post-ScheduleRetryIfEligibleAsync state:
+    /// Status=Pending, AttemptNumber>1, and the prior attempt's PaymentHashHex still on the row.
+    /// </summary>
+    private Rebalance BuildRetryRow(Node node, string priorHashHex = "deadbeef", int attempt = 2)
+        => new()
+        {
+            Id = 200,
+            NodeId = node.Id,
+            Node = node,
+            Status = RebalanceStatus.Pending,
+            AttemptNumber = attempt,
+            RequestedAmountSats = 100_000,
+            SatsAmount = 100_000,
+            MaxFeePct = 0.05,
+            TimeoutSeconds = 60,
+            PaymentHashHex = priorHashHex,
+        };
+
+    [Fact]
+    public async Task ExecuteAsync_RetryPreflight_PriorSucceeded_AdoptsAndSkipsRetry()
+    {
+        // The lying-stream case: local row was marked Failed (then queued for retry), but LND
+        // actually settled the prior attempt. The retry's pre-flight TrackPaymentV2 must catch
+        // this and adopt the success WITHOUT dispatching another payment.
+        var node = CreateNode();
+        var rebalance = BuildRetryRow(node);
+        _rebalanceRepo.Setup(r => r.GetById(rebalance.Id)).ReturnsAsync(rebalance);
+        _rebalanceRepo.Setup(r => r.Update(It.IsAny<Rebalance>())).Returns((true, (string?)null));
+
+        _lightning.Setup(x => x.TrackPaymentV2Async(node, It.IsAny<byte[]>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new Payment
+            {
+                Status = Payment.Types.PaymentStatus.Succeeded,
+                FeeMsat = 4_321,
+                PaymentPreimage = "abc",
+            });
+
+        var service = CreateService();
+        var result = await service.ExecuteAsync(rebalance.Id);
+
+        result.Status.Should().Be(RebalanceStatus.Succeeded);
+        result.FeePaidMsat.Should().Be(4_321);
+        result.PreimageHex.Should().Be("abc");
+        _lightning.Verify(x => x.AddInvoiceAsync(It.IsAny<Node>(), It.IsAny<long>(), It.IsAny<string>(), It.IsAny<long>()),
+            Times.Never);
+        _lightning.Verify(x => x.SendPaymentV2Async(It.IsAny<Node>(), It.IsAny<string>(), It.IsAny<long>(),
+                It.IsAny<ulong[]?>(), It.IsAny<string?>(), It.IsAny<int>(), It.IsAny<CancellationToken>()),
+            Times.Never);
+        _audit.Verify(a => a.LogAsync(
+                AuditActionType.RebalanceCompleted, AuditEventType.Success,
+                AuditObjectType.Rebalance, rebalance.Id.ToString(), It.IsAny<object?>()),
+            Times.Once);
+    }
+
+    [Fact]
+    public async Task ExecuteAsync_RetryPreflight_PriorFailed_ProceedsWithNewInvoice()
+    {
+        // The common retry case: LND confirms the prior attempt failed, matching the local
+        // row's pre-retry state. Pre-flight must NOT bail — it must fall through to the normal
+        // AddInvoice → probe → pay flow so the retry actually runs.
+        var node = CreateNode();
+        var rebalance = BuildRetryRow(node);
+        _rebalanceRepo.Setup(r => r.GetById(rebalance.Id)).ReturnsAsync(rebalance);
+        _rebalanceRepo.Setup(r => r.Update(It.IsAny<Rebalance>())).Returns((true, (string?)null));
+
+        _lightning.Setup(x => x.TrackPaymentV2Async(node, It.IsAny<byte[]>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new Payment
+            {
+                Status = Payment.Types.PaymentStatus.Failed,
+                FailureReason = PaymentFailureReason.FailureReasonNoRoute,
+            });
+        _lightning.Setup(x => x.AddInvoiceAsync(node, It.IsAny<long>(), It.IsAny<string>(), It.IsAny<long>()))
+            .ReturnsAsync(new AddInvoiceResponse
+            {
+                PaymentRequest = "lnbc...",
+                RHash = Google.Protobuf.ByteString.CopyFrom(new byte[] { 0xAA, 0xBB }),
+            });
+        _lightning.Setup(x => x.ProbeRouteAsync(node, It.IsAny<long>(), It.IsAny<long>(),
+                It.IsAny<ulong?>(), It.IsAny<string?>(), It.IsAny<double>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new ProbeResult.NoRoute("stop"));
+
+        var service = CreateService();
+        var result = await service.ExecuteAsync(rebalance.Id);
+
+        _lightning.Verify(x => x.AddInvoiceAsync(node, It.IsAny<long>(), It.IsAny<string>(), It.IsAny<long>()),
+            Times.Once);
+        // The new invoice's hash replaced the stale one.
+        result.PaymentHashHex.Should().Be("aabb");
+    }
+
+    [Fact]
+    public async Task ExecuteAsync_RetryPreflight_LndNotFound_ProceedsWithNewInvoice()
+    {
+        // LND returned NotFound for the prior hash. The pre-flight only short-circuits on
+        // Succeeded; for null it must fall through to the normal flow so the retry runs.
+        var node = CreateNode();
+        var rebalance = BuildRetryRow(node);
+        _rebalanceRepo.Setup(r => r.GetById(rebalance.Id)).ReturnsAsync(rebalance);
+        _rebalanceRepo.Setup(r => r.Update(It.IsAny<Rebalance>())).Returns((true, (string?)null));
+
+        _lightning.Setup(x => x.TrackPaymentV2Async(node, It.IsAny<byte[]>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((Payment?)null);
+        _lightning.Setup(x => x.AddInvoiceAsync(node, It.IsAny<long>(), It.IsAny<string>(), It.IsAny<long>()))
+            .ReturnsAsync(new AddInvoiceResponse { PaymentRequest = "lnbc..." });
+        _lightning.Setup(x => x.ProbeRouteAsync(node, It.IsAny<long>(), It.IsAny<long>(),
+                It.IsAny<ulong?>(), It.IsAny<string?>(), It.IsAny<double>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new ProbeResult.NoRoute("stop"));
+
+        var service = CreateService();
+        await service.ExecuteAsync(rebalance.Id);
+
+        _lightning.Verify(x => x.AddInvoiceAsync(node, It.IsAny<long>(), It.IsAny<string>(), It.IsAny<long>()),
+            Times.Once);
+    }
+
+    [Fact]
+    public async Task ExecuteAsync_FirstAttempt_NoPriorHash_SkipsPreflightTrack()
+    {
+        // First attempt: PaymentHashHex starts null, so the pre-flight TrackPaymentV2 must NOT
+        // fire. Otherwise every fresh rebalance pays an extra LND round trip for nothing.
+        var node = CreateNode();
+        _nodeRepo.Setup(x => x.GetById(node.Id, It.IsAny<bool>())).ReturnsAsync(node);
+        StubRepoForCapture();
+        _lightning.Setup(x => x.AddInvoiceAsync(node, It.IsAny<long>(), It.IsAny<string>(), It.IsAny<long>()))
+            .ReturnsAsync(new AddInvoiceResponse { PaymentRequest = "lnbc..." });
+        _lightning.Setup(x => x.ProbeRouteAsync(node, It.IsAny<long>(), It.IsAny<long>(),
+                It.IsAny<ulong?>(), It.IsAny<string?>(), It.IsAny<double>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new ProbeResult.NoRoute("test"));
+
+        var service = CreateService();
+        await service.RebalanceAsync(new RebalanceRequest(node.Id, null, null, 100_000, MaxFeePct: 0.05));
+
+        _lightning.Verify(x => x.TrackPaymentV2Async(It.IsAny<Node>(), It.IsAny<byte[]>(), It.IsAny<CancellationToken>()),
+            Times.Never);
+    }
 }
