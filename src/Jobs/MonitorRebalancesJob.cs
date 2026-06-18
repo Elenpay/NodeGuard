@@ -183,9 +183,9 @@ public class MonitorRebalancesJob : IJob
                 }
                 else
                 {
-                _logger.LogDebug(
-                    "Rebalance {RebalanceId} not yet visible in LND (status={Status}, hash={PaymentHashHex}); local execution still owns it, leaving as-is",
-                    rebalance.Id, rebalance.Status, rebalance.PaymentHashHex);
+                    _logger.LogDebug(
+                        "Rebalance {RebalanceId} not yet visible in LND (status={Status}, hash={PaymentHashHex}); local execution still owns it, leaving as-is",
+                        rebalance.Id, rebalance.Status, rebalance.PaymentHashHex);
                 }
             }
             else
