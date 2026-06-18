@@ -173,8 +173,8 @@ public class MonitorRebalancesJobTests
         reb.Status.Should().Be(RebalanceStatus.Probing);
         _rebalanceRepo.Verify(r => r.Update(It.IsAny<Rebalance>()), Times.Never);
         _audit.Verify(a => a.LogSystemAsync(
-                AuditActionType.RebalanceCompleted, AuditEventType.Failure,
-                AuditObjectType.Rebalance, It.IsAny<string>(), It.IsAny<object>()),
+                It.IsAny<AuditActionType>(), It.IsAny<AuditEventType>(),
+                It.IsAny<AuditObjectType>(), It.IsAny<string>(), It.IsAny<object>()),
             Times.Never);
     }
 
@@ -194,8 +194,8 @@ public class MonitorRebalancesJobTests
         reb.Status.Should().Be(RebalanceStatus.Pending);
         _rebalanceRepo.Verify(r => r.Update(It.IsAny<Rebalance>()), Times.Never);
         _audit.Verify(a => a.LogSystemAsync(
-                AuditActionType.RebalanceCompleted, AuditEventType.Failure,
-                AuditObjectType.Rebalance, It.IsAny<string>(), It.IsAny<object>()),
+                It.IsAny<AuditActionType>(), It.IsAny<AuditEventType>(),
+                It.IsAny<AuditObjectType>(), It.IsAny<string>(), It.IsAny<object>()),
             Times.Never);
     }
 
@@ -268,6 +268,10 @@ public class MonitorRebalancesJobTests
 
         reb.Status.Should().Be(RebalanceStatus.Pending);
         _rebalanceRepo.Verify(r => r.Update(It.IsAny<Rebalance>()), Times.Never);
+        _audit.Verify(a => a.LogSystemAsync(
+                It.IsAny<AuditActionType>(), It.IsAny<AuditEventType>(),
+                It.IsAny<AuditObjectType>(), It.IsAny<string>(), It.IsAny<object>()),
+            Times.Never);
     }
 
     [Fact]
@@ -284,6 +288,10 @@ public class MonitorRebalancesJobTests
 
         reb.Status.Should().Be(RebalanceStatus.Probing);
         _rebalanceRepo.Verify(r => r.Update(It.IsAny<Rebalance>()), Times.Never);
+        _audit.Verify(a => a.LogSystemAsync(
+                It.IsAny<AuditActionType>(), It.IsAny<AuditEventType>(),
+                It.IsAny<AuditObjectType>(), It.IsAny<string>(), It.IsAny<object>()),
+            Times.Never);
     }
 
     [Fact]
