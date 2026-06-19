@@ -125,11 +125,16 @@ public class RebalanceService : IRebalanceService
                 nameof(request.SourceChannelId));
         var sourceChanIdLnd = sourceChannel.ChanId;
 
-        var counterpartyPeerPubkey = sourceChannel.SourceNodeId == node.Id
-            ? sourceChannel.DestinationNode?.PubKey
-            : sourceChannel.SourceNode?.PubKey;
+        var counterpartyPeerId = sourceChannel.SourceNodeId == node.Id
+            ? sourceChannel.DestinationNodeId
+            : sourceChannel.SourceNodeId;
 
-        if (counterpartyPeerPubkey == request.TargetPubkey)
+        var counterpartyPeer = await _nodeRepository.GetById(counterpartyPeerId);
+        if (counterpartyPeer == null)
+            throw new InvalidOperationException(
+                $"Counterparty peer node {counterpartyPeerId} not found for source channel {request.SourceChannelId}");
+
+        if (counterpartyPeer.PubKey == request.TargetPubkey)
             throw new ArgumentException(
                 "Target pubkey is the same as the source channel's counterparty peer; rebalance would be a no-op.",
                 nameof(request.TargetPubkey));
