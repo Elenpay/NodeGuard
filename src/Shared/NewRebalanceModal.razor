@@ -109,9 +109,13 @@
                         @RenderBalanceBar("Before", _sourceLocalSats.Value, _sourceRemoteSats.Value)
                         @RenderBalanceBar("After", SourceLocalAfter, SourceRemoteAfter, isProjection: true)
 
-                        <div style="font-size: 0.85em; color: #888; margin-top: 0.5rem;">
-                            Receiving peer pinned: <strong>@_selectedTargetPubkey?.Substring(0, 10)…</strong>. The exact channel that lands the sats is LND's call — no per-channel projection possible.
-                        </div>
+                        @if (!string.IsNullOrEmpty(_selectedTargetPubkey))
+                        {
+                            <div style="font-size: 0.85em; color: #888; margin-top: 0.5rem;">
+                                Receiving peer pinned: <strong>@_selectedTargetPubkey.Substring(0, 10)…</strong>. The exact
+                                channel that lands the sats is LND's call — no per-channel projection possible.
+                            </div>
+                        }
 
                         <div style="margin-top: 0.75rem; font-size: 0.9em;">
                             @{
