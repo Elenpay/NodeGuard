@@ -79,7 +79,8 @@ public class RebalanceServiceTests
     private const string ValidTargetPubkey = "030000000000000000000000000000000000000000000000000000000000000099";
     // Local node id (matches CreateNode() default) is 1; the source channel's counterparty is
     // node id 2 with this pubkey — different from ValidTargetPubkey so the no-op guard passes
-    // by default. Tests that exercise the guard override the counterparty's pubkey to match.
+    // by default. Tests that exercise the guard pass CounterpartyPubkey as the request's
+    // TargetPubkey to make it collide with the (default) counterparty pubkey.
     private const int CounterpartyNodeId = 2;
     private const string CounterpartyPubkey = "030000000000000000000000000000000000000000000000000000000000000002";
 
