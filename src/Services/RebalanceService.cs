@@ -222,6 +222,7 @@ public class RebalanceService : IRebalanceService
                         _logger.LogInformation(
                             "Rebalance {RebalanceId} already in-flight in LND (hash={PaymentHashHex}, status={LndStatus})",
                             rebalance.Id, rebalance.PaymentHashHex, oldPayment.Status);
+                        await ScheduleRetryIfEligibleAsync(rebalance);
                         return rebalance;
                     }
                 }
