@@ -44,6 +44,10 @@ public class RebalanceServiceTests
     {
         _schedulerFactory.Setup(x => x.GetScheduler(It.IsAny<CancellationToken>()))
             .ReturnsAsync(_scheduler.Object);
+        // SourceChannelId is now mandatory on RebalanceRequest, so any test that reaches the
+        // source-channel lookup needs a Channel back. Pre-stub here so individual tests don't
+        // each have to repeat it. Tests that explicitly want the lookup to fail can override.
+        StubChannelRepo();
     }
 
     private RebalanceService CreateService() => new(
@@ -64,6 +68,29 @@ public class RebalanceServiceTests
             Endpoint = "localhost:10009",
             ChannelAdminMacaroon = "mac",
         };
+
+    // SourceChannelId and TargetPubkey are required on the domain request; tests that don't care
+    // about either still need to supply something that satisfies the validators (and, for flow
+    // tests, something the channel repo can resolve via StubChannelRepo).
+    private const int ValidChannelId = 1;
+    private const string ValidTargetPubkey = "030000000000000000000000000000000000000000000000000000000000000099";
+
+    /// <summary>
+    /// Stubs ChannelRepository.GetById so the source-channel lookup inside RebalanceAsync resolves
+    /// to a real-looking Channel instead of throwing. Flow tests (anything that reaches the node
+    /// lookup) must call this — validation-throw tests can skip it because the throw fires earlier.
+    /// </summary>
+    private void StubChannelRepo(int channelId = ValidChannelId, ulong chanIdLnd = 12345UL)
+    {
+        _channelRepo.Setup(x => x.GetById(channelId)).ReturnsAsync(new Channel
+        {
+            Id = channelId,
+            ChanId = chanIdLnd,
+            SatsAmount = 1_000_000,
+            Status = Channel.ChannelStatus.Open,
+            FundingTx = "tx",
+        });
+    }
 
     /// <summary>
     /// Wires up the repository mocks so that AddAsync stamps an Id and GetById returns the
@@ -88,7 +115,7 @@ public class RebalanceServiceTests
         // Amount=0 is what the modal computes when target inbound % equals (or is below) current inbound %.
         // The service must reject this with a clear, user-facing message.
         var service = CreateService();
-        var request = new RebalanceRequest(NodeId: 1, null, null, AmountSats: 0, MaxFeePct: null);
+        var request = new RebalanceRequest(NodeId: 1, ValidChannelId, ValidTargetPubkey, AmountSats: 0, MaxFeePct: null);
 
         await FluentActions.Awaiting(() => service.RebalanceAsync(request))
             .Should().ThrowAsync<ArgumentException>()
@@ -100,7 +127,7 @@ public class RebalanceServiceTests
     {
         // Ratio must be in (0, 1) exclusive. 1.0 never shrinks; 0 zeroes the next try.
         var service = CreateService();
-        var request = new RebalanceRequest(NodeId: 1, null, null,
+        var request = new RebalanceRequest(NodeId: 1, ValidChannelId, ValidTargetPubkey,
             AmountSats: 1000, MaxFeePct: null, ProbeBackoffRatio: 1.0);
 
         await FluentActions.Awaiting(() => service.RebalanceAsync(request))
@@ -112,7 +139,7 @@ public class RebalanceServiceTests
     public async Task RebalanceAsync_MaxAttemptsZeroOrNegative_Throws()
     {
         var service = CreateService();
-        var request = new RebalanceRequest(NodeId: 1, null, null,
+        var request = new RebalanceRequest(NodeId: 1, ValidChannelId, ValidTargetPubkey,
             AmountSats: 1000, MaxFeePct: null, MaxAttempts: 0);
 
         await FluentActions.Awaiting(() => service.RebalanceAsync(request))
@@ -124,7 +151,7 @@ public class RebalanceServiceTests
     public async Task RebalanceAsync_RetryMaxFeePctOutOfRange_Throws()
     {
         var service = CreateService();
-        var request = new RebalanceRequest(NodeId: 1, null, null,
+        var request = new RebalanceRequest(NodeId: 1, ValidChannelId, ValidTargetPubkey,
             AmountSats: 1000, MaxFeePct: null, RetryMaxFeePct: -0.1);
 
         await FluentActions.Awaiting(() => service.RebalanceAsync(request))
@@ -137,10 +164,128 @@ public class RebalanceServiceTests
     {
         _nodeRepo.Setup(x => x.GetById(99, It.IsAny<bool>())).ReturnsAsync((Node?)null);
         var service = CreateService();
-        var request = new RebalanceRequest(NodeId: 99, null, null, AmountSats: 1000, MaxFeePct: null);
+        var request = new RebalanceRequest(NodeId: 99, ValidChannelId, ValidTargetPubkey, AmountSats: 1000, MaxFeePct: null);
 
         await FluentActions.Awaiting(() => service.RebalanceAsync(request))
             .Should().ThrowAsync<ArgumentException>();
+    }
+
+    [Fact]
+    public async Task RebalanceAsync_SourceChannelIdMissing_Throws()
+    {
+        var service = CreateService();
+        var request = new RebalanceRequest(NodeId: 1, SourceChannelId: 0, ValidTargetPubkey,
+            AmountSats: 1000, MaxFeePct: null);
+
+        await FluentActions.Awaiting(() => service.RebalanceAsync(request))
+            .Should().ThrowAsync<ArgumentException>()
+            .WithMessage("*Source channel id is required*");
+    }
+
+    [Fact]
+    public async Task RebalanceAsync_TargetPubkeyEmpty_Throws()
+    {
+        var service = CreateService();
+        var request = new RebalanceRequest(NodeId: 1, ValidChannelId, TargetPubkey: "   ",
+            AmountSats: 1000, MaxFeePct: null);
+
+        await FluentActions.Awaiting(() => service.RebalanceAsync(request))
+            .Should().ThrowAsync<ArgumentException>()
+            .WithMessage("*Target pubkey is required*");
+    }
+
+    [Fact]
+    public async Task RebalanceAsync_SourceChannelNotFound_Throws()
+    {
+        // ValidChannelId is pre-stubbed in the constructor; this test overrides to null so the
+        // source-channel lookup fails after the args pass the cheap validators.
+        var node = CreateNode();
+        _nodeRepo.Setup(x => x.GetById(node.Id, It.IsAny<bool>())).ReturnsAsync(node);
+        _channelRepo.Setup(x => x.GetById(ValidChannelId)).ReturnsAsync((Channel?)null);
+
+        var service = CreateService();
+        var request = new RebalanceRequest(node.Id, ValidChannelId, ValidTargetPubkey,
+            AmountSats: 100_000, MaxFeePct: null);
+
+        await FluentActions.Awaiting(() => service.RebalanceAsync(request))
+            .Should().ThrowAsync<ArgumentException>()
+            .WithMessage($"*Source channel {ValidChannelId} not found*");
+    }
+
+    [Fact]
+    public async Task RebalanceAsync_TargetPubkeyEqualsSourceCounterparty_Throws()
+    {
+        // Pinning the LastHopPubkey to the same peer that's already the source channel's
+        // counterparty would route the sats straight back to where they came from — a no-op
+        // rebalance. The service must reject this.
+        var node = CreateNode();
+        var peerPubkey = "030000000000000000000000000000000000000000000000000000000000000002";
+        _nodeRepo.Setup(x => x.GetById(node.Id, It.IsAny<bool>())).ReturnsAsync(node);
+        _channelRepo.Setup(x => x.GetById(ValidChannelId)).ReturnsAsync(new Channel
+        {
+            Id = ValidChannelId,
+            ChanId = 12345UL,
+            SatsAmount = 1_000_000,
+            Status = Channel.ChannelStatus.Open,
+            FundingTx = "tx",
+            // Our node opened the channel; the counterparty is the destination.
+            SourceNodeId = node.Id,
+            SourceNode = node,
+            DestinationNodeId = 2,
+            DestinationNode = new Node
+            {
+                Id = 2,
+                Name = "peer",
+                PubKey = peerPubkey,
+                Endpoint = "peer:10009",
+                ChannelAdminMacaroon = "mac",
+            },
+        });
+
+        var service = CreateService();
+        var request = new RebalanceRequest(node.Id, ValidChannelId, TargetPubkey: peerPubkey,
+            AmountSats: 100_000, MaxFeePct: null);
+
+        await FluentActions.Awaiting(() => service.RebalanceAsync(request))
+            .Should().ThrowAsync<ArgumentException>()
+            .WithMessage("*same as the source channel's counterparty peer*");
+    }
+
+    [Fact]
+    public async Task RebalanceAsync_TargetPubkeyEqualsSourceCounterparty_NodeIsDestination_Throws()
+    {
+        // Same guard, mirrored: the local node is the channel's DESTINATION (peer opened the
+        // channel to us). Counterparty is then the SourceNode.
+        var node = CreateNode();
+        var peerPubkey = "030000000000000000000000000000000000000000000000000000000000000003";
+        _nodeRepo.Setup(x => x.GetById(node.Id, It.IsAny<bool>())).ReturnsAsync(node);
+        _channelRepo.Setup(x => x.GetById(ValidChannelId)).ReturnsAsync(new Channel
+        {
+            Id = ValidChannelId,
+            ChanId = 67890UL,
+            SatsAmount = 1_000_000,
+            Status = Channel.ChannelStatus.Open,
+            FundingTx = "tx",
+            SourceNodeId = 2,
+            SourceNode = new Node
+            {
+                Id = 2,
+                Name = "peer",
+                PubKey = peerPubkey,
+                Endpoint = "peer:10009",
+                ChannelAdminMacaroon = "mac",
+            },
+            DestinationNodeId = node.Id,
+            DestinationNode = node,
+        });
+
+        var service = CreateService();
+        var request = new RebalanceRequest(node.Id, ValidChannelId, TargetPubkey: peerPubkey,
+            AmountSats: 100_000, MaxFeePct: null);
+
+        await FluentActions.Awaiting(() => service.RebalanceAsync(request))
+            .Should().ThrowAsync<ArgumentException>()
+            .WithMessage("*same as the source channel's counterparty peer*");
     }
 
     [Fact]
@@ -158,7 +303,7 @@ public class RebalanceServiceTests
             .ReturnsAsync(new ProbeResult.NoRoute("test"));
 
         var service = CreateService();
-        var request = new RebalanceRequest(NodeId: node.Id, null, null,
+        var request = new RebalanceRequest(NodeId: node.Id, ValidChannelId, ValidTargetPubkey,
             AmountSats: 100_000, MaxFeePct: 0.1234);
 
         var result = await service.RebalanceAsync(request);
@@ -183,7 +328,7 @@ public class RebalanceServiceTests
             .ReturnsAsync(new ProbeResult.NoRoute("test"));
 
         var service = CreateService();
-        var request = new RebalanceRequest(NodeId: node.Id, null, null,
+        var request = new RebalanceRequest(NodeId: node.Id, ValidChannelId, ValidTargetPubkey,
             AmountSats: 100_000, MaxFeePct: 0.025, ProbeBackoffRatio: 0.8);
 
         var result = await service.RebalanceAsync(request);
@@ -208,7 +353,7 @@ public class RebalanceServiceTests
             .ReturnsAsync(new ProbeResult.NoRoute("test"));
 
         var service = CreateService();
-        var request = new RebalanceRequest(NodeId: node.Id, null, null,
+        var request = new RebalanceRequest(NodeId: node.Id, ValidChannelId, ValidTargetPubkey,
             AmountSats: 100_000, MaxFeePct: 0.025, ProbeBackoffRatio: null);
 
         var result = await service.RebalanceAsync(request);
@@ -238,7 +383,7 @@ public class RebalanceServiceTests
             .ReturnsAsync(new Payment { Status = Payment.Types.PaymentStatus.Succeeded, FeeMsat = 1000 });
 
         var service = CreateService();
-        var request = new RebalanceRequest(NodeId: node.Id, null, TargetPubkey: peerPubkey,
+        var request = new RebalanceRequest(NodeId: node.Id, ValidChannelId, TargetPubkey: peerPubkey,
             AmountSats: 100_000, MaxFeePct: null);
 
         var result = await service.RebalanceAsync(request);
@@ -277,7 +422,7 @@ public class RebalanceServiceTests
             });
 
         var service = CreateService();
-        var request = new RebalanceRequest(node.Id, null, null, 100_000, MaxFeePct: 0.05);
+        var request = new RebalanceRequest(node.Id, ValidChannelId, ValidTargetPubkey, 100_000, MaxFeePct: 0.05);
         var result = await service.RebalanceAsync(request);
 
         result.Status.Should().Be(RebalanceStatus.Succeeded);
@@ -306,7 +451,7 @@ public class RebalanceServiceTests
 
         var service = CreateService();
         // TimeoutSeconds=60, MaxAttempts=3 → backoff = 60 + 120 = 180 → 60 + 180 + buffer.
-        var request = new RebalanceRequest(node.Id, null, null, 100_000, MaxFeePct: 0.05,
+        var request = new RebalanceRequest(node.Id, ValidChannelId, ValidTargetPubkey, 100_000, MaxFeePct: 0.05,
             TimeoutSeconds: 60, MaxAttempts: 3);
 
         await service.RebalanceAsync(request);
@@ -335,7 +480,7 @@ public class RebalanceServiceTests
             .ReturnsAsync(new ProbeResult.NoRoute("stop"));
 
         var service = CreateService();
-        var request = new RebalanceRequest(node.Id, null, null, 100_000, MaxFeePct: 0.05,
+        var request = new RebalanceRequest(node.Id, ValidChannelId, ValidTargetPubkey, 100_000, MaxFeePct: 0.05,
             TimeoutSeconds: 45, MaxAttempts: 1);
 
         await service.RebalanceAsync(request);
@@ -376,7 +521,7 @@ public class RebalanceServiceTests
             .ReturnsAsync(new ProbeResult.NoRoute("test"));
 
         var service = CreateService();
-        var request = new RebalanceRequest(node.Id, null, null, 100_000, MaxFeePct: 0.05);
+        var request = new RebalanceRequest(node.Id, ValidChannelId, ValidTargetPubkey, 100_000, MaxFeePct: 0.05);
         var result = await service.RebalanceAsync(request);
 
         result.PaymentHashHex.Should().Be("abcdef01");
@@ -396,7 +541,7 @@ public class RebalanceServiceTests
             .ReturnsAsync(new ProbeResult.NoRoute("exhausted"));
 
         var service = CreateService();
-        var request = new RebalanceRequest(node.Id, null, null, 100_000, MaxFeePct: 0.05);
+        var request = new RebalanceRequest(node.Id, ValidChannelId, ValidTargetPubkey, 100_000, MaxFeePct: 0.05);
         var result = await service.RebalanceAsync(request);
 
         // After scheduling a retry, AttemptNumber is bumped to 2 and Status is reset to Pending.
@@ -426,7 +571,7 @@ public class RebalanceServiceTests
             });
 
         var service = CreateService();
-        var request = new RebalanceRequest(node.Id, null, null, 100_000, MaxFeePct: 0.05);
+        var request = new RebalanceRequest(node.Id, ValidChannelId, ValidTargetPubkey, 100_000, MaxFeePct: 0.05);
         var result = await service.RebalanceAsync(request);
 
         result.Status.Should().Be(RebalanceStatus.InsufficientBalance);
@@ -449,7 +594,7 @@ public class RebalanceServiceTests
             .ReturnsAsync(new ProbeResult.NoRoute());
 
         var service = CreateService();
-        var request = new RebalanceRequest(node.Id, null, TargetPubkey: null,
+        var request = new RebalanceRequest(node.Id, ValidChannelId, TargetPubkey: ValidTargetPubkey,
             AmountSats: 100_000, MaxFeePct: null);
         var result = await service.RebalanceAsync(request);
 
@@ -476,7 +621,7 @@ public class RebalanceServiceTests
         // Per-row retry pct = 0.09%, overriding the constant default
         // (REBALANCE_DEFAULT_RETRY_MAX_FEE_PCT = 0.05%). After one NoRoute the
         // escalated cap should be max(initial=0.05%, retry=0.09%) = 0.09%.
-        var request = new RebalanceRequest(node.Id, null, TargetPubkey: null,
+        var request = new RebalanceRequest(node.Id, ValidChannelId, TargetPubkey: ValidTargetPubkey,
             AmountSats: 100_000, MaxFeePct: null, RetryMaxFeePct: 0.09);
         var result = await service.RebalanceAsync(request);
 
@@ -499,7 +644,7 @@ public class RebalanceServiceTests
 
         var service = CreateService();
         // MaxAttempts=1 → first attempt is also the last; no Quartz retry should be scheduled.
-        var request = new RebalanceRequest(node.Id, null, null,
+        var request = new RebalanceRequest(node.Id, ValidChannelId, ValidTargetPubkey,
             AmountSats: 100_000, MaxFeePct: 0.025, MaxAttempts: 1);
         var result = await service.RebalanceAsync(request);
 
@@ -559,7 +704,7 @@ public class RebalanceServiceTests
             .ReturnsAsync(new ProbeResult.NoRoute());
 
         var service = CreateService();
-        await service.RebalanceAsync(new RebalanceRequest(node.Id, null, null, AmountSats: 100_000, MaxFeePct: 0.1, TimeoutSeconds: 500));
+        await service.RebalanceAsync(new RebalanceRequest(node.Id, ValidChannelId, ValidTargetPubkey, AmountSats: 100_000, MaxFeePct: 0.1, TimeoutSeconds: 500));
 
         _audit.Verify(a => a.LogAsync(
                 AuditActionType.RebalanceInitiated,
