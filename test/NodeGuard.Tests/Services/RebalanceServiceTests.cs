@@ -45,9 +45,12 @@ public class RebalanceServiceTests
         _schedulerFactory.Setup(x => x.GetScheduler(It.IsAny<CancellationToken>()))
             .ReturnsAsync(_scheduler.Object);
         // SourceChannelId is now mandatory on RebalanceRequest, so any test that reaches the
-        // source-channel lookup needs a Channel back. Pre-stub here so individual tests don't
-        // each have to repeat it. Tests that explicitly want the lookup to fail can override.
+        // source-channel lookup needs a Channel back. The service also resolves the channel's
+        // counterparty peer via _nodeRepository.GetById to enforce the "TargetPubkey != counterparty"
+        // guard, so the counterparty node has to resolve too. Pre-stub both so individual tests
+        // don't repeat it. Tests that explicitly want either lookup to fail can override.
         StubChannelRepo();
+        StubCounterpartyNode();
     }
 
     private RebalanceService CreateService() => new(
@@ -74,11 +77,17 @@ public class RebalanceServiceTests
     // tests, something the channel repo can resolve via StubChannelRepo).
     private const int ValidChannelId = 1;
     private const string ValidTargetPubkey = "030000000000000000000000000000000000000000000000000000000000000099";
+    // Local node id (matches CreateNode() default) is 1; the source channel's counterparty is
+    // node id 2 with this pubkey — different from ValidTargetPubkey so the no-op guard passes
+    // by default. Tests that exercise the guard override the counterparty's pubkey to match.
+    private const int CounterpartyNodeId = 2;
+    private const string CounterpartyPubkey = "030000000000000000000000000000000000000000000000000000000000000002";
 
     /// <summary>
     /// Stubs ChannelRepository.GetById so the source-channel lookup inside RebalanceAsync resolves
-    /// to a real-looking Channel instead of throwing. Flow tests (anything that reaches the node
-    /// lookup) must call this — validation-throw tests can skip it because the throw fires earlier.
+    /// to a real-looking Channel instead of throwing. The local node (id 1 via CreateNode()) is
+    /// set as the SourceNode and CounterpartyNodeId as the DestinationNode, mirroring the
+    /// "we opened this channel" case.
     /// </summary>
     private void StubChannelRepo(int channelId = ValidChannelId, ulong chanIdLnd = 12345UL)
     {
@@ -89,6 +98,24 @@ public class RebalanceServiceTests
             SatsAmount = 1_000_000,
             Status = Channel.ChannelStatus.Open,
             FundingTx = "tx",
+            SourceNodeId = 1,
+            DestinationNodeId = CounterpartyNodeId,
+        });
+    }
+
+    /// <summary>
+    /// Stubs NodeRepository.GetById for the source channel's counterparty peer. The service
+    /// looks this up to evaluate the "TargetPubkey != counterparty" guard.
+    /// </summary>
+    private void StubCounterpartyNode(string pubkey = CounterpartyPubkey)
+    {
+        _nodeRepo.Setup(x => x.GetById(CounterpartyNodeId, It.IsAny<bool>())).ReturnsAsync(new Node
+        {
+            Id = CounterpartyNodeId,
+            Name = "counterparty",
+            PubKey = pubkey,
+            Endpoint = "peer:10009",
+            ChannelAdminMacaroon = "mac",
         });
     }
 
@@ -219,31 +246,13 @@ public class RebalanceServiceTests
         // counterparty would route the sats straight back to where they came from — a no-op
         // rebalance. The service must reject this.
         var node = CreateNode();
-        var peerPubkey = "030000000000000000000000000000000000000000000000000000000000000002";
         _nodeRepo.Setup(x => x.GetById(node.Id, It.IsAny<bool>())).ReturnsAsync(node);
-        _channelRepo.Setup(x => x.GetById(ValidChannelId)).ReturnsAsync(new Channel
-        {
-            Id = ValidChannelId,
-            ChanId = 12345UL,
-            SatsAmount = 1_000_000,
-            Status = Channel.ChannelStatus.Open,
-            FundingTx = "tx",
-            // Our node opened the channel; the counterparty is the destination.
-            SourceNodeId = node.Id,
-            SourceNode = node,
-            DestinationNodeId = 2,
-            DestinationNode = new Node
-            {
-                Id = 2,
-                Name = "peer",
-                PubKey = peerPubkey,
-                Endpoint = "peer:10009",
-                ChannelAdminMacaroon = "mac",
-            },
-        });
-
+        // The default StubChannelRepo + StubCounterpartyNode in the ctor already sets up a
+        // channel where node 1 is the source and node 2 (with CounterpartyPubkey) is the
+        // destination. Asking the service to pin the last hop to CounterpartyPubkey hits the
+        // guard.
         var service = CreateService();
-        var request = new RebalanceRequest(node.Id, ValidChannelId, TargetPubkey: peerPubkey,
+        var request = new RebalanceRequest(node.Id, ValidChannelId, TargetPubkey: CounterpartyPubkey,
             AmountSats: 100_000, MaxFeePct: null);
 
         await FluentActions.Awaiting(() => service.RebalanceAsync(request))
@@ -255,9 +264,10 @@ public class RebalanceServiceTests
     public async Task RebalanceAsync_TargetPubkeyEqualsSourceCounterparty_NodeIsDestination_Throws()
     {
         // Same guard, mirrored: the local node is the channel's DESTINATION (peer opened the
-        // channel to us). Counterparty is then the SourceNode.
+        // channel to us). Counterparty is then the SourceNode side. Override the channel stub
+        // to flip the orientation; the counterparty node lookup still returns CounterpartyPubkey
+        // via the constructor's StubCounterpartyNode.
         var node = CreateNode();
-        var peerPubkey = "030000000000000000000000000000000000000000000000000000000000000003";
         _nodeRepo.Setup(x => x.GetById(node.Id, It.IsAny<bool>())).ReturnsAsync(node);
         _channelRepo.Setup(x => x.GetById(ValidChannelId)).ReturnsAsync(new Channel
         {
@@ -266,21 +276,13 @@ public class RebalanceServiceTests
             SatsAmount = 1_000_000,
             Status = Channel.ChannelStatus.Open,
             FundingTx = "tx",
-            SourceNodeId = 2,
-            SourceNode = new Node
-            {
-                Id = 2,
-                Name = "peer",
-                PubKey = peerPubkey,
-                Endpoint = "peer:10009",
-                ChannelAdminMacaroon = "mac",
-            },
+            // Peer opened the channel to us: counterparty sits on the source side.
+            SourceNodeId = CounterpartyNodeId,
             DestinationNodeId = node.Id,
-            DestinationNode = node,
         });
 
         var service = CreateService();
-        var request = new RebalanceRequest(node.Id, ValidChannelId, TargetPubkey: peerPubkey,
+        var request = new RebalanceRequest(node.Id, ValidChannelId, TargetPubkey: CounterpartyPubkey,
             AmountSats: 100_000, MaxFeePct: null);
 
         await FluentActions.Awaiting(() => service.RebalanceAsync(request))
@@ -368,7 +370,8 @@ public class RebalanceServiceTests
         // When no MaxFeePct is supplied the service must derive it from
         // Constants.REBALANCE_DEFAULT_MAX_FEE_PCT (0.05). No LND outbound-rate call should be made.
         var node = CreateNode();
-        var peerPubkey = "030000000000000000000000000000000000000000000000000000000000000002";
+        // Use a pubkey distinct from CounterpartyPubkey so the no-op guard doesn't trip.
+        var peerPubkey = ValidTargetPubkey;
         _nodeRepo.Setup(x => x.GetById(node.Id, It.IsAny<bool>())).ReturnsAsync(node);
         StubRepoForCapture();
         _lightning.Setup(x => x.AddInvoiceAsync(node, It.IsAny<long>(), It.IsAny<string>(), It.IsAny<long>()))
