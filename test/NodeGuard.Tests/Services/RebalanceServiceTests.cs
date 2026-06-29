@@ -888,7 +888,7 @@ public class RebalanceServiceTests
             .ReturnsAsync(new ProbeResult.NoRoute("test"));
 
         var service = CreateService();
-        await service.RebalanceAsync(new RebalanceRequest(node.Id, null, null, 100_000, MaxFeePct: 0.05));
+        await service.RebalanceAsync(new RebalanceRequest(node.Id, ValidChannelId, ValidTargetPubkey, 100_000, MaxFeePct: 0.05));
 
         _lightning.Verify(x => x.TrackPaymentV2Async(It.IsAny<Node>(), It.IsAny<byte[]>(), It.IsAny<CancellationToken>()),
             Times.Never);
