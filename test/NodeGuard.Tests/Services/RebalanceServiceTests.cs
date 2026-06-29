@@ -689,14 +689,13 @@ public class RebalanceServiceTests
     [Theory]
     [InlineData(Payment.Types.PaymentStatus.InFlight)]
     [InlineData(Payment.Types.PaymentStatus.Initiated)]
-    public async Task ExecuteAsync_RetryPreflight_PriorStillInFlight_ProceedsWithNewInvoice(
+    public async Task ExecuteAsync_RetryPreflight_PriorStillInFlight_SchedulesRetryWithoutRepaying(
         Payment.Types.PaymentStatus priorLndStatus)
     {
-        // Pins current behavior: the pre-flight only short-circuits on Succeeded. When the
-        // prior attempt is still settling in LND (InFlight/Initiated), the retry falls through
-        // and dispatches a new payment — a narrowed but not fully closed double-pay window.
-        // If we ever extend the pre-flight to park the row InFlight and defer to the monitor,
-        // this test should flip to assert AddInvoice is NEVER called and the row is parked.
+        // The prior attempt is still settling in LND (InFlight/Initiated). The pre-flight must
+        // NOT dispatch another payment on top of the live one — that's the double-pay window the
+        // payment-hash fix closes. Instead it leaves the in-flight payment alone and schedules a
+        // retry, whose own pre-flight re-checks the hash once LND reaches a terminal state.
         var node = CreateNode();
         var rebalance = BuildRetryRow(node);
         _rebalanceRepo.Setup(r => r.GetById(rebalance.Id)).ReturnsAsync(rebalance);
@@ -704,25 +703,25 @@ public class RebalanceServiceTests
 
         _lightning.Setup(x => x.TrackPaymentV2Async(node, It.IsAny<byte[]>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(new Payment { Status = priorLndStatus });
-        _lightning.Setup(x => x.AddInvoiceAsync(node, It.IsAny<long>(), It.IsAny<string>(), It.IsAny<long>()))
-            .ReturnsAsync(new AddInvoiceResponse
-            {
-                PaymentRequest = "lnbc...",
-                RHash = Google.Protobuf.ByteString.CopyFrom(new byte[] { 0xCC, 0xDD }),
-            });
-        _lightning.Setup(x => x.ProbeRouteAsync(node, It.IsAny<long>(), It.IsAny<long>(),
-                It.IsAny<ulong?>(), It.IsAny<string?>(), It.IsAny<double>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new ProbeResult.NoRoute("stop"));
 
         var service = CreateService();
         var result = await service.ExecuteAsync(rebalance.Id);
 
-        _lightning.Verify(x => x.AddInvoiceAsync(node, It.IsAny<long>(), It.IsAny<string>(), It.IsAny<long>()),
-            Times.Once);
-        // The new invoice's hash replaced the stale one — proving the pre-flight fell through.
-        result.PaymentHashHex.Should().Be("ccdd");
-        // The prior payment was NOT adopted (Status didn't get flipped to Succeeded by ApplyTerminalPayment).
+        // No new invoice or payment — the live in-flight payment is left untouched.
+        _lightning.Verify(x => x.AddInvoiceAsync(It.IsAny<Node>(), It.IsAny<long>(), It.IsAny<string>(), It.IsAny<long>()),
+            Times.Never);
+        _lightning.Verify(x => x.SendPaymentV2Async(It.IsAny<Node>(), It.IsAny<string>(), It.IsAny<long>(),
+                It.IsAny<ulong[]?>(), It.IsAny<string?>(), It.IsAny<int>(), It.IsAny<CancellationToken>()),
+            Times.Never);
+        // The prior attempt's hash is preserved, not overwritten by a fresh invoice.
+        result.PaymentHashHex.Should().Be("deadbeef");
+        // The prior payment was NOT adopted as terminal.
         result.PreimageHex.Should().BeNull();
+        // A retry is queued (attempt 2 -> 3) so the true outcome gets reconciled later.
+        result.Status.Should().Be(RebalanceStatus.Pending);
+        result.AttemptNumber.Should().Be(3);
+        _scheduler.Verify(s => s.ScheduleJob(It.IsAny<IJobDetail>(), It.IsAny<ITrigger>(), It.IsAny<CancellationToken>()),
+            Times.Once);
     }
 
     [Fact]

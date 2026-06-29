@@ -222,6 +222,28 @@ public class MonitorRebalancesJobTests
     }
 
     [Fact]
+    public async Task Execute_Probing_LndNotFound_OlderThanWindow_FlipsToFailed()
+    {
+        // Same age-based safety net as the Pending case — the null branch handles Pending and
+        // Probing identically, so a Probing row stuck past the reconciliation window must also
+        // flip to Failed. Pinned independently so splitting the two statuses can't regress this.
+        var stale = DateTimeOffset.UtcNow.AddHours(-(Constants.REBALANCE_RECONCILE_TERMINAL_WINDOW_HOURS + 1));
+        var reb = MakeRebalance(RebalanceStatus.Probing, updateDatetime: stale);
+        _rebalanceRepo.Setup(r => r.GetReconcilable(It.IsAny<TimeSpan>())).ReturnsAsync(new List<Rebalance> { reb });
+        _lightning.Setup(x => x.TrackPaymentV2Async(It.IsAny<Node>(), It.IsAny<byte[]>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((Payment?)null);
+
+        await CreateJob().Execute(_ctx.Object);
+
+        reb.Status.Should().Be(RebalanceStatus.Failed);
+        _rebalanceRepo.Verify(r => r.Update(reb), Times.Once);
+        _audit.Verify(a => a.LogSystemAsync(
+                AuditActionType.RebalanceCompleted, AuditEventType.Failure,
+                AuditObjectType.Rebalance, reb.Id.ToString(), It.IsAny<object>()),
+            Times.Once);
+    }
+
+    [Fact]
     public async Task Execute_Pending_LndFailedPayment_RowLeftAlone()
     {
         // The oscillation case: ScheduleRetryIfEligibleAsync left the row at Pending with the

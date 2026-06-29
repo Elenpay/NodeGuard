@@ -131,7 +131,7 @@ public class MonitorRebalancesJob : IJob
             //   row to Failed here would kill an in-progress probe. Leave it alone; the local
             //   execution is the source of truth until it dispatches SendPaymentV2.
             //
-            // - InFlight: we believe SendPaymentV2 has been dispatched, so LND should know.
+            // - InFlight: SendpaymentV2 has been invoked, so LND should know.
             //   If it doesn't, the payment never reached LND (process crashed mid-dispatch,
             //   or LND lost it). Flip to Failed so the row doesn't stay InFlight forever.
             //
@@ -200,7 +200,7 @@ public class MonitorRebalancesJob : IJob
 
         if (rebalance.Status is RebalanceStatus.Pending or RebalanceStatus.Probing)
         {
-            _logger.LogInformation(
+            _logger.LogDebug(
                 "Rebalance {RebalanceId} (status={Status}) has a payment record in LND (status={LndStatus}, hash={PaymentHashHex}); local execution still owns it, leaving as-is",
                 rebalance.Id, rebalance.Status, payment.Status, rebalance.PaymentHashHex);
             return;
