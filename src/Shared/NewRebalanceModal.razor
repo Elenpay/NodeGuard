@@ -58,26 +58,28 @@
                 </Field>
                 <Field>
                     <FieldLabel Class="d-flex">
-                        Receiving peer <span class="text-muted">(optional)</span>
-                        <Tooltip Class="ml-2" Text="Pins LND's LastHopPubkey to this peer — i.e. the rebalanced sats must come back to your node FROM this peer. You cannot pick which specific channel receives: if the peer has multiple channels with you, LND picks one. Leave blank to let LND choose any inbound peer." Placement="TooltipPlacement.Top">
+                        Receiving peer
+                        <Tooltip Class="ml-2" Text="Pins LND's LastHopPubkey to this peer — i.e. the rebalanced sats must come back to your node FROM this peer. You cannot pick which specific channel receives: if the peer has multiple channels with you, LND picks one." Placement="TooltipPlacement.Top">
                             <Icon Name="IconName.Info"/>
                         </Tooltip>
                     </FieldLabel>
                     <SelectList TItem="PeerOption"
                                 TValue="string"
-                                Data="@_peerOptions"
+                                Data="@AvailableReceivingPeers"
                                 SelectedValue="@(_selectedTargetPubkey ?? "")"
                                 TextField="@((item) => item.DisplayName)"
                                 ValueField="@((item) => item.Pubkey)"
                                 SelectedValueChanged="OnTargetPeerChanged"
-                                DefaultItemText="Any (let LND choose)">
+                                DefaultItemText="Choose a receiving peer">
                     </SelectList>
                     <FieldHelp>
-                        @if (string.IsNullOrEmpty(_selectedTargetPubkey))
+                        @if (!string.IsNullOrEmpty(SourceChannelCounterpartyPubkey))
                         {
-                            <span>No receiving peer pinned — LND will pick any inbound peer that satisfies the cost cap.</span>
+                            <div style="color: #888;">
+                                Source channel's counterparty (<strong>@SourceChannelCounterpartyPubkey.Substring(0, 10)…</strong>) is excluded — pinning the last hop to that peer would be a no-op.
+                            </div>
                         }
-                        else if (_targetOutboundPpm.HasValue)
+                        @if (!string.IsNullOrEmpty(_selectedTargetPubkey) && _targetOutboundPpm.HasValue)
                         {
                             <span>Outbound fee rate to this peer: <strong>@_targetOutboundPpm.Value ppm</strong> (for reference only).</span>
                         }
@@ -110,7 +112,8 @@
                         @if (!string.IsNullOrEmpty(_selectedTargetPubkey))
                         {
                             <div style="font-size: 0.85em; color: #888; margin-top: 0.5rem;">
-                                Receiving peer pinned: <strong>@_selectedTargetPubkey.Substring(0, 10)…</strong>. The exact channel that lands the sats is LND's call — no per-channel projection possible.
+                                Receiving peer pinned: <strong>@_selectedTargetPubkey.Substring(0, 10)…</strong>. The exact
+                                channel that lands the sats is LND's call — no per-channel projection possible.
                             </div>
                         }
 
@@ -301,6 +304,21 @@
                 (c.SourceNode?.PubKey == _selectedNode?.PubKey ? c.DestinationNode?.PubKey : c.SourceNode?.PubKey) == _selectedSourcePubkey
               ).ToList();
 
+    // Pubkey of the peer on the OTHER side of the selected source channel. Pinning the
+    // last-hop to this same peer would route the sats straight back to where they came from
+    // (no-op rebalance). The service rejects this combination; the modal mirrors the guard.
+    private string? SourceChannelCounterpartyPubkey =>
+        _selectedSourceChannel == null || _selectedNode == null
+            ? null
+            : _selectedSourceChannel.SourceNodeId == _selectedNode.Id
+                ? _selectedSourceChannel.DestinationNode?.PubKey
+                : _selectedSourceChannel.SourceNode?.PubKey;
+
+    private List<PeerOption> AvailableReceivingPeers =>
+        string.IsNullOrEmpty(SourceChannelCounterpartyPubkey)
+            ? _peerOptions
+            : _peerOptions.Where(p => p.Pubkey != SourceChannelCounterpartyPubkey).ToList();
+
     private decimal CurrentInboundPct =>
         _sourceLocalSats.HasValue && _sourceRemoteSats.HasValue
             && (_sourceLocalSats.Value + _sourceRemoteSats.Value) > 0
@@ -325,6 +343,8 @@
     private bool CanSubmit =>
         _selectedNode != null
         && _selectedSourceChannel != null
+        && !string.IsNullOrEmpty(_selectedTargetPubkey)
+        && _selectedTargetPubkey != SourceChannelCounterpartyPubkey
         && _sourceLocalSats.HasValue
         && ComputeAmountSats() > 0
         && _maxFeePct > 0m
@@ -474,6 +494,14 @@
         _selectedSourceChannel = _nodeChannels.FirstOrDefault(c => c.Id == channelId);
         _sourceLocalSats = null;
         _sourceRemoteSats = null;
+        // If the user had already picked a receiving peer and the newly-chosen source channel
+        // makes that peer invalid (it's the channel's counterparty), drop the selection so
+        // CanSubmit doesn't lie and the user re-picks against the filtered list.
+        if (!string.IsNullOrEmpty(_selectedTargetPubkey) && _selectedTargetPubkey == SourceChannelCounterpartyPubkey)
+        {
+            _selectedTargetPubkey = null;
+            _targetOutboundPpm = null;
+        }
         if (_selectedSourceChannel != null && _selectedNode != null)
         {
             var (local, remote) = await TryGetLiveBalance(_selectedNode, _selectedSourceChannel.ChanId);
@@ -556,7 +584,7 @@
             var request = new RebalanceRequest(
                 NodeId: _selectedNode!.Id,
                 SourceChannelId: _selectedSourceChannel!.Id,
-                TargetPubkey: _selectedTargetPubkey,
+                TargetPubkey: _selectedTargetPubkey!,
                 AmountSats: amountSats,
                 MaxFeePct: _maxFeePct > 0m ? (double)_maxFeePct : (double?)null,
                 TimeoutSeconds: _timeoutSeconds,

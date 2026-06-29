@@ -1212,14 +1212,20 @@ public class NodeGuardService : Nodeguard.NodeGuardService.NodeGuardServiceBase,
         if (request.AmountSats <= 0)
             throw new RpcException(new Status(StatusCode.InvalidArgument, "amount_sats must be > 0"));
 
+        if (!request.HasSourceChannelId || request.SourceChannelId <= 0)
+            throw new RpcException(new Status(StatusCode.InvalidArgument, "source_channel_id is required"));
+
+        if (!request.HasTargetPubkey || string.IsNullOrWhiteSpace(request.TargetPubkey))
+            throw new RpcException(new Status(StatusCode.InvalidArgument, "target_pubkey is required"));
+
         var node = await _nodeRepository.GetByPubkey(request.NodePubkey);
         if (node == null)
             throw new RpcException(new Status(StatusCode.NotFound, $"Node with pubkey {request.NodePubkey} not found"));
 
         var domainRequest = new RebalanceRequest(
             NodeId: node.Id,
-            SourceChannelId: request.HasSourceChannelId ? request.SourceChannelId : null,
-            TargetPubkey: request.HasTargetPubkey ? request.TargetPubkey : null,
+            SourceChannelId: request.SourceChannelId,
+            TargetPubkey: request.TargetPubkey,
             AmountSats: request.AmountSats,
             MaxFeePct: request.HasMaxFeePct ? request.MaxFeePct : null,
             TimeoutSeconds: request.TimeoutSeconds,

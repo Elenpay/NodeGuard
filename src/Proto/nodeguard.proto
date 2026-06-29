@@ -512,10 +512,10 @@ message RequestRebalanceRequest {
   optional double max_fee_pct = 3;
   // Optional max fee cap for retry attempts, expressed as a percentage of the rebalanced amount (not a fraction of the outbound rate). e.g. 0.075 means 0.075% = 750 ppm. If unset, falls back to REBALANCE_DEFAULT_RETRY_MAX_FEE_PCT 
   optional double retry_max_fee_pct = 4;
-  // Optional NG channel id to use as the outbound channel
+  // NG channel id to use as the outbound channel. Required.
   optional int32 source_channel_id = 5;
-  // Optional explicit last-hop peer pubkey (33-byte hex). If unset, LND picks any
-  // inbound channel that satisfies the cost cap.
+  // Last-hop peer pubkey (33-byte hex) that constrains the receiving peer of the
+  // circular payment. Required.
   optional string target_pubkey = 6;
   // Pathfinding/payment timeout in seconds; 0 → server default (60s)
   int32 timeout_seconds = 7;

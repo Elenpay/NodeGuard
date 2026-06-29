@@ -28,8 +28,8 @@ namespace NodeGuard.Services;
 
 public record RebalanceRequest(
     int NodeId,
-    int? SourceChannelId,
-    string? TargetPubkey,
+    int SourceChannelId,
+    string TargetPubkey,
     long AmountSats,
     double? MaxFeePct,
     int TimeoutSeconds = 60,
@@ -104,18 +104,40 @@ public class RebalanceService : IRebalanceService
                 "Retry max fee % must be greater than 0.",
                 nameof(request.RetryMaxFeePct));
 
+        if (request.SourceChannelId <= 0)
+            throw new ArgumentException(
+                "Source channel id is required.",
+                nameof(request.SourceChannelId));
+
+        if (string.IsNullOrWhiteSpace(request.TargetPubkey))
+            throw new ArgumentException(
+                "Target pubkey is required.",
+                nameof(request.TargetPubkey));
+
         var node = await _nodeRepository.GetById(request.NodeId);
         if (node == null)
             throw new ArgumentException($"Node {request.NodeId} not found", nameof(request.NodeId));
 
-        ulong? sourceChanIdLnd = null;
-        if (request.SourceChannelId.HasValue)
-        {
-            var sourceChannel = await _channelRepository.GetById(request.SourceChannelId.Value);
-            if (sourceChannel == null)
-                throw new ArgumentException($"Source channel {request.SourceChannelId} not found");
-            sourceChanIdLnd = sourceChannel.ChanId;
-        }
+        var sourceChannel = await _channelRepository.GetById(request.SourceChannelId);
+        if (sourceChannel == null)
+            throw new ArgumentException(
+                $"Source channel {request.SourceChannelId} not found",
+                nameof(request.SourceChannelId));
+        var sourceChanIdLnd = sourceChannel.ChanId;
+
+        var counterpartyPeerId = sourceChannel.SourceNodeId == node.Id
+            ? sourceChannel.DestinationNodeId
+            : sourceChannel.SourceNodeId;
+
+        var counterpartyPeer = await _nodeRepository.GetById(counterpartyPeerId);
+        if (counterpartyPeer == null)
+            throw new InvalidOperationException(
+                $"Counterparty peer node {counterpartyPeerId} not found for source channel {request.SourceChannelId}");
+
+        if (counterpartyPeer.PubKey == request.TargetPubkey)
+            throw new ArgumentException(
+                "Target pubkey is the same as the source channel's counterparty peer; rebalance would be a no-op.",
+                nameof(request.TargetPubkey));
 
         // LastHopPubkey constrains the receiving peer, not a specific channel — LND picks
         // which of that peer's channels to use. We don't accept or persist a target chan_id.
