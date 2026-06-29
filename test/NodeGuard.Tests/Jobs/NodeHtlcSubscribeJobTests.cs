@@ -237,4 +237,63 @@ public class NodeHtlcSubscribeJobTests
         result.RoutingFeePpm.Should().Be(100000);
         result.InboundFeePpm.Should().Be(-50000);
     }
+
+    [Fact]
+    public void MapForwardingEvent_WhenFailureStringReachesColumnLimit_TruncatesAndAppendsEllipsis()
+    {
+        // Arrange
+        var longFailureString = new string('x', 5000);
+        var htlcEvent = new HtlcEvent
+        {
+            EventType = HtlcEvent.Types.EventType.Forward,
+            TimestampNs = 1_735_689_600_000_000_000,
+            IncomingChannelId = 1001,
+            OutgoingChannelId = 1002,
+            IncomingHtlcId = 1003,
+            OutgoingHtlcId = 1004,
+            LinkFailEvent = new LinkFailEvent
+            {
+                FailureDetail = FailureDetail.InsufficientBalance,
+                WireFailure = Failure.Types.FailureCode.TemporaryChannelFailure,
+                FailureString = longFailureString
+            }
+        };
+
+        // Act
+        var result = NodeHtlcSubscribeJob.MapForwardingEvent(ManagedNode, htlcEvent);
+
+        // Assert: 2044 preserved characters + "..." == 2047, within the varchar(2048) column.
+        result.Should().NotBeNull();
+        result!.FailureString.Should().HaveLength(2047);
+        result.FailureString.Should().Be(new string('x', 2044) + "...");
+    }
+
+    [Fact]
+    public void MapForwardingEvent_WhenFailureStringFitsColumn_IsNotTruncated()
+    {
+        // Arrange: a value just under the 2048 limit must be stored verbatim.
+        var failureString = new string('x', 2047);
+        var htlcEvent = new HtlcEvent
+        {
+            EventType = HtlcEvent.Types.EventType.Forward,
+            TimestampNs = 1_735_689_600_000_000_000,
+            IncomingChannelId = 1001,
+            OutgoingChannelId = 1002,
+            IncomingHtlcId = 1003,
+            OutgoingHtlcId = 1004,
+            LinkFailEvent = new LinkFailEvent
+            {
+                FailureDetail = FailureDetail.InsufficientBalance,
+                WireFailure = Failure.Types.FailureCode.TemporaryChannelFailure,
+                FailureString = failureString
+            }
+        };
+
+        // Act
+        var result = NodeHtlcSubscribeJob.MapForwardingEvent(ManagedNode, htlcEvent);
+
+        // Assert
+        result.Should().NotBeNull();
+        result!.FailureString.Should().Be(failureString);
+    }
 }
