@@ -191,6 +191,43 @@ public class RebalanceService : IRebalanceService
 
         try
         {
+            // Avoid double paying a rebalance that has already succeeded.
+            if (!string.IsNullOrWhiteSpace(rebalance.PaymentHashHex))
+            {
+                byte[] paymentHash = Convert.FromHexString(rebalance.PaymentHashHex);
+                var oldPayment = await _lightningService.TrackPaymentV2Async(node, paymentHash, ct);
+                if (oldPayment != null)
+                {
+                    if (oldPayment.Status is Payment.Types.PaymentStatus.Succeeded)
+                    {
+                        _logger.LogInformation(
+                            "Rebalance {RebalanceId} already succeeded in LND (hash={PaymentHashHex}, feeSats={FeeSats}, ppm={Ppm})",
+                            rebalance.Id, rebalance.PaymentHashHex, oldPayment.FeeMsat / 1_000L,
+                            (long?)Math.Round((decimal)oldPayment.FeeMsat / rebalance.SatsAmount * 1_000_000m, MidpointRounding.AwayFromZero));
+                        ApplyTerminalPayment(rebalance, oldPayment);
+                        _rebalanceRepository.Update(rebalance);
+                        await _auditService.LogAsync(AuditActionType.RebalanceCompleted, AuditEventType.Success,
+                            AuditObjectType.Rebalance, rebalance.Id.ToString(),
+                            new
+                            {
+                                rebalance.FeePaidSats,
+                                rebalance.EffectivePpm,
+                                ActualAmountSats = rebalance.SatsAmount,
+                                rebalance.AttemptNumber,
+                            });
+                        return rebalance;
+                    }
+                    else if (oldPayment.Status is Payment.Types.PaymentStatus.InFlight or Payment.Types.PaymentStatus.Initiated)
+                    {
+                        _logger.LogInformation(
+                            "Rebalance {RebalanceId} already in-flight in LND (hash={PaymentHashHex}, status={LndStatus})",
+                            rebalance.Id, rebalance.PaymentHashHex, oldPayment.Status);
+                        await ScheduleRetryIfEligibleAsync(rebalance);
+                        return rebalance;
+                    }
+                }
+            }
+
             var memo = $"NG rebalance #{rebalance.Id} attempt {rebalance.AttemptNumber}";
             var invoiceExpiry = ComputeInvoiceExpirySeconds(rebalance);
             var invoice = await _lightningService.AddInvoiceAsync(node, rebalance.SatsAmount, memo, invoiceExpiry);
