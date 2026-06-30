@@ -112,6 +112,13 @@ public class Rebalance : Entity
     public string? PaymentHashHex { get; set; }
 
     /// <summary>
+    /// The (amountless) self-invoice bolt11. Created once on the first attempt and reused on
+    /// every retry, so the whole rebalance settles against a single payment hash. The amount
+    /// paid is set per attempt on SendPaymentV2, not encoded in the invoice.
+    /// </summary>
+    public string? PaymentRequest { get; set; }
+
+    /// <summary>
     /// Persisted for forensic / proof-of-payment lookup; intentionally not exposed via gRPC.
     /// </summary>
     public string? PreimageHex { get; set; }
