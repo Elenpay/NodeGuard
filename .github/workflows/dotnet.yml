@@ -1,25 +1,161 @@
-name: Unit testing
+name: CI
 
+# Single pipeline: detect relevant changes → unit tests + e2e tests → build & push the image.
+# The image build `needs` BOTH test jobs, so an image is only published when unit AND e2e pass.
+#
+# "Required only on code changes": the test/build jobs are gated on a paths filter via job-level
+# `if` (NOT `on.paths`). On a docs-only PR the jobs are skipped, and GitHub treats a skipped
+# required status check as passing — so unrelated PRs aren't blocked, while C#/version/dependency
+# PRs must pass unit + e2e.
 on:
   pull_request:
     branches: [ main ]
-    types: [ opened, synchronize ]
+    types: [ opened, synchronize, reopened ]
+  push:
+    branches: [ main, master ]
+    tags:
+      - 'v[0-9]+.[0-9]+.[0-9]+*'   # semver release tags, v-prefixed (v1.2.3, v1.2.3-rc1)
+      - '[0-9]+.[0-9]+.[0-9]+*'    # semver release tags, bare (1.2.3)
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pull-requests: read   # dorny/paths-filter uses the REST API on pull_request events
+  packages: write       # push the image to ghcr
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_NAME: ${{ github.repository }}
 
 jobs:
-  build-and-test:
+  # Detects whether C# code, versions, or dependencies changed. Everything else gates on this.
+  changes:
     runs-on: ubuntu-latest
-
+    outputs:
+      code: ${{ steps.filter.outputs.code }}
     steps:
-    - name: Checkout code
-      uses: actions/checkout@v3
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0   # full history so the filter can diff push events too
+      - uses: dorny/paths-filter@d1c1ffe0248fe513906c8e24db8ea791d46f8590 # v3.0.3
+        id: filter
+        with:
+          filters: |
+            code:
+              # C# / generated code
+              - '**/*.cs'
+              - '**/*.razor'
+              - '**/*.cshtml'
+              - '**/*.proto'
+              # versions & dependencies
+              - '**/*.csproj'
+              - '*.sln'
+              - 'Directory.Build.props'
+              - 'Directory.Packages.props'
+              - '**/packages.lock.json'
+              - 'global.json'
+              - 'nuget.config'
+              - 'NuGet.config'
+              # build/e2e harness that exercises the above
+              - 'src/Dockerfile'
+              - 'docker-compose.yml'
+              - 'docker/**'
+              - '.github/workflows/dotnet.yml'
 
-    - name: Setup .NET
-      uses: actions/setup-dotnet@v3
-      with:
-        dotnet-version: '8.0.x'
+  unit-test:
+    needs: changes
+    # Run for code/version/dependency changes, and always on manual dispatch and tag (release) pushes.
+    if: ${{ needs.changes.outputs.code == 'true' || github.event_name == 'workflow_dispatch' || startsWith(github.ref, 'refs/tags/') }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+      - name: Restore
+        run: dotnet restore
+      - name: Unit tests (excludes e2e)
+        run: dotnet test --filter "Category!=E2E"
 
-    - name: Restore dependencies
-      run: dotnet restore
+  e2e-test:
+    needs: changes
+    if: ${{ needs.changes.outputs.code == 'true' || github.event_name == 'workflow_dispatch' || startsWith(github.ref, 'refs/tags/') }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: E2E (open channel via gRPC + circular rebalance against a live NodeGuard)
+        # Clean slate first (DbInitializer only funds the dev wallets on an empty DB), then `run`
+        # brings up the chain (bitcoind → alice/bob/carol → setup-e2e + extract-env → nodeguard →
+        # e2e-runner). The runner's exit code becomes the job result.
+        run: |
+          COMPOSE_PROFILES=polar,e2e docker compose -f docker-compose.yml down -v --remove-orphans || true
+          COMPOSE_PROFILES=polar,e2e docker compose -f docker-compose.yml run --rm --build e2e-runner
+      - name: Tear down
+        if: always()
+        run: COMPOSE_PROFILES=polar,e2e docker compose -f docker-compose.yml down -v --remove-orphans
 
-    - name: Build and test
-      run: dotnet test
+  # Build + push the image ONLY after unit + e2e pass, on: pushes to main/master (with relevant
+  # changes) and semver tag pushes (releases). Never on PRs or manual dispatch — those only test.
+  docker-build:
+    needs: [ changes, unit-test, e2e-test ]
+    # Test success is asserted explicitly so a future change to the test jobs' triggers can't
+    # silently let an image build (or silently skip it).
+    if: >-
+      ${{ !cancelled()
+          && needs.unit-test.result == 'success'
+          && needs.e2e-test.result == 'success'
+          && github.event_name == 'push'
+          && ( startsWith(github.ref, 'refs/tags/')
+               || ((github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master')
+                   && needs.changes.outputs.code == 'true') ) }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log into the Container registry
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Docker meta
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+          # Branch pushes → branch name (+ `latest` on the default branch). Semver tag pushes →
+          # full version + major.minor + major (the `v` prefix is stripped by type=semver).
+          tags: |
+            type=ref,event=branch
+            type=raw,value=latest,enable={{is_default_branch}}
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
+            type=semver,pattern={{major}}
+          labels: |
+            commit=${{ github.sha }}
+            actions_run=${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+
+      - name: Build and push the Docker image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: src/Dockerfile
+          push: true
+          platforms: linux/amd64
+          provenance: false
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+
+      - name: Scan SBOM
+        uses: anchore/scan-action@3343887d815d7b07465f6fdcd395bd66508d486a # v3.6.4
+        with:
+          image: ${{ steps.meta.outputs.tags }}
+          add-cpes-if-none: true
+          output-format: table
+          severity-cutoff: critical
+          fail-build: false
