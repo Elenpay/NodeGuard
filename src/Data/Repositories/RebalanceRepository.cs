@@ -111,7 +111,6 @@ public class RebalanceRepository : IRebalanceRepository
             .Include(r => r.Node)
             .Where(r => r.PaymentHashHex != null
                         && (r.Status == RebalanceStatus.Pending
-                            || r.Status == RebalanceStatus.Probing
                             || r.Status == RebalanceStatus.InFlight
                             || ((r.Status == RebalanceStatus.Failed
                                  || r.Status == RebalanceStatus.Timeout

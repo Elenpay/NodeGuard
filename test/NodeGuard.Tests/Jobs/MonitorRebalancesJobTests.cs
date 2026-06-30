@@ -67,7 +67,7 @@ public class MonitorRebalancesJobTests
             RequestedAmountSats = 100_000,
             MaxFeePct = 0.05,
             // Default to "fresh" so tests don't accidentally trip the age-based stuck-row
-            // fallback in the Pending/Probing null branch.
+            // fallback in the Pending null branch.
             UpdateDatetime = updateDatetime ?? DateTimeOffset.UtcNow,
         };
 
@@ -158,32 +158,10 @@ public class MonitorRebalancesJobTests
     }
 
     [Fact]
-    public async Task Execute_Probing_LndNotFound_RowLeftAlone()
-    {
-        // ExecuteAsync persists PaymentHashHex right after AddInvoice but does not call
-        // SendPaymentV2 until the probe succeeds. While Status=Probing, "no record in LND" is
-        // the expected state — flipping to Failed here would kill an in-progress probe.
-        var reb = MakeRebalance(RebalanceStatus.Probing);
-        _rebalanceRepo.Setup(r => r.GetReconcilable(It.IsAny<TimeSpan>())).ReturnsAsync(new List<Rebalance> { reb });
-        _lightning.Setup(x => x.TrackPaymentV2Async(It.IsAny<Node>(), It.IsAny<byte[]>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync((Payment?)null);
-
-        await CreateJob().Execute(_ctx.Object);
-
-        reb.Status.Should().Be(RebalanceStatus.Probing);
-        _rebalanceRepo.Verify(r => r.Update(It.IsAny<Rebalance>()), Times.Never);
-        _audit.Verify(a => a.LogSystemAsync(
-                It.IsAny<AuditActionType>(), It.IsAny<AuditEventType>(),
-                It.IsAny<AuditObjectType>(), It.IsAny<string>(), It.IsAny<object>()),
-            Times.Never);
-    }
-
-    [Fact]
     public async Task Execute_Pending_LndNotFound_RowLeftAlone()
     {
-        // Same reasoning as Probing — the brief Pending+hash window inside ExecuteAsync
-        // between AddInvoice and the Status=Probing flip. SendPaymentV2 hasn't fired; LND
-        // can't possibly know about the hash yet.
+        // The brief Pending+hash window inside ExecuteAsync between AddInvoice and SendPaymentV2.
+        // SendPaymentV2 hasn't fired; LND can't possibly know about the hash yet, so leave it.
         var reb = MakeRebalance(RebalanceStatus.Pending);
         _rebalanceRepo.Setup(r => r.GetReconcilable(It.IsAny<TimeSpan>())).ReturnsAsync(new List<Rebalance> { reb });
         _lightning.Setup(x => x.TrackPaymentV2Async(It.IsAny<Node>(), It.IsAny<byte[]>(), It.IsAny<CancellationToken>()))
@@ -207,28 +185,6 @@ public class MonitorRebalancesJobTests
         // to Failed so it doesn't sit non-terminal forever.
         var stale = DateTimeOffset.UtcNow.AddHours(-(Constants.REBALANCE_RECONCILE_TERMINAL_WINDOW_HOURS + 1));
         var reb = MakeRebalance(RebalanceStatus.Pending, updateDatetime: stale);
-        _rebalanceRepo.Setup(r => r.GetReconcilable(It.IsAny<TimeSpan>())).ReturnsAsync(new List<Rebalance> { reb });
-        _lightning.Setup(x => x.TrackPaymentV2Async(It.IsAny<Node>(), It.IsAny<byte[]>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync((Payment?)null);
-
-        await CreateJob().Execute(_ctx.Object);
-
-        reb.Status.Should().Be(RebalanceStatus.Failed);
-        _rebalanceRepo.Verify(r => r.Update(reb), Times.Once);
-        _audit.Verify(a => a.LogSystemAsync(
-                AuditActionType.RebalanceCompleted, AuditEventType.Failure,
-                AuditObjectType.Rebalance, reb.Id.ToString(), It.IsAny<object>()),
-            Times.Once);
-    }
-
-    [Fact]
-    public async Task Execute_Probing_LndNotFound_OlderThanWindow_FlipsToFailed()
-    {
-        // Same age-based safety net as the Pending case — the null branch handles Pending and
-        // Probing identically, so a Probing row stuck past the reconciliation window must also
-        // flip to Failed. Pinned independently so splitting the two statuses can't regress this.
-        var stale = DateTimeOffset.UtcNow.AddHours(-(Constants.REBALANCE_RECONCILE_TERMINAL_WINDOW_HOURS + 1));
-        var reb = MakeRebalance(RebalanceStatus.Probing, updateDatetime: stale);
         _rebalanceRepo.Setup(r => r.GetReconcilable(It.IsAny<TimeSpan>())).ReturnsAsync(new List<Rebalance> { reb });
         _lightning.Setup(x => x.TrackPaymentV2Async(It.IsAny<Node>(), It.IsAny<byte[]>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync((Payment?)null);
@@ -289,26 +245,6 @@ public class MonitorRebalancesJobTests
         await CreateJob().Execute(_ctx.Object);
 
         reb.Status.Should().Be(RebalanceStatus.Pending);
-        _rebalanceRepo.Verify(r => r.Update(It.IsAny<Rebalance>()), Times.Never);
-        _audit.Verify(a => a.LogSystemAsync(
-                It.IsAny<AuditActionType>(), It.IsAny<AuditEventType>(),
-                It.IsAny<AuditObjectType>(), It.IsAny<string>(), It.IsAny<object>()),
-            Times.Never);
-    }
-
-    [Fact]
-    public async Task Execute_Probing_LndHasRecord_RowLeftAlone()
-    {
-        // While Status=Probing, the local ExecuteAsync owns the row — the monitor stays back
-        // regardless of what LND has on the hash. Covers the normal in-progress probe.
-        var reb = MakeRebalance(RebalanceStatus.Probing);
-        _rebalanceRepo.Setup(r => r.GetReconcilable(It.IsAny<TimeSpan>())).ReturnsAsync(new List<Rebalance> { reb });
-        _lightning.Setup(x => x.TrackPaymentV2Async(It.IsAny<Node>(), It.IsAny<byte[]>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new Payment { Status = Payment.Types.PaymentStatus.InFlight });
-
-        await CreateJob().Execute(_ctx.Object);
-
-        reb.Status.Should().Be(RebalanceStatus.Probing);
         _rebalanceRepo.Verify(r => r.Update(It.IsAny<Rebalance>()), Times.Never);
         _audit.Verify(a => a.LogSystemAsync(
                 It.IsAny<AuditActionType>(), It.IsAny<AuditEventType>(),

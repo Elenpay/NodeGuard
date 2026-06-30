@@ -151,22 +151,14 @@ namespace NodeGuard.Services
         Task<AddInvoiceResponse?> AddInvoiceAsync(Node node, long amountSats, string memo, long expirySeconds);
 
         /// <summary>
-        /// Probes a candidate route at the requested amount, reducing the amount until either a route
-        /// works (signaled by IncorrectOrUnknownPaymentDetails at the last hop) or the
-        /// minimum probe amount is reached. Returns the probed amount and the validated
-        /// route, or NoRoute if no route was found.
-        /// </summary>
-        Task<ProbeResult> ProbeRouteAsync(Node node, long amountSats, long feeLimitMsat,
-            ulong? outgoingChanId, string? lastHopPubkeyHex, double probeBackoffRatio, CancellationToken ct);
-
-        /// <summary>
         /// Sends a self-payment via Routerrpc.SendPaymentV2 with the given constraints and
         /// drains the streaming response to the terminal Payment update. LND drives MPP and
         /// internal route iteration / retries; we provide the cost cap (feeLimitMsat) and
         /// the optional last-hop peer pin (lastHopPubkeyHex; null lets LND pick any inbound
-        /// peer). The dest is implicit in paymentRequest (self-issued invoice).
+        /// peer). The dest is implicit in paymentRequest (self-issued invoice). The invoice is
+        /// amountless, so <paramref name="amountSats"/> sets the amount paid on this attempt.
         /// </summary>
-        Task<Payment> SendPaymentV2Async(Node node, string paymentRequest, long feeLimitMsat,
+        Task<Payment> SendPaymentV2Async(Node node, string paymentRequest, long amountSats, long feeLimitMsat,
             ulong[]? outgoingChanIds, string? lastHopPubkeyHex, int timeoutSeconds, CancellationToken ct);
 
         /// <summary>
@@ -208,15 +200,6 @@ namespace NodeGuard.Services
         /// <param name="nodePubKey"></param>
         /// <returns></returns>
         public Task<(RoutingPolicy?, RoutingPolicy?)> GetChannelFeePolicy(ulong chanId, Node node);
-    }
-
-    /// <summary>
-    /// Result of <see cref="ILightningService.ProbeRouteAsync"/>.
-    /// </summary>
-    public abstract record ProbeResult
-    {
-        public sealed record Success(long AmountSats, Lnrpc.Route Route) : ProbeResult;
-        public sealed record NoRoute(string? Reason = null) : ProbeResult;
     }
 
     public class LightningService : ILightningService
@@ -1639,95 +1622,7 @@ namespace NodeGuard.Services
             });
         }
 
-        public async Task<ProbeResult> ProbeRouteAsync(Node node, long amountSats, long feeLimitMsat,
-            ulong? outgoingChanId, string? lastHopPubkeyHex, double probeBackoffRatio, CancellationToken ct)
-        {
-            // Ratio must be in the closed interval [0, 1]. 0 zeroes the next try; 1 never shrinks.
-            var ratio = probeBackoffRatio >= 0.0 && probeBackoffRatio <= 1.0
-                ? probeBackoffRatio
-                : Constants.REBALANCE_PROBE_BACKOFF_RATIO;
-            var amount = amountSats;
-            while (amount >= Constants.REBALANCE_MIN_PROBE_AMOUNT_SATS)
-            {
-                ct.ThrowIfCancellationRequested();
-
-                // Scale fee_limit proportionally to the current probe amount so the cap
-                // tracks the ratio the user accepted at the requested amount.
-                var scaledFeeLimitMsat = amountSats > 0
-                    ? (long)((double)feeLimitMsat * amount / amountSats)
-                    : feeLimitMsat;
-
-                var routesRequest = new QueryRoutesRequest
-                {
-                    Amt = amount,
-                    FeeLimit = new FeeLimit { FixedMsat = scaledFeeLimitMsat },
-                };
-
-                if (outgoingChanId.HasValue)
-                    routesRequest.OutgoingChanIds.Add(outgoingChanId.Value);
-
-                if (!string.IsNullOrEmpty(lastHopPubkeyHex))
-                {
-                    routesRequest.LastHopPubkey = ByteString.CopyFrom(Convert.FromHexString(lastHopPubkeyHex));
-                    routesRequest.PubKey = node.PubKey; // circular: destination is self
-                }
-                else
-                {
-                    // No explicit last hop: dest must still be set; default to self for circular.
-                    routesRequest.PubKey = node.PubKey;
-                }
-
-                var routesResponse = await _lightningClientService.QueryRoutes(node, routesRequest);
-                if (routesResponse == null || routesResponse.Routes.Count == 0)
-                {
-                    amount = (long)(amount * ratio);
-                    continue;
-                }
-
-                var routesToTry = routesResponse.Routes
-                    .Take(Constants.REBALANCE_MAX_PROBE_ROUTES_PER_AMOUNT)
-                    .ToList();
-
-                foreach (var route in routesToTry)
-                {
-                    ct.ThrowIfCancellationRequested();
-
-                    var randomHash = new byte[32];
-                    RandomNumberGenerator.Fill(randomHash);
-
-                    var sendToRouteRequest = new Routerrpc.SendToRouteRequest
-                    {
-                        PaymentHash = ByteString.CopyFrom(randomHash),
-                        Route = route,
-                    };
-
-                    HTLCAttempt? attempt;
-                    try
-                    {
-                        attempt = await _lightningRouterService.SendToRouteV2Async(node, sendToRouteRequest, ct);
-                    }
-                    catch (Exception e)
-                    {
-                        _logger.LogWarning(e, "Probe SendToRouteV2 failed for node {NodeId} amount {Amount}", node.Id, amount);
-                        continue;
-                    }
-
-                    if (attempt?.Failure?.Code == Failure.Types.FailureCode.IncorrectOrUnknownPaymentDetails)
-                    {
-                        // The route worked all the way to the destination; the random hash
-                        // failed at the final hop, which is the probe success signal.
-                        return new ProbeResult.Success(amount, route);
-                    }
-
-                    // Mid-route failure - skip this route and try the next.
-                }
-
-                amount = (long)(amount * ratio);
-            }
-
-            return new ProbeResult.NoRoute("Probe exhausted before reaching minimum amount");
-        }
-        public async Task<Payment> SendPaymentV2Async(Node node, string paymentRequest, long feeLimitMsat,
+        public async Task<Payment> SendPaymentV2Async(Node node, string paymentRequest, long amountSats, long feeLimitMsat,
             ulong[]? outgoingChanIds, string? lastHopPubkeyHex, int timeoutSeconds, CancellationToken ct)
         {
             if (string.IsNullOrEmpty(paymentRequest))
@@ -1736,9 +1631,11 @@ namespace NodeGuard.Services
             var request = new SendPaymentRequest
             {
                 PaymentRequest = paymentRequest,
+                Amt = amountSats,      // amountless invoice: the amount is set per attempt here
                 FeeLimitMsat = feeLimitMsat,
                 TimeoutSeconds = timeoutSeconds > 0 ? timeoutSeconds : 60,
                 AllowSelfPayment = true,            // mandatory for circular self-pay
+                MaxParts = Constants.REBALANCE_MAX_PARTS, // let LND split (MPP) across routes
                 NoInflightUpdates = true,           // we only care about the terminal Payment update
             };
 

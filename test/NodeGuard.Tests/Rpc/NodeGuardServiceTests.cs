@@ -1525,7 +1525,7 @@ namespace NodeGuard.Rpc
                 SourceChannelId = 11,
                 TargetPubkey = "peer-pubkey",
                 TimeoutSeconds = 90,
-                ProbeBackoffRatio = 0.5,
+                AmountBackoffRatio = 0.5,
                 MaxAttempts = 4,
             };
 
@@ -1546,7 +1546,7 @@ namespace NodeGuard.Rpc
             capturedRequest.SourceChannelId.Should().Be(11);
             capturedRequest.TargetPubkey.Should().Be("peer-pubkey");
             capturedRequest.TimeoutSeconds.Should().Be(90);
-            capturedRequest.ProbeBackoffRatio.Should().Be(0.5);
+            capturedRequest.AmountBackoffRatio.Should().Be(0.5);
             capturedRequest.MaxAttempts.Should().Be(4);
             capturedRequest.IsManual.Should().BeTrue();
         }
@@ -1629,7 +1629,7 @@ namespace NodeGuard.Rpc
                 FeePaidMsat = 3000,
                 SourceChanIdLnd = 123456UL,
                 TargetPubkey = "peer-pubkey",
-                ProbeBackoffRatio = 0.5,
+                AmountBackoffRatio = 0.5,
                 MaxAttempts = 4,
                 CreationDatetime = DateTimeOffset.FromUnixTimeSeconds(1_700_000_000),
                 UpdateDatetime = DateTimeOffset.FromUnixTimeSeconds(1_700_000_100),
@@ -1656,7 +1656,7 @@ namespace NodeGuard.Rpc
             response.EffectivePpm.Should().Be(3000L * 1000L / 950L);
             response.SourceChanId.Should().Be(123456UL);
             response.TargetPubkey.Should().Be("peer-pubkey");
-            response.ProbeBackoffRatio.Should().Be(0.5);
+            response.AmountBackoffRatio.Should().Be(0.5);
             response.MaxAttempts.Should().Be(4);
             response.CreationDatetimeUnix.Should().Be(1_700_000_000);
             response.UpdateDatetimeUnix.Should().Be(1_700_000_100);

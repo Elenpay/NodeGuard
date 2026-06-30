@@ -36,6 +36,9 @@
                             <Icon Name="IconName.Info"/>
                         </Tooltip>
                     </FieldLabel>
+                    <small class="text-muted d-block mb-1">
+                        Filter by peer <span class="text-muted">(optional)</span> — narrows the channel list below to channels with the chosen counterparty.
+                    </small>
                     <SelectList TItem="PeerOption"
                                 TValue="string"
                                 Data="@_sourcePeerOptions"
@@ -182,19 +185,19 @@
                         <CollapseBody>
                             <Field>
                                 <FieldLabel Class="d-flex">
-                                    Probe backoff ratio
-                                    <Tooltip Class="ml-2" Text="Multiplier applied to the probe amount after each failure. 0.5 (default) = halve each iteration; 0.8 = next try is 20% smaller (finer-grained, more iterations); 0.3 = next try is 70% smaller (gives up faster). Must be in the open interval (0, 1)." Placement="TooltipPlacement.Top">
+                                    Amount backoff ratio
+                                    <Tooltip Class="ml-2" Text="Multiplier applied to the rebalanced amount on each retry attempt. 1 = never shrink (every attempt retries the full amount); 0.8 = each retry is 20% smaller; 0.5 = halve each time. Must be in the half-open interval (0, 1]." Placement="TooltipPlacement.Top">
                                         <Icon Name="IconName.Info"/>
                                     </Tooltip>
                                 </FieldLabel>
                                 <NumericPicker TValue="decimal"
-                                               @bind-Value="_probeBackoffRatio"
+                                               @bind-Value="_amountBackoffRatio"
                                                Decimals="2"
                                                Step="0.05m"
                                                Min="0.01m"
-                                               Max="0.99m"/>
+                                               Max="1m"/>
                                 <FieldHelp>
-                                    @($"Server default: {Constants.REBALANCE_PROBE_BACKOFF_RATIO:0.00}. Higher values = finer-grained probing.")
+                                    @($"Server default: {Constants.REBALANCE_AMOUNT_BACKOFF_RATIO:0.00}. 1 = always retry the full amount; lower = shrink the amount on each retry.")
                                 </FieldHelp>
                             </Field>
                             <Field>
@@ -290,7 +293,7 @@
     private decimal _maxFeePct = Constants.REBALANCE_DEFAULT_MAX_FEE_PCT;
     private decimal _retryMaxFeePct = Constants.REBALANCE_DEFAULT_RETRY_MAX_FEE_PCT;
     private int _timeoutSeconds = 60;
-    private decimal _probeBackoffRatio = (decimal)Constants.REBALANCE_PROBE_BACKOFF_RATIO;
+    private decimal _amountBackoffRatio = (decimal)Constants.REBALANCE_AMOUNT_BACKOFF_RATIO;
     private int _maxAttempts = Constants.REBALANCE_MAX_ATTEMPTS;
     private bool _showAdvanced;
     private bool _submitting;
@@ -348,8 +351,8 @@
         && _sourceLocalSats.HasValue
         && ComputeAmountSats() > 0
         && _maxFeePct > 0m
-        && _probeBackoffRatio > 0m
-        && _probeBackoffRatio < 1m
+        && _amountBackoffRatio > 0m
+        && _amountBackoffRatio <= 1m
         && _maxAttempts >= 1
         && _retryMaxFeePct >= _maxFeePct
         && !_submitting;
@@ -411,7 +414,7 @@
         _maxFeePct = Constants.REBALANCE_DEFAULT_MAX_FEE_PCT;
         _retryMaxFeePct = Constants.REBALANCE_DEFAULT_RETRY_MAX_FEE_PCT;
         _timeoutSeconds = 60;
-        _probeBackoffRatio = (decimal)Constants.REBALANCE_PROBE_BACKOFF_RATIO;
+        _amountBackoffRatio = (decimal)Constants.REBALANCE_AMOUNT_BACKOFF_RATIO;
         _maxAttempts = Constants.REBALANCE_MAX_ATTEMPTS;
         _showAdvanced = false;
         _submitting = false;
@@ -448,25 +451,39 @@
                 Logger.LogWarning(ex, "Could not pre-load channel balances for node {NodeId}", _selectedNode.Id);
             }
 
-            _sourcePeerOptions = _nodeChannels
+            var peerGroups = _nodeChannels
                 .Select(c => c.SourceNode?.PubKey == _selectedNode.PubKey ? c.DestinationNode : c.SourceNode)
                 .Where(n => n != null && !string.IsNullOrEmpty(n.PubKey))
                 .GroupBy(n => n!.PubKey)
+                .ToList();
+
+            // Friendly label per peer: Lightning alias > NodeGuard node name > short pubkey,
+            // so the dropdowns read as names rather than raw pubkeys.
+            var peerLabels = new Dictionary<string, string>();
+            foreach (var g in peerGroups)
+            {
+                string? alias = null;
+                try { alias = (await LightningService.GetNodeInfo(g.Key))?.Alias; }
+                catch (Exception ex) { Logger.LogDebug(ex, "Could not resolve alias for peer {Pubkey}", g.Key); }
+
+                peerLabels[g.Key] = !string.IsNullOrWhiteSpace(alias) ? alias!
+                    : !string.IsNullOrWhiteSpace(g.First()!.Name) ? g.First()!.Name!
+                    : g.Key[..10];
+            }
+
+            _sourcePeerOptions = peerGroups
                 .Select(g => new PeerOption
                 {
                     Pubkey = g.Key,
-                    DisplayName = $"{g.First()!.Name ?? g.Key[..10]} · {g.Count()} ch",
+                    DisplayName = $"{peerLabels[g.Key]} · {g.Count()} ch",
                 })
                 .ToList();
 
-            _peerOptions = _nodeChannels
-                .Select(c => c.SourceNode?.PubKey == _selectedNode.PubKey ? c.DestinationNode : c.SourceNode)
-                .Where(n => n != null && !string.IsNullOrEmpty(n.PubKey))
-                .GroupBy(n => n!.PubKey)
+            _peerOptions = peerGroups
                 .Select(g => new PeerOption
                 {
                     Pubkey = g.Key,
-                    DisplayName = $"{g.First()!.Name ?? g.Key[..10]} · {g.Count()} channel{(g.Count() == 1 ? "" : "s")}",
+                    DisplayName = $"{peerLabels[g.Key]} · {g.Count()} channel{(g.Count() == 1 ? "" : "s")}",
                 })
                 .ToList();
         }
@@ -590,7 +607,7 @@
                 TimeoutSeconds: _timeoutSeconds,
                 IsManual: true,
                 UserRequestorId: LoggedUser.Id,
-                ProbeBackoffRatio: _probeBackoffRatio > 0m && _probeBackoffRatio < 1m ? (double)_probeBackoffRatio : (double?)null,
+                AmountBackoffRatio: _amountBackoffRatio > 0m && _amountBackoffRatio <= 1m ? (double)_amountBackoffRatio : (double?)null,
                 MaxAttempts: _maxAttempts >= 1 ? _maxAttempts : (int?)null,
                 RetryMaxFeePct: _retryMaxFeePct > 0m ? (double)_retryMaxFeePct : (double?)null);
 

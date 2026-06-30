@@ -1231,7 +1231,7 @@ public class NodeGuardService : Nodeguard.NodeGuardService.NodeGuardServiceBase,
             TimeoutSeconds: request.TimeoutSeconds,
             IsManual: true,
             UserRequestorId: null,
-            ProbeBackoffRatio: request.HasProbeBackoffRatio ? request.ProbeBackoffRatio : null,
+            AmountBackoffRatio: request.HasAmountBackoffRatio ? request.AmountBackoffRatio : null,
             MaxAttempts: request.HasMaxAttempts ? request.MaxAttempts : null,
             RetryMaxFeePct: request.HasRetryMaxFeePct ? request.RetryMaxFeePct : null);
 
@@ -1330,7 +1330,7 @@ public class NodeGuardService : Nodeguard.NodeGuardService.NodeGuardServiceBase,
         if (rebalance.EffectivePpm.HasValue) response.EffectivePpm = rebalance.EffectivePpm.Value;
         if (rebalance.SourceChanIdLnd.HasValue) response.SourceChanId = rebalance.SourceChanIdLnd.Value;
         if (rebalance.TargetPubkey != null) response.TargetPubkey = rebalance.TargetPubkey;
-        if (rebalance.ProbeBackoffRatio.HasValue) response.ProbeBackoffRatio = rebalance.ProbeBackoffRatio.Value;
+        if (rebalance.AmountBackoffRatio.HasValue) response.AmountBackoffRatio = rebalance.AmountBackoffRatio.Value;
         if (rebalance.MaxAttempts.HasValue) response.MaxAttempts = rebalance.MaxAttempts.Value;
         return response;
     }
@@ -1338,7 +1338,6 @@ public class NodeGuardService : Nodeguard.NodeGuardService.NodeGuardServiceBase,
     private static REBALANCE_STATUS MapRebalanceStatus(RebalanceStatus status) => status switch
     {
         RebalanceStatus.Pending => REBALANCE_STATUS.RebalancePending,
-        RebalanceStatus.Probing => REBALANCE_STATUS.RebalanceProbing,
         RebalanceStatus.InFlight => REBALANCE_STATUS.RebalanceInFlight,
         RebalanceStatus.Succeeded => REBALANCE_STATUS.RebalanceSucceeded,
         RebalanceStatus.Failed => REBALANCE_STATUS.RebalanceFailed,
@@ -1352,7 +1351,6 @@ public class NodeGuardService : Nodeguard.NodeGuardService.NodeGuardServiceBase,
     private static RebalanceStatus MapRebalanceStatus(REBALANCE_STATUS status) => status switch
     {
         REBALANCE_STATUS.RebalancePending => RebalanceStatus.Pending,
-        REBALANCE_STATUS.RebalanceProbing => RebalanceStatus.Probing,
         REBALANCE_STATUS.RebalanceInFlight => RebalanceStatus.InFlight,
         REBALANCE_STATUS.RebalanceSucceeded => RebalanceStatus.Succeeded,
         REBALANCE_STATUS.RebalanceFailed => RebalanceStatus.Failed,

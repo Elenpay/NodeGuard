@@ -125,11 +125,11 @@ public class MonitorRebalancesJob : IJob
             // LND returned NotFound (or the call errored). The right action depends on which
             // non-terminal state the row is in:
             //
-            // - Pending/Probing: the local ExecuteAsync persisted PaymentHashHex right after
-            //   AddInvoice, but SendPaymentV2 doesn't fire until after the probe succeeds —
-            //   so "no record in LND" is the EXPECTED state during this window. Flipping the
-            //   row to Failed here would kill an in-progress probe. Leave it alone; the local
-            //   execution is the source of truth until it dispatches SendPaymentV2.
+            // - Pending: the local ExecuteAsync persisted PaymentHashHex right after AddInvoice,
+            //   but SendPaymentV2 hasn't fired yet — so "no record in LND" is the EXPECTED state
+            //   during this window. Flipping the row to Failed here would kill an in-progress
+            //   attempt. Leave it alone; the local execution is the source of truth until it
+            //   dispatches SendPaymentV2.
             //
             // - InFlight: SendpaymentV2 has been invoked, so LND should know.
             //   If it doesn't, the payment never reached LND (process crashed mid-dispatch,
@@ -157,7 +157,7 @@ public class MonitorRebalancesJob : IJob
                         NewStatus = rebalance.Status.ToString(),
                     });
             }
-            else if (rebalance.Status is RebalanceStatus.Pending or RebalanceStatus.Probing)
+            else if (rebalance.Status is RebalanceStatus.Pending)
             {
                 var window = TimeSpan.FromHours(Constants.REBALANCE_RECONCILE_TERMINAL_WINDOW_HOURS);
                 if (rebalance.UpdateDatetime < DateTimeOffset.UtcNow - window)
@@ -198,7 +198,7 @@ public class MonitorRebalancesJob : IJob
             return;
         }
 
-        if (rebalance.Status is RebalanceStatus.Pending or RebalanceStatus.Probing)
+        if (rebalance.Status is RebalanceStatus.Pending)
         {
             _logger.LogDebug(
                 "Rebalance {RebalanceId} (status={Status}) has a payment record in LND (status={LndStatus}, hash={PaymentHashHex}); local execution still owns it, leaving as-is",

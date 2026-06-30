@@ -39,7 +39,7 @@ public interface IRebalanceRepository
 
     /// <summary>
     /// Returns rebalances the monitor job should reconcile against LND:
-    /// non-terminal rows (Pending/Probing/InFlight) plus recently-marked terminal failures
+    /// non-terminal rows (Pending/InFlight) plus recently-marked terminal failures
     /// within <paramref name="recentTerminalWindow"/>. Only rows with a stored payment hash
     /// are returned — without a hash there is nothing to look up in LND.
     /// The recent-terminal sweep exists because the catch-all in RebalanceService can mark

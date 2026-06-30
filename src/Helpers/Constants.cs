@@ -179,22 +179,25 @@ public class Constants
     public static double REBALANCE_RETRY_BACKOFF_MULTIPLIER = 2.0;
 
     /// <summary>
-    /// Smallest amount the probing binary search will halve down to before giving up.
+    /// Smallest amount a rebalance attempt will shrink down to before giving up (the floor
+    /// for the per-attempt amount backoff).
     /// </summary>
-    public static long REBALANCE_MIN_PROBE_AMOUNT_SATS = 10_000;
+    public static long REBALANCE_MIN_AMOUNT_SATS = 10_000;
 
     /// <summary>
-    /// Multiplier applied to the probe amount after each failure. Range: (0, 1) exclusive.
-    /// 0.5 (default) = halve the amount each iteration; 0.8 = next try is 20% smaller
-    /// (more iterations, finer granularity); 0.3 = next try is 70% smaller (fewer
-    /// iterations, gives up faster).
+    /// Multiplier applied to the rebalanced amount on each retry attempt. Range: (0, 1].
+    /// 1 = never shrink (every attempt retries the full requested amount); 0.8 = each retry
+    /// is 20% smaller than the previous attempt (partial rebalancing); 0.5 = halve each time.
+    /// The amount for attempt n is RequestedAmountSats × ratio^(n-1), floored at
+    /// REBALANCE_MIN_AMOUNT_SATS.
     /// </summary>
-    public static double REBALANCE_PROBE_BACKOFF_RATIO = 0.8;
+    public static double REBALANCE_AMOUNT_BACKOFF_RATIO = 0.8;
 
     /// <summary>
-    /// Maximum number of QueryRoutes-returned routes the prober will try per amount level.
+    /// Maximum number of partial payments (MPP shards) LND may split a rebalance into. 1
+    /// disables splitting; higher values let LND complete an amount across several routes.
     /// </summary>
-    public static int REBALANCE_MAX_PROBE_ROUTES_PER_AMOUNT = 6;
+    public static uint REBALANCE_MAX_PARTS = 32;
 
     /// <summary>
     /// How far back the MonitorRebalancesJob sweeps for already-terminal-but-possibly-wrong
@@ -428,14 +431,14 @@ public class Constants
         var rebBackoff = Environment.GetEnvironmentVariable("REBALANCE_RETRY_BACKOFF_MULTIPLIER");
         if (rebBackoff != null) REBALANCE_RETRY_BACKOFF_MULTIPLIER = double.Parse(rebBackoff, NumberStyles.AllowDecimalPoint, CultureInfo.InvariantCulture);
 
-        var rebMinProbe = Environment.GetEnvironmentVariable("REBALANCE_MIN_PROBE_AMOUNT_SATS");
-        if (rebMinProbe != null) REBALANCE_MIN_PROBE_AMOUNT_SATS = long.Parse(rebMinProbe);
+        var rebMinAmount = Environment.GetEnvironmentVariable("REBALANCE_MIN_AMOUNT_SATS");
+        if (rebMinAmount != null) REBALANCE_MIN_AMOUNT_SATS = long.Parse(rebMinAmount);
 
-        var rebProbeBackoff = Environment.GetEnvironmentVariable("REBALANCE_PROBE_BACKOFF_RATIO");
-        if (rebProbeBackoff != null) REBALANCE_PROBE_BACKOFF_RATIO = double.Parse(rebProbeBackoff, NumberStyles.AllowDecimalPoint, CultureInfo.InvariantCulture);
+        var rebProbeBackoff = Environment.GetEnvironmentVariable("REBALANCE_AMOUNT_BACKOFF_RATIO");
+        if (rebProbeBackoff != null) REBALANCE_AMOUNT_BACKOFF_RATIO = double.Parse(rebProbeBackoff, NumberStyles.AllowDecimalPoint, CultureInfo.InvariantCulture);
 
-        var rebMaxProbeRoutes = Environment.GetEnvironmentVariable("REBALANCE_MAX_PROBE_ROUTES_PER_AMOUNT");
-        if (rebMaxProbeRoutes != null) REBALANCE_MAX_PROBE_ROUTES_PER_AMOUNT = int.Parse(rebMaxProbeRoutes);
+        var rebMaxParts = Environment.GetEnvironmentVariable("REBALANCE_MAX_PARTS");
+        if (rebMaxParts != null) REBALANCE_MAX_PARTS = uint.Parse(rebMaxParts);
 
         var rebReconcileWindow = Environment.GetEnvironmentVariable("REBALANCE_RECONCILE_TERMINAL_WINDOW_HOURS");
         if (rebReconcileWindow != null) REBALANCE_RECONCILE_TERMINAL_WINDOW_HOURS = int.Parse(rebReconcileWindow);
