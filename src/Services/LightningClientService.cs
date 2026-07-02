@@ -274,7 +274,23 @@ public class LightningClientService : ILightningClientService
     public async Task ConnectToPeer(Node node, string peerPubKey, Lightning.LightningClient? client = null)
     {
         client ??= GetLightningClient(node.Endpoint);
+        var metadata = new Metadata { { "macaroon", node.ChannelAdminMacaroon } };
         var isPeerAlreadyConnected = false;
+
+        // If we're already connected to the peer there's nothing to do. 
+        try
+        {
+            var peers = await client.ListPeersAsync(new ListPeersRequest(), metadata);
+            if (peers.Peers.Any(p => p.PubKey == peerPubKey))
+            {
+                _logger.LogInformation("Peer: {Pubkey} already connected", peerPubKey);
+                return;
+            }
+        }
+        catch (Exception e)
+        {
+            _logger.LogWarning(e, "Could not list peers on node {NodeId} before connecting to {Pubkey}", node.Id, peerPubKey);
+        }
 
         ConnectPeerResponse connectPeerResponse = null;
         try
@@ -284,14 +300,17 @@ public class LightningClientService : ILightningClientService
             //For now, we only rely on pure tcp IPV4 connections
             var addr = nodeInfo?.Addresses.FirstOrDefault(x => x.Network == "tcp")?.Addr;
 
+            if (string.IsNullOrEmpty(addr))
+            {
+                throw new PeerNotOnlineException(
+                    $"peer {peerPubKey} has no known address to connect to and is not already connected");
+            }
+
             connectPeerResponse = await client.ConnectPeerAsync(new ConnectPeerRequest
             {
                 Addr = new LightningAddress { Host = addr, Pubkey = nodeInfo.PubKey },
                 Perm = true
-            }, new Metadata
-            {
-                { "macaroon", node.ChannelAdminMacaroon }
-            });
+            }, metadata);
         }
         //We avoid to stop the method if the peer is already connected
         catch (RpcException e)

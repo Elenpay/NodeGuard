@@ -71,7 +71,7 @@ public class ForwardingHtlcEvent
     public int? WireFailureCode { get; set; }
     public int? FailureDetail { get; set; }
 
-    [MaxLength(1024)]
+    [MaxLength(2048)]
     public string? FailureString { get; set; }
 }
 

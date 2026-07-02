@@ -24,15 +24,16 @@ namespace NodeGuard.Data.Models;
 
 public enum RebalanceStatus
 {
-    Pending,
-    Probing,
-    InFlight,
-    Succeeded,
-    Failed,
-    NoRoute,
-    Timeout,
-    InsufficientBalance,
-    ExceededFeeLimit
+    Pending = 0,
+    // 1 was Probing — removed (rebalances go straight to SendPaymentV2, no probe). The value is
+    // intentionally left as a gap so the other statuses keep their stored int values.
+    InFlight = 2,
+    Succeeded = 3,
+    Failed = 4,
+    NoRoute = 5,
+    Timeout = 6,
+    InsufficientBalance = 7,
+    ExceededFeeLimit = 8
 }
 
 public class Rebalance : Entity
@@ -112,6 +113,13 @@ public class Rebalance : Entity
     public string? PaymentHashHex { get; set; }
 
     /// <summary>
+    /// The (amountless) self-invoice bolt11. Created once on the first attempt and reused on
+    /// every retry, so the whole rebalance settles against a single payment hash. The amount
+    /// paid is set per attempt on SendPaymentV2, not encoded in the invoice.
+    /// </summary>
+    public string? PaymentRequest { get; set; }
+
+    /// <summary>
     /// Persisted for forensic / proof-of-payment lookup; intentionally not exposed via gRPC.
     /// </summary>
     public string? PreimageHex { get; set; }
@@ -125,12 +133,13 @@ public class Rebalance : Entity
     public int TimeoutSeconds { get; set; } = 60;
 
     /// <summary>
-    /// Multiplier applied to the probe amount after each failure. Range: (0, 1) exclusive.
-    /// 0.5 = halve (default); 0.8 = next try is 20% smaller (finer-grained, more iterations);
-    /// 0.3 = next try is 70% smaller (gives up faster). When null, the runtime falls back
-    /// to <c>Constants.REBALANCE_PROBE_BACKOFF_RATIO</c>.
+    /// Multiplier applied to the rebalanced amount on each retry attempt. Range: (0, 1].
+    /// 1 = never shrink (every attempt retries the full requested amount); 0.8 = each retry is
+    /// 20% smaller; 0.5 = halve each time. The amount for attempt n is
+    /// RequestedAmountSats × ratio^(n-1), floored at <c>Constants.REBALANCE_MIN_AMOUNT_SATS</c>.
+    /// When null, the runtime falls back to <c>Constants.REBALANCE_AMOUNT_BACKOFF_RATIO</c>.
     /// </summary>
-    public double? ProbeBackoffRatio { get; set; }
+    public double? AmountBackoffRatio { get; set; }
 
     /// <summary>
     /// Maximum number of attempts (including the first try). When null, falls back to

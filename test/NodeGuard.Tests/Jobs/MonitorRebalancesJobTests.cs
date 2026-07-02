@@ -22,6 +22,7 @@ using Lnrpc;
 using Microsoft.Extensions.Logging;
 using NodeGuard.Data.Models;
 using NodeGuard.Data.Repositories.Interfaces;
+using NodeGuard.Helpers;
 using NodeGuard.Services;
 using Quartz;
 
@@ -50,7 +51,11 @@ public class MonitorRebalancesJobTests
         PubKey = "030000000000000000000000000000000000000000000000000000000000000001",
     };
 
-    private static Rebalance MakeRebalance(RebalanceStatus status, string? hashHex = "abcdef01", Node? node = null)
+    private static Rebalance MakeRebalance(
+        RebalanceStatus status,
+        string? hashHex = "abcdef01",
+        Node? node = null,
+        DateTimeOffset? updateDatetime = null)
         => new()
         {
             Id = 42,
@@ -61,6 +66,9 @@ public class MonitorRebalancesJobTests
             SatsAmount = 100_000,
             RequestedAmountSats = 100_000,
             MaxFeePct = 0.05,
+            // Default to "fresh" so tests don't accidentally trip the age-based stuck-row
+            // fallback in the Pending null branch.
+            UpdateDatetime = updateDatetime ?? DateTimeOffset.UtcNow,
         };
 
     [Fact]
@@ -147,6 +155,101 @@ public class MonitorRebalancesJobTests
 
         reb.Status.Should().Be(RebalanceStatus.Failed);
         _rebalanceRepo.Verify(r => r.Update(reb), Times.Once);
+    }
+
+    [Fact]
+    public async Task Execute_Pending_LndNotFound_RowLeftAlone()
+    {
+        // The brief Pending+hash window inside ExecuteAsync between AddInvoice and SendPaymentV2.
+        // SendPaymentV2 hasn't fired; LND can't possibly know about the hash yet, so leave it.
+        var reb = MakeRebalance(RebalanceStatus.Pending);
+        _rebalanceRepo.Setup(r => r.GetReconcilable(It.IsAny<TimeSpan>())).ReturnsAsync(new List<Rebalance> { reb });
+        _lightning.Setup(x => x.TrackPaymentV2Async(It.IsAny<Node>(), It.IsAny<byte[]>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((Payment?)null);
+
+        await CreateJob().Execute(_ctx.Object);
+
+        reb.Status.Should().Be(RebalanceStatus.Pending);
+        _rebalanceRepo.Verify(r => r.Update(It.IsAny<Rebalance>()), Times.Never);
+        _audit.Verify(a => a.LogSystemAsync(
+                It.IsAny<AuditActionType>(), It.IsAny<AuditEventType>(),
+                It.IsAny<AuditObjectType>(), It.IsAny<string>(), It.IsAny<object>()),
+            Times.Never);
+    }
+
+    [Fact]
+    public async Task Execute_Pending_LndNotFound_OlderThanWindow_FlipsToFailed()
+    {
+        // Safety net for a Pending row stuck past the reconciliation window — typically a
+        // crash mid-ExecuteAsync with no Quartz retry queued. The age-based fallback flips it
+        // to Failed so it doesn't sit non-terminal forever.
+        var stale = DateTimeOffset.UtcNow.AddHours(-(Constants.REBALANCE_RECONCILE_TERMINAL_WINDOW_HOURS + 1));
+        var reb = MakeRebalance(RebalanceStatus.Pending, updateDatetime: stale);
+        _rebalanceRepo.Setup(r => r.GetReconcilable(It.IsAny<TimeSpan>())).ReturnsAsync(new List<Rebalance> { reb });
+        _lightning.Setup(x => x.TrackPaymentV2Async(It.IsAny<Node>(), It.IsAny<byte[]>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((Payment?)null);
+
+        await CreateJob().Execute(_ctx.Object);
+
+        reb.Status.Should().Be(RebalanceStatus.Failed);
+        _rebalanceRepo.Verify(r => r.Update(reb), Times.Once);
+        _audit.Verify(a => a.LogSystemAsync(
+                AuditActionType.RebalanceCompleted, AuditEventType.Failure,
+                AuditObjectType.Rebalance, reb.Id.ToString(), It.IsAny<object>()),
+            Times.Once);
+    }
+
+    [Fact]
+    public async Task Execute_Pending_LndFailedPayment_RowLeftAlone()
+    {
+        // The oscillation case: ScheduleRetryIfEligibleAsync left the row at Pending with the
+        // PRIOR attempt's hash. LND still has that prior payment record (Failed). The monitor
+        // must NOT write the prior failure onto a queued-for-retry row — local execution
+        // (ExecuteAsync's pre-flight) is the only thing allowed to touch it.
+        var reb = MakeRebalance(RebalanceStatus.Pending);
+        _rebalanceRepo.Setup(r => r.GetReconcilable(It.IsAny<TimeSpan>())).ReturnsAsync(new List<Rebalance> { reb });
+        _lightning.Setup(x => x.TrackPaymentV2Async(It.IsAny<Node>(), It.IsAny<byte[]>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new Payment
+            {
+                Status = Payment.Types.PaymentStatus.Failed,
+                FailureReason = PaymentFailureReason.FailureReasonNoRoute,
+            });
+
+        await CreateJob().Execute(_ctx.Object);
+
+        reb.Status.Should().Be(RebalanceStatus.Pending);
+        _rebalanceRepo.Verify(r => r.Update(It.IsAny<Rebalance>()), Times.Never);
+        _audit.Verify(a => a.LogSystemAsync(
+                It.IsAny<AuditActionType>(), It.IsAny<AuditEventType>(),
+                It.IsAny<AuditObjectType>(), It.IsAny<string>(), It.IsAny<object>()),
+            Times.Never);
+    }
+
+    [Fact]
+    public async Task Execute_Pending_LndSucceededPayment_RowLeftAlone()
+    {
+        // The lying-stream variant of the oscillation: prior attempt actually settled in LND
+        // but the local stream said Failed. The monitor still must NOT adopt that success
+        // here — the row is Pending (queued for retry), and ExecuteAsync's pre-flight in the
+        // retry path is the component responsible for adopting the prior success.
+        var reb = MakeRebalance(RebalanceStatus.Pending);
+        _rebalanceRepo.Setup(r => r.GetReconcilable(It.IsAny<TimeSpan>())).ReturnsAsync(new List<Rebalance> { reb });
+        _lightning.Setup(x => x.TrackPaymentV2Async(It.IsAny<Node>(), It.IsAny<byte[]>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new Payment
+            {
+                Status = Payment.Types.PaymentStatus.Succeeded,
+                FeeMsat = 1_000,
+                PaymentPreimage = "deadbeef",
+            });
+
+        await CreateJob().Execute(_ctx.Object);
+
+        reb.Status.Should().Be(RebalanceStatus.Pending);
+        _rebalanceRepo.Verify(r => r.Update(It.IsAny<Rebalance>()), Times.Never);
+        _audit.Verify(a => a.LogSystemAsync(
+                It.IsAny<AuditActionType>(), It.IsAny<AuditEventType>(),
+                It.IsAny<AuditObjectType>(), It.IsAny<string>(), It.IsAny<object>()),
+            Times.Never);
     }
 
     [Fact]

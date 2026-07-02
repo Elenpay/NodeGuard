@@ -1435,12 +1435,56 @@ namespace NodeGuard.Rpc
             nodeRepoMock.Setup(r => r.GetByPubkey("pubkey1")).ReturnsAsync((Node?)null);
 
             var service = CreateNodeGuardService(nodeRepository: nodeRepoMock.Object);
-            var request = new RequestRebalanceRequest { NodePubkey = "pubkey1", AmountSats = 1000 };
+            // source_channel_id and target_pubkey are required guards that fire BEFORE the node
+            // lookup; supply both so this test actually exercises the node-not-found path.
+            var request = new RequestRebalanceRequest
+            {
+                NodePubkey = "pubkey1",
+                AmountSats = 1000,
+                SourceChannelId = 1,
+                TargetPubkey = "peer-pubkey",
+            };
 
             var act = () => service.RequestRebalance(request, TestServerCallContext.Create());
 
             (await act.Should().ThrowAsync<RpcException>())
                 .Which.StatusCode.Should().Be(StatusCode.NotFound);
+        }
+
+        [Fact]
+        public async Task RequestRebalance_MissingSourceChannelId_ThrowsInvalidArgument()
+        {
+            var service = CreateNodeGuardService();
+            var request = new RequestRebalanceRequest
+            {
+                NodePubkey = "pubkey1",
+                AmountSats = 1000,
+                TargetPubkey = "peer-pubkey",
+                // SourceChannelId intentionally unset.
+            };
+
+            var act = () => service.RequestRebalance(request, TestServerCallContext.Create());
+
+            (await act.Should().ThrowAsync<RpcException>())
+                .Which.StatusCode.Should().Be(StatusCode.InvalidArgument);
+        }
+
+        [Fact]
+        public async Task RequestRebalance_MissingTargetPubkey_ThrowsInvalidArgument()
+        {
+            var service = CreateNodeGuardService();
+            var request = new RequestRebalanceRequest
+            {
+                NodePubkey = "pubkey1",
+                AmountSats = 1000,
+                SourceChannelId = 1,
+                // TargetPubkey intentionally unset.
+            };
+
+            var act = () => service.RequestRebalance(request, TestServerCallContext.Create());
+
+            (await act.Should().ThrowAsync<RpcException>())
+                .Which.StatusCode.Should().Be(StatusCode.InvalidArgument);
         }
 
         [Fact]
@@ -1481,7 +1525,7 @@ namespace NodeGuard.Rpc
                 SourceChannelId = 11,
                 TargetPubkey = "peer-pubkey",
                 TimeoutSeconds = 90,
-                ProbeBackoffRatio = 0.5,
+                AmountBackoffRatio = 0.5,
                 MaxAttempts = 4,
             };
 
@@ -1502,7 +1546,7 @@ namespace NodeGuard.Rpc
             capturedRequest.SourceChannelId.Should().Be(11);
             capturedRequest.TargetPubkey.Should().Be("peer-pubkey");
             capturedRequest.TimeoutSeconds.Should().Be(90);
-            capturedRequest.ProbeBackoffRatio.Should().Be(0.5);
+            capturedRequest.AmountBackoffRatio.Should().Be(0.5);
             capturedRequest.MaxAttempts.Should().Be(4);
             capturedRequest.IsManual.Should().BeTrue();
         }
@@ -1523,7 +1567,15 @@ namespace NodeGuard.Rpc
                 nodeRepository: nodeRepoMock.Object,
                 rebalanceService: rebalanceServiceMock.Object);
 
-            var request = new RequestRebalanceRequest { NodePubkey = "pubkey1", AmountSats = 1000 };
+            // Required gRPC guards must pass so the request actually reaches the service and we
+            // can verify the domain ArgumentException → StatusCode.InvalidArgument mapping.
+            var request = new RequestRebalanceRequest
+            {
+                NodePubkey = "pubkey1",
+                AmountSats = 1000,
+                SourceChannelId = 1,
+                TargetPubkey = "peer-pubkey",
+            };
 
             var act = () => service.RequestRebalance(request, TestServerCallContext.Create());
 
@@ -1577,7 +1629,7 @@ namespace NodeGuard.Rpc
                 FeePaidMsat = 3000,
                 SourceChanIdLnd = 123456UL,
                 TargetPubkey = "peer-pubkey",
-                ProbeBackoffRatio = 0.5,
+                AmountBackoffRatio = 0.5,
                 MaxAttempts = 4,
                 CreationDatetime = DateTimeOffset.FromUnixTimeSeconds(1_700_000_000),
                 UpdateDatetime = DateTimeOffset.FromUnixTimeSeconds(1_700_000_100),
@@ -1604,7 +1656,7 @@ namespace NodeGuard.Rpc
             response.EffectivePpm.Should().Be(3000L * 1000L / 950L);
             response.SourceChanId.Should().Be(123456UL);
             response.TargetPubkey.Should().Be("peer-pubkey");
-            response.ProbeBackoffRatio.Should().Be(0.5);
+            response.AmountBackoffRatio.Should().Be(0.5);
             response.MaxAttempts.Should().Be(4);
             response.CreationDatetimeUnix.Should().Be(1_700_000_000);
             response.UpdateDatetimeUnix.Should().Be(1_700_000_100);

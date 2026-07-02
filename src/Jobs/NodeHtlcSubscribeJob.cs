@@ -181,7 +181,7 @@ public class NodeHtlcSubscribeJob : IJob
             FeeMsat = CalculateNetFeeMsat(info?.IncomingAmtMsat, info?.OutgoingAmtMsat),
             WireFailureCode = htlcEvent.LinkFailEvent != null ? (int)htlcEvent.LinkFailEvent.WireFailure : null,
             FailureDetail = htlcEvent.LinkFailEvent != null ? (int)htlcEvent.LinkFailEvent.FailureDetail : null,
-            FailureString = htlcEvent.LinkFailEvent?.FailureString,
+            FailureString = TruncateFailureString(htlcEvent.LinkFailEvent?.FailureString),
         };
     }
 
@@ -397,6 +397,22 @@ public class NodeHtlcSubscribeJob : IJob
         }
 
         return feeMsat.Value - grossFeeMsat.Value;
+    }
+
+    // FailureString is persisted to a character varying(2048) column. lnd can emit failure
+    // descriptions longer than that, so when the value reaches the column limit we keep the
+    // first 2044 characters and append an ellipsis (2044 + 3 = 2047, within the 2048 bound).
+    private const int FailureStringMaxLength = 2048;
+    private const string FailureStringEllipsis = "...";
+
+    private static string? TruncateFailureString(string? value)
+    {
+        if (value is null || value.Length < FailureStringMaxLength)
+        {
+            return value;
+        }
+
+        return string.Concat(value.AsSpan(0, FailureStringMaxLength - FailureStringEllipsis.Length - 1), FailureStringEllipsis);
     }
 
     internal static DateTimeOffset MapEventTimestamp(ulong timestampNs)

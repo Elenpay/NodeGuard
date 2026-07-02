@@ -28,14 +28,14 @@ namespace NodeGuard.Services;
 
 public record RebalanceRequest(
     int NodeId,
-    int? SourceChannelId,
-    string? TargetPubkey,
+    int SourceChannelId,
+    string TargetPubkey,
     long AmountSats,
     double? MaxFeePct,
     int TimeoutSeconds = 60,
     bool IsManual = true,
     string? UserRequestorId = null,
-    double? ProbeBackoffRatio = null,
+    double? AmountBackoffRatio = null,
     int? MaxAttempts = null,
     double? RetryMaxFeePct = null);
 
@@ -89,10 +89,10 @@ public class RebalanceService : IRebalanceService
                 "Rebalance amount is zero — channel is already at or above the requested inbound ratio, no rebalance needed.",
                 nameof(request.AmountSats));
 
-        if (request.ProbeBackoffRatio is { } ratio && (ratio <= 0.0 || ratio >= 1.0))
+        if (request.AmountBackoffRatio is { } ratio && (ratio <= 0.0 || ratio > 1.0))
             throw new ArgumentException(
-                "Probe backoff ratio must be in the open interval (0, 1). 0 zeroes the next try; 1 never shrinks.",
-                nameof(request.ProbeBackoffRatio));
+                "Amount backoff ratio must be in the half-open interval (0, 1]. 1 never shrinks (every attempt retries the full amount); values below 1 shrink the amount on each retry.",
+                nameof(request.AmountBackoffRatio));
 
         if (request.MaxAttempts is { } attempts && attempts <= 0)
             throw new ArgumentException(
@@ -104,18 +104,40 @@ public class RebalanceService : IRebalanceService
                 "Retry max fee % must be greater than 0.",
                 nameof(request.RetryMaxFeePct));
 
+        if (request.SourceChannelId <= 0)
+            throw new ArgumentException(
+                "Source channel id is required.",
+                nameof(request.SourceChannelId));
+
+        if (string.IsNullOrWhiteSpace(request.TargetPubkey))
+            throw new ArgumentException(
+                "Target pubkey is required.",
+                nameof(request.TargetPubkey));
+
         var node = await _nodeRepository.GetById(request.NodeId);
         if (node == null)
             throw new ArgumentException($"Node {request.NodeId} not found", nameof(request.NodeId));
 
-        ulong? sourceChanIdLnd = null;
-        if (request.SourceChannelId.HasValue)
-        {
-            var sourceChannel = await _channelRepository.GetById(request.SourceChannelId.Value);
-            if (sourceChannel == null)
-                throw new ArgumentException($"Source channel {request.SourceChannelId} not found");
-            sourceChanIdLnd = sourceChannel.ChanId;
-        }
+        var sourceChannel = await _channelRepository.GetById(request.SourceChannelId);
+        if (sourceChannel == null)
+            throw new ArgumentException(
+                $"Source channel {request.SourceChannelId} not found",
+                nameof(request.SourceChannelId));
+        var sourceChanIdLnd = sourceChannel.ChanId;
+
+        var counterpartyPeerId = sourceChannel.SourceNodeId == node.Id
+            ? sourceChannel.DestinationNodeId
+            : sourceChannel.SourceNodeId;
+
+        var counterpartyPeer = await _nodeRepository.GetById(counterpartyPeerId);
+        if (counterpartyPeer == null)
+            throw new InvalidOperationException(
+                $"Counterparty peer node {counterpartyPeerId} not found for source channel {request.SourceChannelId}");
+
+        if (counterpartyPeer.PubKey == request.TargetPubkey)
+            throw new ArgumentException(
+                "Target pubkey is the same as the source channel's counterparty peer; rebalance would be a no-op.",
+                nameof(request.TargetPubkey));
 
         // LastHopPubkey constrains the receiving peer, not a specific channel — LND picks
         // which of that peer's channels to use. We don't accept or persist a target chan_id.
@@ -138,7 +160,7 @@ public class RebalanceService : IRebalanceService
             TargetPubkey = targetPubkey,
             UserRequestorId = request.UserRequestorId,
             TimeoutSeconds = request.TimeoutSeconds == 0 ? 60 : request.TimeoutSeconds,
-            ProbeBackoffRatio = request.ProbeBackoffRatio,
+            AmountBackoffRatio = request.AmountBackoffRatio,
             MaxAttempts = request.MaxAttempts,
             RetryMaxFeePct = request.RetryMaxFeePct,
         };
@@ -191,100 +213,101 @@ public class RebalanceService : IRebalanceService
 
         try
         {
-            var memo = $"NG rebalance #{rebalance.Id} attempt {rebalance.AttemptNumber}";
-            var invoiceExpiry = ComputeInvoiceExpirySeconds(rebalance);
-            var invoice = await _lightningService.AddInvoiceAsync(node, rebalance.SatsAmount, memo, invoiceExpiry);
-            if (invoice == null || string.IsNullOrEmpty(invoice.PaymentRequest))
+            // Avoid double paying a rebalance that has already succeeded.
+            if (!string.IsNullOrWhiteSpace(rebalance.PaymentHashHex))
             {
-                _logger.LogWarning(
-                    "Rebalance {RebalanceId} failed to create self-invoice on node {NodeId}",
-                    rebalance.Id, node.Id);
-                rebalance.Status = RebalanceStatus.Failed;
-                _rebalanceRepository.Update(rebalance);
-                await _auditService.LogAsync(AuditActionType.RebalanceCompleted, AuditEventType.Failure,
-                    AuditObjectType.Rebalance, rebalance.Id.ToString(),
-                    new { Reason = "Failed to create self-invoice" });
-                await ScheduleRetryIfEligibleAsync(rebalance);
-                return rebalance;
+                byte[] paymentHash = Convert.FromHexString(rebalance.PaymentHashHex);
+                var oldPayment = await _lightningService.TrackPaymentV2Async(node, paymentHash, ct);
+                if (oldPayment != null)
+                {
+                    if (oldPayment.Status is Payment.Types.PaymentStatus.Succeeded)
+                    {
+                        _logger.LogInformation(
+                            "Rebalance {RebalanceId} already succeeded in LND (hash={PaymentHashHex}, feeSats={FeeSats}, ppm={Ppm})",
+                            rebalance.Id, rebalance.PaymentHashHex, oldPayment.FeeMsat / 1_000L,
+                            (long?)Math.Round((decimal)oldPayment.FeeMsat / rebalance.SatsAmount * 1_000_000m, MidpointRounding.AwayFromZero));
+                        ApplyTerminalPayment(rebalance, oldPayment);
+                        _rebalanceRepository.Update(rebalance);
+                        await _auditService.LogAsync(AuditActionType.RebalanceCompleted, AuditEventType.Success,
+                            AuditObjectType.Rebalance, rebalance.Id.ToString(),
+                            new
+                            {
+                                rebalance.FeePaidSats,
+                                rebalance.EffectivePpm,
+                                ActualAmountSats = rebalance.SatsAmount,
+                                rebalance.AttemptNumber,
+                            });
+                        return rebalance;
+                    }
+                    else if (oldPayment.Status is Payment.Types.PaymentStatus.InFlight or Payment.Types.PaymentStatus.Initiated)
+                    {
+                        _logger.LogInformation(
+                            "Rebalance {RebalanceId} already in-flight in LND (hash={PaymentHashHex}, status={LndStatus})",
+                            rebalance.Id, rebalance.PaymentHashHex, oldPayment.Status);
+                        await ScheduleRetryIfEligibleAsync(rebalance);
+                        return rebalance;
+                    }
+                }
             }
 
-            // Persist the payment hash before sending so MonitorRebalancesJob can resolve
-            // the true outcome against LND if this process dies mid-stream.
-            rebalance.PaymentHashHex = Convert.ToHexString(invoice.RHash.ToByteArray()).ToLowerInvariant();
-            _rebalanceRepository.Update(rebalance);
+            // Per-attempt amount: the full requested amount on attempt 1, shrunk by the backoff
+            // ratio on each retry (ratio = 1 ⇒ never shrink). The amount rides on SendPaymentV2,
+            // not the invoice, so partial-amount retries reuse the same amountless invoice.
+            rebalance.SatsAmount = ComputeAttemptAmountSats(rebalance);
 
-            _logger.LogInformation(
-                "Rebalance {RebalanceId} self-invoice created (hash={PaymentHashHex}, expirySeconds={ExpirySeconds})",
-                rebalance.Id, rebalance.PaymentHashHex, invoiceExpiry);
+            // One amountless self-invoice per rebalance: created on the first attempt and reused
+            // on every retry, so the whole rebalance settles against a single payment hash.
+            if (string.IsNullOrEmpty(rebalance.PaymentRequest))
+            {
+                var memo = $"NG rebalance #{rebalance.Id}";
+                var invoiceExpiry = ComputeInvoiceExpirySeconds(rebalance);
+                // amountSats: 0 → amountless invoice; the amount is supplied per attempt on SendPaymentV2.
+                var invoice = await _lightningService.AddInvoiceAsync(node, 0, memo, invoiceExpiry);
+                if (invoice == null || string.IsNullOrEmpty(invoice.PaymentRequest))
+                {
+                    _logger.LogWarning(
+                        "Rebalance {RebalanceId} failed to create self-invoice on node {NodeId}",
+                        rebalance.Id, node.Id);
+                    rebalance.Status = RebalanceStatus.Failed;
+                    _rebalanceRepository.Update(rebalance);
+                    await _auditService.LogAsync(AuditActionType.RebalanceCompleted, AuditEventType.Failure,
+                        AuditObjectType.Rebalance, rebalance.Id.ToString(),
+                        new { Reason = "Failed to create self-invoice" });
+                    await ScheduleRetryIfEligibleAsync(rebalance);
+                    return rebalance;
+                }
+
+                // Persist the invoice + payment hash before sending so MonitorRebalancesJob can
+                // resolve the true outcome against LND if this process dies mid-stream.
+                rebalance.PaymentRequest = invoice.PaymentRequest;
+                rebalance.PaymentHashHex = Convert.ToHexString(invoice.RHash.ToByteArray()).ToLowerInvariant();
+                _rebalanceRepository.Update(rebalance);
+
+                _logger.LogInformation(
+                    "Rebalance {RebalanceId} amountless self-invoice created (hash={PaymentHashHex}, expirySeconds={ExpirySeconds})",
+                    rebalance.Id, rebalance.PaymentHashHex, invoiceExpiry);
+            }
 
             var feeLimitMsat = ComputeFeeLimitMsat(rebalance.SatsAmount, rebalance.MaxFeePct);
-
-            rebalance.Status = RebalanceStatus.Probing;
-            _rebalanceRepository.Update(rebalance);
-            _logger.LogInformation(
-                "Rebalance {RebalanceId} probing for route (amount={AmountSats} sats, feeLimitMsat={FeeLimitMsat}, probeBackoffRatio={ProbeBackoffRatio})",
-                rebalance.Id, rebalance.SatsAmount, feeLimitMsat,
-                rebalance.ProbeBackoffRatio ?? Constants.REBALANCE_PROBE_BACKOFF_RATIO);
-            await _auditService.LogAsync(AuditActionType.RebalanceProbing, AuditEventType.Attempt,
-                AuditObjectType.Rebalance, rebalance.Id.ToString(),
-                new { rebalance.AttemptNumber, rebalance.SatsAmount, FeeLimitMsat = feeLimitMsat });
-
-            var probeBackoffRatio = rebalance.ProbeBackoffRatio ?? Constants.REBALANCE_PROBE_BACKOFF_RATIO;
-            var probe = await _lightningService.ProbeRouteAsync(node, rebalance.SatsAmount, feeLimitMsat,
-                rebalance.SourceChanIdLnd, rebalance.TargetPubkey, probeBackoffRatio, ct);
-
-            if (probe is ProbeResult.NoRoute noRoute)
-            {
-                _logger.LogInformation(
-                    "Rebalance {RebalanceId} probe returned NoRoute: {Reason}",
-                    rebalance.Id, noRoute.Reason);
-                rebalance.Status = RebalanceStatus.NoRoute;
-                _rebalanceRepository.Update(rebalance);
-                await _auditService.LogAsync(AuditActionType.RebalanceProbing, AuditEventType.Failure,
-                    AuditObjectType.Rebalance, rebalance.Id.ToString(),
-                    new { Reason = noRoute.Reason });
-                await _auditService.LogAsync(AuditActionType.RebalanceCompleted, AuditEventType.Failure,
-                    AuditObjectType.Rebalance, rebalance.Id.ToString(),
-                    new { rebalance.Status });
-                await ScheduleRetryIfEligibleAsync(rebalance);
-                return rebalance;
-            }
-
-            var success = (ProbeResult.Success)probe;
-            _logger.LogInformation(
-                "Rebalance {RebalanceId} probe succeeded (probedAmountSats={ProbedAmountSats}, routeHops={RouteHops})",
-                rebalance.Id, success.AmountSats, success.Route.Hops.Count);
-            await _auditService.LogAsync(AuditActionType.RebalanceProbing, AuditEventType.Success,
-                AuditObjectType.Rebalance, rebalance.Id.ToString(),
-                new { ProbedAmountSats = success.AmountSats, RouteHops = success.Route.Hops.Count });
-
-            if (success.AmountSats < rebalance.SatsAmount)
-            {
-                _logger.LogInformation(
-                    "Rebalance {RebalanceId} probe shrunk amount from {OriginalSats} to {ProbedSats} sats",
-                    rebalance.Id, rebalance.SatsAmount, success.AmountSats);
-                rebalance.SatsAmount = success.AmountSats;
-                feeLimitMsat = ComputeFeeLimitMsat(rebalance.SatsAmount, rebalance.MaxFeePct);
-            }
-
-            rebalance.Status = RebalanceStatus.InFlight;
-            _rebalanceRepository.Update(rebalance);
 
             var outgoingChanIds = rebalance.SourceChanIdLnd.HasValue
                 ? [rebalance.SourceChanIdLnd.Value]
                 : Array.Empty<ulong>();
 
+            rebalance.Status = RebalanceStatus.InFlight;
+            _rebalanceRepository.Update(rebalance);
+
             _logger.LogInformation(
                 "Rebalance {RebalanceId} dispatching SendPaymentV2 (amount={AmountSats} sats, feeLimitMsat={FeeLimitMsat}, timeoutSeconds={TimeoutSeconds}, hash={PaymentHashHex})",
                 rebalance.Id, rebalance.SatsAmount, feeLimitMsat, rebalance.TimeoutSeconds, rebalance.PaymentHashHex);
 
-            // Probe gave us feasibility + (possibly shrunk) amount; the actual settle goes
-            // through LND's full pathfinder via SendPaymentV2 — that gives us MPP and
-            // built-in per-route retries inside one payment, which the SendToRouteV2 path
-            // didn't. The probed Route itself is informational only.
+            // No pre-probe: LND's own pathfinder (mission control + MPP + per-route retries
+            // within the timeout) finds and settles the route. Failures fall through to the
+            // attempt-level retry/backoff below, which shrinks the amount per AmountBackoffRatio.
             var payment = await _lightningService.SendPaymentV2Async(
                 node,
-                invoice.PaymentRequest,
+                rebalance.PaymentRequest!,
+                rebalance.SatsAmount,
                 feeLimitMsat,
                 outgoingChanIds,
                 rebalance.TargetPubkey,
@@ -372,6 +395,22 @@ public class RebalanceService : IRebalanceService
     /// </summary>
     private static long ComputeFeeLimitMsat(long satsAmount, double maxFeePct)
         => (long)Math.Round(satsAmount * (decimal)maxFeePct * 10m, MidpointRounding.AwayFromZero);
+
+    /// <summary>
+    /// Amount to pay on the current attempt: RequestedAmountSats × ratio^(AttemptNumber-1),
+    /// clamped to [min(REBALANCE_MIN_AMOUNT_SATS, requested), requested]. Attempt 1 always uses
+    /// the full requested amount (ratio^0 = 1); each retry shrinks by the backoff ratio
+    /// (ratio = 1 ⇒ no shrink). The same amountless invoice carries whatever amount this returns.
+    /// </summary>
+    private static long ComputeAttemptAmountSats(Rebalance rebalance)
+    {
+        var ratio = rebalance.AmountBackoffRatio ?? Constants.REBALANCE_AMOUNT_BACKOFF_RATIO;
+        var scaled = (long)Math.Round(
+            rebalance.RequestedAmountSats * Math.Pow(ratio, rebalance.AttemptNumber - 1),
+            MidpointRounding.AwayFromZero);
+        var floor = Math.Min(Constants.REBALANCE_MIN_AMOUNT_SATS, rebalance.RequestedAmountSats);
+        return Math.Clamp(scaled, floor, rebalance.RequestedAmountSats);
+    }
 
     /// <summary>
     /// Sizes the self-invoice's expiry to outlive the full retry window — per-attempt

@@ -491,8 +491,8 @@ message SetChannelFeePolicyResponse {
 }
 
 enum REBALANCE_STATUS {
+  reserved 1;  // was REBALANCE_PROBING — removed (no probing anymore); number reserved.
   REBALANCE_PENDING = 0;
-  REBALANCE_PROBING = 1;
   REBALANCE_IN_FLIGHT = 2;
   REBALANCE_SUCCEEDED = 3;
   REBALANCE_FAILED = 4;
@@ -512,18 +512,19 @@ message RequestRebalanceRequest {
   optional double max_fee_pct = 3;
   // Optional max fee cap for retry attempts, expressed as a percentage of the rebalanced amount (not a fraction of the outbound rate). e.g. 0.075 means 0.075% = 750 ppm. If unset, falls back to REBALANCE_DEFAULT_RETRY_MAX_FEE_PCT 
   optional double retry_max_fee_pct = 4;
-  // Optional NG channel id to use as the outbound channel
+  // NG channel id to use as the outbound channel. Required.
   optional int32 source_channel_id = 5;
-  // Optional explicit last-hop peer pubkey (33-byte hex). If unset, LND picks any
-  // inbound channel that satisfies the cost cap.
+  // Last-hop peer pubkey (33-byte hex) that constrains the receiving peer of the
+  // circular payment. Required.
   optional string target_pubkey = 6;
   // Pathfinding/payment timeout in seconds; 0 → server default (60s)
   int32 timeout_seconds = 7;
-  // Multiplier applied to the probe amount after each failure. Range: (0, 1) exclusive.
-  // 0.5 = halve (default); 0.8 = next try is 20% smaller (finer-grained, more iterations);
-  // 0.3 = next try is 70% smaller (gives up faster). If unset, falls back to
-  // Constants.REBALANCE_PROBE_BACKOFF_RATIO.
-  optional double probe_backoff_ratio = 8;
+  // Multiplier applied to the rebalanced amount on each retry attempt. Range: (0, 1].
+  // 1 = never shrink (every attempt retries the full amount); 0.8 = each retry is 20%
+  // smaller; 0.5 = halve each time. The amount for attempt n is amount_sats * ratio^(n-1),
+  // floored at REBALANCE_MIN_AMOUNT_SATS. If unset, falls back to
+  // Constants.REBALANCE_AMOUNT_BACKOFF_RATIO.
+  optional double amount_backoff_ratio = 8;
   // Maximum number of attempts (including the first try). Must be >= 1.
   // If unset, falls back to Constants.REBALANCE_MAX_ATTEMPTS
   optional int32 max_attempts = 9;
@@ -559,7 +560,7 @@ message GetRebalanceResponse {
   optional int64 effective_ppm = 11;
   optional uint64 source_chan_id = 12;
   optional string target_pubkey = 13;
-  optional double probe_backoff_ratio = 14;
+  optional double amount_backoff_ratio = 14;
   optional int32 max_attempts = 15;
   int64 creation_datetime_unix = 16;
   int64 update_datetime_unix = 17;

@@ -122,11 +122,21 @@ public class MonitorRebalancesJob : IJob
 
         if (payment == null)
         {
-            // LND returned NotFound (or the call errored). Only act on the NotFound signal
-            // when our row is still in a non-terminal state: in that case LND never saw the
-            // payment, so the optimistic InFlight/Probing/Pending is wrong. For terminal rows
-            // we leave them alone — a transient track error shouldn't reopen a Failed row.
-            if (IsNonTerminal(rebalance.Status))
+            // LND returned NotFound (or the call errored). The right action depends on which
+            // non-terminal state the row is in:
+            //
+            // - Pending: the local ExecuteAsync persisted PaymentHashHex right after AddInvoice,
+            //   but SendPaymentV2 hasn't fired yet — so "no record in LND" is the EXPECTED state
+            //   during this window. Flipping the row to Failed here would kill an in-progress
+            //   attempt. Leave it alone; the local execution is the source of truth until it
+            //   dispatches SendPaymentV2.
+            //
+            // - InFlight: SendpaymentV2 has been invoked, so LND should know.
+            //   If it doesn't, the payment never reached LND (process crashed mid-dispatch,
+            //   or LND lost it). Flip to Failed so the row doesn't stay InFlight forever.
+            //
+            // - Terminal statuses: leave alone — a transient track error must not reopen them.
+            if (rebalance.Status == RebalanceStatus.InFlight)
             {
                 var oldStatus = rebalance.Status;
                 rebalance.Status = RebalanceStatus.Failed;
@@ -147,6 +157,37 @@ public class MonitorRebalancesJob : IJob
                         NewStatus = rebalance.Status.ToString(),
                     });
             }
+            else if (rebalance.Status is RebalanceStatus.Pending)
+            {
+                var window = TimeSpan.FromHours(Constants.REBALANCE_RECONCILE_TERMINAL_WINDOW_HOURS);
+                if (rebalance.UpdateDatetime < DateTimeOffset.UtcNow - window)
+                {
+                    _logger.LogWarning(
+                        "Rebalance {RebalanceId} (status={Status}, hash={PaymentHashHex}) has no record in LND and is older than {WindowHours}h; flipping to Failed",
+                        rebalance.Id, rebalance.Status, rebalance.PaymentHashHex, window.TotalHours);
+                    var oldStatus = rebalance.Status;
+                    rebalance.Status = RebalanceStatus.Failed;
+                    _rebalanceRepository.Update(rebalance);
+                    await _auditService.LogSystemAsync(
+                        AuditActionType.RebalanceCompleted,
+                        AuditEventType.Failure,
+                        AuditObjectType.Rebalance,
+                        rebalance.Id.ToString(),
+                        new
+                        {
+                            Reason = "MonitorReconciliation",
+                            Detail = "LND has no record of this payment hash and the row is older than the reconciliation window",
+                            OldStatus = oldStatus.ToString(),
+                            NewStatus = rebalance.Status.ToString(),
+                        });
+                }
+                else
+                {
+                    _logger.LogDebug(
+                        "Rebalance {RebalanceId} not yet visible in LND (status={Status}, hash={PaymentHashHex}); local execution still owns it, leaving as-is",
+                        rebalance.Id, rebalance.Status, rebalance.PaymentHashHex);
+                }
+            }
             else
             {
                 _logger.LogInformation(
@@ -154,6 +195,14 @@ public class MonitorRebalancesJob : IJob
                     rebalance.Id, rebalance.Status);
             }
 
+            return;
+        }
+
+        if (rebalance.Status is RebalanceStatus.Pending)
+        {
+            _logger.LogDebug(
+                "Rebalance {RebalanceId} (status={Status}) has a payment record in LND (status={LndStatus}, hash={PaymentHashHex}); local execution still owns it, leaving as-is",
+                rebalance.Id, rebalance.Status, payment.Status, rebalance.PaymentHashHex);
             return;
         }
 
@@ -205,11 +254,6 @@ public class MonitorRebalancesJob : IJob
                 rebalance.EffectivePpm,
             });
     }
-
-    private static bool IsNonTerminal(RebalanceStatus status) =>
-        status is RebalanceStatus.Pending
-            or RebalanceStatus.Probing
-            or RebalanceStatus.InFlight;
 
     private static bool IsNonTerminalLndStatus(Payment.Types.PaymentStatus status) =>
         status is Payment.Types.PaymentStatus.Initiated
