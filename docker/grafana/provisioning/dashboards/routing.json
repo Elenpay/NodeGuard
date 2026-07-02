@@ -5284,6 +5284,581 @@
       ],
       "title": "Qualifying Liquidity over time by managed node",
       "type": "timeseries"
+    },
+    {
+      "collapsed": false,
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 209
+      },
+      "id": 250,
+      "panels": [],
+      "title": "Missed-Fee Opportunity — Top N Destinations",
+      "type": "row"
+    },
+    {
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "$datasource"
+      },
+      "description": "Total fee that would have been earned on the failed forwards toward the top $topN destination peers (ranked by missed fee). Forwards that failed with Outcome = 2 and WireFailureCode = 15 (temporary_channel_failure) in the window. Shown in BTC with 2 decimals.",
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "thresholds"
+          },
+          "decimals": 2,
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "red",
+                "value": null
+              }
+            ]
+          },
+          "unit": "locale"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 7,
+        "w": 5,
+        "x": 0,
+        "y": 210
+      },
+      "id": 303,
+      "options": {
+        "colorMode": "value",
+        "graphMode": "area",
+        "justifyMode": "auto",
+        "orientation": "auto",
+        "percentChangeColorMode": "standard",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "showPercentChange": false,
+        "textMode": "auto",
+        "wideLayout": true
+      },
+      "pluginVersion": "12.4.2",
+      "targets": [
+        {
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "$datasource"
+          },
+          "editorMode": "code",
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "WITH missed AS (SELECT \"OutgoingPeerAlias\" AS dest, SUM(\"FeeMsat\") AS missed_fee_msat FROM \"ForwardingHtlcEvents\" WHERE $__timeFilter(\"EventTimestamp\") AND \"Outcome\" = 2 AND \"WireFailureCode\" = 15 AND \"ManagedNodePubKey\" IN ($node) AND \"OutgoingPeerAlias\" IS NOT NULL GROUP BY \"OutgoingPeerAlias\"), topn AS (SELECT missed_fee_msat FROM missed ORDER BY missed_fee_msat DESC LIMIT $topN) SELECT COALESCE(SUM(missed_fee_msat) * $feeMultiplier / 100000000000.0, 0) AS \"Missed Fee (BTC)\" FROM topn",
+          "refId": "A"
+        }
+      ],
+      "title": "Missed Fee — Top N Destinations (BTC)",
+      "type": "stat"
+    },
+    {
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "$datasource"
+      },
+      "description": "Total missed volume toward the top $topN peers over the selected window — the raw SUM(OutgoingAmountMsat) in BTC. This is the cumulative volume that could not be routed (the full liquidity demand, not turnover-adjusted). The 'with Liquidity Days' panel turns it into a turnover-sized deployable estimate. Shown in BTC with 2 decimals. Missed = Outcome 2 with WireFailureCode 15.",
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "thresholds"
+          },
+          "decimals": 2,
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "blue",
+                "value": null
+              }
+            ]
+          },
+          "unit": "locale"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 7,
+        "w": 5,
+        "x": 5,
+        "y": 210
+      },
+      "id": 300,
+      "options": {
+        "colorMode": "value",
+        "graphMode": "area",
+        "justifyMode": "auto",
+        "orientation": "auto",
+        "percentChangeColorMode": "standard",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "showPercentChange": false,
+        "textMode": "auto",
+        "wideLayout": true
+      },
+      "pluginVersion": "12.4.2",
+      "targets": [
+        {
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "$datasource"
+          },
+          "editorMode": "code",
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "WITH missed AS (SELECT \"OutgoingPeerAlias\" AS dest, SUM(\"FeeMsat\") AS missed_fee_msat, SUM(COALESCE(\"OutgoingAmountMsat\", \"IncomingAmountMsat\")) AS missed_volume_msat FROM \"ForwardingHtlcEvents\" WHERE $__timeFilter(\"EventTimestamp\") AND \"Outcome\" = 2 AND \"WireFailureCode\" = 15 AND \"ManagedNodePubKey\" IN ($node) AND \"OutgoingPeerAlias\" IS NOT NULL GROUP BY \"OutgoingPeerAlias\"), topn AS (SELECT missed_volume_msat, missed_fee_msat FROM missed ORDER BY missed_fee_msat DESC LIMIT $topN), agg AS (SELECT COALESCE(SUM(missed_volume_msat), 0) AS vol_msat FROM topn) SELECT agg.vol_msat / 100000000000.0 AS \"Required Liquidity (BTC)\" FROM agg",
+          "refId": "A"
+        }
+      ],
+      "title": "Required Liquidity — Top N Destinations (BTC)",
+      "type": "stat"
+    },
+    {
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "$datasource"
+      },
+      "description": "Required liquidity to deploy toward the top $topN peers, sized at $liquidityDays Liquidity Day(s): (Missed Volume / window days) × Liquidity Days. This is the capital base used by the Potential Missed APR and Raw Yield panels. Shown in BTC with 2 decimals. Missed = Outcome 2 with WireFailureCode 15.",
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "thresholds"
+          },
+          "decimals": 2,
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "blue",
+                "value": null
+              }
+            ]
+          },
+          "unit": "locale"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 7,
+        "w": 5,
+        "x": 10,
+        "y": 210
+      },
+      "id": 307,
+      "options": {
+        "colorMode": "value",
+        "graphMode": "area",
+        "justifyMode": "auto",
+        "orientation": "auto",
+        "percentChangeColorMode": "standard",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "showPercentChange": false,
+        "textMode": "auto",
+        "wideLayout": true
+      },
+      "pluginVersion": "12.4.2",
+      "targets": [
+        {
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "$datasource"
+          },
+          "editorMode": "code",
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "WITH missed AS (SELECT \"OutgoingPeerAlias\" AS dest, SUM(\"FeeMsat\") AS missed_fee_msat, SUM(COALESCE(\"OutgoingAmountMsat\", \"IncomingAmountMsat\")) AS missed_volume_msat FROM \"ForwardingHtlcEvents\" WHERE $__timeFilter(\"EventTimestamp\") AND \"Outcome\" = 2 AND \"WireFailureCode\" = 15 AND \"ManagedNodePubKey\" IN ($node) AND \"OutgoingPeerAlias\" IS NOT NULL GROUP BY \"OutgoingPeerAlias\"), topn AS (SELECT missed_volume_msat, missed_fee_msat FROM missed ORDER BY missed_fee_msat DESC LIMIT $topN), agg AS (SELECT COALESCE(SUM(missed_volume_msat), 0) AS vol_msat FROM topn) SELECT agg.vol_msat * $liquidityDays / (100000000000.0 * GREATEST(EXTRACT(EPOCH FROM ($__timeTo()::timestamptz - $__timeFrom()::timestamptz)) / 86400.0, 0.000001)) AS \"Required Liquidity w/ Liquidity Days (BTC)\" FROM agg",
+          "refId": "A"
+        }
+      ],
+      "title": "Required Liquidity (with Liquidity Days) — Top N (BTC)",
+      "type": "stat"
+    },
+    {
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "$datasource"
+      },
+      "description": "Annualized return on the liquidity you'd deploy to capture the top $topN peers' misses: (missed_fee_sats * Fee Rate Multiplier / Required Liquidity) * (365 / window_days), which reduces to missed fee rate × 365 / Liquidity Days. Compare against your Combined APR or hurdle rate — higher means these peers earn more per BTC than your book, i.e. worth adding liquidity. The size of the opportunity is in the Missed Fee and Required Liquidity panels. Missed = Outcome 2 with WireFailureCode 15.",
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "thresholds"
+          },
+          "decimals": 2,
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "yellow",
+                "value": 0.02
+              },
+              {
+                "color": "orange",
+                "value": 0.05
+              },
+              {
+                "color": "red",
+                "value": 0.1
+              }
+            ]
+          },
+          "unit": "percentunit"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 7,
+        "w": 5,
+        "x": 15,
+        "y": 210
+      },
+      "id": 302,
+      "options": {
+        "colorMode": "value",
+        "graphMode": "area",
+        "justifyMode": "auto",
+        "orientation": "auto",
+        "percentChangeColorMode": "standard",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "showPercentChange": false,
+        "textMode": "auto",
+        "wideLayout": true
+      },
+      "pluginVersion": "12.4.2",
+      "targets": [
+        {
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "$datasource"
+          },
+          "editorMode": "code",
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "WITH missed AS (SELECT \"OutgoingPeerAlias\" AS dest, SUM(\"FeeMsat\") AS missed_fee_msat, SUM(COALESCE(\"OutgoingAmountMsat\", \"IncomingAmountMsat\")) AS missed_volume_msat FROM \"ForwardingHtlcEvents\" WHERE $__timeFilter(\"EventTimestamp\") AND \"Outcome\" = 2 AND \"WireFailureCode\" = 15 AND \"ManagedNodePubKey\" IN ($node) AND \"OutgoingPeerAlias\" IS NOT NULL GROUP BY \"OutgoingPeerAlias\"), topn AS (SELECT missed_fee_msat, missed_volume_msat FROM missed ORDER BY missed_fee_msat DESC LIMIT $topN), agg AS (SELECT COALESCE(SUM(missed_fee_msat) / 1000.0, 0) AS fee_sats, COALESCE(SUM(missed_volume_msat) / 1000.0, 0) AS vol_sats FROM topn) SELECT CASE WHEN agg.vol_sats > 0 THEN (agg.fee_sats * $feeMultiplier / agg.vol_sats) * 365.0 / $liquidityDays ELSE NULL END AS \"Potential Missed APR\" FROM agg",
+          "refId": "A"
+        }
+      ],
+      "title": "Potential Missed APR — Top N Destinations",
+      "type": "stat"
+    },
+    {
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "$datasource"
+      },
+      "description": "Period (NOT annualized) return on the deployed liquidity for the top $topN peers: missed_fee_sats * Fee Rate Multiplier / Required Liquidity over the selected window, shown as a percentage. The value the Potential Missed APR panel annualizes (× 365 / window_days). Missed = Outcome 2 with WireFailureCode 15.",
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "thresholds"
+          },
+          "decimals": 4,
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "red",
+                "value": null
+              },
+              {
+                "color": "green",
+                "value": 0
+              }
+            ]
+          },
+          "unit": "percentunit"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 7,
+        "w": 4,
+        "x": 20,
+        "y": 210
+      },
+      "id": 304,
+      "options": {
+        "colorMode": "value",
+        "graphMode": "area",
+        "justifyMode": "auto",
+        "orientation": "auto",
+        "percentChangeColorMode": "standard",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "showPercentChange": false,
+        "textMode": "auto",
+        "wideLayout": true
+      },
+      "pluginVersion": "12.4.2",
+      "targets": [
+        {
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "$datasource"
+          },
+          "editorMode": "code",
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "WITH bounds AS (SELECT GREATEST(EXTRACT(EPOCH FROM ($__timeTo()::timestamptz - $__timeFrom()::timestamptz)) / 86400.0, 0.000001) AS window_days), missed AS (SELECT \"OutgoingPeerAlias\" AS dest, SUM(\"FeeMsat\") AS missed_fee_msat, SUM(COALESCE(\"OutgoingAmountMsat\", \"IncomingAmountMsat\")) AS missed_volume_msat FROM \"ForwardingHtlcEvents\" WHERE $__timeFilter(\"EventTimestamp\") AND \"Outcome\" = 2 AND \"WireFailureCode\" = 15 AND \"ManagedNodePubKey\" IN ($node) AND \"OutgoingPeerAlias\" IS NOT NULL GROUP BY \"OutgoingPeerAlias\"), topn AS (SELECT missed_fee_msat, missed_volume_msat FROM missed ORDER BY missed_fee_msat DESC LIMIT $topN), agg AS (SELECT COALESCE(SUM(missed_fee_msat) / 1000.0, 0) AS fee_sats, COALESCE(SUM(missed_volume_msat) / 1000.0, 0) AS vol_sats FROM topn) SELECT CASE WHEN agg.vol_sats > 0 THEN (agg.fee_sats * $feeMultiplier / agg.vol_sats) * b.window_days / $liquidityDays ELSE NULL END AS \"Potential Missed Raw Yield\" FROM agg, bounds b",
+          "refId": "A"
+        }
+      ],
+      "title": "Potential Missed Raw Yield — Top N Destinations",
+      "type": "stat"
+    },
+    {
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "$datasource"
+      },
+      "description": "Rolling return on the liquidity you'd deploy to capture the top $topN peers' misses: (rolling missed fee × Fee Rate Multiplier / rolling missed volume) × 365 / Liquidity Days over the last $aprWindow. The fee-rate ratio is window-independent, so the APR Window only smooths the line — Day/Week/Month converge to the same level. Missed = Outcome 2 with WireFailureCode 15.",
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "axisBorderShow": false,
+            "axisCenteredZero": false,
+            "axisColorMode": "text",
+            "axisLabel": "",
+            "axisPlacement": "auto",
+            "barAlignment": 0,
+            "drawStyle": "line",
+            "fillOpacity": 0,
+            "gradientMode": "none",
+            "hideFrom": {
+              "legend": false,
+              "tooltip": false,
+              "viz": false
+            },
+            "lineInterpolation": "linear",
+            "lineWidth": 1,
+            "pointSize": 5,
+            "scaleDistribution": {
+              "type": "linear"
+            },
+            "showPoints": "auto",
+            "spanNulls": false,
+            "stacking": {
+              "group": "A",
+              "mode": "none"
+            },
+            "thresholdsStyle": {
+              "mode": "off"
+            }
+          },
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          }
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byRegexp",
+              "options": ".* APR$"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "percentunit"
+              },
+              {
+                "id": "decimals",
+                "value": 2
+              },
+              {
+                "id": "custom.axisPlacement",
+                "value": "left"
+              }
+            ]
+          }
+        ]
+      },
+      "gridPos": {
+        "h": 9,
+        "w": 24,
+        "x": 0,
+        "y": 217
+      },
+      "id": 301,
+      "options": {
+        "legend": {
+          "calcs": [
+            "mean",
+            "lastNotNull"
+          ],
+          "displayMode": "table",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "pluginVersion": "12.4.2",
+      "targets": [
+        {
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "$datasource"
+          },
+          "editorMode": "code",
+          "format": "time_series",
+          "rawQuery": true,
+          "rawSql": "WITH top_dest AS (SELECT \"OutgoingPeerAlias\" AS dest FROM \"ForwardingHtlcEvents\" WHERE $__timeFilter(\"EventTimestamp\") AND \"Outcome\" = 2 AND \"WireFailureCode\" = 15 AND \"ManagedNodePubKey\" IN ($node) AND \"OutgoingPeerAlias\" IS NOT NULL GROUP BY \"OutgoingPeerAlias\" ORDER BY SUM(\"FeeMsat\") DESC LIMIT $topN), buckets AS (SELECT generate_series(date_trunc('hour', $__timeFrom()::timestamptz), $__timeTo()::timestamptz, INTERVAL '1 hour') AS bucket_start), event_hours AS (SELECT date_trunc('hour', f.\"EventTimestamp\") AS bucket_start, SUM(f.\"FeeMsat\") / 1000.0 AS fee_sats, SUM(COALESCE(f.\"OutgoingAmountMsat\", f.\"IncomingAmountMsat\")) / 1000.0 AS vol_sats FROM \"ForwardingHtlcEvents\" f JOIN top_dest t ON t.dest = f.\"OutgoingPeerAlias\" WHERE $__timeFilter(f.\"EventTimestamp\") AND f.\"Outcome\" = 2 AND f.\"WireFailureCode\" = 15 AND f.\"ManagedNodePubKey\" IN ($node) GROUP BY 1), hourly AS (SELECT b.bucket_start, COALESCE(e.fee_sats, 0) AS fee_sats, COALESCE(e.vol_sats, 0) AS vol_sats FROM buckets b LEFT JOIN event_hours e ON e.bucket_start = b.bucket_start), rolling AS (SELECT bucket_start, SUM(fee_sats) OVER w AS r_fee, SUM(vol_sats) OVER w AS r_vol FROM hourly WINDOW w AS (ORDER BY bucket_start ROWS BETWEEN (CASE '$aprWindow' WHEN 'day' THEN 23 WHEN 'week' THEN 167 ELSE 719 END) PRECEDING AND CURRENT ROW)) SELECT bucket_start AS \"time\", 'Potential Missed APR' AS metric, CASE WHEN r_vol > 0 THEN (r_fee::numeric * $feeMultiplier / r_vol) * 365.0 / $liquidityDays ELSE NULL END AS value FROM rolling ORDER BY bucket_start",
+          "refId": "A"
+        }
+      ],
+      "title": "Potential Missed APR over time — Top N Destinations",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "$datasource"
+      },
+      "description": "Required liquidity over time for the top $topN peers, as two series: 'Required Liquidity' = (daily missed flow) × Liquidity Days — matches the Required Liquidity stat (id 300); and 'Required Liquidity (excl. Liquidity Days)' = the daily missed flow itself, the demand independent of the turnover knob. Both in BTC. They coincide at Liquidity Days = 1 and diverge as you raise it. The APR Window only smooths. Missed = Outcome 2 with WireFailureCode 15.",
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "axisBorderShow": false,
+            "axisCenteredZero": false,
+            "axisColorMode": "text",
+            "axisLabel": "",
+            "axisPlacement": "auto",
+            "barAlignment": 0,
+            "drawStyle": "line",
+            "fillOpacity": 10,
+            "gradientMode": "none",
+            "hideFrom": {
+              "legend": false,
+              "tooltip": false,
+              "viz": false
+            },
+            "lineInterpolation": "linear",
+            "lineWidth": 1,
+            "pointSize": 5,
+            "scaleDistribution": {
+              "type": "linear"
+            },
+            "showPoints": "auto",
+            "spanNulls": false,
+            "stacking": {
+              "group": "A",
+              "mode": "none"
+            },
+            "thresholdsStyle": {
+              "mode": "off"
+            }
+          },
+          "decimals": 4,
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "blue",
+                "value": null
+              }
+            ]
+          },
+          "unit": "locale"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 9,
+        "w": 24,
+        "x": 0,
+        "y": 226
+      },
+      "id": 306,
+      "options": {
+        "legend": {
+          "calcs": [
+            "mean",
+            "lastNotNull"
+          ],
+          "displayMode": "table",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "pluginVersion": "12.4.2",
+      "targets": [
+        {
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "$datasource"
+          },
+          "editorMode": "code",
+          "format": "time_series",
+          "rawQuery": true,
+          "rawSql": "WITH top_dest AS (SELECT \"OutgoingPeerAlias\" AS dest FROM \"ForwardingHtlcEvents\" WHERE $__timeFilter(\"EventTimestamp\") AND \"Outcome\" = 2 AND \"WireFailureCode\" = 15 AND \"ManagedNodePubKey\" IN ($node) AND \"OutgoingPeerAlias\" IS NOT NULL GROUP BY \"OutgoingPeerAlias\" ORDER BY SUM(\"FeeMsat\") DESC LIMIT $topN), buckets AS (SELECT generate_series(date_trunc('hour', $__timeFrom()::timestamptz), $__timeTo()::timestamptz, INTERVAL '1 hour') AS bucket_start), event_hours AS (SELECT date_trunc('hour', f.\"EventTimestamp\") AS bucket_start, SUM(COALESCE(f.\"OutgoingAmountMsat\", f.\"IncomingAmountMsat\")) / 1000.0 AS vol_sats FROM \"ForwardingHtlcEvents\" f JOIN top_dest t ON t.dest = f.\"OutgoingPeerAlias\" WHERE $__timeFilter(f.\"EventTimestamp\") AND f.\"Outcome\" = 2 AND f.\"WireFailureCode\" = 15 AND f.\"ManagedNodePubKey\" IN ($node) GROUP BY 1), hourly AS (SELECT b.bucket_start, COALESCE(e.vol_sats, 0) AS vol_sats FROM buckets b LEFT JOIN event_hours e ON e.bucket_start = b.bucket_start), rolling AS (SELECT bucket_start, SUM(vol_sats) OVER w AS r_vol FROM hourly WINDOW w AS (ORDER BY bucket_start ROWS BETWEEN (CASE '$aprWindow' WHEN 'day' THEN 23 WHEN 'week' THEN 167 ELSE 719 END) PRECEDING AND CURRENT ROW)), daily AS (SELECT bucket_start, (r_vol / (CASE '$aprWindow' WHEN 'day' THEN 1 WHEN 'week' THEN 7 ELSE 30 END)) / 100000000.0 AS req_liq_base FROM rolling) SELECT bucket_start AS \"time\", 'Required Liquidity' AS metric, req_liq_base * $liquidityDays AS value FROM daily UNION ALL SELECT bucket_start AS \"time\", 'Required Liquidity (excl. Liquidity Days)' AS metric, req_liq_base AS value FROM daily ORDER BY 1, 2",
+          "refId": "A"
+        }
+      ],
+      "title": "Required Liquidity over time — Top N Destinations (BTC)",
+      "type": "timeseries"
     }
   ],
   "preload": false,
@@ -5541,6 +6116,140 @@
           }
         ],
         "query": "Day : day, Week : week, Month : month",
+        "queryValue": "",
+        "skipUrlSync": false,
+        "type": "custom"
+      },
+      {
+        "current": {
+          "selected": true,
+          "text": "5",
+          "value": "5"
+        },
+        "description": "Number of top destination peers (ranked by missed fee) included in the Missed-Fee Opportunity panels.",
+        "hide": 0,
+        "includeAll": false,
+        "label": "Top N Destinations",
+        "multi": false,
+        "name": "topN",
+        "options": [
+          {
+            "selected": false,
+            "text": "3",
+            "value": "3"
+          },
+          {
+            "selected": true,
+            "text": "5",
+            "value": "5"
+          },
+          {
+            "selected": false,
+            "text": "10",
+            "value": "10"
+          },
+          {
+            "selected": false,
+            "text": "20",
+            "value": "20"
+          }
+        ],
+        "query": "3 : 3, 5 : 5, 10 : 10, 20 : 20",
+        "queryValue": "",
+        "skipUrlSync": false,
+        "type": "custom"
+      },
+      {
+        "allowCustomValue": true,
+        "current": {
+          "selected": true,
+          "text": "1",
+          "value": "1"
+        },
+        "description": "What-if multiplier applied to the missed (would-be-earned) fees. 1 = current fee policy; >1 simulates raising fee rates, <1 lowering them. Scales the Missed Fee, Potential Missed APR, Potential Missed Raw Yield and the APR-over-time panels. Required Liquidity (volume) is not affected, and the top-N ranking is unchanged. You can type any number.",
+        "hide": 0,
+        "includeAll": false,
+        "label": "Fee Rate Multiplier",
+        "multi": false,
+        "name": "feeMultiplier",
+        "options": [
+          {
+            "selected": false,
+            "text": "0.5",
+            "value": "0.5"
+          },
+          {
+            "selected": true,
+            "text": "1",
+            "value": "1"
+          },
+          {
+            "selected": false,
+            "text": "1.5",
+            "value": "1.5"
+          },
+          {
+            "selected": false,
+            "text": "2",
+            "value": "2"
+          },
+          {
+            "selected": false,
+            "text": "3",
+            "value": "3"
+          },
+          {
+            "selected": false,
+            "text": "5",
+            "value": "5"
+          }
+        ],
+        "query": "0.5 : 0.5, 1 : 1, 1.5 : 1.5, 2 : 2, 3 : 3, 5 : 5",
+        "queryValue": "",
+        "skipUrlSync": false,
+        "type": "custom"
+      },
+      {
+        "allowCustomValue": true,
+        "current": {
+          "selected": true,
+          "text": "1",
+          "value": "1"
+        },
+        "description": "How many days of the missed flow you'd hold as deployed liquidity, used to size Required Liquidity = (Missed Volume / window days) × this. Higher = more capital held, more conservative, lower APR. Potential Missed APR = missed fee rate × 365 / Liquidity Days.",
+        "hide": 0,
+        "includeAll": false,
+        "label": "Liquidity Days",
+        "multi": false,
+        "name": "liquidityDays",
+        "options": [
+          {
+            "selected": false,
+            "text": "0.5",
+            "value": "0.5"
+          },
+          {
+            "selected": true,
+            "text": "1",
+            "value": "1"
+          },
+          {
+            "selected": false,
+            "text": "2",
+            "value": "2"
+          },
+          {
+            "selected": false,
+            "text": "7",
+            "value": "7"
+          },
+          {
+            "selected": false,
+            "text": "30",
+            "value": "30"
+          }
+        ],
+        "query": "0.5 : 0.5, 1 : 1, 2 : 2, 7 : 7, 30 : 30",
         "queryValue": "",
         "skipUrlSync": false,
         "type": "custom"
