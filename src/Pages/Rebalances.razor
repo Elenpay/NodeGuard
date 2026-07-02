@@ -148,7 +148,7 @@
                         @if (!string.IsNullOrEmpty(context.TargetPubkey))
                         {
                             <Tooltip Text="@context.TargetPubkey" Placement="TooltipPlacement.Top">
-                                @StringHelper.TruncateTail(context.TargetPubkey, 10)
+                                @PeerLabel(context.TargetPubkey)
                             </Tooltip>
                         }
                         else
@@ -229,7 +229,12 @@
 @inject IRebalanceRepository RebalanceRepository
 @inject IApplicationUserRepository ApplicationUserRepository
 @inject IToastService ToastService
+@inject ILightningService LightningService
+@inject ILogger<Rebalances> Logger
 @code {
+    // Friendly label per target pubkey for the "Target Peer" column: managed node name > LN alias
+    // > short pubkey. Populated on data load so the (sync) column template can read it.
+    private Dictionary<string, string> _peerLabels = new();
     [CascadingParameter] private ApplicationUser? LoggedUser { get; set; }
 
     private DataGrid<Rebalance> _dataGrid = new();
@@ -297,7 +302,46 @@
 
         _rebalances = rows;
         _totalItems = total;
+        await ResolvePeerLabelsAsync(rows);
     }
+
+    // Resolves each distinct target pubkey to a human-readable label: a managed node's name if we
+    // operate it (instant), otherwise its Lightning alias (best-effort), else null (column then
+    // falls back to the short pubkey).
+    private async Task ResolvePeerLabelsAsync(IEnumerable<Rebalance> rows)
+    {
+        var pubkeys = rows
+            .Select(r => r.TargetPubkey)
+            .Where(pk => !string.IsNullOrEmpty(pk))
+            .Distinct()
+            .ToList();
+
+        foreach (var pk in pubkeys)
+        {
+            if (_peerLabels.ContainsKey(pk!)) continue;
+
+            var managedName = _availableNodes.FirstOrDefault(n => n.PubKey == pk)?.Name;
+            if (!string.IsNullOrWhiteSpace(managedName))
+            {
+                _peerLabels[pk!] = managedName!;
+                continue;
+            }
+
+            try
+            {
+                var alias = (await LightningService.GetNodeInfo(pk!))?.Alias;
+                if (!string.IsNullOrWhiteSpace(alias)) _peerLabels[pk!] = alias!;
+            }
+            catch (Exception ex)
+            {
+                Logger.LogDebug(ex, "Could not resolve alias for target peer {Pubkey}", pk);
+            }
+        }
+    }
+
+    // Label for the Target Peer column: resolved name/alias if known, else the short pubkey.
+    private string PeerLabel(string pubkey)
+        => _peerLabels.TryGetValue(pubkey, out var label) ? label : StringHelper.TruncateTail(pubkey, 10);
 
     private async Task OnFiltersChanged() => await _dataGrid.Reload();
 
