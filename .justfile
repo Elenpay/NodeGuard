@@ -106,7 +106,16 @@ docker-down:
 
 # Stops the development docker containers and removes the volumes, add DOCKER_COMPOSE_FILE to override the default file
 docker-rm:
-    docker compose --profile polar --profile loop --profile 40swap -f {{DOCKER_COMPOSE_FILE}} down -v
+    docker compose --profile polar --profile loop --profile 40swap --profile e2e --profile mempool -f {{DOCKER_COMPOSE_FILE}} down -v
+
+# Runs the option-B end-to-end rebalance test in containers: brings up the regtest stack + a live
+# NodeGuard, then the runner opens a channel via gRPC and rebalances. Exit code = test result.
+# Starts from a CLEAN slate (down -v first) — DbInitializer only funds the dev wallets when the DB
+# has none, so a stale postgres volume would leave the wallet unfunded ("no UTXOs" on OpenChannel).
+test-e2e:
+    -docker compose --profile polar --profile e2e -f {{DOCKER_COMPOSE_FILE}} down -v --remove-orphans
+    docker compose --profile polar --profile e2e -f {{DOCKER_COMPOSE_FILE}} run --rm --build e2e-runner
+    docker compose --profile polar --profile e2e -f {{DOCKER_COMPOSE_FILE}} down -v --remove-orphans
 
 ##########
 # Dapr #
