@@ -6,11 +6,16 @@ name: CI
 # "Required only on code changes": the test/build jobs are gated on a paths filter via job-level
 # `if` (NOT `on.paths`). On a docs-only PR the jobs are skipped, and GitHub treats a skipped
 # required status check as passing — so unrelated PRs aren't blocked, while C#/version/dependency
-# PRs must pass unit + e2e.
+# PRs must pass unit tests.
+#
+# e2e is opt-in per PR via the `run-e2e-tests` label: it runs only while that label is present.
+# `labeled`/`unlabeled` are in the trigger list so adding the label starts a run and removing it
+# starts a fresh run where e2e is skipped; the `concurrency` block cancels the in-flight run so a
+# still-running e2e is stopped when the label is removed.
 on:
   pull_request:
     branches: [ main ]
-    types: [ opened, synchronize, reopened ]
+    types: [ opened, synchronize, reopened, labeled, unlabeled ]
   push:
     branches: [ main, master ]
     tags:
@@ -26,6 +31,12 @@ permissions:
 env:
   REGISTRY: ghcr.io
   IMAGE_NAME: ${{ github.repository }}
+
+# One in-flight run per PR (or per ref for pushes). Removing the `run-e2e-tests` label triggers a
+# new run that cancels the previous one, stopping an e2e job that was still executing.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
 
 jobs:
   # Detects whether C# code, versions, or dependencies changed. Everything else gates on this.
@@ -79,11 +90,19 @@ jobs:
 
   e2e-test:
     needs: changes
-    if: ${{ needs.changes.outputs.code == 'true' || github.event_name == 'workflow_dispatch' || startsWith(github.ref, 'refs/tags/') }}
+    # Same code/dispatch/tag gate as unit tests, but on PRs it additionally requires the
+    # `run-e2e-tests` label. Adding the label starts an e2e run; removing it re-runs the workflow
+    # with e2e skipped (a skipped required check counts as passing, so the PR isn't blocked).
+    if: >-
+      ${{ ( needs.changes.outputs.code == 'true'
+            && ( github.event_name != 'pull_request'
+                 || contains(github.event.pull_request.labels.*.name, 'run-e2e-tests') ) )
+          || github.event_name == 'workflow_dispatch'
+          || startsWith(github.ref, 'refs/tags/') }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: E2E (open channel via gRPC + circular rebalance against a live NodeGuard)
+      - name: Run e2e tests
         # Clean slate first (DbInitializer only funds the dev wallets on an empty DB), then `run`
         # brings up the chain (bitcoind → alice/bob/carol → setup-e2e + extract-env → nodeguard →
         # e2e-runner). The runner's exit code becomes the job result.
