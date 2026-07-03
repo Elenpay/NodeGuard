@@ -801,6 +801,124 @@ namespace NodeGuard.Rpc
             await resp.Should().ThrowAsync<RpcException>();
         }
 
+        [Fact]
+        public async Task RequestWithdrawal_NonCustomFeeType_SnapshotsRecommendedFeeRate()
+        {
+            //Arrange
+            var wallet = InitMockRequestWithdrawal(out var walletRepository,
+                out var nbxplorerService,
+                out _,
+                out _,
+                out _,
+                out _,
+                out _,
+                out var bitcoinService,
+                out var walletWithdrawalRequestRepository, out var mockScheduler);
+
+            wallet.IsHotWallet = false;
+
+            // The recommended fee for the selected type is resolved live from mempool.space at request time
+            const decimal recommendedFeeRate = 42m;
+            nbxplorerService
+                .Setup(x => x.GetFeesByType(MempoolRecommendedFeesType.HourFee, It.IsAny<CancellationToken>()))
+                .ReturnsAsync(recommendedFeeRate);
+
+            WalletWithdrawalRequest? capturedRequest = null;
+            walletWithdrawalRequestRepository.Setup(x => x.AddAsync(It.IsAny<WalletWithdrawalRequest>()))
+                .Callback<WalletWithdrawalRequest>(r => capturedRequest = r)
+                .ReturnsAsync((true, null));
+
+            var mockNodeGuardService = CreateNodeGuardService(
+                walletRepository: walletRepository.Object,
+                walletWithdrawalRequestRepository: walletWithdrawalRequestRepository.Object,
+                bitcoinService: bitcoinService.Object,
+                nbXplorerService: nbxplorerService.Object,
+                schedulerFactory: mockScheduler);
+
+            var requestWithdrawalRequest = new RequestWithdrawalRequest
+            {
+                WalletId = wallet.Id,
+                Description = $"Request Withdrawal Test {DateTime.Now}",
+                MempoolFeeRate = FEES_TYPE.HourFee,
+                Destinations =
+                {
+                    new Destination
+                    {
+                        Address = "bcrt1q590shaxaf5u08ml8jwlzghz99dup3z9592vxal",
+                        AmountSats = new Money(1, MoneyUnit.BTC).Satoshi
+                    }
+                }
+            };
+
+            //Act
+            await mockNodeGuardService.RequestWithdrawal(requestWithdrawalRequest, TestServerCallContext.Create());
+
+            //Assert
+            capturedRequest.Should().NotBeNull();
+            capturedRequest!.MempoolRecommendedFeesType.Should().Be(MempoolRecommendedFeesType.HourFee);
+            // CustomFeeRate must hold the recommended fee snapshot, not the proto default (0)
+            capturedRequest.CustomFeeRate.Should().Be(recommendedFeeRate);
+        }
+
+        [Fact]
+        public async Task RequestWithdrawal_CustomFeeType_KeepsRequestCustomFeeRate()
+        {
+            //Arrange
+            var wallet = InitMockRequestWithdrawal(out var walletRepository,
+                out var nbxplorerService,
+                out _,
+                out _,
+                out _,
+                out _,
+                out _,
+                out var bitcoinService,
+                out var walletWithdrawalRequestRepository, out var mockScheduler);
+
+            wallet.IsHotWallet = false;
+
+            const int customFeeRate = 15;
+
+            WalletWithdrawalRequest? capturedRequest = null;
+            walletWithdrawalRequestRepository.Setup(x => x.AddAsync(It.IsAny<WalletWithdrawalRequest>()))
+                .Callback<WalletWithdrawalRequest>(r => capturedRequest = r)
+                .ReturnsAsync((true, null));
+
+            var mockNodeGuardService = CreateNodeGuardService(
+                walletRepository: walletRepository.Object,
+                walletWithdrawalRequestRepository: walletWithdrawalRequestRepository.Object,
+                bitcoinService: bitcoinService.Object,
+                nbXplorerService: nbxplorerService.Object,
+                schedulerFactory: mockScheduler);
+
+            var requestWithdrawalRequest = new RequestWithdrawalRequest
+            {
+                WalletId = wallet.Id,
+                Description = $"Request Withdrawal Test {DateTime.Now}",
+                MempoolFeeRate = FEES_TYPE.CustomFee,
+                CustomFeeRate = customFeeRate,
+                Destinations =
+                {
+                    new Destination
+                    {
+                        Address = "bcrt1q590shaxaf5u08ml8jwlzghz99dup3z9592vxal",
+                        AmountSats = new Money(1, MoneyUnit.BTC).Satoshi
+                    }
+                }
+            };
+
+            //Act
+            await mockNodeGuardService.RequestWithdrawal(requestWithdrawalRequest, TestServerCallContext.Create());
+
+            //Assert
+            capturedRequest.Should().NotBeNull();
+            capturedRequest!.MempoolRecommendedFeesType.Should().Be(MempoolRecommendedFeesType.CustomFee);
+            capturedRequest.CustomFeeRate.Should().Be(customFeeRate);
+            // For a custom fee we must not override the caller's value with a mempool recommendation
+            nbxplorerService.Verify(
+                x => x.GetFeesByType(MempoolRecommendedFeesType.CustomFee, It.IsAny<CancellationToken>()),
+                Times.Never);
+        }
+
         private Wallet InitMockRequestWithdrawal(out Mock<IWalletRepository> walletRepository,
             out Mock<INBXplorerService> nbxplorerService,
             out KeyPathInformation keypath, out PSBT psbt, out UTXOChanges utxoChanges, out PSBTInput input,
