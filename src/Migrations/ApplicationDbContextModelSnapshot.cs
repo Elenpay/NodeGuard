@@ -1131,6 +1131,9 @@ namespace NodeGuard.Migrations
                     b.Property<long>("RequestedAmountSats")
                         .HasColumnType("bigint");
 
+                    b.Property<long?>("ReservedFeeSats")
+                        .HasColumnType("bigint");
+
                     b.Property<double?>("RetryMaxFeePct")
                         .HasColumnType("double precision");
 
