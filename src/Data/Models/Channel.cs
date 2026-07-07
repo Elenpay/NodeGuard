@@ -68,6 +68,12 @@ namespace NodeGuard.Data.Models
         /// </summary>
         public bool IsPrivate { get; set; }
 
+        /// <summary>
+        /// Per-channel opt-out for the Phase 2 dynamic fee engine. Defaults true; the node-level
+        /// <see cref="Node.DynamicFeeManagementEnabled"/> flag still gates all fee writes.
+        /// </summary>
+        public bool IsDynamicFeeEnabled { get; set; } = true;
+
         [NotMapped]
         public int? OpenedWithId => ChannelOperationRequests?.FirstOrDefault()?.Wallet?.Id;
 

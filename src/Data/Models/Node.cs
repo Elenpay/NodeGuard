@@ -135,6 +135,67 @@ namespace NodeGuard.Data.Models
 
         #endregion Automatic Swap Out Configuration
 
+        #region Routing Engine
+
+        /// <summary>
+        /// Master gate for the Phase 2 dynamic fee engine on this node. Defaults OFF.
+        /// </summary>
+        public bool DynamicFeeManagementEnabled { get; set; } = false;
+
+        /// <summary>
+        /// Master gate for the Phase 3 automated rebalancer on this node. Defaults OFF.
+        /// </summary>
+        public bool AutoRebalanceEnabled { get; set; } = false;
+
+        /// <summary>
+        /// Allows the fee engine to set positive inbound fees on this node. Flipped to true
+        /// alongside <see cref="DynamicFeeManagementEnabled"/> at activation. Defaults OFF.
+        /// </summary>
+        public bool AllowPositiveInboundFees { get; set; } = false;
+
+        /// <summary>
+        /// When <see cref="DynamicFeeManagementEnabled"/> flips off, restore each channel's
+        /// captured fee baseline in one final write. When false, last-set fees are frozen.
+        /// Defaults ON.
+        /// </summary>
+        public bool RestoreFeeBaselineOnDisable { get; set; } = true;
+
+        /// <summary>
+        /// Per-node dry-run for the routing-engine actuators (Phase 2 fee engine, Phase 3
+        /// rebalancer): when true they log the fee/rebalance they would perform without calling
+        /// LND. Lets an operator stage a node in dry-run and take it live one node at a time.
+        /// Defaults ON (safe). The global <c>Constants.ROUTING_ENGINE_DRY_RUN</c> is a master
+        /// override — an actuator writes for real only when both the global flag and this are off.
+        /// </summary>
+        public bool RoutingEngineDryRun { get; set; } = true;
+
+        /// <summary>
+        /// Maximum sats spendable on rebalance fees over the budget refresh interval (Phase 3).
+        /// </summary>
+        public long? RebalanceBudgetSats { get; set; }
+
+        /// <summary>
+        /// Time interval after which the rebalance budget is refreshed (Phase 3).
+        /// </summary>
+        public TimeSpan? RebalanceBudgetRefreshInterval { get; set; }
+
+        /// <summary>
+        /// The datetime when the current rebalance budget period started (Phase 3).
+        /// </summary>
+        public DateTimeOffset? RebalanceBudgetStartDatetime { get; set; }
+
+        /// <summary>
+        /// Maximum number of concurrent (Pending/InFlight) rebalances for this node (Phase 3).
+        /// </summary>
+        public int? MaxRebalancesInFlight { get; set; }
+
+        /// <summary>
+        /// Maximum acceptable rebalance cost-to-earn ratio used by the profitability gate (Phase 3).
+        /// </summary>
+        public double? MaxRebalanceCostToEarnRatio { get; set; }
+
+        #endregion Routing Engine
+
         #region Relationships
 
         public ICollection<ChannelOperationRequest> ChannelOperationRequestsAsSource { get; set; }
