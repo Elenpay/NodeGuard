@@ -33,6 +33,7 @@ namespace NodeGuard.Services;
 public interface ILightningClientService
 {
     public Lightning.LightningClient GetLightningClient(string? endpoint);
+    public Task<GetInfoResponse?> GetInfo(Node node, Lightning.LightningClient? client = null);
     public Task<ListChannelsResponse?> ListChannels(Node node, Lightning.LightningClient? client = null);
     public Task<ChannelBalanceResponse?> ChannelBalanceAsync(Node node, Lightning.LightningClient? client = null);
     public Task<ChannelEdge?> GetChanInfo(Node node, ulong chanId, Lightning.LightningClient? client = null);
@@ -101,6 +102,24 @@ public class LightningClientService : ILightningClientService
             }
 
             return new Lightning.LightningClient(client);
+        }
+    }
+
+    public async Task<GetInfoResponse?> GetInfo(Node node, Lightning.LightningClient? client = null)
+    {
+        try
+        {
+            client ??= GetLightningClient(node.Endpoint);
+            return await client.GetInfoAsync(new GetInfoRequest(),
+                new Metadata
+                {
+                    { "macaroon", node.ChannelAdminMacaroon }
+                });
+        }
+        catch (Exception e)
+        {
+            _logger.LogError(e, "Error while getting info for node {NodeId}", node.Id);
+            return null;
         }
     }
 

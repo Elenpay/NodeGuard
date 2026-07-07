@@ -121,6 +121,14 @@ namespace NodeGuard.Services
         public Task<Channel> CreateChannel(Node source, int destId, ChannelPoint channelPoint, long satsAmount, string? closeAddress = null);
 
         /// <summary>
+        /// Gets the current chain tip (block height) as reported by the node's LND.
+        /// Returns null if the GetInfo RPC fails, so callers can skip the node cleanly.
+        /// </summary>
+        /// <param name="node"></param>
+        /// <returns></returns>
+        public Task<uint?> GetBlockHeight(Node node);
+
+        /// <summary>
         /// Lists all channels for a given node
         /// </summary>
         /// <param name="node"></param>
@@ -1538,6 +1546,14 @@ namespace NodeGuard.Services
             }
 
             return result;
+        }
+
+        public async Task<uint?> GetBlockHeight(Node node)
+        {
+            if (node == null) throw new ArgumentNullException(nameof(node));
+
+            var info = await _lightningClientService.GetInfo(node);
+            return info?.BlockHeight;
         }
 
         public async Task<ListChannelsResponse?> ListChannels(Node node)
