@@ -133,6 +133,7 @@ namespace NodeGuard
             builder.Services.AddTransient<IHtlcMonitoringScheduler, HtlcMonitoringScheduler>();
             builder.Services.AddSingleton<ILightningClientService, LightningClientService>();
             builder.Services.AddSingleton<ILightningRouterService, LightningRouterService>();
+            builder.Services.AddSingleton<IPeerCategorizationService, PeerCategorizationService>();
             builder.Services.AddSingleton<ILoopService, LoopService>();
             builder.Services.AddSingleton<IFortySwapService, FortySwapService>();
 
