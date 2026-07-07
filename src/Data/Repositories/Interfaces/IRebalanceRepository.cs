@@ -51,4 +51,17 @@ public interface IRebalanceRepository
     Task<(bool, string?)> AddAsync(Rebalance rebalance);
 
     (bool, string?) Update(Rebalance rebalance);
+
+    /// <summary>
+    /// Counts non-terminal rebalances (Pending + InFlight) for a node. Used by the Phase 3
+    /// in-flight cap. Declared in Phase 1 alongside the routing-engine repositories.
+    /// </summary>
+    Task<int> GetInFlightByNode(int nodeId);
+
+    /// <summary>
+    /// Budget consumption for a node since <paramref name="since"/> (by CreationDatetime):
+    /// non-terminal rows count MAX(FeePaidSats, ReservedFeeSats) so in-flight spend counts
+    /// immediately, Succeeded rows count FeePaidSats, other terminal rows count 0.
+    /// </summary>
+    Task<long> GetConsumedFeesSince(int nodeId, DateTimeOffset since);
 }

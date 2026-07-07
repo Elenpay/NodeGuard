@@ -138,4 +138,40 @@ public class RebalanceRepository : IRebalanceRepository
 
         return _repository.Update(rebalance, context);
     }
+
+    public async Task<int> GetInFlightByNode(int nodeId)
+    {
+        await using var context = await _dbContextFactory.CreateDbContextAsync();
+
+        return await context.Rebalances
+            .CountAsync(r => r.NodeId == nodeId
+                             && (r.Status == RebalanceStatus.Pending || r.Status == RebalanceStatus.InFlight));
+    }
+
+    public async Task<long> GetConsumedFeesSince(int nodeId, DateTimeOffset since)
+    {
+        await using var context = await _dbContextFactory.CreateDbContextAsync();
+
+        // Only rows that can have consumed budget: in-flight (reserved or partially paid) and
+        // settled. Other terminal states (Failed/NoRoute/Timeout/…) paid nothing → excluded.
+        var rows = await context.Rebalances
+            .Where(r => r.NodeId == nodeId
+                        && r.CreationDatetime >= since
+                        && (r.Status == RebalanceStatus.Pending
+                            || r.Status == RebalanceStatus.InFlight
+                            || r.Status == RebalanceStatus.Succeeded))
+            .Select(r => new { r.Status, r.FeePaidSats, r.ReservedFeeSats })
+            .ToListAsync();
+
+        long total = 0;
+        foreach (var r in rows)
+        {
+            var feePaid = r.FeePaidSats ?? 0;
+            total += r.Status == RebalanceStatus.Succeeded
+                ? feePaid
+                : Math.Max(feePaid, r.ReservedFeeSats ?? 0); // in-flight spend counts immediately
+        }
+
+        return total;
+    }
 }
