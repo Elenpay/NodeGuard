@@ -678,9 +678,9 @@
                                         policy unchanged.</FieldHelp>
                                 </Field>
                                 <Row>
-                                    <Column>
-                                        <Field>
-                                            <Validation Validator="ValidateInboundFeePolicy">
+                                    <Validation Validator="ValidateInboundFeePolicy">
+                                        <Column>
+                                            <Field>
                                                 <FieldLabel>Inbound base fee (msat)</FieldLabel>
                                                 <FieldHelp>Optional inbound base fee. When set, it must be zero or below.
                                                 </FieldHelp>
@@ -690,12 +690,10 @@
                                                         <ValidationError />
                                                     </Feedback>
                                                 </NumericEdit>
-                                            </Validation>
-                                        </Field>
-                                    </Column>
-                                    <Column>
-                                        <Field>
-                                            <Validation Validator="ValidateInboundFeePolicy">
+                                            </Field>
+                                        </Column>
+                                        <Column>
+                                            <Field>
                                                 <FieldLabel>Inbound fee rate (ppm)</FieldLabel>
                                                 <FieldHelp>Optional inbound proportional fee. When set, it must be zero
                                                     or below.</FieldHelp>
@@ -705,9 +703,9 @@
                                                         <ValidationError />
                                                     </Feedback>
                                                 </NumericEdit>
-                                            </Validation>
-                                        </Field>
-                                    </Column>
+                                            </Field>
+                                        </Column>
+                                    </Validation>
                                 </Row>
                             </Validations>
                         </TabPanel>
