@@ -544,7 +544,7 @@ public class Constants
 
         // Routing Engine — Phase 1
         ROUTING_ENGINE_ENABLED = StringHelper.IsTrue(Environment.GetEnvironmentVariable("ROUTING_ENGINE_ENABLED"));
-        ROUTING_ENGINE_DRY_RUN = Environment.GetEnvironmentVariable("ROUTING_ENGINE_DRY_RUN") != "false"; // default true
+        ROUTING_ENGINE_DRY_RUN = Environment.GetEnvironmentVariable("ROUTING_ENGINE_DRY_RUN")?.ToLowerInvariant() != "false"; // default true
 
         var reMinAgeBlocks = Environment.GetEnvironmentVariable("ROUTING_ENGINE_CATEGORIZATION_MIN_AGE_BLOCKS");
         if (reMinAgeBlocks != null) ROUTING_ENGINE_CATEGORIZATION_MIN_AGE_BLOCKS = uint.Parse(reMinAgeBlocks);
