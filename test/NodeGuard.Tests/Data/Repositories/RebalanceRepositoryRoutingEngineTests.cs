@@ -79,6 +79,28 @@ public class RebalanceRepositoryRoutingEngineTests
     }
 
     [Fact]
+    public async Task HasInFlightRebalanceBySourceChannel_TrueOnlyForPendingOrInFlightSource()
+    {
+        var (sut, seed) = SetupDb();
+        var now = DateTimeOffset.UtcNow;
+        const int chanPending = 10;
+        const int chanInFlight = 20;
+        const int chanSettled = 30;
+
+        seed.Rebalances.AddRange(
+            new Rebalance { NodeId = NodeId, SourceChannelId = chanPending, Status = RebalanceStatus.Pending, CreationDatetime = now, UpdateDatetime = now },
+            new Rebalance { NodeId = NodeId, SourceChannelId = chanInFlight, Status = RebalanceStatus.InFlight, CreationDatetime = now, UpdateDatetime = now },
+            new Rebalance { NodeId = NodeId, SourceChannelId = chanSettled, Status = RebalanceStatus.Succeeded, CreationDatetime = now, UpdateDatetime = now }
+        );
+        await seed.SaveChangesAsync();
+
+        (await sut.HasInFlightRebalanceBySourceChannel(chanPending)).Should().BeTrue();
+        (await sut.HasInFlightRebalanceBySourceChannel(chanInFlight)).Should().BeTrue();
+        (await sut.HasInFlightRebalanceBySourceChannel(chanSettled)).Should().BeFalse();
+        (await sut.HasInFlightRebalanceBySourceChannel(999)).Should().BeFalse(); // unknown channel
+    }
+
+    [Fact]
     public async Task GetConsumedFeesSince_UsesReservedOrPaidForInFlightAndPaidForSucceeded()
     {
         var (sut, seed) = SetupDb();

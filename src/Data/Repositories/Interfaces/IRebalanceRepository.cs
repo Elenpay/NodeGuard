@@ -59,6 +59,14 @@ public interface IRebalanceRepository
     Task<int> GetInFlightByNode(int nodeId);
 
     /// <summary>
+    /// True when a non-terminal rebalance (Pending/InFlight) has this channel as its source.
+    /// The Phase 2 fee engine uses this to enforce the fee-vs-rebalance authority split: while
+    /// a rebalance is moving a channel's ratio, the fee engine must not react to that manufactured
+    /// signal. <paramref name="sourceChannelId"/> is the <see cref="Channel"/> primary key.
+    /// </summary>
+    Task<bool> HasInFlightRebalanceBySourceChannel(int sourceChannelId);
+
+    /// <summary>
     /// Budget consumption for a node since <paramref name="since"/> (by CreationDatetime):
     /// non-terminal rows count MAX(FeePaidSats, ReservedFeeSats) so in-flight spend counts
     /// immediately, Succeeded rows count FeePaidSats, other terminal rows count 0.
