@@ -2302,6 +2302,86 @@ namespace NodeGuard.Services
         }
 
         [Fact]
+        public async Task SetChannelFeePolicy_EngineAllowsPositiveInbound_UpdatesPolicyAndMarksEngineWrite()
+        {
+            // Arrange — the routing-engine fee path (allowPositiveInboundFees: true) must accept a
+            // positive inbound fee rate that the manual/UI path rejects, and mark the audit log.
+            var channelRepository = new Mock<IChannelRepository>();
+            var nodeRepository = new Mock<INodeRepository>();
+            var lightningClientService = new Mock<ILightningClientService>();
+            var dbContextFactory = new Mock<IDbContextFactory<ApplicationDbContext>>();
+            var options = new DbContextOptionsBuilder<ApplicationDbContext>()
+                .UseInMemoryDatabase(databaseName: $"SetChannelFeePolicyEngine_{Guid.NewGuid()}")
+                .Options;
+            dbContextFactory
+                .Setup(x => x.CreateDbContextAsync(default))
+                .ReturnsAsync(() => new ApplicationDbContext(options));
+
+            var chanPoint = "0000000000000000000000000000000000000000000000000000000000000001:2";
+            var outPoint = NBitcoin.OutPoint.Parse(chanPoint);
+            var channel = new Channel
+            {
+                Id = 11,
+                ChanId = 456,
+                FundingTx = outPoint.Hash.ToString(),
+                FundingTxOutputIndex = outPoint.N,
+                SourceNodeId = 21
+            };
+            var node = new Node
+            {
+                Id = 21,
+                PubKey = "managedPubKey",
+                Endpoint = "127.0.0.1:10009",
+                ChannelAdminMacaroon = "test-macaroon"
+            };
+
+            channelRepository
+                .Setup(x => x.GetByOutpoint(It.Is<NBitcoin.OutPoint>(point => point.Hash == outPoint.Hash && point.N == outPoint.N)))
+                .ReturnsAsync(channel);
+            nodeRepository
+                .Setup(x => x.GetByPubkey(node.PubKey))
+                .ReturnsAsync(node);
+            lightningClientService
+                .Setup(x => x.SetChannelFeePolicy(node, It.IsAny<NBitcoin.OutPoint>(), 1000, 250, 40, 0, 50, null))
+                .ReturnsAsync(new PolicyUpdateResponse());
+
+            var lightningService = new LightningService(
+                _logger,
+                null,
+                nodeRepository.Object,
+                dbContextFactory.Object,
+                null,
+                channelRepository.Object,
+                null,
+                null,
+                null,
+                lightningClientService.Object,
+                null);
+
+            // Act — positive inbound rate (50 ppm), allowed only because allowPositiveInboundFees is true.
+            await lightningService.SetChannelFeePolicy(
+                chanPoint,
+                node.PubKey,
+                baseFeeMsat: 1000,
+                feeRatePpm: 250,
+                timeLockDelta: 40,
+                inboundBaseFeeMsat: 0,
+                inboundFeeRatePpm: 50,
+                allowPositiveInboundFees: true);
+
+            // Assert
+            lightningClientService.Verify(x => x.SetChannelFeePolicy(
+                node, It.IsAny<NBitcoin.OutPoint>(), 1000, 250, 40, 0, 50, null), Times.Once);
+
+            await using var assertContext = new ApplicationDbContext(options);
+            var auditLog = await assertContext.AuditLogs.SingleAsync();
+            auditLog.Username.Should().Be("SYSTEM");
+            using var details = System.Text.Json.JsonDocument.Parse(auditLog.Details!);
+            details.RootElement.GetProperty("InboundFeeRatePpm").GetInt32().Should().Be(50);
+            details.RootElement.GetProperty("EngineWrite").GetBoolean().Should().BeTrue();
+        }
+
+        [Fact]
         public async Task SetChannelFeePolicy_NodeNotParticipant_ThrowsArgumentException()
         {
             // Arrange

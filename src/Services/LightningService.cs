@@ -198,8 +198,13 @@ namespace NodeGuard.Services
         /// <param name="timeLockDelta"></param>
         /// <param name="inboundBaseFeeMsat"></param>
         /// <param name="inboundFeeRatePpm"></param>
+        /// <param name="allowPositiveInboundFees">
+        /// When false (default — the manual/UI/gRPC path), inbound base fee and rate must be
+        /// &lt;= 0. When true, positive inbound fees are permitted; this is the routing engine's
+        /// fee-optimizer path (Cyberdyne-style positive inbound) and is audit-marked as such.
+        /// </param>
         /// <returns></returns>
-        public Task SetChannelFeePolicy(string chanPoint, string nodePubKey, long baseFeeMsat, uint feeRatePpm, uint timeLockDelta, int? inboundBaseFeeMsat, int? inboundFeeRatePpm);
+        public Task SetChannelFeePolicy(string chanPoint, string nodePubKey, long baseFeeMsat, uint feeRatePpm, uint timeLockDelta, int? inboundBaseFeeMsat, int? inboundFeeRatePpm, bool allowPositiveInboundFees = false);
 
         /// <summary>
         /// Gets the channel fee policy for a given channel identified by its chanPoint
@@ -1762,7 +1767,7 @@ namespace NodeGuard.Services
             return await GetLocalOutboundFeeRatePpmAsync(node, match.ChanId);
         }
 
-        public async Task SetChannelFeePolicy(string chanPoint, string nodePubKey, long baseFeeMsat, uint feeRatePpm, uint timeLockDelta, int? inboundBaseFeeMsat, int? inboundFeeRatePpm)
+        public async Task SetChannelFeePolicy(string chanPoint, string nodePubKey, long baseFeeMsat, uint feeRatePpm, uint timeLockDelta, int? inboundBaseFeeMsat, int? inboundFeeRatePpm, bool allowPositiveInboundFees = false)
         {
             // Validate chanPoint format
             if (!OutPoint.TryParse(chanPoint, out var outPoint))
@@ -1781,14 +1786,19 @@ namespace NodeGuard.Services
                 throw new ArgumentException("Both inboundBaseFeeMsat and inboundFeeRatePpm must be provided together for inbound fee policy.");
             }
 
-            if (inboundBaseFeeMsat.HasValue && inboundBaseFeeMsat.Value > 0)
+            // Positive inbound fees are only permitted on the routing-engine path
+            // (allowPositiveInboundFees == true). The manual/UI/gRPC path keeps the <= 0 cap.
+            if (!allowPositiveInboundFees)
             {
-                throw new ArgumentException("Inbound base fee must be lower or equal to zero.", nameof(inboundBaseFeeMsat));
-            }
+                if (inboundBaseFeeMsat.HasValue && inboundBaseFeeMsat.Value > 0)
+                {
+                    throw new ArgumentException("Inbound base fee must be lower or equal to zero.", nameof(inboundBaseFeeMsat));
+                }
 
-            if (inboundFeeRatePpm.HasValue && inboundFeeRatePpm.Value > 0)
-            {
-                throw new ArgumentException("Inbound fee rate must be lower or equal to zero.", nameof(inboundFeeRatePpm));
+                if (inboundFeeRatePpm.HasValue && inboundFeeRatePpm.Value > 0)
+                {
+                    throw new ArgumentException("Inbound fee rate must be lower or equal to zero.", nameof(inboundFeeRatePpm));
+                }
             }
 
             var channel = await _channelRepository.GetByOutpoint(outPoint);
@@ -1851,7 +1861,10 @@ namespace NodeGuard.Services
                         FeeRatePpm = feeRatePpm,
                         TimeLockDelta = timeLockDelta,
                         InboundBaseFeeMsat = inboundBaseFeeMsat,
-                        InboundFeeRatePpm = inboundFeeRatePpm
+                        InboundFeeRatePpm = inboundFeeRatePpm,
+                        // Marks routing-engine fee-optimizer writes (the only path that passes
+                        // allowPositiveInboundFees) so they can be filtered apart from manual/UI writes.
+                        EngineWrite = allowPositiveInboundFees
                     })
                 });
 
