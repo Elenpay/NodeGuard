@@ -274,6 +274,30 @@ namespace NodeGuard
                         });
                 });
 
+                //Target Ratio Reevaluation Job (Routing Engine — Phase 1, read-only)
+                q.AddJob<TargetRatioReevaluationJob>(opts =>
+                {
+                    opts.DisallowConcurrentExecution();
+                    opts.WithIdentity(nameof(TargetRatioReevaluationJob));
+                });
+
+                q.AddTrigger(opts =>
+                {
+                    opts.ForJob(nameof(TargetRatioReevaluationJob))
+                        .WithIdentity($"{nameof(TargetRatioReevaluationJob)}Trigger")
+                        .StartNow().WithSimpleSchedule(scheduleBuilder =>
+                        {
+                            if (Constants.IS_DEV_ENVIRONMENT)
+                            {
+                                scheduleBuilder.WithIntervalInMinutes(5).RepeatForever();
+                            }
+                            else
+                            {
+                                scheduleBuilder.WithIntervalInMinutes(Constants.ROUTING_ENGINE_JOB_INTERVAL_MINUTES).RepeatForever();
+                            }
+                        });
+                });
+
                 //Monitor Withdrawals Job
                 q.AddJob<MonitorWithdrawalsJob>(opts =>
                 {
