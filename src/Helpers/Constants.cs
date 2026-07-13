@@ -99,8 +99,8 @@ public class Constants
     public static readonly decimal MAXIMUM_WITHDRAWAL_BTC_AMOUNT = 21_000_000;
     public static readonly int TRANSACTION_CONFIRMATION_MINIMUM_BLOCKS;
     public static int DEFAULT_CHANNEL_FEE_POLICY_TIMELOCK_DELTA_BLOCKS = 40;
-    public static long DEFAULT_CHANNEL_FEE_POLICY_BASE_FEE_MSAT = 1000; 
-    public static long DEFAULT_CHANNEL_FEE_POLICY_FEE_RATE_PPM = 500; // 500 ppm = 0.05%
+    public static long DEFAULT_CHANNEL_FEE_POLICY_BASE_FEE_MSAT = 0; 
+    public static long DEFAULT_CHANNEL_FEE_POLICY_FEE_RATE_PPM = 1000;
     public static readonly long ANCHOR_CLOSINGS_MINIMUM_SATS;
     public static readonly long MINIMUM_SWEEP_TRANSACTION_AMOUNT_SATS = 25_000_000; //25M sats
     public static readonly string DEFAULT_DERIVATION_PATH = "48'/1'";
@@ -269,26 +269,29 @@ public class Constants
 
     /// <summary>
     /// Cadence of TargetRatioReevaluationJob in prod, in minutes. Default 30. In dev
-    /// (IS_DEV_ENVIRONMENT) the job runs every 5 minutes regardless. Env: ROUTING_ENGINE_JOB_INTERVAL_MINUTES.
+    /// (IS_DEV_ENVIRONMENT) the job runs every 5 minutes regardless.
     /// </summary>
     public static int ROUTING_ENGINE_JOB_INTERVAL_MINUTES = 30;
 
-    public static double ROUTING_ENGINE_FEE_KP_OUT = 0.8;
-    public static double ROUTING_ENGINE_FEE_KI = 0.5;
+    // Both fees use integral control: each cycle the applied value is nudged by gain·deviation·baseline
+    // off its previous value, so a persistent deviation keeps driving the fee until the channel balances.
+    public static double ROUTING_ENGINE_FEE_OUTBOUND_INTEGRAL_GAIN = 0.8;
+    public static double ROUTING_ENGINE_FEE_INBOUND_INTEGRAL_GAIN = 0.5;
+
     public static double ROUTING_ENGINE_FEE_DEADBAND = 0.03;
     public static double ROUTING_ENGINE_REBALANCE_DEADBAND = 0.15;
     public static uint ROUTING_ENGINE_FEE_MAX_STEP_PPM = 50;
     public static uint ROUTING_ENGINE_FEE_MAX_INBOUND_STEP_PPM = 25;
     public static uint ROUTING_ENGINE_FEE_MIN_DELTA_PPM = 5;
     public static uint ROUTING_ENGINE_FEE_MIN_OUTBOUND_PPM = 0;
-    public static uint ROUTING_ENGINE_FEE_MAX_OUTBOUND_PPM = 5000;
-    public static int ROUTING_ENGINE_FEE_MIN_INBOUND_PPM = -250;
-    public static int ROUTING_ENGINE_FEE_MAX_INBOUND_PPM = 100;
+    public static uint ROUTING_ENGINE_FEE_MAX_OUTBOUND_PPM = 10000;
+    public static int ROUTING_ENGINE_FEE_MIN_INBOUND_PPM = -1500;
+    public static int ROUTING_ENGINE_FEE_MAX_INBOUND_PPM = 1000;
     public static int ROUTING_ENGINE_FEE_MIN_UPDATE_INTERVAL_MINUTES = 30;
     public static int ROUTING_ENGINE_FEE_MAX_UPDATES_PER_RUN = 50;
     public static long ROUTING_ENGINE_FEE_MIN_CHANNEL_SIZE_SATS = 10_000_000;
     public static uint ROUTING_ENGINE_FEE_BASELINE_PPM_SOURCE = 50;
-    public static uint ROUTING_ENGINE_FEE_BASELINE_PPM_BIDIRECTIONAL = 500;
+    public static uint ROUTING_ENGINE_FEE_BASELINE_PPM_BIDIRECTIONAL = 1000;
     public static uint ROUTING_ENGINE_FEE_BASELINE_PPM_SINK = 2500;
 
     public const string IsFrozenTag = "frozen";
@@ -561,11 +564,11 @@ public class Constants
         if (reJobInterval != null) ROUTING_ENGINE_JOB_INTERVAL_MINUTES = int.Parse(reJobInterval);
 
         // Routing Engine
-        var feeKpOut = Environment.GetEnvironmentVariable("ROUTING_ENGINE_FEE_KP_OUT");
-        if (feeKpOut != null) ROUTING_ENGINE_FEE_KP_OUT = double.Parse(feeKpOut, NumberStyles.AllowDecimalPoint | NumberStyles.AllowLeadingSign, CultureInfo.InvariantCulture);
+        var feeOutboundIntegralGain = Environment.GetEnvironmentVariable("ROUTING_ENGINE_FEE_OUTBOUND_INTEGRAL_GAIN");
+        if (feeOutboundIntegralGain != null) ROUTING_ENGINE_FEE_OUTBOUND_INTEGRAL_GAIN = double.Parse(feeOutboundIntegralGain, NumberStyles.AllowDecimalPoint | NumberStyles.AllowLeadingSign, CultureInfo.InvariantCulture);
 
-        var feeKi = Environment.GetEnvironmentVariable("ROUTING_ENGINE_FEE_KI");
-        if (feeKi != null) ROUTING_ENGINE_FEE_KI = double.Parse(feeKi, NumberStyles.AllowDecimalPoint | NumberStyles.AllowLeadingSign, CultureInfo.InvariantCulture);
+        var feeInboundIntegralGain = Environment.GetEnvironmentVariable("ROUTING_ENGINE_FEE_INBOUND_INTEGRAL_GAIN");
+        if (feeInboundIntegralGain != null) ROUTING_ENGINE_FEE_INBOUND_INTEGRAL_GAIN = double.Parse(feeInboundIntegralGain, NumberStyles.AllowDecimalPoint | NumberStyles.AllowLeadingSign, CultureInfo.InvariantCulture);
 
         var feeDeadband = Environment.GetEnvironmentVariable("ROUTING_ENGINE_FEE_DEADBAND");
         if (feeDeadband != null) ROUTING_ENGINE_FEE_DEADBAND = double.Parse(feeDeadband, NumberStyles.AllowDecimalPoint | NumberStyles.AllowLeadingSign, CultureInfo.InvariantCulture);
