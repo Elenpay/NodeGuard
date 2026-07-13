@@ -28,5 +28,12 @@ public interface IChannelFeeStateRepository
 {
     Task<ChannelFeeState?> GetByChannelId(int channelId);
 
+    /// <summary>
+    /// All fee-state rows for channels owned by the given managed node (joined to
+    /// ChannelRoutingState, which holds the owning-node pubkey), with their Channel loaded.
+    /// Used by the fee engine to batch per-node state and to drive restore-on-disable.
+    /// </summary>
+    Task<List<ChannelFeeState>> GetByManagedNodePubKey(string managedNodePubKey);
+
     Task UpsertByChannelId(ChannelFeeState state);
 }
