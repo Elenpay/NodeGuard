@@ -83,7 +83,7 @@ namespace NodeGuard.Services
                 .ReturnsAsync(null as ChannelOperationRequest);
 
             var lightningService = new LightningService(_logger, channelOperationRequestRepository.Object, null,
-                dbContextFactory.Object, null, null, null, new Mock<INBXplorerService>().Object, null, null, null);
+                dbContextFactory.Object, null, null, null, new Mock<INBXplorerService>().Object, null, null, null, null);
 
             var operationRequest = new ChannelOperationRequest
             {
@@ -537,7 +537,7 @@ namespace NodeGuard.Services
                 GetNBXplorerServiceFullyMocked(utxoChanges).Object,
                 null,
                 lightningClientService.Object,
-                null);
+                null, null);
 
             // Act
             var act = async () => await lightningService.OpenChannel(operationRequest);
@@ -750,7 +750,7 @@ namespace NodeGuard.Services
                 GetNBXplorerServiceFullyMocked(utxoChanges).Object,
                 null,
                 lightningClient.Object,
-                null);
+                null, null);
 
             // Act
             var act = async () => await lightningService.OpenChannel(operationRequest);
@@ -913,7 +913,7 @@ namespace NodeGuard.Services
                 GetNBXplorerServiceFullyMocked(utxoChanges).Object,
                 null,
                 lightningClient.Object,
-                null);
+                null, null);
 
             // Act
             var act = async () => await lightningService.OpenChannel(operationRequest);
@@ -970,7 +970,7 @@ namespace NodeGuard.Services
                 new Mock<INBXplorerService>().Object,
                 null,
                 lightningClientService.Object,
-                null);
+                null, null);
 
             // Act
             var act = async () => await lightningService.OpenChannel(operationRequest);
@@ -1018,7 +1018,7 @@ namespace NodeGuard.Services
                 new Mock<INBXplorerService>().Object,
                 null,
                 lightningClientService.Object,
-                null);
+                null, null);
 
             // Act
             var act = async () => await lightningService.OpenChannel(operationRequest);
@@ -1231,7 +1231,7 @@ namespace NodeGuard.Services
                 GetNBXplorerServiceFullyMocked(utxoChanges).Object,
                 null,
                 lightningClient.Object,
-                null);
+                null, null);
 
             // Act
             var act = async () => await lightningService.OpenChannel(operationRequest);
@@ -1453,7 +1453,7 @@ namespace NodeGuard.Services
                 GetNBXplorerServiceFullyMocked(utxoChanges).Object,
                 null,
                 lightningClientService.Object,
-                null);
+                null, null);
 
             // Act
             var act = async () => await lightningService.OpenChannel(operationRequest);
@@ -1670,7 +1670,7 @@ namespace NodeGuard.Services
                 GetNBXplorerServiceFullyMocked(utxoChanges).Object,
                 null,
                 lightningClient.Object,
-                null);
+                null, null);
 
             // Act
             var act = async () => await lightningService.OpenChannel(operationRequest);
@@ -1751,7 +1751,7 @@ namespace NodeGuard.Services
                 null,
                 null,
                 lightningClientService.Object,
-                null);
+                null, null);
 
             // Act
             var act = async () => await lightningService.CloseChannel(operationRequest);
@@ -1773,7 +1773,7 @@ namespace NodeGuard.Services
                 "cHNidP8BAFIBAAAAAeh7YDXyZE11vXb0yRqCkrxY7VpHH1WVMHwaCWYMv/pCAQAAAAD/////AUjf9QUAAAAAFgAULTCtUNMojFQZ8oa6fpbXbDhK2EYAAAAATwEENYfPA325Ro0AAAABg9H86IDUttPPFss+9te+0DByQgbeD7RPXNuVH9mh1qIDnMEWyKA+kvyG038on8+HxI+9AD8r6ZI1dNIDSGC8824Q7QIQyDAAAIABAACAAQAAAAABAR8A4fUFAAAAABYAFOk69QEyo0x+Xs/zV62OLrHh9eszAQMEAgAAAAAA";
 
             var combinedPsbt = LightningHelper.CombinePSBTs(new[] { psbt });
-            var lightningService = new LightningService(_logger, null, null, null, null, null, null, null, null, null, null);
+            var lightningService = new LightningService(_logger, null, null, null, null, null, null, null, null, null, null, null);
             var pendingChannelId = RandomNumberGenerator.GetBytes(32);
             var derivationStrategyBase = LightningService.GetDerivationStrategyBase(channelOperationRequest);
             var node = new LightningNode()
@@ -1826,7 +1826,7 @@ namespace NodeGuard.Services
                 "cHNidP8BAFIBAAAAAeh7YDXyZE11vXb0yRqCkrxY7VpHH1WVMHwaCWYMv/pCAQAAAAD/////AUjf9QUAAAAAFgAULTCtUNMojFQZ8oa6fpbXbDhK2EYAAAAATwEENYfPA325Ro0AAAABg9H86IDUttPPFss+9te+0DByQgbeD7RPXNuVH9mh1qIDnMEWyKA+kvyG038on8+HxI+9AD8r6ZI1dNIDSGC8824Q7QIQyDAAAIABAACAAQAAAAABAR8A4fUFAAAAABYAFOk69QEyo0x+Xs/zV62OLrHh9eszAQMEAgAAAAAA";
 
             var combinedPsbt = LightningHelper.CombinePSBTs(new[] { psbt });
-            var lightningService = new LightningService(_logger, null, null, null, null, null, null, nbXplorerMock.Object, null, null, null);
+            var lightningService = new LightningService(_logger, null, null, null, null, null, null, nbXplorerMock.Object, null, null, null, null);
             var pendingChannelId = RandomNumberGenerator.GetBytes(32);
             var derivationStrategyBase = LightningService.GetDerivationStrategyBase(channelOperationRequest);
 
@@ -1873,7 +1873,7 @@ namespace NodeGuard.Services
                 "cHNidP8BAFIBAAAAAeh7YDXyZE11vXb0yRqCkrxY7VpHH1WVMHwaCWYMv/pCAQAAAAD/////AUjf9QUAAAAAFgAULTCtUNMojFQZ8oa6fpbXbDhK2EYAAAAATwEENYfPA325Ro0AAAABg9H86IDUttPPFss+9te+0DByQgbeD7RPXNuVH9mh1qIDnMEWyKA+kvyG038on8+HxI+9AD8r6ZI1dNIDSGC8824Q7QIQyDAAAIABAACAAQAAAAABAR8A4fUFAAAAABYAFOk69QEyo0x+Xs/zV62OLrHh9eszAQMEAgAAAAAA";
 
             var combinedPsbt = LightningHelper.CombinePSBTs(new[] { psbt });
-            var lightningService = new LightningService(_logger, null, null, null, null, null, null, null, null, null, null);
+            var lightningService = new LightningService(_logger, null, null, null, null, null, null, null, null, null, null, null);
             var pendingChannelId = RandomNumberGenerator.GetBytes(32);
             var derivationStrategyBase = LightningService.GetDerivationStrategyBase(channelOperationRequest);
             var node = new LightningNode()
@@ -1941,7 +1941,7 @@ namespace NodeGuard.Services
             };
 
             lightningClientService.Setup(x => x.ListChannels(It.IsAny<Node>(), null)).ReturnsAsync(listChannelsResponse);
-            var lightningService = new LightningService(null, null, nodeRepository.Object, null, null, null, null, null ,null, lightningClientService.Object, null);
+            var lightningService = new LightningService(null, null, nodeRepository.Object, null, null, null, null, null ,null, lightningClientService.Object, null, null);
 
             // Act
             var channelStatus = await lightningService.GetChannelsState();
@@ -1985,7 +1985,7 @@ namespace NodeGuard.Services
             };
 
             lightningClientService.Setup(x => x.ListChannels(It.IsAny<Node>(), null)).ReturnsAsync(listChannelsResponse);
-            var lightningService = new LightningService(null, null, nodeRepository.Object, null, null, null, null, null ,null, lightningClientService.Object, null);
+            var lightningService = new LightningService(null, null, nodeRepository.Object, null, null, null, null, null ,null, lightningClientService.Object, null, null);
 
             // Act
             var channelStatus = await lightningService.GetChannelsState();
@@ -2052,7 +2052,7 @@ namespace NodeGuard.Services
             lightningClientService.SetupSequence(x => x.ListChannels(It.IsAny<Node>(), null))
                 .ReturnsAsync(listChannelsResponse1)
                 .ReturnsAsync(listChannelsResponse2);
-            var lightningService = new LightningService(null, null, nodeRepository.Object, null, null, null, null, null ,null, lightningClientService.Object, null);
+            var lightningService = new LightningService(null, null, nodeRepository.Object, null, null, null, null, null ,null, lightningClientService.Object, null, null);
 
             // Act
             var channelStatus = await lightningService.GetChannelsState();
@@ -2119,7 +2119,7 @@ namespace NodeGuard.Services
             lightningClientService.SetupSequence(x => x.ListChannels(It.IsAny<Node>(), null))
                 .ReturnsAsync(listChannelsResponse1)
                 .ReturnsAsync(listChannelsResponse2);
-            var lightningService = new LightningService(null, null, nodeRepository.Object, null, null, null, null, null ,null, lightningClientService.Object, null);
+            var lightningService = new LightningService(null, null, nodeRepository.Object, null, null, null, null, null ,null, lightningClientService.Object, null, null);
 
             // Act
             var channelStatus = await lightningService.GetChannelsState();
@@ -2137,6 +2137,7 @@ namespace NodeGuard.Services
             var nodeRepository = new Mock<INodeRepository>();
             var lightningClientService = new Mock<ILightningClientService>();
             var dbContextFactory = new Mock<IDbContextFactory<ApplicationDbContext>>();
+            var auditService = new Mock<IAuditService>();
             var options = new DbContextOptionsBuilder<ApplicationDbContext>()
                 .UseInMemoryDatabase(databaseName: $"SetChannelFeePolicy_{Guid.NewGuid()}")
                 .Options;
@@ -2191,7 +2192,8 @@ namespace NodeGuard.Services
                 null,
                 null,
                 lightningClientService.Object,
-                null);
+                null,
+                auditService.Object);
 
             // Act
             await lightningService.SetChannelFeePolicy(
@@ -2214,32 +2216,23 @@ namespace NodeGuard.Services
                 -25,
                 null), Times.Once);
 
-            await using var assertContext = new ApplicationDbContext(options);
-            var auditLog = await assertContext.AuditLogs.SingleAsync();
-            auditLog.ActionType.Should().Be(AuditActionType.Update);
-            auditLog.EventType.Should().Be(AuditEventType.Success);
-            auditLog.ObjectAffected.Should().Be(AuditObjectType.Channel);
-            auditLog.ObjectId.Should().Be(channel.Id.ToString());
-            auditLog.Username.Should().Be("SYSTEM");
-
-            using var details = System.Text.Json.JsonDocument.Parse(auditLog.Details!);
-            details.RootElement.GetProperty("ChanPoint").GetString().Should().Be(chanPoint);
-            details.RootElement.GetProperty("ChannelId").GetInt32().Should().Be(channel.Id);
-            details.RootElement.GetProperty("ChanId").GetUInt64().Should().Be(channel.ChanId);
-            details.RootElement.GetProperty("NodeId").GetInt32().Should().Be(node.Id);
-            details.RootElement.GetProperty("NodePubKey").GetString().Should().Be(node.PubKey);
-            details.RootElement.GetProperty("BaseFeeMsat").GetInt64().Should().Be(1000);
-            details.RootElement.GetProperty("FeeRatePpm").GetUInt32().Should().Be(250);
-            details.RootElement.GetProperty("TimeLockDelta").GetUInt32().Should().Be(40);
-            details.RootElement.GetProperty("InboundBaseFeeMsat").GetInt32().Should().Be(-100);
-            details.RootElement.GetProperty("InboundFeeRatePpm").GetInt32().Should().Be(-25);
+            // Manual/UI path (isEngineDriven == false) audits via the user-context LogAsync.
+            auditService.Verify(x => x.LogAsync(
+                AuditActionType.Update,
+                AuditEventType.Success,
+                AuditObjectType.Channel,
+                channel.Id.ToString(),
+                It.IsAny<object>()), Times.Once);
+            auditService.Verify(x => x.LogSystemAsync(
+                It.IsAny<AuditActionType>(), It.IsAny<AuditEventType>(), It.IsAny<AuditObjectType>(),
+                It.IsAny<string>(), It.IsAny<object>()), Times.Never);
         }
 
         [Fact]
         public async Task SetChannelFeePolicy_InboundPolicyOnlyPartiallyProvided_ThrowsArgumentException()
         {
             // Arrange
-            var lightningService = new LightningService(_logger, null, null, null, null, null, null, null, null, null, null);
+            var lightningService = new LightningService(_logger, null, null, null, null, null, null, null, null, null, null, null);
 
             // Act
             var act = async () => await lightningService.SetChannelFeePolicy(
@@ -2261,7 +2254,7 @@ namespace NodeGuard.Services
         public async Task SetChannelFeePolicy_PositiveInboundBaseFee_ThrowsArgumentException()
         {
             // Arrange
-            var lightningService = new LightningService(_logger, null, null, null, null, null, null, null, null, null, null);
+            var lightningService = new LightningService(_logger, null, null, null, null, null, null, null, null, null, null, null);
 
             // Act
             var act = async () => await lightningService.SetChannelFeePolicy(
@@ -2283,7 +2276,7 @@ namespace NodeGuard.Services
         public async Task SetChannelFeePolicy_PositiveInboundFeeRate_ThrowsArgumentException()
         {
             // Arrange
-            var lightningService = new LightningService(_logger, null, null, null, null, null, null, null, null, null, null);
+            var lightningService = new LightningService(_logger, null, null, null, null, null, null, null, null, null, null, null);
 
             // Act
             var act = async () => await lightningService.SetChannelFeePolicy(
@@ -2299,6 +2292,89 @@ namespace NodeGuard.Services
             await act.Should()
                 .ThrowAsync<ArgumentException>()
                 .WithMessage("Inbound fee rate must be lower or equal to zero. (Parameter 'inboundFeeRatePpm')");
+        }
+
+        [Fact]
+        public async Task SetChannelFeePolicy_EngineAllowsPositiveInbound_UpdatesPolicyAndMarksEngineWrite()
+        {
+            // Arrange — the routing-engine fee path (isEngineDriven: true) must accept a positive
+            // inbound fee rate that the manual/UI path rejects, and audit it via LogSystemAsync.
+            var channelRepository = new Mock<IChannelRepository>();
+            var nodeRepository = new Mock<INodeRepository>();
+            var lightningClientService = new Mock<ILightningClientService>();
+            var dbContextFactory = new Mock<IDbContextFactory<ApplicationDbContext>>();
+            var auditService = new Mock<IAuditService>();
+            var options = new DbContextOptionsBuilder<ApplicationDbContext>()
+                .UseInMemoryDatabase(databaseName: $"SetChannelFeePolicyEngine_{Guid.NewGuid()}")
+                .Options;
+            dbContextFactory
+                .Setup(x => x.CreateDbContextAsync(default))
+                .ReturnsAsync(() => new ApplicationDbContext(options));
+
+            var chanPoint = "0000000000000000000000000000000000000000000000000000000000000001:2";
+            var outPoint = NBitcoin.OutPoint.Parse(chanPoint);
+            var channel = new Channel
+            {
+                Id = 11,
+                ChanId = 456,
+                FundingTx = outPoint.Hash.ToString(),
+                FundingTxOutputIndex = outPoint.N,
+                SourceNodeId = 21
+            };
+            var node = new Node
+            {
+                Id = 21,
+                PubKey = "managedPubKey",
+                Endpoint = "127.0.0.1:10009",
+                ChannelAdminMacaroon = "test-macaroon"
+            };
+
+            channelRepository
+                .Setup(x => x.GetByOutpoint(It.Is<NBitcoin.OutPoint>(point => point.Hash == outPoint.Hash && point.N == outPoint.N)))
+                .ReturnsAsync(channel);
+            nodeRepository
+                .Setup(x => x.GetByPubkey(node.PubKey))
+                .ReturnsAsync(node);
+            lightningClientService
+                .Setup(x => x.SetChannelFeePolicy(node, It.IsAny<NBitcoin.OutPoint>(), 1000, 250, 40, 0, 50, null))
+                .ReturnsAsync(new PolicyUpdateResponse());
+
+            var lightningService = new LightningService(
+                _logger,
+                null,
+                nodeRepository.Object,
+                dbContextFactory.Object,
+                null,
+                channelRepository.Object,
+                null,
+                null,
+                null,
+                lightningClientService.Object,
+                null,
+                auditService.Object);
+
+            // Act — positive inbound rate (50 ppm), allowed only because isEngineDriven is true.
+            await lightningService.SetChannelFeePolicy(
+                chanPoint,
+                node.PubKey,
+                baseFeeMsat: 1000,
+                feeRatePpm: 250,
+                timeLockDelta: 40,
+                inboundBaseFeeMsat: 0,
+                inboundFeeRatePpm: 50,
+                isEngineDriven: true);
+
+            // Assert — the positive inbound rate reached LND (no <= 0 throw)...
+            lightningClientService.Verify(x => x.SetChannelFeePolicy(
+                node, It.IsAny<NBitcoin.OutPoint>(), 1000, 250, 40, 0, 50, null), Times.Once);
+
+            // ...and the write was audited through the system (engine-driven) path.
+            auditService.Verify(x => x.LogSystemAsync(
+                AuditActionType.Update,
+                AuditEventType.Success,
+                AuditObjectType.Channel,
+                channel.Id.ToString(),
+                It.IsAny<object>()), Times.Once);
         }
 
         [Fact]
@@ -2346,7 +2422,7 @@ namespace NodeGuard.Services
                 null,
                 null,
                 new Mock<ILightningClientService>().Object,
-                null);
+                null, null);
 
             // Act
             var act = async () => await lightningService.SetChannelFeePolicy(
@@ -2403,7 +2479,7 @@ namespace NodeGuard.Services
 
             var lightningService = new LightningService(
                 _logger, null, null, null, null, null, null, null, null,
-                lightningClientService.Object, null);
+                lightningClientService.Object, null, null);
 
             // Act
             var (managedPolicy, counterpartyPolicy) = await lightningService.GetChannelFeePolicy(123UL, node);
@@ -2452,7 +2528,7 @@ namespace NodeGuard.Services
 
             var lightningService = new LightningService(
                 _logger, null, null, null, null, null, null, null, null,
-                lightningClientService.Object, null);
+                lightningClientService.Object, null, null);
 
             // Act
             var (managedPolicy, counterpartyPolicy) = await lightningService.GetChannelFeePolicy(456UL, node);
@@ -2480,7 +2556,7 @@ namespace NodeGuard.Services
 
             var lightningService = new LightningService(
                 _logger, null, null, null, null, null, null, null, null,
-                lightningClientService.Object, null);
+                lightningClientService.Object, null, null);
 
             // Act
             var act = async () => await lightningService.GetChannelFeePolicy(789UL, node);
