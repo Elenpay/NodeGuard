@@ -40,6 +40,22 @@ public class ChannelFeeStateRepository : IChannelFeeStateRepository
             .FirstOrDefaultAsync(x => x.ChannelId == channelId);
     }
 
+    public async Task<List<ChannelFeeState>> GetByManagedNodePubKey(string managedNodePubKey)
+    {
+        await using var context = await _dbContextFactory.CreateDbContextAsync();
+
+        // ChannelFeeState carries no node pubkey; the owning node lives on ChannelRoutingState
+        // (1:1 with the same Channel), so filter through it.
+        var channelIds = context.ChannelRoutingStates
+            .Where(s => s.ManagedNodePubKey == managedNodePubKey)
+            .Select(s => s.ChannelId);
+
+        return await context.ChannelFeeStates
+            .Include(x => x.Channel)
+            .Where(x => channelIds.Contains(x.ChannelId))
+            .ToListAsync();
+    }
+
     public async Task UpsertByChannelId(ChannelFeeState state)
     {
         await using var context = await _dbContextFactory.CreateDbContextAsync();
