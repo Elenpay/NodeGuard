@@ -40,7 +40,7 @@ public class ChannelFeeOptimizerJobTests
     private readonly Mock<IChannelRepository> _channelRepository = new();
     private readonly Mock<IChannelRoutingStateRepository> _routingStateRepository = new();
     private readonly Mock<IChannelFeeStateRepository> _feeStateRepository = new();
-    private readonly Mock<IChannelFlowAnalyticsRepository> _flowAnalyticsRepository = new();
+    private readonly Mock<IForwardingHtlcEventRepository> _forwardingHtlcEventRepository = new();
     private readonly Mock<IRebalanceRepository> _rebalanceRepository = new();
     private readonly Mock<ILightningService> _lightningService = new();
     private readonly Mock<ILightningClientService> _lightningClientService = new();
@@ -52,7 +52,6 @@ public class ChannelFeeOptimizerJobTests
         Name = "alice",
         DynamicFeeManagementEnabled = true,
         AllowPositiveInboundFees = true,
-        RoutingEngineDryRun = false,
     };
 
     private void ArrangeSingleSinkChannel(Node node, bool inFlightRebalance)
@@ -84,7 +83,7 @@ public class ChannelFeeOptimizerJobTests
             },
         });
         _feeStateRepository.Setup(x => x.GetByManagedNodePubKey(NodePubKey)).ReturnsAsync(new List<ChannelFeeState>());
-        _flowAnalyticsRepository.Setup(x => x.GetOrganicFeesEarnedMsat(NodePubKey, ChanId, It.IsAny<DateTimeOffset>())).ReturnsAsync(1_000_000);
+        _forwardingHtlcEventRepository.Setup(x => x.GetOrganicFeesEarnedMsat(NodePubKey, ChanId, It.IsAny<DateTimeOffset>())).ReturnsAsync(1_000_000);
         _rebalanceRepository.Setup(x => x.HasInFlightRebalanceBySourceChannel(ChannelDbId)).ReturnsAsync(inFlightRebalance);
 
         var listResp = new Lnrpc.ListChannelsResponse
@@ -133,7 +132,7 @@ public class ChannelFeeOptimizerJobTests
             _channelRepository.Object,
             _routingStateRepository.Object,
             _feeStateRepository.Object,
-            _flowAnalyticsRepository.Object,
+            _forwardingHtlcEventRepository.Object,
             _rebalanceRepository.Object,
             new FeeOptimizerService(), // real pure decision logic
             _lightningService.Object,
@@ -141,12 +140,10 @@ public class ChannelFeeOptimizerJobTests
             dbFactory.Object);
     }
 
-    private static async Task WithEngine(bool enabled, bool globalDryRun, Func<Task> body)
+    private static async Task WithEngine(bool enabled, Func<Task> body)
     {
         var prevEnabled = Constants.ROUTING_ENGINE_ENABLED;
-        var prevDryRun = Constants.ROUTING_ENGINE_DRY_RUN;
         Constants.ROUTING_ENGINE_ENABLED = enabled;
-        Constants.ROUTING_ENGINE_DRY_RUN = globalDryRun;
         try
         {
             await body();
@@ -154,7 +151,6 @@ public class ChannelFeeOptimizerJobTests
         finally
         {
             Constants.ROUTING_ENGINE_ENABLED = prevEnabled;
-            Constants.ROUTING_ENGINE_DRY_RUN = prevDryRun;
         }
     }
 
@@ -164,7 +160,7 @@ public class ChannelFeeOptimizerJobTests
         var node = BuildNode();
         ArrangeSingleSinkChannel(node, inFlightRebalance: false);
 
-        await WithEngine(enabled: true, globalDryRun: false, async () =>
+        await WithEngine(enabled: true, async () =>
         {
             await BuildJob().Execute(Mock.Of<IJobExecutionContext>());
         });
@@ -175,30 +171,12 @@ public class ChannelFeeOptimizerJobTests
     }
 
     [Fact]
-    public async Task Execute_GlobalDryRun_DoesNotWriteToLnd()
-    {
-        var node = BuildNode();
-        ArrangeSingleSinkChannel(node, inFlightRebalance: false);
-
-        await WithEngine(enabled: true, globalDryRun: true, async () =>
-        {
-            await BuildJob().Execute(Mock.Of<IJobExecutionContext>());
-        });
-
-        _lightningService.Verify(x => x.SetChannelFeePolicy(
-            It.IsAny<string>(), It.IsAny<string>(), It.IsAny<long>(), It.IsAny<uint>(),
-            It.IsAny<uint>(), It.IsAny<int?>(), It.IsAny<int?>(), It.IsAny<bool>()), Times.Never);
-        // Observability state is still persisted.
-        _feeStateRepository.Verify(x => x.UpsertByChannelId(It.IsAny<ChannelFeeState>()), Times.Once);
-    }
-
-    [Fact]
     public async Task Execute_InFlightRebalance_SkipsChannelEntirely()
     {
         var node = BuildNode();
         ArrangeSingleSinkChannel(node, inFlightRebalance: true);
 
-        await WithEngine(enabled: true, globalDryRun: false, async () =>
+        await WithEngine(enabled: true, async () =>
         {
             await BuildJob().Execute(Mock.Of<IJobExecutionContext>());
         });
@@ -216,7 +194,7 @@ public class ChannelFeeOptimizerJobTests
         var node = BuildNode();
         ArrangeSingleSinkChannel(node, inFlightRebalance: false);
 
-        await WithEngine(enabled: false, globalDryRun: false, async () =>
+        await WithEngine(enabled: false, async () =>
         {
             await BuildJob().Execute(Mock.Of<IJobExecutionContext>());
         });
