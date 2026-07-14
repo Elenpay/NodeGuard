@@ -161,13 +161,10 @@ namespace NodeGuard.Data.Models
         public bool RestoreFeeBaselineOnDisable { get; set; } = true;
 
         /// <summary>
-        /// Per-node dry-run for the routing-engine actuators (Phase 2 fee engine, Phase 3
-        /// rebalancer): when true they log the fee/rebalance they would perform without calling
-        /// LND. Lets an operator stage a node in dry-run and take it live one node at a time.
-        /// Defaults ON (safe). The global <c>Constants.ROUTING_ENGINE_DRY_RUN</c> is a master
-        /// override — an actuator writes for real only when both the global flag and this are off.
+        /// Per-node dry-run for the routing-engine actuators: when true they log the
+        /// fee/rebalance they would perform without calling LND.
         /// </summary>
-        public bool RoutingEngineDryRun { get; set; } = true;
+        public bool RoutingEngineDryRun { get; set; } = false;
 
         /// <summary>
         /// Maximum sats spendable on rebalance fees over the budget refresh interval (Phase 3).

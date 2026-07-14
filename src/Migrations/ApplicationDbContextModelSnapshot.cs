@@ -1077,7 +1077,7 @@ namespace NodeGuard.Migrations
                     b.Property<bool>("RoutingEngineDryRun")
                         .ValueGeneratedOnAdd()
                         .HasColumnType("boolean")
-                        .HasDefaultValue(true);
+                        .HasDefaultValue(false);
 
                     b.Property<TimeSpan>("SwapBudgetRefreshInterval")
                         .HasColumnType("interval");

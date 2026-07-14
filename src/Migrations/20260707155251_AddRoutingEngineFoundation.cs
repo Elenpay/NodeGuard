@@ -81,7 +81,7 @@ namespace NodeGuard.Migrations
                 table: "Nodes",
                 type: "boolean",
                 nullable: false,
-                defaultValue: true);
+                defaultValue: false);
 
             migrationBuilder.AddColumn<bool>(
                 name: "IsDynamicFeeEnabled",

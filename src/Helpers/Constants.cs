@@ -218,13 +218,6 @@ public class Constants
     public static bool ROUTING_ENGINE_ENABLED = false;
 
     /// <summary>
-    /// Master dry-run gate for actuators (Phase 2+): when true, actuators log the fee/rebalance
-    /// they would perform without calling LND. No effect in Phase 1 (no writes). Defaults ON.
-    /// Env: ROUTING_ENGINE_DRY_RUN.
-    /// </summary>
-    public static bool ROUTING_ENGINE_DRY_RUN = true;
-
-    /// <summary>
     /// Age gate for categorization: channels younger than this many blocks stay Uncategorized
     /// at target 0.5. Default 3024 = 21 block-days. Env: ROUTING_ENGINE_CATEGORIZATION_MIN_AGE_BLOCKS.
     /// </summary>
@@ -541,10 +534,6 @@ public class Constants
 
         var rebReconcileWindow = Environment.GetEnvironmentVariable("REBALANCE_RECONCILE_TERMINAL_WINDOW_HOURS");
         if (rebReconcileWindow != null) REBALANCE_RECONCILE_TERMINAL_WINDOW_HOURS = int.Parse(rebReconcileWindow);
-
-        // Routing Engine — Phase 1
-        ROUTING_ENGINE_ENABLED = StringHelper.IsTrue(Environment.GetEnvironmentVariable("ROUTING_ENGINE_ENABLED"));
-        ROUTING_ENGINE_DRY_RUN = Environment.GetEnvironmentVariable("ROUTING_ENGINE_DRY_RUN")?.ToLowerInvariant() != "false"; // default true
 
         var reMinAgeBlocks = Environment.GetEnvironmentVariable("ROUTING_ENGINE_CATEGORIZATION_MIN_AGE_BLOCKS");
         if (reMinAgeBlocks != null) ROUTING_ENGINE_CATEGORIZATION_MIN_AGE_BLOCKS = uint.Parse(reMinAgeBlocks);
