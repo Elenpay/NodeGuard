@@ -33,7 +33,7 @@ namespace NodeGuard.Jobs;
 /// on a node with dynamic fee management enabled it reads the Phase 1 signal
 /// (<see cref="ChannelRoutingState"/>), runs the pure <see cref="IFeeOptimizerService"/> control
 /// law, and applies the resulting outbound/inbound ppm via LND — enforcing the fee-vs-rebalance
-/// authority split, a per-channel throttle + circuit breaker, and a baseline snapshot for
+/// authority split, a per-channel throttle, and a baseline snapshot for
 /// restore-on-disable. Real LND writes happen only when neither the global nor the per-node
 /// dry-run flag is set; everything is gated by the global ROUTING_ENGINE_ENABLED kill switch.
 /// </summary>
@@ -177,13 +177,6 @@ public class ChannelFeeOptimizerJob : IJob
             if (!routingStates.TryGetValue(dbChannel.Id, out var routingState)) continue; // no signal yet
 
             feeStates.TryGetValue(dbChannel.Id, out var feeState);
-            if (feeState is { ConsecutiveFailures: > 0 }
-                && feeState.ConsecutiveFailures >= Constants.ROUTING_ENGINE_FEE_MAX_CONSECUTIVE_FAILURES)
-            {
-                _logger.LogDebug("Channel {ChanId} on {NodeName} is circuit-broken; toggle IsDynamicFeeEnabled to reset",
-                    lndChannel.ChanId, node.Name);
-                continue;
-            }
 
             candidates.Add(new Candidate
             {
@@ -316,28 +309,15 @@ public class ChannelFeeOptimizerJob : IJob
             feeState.LastAppliedInboundBaseMsat = inboundBaseMsat;
             feeState.LastAppliedInboundPpm = decision.InboundPpm;
             feeState.LastFeeUpdateAt = now;
-            feeState.ConsecutiveFailures = 0;
 
             _logger.LogInformation("{NodeName} chan {ChanId}: set outbound {Outbound}ppm inbound {Inbound}ppm ({Reason})",
                 node.Name, candidate.LndChannel.ChanId, decision.OutboundPpm, decision.InboundPpm, decision.Reason);
         }
         catch (Exception ex)
         {
-            feeState.ConsecutiveFailures++;
-            _logger.LogError(ex, "Failed to set fee policy for channel {ChanId} on {NodeName} (failure {Count}/{Max})",
-                candidate.LndChannel.ChanId, node.Name, feeState.ConsecutiveFailures,
-                Constants.ROUTING_ENGINE_FEE_MAX_CONSECUTIVE_FAILURES);
-
-            if (feeState.ConsecutiveFailures >= Constants.ROUTING_ENGINE_FEE_MAX_CONSECUTIVE_FAILURES)
-            {
-                await WriteAuditAsync(candidate.DbChannel, node, "circuit-broken", new
-                {
-                    candidate.LndChannel.ChanId,
-                    feeState.ConsecutiveFailures,
-                });
-                _logger.LogWarning("Channel {ChanId} on {NodeName} circuit-broken after {Count} consecutive failures",
-                    candidate.LndChannel.ChanId, node.Name, feeState.ConsecutiveFailures);
-            }
+            // Log and skip this channel for this cycle; the next cycle retries.
+            _logger.LogError(ex, "Failed to set fee policy for channel {ChanId} on {NodeName}",
+                candidate.LndChannel.ChanId, node.Name);
         }
 
         await _feeStateRepository.UpsertByChannelId(feeState);
@@ -427,7 +407,6 @@ public class ChannelFeeOptimizerJob : IJob
             feeState.LastAppliedInboundBaseMsat = null;
             feeState.LastAppliedInboundPpm = null;
             feeState.LastFeeUpdateAt = null;
-            feeState.ConsecutiveFailures = 0;
             await _feeStateRepository.UpsertByChannelId(feeState);
         }
     }
