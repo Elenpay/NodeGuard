@@ -109,7 +109,6 @@ namespace NodeGuard.Migrations
                     BaselineOutboundPpm = table.Column<long>(type: "bigint", nullable: true),
                     BaselineInboundBaseMsat = table.Column<int>(type: "integer", nullable: true),
                     BaselineInboundPpm = table.Column<int>(type: "integer", nullable: true),
-                    ConsecutiveFailures = table.Column<int>(type: "integer", nullable: false),
                     CreationDatetime = table.Column<DateTimeOffset>(type: "timestamp with time zone", nullable: false),
                     UpdateDatetime = table.Column<DateTimeOffset>(type: "timestamp with time zone", nullable: false)
                 },

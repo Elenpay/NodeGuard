@@ -68,7 +68,6 @@ public class ChannelFeeStateRepository : IChannelFeeStateRepository
             existing.BaselineOutboundPpm = state.BaselineOutboundPpm;
             existing.BaselineInboundBaseMsat = state.BaselineInboundBaseMsat;
             existing.BaselineInboundPpm = state.BaselineInboundPpm;
-            existing.ConsecutiveFailures = state.ConsecutiveFailures;
             existing.SetUpdateDatetime();
         }
 

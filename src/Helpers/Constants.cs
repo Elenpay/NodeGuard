@@ -286,7 +286,6 @@ public class Constants
     public static int ROUTING_ENGINE_FEE_MAX_INBOUND_PPM = 100;
     public static int ROUTING_ENGINE_FEE_MIN_UPDATE_INTERVAL_MINUTES = 30;
     public static int ROUTING_ENGINE_FEE_MAX_UPDATES_PER_RUN = 50;
-    public static int ROUTING_ENGINE_FEE_MAX_CONSECUTIVE_FAILURES = 5;
     public static long ROUTING_ENGINE_FEE_MIN_CHANNEL_SIZE_SATS = 10_000_000;
     public static uint ROUTING_ENGINE_FEE_BASELINE_PPM_SOURCE = 50;
     public static uint ROUTING_ENGINE_FEE_BASELINE_PPM_BIDIRECTIONAL = 500;
@@ -598,9 +597,6 @@ public class Constants
 
         var feeMaxUpdatesPerRun = Environment.GetEnvironmentVariable("ROUTING_ENGINE_FEE_MAX_UPDATES_PER_RUN");
         if (feeMaxUpdatesPerRun != null) ROUTING_ENGINE_FEE_MAX_UPDATES_PER_RUN = int.Parse(feeMaxUpdatesPerRun);
-
-        var feeMaxConsecutiveFailures = Environment.GetEnvironmentVariable("ROUTING_ENGINE_FEE_MAX_CONSECUTIVE_FAILURES");
-        if (feeMaxConsecutiveFailures != null) ROUTING_ENGINE_FEE_MAX_CONSECUTIVE_FAILURES = int.Parse(feeMaxConsecutiveFailures);
 
         var feeMinChannelSize = Environment.GetEnvironmentVariable("ROUTING_ENGINE_FEE_MIN_CHANNEL_SIZE_SATS");
         if (feeMinChannelSize != null) ROUTING_ENGINE_FEE_MIN_CHANNEL_SIZE_SATS = long.Parse(feeMinChannelSize);

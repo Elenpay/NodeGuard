@@ -467,9 +467,6 @@ namespace NodeGuard.Migrations
                     b.Property<int>("ChannelId")
                         .HasColumnType("integer");
 
-                    b.Property<int>("ConsecutiveFailures")
-                        .HasColumnType("integer");
-
                     b.Property<DateTimeOffset>("CreationDatetime")
                         .HasColumnType("timestamp with time zone");
 
