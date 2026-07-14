@@ -88,7 +88,7 @@ namespace NodeGuard.Migrations
                 table: "Channels",
                 type: "boolean",
                 nullable: false,
-                defaultValue: true);
+                defaultValue: false);
 
             migrationBuilder.CreateTable(
                 name: "ChannelFeeStates",

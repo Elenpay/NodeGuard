@@ -415,7 +415,7 @@ namespace NodeGuard.Migrations
                     b.Property<bool>("IsDynamicFeeEnabled")
                         .ValueGeneratedOnAdd()
                         .HasColumnType("boolean")
-                        .HasDefaultValue(true);
+                        .HasDefaultValue(false);
 
                     b.Property<bool>("IsPrivate")
                         .HasColumnType("boolean");
