@@ -21,9 +21,6 @@ using NodeGuard.Data.Models;
 
 namespace NodeGuard.Data.Repositories.Interfaces;
 
-/// <summary>
-/// Declared for Phase 1 (batched migration) but not exercised until the Phase 2 fee engine.
-/// </summary>
 public interface IChannelFeeStateRepository
 {
     Task<ChannelFeeState?> GetByChannelId(int channelId);

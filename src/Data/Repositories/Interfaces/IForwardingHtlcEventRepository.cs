@@ -40,7 +40,7 @@ public interface IForwardingHtlcEventRepository
     /// <summary>
     /// Σ FeeMsat of succeeded forwards where OutgoingChannelId == chanIdLnd, since the window
     /// start. Attributed to the outgoing side (the channel whose liquidity was spent) so
-    /// per-channel revenue sums don't double-count. Phase 2 prioritization input.
+    /// per-channel revenue sums don't double-count.
     /// </summary>
     Task<long> GetOrganicFeesEarnedMsat(string managedNodePubKey, ulong chanIdLnd, DateTimeOffset since);
 }

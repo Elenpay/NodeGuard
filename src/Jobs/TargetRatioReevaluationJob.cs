@@ -27,11 +27,11 @@ using Channel = NodeGuard.Data.Models.Channel;
 namespace NodeGuard.Jobs;
 
 /// <summary>
-/// Phase 1 of the routing engine. Read-only: for every owned, open channel it refreshes
-/// ChannelRoutingState — EMA-smoothed local ratio, net-flow, peer category (with hysteresis),
-/// and dynamic target ratio — from settled forwarding history and live ListChannels. Writes
-/// only to Postgres; performs zero LND writes. Guarded by the global ROUTING_ENGINE_ENABLED
-/// kill switch.
+/// For every owned, open channel it refreshes ChannelRoutingState — EMA-smoothed
+/// local ratio, net-flow, peer category (with hysteresis), and dynamic target
+/// ratio — from settled forwarding history and live ListChannels. Writes only
+/// to Postgres; performs zero LND writes.
+/// Guarded by the global ROUTING_ENGINE_ENABLED kill switch.
 /// </summary>
 [DisallowConcurrentExecution]
 public class TargetRatioReevaluationJob : IJob

@@ -272,7 +272,7 @@ namespace NodeGuard
                         });
                 });
 
-                //Target Ratio Reevaluation Job (Routing Engine — Phase 1, read-only)
+                //Target Ratio Reevaluation Job
                 q.AddJob<TargetRatioReevaluationJob>(opts =>
                 {
                     opts.DisallowConcurrentExecution();

@@ -207,68 +207,61 @@ public class Constants
     public static int REBALANCE_RECONCILE_TERMINAL_WINDOW_HOURS = 24;
 
     // ── Routing Engine (heuristic routing-optimization engine) ──────────────────────────
-    // Phase 1 (foundation + signal) reads the constants in this first block. The Phase 2
-    // fee-engine block below is declared now so the migration/config surface is touched once,
-    // but nothing reads it until Phase 2.
 
     /// <summary>
     /// Global kill switch for the whole routing engine. Every routing-engine job checks this
-    /// first and returns immediately when false. Defaults OFF. Env: ROUTING_ENGINE_ENABLED.
+    /// first and returns immediately when false.
     /// </summary>
     public static bool ROUTING_ENGINE_ENABLED = false;
 
     /// <summary>
     /// Age gate for categorization: channels younger than this many blocks stay Uncategorized
-    /// at target 0.5. Default 3024 = 21 block-days. Env: ROUTING_ENGINE_CATEGORIZATION_MIN_AGE_BLOCKS.
+    /// at target 0.5. Default 3024 = 21 block-days.
     /// </summary>
     public static uint ROUTING_ENGINE_CATEGORIZATION_MIN_AGE_BLOCKS = 3024;
 
     /// <summary>
-    /// Categorization + net-flow lookback window over ForwardingHtlcEvent, in days. Default 21.
-    /// Env: ROUTING_ENGINE_FLOW_WINDOW_DAYS.
+    /// Categorization + net-flow lookback window over ForwardingHtlcEvent, in days.
     /// </summary>
     public static int ROUTING_ENGINE_FLOW_WINDOW_DAYS = 21;
 
     /// <summary>
     /// Minimum total in-window flow (push+pull) in msat required to categorize a channel; below
-    /// this it stays / decays to Uncategorized. Default 10_000_000_000 (10M sat).
-    /// Env: ROUTING_ENGINE_FLOW_MIN_MSAT.
+    /// this it stays / decays to Uncategorized.
     /// </summary>
     public static long ROUTING_ENGINE_FLOW_MIN_MSAT = 10_000_000_000;
 
     /// <summary>
     /// |NetFlowRatio| beyond this classifies a channel as Sink (positive) or Source (negative);
-    /// inside the band it is Bidirectional. Default 0.25. Env: ROUTING_ENGINE_CATEGORY_NET_FLOW_THRESHOLD.
+    /// inside the band it is Bidirectional.
     /// </summary>
     public static double ROUTING_ENGINE_CATEGORY_NET_FLOW_THRESHOLD = 0.25;
 
     /// <summary>
     /// Proportional gain mapping net-flow to target drift: target_goal = 0.5 + clamp(K·netFlowRatio, ±maxDrift).
-    /// Default 0.70. Env: ROUTING_ENGINE_TARGET_K.
     /// </summary>
     public static double ROUTING_ENGINE_TARGET_K = 0.70;
 
     /// <summary>
     /// Maximum drift of target_goal away from 0.5 (reached at |netFlowRatio| = 0.5). Default 0.35,
-    /// giving a target_goal range of [0.15, 0.85]. Env: ROUTING_ENGINE_TARGET_MAX_DRIFT.
+    /// giving a target_goal range of [0.15, 0.85].
     /// </summary>
     public static double ROUTING_ENGINE_TARGET_MAX_DRIFT = 0.35;
 
     /// <summary>
     /// EWMA smoothing factor folding target_goal into the stored TargetLocalRatio. Default 0.10
-    /// (~10 cycles to converge). Env: ROUTING_ENGINE_TARGET_ALPHA.
+    /// (19 cycles to converge). ⍺ = 2/(cycles+1).
     /// </summary>
     public static double ROUTING_ENGINE_TARGET_ALPHA = 0.10;
 
     /// <summary>
     /// EWMA smoothing factor for EmaLocalRatio (~24h effective window at 30-min sampling).
-    /// Default 0.04. Env: ROUTING_ENGINE_FEE_EMA_ALPHA.
+    /// Default 0.04 (49 cycles to converge). ⍺ = 2/(cycles+1).
     /// </summary>
     public static double ROUTING_ENGINE_FEE_EMA_ALPHA = 0.04;
 
     /// <summary>
     /// Consecutive divergent cycles required before a category flip commits (anti-flap hysteresis).
-    /// Default 3. Env: ROUTING_ENGINE_CATEGORY_FLIP_HYSTERESIS_CYCLES.
     /// </summary>
     public static int ROUTING_ENGINE_CATEGORY_FLIP_HYSTERESIS_CYCLES = 3;
 
@@ -278,7 +271,6 @@ public class Constants
     /// </summary>
     public static int ROUTING_ENGINE_JOB_INTERVAL_MINUTES = 30;
 
-    // ── Routing Engine — Phase 2 fee engine (declared now, unused in Phase 1) ────────────
     public static double ROUTING_ENGINE_FEE_KP_OUT = 0.8;
     public static double ROUTING_ENGINE_FEE_KI = 0.5;
     public static double ROUTING_ENGINE_FEE_DEADBAND = 0.03;
@@ -565,7 +557,7 @@ public class Constants
         var reJobInterval = Environment.GetEnvironmentVariable("ROUTING_ENGINE_JOB_INTERVAL_MINUTES");
         if (reJobInterval != null) ROUTING_ENGINE_JOB_INTERVAL_MINUTES = int.Parse(reJobInterval);
 
-        // Routing Engine — Phase 2 fee engine (declared now, unused in Phase 1)
+        // Routing Engine
         var feeKpOut = Environment.GetEnvironmentVariable("ROUTING_ENGINE_FEE_KP_OUT");
         if (feeKpOut != null) ROUTING_ENGINE_FEE_KP_OUT = double.Parse(feeKpOut, NumberStyles.AllowDecimalPoint | NumberStyles.AllowLeadingSign, CultureInfo.InvariantCulture);
 

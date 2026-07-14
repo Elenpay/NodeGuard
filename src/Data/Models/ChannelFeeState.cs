@@ -20,10 +20,9 @@
 namespace NodeGuard.Data.Models;
 
 /// <summary>
-/// Per-channel fee-engine state (1:1 with <see cref="Channel"/>). Declared in the Phase 1
-/// migration so Phase 2 needs no schema change; rows are not created or populated until the
-/// Phase 2 fee engine ships. Holds last-applied policy + baseline snapshot (for rollback on
-/// disable) + a per-channel circuit-breaker counter, all of which must survive restarts.
+/// Per-channel fee-engine state (1:1 with <see cref="Channel"/>). Holds last-applied
+/// policy + baseline snapshot (for rollback on disable) + a per-channel circuit-breaker
+/// counter, all of which must survive restarts.
 /// </summary>
 public class ChannelFeeState : Entity
 {

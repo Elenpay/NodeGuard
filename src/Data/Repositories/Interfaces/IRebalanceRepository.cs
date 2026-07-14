@@ -53,8 +53,8 @@ public interface IRebalanceRepository
     (bool, string?) Update(Rebalance rebalance);
 
     /// <summary>
-    /// Counts non-terminal rebalances (Pending + InFlight) for a node. Used by the Phase 3
-    /// in-flight cap. Declared in Phase 1 alongside the routing-engine repositories.
+    /// Counts non-terminal rebalances (Pending + InFlight) for a node. Used by the
+    /// in-flight cap.
     /// </summary>
     Task<int> GetInFlightByNode(int nodeId);
 

@@ -109,13 +109,13 @@ namespace NodeGuard.Data
                 .HasForeignKey(r => r.SourceChannelId)
                 .OnDelete(DeleteBehavior.Restrict);
 
-            // Routing engine: 1:1 read models keyed on ChannelId. Composite ForwardingHtlcEvent
-            // indexes are intentionally deferred (see phase-1 spec) — added only once measured.
+            // Routing engine: 1:1 read models keyed on ChannelId.
             modelBuilder.Entity<ChannelRoutingState>()
                 .HasOne(x => x.Channel)
                 .WithOne()
                 .HasForeignKey<ChannelRoutingState>(x => x.ChannelId)
                 .OnDelete(DeleteBehavior.Cascade);
+
             // Only one ChannelRoutingState per channel.
             modelBuilder.Entity<ChannelRoutingState>().HasIndex(x => x.ChannelId).IsUnique();
 
