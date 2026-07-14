@@ -40,7 +40,7 @@ public class TargetRatioReevaluationJob : IJob
     private readonly INodeRepository _nodeRepository;
     private readonly IChannelRepository _channelRepository;
     private readonly IChannelRoutingStateRepository _routingStateRepository;
-    private readonly IChannelFlowAnalyticsRepository _flowAnalyticsRepository;
+    private readonly IForwardingHtlcEventRepository _forwardingHtlcEventRepository;
     private readonly IPeerCategorizationService _peerCategorizationService;
     private readonly ILightningService _lightningService;
     private readonly ILightningClientService _lightningClientService;
@@ -50,7 +50,7 @@ public class TargetRatioReevaluationJob : IJob
         INodeRepository nodeRepository,
         IChannelRepository channelRepository,
         IChannelRoutingStateRepository routingStateRepository,
-        IChannelFlowAnalyticsRepository flowAnalyticsRepository,
+        IForwardingHtlcEventRepository forwardingHtlcEventRepository,
         IPeerCategorizationService peerCategorizationService,
         ILightningService lightningService,
         ILightningClientService lightningClientService)
@@ -59,7 +59,7 @@ public class TargetRatioReevaluationJob : IJob
         _nodeRepository = nodeRepository;
         _channelRepository = channelRepository;
         _routingStateRepository = routingStateRepository;
-        _flowAnalyticsRepository = flowAnalyticsRepository;
+        _forwardingHtlcEventRepository = forwardingHtlcEventRepository;
         _peerCategorizationService = peerCategorizationService;
         _lightningService = lightningService;
         _lightningClientService = lightningClientService;
@@ -188,8 +188,8 @@ public class TargetRatioReevaluationJob : IJob
         state.EmaLocalRatio = _peerCategorizationService.SmoothEma(
             state.EmaLocalRatio, observedRatio, Constants.ROUTING_ENGINE_FEE_EMA_ALPHA);
 
-        var push = await _flowAnalyticsRepository.GetOutgoingAmountMsat(managedNode.PubKey, lndChannel.ChanId, windowStart);
-        var pull = await _flowAnalyticsRepository.GetIncomingAmountMsat(managedNode.PubKey, lndChannel.ChanId, windowStart);
+        var push = await _forwardingHtlcEventRepository.GetOutgoingAmountMsat(managedNode.PubKey, lndChannel.ChanId, windowStart);
+        var pull = await _forwardingHtlcEventRepository.GetIncomingAmountMsat(managedNode.PubKey, lndChannel.ChanId, windowStart);
         state.PushMsatWindow = push;
         state.PullMsatWindow = pull;
         var total = push + pull;

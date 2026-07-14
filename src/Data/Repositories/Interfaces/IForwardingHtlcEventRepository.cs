@@ -24,4 +24,23 @@ namespace NodeGuard.Data.Repositories.Interfaces;
 public interface IForwardingHtlcEventRepository
 {
     Task<(bool, string?)> UpsertAsync(ForwardingHtlcEvent forwardingHtlcEvent);
+
+    /// <summary>
+    /// Σ OutgoingAmountMsat of succeeded forwards where OutgoingChannelId == chanIdLnd, for the
+    /// given managed node, since the window start (drains our local balance — "push").
+    /// </summary>
+    Task<long> GetOutgoingAmountMsat(string managedNodePubKey, ulong chanIdLnd, DateTimeOffset since);
+
+    /// <summary>
+    /// Σ IncomingAmountMsat of succeeded forwards where IncomingChannelId == chanIdLnd, for the
+    /// given managed node, since the window start (fills our local balance — "pull").
+    /// </summary>
+    Task<long> GetIncomingAmountMsat(string managedNodePubKey, ulong chanIdLnd, DateTimeOffset since);
+
+    /// <summary>
+    /// Σ FeeMsat of succeeded forwards where OutgoingChannelId == chanIdLnd, since the window
+    /// start. Attributed to the outgoing side (the channel whose liquidity was spent) so
+    /// per-channel revenue sums don't double-count. Phase 2 prioritization input.
+    /// </summary>
+    Task<long> GetOrganicFeesEarnedMsat(string managedNodePubKey, ulong chanIdLnd, DateTimeOffset since);
 }

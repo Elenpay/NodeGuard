@@ -19,12 +19,13 @@
 
 using FluentAssertions;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Logging;
 using NodeGuard.Data;
 using NodeGuard.Data.Models;
 
 namespace NodeGuard.Data.Repositories;
 
-public class ChannelFlowAnalyticsRepositoryTests
+public class ForwardingHtlcEventRepositoryTests
 {
     private readonly Random _random = new();
     private const string Node = "02node";
@@ -35,13 +36,16 @@ public class ChannelFlowAnalyticsRepositoryTests
     private (Mock<IDbContextFactory<ApplicationDbContext>> factory, ApplicationDbContext seedContext) SetupDb()
     {
         var options = new DbContextOptionsBuilder<ApplicationDbContext>()
-            .UseInMemoryDatabase(databaseName: "FlowAnalytics" + _random.Next())
+            .UseInMemoryDatabase(databaseName: "ForwardingHtlcEvent" + _random.Next())
             .Options;
         var factory = new Mock<IDbContextFactory<ApplicationDbContext>>();
         factory.Setup(x => x.CreateDbContext()).Returns(() => new ApplicationDbContext(options));
         factory.Setup(x => x.CreateDbContextAsync(default)).ReturnsAsync(() => new ApplicationDbContext(options));
         return (factory, new ApplicationDbContext(options));
     }
+
+    private static ForwardingHtlcEventRepository Sut(Mock<IDbContextFactory<ApplicationDbContext>> factory)
+        => new(factory.Object, Mock.Of<ILogger<ForwardingHtlcEventRepository>>());
 
     private static ForwardingHtlcEvent Event(
         string node, ulong incomingChan, ulong outgoingChan, ForwardingOutcome outcome,
@@ -86,7 +90,7 @@ public class ChannelFlowAnalyticsRepositoryTests
         );
         await seed.SaveChangesAsync();
 
-        var sut = new ChannelFlowAnalyticsRepository(factory.Object);
+        var sut = Sut(factory);
 
         (await sut.GetOutgoingAmountMsat(Node, Chan, since)).Should().Be(1500);
         (await sut.GetIncomingAmountMsat(Node, Chan, since)).Should().Be(2000);
@@ -97,7 +101,7 @@ public class ChannelFlowAnalyticsRepositoryTests
     public async Task Getters_ReturnZero_WhenNoMatchingRows()
     {
         var (factory, _) = SetupDb();
-        var sut = new ChannelFlowAnalyticsRepository(factory.Object);
+        var sut = Sut(factory);
 
         (await sut.GetOutgoingAmountMsat(Node, Chan, DateTimeOffset.UtcNow.AddDays(-1))).Should().Be(0);
         (await sut.GetIncomingAmountMsat(Node, Chan, DateTimeOffset.UtcNow.AddDays(-1))).Should().Be(0);

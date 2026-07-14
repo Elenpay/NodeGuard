@@ -128,7 +128,6 @@ namespace NodeGuard
             builder.Services.AddTransient<IForwardingHtlcEventRepository, ForwardingHtlcEventRepository>();
             builder.Services.AddTransient<IChannelRoutingStateRepository, ChannelRoutingStateRepository>();
             builder.Services.AddTransient<IChannelFeeStateRepository, ChannelFeeStateRepository>();
-            builder.Services.AddTransient<IChannelFlowAnalyticsRepository, ChannelFlowAnalyticsRepository>();
             builder.Services.AddTransient<ICoinSelectionService, CoinSelectionService>();
             builder.Services.AddTransient<IPriceConversionService, PriceConversionService>();
             builder.Services.AddTransient<IHtlcMonitoringScheduler, HtlcMonitoringScheduler>();
