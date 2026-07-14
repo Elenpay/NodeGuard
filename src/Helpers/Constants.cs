@@ -238,7 +238,7 @@ public class Constants
     public static double ROUTING_ENGINE_CATEGORY_NET_FLOW_THRESHOLD = 0.25;
 
     /// <summary>
-    /// Proportional gain mapping net-flow to target drift: target_goal = 0.5 + clamp(K·netFlowRatio, ±maxDrift).
+    /// Proportional gain mapping net-flow to target drift: target_goal = 0.5 + clamp(K·netFlowRatio, ±maxDrift). Simply, how far the target drifts from 0.5 (default) per unit of flow imbalance.
     /// </summary>
     public static double ROUTING_ENGINE_TARGET_K = 0.70;
 
@@ -250,13 +250,15 @@ public class Constants
 
     /// <summary>
     /// EWMA smoothing factor folding target_goal into the stored TargetLocalRatio. Default 0.10
-    /// (19 cycles to converge). ⍺ = 2/(cycles+1).
+    /// (19 cycles to converge). ⍺ = 2/(cycles+1). This smooths out the target ratio to avoid
+    /// overreacting to transient flow spikes.
     /// </summary>
     public static double ROUTING_ENGINE_TARGET_ALPHA = 0.10;
 
     /// <summary>
     /// EWMA smoothing factor for EmaLocalRatio (~24h effective window at 30-min sampling).
-    /// Default 0.04 (49 cycles to converge). ⍺ = 2/(cycles+1).
+    /// Default 0.04 (49 cycles to converge). ⍺ = 2/(cycles+1). It smooths out the observed
+    /// local ratio to avoid overreacting to transient flow spikes.
     /// </summary>
     public static double ROUTING_ENGINE_FEE_EMA_ALPHA = 0.04;
 
