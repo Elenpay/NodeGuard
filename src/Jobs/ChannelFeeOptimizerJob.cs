@@ -33,9 +33,8 @@ namespace NodeGuard.Jobs;
 /// on a node with dynamic fee management enabled it reads the Phase 1 signal
 /// (<see cref="ChannelRoutingState"/>), runs the pure <see cref="IFeeOptimizerService"/> control
 /// law, and applies the resulting outbound/inbound ppm via LND — enforcing the fee-vs-rebalance
-/// authority split, a per-channel throttle, and a baseline snapshot for
-/// restore-on-disable. Real LND writes happen only when neither the global nor the per-node
-/// dry-run flag is set; everything is gated by the global ROUTING_ENGINE_ENABLED kill switch.
+/// authority split, a per-channel throttle, and a baseline snapshot for restore-on-disable.
+/// Everything is gated by the global ROUTING_ENGINE_ENABLED kill switch.
 /// </summary>
 [DisallowConcurrentExecution]
 public class ChannelFeeOptimizerJob : IJob
@@ -48,7 +47,7 @@ public class ChannelFeeOptimizerJob : IJob
     private readonly IChannelRepository _channelRepository;
     private readonly IChannelRoutingStateRepository _routingStateRepository;
     private readonly IChannelFeeStateRepository _feeStateRepository;
-    private readonly IChannelFlowAnalyticsRepository _flowAnalyticsRepository;
+    private readonly IForwardingHtlcEventRepository _forwardingHtlcEventRepository;
     private readonly IRebalanceRepository _rebalanceRepository;
     private readonly IFeeOptimizerService _feeOptimizerService;
     private readonly ILightningService _lightningService;
@@ -61,7 +60,7 @@ public class ChannelFeeOptimizerJob : IJob
         IChannelRepository channelRepository,
         IChannelRoutingStateRepository routingStateRepository,
         IChannelFeeStateRepository feeStateRepository,
-        IChannelFlowAnalyticsRepository flowAnalyticsRepository,
+        IForwardingHtlcEventRepository forwardingHtlcEventRepository,
         IRebalanceRepository rebalanceRepository,
         IFeeOptimizerService feeOptimizerService,
         ILightningService lightningService,
@@ -73,7 +72,7 @@ public class ChannelFeeOptimizerJob : IJob
         _channelRepository = channelRepository;
         _routingStateRepository = routingStateRepository;
         _feeStateRepository = feeStateRepository;
-        _flowAnalyticsRepository = flowAnalyticsRepository;
+        _forwardingHtlcEventRepository = forwardingHtlcEventRepository;
         _rebalanceRepository = rebalanceRepository;
         _feeOptimizerService = feeOptimizerService;
         _lightningService = lightningService;
@@ -184,7 +183,7 @@ public class ChannelFeeOptimizerJob : IJob
                 DbChannel = dbChannel,
                 RoutingState = routingState,
                 FeeState = feeState,
-                OrganicFeesMsat = await _flowAnalyticsRepository.GetOrganicFeesEarnedMsat(node.PubKey, lndChannel.ChanId, organicSince),
+                OrganicFeesMsat = await _forwardingHtlcEventRepository.GetOrganicFeesEarnedMsat(node.PubKey, lndChannel.ChanId, organicSince),
                 Deviation = routingState.EmaLocalRatio - routingState.TargetLocalRatio,
             });
         }
@@ -278,17 +277,6 @@ public class ChannelFeeOptimizerJob : IJob
         var inboundBaseMsat = managedPolicy.InboundFeeBaseMsat; // engine only modulates the ppm rates
         var chanPoint = $"{candidate.DbChannel.FundingTx}:{candidate.DbChannel.FundingTxOutputIndex}";
 
-        // Effective dry-run = global master OR per-node — lets operators go live one node at a time.
-        var dryRun = Constants.ROUTING_ENGINE_DRY_RUN || node.RoutingEngineDryRun;
-        if (dryRun)
-        {
-            _logger.LogInformation(
-                "[DRY-RUN] {NodeName} chan {ChanId}: would set outbound {Outbound}ppm inbound {Inbound}ppm ({Reason})",
-                node.Name, candidate.LndChannel.ChanId, decision.OutboundPpm, decision.InboundPpm, decision.Reason);
-            await _feeStateRepository.UpsertByChannelId(feeState);
-            return;
-        }
-
         try
         {
             await _lightningService.SetChannelFeePolicy(
@@ -335,8 +323,6 @@ public class ChannelFeeOptimizerJob : IJob
             .ToList();
         if (toHandle.Count == 0) return;
 
-        var dryRun = Constants.ROUTING_ENGINE_DRY_RUN || node.RoutingEngineDryRun;
-
         foreach (var feeState in toHandle)
         {
             var dbChannel = feeState.Channel;
@@ -346,43 +332,34 @@ public class ChannelFeeOptimizerJob : IJob
             {
                 if (node.RestoreFeeBaselineOnDisable)
                 {
-                    if (dryRun)
+                    // Engine never changes the timelock, so restore fee rates against the live one.
+                    var (managedPolicy, _) = await _lightningService.GetChannelFeePolicy(dbChannel.ChanId, node);
+                    if (managedPolicy == null)
                     {
-                        _logger.LogInformation(
-                            "[DRY-RUN] {NodeName} chan {ChanId}: would restore baseline fees (engine disabled)",
-                            node.Name, dbChannel.ChanId);
+                        _logger.LogWarning(
+                            "Deferring baseline restore for chan {ChanId} on {NodeName}: current policy unavailable",
+                            dbChannel.ChanId, node.Name);
+                        continue; // keep baseline, retry next cycle
                     }
-                    else
+
+                    await _lightningService.SetChannelFeePolicy(
+                        chanPoint,
+                        node.PubKey,
+                        feeState.BaselineOutboundBaseFeeMsat ?? managedPolicy.FeeBaseMsat,
+                        feeState.BaselineOutboundPpm ?? (uint)managedPolicy.FeeRateMilliMsat,
+                        managedPolicy.TimeLockDelta,
+                        feeState.BaselineInboundBaseMsat ?? managedPolicy.InboundFeeBaseMsat,
+                        feeState.BaselineInboundPpm ?? managedPolicy.InboundFeeRateMilliMsat,
+                        isEngineDriven: true);
+
+                    await WriteAuditAsync(dbChannel, node, "baseline-restored", new
                     {
-                        // Engine never changes the timelock, so restore fee rates against the live one.
-                        var (managedPolicy, _) = await _lightningService.GetChannelFeePolicy(dbChannel.ChanId, node);
-                        if (managedPolicy == null)
-                        {
-                            _logger.LogWarning(
-                                "Deferring baseline restore for chan {ChanId} on {NodeName}: current policy unavailable",
-                                dbChannel.ChanId, node.Name);
-                            continue; // keep baseline, retry next cycle
-                        }
-
-                        await _lightningService.SetChannelFeePolicy(
-                            chanPoint,
-                            node.PubKey,
-                            feeState.BaselineOutboundBaseFeeMsat ?? managedPolicy.FeeBaseMsat,
-                            feeState.BaselineOutboundPpm ?? (uint)managedPolicy.FeeRateMilliMsat,
-                            managedPolicy.TimeLockDelta,
-                            feeState.BaselineInboundBaseMsat ?? managedPolicy.InboundFeeBaseMsat,
-                            feeState.BaselineInboundPpm ?? managedPolicy.InboundFeeRateMilliMsat,
-                            isEngineDriven: true);
-
-                        await WriteAuditAsync(dbChannel, node, "baseline-restored", new
-                        {
-                            dbChannel.ChanId,
-                            feeState.BaselineOutboundPpm,
-                            feeState.BaselineInboundPpm,
-                        });
-                        _logger.LogInformation("{NodeName} chan {ChanId}: restored baseline fees (engine disabled)",
-                            node.Name, dbChannel.ChanId);
-                    }
+                        dbChannel.ChanId,
+                        feeState.BaselineOutboundPpm,
+                        feeState.BaselineInboundPpm,
+                    });
+                    _logger.LogInformation("{NodeName} chan {ChanId}: restored baseline fees (engine disabled)",
+                        node.Name, dbChannel.ChanId);
                 }
                 else
                 {
