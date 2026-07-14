@@ -40,9 +40,9 @@ public enum PeerFlowCategory
 
 /// <summary>
 /// Per-channel routing-engine read model (1:1 with <see cref="Channel"/>). Written by
-/// TargetRatioReevaluationJob; read by the Phase 2 fee engine and Phase 3 rebalancer.
-/// This is the single canonical place target ratio / category / smoothed balance live —
-/// actuators must not re-derive them.
+/// TargetRatioReevaluationJob; read by the fee engine and rebalancer. This is the single
+/// canonical place target ratio / category / smoothed balance live — actuators must not
+/// re-derive them.
 /// </summary>
 public class ChannelRoutingState : Entity
 {

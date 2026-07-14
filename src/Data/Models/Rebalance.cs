@@ -84,7 +84,7 @@ public class Rebalance : Entity
 
     /// <summary>
     /// Fee reserved for this in-flight rebalance so its spend counts against the node budget
-    /// before <see cref="FeePaidSats"/> settles (Phase 3 in-flight budget accounting).
+    /// before <see cref="FeePaidSats"/> settles (in-flight budget accounting).
     /// </summary>
     public long? ReservedFeeSats { get; set; }
 

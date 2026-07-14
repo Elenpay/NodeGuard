@@ -438,10 +438,7 @@
 
                     <Alert Color="Color.Info" Visible="true">
                         <AlertDescription>
-                            These settings configure the heuristic routing engine. They take effect once the
-                            fee engine (Phase 2) and automated rebalancer (Phase 3) ship — enabling them here
-                            stages a node's configuration ahead of time. The global <code>ROUTING_ENGINE_ENABLED</code>
-                            kill switch and <code>ROUTING_ENGINE_DRY_RUN</code> flag still gate everything.
+                            These settings configure the heuristic routing engine. The engine can automatically adjust channel fees and initiate circular rebalances to steer channels toward their target ratio. The engine is disabled by default and must be enabled for each node individually.
                         </AlertDescription>
                     </Alert>
 
@@ -536,8 +533,7 @@
                             <Alert Color="Color.Warning" Visible="true">
                                 <AlertDescription>
                                     Dry run is <strong>off</strong> for this node — once the engine is live, it will
-                                    perform real fee changes and/or rebalances on LND. The global
-                                    <code>ROUTING_ENGINE_DRY_RUN</code> flag can still override this as a master safety switch.
+                                    perform real fee changes and/or rebalances on LND.
                                 </AlertDescription>
                             </Alert>
                         }

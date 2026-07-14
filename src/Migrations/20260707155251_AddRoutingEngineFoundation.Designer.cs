@@ -418,7 +418,7 @@ namespace NodeGuard.Migrations
                     b.Property<bool>("IsDynamicFeeEnabled")
                         .ValueGeneratedOnAdd()
                         .HasColumnType("boolean")
-                        .HasDefaultValue(true);
+                        .HasDefaultValue(false);
 
                     b.Property<bool>("IsPrivate")
                         .HasColumnType("boolean");
@@ -468,9 +468,6 @@ namespace NodeGuard.Migrations
                         .HasColumnType("bigint");
 
                     b.Property<int>("ChannelId")
-                        .HasColumnType("integer");
-
-                    b.Property<int>("ConsecutiveFailures")
                         .HasColumnType("integer");
 
                     b.Property<DateTimeOffset>("CreationDatetime")
@@ -1080,7 +1077,7 @@ namespace NodeGuard.Migrations
                     b.Property<bool>("RoutingEngineDryRun")
                         .ValueGeneratedOnAdd()
                         .HasColumnType("boolean")
-                        .HasDefaultValue(true);
+                        .HasDefaultValue(false);
 
                     b.Property<TimeSpan>("SwapBudgetRefreshInterval")
                         .HasColumnType("interval");

@@ -23,9 +23,6 @@ using NodeGuard.Data.Repositories.Interfaces;
 
 namespace NodeGuard.Data.Repositories;
 
-/// <summary>
-/// Declared for the Phase 1 batched migration; the Phase 2 fee engine is the first writer.
-/// </summary>
 public class ChannelFeeStateRepository : IChannelFeeStateRepository
 {
     private readonly IDbContextFactory<ApplicationDbContext> _dbContextFactory;
@@ -87,7 +84,6 @@ public class ChannelFeeStateRepository : IChannelFeeStateRepository
             existing.BaselineOutboundPpm = state.BaselineOutboundPpm;
             existing.BaselineInboundBaseMsat = state.BaselineInboundBaseMsat;
             existing.BaselineInboundPpm = state.BaselineInboundPpm;
-            existing.ConsecutiveFailures = state.ConsecutiveFailures;
             existing.SetUpdateDatetime();
         }
 
