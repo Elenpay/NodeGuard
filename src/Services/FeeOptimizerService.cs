@@ -30,16 +30,13 @@ public enum FeeAction
     /// <summary>Inside the fee deadband (or computed delta below the min-delta dead-zone) — leave fees as they are.</summary>
     NoOp = 0,
 
-    /// <summary>|deviation| exceeds the rebalance deadband — the rebalancer owns this channel, the fee engine must not touch it.</summary>
-    DeferToRebalancer = 1,
-
     /// <summary>Apply the new outbound/inbound ppm.</summary>
-    Update = 2,
+    Update = 1,
 }
 
 /// <summary>
 /// Result of one <see cref="IFeeOptimizerService.ComputeNextPolicy"/> call. For <see cref="FeeAction.Update"/>,
-/// <see cref="OutboundPpm"/>/<see cref="InboundPpm"/> are the values to apply; for NoOp/DeferToRebalancer they
+/// <see cref="OutboundPpm"/>/<see cref="InboundPpm"/> are the values to apply; for NoOp they
 /// echo the current (unchanged) values so the caller can log a coherent "would-keep" line.
 /// </summary>
 public record FeePolicyDecision(FeeAction Action, uint OutboundPpm, int InboundPpm, string Reason);
@@ -52,7 +49,6 @@ public record FeeOptimizerTunables(
     double OutboundIntegralGain,
     double InboundIntegralGain,
     double FeeDeadband,
-    double RebalanceDeadband,
     uint MaxStepPpm,
     uint MaxInboundStepPpm,
     uint MinDeltaPpm,
@@ -70,7 +66,6 @@ public record FeeOptimizerTunables(
         OutboundIntegralGain: Constants.ROUTING_ENGINE_FEE_OUTBOUND_INTEGRAL_GAIN,
         InboundIntegralGain: Constants.ROUTING_ENGINE_FEE_INBOUND_INTEGRAL_GAIN,
         FeeDeadband: Constants.ROUTING_ENGINE_FEE_DEADBAND,
-        RebalanceDeadband: Constants.ROUTING_ENGINE_REBALANCE_DEADBAND,
         MaxStepPpm: Constants.ROUTING_ENGINE_FEE_MAX_STEP_PPM,
         MaxInboundStepPpm: Constants.ROUTING_ENGINE_FEE_MAX_INBOUND_STEP_PPM,
         MinDeltaPpm: Constants.ROUTING_ENGINE_FEE_MIN_DELTA_PPM,
@@ -94,7 +89,6 @@ public interface IFeeOptimizerService
     /// <para>
     /// With <c>d = emaLocalRatio - targetLocalRatio</c>:
     /// <list type="bullet">
-    /// <item><c>|d| > rebalanceDeadband</c> → <see cref="FeeAction.DeferToRebalancer"/> (authority split).</item>
     /// <item><c>|d| ≤ feeDeadband</c> → <see cref="FeeAction.NoOp"/>.</item>
     /// <item><c>d > 0</c> (too local): lower outbound to attract exits, raise inbound to repel entry.</item>
     /// <item><c>d < 0</c> (too remote): raise outbound to preserve local, deepen negative inbound to attract entry.</item>
@@ -141,14 +135,6 @@ public class FeeOptimizerService : IFeeOptimizerService
 
         var d = emaLocalRatio - targetLocalRatio;
         var absD = Math.Abs(d);
-
-        // Authority split — outside the rebalance deadband the rebalancer moves the ratio artificially,
-        // so the fee engine must not react to (its own) manufactured signal.
-        if (absD > tunables.RebalanceDeadband)
-        {
-            return new FeePolicyDecision(FeeAction.DeferToRebalancer, pLast, iLast,
-                $"|d|={absD:0.###} > rebalanceDeadband={tunables.RebalanceDeadband:0.###}");
-        }
 
         // Nothing to correct inside the fee deadband.
         if (absD <= tunables.FeeDeadband)
