@@ -52,8 +52,7 @@ public class RebalanceRepositoryRoutingEngineTests
             CreationDatetime = created,
             UpdateDatetime = created,
             FeePaidSats = feePaid,
-            // The reservation is derived on demand as RequestedAmountSats × MaxFeePct (÷100).
-            // Encode the desired reserved amount at a 1% cap so the arithmetic yields it exactly.
+            // Encode the desired reserved amount at a 1% cap.
             RequestedAmountSats = reserved * 100,
             MaxFeePct = 1.0,
         };
@@ -82,7 +81,7 @@ public class RebalanceRepositoryRoutingEngineTests
     }
 
     [Fact]
-    public async Task GetConsumedFeesSince_UsesReservedOrPaidForInFlightAndPaidForSucceeded()
+    public async Task GetConsumedFeesSince_UsesReservationForNonTerminalAndPaidForSucceeded()
     {
         var (sut, seed) = SetupDb();
         var now = DateTimeOffset.UtcNow;
@@ -91,8 +90,8 @@ public class RebalanceRepositoryRoutingEngineTests
         seed.Rebalances.AddRange(
             // Pending with only a reservation → counts reserved (100).
             Reb(NodeId, RebalanceStatus.Pending, now, feePaid: null, reserved: 100),
-            // InFlight where paid already exceeds reserved → counts MAX (50).
-            Reb(NodeId, RebalanceStatus.InFlight, now, feePaid: 50, reserved: 30),
+            // InFlight → counts the reservation (30), ignoring the partial FeePaidSats (50).
+            Reb(NodeId, RebalanceStatus.InFlight, now, feePaid: null, reserved: 30),
             // Succeeded → counts paid (200).
             Reb(NodeId, RebalanceStatus.Succeeded, now, feePaid: 200, reserved: 999),
             // Failed → excluded regardless of amount/fee cap (nothing consumed).
@@ -104,6 +103,6 @@ public class RebalanceRepositoryRoutingEngineTests
         );
         await seed.SaveChangesAsync();
 
-        (await sut.GetConsumedFeesSince(NodeId, since)).Should().Be(100 + 50 + 200);
+        (await sut.GetConsumedFeesSince(NodeId, since)).Should().Be(100 + 30 + 200);
     }
 }
