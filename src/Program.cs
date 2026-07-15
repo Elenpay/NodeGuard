@@ -128,6 +128,8 @@ namespace NodeGuard
             builder.Services.AddTransient<IForwardingHtlcEventRepository, ForwardingHtlcEventRepository>();
             builder.Services.AddTransient<IChannelRoutingStateRepository, ChannelRoutingStateRepository>();
             builder.Services.AddTransient<IChannelFeeStateRepository, ChannelFeeStateRepository>();
+            builder.Services.AddTransient<IPaymentRouteRepository, PaymentRouteRepository>();
+            builder.Services.AddTransient<IPaymentRoutesGraphService, PaymentRoutesGraphService>();
             builder.Services.AddTransient<ICoinSelectionService, CoinSelectionService>();
             builder.Services.AddTransient<IPriceConversionService, PriceConversionService>();
             builder.Services.AddTransient<IHtlcMonitoringScheduler, HtlcMonitoringScheduler>();
@@ -404,6 +406,30 @@ namespace NodeGuard
                 {
                     opts.ForJob(nameof(MonitorSwapsJob))
                         .WithIdentity($"{nameof(MonitorSwapsJob)}Trigger")
+                        .StartNow().WithSimpleSchedule(scheduleBuilder =>
+                        {
+                            if (Constants.IS_DEV_ENVIRONMENT)
+                            {
+                                scheduleBuilder.WithIntervalInMinutes(1).RepeatForever();
+                            }
+                            else
+                            {
+                                scheduleBuilder.WithIntervalInMinutes(10).RepeatForever();
+                            }
+                        });
+                });
+
+                // Monitor Payment Routes Job
+                q.AddJob<MonitorPaymentRoutesJob>(opts =>
+                {
+                    opts.DisallowConcurrentExecution();
+                    opts.WithIdentity(nameof(MonitorPaymentRoutesJob));
+                });
+
+                q.AddTrigger(opts =>
+                {
+                    opts.ForJob(nameof(MonitorPaymentRoutesJob))
+                        .WithIdentity($"{nameof(MonitorPaymentRoutesJob)}Trigger")
                         .StartNow().WithSimpleSchedule(scheduleBuilder =>
                         {
                             if (Constants.IS_DEV_ENVIRONMENT)
