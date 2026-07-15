@@ -109,6 +109,18 @@ namespace NodeGuard.Data
                 .HasForeignKey(r => r.SourceChannelId)
                 .OnDelete(DeleteBehavior.Restrict);
 
+            modelBuilder.Entity<PaymentRoute>()
+                .HasIndex(p => p.CreatedAt);
+
+            modelBuilder.Entity<PaymentRouteHop>()
+                .HasOne(h => h.Payment)
+                .WithMany(p => p.Hops)
+                .HasForeignKey(h => h.PaymentHash)
+                .OnDelete(DeleteBehavior.Cascade);
+
+            modelBuilder.Entity<PaymentRouteHop>()
+                .HasIndex(h => h.PaymentHash);
+
             base.OnModelCreating(modelBuilder);
         }
 
@@ -149,5 +161,9 @@ namespace NodeGuard.Data
         public DbSet<AuditLog> AuditLogs { get; set; }
 
         public DbSet<ForwardingHtlcEvent> ForwardingHtlcEvents { get; set; }
+
+        public DbSet<PaymentRoute> PaymentRoutes { get; set; }
+
+        public DbSet<PaymentRouteHop> PaymentRouteHops { get; set; }
     }
 }
