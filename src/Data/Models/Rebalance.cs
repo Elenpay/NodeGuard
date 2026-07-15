@@ -82,12 +82,6 @@ public class Rebalance : Entity
 
     public long? FeePaidMsat { get; set; }
 
-    /// <summary>
-    /// Fee reserved for this in-flight rebalance so its spend counts against the node budget
-    /// before <see cref="FeePaidSats"/> settles (in-flight budget accounting).
-    /// </summary>
-    public long? ReservedFeeSats { get; set; }
-
     [NotMapped]
     public long? EffectivePpm => FeePaidMsat.HasValue && SatsAmount > 0
         ? FeePaidMsat.Value * 1_000L / SatsAmount

@@ -60,8 +60,9 @@ public interface IRebalanceRepository
 
     /// <summary>
     /// Budget consumption for a node since <paramref name="since"/> (by CreationDatetime):
-    /// non-terminal rows count MAX(FeePaidSats, ReservedFeeSats) so in-flight spend counts
-    /// immediately, Succeeded rows count FeePaidSats, other terminal rows count 0.
+    /// non-terminal rows count MAX(FeePaidSats, RequestedAmountSats × MaxFeePct) so in-flight
+    /// spend counts immediately against a conservative on-demand reservation, Succeeded rows
+    /// count FeePaidSats, other terminal rows count 0.
     /// </summary>
     Task<long> GetConsumedFeesSince(int nodeId, DateTimeOffset since);
 }

@@ -160,16 +160,19 @@ public class RebalanceRepository : IRebalanceRepository
                         && (r.Status == RebalanceStatus.Pending
                             || r.Status == RebalanceStatus.InFlight
                             || r.Status == RebalanceStatus.Succeeded))
-            .Select(r => new { r.Status, r.FeePaidSats, r.ReservedFeeSats })
+            .Select(r => new { r.Status, r.FeePaidSats, r.RequestedAmountSats, r.MaxFeePct })
             .ToListAsync();
 
         long total = 0;
         foreach (var r in rows)
         {
             var feePaid = r.FeePaidSats ?? 0;
+            // Conservative worst-case reservation for a still-in-flight rebalance: RequestedAmountSats ×
+            // (MaxFeePct/100).
+            var reserved = (long)(r.RequestedAmountSats * r.MaxFeePct / 100.0);
             total += r.Status == RebalanceStatus.Succeeded
                 ? feePaid
-                : Math.Max(feePaid, r.ReservedFeeSats ?? 0); // in-flight spend counts immediately
+                : reserved;
         }
 
         return total;

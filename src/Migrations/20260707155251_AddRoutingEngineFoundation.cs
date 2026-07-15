@@ -12,12 +12,6 @@ namespace NodeGuard.Migrations
         /// <inheritdoc />
         protected override void Up(MigrationBuilder migrationBuilder)
         {
-            migrationBuilder.AddColumn<long>(
-                name: "ReservedFeeSats",
-                table: "Rebalances",
-                type: "bigint",
-                nullable: true);
-
             migrationBuilder.AddColumn<bool>(
                 name: "AllowPositiveInboundFees",
                 table: "Nodes",
@@ -183,10 +177,6 @@ namespace NodeGuard.Migrations
 
             migrationBuilder.DropTable(
                 name: "ChannelRoutingStates");
-
-            migrationBuilder.DropColumn(
-                name: "ReservedFeeSats",
-                table: "Rebalances");
 
             migrationBuilder.DropColumn(
                 name: "AllowPositiveInboundFees",

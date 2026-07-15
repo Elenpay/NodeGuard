@@ -44,7 +44,7 @@ public class RebalanceRepositoryRoutingEngineTests
     }
 
     private static Rebalance Reb(int nodeId, RebalanceStatus status, DateTimeOffset created,
-        long? feePaid = null, long? reserved = null)
+        long? feePaid = null, long reserved = 0)
         => new()
         {
             NodeId = nodeId,
@@ -52,7 +52,10 @@ public class RebalanceRepositoryRoutingEngineTests
             CreationDatetime = created,
             UpdateDatetime = created,
             FeePaidSats = feePaid,
-            ReservedFeeSats = reserved,
+            // The reservation is derived on demand as RequestedAmountSats × MaxFeePct (÷100).
+            // Encode the desired reserved amount at a 1% cap so the arithmetic yields it exactly.
+            RequestedAmountSats = reserved * 100,
+            MaxFeePct = 1.0,
         };
 
     [Fact]
@@ -92,7 +95,7 @@ public class RebalanceRepositoryRoutingEngineTests
             Reb(NodeId, RebalanceStatus.InFlight, now, feePaid: 50, reserved: 30),
             // Succeeded → counts paid (200).
             Reb(NodeId, RebalanceStatus.Succeeded, now, feePaid: 200, reserved: 999),
-            // Failed with a stale reservation → nothing consumed (excluded).
+            // Failed → excluded regardless of amount/fee cap (nothing consumed).
             Reb(NodeId, RebalanceStatus.Failed, now, feePaid: null, reserved: 999),
             // Succeeded but before the window → excluded.
             Reb(NodeId, RebalanceStatus.Succeeded, now.AddHours(-2), feePaid: 777),
