@@ -151,6 +151,12 @@ public class TargetRatioReevaluationJob : IJob
                     continue;
                 }
 
+                // Act only on channels that are active.
+                if (!lndChannel.Active)
+                {
+                    continue;
+                }
+
                 await ReevaluateChannel(managedNode, lndChannel, dbChannel, chainTip.Value, windowStart, now);
             }
             catch (Exception ex)
