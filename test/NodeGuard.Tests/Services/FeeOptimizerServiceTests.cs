@@ -32,7 +32,6 @@ public class FeeOptimizerServiceTests
         OutboundIntegralGain: 0.8,
         InboundIntegralGain: 0.5,
         FeeDeadband: 0.03,
-        RebalanceDeadband: 0.15,
         MaxStepPpm: 50,
         MaxInboundStepPpm: 25,
         MinDeltaPpm: 5,
@@ -55,12 +54,14 @@ public class FeeOptimizerServiceTests
         => _sut.ComputeNextPolicy(ema, target, category, lastOutbound, lastInbound, allowPositiveInbound, Tunables);
 
     [Fact]
-    public void OutOfRebalanceDeadband_DefersToRebalancer()
+    public void LargeDeviation_StillUpdates_StepClamped()
     {
-        // d = 0.9 - 0.5 = 0.40 > 0.15
+        // d = 0.9 - 0.5 = 0.40
         var decision = Compute(0.90, 0.50, PeerFlowCategory.Sink, 2500, 0, allowPositiveInbound: true);
 
-        decision.Action.Should().Be(FeeAction.DeferToRebalancer);
+        decision.Action.Should().Be(FeeAction.Update);
+        decision.OutboundPpm.Should().Be(2450); // 2500 - clamp(800, ±50)
+        decision.InboundPpm.Should().Be(25);    // +500 → rail-clamped to +100 → step-clamped to +25 from 0
     }
 
     [Fact]
@@ -131,7 +132,7 @@ public class FeeOptimizerServiceTests
     public void Outbound_IsClampedToMaxCeiling()
     {
         // Near the ceiling, too-remote pressure would push past MAX_OUTBOUND_PPM (5000).
-        // d = -0.14 (inside the rebalance deadband, so still fee-engine territory).
+        // d = -0.14.
         var decision = Compute(0.36, 0.50, PeerFlowCategory.Sink, 4990, -200, allowPositiveInbound: true);
 
         decision.Action.Should().Be(FeeAction.Update);
