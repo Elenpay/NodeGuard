@@ -41,6 +41,7 @@ public interface ILightningClientService
     public Task<FeeReportResponse?> FeeReport(Node node, Lightning.LightningClient? client = null);
     public Task<AddInvoiceResponse?> AddInvoice(Node node, Invoice invoice, Lightning.LightningClient? client = null);
     public Task<QueryRoutesResponse?> QueryRoutes(Node node, QueryRoutesRequest request, Lightning.LightningClient? client = null);
+    public Task<ListPaymentsResponse?> ListPayments(Node node, ListPaymentsRequest request, Lightning.LightningClient? client = null);
     public AsyncServerStreamingCall<CloseStatusUpdate>? CloseChannel(Node node, Channel channel, bool forceClose = false, Lightning.LightningClient? client = null);
     public AsyncServerStreamingCall<ChannelEventUpdate> SubscribeChannelEvents(Node node, Lightning.LightningClient? client = null);
     public Task<LightningNode?> GetNodeInfo(Node node, string pubKey, Lightning.LightningClient? client = null);
@@ -180,6 +181,28 @@ public class LightningClientService : ILightningClientService
         }
 
         return listChannelsResponse;
+    }
+
+    public async Task<ListPaymentsResponse?> ListPayments(Node node, ListPaymentsRequest request, Lightning.LightningClient? client = null)
+    {
+        // LightningEye polled LND's REST /v1/payments; NodeGuard talks gRPC, so this is
+        // the ListPayments RPC. The tracker paginates by index_offset just like the Python one.
+        try
+        {
+            client ??= GetLightningClient(node.Endpoint);
+            return await client.ListPaymentsAsync(request,
+                new Metadata
+                {
+                    {
+                        "macaroon", node.ChannelAdminMacaroon
+                    }
+                });
+        }
+        catch (Exception e)
+        {
+            _logger.LogError(e, "Error while listing payments for node {NodeId}", node.Id);
+            return null;
+        }
     }
 
     public async Task<ChannelBalanceResponse?> ChannelBalanceAsync(Node node, Lightning.LightningClient? client = null)
