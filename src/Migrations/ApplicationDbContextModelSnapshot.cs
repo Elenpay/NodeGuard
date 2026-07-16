@@ -1066,11 +1066,6 @@ namespace NodeGuard.Migrations
                     b.Property<DateTimeOffset?>("RebalanceBudgetStartDatetime")
                         .HasColumnType("timestamp with time zone");
 
-                    b.Property<bool>("RestoreFeeBaselineOnDisable")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("boolean")
-                        .HasDefaultValue(true);
-
                     b.Property<bool>("RoutingEngineDryRun")
                         .ValueGeneratedOnAdd()
                         .HasColumnType("boolean")

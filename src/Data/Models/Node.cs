@@ -153,13 +153,6 @@ namespace NodeGuard.Data.Models
         public bool AllowPositiveInboundFees { get; set; } = false;
 
         /// <summary>
-        /// When <see cref="DynamicFeeManagementEnabled"/> flips off, restore each channel's
-        /// captured fee baseline in one final write. When false, last-set fees are frozen.
-        /// Defaults ON.
-        /// </summary>
-        public bool RestoreFeeBaselineOnDisable { get; set; } = true;
-
-        /// <summary>
         /// Per-node dry-run for the routing-engine actuators: when true they log the
         /// fee/rebalance they would perform without calling LND.
         /// </summary>

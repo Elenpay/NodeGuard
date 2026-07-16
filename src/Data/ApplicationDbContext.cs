@@ -130,7 +130,6 @@ namespace NodeGuard.Data
             // These default ON: existing rows must be backfilled true (the C# initializer
             // only affects new in-code instances, not the DB column default / migration backfill).
             modelBuilder.Entity<Channel>().Property(x => x.IsDynamicFeeEnabled).HasDefaultValue(false);
-            modelBuilder.Entity<Node>().Property(x => x.RestoreFeeBaselineOnDisable).HasDefaultValue(true);
             modelBuilder.Entity<Node>().Property(x => x.RoutingEngineDryRun).HasDefaultValue(false);
 
             base.OnModelCreating(modelBuilder);

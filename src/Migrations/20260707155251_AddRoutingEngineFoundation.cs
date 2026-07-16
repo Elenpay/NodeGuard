@@ -64,13 +64,6 @@ namespace NodeGuard.Migrations
                 nullable: true);
 
             migrationBuilder.AddColumn<bool>(
-                name: "RestoreFeeBaselineOnDisable",
-                table: "Nodes",
-                type: "boolean",
-                nullable: false,
-                defaultValue: true);
-
-            migrationBuilder.AddColumn<bool>(
                 name: "RoutingEngineDryRun",
                 table: "Nodes",
                 type: "boolean",
@@ -208,10 +201,6 @@ namespace NodeGuard.Migrations
 
             migrationBuilder.DropColumn(
                 name: "RebalanceBudgetStartDatetime",
-                table: "Nodes");
-
-            migrationBuilder.DropColumn(
-                name: "RestoreFeeBaselineOnDisable",
                 table: "Nodes");
 
             migrationBuilder.DropColumn(
