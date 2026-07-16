@@ -684,7 +684,7 @@
                                                 <FieldLabel>Inbound base fee (msat)</FieldLabel>
                                                 <FieldHelp>Optional inbound base fee. When set, it must be zero or below.
                                                 </FieldHelp>
-                                                <NumericEdit TValue="int?" Immediate="false" Max="0"
+                                                <NumericEdit TValue="int?" Immediate="false" Max="@(_allowedPositiveInboundFeesSelectedChannel ? int.MaxValue : 0)"
                                                                 @bind-Value="_channelFeePolicy.InboundBaseFeeMsat">
                                                     <Feedback>
                                                         <ValidationError />
@@ -697,7 +697,7 @@
                                                 <FieldLabel>Inbound fee rate (ppm)</FieldLabel>
                                                 <FieldHelp>Optional inbound proportional fee. When set, it must be zero
                                                     or below.</FieldHelp>
-                                                <NumericEdit TValue="int?" Immediate="false" Max="0"
+                                                <NumericEdit TValue="int?" Immediate="false" Max="@(_allowedPositiveInboundFeesSelectedChannel ? int.MaxValue : 0)"
                                                                 @bind-Value="_channelFeePolicy.InboundFeeRatePpm">
                                                     <Feedback>
                                                         <ValidationError />
@@ -747,6 +747,7 @@
     private Validations? _channelFeePolicyValidationsRef;
     private ChannelFeePolicyForm _channelFeePolicy = new();
     private CurrentFeePolicies _currentFeePolicies = new() { IsLoading = false };
+    private bool _allowedPositiveInboundFeesSelectedChannel;
     private string _selectedChannelManagementTab = ChannelManagementLiquidityTab;
     private string? _selectedChannelOutpoint;
     private string? _selectedChannelNodePubKey;
@@ -1072,6 +1073,7 @@
             return;
         }
 
+        _allowedPositiveInboundFeesSelectedChannel = node.AllowPositiveInboundFees;
         _currentFeePolicies.IsLoading = true;
         _currentFeePolicies.ErrorMessage = null;
         StateHasChanged();
