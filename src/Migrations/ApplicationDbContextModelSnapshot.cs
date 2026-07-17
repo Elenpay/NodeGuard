@@ -449,21 +449,6 @@ namespace NodeGuard.Migrations
 
                     NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
 
-                    b.Property<DateTimeOffset?>("BaselineCapturedAt")
-                        .HasColumnType("timestamp with time zone");
-
-                    b.Property<int?>("BaselineInboundBaseMsat")
-                        .HasColumnType("integer");
-
-                    b.Property<int?>("BaselineInboundPpm")
-                        .HasColumnType("integer");
-
-                    b.Property<long?>("BaselineOutboundBaseFeeMsat")
-                        .HasColumnType("bigint");
-
-                    b.Property<long?>("BaselineOutboundPpm")
-                        .HasColumnType("bigint");
-
                     b.Property<int>("ChannelId")
                         .HasColumnType("integer");
 

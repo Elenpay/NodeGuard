@@ -21,7 +21,7 @@ namespace NodeGuard.Data.Models;
 
 /// <summary>
 /// Per-channel fee-engine state (1:1 with <see cref="Channel"/>). Holds last-applied
-/// policy + baseline snapshot (for rollback on disable), all of which must survive restarts.
+/// policy and control state that must survive restarts.
 /// </summary>
 public class ChannelFeeState : Entity
 {
@@ -36,10 +36,4 @@ public class ChannelFeeState : Entity
     public int? LastAppliedInboundPpm { get; set; }
     public double? LastComputedTarget { get; set; }
     public double? LastObservedRatio { get; set; }
-
-    public DateTimeOffset? BaselineCapturedAt { get; set; }
-    public long? BaselineOutboundBaseFeeMsat { get; set; }
-    public uint? BaselineOutboundPpm { get; set; }
-    public int? BaselineInboundBaseMsat { get; set; }
-    public int? BaselineInboundPpm { get; set; }
 }
