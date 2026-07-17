@@ -288,11 +288,12 @@ public class Constants
     public static int ROUTING_ENGINE_FEE_MIN_INBOUND_PPM = -1500;
     public static int ROUTING_ENGINE_FEE_MAX_INBOUND_PPM = 1000;
     public static int ROUTING_ENGINE_FEE_MIN_UPDATE_INTERVAL_MINUTES = 30;
-    public static int ROUTING_ENGINE_FEE_MAX_UPDATES_PER_RUN = 50;
     public static long ROUTING_ENGINE_FEE_MIN_CHANNEL_SIZE_SATS = 10_000_000;
     public static uint ROUTING_ENGINE_FEE_BASELINE_PPM_SOURCE = 50;
     public static uint ROUTING_ENGINE_FEE_BASELINE_PPM_BIDIRECTIONAL = 1000;
     public static uint ROUTING_ENGINE_FEE_BASELINE_PPM_SINK = 2500;
+    public static uint ROUTING_ENGINE_FEE_BASELINE_PPM_UNCATEGORIZED = 1000;
+    public static int ROUTING_ENGINE_FEE_REVENUE_WINDOW_DAYS = 7;
 
     public const string IsFrozenTag = "frozen";
     public const string IsManuallyFrozenTag = "manually_frozen";
@@ -600,9 +601,6 @@ public class Constants
         var feeMinUpdateInterval = Environment.GetEnvironmentVariable("ROUTING_ENGINE_FEE_MIN_UPDATE_INTERVAL_MINUTES");
         if (feeMinUpdateInterval != null) ROUTING_ENGINE_FEE_MIN_UPDATE_INTERVAL_MINUTES = int.Parse(feeMinUpdateInterval);
 
-        var feeMaxUpdatesPerRun = Environment.GetEnvironmentVariable("ROUTING_ENGINE_FEE_MAX_UPDATES_PER_RUN");
-        if (feeMaxUpdatesPerRun != null) ROUTING_ENGINE_FEE_MAX_UPDATES_PER_RUN = int.Parse(feeMaxUpdatesPerRun);
-
         var feeMinChannelSize = Environment.GetEnvironmentVariable("ROUTING_ENGINE_FEE_MIN_CHANNEL_SIZE_SATS");
         if (feeMinChannelSize != null) ROUTING_ENGINE_FEE_MIN_CHANNEL_SIZE_SATS = long.Parse(feeMinChannelSize);
 
@@ -614,6 +612,12 @@ public class Constants
 
         var feeBaselineSink = Environment.GetEnvironmentVariable("ROUTING_ENGINE_FEE_BASELINE_PPM_SINK");
         if (feeBaselineSink != null) ROUTING_ENGINE_FEE_BASELINE_PPM_SINK = uint.Parse(feeBaselineSink);
+
+        var feeBaselineUncategorized = Environment.GetEnvironmentVariable("ROUTING_ENGINE_FEE_BASELINE_PPM_UNCATEGORIZED");
+        if (feeBaselineUncategorized != null) ROUTING_ENGINE_FEE_BASELINE_PPM_UNCATEGORIZED = uint.Parse(feeBaselineUncategorized);
+
+        var feeRevenueWindowDays = Environment.GetEnvironmentVariable("ROUTING_ENGINE_FEE_REVENUE_WINDOW_DAYS");
+        if (feeRevenueWindowDays != null) ROUTING_ENGINE_FEE_REVENUE_WINDOW_DAYS = int.Parse(feeRevenueWindowDays);
 
         // DB Initialization
         ALICE_PUBKEY = Environment.GetEnvironmentVariable("ALICE_PUBKEY") ?? ALICE_PUBKEY;
