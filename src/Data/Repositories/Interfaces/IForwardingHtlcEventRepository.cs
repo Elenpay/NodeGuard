@@ -36,11 +36,4 @@ public interface IForwardingHtlcEventRepository
     /// given managed node, since the window start (fills our local balance — "pull").
     /// </summary>
     Task<long> GetIncomingAmountMsat(string managedNodePubKey, ulong chanIdLnd, DateTimeOffset since);
-
-    /// <summary>
-    /// Σ FeeMsat of succeeded forwards where OutgoingChannelId == chanIdLnd, since the window
-    /// start. Attributed to the outgoing side (the channel whose liquidity was spent) so
-    /// per-channel revenue sums don't double-count.
-    /// </summary>
-    Task<long> GetOrganicFeesEarnedMsat(string managedNodePubKey, ulong chanIdLnd, DateTimeOffset since);
 }

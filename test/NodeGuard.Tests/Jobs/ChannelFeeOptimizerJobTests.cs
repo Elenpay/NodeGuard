@@ -17,10 +17,7 @@
  *
  */
 
-using FluentAssertions;
-using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
-using NodeGuard.Data;
 using NodeGuard.Data.Models;
 using NodeGuard.Data.Repositories.Interfaces;
 using NodeGuard.Helpers;
@@ -67,7 +64,8 @@ public class ChannelFeeOptimizerJobTests
             FundingTx = "txid123",
             FundingTxOutputIndex = 1,
         };
-        _channelRepository.Setup(x => x.GetAll()).ReturnsAsync(new List<Channel> { dbChannel });
+        _channelRepository.Setup(x => x.GetChannelsFeeEngine())
+            .ReturnsAsync(new List<Channel> { dbChannel });
 
         // Too remote (ema 0.40 < target 0.50) + Sink → raise outbound, negative inbound.
         _routingStateRepository.Setup(x => x.GetByManagedNodePubKey(NodePubKey)).ReturnsAsync(new List<ChannelRoutingState>
@@ -83,8 +81,8 @@ public class ChannelFeeOptimizerJobTests
             },
         });
         _feeStateRepository.Setup(x => x.GetByManagedNodePubKey(NodePubKey)).ReturnsAsync(new List<ChannelFeeState>());
-        _forwardingHtlcEventRepository.Setup(x => x.GetOrganicFeesEarnedMsat(NodePubKey, ChanId, It.IsAny<DateTimeOffset>())).ReturnsAsync(1_000_000);
-        _rebalanceRepository.Setup(x => x.HasInFlightRebalanceBySourceChannel(ChannelDbId)).ReturnsAsync(inFlightRebalance);
+        _rebalanceRepository.Setup(x => x.GetPendingInFlightSourceChannelIds())
+            .ReturnsAsync(inFlightRebalance ? new HashSet<int> { ChannelDbId } : new HashSet<int>());
 
         var listResp = new Lnrpc.ListChannelsResponse
         {
@@ -118,15 +116,8 @@ public class ChannelFeeOptimizerJobTests
             }, (Lnrpc.RoutingPolicy?)null));
     }
 
-    private ChannelFeeOptimizerJob BuildJob()
-    {
-        var options = new DbContextOptionsBuilder<ApplicationDbContext>()
-            .UseInMemoryDatabase($"FeeJob_{Guid.NewGuid()}")
-            .Options;
-        var dbFactory = new Mock<IDbContextFactory<ApplicationDbContext>>();
-        dbFactory.Setup(x => x.CreateDbContextAsync(default)).ReturnsAsync(() => new ApplicationDbContext(options));
-
-        return new ChannelFeeOptimizerJob(
+    private ChannelFeeOptimizerJob BuildJob() =>
+        new(
             new Mock<ILogger<ChannelFeeOptimizerJob>>().Object,
             _nodeRepository.Object,
             _channelRepository.Object,
@@ -136,9 +127,7 @@ public class ChannelFeeOptimizerJobTests
             _rebalanceRepository.Object,
             new FeeOptimizerService(), // real pure decision logic
             _lightningService.Object,
-            _lightningClientService.Object,
-            dbFactory.Object);
-    }
+            _lightningClientService.Object);
 
     private static async Task WithEngine(bool enabled, Func<Task> body)
     {
