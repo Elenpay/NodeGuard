@@ -12,12 +12,6 @@ namespace NodeGuard.Migrations
         /// <inheritdoc />
         protected override void Up(MigrationBuilder migrationBuilder)
         {
-            migrationBuilder.AddColumn<long>(
-                name: "ReservedFeeSats",
-                table: "Rebalances",
-                type: "bigint",
-                nullable: true);
-
             migrationBuilder.AddColumn<bool>(
                 name: "AllowPositiveInboundFees",
                 table: "Nodes",
@@ -68,13 +62,6 @@ namespace NodeGuard.Migrations
                 table: "Nodes",
                 type: "timestamp with time zone",
                 nullable: true);
-
-            migrationBuilder.AddColumn<bool>(
-                name: "RestoreFeeBaselineOnDisable",
-                table: "Nodes",
-                type: "boolean",
-                nullable: false,
-                defaultValue: true);
 
             migrationBuilder.AddColumn<bool>(
                 name: "RoutingEngineDryRun",
@@ -185,10 +172,6 @@ namespace NodeGuard.Migrations
                 name: "ChannelRoutingStates");
 
             migrationBuilder.DropColumn(
-                name: "ReservedFeeSats",
-                table: "Rebalances");
-
-            migrationBuilder.DropColumn(
                 name: "AllowPositiveInboundFees",
                 table: "Nodes");
 
@@ -218,10 +201,6 @@ namespace NodeGuard.Migrations
 
             migrationBuilder.DropColumn(
                 name: "RebalanceBudgetStartDatetime",
-                table: "Nodes");
-
-            migrationBuilder.DropColumn(
-                name: "RestoreFeeBaselineOnDisable",
                 table: "Nodes");
 
             migrationBuilder.DropColumn(

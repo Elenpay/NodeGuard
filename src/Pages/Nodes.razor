@@ -461,15 +461,6 @@
                                 Allow positive inbound fees
                             </Check>
                         </Field>
-
-                        <Field>
-                            <FieldLabel>Restore Baseline on Disable</FieldLabel>
-                            <FieldHelp>When dynamic fees are turned off, restore each channel's captured fee baseline in one final write. When off, last-set fees are frozen in place.</FieldHelp>
-                            <Check TValue="bool" Checked="@_selectedNodeForLiquidity.RestoreFeeBaselineOnDisable"
-                                   CheckedChanged="@((value) => _selectedNodeForLiquidity.RestoreFeeBaselineOnDisable = value)">
-                                Restore fee baseline on disable
-                            </Check>
-                        </Field>
                     }
 
                     <Field>
