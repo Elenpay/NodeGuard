@@ -91,11 +91,6 @@ namespace NodeGuard.Migrations
                     LastAppliedInboundPpm = table.Column<int>(type: "integer", nullable: true),
                     LastComputedTarget = table.Column<double>(type: "double precision", nullable: true),
                     LastObservedRatio = table.Column<double>(type: "double precision", nullable: true),
-                    BaselineCapturedAt = table.Column<DateTimeOffset>(type: "timestamp with time zone", nullable: true),
-                    BaselineOutboundBaseFeeMsat = table.Column<long>(type: "bigint", nullable: true),
-                    BaselineOutboundPpm = table.Column<long>(type: "bigint", nullable: true),
-                    BaselineInboundBaseMsat = table.Column<int>(type: "integer", nullable: true),
-                    BaselineInboundPpm = table.Column<int>(type: "integer", nullable: true),
                     CreationDatetime = table.Column<DateTimeOffset>(type: "timestamp with time zone", nullable: false),
                     UpdateDatetime = table.Column<DateTimeOffset>(type: "timestamp with time zone", nullable: false)
                 },

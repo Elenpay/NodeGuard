@@ -63,11 +63,6 @@ public class ChannelFeeStateRepository : IChannelFeeStateRepository
             existing.LastAppliedInboundPpm = state.LastAppliedInboundPpm;
             existing.LastComputedTarget = state.LastComputedTarget;
             existing.LastObservedRatio = state.LastObservedRatio;
-            existing.BaselineCapturedAt = state.BaselineCapturedAt;
-            existing.BaselineOutboundBaseFeeMsat = state.BaselineOutboundBaseFeeMsat;
-            existing.BaselineOutboundPpm = state.BaselineOutboundPpm;
-            existing.BaselineInboundBaseMsat = state.BaselineInboundBaseMsat;
-            existing.BaselineInboundPpm = state.BaselineInboundPpm;
             existing.SetUpdateDatetime();
         }
 
