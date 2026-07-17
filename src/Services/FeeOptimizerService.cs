@@ -76,7 +76,7 @@ public record FeeOptimizerTunables(
         BaselineSourcePpm: Constants.ROUTING_ENGINE_FEE_BASELINE_PPM_SOURCE,
         BaselineBidirectionalPpm: Constants.ROUTING_ENGINE_FEE_BASELINE_PPM_BIDIRECTIONAL,
         BaselineSinkPpm: Constants.ROUTING_ENGINE_FEE_BASELINE_PPM_SINK,
-        BaselineUncategorizedPpm: (uint)Constants.DEFAULT_CHANNEL_FEE_POLICY_FEE_RATE_PPM);
+        BaselineUncategorizedPpm: Constants.ROUTING_ENGINE_FEE_BASELINE_PPM_UNCATEGORIZED);
 }
 
 public interface IFeeOptimizerService
@@ -148,8 +148,8 @@ public class FeeOptimizerService : IFeeOptimizerService
         // The [min, max] clamp on the new value is the anti-windup — state can never exceed the rail.
 
         // Outbound: raise when too remote (d<0), lower when too local (d>0).
-        var pNew = RoundClampUint(pLast - tunables.OutboundIntegralGain * d * p0, tunables.MinOutboundPpm, tunables.MaxOutboundPpm);
-        var dp = Math.Clamp((long)pNew - pLast, -(long)tunables.MaxStepPpm, tunables.MaxStepPpm);
+        var pNew = RoundClamp(pLast - tunables.OutboundIntegralGain * d * p0, tunables.MinOutboundPpm, tunables.MaxOutboundPpm);
+        var dp = Math.Clamp(pNew - pLast, -tunables.MaxStepPpm, tunables.MaxStepPpm);
         var outbound = Math.Abs(dp) < tunables.MinDeltaPpm ? pLast : (uint)(pLast + dp);
 
         // Inbound: deepen negative when too remote (attract entry), raise positive when too local (repel entry).
@@ -158,8 +158,8 @@ public class FeeOptimizerService : IFeeOptimizerService
         {
             iNewRaw = Math.Min(iNewRaw, 0);
         }
-        var iNew = RoundClampInt(iNewRaw, tunables.MinInboundPpm, tunables.MaxInboundPpm);
-        var di = Math.Clamp((long)iNew - iLast, -(long)tunables.MaxInboundStepPpm, tunables.MaxInboundStepPpm);
+        var iNew = RoundClamp(iNewRaw, tunables.MinInboundPpm, tunables.MaxInboundPpm);
+        var di = Math.Clamp(iNew - iLast, -tunables.MaxInboundStepPpm, tunables.MaxInboundStepPpm);
         var inbound = Math.Abs(di) < tunables.MinDeltaPpm ? iLast : (int)(iLast + di);
 
         if (outbound == pLast && inbound == iLast)
@@ -179,17 +179,9 @@ public class FeeOptimizerService : IFeeOptimizerService
         _ => t.BaselineUncategorizedPpm,
     };
 
-    private static uint RoundClampUint(double value, uint min, uint max)
+    private static long RoundClamp(double value, long min, long max)
     {
         var rounded = Math.Round(value, MidpointRounding.AwayFromZero);
-        if (rounded < min) return min;
-        if (rounded > max) return max;
-        return (uint)rounded;
-    }
-
-    private static int RoundClampInt(double value, int min, int max)
-    {
-        var rounded = (int)Math.Round(value, MidpointRounding.AwayFromZero);
-        return Math.Clamp(rounded, min, max);
+        return (long)Math.Clamp(rounded, min, max);
     }
 }
