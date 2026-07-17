@@ -81,7 +81,7 @@ public class RebalanceRepositoryTests
     }
 
     [Fact]
-    public async Task HasInFlightRebalanceBySourceChannel_TrueOnlyForPendingOrInFlightSource()
+    public async Task GetInFlightSourceChannelIds_ReturnsOnlyPendingOrInFlightSources()
     {
         var (sut, seed) = SetupDb();
         var now = DateTimeOffset.UtcNow;
@@ -91,15 +91,14 @@ public class RebalanceRepositoryTests
 
         seed.Rebalances.AddRange(
             new Rebalance { NodeId = NodeId, SourceChannelId = chanPending, Status = RebalanceStatus.Pending, CreationDatetime = now, UpdateDatetime = now },
+            new Rebalance { NodeId = NodeId, SourceChannelId = chanPending, Status = RebalanceStatus.Pending, CreationDatetime = now, UpdateDatetime = now }, // duplicate source — deduped
             new Rebalance { NodeId = NodeId, SourceChannelId = chanInFlight, Status = RebalanceStatus.InFlight, CreationDatetime = now, UpdateDatetime = now },
-            new Rebalance { NodeId = NodeId, SourceChannelId = chanSettled, Status = RebalanceStatus.Succeeded, CreationDatetime = now, UpdateDatetime = now }
+            new Rebalance { NodeId = NodeId, SourceChannelId = chanSettled, Status = RebalanceStatus.Succeeded, CreationDatetime = now, UpdateDatetime = now },
+            new Rebalance { NodeId = NodeId, SourceChannelId = null, Status = RebalanceStatus.Pending, CreationDatetime = now, UpdateDatetime = now } // no source — excluded
         );
         await seed.SaveChangesAsync();
 
-        (await sut.HasInFlightRebalanceBySourceChannel(chanPending)).Should().BeTrue();
-        (await sut.HasInFlightRebalanceBySourceChannel(chanInFlight)).Should().BeTrue();
-        (await sut.HasInFlightRebalanceBySourceChannel(chanSettled)).Should().BeFalse();
-        (await sut.HasInFlightRebalanceBySourceChannel(999)).Should().BeFalse(); // unknown channel
+        (await sut.GetPendingInFlightSourceChannelIds()).Should().BeEquivalentTo(new[] { chanPending, chanInFlight });
     }
 
     [Fact]

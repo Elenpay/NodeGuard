@@ -94,7 +94,6 @@ public class ForwardingHtlcEventRepositoryTests
 
         (await sut.GetOutgoingAmountMsat(Node, Chan, since)).Should().Be(1500);
         (await sut.GetIncomingAmountMsat(Node, Chan, since)).Should().Be(2000);
-        (await sut.GetOrganicFeesEarnedMsat(Node, Chan, since)).Should().Be(15);
     }
 
     [Fact]
@@ -105,6 +104,5 @@ public class ForwardingHtlcEventRepositoryTests
 
         (await sut.GetOutgoingAmountMsat(Node, Chan, DateTimeOffset.UtcNow.AddDays(-1))).Should().Be(0);
         (await sut.GetIncomingAmountMsat(Node, Chan, DateTimeOffset.UtcNow.AddDays(-1))).Should().Be(0);
-        (await sut.GetOrganicFeesEarnedMsat(Node, Chan, DateTimeOffset.UtcNow.AddDays(-1))).Should().Be(0);
     }
 }

@@ -169,6 +169,6 @@ public class FeeOptimizerServiceTests
         t.BaselineSourcePpm.Should().Be(Constants.ROUTING_ENGINE_FEE_BASELINE_PPM_SOURCE);
         t.BaselineBidirectionalPpm.Should().Be(Constants.ROUTING_ENGINE_FEE_BASELINE_PPM_BIDIRECTIONAL);
         t.BaselineSinkPpm.Should().Be(Constants.ROUTING_ENGINE_FEE_BASELINE_PPM_SINK);
-        t.BaselineUncategorizedPpm.Should().Be((uint)Constants.DEFAULT_CHANNEL_FEE_POLICY_FEE_RATE_PPM);
+        t.BaselineUncategorizedPpm.Should().Be(Constants.ROUTING_ENGINE_FEE_BASELINE_PPM_UNCATEGORIZED);
     }
 }
