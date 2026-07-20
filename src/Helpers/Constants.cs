@@ -284,7 +284,7 @@ public class Constants
     public static uint ROUTING_ENGINE_FEE_MAX_INBOUND_STEP_PPM = 25;
     public static uint ROUTING_ENGINE_FEE_MIN_DELTA_PPM = 5;
     public static uint ROUTING_ENGINE_FEE_MIN_OUTBOUND_PPM = 0;
-    public static uint ROUTING_ENGINE_FEE_MAX_OUTBOUND_PPM = 10000;
+    public static uint ROUTING_ENGINE_FEE_MAX_OUTBOUND_PPM = 5000;
     public static int ROUTING_ENGINE_FEE_MIN_INBOUND_PPM = -1500;
     public static int ROUTING_ENGINE_FEE_MAX_INBOUND_PPM = 1000;
     public static long ROUTING_ENGINE_FEE_MIN_CHANNEL_SIZE_SATS = 10_000_000;
