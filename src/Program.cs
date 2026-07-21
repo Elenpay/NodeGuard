@@ -126,6 +126,8 @@ namespace NodeGuard
             builder.Services.AddTransient<ILiquidityRuleRepository, LiquidityRuleRepository>();
             builder.Services.AddTransient<IAuditLogRepository, AuditLogRepository>();
             builder.Services.AddTransient<IForwardingHtlcEventRepository, ForwardingHtlcEventRepository>();
+            builder.Services.AddTransient<IChannelRoutingStateRepository, ChannelRoutingStateRepository>();
+            builder.Services.AddTransient<IChannelFeeStateRepository, ChannelFeeStateRepository>();
             builder.Services.AddTransient<ICoinSelectionService, CoinSelectionService>();
             builder.Services.AddTransient<IPriceConversionService, PriceConversionService>();
             builder.Services.AddTransient<IHtlcMonitoringScheduler, HtlcMonitoringScheduler>();
@@ -266,6 +268,30 @@ namespace NodeGuard
                             else
                             {
                                 scheduleBuilder.WithIntervalInMinutes(Constants.AUTO_LIQUIDITY_MANAGEMENT_INTERVAL_MINUTES).RepeatForever();
+                            }
+                        });
+                });
+
+                //Target Ratio Reevaluation Job
+                q.AddJob<TargetRatioReevaluationJob>(opts =>
+                {
+                    opts.DisallowConcurrentExecution();
+                    opts.WithIdentity(nameof(TargetRatioReevaluationJob));
+                });
+
+                q.AddTrigger(opts =>
+                {
+                    opts.ForJob(nameof(TargetRatioReevaluationJob))
+                        .WithIdentity($"{nameof(TargetRatioReevaluationJob)}Trigger")
+                        .StartNow().WithSimpleSchedule(scheduleBuilder =>
+                        {
+                            if (Constants.IS_DEV_ENVIRONMENT)
+                            {
+                                scheduleBuilder.WithIntervalInMinutes(5).RepeatForever();
+                            }
+                            else
+                            {
+                                scheduleBuilder.WithIntervalInMinutes(Constants.ROUTING_ENGINE_JOB_INTERVAL_MINUTES).RepeatForever();
                             }
                         });
                 });

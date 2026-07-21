@@ -109,6 +109,29 @@ namespace NodeGuard.Data
                 .HasForeignKey(r => r.SourceChannelId)
                 .OnDelete(DeleteBehavior.Restrict);
 
+            // Routing engine: 1:1 read models keyed on ChannelId.
+            modelBuilder.Entity<ChannelRoutingState>()
+                .HasOne(x => x.Channel)
+                .WithOne()
+                .HasForeignKey<ChannelRoutingState>(x => x.ChannelId)
+                .OnDelete(DeleteBehavior.Cascade);
+
+            // Only one ChannelRoutingState per channel.
+            modelBuilder.Entity<ChannelRoutingState>().HasIndex(x => x.ChannelId).IsUnique();
+
+            modelBuilder.Entity<ChannelFeeState>()
+                .HasOne(x => x.Channel)
+                .WithOne()
+                .HasForeignKey<ChannelFeeState>(x => x.ChannelId)
+                .OnDelete(DeleteBehavior.Cascade);
+            // Only one ChannelFeeState per channel.
+            modelBuilder.Entity<ChannelFeeState>().HasIndex(x => x.ChannelId).IsUnique();
+
+            // These default ON: existing rows must be backfilled true (the C# initializer
+            // only affects new in-code instances, not the DB column default / migration backfill).
+            modelBuilder.Entity<Channel>().Property(x => x.IsDynamicFeeEnabled).HasDefaultValue(false);
+            modelBuilder.Entity<Node>().Property(x => x.RoutingEngineDryRun).HasDefaultValue(false);
+
             base.OnModelCreating(modelBuilder);
         }
 
@@ -149,5 +172,9 @@ namespace NodeGuard.Data
         public DbSet<AuditLog> AuditLogs { get; set; }
 
         public DbSet<ForwardingHtlcEvent> ForwardingHtlcEvents { get; set; }
+
+        public DbSet<ChannelRoutingState> ChannelRoutingStates { get; set; }
+
+        public DbSet<ChannelFeeState> ChannelFeeStates { get; set; }
     }
 }

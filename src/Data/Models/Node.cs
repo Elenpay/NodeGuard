@@ -135,6 +135,56 @@ namespace NodeGuard.Data.Models
 
         #endregion Automatic Swap Out Configuration
 
+        #region Routing Engine
+
+        /// <summary>
+        /// Master gate for the dynamic fee engine on this node. Defaults OFF.
+        /// </summary>
+        public bool DynamicFeeManagementEnabled { get; set; } = false;
+
+        /// <summary>
+        /// Master gate for the automated rebalancer on this node. Defaults OFF.
+        /// </summary>
+        public bool AutoRebalanceEnabled { get; set; } = false;
+
+        /// <summary>
+        /// Allows the fee engine to set positive inbound fees on this node. Defaults OFF.
+        /// </summary>
+        public bool AllowPositiveInboundFees { get; set; } = false;
+
+        /// <summary>
+        /// Per-node dry-run for the routing-engine actuators: when true they log the
+        /// fee/rebalance they would perform without calling LND.
+        /// </summary>
+        public bool RoutingEngineDryRun { get; set; } = false;
+
+        /// <summary>
+        /// Maximum sats spendable on rebalance fees over the budget refresh interval.
+        /// </summary>
+        public long? RebalanceBudgetSats { get; set; }
+
+        /// <summary>
+        /// Time interval after which the rebalance budget is refreshed.
+        /// </summary>
+        public TimeSpan? RebalanceBudgetRefreshInterval { get; set; }
+
+        /// <summary>
+        /// The datetime when the current rebalance budget period started.
+        /// </summary>
+        public DateTimeOffset? RebalanceBudgetStartDatetime { get; set; }
+
+        /// <summary>
+        /// Maximum number of concurrent (Pending/InFlight) rebalances for this node.
+        /// </summary>
+        public int? MaxRebalancesInFlight { get; set; }
+
+        /// <summary>
+        /// Maximum acceptable rebalance cost-to-earn ratio used by the profitability gate.
+        /// </summary>
+        public double? MaxRebalanceCostToEarnRatio { get; set; }
+
+        #endregion Routing Engine
+
         #region Relationships
 
         public ICollection<ChannelOperationRequest> ChannelOperationRequestsAsSource { get; set; }
