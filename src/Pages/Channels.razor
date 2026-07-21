@@ -744,6 +744,7 @@
 
 
 @inject IChannelRepository ChannelRepository
+@inject IFeeEngineStateService FeeEngineStateService
 @inject IToastService ToastService
 @inject ClipboardService ClipboardService
 @inject IMessageService MessageService
@@ -1233,6 +1234,10 @@
         await AuditService.LogAsync(AuditActionType.Update, AuditEventType.Success, AuditObjectType.Channel,
             _selectedChannel.Id.ToString(),
             $"Updated dynamic fee flag. ChanId: {_selectedChannel.ChanId}, IsDynamicFeeEnabled: {_selectedChannel.IsDynamicFeeEnabled}");
+
+        // When the operator opts the channel out, drop its fee-engine state so a later re-enable
+        // cold-starts from the category baseline rather than resuming from outdated ChannelFeeState.
+        await FeeEngineStateService.PurgeChannelStateIfDisabled(_selectedChannel);
 
         if (_selectedChannel.IsDynamicFeeEnabled)
         {

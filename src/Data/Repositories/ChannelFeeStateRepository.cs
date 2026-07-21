@@ -84,4 +84,43 @@ public class ChannelFeeStateRepository : IChannelFeeStateRepository
 
         await context.SaveChangesAsync();
     }
+
+    public async Task<int> DeleteByChannelId(int channelId)
+    {
+        await using var context = await _dbContextFactory.CreateDbContextAsync();
+
+        var existing = await context.ChannelFeeStates
+            .FirstOrDefaultAsync(x => x.ChannelId == channelId);
+
+        if (existing == null)
+        {
+            return 0;
+        }
+
+        context.ChannelFeeStates.Remove(existing);
+        await context.SaveChangesAsync();
+        return 1;
+    }
+
+    public async Task<int> DeleteByManagedNodePubKey(string managedNodePubKey)
+    {
+        await using var context = await _dbContextFactory.CreateDbContextAsync();
+
+        var channelIds = context.ChannelRoutingStates
+            .Where(s => s.ManagedNodePubKey == managedNodePubKey)
+            .Select(s => s.ChannelId);
+
+        var states = await context.ChannelFeeStates
+            .Where(x => channelIds.Contains(x.ChannelId))
+            .ToListAsync();
+
+        if (states.Count == 0)
+        {
+            return 0;
+        }
+
+        context.ChannelFeeStates.RemoveRange(states);
+        await context.SaveChangesAsync();
+        return states.Count;
+    }
 }
