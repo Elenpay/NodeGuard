@@ -93,7 +93,8 @@ public class ChannelFeeOptimizerJob : IJob
             }
 
             // Shared per-run context, only needed when at least one node is under management.
-            var channelsFeeEngine = await _channelRepository.GetChannelsFeeEngine();
+            var channelsByChanId = (await _channelRepository.GetChannelsFeeEngine())
+                .ToDictionary(c => c.ChanId);
             var inFlightSourceChannelIds = await _rebalanceRepository.GetPendingInFlightSourceChannelIds();
 
             foreach (var managedNode in managedNodes)
@@ -102,7 +103,7 @@ public class ChannelFeeOptimizerJob : IJob
                 {
                     if (!managedNode.DynamicFeeManagementEnabled) continue;
 
-                    await OptimizeNode(managedNode, managedNodes, channelsFeeEngine, inFlightSourceChannelIds, tunables);
+                    await OptimizeNode(managedNode, managedNodes, channelsByChanId, inFlightSourceChannelIds, tunables);
                 }
                 catch (Exception ex)
                 {
@@ -131,7 +132,7 @@ public class ChannelFeeOptimizerJob : IJob
     private async Task OptimizeNode(
         Node node,
         IReadOnlyCollection<Node> managedNodes,
-        List<Channel> channelsToOptimize,
+        IReadOnlyDictionary<ulong, Channel> channelsByChanId,
         IReadOnlySet<int> inFlightSourceChannelIds,
         FeeOptimizerTunables tunables)
     {
@@ -154,8 +155,7 @@ public class ChannelFeeOptimizerJob : IJob
         foreach (var lndChannel in listResp.Channels)
         {
             if (!ChannelOwnershipHelper.IsOwnedByManagedNode(lndChannel, managedNodes)) continue;
-            var dbChannel = channelsToOptimize.FirstOrDefault(c => c.ChanId == lndChannel.ChanId);
-            if (dbChannel == null) continue;
+            if (!channelsByChanId.TryGetValue(lndChannel.ChanId, out var dbChannel)) continue;
             if (lndChannel.Capacity < Constants.ROUTING_ENGINE_FEE_MIN_CHANNEL_SIZE_SATS) continue;
             if (!routingStates.TryGetValue(dbChannel.Id, out var routingState)) continue; // no signal yet
 

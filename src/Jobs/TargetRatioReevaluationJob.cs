@@ -79,7 +79,8 @@ public class TargetRatioReevaluationJob : IJob
         {
             var managedNodes = await _nodeRepository.GetAllManagedByNodeGuard(withDisabled: false);
 
-            var openChannelsByChanId = await _channelRepository.GetOpenChannels();
+            var openChannelsByChanId = (await _channelRepository.GetOpenChannels())
+                .ToDictionary(c => c.ChanId);
 
             foreach (var managedNode in managedNodes)
             {
@@ -106,7 +107,7 @@ public class TargetRatioReevaluationJob : IJob
     private async Task ReevaluateNode(
         Node managedNode,
         IReadOnlyCollection<Node> managedNodes,
-        IReadOnlyCollection<Channel> openChannelsByChanId)
+        IReadOnlyDictionary<ulong, Channel> openChannelsByChanId)
     {
         var chainTip = await _lightningService.GetBlockHeight(managedNode);
         if (chainTip == null)
@@ -137,9 +138,8 @@ public class TargetRatioReevaluationJob : IJob
                     continue;
                 }
 
-                // Act only on a channel we have a confirmed, open DB row for.
-                var dbChannel = openChannelsByChanId.FirstOrDefault(c => c.ChanId == lndChannel.ChanId);
-                if (dbChannel == null)
+                // Act only on a channel we have a confirmed, open DB row for (O(1) lookup by scid).
+                if (!openChannelsByChanId.TryGetValue(lndChannel.ChanId, out var dbChannel))
                 {
                     continue;
                 }
