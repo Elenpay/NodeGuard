@@ -27,8 +27,8 @@ using Channel = NodeGuard.Data.Models.Channel;
 namespace NodeGuard.Jobs;
 
 /// <summary>
-/// Phase 2 of the routing engine — the dynamic fee actuator. For every eligible, owned channel
-/// on a node with dynamic fee management enabled it reads the Phase 1 signal
+/// Dynamic fee actuator. For every eligible, owned channel
+/// on a node with dynamic fee management enabled it reads the signal
 /// (<see cref="ChannelRoutingState"/>), runs the pure <see cref="IFeeOptimizerService"/> control
 /// law, and applies the resulting outbound/inbound ppm via LND — enforcing the fee-vs-rebalance
 /// authority split.
@@ -42,7 +42,6 @@ public class ChannelFeeOptimizerJob : IJob
     private readonly IChannelRepository _channelRepository;
     private readonly IChannelRoutingStateRepository _routingStateRepository;
     private readonly IChannelFeeStateRepository _feeStateRepository;
-    private readonly IForwardingHtlcEventRepository _forwardingHtlcEventRepository;
     private readonly IRebalanceRepository _rebalanceRepository;
     private readonly IFeeOptimizerService _feeOptimizerService;
     private readonly ILightningService _lightningService;
@@ -54,7 +53,6 @@ public class ChannelFeeOptimizerJob : IJob
         IChannelRepository channelRepository,
         IChannelRoutingStateRepository routingStateRepository,
         IChannelFeeStateRepository feeStateRepository,
-        IForwardingHtlcEventRepository forwardingHtlcEventRepository,
         IRebalanceRepository rebalanceRepository,
         IFeeOptimizerService feeOptimizerService,
         ILightningService lightningService,
@@ -65,7 +63,6 @@ public class ChannelFeeOptimizerJob : IJob
         _channelRepository = channelRepository;
         _routingStateRepository = routingStateRepository;
         _feeStateRepository = feeStateRepository;
-        _forwardingHtlcEventRepository = forwardingHtlcEventRepository;
         _rebalanceRepository = rebalanceRepository;
         _feeOptimizerService = feeOptimizerService;
         _lightningService = lightningService;

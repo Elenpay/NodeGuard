@@ -123,7 +123,6 @@ public class ChannelFeeOptimizerJobTests
             _channelRepository.Object,
             _routingStateRepository.Object,
             _feeStateRepository.Object,
-            _forwardingHtlcEventRepository.Object,
             _rebalanceRepository.Object,
             new FeeOptimizerService(), // real pure decision logic
             _lightningService.Object,
