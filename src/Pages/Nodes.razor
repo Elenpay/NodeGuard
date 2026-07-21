@@ -650,9 +650,8 @@
             var (result, _) = NodeRepository.Update(node);
             if (result)
             {
-                // Disabling the node stops fee management for all its channels: turn off each
-                // channel's dynamic-fee opt-in and drop their fee-engine state so a later
-                // re-enable starts fresh from the category baseline.
+                // Disabling the node stops fee management for all its channels: drop their fee-engine
+                // state so a later re-enable starts fresh from the category baseline.
                 await FeeEngineStateService.PurgeNodeStateIfDisabled(node);
 
                 _nodes = await NodeRepository.GetAllManagedByNodeGuard();
