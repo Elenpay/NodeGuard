@@ -116,8 +116,14 @@ public class MonitorPaymentRoutesJob : IJob
                 IndexOffset = indexOffset,
                 MaxPayments = MaxPaymentsPerPage,
                 Reversed = false,
-                // Matches the Python default: LND won't return IN_FLIGHT/INITIATED payments.
-                IncludeIncomplete = false
+                // Must be true: with IncludeIncomplete = false LND returns ONLY SUCCEEDED
+                // payments, so failed routes never reach the DB and the frontend's "Include
+                // failed payments" toggle has nothing to show. With it true, LND also returns
+                // FAILED (and IN_FLIGHT/INITIATED) payments; SavePaymentAsync then keeps only
+                // terminal states (Success/Failed) and skips the non-terminal ones via
+                // FromLndPaymentStatus → Unknown. Mirrors the Go infra tracker, which persists
+                // both SUCCEEDED and FAILED.
+                IncludeIncomplete = true
             };
 
             var response = await _lightningClientService.ListPayments(node, request);

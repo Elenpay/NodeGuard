@@ -54,22 +54,84 @@ public interface IPaymentRoutesGraphService
 public class PaymentRoutesGraphService : IPaymentRoutesGraphService
 {
     private readonly IPaymentRouteRepository _paymentRouteRepository;
+    private readonly INodeRepository _nodeRepository;
+    private readonly ILightningClientService _lightningClientService;
+    private readonly ILogger<PaymentRoutesGraphService> _logger;
 
-    public PaymentRoutesGraphService(IPaymentRouteRepository paymentRouteRepository)
+    public PaymentRoutesGraphService(IPaymentRouteRepository paymentRouteRepository,
+        INodeRepository nodeRepository,
+        ILightningClientService lightningClientService,
+        ILogger<PaymentRoutesGraphService> logger)
     {
         _paymentRouteRepository = paymentRouteRepository;
+        _nodeRepository = nodeRepository;
+        _lightningClientService = lightningClientService;
+        _logger = logger;
     }
 
     public async Task<PaymentGraph> BuildGraphAsync(string originNodePubKey, DateTimeOffset start, DateTimeOffset end)
     {
-        var payments = await _paymentRouteRepository.GetByCreatedAtRangeAsync(start, end);
+        var payments = await _paymentRouteRepository.GetByCreatedAtRangeAsync(originNodePubKey, start, end);
         if (payments.Count == 0)
         {
             return EmptyGraph(originNodePubKey);
         }
 
         var hops = payments.SelectMany(p => p.Hops).ToList();
-        return Assemble(originNodePubKey, payments, hops);
+        var aliases = await ResolveAliasesAsync(originNodePubKey, hops);
+        return Assemble(originNodePubKey, payments, hops, aliases);
+    }
+
+    /// <summary>
+    /// Resolves a human-readable alias for every pubkey that appears in the graph, so the
+    /// frontend can label nodes instead of falling back to A/B/C… letters (the port of
+    /// LightningEye's <c>nodes_cache</c>/aliases.js). The origin uses its managed
+    /// <see cref="Node.Name"/>; every other pubkey is looked up from the origin node's LND
+    /// gossip view via <c>GetNodeInfo</c>. Resolution is best-effort: any pubkey we can't
+    /// resolve is simply left out of the map (JS then falls back to a letter), and the whole
+    /// step is skipped if the origin node isn't reachable.
+    /// </summary>
+    private async Task<Dictionary<string, string>> ResolveAliasesAsync(string originNodePubKey, List<PaymentRouteHop> hops)
+    {
+        var aliases = new Dictionary<string, string>();
+
+        var originNode = await _nodeRepository.GetByPubkey(originNodePubKey);
+        if (originNode is not null && !string.IsNullOrWhiteSpace(originNode.Name))
+        {
+            aliases[originNodePubKey] = originNode.Name;
+        }
+
+        // Without a reachable managed node we can't query gossip; keep whatever we have.
+        if (originNode is null ||
+            string.IsNullOrWhiteSpace(originNode.Endpoint) ||
+            string.IsNullOrWhiteSpace(originNode.ChannelAdminMacaroon))
+        {
+            return aliases;
+        }
+
+        var pubKeys = hops
+            .SelectMany(h => new[] { h.FromNode, h.ToNode })
+            .Where(pk => !string.IsNullOrWhiteSpace(pk) && !aliases.ContainsKey(pk))
+            .Distinct()
+            .ToList();
+
+        // One GetNodeInfo per distinct pubkey, in parallel. Failures come back as null and
+        // are ignored (best-effort labelling must never break the graph).
+        var lookups = await Task.WhenAll(pubKeys.Select(async pk =>
+        {
+            var info = await _lightningClientService.GetNodeInfo(originNode, pk);
+            return (pubKey: pk, alias: info?.Alias);
+        }));
+
+        foreach (var (pubKey, alias) in lookups)
+        {
+            if (!string.IsNullOrWhiteSpace(alias))
+            {
+                aliases[pubKey] = alias;
+            }
+        }
+
+        return aliases;
     }
 
     /// <summary>
@@ -101,7 +163,8 @@ public class PaymentRoutesGraphService : IPaymentRoutesGraphService
     }
 
     // ── Assembly (port of graph_builder._assemble, own-tables source) ───────────
-    private static PaymentGraph Assemble(string originId, List<PaymentRoute> payments, List<PaymentRouteHop> hops)
+    private static PaymentGraph Assemble(string originId, List<PaymentRoute> payments, List<PaymentRouteHop> hops,
+        IReadOnlyDictionary<string, string> aliases)
     {
         var payStatus = payments.ToDictionary(p => p.PaymentHash, p => p.Status);
 
@@ -132,7 +195,8 @@ public class PaymentRoutesGraphService : IPaymentRoutesGraphService
         var nodes = nodePays.Select(kv => new PaymentGraphNode(
             Id: kv.Key,
             IsOrigin: kv.Key == originId,
-            Payments: kv.Value.Select(p => new PaymentGraphNodePayment(p.Key, StatusString(p.Value))).ToList()
+            Payments: kv.Value.Select(p => new PaymentGraphNodePayment(p.Key, StatusString(p.Value))).ToList(),
+            Alias: aliases.GetValueOrDefault(kv.Key)
         )).ToList();
 
         // ── Channels (edges) ──────────────────────────────────────────────────────
