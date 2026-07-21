@@ -32,4 +32,16 @@ public interface IChannelFeeStateRepository
     Task<List<ChannelFeeState>> GetByManagedNodePubKey(string managedNodePubKey);
 
     Task UpsertByChannelId(ChannelFeeState state);
+
+    /// <summary>
+    /// Deletes the fee-state row for a single channel, if present.
+    /// </summary>
+    /// <returns>The number of rows deleted (0 or 1).</returns>
+    Task<int> DeleteByChannelId(int channelId);
+
+    /// <summary>
+    /// Deletes the fee-state rows for every channel owned by the given managed node.
+    /// </summary>
+    /// <returns>The number of rows deleted.</returns>
+    Task<int> DeleteByManagedNodePubKey(string managedNodePubKey);
 }
