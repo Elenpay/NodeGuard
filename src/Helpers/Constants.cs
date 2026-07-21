@@ -268,7 +268,7 @@ public class Constants
     public static int ROUTING_ENGINE_CATEGORY_FLIP_HYSTERESIS_CYCLES = 3;
 
     /// <summary>
-    /// Cadence of TargetRatioReevaluationJob in prod, in minutes. Default 30. In dev
+    /// Cadence of TargetRatioReevaluationJob and ChannelFeeOptimizerJob in prod, in minutes. Default 30. In dev
     /// (IS_DEV_ENVIRONMENT) the job runs every 5 minutes regardless.
     /// </summary>
     public static int ROUTING_ENGINE_JOB_INTERVAL_MINUTES = 30;
