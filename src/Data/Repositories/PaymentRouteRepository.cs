@@ -61,12 +61,12 @@ public class PaymentRouteRepository : IPaymentRouteRepository
         }
     }
 
-    public async Task<List<PaymentRoute>> GetByCreatedAtRangeAsync(DateTimeOffset start, DateTimeOffset end)
+    public async Task<List<PaymentRoute>> GetByCreatedAtRangeAsync(string originNodePubKey, DateTimeOffset start, DateTimeOffset end)
     {
         await using var dbContext = await _dbContextFactory.CreateDbContextAsync();
         return await dbContext.PaymentRoutes
             .Include(p => p.Hops)
-            .Where(p => p.CreatedAt >= start && p.CreatedAt <= end)
+            .Where(p => p.OriginNodePubKey == originNodePubKey && p.CreatedAt >= start && p.CreatedAt <= end)
             .ToListAsync();
     }
 }

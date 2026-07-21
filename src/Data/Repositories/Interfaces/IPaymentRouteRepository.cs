@@ -26,6 +26,6 @@ public interface IPaymentRouteRepository
     /// <summary>Inserts a payment (with its hops) if it does not already exist. Idempotent by PaymentHash.</summary>
     Task<(bool inserted, string? error)> InsertIfNewAsync(PaymentRoute payment);
 
-    /// <summary>Payments (with hops eagerly loaded) created within [start, end].</summary>
-    Task<List<PaymentRoute>> GetByCreatedAtRangeAsync(DateTimeOffset start, DateTimeOffset end);
+    /// <summary>Payments (with hops eagerly loaded) originated by <paramref name="originNodePubKey"/> and created within [start, end].</summary>
+    Task<List<PaymentRoute>> GetByCreatedAtRangeAsync(string originNodePubKey, DateTimeOffset start, DateTimeOffset end);
 }
