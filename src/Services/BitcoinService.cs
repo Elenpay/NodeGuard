@@ -149,15 +149,25 @@ namespace NodeGuard.Services
                 }
             }
 
-            //If the request is a full funds withdrawal, calculate the amount to the existing balance
+            var previouslyLockedUTXOs =
+                await _coinSelectionService.GetLockedUTXOsForRequest(walletWithdrawalRequest,
+                    BitcoinRequestType.WalletWithdrawal);
+
+            //If the request is a full funds withdrawal, calculate the amount from available UTXOs
+            // (excluding frozen and UTXOs locked by other requests, but including UTXOs locked for this request)
             if (walletWithdrawalRequest.WithdrawAllFunds)
             {
-                var balanceResponse = await _nbXplorerService.GetBalanceAsync(derivationStrategy);
+                var availableUTXOsForBalance = await _coinSelectionService.GetAvailableUTXOsAsync(derivationStrategy);
+                var allUsableUTXOs = availableUTXOsForBalance
+                    .Concat(previouslyLockedUTXOs)
+                    .DistinctBy(x => x.Outpoint)
+                    .ToList();
+                var availableBalance = allUsableUTXOs.Sum(x => ((Money)x.Value).ToUnit(MoneyUnit.BTC));
 
                 var firstDestination = walletWithdrawalRequest.WalletWithdrawalRequestDestinations?.FirstOrDefault();
                 if (firstDestination != null)
                 {
-                    firstDestination.Amount = ((Money)balanceResponse.Confirmed).ToUnit(MoneyUnit.BTC);
+                    firstDestination.Amount = availableBalance;
                 }
                 else
                 {
@@ -172,10 +182,6 @@ namespace NodeGuard.Services
                     _logger.LogError("Error while setting update amount for a full withdrawal of the wallet funds");
                 }
             }
-
-            var previouslyLockedUTXOs =
-                await _coinSelectionService.GetLockedUTXOsForRequest(walletWithdrawalRequest,
-                    BitcoinRequestType.WalletWithdrawal);
 
             // Edge case: If you bumped a multisig transaction and a block was mined in between, the utxo is now unlocked, so we need to fail here
             // So a new withdrawal isn't performed with a new utxo

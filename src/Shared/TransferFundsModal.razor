@@ -114,7 +114,7 @@
                     <div class="row w-100 justify-content-between">
                         <div class="col-6">
                             <Validation
-                                Validator="@((args) => ValidationHelper.ValidateWithdrawalAmount(args, _sourceWalletBalance))">
+                                Validator="@((args) => ValidationHelper.ValidateWithdrawalAmount(args, AvailableBalance))">
                                 <Field>
                                     <FieldLabel>Amount</FieldLabel>
                                     <FieldBody>
@@ -254,6 +254,9 @@
     private string _sourceWalletName => _sourceTransferWallet != null ? $"{_sourceTransferWallet.Name} " : "";
     private decimal _sourceWalletBalance;
     private string? _sourceWalletBalanceFormatted => GetWalletBalanceFormatted(_sourceWalletBalance);
+    private decimal AvailableBalance => _availableUTXOs.Count > 0
+        ? _availableUTXOs.Sum(x => ((Money)x.Value).ToUnit(MoneyUnit.BTC))
+        : _sourceWalletBalance;
     private decimal _sourceBalanceAfterTransaction => _sourceWalletBalance > _amountToTransfer ? _sourceWalletBalance -
 _amountToTransfer : 0;
 
@@ -269,14 +272,15 @@ _amountToTransfer : 0;
 2)} USD)";
     }
 
-    private void OnTransferAllFundsCheckedChanged(bool value)
+    private async Task OnTransferAllFundsCheckedChanged(bool value)
     {
         _transferAllFunds = value;
         if (_transferAllFunds)
         {
-            _amountToTransfer = _availableUTXOs.Sum(x => ((Money)x.Value).ToUnit(MoneyUnit.BTC));
+            _amountToTransfer = AvailableBalance;
             ClearSelectedUTXOs();
         }
+        await _transferFundsValidations.ClearAll();
     }
 
     private decimal CalculateAmountWalletSourceAfterTransaction()
@@ -348,7 +352,7 @@ _amountToTransfer;
     }
 
     private async Task<WalletWithdrawalRequest> CreateWithdrawalRequestForFunds(Wallet source, Wallet destination, decimal
-amount, bool transferAllFunds)
+     amount, bool transferAllFunds)
     {
         var targetBitcoinAddress = await LightningService.GetUnusedAddress(destination, DerivationFeature.Deposit);
         if (targetBitcoinAddress == null)
@@ -369,17 +373,17 @@ amount, bool transferAllFunds)
             MempoolRecommendedFeesType = _selectedMempoolRecommendedFeesType,
             CustomFeeRate = _customSatPerVbAmount,
             WalletWithdrawalRequestDestinations = new List<WalletWithdrawalRequestDestination>
-            {
-                new WalletWithdrawalRequestDestination
-                {
-                    Address = targetBitcoinAddress.ToString(),
-                    Amount = amount,
-                }
-            },
+             {
+                 new WalletWithdrawalRequestDestination
+                 {
+                     Address = targetBitcoinAddress.ToString(),
+                     Amount = amount,
+                 }
+             },
             WalletId = source.Id,
             Status = source.IsHotWallet
-                ? WalletWithdrawalRequestStatus.PSBTSignaturesPending
-                : WalletWithdrawalRequestStatus.Pending,
+                         ? WalletWithdrawalRequestStatus.PSBTSignaturesPending
+                         : WalletWithdrawalRequestStatus.Pending,
         };
 
         var (success, error) = await WalletWithdrawalRequestRepository.AddAsync(withdrawalRequest);
