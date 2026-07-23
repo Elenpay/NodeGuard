@@ -259,6 +259,16 @@ a,
     outline: none;
 }
 
+.transfer-fee-control-column {
+    flex: 1 1 0;
+    min-width: 0;
+}
+
+.transfer-fee-control-gap {
+    width: 60px;
+    flex: 0 0 60px;
+}
+
 .btn-login:hover {
     opacity: 90%;
 }
@@ -287,8 +297,9 @@ a,
 }
 
 .arrow-icon-container {
-    margin-left: auto;
-    margin-top: -5px;
+    position: absolute;
+    left: 47%;
+    top: 26%;
 }
 
 .field-help {
