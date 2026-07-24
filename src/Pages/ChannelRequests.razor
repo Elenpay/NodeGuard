@@ -186,23 +186,8 @@
                     @(context.MempoolRecommendedFeesType == MempoolRecommendedFeesType.CustomFee ? $"{context.FeeRate} sat/vb" : _selectedMempoolRecommendedFeesType.ToString().Humanize())
                 </DisplayTemplate>
                 <EditTemplate>
-                    <div class="d-flex">
-                        <Select TValue="MempoolRecommendedFeesType" SelectedValue="@_selectedMempoolRecommendedFeesType" SelectedValueChanged="async (value) => await OnChangeFeeSelection(value)">
-                            <SelectGroup Label="Mempool.space fee">
-                                <SelectItem Value="MempoolRecommendedFeesType.EconomyFee">Economy Fee</SelectItem>
-                                <SelectItem Value="MempoolRecommendedFeesType.FastestFee">Fastest Fee</SelectItem>
-                                <SelectItem Value="MempoolRecommendedFeesType.HourFee">Hour Fee</SelectItem>
-                                <SelectItem Value="MempoolRecommendedFeesType.HalfHourFee">Half Hour Fee</SelectItem>
-                            </SelectGroup>
-                            <SelectItem Value="MempoolRecommendedFeesType.CustomFee">Custom</SelectItem>
-                        </Select>
-                        <NumericPicker TValue="long" @bind-Value="@_customSatPerVbAmount" CurrencySymbolPlacement="CurrencySymbolPlacement.Suffix" CurrencySymbol=" sat/vb" Min="1" Disabled="@(_selectedMempoolRecommendedFeesType != MempoolRecommendedFeesType.CustomFee)">
-                            <Feedback>
-                                <ValidationError/>
-                            </Feedback>
-                        </NumericPicker>
-                    </div>
-                    <FieldHelp>@(_selectedMempoolRecommendedFeesType != MempoolRecommendedFeesType.CustomFee ? "Fees may change by the time the request is processed" : "")</FieldHelp>
+                    <FeeRateSelector @bind-SelectedFeeType="@_selectedMempoolRecommendedFeesType"
+                                     @bind-CustomSatPerVb="@_customSatPerVbAmount" />
                 </EditTemplate>
             </DataGridColumn>
             <DataGridColumn TItem="ChannelOperationRequest" Displayable="@IsPendingRequestsColumnVisible(PendingChannelsColumnName.ChannelFeePolicy)" Editable="true" Caption="Channel Fee Policy" PopupFieldColumnSize="ColumnSize.Is12">
@@ -768,7 +753,7 @@
     {
         _utxoSelectorModalRef.ClearModal();
         _selectedMempoolRecommendedFeesType = MempoolRecommendedFeesType.FastestFee;
-        await OnChangeFeeSelection(_selectedMempoolRecommendedFeesType);
+        _customSatPerVbAmount = 1;
         await datagridRef.New();
     }
 
@@ -1300,12 +1285,6 @@
         _selectedUTXOs.Clear();
         _isChangeless = false;
         StateHasChanged();
-    }
-
-    private async Task OnChangeFeeSelection(MempoolRecommendedFeesType value)
-    {
-        _selectedMempoolRecommendedFeesType = value;
-        _customSatPerVbAmount = (long?)await NBXplorerService.GetFeesByType(_selectedMempoolRecommendedFeesType) ?? 1;
     }
 
     private static string GetInitialChannelFeePolicyDisplayText(ChannelOperationRequest request)
