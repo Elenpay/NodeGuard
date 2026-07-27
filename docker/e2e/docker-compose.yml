@@ -84,7 +84,7 @@ services:
       PUSH_NOTIFICATIONS_ONESIGNAL_ENABLED: "false"
       # GenerateTemplatePSBT always calls GetMempoolRecommendedFeesAsync (even for CUSTOM_FEE, whose
       # result is then discarded), which throws if MEMPOOL_ENDPOINT is unset. Match the dev profile.
-      MEMPOOL_ENDPOINT: "https://mempool.space"
+      MEMPOOL_ENDPOINT: "https://mempool.elenpay.tech"
       AMBOSS_ENDPOINT: "https://amboss.space"
       COINGECKO_ENDPOINT: "https://pro-api.coingecko.com/api/v3/coins/markets?vs_currency=usd&ids=bitcoin"
       API_TOKEN_SALT: "H/fCx1+maAFMcdi6idIYEg=="
