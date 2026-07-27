@@ -25,8 +25,6 @@ namespace NodeGuard.Services;
 
 public class FeeOptimizerServiceTests
 {
-    private readonly FeeOptimizerService _sut = new();
-
     // Vision-doc defaults.
     private static readonly FeeOptimizerTunables Tunables = new(
         OutboundIntegralGain: 0.8,
@@ -51,7 +49,7 @@ public class FeeOptimizerServiceTests
         uint? lastOutbound,
         int? lastInbound,
         bool allowPositiveInbound)
-        => _sut.ComputeNextPolicy(ema, target, category, lastOutbound, lastInbound, allowPositiveInbound, Tunables);
+        => FeeOptimizerService.ComputeNextPolicy(ema, target, category, lastOutbound, lastInbound, allowPositiveInbound, Tunables);
 
     [Fact]
     public void LargeDeviation_StillUpdates_StepClamped()

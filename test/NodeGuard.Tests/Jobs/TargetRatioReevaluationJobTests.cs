@@ -67,7 +67,6 @@ public class TargetRatioReevaluationJobTests
             _channelRepository.Object,
             _routingStateRepository.Object,
             _forwardingHtlcEventRepository.Object,
-            new PeerCategorizationService(), // real pure classification math
             _lightningService.Object,
             _lightningClientService.Object);
 

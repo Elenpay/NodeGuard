@@ -35,14 +35,14 @@ public enum FeeAction
 }
 
 /// <summary>
-/// Result of one <see cref="IFeeOptimizerService.ComputeNextPolicy"/> call. For <see cref="FeeAction.Update"/>,
+/// Result of one <see cref="FeeOptimizerService.ComputeNextPolicy"/> call. For <see cref="FeeAction.Update"/>,
 /// <see cref="OutboundPpm"/>/<see cref="InboundPpm"/> are the values to apply; for NoOp they
 /// echo the current (unchanged) values so the caller can log a coherent "would-keep" line.
 /// </summary>
 public record FeePolicyDecision(FeeAction Action, uint OutboundPpm, int InboundPpm, string Reason);
 
 /// <summary>
-/// Control-law tunables for <see cref="IFeeOptimizerService.ComputeNextPolicy"/>. Passed in explicitly so the
+/// Control-law tunables for <see cref="FeeOptimizerService.ComputeNextPolicy"/>. Passed in explicitly so the
 /// decision logic stays pure and unit-testable; <see cref="FromConstants"/> is the production wiring.
 /// </summary>
 public record FeeOptimizerTunables(
@@ -79,7 +79,11 @@ public record FeeOptimizerTunables(
         BaselineUncategorizedPpm: Constants.ROUTING_ENGINE_FEE_BASELINE_PPM_UNCATEGORIZED);
 }
 
-public interface IFeeOptimizerService
+/// <summary>
+/// Pure integral control law for the dynamic fee engine — no I/O, no clock, no DB, no injected state, so
+/// it is a static function library rather than a DI-registered service.
+/// </summary>
+public static class FeeOptimizerService
 {
     /// <summary>
     /// Integral control on the EMA-smoothed local ratio, driving both outbound ppm and (signed)
@@ -105,19 +109,7 @@ public interface IFeeOptimizerService
     /// <param name="lastInboundPpm">Last-applied inbound ppm (ChannelFeeState); null on first eval → seeded with 0.</param>
     /// <param name="allowPositiveInboundFees">When false, inbound is collapsed to ≤ 0 regardless of direction.</param>
     /// <param name="tunables">Control-law constants.</param>
-    FeePolicyDecision ComputeNextPolicy(
-        double emaLocalRatio,
-        double targetLocalRatio,
-        PeerFlowCategory category,
-        uint? lastOutboundPpm,
-        int? lastInboundPpm,
-        bool allowPositiveInboundFees,
-        FeeOptimizerTunables tunables);
-}
-
-public class FeeOptimizerService : IFeeOptimizerService
-{
-    public FeePolicyDecision ComputeNextPolicy(
+    public static FeePolicyDecision ComputeNextPolicy(
         double emaLocalRatio,
         double targetLocalRatio,
         PeerFlowCategory category,
