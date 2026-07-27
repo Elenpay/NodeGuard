@@ -22,6 +22,7 @@ using NodeGuard.Data.Models;
 using NodeGuard.Data.Repositories.Interfaces;
 using NodeGuard.Helpers;
 using NodeGuard.Services;
+using NodeGuard.Tests.Helpers;
 using Quartz;
 using Channel = NodeGuard.Data.Models.Channel;
 
@@ -188,5 +189,173 @@ public class ChannelFeeOptimizerJobTests
         });
 
         _nodeRepository.Verify(x => x.GetAllManagedByNodeGuard(It.IsAny<bool>()), Times.Never);
+    }
+
+    /// <summary>Asserts the engine wrote no fee policy to LND this run.</summary>
+    private void VerifyNoFeeWrite() =>
+        _lightningService.Verify(x => x.SetChannelFeePolicy(
+            It.IsAny<string>(), It.IsAny<string>(), It.IsAny<long>(), It.IsAny<uint>(),
+            It.IsAny<uint>(), It.IsAny<int?>(), It.IsAny<int?>(), It.IsAny<bool>()), Times.Never);
+
+    [Fact]
+    public async Task Execute_DryRunNode_RecordsFeeStateButDoesNotWriteToLnd()
+    {
+        var prevEnabled = Constants.ROUTING_ENGINE_ENABLED;
+        Constants.ROUTING_ENGINE_ENABLED = true;
+        try
+        {
+            var node = BuildNode();
+            node.RoutingEngineDryRun = true;
+            ArrangeSingleSinkChannel(node, inFlightRebalance: false);
+
+            await BuildJob().Execute(Mock.Of<IJobExecutionContext>());
+
+            // The live policy is still read (for the untouched base fee/timelock), but nothing is written,
+            // and the computed values are recorded so the operator can see what WOULD have been applied.
+            _lightningService.Verify(x => x.GetChannelFeePolicy(ChanId, It.IsAny<Node>()), Times.Once);
+            VerifyNoFeeWrite();
+            _feeStateRepository.Verify(x => x.UpsertByChannelId(
+                It.Is<ChannelFeeState>(s => s.LastAppliedOutboundPpm == 2550u && s.LastFeeUpdateAt != null)), Times.Once);
+        }
+        finally
+        {
+            Constants.ROUTING_ENGINE_ENABLED = prevEnabled;
+        }
+    }
+
+    [Fact]
+    public async Task Execute_NoNodeWithDynamicFeesEnabled_SkipsBeforeFetchingChannels()
+    {
+        var prevEnabled = Constants.ROUTING_ENGINE_ENABLED;
+        Constants.ROUTING_ENGINE_ENABLED = true;
+        try
+        {
+            var node = BuildNode();
+            node.DynamicFeeManagementEnabled = false;
+            ArrangeSingleSinkChannel(node, inFlightRebalance: false);
+
+            await BuildJob().Execute(Mock.Of<IJobExecutionContext>());
+
+            _channelRepository.Verify(x => x.GetChannelsFeeEngine(), Times.Never);
+            VerifyNoFeeWrite();
+        }
+        finally
+        {
+            Constants.ROUTING_ENGINE_ENABLED = prevEnabled;
+        }
+    }
+
+    [Fact]
+    public async Task Execute_NoRoutingStateForChannel_SkipsChannel()
+    {
+        var prevEnabled = Constants.ROUTING_ENGINE_ENABLED;
+        Constants.ROUTING_ENGINE_ENABLED = true;
+        try
+        {
+            var node = BuildNode();
+            ArrangeSingleSinkChannel(node, inFlightRebalance: false);
+            // No signal yet: the sensor hasn't produced a routing state for this channel.
+            _routingStateRepository.Setup(x => x.GetByManagedNodePubKey(NodePubKey)).ReturnsAsync(new List<ChannelRoutingState>());
+
+            await BuildJob().Execute(Mock.Of<IJobExecutionContext>());
+
+            _lightningService.Verify(x => x.GetChannelFeePolicy(It.IsAny<ulong>(), It.IsAny<Node>()), Times.Never);
+            VerifyNoFeeWrite();
+            _feeStateRepository.Verify(x => x.UpsertByChannelId(It.IsAny<ChannelFeeState>()), Times.Never);
+        }
+        finally
+        {
+            Constants.ROUTING_ENGINE_ENABLED = prevEnabled;
+        }
+    }
+
+    [Fact]
+    public async Task Execute_ChannelBelowMinSize_SkipsChannel()
+    {
+        var prevEnabled = Constants.ROUTING_ENGINE_ENABLED;
+        var prevMinSize = Constants.ROUTING_ENGINE_FEE_MIN_CHANNEL_SIZE_SATS;
+        Constants.ROUTING_ENGINE_ENABLED = true;
+        Constants.ROUTING_ENGINE_FEE_MIN_CHANNEL_SIZE_SATS = 20_000_000; // the arranged channel is 16M
+        try
+        {
+            var node = BuildNode();
+            ArrangeSingleSinkChannel(node, inFlightRebalance: false);
+
+            await BuildJob().Execute(Mock.Of<IJobExecutionContext>());
+
+            _lightningService.Verify(x => x.GetChannelFeePolicy(It.IsAny<ulong>(), It.IsAny<Node>()), Times.Never);
+            VerifyNoFeeWrite();
+        }
+        finally
+        {
+            Constants.ROUTING_ENGINE_ENABLED = prevEnabled;
+            Constants.ROUTING_ENGINE_FEE_MIN_CHANNEL_SIZE_SATS = prevMinSize;
+        }
+    }
+
+    [Fact]
+    public async Task Execute_InsideDeadband_PersistsStateButDoesNotTouchLnd()
+    {
+        var prevEnabled = Constants.ROUTING_ENGINE_ENABLED;
+        Constants.ROUTING_ENGINE_ENABLED = true;
+        try
+        {
+            var node = BuildNode();
+            ArrangeSingleSinkChannel(node, inFlightRebalance: false);
+            // ema == target ⇒ inside the fee deadband ⇒ NoOp.
+            _routingStateRepository.Setup(x => x.GetByManagedNodePubKey(NodePubKey)).ReturnsAsync(new List<ChannelRoutingState>
+            {
+                new()
+                {
+                    ChannelId = ChannelDbId,
+                    ManagedNodePubKey = NodePubKey,
+                    ChanIdLnd = ChanId,
+                    EmaLocalRatio = 0.50,
+                    TargetLocalRatio = 0.50,
+                    PeerFlowCategory = PeerFlowCategory.Sink,
+                },
+            });
+
+            await BuildJob().Execute(Mock.Of<IJobExecutionContext>());
+
+            // NoOp channels never cost an LND round-trip, but the observed ratio/target are still persisted.
+            _lightningService.Verify(x => x.GetChannelFeePolicy(It.IsAny<ulong>(), It.IsAny<Node>()), Times.Never);
+            VerifyNoFeeWrite();
+            _feeStateRepository.Verify(x => x.UpsertByChannelId(It.IsAny<ChannelFeeState>()), Times.Once);
+        }
+        finally
+        {
+            Constants.ROUTING_ENGINE_ENABLED = prevEnabled;
+        }
+    }
+
+    [Fact]
+    public async Task Execute_SetFeePolicyThrows_IsSwallowed_AndStateNotPersisted()
+    {
+        var prevEnabled = Constants.ROUTING_ENGINE_ENABLED;
+        Constants.ROUTING_ENGINE_ENABLED = true;
+        try
+        {
+            var node = BuildNode();
+            ArrangeSingleSinkChannel(node, inFlightRebalance: false);
+            _lightningService.Setup(x => x.SetChannelFeePolicy(
+                It.IsAny<string>(), It.IsAny<string>(), It.IsAny<long>(), It.IsAny<uint>(),
+                It.IsAny<uint>(), It.IsAny<int?>(), It.IsAny<int?>(), It.IsAny<bool>()))
+                .ThrowsAsync(new Exception("lnd unreachable"));
+
+            // Must not surface — Execute swallows per-channel errors so the next cycle retries. If it threw,
+            // this await would fail the test.
+            await BuildJob().Execute(Mock.Of<IJobExecutionContext>());
+
+            _lightningService.Verify(x => x.SetChannelFeePolicy(
+                It.IsAny<string>(), It.IsAny<string>(), It.IsAny<long>(), It.IsAny<uint>(),
+                It.IsAny<uint>(), It.IsAny<int?>(), It.IsAny<int?>(), It.IsAny<bool>()), Times.Once);
+            // On write failure the fee state is NOT persisted (LastApplied stays null → next cycle re-seeds).
+            _feeStateRepository.Verify(x => x.UpsertByChannelId(It.IsAny<ChannelFeeState>()), Times.Never);
+        }
+        finally
+        {
+            Constants.ROUTING_ENGINE_ENABLED = prevEnabled;
+        }
     }
 }
