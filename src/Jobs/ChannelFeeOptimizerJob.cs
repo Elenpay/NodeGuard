@@ -90,7 +90,7 @@ public class ChannelFeeOptimizerJob : IJob
             }
 
             // Shared per-run context, only needed when at least one node is under management.
-            var channelsByChanId = (await _channelRepository.GetChannelsFeeEngine())
+            var channelsByChanId = (await _channelRepository.GetChannelsByOpenAndDynamicFeeEnabled())
                 .ToDictionary(c => c.ChanId);
             var inFlightSourceChannelIds = await _rebalanceRepository.GetPendingInFlightSourceChannelIds();
 

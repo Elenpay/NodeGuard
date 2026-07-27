@@ -32,7 +32,7 @@ public interface IChannelRepository
 
     Task<List<Channel>> GetOpenChannels();
 
-    Task <List<Channel>> GetChannelsFeeEngine();
+    Task <List<Channel>> GetChannelsByOpenAndDynamicFeeEnabled();
 
     Task<(bool, string?)> AddAsync(Channel type);
 

@@ -105,7 +105,7 @@ namespace NodeGuard.Data.Repositories
                 .ToListAsync();
         }
 
-        public async Task<List<Channel>> GetChannelsFeeEngine()
+        public async Task<List<Channel>> GetChannelsByOpenAndDynamicFeeEnabled()
         {
             await using var applicationDbContext = await _dbContextFactory.CreateDbContextAsync();
 

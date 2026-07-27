@@ -65,7 +65,7 @@ public class ChannelFeeOptimizerJobTests
             FundingTx = "txid123",
             FundingTxOutputIndex = 1,
         };
-        _channelRepository.Setup(x => x.GetChannelsFeeEngine())
+        _channelRepository.Setup(x => x.GetChannelsByOpenAndDynamicFeeEnabled())
             .ReturnsAsync(new List<Channel> { dbChannel });
 
         // Too remote (ema 0.40 < target 0.50) + Sink → raise outbound, negative inbound.
@@ -235,7 +235,7 @@ public class ChannelFeeOptimizerJobTests
 
             await BuildJob().Execute(Mock.Of<IJobExecutionContext>());
 
-            _channelRepository.Verify(x => x.GetChannelsFeeEngine(), Times.Never);
+            _channelRepository.Verify(x => x.GetChannelsByOpenAndDynamicFeeEnabled(), Times.Never);
             VerifyNoFeeWrite();
         }
         finally
