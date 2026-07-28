@@ -114,16 +114,7 @@ public class ForwardingHtlcEventRepository : IForwardingHtlcEventRepository
             .Where(x => x.IncomingChannelId == chanIdLnd)
             .SumAsync(x => (long?)x.IncomingAmountMsat) ?? 0;
     }
-
-    public async Task<long> GetOrganicFeesEarnedMsat(string managedNodePubKey, ulong chanIdLnd, DateTimeOffset since)
-    {
-        await using var context = await _dbContextFactory.CreateDbContextAsync();
-
-        return await Settled(context, managedNodePubKey, since)
-            .Where(x => x.OutgoingChannelId == chanIdLnd)
-            .SumAsync(x => x.FeeMsat) ?? 0;
-    }
-
+    
     /// <summary>
     /// Base query shared by every windowed aggregation: succeeded (Settled) forwards for the given
     /// managed node within the window. No caller ever reads non-Settled rows.

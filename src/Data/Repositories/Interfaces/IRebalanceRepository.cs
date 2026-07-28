@@ -59,6 +59,11 @@ public interface IRebalanceRepository
     Task<int> GetInFlightByNode(int nodeId);
 
     /// <summary>
+    /// Source-channel ids (Channel primary keys) of every non-terminal rebalance (Pending/InFlight).
+    /// </summary>
+    Task<HashSet<int>> GetPendingInFlightSourceChannelIds();
+
+    /// <summary>
     /// Budget consumption for a node since <paramref name="since"/> (by CreationDatetime):
     /// non-terminal rows count MAX(FeePaidSats, RequestedAmountSats × MaxFeePct) so in-flight
     /// spend counts immediately against a conservative on-demand reservation, Succeeded rows

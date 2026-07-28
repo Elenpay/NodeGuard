@@ -40,6 +40,22 @@ public class ChannelFeeStateRepository : IChannelFeeStateRepository
             .FirstOrDefaultAsync(x => x.ChannelId == channelId);
     }
 
+    public async Task<List<ChannelFeeState>> GetByManagedNodePubKey(string managedNodePubKey)
+    {
+        await using var context = await _dbContextFactory.CreateDbContextAsync();
+
+        // ChannelFeeState carries no node pubkey; the owning node lives on ChannelRoutingState
+        // (1:1 with the same Channel), so filter through it.
+        var channelIds = context.ChannelRoutingStates
+            .Where(s => s.ManagedNodePubKey == managedNodePubKey)
+            .Select(s => s.ChannelId);
+
+        return await context.ChannelFeeStates
+            .Include(x => x.Channel)
+            .Where(x => channelIds.Contains(x.ChannelId))
+            .ToListAsync();
+    }
+
     public async Task UpsertByChannelId(ChannelFeeState state)
     {
         await using var context = await _dbContextFactory.CreateDbContextAsync();
@@ -67,5 +83,44 @@ public class ChannelFeeStateRepository : IChannelFeeStateRepository
         }
 
         await context.SaveChangesAsync();
+    }
+
+    public async Task<bool> DeleteByChannelId(int channelId)
+    {
+        await using var context = await _dbContextFactory.CreateDbContextAsync();
+
+        var existing = await context.ChannelFeeStates
+            .FirstOrDefaultAsync(x => x.ChannelId == channelId);
+
+        if (existing == null)
+        {
+            return false;
+        }
+
+        context.ChannelFeeStates.Remove(existing);
+        await context.SaveChangesAsync();
+        return true;
+    }
+
+    public async Task<int> DeleteByManagedNodePubKey(string managedNodePubKey)
+    {
+        await using var context = await _dbContextFactory.CreateDbContextAsync();
+
+        var channelIds = context.ChannelRoutingStates
+            .Where(s => s.ManagedNodePubKey == managedNodePubKey)
+            .Select(s => s.ChannelId);
+
+        var states = await context.ChannelFeeStates
+            .Where(x => channelIds.Contains(x.ChannelId))
+            .ToListAsync();
+
+        if (states.Count == 0)
+        {
+            return 0;
+        }
+
+        context.ChannelFeeStates.RemoveRange(states);
+        await context.SaveChangesAsync();
+        return states.Count;
     }
 }

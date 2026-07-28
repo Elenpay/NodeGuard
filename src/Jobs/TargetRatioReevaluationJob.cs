@@ -41,7 +41,6 @@ public class TargetRatioReevaluationJob : IJob
     private readonly IChannelRepository _channelRepository;
     private readonly IChannelRoutingStateRepository _routingStateRepository;
     private readonly IForwardingHtlcEventRepository _forwardingHtlcEventRepository;
-    private readonly IPeerCategorizationService _peerCategorizationService;
     private readonly ILightningService _lightningService;
     private readonly ILightningClientService _lightningClientService;
 
@@ -51,7 +50,6 @@ public class TargetRatioReevaluationJob : IJob
         IChannelRepository channelRepository,
         IChannelRoutingStateRepository routingStateRepository,
         IForwardingHtlcEventRepository forwardingHtlcEventRepository,
-        IPeerCategorizationService peerCategorizationService,
         ILightningService lightningService,
         ILightningClientService lightningClientService)
     {
@@ -60,7 +58,6 @@ public class TargetRatioReevaluationJob : IJob
         _channelRepository = channelRepository;
         _routingStateRepository = routingStateRepository;
         _forwardingHtlcEventRepository = forwardingHtlcEventRepository;
-        _peerCategorizationService = peerCategorizationService;
         _lightningService = lightningService;
         _lightningClientService = lightningClientService;
     }
@@ -79,15 +76,8 @@ public class TargetRatioReevaluationJob : IJob
         {
             var managedNodes = await _nodeRepository.GetAllManagedByNodeGuard(withDisabled: false);
 
-            // One DB round-trip for channels; index the open/confirmed ones by their LND scid.
-            var openChannelsByChanId = new Dictionary<ulong, Channel>();
-            foreach (var channel in await _channelRepository.GetAll())
-            {
-                if (channel.Status == Channel.ChannelStatus.Open && channel.ChanId != 0)
-                {
-                    openChannelsByChanId[channel.ChanId] = channel;
-                }
-            }
+            var openChannelsByChanId = (await _channelRepository.GetOpenChannels())
+                .ToDictionary(c => c.ChanId);
 
             foreach (var managedNode in managedNodes)
             {
@@ -145,7 +135,7 @@ public class TargetRatioReevaluationJob : IJob
                     continue;
                 }
 
-                // Act only on a channel we have a confirmed, open DB row for.
+                // Act only on a channel we have a confirmed, open DB row for (O(1) lookup by scid).
                 if (!openChannelsByChanId.TryGetValue(lndChannel.ChanId, out var dbChannel))
                 {
                     continue;
@@ -191,7 +181,7 @@ public class TargetRatioReevaluationJob : IJob
         state.FundingBlockHeight = BlockHeightHelper.FundingHeightFromChanId(lndChannel.ChanId, chainTip);
         state.AgeBlocks = BlockHeightHelper.AgeBlocksFromChanId(lndChannel.ChanId, chainTip);
         state.PeerInitiated = !lndChannel.Initiator;
-        state.EmaLocalRatio = _peerCategorizationService.SmoothEma(
+        state.EmaLocalRatio = PeerCategorizationService.SmoothEma(
             state.EmaLocalRatio, observedRatio, Constants.ROUTING_ENGINE_FEE_EMA_ALPHA);
 
         var push = await _forwardingHtlcEventRepository.GetOutgoingAmountMsat(managedNode.PubKey, lndChannel.ChanId, windowStart);
@@ -205,7 +195,7 @@ public class TargetRatioReevaluationJob : IJob
         // channels (AgeBlocks null) stay Uncategorized at target 0.5.
         if (state.AgeBlocks >= Constants.ROUTING_ENGINE_CATEGORIZATION_MIN_AGE_BLOCKS)
         {
-            var decision = _peerCategorizationService.ComputeCategory(
+            var decision = PeerCategorizationService.ComputeCategory(
                 state.NetFlowRatio,
                 total,
                 state.PeerFlowCategory,
@@ -225,12 +215,12 @@ public class TargetRatioReevaluationJob : IJob
 
             var targetGoal = state.PeerFlowCategory == PeerFlowCategory.Uncategorized
                 ? 0.5
-                : _peerCategorizationService.ComputeTargetGoal(
+                : PeerCategorizationService.ComputeTargetGoal(
                     state.NetFlowRatio,
                     Constants.ROUTING_ENGINE_TARGET_K,
                     Constants.ROUTING_ENGINE_TARGET_MAX_DRIFT);
 
-            state.TargetLocalRatio = _peerCategorizationService.SmoothTarget(
+            state.TargetLocalRatio = PeerCategorizationService.SmoothTarget(
                 state.TargetLocalRatio, targetGoal, Constants.ROUTING_ENGINE_TARGET_ALPHA);
         }
 
