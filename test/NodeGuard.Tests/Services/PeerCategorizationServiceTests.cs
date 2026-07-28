@@ -24,8 +24,6 @@ namespace NodeGuard.Services;
 
 public class PeerCategorizationServiceTests
 {
-    private readonly PeerCategorizationService _sut = new();
-
     private const int Hysteresis = 3;
     private const double Threshold = 0.25;
     private const long MinVolume = 10_000_000_000;
@@ -37,7 +35,7 @@ public class PeerCategorizationServiceTests
         PeerFlowCategory current,
         PeerFlowCategory? pending,
         uint streak)
-        => _sut.ComputeCategory(netFlowRatio, volume, current, pending, streak, Hysteresis, Threshold, MinVolume);
+        => PeerCategorizationService.ComputeCategory(netFlowRatio, volume, current, pending, streak, Hysteresis, Threshold, MinVolume);
 
     [Fact]
     public void ComputeCategory_PushHeavy_CommitsSink_OnThirdConsecutiveCycle()
@@ -150,21 +148,21 @@ public class PeerCategorizationServiceTests
     [InlineData(0.0, 0.5)]
     public void ComputeTargetGoal_ClampsToBand(double netFlowRatio, double expected)
     {
-        _sut.ComputeTargetGoal(netFlowRatio, kTarget: 0.70, maxDrift: 0.35)
+        PeerCategorizationService.ComputeTargetGoal(netFlowRatio, kTarget: 0.70, maxDrift: 0.35)
             .Should().BeApproximately(expected, 1e-9);
     }
 
     [Fact]
     public void ComputeTargetGoal_SignFollowsFlow()
     {
-        _sut.ComputeTargetGoal(0.10, 0.70, 0.35).Should().BeGreaterThan(0.5);  // sink → above
-        _sut.ComputeTargetGoal(-0.10, 0.70, 0.35).Should().BeLessThan(0.5);    // source → below
+        PeerCategorizationService.ComputeTargetGoal(0.10, 0.70, 0.35).Should().BeGreaterThan(0.5);  // sink → above
+        PeerCategorizationService.ComputeTargetGoal(-0.10, 0.70, 0.35).Should().BeLessThan(0.5);    // source → below
     }
 
     [Fact]
     public void SmoothEma_IsAlphaWeightedAverage()
     {
-        _sut.SmoothEma(currentEma: 0.5, observedRatio: 1.0, alphaRatio: 0.04)
+        PeerCategorizationService.SmoothEma(currentEma: 0.5, observedRatio: 1.0, alphaRatio: 0.04)
             .Should().BeApproximately(0.52, 1e-9);
     }
 
@@ -175,7 +173,7 @@ public class PeerCategorizationServiceTests
         var ema = 0.0; // start; step target = 1.0
         for (var i = 0; i < (int)(1 / alpha); i++)
         {
-            ema = _sut.SmoothEma(ema, 1.0, alpha);
+            ema = PeerCategorizationService.SmoothEma(ema, 1.0, alpha);
         }
 
         // Classic first-order step response: ~63% of the way to the goal after 1/alpha samples.
@@ -191,7 +189,7 @@ public class PeerCategorizationServiceTests
 
         for (var i = 0; i < 25; i++)
         {
-            target = _sut.SmoothTarget(target, goal, alphaTarget: 0.10);
+            target = PeerCategorizationService.SmoothTarget(target, goal, alphaTarget: 0.10);
             var gap = goal - target;
             gap.Should().BeLessThan(previousGap); // strictly closing the gap
             gap.Should().BeGreaterThan(0);        // never overshoots

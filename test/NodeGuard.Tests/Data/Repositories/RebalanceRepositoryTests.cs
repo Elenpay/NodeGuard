@@ -25,7 +25,7 @@ using NodeGuard.Data.Repositories.Interfaces;
 
 namespace NodeGuard.Data.Repositories;
 
-public class RebalanceRepositoryTests
+public class RebalanceRepositoryRoutingEngineTests
 {
     private readonly Random _random = new();
     private const int NodeId = 1;

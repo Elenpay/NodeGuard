@@ -133,7 +133,6 @@ namespace NodeGuard
             builder.Services.AddTransient<IHtlcMonitoringScheduler, HtlcMonitoringScheduler>();
             builder.Services.AddSingleton<ILightningClientService, LightningClientService>();
             builder.Services.AddSingleton<ILightningRouterService, LightningRouterService>();
-            builder.Services.AddSingleton<IFeeOptimizerService, FeeOptimizerService>();
             builder.Services.AddTransient<IFeeEngineStateService, FeeEngineStateService>();
             builder.Services.AddSingleton<ILoopService, LoopService>();
             builder.Services.AddSingleton<IFortySwapService, FortySwapService>();
@@ -313,7 +312,7 @@ namespace NodeGuard
                         {
                             if (Constants.IS_DEV_ENVIRONMENT)
                             {
-                                scheduleBuilder.WithIntervalInMinutes(5).RepeatForever();
+                                scheduleBuilder.WithIntervalInMinutes(1).RepeatForever();
                             }
                             else
                             {

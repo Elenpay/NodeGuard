@@ -36,8 +36,8 @@ public interface IChannelFeeStateRepository
     /// <summary>
     /// Deletes the fee-state row for a single channel, if present.
     /// </summary>
-    /// <returns>The number of rows deleted (0 or 1).</returns>
-    Task<int> DeleteByChannelId(int channelId);
+    /// <returns><c>true</c> if a row was deleted; <c>false</c> if none existed.</returns>
+    Task<bool> DeleteByChannelId(int channelId);
 
     /// <summary>
     /// Deletes the fee-state rows for every channel owned by the given managed node.

@@ -40,7 +40,7 @@ public class ChannelFeeStateRepositoryTests
     }
 
     [Fact]
-    public async Task DeleteByChannelId_RemovesRow_AndReturnsCount()
+    public async Task DeleteByChannelId_RemovesRow_AndReturnsTrue()
     {
         var (factory, _) = SetupDb();
         var sut = new ChannelFeeStateRepository(factory.Object);
@@ -49,17 +49,17 @@ public class ChannelFeeStateRepositoryTests
 
         var deleted = await sut.DeleteByChannelId(7);
 
-        deleted.Should().Be(1);
+        deleted.Should().BeTrue();
         (await sut.GetByChannelId(7)).Should().BeNull();
     }
 
     [Fact]
-    public async Task DeleteByChannelId_ReturnsZero_WhenAbsent()
+    public async Task DeleteByChannelId_ReturnsFalse_WhenAbsent()
     {
         var (factory, _) = SetupDb();
         var sut = new ChannelFeeStateRepository(factory.Object);
 
-        (await sut.DeleteByChannelId(999)).Should().Be(0);
+        (await sut.DeleteByChannelId(999)).Should().BeFalse();
     }
 
     [Fact]

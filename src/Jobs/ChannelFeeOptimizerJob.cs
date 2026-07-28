@@ -29,7 +29,7 @@ namespace NodeGuard.Jobs;
 /// <summary>
 /// Dynamic fee actuator. For every eligible, owned channel
 /// on a node with dynamic fee management enabled it reads the signal
-/// (<see cref="ChannelRoutingState"/>), runs the pure <see cref="IFeeOptimizerService"/> control
+/// (<see cref="ChannelRoutingState"/>), runs the pure <see cref="FeeOptimizerService"/> control
 /// law, and applies the resulting outbound/inbound ppm via LND — enforcing the fee-vs-rebalance
 /// authority split.
 /// Everything is gated by the global ROUTING_ENGINE_ENABLED kill switch.
@@ -43,7 +43,6 @@ public class ChannelFeeOptimizerJob : IJob
     private readonly IChannelRoutingStateRepository _routingStateRepository;
     private readonly IChannelFeeStateRepository _feeStateRepository;
     private readonly IRebalanceRepository _rebalanceRepository;
-    private readonly IFeeOptimizerService _feeOptimizerService;
     private readonly ILightningService _lightningService;
     private readonly ILightningClientService _lightningClientService;
 
@@ -54,7 +53,6 @@ public class ChannelFeeOptimizerJob : IJob
         IChannelRoutingStateRepository routingStateRepository,
         IChannelFeeStateRepository feeStateRepository,
         IRebalanceRepository rebalanceRepository,
-        IFeeOptimizerService feeOptimizerService,
         ILightningService lightningService,
         ILightningClientService lightningClientService)
     {
@@ -64,7 +62,6 @@ public class ChannelFeeOptimizerJob : IJob
         _routingStateRepository = routingStateRepository;
         _feeStateRepository = feeStateRepository;
         _rebalanceRepository = rebalanceRepository;
-        _feeOptimizerService = feeOptimizerService;
         _lightningService = lightningService;
         _lightningClientService = lightningClientService;
     }
@@ -93,7 +90,7 @@ public class ChannelFeeOptimizerJob : IJob
             }
 
             // Shared per-run context, only needed when at least one node is under management.
-            var channelsByChanId = (await _channelRepository.GetChannelsFeeEngine())
+            var channelsByChanId = (await _channelRepository.GetChannelsByOpenAndDynamicFeeEnabled())
                 .ToDictionary(c => c.ChanId);
             var inFlightSourceChannelIds = await _rebalanceRepository.GetPendingInFlightSourceChannelIds();
 
@@ -198,7 +195,7 @@ public class ChannelFeeOptimizerJob : IJob
         var routingState = candidate.RoutingState;
         var feeState = candidate.FeeState ?? new ChannelFeeState { ChannelId = candidate.DbChannel.Id };
 
-        var decision = _feeOptimizerService.ComputeNextPolicy(
+        var decision = FeeOptimizerService.ComputeNextPolicy(
             routingState.EmaLocalRatio,
             routingState.TargetLocalRatio,
             routingState.PeerFlowCategory,
@@ -212,7 +209,7 @@ public class ChannelFeeOptimizerJob : IJob
 
         if (decision.Action != FeeAction.Update)
         {
-            _logger.LogDebug("Channel {ChanId} on {NodeName}: {Action} ({Reason})",
+            _logger.LogInformation("Channel {ChanId} on {NodeName}: {Action} ({Reason})",
                 candidate.LndChannel.ChanId, node.Name, decision.Action, decision.Reason);
             await _feeStateRepository.UpsertByChannelId(feeState);
             return;

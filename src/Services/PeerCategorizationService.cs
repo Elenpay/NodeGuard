@@ -35,38 +35,13 @@ public record CategoryDecision(
     uint ConsecutiveCyclesInNewState,
     bool Flipped);
 
-public interface IPeerCategorizationService
+public static class PeerCategorizationService
 {
     /// <summary>
     /// Applies the volume gate + net-flow thresholds to derive a tentative category, then runs
     /// the N-cycle anti-flap hysteresis against the current/pending state. Pure — no I/O.
     /// </summary>
-    CategoryDecision ComputeCategory(
-        double netFlowRatio,
-        long windowVolumeMsat,
-        PeerFlowCategory currentCategory,
-        PeerFlowCategory? pendingCategory,
-        uint consecutiveCyclesInNewState,
-        int flipHysteresisCycles,
-        double netFlowThreshold,
-        long minVolumeMsat);
-
-    /// <summary>
-    /// target_goal = clamp(0.5 + clamp(kTarget · netFlowRatio, -maxDrift, +maxDrift), 0.10, 0.90).
-    /// Positive net-flow (SINK) pulls the target above 0.5; negative (SOURCE) below.
-    /// </summary>
-    double ComputeTargetGoal(double netFlowRatio, double kTarget, double maxDrift);
-
-    /// <summary>EWMA: alphaTarget · targetGoal + (1 - alphaTarget) · currentTarget.</summary>
-    double SmoothTarget(double currentTarget, double targetGoal, double alphaTarget);
-
-    /// <summary>EWMA: alphaRatio · observedRatio + (1 - alphaRatio) · currentEma.</summary>
-    double SmoothEma(double currentEma, double observedRatio, double alphaRatio);
-}
-
-public class PeerCategorizationService : IPeerCategorizationService
-{
-    public CategoryDecision ComputeCategory(
+    public static CategoryDecision ComputeCategory(
         double netFlowRatio,
         long windowVolumeMsat,
         PeerFlowCategory currentCategory,
@@ -108,15 +83,21 @@ public class PeerCategorizationService : IPeerCategorizationService
         return PeerFlowCategory.Bidirectional;
     }
 
-    public double ComputeTargetGoal(double netFlowRatio, double kTarget, double maxDrift)
+    /// <summary>
+    /// target_goal = clamp(0.5 + clamp(kTarget · netFlowRatio, -maxDrift, +maxDrift), 0.10, 0.90).
+    /// Positive net-flow (SINK) pulls the target above 0.5; negative (SOURCE) below.
+    /// </summary>
+    public static double ComputeTargetGoal(double netFlowRatio, double kTarget, double maxDrift)
     {
         var drift = Math.Clamp(kTarget * netFlowRatio, -maxDrift, maxDrift);
         return Math.Clamp(0.5 + drift, 0.10, 0.90);
     }
 
-    public double SmoothTarget(double currentTarget, double targetGoal, double alphaTarget)
+    /// <summary>EWMA: alphaTarget · targetGoal + (1 - alphaTarget) · currentTarget.</summary>
+    public static double SmoothTarget(double currentTarget, double targetGoal, double alphaTarget)
         => alphaTarget * targetGoal + (1 - alphaTarget) * currentTarget;
 
-    public double SmoothEma(double currentEma, double observedRatio, double alphaRatio)
+    /// <summary>EWMA: alphaRatio · observedRatio + (1 - alphaRatio) · currentEma.</summary>
+    public static double SmoothEma(double currentEma, double observedRatio, double alphaRatio)
         => alphaRatio * observedRatio + (1 - alphaRatio) * currentEma;
 }

@@ -85,7 +85,7 @@ public class ChannelFeeStateRepository : IChannelFeeStateRepository
         await context.SaveChangesAsync();
     }
 
-    public async Task<int> DeleteByChannelId(int channelId)
+    public async Task<bool> DeleteByChannelId(int channelId)
     {
         await using var context = await _dbContextFactory.CreateDbContextAsync();
 
@@ -94,12 +94,12 @@ public class ChannelFeeStateRepository : IChannelFeeStateRepository
 
         if (existing == null)
         {
-            return 0;
+            return false;
         }
 
         context.ChannelFeeStates.Remove(existing);
         await context.SaveChangesAsync();
-        return 1;
+        return true;
     }
 
     public async Task<int> DeleteByManagedNodePubKey(string managedNodePubKey)
