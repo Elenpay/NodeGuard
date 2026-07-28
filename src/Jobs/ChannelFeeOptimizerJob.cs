@@ -209,7 +209,7 @@ public class ChannelFeeOptimizerJob : IJob
 
         if (decision.Action != FeeAction.Update)
         {
-            _logger.LogDebug("Channel {ChanId} on {NodeName}: {Action} ({Reason})",
+            _logger.LogInformation("Channel {ChanId} on {NodeName}: {Action} ({Reason})",
                 candidate.LndChannel.ChanId, node.Name, decision.Action, decision.Reason);
             await _feeStateRepository.UpsertByChannelId(feeState);
             return;
