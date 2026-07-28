@@ -97,18 +97,18 @@ public static class FeeOptimizerService
     /// <item><c>d > 0</c> (too local): lower outbound to attract exits, raise inbound to repel entry.</item>
     /// <item><c>d < 0</c> (too remote): raise outbound to preserve local, deepen negative inbound to attract entry.</item>
     /// </list>
-    /// The category baseline (p₀) both scales the per-cycle nudge and seeds the "last" values on the
-    /// first evaluation of a channel, so a freshly categorized off-target channel starts from its
-    /// category baseline and then integrates toward balance within the per-step clamp.
+    /// Each step's size scales with the category's baseline fee (p₀). The first time a channel is seen it
+    /// starts from that baseline rather than the operator's pre-engine fee, then closes in on target over
+    /// the following runs, one clamped step at a time.
     /// </para>
     /// </summary>
-    /// <param name="emaLocalRatio">Pre-smoothed local/(local+remote) ratio from ChannelRoutingState.</param>
-    /// <param name="targetLocalRatio">Dynamic target ratio from ChannelRoutingState.</param>
-    /// <param name="category">Peer flow category — selects the outbound baseline p₀.</param>
-    /// <param name="lastOutboundPpm">Last-applied outbound ppm (ChannelFeeState); null on first eval → seeded with p₀.</param>
-    /// <param name="lastInboundPpm">Last-applied inbound ppm (ChannelFeeState); null on first eval → seeded with 0.</param>
-    /// <param name="allowPositiveInboundFees">When false, inbound is collapsed to ≤ 0 regardless of direction.</param>
-    /// <param name="tunables">Control-law constants.</param>
+    /// <param name="emaLocalRatio">Smoothed local/(local+remote) balance ratio, from ChannelRoutingState.</param>
+    /// <param name="targetLocalRatio">The balance ratio we're aiming for, from ChannelRoutingState.</param>
+    /// <param name="category">The channel's flow category — picks which baseline fee (p₀) to use.</param>
+    /// <param name="lastOutboundPpm">Outbound fee applied last time (ChannelFeeState); null on the first run → starts at p₀.</param>
+    /// <param name="lastInboundPpm">Inbound fee applied last time (ChannelFeeState); null on the first run → starts at 0.</param>
+    /// <param name="allowPositiveInboundFees">When false, the inbound fee is kept at ≤ 0 (never a surcharge).</param>
+    /// <param name="tunables">The gains, clamps, and baselines the fee logic uses.</param>
     public static FeePolicyDecision ComputeNextPolicy(
         double emaLocalRatio,
         double targetLocalRatio,
