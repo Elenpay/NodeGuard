@@ -85,7 +85,7 @@ public class ChannelFeeStateRepositoryTests
 
         var deleted = await sut.DeleteByManagedNodePubKey("02a");
 
-        deleted.Should().Be(2);
+        deleted.Should().BeTrue();
         (await sut.GetByChannelId(1)).Should().BeNull();
         (await sut.GetByChannelId(2)).Should().BeNull();
         // Node B's channel is untouched.

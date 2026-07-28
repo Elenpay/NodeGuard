@@ -42,6 +42,6 @@ public interface IChannelFeeStateRepository
     /// <summary>
     /// Deletes the fee-state rows for every channel owned by the given managed node.
     /// </summary>
-    /// <returns>The number of rows deleted.</returns>
-    Task<int> DeleteByManagedNodePubKey(string managedNodePubKey);
+    /// <returns><c>true</c> if any rows were deleted; <c>false</c> if none existed.</returns>
+    Task<bool> DeleteByManagedNodePubKey(string managedNodePubKey);
 }

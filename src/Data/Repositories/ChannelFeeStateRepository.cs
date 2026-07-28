@@ -102,7 +102,7 @@ public class ChannelFeeStateRepository : IChannelFeeStateRepository
         return true;
     }
 
-    public async Task<int> DeleteByManagedNodePubKey(string managedNodePubKey)
+    public async Task<bool> DeleteByManagedNodePubKey(string managedNodePubKey)
     {
         await using var context = await _dbContextFactory.CreateDbContextAsync();
 
@@ -116,11 +116,11 @@ public class ChannelFeeStateRepository : IChannelFeeStateRepository
 
         if (states.Count == 0)
         {
-            return 0;
+            return false;
         }
 
         context.ChannelFeeStates.RemoveRange(states);
         await context.SaveChangesAsync();
-        return states.Count;
+        return true;
     }
 }
