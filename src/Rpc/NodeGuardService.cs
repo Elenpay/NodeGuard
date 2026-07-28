@@ -51,6 +51,8 @@ public interface INodeGuardService
 
     Task<GetWithdrawalsRequestStatusResponse> GetWithdrawalsRequestStatusByReferenceIds(GetWithdrawalsRequestStatusByReferenceIdsRequest request, ServerCallContext context);
 
+    Task<GetWithdrawalsRequestStatusResponse> GetWithdrawalsRequestStatusByTxHash(GetWithdrawalsRequestStatusByTxHashRequest request, ServerCallContext context);
+
     Task<GetChannelResponse> GetChannel(GetChannelRequest request, ServerCallContext context);
 
     Task<AddTagsResponse> AddTags(AddTagsRequest request, ServerCallContext context);
@@ -1113,7 +1115,7 @@ public class NodeGuardService : Nodeguard.NodeGuardService.NodeGuardServiceBase,
                 RequestId = withdrawalRequest.Id,
                 Status = GetStatus(withdrawalRequest.Status),
                 RejectOrCancelReason = withdrawalRequest.RejectCancelDescription ?? "",
-                ReferenceId = withdrawalRequest.ReferenceId,
+                ReferenceId = withdrawalRequest.ReferenceId ?? "",
                 Confirmations = confirmations,
                 TxId = withdrawalRequest.TxId ?? "",
             });
@@ -1137,6 +1139,17 @@ public class NodeGuardService : Nodeguard.NodeGuardService.NodeGuardServiceBase,
         var withdrawalRequests = await _walletWithdrawalRequestRepository.GetByReferenceIds(request.ReferenceIds.ToList());
 
         return await GetWithdrawalsRequestStatusResponse(withdrawalRequests);
+    }
+
+    public override async Task<GetWithdrawalsRequestStatusResponse> GetWithdrawalsRequestStatusByTxHash(GetWithdrawalsRequestStatusByTxHashRequest request, ServerCallContext context)
+    {
+        var withdrawalRequest = await _walletWithdrawalRequestRepository.GetByTxHash(request.TxHash);
+        if (withdrawalRequest == null)
+        {
+            throw new RpcException(new Status(StatusCode.NotFound, "Withdrawal request not found"));
+        }
+
+        return await GetWithdrawalsRequestStatusResponse(new List<WalletWithdrawalRequest> { withdrawalRequest });
     }
 
     public override async Task<GetChannelResponse> GetChannel(GetChannelRequest request, ServerCallContext context)
