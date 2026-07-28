@@ -85,11 +85,11 @@ public class FeeEngineStateService : IFeeEngineStateService
         }
 
         var deleted = await _feeStateRepository.DeleteByManagedNodePubKey(node.PubKey);
-        if (deleted > 0)
+        if (deleted)
         {
             _logger.LogInformation(
-                "Purged fee state for {Count} channel(s) on node {NodeName} ({PubKey}) — fee management disabled for the node",
-                deleted, node.Name, node.PubKey);
+                "Purged fee state for node {NodeName} ({PubKey}) — fee management disabled for the node",
+                node.Name, node.PubKey);
         }
     }
 }

@@ -31,7 +31,7 @@ public class FeeEngineStateServiceTests
     private FeeEngineStateService Sut()
     {
         _feeStateRepository.Setup(r => r.DeleteByChannelId(It.IsAny<int>())).ReturnsAsync(true);
-        _feeStateRepository.Setup(r => r.DeleteByManagedNodePubKey(It.IsAny<string>())).ReturnsAsync(1);
+        _feeStateRepository.Setup(r => r.DeleteByManagedNodePubKey(It.IsAny<string>())).ReturnsAsync(true);
         return new FeeEngineStateService(_feeStateRepository.Object, _logger.Object);
     }
 
