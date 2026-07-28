@@ -67,7 +67,7 @@ public class FeeEngineStateService : IFeeEngineStateService
         }
 
         var deleted = await _feeStateRepository.DeleteByChannelId(channel.Id);
-        if (deleted > 0)
+        if (deleted)
         {
             _logger.LogInformation(
                 "Purged fee state for channel {ChannelId} (ChanId {ChanId}) — dynamic fee management disabled for the channel",
