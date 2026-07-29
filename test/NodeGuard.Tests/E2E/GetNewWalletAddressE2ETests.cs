@@ -67,55 +67,67 @@ public class GetNewWalletAddressE2ETests
             "omitting derivation_feature should default to DEPOSIT");
     }
 
-    [E2EFact]
-    public async Task GetNewWalletAddress_ChangeAndDeposit_ReturnDifferentAddresses()
+    [E2ETheory]
+    [InlineData(DERIVATION_FEATURE.Deposit)]
+    [InlineData(DERIVATION_FEATURE.Change)]
+    [InlineData(DERIVATION_FEATURE.Direct)]
+    [InlineData(DERIVATION_FEATURE.Custom)]
+    public async Task GetNewWalletAddress_Reserve_DoesNotReturnSameAddressTwice(DERIVATION_FEATURE feature)
     {
         var client = CreateClient(out var headers);
         var walletId = int.Parse(Env("E2E_HOT_WALLET_ID", "3"));
 
-        var deposit = await client.GetNewWalletAddressAsync(
+        var first = await client.GetNewWalletAddressAsync(
             new GetNewWalletAddressRequest
             {
-                WalletId = walletId, Skip = 0, Reserve = false,
-                DerivationFeature = DERIVATION_FEATURE.Deposit
+                WalletId = walletId, Skip = 0, Reserve = true,
+                DerivationFeature = feature
             }, headers);
 
-        var change = await client.GetNewWalletAddressAsync(
+        var second = await client.GetNewWalletAddressAsync(
             new GetNewWalletAddressRequest
             {
-                WalletId = walletId, Skip = 0, Reserve = false,
-                DerivationFeature = DERIVATION_FEATURE.Change
+                WalletId = walletId, Skip = 0, Reserve = true,
+                DerivationFeature = feature
             }, headers);
 
-        _output.WriteLine($"deposit={deposit.Address} change={change.Address}");
-        change.Address.Should().NotBe(deposit.Address,
-            "the change derivation branch must produce a different address than the deposit branch");
+        _output.WriteLine($"feature={feature} first={first.Address} second={second.Address}");
+        second.Address.Should().NotBe(first.Address,
+            $"reserving a {feature} address should mark it used so the next call returns a fresh one");
     }
 
-    [E2EFact]
-    public async Task GetNewWalletAddress_Custom_ReturnsDifferentAddressFromDeposit()
+    [E2ETheory]
+    [InlineData(DERIVATION_FEATURE.Deposit, DERIVATION_FEATURE.Change)]
+    [InlineData(DERIVATION_FEATURE.Deposit, DERIVATION_FEATURE.Direct)]
+    [InlineData(DERIVATION_FEATURE.Deposit, DERIVATION_FEATURE.Custom)]
+    [InlineData(DERIVATION_FEATURE.Change, DERIVATION_FEATURE.Direct)]
+    [InlineData(DERIVATION_FEATURE.Change, DERIVATION_FEATURE.Custom)]
+    [InlineData(DERIVATION_FEATURE.Direct, DERIVATION_FEATURE.Custom)]
+    public async Task GetNewWalletAddress_DifferentFeatures_ReturnDifferentAddresses(
+        DERIVATION_FEATURE featureA, DERIVATION_FEATURE featureB)
     {
         var client = CreateClient(out var headers);
         var walletId = int.Parse(Env("E2E_HOT_WALLET_ID", "3"));
 
-        var deposit = await client.GetNewWalletAddressAsync(
+        var addressA = await client.GetNewWalletAddressAsync(
             new GetNewWalletAddressRequest
             {
                 WalletId = walletId, Skip = 0, Reserve = false,
-                DerivationFeature = DERIVATION_FEATURE.Deposit
+                DerivationFeature = featureA
             }, headers);
 
-        var custom = await client.GetNewWalletAddressAsync(
+        var addressB = await client.GetNewWalletAddressAsync(
             new GetNewWalletAddressRequest
             {
                 WalletId = walletId, Skip = 0, Reserve = false,
-                DerivationFeature = DERIVATION_FEATURE.Custom
+                DerivationFeature = featureB
             }, headers);
 
-        _output.WriteLine($"deposit={deposit.Address} custom={custom.Address}");
-        custom.Address.Should().NotBeNullOrEmpty();
-        custom.Address.Should().NotBe(deposit.Address,
-            "the custom derivation branch must produce a different address than the deposit branch");
+        _output.WriteLine($"{featureA}={addressA.Address} {featureB}={addressB.Address}");
+        addressA.Address.Should().NotBeNullOrEmpty();
+        addressB.Address.Should().NotBeNullOrEmpty();
+        addressB.Address.Should().NotBe(addressA.Address,
+            $"{featureA} and {featureB} derivation branches must produce different addresses");
     }
 
     private static NodeGuardService.NodeGuardServiceClient CreateClient(out Metadata headers)
