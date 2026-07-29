@@ -87,7 +87,11 @@ public class ForwardingHtlcEventRepository : IForwardingHtlcEventRepository
         }
         catch (DbUpdateException e) when (e.InnerException is PostgresException pg && pg.SqlState == PostgresErrorCodes.UniqueViolation)
         {
-            _logger.LogDebug("Skipping duplicated forwarding HTLC event for node {ManagedNodePubKey}", forwardingHtlcEvent.ManagedNodePubKey);
+            _logger.LogDebug(
+                "Skipping duplicate forwarding HTLC event for node {ManagedNodePubKey} (in {IncomingChannelId}:{IncomingHtlcId} -> out {OutgoingChannelId}:{OutgoingHtlcId})",
+                forwardingHtlcEvent.ManagedNodePubKey,
+                forwardingHtlcEvent.IncomingChannelId, forwardingHtlcEvent.IncomingHtlcId,
+                forwardingHtlcEvent.OutgoingChannelId, forwardingHtlcEvent.OutgoingHtlcId);
             return (true, null);
         }
         catch (Exception e)

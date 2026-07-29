@@ -33,6 +33,8 @@ using Microsoft.AspNetCore.Components.Authorization;
 using Microsoft.AspNetCore.DataProtection;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Diagnostics;
+using Microsoft.Extensions.Logging;
 using Quartz;
 using OpenTelemetry.Trace;
 using OpenTelemetry.Resources;
@@ -204,8 +206,22 @@ namespace NodeGuard
             builder.Services.AddDbContextFactory<ApplicationDbContext>(
                 options =>
                 {
-                    options.EnableSensitiveDataLogging();
-                    options.EnableDetailedErrors();
+                    // Sensitive-data logging dumps raw SQL parameter values (pubkeys, amounts,
+                    // aliases) into logs, so keep it to dev only — never leak it in prod.
+                    if (isDevEnvironment)
+                    {
+                        options.EnableSensitiveDataLogging();
+                        options.EnableDetailedErrors();
+                    }
+
+                    // Duplicate-key violations on inserts like ForwardingHtlcEvents are expected
+                    // and handled by the repositories (deduped/skipped). EF logs the failed command
+                    // and SaveChanges at Error regardless of our catch, which floods prod with
+                    // benign, verbose stack traces — downgrade both to Debug so they stay quiet.
+                    options.ConfigureWarnings(warnings => warnings
+                        .Log((RelationalEventId.CommandError, LogLevel.Debug))
+                        .Log((CoreEventId.SaveChangesFailed, LogLevel.Debug)));
+
                     options.UseNpgsql(Constants.POSTGRES_CONNECTIONSTRING, options =>
                     {
                         options.UseQuerySplittingBehavior(QuerySplittingBehavior
