@@ -25,6 +25,7 @@ services:
       NBXPLORER_BTCRPCPASSWORD: "polarpass"
       NBXPLORER_BTCRPCURL: http://bitcoind:18443
       NBXPLORER_BTCNODEENDPOINT: bitcoind:18444
+      NBXPLORER_CUSTOMKEYPATHTEMPLATE: "2/*/0"
     command: ["--noauth"]
     volumes:
       - "bitcoin_datadir:/root/.bitcoin"

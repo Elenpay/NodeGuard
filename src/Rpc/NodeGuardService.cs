@@ -177,8 +177,16 @@ public class NodeGuardService : Nodeguard.NodeGuardService.NodeGuardServiceBase,
             throw new RpcException(new Status(StatusCode.Internal, "Derivation strategy not found"));
         }
 
+        var derivationFeature = request.DerivationFeature switch
+        {
+            DERIVATION_FEATURE.Change => DerivationFeature.Change,
+            DERIVATION_FEATURE.Direct => DerivationFeature.Direct,
+            DERIVATION_FEATURE.Custom => DerivationFeature.Custom,
+            _ => DerivationFeature.Deposit,
+        };
+
         var btcAddress = await _nbXplorerService.GetUnusedAsync(derivationStrategy,
-            DerivationFeature.Deposit,
+            derivationFeature,
             request.Skip,
             request.Reserve, context.CancellationToken);
 
