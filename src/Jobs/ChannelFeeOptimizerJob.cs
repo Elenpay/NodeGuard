@@ -233,8 +233,8 @@ public class ChannelFeeOptimizerJob : IJob
 
         if (node.RoutingEngineDryRun)
         {
-            _logger.LogInformation("Dry-run: would set channel {ChanId} on {NodeName} to outbound {Outbound}ppm inbound {Inbound}ppm ({Reason})",
-                candidate.LndChannel.ChanId, node.Name, decision.OutboundPpm, decision.InboundPpm, decision.Reason);
+            _logger.LogInformation("Dry-run: would set channel {ChanId} ({NodeName}-{PeerAlias}) to outbound {Outbound}ppm inbound {Inbound}ppm ({Reason})",
+                candidate.LndChannel.ChanId, node.Name, candidate.LndChannel.PeerAlias, decision.OutboundPpm, decision.InboundPpm, decision.Reason);
             feeState.LastAppliedOutboundBaseFeeMsat = baseFeeMsat;
             feeState.LastAppliedOutboundPpm = decision.OutboundPpm;
             feeState.LastAppliedInboundBaseMsat = inboundBaseMsat;
