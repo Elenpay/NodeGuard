@@ -28,7 +28,7 @@ public class Constants
     public static readonly bool ENABLE_REMOTE_SIGNER;
     public static readonly bool PUSH_NOTIFICATIONS_ONESIGNAL_ENABLED;
     public static readonly bool ENABLE_HW_SUPPORT;
-    public static readonly bool NBXPLORER_ENABLE_CUSTOM_BACKEND = false;
+    public static bool NBXPLORER_ENABLE_CUSTOM_BACKEND = false; // Not readonly so we can change it in tests
     /// <summary>
     /// Allow simultaneous channel opening operations using the same source and destination nodes
     /// </summary>

@@ -148,15 +148,21 @@ public class CoinSelectionService: ICoinSelectionService
         return utxos.Confirmed.UTXOs.Where(utxo => lockedUTXOsList.Contains(utxo.Outpoint.ToString())).ToList();
     }
 
-    private async Task<List<UTXO>> FilterLockedFrozenUTXOs(UTXOChanges? utxoChanges)
+    private async Task<List<string>> GetLockedFrozenOutpoints()
     {
         var lockedUTXOs = await _fmutxoRepository.GetLockedUTXOs();
-        var listLocked = lockedUTXOs.Select(utxo => $"{utxo.TxId}-{utxo.OutputIndex}").ToList(); 
+        var listLocked = lockedUTXOs.Select(utxo => $"{utxo.TxId}-{utxo.OutputIndex}").ToList();
         var listFrozen = await GetFrozenUTXOs();
         var frozenAndLockedOutpoints = new List<string>();
         frozenAndLockedOutpoints.AddRange(listLocked);
         frozenAndLockedOutpoints.AddRange(listFrozen);
-        
+        return frozenAndLockedOutpoints;
+    }
+
+    private async Task<List<UTXO>> FilterLockedFrozenUTXOs(UTXOChanges? utxoChanges)
+    {
+        var frozenAndLockedOutpoints = await GetLockedFrozenOutpoints();
+
         utxoChanges.RemoveDuplicateUTXOs();
 
         var availableUTXOs = new List<UTXO>();
@@ -211,7 +217,19 @@ public class CoinSelectionService: ICoinSelectionService
         UTXOChanges utxoChanges;
         if (Constants.NBXPLORER_ENABLE_CUSTOM_BACKEND)
         {
-            utxoChanges = await _nbXplorerService.GetUTXOsByLimitAsync(derivationStrategy, strategy, limit, amount, closestTo);
+            // Tell the backend which UTXOs to skip (locked, frozen and dust), otherwise it counts
+            // them towards the requested amount and the local filter below strips them afterwards,
+            // returning a selection that falls short of that amount
+            var ignoreOutpoints = await GetLockedFrozenOutpoints();
+            var allUtxos = await _nbXplorerService.GetUTXOsAsync(derivationStrategy);
+            allUtxos.RemoveDuplicateUTXOs();
+            var dustOutpoints = allUtxos.Confirmed.UTXOs
+                .Concat(allUtxos.Unconfirmed.UTXOs)
+                .Where(utxo => ((Money)utxo.Value).Satoshi <= Constants.MINIMUM_UTXO_VALUE_SATS)
+                .Select(utxo => utxo.Outpoint.ToString());
+            ignoreOutpoints.AddRange(dustOutpoints);
+
+            utxoChanges = await _nbXplorerService.GetUTXOsByLimitAsync(derivationStrategy, strategy, limit, amount, closestTo, ignoreOutpoints);
         }
         else
         {
