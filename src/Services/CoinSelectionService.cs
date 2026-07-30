@@ -161,9 +161,6 @@ public class CoinSelectionService: ICoinSelectionService
 
     /// <summary>
     /// Outpoints that must never be offered for coin selection: locked, frozen and dust UTXOs.
-    /// Locked/frozen are state lookups (database/tags); dust is a value predicate over the
-    /// wallet's current UTXO set, so the caller provides the already-fetched set instead of this
-    /// method issuing its own NBXplorer query.
     /// </summary>
     private async Task<List<string>> GetIgnoredOutpoints(UTXOChanges utxos)
     {

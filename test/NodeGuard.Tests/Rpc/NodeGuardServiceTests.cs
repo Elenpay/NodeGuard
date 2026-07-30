@@ -1800,10 +1800,8 @@ namespace NodeGuard.Rpc
                     CancellationToken>((_, _, _, _, _, ignore, _) => ignoredOutpoints = ignore)
                 .ReturnsAsync(new UTXOChanges()
                 {
-                    // The fork would not return ignored dust, but keep it here to prove the local
-                    // defense-in-depth filter strips it from the response either way
-                    Confirmed = new UTXOChange() { UTXOs = new List<UTXO>() { dustUtxo, availableUtxo } },
-                    Unconfirmed = new UTXOChange() { UTXOs = new List<UTXO>() { unconfirmedDustUtxo } }
+                    // The backend honors the ignore list, so the dust UTXOs never come back
+                    Confirmed = new UTXOChange() { UTXOs = new List<UTXO>() { availableUtxo } }
                 });
 
             var fmutxoRepository = new Mock<IFMUTXORepository>();

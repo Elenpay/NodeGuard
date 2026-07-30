@@ -109,7 +109,6 @@ public class Constants
 
     /// <summary>
     /// UTXOs with value less than or equal to this are excluded from coin selection (dust-attack protection).
-    /// Can be configured via the MINIMUM_UTXO_VALUE_SATS environment variable.
     /// </summary>
     public static readonly long MINIMUM_UTXO_VALUE_SATS = 546;
 

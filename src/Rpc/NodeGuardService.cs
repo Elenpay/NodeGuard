@@ -1091,17 +1091,13 @@ public class NodeGuardService : Nodeguard.NodeGuardService.NodeGuardServiceBase,
             utxos = new UTXOChanges();
         }
 
-        var confirmedUtxos = utxos.Confirmed.UTXOs
-            .Where(utxo => ((Money)utxo.Value).Satoshi > Constants.MINIMUM_UTXO_VALUE_SATS)
-            .Select(utxo => new Utxo()
+        var confirmedUtxos = utxos.Confirmed.UTXOs.Select(utxo => new Utxo()
         {
             Amount = (Money)utxo.Value,
             Outpoint = utxo.Outpoint.ToString(),
             Address = utxo.Address.ToString()
         });
-        var unconfirmedUtxos = utxos.Unconfirmed.UTXOs
-            .Where(utxo => ((Money)utxo.Value).Satoshi > Constants.MINIMUM_UTXO_VALUE_SATS)
-            .Select(utxo => new Utxo()
+        var unconfirmedUtxos = utxos.Unconfirmed.UTXOs.Select(utxo => new Utxo()
         {
             Amount = (Money)utxo.Value,
             Outpoint = utxo.Outpoint.ToString(),
