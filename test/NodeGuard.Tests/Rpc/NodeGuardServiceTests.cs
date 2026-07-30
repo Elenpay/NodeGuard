@@ -35,6 +35,7 @@ using NBXplorer.Models;
 using Nodeguard;
 using Quartz;
 using Quartz.Impl;
+using NodeGuard.TestHelpers;
 using Channel = NodeGuard.Data.Models.Channel;
 using Key = NodeGuard.Data.Models.Key;
 using LiquidityRule = NodeGuard.Data.Models.LiquidityRule;
@@ -1750,6 +1751,90 @@ namespace NodeGuard.Rpc
             response.Rebalances.Should().HaveCount(1);
             response.Rebalances[0].RebalanceId.Should().Be(1);
             response.Rebalances[0].NodePubkey.Should().Be("pubkey1");
+        }
+
+        [Theory]
+        [InlineData(COIN_SELECTION_STRATEGY.SmallestFirst)]
+        [InlineData(COIN_SELECTION_STRATEGY.BiggestFirst)]
+        [InlineData(COIN_SELECTION_STRATEGY.ClosestToTargetFirst)]
+        [InlineData(COIN_SELECTION_STRATEGY.UpToAmount)]
+        public async Task GetAvailableUtxos_ExcludesDustUtxos(COIN_SELECTION_STRATEGY strategy)
+        {
+            // Arrange
+            var wallet = CreateWallet.SingleSig(CreateWallet.CreateInternalWallet());
+            var walletRepository = new Mock<IWalletRepository>();
+            walletRepository.Setup(x => x.GetById(It.IsAny<int>())).ReturnsAsync(wallet);
+
+            var address = BitcoinAddress.Create("bcrt1q590shaxaf5u08ml8jwlzghz99dup3z9592vxal", Network.RegTest);
+            var dustUtxo = new UTXO()
+            {
+                Outpoint = new OutPoint(new uint256(1), 0),
+                Value = new Money(Constants.MINIMUM_UTXO_VALUE_SATS),
+                Address = address
+            };
+            var availableUtxo = new UTXO()
+            {
+                Outpoint = new OutPoint(new uint256(2), 0),
+                Value = new Money(10_000L),
+                Address = address
+            };
+            var unconfirmedDustUtxo = new UTXO()
+            {
+                Outpoint = new OutPoint(new uint256(3), 0),
+                Value = new Money(100L),
+                Address = address
+            };
+
+            var nbxplorerService = new Mock<INBXplorerService>();
+            nbxplorerService.Setup(x => x.GetUTXOsAsync(It.IsAny<DerivationStrategyBase>(), default))
+                .ReturnsAsync(new UTXOChanges()
+                {
+                    Confirmed = new UTXOChange() { UTXOs = new List<UTXO>() { dustUtxo, availableUtxo } },
+                    Unconfirmed = new UTXOChange() { UTXOs = new List<UTXO>() { unconfirmedDustUtxo } }
+                });
+            List<string>? ignoredOutpoints = null;
+            nbxplorerService.Setup(x => x.GetUTXOsByLimitAsync(It.IsAny<DerivationStrategyBase>(),
+                    It.IsAny<CoinSelectionStrategy>(), It.IsAny<int>(), It.IsAny<long>(), It.IsAny<long>(),
+                    It.IsAny<List<string>>(), default))
+                .Callback<DerivationStrategyBase, CoinSelectionStrategy, int, long, long, List<string>?,
+                    CancellationToken>((_, _, _, _, _, ignore, _) => ignoredOutpoints = ignore)
+                .ReturnsAsync(new UTXOChanges()
+                {
+                    // The fork would not return ignored dust, but keep it here to prove the local
+                    // defense-in-depth filter strips it from the response either way
+                    Confirmed = new UTXOChange() { UTXOs = new List<UTXO>() { dustUtxo, availableUtxo } },
+                    Unconfirmed = new UTXOChange() { UTXOs = new List<UTXO>() { unconfirmedDustUtxo } }
+                });
+
+            var fmutxoRepository = new Mock<IFMUTXORepository>();
+            fmutxoRepository.Setup(x => x.GetLockedUTXOsByWalletId(It.IsAny<int>()))
+                .ReturnsAsync(new List<FMUTXO>());
+
+            var coinSelectionService = new Mock<ICoinSelectionService>();
+            coinSelectionService.Setup(x => x.GetFrozenUTXOs()).ReturnsAsync(new List<string>());
+
+            var service = CreateNodeGuardService(
+                walletRepository: walletRepository.Object,
+                nbXplorerService: nbxplorerService.Object,
+                fmutxoRepository: fmutxoRepository.Object,
+                coinSelectionService: coinSelectionService.Object);
+
+            // Act
+            var response = await service.GetAvailableUtxos(
+                new GetAvailableUtxosRequest { WalletId = 1, Strategy = strategy, Amount = 10_000 },
+                TestServerCallContext.Create());
+
+            // Assert
+            response.Confirmed.Should().ContainSingle();
+            response.Confirmed[0].Outpoint.Should().Be(availableUtxo.Outpoint.ToString());
+            response.Unconfirmed.Should().BeEmpty();
+
+            // Both dust UTXOs must also be ignored server-side so the fork does not count them
+            // towards the requested amount
+            ignoredOutpoints.Should().NotBeNull();
+            ignoredOutpoints.Should().Contain(dustUtxo.Outpoint.ToString());
+            ignoredOutpoints.Should().Contain(unconfirmedDustUtxo.Outpoint.ToString());
+            ignoredOutpoints.Should().NotContain(availableUtxo.Outpoint.ToString());
         }
     }
 }

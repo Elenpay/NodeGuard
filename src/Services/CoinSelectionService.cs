@@ -167,6 +167,11 @@ public class CoinSelectionService: ICoinSelectionService
             {
                 _logger.LogInformation("Removing UTXO: {Utxo} from UTXO set as it is locked", utxo.Outpoint.ToString());
             }
+            else if (((Money)utxo.Value).Satoshi <= Constants.MINIMUM_UTXO_VALUE_SATS)
+            {
+                _logger.LogInformation("Removing UTXO: {Utxo} from UTXO set as it is dust ({Sats} sats <= {MinSats} sats)",
+                    utxo.Outpoint.ToString(), ((Money)utxo.Value).Satoshi, Constants.MINIMUM_UTXO_VALUE_SATS);
+            }
             else
             {
                 availableUTXOs.Add(utxo);

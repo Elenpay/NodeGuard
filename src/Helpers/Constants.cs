@@ -108,6 +108,12 @@ public class Constants
     public static readonly Money BITCOIN_DUST = new Money(0.00000546m, MoneyUnit.BTC); // 546 satoshi in BTC
 
     /// <summary>
+    /// UTXOs with value less than or equal to this are excluded from coin selection (dust-attack protection).
+    /// Can be configured via the MINIMUM_UTXO_VALUE_SATS environment variable.
+    /// </summary>
+    public static readonly long MINIMUM_UTXO_VALUE_SATS = 546;
+
+    /// <summary>
     /// Minimum swap out size in BTC for automatic liquidity management (Swap Out).
     /// Can be configured via MINIMUM_SWAP_OUT_SIZE_BTC environment variable.
     /// </summary>
@@ -494,6 +500,9 @@ public class Constants
 
         var minSweepTransactionAmount = Environment.GetEnvironmentVariable("MINIMUM_SWEEP_TRANSACTION_AMOUNT_SATS");
         if (minSweepTransactionAmount != null) MINIMUM_SWEEP_TRANSACTION_AMOUNT_SATS = long.Parse(minSweepTransactionAmount);
+
+        var minimumUtxoValueSats = Environment.GetEnvironmentVariable("MINIMUM_UTXO_VALUE_SATS");
+        if (minimumUtxoValueSats != null) MINIMUM_UTXO_VALUE_SATS = long.Parse(minimumUtxoValueSats);
 
 
         DEFAULT_DERIVATION_PATH = GetEnvironmentalVariableOrThrowIfNotTesting("DEFAULT_DERIVATION_PATH") ?? DEFAULT_DERIVATION_PATH;

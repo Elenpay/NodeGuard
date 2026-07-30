@@ -1057,8 +1057,17 @@ public class NodeGuardService : Nodeguard.NodeGuardService.NodeGuardServiceBase,
                            walletUtxos.Unconfirmed.UTXOs.Any(u => u.Outpoint.ToString() == utxo))
                            .ToList();
 
+        // Ignore dust UTXOs server-side too, so they are not counted towards the requested amount
+        // by any selection strategy and then stripped locally, returning a short selection
+        var listDust = walletUtxos.Confirmed.UTXOs
+            .Concat(walletUtxos.Unconfirmed.UTXOs)
+            .Where(utxo => ((Money)utxo.Value).Satoshi <= Constants.MINIMUM_UTXO_VALUE_SATS)
+            .Select(utxo => utxo.Outpoint.ToString())
+            .ToList();
+
         ignoreOutpoints.AddRange(listLocked);
         ignoreOutpoints.AddRange(listFrozen);
+        ignoreOutpoints.AddRange(listDust);
 
         var utxos = await _nbXplorerService.GetUTXOsByLimitAsync(
             derivationStrategy,
@@ -1069,13 +1078,17 @@ public class NodeGuardService : Nodeguard.NodeGuardService.NodeGuardServiceBase,
             ignoreOutpoints
             );
 
-        var confirmedUtxos = utxos.Confirmed.UTXOs.Select(utxo => new Utxo()
+        var confirmedUtxos = utxos.Confirmed.UTXOs
+            .Where(utxo => ((Money)utxo.Value).Satoshi > Constants.MINIMUM_UTXO_VALUE_SATS)
+            .Select(utxo => new Utxo()
         {
             Amount = (Money)utxo.Value,
             Outpoint = utxo.Outpoint.ToString(),
             Address = utxo.Address.ToString()
         });
-        var unconfirmedUtxos = utxos.Unconfirmed.UTXOs.Select(utxo => new Utxo()
+        var unconfirmedUtxos = utxos.Unconfirmed.UTXOs
+            .Where(utxo => ((Money)utxo.Value).Satoshi > Constants.MINIMUM_UTXO_VALUE_SATS)
+            .Select(utxo => new Utxo()
         {
             Amount = (Money)utxo.Value,
             Outpoint = utxo.Outpoint.ToString(),

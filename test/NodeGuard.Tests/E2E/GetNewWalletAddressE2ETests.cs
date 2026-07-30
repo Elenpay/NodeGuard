@@ -34,6 +34,7 @@ namespace NodeGuard.Tests.E2E;
 ///   E2E_HOT_WALLET_ID        NodeGuard hot wallet to query (default 3)
 /// </summary>
 [Trait("Category", "E2E")]
+[Collection("E2E")]
 public class GetNewWalletAddressE2ETests
 {
     private const string DefaultDevToken = "8rvSsUGeyXXdDQrHctcTey/xtHdZQEn945KHwccKp9Q=";
