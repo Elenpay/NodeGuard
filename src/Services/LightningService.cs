@@ -121,6 +121,14 @@ namespace NodeGuard.Services
         public Task<Channel> CreateChannel(Node source, int destId, ChannelPoint channelPoint, long satsAmount, string? closeAddress = null);
 
         /// <summary>
+        /// Gets the current chain tip (block height) as reported by the node's LND.
+        /// Returns null if the GetInfo RPC fails, so callers can skip the node cleanly.
+        /// </summary>
+        /// <param name="node"></param>
+        /// <returns></returns>
+        public Task<uint?> GetBlockHeight(Node node);
+
+        /// <summary>
         /// Lists all channels for a given node
         /// </summary>
         /// <param name="node"></param>
@@ -190,8 +198,9 @@ namespace NodeGuard.Services
         /// <param name="timeLockDelta"></param>
         /// <param name="inboundBaseFeeMsat"></param>
         /// <param name="inboundFeeRatePpm"></param>
+        /// <param name="isEngineDriven"></param>
         /// <returns></returns>
-        public Task SetChannelFeePolicy(string chanPoint, string nodePubKey, long baseFeeMsat, uint feeRatePpm, uint timeLockDelta, int? inboundBaseFeeMsat, int? inboundFeeRatePpm);
+        public Task SetChannelFeePolicy(string chanPoint, string nodePubKey, long baseFeeMsat, uint feeRatePpm, uint timeLockDelta, int? inboundBaseFeeMsat, int? inboundFeeRatePpm, bool isEngineDriven = false);
 
         /// <summary>
         /// Gets the channel fee policy for a given channel identified by its chanPoint
@@ -215,6 +224,7 @@ namespace NodeGuard.Services
         private readonly ICoinSelectionService _coinSelectionService;
         private readonly ILightningClientService _lightningClientService;
         private readonly ILightningRouterService _lightningRouterService;
+        private readonly IAuditService _auditService;
 
         public LightningService(ILogger<LightningService> logger,
             IChannelOperationRequestRepository channelOperationRequestRepository,
@@ -226,7 +236,8 @@ namespace NodeGuard.Services
             INBXplorerService nbXplorerService,
             ICoinSelectionService coinSelectionService,
             ILightningClientService lightningClientService,
-            ILightningRouterService lightningRouterService
+            ILightningRouterService lightningRouterService,
+            IAuditService auditService
         )
 
         {
@@ -241,6 +252,7 @@ namespace NodeGuard.Services
             _coinSelectionService = coinSelectionService;
             _lightningClientService = lightningClientService;
             _lightningRouterService = lightningRouterService;
+            _auditService = auditService;
         }
 
         /// <summary>
@@ -1540,6 +1552,14 @@ namespace NodeGuard.Services
             return result;
         }
 
+        public async Task<uint?> GetBlockHeight(Node node)
+        {
+            if (node == null) throw new ArgumentNullException(nameof(node));
+
+            var info = await _lightningClientService.GetInfo(node);
+            return info?.BlockHeight;
+        }
+
         public async Task<ListChannelsResponse?> ListChannels(Node node)
         {
             if (node == null) throw new ArgumentNullException(nameof(node));
@@ -1746,7 +1766,7 @@ namespace NodeGuard.Services
             return await GetLocalOutboundFeeRatePpmAsync(node, match.ChanId);
         }
 
-        public async Task SetChannelFeePolicy(string chanPoint, string nodePubKey, long baseFeeMsat, uint feeRatePpm, uint timeLockDelta, int? inboundBaseFeeMsat, int? inboundFeeRatePpm)
+        public async Task SetChannelFeePolicy(string chanPoint, string nodePubKey, long baseFeeMsat, uint feeRatePpm, uint timeLockDelta, int? inboundBaseFeeMsat, int? inboundFeeRatePpm, bool isEngineDriven = false)
         {
             // Validate chanPoint format
             if (!OutPoint.TryParse(chanPoint, out var outPoint))
@@ -1765,14 +1785,18 @@ namespace NodeGuard.Services
                 throw new ArgumentException("Both inboundBaseFeeMsat and inboundFeeRatePpm must be provided together for inbound fee policy.");
             }
 
-            if (inboundBaseFeeMsat.HasValue && inboundBaseFeeMsat.Value > 0)
+            // For now, only engine driven fee policy updates are allowed to set positive inbound fees.
+            if (!isEngineDriven)
             {
-                throw new ArgumentException("Inbound base fee must be lower or equal to zero.", nameof(inboundBaseFeeMsat));
-            }
+                if (inboundBaseFeeMsat.HasValue && inboundBaseFeeMsat.Value > 0)
+                {
+                    throw new ArgumentException("Inbound base fee must be lower or equal to zero.", nameof(inboundBaseFeeMsat));
+                }
 
-            if (inboundFeeRatePpm.HasValue && inboundFeeRatePpm.Value > 0)
-            {
-                throw new ArgumentException("Inbound fee rate must be lower or equal to zero.", nameof(inboundFeeRatePpm));
+                if (inboundFeeRatePpm.HasValue && inboundFeeRatePpm.Value > 0)
+                {
+                    throw new ArgumentException("Inbound fee rate must be lower or equal to zero.", nameof(inboundFeeRatePpm));
+                }
             }
 
             var channel = await _channelRepository.GetByOutpoint(outPoint);
@@ -1815,31 +1839,38 @@ namespace NodeGuard.Services
 
             try
             {
-                await using var applicationDbContext = await _dbContextFactory.CreateDbContextAsync();
-
-                await applicationDbContext.AuditLogs.AddAsync(new AuditLog
+                var details = new
                 {
-                    ActionType = AuditActionType.Update,
-                    EventType = AuditEventType.Success,
-                    ObjectAffected = AuditObjectType.Channel,
-                    ObjectId = channel.Id.ToString(),
-                    Username = "SYSTEM",
-                    Details = System.Text.Json.JsonSerializer.Serialize(new
-                    {
-                        ChanPoint = chanPoint,
-                        ChannelId = channel.Id,
-                        channel.ChanId,
-                        NodeId = node.Id,
-                        NodePubKey = node.PubKey,
-                        BaseFeeMsat = baseFeeMsat,
-                        FeeRatePpm = feeRatePpm,
-                        TimeLockDelta = timeLockDelta,
-                        InboundBaseFeeMsat = inboundBaseFeeMsat,
-                        InboundFeeRatePpm = inboundFeeRatePpm
-                    })
-                });
+                    ChanPoint = chanPoint,
+                    ChannelId = channel.Id,
+                    channel.ChanId,
+                    NodeId = node.Id,
+                    NodePubKey = node.PubKey,
+                    BaseFeeMsat = baseFeeMsat,
+                    FeeRatePpm = feeRatePpm,
+                    TimeLockDelta = timeLockDelta,
+                    InboundBaseFeeMsat = inboundBaseFeeMsat,
+                    InboundFeeRatePpm = inboundFeeRatePpm
+                };
 
-                await applicationDbContext.SaveChangesAsync();
+                if (isEngineDriven)
+                {
+                    await _auditService.LogSystemAsync(
+                        AuditActionType.Update,
+                        AuditEventType.Success,
+                        AuditObjectType.Channel,
+                        channel.Id.ToString(),
+                        details);
+                }
+                else
+                {
+                    await _auditService.LogAsync(
+                        AuditActionType.Update,
+                        AuditEventType.Success,
+                        AuditObjectType.Channel,
+                        channel.Id.ToString(),
+                        details);
+                }
             }
             catch (Exception e)
             {

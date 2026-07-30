@@ -138,4 +138,57 @@ public class RebalanceRepository : IRebalanceRepository
 
         return _repository.Update(rebalance, context);
     }
+
+    public async Task<int> GetInFlightByNode(int nodeId)
+    {
+        await using var context = await _dbContextFactory.CreateDbContextAsync();
+
+        return await context.Rebalances
+            .CountAsync(r => r.NodeId == nodeId
+                             && (r.Status == RebalanceStatus.Pending || r.Status == RebalanceStatus.InFlight));
+    }
+
+    public async Task<HashSet<int>> GetPendingInFlightSourceChannelIds()
+    {
+        await using var context = await _dbContextFactory.CreateDbContextAsync();
+
+        var ids = await context.Rebalances
+            .Where(r => r.SourceChannelId != null
+                        && (r.Status == RebalanceStatus.Pending || r.Status == RebalanceStatus.InFlight))
+            .Select(r => r.SourceChannelId!.Value)
+            .Distinct()
+            .ToListAsync();
+
+        return ids.ToHashSet();
+    }
+
+    public async Task<long> GetConsumedFeesSince(int nodeId, DateTimeOffset since)
+    {
+        await using var context = await _dbContextFactory.CreateDbContextAsync();
+
+        // Only rows that can have consumed budget: in-flight (reserved or partially paid) and
+        // settled. Other terminal states (Failed/NoRoute/Timeout/…) paid nothing → excluded.
+        var rows = await context.Rebalances
+            .Where(r => r.NodeId == nodeId
+                        && r.CreationDatetime >= since
+                        && (r.Status == RebalanceStatus.Pending
+                            || r.Status == RebalanceStatus.InFlight
+                            || r.Status == RebalanceStatus.Succeeded))
+            .Select(r => new { r.Status, r.FeePaidSats, r.RequestedAmountSats, r.MaxFeePct })
+            .ToListAsync();
+
+        long total = 0;
+        foreach (var r in rows)
+        {
+            var feePaid = r.FeePaidSats ?? 0;
+            // Conservative worst-case reservation for a still-in-flight rebalance: RequestedAmountSats ×
+            // (MaxFeePct/100).
+            var reserved = (long)(r.RequestedAmountSats * r.MaxFeePct / 100.0);
+            total += r.Status == RebalanceStatus.Succeeded
+                ? feePaid
+                : reserved;
+        }
+
+        return total;
+    }
 }

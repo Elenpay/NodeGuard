@@ -433,6 +433,102 @@
                             </Column>
                         </Row>
                     }
+
+                    <Divider Text="Routing Engine" TextAlignment="TextAlignment.Start" Type="DividerType.Dashed" />
+
+                    <Alert Color="Color.Info" Visible="true">
+                        <AlertDescription>
+                            These settings configure the heuristic routing engine. The engine can automatically adjust channel fees and initiate circular rebalances to steer channels toward their target ratio. The engine is disabled by default and must be enabled for each node individually.
+                        </AlertDescription>
+                    </Alert>
+
+                    <Field>
+                        <FieldLabel>Dynamic Fee Management</FieldLabel>
+                        <FieldHelp>Let the engine adjust this node's outbound/inbound channel fees toward each channel's target ratio</FieldHelp>
+                        <Check TValue="bool" Checked="@_selectedNodeForLiquidity.DynamicFeeManagementEnabled"
+                               CheckedChanged="@((value) => _selectedNodeForLiquidity.DynamicFeeManagementEnabled = value)">
+                            Enable dynamic fee management
+                        </Check>
+                    </Field>
+
+                    @if (_selectedNodeForLiquidity.DynamicFeeManagementEnabled)
+                    {
+                        <Field>
+                            <FieldLabel>Positive Inbound Fees</FieldLabel>
+                            <FieldHelp>Allow the engine to set positive inbound fees (surcharges) to repel entry on over-local channels, not just negative discounts</FieldHelp>
+                            <Check TValue="bool" Checked="@_selectedNodeForLiquidity.AllowPositiveInboundFees"
+                                   CheckedChanged="@((value) => _selectedNodeForLiquidity.AllowPositiveInboundFees = value)">
+                                Allow positive inbound fees
+                            </Check>
+                        </Field>
+                    }
+
+                    <Field>
+                        <FieldLabel>Automated Rebalancing</FieldLabel>
+                        <FieldHelp>Let the engine initiate circular rebalances to steer channels toward their target ratio, within the budget below</FieldHelp>
+                        <Check TValue="bool" Checked="@_selectedNodeForLiquidity.AutoRebalanceEnabled"
+                               CheckedChanged="@((value) => _selectedNodeForLiquidity.AutoRebalanceEnabled = value)">
+                            Enable automated rebalancing
+                        </Check>
+                    </Field>
+
+                    @if (_selectedNodeForLiquidity.AutoRebalanceEnabled)
+                    {
+                        <Row>
+                            <Column>
+                                <Field>
+                                    <FieldLabel>Rebalance Fee Budget (sats)</FieldLabel>
+                                    <FieldHelp>Max sats spendable on rebalance fees per refresh period. 0 = unset.</FieldHelp>
+                                    <NumericEdit TValue="long" @bind-Value="@_rebalanceBudgetSats" Min="0" />
+                                </Field>
+                            </Column>
+                            <Column>
+                                <Field>
+                                    <FieldLabel>Budget Refresh Interval (days)</FieldLabel>
+                                    <FieldHelp>Period after which the rebalance fee budget resets. 0 = unset.</FieldHelp>
+                                    <NumericEdit TValue="int" @bind-Value="@_rebalanceBudgetRefreshDays" Min="0" />
+                                </Field>
+                            </Column>
+                        </Row>
+                        <Row>
+                            <Column>
+                                <Field>
+                                    <FieldLabel>Max Rebalances In Flight</FieldLabel>
+                                    <FieldHelp>Maximum concurrent (Pending/InFlight) rebalances for this node. 0 = unset.</FieldHelp>
+                                    <NumericEdit TValue="int" @bind-Value="@_maxRebalancesInFlight" Min="0" />
+                                </Field>
+                            </Column>
+                            <Column>
+                                <Field>
+                                    <FieldLabel>Max Cost-to-Earn Ratio</FieldLabel>
+                                    <FieldHelp>Profitability gate: spend at most this fraction of a channel's earn rate on rebalancing it (e.g. 0.5 = 50%). 0 = unset.</FieldHelp>
+                                    <NumericEdit TValue="double" @bind-Value="@_maxRebalanceCostToEarnRatio" Min="0" />
+                                </Field>
+                            </Column>
+                        </Row>
+                    }
+
+                    @if (_selectedNodeForLiquidity.DynamicFeeManagementEnabled || _selectedNodeForLiquidity.AutoRebalanceEnabled)
+                    {
+                        <Field>
+                            <FieldLabel>Dry Run</FieldLabel>
+                            <FieldHelp>When on, the engine logs the fee/rebalance actions it would take for this node without calling LND. Turn off to let this node act for real — flip nodes live one at a time.</FieldHelp>
+                            <Check TValue="bool" Checked="@_selectedNodeForLiquidity.RoutingEngineDryRun"
+                                   CheckedChanged="@((value) => _selectedNodeForLiquidity.RoutingEngineDryRun = value)">
+                                Dry run (log only, no LND writes)
+                            </Check>
+                        </Field>
+
+                        @if (!_selectedNodeForLiquidity.RoutingEngineDryRun)
+                        {
+                            <Alert Color="Color.Warning" Visible="true">
+                                <AlertDescription>
+                                    Dry run is <strong>off</strong> for this node — once the engine is live, it will
+                                    perform real fee changes and/or rebalances on LND.
+                                </AlertDescription>
+                            </Alert>
+                        }
+                    }
                 </Validations>
             </ModalBody>
             <ModalFooter>
@@ -444,6 +540,7 @@
 </Modal>
 
 @inject INodeRepository NodeRepository
+@inject IFeeEngineStateService FeeEngineStateService
 @inject IToastService ToastService;
 @inject ClipboardService ClipboardService
 @inject IMessageService MessageService
@@ -483,6 +580,12 @@
     private decimal _swapBudgetBtc;
     private int _budgetRefreshDays;
     private decimal _maxSwapRoutingFeePercent;
+
+    // Routing-engine rebalance-budget edit fields (entity properties are nullable; 0 = unset)
+    private long _rebalanceBudgetSats;
+    private int _rebalanceBudgetRefreshDays;
+    private int _maxRebalancesInFlight;
+    private double _maxRebalanceCostToEarnRatio;
 
     public abstract class NodesColumnName
     {
@@ -547,6 +650,10 @@
             var (result, _) = NodeRepository.Update(node);
             if (result)
             {
+                // Disabling the node stops fee management for all its channels: drop their fee-engine
+                // state so a later re-enable starts fresh from the category baseline.
+                await FeeEngineStateService.PurgeNodeStateIfDisabled(node);
+
                 _nodes = await NodeRepository.GetAllManagedByNodeGuard();
                 _availableWallets = await WalletRepository.GetAvailableWallets();
                 string status = node.IsNodeDisabled ? "disabled": "enabled";
@@ -706,6 +813,8 @@
                 }
                 else
                 {
+                    // Soft-deleting the node disables it — drop its channels' fee-engine state.
+                    await FeeEngineStateService.PurgeNodeStateIfDisabled(node);
                     ToastService.ShowSuccess($"{node.Name} deleted successfully");
                     await AuditService.LogAsync(
                         AuditActionType.DeleteNode,
@@ -820,7 +929,13 @@
         _budgetRefreshDays = node.SwapBudgetRefreshInterval.Days;
         // Convert ratio from 0-1 to 0-100 for display
         _maxSwapRoutingFeePercent = node.MaxSwapRoutingFeeRatio * 100m;
-        
+
+        // Routing-engine rebalance budget (nullable → 0 when unset)
+        _rebalanceBudgetSats = node.RebalanceBudgetSats ?? 0;
+        _rebalanceBudgetRefreshDays = node.RebalanceBudgetRefreshInterval?.Days ?? 0;
+        _maxRebalancesInFlight = node.MaxRebalancesInFlight ?? 0;
+        _maxRebalanceCostToEarnRatio = node.MaxRebalanceCostToEarnRatio ?? 0;
+
         if (_nodeLiquidityModal != null) await _nodeLiquidityModal.Show();
     }
 
@@ -844,7 +959,13 @@
             _selectedNodeForLiquidity.SwapBudgetRefreshInterval = TimeSpan.FromDays(_budgetRefreshDays);
             // Convert percent (0-100) back to ratio (0-1)
             _selectedNodeForLiquidity.MaxSwapRoutingFeeRatio = _maxSwapRoutingFeePercent / 100m;
-            
+
+            // Routing-engine rebalance budget: 0 maps back to null (unset)
+            _selectedNodeForLiquidity.RebalanceBudgetSats = _rebalanceBudgetSats > 0 ? _rebalanceBudgetSats : null;
+            _selectedNodeForLiquidity.RebalanceBudgetRefreshInterval = _rebalanceBudgetRefreshDays > 0 ? TimeSpan.FromDays(_rebalanceBudgetRefreshDays) : null;
+            _selectedNodeForLiquidity.MaxRebalancesInFlight = _maxRebalancesInFlight > 0 ? _maxRebalancesInFlight : null;
+            _selectedNodeForLiquidity.MaxRebalanceCostToEarnRatio = _maxRebalanceCostToEarnRatio > 0 ? _maxRebalanceCostToEarnRatio : null;
+
             _selectedNodeForLiquidity.UpdateDatetime = DateTimeOffset.Now;
             var updateResult = NodeRepository.Update(_selectedNodeForLiquidity);
             
@@ -854,6 +975,9 @@
             }
             else
             {
+                // If dynamic fee management was switched off for the node, drop its channels'
+                // fee-engine state so re-enabling later starts each channel fresh.
+                await FeeEngineStateService.PurgeNodeStateIfDisabled(_selectedNodeForLiquidity);
                 ToastService.ShowSuccess($"Node {_selectedNodeForLiquidity.Name} liquidity configuration updated successfully");
             }
             

@@ -43,6 +43,7 @@ namespace NodeGuard.Tests.E2E;
 ///   E2E_HOT_WALLET_ID        NodeGuard hot wallet to fund the channel (default 3)
 /// </summary>
 [Trait("Category", "E2E")]
+[Collection("E2E")]
 public class RebalanceE2ETests
 {
     private const string DefaultDevToken = "8rvSsUGeyXXdDQrHctcTey/xtHdZQEn945KHwccKp9Q=";

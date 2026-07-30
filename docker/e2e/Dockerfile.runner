@@ -1,0 +1,12 @@
+# E2E test runner image. Runs the [Category=E2E] tests, which drive a live NodeGuard purely
+# over gRPC and mine via NBitcoin's RPCClient — so the runner needs nothing but the .NET SDK
+# and the repo (no grpcurl/curl). Build context = repo root.
+FROM mcr.microsoft.com/dotnet/sdk:10.0
+WORKDIR /src
+COPY . .
+RUN dotnet restore test/NodeGuard.Tests/NodeGuard.Tests.csproj
+
+# Forces [E2EFact] on regardless of the reachability probe (the runner targets nodeguard:50051).
+ENV RUN_E2E_TESTS=1
+ENTRYPOINT ["dotnet", "test", "test/NodeGuard.Tests/NodeGuard.Tests.csproj", \
+            "--filter", "Category=E2E", "--logger", "console;verbosity=detailed"]

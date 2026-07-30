@@ -629,86 +629,105 @@
 
                                 <Divider class="my-4"></Divider>
                                 <h6 class="mb-3"><strong>Set New Fee Policy</strong></h6>
+
+                                <Field>
+                                    <FieldLabel>Dynamic Fee Management (Channel)</FieldLabel>
+                                    <FieldHelp>When enabled, the routing engine controls this channel fees and manual fee updates are blocked.</FieldHelp>
+                                    <Check TValue="bool" Checked="@_selectedChannel.IsDynamicFeeEnabled"
+                                           CheckedChanged="@((value) => _selectedChannel.IsDynamicFeeEnabled = value)">
+                                        Enable dynamic fees for this channel
+                                    </Check>
+                                </Field>
+
                                 
-                                <Row>
-                                    <Column>
-                                        <Field>
-                                            <Validation Validator="ValidateChannelFeeBaseFeeMsat">
-                                                <FieldLabel>Base fee (msat)</FieldLabel>
-                                                <FieldHelp>Flat outbound fee charged for forwarded payments.</FieldHelp>
-                                                <NumericEdit TValue="long?" Min="0L"
-                                                                @bind-Value="_channelFeePolicy.BaseFeeMsat">
-                                                    <Feedback>
-                                                        <ValidationError />
-                                                    </Feedback>
-                                                </NumericEdit>
-                                            </Validation>
-                                        </Field>
-                                    </Column>
-                                    <Column>
-                                        <Field>
-                                            <Validation Validator="ValidateChannelFeeRatePpm">
-                                                <FieldLabel>Fee rate (ppm)</FieldLabel>
-                                                <FieldHelp>Outbound proportional fee in parts per million.</FieldHelp>
-                                                <NumericEdit TValue="long?" Min="0L" Max="@((long)uint.MaxValue)"
-                                                                @bind-Value="_channelFeePolicy.FeeRatePpm" >
-                                                    <Feedback>
-                                                        <ValidationError />
-                                                    </Feedback>
-                                                </NumericEdit>
-                                            </Validation>
-                                        </Field>
-                                    </Column>
-                                </Row>
-                                <Field>
-                                    <Validation Validator="ValidateChannelFeeTimeLockDelta">
-                                        <FieldLabel>Time lock delta</FieldLabel>
-                                        <FieldHelp>CLTV delta advertised for forwarded HTLCs on this channel.</FieldHelp>
-                                        <NumericEdit TValue="long?" Min="0L" Max="@((long)uint.MaxValue)"
-                                                        @bind-Value="_channelFeePolicy.TimeLockDelta">
-                                            <Feedback>
-                                                <ValidationError />
-                                            </Feedback>
-                                        </NumericEdit>
-                                    </Validation>
-                                </Field>
-                                <Field>
-                                    <FieldLabel>Inbound fee policy</FieldLabel>
-                                    <FieldHelp>Optional. Leave both inbound fields blank to keep the current inbound fee
-                                        policy unchanged.</FieldHelp>
-                                </Field>
-                                <Row>
-                                    <Column>
-                                        <Field>
-                                            <Validation Validator="ValidateInboundFeePolicy">
-                                                <FieldLabel>Inbound base fee (msat)</FieldLabel>
-                                                <FieldHelp>Optional inbound base fee. When set, it must be zero or below.
-                                                </FieldHelp>
-                                                <NumericEdit TValue="int?" Immediate="false" Max="0"
-                                                                @bind-Value="_channelFeePolicy.InboundBaseFeeMsat">
-                                                    <Feedback>
-                                                        <ValidationError />
-                                                    </Feedback>
-                                                </NumericEdit>
-                                            </Validation>
-                                        </Field>
-                                    </Column>
-                                    <Column>
-                                        <Field>
-                                            <Validation Validator="ValidateInboundFeePolicy">
-                                                <FieldLabel>Inbound fee rate (ppm)</FieldLabel>
-                                                <FieldHelp>Optional inbound proportional fee. When set, it must be zero
-                                                    or below.</FieldHelp>
-                                                <NumericEdit TValue="int?" Immediate="false" Max="0"
-                                                                @bind-Value="_channelFeePolicy.InboundFeeRatePpm">
-                                                    <Feedback>
-                                                        <ValidationError />
-                                                    </Feedback>
-                                                </NumericEdit>
-                                            </Validation>
-                                        </Field>
-                                    </Column>
-                                </Row>
+                                
+                                @if (_selectedChannel.IsDynamicFeeEnabled)
+                                {
+                                    <Alert Color="Color.Warning" Visible="true" class="mb-4">
+                                        <AlertDescription>
+                                            ⚠️ Dynamic fees are enabled for this channel. Manual fee adjustment is not allowed. Please disable dynamic fees to set a new fee policy.
+                                        </AlertDescription>
+                                    </Alert>
+                                }
+                                else{
+                                    <Row>
+                                        <Column>
+                                            <Field>
+                                                <Validation Validator="ValidateChannelFeeBaseFeeMsat">
+                                                    <FieldLabel>Base fee (msat)</FieldLabel>
+                                                    <FieldHelp>Flat outbound fee charged for forwarded payments.</FieldHelp>
+                                                    <NumericEdit TValue="long?" Min="0L"
+                                                                    @bind-Value="_channelFeePolicy.BaseFeeMsat">
+                                                        <Feedback>
+                                                            <ValidationError />
+                                                        </Feedback>
+                                                    </NumericEdit>
+                                                </Validation>
+                                            </Field>
+                                        </Column>
+                                        <Column>
+                                            <Field>
+                                                <Validation Validator="ValidateChannelFeeRatePpm">
+                                                    <FieldLabel>Fee rate (ppm)</FieldLabel>
+                                                    <FieldHelp>Outbound proportional fee in parts per million.</FieldHelp>
+                                                    <NumericEdit TValue="long?" Min="0L" Max="@((long)uint.MaxValue)"
+                                                                    @bind-Value="_channelFeePolicy.FeeRatePpm" >
+                                                        <Feedback>
+                                                            <ValidationError />
+                                                        </Feedback>
+                                                    </NumericEdit>
+                                                </Validation>
+                                            </Field>
+                                        </Column>
+                                    </Row>
+                                    <Field>
+                                        <Validation Validator="ValidateChannelFeeTimeLockDelta">
+                                            <FieldLabel>Time lock delta</FieldLabel>
+                                            <FieldHelp>CLTV delta advertised for forwarded HTLCs on this channel.</FieldHelp>
+                                            <NumericEdit TValue="long?" Min="0L" Max="@((long)uint.MaxValue)"
+                                                            @bind-Value="_channelFeePolicy.TimeLockDelta">
+                                                <Feedback>
+                                                    <ValidationError />
+                                                </Feedback>
+                                            </NumericEdit>
+                                        </Validation>
+                                    </Field>
+                                    <Field>
+                                        <FieldLabel>Inbound fee policy</FieldLabel>
+                                        <FieldHelp>Optional. Leave both inbound fields blank to keep the current inbound fee
+                                            policy unchanged.</FieldHelp>
+                                    </Field>
+                                    <Row>
+                                        <Validation Validator="ValidateInboundFeePolicy">
+                                            <Column>
+                                                <Field>
+                                                    <FieldLabel>Inbound base fee (msat)</FieldLabel>
+                                                    <FieldHelp>Optional inbound base fee. When set, it must be zero or below.
+                                                    </FieldHelp>
+                                                    <NumericEdit TValue="int?" Immediate="false" Max="@(_allowedPositiveInboundFeesSelectedChannel ? int.MaxValue : 0)"
+                                                                    @bind-Value="_channelFeePolicy.InboundBaseFeeMsat">
+                                                        <Feedback>
+                                                            <ValidationError />
+                                                        </Feedback>
+                                                    </NumericEdit>
+                                                </Field>
+                                            </Column>
+                                            <Column>
+                                                <Field>
+                                                    <FieldLabel>Inbound fee rate (ppm)</FieldLabel>
+                                                    <FieldHelp>Optional inbound proportional fee. When set, it must be zero
+                                                        or below.</FieldHelp>
+                                                    <NumericEdit TValue="int?" Immediate="false" Max="@(_allowedPositiveInboundFeesSelectedChannel ? int.MaxValue : 0)"
+                                                                    @bind-Value="_channelFeePolicy.InboundFeeRatePpm">
+                                                        <Feedback>
+                                                            <ValidationError />
+                                                        </Feedback>
+                                                    </NumericEdit>
+                                                </Field>
+                                            </Column>
+                                        </Validation>
+                                    </Row>
+                                }
                             </Validations>
                         </TabPanel>
                     </Content>
@@ -725,6 +744,7 @@
 
 
 @inject IChannelRepository ChannelRepository
+@inject IFeeEngineStateService FeeEngineStateService
 @inject IToastService ToastService
 @inject ClipboardService ClipboardService
 @inject IMessageService MessageService
@@ -749,6 +769,7 @@
     private Validations? _channelFeePolicyValidationsRef;
     private ChannelFeePolicyForm _channelFeePolicy = new();
     private CurrentFeePolicies _currentFeePolicies = new() { IsLoading = false };
+    private bool _allowedPositiveInboundFeesSelectedChannel;
     private string _selectedChannelManagementTab = ChannelManagementLiquidityTab;
     private string? _selectedChannelOutpoint;
     private string? _selectedChannelNodePubKey;
@@ -1074,6 +1095,7 @@
             return;
         }
 
+        _allowedPositiveInboundFeesSelectedChannel = node.AllowPositiveInboundFees;
         _currentFeePolicies.IsLoading = true;
         _currentFeePolicies.ErrorMessage = null;
         StateHasChanged();
@@ -1193,15 +1215,40 @@
 
     private async Task SaveAndCloseChannelFeePolicyTab()
     {
-        if (_channelFeePolicyValidationsRef == null || !await _channelFeePolicyValidationsRef.ValidateAll())
-        {
-            ToastService.ShowError("Please fix the errors");
-            return;
-        }
-
         if (_selectedChannel == null || string.IsNullOrWhiteSpace(_selectedChannelOutpoint) || string.IsNullOrWhiteSpace(_selectedChannelNodePubKey))
         {
             ToastService.ShowError("The selected channel could not be resolved for fee policy updates.");
+            return;
+        }
+
+        var channelUpdateResult = ChannelRepository.Update(_selectedChannel);
+        if (!channelUpdateResult.Item1)
+        {
+            ToastService.ShowError("Could not update channel dynamic fee setting.");
+            await AuditService.LogAsync(AuditActionType.Update, AuditEventType.Failure, AuditObjectType.Channel,
+                _selectedChannel.Id.ToString(),
+                $"Failed to update dynamic fee flag. ChanId: {_selectedChannel.ChanId}, IsDynamicFeeEnabled: {_selectedChannel.IsDynamicFeeEnabled}");
+            return;
+        }
+
+        await AuditService.LogAsync(AuditActionType.Update, AuditEventType.Success, AuditObjectType.Channel,
+            _selectedChannel.Id.ToString(),
+            $"Updated dynamic fee flag. ChanId: {_selectedChannel.ChanId}, IsDynamicFeeEnabled: {_selectedChannel.IsDynamicFeeEnabled}");
+
+        // When the operator opts the channel out, drop its fee-engine state so a later re-enable
+        // cold-starts from the category baseline rather than resuming from outdated ChannelFeeState.
+        await FeeEngineStateService.PurgeChannelStateIfDisabled(_selectedChannel);
+
+        if (_selectedChannel.IsDynamicFeeEnabled)
+        {
+            ToastService.ShowSuccess("Channel dynamic fee management enabled.");
+            await CloseChannelManagementModal();
+            return;
+        }
+
+        if (_channelFeePolicyValidationsRef == null || !await _channelFeePolicyValidationsRef.ValidateAll())
+        {
+            ToastService.ShowError("Please fix the errors");
             return;
         }
 

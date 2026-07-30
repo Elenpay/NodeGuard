@@ -81,6 +81,11 @@ service NodeGuardService {
   rpc GetWithdrawalsRequestStatusByReferenceIds(GetWithdrawalsRequestStatusByReferenceIdsRequest) returns (GetWithdrawalsRequestStatusResponse);
 
   /*
+  Gets the status for a withdrawal request by its transaction hash
+   */
+  rpc GetWithdrawalsRequestStatusByTxHash(GetWithdrawalsRequestStatusByTxHashRequest) returns (GetWithdrawalsRequestStatusResponse);
+
+  /*
   Gets a channel by id
    */
   rpc GetChannel(GetChannelRequest) returns (GetChannelResponse);
@@ -134,10 +139,18 @@ message LiquidityRule {
   string remote_node_pubkey = 10;
 }
 
+enum DERIVATION_FEATURE {
+  DEPOSIT = 0;
+  CHANGE = 1;
+  DIRECT = 2;
+  CUSTOM = 3;
+}
+
 message GetNewWalletAddressRequest {
   int32 wallet_id = 1;
   bool reserve = 2; // If set to true, the returned address will be marked as used
   int32 skip = 3; // Number of unused addresses to skip before returning one
+  optional DERIVATION_FEATURE derivation_feature = 4; // Defaults to DEPOSIT if not set
 }
 
 message GetNewWalletAddressResponse {
@@ -428,6 +441,10 @@ message GetWithdrawalsRequestStatusResponse {
 
 message GetWithdrawalsRequestStatusByReferenceIdsRequest {
   repeated string reference_ids = 1;
+}
+
+message GetWithdrawalsRequestStatusByTxHashRequest {
+  string tx_hash = 1;
 }
 
 message GetChannelRequest {
