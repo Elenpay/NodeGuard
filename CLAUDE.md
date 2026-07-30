@@ -26,7 +26,8 @@ If you invoke `dotnet run` / `dotnet watch` directly (not through `just`), run [
 **Infra**
 - `tilt up` is the recommended path — runs all profiles per [Tiltfile](Tiltfile).
 - Alternatives: `just docker-up` / `just docker-down` / `just docker-rm` (force volume reset). The compose entrypoint is [docker-compose.yml](docker-compose.yml), which `include:`s the per-stack files under [docker/](docker/).
-- `just mine` — loops `bitcoin-cli -generate 1` against the Polar `polar-n1-backend1` container for regtest.
+- Every chain service sits behind a compose profile, so a bare `docker compose up -d` starts nothing usable. `--profile polar` runs the in-repo regtest network (`polar-n1-*` containers, [docker/bitcoin/docker-compose.polar.yml](docker/bitcoin/docker-compose.polar.yml)); `--profile external` (via `just external-up`, [docker/bitcoin/docker-compose.external.yml](docker/bitcoin/docker-compose.external.yml)) runs only postgres + nbxplorer against a regtest already running elsewhere, parameterized by `BITCOIND_CONTAINER` / `MANAGED_NODES` in a repo-root `.env` (see [.env.example](.env.example)).
+- `just mine` — loops `bitcoin-cli -generate 1` against `polar-n1-backend` for regtest (override with `BITCOIND_CONTAINER`).
 
 **Protos**
 - `just update-protos` — regenerates from upstream LND/Loop trees under [lnd/](lnd/) via [src/Proto/update-protos.sh](src/Proto/update-protos.sh). NodeGuard's own proto lives at [src/Proto/nodeguard.proto](src/Proto/nodeguard.proto).
