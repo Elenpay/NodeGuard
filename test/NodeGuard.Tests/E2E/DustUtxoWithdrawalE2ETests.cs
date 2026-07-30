@@ -109,19 +109,23 @@ public class DustUtxoWithdrawalE2ETests
         // No selection strategy may surface the dust UTXO. SmallestFirst would rank it first, and
         // ClosestToTargetFirst targeting exactly 546 sats is the most adversarial case: the dust
         // UTXO would be the top candidate if it were not filtered out.
-        foreach (var strategy in new[]
-                 {
-                     COIN_SELECTION_STRATEGY.SmallestFirst,
-                     COIN_SELECTION_STRATEGY.BiggestFirst,
-                     COIN_SELECTION_STRATEGY.ClosestToTargetFirst,
-                     COIN_SELECTION_STRATEGY.UpToAmount,
-                 })
+        // UpToAmount selects UTXOs whose sum stays UNDER the target, so it gets a ceiling above
+        // the wallet balance: with a small target the dust UTXO would be the only one that fits
+        // (and the correct result once it is filtered out is an empty selection).
+        var strategyProbes = new (COIN_SELECTION_STRATEGY Strategy, long AmountSats)[]
+        {
+            (COIN_SELECTION_STRATEGY.SmallestFirst, ProbeAmountSats),
+            (COIN_SELECTION_STRATEGY.BiggestFirst, ProbeAmountSats),
+            (COIN_SELECTION_STRATEGY.ClosestToTargetFirst, ProbeAmountSats),
+            (COIN_SELECTION_STRATEGY.UpToAmount, Money.Coins(25m).Satoshi),
+        };
+        foreach (var (strategy, amountSats) in strategyProbes)
         {
             var availableUtxos = await client.GetAvailableUtxosAsync(new GetAvailableUtxosRequest
             {
                 WalletId = walletId,
                 Strategy = strategy,
-                Amount = ProbeAmountSats,
+                Amount = amountSats,
                 ClosestTo = DustAmountSats,
             }, headers);
             availableUtxos.Confirmed.Should().NotBeEmpty(
@@ -129,6 +133,17 @@ public class DustUtxoWithdrawalE2ETests
             availableUtxos.Confirmed.Select(u => u.Outpoint).Should().NotContain(dustOutpoint.ToString(),
                 $"dust UTXOs must not be offered for coin selection with strategy {strategy}");
         }
+
+        // With a target below any real UTXO, UpToAmount's only fitting candidate is the dust
+        // UTXO — the selection must come back empty rather than surface it.
+        var upToDustOnly = await client.GetAvailableUtxosAsync(new GetAvailableUtxosRequest
+        {
+            WalletId = walletId,
+            Strategy = COIN_SELECTION_STRATEGY.UpToAmount,
+            Amount = ProbeAmountSats,
+        }, headers);
+        upToDustOnly.Confirmed.Should().BeEmpty(
+            "no UTXO other than the (filtered) dust fits an UpToAmount target below the smallest real UTXO");
 
         // 3. Request an automatic withdrawal: no explicit outpoints, so coin selection runs.
         var destination = await rpc.GetNewAddressAsync();
