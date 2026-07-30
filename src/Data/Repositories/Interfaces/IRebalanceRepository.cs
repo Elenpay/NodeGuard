@@ -51,4 +51,23 @@ public interface IRebalanceRepository
     Task<(bool, string?)> AddAsync(Rebalance rebalance);
 
     (bool, string?) Update(Rebalance rebalance);
+
+    /// <summary>
+    /// Counts non-terminal rebalances (Pending + InFlight) for a node. Used by the
+    /// in-flight cap.
+    /// </summary>
+    Task<int> GetInFlightByNode(int nodeId);
+
+    /// <summary>
+    /// Source-channel ids (Channel primary keys) of every non-terminal rebalance (Pending/InFlight).
+    /// </summary>
+    Task<HashSet<int>> GetPendingInFlightSourceChannelIds();
+
+    /// <summary>
+    /// Budget consumption for a node since <paramref name="since"/> (by CreationDatetime):
+    /// non-terminal rows count MAX(FeePaidSats, RequestedAmountSats × MaxFeePct) so in-flight
+    /// spend counts immediately against a conservative on-demand reservation, Succeeded rows
+    /// count FeePaidSats, other terminal rows count 0.
+    /// </summary>
+    Task<long> GetConsumedFeesSince(int nodeId, DateTimeOffset since);
 }

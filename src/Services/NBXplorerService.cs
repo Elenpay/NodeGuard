@@ -179,14 +179,15 @@ public class NBXplorerService : INBXplorerService
 
                 return client.Serializer.ToObject<UTXOChanges>(await response.Content.ReadAsStringAsync().ConfigureAwait(false));
             }
+
+            throw new HttpRequestException(
+                $"selectutxos request failed with status code {(int)response.StatusCode}: {await response.Content.ReadAsStringAsync(cancellation).ConfigureAwait(false)}");
         }
         catch (Exception e)
         {
             _logger.LogError(e.ToString());
-            throw e;
+            throw;
         }
-
-        return new UTXOChanges();
     }
 
     public async Task<GetFeeRateResult> GetFeeRateAsync(int blockCount, FeeRate fallbackFeeRate,

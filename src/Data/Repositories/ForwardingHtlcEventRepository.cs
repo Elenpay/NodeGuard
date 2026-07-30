@@ -97,6 +97,37 @@ public class ForwardingHtlcEventRepository : IForwardingHtlcEventRepository
         }
     }
 
+    public async Task<long> GetOutgoingAmountMsat(string managedNodePubKey, ulong chanIdLnd, DateTimeOffset since)
+    {
+        await using var context = await _dbContextFactory.CreateDbContextAsync();
+
+        return await Settled(context, managedNodePubKey, since)
+            .Where(x => x.OutgoingChannelId == chanIdLnd)
+            .SumAsync(x => (long?)x.OutgoingAmountMsat) ?? 0;
+    }
+
+    public async Task<long> GetIncomingAmountMsat(string managedNodePubKey, ulong chanIdLnd, DateTimeOffset since)
+    {
+        await using var context = await _dbContextFactory.CreateDbContextAsync();
+
+        return await Settled(context, managedNodePubKey, since)
+            .Where(x => x.IncomingChannelId == chanIdLnd)
+            .SumAsync(x => (long?)x.IncomingAmountMsat) ?? 0;
+    }
+    
+    /// <summary>
+    /// Base query shared by every windowed aggregation: succeeded (Settled) forwards for the given
+    /// managed node within the window. No caller ever reads non-Settled rows.
+    /// </summary>
+    private static IQueryable<ForwardingHtlcEvent> Settled(
+        ApplicationDbContext context, string managedNodePubKey, DateTimeOffset since)
+    {
+        return context.ForwardingHtlcEvents
+            .Where(x => x.ManagedNodePubKey == managedNodePubKey
+                        && x.Outcome == ForwardingOutcome.Settled
+                        && x.EventTimestamp >= since);
+    }
+
     private static T MergeEnum<T>(T currentValue, T newValue) where T : struct, Enum
     {
         return EqualityComparer<T>.Default.Equals(newValue, default) ? currentValue : newValue;

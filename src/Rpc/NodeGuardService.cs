@@ -51,6 +51,8 @@ public interface INodeGuardService
 
     Task<GetWithdrawalsRequestStatusResponse> GetWithdrawalsRequestStatusByReferenceIds(GetWithdrawalsRequestStatusByReferenceIdsRequest request, ServerCallContext context);
 
+    Task<GetWithdrawalsRequestStatusResponse> GetWithdrawalsRequestStatusByTxHash(GetWithdrawalsRequestStatusByTxHashRequest request, ServerCallContext context);
+
     Task<GetChannelResponse> GetChannel(GetChannelRequest request, ServerCallContext context);
 
     Task<AddTagsResponse> AddTags(AddTagsRequest request, ServerCallContext context);
@@ -175,8 +177,16 @@ public class NodeGuardService : Nodeguard.NodeGuardService.NodeGuardServiceBase,
             throw new RpcException(new Status(StatusCode.Internal, "Derivation strategy not found"));
         }
 
+        var derivationFeature = request.DerivationFeature switch
+        {
+            DERIVATION_FEATURE.Change => DerivationFeature.Change,
+            DERIVATION_FEATURE.Direct => DerivationFeature.Direct,
+            DERIVATION_FEATURE.Custom => DerivationFeature.Custom,
+            _ => DerivationFeature.Deposit,
+        };
+
         var btcAddress = await _nbXplorerService.GetUnusedAsync(derivationStrategy,
-            DerivationFeature.Deposit,
+            derivationFeature,
             request.Skip,
             request.Reserve, context.CancellationToken);
 
@@ -1047,17 +1057,39 @@ public class NodeGuardService : Nodeguard.NodeGuardService.NodeGuardServiceBase,
                            walletUtxos.Unconfirmed.UTXOs.Any(u => u.Outpoint.ToString() == utxo))
                            .ToList();
 
+        // Ignore dust UTXOs server-side too, so they are not counted towards the requested amount
+        // by any selection strategy and then stripped locally, returning a short selection
+        var listDust = walletUtxos.Confirmed.UTXOs
+            .Concat(walletUtxos.Unconfirmed.UTXOs)
+            .Where(utxo => ((Money)utxo.Value).Satoshi <= Constants.MINIMUM_UTXO_VALUE_SATS)
+            .Select(utxo => utxo.Outpoint.ToString())
+            .ToList();
+
         ignoreOutpoints.AddRange(listLocked);
         ignoreOutpoints.AddRange(listFrozen);
+        ignoreOutpoints.AddRange(listDust);
 
-        var utxos = await _nbXplorerService.GetUTXOsByLimitAsync(
-            derivationStrategy,
-            coinSelectionStrategy,
-            request.Limit,
-            request.Amount,
-            request.ClosestTo,
-            ignoreOutpoints
-            );
+        UTXOChanges utxos;
+        try
+        {
+            utxos = await _nbXplorerService.GetUTXOsByLimitAsync(
+                derivationStrategy,
+                coinSelectionStrategy,
+                request.Limit,
+                request.Amount,
+                request.ClosestTo,
+                ignoreOutpoints
+                );
+        }
+        catch (Exception e)
+        {
+            // Preserve this RPC's previous contract: a failing custom backend yields an empty
+            // selection instead of an error
+            _logger.LogWarning(e,
+                "UTXO selection through the custom NBXplorer backend failed for wallet {WalletId}, returning an empty selection",
+                request.WalletId);
+            utxos = new UTXOChanges();
+        }
 
         var confirmedUtxos = utxos.Confirmed.UTXOs.Select(utxo => new Utxo()
         {
@@ -1113,7 +1145,7 @@ public class NodeGuardService : Nodeguard.NodeGuardService.NodeGuardServiceBase,
                 RequestId = withdrawalRequest.Id,
                 Status = GetStatus(withdrawalRequest.Status),
                 RejectOrCancelReason = withdrawalRequest.RejectCancelDescription ?? "",
-                ReferenceId = withdrawalRequest.ReferenceId,
+                ReferenceId = withdrawalRequest.ReferenceId ?? "",
                 Confirmations = confirmations,
                 TxId = withdrawalRequest.TxId ?? "",
             });
@@ -1137,6 +1169,17 @@ public class NodeGuardService : Nodeguard.NodeGuardService.NodeGuardServiceBase,
         var withdrawalRequests = await _walletWithdrawalRequestRepository.GetByReferenceIds(request.ReferenceIds.ToList());
 
         return await GetWithdrawalsRequestStatusResponse(withdrawalRequests);
+    }
+
+    public override async Task<GetWithdrawalsRequestStatusResponse> GetWithdrawalsRequestStatusByTxHash(GetWithdrawalsRequestStatusByTxHashRequest request, ServerCallContext context)
+    {
+        var withdrawalRequest = await _walletWithdrawalRequestRepository.GetByTxHash(request.TxHash);
+        if (withdrawalRequest == null)
+        {
+            throw new RpcException(new Status(StatusCode.NotFound, "Withdrawal request not found"));
+        }
+
+        return await GetWithdrawalsRequestStatusResponse(new List<WalletWithdrawalRequest> { withdrawalRequest });
     }
 
     public override async Task<GetChannelResponse> GetChannel(GetChannelRequest request, ServerCallContext context)

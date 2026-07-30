@@ -7,3 +7,4 @@ include:
   - ./docker/mempool/docker-compose.yml
   - ./docker/40swap/docker-compose.yml
   - ./docker/grafana/docker-compose.yml
+  - ./docker/e2e/docker-compose.yml

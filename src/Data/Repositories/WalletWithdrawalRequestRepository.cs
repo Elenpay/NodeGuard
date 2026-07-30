@@ -85,6 +85,14 @@ namespace NodeGuard.Data.Repositories
             return await applicationDbContext.WalletWithdrawalRequests.Where(wr => !string.IsNullOrEmpty(wr.ReferenceId) && referenceIds.Contains(wr.ReferenceId)).ToListAsync();
         }
 
+        public async Task<WalletWithdrawalRequest?> GetByTxHash(string txHash)
+        {
+            await using var applicationDbContext = await _dbContextFactory.CreateDbContextAsync();
+
+            return await applicationDbContext.WalletWithdrawalRequests
+                .FirstOrDefaultAsync(wr => wr.TxId == txHash);
+        }
+
 
         public async Task<List<WalletWithdrawalRequest>> GetAll()
         {

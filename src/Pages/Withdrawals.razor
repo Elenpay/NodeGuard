@@ -312,7 +312,7 @@
             <Field>
                 <FieldLabel>Requestor</FieldLabel>
                 <Autocomplete TItem="ApplicationUser"
-                              TValue="string?"
+                              TValue="string"
                               Data="@_availableUsers"
                               TextField="@(item => item?.UserName ?? "All")"
                               ValueField="@(item => item?.Id)"

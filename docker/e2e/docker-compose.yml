@@ -1,0 +1,118 @@
+# Option-B end-to-end stack: a LIVE NodeGuard whose gRPC API is driven by a .NET test runner.
+# All services are profile-gated ([e2e]) so a normal `tilt up` / `docker compose up` ignores them.
+#
+# Flow (depends_on order): bitcoind + alice/bob/carol (from the polar stack) →
+#   setup-e2e (loads bitcoind wallet, funds nodes, opens Bob→Carol + Carol→Alice — NOT Alice→Bob) +
+#   extract-env (writes the LND macaroon/host/pubkey env from the mounted data volumes) →
+#   nodeguard (seeds nodes, funds its hot wallet) →
+#   e2e-runner (opens Alice→Bob via gRPC, mines, then rebalances and asserts).
+#
+# NOTE: built but not yet runtime-verified as a stack (see docker/e2e/README.md) — every runtime
+# STEP was validated manually against a live NodeGuard; the compose wiring needs a CI shakeout.
+
+services:
+  # Loads the bitcoind wallet + funds LND + opens the two non-source channels. docker.sock pattern
+  # mirrors the polar `setup` service. Must complete before nodeguard boots (NodeGuard funds its
+  # hot wallet via bitcoind RPC, which needs a loaded wallet).
+  setup-e2e:
+    profiles: [e2e]
+    image: alpine:latest
+    depends_on:
+      bitcoind: { condition: service_started }
+      alice: { condition: service_healthy }
+      bob: { condition: service_healthy }
+      carol: { condition: service_healthy }
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - ./setup-e2e.sh:/setup-e2e.sh:ro
+    command: sh -c "apk add --no-cache docker-cli jq && sh /setup-e2e.sh"
+    restart: "no"
+
+  # Writes /shared/nodeguard-macaroons.env (LND hosts/macaroons/pubkeys) from the mounted LND data
+  # volumes + a network `lncli getinfo` (the LND certs include the service-name SANs).
+  extract-env:
+    profiles: [e2e]
+    image: lightninglabs/lndinit:v0.1.34-beta-lnd-v0.20.1-beta
+    depends_on:
+      alice: { condition: service_healthy }
+      bob: { condition: service_healthy }
+      carol: { condition: service_healthy }
+    entrypoint: ["sh", "/scripts/extract-env.sh"]
+    volumes:
+      - alice_lnd_data:/lnd/alice:ro
+      - bob_lnd_data:/lnd/bob:ro
+      - carol_lnd_data:/lnd/carol:ro
+      - ./extract-env.sh:/scripts/extract-env.sh:ro
+      - e2e_env:/shared
+    restart: "no"
+
+  # The app under test. Built from the production src/Dockerfile; an entrypoint wrapper sources the
+  # LND env file before launching. Reaches LND by service name (TLS ignored by LightningClientService).
+  nodeguard:
+    profiles: [e2e]
+    build:
+      context: ../..
+      dockerfile: src/Dockerfile
+    depends_on:
+      postgres: { condition: service_healthy }
+      nbxplorer: { condition: service_healthy }
+      setup-e2e: { condition: service_completed_successfully }
+      extract-env: { condition: service_completed_successfully }
+    # The published image (dotnet NodeGuard.dll) does NOT read launchSettings.json, so every env
+    # var the dev profile normally provides must be set here, container-adjusted (service names).
+    # ALICE/BOB/CAROL_HOST + *_MACAROON + *_PUBKEY are sourced from extract-env (overrides any here).
+    environment:
+      IS_DEV_ENVIRONMENT: "true"
+      ASPNETCORE_ENVIRONMENT: "Development"
+      HTTP1_LISTEN_PORT: "8080"
+      BITCOIN_NETWORK: "REGTEST"
+      POSTGRES_CONNECTIONSTRING: "Host=postgres;Port=5432;Database=nodeguard;User ID=postgres;"
+      NBXPLORER_URI: "http://nbxplorer:32838"
+      NBXPLORER_ENABLE_CUSTOM_BACKEND: "true"
+      NBXPLORER_BTCRPCURL: "http://bitcoind:18443"
+      NBXPLORER_BTCRPCUSER: "polaruser"
+      NBXPLORER_BTCRPCPASSWORD: "polarpass"
+      NBXPLORER_BTCNODEENDPOINT: "bitcoind:18444"
+      MINIMUM_CHANNEL_CAPACITY_SATS: "20000"
+      MINIMUM_WITHDRAWAL_BTC_AMOUNT: "0.001"
+      MAXIMUM_WITHDRAWAL_BTC_AMOUNT: "21000000"
+      ANCHOR_CLOSINGS_MINIMUM_SATS: "100000"
+      TRANSACTION_CONFIRMATION_MINIMUM_BLOCKS: "6"
+      DEFAULT_DERIVATION_PATH: "m/48'/1'"
+      ENABLE_HW_SUPPORT: "false"
+      ENABLE_REMOTE_SIGNER: "false"
+      PUSH_NOTIFICATIONS_ONESIGNAL_ENABLED: "false"
+      # GenerateTemplatePSBT always calls GetMempoolRecommendedFeesAsync (even for CUSTOM_FEE, whose
+      # result is then discarded), which throws if MEMPOOL_ENDPOINT is unset. Match the dev profile.
+      MEMPOOL_ENDPOINT: "https://mempool.elenpay.tech"
+      AMBOSS_ENDPOINT: "https://amboss.space"
+      COINGECKO_ENDPOINT: "https://pro-api.coingecko.com/api/v3/coins/markets?vs_currency=usd&ids=bitcoin"
+      API_TOKEN_SALT: "H/fCx1+maAFMcdi6idIYEg=="
+      FUNDSMANAGER_ENDPOINT: "http://nodeguard:8080"
+    entrypoint: ["/bin/sh", "/scripts/nodeguard-entrypoint.sh"]
+    volumes:
+      - ./nodeguard-entrypoint.sh:/scripts/nodeguard-entrypoint.sh:ro
+      - e2e_env:/shared:ro
+    restart: "no"
+
+  # Drives NodeGuard's gRPC: OpenChannel(Alice→Bob) → mine + poll → RequestRebalance → assert.
+  e2e-runner:
+    profiles: [e2e]
+    build:
+      context: ../..
+      dockerfile: docker/e2e/Dockerfile.runner
+    depends_on:
+      nodeguard: { condition: service_started }
+    environment:
+      RUN_E2E_TESTS: "1"
+      NODEGUARD_GRPC_ENDPOINT: "http://nodeguard:50051"
+      NODEGUARD_API_TOKEN: "8rvSsUGeyXXdDQrHctcTey/xtHdZQEn945KHwccKp9Q="
+      BITCOIND_RPC_URL: "http://bitcoind:18443"
+      BITCOIND_RPC_USER: "polaruser"
+      BITCOIND_RPC_PASS: "polarpass"
+      BITCOIND_RPC_WALLET: "default"
+      E2E_HOT_WALLET_ID: "3"
+    restart: "no"
+
+volumes:
+  e2e_env:
