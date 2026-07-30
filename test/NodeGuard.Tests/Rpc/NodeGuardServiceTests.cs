@@ -1836,5 +1836,44 @@ namespace NodeGuard.Rpc
             ignoredOutpoints.Should().Contain(unconfirmedDustUtxo.Outpoint.ToString());
             ignoredOutpoints.Should().NotContain(availableUtxo.Outpoint.ToString());
         }
+
+        [Fact]
+        public async Task GetAvailableUtxos_CustomBackendFails_ReturnsEmptySelection()
+        {
+            // Arrange
+            var wallet = CreateWallet.SingleSig(CreateWallet.CreateInternalWallet());
+            var walletRepository = new Mock<IWalletRepository>();
+            walletRepository.Setup(x => x.GetById(It.IsAny<int>())).ReturnsAsync(wallet);
+
+            var nbxplorerService = new Mock<INBXplorerService>();
+            nbxplorerService.Setup(x => x.GetUTXOsAsync(It.IsAny<DerivationStrategyBase>(), default))
+                .ReturnsAsync(new UTXOChanges());
+            nbxplorerService.Setup(x => x.GetUTXOsByLimitAsync(It.IsAny<DerivationStrategyBase>(),
+                    It.IsAny<CoinSelectionStrategy>(), It.IsAny<int>(), It.IsAny<long>(), It.IsAny<long>(),
+                    It.IsAny<List<string>>(), default))
+                .ThrowsAsync(new HttpRequestException("selectutxos request failed with status code 400"));
+
+            var fmutxoRepository = new Mock<IFMUTXORepository>();
+            fmutxoRepository.Setup(x => x.GetLockedUTXOsByWalletId(It.IsAny<int>()))
+                .ReturnsAsync(new List<FMUTXO>());
+
+            var coinSelectionService = new Mock<ICoinSelectionService>();
+            coinSelectionService.Setup(x => x.GetFrozenUTXOs()).ReturnsAsync(new List<string>());
+
+            var service = CreateNodeGuardService(
+                walletRepository: walletRepository.Object,
+                nbXplorerService: nbxplorerService.Object,
+                fmutxoRepository: fmutxoRepository.Object,
+                coinSelectionService: coinSelectionService.Object);
+
+            // Act
+            var response = await service.GetAvailableUtxos(
+                new GetAvailableUtxosRequest { WalletId = 1, Amount = 10_000 },
+                TestServerCallContext.Create());
+
+            // Assert: the RPC keeps its previous contract and returns an empty selection
+            response.Confirmed.Should().BeEmpty();
+            response.Unconfirmed.Should().BeEmpty();
+        }
     }
 }

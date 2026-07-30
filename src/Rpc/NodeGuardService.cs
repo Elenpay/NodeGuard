@@ -1069,14 +1069,27 @@ public class NodeGuardService : Nodeguard.NodeGuardService.NodeGuardServiceBase,
         ignoreOutpoints.AddRange(listFrozen);
         ignoreOutpoints.AddRange(listDust);
 
-        var utxos = await _nbXplorerService.GetUTXOsByLimitAsync(
-            derivationStrategy,
-            coinSelectionStrategy,
-            request.Limit,
-            request.Amount,
-            request.ClosestTo,
-            ignoreOutpoints
-            );
+        UTXOChanges utxos;
+        try
+        {
+            utxos = await _nbXplorerService.GetUTXOsByLimitAsync(
+                derivationStrategy,
+                coinSelectionStrategy,
+                request.Limit,
+                request.Amount,
+                request.ClosestTo,
+                ignoreOutpoints
+                );
+        }
+        catch (Exception e)
+        {
+            // Preserve this RPC's previous contract: a failing custom backend yields an empty
+            // selection instead of an error
+            _logger.LogWarning(e,
+                "UTXO selection through the custom NBXplorer backend failed for wallet {WalletId}, returning an empty selection",
+                request.WalletId);
+            utxos = new UTXOChanges();
+        }
 
         var confirmedUtxos = utxos.Confirmed.UTXOs
             .Where(utxo => ((Money)utxo.Value).Satoshi > Constants.MINIMUM_UTXO_VALUE_SATS)
