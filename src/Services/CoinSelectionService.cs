@@ -159,6 +159,22 @@ public class CoinSelectionService: ICoinSelectionService
         return frozenAndLockedOutpoints;
     }
 
+    /// <summary>
+    /// Outpoints that must never be offered for coin selection: locked, frozen and dust UTXOs.
+    /// Locked/frozen are state lookups (database/tags); dust is a value predicate over the
+    /// wallet's current UTXO set, so the caller provides the already-fetched set instead of this
+    /// method issuing its own NBXplorer query.
+    /// </summary>
+    private async Task<List<string>> GetIgnoredOutpoints(UTXOChanges utxos)
+    {
+        var ignoredOutpoints = await GetLockedFrozenOutpoints();
+        ignoredOutpoints.AddRange(utxos.Confirmed.UTXOs
+            .Concat(utxos.Unconfirmed.UTXOs)
+            .Where(utxo => ((Money)utxo.Value).Satoshi <= Constants.MINIMUM_UTXO_VALUE_SATS)
+            .Select(utxo => utxo.Outpoint.ToString()));
+        return ignoredOutpoints;
+    }
+
     private async Task<List<UTXO>> FilterLockedFrozenUTXOs(UTXOChanges? utxoChanges)
     {
         var frozenAndLockedOutpoints = await GetLockedFrozenOutpoints();
@@ -220,14 +236,9 @@ public class CoinSelectionService: ICoinSelectionService
             // Tell the backend which UTXOs to skip (locked, frozen and dust), otherwise it counts
             // them towards the requested amount and the local filter below strips them afterwards,
             // returning a selection that falls short of that amount
-            var ignoreOutpoints = await GetLockedFrozenOutpoints();
             var allUtxos = await _nbXplorerService.GetUTXOsAsync(derivationStrategy);
             allUtxos.RemoveDuplicateUTXOs();
-            var dustOutpoints = allUtxos.Confirmed.UTXOs
-                .Concat(allUtxos.Unconfirmed.UTXOs)
-                .Where(utxo => ((Money)utxo.Value).Satoshi <= Constants.MINIMUM_UTXO_VALUE_SATS)
-                .Select(utxo => utxo.Outpoint.ToString());
-            ignoreOutpoints.AddRange(dustOutpoints);
+            var ignoreOutpoints = await GetIgnoredOutpoints(allUtxos);
 
             utxoChanges = await _nbXplorerService.GetUTXOsByLimitAsync(derivationStrategy, strategy, limit, amount, closestTo, ignoreOutpoints);
         }
