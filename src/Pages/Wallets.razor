@@ -581,6 +581,7 @@
                                 {
                                     foreach (var (_, utxo, tags, isFrozen) in _detailsUTXOs)
                                     {
+                                        var isDust = ((Money)utxo.Value).Satoshi <= Constants.MINIMUM_UTXO_VALUE_SATS;
                                         <TableRow>
                                             <TableRowHeader class="utxo-tags">
                                                 <a href="@($"{Environment.GetEnvironmentVariable("MEMPOOL_ENDPOINT")}/tx/{utxo.Outpoint.Hash}#vout={utxo.Outpoint.N}")"
@@ -589,6 +590,10 @@
                                             <TableRowCell>@utxo.Confirmations</TableRowCell>
                                             <TableRowCell>@($"{utxo.Value} BTC")</TableRowCell>
                                             <TableRowCell class="utxo-tags">
+                                                @if (isDust)
+                                                {
+                                                    <Badge class="utxo-tag" Color="Color.Warning" Pill title="Dust UTXO, automatically excluded from coin selection">dust</Badge>
+                                                }
                                                 @if (tags.Any())
                                                 {
                                                     foreach (var data in tags.Select((tag, i) => new { tag, i }))
@@ -598,7 +603,7 @@
                                                 }
                                             </TableRowCell>
                                             <TableRowCell>
-                                                <Check TValue="bool" Checked="@isFrozen"
+                                                <Check TValue="bool" Checked="@isFrozen" Disabled="@isDust"
                                                        CheckedChanged="@((b) => ToggleUtxoFreeze(b, utxo))"></Check>
                                             </TableRowCell>
                                         </TableRow>
