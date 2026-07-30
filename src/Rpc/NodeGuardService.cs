@@ -1057,17 +1057,39 @@ public class NodeGuardService : Nodeguard.NodeGuardService.NodeGuardServiceBase,
                            walletUtxos.Unconfirmed.UTXOs.Any(u => u.Outpoint.ToString() == utxo))
                            .ToList();
 
+        // Ignore dust UTXOs server-side too, so they are not counted towards the requested amount
+        // by any selection strategy and then stripped locally, returning a short selection
+        var listDust = walletUtxos.Confirmed.UTXOs
+            .Concat(walletUtxos.Unconfirmed.UTXOs)
+            .Where(utxo => ((Money)utxo.Value).Satoshi <= Constants.MINIMUM_UTXO_VALUE_SATS)
+            .Select(utxo => utxo.Outpoint.ToString())
+            .ToList();
+
         ignoreOutpoints.AddRange(listLocked);
         ignoreOutpoints.AddRange(listFrozen);
+        ignoreOutpoints.AddRange(listDust);
 
-        var utxos = await _nbXplorerService.GetUTXOsByLimitAsync(
-            derivationStrategy,
-            coinSelectionStrategy,
-            request.Limit,
-            request.Amount,
-            request.ClosestTo,
-            ignoreOutpoints
-            );
+        UTXOChanges utxos;
+        try
+        {
+            utxos = await _nbXplorerService.GetUTXOsByLimitAsync(
+                derivationStrategy,
+                coinSelectionStrategy,
+                request.Limit,
+                request.Amount,
+                request.ClosestTo,
+                ignoreOutpoints
+                );
+        }
+        catch (Exception e)
+        {
+            // Preserve this RPC's previous contract: a failing custom backend yields an empty
+            // selection instead of an error
+            _logger.LogWarning(e,
+                "UTXO selection through the custom NBXplorer backend failed for wallet {WalletId}, returning an empty selection",
+                request.WalletId);
+            utxos = new UTXOChanges();
+        }
 
         var confirmedUtxos = utxos.Confirmed.UTXOs.Select(utxo => new Utxo()
         {
