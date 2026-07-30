@@ -233,14 +233,28 @@ public class CoinSelectionService: ICoinSelectionService
         UTXOChanges utxoChanges;
         if (Constants.NBXPLORER_ENABLE_CUSTOM_BACKEND)
         {
-            // Tell the backend which UTXOs to skip (locked, frozen and dust), otherwise it counts
-            // them towards the requested amount and the local filter below strips them afterwards,
-            // returning a selection that falls short of that amount
-            var allUtxos = await _nbXplorerService.GetUTXOsAsync(derivationStrategy);
-            allUtxos.RemoveDuplicateUTXOs();
-            var ignoreOutpoints = await GetIgnoredOutpoints(allUtxos);
+            try
+            {
+                // Tell the backend which UTXOs to skip (locked, frozen and dust), otherwise it
+                // counts them towards the requested amount and the local filter below strips them
+                // afterwards, returning a selection that falls short of that amount
+                var allUtxos = await _nbXplorerService.GetUTXOsAsync(derivationStrategy);
+                allUtxos.RemoveDuplicateUTXOs();
+                var ignoreOutpoints = await GetIgnoredOutpoints(allUtxos);
 
-            utxoChanges = await _nbXplorerService.GetUTXOsByLimitAsync(derivationStrategy, strategy, limit, amount, closestTo, ignoreOutpoints);
+                utxoChanges = await _nbXplorerService.GetUTXOsByLimitAsync(derivationStrategy, strategy, limit, amount, closestTo, ignoreOutpoints);
+            }
+            catch (Exception e)
+            {
+                // Skip the custom backend entirely and degrade to the plain UTXO listing, same as
+                // when NBXPLORER_ENABLE_CUSTOM_BACKEND is off: the strategy/amount are no longer
+                // applied server-side, but the local filter below still strips locked, frozen and
+                // dust UTXOs, so none of them can leak through
+                _logger.LogWarning(e,
+                    "UTXO selection through the custom NBXplorer backend failed for strategy {Strategy}, falling back to the plain UTXO listing",
+                    strategy);
+                utxoChanges = await _nbXplorerService.GetUTXOsAsync(derivationStrategy);
+            }
         }
         else
         {

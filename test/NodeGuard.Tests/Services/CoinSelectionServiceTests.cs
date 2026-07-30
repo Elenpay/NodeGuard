@@ -197,6 +197,71 @@ public class CoinSelectionServiceTests
     }
 
     [Fact]
+    public async Task GetAvailableUTXOsAsync_WithCustomBackendFailing_FallsBackToPlainListingAndLocalFilter()
+    {
+        var previousCustomBackend = Constants.NBXPLORER_ENABLE_CUSTOM_BACKEND;
+        Constants.NBXPLORER_ENABLE_CUSTOM_BACKEND = true;
+        try
+        {
+            // Arrange
+            var derivationStrategy = CreateWallet.SingleSig(_internalWallet).GetDerivationStrategy();
+            var dustUtxo = CreateUtxo(1, Constants.MINIMUM_UTXO_VALUE_SATS);
+            var lockedUtxo = CreateUtxo(2, 20_000);
+            var availableUtxo = CreateUtxo(3, 30_000);
+
+            var fmutxoRepository = new Mock<IFMUTXORepository>();
+            fmutxoRepository
+                .Setup(x => x.GetLockedUTXOs(null, null))
+                .ReturnsAsync(new List<FMUTXO>()
+                {
+                    new()
+                    {
+                        TxId = lockedUtxo.Outpoint.Hash.ToString(),
+                        OutputIndex = lockedUtxo.Outpoint.N,
+                        SatsAmount = 20_000
+                    }
+                });
+
+            var utxoTagRepository = new Mock<IUTXOTagRepository>();
+            utxoTagRepository
+                .Setup(x => x.GetByKeyValue(It.IsAny<string>(), It.IsAny<string>()))
+                .ReturnsAsync(new List<UTXOTag>());
+
+            var nbXplorerService = new Mock<INBXplorerService>();
+            nbXplorerService
+                .Setup(x => x.GetUTXOsAsync(It.IsAny<DerivationStrategyBase>(), default))
+                .ReturnsAsync(new UTXOChanges()
+                {
+                    Confirmed = new UTXOChange()
+                    {
+                        UTXOs = new List<UTXO>() { dustUtxo, lockedUtxo, availableUtxo }
+                    }
+                });
+            nbXplorerService
+                .Setup(x => x.GetUTXOsByLimitAsync(It.IsAny<DerivationStrategyBase>(),
+                    It.IsAny<CoinSelectionStrategy>(), It.IsAny<int>(), It.IsAny<long>(), It.IsAny<long>(),
+                    It.IsAny<List<string>>(), default))
+                .ThrowsAsync(new HttpRequestException("custom backend unavailable"));
+
+            var mapper = new Mock<IMapper>();
+            var coinSelectionService = new CoinSelectionService(_logger, mapper.Object, fmutxoRepository.Object,
+                nbXplorerService.Object, null, null, utxoTagRepository.Object);
+
+            // Act
+            var availableUTXOs = await coinSelectionService.GetAvailableUTXOsAsync(
+                derivationStrategy, CoinSelectionStrategy.SmallestFirst, 0, 30_000, 0);
+
+            // Assert: the plain listing is used and locked/dust UTXOs are still filtered locally
+            availableUTXOs.Should().ContainSingle();
+            availableUTXOs[0].Outpoint.Should().Be(availableUtxo.Outpoint);
+        }
+        finally
+        {
+            Constants.NBXPLORER_ENABLE_CUSTOM_BACKEND = previousCustomBackend;
+        }
+    }
+
+    [Fact]
     public async Task GetAvailableUTXOsAsync_ExcludesDustAndLockedUTXOs()
     {
         // Arrange
