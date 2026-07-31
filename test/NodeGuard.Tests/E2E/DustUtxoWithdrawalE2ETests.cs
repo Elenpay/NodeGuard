@@ -74,14 +74,9 @@ public class DustUtxoWithdrawalE2ETests
             return true;
         }, attempts: 90, delay: TimeSpan.FromSeconds(4), what: "GetNodes (NodeGuard readiness)");
 
-        await RetryAsync(async () =>
-        {
-            var available = await client.GetAvailableUtxosAsync(
-                new GetAvailableUtxosRequest { WalletId = walletId, Amount = ProbeAmountSats }, headers);
-            if (available.Confirmed.Sum(u => u.Amount) < ProbeAmountSats)
-                throw new InvalidOperationException("hot wallet has no spendable UTXO yet");
-            return true;
-        }, attempts: 60, delay: TimeSpan.FromSeconds(4), what: "GetAvailableUtxos (hot wallet funded)");
+        // Other E2E tests sharing this collection spend down the wallet's one-time dev seed, so
+        // top it up before relying on it for coin selection here.
+        await E2EFundingHelper.FundHotWalletAsync(client, headers, rpc, walletId, Money.Coins(1m), _output.WriteLine);
 
         // 1. Send a 546-sat dust output to a fresh address of the wallet and confirm it.
         var addressResponse = await client.GetNewWalletAddressAsync(
@@ -177,11 +172,7 @@ public class DustUtxoWithdrawalE2ETests
 
     // ---- helpers -----------------------------------------------------------------------------
 
-    private async Task MineAsync(RPCClient rpc, int blocks)
-    {
-        var addr = await rpc.GetNewAddressAsync();
-        await rpc.GenerateToAddressAsync(blocks, addr);
-    }
+    private async Task MineAsync(RPCClient rpc, int blocks) => await E2EFundingHelper.MineAsync(rpc, blocks);
 
     private async Task<T> RetryAsync<T>(Func<Task<T>> action, int attempts, TimeSpan delay, string what)
     {

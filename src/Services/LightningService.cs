@@ -546,6 +546,15 @@ namespace NodeGuard.Services
                                             await _channelOperationRequestRepository.GetById(channelOperationRequest
                                                 .Id) ?? throw new InvalidOperationException();
 
+                                        channelOperationRequest.FeeSats = finalizedPSBT.GetFee().Satoshi;
+                                        var (feeUpdateSuccess, feeUpdateError) = _channelOperationRequestRepository.Update(channelOperationRequest);
+                                        if (!feeUpdateSuccess)
+                                        {
+                                            _logger.LogError(
+                                                "Error while updating fee paid for channel operation request id: {RequestId} error: {Error}",
+                                                channelOperationRequest.Id, feeUpdateError);
+                                        }
+
                                         if (channelOperationRequest.ChannelOperationRequestPsbts != null)
                                         {
                                             var finalizedChannelOperationRequestPsbt = new ChannelOperationRequestPSBT

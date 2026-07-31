@@ -114,6 +114,11 @@ namespace NodeGuard.Data.Models
         public string? TxId { get; set; }
 
         /// <summary>
+        /// Mining fee paid in satoshis, computed from the finalised PSBT once the tx is confirmed
+        /// </summary>
+        public long? FeeSats { get; set; }
+
+        /// <summary>
         /// For additional info required by the requestor
         /// </summary>
         public string? RequestMetadata { get; set; }

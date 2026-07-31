@@ -351,6 +351,7 @@ message GetChannelOperationRequestResponse {
   optional int64 channel_id = 11;
   bool private = 12;
   string job_id = 13;
+  optional int64 fee_sats = 14;
 }
 
 message AddLiquidityRuleRequest {
@@ -433,6 +434,7 @@ message WithdrawalRequest {
   optional string reference_id = 4;
   uint64 confirmations = 5;
   optional string tx_id = 6;
+  optional int64 fee_sats = 7;
 }
 
 message GetWithdrawalsRequestStatusResponse {

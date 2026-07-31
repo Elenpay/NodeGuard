@@ -801,6 +801,8 @@ public class NodeGuardService : Nodeguard.NodeGuardService.NodeGuardServiceBase,
             result.ClosingReason = channelOperationRequest.ClosingReason;
         if (channelOperationRequest.FeeRate != null)
             result.FeeRate = (double)channelOperationRequest.FeeRate;
+        if (channelOperationRequest.FeeSats != null)
+            result.FeeSats = channelOperationRequest.FeeSats.Value;
         if (channelOperationRequest.WalletId != null)
             result.WalletId = channelOperationRequest.WalletId ?? 0;
         if (channelOperationRequest.ChannelId != null)
@@ -1140,7 +1142,7 @@ public class NodeGuardService : Nodeguard.NodeGuardService.NodeGuardServiceBase,
                 confirmations = (ulong)(nbxplorerStatus?.Confirmations ?? 0);
             }
 
-            withdrawalsResponses.Add(new WithdrawalRequest
+            var withdrawalResponse = new WithdrawalRequest
             {
                 RequestId = withdrawalRequest.Id,
                 Status = GetStatus(withdrawalRequest.Status),
@@ -1148,7 +1150,11 @@ public class NodeGuardService : Nodeguard.NodeGuardService.NodeGuardServiceBase,
                 ReferenceId = withdrawalRequest.ReferenceId ?? "",
                 Confirmations = confirmations,
                 TxId = withdrawalRequest.TxId ?? "",
-            });
+            };
+            if (withdrawalRequest.FeeSats != null)
+                withdrawalResponse.FeeSats = withdrawalRequest.FeeSats.Value;
+
+            withdrawalsResponses.Add(withdrawalResponse);
         }
 
         return new GetWithdrawalsRequestStatusResponse()
