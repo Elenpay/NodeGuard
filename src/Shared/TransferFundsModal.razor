@@ -15,7 +15,6 @@
 @inject ISchedulerFactory SchedulerFactory
 @inject IWalletRepository WalletRepository
 @inject ILogger<TransferFundsModal> Logger
-@inject INBXplorerService NBXplorerService
 @inject ICoinSelectionService CoinSelectionService
 
 <Modal @ref="@_transferFundsModal">
@@ -167,48 +166,9 @@
                         <div class="col-12">
                             <Field Width="@Width.Is100">
                                 <FieldLabel>Fee Rate</FieldLabel>
-                                <div class="d-flex w-100 align-items-start">
-                                    <div class="transfer-fee-control-column">
-                                        <Select TValue="@MempoolRecommendedFeesType" Width="@Width.Is100"
-                                                SelectedValue="@_selectedMempoolRecommendedFeesType"
-                                                SelectedValueChanged="@(async (value) => await OnMempoolFeeRateChange(value))">
-                                            <SelectGroup Label="Mempool.space fee">
-                                                <SelectItem Value="@MempoolRecommendedFeesType.FastestFee">Fastest Fee
-                                                </SelectItem>
-                                                <SelectItem Value="@MempoolRecommendedFeesType.EconomyFee">Economy Fee
-                                                </SelectItem>
-                                                <SelectItem Value="@MempoolRecommendedFeesType.HourFee">Hour Fee
-                                                </SelectItem>
-                                                <SelectItem Value="@MempoolRecommendedFeesType.HalfHourFee">Half Hour
-                                                    Fee
-                                                </SelectItem>
-                                            </SelectGroup>
-                                            <SelectItem Value="@MempoolRecommendedFeesType.CustomFee">Custom
-                                            </SelectItem>
-                                        </Select>
-                                    </div>
-                                    <div class="transfer-fee-control-gap"></div>
-                                    <div class="transfer-fee-control-column">
-                                        <NumericPicker TValue="@long" Width="@Width.Is100"
-                                                       @bind-Value="@_customSatPerVbAmount"
-                                                       CurrencySymbolPlacement="@CurrencySymbolPlacement.Suffix"
-                                                       CurrencySymbol=" sat/vb" Min="1"
-                                                       Disabled="@(_selectedMempoolRecommendedFeesType != MempoolRecommendedFeesType.CustomFee)">
-                                            <Feedback>
-                                                <ValidationError />
-                                            </Feedback>
-                                        </NumericPicker>
-                                    </div>
-                                </div>
-                                <div class="row">
-                                    <Field Width="@Width.Is100">
-                                        <FieldHelp>
-                                            @(_selectedMempoolRecommendedFeesType !=
-                                                MempoolRecommendedFeesType.CustomFee ?
-                                                          "Fees may change by the time the request is first signed" : "")
-                                        </FieldHelp>
-                                    </Field>
-                                </div>
+                                <FeeRateSelector @bind-SelectedFeeType="@_selectedMempoolRecommendedFeesType"
+                                                 @bind-CustomSatPerVb="@_customSatPerVbAmount"
+                                                 ContainerClass="transfer-fee-control-gap" />
                             </Field>
                         </div>
                     </div>
@@ -675,7 +635,7 @@ _amountToTransfer;
         _sourceWalletSelectionDisabled = wallet != null;
 
         _selectedMempoolRecommendedFeesType = MempoolRecommendedFeesType.FastestFee;
-        await OnMempoolFeeRateChange(_selectedMempoolRecommendedFeesType);
+        _customSatPerVbAmount = 1;
 
         await GetAvailableUTXOsForWallet(wallet);
 
@@ -733,11 +693,5 @@ _amountToTransfer;
     private decimal SelectedUTXOsValue()
     {
         return _selectedUTXOs.Sum(x => ((Money)x.Value).ToUnit(MoneyUnit.BTC));
-    }
-
-    private async Task OnMempoolFeeRateChange(MempoolRecommendedFeesType value)
-    {
-        _selectedMempoolRecommendedFeesType = value;
-        _customSatPerVbAmount = (long?)await NBXplorerService.GetFeesByType(_selectedMempoolRecommendedFeesType) ?? 1;
     }
 }

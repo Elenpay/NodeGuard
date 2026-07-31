@@ -630,14 +630,17 @@
                                 <Divider class="my-4"></Divider>
                                 <h6 class="mb-3"><strong>Set New Fee Policy</strong></h6>
 
-                                <Field>
-                                    <FieldLabel>Dynamic Fee Management (Channel)</FieldLabel>
-                                    <FieldHelp>When enabled, the routing engine controls this channel fees and manual fee updates are blocked.</FieldHelp>
-                                    <Check TValue="bool" Checked="@_selectedChannel.IsDynamicFeeEnabled"
-                                           CheckedChanged="@((value) => _selectedChannel.IsDynamicFeeEnabled = value)">
-                                        Enable dynamic fees for this channel
-                                    </Check>
-                                </Field>
+                                @if (_selectedChannel.SatsAmount >= Constants.ROUTING_ENGINE_FEE_MIN_CHANNEL_SIZE_SATS)
+                                {
+                                    <Field>
+                                        <FieldLabel>Dynamic Fee Management (Channel)</FieldLabel>
+                                        <FieldHelp>When enabled, the routing engine controls this channel fees and manual fee updates are blocked.</FieldHelp>
+                                        <Check TValue="bool" Checked="@_selectedChannel.IsDynamicFeeEnabled"
+                                            CheckedChanged="@((value) => _selectedChannel.IsDynamicFeeEnabled = value)">
+                                            Enable dynamic fees for this channel
+                                        </Check>
+                                    </Field>
+                                }
 
                                 
                                 
