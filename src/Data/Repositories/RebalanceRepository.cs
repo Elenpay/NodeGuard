@@ -148,6 +148,20 @@ public class RebalanceRepository : IRebalanceRepository
                              && (r.Status == RebalanceStatus.Pending || r.Status == RebalanceStatus.InFlight));
     }
 
+    public async Task<HashSet<int>> GetPendingInFlightSourceChannelIds()
+    {
+        await using var context = await _dbContextFactory.CreateDbContextAsync();
+
+        var ids = await context.Rebalances
+            .Where(r => r.SourceChannelId != null
+                        && (r.Status == RebalanceStatus.Pending || r.Status == RebalanceStatus.InFlight))
+            .Select(r => r.SourceChannelId!.Value)
+            .Distinct()
+            .ToListAsync();
+
+        return ids.ToHashSet();
+    }
+
     public async Task<long> GetConsumedFeesSince(int nodeId, DateTimeOffset since)
     {
         await using var context = await _dbContextFactory.CreateDbContextAsync();

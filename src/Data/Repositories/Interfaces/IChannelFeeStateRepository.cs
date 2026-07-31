@@ -25,5 +25,23 @@ public interface IChannelFeeStateRepository
 {
     Task<ChannelFeeState?> GetByChannelId(int channelId);
 
+    /// <summary>
+    /// All fee-state rows for channels owned by the given managed node.
+    /// Used by the fee engine to batch per-node state.
+    /// </summary>
+    Task<List<ChannelFeeState>> GetByManagedNodePubKey(string managedNodePubKey);
+
     Task UpsertByChannelId(ChannelFeeState state);
+
+    /// <summary>
+    /// Deletes the fee-state row for a single channel, if present.
+    /// </summary>
+    /// <returns><c>true</c> if a row was deleted; <c>false</c> if none existed.</returns>
+    Task<bool> DeleteByChannelId(int channelId);
+
+    /// <summary>
+    /// Deletes the fee-state rows for every channel owned by the given managed node.
+    /// </summary>
+    /// <returns><c>true</c> if any rows were deleted; <c>false</c> if none existed.</returns>
+    Task<bool> DeleteByManagedNodePubKey(string managedNodePubKey);
 }

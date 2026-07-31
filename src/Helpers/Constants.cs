@@ -28,7 +28,7 @@ public class Constants
     public static readonly bool ENABLE_REMOTE_SIGNER;
     public static readonly bool PUSH_NOTIFICATIONS_ONESIGNAL_ENABLED;
     public static readonly bool ENABLE_HW_SUPPORT;
-    public static readonly bool NBXPLORER_ENABLE_CUSTOM_BACKEND = false;
+    public static bool NBXPLORER_ENABLE_CUSTOM_BACKEND = false; // Not readonly so we can change it in tests
     /// <summary>
     /// Allow simultaneous channel opening operations using the same source and destination nodes
     /// </summary>
@@ -99,13 +99,18 @@ public class Constants
     public static readonly decimal MAXIMUM_WITHDRAWAL_BTC_AMOUNT = 21_000_000;
     public static readonly int TRANSACTION_CONFIRMATION_MINIMUM_BLOCKS;
     public static int DEFAULT_CHANNEL_FEE_POLICY_TIMELOCK_DELTA_BLOCKS = 40;
-    public static long DEFAULT_CHANNEL_FEE_POLICY_BASE_FEE_MSAT = 1000; 
-    public static long DEFAULT_CHANNEL_FEE_POLICY_FEE_RATE_PPM = 500; // 500 ppm = 0.05%
+    public static long DEFAULT_CHANNEL_FEE_POLICY_BASE_FEE_MSAT = 0; 
+    public static long DEFAULT_CHANNEL_FEE_POLICY_FEE_RATE_PPM = 1500;
     public static readonly long ANCHOR_CLOSINGS_MINIMUM_SATS;
     public static readonly long MINIMUM_SWEEP_TRANSACTION_AMOUNT_SATS = 25_000_000; //25M sats
     public static readonly string DEFAULT_DERIVATION_PATH = "48'/1'";
     public static readonly int SESSION_TIMEOUT_MILLISECONDS = 3_600_000;
     public static readonly Money BITCOIN_DUST = new Money(0.00000546m, MoneyUnit.BTC); // 546 satoshi in BTC
+
+    /// <summary>
+    /// UTXOs with value less than or equal to this are excluded from coin selection (dust-attack protection).
+    /// </summary>
+    public static readonly long MINIMUM_UTXO_VALUE_SATS = 546;
 
     /// <summary>
     /// Minimum swap out size in BTC for automatic liquidity management (Swap Out).
@@ -268,28 +273,60 @@ public class Constants
     public static int ROUTING_ENGINE_CATEGORY_FLIP_HYSTERESIS_CYCLES = 3;
 
     /// <summary>
-    /// Cadence of TargetRatioReevaluationJob in prod, in minutes. Default 30. In dev
-    /// (IS_DEV_ENVIRONMENT) the job runs every 5 minutes regardless. Env: ROUTING_ENGINE_JOB_INTERVAL_MINUTES.
+    /// Cadence of TargetRatioReevaluationJob and ChannelFeeOptimizerJob in prod, in minutes. Default 30. In dev
+    /// (IS_DEV_ENVIRONMENT) the job runs every 5 minutes regardless.
     /// </summary>
     public static int ROUTING_ENGINE_JOB_INTERVAL_MINUTES = 30;
 
-    public static double ROUTING_ENGINE_FEE_KP_OUT = 0.8;
-    public static double ROUTING_ENGINE_FEE_KI = 0.5;
+    // Both fees use integral control: each cycle the applied value is nudged by gain·deviation·baseline
+    // off its previous value, so a persistent deviation keeps driving the fee until the channel balances.
+    public static double ROUTING_ENGINE_FEE_OUTBOUND_INTEGRAL_GAIN = 0.8;
+    public static double ROUTING_ENGINE_FEE_INBOUND_INTEGRAL_GAIN = 0.5;
+
+    // Fee deadband: when |EmaLocalRatio − TargetLocalRatio| ≤ this, the optimizer does nothing (NoOp),
+    // so it never reacts to tiny imbalance.
     public static double ROUTING_ENGINE_FEE_DEADBAND = 0.03;
-    public static double ROUTING_ENGINE_REBALANCE_DEADBAND = 0.15;
+
+    // The rebalancer's imbalance deadband is a separate, more aggressive threshold for triggering rebalances.
+    public static double ROUTING_ENGINE_REBALANCE_TRIGGER = 0.15;
+
+    // Max outbound ppm change applied in a single cycle (rate limiter / anti-jump).
     public static uint ROUTING_ENGINE_FEE_MAX_STEP_PPM = 50;
+
+    // Max inbound ppm change applied in a single cycle (rate limiter / anti-jump).
     public static uint ROUTING_ENGINE_FEE_MAX_INBOUND_STEP_PPM = 25;
+
+    // Min ppm delta worth writing: a computed change smaller than this is dropped to NoOp, avoiding
+    // churny sub-threshold LND fee updates.
     public static uint ROUTING_ENGINE_FEE_MIN_DELTA_PPM = 5;
+
+    // Lower clamp (floor) on outbound ppm.
     public static uint ROUTING_ENGINE_FEE_MIN_OUTBOUND_PPM = 0;
+
+    // Upper clamp (ceiling) on outbound ppm.
     public static uint ROUTING_ENGINE_FEE_MAX_OUTBOUND_PPM = 5000;
-    public static int ROUTING_ENGINE_FEE_MIN_INBOUND_PPM = -250;
-    public static int ROUTING_ENGINE_FEE_MAX_INBOUND_PPM = 100;
-    public static int ROUTING_ENGINE_FEE_MIN_UPDATE_INTERVAL_MINUTES = 30;
-    public static int ROUTING_ENGINE_FEE_MAX_UPDATES_PER_RUN = 50;
+
+    // Most-negative inbound ppm allowed — a discount to attract inbound routing.
+    public static int ROUTING_ENGINE_FEE_MIN_INBOUND_PPM = -1500;
+
+    // Most-positive inbound ppm allowed — a surcharge to repel inbound routing.
+    public static int ROUTING_ENGINE_FEE_MAX_INBOUND_PPM = 1000;
+
+    // Eligibility gate: only channels with capacity ≥ this (sats) are fee-managed.
     public static long ROUTING_ENGINE_FEE_MIN_CHANNEL_SIZE_SATS = 10_000_000;
+
+    // Category baselines: each both scales that cycle's nudge AND seeds the "last applied" ppm on a
+    // channel's first evaluation, so a freshly categorized channel starts near its category's baseline
+    // rather than crawling up from the operator's pre-engine fee.
+
+    // Outbound ppm baseline for Source channels: cheap outbound to drain surplus local liquidity.
     public static uint ROUTING_ENGINE_FEE_BASELINE_PPM_SOURCE = 50;
-    public static uint ROUTING_ENGINE_FEE_BASELINE_PPM_BIDIRECTIONAL = 500;
+    // Outbound ppm baseline for Bidirectional channels (mid).
+    public static uint ROUTING_ENGINE_FEE_BASELINE_PPM_BIDIRECTIONAL = 1500;
+    // Outbound ppm baseline for Sink channels: expensive outbound to protect scarce local liquidity.
     public static uint ROUTING_ENGINE_FEE_BASELINE_PPM_SINK = 2500;
+    // Outbound ppm baseline for not-yet-categorized channels (safe mid default).
+    public static uint ROUTING_ENGINE_FEE_BASELINE_PPM_UNCATEGORIZED = 1500;
 
     public const string IsFrozenTag = "frozen";
     public const string IsManuallyFrozenTag = "manually_frozen";
@@ -463,6 +500,9 @@ public class Constants
         var minSweepTransactionAmount = Environment.GetEnvironmentVariable("MINIMUM_SWEEP_TRANSACTION_AMOUNT_SATS");
         if (minSweepTransactionAmount != null) MINIMUM_SWEEP_TRANSACTION_AMOUNT_SATS = long.Parse(minSweepTransactionAmount);
 
+        var minimumUtxoValueSats = Environment.GetEnvironmentVariable("MINIMUM_UTXO_VALUE_SATS");
+        if (minimumUtxoValueSats != null) MINIMUM_UTXO_VALUE_SATS = long.Parse(minimumUtxoValueSats);
+
 
         DEFAULT_DERIVATION_PATH = GetEnvironmentalVariableOrThrowIfNotTesting("DEFAULT_DERIVATION_PATH") ?? DEFAULT_DERIVATION_PATH;
 
@@ -528,6 +568,8 @@ public class Constants
         var rebReconcileWindow = Environment.GetEnvironmentVariable("REBALANCE_RECONCILE_TERMINAL_WINDOW_HOURS");
         if (rebReconcileWindow != null) REBALANCE_RECONCILE_TERMINAL_WINDOW_HOURS = int.Parse(rebReconcileWindow);
 
+        ROUTING_ENGINE_ENABLED = StringHelper.IsTrue(Environment.GetEnvironmentVariable("ROUTING_ENGINE_ENABLED"));
+
         var reMinAgeBlocks = Environment.GetEnvironmentVariable("ROUTING_ENGINE_CATEGORIZATION_MIN_AGE_BLOCKS");
         if (reMinAgeBlocks != null) ROUTING_ENGINE_CATEGORIZATION_MIN_AGE_BLOCKS = uint.Parse(reMinAgeBlocks);
 
@@ -559,17 +601,17 @@ public class Constants
         if (reJobInterval != null) ROUTING_ENGINE_JOB_INTERVAL_MINUTES = int.Parse(reJobInterval);
 
         // Routing Engine
-        var feeKpOut = Environment.GetEnvironmentVariable("ROUTING_ENGINE_FEE_KP_OUT");
-        if (feeKpOut != null) ROUTING_ENGINE_FEE_KP_OUT = double.Parse(feeKpOut, NumberStyles.AllowDecimalPoint | NumberStyles.AllowLeadingSign, CultureInfo.InvariantCulture);
+        var feeOutboundIntegralGain = Environment.GetEnvironmentVariable("ROUTING_ENGINE_FEE_OUTBOUND_INTEGRAL_GAIN");
+        if (feeOutboundIntegralGain != null) ROUTING_ENGINE_FEE_OUTBOUND_INTEGRAL_GAIN = double.Parse(feeOutboundIntegralGain, NumberStyles.AllowDecimalPoint | NumberStyles.AllowLeadingSign, CultureInfo.InvariantCulture);
 
-        var feeKi = Environment.GetEnvironmentVariable("ROUTING_ENGINE_FEE_KI");
-        if (feeKi != null) ROUTING_ENGINE_FEE_KI = double.Parse(feeKi, NumberStyles.AllowDecimalPoint | NumberStyles.AllowLeadingSign, CultureInfo.InvariantCulture);
+        var feeInboundIntegralGain = Environment.GetEnvironmentVariable("ROUTING_ENGINE_FEE_INBOUND_INTEGRAL_GAIN");
+        if (feeInboundIntegralGain != null) ROUTING_ENGINE_FEE_INBOUND_INTEGRAL_GAIN = double.Parse(feeInboundIntegralGain, NumberStyles.AllowDecimalPoint | NumberStyles.AllowLeadingSign, CultureInfo.InvariantCulture);
 
         var feeDeadband = Environment.GetEnvironmentVariable("ROUTING_ENGINE_FEE_DEADBAND");
         if (feeDeadband != null) ROUTING_ENGINE_FEE_DEADBAND = double.Parse(feeDeadband, NumberStyles.AllowDecimalPoint | NumberStyles.AllowLeadingSign, CultureInfo.InvariantCulture);
 
         var rebalanceDeadband = Environment.GetEnvironmentVariable("ROUTING_ENGINE_REBALANCE_DEADBAND");
-        if (rebalanceDeadband != null) ROUTING_ENGINE_REBALANCE_DEADBAND = double.Parse(rebalanceDeadband, NumberStyles.AllowDecimalPoint | NumberStyles.AllowLeadingSign, CultureInfo.InvariantCulture);
+        if (rebalanceDeadband != null) ROUTING_ENGINE_REBALANCE_TRIGGER = double.Parse(rebalanceDeadband, NumberStyles.AllowDecimalPoint | NumberStyles.AllowLeadingSign, CultureInfo.InvariantCulture);
 
         var feeMaxStep = Environment.GetEnvironmentVariable("ROUTING_ENGINE_FEE_MAX_STEP_PPM");
         if (feeMaxStep != null) ROUTING_ENGINE_FEE_MAX_STEP_PPM = uint.Parse(feeMaxStep);
@@ -592,12 +634,6 @@ public class Constants
         var feeMaxInbound = Environment.GetEnvironmentVariable("ROUTING_ENGINE_FEE_MAX_INBOUND_PPM");
         if (feeMaxInbound != null) ROUTING_ENGINE_FEE_MAX_INBOUND_PPM = int.Parse(feeMaxInbound);
 
-        var feeMinUpdateInterval = Environment.GetEnvironmentVariable("ROUTING_ENGINE_FEE_MIN_UPDATE_INTERVAL_MINUTES");
-        if (feeMinUpdateInterval != null) ROUTING_ENGINE_FEE_MIN_UPDATE_INTERVAL_MINUTES = int.Parse(feeMinUpdateInterval);
-
-        var feeMaxUpdatesPerRun = Environment.GetEnvironmentVariable("ROUTING_ENGINE_FEE_MAX_UPDATES_PER_RUN");
-        if (feeMaxUpdatesPerRun != null) ROUTING_ENGINE_FEE_MAX_UPDATES_PER_RUN = int.Parse(feeMaxUpdatesPerRun);
-
         var feeMinChannelSize = Environment.GetEnvironmentVariable("ROUTING_ENGINE_FEE_MIN_CHANNEL_SIZE_SATS");
         if (feeMinChannelSize != null) ROUTING_ENGINE_FEE_MIN_CHANNEL_SIZE_SATS = long.Parse(feeMinChannelSize);
 
@@ -609,6 +645,9 @@ public class Constants
 
         var feeBaselineSink = Environment.GetEnvironmentVariable("ROUTING_ENGINE_FEE_BASELINE_PPM_SINK");
         if (feeBaselineSink != null) ROUTING_ENGINE_FEE_BASELINE_PPM_SINK = uint.Parse(feeBaselineSink);
+
+        var feeBaselineUncategorized = Environment.GetEnvironmentVariable("ROUTING_ENGINE_FEE_BASELINE_PPM_UNCATEGORIZED");
+        if (feeBaselineUncategorized != null) ROUTING_ENGINE_FEE_BASELINE_PPM_UNCATEGORIZED = uint.Parse(feeBaselineUncategorized);
 
         // DB Initialization
         ALICE_PUBKEY = Environment.GetEnvironmentVariable("ALICE_PUBKEY") ?? ALICE_PUBKEY;

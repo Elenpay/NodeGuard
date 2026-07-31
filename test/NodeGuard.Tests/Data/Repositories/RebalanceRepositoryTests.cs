@@ -81,6 +81,27 @@ public class RebalanceRepositoryRoutingEngineTests
     }
 
     [Fact]
+    public async Task GetInFlightSourceChannelIds_ReturnsOnlyPendingOrInFlightSources()
+    {
+        var (sut, seed) = SetupDb();
+        var now = DateTimeOffset.UtcNow;
+        const int chanPending = 10;
+        const int chanInFlight = 20;
+        const int chanSettled = 30;
+
+        seed.Rebalances.AddRange(
+            new Rebalance { NodeId = NodeId, SourceChannelId = chanPending, Status = RebalanceStatus.Pending, CreationDatetime = now, UpdateDatetime = now },
+            new Rebalance { NodeId = NodeId, SourceChannelId = chanPending, Status = RebalanceStatus.Pending, CreationDatetime = now, UpdateDatetime = now }, // duplicate source — deduped
+            new Rebalance { NodeId = NodeId, SourceChannelId = chanInFlight, Status = RebalanceStatus.InFlight, CreationDatetime = now, UpdateDatetime = now },
+            new Rebalance { NodeId = NodeId, SourceChannelId = chanSettled, Status = RebalanceStatus.Succeeded, CreationDatetime = now, UpdateDatetime = now },
+            new Rebalance { NodeId = NodeId, SourceChannelId = null, Status = RebalanceStatus.Pending, CreationDatetime = now, UpdateDatetime = now } // no source — excluded
+        );
+        await seed.SaveChangesAsync();
+
+        (await sut.GetPendingInFlightSourceChannelIds()).Should().BeEquivalentTo(new[] { chanPending, chanInFlight });
+    }
+
+    [Fact]
     public async Task GetConsumedFeesSince_UsesReservationForNonTerminalAndPaidForSucceeded()
     {
         var (sut, seed) = SetupDb();
