@@ -210,23 +210,8 @@
                     @(context.MempoolRecommendedFeesType == MempoolRecommendedFeesType.CustomFee ? $"Custom fee ({context.CustomFeeRate} sat/vb)" : $"{context.MempoolRecommendedFeesType.Humanize()} ({context.CustomFeeRate} sat/vb)")
                 </DisplayTemplate>
                 <EditTemplate>
-                    <div class="d-flex">
-                        <Select TValue="MempoolRecommendedFeesType" SelectedValue="_selectedMempoolRecommendedFeesType" SelectedValueChanged="async (value) => await OnMempoolFeeRateChange(value)">
-                            <SelectGroup Label="Mempool.space fee">
-                                <SelectItem Value="MempoolRecommendedFeesType.FastestFee">Fastest Fee</SelectItem>
-                                <SelectItem Value="MempoolRecommendedFeesType.EconomyFee">Economy Fee</SelectItem>
-                                <SelectItem Value="MempoolRecommendedFeesType.HourFee">Hour Fee</SelectItem>
-                                <SelectItem Value="MempoolRecommendedFeesType.HalfHourFee">Half Hour Fee</SelectItem>
-                            </SelectGroup>
-                            <SelectItem Value="MempoolRecommendedFeesType.CustomFee">Custom</SelectItem>
-                        </Select>
-                        <NumericPicker TValue="long" @bind-Value="@_customSatPerVbAmount" CurrencySymbolPlacement="CurrencySymbolPlacement.Suffix" CurrencySymbol=" sat/vb" Min="1" Disabled="@(_selectedMempoolRecommendedFeesType != MempoolRecommendedFeesType.CustomFee)">
-                            <Feedback>
-                                <ValidationError/>
-                            </Feedback>
-                        </NumericPicker>
-                    </div>
-                    <FieldHelp>@(_selectedMempoolRecommendedFeesType != MempoolRecommendedFeesType.CustomFee ? "Fees may change by the time the request is first signed" : "")</FieldHelp>
+                    <FeeRateSelector @bind-SelectedFeeType="@_selectedMempoolRecommendedFeesType"
+                                     @bind-CustomSatPerVb="@_customSatPerVbAmount" />
                 </EditTemplate>
             </DataGridColumn>
             <DataGridColumn TItem="WalletWithdrawalRequest" Filterable="false" Field="@nameof(WalletWithdrawalRequest.WalletId)" Caption="Signatures Collected" Sortable="false" Displayable="true">
@@ -853,12 +838,6 @@
         }
 
         await GetData();
-    }
-    
-    private async Task OnMempoolFeeRateChange(MempoolRecommendedFeesType value)
-    {
-        _selectedMempoolRecommendedFeesType = value;
-        _customSatPerVbAmount = (long?)await NBXplorerService.GetFeesByType(_selectedMempoolRecommendedFeesType) ?? 1;
     }
 
     private async Task<bool> ValidateBalance(SavedRowItem<WalletWithdrawalRequest, Dictionary<string, object>> arg)
@@ -1587,12 +1566,12 @@
         return false;
     }
 
-    private async Task OnShowNewWalletWithdrawalModal()
+    private Task OnShowNewWalletWithdrawalModal()
     {
         _selectedMempoolRecommendedFeesType = MempoolRecommendedFeesType.FastestFee;
-        await OnMempoolFeeRateChange(_selectedMempoolRecommendedFeesType);
-
+        _customSatPerVbAmount = 1;
         _amount = _minimumWithdrawalAmount;
+        return Task.CompletedTask;
     }
 
     private void OnDestinationAddressChanged(CellEditContext<WalletWithdrawalRequest> context, string text)

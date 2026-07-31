@@ -265,8 +265,7 @@ a,
 }
 
 .transfer-fee-control-gap {
-    width: 60px;
-    flex: 0 0 60px;
+    gap: 60px;
 }
 
 .btn-login:hover {
