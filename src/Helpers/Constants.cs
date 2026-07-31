@@ -294,7 +294,7 @@ public class Constants
     public static uint ROUTING_ENGINE_FEE_MAX_STEP_PPM = 50;
 
     // Max inbound ppm change applied in a single cycle (rate limiter / anti-jump).
-    public static uint ROUTING_ENGINE_FEE_MAX_INBOUND_STEP_PPM = 25;
+    public static uint ROUTING_ENGINE_FEE_MAX_INBOUND_STEP_PPM = 50;
 
     // Min ppm delta worth writing: a computed change smaller than this is dropped to NoOp, avoiding
     // churny sub-threshold LND fee updates.
@@ -304,10 +304,10 @@ public class Constants
     public static uint ROUTING_ENGINE_FEE_MIN_OUTBOUND_PPM = 0;
 
     // Upper clamp (ceiling) on outbound ppm.
-    public static uint ROUTING_ENGINE_FEE_MAX_OUTBOUND_PPM = 5000;
+    public static uint ROUTING_ENGINE_FEE_MAX_OUTBOUND_PPM = 3000;
 
     // Most-negative inbound ppm allowed — a discount to attract inbound routing.
-    public static int ROUTING_ENGINE_FEE_MIN_INBOUND_PPM = -1500;
+    public static int ROUTING_ENGINE_FEE_MIN_INBOUND_PPM = -2000;
 
     // Most-positive inbound ppm allowed — a surcharge to repel inbound routing.
     public static int ROUTING_ENGINE_FEE_MAX_INBOUND_PPM = 1000;

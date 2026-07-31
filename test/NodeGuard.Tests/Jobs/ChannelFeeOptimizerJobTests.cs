@@ -153,9 +153,9 @@ public class ChannelFeeOptimizerJobTests
             await BuildJob().Execute(Mock.Of<IJobExecutionContext>());
         });
 
-        // Sink, d = -0.10, first eval seeds p_last=2500 → outbound 2550, inbound -25.
+        // Sink, d = -0.10, first eval seeds p_last=2500 → outbound 2550, inbound -50.
         _lightningService.Verify(x => x.SetChannelFeePolicy(
-            "txid123:1", NodePubKey, 1000, 2550u, 40u, 0, -25, true), Times.Once);
+            "txid123:1", NodePubKey, 1000, 2550u, 40u, 0, -50, true), Times.Once);
     }
 
     [Fact]

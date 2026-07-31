@@ -31,16 +31,16 @@ public class FeeOptimizerServiceTests
         InboundIntegralGain: 0.5,
         FeeDeadband: 0.03,
         MaxStepPpm: 50,
-        MaxInboundStepPpm: 25,
+        MaxInboundStepPpm: 50,
         MinDeltaPpm: 5,
         MinOutboundPpm: 0,
-        MaxOutboundPpm: 5000,
-        MinInboundPpm: -250,
-        MaxInboundPpm: 100,
+        MaxOutboundPpm: 3000,
+        MinInboundPpm: -2000,
+        MaxInboundPpm: 1000,
         BaselineSourcePpm: 50,
-        BaselineBidirectionalPpm: 500,
+        BaselineBidirectionalPpm: 1500,
         BaselineSinkPpm: 2500,
-        BaselineUncategorizedPpm: 500);
+        BaselineUncategorizedPpm: 1500);
 
     private FeePolicyDecision Compute(
         double ema,
@@ -59,7 +59,7 @@ public class FeeOptimizerServiceTests
 
         decision.Action.Should().Be(FeeAction.Update);
         decision.OutboundPpm.Should().Be(2450); // 2500 - clamp(800, ±50)
-        decision.InboundPpm.Should().Be(25);    // +500 → rail-clamped to +100 → step-clamped to +25 from 0
+        decision.InboundPpm.Should().Be(50);    // +500 → rail-clamped to +1000 → step-clamped to +50 from 0
     }
 
     [Fact]
@@ -79,7 +79,7 @@ public class FeeOptimizerServiceTests
 
         decision.Action.Should().Be(FeeAction.Update);
         decision.OutboundPpm.Should().Be(2450); // 2500 - clamp(200, ±50) = 2500 - 50
-        decision.InboundPpm.Should().Be(25);     // clamp(+125→+100 target, step ±25) from 0
+        decision.InboundPpm.Should().Be(50);     // clamp(+125→+1000 target, step ±50) from 0
     }
 
     [Fact]
@@ -90,7 +90,7 @@ public class FeeOptimizerServiceTests
 
         decision.Action.Should().Be(FeeAction.Update);
         decision.OutboundPpm.Should().Be(2550); // 2500 + clamp(200, ±50)
-        decision.InboundPpm.Should().Be(-25);   // -125 target, step-clamped to -25 from 0
+        decision.InboundPpm.Should().Be(-50);   // -125 target, step-clamped to -50 from 0
     }
 
     [Fact]
@@ -123,28 +123,28 @@ public class FeeOptimizerServiceTests
 
         decision.Action.Should().Be(FeeAction.Update);
         decision.OutboundPpm.Should().Be(2550);
-        decision.InboundPpm.Should().Be(-25);
+        decision.InboundPpm.Should().Be(-50);
     }
 
     [Fact]
     public void Outbound_IsClampedToMaxCeiling()
     {
-        // Near the ceiling, too-remote pressure would push past MAX_OUTBOUND_PPM (5000).
+        // Near the ceiling, too-remote pressure would push past MAX_OUTBOUND_PPM (3000).
         // d = -0.14.
-        var decision = Compute(0.36, 0.50, PeerFlowCategory.Sink, 4990, -200, allowPositiveInbound: true);
+        var decision = Compute(0.36, 0.50, PeerFlowCategory.Sink, 2990, -200, allowPositiveInbound: true);
 
         decision.Action.Should().Be(FeeAction.Update);
-        decision.OutboundPpm.Should().Be(5000); // pNew 5270 clamped to 5000, reached within one +10 step
+        decision.OutboundPpm.Should().Be(3000); // pNew 3270 clamped to 3000, reached within one +10 step
     }
 
     [Fact]
     public void Inbound_IsClampedToMaxCeiling()
     {
-        // iLast already near +100; a further positive push must not exceed MAX_INBOUND_PPM.
-        var decision = Compute(0.60, 0.50, PeerFlowCategory.Sink, 2500, 90, allowPositiveInbound: true);
+        // iLast already near +1000; a further positive push must not exceed MAX_INBOUND_PPM.
+        var decision = Compute(0.60, 0.50, PeerFlowCategory.Sink, 2500, 990, allowPositiveInbound: true);
 
         decision.Action.Should().Be(FeeAction.Update);
-        decision.InboundPpm.Should().Be(100); // 90 + clamp(10, ±25) = 100 (ceiling)
+        decision.InboundPpm.Should().Be(1000); // 990 + clamp(10, ±50) = 1000 (ceiling)
     }
 
     [Fact]
@@ -156,7 +156,7 @@ public class FeeOptimizerServiceTests
         var decision = Compute(0.40, 0.50, PeerFlowCategory.Sink, 2500, -125, allowPositiveInbound: true);
 
         decision.Action.Should().Be(FeeAction.Update);
-        decision.InboundPpm.Should().Be(-150);
+        decision.InboundPpm.Should().Be(-175);
     }
 
     [Fact]
