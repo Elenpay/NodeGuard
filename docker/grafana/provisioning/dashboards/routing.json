@@ -3501,7 +3501,7 @@
           "dataset": "fundsmanager",
           "editorMode": "builder",
           "format": "table",
-          "rawSql": "SELECT COUNT(\"FailureString\"), \"FailureString\" FROM \"ForwardingHtlcEvents\" WHERE ($__timeFilter(\"EventTimestamp\") AND \"ManagedNodePubKey\" IN ($node)) GROUP BY \"FailureString\" LIMIT 50 ",
+          "rawSql": "SELECT\n  COUNT(*) AS failures,\n  TRIM(split_part(\"FailureString\", '(', 1)) AS failure_reason\nFROM \"ForwardingHtlcEvents\"\nWHERE $__timeFilter(\"EventTimestamp\")\n  AND \"ManagedNodePubKey\" IN ($node)\n  AND \"FailureString\" IS NOT NULL\nGROUP BY 2\nORDER BY 1 DESC\nLIMIT 50\n",
           "refId": "A",
           "sql": {
             "columns": [
@@ -3588,8 +3588,112 @@
           "table": "\"ForwardingHtlcEvents\""
         }
       ],
-      "title": "Failure string ",
-      "type": "piechart"
+      "title": "Failure reasons (normalized)",
+      "type": "piechart",
+      "description": "Failed HTLC counts grouped by normalized failure reason: parametrized LND failure strings like FeeInsufficient(htlc_amt=..., update=...) are collapsed to their base reason. Only events carrying a failure string are counted."
+    },
+    {
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "$datasource"
+      },
+      "description": "The top $topN incoming → outgoing peer pairs by failed HTLC amount (volume that could not be routed, BTC — same COALESCE(OutgoingAmountMsat, IncomingAmountMsat) convention as the Required Liquidity panels), with each bar split by normalized failure reason. Failed HTLCs without a failure string (LND forward-fails) appear as '(no failure detail)'. Click a reason in the legend to isolate it.",
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "axisBorderShow": false,
+            "axisCenteredZero": false,
+            "axisColorMode": "text",
+            "axisLabel": "",
+            "axisPlacement": "auto",
+            "fillOpacity": 80,
+            "gradientMode": "none",
+            "hideFrom": {
+              "legend": false,
+              "tooltip": false,
+              "viz": false
+            },
+            "lineWidth": 1,
+            "scaleDistribution": {
+              "type": "linear"
+            },
+            "thresholdsStyle": {
+              "mode": "off"
+            }
+          },
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          },
+          "unit": "currencyBTC",
+          "decimals": 4
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 69
+      },
+      "id": 403,
+      "options": {
+        "barRadius": 0,
+        "barWidth": 0.8,
+        "fullHighlight": false,
+        "groupWidth": 0.7,
+        "legend": {
+          "calcs": [],
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "orientation": "horizontal",
+        "showValue": "never",
+        "stacking": "normal",
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        },
+        "xTickLabelRotation": 0,
+        "xTickLabelSpacing": 0
+      },
+      "pluginVersion": "12.4.2",
+      "targets": [
+        {
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "$datasource"
+          },
+          "editorMode": "code",
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "WITH failed AS (\n  SELECT\n    COALESCE(\"IncomingPeerAlias\", 'unknown') || ' → ' || COALESCE(\"OutgoingPeerAlias\", 'unknown') AS pair,\n    COALESCE(TRIM(split_part(\"FailureString\", '(', 1)), '(no failure detail)') AS reason,\n    COALESCE(SUM(COALESCE(\"OutgoingAmountMsat\", \"IncomingAmountMsat\")), 0) / 100000000000.0 AS failed_amt_btc\n  FROM \"ForwardingHtlcEvents\"\n  WHERE $__timeFilter(\"EventTimestamp\")\n    AND \"ManagedNodePubKey\" IN ($node)\n    AND \"Outcome\" = 2\n  GROUP BY 1, 2\n), top_pairs AS (\n  SELECT pair, SUM(failed_amt_btc) AS total\n  FROM failed\n  GROUP BY 1\n  ORDER BY 2 DESC\n  LIMIT $topN\n)\nSELECT f.pair, f.reason, f.failed_amt_btc::float8 AS failed_amt_btc\nFROM failed f\nJOIN top_pairs tp ON tp.pair = f.pair\nORDER BY tp.total DESC, f.failed_amt_btc DESC\n",
+          "refId": "A"
+        }
+      ],
+      "title": "Failed HTLC volume by From→To and failure reason (top $topN pairs)",
+      "transformations": [
+        {
+          "id": "groupingToMatrix",
+          "options": {
+            "columnField": "reason",
+            "rowField": "pair",
+            "valueField": "failed_amt_btc",
+            "emptyValue": "null"
+          }
+        }
+      ],
+      "type": "barchart"
     },
     {
       "datasource": {
@@ -6170,6 +6274,519 @@
         }
       ],
       "type": "xychart"
+    },
+    {
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "$datasource"
+      },
+      "description": "Each point is one configured outbound fee level (ppm) on one complete UTC day for one managed node. X = the exact RoutingFeePpm policy value, Y = pure routing fees earned (sats, no swap/rebalance cost deductions), BUBBLE SIZE = BTC volume routed at that setting that day. Big-and-high bubbles are the sweet spot; big-and-low means high volume priced too cheaply. Caveat: only ppm levels that actually routed appear — see the league table below for demand priced out per ppm.",
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "axisBorderShow": false,
+            "axisCenteredZero": false,
+            "axisColorMode": "text",
+            "axisLabel": "",
+            "axisPlacement": "auto",
+            "fillOpacity": 60,
+            "hideFrom": {
+              "legend": false,
+              "tooltip": false,
+              "viz": false
+            },
+            "pointShape": "circle",
+            "pointSize": {
+              "fixed": 5,
+              "min": 4,
+              "max": 22
+            },
+            "pointStrokeWidth": 1,
+            "scaleDistribution": {
+              "type": "linear"
+            },
+            "show": "points"
+          },
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          }
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "fee_ppm"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "none"
+              },
+              {
+                "id": "decimals",
+                "value": 0
+              },
+              {
+                "id": "custom.axisLabel",
+                "value": "Configured outbound fee (ppm)"
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "profit_sats_per_day"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "locale"
+              },
+              {
+                "id": "custom.axisLabel",
+                "value": "Routing fees earned (sats/day)"
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "routed_btc"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "currencyBTC"
+              },
+              {
+                "id": "decimals",
+                "value": 4
+              }
+            ]
+          }
+        ]
+      },
+      "gridPos": {
+        "h": 10,
+        "w": 12,
+        "x": 0,
+        "y": 246
+      },
+      "id": 404,
+      "options": {
+        "legend": {
+          "calcs": [],
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "mapping": "auto",
+        "series": [
+          {
+            "x": {
+              "matcher": {
+                "id": "byName",
+                "options": "fee_ppm"
+              }
+            },
+            "y": {
+              "matcher": {
+                "id": "byName",
+                "options": "profit_sats_per_day"
+              }
+            },
+            "size": {
+              "matcher": {
+                "id": "byName",
+                "options": "routed_btc"
+              }
+            }
+          }
+        ],
+        "tooltip": {
+          "mode": "single",
+          "sort": "none"
+        }
+      },
+      "pluginVersion": "12.4.2",
+      "targets": [
+        {
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "$datasource"
+          },
+          "editorMode": "code",
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "WITH ppm_days AS (\n  SELECT\n    f.\"ManagedNodeName\" AS node,\n    date_trunc('day', f.\"EventTimestamp\") AS day,\n    f.\"RoutingFeePpm\"::float8 AS fee_ppm,\n    ROUND(SUM(f.\"FeeMsat\") / 1000.0)::bigint AS fee_sats,\n    COUNT(*) AS htlcs,\n    (SUM(COALESCE(f.\"OutgoingAmountMsat\", f.\"IncomingAmountMsat\")) / 100000000000.0)::float8 AS routed_btc\n  FROM \"ForwardingHtlcEvents\" f\n  WHERE $__timeFilter(f.\"EventTimestamp\")\n    AND f.\"ManagedNodePubKey\" IN ($node)\n    AND f.\"Outcome\" = 1\n    AND f.\"RoutingFeePpm\" IS NOT NULL\n    AND f.\"EventTimestamp\" < date_trunc('day', LEAST($__timeTo()::timestamptz, now()))\n  GROUP BY 1, 2, 3\n)\nSELECT\n  node,\n  fee_ppm,\n  fee_sats::float8 AS profit_sats_per_day,\n  routed_btc,\n  htlcs,\n  to_char(day, 'YYYY-MM-DD') AS day\nFROM ppm_days\nORDER BY node, day, fee_ppm\n",
+          "refId": "A"
+        }
+      ],
+      "title": "Routing profit vs configured fee ppm (daily, per node)",
+      "transformations": [
+        {
+          "id": "partitionByValues",
+          "options": {
+            "fields": [
+              "node"
+            ],
+            "keepFields": false
+          }
+        }
+      ],
+      "type": "xychart"
+    },
+    {
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "$datasource"
+      },
+      "description": "Each point is one configured outbound fee level (ppm) on one complete UTC day for one managed node. X = the exact RoutingFeePpm policy value, Y = annualized return on the capacity of the channels that routed at that setting (fees x 365 / summed channel capacity), BUBBLE SIZE = sats earned. The best spot is where bubbles are both HIGH (efficient) and BIG (material): high-but-tiny bubbles are anecdotes, big-but-low bubbles are volume earning below potential. Caveat: only ppm levels that actually routed appear — see the league table below for demand priced out per ppm.",
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "axisBorderShow": false,
+            "axisCenteredZero": false,
+            "axisColorMode": "text",
+            "axisLabel": "",
+            "axisPlacement": "auto",
+            "fillOpacity": 60,
+            "hideFrom": {
+              "legend": false,
+              "tooltip": false,
+              "viz": false
+            },
+            "pointShape": "circle",
+            "pointSize": {
+              "fixed": 5,
+              "min": 4,
+              "max": 22
+            },
+            "pointStrokeWidth": 1,
+            "scaleDistribution": {
+              "type": "linear"
+            },
+            "show": "points"
+          },
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          }
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "fee_ppm"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "none"
+              },
+              {
+                "id": "decimals",
+                "value": 0
+              },
+              {
+                "id": "custom.axisLabel",
+                "value": "Configured outbound fee (ppm)"
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "apr"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "percentunit"
+              },
+              {
+                "id": "decimals",
+                "value": 2
+              },
+              {
+                "id": "custom.axisLabel",
+                "value": "Channel APR (annualized)"
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "profit_sats_per_day"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "locale"
+              }
+            ]
+          }
+        ]
+      },
+      "gridPos": {
+        "h": 10,
+        "w": 12,
+        "x": 12,
+        "y": 246
+      },
+      "id": 405,
+      "options": {
+        "legend": {
+          "calcs": [],
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "mapping": "auto",
+        "series": [
+          {
+            "x": {
+              "matcher": {
+                "id": "byName",
+                "options": "fee_ppm"
+              }
+            },
+            "y": {
+              "matcher": {
+                "id": "byName",
+                "options": "apr"
+              }
+            },
+            "size": {
+              "matcher": {
+                "id": "byName",
+                "options": "profit_sats_per_day"
+              }
+            }
+          }
+        ],
+        "tooltip": {
+          "mode": "single",
+          "sort": "none"
+        }
+      },
+      "pluginVersion": "12.4.2",
+      "targets": [
+        {
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "$datasource"
+          },
+          "editorMode": "code",
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "WITH chan_ppm_days AS (\n  SELECT\n    f.\"ManagedNodeName\" AS node,\n    date_trunc('day', f.\"EventTimestamp\") AS day,\n    f.\"RoutingFeePpm\"::float8 AS fee_ppm,\n    f.\"OutgoingChannelId\" AS chan_id,\n    ROUND(SUM(f.\"FeeMsat\") / 1000.0)::bigint AS fee_sats,\n    COUNT(*) AS htlcs\n  FROM \"ForwardingHtlcEvents\" f\n  WHERE $__timeFilter(f.\"EventTimestamp\")\n    AND f.\"ManagedNodePubKey\" IN ($node)\n    AND f.\"Outcome\" = 1\n    AND f.\"RoutingFeePpm\" IS NOT NULL\n    AND f.\"EventTimestamp\" < date_trunc('day', LEAST($__timeTo()::timestamptz, now()))\n  GROUP BY 1, 2, 3, 4\n)\nSELECT\n  cpd.node,\n  cpd.fee_ppm,\n  (SUM(cpd.fee_sats) * 365.0 / NULLIF(SUM(c.\"SatsAmount\"), 0))::float8 AS apr,\n  SUM(cpd.fee_sats)::float8 AS profit_sats_per_day,\n  SUM(cpd.htlcs) AS htlcs,\n  to_char(cpd.day, 'YYYY-MM-DD') AS day\nFROM chan_ppm_days cpd\nJOIN \"Channels\" c ON c.\"ChanId\" = cpd.chan_id\nGROUP BY cpd.node, cpd.day, cpd.fee_ppm\nORDER BY cpd.node, cpd.day, cpd.fee_ppm\n",
+          "refId": "A"
+        }
+      ],
+      "title": "APR vs configured fee ppm (daily, per node)",
+      "transformations": [
+        {
+          "id": "partitionByValues",
+          "options": {
+            "fields": [
+              "node"
+            ],
+            "keepFields": false
+          }
+        }
+      ],
+      "type": "xychart"
+    },
+    {
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "$datasource"
+      },
+      "description": "One row per configured outbound fee level (ppm) across the selected nodes and time range. 'Fees earned' ranks where revenue actually comes from; APR is capacity-weighted (fees x 365 / capacity-days of the channels that routed at that level). 'Priced-out volume' sums HTLCs that failed with FeeInsufficient while that ppm was configured — demand you turned away, including ppm levels that never settled anything (rows with 0 settled HTLCs). A ppm with high fees earned AND low priced-out volume is a sweet spot; high priced-out volume suggests the level is past demand.",
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "thresholds"
+          },
+          "custom": {
+            "align": "auto",
+            "cellOptions": {
+              "type": "auto"
+            },
+            "inspect": false
+          },
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          }
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "routed (BTC)"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "currencyBTC"
+              },
+              {
+                "id": "decimals",
+                "value": 4
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "priced-out volume (BTC)"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "currencyBTC"
+              },
+              {
+                "id": "decimals",
+                "value": 4
+              },
+              {
+                "id": "custom.cellOptions",
+                "value": {
+                  "type": "color-background",
+                  "mode": "gradient"
+                }
+              },
+              {
+                "id": "color",
+                "value": {
+                  "mode": "continuous-reds"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "fees earned (sats)"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "locale"
+              },
+              {
+                "id": "custom.cellOptions",
+                "value": {
+                  "type": "color-background",
+                  "mode": "gradient"
+                }
+              },
+              {
+                "id": "color",
+                "value": {
+                  "mode": "continuous-blues"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "avg sats/day"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "locale"
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "APR"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "percentunit"
+              },
+              {
+                "id": "decimals",
+                "value": 2
+              }
+            ]
+          }
+        ]
+      },
+      "gridPos": {
+        "h": 9,
+        "w": 24,
+        "x": 0,
+        "y": 256
+      },
+      "id": 406,
+      "options": {
+        "cellHeight": "sm",
+        "footer": {
+          "show": false,
+          "reducer": [
+            "sum"
+          ],
+          "fields": ""
+        },
+        "showHeader": true,
+        "sortBy": [
+          {
+            "displayName": "fees earned (sats)",
+            "desc": true
+          }
+        ]
+      },
+      "pluginVersion": "12.4.2",
+      "targets": [
+        {
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "$datasource"
+          },
+          "editorMode": "code",
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "WITH per_chan_day AS (\n  SELECT\n    f.\"RoutingFeePpm\" AS fee_ppm,\n    date_trunc('day', f.\"EventTimestamp\") AS day,\n    f.\"ManagedNodePubKey\" AS pubkey,\n    f.\"OutgoingChannelId\" AS chan_id,\n    COUNT(*) AS htlcs,\n    ROUND(SUM(f.\"FeeMsat\") / 1000.0)::bigint AS fee_sats,\n    SUM(COALESCE(f.\"OutgoingAmountMsat\", f.\"IncomingAmountMsat\")) AS amt_msat\n  FROM \"ForwardingHtlcEvents\" f\n  WHERE $__timeFilter(f.\"EventTimestamp\")\n    AND f.\"ManagedNodePubKey\" IN ($node)\n    AND f.\"Outcome\" = 1\n    AND f.\"RoutingFeePpm\" IS NOT NULL\n  GROUP BY 1, 2, 3, 4\n), settled AS (\n  SELECT\n    pcd.fee_ppm,\n    SUM(pcd.htlcs) AS htlcs,\n    COUNT(DISTINCT (pcd.day, pcd.pubkey)) AS node_days,\n    SUM(pcd.fee_sats) AS fee_sats,\n    (SUM(pcd.amt_msat) / 100000000000.0)::float8 AS routed_btc,\n    (SUM(pcd.fee_sats) * 365.0 / NULLIF(SUM(c.\"SatsAmount\"), 0))::float8 AS apr\n  FROM per_chan_day pcd\n  LEFT JOIN \"Channels\" c ON c.\"ChanId\" = pcd.chan_id\n  GROUP BY 1\n), priced_out AS (\n  SELECT\n    f.\"RoutingFeePpm\" AS fee_ppm,\n    COUNT(*) AS failed_htlcs,\n    (SUM(COALESCE(f.\"OutgoingAmountMsat\", f.\"IncomingAmountMsat\")) / 100000000000.0)::float8 AS priced_out_btc\n  FROM \"ForwardingHtlcEvents\" f\n  WHERE $__timeFilter(f.\"EventTimestamp\")\n    AND f.\"ManagedNodePubKey\" IN ($node)\n    AND f.\"Outcome\" = 2\n    AND f.\"FailureString\" LIKE 'FeeInsufficient%'\n    AND f.\"RoutingFeePpm\" IS NOT NULL\n  GROUP BY 1\n)\nSELECT\n  COALESCE(s.fee_ppm, p.fee_ppm) AS \"ppm\",\n  COALESCE(s.htlcs, 0) AS \"settled HTLCs\",\n  COALESCE(s.node_days, 0) AS \"active node-days\",\n  COALESCE(s.routed_btc, 0) AS \"routed (BTC)\",\n  COALESCE(s.fee_sats, 0) AS \"fees earned (sats)\",\n  CASE WHEN COALESCE(s.node_days, 0) > 0 THEN ROUND(s.fee_sats::numeric / s.node_days)::bigint END AS \"avg sats/day\",\n  s.apr AS \"APR\",\n  COALESCE(p.failed_htlcs, 0) AS \"FeeInsufficient HTLCs\",\n  COALESCE(p.priced_out_btc, 0) AS \"priced-out volume (BTC)\"\nFROM settled s\nFULL OUTER JOIN priced_out p ON p.fee_ppm = s.fee_ppm\nORDER BY 1\n",
+          "refId": "A"
+        }
+      ],
+      "title": "Fee ppm league table — earned vs priced-out",
+      "type": "table"
     }
   ],
   "preload": false,
