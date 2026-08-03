@@ -18,8 +18,8 @@
  */
 
 using NodeGuard.Data.Repositories.Interfaces;
+using NodeGuard.Helpers;
 using NodeGuard.Services;
-using Grpc.Core;
 using Lnrpc;
 using Quartz;
 using Channel = NodeGuard.Data.Models.Channel;
@@ -54,53 +54,30 @@ public class NodeChannelSuscribeJob : IJob
         var data = context.JobDetail.JobDataMap;
         var nodeId = data.GetInt("nodeId");
         _logger.LogInformation("Starting {JobName} for node {nodeId}... ", nameof(NodeChannelSuscribeJob), nodeId);
-        try
-        {
-            var node = await _nodeRepository.GetById(nodeId);
 
-            if (node == null)
+        // NodeUpdateManagement only reads the immutable node.Id, so the node is fetched once per
+        // (re)subscription rather than per event. SubscriptionStreamRunner keeps the subscription
+        // alive across reconnects (a release otherwise silently kills it until the next restart).
+        await SubscriptionStreamRunner.RunAsync<ChannelEventUpdate>(
+            context,
+            _logger,
+            nameof(NodeChannelSuscribeJob),
+            nodeId,
+            getEligibleNode: () => _nodeRepository.GetById(nodeId),
+            subscribe: node => _lightningClientService.SubscribeChannelEvents(node),
+            handleEvent: async (channelEventUpdate, node) =>
             {
-                _logger.LogInformation("The node: {@Node} is no longer ready to be supported quartz jobs", node);
-                return;
-            }
-
-            var result = _lightningClientService.SubscribeChannelEvents(node);
-
-            while (await result.ResponseStream.MoveNext())
-            {
-                node = await _nodeRepository.GetById(nodeId);
-
-                if (node == null)
-                {
-                    _logger.LogInformation("The node: {@Node} is no longer ready to be supported quartz jobs", node);
-                    return;
-                }
-
                 try
                 {
-                    var channelEventUpdate = result.ResponseStream.Current;
                     _logger.LogInformation("Channel event update received for node {@NodeId}", node.Id);
                     await NodeUpdateManagement(channelEventUpdate, node);
                 }
                 catch (Exception e)
                 {
-                    _logger.LogError(e, "Error reading and update event of node {NodeId}", nodeId);
-                    throw new JobExecutionException(e, true);
+                    _logger.LogError(e, "Error reading and updating event of node {NodeId}. Event will be skipped", nodeId);
                 }
-                
-              
-            }
-            
-         
-        }
-        catch (Exception e)
-        {
-            _logger.LogError(e, "Error while subscribing for the channel updates of node {NodeId}", nodeId);
-            //Sleep to avoid massive requests
-            await Task.Delay(5000);
-            
-            throw new JobExecutionException(e, true);
-        }
+            },
+            invalidateClient: _lightningClientService.InvalidateClient);
 
         _logger.LogInformation("{JobName} ended", nameof(NodeChannelSuscribeJob));
     }

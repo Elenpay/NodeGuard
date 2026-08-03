@@ -12,6 +12,7 @@ namespace NodeGuard.Services;
 public interface ILightningRouterService
 {
     public Router.RouterClient GetRouterClient(string? endpoint);
+    public void InvalidateClient(string? endpoint);
     public Task<RouteFeeResponse?> EstimateRouteFee(Node node, RouteFeeRequest routeFeeRequest, Router.RouterClient? client = null);
     public AsyncServerStreamingCall<HtlcEvent> SubscribeHtlcEvents(Node node, Router.RouterClient? client = null);
     public AsyncServerStreamingCall<Payment> SendPaymentV2(Node node, SendPaymentRequest request, CancellationToken cancellationToken, Router.RouterClient? client = null);
@@ -44,6 +45,35 @@ public class LightningRouterService : ILightningRouterService
         _logger.LogInformation("New grpc channel created for router endpoint {endpoint}", endpoint);
 
         return grpcChannel;
+    }
+
+    /// <summary>
+    /// Evicts and disposes the cached router channel for an endpoint so the next call rebuilds
+    /// a fresh connection. Call this after a stream/RPC failure to avoid reusing a half-open
+    /// channel that would otherwise keep hanging.
+    /// </summary>
+    public void InvalidateClient(string? endpoint)
+    {
+        if (endpoint == null)
+        {
+            return;
+        }
+
+        lock (_clients)
+        {
+            if (_clients.TryRemove(endpoint, out var channel))
+            {
+                _logger.LogInformation("Invalidated cached router grpc channel for endpoint {endpoint}", endpoint);
+                try
+                {
+                    channel.Dispose();
+                }
+                catch (Exception e)
+                {
+                    _logger.LogWarning(e, "Error disposing router grpc channel for endpoint {endpoint}", endpoint);
+                }
+            }
+        }
     }
 
     public Router.RouterClient GetRouterClient(string? endpoint)

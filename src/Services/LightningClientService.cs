@@ -33,6 +33,7 @@ namespace NodeGuard.Services;
 public interface ILightningClientService
 {
     public Lightning.LightningClient GetLightningClient(string? endpoint);
+    public void InvalidateClient(string? endpoint);
     public Task<GetInfoResponse?> GetInfo(Node node, Lightning.LightningClient? client = null);
     public Task<ListChannelsResponse?> ListChannels(Node node, Lightning.LightningClient? client = null);
     public Task<ChannelBalanceResponse?> ChannelBalanceAsync(Node node, Lightning.LightningClient? client = null);
@@ -79,6 +80,35 @@ public class LightningClientService : ILightningClientService
         _logger.LogInformation("New grpc channel created for endpoint {endpoint}", endpoint);
 
         return grpcChannel;
+    }
+
+    /// <summary>
+    /// Evicts and disposes the cached channel for an endpoint so the next call rebuilds a
+    /// fresh connection. Call this after a stream/RPC failure to avoid reusing a half-open
+    /// channel that would otherwise keep hanging.
+    /// </summary>
+    public void InvalidateClient(string? endpoint)
+    {
+        if (endpoint == null)
+        {
+            return;
+        }
+
+        lock (_clients)
+        {
+            if (_clients.TryRemove(endpoint, out var channel))
+            {
+                _logger.LogInformation("Invalidated cached grpc channel for endpoint {endpoint}", endpoint);
+                try
+                {
+                    channel.Dispose();
+                }
+                catch (Exception e)
+                {
+                    _logger.LogWarning(e, "Error disposing grpc channel for endpoint {endpoint}", endpoint);
+                }
+            }
+        }
     }
 
     public Lightning.LightningClient GetLightningClient(string? endpoint)
