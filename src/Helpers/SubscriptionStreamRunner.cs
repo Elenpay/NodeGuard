@@ -76,7 +76,7 @@ public static class SubscriptionStreamRunner
                     return;
                 }
 
-                var stream = subscribe(node);
+                using var stream = subscribe(node);
                 while (await stream.ResponseStream.MoveNext(context.CancellationToken))
                 {
                     // A received event proves the connection is healthy: reset the backoff.

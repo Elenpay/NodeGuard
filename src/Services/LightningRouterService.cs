@@ -59,20 +59,25 @@ public class LightningRouterService : ILightningRouterService
             return;
         }
 
+        GrpcChannel? channel;
         lock (_clients)
         {
-            if (_clients.TryRemove(endpoint, out var channel))
+            if (!_clients.TryRemove(endpoint, out channel))
             {
-                _logger.LogInformation("Invalidated cached router grpc channel for endpoint {endpoint}", endpoint);
-                try
-                {
-                    channel.Dispose();
-                }
-                catch (Exception e)
-                {
-                    _logger.LogWarning(e, "Error disposing router grpc channel for endpoint {endpoint}", endpoint);
-                }
+                return;
             }
+        }
+
+        // Dispose outside the lock: GrpcChannel.Dispose can block, and holding the lock would
+        // stall every concurrent GetRouterClient call.
+        _logger.LogInformation("Invalidated cached router grpc channel for endpoint {endpoint}", endpoint);
+        try
+        {
+            channel.Dispose();
+        }
+        catch (Exception e)
+        {
+            _logger.LogWarning(e, "Error disposing router grpc channel for endpoint {endpoint}", endpoint);
         }
     }
 
