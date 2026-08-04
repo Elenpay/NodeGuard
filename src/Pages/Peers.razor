@@ -1,0 +1,560 @@
+@page "/peers"
+@using Blazorise
+@using Blazorise.Components
+@using NodeGuard.Data.Models
+@using NodeGuard.Helpers
+@attribute [Authorize(Roles = "Superadmin,NodeManager")]
+
+<div class="peers">
+    <h3 class="custom-primary">Peers</h3>
+    <p style="color:#7a7789;margin-top:-4px;">Pick a node, then turn dynamic fee management on or off for every channel to a peer at once — no more going channel by channel.</p>
+
+    @if (!Constants.ROUTING_ENGINE_ENABLED)
+    {
+        <div class="alert-global">
+            <Icon Name="IconName.ExclamationTriangle" />
+            The routing engine is globally OFF. Per-channel and per-node dynamic-fee settings are saved, but no fees will move until ROUTING_ENGINE_ENABLED is set on the server.
+        </div>
+    }
+
+    @if (_loading)
+    {
+        <div class="empty"><SpinKit Type="SpinKitType.Wave" Color="#6145F1" /> Loading peers…</div>
+    }
+    else
+    {
+        <!-- NODE SELECTOR -->
+        <div class="searchbar">
+            <Field class="grow" style="margin-bottom:0;">
+                <FieldLabel>Node</FieldLabel>
+                <Autocomplete TItem="Node"
+                              TValue="int?"
+                              Data="@_managedNodes"
+                              TextField="@(item => item?.Name ?? "")"
+                              ValueField="@(item => (int?)item?.Id)"
+                              @bind-SelectedValue="@_selectedNodeId"
+                              @bind-SelectedValue:after="OnNodeChanged"
+                              Placeholder="Select a node"
+                              FreeTyping="false"
+                              MinLength="0"
+                              Filter="AutocompleteFilter.Contains" />
+            </Field>
+        </div>
+
+        @if (_managedNodes.Count == 0)
+        {
+            <div class="empty">You don't manage any nodes.</div>
+        }
+        else if (_selectedNode is null)
+        {
+            <div class="empty">Select a node to configure its channels.</div>
+        }
+        else
+        {
+            <!-- SUMMARY -->
+            <div class="summary">
+                <div class="panel kpi"><div class="label">Peers</div><div class="val">@_peers.Count</div></div>
+                <div class="panel kpi"><div class="label">Channels</div><div class="val">@_nodeChannels.Count</div></div>
+                <div class="panel kpi"><div class="label">Dynamic-fee channels</div><div class="val">@_nodeChannels.Count(c => c.IsDynamicFeeEnabled) <span style="font-size:.7rem;color:#7a7789">/ @_nodeChannels.Count</span></div></div>
+                <div class="panel kpi"><div class="label">Node gate</div><div class="val" style="color:@(_selectedNode.DynamicFeeManagementEnabled ? "#0f9c8c" : "#a9791f")">@(_selectedNode.DynamicFeeManagementEnabled ? "On" : "Off")</div></div>
+            </div>
+
+            <!-- NODE GATE -->
+            <div class="panel" style="margin-bottom:16px">
+                <div class="panel-title">
+                    <h2>Dynamic-fee gate — @_selectedNode.Name</h2>
+                    <span class="hint">required for this node's channel fees to actually move</span>
+                </div>
+                <div class="gate-item" style="max-width:340px;">
+                    <div class="who">
+                        <b>@_selectedNode.Name</b>
+                        <span>@StringHelper.TruncateTail(_selectedNode.PubKey, 14)</span>
+                        @if (_selectedNode.RoutingEngineDryRun)
+                        {
+                            <span class="dry">&nbsp;· dry-run</span>
+                        }
+                    </div>
+                    <div class="toggle">
+                        <Check TValue="bool"
+                               Checked="@_selectedNode.DynamicFeeManagementEnabled"
+                               Disabled="@_busy"
+                               CheckedChanged="@(value => ToggleNodeGate(_selectedNode, value))" />
+                    </div>
+                </div>
+                @if (!_selectedNode.DynamicFeeManagementEnabled)
+                {
+                    <div class="gate-warn" style="margin-top:10px;">
+                        <Icon Name="IconName.ExclamationTriangle" /> Gate is off — enabling channels below won't move any fees until you turn this on.
+                    </div>
+                }
+            </div>
+
+            <!-- SEARCH -->
+            <div class="searchbar">
+                <Field class="grow" style="margin-bottom:0;">
+                    <FieldLabel>Search peer</FieldLabel>
+                    <TextEdit @bind-Text="@_search" @bind-Text:after="StateHasChanged" Placeholder="Alias or pubkey…" />
+                </Field>
+            </div>
+
+            <!-- PEERS TABLE -->
+            <div class="panel">
+                <div class="table-wrap">
+                    <table class="peers-tbl">
+                        <thead>
+                            <tr>
+                                <th style="width:24px;"></th>
+                                <th>Peer</th>
+                                <th class="r">Chans</th>
+                                <th class="r">Capacity</th>
+                                <th>Local / Remote</th>
+                                <th class="c">Dynamic fees</th>
+                                <th class="r">Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @{
+                                var filteredPeers = FilteredPeers().ToList();
+                            }
+                            @foreach (var peer in filteredPeers)
+                            {
+                                var expanded = _expanded.Contains(peer.PeerPubKey);
+                                <tr class="peer-row">
+                                    <td>
+                                        <button class="expander" @onclick="@(() => ToggleExpand(peer.PeerPubKey))" title="Show channels">
+                                            @(expanded ? "▾" : "▸")
+                                        </button>
+                                    </td>
+                                    <td>
+                                        <div class="peer-name">
+                                            <b>@peer.PeerAlias</b>
+                                            <div class="pk">@StringHelper.TruncateTail(peer.PeerPubKey, 14)</div>
+                                        </div>
+                                    </td>
+                                    <td class="r mono">@peer.ChannelCount</td>
+                                    <td class="r mono">@Btc(peer.TotalCapacitySats) BTC</td>
+                                    <td>
+                                        @if (peer.LocalRatio is { } ratio)
+                                        {
+                                            var lp = Math.Clamp(ratio, 0, 1) * 100;
+                                            <div class="bal">
+                                                <div class="bal-track"><div class="bal-local" style="width:@F(lp)%"></div></div>
+                                                <div class="bal-meta"><span>@lp.ToString("0")% local</span><span>@peer.ActiveCount/@peer.ChannelCount active</span></div>
+                                            </div>
+                                        }
+                                        else
+                                        {
+                                            <span class="mono" style="color:#a7a4b5">—</span>
+                                        }
+                                    </td>
+                                    <td class="c">
+                                        @{
+                                            var cls = peer.AllDynamicFeeEnabled ? "df-all" : peer.NoneDynamicFeeEnabled ? "df-none" : "df-partial";
+                                        }
+                                        <span class="df-badge @cls">@peer.DynamicFeeEnabledCount / @peer.ChannelCount on</span>
+                                    </td>
+                                    <td>
+                                        <div class="row-actions">
+                                            <Button Color="Color.Primary" Size="Size.Small"
+                                                    Disabled="@(_busy || peer.AllDynamicFeeEnabled)"
+                                                    Clicked="@(() => SetPeerDynamicFees(peer, true))">
+                                                Enable all
+                                            </Button>
+                                            <Button Color="Color.Light" Size="Size.Small"
+                                                    Disabled="@(_busy || peer.NoneDynamicFeeEnabled)"
+                                                    Clicked="@(() => SetPeerDynamicFees(peer, false))">
+                                                Disable all
+                                            </Button>
+                                        </div>
+                                    </td>
+                                </tr>
+                                @if (expanded)
+                                {
+                                    <tr class="detail-row">
+                                        <td colspan="7">
+                                            <table class="detail-tbl">
+                                                <thead>
+                                                    <tr>
+                                                        <th>Channel</th>
+                                                        <th class="r">Capacity</th>
+                                                        <th>Local / Remote</th>
+                                                        <th class="c">Dynamic fee</th>
+                                                    </tr>
+                                                </thead>
+                                                <tbody>
+                                                    @foreach (var ch in peer.Channels)
+                                                    {
+                                                        <tr>
+                                                            <td class="mono">
+                                                                @(ch.ChanId == 0 ? "(pending)" : ch.ChanId.ToString())
+                                                                @if (ch.BelowMinSize)
+                                                                {
+                                                                    <span class="below-min" title="Below the engine's minimum channel size; it won't be fee-managed.">below min size</span>
+                                                                }
+                                                            </td>
+                                                            <td class="r mono">@Btc(ch.CapacitySats) BTC</td>
+                                                            <td class="mono" style="font-size:.72rem">
+                                                                @if (ch.LocalBalanceSats is { } lb && ch.RemoteBalanceSats is { } rb)
+                                                                {
+                                                                    @($"{Sats(lb)} / {Sats(rb)}")
+                                                                }
+                                                                else
+                                                                {
+                                                                    @("—")
+                                                                }
+                                                            </td>
+                                                            <td class="c">
+                                                                @* Pending channels (ChanId 0) can't be fee-managed yet, so they're not toggleable. *@
+                                                                <Check TValue="bool"
+                                                                       Checked="@ch.IsDynamicFeeEnabled"
+                                                                       Disabled="@(_busy || ch.ChanId == 0)"
+                                                                       CheckedChanged="@(value => SetChannelDynamicFee(ch, value))" />
+                                                            </td>
+                                                        </tr>
+                                                    }
+                                                </tbody>
+                                            </table>
+                                        </td>
+                                    </tr>
+                                }
+                            }
+                            @if (filteredPeers.Count == 0)
+                            {
+                                <tr><td colspan="7"><div class="empty">@(_peers.Count == 0 ? "This node has no open channels." : "No peers match your search.")</div></td></tr>
+                            }
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        }
+    }
+</div>
+
+@inject INodeRepository NodeRepository
+@inject IChannelRepository ChannelRepository
+@inject IFeeEngineStateService FeeEngineStateService
+@inject IAuditService AuditService
+@inject ILightningService LightningService
+@inject IToastService ToastService
+@inject ILogger<Peers> Logger
+
+@code {
+    [CascadingParameter] private ApplicationUser? LoggedUser { get; set; }
+
+    private List<Node> _managedNodes = new();
+    private int? _selectedNodeId;
+    private Node? _selectedNode;
+    private List<Channel> _channels = new();
+    private List<Channel> _nodeChannels = new();
+    private IReadOnlyDictionary<ulong, ChannelState>? _live;
+    private List<PeerOverview> _peers = new();
+    private readonly HashSet<string> _expanded = new();
+    private string _search = string.Empty;
+    private bool _loading = true;
+    // Busy flag to prevent overlapping mutations (node gate or channel toggles) and keep the UI in sync.
+    private bool _busy;
+
+    protected override async Task OnInitializedAsync()
+    {
+        if (LoggedUser is null) return;
+        await LoadAsync();
+    }
+
+    private async Task LoadAsync()
+    {
+        if (LoggedUser is null) return;
+        _loading = true;
+        try
+        {
+            _managedNodes = await NodeRepository.GetAllManagedByUser(LoggedUser.Id);
+            _selectedNodeId ??= _managedNodes.FirstOrDefault()?.Id;
+            _selectedNode = _managedNodes.FirstOrDefault(n => n.Id == _selectedNodeId);
+
+            var allChannels = await ChannelRepository.GetAllManagedByUserNodes(LoggedUser.Id);
+            _channels = allChannels.Where(c => c.Status == Channel.ChannelStatus.Open).ToList();
+
+            // Live balances are best-effort — structural stats and the toggles still work without LND.
+            _live = null;
+            try
+            {
+                var state = await LightningService.GetChannelsState();
+                if (state.Count > 0) _live = state;
+            }
+            catch (Exception ex)
+            {
+                Logger.LogWarning(ex, "Could not fetch live channel balances for the Peers page");
+            }
+
+            Rebuild();
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Error loading Peers page");
+            ToastService.ShowError("Could not load peers.");
+        }
+        finally
+        {
+            _loading = false;
+        }
+    }
+
+    // Recompute the selected node's channel slice and group it by remote peer.
+    private void Rebuild()
+    {
+        if (_selectedNode is null)
+        {
+            _nodeChannels = new();
+            _peers = new();
+            return;
+        }
+
+        _nodeChannels = _channels
+            .Where(c => c.SourceNodeId == _selectedNode.Id || c.DestinationNodeId == _selectedNode.Id)
+            .ToList();
+
+        var groups = new Dictionary<string, PeerOverview>();
+        foreach (var channel in _nodeChannels)
+        {
+            var src = channel.SourceNode;
+            var dst = channel.DestinationNode;
+            if (src is null || dst is null) continue;
+
+            var peerNode = src.PubKey == _selectedNode.PubKey ? dst : src;
+
+            if (!groups.TryGetValue(peerNode.PubKey, out var overview))
+            {
+                overview = new PeerOverview
+                {
+                    PeerPubKey = peerNode.PubKey,
+                    PeerAlias = !string.IsNullOrWhiteSpace(peerNode.Name)
+                        ? peerNode.Name
+                        : StringHelper.TruncateTail(peerNode.PubKey, 12),
+                };
+                groups[peerNode.PubKey] = overview;
+            }
+
+            ChannelState? live = null;
+            _live?.TryGetValue(channel.ChanId, out live);
+
+            overview.Channels.Add(new PeerChannelRow
+            {
+                Channel = channel,
+                ChanId = channel.ChanId,
+                CapacitySats = channel.SatsAmount,
+                IsDynamicFeeEnabled = channel.IsDynamicFeeEnabled,
+                LocalBalanceSats = live?.LocalBalance,
+                RemoteBalanceSats = live?.RemoteBalance,
+                Active = live?.Active,
+                BelowMinSize = channel.SatsAmount < Constants.ROUTING_ENGINE_FEE_MIN_CHANNEL_SIZE_SATS,
+            });
+        }
+
+        _peers = groups.Values
+            .OrderByDescending(o => o.TotalCapacitySats)
+            .ThenBy(o => o.PeerAlias)
+            .ToList();
+    }
+
+    // Re-read nodes and channels from the DB after a mutation so subsequent actions operate on fresh
+    // entities (matching the other node/channel pages). Live balances are unaffected
+    // by a fee-flag toggle, so they're not re-fetched here.
+    private async Task ReloadEntitiesAsync()
+    {
+        if (LoggedUser is null) return;
+        _managedNodes = await NodeRepository.GetAllManagedByUser(LoggedUser.Id);
+        _selectedNode = _managedNodes.FirstOrDefault(n => n.Id == _selectedNodeId);
+        var allChannels = await ChannelRepository.GetAllManagedByUserNodes(LoggedUser.Id);
+        _channels = allChannels.Where(c => c.Status == Channel.ChannelStatus.Open).ToList();
+        Rebuild();
+    }
+
+    private void OnNodeChanged()
+    {
+        _selectedNode = _managedNodes.FirstOrDefault(n => n.Id == _selectedNodeId);
+        _expanded.Clear();
+        _search = string.Empty;
+        Rebuild();
+    }
+
+    private IEnumerable<PeerOverview> FilteredPeers()
+    {
+        if (string.IsNullOrWhiteSpace(_search)) return _peers;
+        var q = _search.Trim();
+        return _peers.Where(p =>
+            p.PeerAlias.Contains(q, StringComparison.OrdinalIgnoreCase) ||
+            p.PeerPubKey.Contains(q, StringComparison.OrdinalIgnoreCase));
+    }
+
+    private void ToggleExpand(string peerPubKey)
+    {
+        if (!_expanded.Remove(peerPubKey)) _expanded.Add(peerPubKey);
+    }
+
+    private async Task ToggleNodeGate(Node node, bool enabled)
+    {
+        if (_busy || node.DynamicFeeManagementEnabled == enabled) return;
+        _busy = true;
+        try
+        {
+            node.DynamicFeeManagementEnabled = enabled;
+            var (ok, _) = NodeRepository.Update(node);
+            if (!ok)
+            {
+                node.DynamicFeeManagementEnabled = !enabled;
+                // Repository.Update swallows the exception and returns a null reason, so log it and
+                // record the attempt in the audit trail like every other fee mutation does.
+                Logger.LogError("Failed to persist dynamic-fee gate for node {Node} ({PubKey})", node.Name, node.PubKey);
+                await AuditService.LogAsync(AuditActionType.Update, AuditEventType.Failure, AuditObjectType.Node,
+                    node.Id.ToString(), $"Failed to {(enabled ? "enable" : "disable")} dynamic fee management via Peers page.");
+                ToastService.ShowError($"Could not update {node.Name}. Check the logs for details.");
+                return;
+            }
+
+            // Disabling the node gate purges its channels' fee-engine state (mirrors Nodes page).
+            await FeeEngineStateService.PurgeNodeStateIfDisabled(node);
+            await AuditService.LogAsync(AuditActionType.Update, AuditEventType.Success, AuditObjectType.Node,
+                node.Id.ToString(), $"Dynamic fee management {(enabled ? "enabled" : "disabled")} via Peers page.");
+            ToastService.ShowSuccess($"Dynamic fee management {(enabled ? "enabled" : "disabled")} for {node.Name}.");
+            await ReloadEntitiesAsync();
+        }
+        finally
+        {
+            _busy = false;
+        }
+    }
+
+    private async Task SetPeerDynamicFees(PeerOverview peer, bool enabled)
+    {
+        if (_busy) return;
+        _busy = true;
+        try
+        {
+            var (updated, failed) = await ApplyDynamicFeeAsync(peer.Channels.Select(c => c.Channel), enabled);
+
+            if (failed > 0)
+            {
+                ToastService.ShowWarning($"{updated} channel(s) updated, {failed} failed — check logs.");
+            }
+            else if (updated == 0)
+            {
+                ToastService.ShowInfo("No changes — channels were already in that state.");
+            }
+            else
+            {
+                ToastService.ShowSuccess($"Dynamic fees {(enabled ? "enabled" : "disabled")} on {updated} channel(s) for {peer.PeerAlias}.");
+            }
+
+            if (enabled && _selectedNode is { DynamicFeeManagementEnabled: false })
+            {
+                ToastService.ShowWarning("Heads up: this node's dynamic-fee gate is off, so fees won't move until you enable it above.");
+            }
+
+            await ReloadEntitiesAsync();
+        }
+        finally
+        {
+            _busy = false;
+        }
+    }
+
+    private async Task SetChannelDynamicFee(PeerChannelRow row, bool enabled)
+    {
+        if (_busy) return;
+        _busy = true;
+        try
+        {
+            var (updated, failed) = await ApplyDynamicFeeAsync(new[] { row.Channel }, enabled);
+            if (failed > 0)
+            {
+                ToastService.ShowError("Could not update the channel.");
+            }
+            else if (updated > 0)
+            {
+                ToastService.ShowSuccess($"Dynamic fees {(enabled ? "enabled" : "disabled")} for channel {row.ChanId}.");
+            }
+            await ReloadEntitiesAsync();
+        }
+        finally
+        {
+            _busy = false;
+        }
+    }
+
+    // Bulk-sets IsDynamicFeeEnabled across channels: persists each, audits it, and purges fee-engine
+    // state on opt-out. Channels already at the target — or pending (ChanId 0), which the engine can't
+    // manage yet — are skipped. Returns how many changed and how many failed to persist.
+    private async Task<(int updated, int failed)> ApplyDynamicFeeAsync(IEnumerable<Channel> channels, bool enabled)
+    {
+        var updated = 0;
+        var failed = 0;
+
+        foreach (var channel in channels)
+        {
+            if (channel.IsDynamicFeeEnabled == enabled) continue;
+            if (enabled && channel.ChanId == 0) continue; // pending channels can't be fee-managed yet
+
+            channel.IsDynamicFeeEnabled = enabled;
+            var (ok, error) = ChannelRepository.Update(channel);
+            if (!ok)
+            {
+                channel.IsDynamicFeeEnabled = !enabled; // revert the in-memory flag on persistence failure
+                failed++;
+                var reason = string.IsNullOrWhiteSpace(error) ? "persistence failed" : error;
+                Logger.LogError("Bulk dynamic-fee update failed for channel {ChanId}: {Error}", channel.ChanId, reason);
+                await AuditService.LogAsync(AuditActionType.Update, AuditEventType.Failure, AuditObjectType.Channel,
+                    channel.Id.ToString(), $"Bulk dynamic-fee update failed. ChanId: {channel.ChanId}, target: {enabled}. {reason}");
+                continue;
+            }
+
+            await AuditService.LogAsync(AuditActionType.Update, AuditEventType.Success, AuditObjectType.Channel,
+                channel.Id.ToString(), $"Bulk {(enabled ? "enabled" : "disabled")} dynamic fee via Peers page. ChanId: {channel.ChanId}");
+
+            // Mirror the single-channel flow: drop opted-out state so a later re-enable cold-starts.
+            await FeeEngineStateService.PurgeChannelStateIfDisabled(channel);
+            updated++;
+        }
+
+        return (updated, failed);
+    }
+
+    private static string Btc(long sats) => (sats / 100_000_000m).ToString("0.####");
+    private static string Sats(long sats) => sats.ToString("N0");
+    private static string F(double d) => d.ToString("0.##", System.Globalization.CultureInfo.InvariantCulture);
+
+    // One remote peer and every channel the selected node holds to it, with structural fee/liquidity stats.
+    private sealed class PeerOverview
+    {
+        public string PeerPubKey { get; init; } = string.Empty;
+        public string PeerAlias { get; init; } = string.Empty;
+        public List<PeerChannelRow> Channels { get; } = new();
+
+        public int ChannelCount => Channels.Count;
+        public long TotalCapacitySats => Channels.Sum(c => c.CapacitySats);
+        public int DynamicFeeEnabledCount => Channels.Count(c => c.IsDynamicFeeEnabled);
+        public bool AllDynamicFeeEnabled => ChannelCount > 0 && DynamicFeeEnabledCount == ChannelCount;
+        public bool NoneDynamicFeeEnabled => DynamicFeeEnabledCount == 0;
+        public int ActiveCount => Channels.Count(c => c.Active == true);
+
+        // Only aggregate a local/remote split when EVERY channel to the peer has live data; summing over
+        // a partial set would let unreported channels contribute 0/0 and skew the ratio.
+        private bool HasLive => Channels.Count > 0 && Channels.All(c => c.LocalBalanceSats.HasValue && c.RemoteBalanceSats.HasValue);
+        public long? LocalBalanceSats => HasLive ? Channels.Sum(c => c.LocalBalanceSats!.Value) : null;
+        public long? RemoteBalanceSats => HasLive ? Channels.Sum(c => c.RemoteBalanceSats!.Value) : null;
+        public double? LocalRatio => LocalBalanceSats is { } l && RemoteBalanceSats is { } r && (l + r) > 0
+            ? (double)l / (l + r)
+            : null;
+    }
+
+    // A single channel to a peer, as shown in the expandable detail.
+    private sealed class PeerChannelRow
+    {
+        public required Channel Channel { get; init; }
+        public ulong ChanId { get; init; }
+        public long CapacitySats { get; init; }
+        public bool IsDynamicFeeEnabled { get; init; }
+        public long? LocalBalanceSats { get; init; }
+        public long? RemoteBalanceSats { get; init; }
+        public bool? Active { get; init; }
+        public bool BelowMinSize { get; init; } // below the engine's minimum size, so it won't be fee-managed
+    }
+}
