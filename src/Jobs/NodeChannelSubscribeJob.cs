@@ -87,18 +87,18 @@ public class NodeChannelSuscribeJob : IJob
                     _logger.LogError(e, "Error reading and update event of node {NodeId}", nodeId);
                     throw new JobExecutionException(e, true);
                 }
-                
-              
+
+
             }
-            
-         
+
+
         }
         catch (Exception e)
         {
             _logger.LogError(e, "Error while subscribing for the channel updates of node {NodeId}", nodeId);
             //Sleep to avoid massive requests
             await Task.Delay(5000);
-            
+
             throw new JobExecutionException(e, true);
         }
 
@@ -125,7 +125,8 @@ public class NodeChannelSuscribeJob : IJob
                     CreatedByNodeGuard = false,
                     CreationDatetime = DateTimeOffset.Now,
                     UpdateDatetime = DateTimeOffset.Now,
-                    IsPrivate = channelOpened.Private
+                    IsPrivate = channelOpened.Private,
+                    IsDynamicFeeEnabled = node.DynamicFeeManagementEnabled
                 };
 
                 var remoteNode = await _nodeRepository.GetOrCreateByPubKey(channelOpened.RemotePubkey, _lightningService);
