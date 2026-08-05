@@ -1437,20 +1437,13 @@
                     await CoinSelectionService.LockUTXOs(_selectedUTXOs, _selectedRequest, BitcoinRequestType.WalletWithdrawal);
                 }
 
-                var templatePsbt = await BitcoinService.GenerateTemplatePSBT(_selectedRequest);
-
-                var walletWithdrawalRequestPsbt = new WalletWithdrawalRequestPSBT()
-                {
-                    WalletWithdrawalRequestId = _selectedRequest.Id,
-                    PSBT = templatePsbt.ToBase64(),
-                    SignerId = null,
-                };
-
-                var addResult = await WalletWithdrawalRequestPsbtRepository.AddAsync(walletWithdrawalRequestPsbt);
-                if (!addResult.Item1)
-                {
-                    throw new ShowToUserException("Error while saving the signature");
-                }
+                // GenerateTemplatePSBT persists the template row itself (tagged IsTemplatePSBT = true), so
+                // nothing further needs storing here. This used to store a SECOND copy of the same PSBT with
+                // IsTemplatePSBT left at its default false, which NumberOfSignaturesCollected then counted as
+                // a human signature — inflating the collected count by one on every request. Tagging that copy
+                // instead is not an option: PerformWithdrawal selects the template with
+                // .Single(x => x.IsTemplatePSBT), which throws when two exist.
+                await BitcoinService.GenerateTemplatePSBT(_selectedRequest);
 
                 ToastService.ShowSuccess("Signature collected");
 
