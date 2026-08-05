@@ -204,6 +204,55 @@ public class WalletRepositoryTests
     }
 
 
+    private static Key DummyKey() => new() { Name = "k", XPUB = "x" };
+
+    [Fact]
+    public async Task FinaliseWallet_Rejects2Of2()
+    {
+        var dbContextFactory = SetupDbContextFactory();
+        var walletRepository = new WalletRepository(null, null, dbContextFactory.Object, null, null, null);
+
+        // 1 human + internal, threshold 2: Keys.Count (2) == MofN (2) => NodeGuard-co-signed 2-of-2.
+        var wallet = new Wallet { Name = "bad", MofN = 2, Keys = new List<Key> { DummyKey(), DummyKey() } };
+
+        var (ok, message) = await walletRepository.FinaliseWallet(wallet);
+
+        ok.Should().BeFalse();
+        message.Should().Be(Wallet.TwoOfTwoNotAllowedMessage);
+        wallet.IsFinalised.Should().BeFalse("a rejected wallet must not be marked finalised");
+    }
+
+    [Fact]
+    public async Task FinaliseWallet_DoesNotRejectA2Of3OnThe2Of2Guard()
+    {
+        var dbContextFactory = SetupDbContextFactory();
+        // A real logger is needed because a 2-of-3 gets PAST the 2-of-2 guard into normal finalisation,
+        // which (with dummy keys and no nbxplorer) logs and returns a generic error — the point being it is
+        // NOT the 2-of-2 rejection.
+        var logger = new Mock<ILogger<WalletRepository>>();
+        var walletRepository = new WalletRepository(null, logger.Object, dbContextFactory.Object, null, null, null);
+
+        var wallet = new Wallet { Name = "ok", MofN = 2, Keys = new List<Key> { DummyKey(), DummyKey(), DummyKey() } };
+
+        var (_, message) = await walletRepository.FinaliseWallet(wallet);
+
+        message.Should().NotBe(Wallet.TwoOfTwoNotAllowedMessage);
+    }
+
+    [Fact]
+    public async Task AddAsync_RejectsAPrePopulated2Of2()
+    {
+        var dbContextFactory = SetupDbContextFactory();
+        var walletRepository = new WalletRepository(null, null, dbContextFactory.Object, null, null, null);
+
+        var wallet = new Wallet { Name = "bad", MofN = 2, Keys = new List<Key> { DummyKey(), DummyKey() } };
+
+        var (ok, message) = await walletRepository.AddAsync(wallet);
+
+        ok.Should().BeFalse();
+        message.Should().Be(Wallet.TwoOfTwoNotAllowedMessage);
+    }
+
     [Fact]
     public async Task ImportBIP39Wallet_WhenValidInput_ShouldReturnSuccess()
     {
