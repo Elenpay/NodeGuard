@@ -11,6 +11,59 @@ public class WalletTests
 {
     private InternalWallet _internalWallet = CreateWallet.CreateInternalWallet();
 
+    private static NodeGuard.Data.Models.Key K() => new() { Name = "k", XPUB = "x" };
+
+    [Fact]
+    void IsEffectivelySingleSigTwoOfTwo_TrueForNodeGuardCosigned2Of2()
+    {
+        // 1 human key + NodeGuard's internal key, threshold 2 => NodeGuard auto-co-signs => single human.
+        var wallet = new Wallet { MofN = 2, Keys = new List<NodeGuard.Data.Models.Key> { K(), K() } };
+
+        wallet.RequiresInternalWalletSigning.Should().BeTrue();
+        wallet.IsEffectivelySingleSigTwoOfTwo.Should().BeTrue();
+    }
+
+    [Fact]
+    void IsEffectivelySingleSigTwoOfTwo_FalseFor2Of3()
+    {
+        // 2 human keys + internal, threshold 2 => NodeGuard does NOT auto-sign => two humans required.
+        var wallet = new Wallet { MofN = 2, Keys = new List<NodeGuard.Data.Models.Key> { K(), K(), K() } };
+
+        wallet.RequiresInternalWalletSigning.Should().BeFalse();
+        wallet.IsEffectivelySingleSigTwoOfTwo.Should().BeFalse();
+    }
+
+    [Fact]
+    void IsEffectivelySingleSigTwoOfTwo_FalseFor3Of3()
+    {
+        var wallet = new Wallet { MofN = 3, Keys = new List<NodeGuard.Data.Models.Key> { K(), K(), K() } };
+
+        wallet.RequiresInternalWalletSigning.Should().BeTrue();
+        wallet.IsEffectivelySingleSigTwoOfTwo.Should().BeFalse("3-of-3 still requires two human signatures");
+    }
+
+    [Fact]
+    void IsEffectivelySingleSigTwoOfTwo_FalseForWatchOnly2Of2()
+    {
+        // Imported descriptor => watch-only => NodeGuard never co-signs, so a 2-of-2 of external keys is fine.
+        var wallet = new Wallet
+        {
+            MofN = 2,
+            Keys = new List<NodeGuard.Data.Models.Key> { K(), K() },
+            ImportedOutputDescriptor = "wsh(multi(2,xpubA,xpubB))",
+        };
+
+        wallet.RequiresInternalWalletSigning.Should().BeFalse();
+        wallet.IsEffectivelySingleSigTwoOfTwo.Should().BeFalse();
+    }
+
+    [Fact]
+    void IsEffectivelySingleSigTwoOfTwo_FalseForHotAndBip39()
+    {
+        CreateWallet.SingleSig(_internalWallet).IsEffectivelySingleSigTwoOfTwo.Should().BeFalse();
+        CreateWallet.BIP39Singlesig().IsEffectivelySingleSigTwoOfTwo.Should().BeFalse();
+    }
+
     [Fact]
     void GetDerivationStrategy_NoKeys()
     {
