@@ -204,6 +204,14 @@ namespace NodeGuard.Data.Repositories
             type.SetCreationDatetime();
             type.SetUpdateDatetime();
 
+            // Defence in depth: reject a NodeGuard-co-signed 2-of-2 that arrives already populated (e.g. a
+            // direct/API insert). Normal UI creation adds the internal key after this call, so the wallet is
+            // not yet a 2-of-2 here — FinaliseWallet is the guard that catches that path.
+            if (type.IsEffectivelySingleSigTwoOfTwo)
+            {
+                return (false, Wallet.TwoOfTwoNotAllowedMessage);
+            }
+
 
             if (type.IsBIP39Imported || type.IsWatchOnly)
             {
@@ -332,6 +340,13 @@ namespace NodeGuard.Data.Repositories
             if (selectedWalletToFinalise.Keys.Count < selectedWalletToFinalise.MofN)
             {
                 return (false, "Invalid number of keys for the given threshold");
+            }
+
+            // A 2-of-2 co-signed by NodeGuard collapses to single-sig (one human + NodeGuard's automatic
+            // signature). Reject it here, where Keys and MofN are final, so it never becomes usable.
+            if (selectedWalletToFinalise.IsEffectivelySingleSigTwoOfTwo)
+            {
+                return (false, Wallet.TwoOfTwoNotAllowedMessage);
             }
 
             selectedWalletToFinalise.IsFinalised = true;
