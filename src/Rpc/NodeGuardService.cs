@@ -276,6 +276,30 @@ public class NodeGuardService : Nodeguard.NodeGuardService.NodeGuardServiceBase,
                 Amount = new Money(d.AmountSats, MoneyUnit.Satoshi).ToDecimal(MoneyUnit.BTC),
             }).ToList();
 
+            var mempoolFeesType = (MempoolRecommendedFeesType)request.MempoolFeeRate;
+
+            // For non-custom fee types, snapshot the recommended fee at request time. 
+            // Otherwise CustomFeeRate would be persisted as the proto
+            // default (0) and shown as "0 sat/vb", even though the actual fee is resolved live at PSBT build time.
+            decimal feeRate;
+            if (mempoolFeesType == MempoolRecommendedFeesType.CustomFee)
+            {
+                feeRate = request.CustomFeeRate;
+            }
+            else
+            {
+                var recommendedFeeRate = await _nbXplorerService.GetFeesByType(mempoolFeesType);   
+                if (recommendedFeeRate == null)
+                {
+                    _logger.LogWarning("Error getting recommended fee rate for type {feeType}, using 0", mempoolFeesType);
+                    feeRate = 0;
+                }
+                else
+                {
+                    feeRate = recommendedFeeRate.Value;
+                }
+            }
+
             withdrawalRequest = new WalletWithdrawalRequest()
             {
                 WalletId = request.WalletId,
@@ -286,8 +310,8 @@ public class NodeGuardService : Nodeguard.NodeGuardService.NodeGuardServiceBase,
                     : WalletWithdrawalRequestStatus.Pending,
                 RequestMetadata = request.RequestMetadata,
                 Changeless = request.Changeless,
-                MempoolRecommendedFeesType = (MempoolRecommendedFeesType)request.MempoolFeeRate,
-                CustomFeeRate = request.CustomFeeRate,
+                MempoolRecommendedFeesType = mempoolFeesType,
+                CustomFeeRate = feeRate,
                 ReferenceId = request.ReferenceId
             };
 
