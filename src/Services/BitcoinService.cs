@@ -408,6 +408,35 @@ namespace NodeGuard.Services
                 }
 
 
+                // Defence in depth: approvals were bound to the template at insert, but the COMBINED PSBT is
+                // what actually gets signed and broadcast, so re-verify it here, immediately before the
+                // internal wallet applies its signature. Matching the template's txid transitively guarantees
+                // the destinations and amounts are those the request was approved for, since NodeGuard built
+                // that template itself from WalletWithdrawalRequestDestinations.
+                var templatePsbtString = walletWithdrawalRequest.WalletWithdrawalRequestPSBTs
+                    ?.FirstOrDefault(x => x.IsTemplatePSBT)?.PSBT;
+
+                if (string.IsNullOrWhiteSpace(templatePsbtString))
+                {
+                    var noTemplate =
+                        $"No template PSBT found for withdrawal request:{walletWithdrawalRequest.Id}, refusing to sign";
+                    _logger.LogError(noTemplate);
+
+                    throw new ArgumentException(noTemplate);
+                }
+
+                var templatePsbt = PSBT.Parse(templatePsbtString, CurrentNetworkHelper.GetCurrentNetwork());
+                if (psbtToSign.GetGlobalTransaction().GetHash() !=
+                    templatePsbt.GetGlobalTransaction().GetHash())
+                {
+                    var mismatch =
+                        $"The PSBT to be signed for withdrawal request:{walletWithdrawalRequest.Id} does not " +
+                        "match the approved transaction, refusing to sign";
+                    _logger.LogError(mismatch);
+
+                    throw new ArgumentException(mismatch);
+                }
+
                 var derivationStrategyBase = walletWithdrawalRequest.Wallet.GetDerivationStrategy();
 
                 PSBT? signedCombinedPSBT = null;
@@ -458,7 +487,14 @@ namespace NodeGuard.Services
                 var transactionCheckResult = tx.Check();
                 if (transactionCheckResult != TransactionCheckResult.Success)
                 {
-                    _logger.LogError("Invalid tx check reason: {Reason}", transactionCheckResult.Humanize());
+                    // This used to log and fall through to BroadcastAsync. A transaction failing its own
+                    // sanity check must never be broadcast; the channel-open path already aborts here.
+                    var invalidTx =
+                        $"Invalid tx for withdrawal request:{walletWithdrawalRequest.Id}, " +
+                        $"reason: {transactionCheckResult.Humanize()}";
+                    _logger.LogError(invalidTx);
+
+                    throw new ArgumentException(invalidTx, nameof(tx));
                 }
 
                 var node = (await _nodeRepository.GetAllManagedByNodeGuard()).FirstOrDefault();

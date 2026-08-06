@@ -737,12 +737,44 @@ public class BitcoinServiceTests
         result.Should().BeEquivalentTo(psbt);
     }
 
+    /// <summary>
+    /// Builds the unsigned template PSBT for the same transaction a set of approver PSBTs signs. Signing does
+    /// not alter the transaction, so the template shares its txid — which is exactly what PerformWithdrawal's
+    /// binding check verifies before the internal wallet signs.
+    /// </summary>
+    private static string TemplateFor(string signedPsbtBase64)
+    {
+        var network = CurrentNetworkHelper.GetCurrentNetwork();
+        var transaction = PSBT.Parse(signedPsbtBase64, network).GetGlobalTransaction();
+
+        return PSBT.FromTransaction(transaction, network).ToBase64();
+    }
+
     [Fact]
     async Task PerformWithdrawal_SingleSigSucceeds()
     {
         // Arrange
         var wallet = CreateWallet.SingleSig(_internalWallet);
-        var psbt = "cHNidP8BAIkBAAAAAQAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA/////wD/////AkBCDwAAAAAAIgAgPaPWaBQgTxHOMVfMfpX21blroUe8KAd6w2gLRelFuiCsUYkAAAAAACIAIDx3862ZOy+vKdDZ4oysyRZX0HARoqQ9LqqK2ukxoopiAAAAAE8BBDWHzwN9uUaNAAAAAYPR/OiA1LbTzxbLPvbXvtAwckIG3g+0T1zblR/ZodaiA5zBFsigPpL8htN/KJ/Ph8SPvQA/K+mSNXTSA0hgvPNuEO0CEMgwAACAAQAAgAEAAAAAAQEfgJaYAAAAAAAWABTpOvUBMqNMfl7P81etji6x4fXrMwAAAA==";
+
+        // Built rather than hardcoded. The previous literal spent a NULL outpoint (32 zero bytes with index
+        // 0xFFFFFFFF), which NBitcoin classifies as a coinbase, so tx.Check() rejected it. That went unnoticed
+        // while the result was merely logged; now that PerformWithdrawal refuses to broadcast a transaction
+        // failing its own sanity check, the fixture has to be a transaction that could really exist.
+        var network = CurrentNetworkHelper.GetCurrentNetwork();
+        var walletScript = (wallet.GetDerivationStrategy() as StandardDerivationStrategyBase)!
+            .GetDerivation(KeyPath.Parse("0/0")).ScriptPubKey;
+
+        var fundingTx = network.CreateTransaction();
+        fundingTx.Outputs.Add(new TxOut(Money.Coins(0.1m), walletScript));
+        var walletCoin = new Coin(fundingTx, 0U);
+
+        var spendTx = network.CreateTransaction();
+        spendTx.Inputs.Add(new TxIn(walletCoin.Outpoint));
+        spendTx.Outputs.Add(new TxOut(Money.Coins(0.01m),
+            BitcoinAddress.Create("bcrt1q8k3av6q5yp83rn332lx8a90k6kukhg28hs5qw7krdq95t629hgsqk6ztmf", network)));
+
+        var psbt = PSBT.FromTransaction(spendTx, network).AddCoins(walletCoin).ToBase64();
+        var approvedTxId = spendTx.GetHash();
         var walletWithdrawalRequestPSBTs = new List<WalletWithdrawalRequestPSBT>()
         {
             new ()
@@ -793,8 +825,10 @@ public class BitcoinServiceTests
                     {
                         new UTXO()
                         {
-                            Value = new Money((long)10000000),
-                            ScriptPubKey = (wallet.GetDerivationStrategy() as StandardDerivationStrategyBase)!.GetDerivation(KeyPath.Parse("0/0")).ScriptPubKey,
+                            // Must match the PSBT's input so the embedded signer finds the keypath.
+                            Outpoint = walletCoin.Outpoint,
+                            Value = walletCoin.Amount,
+                            ScriptPubKey = walletScript,
                             KeyPath = KeyPath.Parse("0/0")
                         }
                     }
@@ -813,6 +847,79 @@ public class BitcoinServiceTests
 
         // Assert
         await act.Should().NotThrowAsync();
+
+        // The transaction reaching the network must be the one that was approved.
+        nbXplorerService.Verify(x => x.BroadcastAsync(
+            It.Is<Transaction>(tx => tx.GetHash() == approvedTxId), default, default), Times.Once);
+    }
+
+    /// <summary>
+    /// Pins the invariant that a request has AT MOST ONE template PSBT row.
+    ///
+    /// PerformWithdrawal's hot-wallet branch selects the template with .Single(x => x.IsTemplatePSBT), so a
+    /// second tagged template makes every hot-wallet withdrawal throw. This matters because
+    /// GenerateTemplatePSBT already persists the template itself: Withdrawals.razor and TransferFundsModal used
+    /// to store a redundant second copy (untagged, which silently inflated the signature count), and "just tag
+    /// it" would have broken this path instead. Both redundant stores were removed. If either is reintroduced
+    /// as a tagged row, this test explains the failure.
+    /// </summary>
+    [Fact]
+    async Task PerformWithdrawal_WithDuplicateTemplateRows_FailsLoudly()
+    {
+        // Arrange
+        var wallet = CreateWallet.SingleSig(_internalWallet);
+        var network = CurrentNetworkHelper.GetCurrentNetwork();
+        var walletScript = (wallet.GetDerivationStrategy() as StandardDerivationStrategyBase)!
+            .GetDerivation(KeyPath.Parse("0/0")).ScriptPubKey;
+
+        var fundingTx = network.CreateTransaction();
+        fundingTx.Outputs.Add(new TxOut(Money.Coins(0.1m), walletScript));
+        var walletCoin = new Coin(fundingTx, 0U);
+
+        var spendTx = network.CreateTransaction();
+        spendTx.Inputs.Add(new TxIn(walletCoin.Outpoint));
+        spendTx.Outputs.Add(new TxOut(Money.Coins(0.01m),
+            BitcoinAddress.Create("bcrt1q8k3av6q5yp83rn332lx8a90k6kukhg28hs5qw7krdq95t629hgsqk6ztmf", network)));
+
+        var templateBase64 = PSBT.FromTransaction(spendTx, network).AddCoins(walletCoin).ToBase64();
+
+        var withdrawalRequest = new WalletWithdrawalRequest
+        {
+            Id = 1,
+            Status = WalletWithdrawalRequestStatus.PSBTSignaturesPending,
+            Wallet = wallet,
+            WalletWithdrawalRequestPSBTs = new List<WalletWithdrawalRequestPSBT>
+            {
+                new() { IsTemplatePSBT = true, PSBT = templateBase64 },
+                new() { IsTemplatePSBT = true, PSBT = templateBase64 }, // the duplicate
+            },
+            WalletWithdrawalRequestDestinations = new List<WalletWithdrawalRequestDestination>
+            {
+                new()
+                {
+                    Address = "bcrt1q8k3av6q5yp83rn332lx8a90k6kukhg28hs5qw7krdq95t629hgsqk6ztmf",
+                    Amount = 0.01m,
+                },
+            },
+        };
+
+        var walletWithdrawalRequestRepository = new Mock<IWalletWithdrawalRequestRepository>();
+        walletWithdrawalRequestRepository.Setup(x => x.GetById(It.IsAny<int>())).ReturnsAsync(withdrawalRequest);
+        walletWithdrawalRequestRepository.Setup(x => x.Update(It.IsAny<WalletWithdrawalRequest>()))
+            .Returns((true, null));
+
+        var nbXplorerService = new Mock<INBXplorerService>();
+        var bitcoinService = new BitcoinService(_logger, null, walletWithdrawalRequestRepository.Object, null,
+            null, null, nbXplorerService.Object, null);
+
+        // Act
+        var act = () => bitcoinService.PerformWithdrawal(withdrawalRequest);
+
+        // Assert
+        await act.Should().ThrowAsync<Exception>(
+            "two template rows must not be silently tolerated on the signing path");
+
+        nbXplorerService.Verify(x => x.BroadcastAsync(It.IsAny<Transaction>(), default, default), Times.Never);
     }
 
     [Fact]
@@ -824,6 +931,16 @@ public class BitcoinServiceTests
         var psbt2 = "cHNidP8BAIkBAAAAATqZB6sbll4a0AJOf+RGbdqw07G/O9FatkFr+PDJAy+EAQAAAAD/////AkBCDwAAAAAAIgAgTlHqBosTtDYNNC59Qaz2968zru/mbl0l3tylEw+bKs2YTiZ3AAAAACIAINbjv3PBr8yjQit+5PSOCXdJgwfIoJ3Hv0HMD8+di5CSAAAAAE8BBDWHzwMvESQsgAAAAfw77kI6AYzrbSJqBmMojtD7XuD6nXkKs3DQMOBHMObIA4COLhzUgr3QcZaUPFqBM9Fpr4YCK2uwOBdxZE7AdETXEB/M5N4wAACAAQAAgAEAAIBPAQQ1h88DVqwD9IAAAAH5CK5KZrD/oasUtVrwzkjypwIly5AQkC1pAa+QuT6PgQJRrxXgW7i36sGJWz9fR//v7NgyGgLvIimPidCiA33wYBBg86CzMAAAgAEAAIABAACATwEENYfPA325Ro0AAAAAgN63GqLxTu1/NyL0SV4a0Hn1n8Dzg+Wye9nbb16ZISADr+s+pcKnDcSqKHKWSl4v8Rcq80ZqG/7QObYmZUl/xUYQ7QIQyDAAAIABAACAAAAAAAABASsAlDV3AAAAACIAIAF9guNzq1T08+t+DdFQoBYxMjvBQRTYuFmw2ppaQKvfIgIC0ERV00oCvIbrLIL57dugiHhoc3blZgCOzYK2j+uDBbZHMEQCIF6mZdDgN+Q++oSO0lsvDYsTvCwxlwyGbvDAsDf8VV0RAiAKyQ9ZTd0JgB4rsSC+2aHdPjzWYU0BdeVGel8bDHwatAEBBWlSIQLQRFXTSgK8hussgvnt26CIeGhzduVmAI7NgraP64MFtiEDHvfaz8S4WW4LqTCUmaadde52cCEeX0/qJryg6ukbY4YhA/dSE/9TMSUTREqX5s2YWHSe8Obyw+HSZ+xuyVTUPMUmU64iBgLQRFXTSgK8hussgvnt26CIeGhzduVmAI7NgraP64MFthhg86CzMAAAgAEAAIABAACAAAAAAAsAAAAiBgMe99rPxLhZbgupMJSZpp117nZwIR5fT+omvKDq6RtjhhgfzOTeMAAAgAEAAIABAACAAAAAAAsAAAAiBgP3UhP/UzElE0RKl+bNmFh0nvDm8sPh0mfsbslU1DzFJhjtAhDIMAAAgAEAAIAAAAAAAAAAAAsAAAAAAAA=";
         var walletWithdrawalRequestPSBTs = new List<WalletWithdrawalRequestPSBT>()
         {
+            // PerformWithdrawal verifies the combined PSBT still describes the approved transaction, so the
+            // fixture must carry the template row that production always has — GenerateTemplatePSBT creates it
+            // before approval is even possible.
+            new ()
+            {
+                IsFinalisedPSBT = false,
+                IsInternalWalletPSBT = false,
+                IsTemplatePSBT = true,
+                PSBT = TemplateFor(psbt1),
+            },
             new ()
             {
                 IsFinalisedPSBT = false,
@@ -910,6 +1027,16 @@ public class BitcoinServiceTests
         var psbt2 = "cHNidP8BAIkBAAAAATqZB6sbll4a0AJOf+RGbdqw07G/O9FatkFr+PDJAy+EAQAAAAD/////AkBCDwAAAAAAIgAgTlHqBosTtDYNNC59Qaz2968zru/mbl0l3tylEw+bKs2YTiZ3AAAAACIAINbjv3PBr8yjQit+5PSOCXdJgwfIoJ3Hv0HMD8+di5CSAAAAAE8BBDWHzwMvESQsgAAAAfw77kI6AYzrbSJqBmMojtD7XuD6nXkKs3DQMOBHMObIA4COLhzUgr3QcZaUPFqBM9Fpr4YCK2uwOBdxZE7AdETXEB/M5N4wAACAAQAAgAEAAIBPAQQ1h88DVqwD9IAAAAH5CK5KZrD/oasUtVrwzkjypwIly5AQkC1pAa+QuT6PgQJRrxXgW7i36sGJWz9fR//v7NgyGgLvIimPidCiA33wYBBg86CzMAAAgAEAAIABAACATwEENYfPA325Ro0AAAAAgN63GqLxTu1/NyL0SV4a0Hn1n8Dzg+Wye9nbb16ZISADr+s+pcKnDcSqKHKWSl4v8Rcq80ZqG/7QObYmZUl/xUYQ7QIQyDAAAIABAACAAAAAAAABASsAlDV3AAAAACIAIAF9guNzq1T08+t+DdFQoBYxMjvBQRTYuFmw2ppaQKvfIgIC0ERV00oCvIbrLIL57dugiHhoc3blZgCOzYK2j+uDBbZHMEQCIF6mZdDgN+Q++oSO0lsvDYsTvCwxlwyGbvDAsDf8VV0RAiAKyQ9ZTd0JgB4rsSC+2aHdPjzWYU0BdeVGel8bDHwatAEBBWlSIQLQRFXTSgK8hussgvnt26CIeGhzduVmAI7NgraP64MFtiEDHvfaz8S4WW4LqTCUmaadde52cCEeX0/qJryg6ukbY4YhA/dSE/9TMSUTREqX5s2YWHSe8Obyw+HSZ+xuyVTUPMUmU64iBgLQRFXTSgK8hussgvnt26CIeGhzduVmAI7NgraP64MFthhg86CzMAAAgAEAAIABAACAAAAAAAsAAAAiBgMe99rPxLhZbgupMJSZpp117nZwIR5fT+omvKDq6RtjhhgfzOTeMAAAgAEAAIABAACAAAAAAAsAAAAiBgP3UhP/UzElE0RKl+bNmFh0nvDm8sPh0mfsbslU1DzFJhjtAhDIMAAAgAEAAIAAAAAAAAAAAAsAAAAAAAA=";
         var walletWithdrawalRequestPSBTs = new List<WalletWithdrawalRequestPSBT>()
         {
+            // PerformWithdrawal verifies the combined PSBT still describes the approved transaction, so the
+            // fixture must carry the template row that production always has — GenerateTemplatePSBT creates it
+            // before approval is even possible.
+            new ()
+            {
+                IsFinalisedPSBT = false,
+                IsInternalWalletPSBT = false,
+                IsTemplatePSBT = true,
+                PSBT = TemplateFor(psbt1),
+            },
             new ()
             {
                 IsFinalisedPSBT = false,
@@ -1435,5 +1562,196 @@ public class BitcoinServiceTests
         // Assert
         result.Should().NotBeNull();
         result.ToBase64().Should().Be(existingTemplatePSBT); // Should return the existing template PSBT
+    }
+
+    /// <summary>
+    /// Precondition for <see cref="PerformWithdrawal_DoesNotCoSignOrBroadcastASubstitutedTransaction"/>:
+    /// on a wallet where NodeGuard is a required co-signer (Keys.Count == MofN, here a 2-of-2), a single
+    /// human approval already satisfies the threshold, so PerformWithdrawal proceeds to have the internal
+    /// wallet sign. That is precisely why the PSBT it signs must be bound to the approved template.
+    /// </summary>
+    [Fact]
+    public void PerformWithdrawal_2Of2_SingleHumanApprovalTriggersInternalCoSigning()
+    {
+        var fixture = new SubstitutionFixture();
+
+        fixture.Wallet.RequiresInternalWalletSigning.Should().BeTrue(
+            "the fixture must be a wallet where NodeGuard is a required co-signer (Keys.Count == MofN)");
+
+        var request = fixture.BuildRequest(fixture.AttackerApprovalBase64);
+
+        request.NumberOfSignaturesCollected.Should().Be(1, "the fixture stores exactly one human approval");
+        request.AreAllRequiredHumanSignaturesCollected.Should().BeTrue(
+            "one human signature plus NodeGuard's own is the whole 2-of-2");
+    }
+
+    /// <summary>
+    /// NodeGuard's internal wallet must not co-sign or broadcast a transaction that differs from the
+    /// withdrawal request's approved template. The only human approval here is a valid signature over a
+    /// DIFFERENT transaction paying an attacker-controlled address; PerformWithdrawal must refuse it and
+    /// broadcast nothing, so a lone keyholder cannot redirect funds by substituting the transaction.
+    /// </summary>
+    [Fact]
+    public async Task PerformWithdrawal_DoesNotCoSignOrBroadcastASubstitutedTransaction()
+    {
+        var fixture = new SubstitutionFixture();
+        var request = fixture.BuildRequest(fixture.AttackerApprovalBase64);
+
+        var walletWithdrawalRequestRepository = new Mock<IWalletWithdrawalRequestRepository>();
+        walletWithdrawalRequestRepository.Setup(x => x.GetById(It.IsAny<int>())).ReturnsAsync(request);
+        walletWithdrawalRequestRepository.Setup(x => x.Update(It.IsAny<WalletWithdrawalRequest>()))
+            .Returns((true, null));
+
+        var nbXplorerService = new Mock<INBXplorerService>();
+        nbXplorerService.Setup(x => x.GetUTXOsAsync(It.IsAny<DerivationStrategyBase>(), default))
+            .ReturnsAsync(fixture.BuildUtxoChanges());
+
+        Transaction? broadcast = null;
+        nbXplorerService.Setup(x => x.BroadcastAsync(It.IsAny<Transaction>(), default, default))
+            .Callback<Transaction, bool, CancellationToken>((tx, _, _) => broadcast = tx)
+            .ReturnsAsync(new BroadcastResult { Success = true });
+
+        var nodeRepository = new Mock<INodeRepository>();
+        nodeRepository.Setup(x => x.GetAllManagedByNodeGuard(It.IsAny<bool>()))
+            .ReturnsAsync(new List<Node> { new() { PubKey = "02" + new string('a', 64), Name = "test-node" } });
+
+        var bitcoinService = new BitcoinService(_logger, null,
+            walletWithdrawalRequestRepository.Object, null, nodeRepository.Object, null,
+            nbXplorerService.Object, null);
+
+        // Act
+        var act = () => bitcoinService.PerformWithdrawal(request);
+
+        // Assert — the substitution is refused before signing, and nothing is broadcast.
+        await act.Should().ThrowAsync<Exception>();
+        broadcast.Should().BeNull(
+            "a withdrawal whose only approval describes a different transaction must never reach broadcast");
+    }
+
+    /// <summary>
+    /// A cold 2-of-2 wallet: one human key (whose seed the substitution uses) plus NodeGuard's internal
+    /// co-signing key, funded with a single UTXO. Produces the approved template plus the substitute — a
+    /// valid signature over a different transaction paying a different destination.
+    /// </summary>
+    private sealed class SubstitutionFixture
+    {
+        private const string HumanSeed =
+            "social mango annual basic work brain economy one safe physical junk other toy valid load cook napkin maple runway island oil fan legend stem";
+
+        private static readonly Network Network = Network.RegTest;
+
+        internal Wallet Wallet { get; }
+        internal BitcoinAddress ApprovedAddress { get; }
+        internal BitcoinAddress AttackerAddress { get; }
+        internal Money ApprovedAmount { get; } = Money.Coins(0.01m);
+        internal Money AttackerAmount { get; } = Money.Coins(0.09m);
+        internal string TemplateBase64 { get; }
+        internal string AttackerApprovalBase64 { get; }
+
+        private readonly ScriptCoin _coin;
+        private readonly KeyPath _utxoKeyPath = KeyPath.Parse("0/0");
+        private readonly Script _walletScript;
+
+        internal SubstitutionFixture()
+        {
+            var internalWallet = CreateWallet.CreateInternalWallet();
+            var humanKey = CreateWallet.CreateUserKey("human key", "human-user", HumanSeed);
+
+            // Replica of CreateWallet.CreateInternalKey, which is private.
+            var internalKey = new Key
+            {
+                Name = "NodeGuard Co-signing Key",
+                XPUB = internalWallet.GetXpubForAccount("0"),
+                InternalWalletId = internalWallet.Id,
+                Path = internalWallet.GetKeyPathForAccount("0"),
+                MasterFingerprint = internalWallet.MasterFingerprint,
+            };
+
+            // Keys.Count == MofN  =>  RequiresInternalWalletSigning is true.
+            Wallet = new Wallet
+            {
+                Id = 1,
+                MofN = 2,
+                Keys = new List<Key> { humanKey, internalKey },
+                Name = "2-of-2 wallet",
+                WalletAddressType = WalletAddressType.NativeSegwit,
+                InternalWallet = internalWallet,
+                InternalWalletId = internalWallet.Id,
+                IsFinalised = true,
+                InternalWalletSubDerivationPath = "0",
+                InternalWalletMasterFingerprint = internalWallet.MasterFingerprint,
+            };
+
+            var derivation = (Wallet.GetDerivationStrategy() as StandardDerivationStrategyBase)!
+                .GetDerivation(_utxoKeyPath);
+            _walletScript = derivation.ScriptPubKey;
+
+            var funding = Network.CreateTransaction();
+            funding.Outputs.Add(new TxOut(Money.Coins(0.1m), _walletScript));
+            _coin = new Coin(funding, 0U).ToScriptCoin(derivation.Redeem);
+
+            ApprovedAddress = new NBitcoin.Key().PubKey.GetAddress(ScriptPubKeyType.Segwit, Network);
+            AttackerAddress = new NBitcoin.Key().PubKey.GetAddress(ScriptPubKeyType.Segwit, Network);
+
+            TemplateBase64 = ToPsbt(Spend(ApprovedAddress, ApprovedAmount)).ToBase64();
+
+            // A valid signature over a different transaction, made with the key the signer legitimately holds.
+            var attackerPsbt = ToPsbt(Spend(AttackerAddress, AttackerAmount));
+            attackerPsbt.SignWithKeys(DeriveHumanPrivateKey(humanKey));
+            AttackerApprovalBase64 = attackerPsbt.ToBase64();
+        }
+
+        private Transaction Spend(BitcoinAddress destination, Money amount)
+        {
+            var tx = Network.CreateTransaction();
+            tx.Inputs.Add(new TxIn(_coin.Outpoint));
+            tx.Outputs.Add(new TxOut(amount, destination.ScriptPubKey));
+            return tx;
+        }
+
+        private PSBT ToPsbt(Transaction tx) => PSBT.FromTransaction(tx, Network).AddCoins(_coin);
+
+        // Mirrors Wallet.DeriveUtxoPrivateKey for the human key: master -> account path -> utxo path.
+        private NBitcoin.Key DeriveHumanPrivateKey(Key humanKey)
+            => new Mnemonic(HumanSeed)
+                .DeriveExtKey()
+                .GetWif(Network)
+                .Derive(KeyPath.Parse(humanKey.Path!))
+                .Derive(_utxoKeyPath)
+                .PrivateKey;
+
+        internal WalletWithdrawalRequest BuildRequest(string humanApprovalBase64) => new()
+        {
+            Id = 1,
+            Status = WalletWithdrawalRequestStatus.PSBTSignaturesPending,
+            Wallet = Wallet,
+            WalletId = Wallet.Id,
+            WalletWithdrawalRequestPSBTs = new List<WalletWithdrawalRequestPSBT>
+            {
+                new() { IsTemplatePSBT = true, PSBT = TemplateBase64 },
+                new() { IsTemplatePSBT = false, PSBT = humanApprovalBase64, SignerId = "human-user" },
+            },
+            WalletWithdrawalRequestDestinations = new List<WalletWithdrawalRequestDestination>
+            {
+                new() { Address = ApprovedAddress.ToString(), Amount = ApprovedAmount.ToUnit(MoneyUnit.BTC) },
+            },
+        };
+
+        internal UTXOChanges BuildUtxoChanges() => new()
+        {
+            Confirmed = new UTXOChange
+            {
+                UTXOs = new List<UTXO>
+                {
+                    new()
+                    {
+                        Outpoint = _coin.Outpoint,
+                        Value = _coin.Amount,
+                        ScriptPubKey = _walletScript,
+                        KeyPath = _utxoKeyPath,
+                    },
+                },
+            },
+        };
     }
 }
