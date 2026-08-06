@@ -510,7 +510,9 @@ namespace NodeGuard
 
             //app.UseHttpsRedirection();
 
-            app.UseStaticFiles();
+            // MapStaticAssets (net9+): serves static files with Cache-Control: no-cache + ETag
+            // so browsers always revalidate and pick up new assets after a deploy.
+            app.MapStaticAssets();
 
             app.UseRouting();
 
