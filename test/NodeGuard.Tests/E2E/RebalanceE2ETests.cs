@@ -72,6 +72,11 @@ public class RebalanceE2ETests
         // 1. Open Alice→Bob THROUGH NodeGuard (option B). Retry briefly in case the dev hot
         //    wallet is still being funded by DbInitializer when we connect.
         var walletId = int.Parse(Env("E2E_HOT_WALLET_ID", "3"));
+
+        // Other E2E tests sharing this collection spend down the wallet's one-time seed, so
+        // top it up before relying on it for the channel-funding UTXO.
+        await E2EFundingHelper.FundHotWalletAsync(client, headers, rpc, walletId, Money.Coins(1m), _output.WriteLine);
+
         var openReq = new OpenChannelRequest
         {
             SourcePubKey = alice.PubKey,
@@ -138,11 +143,7 @@ public class RebalanceE2ETests
         }, attempts: 90, delay: TimeSpan.FromSeconds(4), what: "GetNodes (NodeGuard readiness)");
     }
 
-    private async Task MineAsync(RPCClient rpc, int blocks)
-    {
-        var addr = await rpc.GetNewAddressAsync();
-        await rpc.GenerateToAddressAsync(blocks, addr);
-    }
+    private async Task MineAsync(RPCClient rpc, int blocks) => await E2EFundingHelper.MineAsync(rpc, blocks);
 
     private async Task<T> RetryAsync<T>(Func<Task<T>> action, int attempts, TimeSpan delay, string what)
     {
