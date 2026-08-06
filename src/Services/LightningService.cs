@@ -187,7 +187,7 @@ namespace NodeGuard.Services
         /// </summary>
         Task<long?> GetLocalOutboundFeeRatePpmByPeerAsync
         (Node node, string peerPubkey);
-        
+
         /// <summary>
         /// Sets the channel fee policy for a given channel identified by its chanPoint
         /// </summary>
@@ -800,7 +800,8 @@ namespace NodeGuard.Services
                 SourceNodeId = sourceNodeId,
                 DestinationNodeId = destinationNodeId,
                 CreatedByNodeGuard = true,
-                IsPrivate = currentChannel.Private
+                IsPrivate = currentChannel.Private,
+                IsDynamicFeeEnabled = source.DynamicFeeManagementEnabled
             };
 
             return channel;
