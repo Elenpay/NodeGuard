@@ -17,6 +17,7 @@
  *
  */
 
+using System.Runtime.CompilerServices;
 using NodeGuard.Data.Repositories.Interfaces;
 using NodeGuard.Jobs;
 using NodeGuard.Services;
@@ -96,5 +97,94 @@ public class NodeChannelSubscribeJobTests
         // Assert
         Assert.Equal(Channel.ChannelStatus.Closed, channelToClose.Status);
         _channelRepositoryMock.Verify(repo => repo.Update(channelToClose), Times.Once);
+    }
+
+    [Fact]
+    public async Task NodeUpdateManagement_SetsDynamicFeeFromLocalNode_WhenLocalNodeIsInitiator()
+    {
+        // Arrange
+        var localNode = new Node { Id = 1, Endpoint = "10.0.0.1", DynamicFeeManagementEnabled = true };
+        var remoteNode = new Node { Id = 2, PubKey = "03remote", DynamicFeeManagementEnabled = false }; // unmanaged (no Endpoint)
+
+        var channelEventUpdate = new ChannelEventUpdate
+        {
+            Type = ChannelEventUpdate.Types.UpdateType.OpenChannel,
+            OpenChannel = new Lnrpc.Channel
+            {
+                ChanId = 123,
+                ChannelPoint = "abc:0",
+                Capacity = 1000,
+                RemotePubkey = remoteNode.PubKey,
+                CloseAddress = "bcrt1qclose",
+                Initiator = true,
+            },
+        };
+
+        var captured = SetupOpenChannelCapture(remoteNode);
+
+        // Act
+        await _nodeUpdateManager.NodeUpdateManagement(channelEventUpdate, localNode);
+
+        // Assert: source is the initiator (local node) and the flag follows it
+        Assert.NotNull(captured.Value);
+        Assert.Equal(localNode.Id, captured.Value!.SourceNodeId);
+        Assert.True(captured.Value!.IsDynamicFeeEnabled);
+    }
+
+    [Fact]
+    public async Task NodeUpdateManagement_SetsDynamicFeeFromLocalNode_WhenBothManagedAndLocalNodeIsNotInitiator()
+    {
+        // Arrange: both nodes managed. The handler de-dupes by bailing out on the initiator's event,
+        // so the record is created here on the non-initiator's event. The source is the initiator
+        // (the remote node), while the dynamic-fee flag follows the local subscribing node.
+        var localNode = new Node { Id = 2, Endpoint = "10.0.0.2", DynamicFeeManagementEnabled = true };
+        var remoteNode = new Node { Id = 1, PubKey = "03remote", Endpoint = "10.0.0.1", DynamicFeeManagementEnabled = false };
+
+        var channelEventUpdate = new ChannelEventUpdate
+        {
+            Type = ChannelEventUpdate.Types.UpdateType.OpenChannel,
+            OpenChannel = new Lnrpc.Channel
+            {
+                ChanId = 123,
+                ChannelPoint = "abc:0",
+                Capacity = 1000,
+                RemotePubkey = remoteNode.PubKey,
+                CloseAddress = "bcrt1qclose",
+                Initiator = false,
+            },
+        };
+
+        var captured = SetupOpenChannelCapture(remoteNode);
+
+        // Act
+        await _nodeUpdateManager.NodeUpdateManagement(channelEventUpdate, localNode);
+
+        // Assert: source is the initiator (remote node), and the flag follows the local subscribing node
+        Assert.NotNull(captured.Value);
+        Assert.Equal(remoteNode.Id, captured.Value!.SourceNodeId);
+        Assert.Equal(localNode.DynamicFeeManagementEnabled, captured.Value!.IsDynamicFeeEnabled);
+    }
+
+    /// <summary>
+    /// Wires the node/channel repositories so an OpenChannel event reaches AddAsync, and returns a
+    /// holder that captures the channel the handler tries to persist.
+    /// </summary>
+    private StrongBox<Channel?> SetupOpenChannelCapture(Node remoteNode)
+    {
+        var captured = new StrongBox<Channel?>(null);
+        _nodeRepositoryMock
+            .Setup(r => r.GetOrCreateByPubKey(remoteNode.PubKey, It.IsAny<ILightningService>()))
+            .ReturnsAsync(remoteNode);
+        _nodeRepositoryMock
+            .Setup(r => r.GetByPubkey(remoteNode.PubKey))
+            .ReturnsAsync(remoteNode);
+        _channelRepositoryMock
+            .Setup(r => r.GetByChanId(It.IsAny<ulong>()))
+            .ReturnsAsync((Channel?)null);
+        _channelRepositoryMock
+            .Setup(r => r.AddAsync(It.IsAny<Channel>()))
+            .Callback<Channel>(c => captured.Value = c)
+            .ReturnsAsync((true, (string?)null));
+        return captured;
     }
 }

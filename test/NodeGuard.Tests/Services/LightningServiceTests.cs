@@ -1679,6 +1679,63 @@ namespace NodeGuard.Services
             await act.Should().NotThrowAsync();
         }
 
+        [Theory]
+        [InlineData(true)]
+        [InlineData(false)]
+        public async Task CreateChannel_SetsIsDynamicFeeEnabled_FromSourceNode(bool dynamicFeeEnabled)
+        {
+            // Arrange
+            var source = new Node
+            {
+                Id = 1,
+                PubKey = "03b48034270e522e4033afdbe43383d66d426638927b940d09a8a7a0de4d96e807",
+                ChannelAdminMacaroon = "abc",
+                Endpoint = "10.0.0.1",
+                DynamicFeeManagementEnabled = dynamicFeeEnabled
+            };
+            const int destId = 2;
+
+            var channelPoint = new ChannelPoint
+            {
+                FundingTxidBytes =
+                    ByteString.CopyFromUtf8("e59fa8edcd772213239daef2834d9021d1aecc591d605b426ae32c4bec5fdd7d"),
+                OutputIndex = 1
+            };
+
+            // ListChannels must return the just-opened channel so CreateChannel can resolve its real ChanId
+            var listChannelsResponse = new ListChannelsResponse
+            {
+                Channels =
+                {
+                    new Lnrpc.Channel
+                    {
+                        ChanId = 123,
+                        Initiator = true,
+                        Private = false,
+                        ChannelPoint =
+                            $"{LightningHelper.DecodeTxId(channelPoint.FundingTxidBytes)}:{channelPoint.OutputIndex}"
+                    }
+                }
+            };
+
+            var lightningClientService = new Mock<ILightningClientService>();
+            lightningClientService
+                .Setup(x => x.ListChannels(It.IsAny<Node>(), It.IsAny<Lightning.LightningClient>()))
+                .ReturnsAsync(listChannelsResponse);
+
+            var lightningService = new LightningService(_logger,
+                null, null, null, null, null, null, null, null,
+                lightningClientService.Object,
+                null, null);
+
+            // Act
+            var channel = await lightningService.CreateChannel(source, destId, channelPoint, 1000);
+
+            // Assert: the dynamic-fee flag is derived from the source node's setting
+            channel.IsDynamicFeeEnabled.Should().Be(dynamicFeeEnabled);
+            channel.SourceNodeId.Should().Be(source.Id);
+        }
+
         [Fact]
         public async Task CloseChannel_Succeeds()
         {
