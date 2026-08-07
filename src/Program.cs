@@ -320,6 +320,30 @@ namespace NodeGuard
                         .StartNow().WithSimpleSchedule(ScheduleRoutingJob);
                 });
 
+                //Channel Fee Optimizer Job
+                q.AddJob<ChannelFeeOptimizerJob>(opts =>
+                {
+                    opts.DisallowConcurrentExecution();
+                    opts.WithIdentity(nameof(ChannelFeeOptimizerJob));
+                });
+
+                q.AddTrigger(opts =>
+                {
+                    opts.ForJob(nameof(ChannelFeeOptimizerJob))
+                        .WithIdentity($"{nameof(ChannelFeeOptimizerJob)}Trigger")
+                        .StartNow().WithSimpleSchedule(scheduleBuilder =>
+                        {
+                            if (Constants.IS_DEV_ENVIRONMENT)
+                            {
+                                scheduleBuilder.WithIntervalInMinutes(1).RepeatForever();
+                            }
+                            else
+                            {
+                                scheduleBuilder.WithIntervalInMinutes(Constants.ROUTING_ENGINE_JOB_INTERVAL_MINUTES).RepeatForever();
+                            }
+                        });
+                });
+
                 //Monitor Withdrawals Job
                 q.AddJob<MonitorWithdrawalsJob>(opts =>
                 {

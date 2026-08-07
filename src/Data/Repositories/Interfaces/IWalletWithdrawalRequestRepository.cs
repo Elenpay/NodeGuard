@@ -27,6 +27,7 @@ public interface IWalletWithdrawalRequestRepository : IBitcoinRequestRepository
 
     Task<List<WalletWithdrawalRequest>> GetByIds(List<int> ids);
     Task<List<WalletWithdrawalRequest>> GetByReferenceIds(List<string> referenceIds);
+    Task<WalletWithdrawalRequest?> GetByTxHash(string txHash);
 
     Task<List<WalletWithdrawalRequest>> GetAll();
 

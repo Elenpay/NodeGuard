@@ -348,14 +348,25 @@
             <CloseButton />
         </ModalHeader>
         <ModalBody>
-            <p>If you confirm to finalise this wallet, it will become a ready-to-use wallet for the system but at the
-                same time you won't be allowed to update it in terms of keys, thresholds and other configuration
-                parameters
-            </p>
+            @if (_selectedWalletToFinalise?.IsEffectivelySingleSigTwoOfTwo == true)
+            {
+                <Alert Color="Color.Danger" Visible>
+                    <AlertMessage>This wallet cannot be finalised</AlertMessage>
+                    <AlertDescription>@Wallet.TwoOfTwoNotAllowedMessage</AlertDescription>
+                </Alert>
+            }
+            else
+            {
+                <p>If you confirm to finalise this wallet, it will become a ready-to-use wallet for the system but at the
+                    same time you won't be allowed to update it in terms of keys, thresholds and other configuration
+                    parameters
+                </p>
+            }
         </ModalBody>
         <ModalFooter>
             <Button Color="Color.Secondary" Clicked="@CloseAndCleanFinaliseModal">Close</Button>
-            <Button Color="Color.Primary" Clicked="@FinaliseWallet">Finalise</Button>
+            <Button Color="Color.Primary" Clicked="@FinaliseWallet"
+                    Disabled="@(_selectedWalletToFinalise?.IsEffectivelySingleSigTwoOfTwo == true)">Finalise</Button>
 
         </ModalFooter>
     </ModalContent>
@@ -581,6 +592,7 @@
                                 {
                                     foreach (var (_, utxo, tags, isFrozen) in _detailsUTXOs)
                                     {
+                                        var isDust = ((Money)utxo.Value).Satoshi <= Constants.MINIMUM_UTXO_VALUE_SATS;
                                         <TableRow>
                                             <TableRowHeader class="utxo-tags">
                                                 <a href="@($"{Environment.GetEnvironmentVariable("MEMPOOL_ENDPOINT")}/tx/{utxo.Outpoint.Hash}#vout={utxo.Outpoint.N}")"
@@ -589,6 +601,10 @@
                                             <TableRowCell>@utxo.Confirmations</TableRowCell>
                                             <TableRowCell>@($"{utxo.Value} BTC")</TableRowCell>
                                             <TableRowCell class="utxo-tags">
+                                                @if (isDust)
+                                                {
+                                                    <Badge class="utxo-tag" Color="Color.Warning" Pill title="Dust UTXO, automatically excluded from coin selection">dust</Badge>
+                                                }
                                                 @if (tags.Any())
                                                 {
                                                     foreach (var data in tags.Select((tag, i) => new { tag, i }))
@@ -598,7 +614,7 @@
                                                 }
                                             </TableRowCell>
                                             <TableRowCell>
-                                                <Check TValue="bool" Checked="@isFrozen"
+                                                <Check TValue="bool" Checked="@isFrozen" Disabled="@isDust"
                                                        CheckedChanged="@((b) => ToggleUtxoFreeze(b, utxo))"></Check>
                                             </TableRowCell>
                                         </TableRow>
@@ -1336,6 +1352,24 @@ KeyPath($"0/{i}")).ScriptPubKey.GetDestinationAddress(CurrentNetworkHelper.GetCu
         var walletId = _selectedWalletToFinalise.Id;
         var walletName = _selectedWalletToFinalise.Name;
 
+        // Mirrors the repository guard: a NodeGuard-co-signed 2-of-2 is effectively single-sig, so refuse to
+        // finalise it. Checked here too in case the modal state is stale and the button was not disabled.
+        if (_selectedWalletToFinalise.IsEffectivelySingleSigTwoOfTwo)
+        {
+            ToastService.ShowError(Wallet.TwoOfTwoNotAllowedMessage);
+            await AuditService.LogAsync(
+                AuditActionType.Finalise,
+                AuditEventType.Failure,
+                AuditObjectType.Wallet,
+                walletId.ToString(),
+                new { Name = walletName, Error = Wallet.TwoOfTwoNotAllowedMessage });
+
+            _selectedWalletToFinalise = null;
+            await _finaliseModalRef.Close(CloseReason.UserClosing);
+
+            return;
+        }
+
         var result = await WalletRepository.FinaliseWallet(_selectedWalletToFinalise);
 
         if (result.Item1)
@@ -1350,7 +1384,7 @@ KeyPath($"0/{i}")).ScriptPubKey.GetDestinationAddress(CurrentNetworkHelper.GetCu
         }
         else
         {
-            ToastService.ShowError("Error while marking wallet as finalised");
+            ToastService.ShowError(result.Item2 ?? "Error while marking wallet as finalised");
             await AuditService.LogAsync(
                 AuditActionType.Finalise,
                 AuditEventType.Failure,

@@ -115,6 +115,24 @@ namespace NodeGuard.Data.Models
 
         [NotMapped] public bool RequiresInternalWalletSigning => IsBIP39Imported || IsWatchOnly ? false : Keys != null ? Keys.Count == MofN : false;
 
+        /// <summary>
+        /// A 2-of-2 whose two required keys are one human key plus NodeGuard's internal co-signing key.
+        /// Because NodeGuard co-signs automatically (see <see cref="RequiresInternalWalletSigning"/>), a
+        /// single human approval is the entire threshold: the wallet is effectively single-sig, and one
+        /// keyholder can move funds. These are disallowed at creation and finalisation — a substituted PSBT
+        /// from a lone keyholder plus NodeGuard's automatic co-signature is enough to drain the wallet.
+        /// Watch-only, BIP39 and hot wallets are excluded (NodeGuard does not auto co-sign those).
+        /// </summary>
+        [NotMapped]
+        public bool IsEffectivelySingleSigTwoOfTwo => RequiresInternalWalletSigning && MofN == 2;
+
+        /// <summary>Rejection message shared by the creation and finalisation guards and by tests.</summary>
+        public const string TwoOfTwoNotAllowedMessage =
+            "2-of-2 wallets are not allowed: NodeGuard's internal wallet is one of the two keys and " +
+            "co-signs automatically, so a single human signature meets the threshold and the wallet would " +
+            "be effectively single-sig. Add another human key and use a 2-of-3 (two human signers), or " +
+            "require all three keys with a 3-of-3.";
+
         #region Relationships
 
         public ICollection<ChannelOperationRequest> ChannelOperationRequestsAsSource { get; set; }

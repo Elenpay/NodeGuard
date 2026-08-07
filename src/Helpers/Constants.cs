@@ -28,7 +28,7 @@ public class Constants
     public static readonly bool ENABLE_REMOTE_SIGNER;
     public static readonly bool PUSH_NOTIFICATIONS_ONESIGNAL_ENABLED;
     public static readonly bool ENABLE_HW_SUPPORT;
-    public static readonly bool NBXPLORER_ENABLE_CUSTOM_BACKEND = false;
+    public static bool NBXPLORER_ENABLE_CUSTOM_BACKEND = false; // Not readonly so we can change it in tests
     /// <summary>
     /// Allow simultaneous channel opening operations using the same source and destination nodes
     /// </summary>
@@ -106,6 +106,11 @@ public class Constants
     public static readonly string DEFAULT_DERIVATION_PATH = "48'/1'";
     public static readonly int SESSION_TIMEOUT_MILLISECONDS = 3_600_000;
     public static readonly Money BITCOIN_DUST = new Money(0.00000546m, MoneyUnit.BTC); // 546 satoshi in BTC
+
+    /// <summary>
+    /// UTXOs with value less than or equal to this are excluded from coin selection (dust-attack protection).
+    /// </summary>
+    public static readonly long MINIMUM_UTXO_VALUE_SATS = 546;
 
     /// <summary>
     /// Minimum swap out size in BTC for automatic liquidity management (Swap Out).
@@ -289,7 +294,7 @@ public class Constants
     public static uint ROUTING_ENGINE_FEE_MAX_STEP_PPM = 50;
 
     // Max inbound ppm change applied in a single cycle (rate limiter / anti-jump).
-    public static uint ROUTING_ENGINE_FEE_MAX_INBOUND_STEP_PPM = 25;
+    public static uint ROUTING_ENGINE_FEE_MAX_INBOUND_STEP_PPM = 50;
 
     // Min ppm delta worth writing: a computed change smaller than this is dropped to NoOp, avoiding
     // churny sub-threshold LND fee updates.
@@ -299,10 +304,10 @@ public class Constants
     public static uint ROUTING_ENGINE_FEE_MIN_OUTBOUND_PPM = 0;
 
     // Upper clamp (ceiling) on outbound ppm.
-    public static uint ROUTING_ENGINE_FEE_MAX_OUTBOUND_PPM = 5000;
+    public static uint ROUTING_ENGINE_FEE_MAX_OUTBOUND_PPM = 3000;
 
     // Most-negative inbound ppm allowed — a discount to attract inbound routing.
-    public static int ROUTING_ENGINE_FEE_MIN_INBOUND_PPM = -1500;
+    public static int ROUTING_ENGINE_FEE_MIN_INBOUND_PPM = -2000;
 
     // Most-positive inbound ppm allowed — a surcharge to repel inbound routing.
     public static int ROUTING_ENGINE_FEE_MAX_INBOUND_PPM = 1000;
@@ -494,6 +499,9 @@ public class Constants
 
         var minSweepTransactionAmount = Environment.GetEnvironmentVariable("MINIMUM_SWEEP_TRANSACTION_AMOUNT_SATS");
         if (minSweepTransactionAmount != null) MINIMUM_SWEEP_TRANSACTION_AMOUNT_SATS = long.Parse(minSweepTransactionAmount);
+
+        var minimumUtxoValueSats = Environment.GetEnvironmentVariable("MINIMUM_UTXO_VALUE_SATS");
+        if (minimumUtxoValueSats != null) MINIMUM_UTXO_VALUE_SATS = long.Parse(minimumUtxoValueSats);
 
 
         DEFAULT_DERIVATION_PATH = GetEnvironmentalVariableOrThrowIfNotTesting("DEFAULT_DERIVATION_PATH") ?? DEFAULT_DERIVATION_PATH;
