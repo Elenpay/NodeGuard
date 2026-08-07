@@ -108,10 +108,9 @@ docker-down:
 docker-rm:
     docker compose --profile polar --profile loop --profile 40swap --profile e2e --profile mempool -f {{DOCKER_COMPOSE_FILE}} down -v
 
-# Runs the option-B end-to-end rebalance test in containers: brings up the regtest stack + a live
-# NodeGuard, then the runner opens a channel via gRPC and rebalances. Exit code = test result.
-# Starts from a CLEAN slate (down -v first) — DbInitializer only funds the dev wallets when the DB
-# has none, so a stale postgres volume would leave the wallet unfunded ("no UTXOs" on OpenChannel).
+# Runs the full ordered e2e suite (E2ESuiteTests, Category=E2E) in one stack, one `dotnet test` pass:
+# rebalance → fee-engine smoke → fee-engine flow. Clean slate first (down -v): DbInitializer only funds the
+# dev wallets on an empty DB, so a stale volume leaves it unfunded ("no UTXOs" on OpenChannel).
 test-e2e:
     -docker compose --profile polar --profile e2e -f {{DOCKER_COMPOSE_FILE}} down -v --remove-orphans
     docker compose --profile polar --profile e2e -f {{DOCKER_COMPOSE_FILE}} run --rm --build e2e-runner
