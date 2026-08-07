@@ -20,41 +20,44 @@
 using FluentAssertions;
 using Nodeguard;
 using Xunit.Abstractions;
+using Xunit.Sdk;
 
 namespace NodeGuard.Tests.E2E;
 
 /// <summary>
-/// True end-to-end test driven entirely from .NET (no grpcurl/curl): a generated gRPC client drives a
-/// LIVE NodeGuard instance through the whole option-B flow — GetNodes → OpenChannel(Alice→Bob) →
-/// mine + poll until the channel confirms → RequestRebalance(Alice→Bob→Carol→Alice) → assert success.
-/// This exercises gRPC auth, channel opening (wallet → PSBT → internal signing → broadcast), channel
-/// sync, and the amountless-invoice rebalance against real LND + Postgres. Shared plumbing lives in
-/// <see cref="E2ETestBase"/>.
+/// The full container e2e suite (LIVE NodeGuard + real LND + Postgres) in one ordered <c>dotnet test</c>
+/// pass; shared plumbing in <see cref="E2ETestBase"/>, order pinned by <see cref="PriorityOrderer"/>. The
+/// three scenarios share one Alice→Bob channel, so they're one <c>partial</c> class split by scenario:
+/// (1) open + rebalance (here), (2) fee-engine smoke, (3) fee-engine flow. (3) runs last — it reuses (1)'s
+/// channel and its traffic would starve (1)'s route. The stack enables the routing engine (real LND fee
+/// writes) on a seconds cadence with lowered categorization gates so a channel can flip within one run.
+///
+/// Extra env: NODEGUARD_DB_CONNECTIONSTRING; ALICE_/BOB_/CAROL_HOST + _MACAROON (scenario 3, extract-env.sh).
 /// </summary>
 [Trait("Category", "E2E")]
-public class RebalanceE2ETests : E2ETestBase
+[TestCaseOrderer(PriorityOrderer.TypeName, PriorityOrderer.AssemblyName)]
+public partial class E2ESuiteTests : E2ETestBase
 {
-    public RebalanceE2ETests(ITestOutputHelper output) : base(output)
+    public E2ESuiteTests(ITestOutputHelper output) : base(output)
     {
     }
 
-    [E2EFact]
+    // (1) Open a channel via gRPC, then circular-rebalance over it.
+    [E2EFact, TestPriority(1)]
     public async Task OpenChannelViaGrpc_ThenCircularRebalance_Succeeds()
     {
         var client = CreateClient(out var headers);
         var rpc = CreateBitcoindRpc();
 
-        // Wait for NodeGuard to be up and to have seeded the three nodes.
         var nodes = await WaitForNodesAsync(client, headers);
         var alice = nodes.Single(n => n.Name == "alice");
         var bob = nodes.Single(n => n.Name == "bob");
         var carol = nodes.Single(n => n.Name == "carol");
         _output.WriteLine($"alice={alice.PubKey} bob={bob.PubKey} carol={carol.PubKey}");
 
-        // Open Alice→Bob THROUGH NodeGuard (option B), confirmed and active.
+        // Open Alice→Bob through NodeGuard (option B — also covers channel opening), confirmed and active.
         var channelId = await OpenChannelAndConfirmAsync(client, headers, rpc, alice.PubKey, bob.PubKey);
 
-        // Circular rebalance Alice→Bob→Carol→Alice over the just-opened channel.
         var resp = await client.RequestRebalanceAsync(new RequestRebalanceRequest
         {
             NodePubkey = alice.PubKey,

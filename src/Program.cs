@@ -273,6 +273,25 @@ namespace NodeGuard
                         });
                 });
 
+                // Both routing (dynamic-fee) jobs share a cadence: ROUTING_ENGINE_JOB_INTERVAL_SECONDS wins
+                // when set (the fee-engine e2e uses a few seconds so it converges fast); otherwise
+                // ROUTING_ENGINE_JOB_INTERVAL_MINUTES (default 30). Except when the environment is 
+                // DEV, then overridden to 5 minutes (faster convergence for devs).
+                var routingJobIntervalSeconds =
+                    int.TryParse(Environment.GetEnvironmentVariable("ROUTING_ENGINE_JOB_INTERVAL_SECONDS"), out var rjs)
+                        ? rjs
+                        : (int?)null;
+
+                void ScheduleRoutingJob(SimpleScheduleBuilder sb)
+                {
+                    if (routingJobIntervalSeconds is int seconds)
+                        sb.WithIntervalInSeconds(seconds).RepeatForever();
+                    else if (Constants.IS_DEV_ENVIRONMENT)
+                        sb.WithIntervalInMinutes(5).RepeatForever();
+                    else
+                        sb.WithIntervalInMinutes(Constants.ROUTING_ENGINE_JOB_INTERVAL_MINUTES).RepeatForever();
+                }
+
                 //Target Ratio Reevaluation Job
                 q.AddJob<TargetRatioReevaluationJob>(opts =>
                 {
@@ -284,17 +303,7 @@ namespace NodeGuard
                 {
                     opts.ForJob(nameof(TargetRatioReevaluationJob))
                         .WithIdentity($"{nameof(TargetRatioReevaluationJob)}Trigger")
-                        .StartNow().WithSimpleSchedule(scheduleBuilder =>
-                        {
-                            if (Constants.IS_DEV_ENVIRONMENT)
-                            {
-                                scheduleBuilder.WithIntervalInMinutes(5).RepeatForever();
-                            }
-                            else
-                            {
-                                scheduleBuilder.WithIntervalInMinutes(Constants.ROUTING_ENGINE_JOB_INTERVAL_MINUTES).RepeatForever();
-                            }
-                        });
+                        .StartNow().WithSimpleSchedule(ScheduleRoutingJob);
                 });
 
                 //Channel Fee Optimizer Job
@@ -308,17 +317,7 @@ namespace NodeGuard
                 {
                     opts.ForJob(nameof(ChannelFeeOptimizerJob))
                         .WithIdentity($"{nameof(ChannelFeeOptimizerJob)}Trigger")
-                        .StartNow().WithSimpleSchedule(scheduleBuilder =>
-                        {
-                            if (Constants.IS_DEV_ENVIRONMENT)
-                            {
-                                scheduleBuilder.WithIntervalInMinutes(1).RepeatForever();
-                            }
-                            else
-                            {
-                                scheduleBuilder.WithIntervalInMinutes(Constants.ROUTING_ENGINE_JOB_INTERVAL_MINUTES).RepeatForever();
-                            }
-                        });
+                        .StartNow().WithSimpleSchedule(ScheduleRoutingJob);
                 });
 
                 //Monitor Withdrawals Job
@@ -375,7 +374,8 @@ namespace NodeGuard
 
                 q.AddTrigger(opts =>
                 {
-                    opts.ForJob(nameof(MonitorChannelsJob)).WithIdentity($"{nameof(MonitorChannelsJob)}Trigger")
+                    opts.ForJob(nameof(MonitorChannelsJob))
+                        .WithIdentity($"{nameof(MonitorChannelsJob)}Trigger")
                         .StartNow().WithCronSchedule(Constants.MONITOR_CHANNELS_CRON);
                 });
 
