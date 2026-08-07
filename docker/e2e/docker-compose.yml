@@ -112,6 +112,13 @@ services:
       BITCOIND_RPC_PASS: "polarpass"
       BITCOIND_RPC_WALLET: "default"
       E2E_HOT_WALLET_ID: "3"
+      # The HTLC-reconnect test reads persisted ForwardingHtlcEvents straight from Postgres
+      # (there is no gRPC to list them) and restarts a forwarding LND node mid-test.
+      POSTGRES_CONNECTIONSTRING: "Host=postgres;Port=5432;Database=nodeguard;User ID=postgres;"
+      E2E_FORWARDING_NODE_CONTAINER: "polar-n1-bob"
+    volumes:
+      # Lets the reconnect test restart an LND container via the Docker Engine API socket.
+      - /var/run/docker.sock:/var/run/docker.sock
     restart: "no"
 
 volumes:
