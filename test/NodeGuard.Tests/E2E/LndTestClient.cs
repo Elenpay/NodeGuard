@@ -106,7 +106,13 @@ internal sealed class LndTestClient
                 Perm = false,
             }, _auth);
         }
-        catch (RpcException) { }
+        catch (RpcException ex) when (
+             ex.StatusCode == StatusCode.AlreadyExists ||
+             ex.StatusCode == StatusCode.FailedPrecondition ||
+             ex.Status.Detail.Contains("already connected", StringComparison.OrdinalIgnoreCase))
+        {
+            // expected: peer already connected
+        }
     }
 
     // Returns once the funding tx is BROADCAST (not yet confirmed) — the caller mines to confirm.
