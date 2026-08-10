@@ -1,4 +1,4 @@
-@page "/peers"
+@page "/dynamic-fee-management"
 @using Blazorise
 @using Blazorise.Components
 @using NodeGuard.Data.Models
@@ -6,7 +6,7 @@
 @attribute [Authorize(Roles = "Superadmin,NodeManager")]
 
 <div class="peers">
-    <h3 class="custom-primary">Peers</h3>
+    <h3 class="custom-primary">Dynamic Fee Management</h3>
     <p style="color:#7a7789;margin-top:-4px;">Pick a node, then turn dynamic fee management on or off for every channel to a peer at once — no more going channel by channel.</p>
 
     @if (!Constants.ROUTING_ENGINE_ENABLED)
@@ -236,7 +236,7 @@
 @inject IAuditService AuditService
 @inject ILightningService LightningService
 @inject IToastService ToastService
-@inject ILogger<Peers> Logger
+@inject ILogger<DynamicFeeManagement> Logger
 
 @code {
     [CascadingParameter] private ApplicationUser? LoggedUser { get; set; }
