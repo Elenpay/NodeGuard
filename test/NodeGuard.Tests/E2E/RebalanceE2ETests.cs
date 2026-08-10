@@ -20,30 +20,24 @@
 using FluentAssertions;
 using Nodeguard;
 using Xunit.Abstractions;
-using Xunit.Sdk;
 
 namespace NodeGuard.Tests.E2E;
 
 /// <summary>
-/// The full container e2e suite (LIVE NodeGuard + real LND + Postgres) in one ordered <c>dotnet test</c>
-/// pass; shared plumbing in <see cref="E2ETestBase"/>, order pinned by <see cref="PriorityOrderer"/>. The
-/// three scenarios share one Alice→Bob channel, so they're one <c>partial</c> class split by scenario:
-/// (1) open + rebalance (here), (2) fee-engine smoke, (3) fee-engine flow. (3) runs last — it reuses (1)'s
-/// channel and its traffic would starve (1)'s route. The stack enables the routing engine (real LND fee
-/// writes) on a seconds cadence with lowered categorization gates so a channel can flip within one run.
-///
-/// Extra env: NODEGUARD_DB_CONNECTIONSTRING; ALICE_/BOB_/CAROL_HOST + _MACAROON (scenario 3, extract-env.sh).
+/// E2E: opens Alice→Bob through NodeGuard's <c>OpenChannel</c> gRPC (so it also covers channel opening),
+/// then a circular rebalance Alice→Bob→Carol→Alice. Order-agnostic — opens and rebalances its own channel
+/// (pinned by SourceChannelId); serial with the other e2e classes via <c>[Collection("E2E")]</c>. Shared
+/// plumbing in <see cref="E2ETestBase"/>.
 /// </summary>
 [Trait("Category", "E2E")]
-[TestCaseOrderer(PriorityOrderer.TypeName, PriorityOrderer.AssemblyName)]
-public partial class E2ESuiteTests : E2ETestBase
+[Collection("E2E")]
+public class RebalanceE2ETests : E2ETestBase
 {
-    public E2ESuiteTests(ITestOutputHelper output) : base(output)
+    public RebalanceE2ETests(ITestOutputHelper output) : base(output)
     {
     }
 
-    // (1) Open a channel via gRPC, then circular-rebalance over it.
-    [E2EFact, TestPriority(1)]
+    [E2EFact]
     public async Task OpenChannelViaGrpc_ThenCircularRebalance_Succeeds()
     {
         var client = CreateClient(out var headers);

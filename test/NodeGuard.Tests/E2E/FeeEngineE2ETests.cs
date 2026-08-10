@@ -19,22 +19,27 @@
 
 using FluentAssertions;
 using Microsoft.EntityFrameworkCore;
-using NodeGuard.Data;
-using NodeGuard.Data.Models;
+using Xunit.Abstractions;
 using Channel = NodeGuard.Data.Models.Channel;
 
 namespace NodeGuard.Tests.E2E;
 
-// Part of E2ESuiteTests (overview in E2ESuiteTests.Rebalance.cs): scenario (2), plus the fee-engine DB
-// helpers shared with (3) — the fee scenarios read ChannelRoutingState/ChannelFeeState directly (no gRPC
-// read path exists for them).
-public partial class E2ESuiteTests
+/// <summary>
+/// E2E: the fee engine applies a real policy to an imbalanced channel, then STOPS once the channel is
+/// disabled. Reuses the setup's Bob→Carol (bob-owned, imbalanced) — NodeGuard rejects a duplicate open.
+/// Direction isn't asserted (covered by <see cref="FeeEngineFlowE2ETests"/>); the value here is the
+/// APPLY-then-STOP-on-disable lifecycle. (Purge is UI-only, unreachable here — see FeeEngineStateServiceTests.)
+/// Order-agnostic: reuses the always-present setup channel and resets its own fee-engine state.
+/// </summary>
+[Trait("Category", "E2E")]
+[Collection("E2E")]
+public class FeeEngineE2ETests : FeeEngineE2EBase
 {
-    // (2) Fee engine applies a real policy to an imbalanced channel, then stops once disabled. Reuses the
-    // setup's Bob→Carol (bob-owned, imbalanced) — NodeGuard rejects a duplicate open. Direction isn't
-    // asserted (covered by (3)); the value here is the APPLY-then-STOP-on-disable lifecycle. (Purge is
-    // UI-only, unreachable here — see FeeEngineStateServiceTests.)
-    [E2EFact, TestPriority(2)]
+    public FeeEngineE2ETests(ITestOutputHelper output) : base(output)
+    {
+    }
+
+    [E2EFact]
     public async Task FeeEngine_AppliesFeeToImbalancedChannel_ThenStopsWhenDisabled()
     {
         var client = CreateClient(out var headers);
@@ -45,7 +50,7 @@ public partial class E2ESuiteTests
 
         try
         {
-            // Clean slate so leftover HTLCs from (1) can't skew categorization.
+            // Clean slate so leftover HTLCs from another scenario can't skew categorization.
             await ResetFeeEngineStateAsync();
 
             // Enable bob's fee engine. ExecuteUpdate avoids materialising the Node's encrypted macaroon column.
@@ -127,40 +132,5 @@ public partial class E2ESuiteTests
                 .Where(n => n.PubKey == bob.PubKey)
                 .ExecuteUpdateAsync(s => s.SetProperty(n => n.DynamicFeeManagementEnabled, false));
         }
-    }
-
-    // ---- fee-engine DB helpers (shared by scenarios (2) and (3)) ----
-
-    // Truncates the engine's DERIVED state (forwarding events + routing/fee state) so a scenario starts
-    // clean; Channels/Nodes are left intact so channel discovery still holds.
-    private static async Task ResetFeeEngineStateAsync()
-    {
-        await using var db = CreateDbContext();
-        await db.ForwardingHtlcEvents.ExecuteDeleteAsync();
-        await db.ChannelRoutingStates.ExecuteDeleteAsync();
-        await db.ChannelFeeStates.ExecuteDeleteAsync();
-    }
-
-    private static async Task<ChannelFeeState?> ReadFeeStateAsync(int channelId)
-    {
-        await using var db = CreateDbContext();
-        return await db.ChannelFeeStates.AsNoTracking().FirstOrDefaultAsync(x => x.ChannelId == channelId);
-    }
-
-    // Polls until a real fee is applied (LastAppliedOutboundPpm is never set by a NoOp).
-    private Task<ChannelFeeState?> PollFeeAppliedAsync(int channelId, string what, int attempts = 40, int delaySeconds = 4)
-        => PollAsync(
-            () => ReadFeeStateAsync(channelId),
-            fs => fs is { LastAppliedOutboundPpm: not null },
-            attempts, TimeSpan.FromSeconds(delaySeconds), what);
-
-    private static ApplicationDbContext CreateDbContext()
-    {
-        var cs = Env("NODEGUARD_DB_CONNECTIONSTRING", "Host=localhost;Port=25432;Database=nodeguard;User ID=postgres;");
-        // Retry transient failures — a momentary DNS/socket blip must not fail a multi-minute run.
-        var options = new DbContextOptionsBuilder<ApplicationDbContext>()
-            .UseNpgsql(cs, o => o.EnableRetryOnFailure(5, TimeSpan.FromSeconds(3), null))
-            .Options;
-        return new ApplicationDbContext(options);
     }
 }

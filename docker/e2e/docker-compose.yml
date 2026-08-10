@@ -5,11 +5,11 @@
 #   setup-e2e (loads bitcoind wallet, funds nodes, opens Bob→Carol + Carol→Alice — NOT Alice→Bob) +
 #   extract-env (writes the LND macaroon/host/pubkey env) →
 #   nodeguard (seeds nodes, funds its hot wallet) →
-#   e2e-runner (runs the whole ordered E2ESuiteTests in one pass).
+#   e2e-runner (runs the whole E2E suite, Category=E2E, in one pass).
 #
-# The fee-engine flow scenario drives alice/bob/carol's LND directly (same env the runner sources from
-# extract-env), so there's no traffic sidecar and no second runner — PriorityOrderer sequences it after
-# the rebalance within the single `dotnet test`.
+# The fee-engine flow scenario drives alice/bob/carol's LND directly (reading the extract-env creds file off
+# the mounted volume), so there's no traffic sidecar and no second runner. The scenarios are order-agnostic
+# but run serially (one test class).
 #
 # NOTE: not yet runtime-verified as a stack (see docker/e2e/README.md) — every runtime STEP was validated
 # manually against a live NodeGuard; the compose wiring needs a CI shakeout.
@@ -109,7 +109,7 @@ services:
       - e2e_env:/shared:ro
     restart: "no"
 
-  # Runs the whole ordered E2ESuiteTests (Category=E2E) against one live NodeGuard in a single pass.
+  # Runs the whole E2E suite (Category=E2E) against one live NodeGuard in a single pass.
   # Scenario (3) drives alice/bob/carol's LND directly, so the runner mounts the extract-env volume and
   # its entrypoint sources the LND host+macaroon env before `dotnet test`.
   e2e-runner:

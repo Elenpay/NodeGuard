@@ -20,13 +20,21 @@
 using FluentAssertions;
 using Microsoft.EntityFrameworkCore;
 using NodeGuard.Data.Models;
+using Xunit.Abstractions;
 using Channel = NodeGuard.Data.Models.Channel;
 
 namespace NodeGuard.Tests.E2E;
 
-// Part of E2ESuiteTests (overview in E2ESuiteTests.Rebalance.cs): scenario (3), which drives its own
-// SINK→SOURCE traffic in-process via LndTestClient; uses the DB helpers from E2ESuiteTests.FeeEngineSmoke.cs.
-public partial class E2ESuiteTests
+/// <summary>
+/// E2E: the fee engine categorizes Alice→Bob as SINK under push-heavy load, then FLIPS it to SOURCE as the
+/// flow reverses. Drives its own traffic in-process via <see cref="LndTestClient"/> — phase 1 Carol→Alice→Bob
+/// pushes OUT, phase 2 Bob→Alice→Carol pulls IN — so it doesn't need a traffic sidecar. Order-agnostic:
+/// self-provisions its channels and finds the one it drives by scid. The longest/flakiest e2e (two flow
+/// phases + gossip + job cadence).
+/// </summary>
+[Trait("Category", "E2E")]
+[Collection("E2E")]
+public class FeeEngineFlowE2ETests : FeeEngineE2EBase
 {
     // Flow knobs (former generate-flow.sh defaults). The ~2.4x pull:push ratio flips SINK→SOURCE; each
     // 25k-sat payment clears the 1M-msat floor.
@@ -38,12 +46,11 @@ public partial class E2ESuiteTests
     private static long BobTopupSats => long.Parse(Env("FLOW_BOB_TOPUP_SATS", "2000000"));
     private const long AliceCarolLocalSats = 8_000_000; // alice's phase-2 exit hop
 
-    // (3) Categorize Alice→Bob as SINK under push, then FLIP to SOURCE as the flow reverses. ALICE is the
-    // forwarder (NodeGuard tracks only the operator's channels): phase 1 Carol→Alice→Bob pushes OUT, phase 2
-    // Bob→Alice→Carol pulls IN. bob is topped up + a fresh Alice→Carol exit hop opened so phase 2 pulls MORE
-    // than it pushed ⇒ net-flow crosses negative ⇒ SOURCE. Selects Alice→Bob by dest (alice also owns
-    // Alice→Carol). Speed=Slow lets test-e2e-rebalance-smoke exclude it by trait.
-    [E2EFact, TestPriority(3), Trait("Speed", "Slow")]
+    public FeeEngineFlowE2ETests(ITestOutputHelper output) : base(output)
+    {
+    }
+
+    [E2EFact, Trait("Speed", "Slow")]
     public async Task FeeEngine_CategorizesSinkThenFlipsToSource_AsFlowReverses()
     {
         var client = CreateClient(out var headers);
@@ -74,32 +81,33 @@ public partial class E2ESuiteTests
                 updated.Should().Be(1, "alice should be seeded and have its fee engine enabled");
             }
 
-            int aliceNodeId, bobNodeId;
             await using (var db = CreateDbContext())
             {
                 var ns = await db.Nodes.AsNoTracking().Select(n => new { n.Id, n.Name }).ToListAsync();
                 _output.WriteLine("[diag] nodes: " + string.Join(", ", ns.Select(n => $"{n.Name}=#{n.Id}")));
-                aliceNodeId = await db.Nodes.Where(n => n.PubKey == aliceNode.PubKey).Select(n => n.Id).FirstAsync();
-                bobNodeId = await db.Nodes.Where(n => n.PubKey == bobNode.PubKey).Select(n => n.Id).FirstAsync();
             }
 
-            // alice is the initiator (SourceNodeId); it also owns Alice→Carol, so filter by dest=bob.
+            // Self-provision the topology FIRST — reuse Alice→Bob if present, else open our own; top up bob;
+            // open the Alice→Carol exit hop — so this scenario never depends on another having run first.
+            var (aliceBobScid, carolAliceScid, bobAliceScid) =
+                await SetUpFlowTopologyAsync(alice, bob, carol, rpc);
+
+            // Find NodeGuard's row for the exact channel we'll drive, by its LND scid (ChanId) — unambiguous
+            // even if a second Alice→Bob exists. NodeGuard records externally-opened channels via MonitorChannelsJob.
             var channelId = await PollAsync(
                 async () =>
                 {
                     await using var db = CreateDbContext();
                     var chans = await db.Channels.AsNoTracking()
-                        .Select(c => new { c.Id, c.SourceNodeId, c.DestinationNodeId, c.ChanId, c.Status })
+                        .Select(c => new { c.Id, c.ChanId, c.Status })
                         .ToListAsync();
                     _output.WriteLine($"[chan] {chans.Count} rows: " + string.Join(" | ",
-                        chans.Select(c => $"Id={c.Id} src={c.SourceNodeId} dst={c.DestinationNodeId} chanId={c.ChanId} st={c.Status}")));
-                    var match = chans.FirstOrDefault(c =>
-                        c.SourceNodeId == aliceNodeId && c.DestinationNodeId == bobNodeId
-                        && c.Status == Channel.ChannelStatus.Open && c.ChanId != 0);
+                        chans.Select(c => $"Id={c.Id} chanId={c.ChanId} st={c.Status}")));
+                    var match = chans.FirstOrDefault(c => c.ChanId == aliceBobScid && c.Status == Channel.ChannelStatus.Open);
                     return match?.Id ?? 0;
                 },
                 id => id != 0,
-                attempts: 60, delay: TimeSpan.FromSeconds(3), what: "alice's Alice→Bob channel discovered");
+                attempts: 60, delay: TimeSpan.FromSeconds(3), what: $"Alice→Bob (scid {aliceBobScid}) discovered by NodeGuard");
 
             await using (var db = CreateDbContext())
             {
@@ -108,9 +116,6 @@ public partial class E2ESuiteTests
                     .ExecuteUpdateAsync(s => s.SetProperty(c => c.IsDynamicFeeEnabled, true));
                 optedIn.Should().Be(1, "the channel row must exist and be opted in to the fee engine");
             }
-
-            var (aliceBobScid, carolAliceScid, bobAliceScid) =
-                await SetUpFlowTopologyAsync(alice, bob, carol, rpc);
 
             _output.WriteLine($"[flow] PHASE 1 (SINK): {PushPayments} Carol→Alice→Bob payments of {FlowPaymentSats} sats");
             var pushed = 0;
@@ -176,17 +181,16 @@ public partial class E2ESuiteTests
         }
     }
 
-    // flow traffic helpers (in-process port of generate-flow.sh)
-
-    // Reuses (1)'s Alice→Bob (opens it with push if absent — standalone run), tops up bob's side, opens a
-    // fresh Alice→Carol exit hop, settles gossip. Returns the forced first-hop scids for the two phases.
+    // Ensures the channels the flow needs (order-agnostic): reuse Alice→Bob if present, else open our own
+    // with push; top up bob's side; open the Alice→Carol exit hop; settle gossip. Returns the forced
+    // first-hop scids for the two phases.
     private async Task<(ulong aliceBobScid, ulong carolAliceScid, ulong bobAliceScid)> SetUpFlowTopologyAsync(
         LndTestClient alice, LndTestClient bob, LndTestClient carol, NBitcoin.RPC.RPCClient rpc)
     {
         var aliceBobScid = await alice.ScidToAsync(bob.PubKey);
         if (aliceBobScid is null)
         {
-            _output.WriteLine("[flow] Alice→Bob absent (standalone) — opening it with push");
+            _output.WriteLine("[flow] Alice→Bob absent — opening it with push");
             await alice.ConnectAsync(bob.PubKey, $"{bob.Name}:9735");
             await alice.OpenChannelAsync(bob.PubKey, localSats: 16_000_000, pushSats: 8_000_000);
             aliceBobScid = await MineUntilScidAsync(rpc, () => alice.ScidToAsync(bob.PubKey), "Alice→Bob");
@@ -242,8 +246,7 @@ public partial class E2ESuiteTests
         throw new InvalidOperationException($"{what} never got a confirmed scid after mining");
     }
 
-    // routing-state read/poll helpers (analog of ReadFeeStateAsync)
-
+    // Reads the channel's routing state, or null if the categorizer hasn't written a row yet.
     private static async Task<ChannelRoutingState?> ReadRoutingStateAsync(int channelId)
     {
         await using var db = CreateDbContext();
