@@ -197,7 +197,9 @@
       b.addEventListener('click', fn);
       return b;
     }
-    var scroller = el('div', { style: 'overflow:auto;padding:20px 18px;max-height:70vh;' });
+    // Fixed 60vh viewport (not max-height): the graph pane keeps a stable size even
+    // when the layout is small, instead of collapsing to the content height.
+    var scroller = el('div', { style: 'overflow:auto;padding:20px 18px;height:60vh;box-sizing:border-box;' });
     var stage = el('div', { style: 'position:relative;width:' + size.width + 'px;height:' + size.height + 'px;min-width:' + size.width + 'px;transform-origin:top left;' });
     function applyZoom() { stage.style.transform = 'scale(' + state.zoom + ')'; }
     zoomBox.appendChild(zbtn('+', 'Zoom in', function () { state.zoom = Math.min(2, +(state.zoom + 0.15).toFixed(2)); applyZoom(); }));

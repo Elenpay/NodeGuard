@@ -64,7 +64,12 @@ public class PaymentRouteHop
     [MaxLength(64)]
     public string PaymentHash { get; set; } = string.Empty;
 
-    /// <summary>HTLC attempt index (0, 1, 2...) — a failed payment may retry over different routes.</summary>
+    /// <summary>
+    /// HTLC attempt ordinal within this payment (0, 1, 2...) — a payment may retry over
+    /// different routes. This is the attempt's <b>position</b> in LND's <c>htlcs</c> list,
+    /// NOT <c>HTLCAttempt.attempt_id</c>: the latter is a node-global uint64 sequence, so
+    /// storing it here would render as "attempt 4021" in the UI's per-attempt trace.
+    /// </summary>
     public int AttemptIndex { get; set; }
 
     /// <summary>Position of the hop within the route (0 = first hop from the origin).</summary>
@@ -77,7 +82,44 @@ public class PaymentRouteHop
     public string ToNode { get; set; } = string.Empty;
     public long? AmountMsat { get; set; }
 
+    /// <summary>
+    /// Outcome of the HTLC attempt this hop belongs to. Denormalised onto every hop of the
+    /// attempt (LND reports it per attempt, not per hop) so the graph can colour a failed
+    /// attempt of an ultimately-successful payment correctly.
+    /// </summary>
+    public PaymentRouteAttemptStatus AttemptStatus { get; set; }
+
+    /// <summary>
+    /// LND's <c>Failure.failure_source_index</c> for this attempt: the position in the route
+    /// of the node that returned the failure, where position 0 is the sender. Null when the
+    /// attempt did not fail or LND reported no failure detail.
+    /// </summary>
+    public int? FailureSourceIndex { get; set; }
+
+    /// <summary>
+    /// LND's <c>Failure.code</c> in its wire spelling (e.g. <c>TEMPORARY_CHANNEL_FAILURE</c>).
+    /// Surfaced verbatim by the frontend as the failure chip on the attempt trace.
+    /// </summary>
+    [MaxLength(64)]
+    public string? FailureCode { get; set; }
+
     public PaymentRoute? Payment { get; set; }
+}
+
+/// <summary>
+/// Outcome of a single HTLC attempt, mirroring LND's <c>HTLCAttempt.HTLCStatus</c>.
+/// </summary>
+public enum PaymentRouteAttemptStatus
+{
+    /// <summary>
+    /// Applies to rows written before per-attempt data
+    /// was persisted; the graph falls back to payment-level status for these, preserving the
+    /// rendering they had before. Never produced by the tracker for new rows.
+    /// </summary>
+    Unknown = 0,
+    InFlight = 1,
+    Succeeded = 2,
+    Failed = 3
 }
 
 public enum PaymentRouteStatus
