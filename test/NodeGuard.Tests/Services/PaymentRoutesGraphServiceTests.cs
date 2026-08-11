@@ -53,4 +53,85 @@ public class PaymentRoutesGraphServiceTests
         status.Should().Be(expected);
         code.Should().Be(expected == "failed_here" ? "TEMPORARY_CHANNEL_FAILURE" : null);
     }
+
+    // ── HopStatusForHop: attempt-level resolution ───────────────────────────────
+
+    private static PaymentRouteHop Hop(PaymentRouteAttemptStatus attemptStatus, int hopSequence = 0,
+        int? failureSourceIndex = null, string? failureCode = null) => new()
+    {
+        AttemptStatus = attemptStatus,
+        HopSequence = hopSequence,
+        FailureSourceIndex = failureSourceIndex,
+        FailureCode = failureCode
+    };
+
+    /// <summary>
+    /// The mislabel this resolver exists to prevent: an abandoned attempt of a payment that
+    /// ultimately succeeded must not render as a successful route.
+    /// </summary>
+    [Fact]
+    public void HopStatusForHop_FailedAttemptOfSucceededPayment_IsNotSuccess()
+    {
+        var (status, code) = PaymentRoutesGraphService.HopStatusForHop(
+            Hop(PaymentRouteAttemptStatus.Failed, hopSequence: 1, failureSourceIndex: 2, failureCode: "FEE_INSUFFICIENT"),
+            PaymentRouteStatus.Success);
+
+        status.Should().Be("failed_here");
+        code.Should().Be("FEE_INSUFFICIENT");
+    }
+
+    [Fact]
+    public void HopStatusForHop_SucceededAttempt_IsSuccessRegardlessOfStaleFailureData()
+    {
+        var (status, code) = PaymentRoutesGraphService.HopStatusForHop(
+            Hop(PaymentRouteAttemptStatus.Succeeded, failureSourceIndex: 1, failureCode: "X"),
+            PaymentRouteStatus.Success);
+
+        status.Should().Be("success");
+        code.Should().BeNull();
+    }
+
+    /// <summary>
+    /// An in-flight shard of a settled MPP payment is dispatched but unproven — it must not
+    /// borrow the payment's success.
+    /// </summary>
+    [Fact]
+    public void HopStatusForHop_InFlightAttempt_IsOkNotTheParentPaymentsStatus()
+    {
+        var (status, code) = PaymentRoutesGraphService.HopStatusForHop(
+            Hop(PaymentRouteAttemptStatus.InFlight), PaymentRouteStatus.Success);
+
+        status.Should().Be("ok");
+        code.Should().BeNull();
+    }
+
+    /// <summary>
+    /// Rows tracked before per-attempt data existed carry AttemptStatus = Unknown; they must
+    /// keep rendering exactly as they did under the old payment-level derivation.
+    /// </summary>
+    [Theory]
+    [InlineData(PaymentRouteStatus.Success, "success")]
+    [InlineData(PaymentRouteStatus.Failed, "failed")]
+    public void HopStatusForHop_UnknownAttemptStatus_FallsBackToPaymentStatus(
+        PaymentRouteStatus paymentStatus, string expected)
+    {
+        var (status, _) = PaymentRoutesGraphService.HopStatusForHop(
+            Hop(PaymentRouteAttemptStatus.Unknown), paymentStatus);
+
+        status.Should().Be(expected);
+    }
+
+    /// <summary>
+    /// A failed attempt LND gave us no failure detail for still has to be legible: every hop
+    /// goes red rather than silently classifying against a missing source index.
+    /// </summary>
+    [Fact]
+    public void HopStatusForHop_FailedAttemptWithoutFailureDetail_IsFailed()
+    {
+        var (status, code) = PaymentRoutesGraphService.HopStatusForHop(
+            Hop(PaymentRouteAttemptStatus.Failed, hopSequence: 3), PaymentRouteStatus.Failed);
+
+        status.Should().Be("failed");
+        code.Should().BeNull();
+    }
 }
