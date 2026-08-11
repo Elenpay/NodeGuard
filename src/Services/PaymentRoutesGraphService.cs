@@ -162,6 +162,26 @@ public class PaymentRoutesGraphService : IPaymentRoutesGraphService
         return ("unreached", null);
     }
 
+    /// <summary>
+    /// Resolves a hop's tone from the outcome of <b>its own attempt</b>, falling back to the
+    /// payment's status only for rows written before per-attempt data was tracked.
+    /// <para>Judging a hop by the payment's status is wrong in both directions: a SUCCEEDED
+    /// payment's abandoned attempts would render green, and a FAILED payment's hops would all
+    /// render red instead of showing where the route actually broke.</para>
+    /// </summary>
+    public static (string hopStatus, string? failureCode) HopStatusForHop(PaymentRouteHop hop, PaymentRouteStatus paymentStatus)
+        => hop.AttemptStatus switch
+        {
+            PaymentRouteAttemptStatus.Succeeded => ("success", null),
+            PaymentRouteAttemptStatus.Failed =>
+                HopStatusFor(PaymentRouteStatus.Failed, hop.HopSequence, hop.FailureSourceIndex, hop.FailureCode),
+            // Dispatched, no verdict yet. Deliberately not the payment's status: an in-flight
+            // shard of a settled MPP payment is not itself proven good.
+            PaymentRouteAttemptStatus.InFlight => ("ok", null),
+            // Legacy rows: reproduce exactly the payment-level colouring they had before.
+            _ => HopStatusFor(paymentStatus, hop.HopSequence, hop.FailureSourceIndex, hop.FailureCode)
+        };
+
     // ── Assembly (port of graph_builder._assemble, own-tables source) ───────────
     private static PaymentGraph Assemble(string originId, List<PaymentRoute> payments, List<PaymentRouteHop> hops,
         IReadOnlyDictionary<string, string> aliases)
@@ -211,9 +231,7 @@ public class PaymentRoutesGraphService : IPaymentRoutesGraphService
             }
 
             var pStatus = payStatus.GetValueOrDefault(hop.PaymentHash, PaymentRouteStatus.Failed);
-            // Own-tables source has no per-hop failure data, so derive from payment status
-            // (matches the Python fallback: "success" if success else "failed").
-            var hopStatus = pStatus == PaymentRouteStatus.Success ? "success" : "failed";
+            var (hopStatus, failureCode) = HopStatusForHop(hop, pStatus);
 
             channels.Add(new PaymentGraphChannel(
                 Id: hop.ChannelId.ToString(),
@@ -222,7 +240,7 @@ public class PaymentRoutesGraphService : IPaymentRoutesGraphService
                 PaymentId: hop.PaymentHash,
                 PaymentStatus: StatusString(pStatus),
                 HopStatus: hopStatus,
-                FailureCode: null,
+                FailureCode: failureCode,
                 AttemptIndex: hop.AttemptIndex,
                 HopSequence: hop.HopSequence));
         }

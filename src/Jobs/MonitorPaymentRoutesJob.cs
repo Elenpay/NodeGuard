@@ -195,18 +195,31 @@ public class MonitorPaymentRoutesJob : IJob
     /// Port of tracker.py <c>_save_hops</c> applied over every HTLC attempt. The first hop
     /// always leaves from our own node; each subsequent hop starts from the previous
     /// destination. Hops without a pubkey or channel id are skipped.
+    ///
+    /// <para>Each attempt's outcome and failure detail are denormalised onto its hops so the
+    /// graph can distinguish "this hop forwarded fine", "this hop broke" and "never reached"
+    /// instead of painting a whole attempt from the payment's final status.</para>
+    ///
+    /// <para>Note that a payment with no HTLC attempts at all yields no hops — that is the
+    /// normal shape for pathfinding-stage failures (NO_ROUTE, INSUFFICIENT_BALANCE), where
+    /// LND never dispatched an HTLC and so has no route to report.</para>
     /// </summary>
     private static List<PaymentRouteHop> BuildHops(Node node, string payHash, Payment raw)
     {
         var hops = new List<PaymentRouteHop>();
 
-        foreach (var attempt in raw.Htlcs)
+        for (var attemptIndex = 0; attemptIndex < raw.Htlcs.Count; attemptIndex++)
         {
+            var attempt = raw.Htlcs[attemptIndex];
             var route = attempt.Route;
             if (route == null)
             {
                 continue;
             }
+
+            var attemptStatus = PaymentRouteMapping.FromLndHtlcStatus(attempt.Status);
+            // Singular message field: null whenever the attempt carries no failure detail.
+            var failure = attempt.Failure;
 
             // The first hop always leaves from our node (ORIGIN).
             var prevNode = node.PubKey;
@@ -224,12 +237,18 @@ public class MonitorPaymentRoutesJob : IJob
                 hops.Add(new PaymentRouteHop
                 {
                     PaymentHash = payHash,
-                    AttemptIndex = (int)attempt.AttemptId,
+                    // Ordinal within this payment's attempt list, NOT attempt.AttemptId (a
+                    // node-global uint64 that would both overflow int and render as
+                    // "attempt 4021" in the UI trace).
+                    AttemptIndex = attemptIndex,
                     HopSequence = seq,
                     ChannelId = channelId,
                     FromNode = prevNode,
                     ToNode = toNode,
-                    AmountMsat = hop.AmtToForwardMsat
+                    AmountMsat = hop.AmtToForwardMsat,
+                    AttemptStatus = attemptStatus,
+                    FailureSourceIndex = failure != null ? (int)failure.FailureSourceIndex : null,
+                    FailureCode = PaymentRouteMapping.FailureCodeName(failure)
                 });
 
                 prevNode = toNode;
@@ -241,20 +260,21 @@ public class MonitorPaymentRoutesJob : IJob
     }
 
     /// <summary>
-    /// Port of tracker.py <c>_extract_destination</c>: the pubkey of the final hop of the
-    /// first attempt that has a route.
+    /// The payment's final destination: the last hop of the attempt that actually settled,
+    /// falling back to the first attempt with a route when none succeeded (a wholly failed
+    /// payment still aimed somewhere).
+    ///
+    /// <para>tracker.py simply took the first attempt with a route. That is the same
+    /// payment-vs-attempt conflation fixed in <see cref="BuildHops"/>: a payment that failed
+    /// over one route and settled over another would report the abandoned route's endpoint.</para>
     /// </summary>
     private static string? ExtractDestination(Payment raw)
     {
-        foreach (var htlc in raw.Htlcs)
-        {
-            var routeHops = htlc.Route?.Hops;
-            if (routeHops is { Count: > 0 })
-            {
-                return routeHops[^1].PubKey;
-            }
-        }
+        var settled = raw.Htlcs.FirstOrDefault(h =>
+            h.Status == HTLCAttempt.Types.HTLCStatus.Succeeded && h.Route?.Hops.Count > 0);
 
-        return null;
+        var chosen = settled ?? raw.Htlcs.FirstOrDefault(h => h.Route?.Hops.Count > 0);
+
+        return chosen?.Route.Hops[^1].PubKey;
     }
 }

@@ -48,4 +48,39 @@ public class PaymentRouteMappingTests
     {
         PaymentRouteMapping.FromLndPaymentStatus(lnd).Should().Be(expected);
     }
+
+    [Theory]
+    [InlineData(HTLCAttempt.Types.HTLCStatus.Succeeded, PaymentRouteAttemptStatus.Succeeded)]
+    [InlineData(HTLCAttempt.Types.HTLCStatus.Failed, PaymentRouteAttemptStatus.Failed)]
+    [InlineData(HTLCAttempt.Types.HTLCStatus.InFlight, PaymentRouteAttemptStatus.InFlight)]
+    public void FromLndHtlcStatus_MapsEveryAttemptState(
+        HTLCAttempt.Types.HTLCStatus lnd, PaymentRouteAttemptStatus expected)
+    {
+        PaymentRouteMapping.FromLndHtlcStatus(lnd).Should().Be(expected);
+    }
+
+    [Fact]
+    public void FromLndHtlcStatus_NeverProducesUnknown_WhichIsReservedForLegacyRows()
+    {
+        // Unknown drives the graph's payment-level fallback. If the tracker could emit it for
+        // a live attempt, fresh rows would silently take the legacy colouring path.
+        foreach (var status in Enum.GetValues<HTLCAttempt.Types.HTLCStatus>())
+        {
+            PaymentRouteMapping.FromLndHtlcStatus(status).Should().NotBe(PaymentRouteAttemptStatus.Unknown);
+        }
+    }
+
+    [Fact]
+    public void FailureCodeName_UsesProtobufWireSpelling_NotTheCSharpName()
+    {
+        var failure = new Failure { Code = Failure.Types.FailureCode.TemporaryChannelFailure };
+
+        PaymentRouteMapping.FailureCodeName(failure).Should().Be("TEMPORARY_CHANNEL_FAILURE");
+    }
+
+    [Fact]
+    public void FailureCodeName_NullFailure_IsNull()
+    {
+        PaymentRouteMapping.FailureCodeName(null).Should().BeNull();
+    }
 }

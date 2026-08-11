@@ -17,6 +17,9 @@
  *
  */
 
+using System.Collections.Concurrent;
+using System.Reflection;
+using Google.Protobuf.Reflection;
 using Lnrpc;
 using NodeGuard.Data.Models;
 
@@ -48,4 +51,42 @@ public static class PaymentRouteMapping
         Payment.Types.PaymentStatus.Failed => PaymentRouteStatus.Failed,
         _ => PaymentRouteStatus.Unknown
     };
+
+    /// <summary>
+    /// Maps a single HTLC attempt's status. Note this is <b>per attempt</b>, not per payment:
+    /// a SUCCEEDED payment routinely carries FAILED attempts it retried past, and colouring
+    /// those from the payment's status paints failed routes green.
+    /// </summary>
+    public static PaymentRouteAttemptStatus FromLndHtlcStatus(HTLCAttempt.Types.HTLCStatus status) => status switch
+    {
+        HTLCAttempt.Types.HTLCStatus.Succeeded => PaymentRouteAttemptStatus.Succeeded,
+        HTLCAttempt.Types.HTLCStatus.Failed => PaymentRouteAttemptStatus.Failed,
+        HTLCAttempt.Types.HTLCStatus.InFlight => PaymentRouteAttemptStatus.InFlight,
+        _ => PaymentRouteAttemptStatus.Unknown
+    };
+
+    /// <summary>
+    /// Renders <c>Failure.code</c> in its protobuf wire spelling (<c>TEMPORARY_CHANNEL_FAILURE</c>)
+    /// rather than the generated C# name (<c>TemporaryChannelFailure</c>), because the frontend
+    /// shows this string verbatim and operators match it against LND's own logs and docs.
+    /// <para>protoc's C# output exposes <c>Descriptor</c> on messages but not on enums, so the
+    /// wire name is only reachable through the <see cref="OriginalNameAttribute"/> the generator
+    /// stamps on each member. The lookup is cached — this runs once per persisted failed attempt.</para>
+    /// </summary>
+    public static string? FailureCodeName(Failure? failure)
+    {
+        if (failure == null)
+        {
+            return null;
+        }
+
+        return FailureCodeNames.GetOrAdd(failure.Code, static code =>
+        {
+            var member = typeof(Failure.Types.FailureCode).GetField(code.ToString(),
+                BindingFlags.Public | BindingFlags.Static);
+            return member?.GetCustomAttribute<OriginalNameAttribute>()?.Name ?? code.ToString();
+        });
+    }
+
+    private static readonly ConcurrentDictionary<Failure.Types.FailureCode, string> FailureCodeNames = new();
 }
