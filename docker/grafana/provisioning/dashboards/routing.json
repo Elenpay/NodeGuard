@@ -437,7 +437,7 @@
           "editorMode": "builder",
           "format": "table",
           "hide": true,
-          "rawSql": "SELECT SUM(\"FeeMsat\") FROM \"ForwardingHtlcEvents\" WHERE ($__timeFilter(\"CreationDatetime\") AND \"Outcome\" = 2 AND \"ManagedNodePubKey\" IN ($node) AND \"WireFailureCode\" = 15) LIMIT 50 ",
+          "rawSql": "SELECT SUM(\"FeeMsat\") FROM \"ForwardingHtlcEvents\" WHERE ($__timeFilter(\"CreationDatetime\") AND \"Outcome\" = 2 AND \"ManagedNodePubKey\" IN ($node) AND \"EventCase\" = 4) LIMIT 50 ",
           "refId": "A",
           "sql": {
             "columns": [
@@ -522,11 +522,11 @@
                 {
                   "id": "a8b89a8a-0123-4456-b89a-b19d8b54b557",
                   "properties": {
-                    "field": "\"WireFailureCode\"",
+                    "field": "\"EventCase\"",
                     "fieldSrc": "field",
                     "operator": "equal",
                     "value": [
-                      15
+                      4
                     ],
                     "valueError": [
                       null
@@ -544,7 +544,7 @@
               "id": "9ba98b98-0123-4456-b89a-b19d68a8bc01",
               "type": "group"
             },
-            "whereString": "($__timeFilter(\"CreationDatetime\") AND \"Outcome\" = 2 AND \"ManagedNodePubKey\" IN ($node) AND \"WireFailureCode\" = 15)"
+            "whereString": "($__timeFilter(\"CreationDatetime\") AND \"Outcome\" = 2 AND \"ManagedNodePubKey\" IN ($node) AND \"EventCase\" = 4)"
           },
           "table": "\"ForwardingHtlcEvents\""
         },
@@ -560,7 +560,8 @@
         }
       ],
       "title": "Total Potential Missed fees (Routing)",
-      "type": "stat"
+      "type": "stat",
+      "description": "Missed = Outcome 2 with EventCase 4 (LinkFailEvent) — any HTLC that failed on this node's own link, for any reason, matching the 'Missed fee distribution' panels below. Downstream failures (EventCase = ForwardFailEvent) are excluded."
     },
     {
       "datasource": {
@@ -626,7 +627,7 @@
           "editorMode": "builder",
           "format": "table",
           "hide": true,
-          "rawSql": "SELECT SUM(\"FeeMsat\"), \"ManagedNodeName\" FROM \"ForwardingHtlcEvents\" WHERE ($__timeFilter(\"CreationDatetime\") AND \"Outcome\" = 2 AND \"ManagedNodePubKey\" IN ($node) AND \"WireFailureCode\" = 15) GROUP BY \"ManagedNodeName\" LIMIT 50 ",
+          "rawSql": "SELECT SUM(\"FeeMsat\"), \"ManagedNodeName\" FROM \"ForwardingHtlcEvents\" WHERE ($__timeFilter(\"CreationDatetime\") AND \"Outcome\" = 2 AND \"ManagedNodePubKey\" IN ($node) AND \"EventCase\" = 4) GROUP BY \"ManagedNodeName\" LIMIT 50 ",
           "refId": "A",
           "sql": {
             "columns": [
@@ -728,11 +729,11 @@
                 {
                   "id": "8988aaab-cdef-4012-b456-719d8b58d45d",
                   "properties": {
-                    "field": "\"WireFailureCode\"",
+                    "field": "\"EventCase\"",
                     "fieldSrc": "field",
                     "operator": "equal",
                     "value": [
-                      15
+                      4
                     ],
                     "valueError": [
                       null
@@ -750,7 +751,7 @@
               "id": "9ba98b98-0123-4456-b89a-b19d68a8bc01",
               "type": "group"
             },
-            "whereString": "($__timeFilter(\"CreationDatetime\") AND \"Outcome\" = 2 AND \"ManagedNodePubKey\" IN ($node) AND \"WireFailureCode\" = 15)"
+            "whereString": "($__timeFilter(\"CreationDatetime\") AND \"Outcome\" = 2 AND \"ManagedNodePubKey\" IN ($node) AND \"EventCase\" = 4)"
           },
           "table": "\"ForwardingHtlcEvents\""
         },
@@ -766,7 +767,8 @@
         }
       ],
       "title": "Total Missed Fees per Node (Routing)",
-      "type": "stat"
+      "type": "stat",
+      "description": "Missed = Outcome 2 with EventCase 4 (LinkFailEvent) — any HTLC that failed on this node's own link, for any reason, matching the 'Missed fee distribution' panels below. Downstream failures (EventCase = ForwardFailEvent) are excluded."
     },
     {
       "datasource": {
@@ -930,7 +932,7 @@
           "editorMode": "builder",
           "format": "table",
           "hide": true,
-          "rawSql": "SELECT SUM(\"FeeMsat\") FROM \"ForwardingHtlcEvents\" WHERE ($__timeFilter(\"CreationDatetime\") AND \"Outcome\" BETWEEN 1 AND 2 AND \"ManagedNodePubKey\" IN ($node) AND \"WireFailureCode\" = 15) LIMIT 50 ",
+          "rawSql": "SELECT SUM(\"FeeMsat\") FROM \"ForwardingHtlcEvents\" WHERE ($__timeFilter(\"CreationDatetime\") AND \"Outcome\" BETWEEN 1 AND 2 AND \"ManagedNodePubKey\" IN ($node) AND \"EventCase\" = 4) LIMIT 50 ",
           "refId": "B",
           "sql": {
             "columns": [
@@ -1026,11 +1028,11 @@
                 {
                   "id": "aa9999ba-cdef-4012-b456-719d8b56e86e",
                   "properties": {
-                    "field": "\"WireFailureCode\"",
+                    "field": "\"EventCase\"",
                     "fieldSrc": "field",
                     "operator": "equal",
                     "value": [
-                      15
+                      4
                     ],
                     "valueError": [
                       null
@@ -1048,7 +1050,7 @@
               "id": "9ba98b98-0123-4456-b89a-b19d68a8bc01",
               "type": "group"
             },
-            "whereString": "($__timeFilter(\"CreationDatetime\") AND \"Outcome\" BETWEEN 1 AND 2 AND \"ManagedNodePubKey\" IN ($node) AND \"WireFailureCode\" = 15)"
+            "whereString": "($__timeFilter(\"CreationDatetime\") AND \"Outcome\" BETWEEN 1 AND 2 AND \"ManagedNodePubKey\" IN ($node) AND \"EventCase\" = 4)"
           },
           "table": "\"ForwardingHtlcEvents\""
         },
@@ -1162,7 +1164,7 @@
           "format": "table",
           "hide": true,
           "rawQuery": true,
-          "rawSql": "SELECT $__timeGroup(\"EventTimestamp\",$__interval), SUM(\"FeeMsat\") FROM \"ForwardingHtlcEvents\" WHERE ($__timeFilter(\"CreationDatetime\") AND \"Outcome\" = 2 AND \"ManagedNodePubKey\" IN ($node)) GROUP BY $__timeGroup(\"EventTimestamp\", $__interval, 0) ORDER BY $__timeGroup(\"EventTimestamp\", $__interval, 0) ",
+          "rawSql": "SELECT $__timeGroup(\"EventTimestamp\",$__interval), SUM(\"FeeMsat\") FROM \"ForwardingHtlcEvents\" WHERE ($__timeFilter(\"CreationDatetime\") AND \"Outcome\" = 2 AND \"ManagedNodePubKey\" IN ($node) AND \"EventCase\" = 4) GROUP BY $__timeGroup(\"EventTimestamp\", $__interval, 0) ORDER BY $__timeGroup(\"EventTimestamp\", $__interval, 0) ",
           "refId": "A",
           "sql": {
             "columns": [
@@ -1271,12 +1273,33 @@
                     ]
                   },
                   "type": "rule"
+                },
+                {
+                  "id": "c2d3e4f5-89ab-4cde-b012-319d6f00b001",
+                  "properties": {
+                    "field": "\"EventCase\"",
+                    "fieldSrc": "field",
+                    "operator": "equal",
+                    "value": [
+                      4
+                    ],
+                    "valueError": [
+                      null
+                    ],
+                    "valueSrc": [
+                      "value"
+                    ],
+                    "valueType": [
+                      "number"
+                    ]
+                  },
+                  "type": "rule"
                 }
               ],
               "id": "9ba98b98-0123-4456-b89a-b19d68a8bc01",
               "type": "group"
             },
-            "whereString": "($__timeFilter(\"CreationDatetime\") AND \"Outcome\" = 2 AND \"ManagedNodePubKey\" IN ($node))"
+            "whereString": "($__timeFilter(\"CreationDatetime\") AND \"Outcome\" = 2 AND \"ManagedNodePubKey\" IN ($node) AND \"EventCase\" = 4)"
           },
           "table": "\"ForwardingHtlcEvents\""
         },
@@ -1290,7 +1313,7 @@
           "format": "table",
           "hide": true,
           "rawQuery": true,
-          "rawSql": "SELECT $__timeGroup(\"EventTimestamp\",$__interval), SUM(\"FeeMsat\") FROM \"ForwardingHtlcEvents\" WHERE ($__timeFilter(\"CreationDatetime\") AND \"Outcome\" BETWEEN 1 AND 2 AND \"ManagedNodePubKey\" IN ($node)) GROUP BY $__timeGroup(\"EventTimestamp\", $__interval, 0) ORDER BY $__timeGroup(\"EventTimestamp\", $__interval, 0) ",
+          "rawSql": "SELECT $__timeGroup(\"EventTimestamp\",$__interval), SUM(\"FeeMsat\") FROM \"ForwardingHtlcEvents\" WHERE ($__timeFilter(\"CreationDatetime\") AND \"Outcome\" BETWEEN 1 AND 2 AND \"ManagedNodePubKey\" IN ($node) AND \"EventCase\" != 2) GROUP BY $__timeGroup(\"EventTimestamp\", $__interval, 0) ORDER BY $__timeGroup(\"EventTimestamp\", $__interval, 0) ",
           "refId": "B",
           "sql": {
             "columns": [
@@ -1399,12 +1422,33 @@
                     ]
                   },
                   "type": "rule"
+                },
+                {
+                  "id": "c2d3e4f5-89ab-4cde-b012-319d6f00b002",
+                  "properties": {
+                    "field": "\"EventCase\"",
+                    "fieldSrc": "field",
+                    "operator": "not_equal",
+                    "value": [
+                      2
+                    ],
+                    "valueError": [
+                      null
+                    ],
+                    "valueSrc": [
+                      "value"
+                    ],
+                    "valueType": [
+                      "number"
+                    ]
+                  },
+                  "type": "rule"
                 }
               ],
               "id": "9ba98b98-0123-4456-b89a-b19d68a8bc01",
               "type": "group"
             },
-            "whereString": "($__timeFilter(\"CreationDatetime\") AND \"Outcome\" BETWEEN 1 AND 2 AND \"ManagedNodePubKey\" IN ($node))"
+            "whereString": "($__timeFilter(\"CreationDatetime\") AND \"Outcome\" BETWEEN 1 AND 2 AND \"ManagedNodePubKey\" IN ($node) AND \"EventCase\" != 2)"
           },
           "table": "\"ForwardingHtlcEvents\""
         },
@@ -1420,7 +1464,8 @@
         }
       ],
       "title": "% Routed of total over time",
-      "type": "timeseries"
+      "type": "timeseries",
+      "description": "1 - (locally-failed fee / (settled + non-downstream-failed fee)). Failed here means Outcome 2 with EventCase 4 (LinkFailEvent) — any reason, matching 'Missed fee distribution' below. Downstream failures (EventCase = ForwardFailEvent) are excluded from both the numerator and the denominator, since they were never within this node's control to route."
     },
     {
       "datasource": {
@@ -1649,7 +1694,7 @@
           "editorMode": "code",
           "format": "table",
           "rawQuery": true,
-          "rawSql": "SELECT\n  $__timeGroup(\"CreationDatetime\", '1h', 0) AS \"time\",\n  \n  -- The raw profit for that specific hour:\n  SUM(\"FeeMsat\") / 1e11 AS \"Missed hourly fee\",\n\n  -- The 24-hour rolling average (averages the last 24 one-hour buckets):\n  AVG(SUM(\"FeeMsat\") / 1e11) OVER (\n    ORDER BY $__timeGroup(\"CreationDatetime\", '1h', 0)\n    ROWS BETWEEN 23 PRECEDING AND CURRENT ROW\n  ) AS \"24h Rolling Avg\"\n\nFROM \"ForwardingHtlcEvents\"\nWHERE\n  $__timeFilter(\"CreationDatetime\")\n  AND \"Outcome\" = 2\n  AND \"ManagedNodePubKey\" IN ($node)\n  AND \"WireFailureCode\" = 15\nGROUP BY 1\nORDER BY 1",
+          "rawSql": "SELECT\n  $__timeGroup(\"CreationDatetime\", '1h', 0) AS \"time\",\n  \n  -- The raw profit for that specific hour:\n  SUM(\"FeeMsat\") / 1e11 AS \"Missed hourly fee\",\n\n  -- The 24-hour rolling average (averages the last 24 one-hour buckets):\n  AVG(SUM(\"FeeMsat\") / 1e11) OVER (\n    ORDER BY $__timeGroup(\"CreationDatetime\", '1h', 0)\n    ROWS BETWEEN 23 PRECEDING AND CURRENT ROW\n  ) AS \"24h Rolling Avg\"\n\nFROM \"ForwardingHtlcEvents\"\nWHERE\n  $__timeFilter(\"CreationDatetime\")\n  AND \"Outcome\" = 2\n  AND \"ManagedNodePubKey\" IN ($node)\n  AND \"EventCase\" = 4\nGROUP BY 1\nORDER BY 1",
           "refId": "A",
           "sql": {
             "columns": [
@@ -1671,7 +1716,8 @@
         }
       ],
       "title": "Missed fee over time",
-      "type": "timeseries"
+      "type": "timeseries",
+      "description": "Missed = Outcome 2 with EventCase 4 (LinkFailEvent) — any HTLC that failed on this node's own link, for any reason, matching the 'Missed fee distribution' panels below. Downstream failures (EventCase = ForwardFailEvent) are excluded."
     },
     {
       "datasource": {
@@ -2168,7 +2214,7 @@
           "editorMode": "builder",
           "format": "table",
           "rawQuery": true,
-          "rawSql": "SELECT SUM(\"FeeMsat\"), \"IncomingPeerAlias\" FROM \"ForwardingHtlcEvents\" WHERE (\"Outcome\" = 2 AND $__timeFilter(\"EventTimestamp\") AND \"ManagedNodePubKey\" IN ($node)) GROUP BY \"IncomingPeerAlias\" ORDER BY SUM(\"FeeMsat\") DESC LIMIT 100 ",
+          "rawSql": "SELECT SUM(\"FeeMsat\"), \"IncomingPeerAlias\" FROM \"ForwardingHtlcEvents\" WHERE (\"Outcome\" = 2 AND $__timeFilter(\"EventTimestamp\") AND \"ManagedNodePubKey\" IN ($node) AND \"EventCase\" = 4) GROUP BY \"IncomingPeerAlias\" ORDER BY SUM(\"FeeMsat\") DESC LIMIT 100 ",
           "refId": "A",
           "sql": {
             "columns": [
@@ -2274,16 +2320,38 @@
                     ]
                   },
                   "type": "rule"
+                },
+                {
+                  "id": "c1d2e3f4-89ab-4cde-b012-319d6f00a001",
+                  "properties": {
+                    "field": "\"EventCase\"",
+                    "fieldSrc": "field",
+                    "operator": "equal",
+                    "value": [
+                      4
+                    ],
+                    "valueError": [
+                      null
+                    ],
+                    "valueSrc": [
+                      "value"
+                    ],
+                    "valueType": [
+                      "number"
+                    ]
+                  },
+                  "type": "rule"
                 }
               ],
               "id": "9ba98b98-0123-4456-b89a-b19d68a8bc01",
               "type": "group"
             },
-            "whereString": "(\"Outcome\" = 2 AND $__timeFilter(\"EventTimestamp\") AND \"ManagedNodePubKey\" IN ($node))"
+            "whereString": "(\"Outcome\" = 2 AND $__timeFilter(\"EventTimestamp\") AND \"ManagedNodePubKey\" IN ($node) AND \"EventCase\" = 4)"
           },
           "table": "\"ForwardingHtlcEvents\""
         }
       ],
+      "description": "Missed = Outcome 2 with EventCase 4 (LinkFailEvent) — any HTLC that failed on this node's own link, for any reason (liquidity, fee policy, disabled channel, etc.), not only temporary_channel_failure. See 'Missed Fee by From→To and Failure Reason' (next to Failure reasons, below) to see which reason is driving this number before deciding whether liquidity or a fee-policy change is the right lever. Downstream failures (EventCase = ForwardFailEvent) are still excluded — see 'Downstream Failures — Not Our Fault'. The Missed-Fee Opportunity / Required Liquidity / APR panels further down keep the narrower WireFailureCode = 15 scope, since capital deployment only fixes that specific case.",
       "title": "Missed fee distribution (From)",
       "transformations": [
         {
@@ -2387,7 +2455,7 @@
           "editorMode": "builder",
           "format": "table",
           "rawQuery": true,
-          "rawSql": "SELECT SUM(\"FeeMsat\"), \"OutgoingPeerAlias\" FROM \"ForwardingHtlcEvents\" WHERE (\"Outcome\" = 2 AND $__timeFilter(\"EventTimestamp\") AND \"ManagedNodePubKey\" IN ($node)) GROUP BY \"OutgoingPeerAlias\" ORDER BY SUM(\"FeeMsat\") DESC LIMIT 500 ",
+          "rawSql": "SELECT SUM(\"FeeMsat\"), \"OutgoingPeerAlias\" FROM \"ForwardingHtlcEvents\" WHERE (\"Outcome\" = 2 AND $__timeFilter(\"EventTimestamp\") AND \"ManagedNodePubKey\" IN ($node) AND \"EventCase\" = 4) GROUP BY \"OutgoingPeerAlias\" ORDER BY SUM(\"FeeMsat\") DESC LIMIT 500 ",
           "refId": "A",
           "sql": {
             "columns": [
@@ -2493,16 +2561,38 @@
                     ]
                   },
                   "type": "rule"
+                },
+                {
+                  "id": "c1d2e3f4-89ab-4cde-b012-319d6f00a002",
+                  "properties": {
+                    "field": "\"EventCase\"",
+                    "fieldSrc": "field",
+                    "operator": "equal",
+                    "value": [
+                      4
+                    ],
+                    "valueError": [
+                      null
+                    ],
+                    "valueSrc": [
+                      "value"
+                    ],
+                    "valueType": [
+                      "number"
+                    ]
+                  },
+                  "type": "rule"
                 }
               ],
               "id": "9ba98b98-0123-4456-b89a-b19d68a8bc01",
               "type": "group"
             },
-            "whereString": "(\"Outcome\" = 2 AND $__timeFilter(\"EventTimestamp\") AND \"ManagedNodePubKey\" IN ($node))"
+            "whereString": "(\"Outcome\" = 2 AND $__timeFilter(\"EventTimestamp\") AND \"ManagedNodePubKey\" IN ($node) AND \"EventCase\" = 4)"
           },
           "table": "\"ForwardingHtlcEvents\""
         }
       ],
+      "description": "Missed = Outcome 2 with EventCase 4 (LinkFailEvent) — any HTLC that failed on this node's own link, for any reason (liquidity, fee policy, disabled channel, etc.), not only temporary_channel_failure. See 'Missed Fee by From→To and Failure Reason' (next to Failure reasons, below) to see which reason is driving this number before deciding whether liquidity or a fee-policy change is the right lever. Downstream failures (EventCase = ForwardFailEvent) are still excluded — see 'Downstream Failures — Not Our Fault'. The Missed-Fee Opportunity / Required Liquidity / APR panels further down keep the narrower WireFailureCode = 15 scope, since capital deployment only fixes that specific case.",
       "title": "Missed fee distribution (To)",
       "transformations": [
         {
@@ -2887,7 +2977,7 @@
           "editorMode": "builder",
           "format": "table",
           "rawQuery": true,
-          "rawSql": "SELECT SUM(\"FeeMsat\"), \"IncomingPeerAlias\", \"OutgoingPeerAlias\" FROM \"ForwardingHtlcEvents\" WHERE (\"Outcome\" = 2 AND $__timeFilter(\"EventTimestamp\") AND \"ManagedNodePubKey\" IN ($node)) GROUP BY \"IncomingPeerAlias\", \"OutgoingPeerAlias\" ORDER BY SUM(\"FeeMsat\") DESC LIMIT 500 ",
+          "rawSql": "SELECT SUM(\"FeeMsat\"), \"IncomingPeerAlias\", \"OutgoingPeerAlias\" FROM \"ForwardingHtlcEvents\" WHERE (\"Outcome\" = 2 AND $__timeFilter(\"EventTimestamp\") AND \"ManagedNodePubKey\" IN ($node) AND \"EventCase\" = 4) GROUP BY \"IncomingPeerAlias\", \"OutgoingPeerAlias\" ORDER BY SUM(\"FeeMsat\") DESC LIMIT 500 ",
           "refId": "A",
           "sql": {
             "columns": [
@@ -3009,16 +3099,38 @@
                     ]
                   },
                   "type": "rule"
+                },
+                {
+                  "id": "c1d2e3f4-89ab-4cde-b012-319d6f00a003",
+                  "properties": {
+                    "field": "\"EventCase\"",
+                    "fieldSrc": "field",
+                    "operator": "equal",
+                    "value": [
+                      4
+                    ],
+                    "valueError": [
+                      null
+                    ],
+                    "valueSrc": [
+                      "value"
+                    ],
+                    "valueType": [
+                      "number"
+                    ]
+                  },
+                  "type": "rule"
                 }
               ],
               "id": "9ba98b98-0123-4456-b89a-b19d68a8bc01",
               "type": "group"
             },
-            "whereString": "(\"Outcome\" = 2 AND $__timeFilter(\"EventTimestamp\") AND \"ManagedNodePubKey\" IN ($node))"
+            "whereString": "(\"Outcome\" = 2 AND $__timeFilter(\"EventTimestamp\") AND \"ManagedNodePubKey\" IN ($node) AND \"EventCase\" = 4)"
           },
           "table": "\"ForwardingHtlcEvents\""
         }
       ],
+      "description": "Missed = Outcome 2 with EventCase 4 (LinkFailEvent) — any HTLC that failed on this node's own link, for any reason (liquidity, fee policy, disabled channel, etc.), not only temporary_channel_failure. See 'Missed Fee by From→To and Failure Reason' (next to Failure reasons, below) to see which reason is driving this number before deciding whether liquidity or a fee-policy change is the right lever. Downstream failures (EventCase = ForwardFailEvent) are still excluded — see 'Downstream Failures — Not Our Fault'. The Missed-Fee Opportunity / Required Liquidity / APR panels further down keep the narrower WireFailureCode = 15 scope, since capital deployment only fixes that specific case.",
       "title": "Missed fee distribution (From->To)",
       "transformations": [
         {
@@ -3307,7 +3419,7 @@
           "editorMode": "builder",
           "format": "table",
           "rawQuery": true,
-          "rawSql": "SELECT COUNT(\"CreationDatetime\"), \"IncomingPeerAlias\", \"OutgoingPeerAlias\" FROM \"ForwardingHtlcEvents\" WHERE (\"Outcome\" = 2 AND $__timeFilter(\"EventTimestamp\") AND \"ManagedNodePubKey\" IN ($node)) GROUP BY \"IncomingPeerAlias\", \"OutgoingPeerAlias\" ORDER BY COUNT(\"CreationDatetime\") DESC LIMIT 500 ",
+          "rawSql": "SELECT COUNT(\"CreationDatetime\"), \"IncomingPeerAlias\", \"OutgoingPeerAlias\" FROM \"ForwardingHtlcEvents\" WHERE (\"Outcome\" = 2 AND $__timeFilter(\"EventTimestamp\") AND \"ManagedNodePubKey\" IN ($node) AND \"EventCase\" = 4) GROUP BY \"IncomingPeerAlias\", \"OutgoingPeerAlias\" ORDER BY COUNT(\"CreationDatetime\") DESC LIMIT 500 ",
           "refId": "A",
           "sql": {
             "columns": [
@@ -3429,16 +3541,38 @@
                     ]
                   },
                   "type": "rule"
+                },
+                {
+                  "id": "c1d2e3f4-89ab-4cde-b012-319d6f00a004",
+                  "properties": {
+                    "field": "\"EventCase\"",
+                    "fieldSrc": "field",
+                    "operator": "equal",
+                    "value": [
+                      4
+                    ],
+                    "valueError": [
+                      null
+                    ],
+                    "valueSrc": [
+                      "value"
+                    ],
+                    "valueType": [
+                      "number"
+                    ]
+                  },
+                  "type": "rule"
                 }
               ],
               "id": "9ba98b98-0123-4456-b89a-b19d68a8bc01",
               "type": "group"
             },
-            "whereString": "(\"Outcome\" = 2 AND $__timeFilter(\"EventTimestamp\") AND \"ManagedNodePubKey\" IN ($node))"
+            "whereString": "(\"Outcome\" = 2 AND $__timeFilter(\"EventTimestamp\") AND \"ManagedNodePubKey\" IN ($node) AND \"EventCase\" = 4)"
           },
           "table": "\"ForwardingHtlcEvents\""
         }
       ],
+      "description": "Missed = Outcome 2 with EventCase 4 (LinkFailEvent) — any HTLC that failed on this node's own link, for any reason (liquidity, fee policy, disabled channel, etc.), not only temporary_channel_failure. See 'Missed Fee by From→To and Failure Reason' (next to Failure reasons, below) to see which reason is driving this number before deciding whether liquidity or a fee-policy change is the right lever. Downstream failures (EventCase = ForwardFailEvent) are still excluded — see 'Downstream Failures — Not Our Fault'. The Missed-Fee Opportunity / Required Liquidity / APR panels further down keep the narrower WireFailureCode = 15 scope, since capital deployment only fixes that specific case.",
       "title": "Missed HTLC counted distribution (From->To)",
       "type": "piechart"
     },
@@ -3465,7 +3599,7 @@
       },
       "gridPos": {
         "h": 8,
-        "w": 12,
+        "w": 8,
         "x": 0,
         "y": 69
       },
@@ -3597,7 +3731,7 @@
         "type": "grafana-postgresql-datasource",
         "uid": "$datasource"
       },
-      "description": "The top $topN incoming → outgoing peer pairs by failed HTLC amount (volume that could not be routed, BTC — same COALESCE(OutgoingAmountMsat, IncomingAmountMsat) convention as the Required Liquidity panels), with each bar split by normalized failure reason. Failed HTLCs without a failure string (LND forward-fails) appear as '(no failure detail)'. Click a reason in the legend to isolate it.",
+      "description": "The top $topN incoming → outgoing peer pairs by missed fee, scoped to Outcome 2 with EventCase 4 (LinkFailEvent) — the same definition as the 'Missed fee distribution' panels above, and the fee-weighted twin of 'Failed HTLC volume by From→To and failure reason' to the right — with each bar split by normalized failure reason (temporary_channel_failure, FeeInsufficient, ChannelDisabled, etc.). This is what drives those panels' totals: use it to see whether a pair's missed fee is liquidity-driven or fee-policy-driven before deciding the fix. Downstream failures (EventCase = ForwardFailEvent) are excluded from both charts — they can't carry a failure reason at all (see 'Downstream Failures — Not Our Fault' for that volume/fee instead).",
       "fieldConfig": {
         "defaults": {
           "color": {
@@ -3641,8 +3775,111 @@
       },
       "gridPos": {
         "h": 8,
-        "w": 12,
-        "x": 12,
+        "w": 8,
+        "x": 8,
+        "y": 69
+      },
+      "id": 504,
+      "options": {
+        "barRadius": 0,
+        "barWidth": 0.8,
+        "fullHighlight": false,
+        "groupWidth": 0.7,
+        "legend": {
+          "calcs": [],
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "orientation": "horizontal",
+        "showValue": "never",
+        "stacking": "normal",
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        },
+        "xTickLabelRotation": 0,
+        "xTickLabelSpacing": 0
+      },
+      "pluginVersion": "12.4.2",
+      "targets": [
+        {
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "$datasource"
+          },
+          "editorMode": "code",
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "WITH failed AS (\n  SELECT\n    COALESCE(\"IncomingPeerAlias\", 'unknown') || ' → ' || COALESCE(\"OutgoingPeerAlias\", 'unknown') AS pair,\n    COALESCE(TRIM(split_part(\"FailureString\", '(', 1)), '(no failure detail)') AS reason,\n    COALESCE(SUM(\"FeeMsat\"), 0) / 100000000000.0 AS missed_fee_btc\n  FROM \"ForwardingHtlcEvents\"\n  WHERE $__timeFilter(\"EventTimestamp\")\n    AND \"ManagedNodePubKey\" IN ($node)\n    AND \"Outcome\" = 2\n    AND \"EventCase\" = 4\n  GROUP BY 1, 2\n), top_pairs AS (\n  SELECT pair, SUM(missed_fee_btc) AS total\n  FROM failed\n  GROUP BY 1\n  ORDER BY 2 DESC\n  LIMIT $topN\n)\nSELECT f.pair, f.reason, f.missed_fee_btc::float8 AS missed_fee_btc\nFROM failed f\nJOIN top_pairs tp ON tp.pair = f.pair\nORDER BY tp.total DESC, f.missed_fee_btc DESC\n",
+          "refId": "A"
+        }
+      ],
+      "title": "Missed Fee by From→To and Failure Reason (top $topN pairs)",
+      "transformations": [
+        {
+          "id": "groupingToMatrix",
+          "options": {
+            "columnField": "reason",
+            "rowField": "pair",
+            "valueField": "missed_fee_btc",
+            "emptyValue": "null"
+          }
+        }
+      ],
+      "type": "barchart"
+    },
+    {
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "$datasource"
+      },
+      "description": "The top $topN incoming → outgoing peer pairs by failed HTLC amount (volume that could not be routed, BTC — same COALESCE(OutgoingAmountMsat, IncomingAmountMsat) convention as the Required Liquidity panels), with each bar split by normalized failure reason. Scoped to Outcome 2 with EventCase 4 (LinkFailEvent) — the volume-weighted twin of 'Missed Fee by From→To and Failure Reason' to the left. Downstream failures (EventCase = ForwardFailEvent) are excluded: they never carry a failure reason (always '(no failure detail)'), so they'd only add one undifferentiated bar to a chart that's supposed to be about reasons — see 'Downstream Failures — Not Our Fault' for that volume instead. Click a reason in the legend to isolate it.",
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "axisBorderShow": false,
+            "axisCenteredZero": false,
+            "axisColorMode": "text",
+            "axisLabel": "",
+            "axisPlacement": "auto",
+            "fillOpacity": 80,
+            "gradientMode": "none",
+            "hideFrom": {
+              "legend": false,
+              "tooltip": false,
+              "viz": false
+            },
+            "lineWidth": 1,
+            "scaleDistribution": {
+              "type": "linear"
+            },
+            "thresholdsStyle": {
+              "mode": "off"
+            }
+          },
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          },
+          "unit": "currencyBTC",
+          "decimals": 4
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 8,
+        "x": 16,
         "y": 69
       },
       "id": 403,
@@ -3677,7 +3914,7 @@
           "editorMode": "code",
           "format": "table",
           "rawQuery": true,
-          "rawSql": "WITH failed AS (\n  SELECT\n    COALESCE(\"IncomingPeerAlias\", 'unknown') || ' → ' || COALESCE(\"OutgoingPeerAlias\", 'unknown') AS pair,\n    COALESCE(TRIM(split_part(\"FailureString\", '(', 1)), '(no failure detail)') AS reason,\n    COALESCE(SUM(COALESCE(\"OutgoingAmountMsat\", \"IncomingAmountMsat\")), 0) / 100000000000.0 AS failed_amt_btc\n  FROM \"ForwardingHtlcEvents\"\n  WHERE $__timeFilter(\"EventTimestamp\")\n    AND \"ManagedNodePubKey\" IN ($node)\n    AND \"Outcome\" = 2\n  GROUP BY 1, 2\n), top_pairs AS (\n  SELECT pair, SUM(failed_amt_btc) AS total\n  FROM failed\n  GROUP BY 1\n  ORDER BY 2 DESC\n  LIMIT $topN\n)\nSELECT f.pair, f.reason, f.failed_amt_btc::float8 AS failed_amt_btc\nFROM failed f\nJOIN top_pairs tp ON tp.pair = f.pair\nORDER BY tp.total DESC, f.failed_amt_btc DESC\n",
+          "rawSql": "WITH failed AS (\n  SELECT\n    COALESCE(\"IncomingPeerAlias\", 'unknown') || ' → ' || COALESCE(\"OutgoingPeerAlias\", 'unknown') AS pair,\n    COALESCE(TRIM(split_part(\"FailureString\", '(', 1)), '(no failure detail)') AS reason,\n    COALESCE(SUM(COALESCE(\"OutgoingAmountMsat\", \"IncomingAmountMsat\")), 0) / 100000000000.0 AS failed_amt_btc\n  FROM \"ForwardingHtlcEvents\"\n  WHERE $__timeFilter(\"EventTimestamp\")\n    AND \"ManagedNodePubKey\" IN ($node)\n    AND \"Outcome\" = 2\n    AND \"EventCase\" = 4\n  GROUP BY 1, 2\n), top_pairs AS (\n  SELECT pair, SUM(failed_amt_btc) AS total\n  FROM failed\n  GROUP BY 1\n  ORDER BY 2 DESC\n  LIMIT $topN\n)\nSELECT f.pair, f.reason, f.failed_amt_btc::float8 AS failed_amt_btc\nFROM failed f\nJOIN top_pairs tp ON tp.pair = f.pair\nORDER BY tp.total DESC, f.failed_amt_btc DESC\n",
           "refId": "A"
         }
       ],
@@ -5972,6 +6209,261 @@
         "x": 0,
         "y": 235
       },
+      "id": 500,
+      "panels": [],
+      "title": "Downstream Failures — Not Our Fault",
+      "type": "row"
+    },
+    {
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "$datasource"
+      },
+      "description": "Total fee that would have been earned had these HTLCs succeeded, but they failed downstream — after this node forwarded them onward, a peer further along the route failed the payment (EventCase = ForwardFailEvent). LND never gives an intermediate hop the wire failure code for a downstream failure (only the original sender can decrypt it), and there is no liquidity fix on this node's side, so this is not counted in any Missed Fee panel above. Informational only.",
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "thresholds"
+          },
+          "decimals": 8,
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "blue",
+                "value": null
+              }
+            ]
+          },
+          "unit": "currencyBTC"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 8,
+        "x": 0,
+        "y": 236
+      },
+      "id": 501,
+      "options": {
+        "colorMode": "value",
+        "graphMode": "area",
+        "justifyMode": "auto",
+        "orientation": "auto",
+        "percentChangeColorMode": "standard",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "showPercentChange": false,
+        "textMode": "auto",
+        "wideLayout": true
+      },
+      "pluginVersion": "12.4.2",
+      "targets": [
+        {
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "$datasource"
+          },
+          "editorMode": "code",
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "SELECT COALESCE(SUM(\"FeeMsat\"), 0) / 100000000000.0 AS \"Downstream-Failed Fee (BTC)\" FROM \"ForwardingHtlcEvents\" WHERE $__timeFilter(\"EventTimestamp\") AND \"Outcome\" = 2 AND \"EventCase\" = 2 AND \"ManagedNodePubKey\" IN ($node)",
+          "refId": "A"
+        }
+      ],
+      "title": "Downstream-Failed Fee (Total, BTC)",
+      "type": "stat"
+    },
+    {
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "$datasource"
+      },
+      "description": "Total payment volume (BTC) that failed downstream after this node forwarded it onward — same EventCase = ForwardFailEvent scope as the fee panel. Uses COALESCE(OutgoingAmountMsat, IncomingAmountMsat), the same convention as the Required Liquidity panels above.",
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "thresholds"
+          },
+          "decimals": 8,
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "blue",
+                "value": null
+              }
+            ]
+          },
+          "unit": "currencyBTC"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 8,
+        "x": 8,
+        "y": 236
+      },
+      "id": 502,
+      "options": {
+        "colorMode": "value",
+        "graphMode": "area",
+        "justifyMode": "auto",
+        "orientation": "auto",
+        "percentChangeColorMode": "standard",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "showPercentChange": false,
+        "textMode": "auto",
+        "wideLayout": true
+      },
+      "pluginVersion": "12.4.2",
+      "targets": [
+        {
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "$datasource"
+          },
+          "editorMode": "code",
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "SELECT COALESCE(SUM(COALESCE(\"OutgoingAmountMsat\", \"IncomingAmountMsat\")), 0) / 100000000000.0 AS \"Downstream-Failed Volume (BTC)\" FROM \"ForwardingHtlcEvents\" WHERE $__timeFilter(\"EventTimestamp\") AND \"Outcome\" = 2 AND \"EventCase\" = 2 AND \"ManagedNodePubKey\" IN ($node)",
+          "refId": "A"
+        }
+      ],
+      "title": "Downstream-Failed Volume (Total, BTC)",
+      "type": "stat"
+    },
+    {
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "$datasource"
+      },
+      "description": "Downstream-failed fee, grouped by the outgoing peer this node had forwarded to (EventCase = ForwardFailEvent). Useful for spotting whether downstream failures cluster behind one particular next-hop peer, even though any fix is on their side or further along the route, not this node's liquidity.",
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "hideFrom": {
+              "legend": false,
+              "tooltip": false,
+              "viz": false
+            }
+          },
+          "mappings": [],
+          "unit": "currencyBTC"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 8,
+        "x": 16,
+        "y": 236
+      },
+      "id": 503,
+      "options": {
+        "displayLabels": [],
+        "legend": {
+          "displayMode": "table",
+          "placement": "right",
+          "showLegend": true,
+          "values": [
+            "percent",
+            "value"
+          ]
+        },
+        "pieType": "pie",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "/^sum / 100000000000$/",
+          "values": true
+        },
+        "sort": "desc",
+        "tooltip": {
+          "hideZeros": false,
+          "mode": "single",
+          "sort": "none"
+        }
+      },
+      "pluginVersion": "12.4.2",
+      "targets": [
+        {
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "$datasource"
+          },
+          "editorMode": "code",
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "SELECT SUM(\"FeeMsat\"), \"OutgoingPeerAlias\" FROM \"ForwardingHtlcEvents\" WHERE \"Outcome\" = 2 AND \"EventCase\" = 2 AND $__timeFilter(\"EventTimestamp\") AND \"ManagedNodePubKey\" IN ($node) GROUP BY \"OutgoingPeerAlias\" ORDER BY SUM(\"FeeMsat\") DESC LIMIT 500",
+          "refId": "A"
+        }
+      ],
+      "title": "Downstream-Failed Fee Distribution (By Outgoing Peer)",
+      "transformations": [
+        {
+          "id": "calculateField",
+          "options": {
+            "binary": {
+              "left": {
+                "matcher": {
+                  "id": "byName",
+                  "options": "sum"
+                }
+              },
+              "operator": "/",
+              "right": {
+                "fixed": "100000000000"
+              }
+            },
+            "mode": "binary",
+            "reduce": {
+              "reducer": "sum"
+            },
+            "replaceFields": false
+          }
+        },
+        {
+          "id": "organize",
+          "options": {
+            "excludeByName": {
+              "sum": true
+            },
+            "includeByName": {},
+            "indexByName": {},
+            "renameByName": {}
+          }
+        }
+      ],
+      "type": "piechart"
+    },
+    {
+      "collapsed": false,
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 244
+      },
       "id": 400,
       "panels": [],
       "title": "Yield — Liquidity vs Profit Correlation",
@@ -6064,7 +6556,7 @@
         "h": 10,
         "w": 12,
         "x": 0,
-        "y": 236
+        "y": 245
       },
       "id": 401,
       "options": {
@@ -6215,7 +6707,7 @@
         "h": 10,
         "w": 12,
         "x": 12,
-        "y": 236
+        "y": 245
       },
       "id": 402,
       "options": {
@@ -6380,7 +6872,7 @@
         "h": 10,
         "w": 12,
         "x": 0,
-        "y": 246
+        "y": 255
       },
       "id": 404,
       "options": {
@@ -6551,7 +7043,7 @@
         "h": 10,
         "w": 12,
         "x": 12,
-        "y": 246
+        "y": 255
       },
       "id": 405,
       "options": {
@@ -6751,7 +7243,7 @@
         "h": 9,
         "w": 24,
         "x": 0,
-        "y": 256
+        "y": 265
       },
       "id": 406,
       "options": {
