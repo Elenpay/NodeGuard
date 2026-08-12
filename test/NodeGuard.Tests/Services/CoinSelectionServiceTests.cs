@@ -362,11 +362,10 @@ public class CoinSelectionServiceTests
             var (coins, selectedUTXOs) = await coinSelectionService.GetTxInputCoins(
                 availableUTXOs, request, wallet.GetDerivationStrategy()!);
 
-            // Assert: the selection is the one the closest-to-amount algorithm produces, which is still
-            // a stub returning nothing. This assertion has to be revisited once it is implemented, what
-            // it checks here is that the flag routes to it instead of to the oldest-first algorithm
+            // Assert: the selection is the one the closest-to-amount algorithm produces
             var expectedUTXOs = UTXOSelectionAlgorithms.SelectUTXOsByClosest(
                 wallet, request.SatsAmount, availableUTXOs, _logger);
+            expectedUTXOs.Should().NotBeEmpty("otherwise this test could not tell both algorithms apart");
             selectedUTXOs.Should().BeEquivalentTo(expectedUTXOs);
             coins.Select(coin => coin.Outpoint).Should().BeEquivalentTo(expectedUTXOs.Select(utxo => utxo.Outpoint));
         }

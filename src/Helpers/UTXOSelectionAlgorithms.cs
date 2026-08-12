@@ -31,6 +31,43 @@ namespace NodeGuard.Helpers
     public static class UTXOSelectionAlgorithms
     {
         /// <summary>
+        /// Validations shared by every selection algorithm. Throws on invalid arguments, and returns false
+        /// when the available UTXOs cannot fund the request, in which case the algorithm has nothing to
+        /// select and must return an empty selection.
+        /// </summary>
+        /// <param name="wallet"></param>
+        /// <param name="satsAmount"></param>
+        /// <param name="availableUTXOs"></param>
+        /// <param name="logger"></param>
+        /// <returns>Whether a selection can be made at all</returns>
+        private static bool ValidateArguments(
+            Wallet wallet, long satsAmount, List<UTXO> availableUTXOs, ILogger logger)
+        {
+            ArgumentNullException.ThrowIfNull(wallet);
+            ArgumentNullException.ThrowIfNull(logger);
+            ArgumentOutOfRangeException.ThrowIfNegativeOrZero(satsAmount);
+
+            if (!availableUTXOs.Any())
+            {
+                logger.LogError("The PSBT cannot be generated, no UTXOs are available for walletId: {WalletId}",
+                    wallet.Id);
+                return false;
+            }
+
+            var totalUTXOsConfirmedSats = availableUTXOs.Sum(x => ((Money)x.Value).Satoshi);
+
+            if (totalUTXOsConfirmedSats < satsAmount)
+            {
+                logger.LogError(
+                    "Error, the total UTXOs set balance for walletid: {WalletId} ({AvailableSats} sats) is less than the amount in the request ({RequestedSats} sats)",
+                    wallet.Id, totalUTXOsConfirmedSats, satsAmount);
+                return false;
+            }
+
+            return true;
+        }
+
+        /// <summary>
         /// Selects utxos from a wallet for requests (Withdrawals, ChannelOperationRequest) by oldest
         /// </summary>
         /// <param name="wallet"></param>
@@ -41,32 +78,16 @@ namespace NodeGuard.Helpers
         public static List<UTXO> SelectUTXOsByOldest(
             Wallet wallet, long satsAmount, List<UTXO> availableUTXOs, ILogger logger)
         {
-            if (wallet == null) throw new ArgumentNullException(nameof(wallet));
-            if (logger == null) throw new ArgumentNullException(nameof(logger));
-            if (satsAmount <= 0) throw new ArgumentOutOfRangeException(nameof(satsAmount));
-
             var selectedUTXOs = new List<UTXO>();
 
-            if (!availableUTXOs.Any())
+            if (!ValidateArguments(wallet, satsAmount, availableUTXOs, logger))
             {
-                logger.LogError("The PSBT cannot be generated, no UTXOs are available for walletId: {WalletId}",
-                    wallet.Id);
                 return selectedUTXOs;
             }
 
             var utxosStack = new Stack<UTXO>(availableUTXOs.OrderByDescending(x => x.Confirmations));
 
             //FIFO Algorithm to match the amount, oldest UTXOs are first taken
-
-            var totalUTXOsConfirmedSats = utxosStack.Sum(x => ((Money)x.Value).Satoshi);
-
-            if (totalUTXOsConfirmedSats < satsAmount)
-            {
-                logger.LogError(
-                    "Error, the total UTXOs set balance for walletid: {WalletId} ({AvailableSats} sats) is less than the amount in the request ({RequestedSats} sats)",
-                    wallet.Id, totalUTXOsConfirmedSats, satsAmount);
-                return selectedUTXOs;
-            }
 
             var utxosSatsAmountAccumulator = 0M;
 
@@ -91,9 +112,10 @@ namespace NodeGuard.Helpers
         }
 
         /// <summary>
-        /// Selects utxos from a wallet for requests (Withdrawals, ChannelOperationRequest) by picking the
-        /// ones whose amount is closest to the requested one. Not implemented yet, it always returns an
-        /// empty selection.
+        /// Selects utxos from a wallet for requests (Withdrawals, ChannelOperationRequest) by closest, i.e.
+        /// the UTXOs whose amount differs the least from the requested one are taken first. A single UTXO
+        /// covering the whole amount is therefore preferred over several smaller ones, as long as it is the
+        /// closest to the amount.
         /// </summary>
         /// <param name="wallet"></param>
         /// <param name="satsAmount"></param>
@@ -103,7 +125,27 @@ namespace NodeGuard.Helpers
         public static List<UTXO> SelectUTXOsByClosest(
             Wallet wallet, long satsAmount, List<UTXO> availableUTXOs, ILogger logger)
         {
-            return new List<UTXO>();
+            var selectedUTXOs = new List<UTXO>();
+
+            if (!ValidateArguments(wallet, satsAmount, availableUTXOs, logger))
+            {
+                return selectedUTXOs;
+            }
+
+            //Closest-first: the queue is ordered once by how far each UTXO is from the requested amount
+            var utxosQueue = new Queue<UTXO>(
+                availableUTXOs.OrderBy(x => Math.Abs(((Money)x.Value).Satoshi - satsAmount)));
+
+            //Take UTXOs off the queue until the amount is covered. The first one already covers it whenever
+            //it holds at least the requested amount, so it ends up being the only one selected
+            var remainingSats = satsAmount;
+            while (remainingSats > 0 && utxosQueue.TryDequeue(out var utxo))
+            {
+                selectedUTXOs.Add(utxo);
+                remainingSats -= ((Money)utxo.Value).Satoshi;
+            }
+
+            return selectedUTXOs;
         }
     }
 }
