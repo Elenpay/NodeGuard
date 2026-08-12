@@ -19,14 +19,17 @@
 
 using FluentAssertions;
 using Lnrpc;
-using Microsoft.Extensions.Logging;
 using NodeGuard.Data.Models;
-using NodeGuard.Data.Repositories.Interfaces;
-using NodeGuard.Services;
-using Quartz;
 
 namespace NodeGuard.Jobs;
 
+/// <summary>
+/// Covers the LND-payment → <see cref="PaymentRoute"/> mapping via
+/// <see cref="MonitorPaymentRoutesJob.MapToPaymentRoute"/>, the projection every update from the
+/// per-node payment stream goes through before it is persisted. Kept free of the repository so
+/// these assertions describe the mapping only; the write path is covered by
+/// <c>PaymentRouteRepositoryTests</c>.
+/// </summary>
 public class MonitorPaymentRoutesJobTests
 {
     private const string OriginPubKey = "02origin";
@@ -34,44 +37,17 @@ public class MonitorPaymentRoutesJobTests
     private const string HopB = "02bbb";
     private const string HopC = "02ccc";
 
-    private readonly Mock<INodeRepository> _nodeRepositoryMock = new();
-    private readonly Mock<ILightningClientService> _lightningClientServiceMock = new();
-    private readonly Mock<IPaymentRouteRepository> _paymentRouteRepositoryMock = new();
-    private readonly MonitorPaymentRoutesJob _job;
-
-    private readonly List<PaymentRoute> _persisted = new();
-
-    public MonitorPaymentRoutesJobTests()
+    private readonly Node _node = new()
     {
-        _nodeRepositoryMock
-            .Setup(x => x.GetAllManagedByNodeGuard(It.IsAny<bool>()))
-            .ReturnsAsync(new List<Node>
-            {
-                new() { Id = 1, Name = "origin", PubKey = OriginPubKey, Endpoint = "localhost:10009", ChannelAdminMacaroon = "abc" }
-            });
+        Id = 1, Name = "origin", PubKey = OriginPubKey, Endpoint = "localhost:10009", ChannelAdminMacaroon = "abc"
+    };
 
-        _paymentRouteRepositoryMock
-            .Setup(x => x.InsertIfNewAsync(It.IsAny<PaymentRoute>()))
-            .Callback<PaymentRoute>(p => _persisted.Add(p))
-            .ReturnsAsync((true, (string?)null));
-
-        _job = new MonitorPaymentRoutesJob(
-            new Mock<ILogger<MonitorPaymentRoutesJob>>().Object,
-            _nodeRepositoryMock.Object,
-            _lightningClientServiceMock.Object,
-            _paymentRouteRepositoryMock.Object);
-    }
-
-    private void GivenPayments(params Payment[] payments)
-    {
-        var response = new ListPaymentsResponse { LastIndexOffset = 0 };
-        response.Payments.AddRange(payments);
-
-        // LastIndexOffset stays 0, so the tracker's pagination loop stops after one page.
-        _lightningClientServiceMock
-            .Setup(x => x.ListPayments(It.IsAny<Node>(), It.IsAny<ListPaymentsRequest>(), null))
-            .ReturnsAsync(response);
-    }
+    /// <summary>
+    /// The projection one stream update goes through. Returns null for updates that are not stored,
+    /// so a test that expects nothing persisted asserts on null.
+    /// </summary>
+    private PaymentRoute? WhenUpdateReceived(Payment payment)
+        => MonitorPaymentRoutesJob.MapToPaymentRoute(_node, payment);
 
     private static Hop MakeHop(string pubKey, ulong chanId) =>
         new() { PubKey = pubKey, ChanId = chanId, AmtToForwardMsat = 1000 };
@@ -103,9 +79,9 @@ public class MonitorPaymentRoutesJobTests
     /// from the payment's status painted those failed routes green.
     /// </summary>
     [Fact]
-    public async Task Execute_SucceededPaymentWithFailedAttempts_RecordsEachAttemptsOwnOutcome()
+    public void HandlePaymentUpdate_SucceededPaymentWithFailedAttempts_RecordsEachAttemptsOwnOutcome()
     {
-        GivenPayments(MakePayment("hash1", Payment.Types.PaymentStatus.Succeeded,
+        var mapped = WhenUpdateReceived(MakePayment("hash1", Payment.Types.PaymentStatus.Succeeded,
             MakeAttempt(4001, HTLCAttempt.Types.HTLCStatus.Failed,
                 new Failure { Code = Failure.Types.FailureCode.TemporaryChannelFailure, FailureSourceIndex = 1 },
                 MakeHop(HopA, 111), MakeHop(HopB, 222)),
@@ -115,9 +91,7 @@ public class MonitorPaymentRoutesJobTests
             MakeAttempt(4003, HTLCAttempt.Types.HTLCStatus.Succeeded, null,
                 MakeHop(HopA, 555), MakeHop(HopB, 666))));
 
-        await _job.Execute(new Mock<IJobExecutionContext>().Object);
-
-        var hops = _persisted.Single().Hops;
+        var hops = mapped!.Hops;
 
         hops.Where(h => h.AttemptIndex == 0).Should()
             .OnlyContain(h => h.AttemptStatus == PaymentRouteAttemptStatus.Failed
@@ -140,17 +114,15 @@ public class MonitorPaymentRoutesJobTests
     /// a node-global uint64 that both overflows int and renders as "attempt 4002" in the UI.
     /// </summary>
     [Fact]
-    public async Task Execute_AttemptIndex_IsPerPaymentOrdinalNotLndAttemptId()
+    public void HandlePaymentUpdate_AttemptIndex_IsPerPaymentOrdinalNotLndAttemptId()
     {
-        GivenPayments(MakePayment("hash1", Payment.Types.PaymentStatus.Failed,
+        var mapped = WhenUpdateReceived(MakePayment("hash1", Payment.Types.PaymentStatus.Failed,
             MakeAttempt(9_000_000_001, HTLCAttempt.Types.HTLCStatus.Failed, null, MakeHop(HopA, 111)),
             MakeAttempt(9_000_000_002, HTLCAttempt.Types.HTLCStatus.Failed, null, MakeHop(HopB, 222))));
 
-        await _job.Execute(new Mock<IJobExecutionContext>().Object);
-
         // Asserted as (index, hop) pairs rather than a bare sequence, so an implementation
         // that stamped every hop with the same ordinal can't pass on list order alone.
-        _persisted.Single().Hops.Should().SatisfyRespectively(
+        mapped!.Hops.Should().SatisfyRespectively(
             h => { h.AttemptIndex.Should().Be(0); h.ToNode.Should().Be(HopA); },
             h => { h.AttemptIndex.Should().Be(1); h.ToNode.Should().Be(HopB); });
     }
@@ -160,15 +132,13 @@ public class MonitorPaymentRoutesJobTests
     /// that actually delivered, not the abandoned one it tried first.
     /// </summary>
     [Fact]
-    public async Task Execute_Destination_ComesFromTheSettledAttemptNotTheFirstOne()
+    public void HandlePaymentUpdate_Destination_ComesFromTheSettledAttemptNotTheFirstOne()
     {
-        GivenPayments(MakePayment("hash1", Payment.Types.PaymentStatus.Succeeded,
+        var mapped = WhenUpdateReceived(MakePayment("hash1", Payment.Types.PaymentStatus.Succeeded,
             MakeAttempt(1, HTLCAttempt.Types.HTLCStatus.Failed, null, MakeHop(HopA, 111), MakeHop(HopB, 222)),
             MakeAttempt(2, HTLCAttempt.Types.HTLCStatus.Succeeded, null, MakeHop(HopA, 333), MakeHop(HopC, 444))));
 
-        await _job.Execute(new Mock<IJobExecutionContext>().Object);
-
-        _persisted.Single().Destination.Should().Be(HopC);
+        mapped!.Destination.Should().Be(HopC);
     }
 
     /// <summary>
@@ -176,30 +146,48 @@ public class MonitorPaymentRoutesJobTests
     /// attempt that had a route rather than losing the destination entirely.
     /// </summary>
     [Fact]
-    public async Task Execute_Destination_FallsBackToFirstRoutedAttemptWhenNoneSettled()
+    public void HandlePaymentUpdate_Destination_FallsBackToFirstRoutedAttemptWhenNoneSettled()
     {
-        GivenPayments(MakePayment("hash1", Payment.Types.PaymentStatus.Failed,
+        var mapped = WhenUpdateReceived(MakePayment("hash1", Payment.Types.PaymentStatus.Failed,
             MakeAttempt(1, HTLCAttempt.Types.HTLCStatus.Failed, null, MakeHop(HopA, 111), MakeHop(HopB, 222)),
             MakeAttempt(2, HTLCAttempt.Types.HTLCStatus.Failed, null, MakeHop(HopA, 333), MakeHop(HopC, 444))));
 
-        await _job.Execute(new Mock<IJobExecutionContext>().Object);
-
-        _persisted.Single().Destination.Should().Be(HopB);
+        mapped!.Destination.Should().Be(HopB);
     }
 
     [Fact]
-    public async Task Execute_HopSequenceAndFromNode_ChainFromTheOriginPerAttempt()
+    public void HandlePaymentUpdate_HopSequenceAndFromNode_ChainFromTheOriginPerAttempt()
     {
-        GivenPayments(MakePayment("hash1", Payment.Types.PaymentStatus.Succeeded,
+        var mapped = WhenUpdateReceived(MakePayment("hash1", Payment.Types.PaymentStatus.Succeeded,
             MakeAttempt(1, HTLCAttempt.Types.HTLCStatus.Succeeded, null,
                 MakeHop(HopA, 111), MakeHop(HopB, 222), MakeHop(HopC, 333))));
 
-        await _job.Execute(new Mock<IJobExecutionContext>().Object);
-
-        var hops = _persisted.Single().Hops;
+        var hops = mapped!.Hops;
         hops.Select(h => h.HopSequence).Should().Equal(0, 1, 2);
         hops.Select(h => h.FromNode).Should().Equal(OriginPubKey, HopA, HopB);
         hops.Select(h => h.ToNode).Should().Equal(HopA, HopB, HopC);
+    }
+
+    /// <summary>
+    /// HopSequence indexes LND's route, and so does Failure.failure_source_index — the graph
+    /// compares HopSequence + 1 against it to decide which hop broke. A hop we decline to persist
+    /// (no pubkey, or no channel id) must therefore still consume its position, otherwise every
+    /// later hop shifts down one and the failure is attributed to the wrong node.
+    /// </summary>
+    [Fact]
+    public void HandlePaymentUpdate_UnpersistableHop_StillConsumesItsRoutePosition()
+    {
+        var mapped = WhenUpdateReceived(MakePayment("hash1", Payment.Types.PaymentStatus.Failed,
+            MakeAttempt(1, HTLCAttempt.Types.HTLCStatus.Failed,
+                new Failure { Code = Failure.Types.FailureCode.TemporaryChannelFailure, FailureSourceIndex = 3 },
+                MakeHop(HopA, 111),
+                MakeHop(HopB, 0), // unusable: no channel id, so it is not persisted
+                MakeHop(HopC, 333))));
+
+        var hops = mapped!.Hops;
+        hops.Select(h => h.ToNode).Should().Equal(HopA, HopC);
+        // HopC sits at route position 2, not 1 — so destPos (2 + 1) matches failureSourceIndex 3.
+        hops.Select(h => h.HopSequence).Should().Equal(0, 2);
     }
 
     /// <summary>
@@ -208,26 +196,27 @@ public class MonitorPaymentRoutesJobTests
     /// no route to draw.
     /// </summary>
     [Fact]
-    public async Task Execute_FailedPaymentWithNoAttempts_IsPersistedWithoutHops()
+    public void HandlePaymentUpdate_FailedPaymentWithNoAttempts_IsPersistedWithoutHops()
     {
-        GivenPayments(MakePayment("hash1", Payment.Types.PaymentStatus.Failed));
+        var mapped = WhenUpdateReceived(MakePayment("hash1", Payment.Types.PaymentStatus.Failed));
 
-        await _job.Execute(new Mock<IJobExecutionContext>().Object);
-
-        var payment = _persisted.Single();
+        var payment = mapped!;
         payment.Status.Should().Be(PaymentRouteStatus.Failed);
         payment.Hops.Should().BeEmpty();
         payment.Destination.Should().BeNull();
     }
 
+    /// <summary>
+    /// In-flight updates are still skipped, as they were under polling. Nothing is lost by
+    /// waiting for the terminal update: an update's attempt list is cumulative, so the terminal
+    /// one carries every attempt the payment ever made, failed ones included.
+    /// </summary>
     [Fact]
-    public async Task Execute_NonTerminalPayment_IsSkipped()
+    public void HandlePaymentUpdate_NonTerminalPayment_IsSkipped()
     {
-        GivenPayments(MakePayment("hash1", Payment.Types.PaymentStatus.InFlight,
+        var mapped = WhenUpdateReceived(MakePayment("hash1", Payment.Types.PaymentStatus.InFlight,
             MakeAttempt(1, HTLCAttempt.Types.HTLCStatus.InFlight, null, MakeHop(HopA, 111))));
 
-        await _job.Execute(new Mock<IJobExecutionContext>().Object);
-
-        _persisted.Should().BeEmpty();
+        mapped.Should().BeNull();
     }
 }
