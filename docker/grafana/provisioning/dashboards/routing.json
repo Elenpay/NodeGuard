@@ -932,7 +932,7 @@
           "editorMode": "builder",
           "format": "table",
           "hide": true,
-          "rawSql": "SELECT SUM(\"FeeMsat\") FROM \"ForwardingHtlcEvents\" WHERE ($__timeFilter(\"CreationDatetime\") AND \"Outcome\" BETWEEN 1 AND 2 AND \"ManagedNodePubKey\" IN ($node) AND \"EventCase\" = 4) LIMIT 50 ",
+          "rawSql": "SELECT SUM(\"FeeMsat\") FROM \"ForwardingHtlcEvents\" WHERE ($__timeFilter(\"CreationDatetime\") AND (\"Outcome\" = 1 OR (\"Outcome\" = 2 AND \"EventCase\" = 4)) AND \"ManagedNodePubKey\" IN ($node)) LIMIT 50 ",
           "refId": "B",
           "sql": {
             "columns": [
@@ -981,28 +981,81 @@
                 },
                 {
                   "id": "baaa88b9-89ab-4cde-b012-319d6c6df7e3",
+                  "type": "group",
                   "properties": {
-                    "field": "\"Outcome\"",
-                    "fieldSrc": "field",
-                    "operator": "between",
-                    "value": [
-                      1,
-                      2
-                    ],
-                    "valueError": [
-                      null,
-                      null
-                    ],
-                    "valueSrc": [
-                      "value",
-                      "value"
-                    ],
-                    "valueType": [
-                      "number",
-                      "number"
-                    ]
+                    "conjunction": "OR"
                   },
-                  "type": "rule"
+                  "children1": [
+                    {
+                      "id": "baaa88b9-89ab-4cde-b012-319d6c6df7e4",
+                      "properties": {
+                        "field": "\"Outcome\"",
+                        "fieldSrc": "field",
+                        "operator": "equal",
+                        "value": [
+                          1
+                        ],
+                        "valueError": [
+                          null
+                        ],
+                        "valueSrc": [
+                          "value"
+                        ],
+                        "valueType": [
+                          "number"
+                        ]
+                      },
+                      "type": "rule"
+                    },
+                    {
+                      "id": "baaa88b9-89ab-4cde-b012-319d6c6df7e5",
+                      "type": "group",
+                      "children1": [
+                        {
+                          "id": "baaa88b9-89ab-4cde-b012-319d6c6df7e6",
+                          "properties": {
+                            "field": "\"Outcome\"",
+                            "fieldSrc": "field",
+                            "operator": "equal",
+                            "value": [
+                              2
+                            ],
+                            "valueError": [
+                              null
+                            ],
+                            "valueSrc": [
+                              "value"
+                            ],
+                            "valueType": [
+                              "number"
+                            ]
+                          },
+                          "type": "rule"
+                        },
+                        {
+                          "id": "aa9999ba-cdef-4012-b456-719d8b56e86e",
+                          "properties": {
+                            "field": "\"EventCase\"",
+                            "fieldSrc": "field",
+                            "operator": "equal",
+                            "value": [
+                              4
+                            ],
+                            "valueError": [
+                              null
+                            ],
+                            "valueSrc": [
+                              "value"
+                            ],
+                            "valueType": [
+                              "number"
+                            ]
+                          },
+                          "type": "rule"
+                        }
+                      ]
+                    }
+                  ]
                 },
                 {
                   "id": "9b889a99-cdef-4012-b456-719d6e02e3d5",
@@ -1024,33 +1077,12 @@
                     ]
                   },
                   "type": "rule"
-                },
-                {
-                  "id": "aa9999ba-cdef-4012-b456-719d8b56e86e",
-                  "properties": {
-                    "field": "\"EventCase\"",
-                    "fieldSrc": "field",
-                    "operator": "equal",
-                    "value": [
-                      4
-                    ],
-                    "valueError": [
-                      null
-                    ],
-                    "valueSrc": [
-                      "value"
-                    ],
-                    "valueType": [
-                      "number"
-                    ]
-                  },
-                  "type": "rule"
                 }
               ],
               "id": "9ba98b98-0123-4456-b89a-b19d68a8bc01",
               "type": "group"
             },
-            "whereString": "($__timeFilter(\"CreationDatetime\") AND \"Outcome\" BETWEEN 1 AND 2 AND \"ManagedNodePubKey\" IN ($node) AND \"EventCase\" = 4)"
+            "whereString": "($__timeFilter(\"CreationDatetime\") AND (\"Outcome\" = 1 OR (\"Outcome\" = 2 AND \"EventCase\" = 4)) AND \"ManagedNodePubKey\" IN ($node))"
           },
           "table": "\"ForwardingHtlcEvents\""
         },
