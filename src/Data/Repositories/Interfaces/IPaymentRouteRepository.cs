@@ -23,8 +23,15 @@ namespace NodeGuard.Data.Repositories.Interfaces;
 
 public interface IPaymentRouteRepository
 {
-    /// <summary>Inserts a payment (with its hops) if it does not already exist. Idempotent by PaymentHash.</summary>
-    Task<(bool inserted, string? error)> InsertIfNewAsync(PaymentRoute payment);
+    /// <summary>
+    /// Inserts a payment (with its hops), or refreshes an existing row in place. Keyed by
+    /// PaymentHash; returns whether a new row was created.
+    ///
+    /// <para>An insert-only write cannot be correct here: LND lets a failed payment hash be
+    /// retried, so the same hash can reach a terminal state twice (FAILED, then SUCCEEDED on the
+    /// retry). Skipping the second one leaves the payment permanently recorded as failed.</para>
+    /// </summary>
+    Task<(bool inserted, string? error)> UpsertAsync(PaymentRoute payment);
 
     /// <summary>Payments (with hops eagerly loaded) originated by <paramref name="originNodePubKey"/> and created within [start, end].</summary>
     Task<List<PaymentRoute>> GetByCreatedAtRangeAsync(string originNodePubKey, DateTimeOffset start, DateTimeOffset end);

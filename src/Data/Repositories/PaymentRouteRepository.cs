@@ -35,24 +35,56 @@ public class PaymentRouteRepository : IPaymentRouteRepository
         _logger = logger;
     }
 
-    public async Task<(bool inserted, string? error)> InsertIfNewAsync(PaymentRoute payment)
+    public async Task<(bool inserted, string? error)> UpsertAsync(PaymentRoute payment)
     {
         await using var dbContext = await _dbContextFactory.CreateDbContextAsync();
         try
         {
-            // Idempotency: never re-insert a payment we already tracked (mirror of the
-            // Python tracker's `db.get(Payment, pay_hash) is not None` check).
-            if (await dbContext.PaymentRoutes.AnyAsync(p => p.PaymentHash == payment.PaymentHash))
-            {
-                return (false, null);
-            }
+            var existing = await dbContext.PaymentRoutes
+                .Include(p => p.Hops)
+                .FirstOrDefaultAsync(p => p.PaymentHash == payment.PaymentHash);
 
             var now = DateTimeOffset.UtcNow;
-            payment.CreationDatetime = now;
-            payment.UpdateDatetime = now;
-            await dbContext.PaymentRoutes.AddAsync(payment);
+
+            if (existing == null)
+            {
+                payment.CreationDatetime = now;
+                payment.UpdateDatetime = now;
+                await dbContext.PaymentRoutes.AddAsync(payment);
+                await dbContext.SaveChangesAsync();
+                return (true, null);
+            }
+
+            existing.OriginNodePubKey = payment.OriginNodePubKey;
+            existing.Status = payment.Status;
+            existing.CreatedAt = payment.CreatedAt;
+            existing.AmountMsat = payment.AmountMsat;
+            existing.Destination = payment.Destination;
+            existing.UpdateDatetime = now;
+
+            // Replace the hop set wholesale — each LND payment update carries the payment's full
+            // attempt list, so the incoming snapshot supersedes what we stored.
+            //
+            // But never let an EMPTY snapshot erase hops we already captured. LND deletes failed
+            // HTLC attempts once a payment is terminal (unless the node runs with
+            // --keep-failed-payment-attempts), so any later read of the same payment can honestly
+            // come back with no attempts at all. Wiping on that would destroy exactly the failed
+            // routes this feature exists to show.
+            if (payment.Hops.Count > 0)
+            {
+                dbContext.PaymentRouteHops.RemoveRange(existing.Hops);
+                await dbContext.SaveChangesAsync();
+
+                foreach (var hop in payment.Hops)
+                {
+                    hop.PaymentHash = existing.PaymentHash;
+                }
+
+                await dbContext.PaymentRouteHops.AddRangeAsync(payment.Hops);
+            }
+
             await dbContext.SaveChangesAsync();
-            return (true, null);
+            return (false, null);
         }
         catch (Exception e)
         {

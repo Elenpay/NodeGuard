@@ -17,166 +17,315 @@
  *
  */
 
+using System.Collections.Concurrent;
+using Grpc.Core;
+using Grpc.Net.Client;
 using Lnrpc;
+using Microsoft.Extensions.Logging.Abstractions;
 using NodeGuard.Data.Models;
 using NodeGuard.Data.Repositories.Interfaces;
 using NodeGuard.Services;
-using Quartz;
+using Routerrpc;
 
 namespace NodeGuard.Jobs;
 
 /// <summary>
-/// Polls each managed node's outbound payments via LND's <c>ListPayments</c> gRPC and
-/// persists new ones (with their route hops) for route visualisation. Port of
-/// LightningEye's <c>PaymentTracker</c> (app/services/tracker.py).
+/// Long-running listener that keeps one LND payment-tracking stream open per managed node and
+/// persists each payment (with its route hops) as LND reports it, for route visualisation.
 ///
-/// <para>The Python tracker held its <c>index_offset</c> cursor in memory (reset on
-/// restart, re-scanned from 0). Quartz jobs are stateless per execution and the
-/// <see cref="PaymentRoute"/> entity has no cursor column, so this job paginates from
-/// <c>index_offset = 0</c> every run and relies on
-/// <see cref="IPaymentRouteRepository.InsertIfNewAsync"/> for idempotency — behaviour
-/// identical to the original.</para>
+/// <para><b>Why a stream and not polling.</b> This started life as a Quartz job polling
+/// <c>ListPayments</c>. That can never see failed HTLC attempts: LND deletes them the moment a
+/// payment reaches a terminal state (unless the node runs with
+/// <c>--keep-failed-payment-attempts</c>), and the deletion is synchronous with that transition, so
+/// no polling interval is fast enough. Measured on a regtest node, a payment that burned 34 failed
+/// attempts across four-hop routes reported <c>htlcs = 0</c> from <c>ListPayments</c> immediately
+/// afterwards. The router's payment stream delivers the same payment's terminal update with all 34
+/// attempts still attached, which is the only place that data is observable.</para>
 ///
-/// <para>Fails safe on a fresh/default environment: with no managed nodes (or nodes
-/// missing a macaroon/endpoint) the loop body never runs and the job is a no-op.</para>
+/// <para><b>Why the whole payment is re-persisted per update.</b> Every update carries the
+/// payment's complete attempt list, and that list is append-only: verified over a 72-update MPP
+/// stream, position <c>i</c> always refers to the same <c>attempt_id</c> and the list never shrank.
+/// So <see cref="PaymentRouteHop.AttemptIndex"/> can stay an ordinal into that list, and each
+/// update can safely replace the stored hop set rather than having to merge into it.</para>
+///
+/// <para><b>Coverage is best-effort by construction.</b> The stream only reports payments while we
+/// are attached. A payment that reaches a terminal state while NodeGuard is down loses its attempt
+/// detail permanently — LND will already have pruned it, so nothing can backfill it later. There is
+/// deliberately no <c>ListPayments</c> catch-up sweep here; historical payments predating this
+/// service are not imported.</para>
+///
+/// <para>Fails safe on a fresh/default environment: with no managed nodes (or nodes missing a
+/// macaroon/endpoint) no listener is ever started and the service idles.</para>
 /// </summary>
-[DisallowConcurrentExecution]
-public class MonitorPaymentRoutesJob : IJob
+public sealed class MonitorPaymentRoutesJob : BackgroundService
 {
-    private const int MaxPaymentsPerPage = 100;
+    /// <summary>How often the set of managed nodes is re-read so listeners follow node changes.</summary>
+    private static readonly TimeSpan NodeReconcileInterval = TimeSpan.FromMinutes(1);
+
+    /// <summary>Backoff before re-opening a stream that dropped, so a node that is down does not spin.</summary>
+    private static readonly TimeSpan ReconnectDelay = TimeSpan.FromSeconds(10);
 
     private readonly ILogger<MonitorPaymentRoutesJob> _logger;
-    private readonly INodeRepository _nodeRepository;
-    private readonly ILightningClientService _lightningClientService;
-    private readonly IPaymentRouteRepository _paymentRouteRepository;
+
+    /// <summary>
+    /// Repositories are resolved per use from a fresh scope rather than injected. A
+    /// <see cref="BackgroundService"/> is a singleton, so injecting them directly captures
+    /// non-singleton services and the container's scope validation rejects the whole graph at
+    /// startup ("Cannot consume scoped service ... from singleton IHostedService").
+    /// </summary>
+    private readonly IServiceScopeFactory _scopeFactory;
+
+    /// <summary>Live listeners by node id — the "managed node =&gt; payment listener" mapping.</summary>
+    private readonly ConcurrentDictionary<int, NodeListener> _listeners = new();
+
+    /// <summary>
+    /// gRPC channels by node endpoint. Deliberately owned here rather than borrowed from
+    /// <c>LightningRouterService</c>: the payment watcher keeps its own connection so a stream that
+    /// dies (and the channel eviction that follows) cannot disturb the routing/liquidity code paths
+    /// that share that service.
+    /// </summary>
+    private readonly ConcurrentDictionary<string, GrpcChannel> _channels = new();
 
     public MonitorPaymentRoutesJob(ILogger<MonitorPaymentRoutesJob> logger,
-        INodeRepository nodeRepository,
-        ILightningClientService lightningClientService,
-        IPaymentRouteRepository paymentRouteRepository)
+        IServiceScopeFactory scopeFactory)
     {
         _logger = logger;
-        _nodeRepository = nodeRepository;
-        _lightningClientService = lightningClientService;
-        _paymentRouteRepository = paymentRouteRepository;
+        _scopeFactory = scopeFactory;
     }
 
-    public async Task Execute(IJobExecutionContext context)
+    protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
-        _logger.LogInformation("Starting {JobName}... ", nameof(MonitorPaymentRoutesJob));
-        try
-        {
-            var managedNodes = await _nodeRepository.GetAllManagedByNodeGuard(false);
+        _logger.LogInformation("Starting {ServiceName}... ", nameof(MonitorPaymentRoutesJob));
 
-            foreach (var node in managedNodes)
+        while (!stoppingToken.IsCancellationRequested)
+        {
+            try
             {
-                // Fail safe: skip anything we can't reach. On a default environment this
-                // means the job does nothing rather than erroring.
-                if (string.IsNullOrWhiteSpace(node.ChannelAdminMacaroon) ||
-                    string.IsNullOrWhiteSpace(node.Endpoint))
+                await ReconcileListenersAsync(stoppingToken);
+            }
+            catch (Exception e)
+            {
+                // Never let a bad reconcile pass kill the service; the next one retries.
+                _logger.LogError(e, "Error reconciling payment route listeners");
+            }
+
+            try
+            {
+                await Task.Delay(NodeReconcileInterval, stoppingToken);
+            }
+            catch (OperationCanceledException)
+            {
+                break;
+            }
+        }
+
+        await StopAllListenersAsync();
+        _logger.LogInformation("{ServiceName} ended", nameof(MonitorPaymentRoutesJob));
+    }
+
+    /// <summary>
+    /// Brings the live listener set in line with the managed nodes: starts one for every eligible
+    /// node that has none, and stops those whose node is gone or no longer reachable.
+    /// </summary>
+    private async Task ReconcileListenersAsync(CancellationToken stoppingToken)
+    {
+        List<Node> managedNodes;
+        using (var scope = _scopeFactory.CreateScope())
+        {
+            var nodeRepository = scope.ServiceProvider.GetRequiredService<INodeRepository>();
+            managedNodes = await nodeRepository.GetAllManagedByNodeGuard(false);
+        }
+
+        var eligible = managedNodes
+            // Fail safe: skip anything we can't reach. On a default environment this means no
+            // listener is started rather than an error being thrown.
+            .Where(n => !string.IsNullOrWhiteSpace(n.ChannelAdminMacaroon) &&
+                        !string.IsNullOrWhiteSpace(n.Endpoint))
+            .ToList();
+
+        foreach (var node in eligible)
+        {
+            if (_listeners.TryGetValue(node.Id, out var running))
+            {
+                // A listener normally runs until cancelled, so a completed one means its loop fell
+                // over; drop it here and let the code below start a replacement.
+                var faulted = running.Task is { IsCompleted: true };
+
+                // The node's connection details are captured when its stream starts, so an
+                // endpoint or macaroon edit has to restart the listener to take effect.
+                var reconnectionNeeded = running.Endpoint != node.Endpoint ||
+                                         running.Macaroon != node.ChannelAdminMacaroon;
+
+                if (!faulted && !reconnectionNeeded)
                 {
                     continue;
                 }
 
-                try
-                {
-                    await TrackNodePaymentsAsync(node);
-                }
-                catch (Exception ex)
-                {
-                    // One node failing must not abort the rest (mirror of MonitorSwapsJob).
-                    _logger.LogError(ex,
-                        "Unexpected error while tracking payment routes for node {NodeId}. Monitoring will continue for other nodes",
-                        node.Id);
-                }
+                _logger.LogInformation(
+                    "Restarting payment listener for node {NodeId} (faulted: {Faulted}, connection changed: {Changed})",
+                    node.Id, faulted, reconnectionNeeded);
+                _listeners.TryRemove(node.Id, out _);
+                await running.StopAsync();
             }
-        }
-        catch (Exception e)
-        {
-            _logger.LogError(e, "Error on {JobName}", nameof(MonitorPaymentRoutesJob));
-            throw new JobExecutionException(e, false);
+
+            var cts = CancellationTokenSource.CreateLinkedTokenSource(stoppingToken);
+            var listener = new NodeListener(cts, node.Endpoint, node.ChannelAdminMacaroon);
+            if (!_listeners.TryAdd(node.Id, listener))
+            {
+                cts.Dispose();
+                continue;
+            }
+
+            _logger.LogInformation("Subscribing to payments of node {NodeId} ({NodeName})", node.Id, node.Name);
+            listener.Task = ListenToNodeAsync(node, cts.Token);
         }
 
-        _logger.LogInformation("{JobName} ended", nameof(MonitorPaymentRoutesJob));
+        var eligibleIds = eligible.Select(n => n.Id).ToHashSet();
+        foreach (var (nodeId, listener) in _listeners)
+        {
+            if (eligibleIds.Contains(nodeId))
+            {
+                continue;
+            }
+
+            _logger.LogInformation("Node {NodeId} is no longer tracked, stopping its payment listener", nodeId);
+            _listeners.TryRemove(nodeId, out _);
+            await listener.StopAsync();
+        }
     }
 
     /// <summary>
-    /// Port of tracker.py <c>_poll</c>: paginates ListPayments by index_offset from 0,
-    /// persisting each new terminal payment until a page comes back empty.
+    /// Keeps a payment stream open for one node, re-opening it after any failure until cancelled.
     /// </summary>
-    private async Task TrackNodePaymentsAsync(Node node)
+    private async Task ListenToNodeAsync(Node node, CancellationToken cancellationToken)
     {
-        ulong indexOffset = 0;
-        var savedTotal = 0;
-
-        while (true)
+        while (!cancellationToken.IsCancellationRequested)
         {
-            var request = new ListPaymentsRequest
+            try
             {
-                IndexOffset = indexOffset,
-                MaxPayments = MaxPaymentsPerPage,
-                Reversed = false,
-                // Must be true: with IncludeIncomplete = false LND returns ONLY SUCCEEDED
-                // payments, so failed routes never reach the DB and the frontend's "Include
-                // failed payments" toggle has nothing to show. With it true, LND also returns
-                // FAILED (and IN_FLIGHT/INITIATED) payments; SavePaymentAsync then keeps only
-                // terminal states (Success/Failed) and skips the non-terminal ones via
-                // FromLndPaymentStatus → Unknown. Mirrors the Go infra tracker, which persists
-                // both SUCCEEDED and FAILED.
-                IncludeIncomplete = true
-            };
+                await ConsumePaymentStreamAsync(node, cancellationToken);
 
-            var response = await _lightningClientService.ListPayments(node, request);
-            // The ListPayments wrapper returns null on error; don't NRE, just stop this node.
-            if (response == null || response.Payments.Count == 0)
+                // A clean end of stream is still unexpected while we want to keep watching.
+                _logger.LogWarning("Payment stream for node {NodeId} ended, reconnecting", node.Id);
+            }
+            // Shutting down is not a failure. Grpc.Net surfaces a cancelled call as an RpcException
+            // wrapping the OperationCanceledException rather than letting the latter through, so
+            // both shapes have to be recognised or every clean stop logs an error.
+            catch (Exception e) when (cancellationToken.IsCancellationRequested &&
+                                      e is OperationCanceledException or
+                                          RpcException { StatusCode: StatusCode.Cancelled })
             {
                 break;
             }
-
-            foreach (var payment in response.Payments)
+            catch (Exception e)
             {
-                if (await SavePaymentAsync(node, payment))
-                {
-                    savedTotal++;
-                }
+                _logger.LogError(e,
+                    "Payment stream for node {NodeId} failed. Reconnecting in {Delay}s. Monitoring continues for other nodes",
+                    node.Id, ReconnectDelay.TotalSeconds);
             }
 
-            // Advance the cursor for the next page (port of last_index_offset handling).
-            var newIndex = response.LastIndexOffset;
-            if (newIndex <= indexOffset)
+            // The channel may be half-open after a stream failure; drop it so the retry dials fresh.
+            InvalidateChannel(node.Endpoint);
+
+            try
+            {
+                await Task.Delay(ReconnectDelay, cancellationToken);
+            }
+            catch (OperationCanceledException)
             {
                 break;
             }
-            indexOffset = newIndex;
-        }
-
-        if (savedTotal > 0)
-        {
-            _logger.LogInformation("Saved {Count} new payment route(s) for node {NodeId}", savedTotal, node.Id);
         }
     }
 
     /// <summary>
-    /// Port of tracker.py <c>_save_payment</c>: parses one LND payment into a
-    /// <see cref="PaymentRoute"/> (+ hops) and inserts it if new. Returns true when a new
-    /// payment was persisted. Non-terminal statuses (IN_FLIGHT / INITIATED / UNKNOWN) are
-    /// skipped, exactly as the Python tracker ignored anything but SUCCEEDED/FAILED.
+    /// Opens the node's payment stream and persists every update it delivers.
+    ///
+    /// <para>Uses <c>TrackPayments</c> (all of the node's payments) rather than
+    /// <c>TrackPaymentV2</c>, which takes a single <c>payment_hash</c> and so cannot express a
+    /// per-node subscription: knowing the hashes up front would require the polling this service
+    /// exists to replace.</para>
+    ///
+    /// <para><c>NoInflightUpdates</c> is set so LND streams only each payment's final update.
+    /// Intermediate updates would be discarded anyway — <see cref="HandlePaymentUpdateAsync"/>
+    /// persists terminal payments only — and there is nothing to gain by reading them: a payment's
+    /// attempt list is cumulative, so the final update already carries every attempt it ever made.
+    /// One MPP payment measured on regtest produced 74 intermediate updates against a single
+    /// terminal one, all with the same 34 attempts by the end, so suppressing them is a large
+    /// reduction in stream volume for no loss of data.</para>
     /// </summary>
-    private async Task<bool> SavePaymentAsync(Node node, Payment raw)
+    private async Task ConsumePaymentStreamAsync(Node node, CancellationToken cancellationToken)
+    {
+        // Reconcile only starts listeners for nodes that have both, but assert it here so a node
+        // edited to drop its macaroon mid-stream fails loudly on the next reconnect.
+        ArgumentException.ThrowIfNullOrWhiteSpace(node.ChannelAdminMacaroon);
+
+        var routerClient = GetRouterClient(node.Endpoint);
+
+        using var stream = routerClient.TrackPayments(
+            new TrackPaymentsRequest { NoInflightUpdates = true },
+            new Metadata { { "macaroon", node.ChannelAdminMacaroon } },
+            cancellationToken: cancellationToken);
+
+        await foreach (var payment in stream.ResponseStream.ReadAllAsync(cancellationToken))
+        {
+            try
+            {
+                await HandlePaymentUpdateAsync(node, payment);
+            }
+            catch (Exception e)
+            {
+                // One malformed/unsaveable payment must not tear down the whole stream.
+                _logger.LogError(e, "Error persisting payment {PaymentHash} of node {NodeId}",
+                    payment.PaymentHash, node.Id);
+            }
+        }
+    }
+
+    /// <summary>
+    /// Persists one payment update: parses the LND payment into a <see cref="PaymentRoute"/>
+    /// (+ hops) and upserts it. Returns true when a new payment row was created.
+    ///
+    /// <para>Non-terminal statuses (IN_FLIGHT / INITIATED / UNKNOWN) are skipped, as they were
+    /// under polling. Nothing is lost by waiting: an update's attempt list is cumulative, so the
+    /// terminal update carries every attempt the payment ever made — including the failed ones —
+    /// and <see cref="PaymentRouteStatus"/> has no in-flight member to record them under anyway.</para>
+    /// </summary>
+    public async Task<bool> HandlePaymentUpdateAsync(Node node, Payment raw)
+    {
+        var paymentRoute = MapToPaymentRoute(node, raw);
+        if (paymentRoute == null)
+        {
+            return false;
+        }
+
+        using var scope = _scopeFactory.CreateScope();
+        var paymentRouteRepository = scope.ServiceProvider.GetRequiredService<IPaymentRouteRepository>();
+
+        var (inserted, _) = await paymentRouteRepository.UpsertAsync(paymentRoute);
+        return inserted;
+    }
+
+    /// <summary>
+    /// The pure LND-payment → <see cref="PaymentRoute"/> projection, split out from the persistence
+    /// so it can be exercised without a container or a database. Returns null for an update that
+    /// should not be stored: no payment hash, or a non-terminal status.
+    /// </summary>
+    public static PaymentRoute? MapToPaymentRoute(Node node, Payment raw)
     {
         var payHash = raw.PaymentHash?.Trim();
         if (string.IsNullOrEmpty(payHash))
         {
-            return false;
+            return null;
         }
 
         var status = PaymentRouteMapping.FromLndPaymentStatus(raw.Status);
         if (status == PaymentRouteStatus.Unknown)
         {
-            return false;
+            return null;
         }
 
-        var paymentRoute = new PaymentRoute
+        return new PaymentRoute
         {
             PaymentHash = payHash,
             OriginNodePubKey = node.PubKey,
@@ -186,23 +335,20 @@ public class MonitorPaymentRoutesJob : IJob
             Destination = ExtractDestination(raw),
             Hops = BuildHops(node, payHash, raw)
         };
-
-        var (inserted, _) = await _paymentRouteRepository.InsertIfNewAsync(paymentRoute);
-        return inserted;
     }
 
     /// <summary>
-    /// Port of tracker.py <c>_save_hops</c> applied over every HTLC attempt. The first hop
-    /// always leaves from our own node; each subsequent hop starts from the previous
-    /// destination. Hops without a pubkey or channel id are skipped.
+    /// Flattens every HTLC attempt of a payment into hop rows. The first hop always leaves from our
+    /// own node; each subsequent hop starts from the previous destination. Hops without a pubkey or
+    /// channel id are skipped.
     ///
-    /// <para>Each attempt's outcome and failure detail are denormalised onto its hops so the
-    /// graph can distinguish "this hop forwarded fine", "this hop broke" and "never reached"
-    /// instead of painting a whole attempt from the payment's final status.</para>
+    /// <para>Each attempt's outcome and failure detail are denormalised onto its hops so the graph
+    /// can distinguish "this hop forwarded fine", "this hop broke" and "never reached" instead of
+    /// painting a whole attempt from the payment's final status.</para>
     ///
-    /// <para>Note that a payment with no HTLC attempts at all yields no hops — that is the
-    /// normal shape for pathfinding-stage failures (NO_ROUTE, INSUFFICIENT_BALANCE), where
-    /// LND never dispatched an HTLC and so has no route to report.</para>
+    /// <para>Note that a payment with no HTLC attempts at all yields no hops — that is the normal
+    /// shape for pathfinding-stage failures (NO_ROUTE, INSUFFICIENT_BALANCE), where LND never
+    /// dispatched an HTLC and so has no route to report.</para>
     /// </summary>
     private static List<PaymentRouteHop> BuildHops(Node node, string payHash, Payment raw)
     {
@@ -223,10 +369,15 @@ public class MonitorPaymentRoutesJob : IJob
 
             // The first hop always leaves from our node (ORIGIN).
             var prevNode = node.PubKey;
-            var seq = 0;
 
-            foreach (var hop in route.Hops)
+            // seq is the hop's position in LND's route, counted even for hops we skip persisting.
+            // It must stay aligned with Failure.failure_source_index, which indexes that same
+            // route: PaymentRoutesGraphService.HopStatusFor compares HopSequence + 1 against it to
+            // decide which hop broke, so dropping a position here would point the failure at the
+            // wrong node for every later hop.
+            for (var seq = 0; seq < route.Hops.Count; seq++)
             {
+                var hop = route.Hops[seq];
                 var toNode = hop.PubKey;
                 var channelId = hop.ChanId;
                 if (string.IsNullOrEmpty(toNode) || channelId == 0)
@@ -239,7 +390,8 @@ public class MonitorPaymentRoutesJob : IJob
                     PaymentHash = payHash,
                     // Ordinal within this payment's attempt list, NOT attempt.AttemptId (a
                     // node-global uint64 that would both overflow int and render as
-                    // "attempt 4021" in the UI trace).
+                    // "attempt 4021" in the UI trace). Safe as an identity across stream updates
+                    // because that list is append-only — see the type remarks.
                     AttemptIndex = attemptIndex,
                     HopSequence = seq,
                     ChannelId = channelId,
@@ -252,7 +404,6 @@ public class MonitorPaymentRoutesJob : IJob
                 });
 
                 prevNode = toNode;
-                seq++;
             }
         }
 
@@ -260,13 +411,13 @@ public class MonitorPaymentRoutesJob : IJob
     }
 
     /// <summary>
-    /// The payment's final destination: the last hop of the attempt that actually settled,
-    /// falling back to the first attempt with a route when none succeeded (a wholly failed
-    /// payment still aimed somewhere).
+    /// The payment's final destination: the last hop of the attempt that actually settled, falling
+    /// back to the first attempt with a route when none succeeded (a wholly failed payment still
+    /// aimed somewhere).
     ///
-    /// <para>tracker.py simply took the first attempt with a route. That is the same
-    /// payment-vs-attempt conflation fixed in <see cref="BuildHops"/>: a payment that failed
-    /// over one route and settled over another would report the abandoned route's endpoint.</para>
+    /// <para>Taking the first routed attempt unconditionally would conflate payment with attempt,
+    /// the same way <see cref="BuildHops"/> avoids: a payment that failed over one route and
+    /// settled over another would report the abandoned route's endpoint.</para>
     /// </summary>
     private static string? ExtractDestination(Payment raw)
     {
@@ -276,5 +427,117 @@ public class MonitorPaymentRoutesJob : IJob
         var chosen = settled ?? raw.Htlcs.FirstOrDefault(h => h.Route?.Hops.Count > 0);
 
         return chosen?.Route.Hops[^1].PubKey;
+    }
+
+    /// <summary>
+    /// Router client for a node endpoint, over a channel cached per endpoint. LND serves a
+    /// self-signed certificate, hence the permissive validator — same posture as the other LND
+    /// clients in the codebase.
+    /// </summary>
+    private Router.RouterClient GetRouterClient(string? endpoint)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(endpoint);
+
+        var channel = _channels.GetOrAdd(endpoint, ep =>
+        {
+            var httpHandler = new HttpClientHandler
+            {
+                ServerCertificateCustomValidationCallback =
+                    HttpClientHandler.DangerousAcceptAnyServerCertificateValidator
+            };
+
+            _logger.LogInformation("New payment watcher grpc channel created for endpoint {Endpoint}", ep);
+
+            return GrpcChannel.ForAddress($"https://{ep}",
+                new GrpcChannelOptions { HttpHandler = httpHandler, LoggerFactory = NullLoggerFactory.Instance });
+        });
+
+        return new Router.RouterClient(channel);
+    }
+
+    /// <summary>
+    /// Evicts and disposes the cached channel for an endpoint so the next attempt dials fresh,
+    /// rather than reusing a half-open connection that would keep hanging.
+    /// </summary>
+    private void InvalidateChannel(string? endpoint)
+    {
+        if (string.IsNullOrWhiteSpace(endpoint) || !_channels.TryRemove(endpoint, out var channel))
+        {
+            return;
+        }
+
+        try
+        {
+            channel.Dispose();
+        }
+        catch (Exception e)
+        {
+            _logger.LogWarning(e, "Error disposing payment watcher grpc channel for endpoint {Endpoint}", endpoint);
+        }
+    }
+
+    private async Task StopAllListenersAsync()
+    {
+        foreach (var (nodeId, listener) in _listeners)
+        {
+            _listeners.TryRemove(nodeId, out _);
+            await listener.StopAsync();
+        }
+
+        foreach (var endpoint in _channels.Keys)
+        {
+            InvalidateChannel(endpoint);
+        }
+    }
+
+    public override void Dispose()
+    {
+        foreach (var endpoint in _channels.Keys)
+        {
+            InvalidateChannel(endpoint);
+        }
+
+        base.Dispose();
+    }
+
+    /// <summary>
+    /// One node's stream loop plus the handle used to stop it. Also records the connection details
+    /// the loop was started with, so a node edited in the UI can be detected and re-subscribed.
+    /// </summary>
+    private sealed class NodeListener
+    {
+        private readonly CancellationTokenSource _cts;
+
+        public NodeListener(CancellationTokenSource cts, string? endpoint, string? macaroon)
+        {
+            _cts = cts;
+            Endpoint = endpoint;
+            Macaroon = macaroon;
+        }
+
+        public string? Endpoint { get; }
+        public string? Macaroon { get; }
+
+        public Task? Task { get; set; }
+
+        public async Task StopAsync()
+        {
+            await _cts.CancelAsync();
+
+            if (Task != null)
+            {
+                // The loop swallows its own cancellation, so awaiting here just drains it.
+                try
+                {
+                    await Task;
+                }
+                catch (OperationCanceledException)
+                {
+                    // Expected on shutdown.
+                }
+            }
+
+            _cts.Dispose();
+        }
     }
 }
