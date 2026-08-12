@@ -267,17 +267,17 @@ public class CoinSelectionService: ICoinSelectionService
     /// <param name="nbxplorerClient"></param>
     /// <param name="derivationStrategy"></param>
     /// <returns></returns>
-    public async Task<(List<ICoin> coins, List<UTXO> selectedUTXOs)> GetTxInputCoins(
+    public Task<(List<ICoin> coins, List<UTXO> selectedUTXOs)> GetTxInputCoins(
         List<UTXO> availableUTXOs,
         IBitcoinRequest request,
         DerivationStrategyBase derivationStrategy)
     {
         var satsAmount = request.SatsAmount;
 
-        var selectedUTXOs = await LightningHelper.SelectUTXOsByOldest(request.Wallet, satsAmount, availableUTXOs, _logger);
-        var coins = await LightningHelper.SelectCoins(request.Wallet, selectedUTXOs);
+        var selectedUTXOs = UTXOSelectionAlgorithms.SelectUTXOsByOldest(request.Wallet, satsAmount, availableUTXOs, _logger);
+        var coins = request.Wallet.ToCoins(selectedUTXOs);
 
-        return (coins, selectedUTXOs);
+        return Task.FromResult((coins, selectedUTXOs));
     }
 
     public async Task<List<UTXO>> GetUTXOsByOutpointAsync(DerivationStrategyBase derivationStrategy, List<OutPoint> outPoints)
