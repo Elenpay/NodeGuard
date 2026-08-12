@@ -185,8 +185,10 @@ public class LightningClientService : ILightningClientService
 
     public async Task<ListPaymentsResponse?> ListPayments(Node node, ListPaymentsRequest request, Lightning.LightningClient? client = null)
     {
-        // LightningEye polled LND's REST /v1/payments; NodeGuard talks gRPC, so this is
-        // the ListPayments RPC. The tracker paginates by index_offset just like the Python one.
+        // Currently unused: the payment watcher used to paginate this by index_offset, but moved to
+        // the router's payment stream because ListPayments cannot see failed HTLC attempts (LND
+        // deletes them when a payment goes terminal). Kept as the only payment-history read
+        // available, e.g. for a future catch-up import.
         try
         {
             client ??= GetLightningClient(node.Endpoint);
