@@ -20,6 +20,7 @@ using AutoMapper;
 using FluentAssertions;
 using NodeGuard.Data.Models;
 using NodeGuard.Data.Repositories.Interfaces;
+using NodeGuard.Helpers;
 using NodeGuard.TestHelpers;
 using Microsoft.Extensions.Logging;
 using NBitcoin;
@@ -39,6 +40,23 @@ public class CoinSelectionServiceTests
         {
             Outpoint = new OutPoint(new uint256(index), 0),
             Value = new Money(satoshis)
+        };
+    }
+
+    /// <summary>
+    /// A UTXO that can be turned into a coin, i.e. with the ScriptPubKey/KeyPath of the wallet that owns it
+    /// </summary>
+    private static UTXO CreateSpendableUtxo(Wallet wallet, uint index, long satoshis, int confirmations)
+    {
+        var keyPath = KeyPath.Parse($"0/{index}");
+        return new UTXO
+        {
+            Outpoint = new OutPoint(new uint256(index), 0),
+            Value = new Money(satoshis),
+            Confirmations = confirmations,
+            KeyPath = keyPath,
+            ScriptPubKey = (wallet.GetDerivationStrategy() as StandardDerivationStrategyBase)!
+                .GetDerivation(keyPath).ScriptPubKey
         };
     }
 
@@ -285,5 +303,76 @@ public class CoinSelectionServiceTests
         // Assert
         availableUTXOs.Should().ContainSingle();
         availableUTXOs[0].Outpoint.Should().Be(availableUtxo.Outpoint);
+    }
+
+    [Fact]
+    public async Task GetTxInputCoins_WithClosestSelectionDisabled_SelectsByOldest()
+    {
+        var previousClosestSelection = Constants.ENABLE_COIN_SELECTION_BY_CLOSEST;
+        Constants.ENABLE_COIN_SELECTION_BY_CLOSEST = false;
+        try
+        {
+            // Arrange
+            var wallet = CreateWallet.SingleSig(_internalWallet);
+            var availableUTXOs = new List<UTXO>()
+            {
+                CreateSpendableUtxo(wallet, 1, 10_000, confirmations: 100),
+                CreateSpendableUtxo(wallet, 2, 20_000, confirmations: 10),
+                CreateSpendableUtxo(wallet, 3, 30_000, confirmations: 1)
+            };
+            var request = new ChannelOperationRequest() { Wallet = wallet, SatsAmount = 15_000 };
+            var coinSelectionService = CreateCoinSelectionService(new List<UTXO>());
+
+            // Act
+            var (coins, selectedUTXOs) = await coinSelectionService.GetTxInputCoins(
+                availableUTXOs, request, wallet.GetDerivationStrategy()!);
+
+            // Assert: the selection is the one the oldest-first algorithm produces
+            var expectedUTXOs = UTXOSelectionAlgorithms.SelectUTXOsByOldest(
+                wallet, request.SatsAmount, availableUTXOs, _logger);
+            expectedUTXOs.Should().NotBeEmpty("otherwise this test could not tell both algorithms apart");
+            selectedUTXOs.Should().BeEquivalentTo(expectedUTXOs);
+            coins.Select(coin => coin.Outpoint).Should().BeEquivalentTo(expectedUTXOs.Select(utxo => utxo.Outpoint));
+        }
+        finally
+        {
+            Constants.ENABLE_COIN_SELECTION_BY_CLOSEST = previousClosestSelection;
+        }
+    }
+
+    [Fact]
+    public async Task GetTxInputCoins_WithClosestSelectionEnabled_SelectsByClosest()
+    {
+        var previousClosestSelection = Constants.ENABLE_COIN_SELECTION_BY_CLOSEST;
+        Constants.ENABLE_COIN_SELECTION_BY_CLOSEST = true;
+        try
+        {
+            // Arrange
+            var wallet = CreateWallet.SingleSig(_internalWallet);
+            var availableUTXOs = new List<UTXO>()
+            {
+                CreateSpendableUtxo(wallet, 1, 10_000, confirmations: 100),
+                CreateSpendableUtxo(wallet, 2, 20_000, confirmations: 10),
+                CreateSpendableUtxo(wallet, 3, 30_000, confirmations: 1)
+            };
+            var request = new ChannelOperationRequest() { Wallet = wallet, SatsAmount = 15_000 };
+            var coinSelectionService = CreateCoinSelectionService(new List<UTXO>());
+
+            // Act
+            var (coins, selectedUTXOs) = await coinSelectionService.GetTxInputCoins(
+                availableUTXOs, request, wallet.GetDerivationStrategy()!);
+
+            // Assert: the selection is the one the closest-to-amount algorithm produces, which is still
+            // a stub returning nothing. This assertion has to be revisited once it is implemented, what
+            // it checks here is that the flag routes to it instead of to the oldest-first algorithm
+            var expectedUTXOs = UTXOSelectionAlgorithms.SelectUTXOsByClosest(
+                wallet, request.SatsAmount, availableUTXOs, _logger);
+            selectedUTXOs.Should().BeEquivalentTo(expectedUTXOs);
+            coins.Select(coin => coin.Outpoint).Should().BeEquivalentTo(expectedUTXOs.Select(utxo => utxo.Outpoint));
+        }
+        finally
+        {
+            Constants.ENABLE_COIN_SELECTION_BY_CLOSEST = previousClosestSelection;
+        }
     }
 }

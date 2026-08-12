@@ -274,7 +274,10 @@ public class CoinSelectionService: ICoinSelectionService
     {
         var satsAmount = request.SatsAmount;
 
-        var selectedUTXOs = UTXOSelectionAlgorithms.SelectUTXOsByOldest(request.Wallet, satsAmount, availableUTXOs, _logger);
+        var selectedUTXOs = Constants.ENABLE_COIN_SELECTION_BY_CLOSEST
+            ? UTXOSelectionAlgorithms.SelectUTXOsByClosest(request.Wallet, satsAmount, availableUTXOs, _logger)
+            : UTXOSelectionAlgorithms.SelectUTXOsByOldest(request.Wallet, satsAmount, availableUTXOs, _logger);
+
         var coins = request.Wallet.ToCoins(selectedUTXOs);
 
         return Task.FromResult((coins, selectedUTXOs));
