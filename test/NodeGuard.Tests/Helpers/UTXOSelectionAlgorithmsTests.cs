@@ -58,18 +58,19 @@ namespace NodeGuard.Tests
         }
 
         [Fact]
-        public void SelectUTXOsByClosest_WithAnExactMatch_SelectsOnlyTheExactMatch()
+        public void SelectUTXOsByClosest_WithAnExactMatch_TakesTheNextClosestAsWell()
         {
             // Arrange: distances to the 50_000 requested are 40_000 | 0 | 70_000
-            var tooSmall = UtxoOf(10_000);
+            var secondClosest = UtxoOf(10_000);
             var exactMatch = UtxoOf(50_000);
-            var tooBig = UtxoOf(120_000);
+            var furthest = UtxoOf(120_000);
 
             // Act
-            var selectedUTXOs = SelectByClosest(tooSmall, exactMatch, tooBig);
+            var selectedUTXOs = SelectByClosest(secondClosest, exactMatch, furthest);
 
-            // Assert: the exact match is the closest one and covers the amount by itself
-            selectedUTXOs.Should().Equal(exactMatch);
+            // Assert: the exact match is taken first, but it leaves nothing to pay the miner fee with, so the
+            // next closest one is taken too
+            selectedUTXOs.Should().Equal(exactMatch, secondClosest);
         }
 
         [Fact]
@@ -84,8 +85,24 @@ namespace NodeGuard.Tests
             // Act
             var selectedUTXOs = SelectByClosest(closestAndAboveTheAmount, belowTheAmount, furtherBelowTheAmount);
 
-            // Assert: it covers the amount on its own, so no other UTXO is needed
+            // Assert: it covers the amount on its own and leaves a surplus, so no other UTXO is needed
             selectedUTXOs.Should().Equal(closestAndAboveTheAmount);
+        }
+
+        [Fact]
+        public void SelectUTXOsByClosest_WhenTheClosestUTXOIsOneSatAboveTheAmount_SelectsOnlyThatUTXO()
+        {
+            // Arrange: distances to the 50_000 requested are 1 | 10_000, so the closest UTXO leaves a single
+            // sat of surplus, which is all this algorithm asks for. That sat is not necessarily enough to pay
+            // the miner fee, the same known limitation SelectUTXOsByOldest has
+            var oneSatAboveTheAmount = UtxoOf(RequestedSats + 1);
+            var secondClosest = UtxoOf(40_000);
+
+            // Act
+            var selectedUTXOs = SelectByClosest(oneSatAboveTheAmount, secondClosest);
+
+            // Assert
+            selectedUTXOs.Should().Equal(oneSatAboveTheAmount);
         }
 
         [Fact]

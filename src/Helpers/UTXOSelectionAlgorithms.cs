@@ -115,7 +115,8 @@ namespace NodeGuard.Helpers
         /// Selects utxos from a wallet for requests (Withdrawals, ChannelOperationRequest) by closest, i.e.
         /// the UTXOs whose amount differs the least from the requested one are taken first. A single UTXO
         /// covering the whole amount is therefore preferred over several smaller ones, as long as it is the
-        /// closest to the amount.
+        /// closest to the amount and holds more than it, so that the transaction has something to pay its
+        /// miner fee with.
         /// </summary>
         /// <param name="wallet"></param>
         /// <param name="satsAmount"></param>
@@ -136,10 +137,10 @@ namespace NodeGuard.Helpers
             var utxosQueue = new Queue<UTXO>(
                 availableUTXOs.OrderBy(x => Math.Abs(((Money)x.Value).Satoshi - satsAmount)));
 
-            //Take UTXOs off the queue until the amount is covered. The first one already covers it whenever
-            //it holds at least the requested amount, so it ends up being the only one selected
+            //Take UTXOs off the queue until the total is strictly over the amount: the miner fee is paid out of
+            //whatever the inputs hold above it, so matching the amount exactly leaves nothing to pay it with
             var remainingSats = satsAmount;
-            while (remainingSats > 0 && utxosQueue.TryDequeue(out var utxo))
+            while (remainingSats >= 0 && utxosQueue.TryDequeue(out var utxo))
             {
                 selectedUTXOs.Add(utxo);
                 remainingSats -= ((Money)utxo.Value).Satoshi;
