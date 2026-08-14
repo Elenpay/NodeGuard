@@ -493,6 +493,7 @@ namespace NodeGuard.Services
 
                 walletWithdrawalRequest.TxId = tx.GetHash().ToString();
                 walletWithdrawalRequest.Status = WalletWithdrawalRequestStatus.OnChainConfirmationPending;
+                walletWithdrawalRequest.FeeSats = finalisedPSBT.GetFee().Satoshi;
 
                 var updateTxIdResult = _walletWithdrawalRequestRepository.Update(walletWithdrawalRequest);
 
