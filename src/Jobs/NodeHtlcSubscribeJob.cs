@@ -21,6 +21,7 @@ using System.Numerics;
 using Lnrpc;
 using NodeGuard.Data.Models;
 using NodeGuard.Data.Repositories.Interfaces;
+using NodeGuard.Helpers;
 using NodeGuard.Services;
 using Quartz;
 using Routerrpc;
@@ -68,51 +69,45 @@ public class NodeHtlcSubscribeJob : IJob
         var nodeId = data.GetInt("nodeId");
         _logger.LogInformation("Starting {JobName} for node {NodeId}... ", nameof(NodeHtlcSubscribeJob), nodeId);
 
-        try
-        {
-            var node = await _nodeRepository.GetById(nodeId, false);
-            if (!IsNodeEligible(node))
+        // lnd's SubscribeHtlcEvents is a live-only stream with no replay, so the subscription is
+        // kept alive across reconnects by SubscriptionStreamRunner. Only immutable node fields
+        // (PubKey/Name) are read while a stream is up, so the node is fetched once per
+        // (re)subscription rather than per event.
+        await SubscriptionStreamRunner.RunAsync<HtlcEvent>(
+            context,
+            _logger,
+            nameof(NodeHtlcSubscribeJob),
+            nodeId,
+            getEligibleNode: async () =>
             {
-                _logger.LogInformation("Node {NodeId} is not eligible for HTLC monitoring", nodeId);
-                return;
-            }
-
-            var stream = _lightningRouterService.SubscribeHtlcEvents(node!);
-            while (await stream.ResponseStream.MoveNext(context.CancellationToken))
+                var node = await _nodeRepository.GetById(nodeId, false);
+                return IsNodeEligible(node) ? node : null;
+            },
+            subscribe: node => _lightningRouterService.SubscribeHtlcEvents(node),
+            handleEvent: async (htlcEvent, node) =>
             {
-                node = await _nodeRepository.GetById(nodeId, false);
-
                 try
                 {
-                    var htlcEvent = stream.ResponseStream.Current;
-                    var eventToPersist = MapForwardingEvent(node!, htlcEvent);
+                    var eventToPersist = MapForwardingEvent(node, htlcEvent);
                     if (eventToPersist == null)
                     {
-                        continue;
+                        return;
                     }
 
-                    await EnrichForwardingEventAsync(node!, eventToPersist);
+                    await EnrichForwardingEventAsync(node, eventToPersist);
 
                     var addResult = await _forwardingHtlcEventRepository.UpsertAsync(eventToPersist);
                     if (!addResult.Item1)
                     {
                         _logger.LogWarning("HTLC event was not persisted for node {NodeId}: {Error}", nodeId, addResult.Item2);
-                        continue;
                     }
                 }
                 catch (Exception e)
                 {
                     _logger.LogError(e, "Error processing HTLC event for node {NodeId}. Event will be skipped", nodeId);
-                    continue;
                 }
-            }
-        }
-        catch (Exception e)
-        {
-            _logger.LogError(e, "Error while subscribing HTLC events for node {NodeId}", nodeId);
-            await Task.Delay(5000);
-            throw new JobExecutionException(e, true);
-        }
+            },
+            invalidateClient: _lightningRouterService.InvalidateClient);
 
         _logger.LogInformation("{JobName} ended", nameof(NodeHtlcSubscribeJob));
     }

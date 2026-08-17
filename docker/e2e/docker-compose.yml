@@ -129,10 +129,10 @@ services:
       BITCOIND_RPC_PASS: "polarpass"
       BITCOIND_RPC_WALLET: "default"
       E2E_HOT_WALLET_ID: "3"
-      # The fee-engine scenarios assert on ChannelRoutingState/ChannelFeeState rows directly (no gRPC
-      # read path exists for them), so they open their own connection to NodeGuard's Postgres.
-      NODEGUARD_DB_CONNECTIONSTRING: "Host=postgres;Port=5432;Database=nodeguard;User ID=postgres;"
+      POSTGRES_CONNECTIONSTRING: "Host=postgres;Port=5432;Database=nodeguard;User ID=postgres;"
+      E2E_FORWARDING_NODE_CONTAINER: "polar-n1-bob"
     volumes:
+      - /var/run/docker.sock:/var/run/docker.sock # Lets the reconnect test restart an LND container via the Docker Engine API socket.
       - e2e_env:/shared:ro   # LND host+macaroon env (extract-env); the flow scenario reads it directly
     restart: "no"
 
