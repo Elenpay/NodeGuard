@@ -111,6 +111,7 @@ services:
       BITCOIND_RPC_USER: "polaruser"
       BITCOIND_RPC_PASS: "polarpass"
       BITCOIND_RPC_WALLET: "default"
+      NBXPLORER_URI: "http://nbxplorer:32838"
       E2E_HOT_WALLET_ID: "3"
       # The HTLC-reconnect test reads persisted ForwardingHtlcEvents straight from Postgres
       # (there is no gRPC to list them) and restarts a forwarding LND node mid-test.

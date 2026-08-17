@@ -517,7 +517,7 @@ public class BitcoinServiceTests
             .Setup(x => x.GetLockedUTXOs(null, null))
             .ReturnsAsync(new List<FMUTXO>());
         utxoTagRepository
-            .SetupSequence(x => x.GetByKeyValue(It.IsAny<string>(), It.IsAny<string>()))
+            .Setup(x => x.GetByKeyValue(Constants.IsFrozenTag, "true"))
             .ReturnsAsync(new List<UTXOTag>()
             {
                 new UTXOTag()
@@ -526,8 +526,12 @@ public class BitcoinServiceTests
                     Value = "false",
                     Outpoint = "00000000000000000000000000000000000000000000000000000000000004d2-1"
                 }
-            })
-            .ReturnsAsync(new List<UTXOTag>())
+            });
+        utxoTagRepository
+            .Setup(x => x.GetByKeyValue(Constants.IsManuallyFrozenTag, "true"))
+            .ReturnsAsync(new List<UTXOTag>());
+        utxoTagRepository
+            .Setup(x => x.GetByKeyValue(Constants.IsManuallyFrozenTag, "false"))
             .ReturnsAsync(new List<UTXOTag>()
             {
                 new UTXOTag()

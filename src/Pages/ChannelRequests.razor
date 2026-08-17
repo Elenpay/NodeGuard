@@ -905,7 +905,14 @@
 
                     if (_selectedUTXOs.Count > 0)
                     {
-                        await CoinSelectionService.LockUTXOs(_selectedUTXOs, request, BitcoinRequestType.ChannelOperation);
+                        try
+                        {
+                            await CoinSelectionService.LockUTXOs(_selectedUTXOs, request, BitcoinRequestType.ChannelOperation);
+                        }
+                        catch (ShowToUserException e)
+                        {
+                            ToastService.ShowError(e.Message);
+                        }
                     }
                 }
                 else

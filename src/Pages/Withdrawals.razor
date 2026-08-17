@@ -751,7 +751,14 @@
 
             if (_selectedUTXOs.Count > 0)
             {
-                await CoinSelectionService.LockUTXOs(_selectedUTXOs, arg.Item, BitcoinRequestType.WalletWithdrawal);
+                try
+                {
+                    await CoinSelectionService.LockUTXOs(_selectedUTXOs, arg.Item, BitcoinRequestType.WalletWithdrawal);
+                }
+                catch (ShowToUserException e)
+                {
+                    ToastService.ShowError(e.Message);
+                }
             }
 
             _utxoSelectorModalRef.ClearModal();
@@ -1434,7 +1441,11 @@
 
                 if (_selectedUTXOs.Count > 0)
                 {
-                    await CoinSelectionService.LockUTXOs(_selectedUTXOs, _selectedRequest, BitcoinRequestType.WalletWithdrawal);
+                    // Null for a plain withdrawal (nothing to exempt); when this save is a fee
+                    // bump, it's the original request's id, so reusing its already-locked UTXO(s)
+                    // here is not treated as a conflict with itself.
+                    await CoinSelectionService.LockUTXOs(_selectedUTXOs, _selectedRequest, BitcoinRequestType.WalletWithdrawal,
+                        previousRequestIdAllowedToShareUtxos: _selectedRequest.BumpingWalletWithdrawalRequestId);
                 }
 
                 var templatePsbt = await BitcoinService.GenerateTemplatePSBT(_selectedRequest);
