@@ -155,7 +155,7 @@ public class ChannelFeeOptimizerJobTests
 
         // Sink, d = -0.10, first eval seeds p_last=2500 → outbound 2550, inbound -50.
         _lightningService.Verify(x => x.SetChannelFeePolicy(
-            "txid123:1", NodePubKey, 1000, 2550u, 40u, 0, -50, true), Times.Once);
+            "txid123:1", NodePubKey, 1000, 2550u, 40u, 0, -50, null, true), Times.Once);
     }
 
     [Fact]
@@ -173,7 +173,7 @@ public class ChannelFeeOptimizerJobTests
         _lightningService.Verify(x => x.GetChannelFeePolicy(It.IsAny<ulong>(), It.IsAny<Node>()), Times.Never);
         _lightningService.Verify(x => x.SetChannelFeePolicy(
             It.IsAny<string>(), It.IsAny<string>(), It.IsAny<long>(), It.IsAny<uint>(),
-            It.IsAny<uint>(), It.IsAny<int?>(), It.IsAny<int?>(), It.IsAny<bool>()), Times.Never);
+            It.IsAny<uint>(), It.IsAny<int?>(), It.IsAny<int?>(), It.IsAny<ulong?>(), It.IsAny<bool>()), Times.Never);
     }
 
     [Fact]
@@ -194,7 +194,7 @@ public class ChannelFeeOptimizerJobTests
     private void VerifyNoFeeWrite() =>
         _lightningService.Verify(x => x.SetChannelFeePolicy(
             It.IsAny<string>(), It.IsAny<string>(), It.IsAny<long>(), It.IsAny<uint>(),
-            It.IsAny<uint>(), It.IsAny<int?>(), It.IsAny<int?>(), It.IsAny<bool>()), Times.Never);
+            It.IsAny<uint>(), It.IsAny<int?>(), It.IsAny<int?>(), It.IsAny<ulong?>(), It.IsAny<bool>()), Times.Never);
 
     [Fact]
     public async Task Execute_DryRunNode_RecordsFeeStateButDoesNotWriteToLnd()
@@ -339,7 +339,7 @@ public class ChannelFeeOptimizerJobTests
             ArrangeSingleSinkChannel(node, inFlightRebalance: false);
             _lightningService.Setup(x => x.SetChannelFeePolicy(
                 It.IsAny<string>(), It.IsAny<string>(), It.IsAny<long>(), It.IsAny<uint>(),
-                It.IsAny<uint>(), It.IsAny<int?>(), It.IsAny<int?>(), It.IsAny<bool>()))
+                It.IsAny<uint>(), It.IsAny<int?>(), It.IsAny<int?>(), It.IsAny<ulong?>(), It.IsAny<bool>()))
                 .ThrowsAsync(new Exception("lnd unreachable"));
 
             // Must not surface — Execute swallows per-channel errors so the next cycle retries. If it threw,
@@ -348,7 +348,7 @@ public class ChannelFeeOptimizerJobTests
 
             _lightningService.Verify(x => x.SetChannelFeePolicy(
                 It.IsAny<string>(), It.IsAny<string>(), It.IsAny<long>(), It.IsAny<uint>(),
-                It.IsAny<uint>(), It.IsAny<int?>(), It.IsAny<int?>(), It.IsAny<bool>()), Times.Once);
+                It.IsAny<uint>(), It.IsAny<int?>(), It.IsAny<int?>(), It.IsAny<ulong?>(), It.IsAny<bool>()), Times.Once);
             // On write failure the fee state is NOT persisted (LastApplied stays null → next cycle re-seeds).
             _feeStateRepository.Verify(x => x.UpsertByChannelId(It.IsAny<ChannelFeeState>()), Times.Never);
         }

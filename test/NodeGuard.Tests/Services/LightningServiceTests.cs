@@ -2235,6 +2235,7 @@ namespace NodeGuard.Services
                     40,
                     -100,
                     -25,
+                    null,
                     null))
                 .ReturnsAsync(new PolicyUpdateResponse());
 
@@ -2271,6 +2272,7 @@ namespace NodeGuard.Services
                 40,
                 -100,
                 -25,
+                null,
                 null), Times.Once);
 
             // Manual/UI path (isEngineDriven == false) audits via the user-context LogAsync.
@@ -2393,7 +2395,7 @@ namespace NodeGuard.Services
                 .Setup(x => x.GetByPubkey(node.PubKey))
                 .ReturnsAsync(node);
             lightningClientService
-                .Setup(x => x.SetChannelFeePolicy(node, It.IsAny<NBitcoin.OutPoint>(), 1000, 250, 40, 0, 50, null))
+                .Setup(x => x.SetChannelFeePolicy(node, It.IsAny<NBitcoin.OutPoint>(), 1000, 250, 40, 0, 50, null, null))
                 .ReturnsAsync(new PolicyUpdateResponse());
 
             var lightningService = new LightningService(
@@ -2423,7 +2425,7 @@ namespace NodeGuard.Services
 
             // Assert — the positive inbound rate reached LND (no <= 0 throw)...
             lightningClientService.Verify(x => x.SetChannelFeePolicy(
-                node, It.IsAny<NBitcoin.OutPoint>(), 1000, 250, 40, 0, 50, null), Times.Once);
+                node, It.IsAny<NBitcoin.OutPoint>(), 1000, 250, 40, 0, 50, null, null), Times.Once);
 
             // ...and the write was audited through the system (engine-driven) path.
             auditService.Verify(x => x.LogSystemAsync(

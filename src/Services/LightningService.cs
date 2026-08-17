@@ -198,9 +198,10 @@ namespace NodeGuard.Services
         /// <param name="timeLockDelta"></param>
         /// <param name="inboundBaseFeeMsat"></param>
         /// <param name="inboundFeeRatePpm"></param>
+        /// <param name="maxHtlcMsat"></param>
         /// <param name="isEngineDriven"></param>
         /// <returns></returns>
-        public Task SetChannelFeePolicy(string chanPoint, string nodePubKey, long baseFeeMsat, uint feeRatePpm, uint timeLockDelta, int? inboundBaseFeeMsat, int? inboundFeeRatePpm, bool isEngineDriven = false);
+        public Task SetChannelFeePolicy(string chanPoint, string nodePubKey, long baseFeeMsat, uint feeRatePpm, uint timeLockDelta, int? inboundBaseFeeMsat, int? inboundFeeRatePpm, ulong? maxHtlcMsat = null, bool isEngineDriven = false);
 
         /// <summary>
         /// Gets the channel fee policy for a given channel identified by its chanPoint
@@ -1767,7 +1768,7 @@ namespace NodeGuard.Services
             return await GetLocalOutboundFeeRatePpmAsync(node, match.ChanId);
         }
 
-        public async Task SetChannelFeePolicy(string chanPoint, string nodePubKey, long baseFeeMsat, uint feeRatePpm, uint timeLockDelta, int? inboundBaseFeeMsat, int? inboundFeeRatePpm, bool isEngineDriven = false)
+        public async Task SetChannelFeePolicy(string chanPoint, string nodePubKey, long baseFeeMsat, uint feeRatePpm, uint timeLockDelta, int? inboundBaseFeeMsat, int? inboundFeeRatePpm, ulong? maxHtlcMsat = null, bool isEngineDriven = false)
         {
             // Validate chanPoint format
             if (!OutPoint.TryParse(chanPoint, out var outPoint))
@@ -1824,7 +1825,7 @@ namespace NodeGuard.Services
 
             try
             {
-                var response = await _lightningClientService.SetChannelFeePolicy(node, outPoint, baseFeeMsat, feeRatePpm, timeLockDelta, inboundBaseFeeMsat, inboundFeeRatePpm);
+                var response = await _lightningClientService.SetChannelFeePolicy(node, outPoint, baseFeeMsat, feeRatePpm, timeLockDelta, inboundBaseFeeMsat, inboundFeeRatePpm, maxHtlcMsat);
 
                 if (response?.FailedUpdates != null && response.FailedUpdates.Count > 0)
                 {
@@ -1851,7 +1852,8 @@ namespace NodeGuard.Services
                     FeeRatePpm = feeRatePpm,
                     TimeLockDelta = timeLockDelta,
                     InboundBaseFeeMsat = inboundBaseFeeMsat,
-                    InboundFeeRatePpm = inboundFeeRatePpm
+                    InboundFeeRatePpm = inboundFeeRatePpm,
+                    MaxHtlcMsat = maxHtlcMsat
                 };
 
                 if (isEngineDriven)

@@ -49,7 +49,7 @@ public interface ILightningClientService
     public void FundingStateStepFinalize(Node node, PSBT finalizedPSBT, byte[] pendingChannelId, Lightning.LightningClient? client = null);
     public void FundingStateStepCancel(Node node, byte[] pendingChannelId, Lightning.LightningClient? client = null);
 
-    public Task<PolicyUpdateResponse?> SetChannelFeePolicy(Node node, NBitcoin.OutPoint chanPoint, long baseFeeMsat, uint feeRatePpm, uint timeLockDelta, int? inboundBaseFeeMsat, int? inboundFeeRatePpm, Lightning.LightningClient? client = null);
+    public Task<PolicyUpdateResponse?> SetChannelFeePolicy(Node node, NBitcoin.OutPoint chanPoint, long baseFeeMsat, uint feeRatePpm, uint timeLockDelta, int? inboundBaseFeeMsat, int? inboundFeeRatePpm, ulong? maxHtlcMsat = null, Lightning.LightningClient? client = null);
 }
 
 public class LightningClientService : ILightningClientService
@@ -453,7 +453,7 @@ public class LightningClientService : ILightningClientService
             }, new Metadata { { "macaroon", node.ChannelAdminMacaroon } });
     }
 
-    public async Task<PolicyUpdateResponse?> SetChannelFeePolicy(Node node, NBitcoin.OutPoint chanPoint, long baseFeeMsat, uint feeRatePpm, uint timeLockDelta, int? inboundBaseFeeMsat, int? inboundFeeRatePpm, Lightning.LightningClient? client = null)
+    public async Task<PolicyUpdateResponse?> SetChannelFeePolicy(Node node, NBitcoin.OutPoint chanPoint, long baseFeeMsat, uint feeRatePpm, uint timeLockDelta, int? inboundBaseFeeMsat, int? inboundFeeRatePpm, ulong? maxHtlcMsat = null, Lightning.LightningClient? client = null)
     {
         client ??= GetLightningClient(node.Endpoint);
 
@@ -468,6 +468,11 @@ public class LightningClientService : ILightningClientService
             FeeRatePpm = feeRatePpm,
             TimeLockDelta = timeLockDelta
         };
+
+        if (maxHtlcMsat.HasValue)
+        {
+            request.MaxHtlcMsat = maxHtlcMsat.Value;
+        }
 
         if (inboundBaseFeeMsat.HasValue && inboundFeeRatePpm.HasValue)
         {

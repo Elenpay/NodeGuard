@@ -99,7 +99,7 @@ public class LightningClientServiceTests
             timeLockDelta: 40,
             inboundBaseFeeMsat: -100,
             inboundFeeRatePpm: -25,
-            lightningClient.Object);
+            client: lightningClient.Object);
 
         // Assert
         response.Should().NotBeNull();
@@ -112,6 +112,8 @@ public class LightningClientServiceTests
         capturedRequest.InboundFee.Should().NotBeNull();
         capturedRequest.InboundFee.BaseFeeMsat.Should().Be(-100);
         capturedRequest.InboundFee.FeeRatePpm.Should().Be(-25);
+        // Max HTLC was not supplied, so LND must be told to leave it unchanged (0).
+        capturedRequest.MaxHtlcMsat.Should().Be(0);
         capturedMetadata.Should().ContainSingle(entry => entry.Key == "macaroon" && entry.Value == "test-macaroon");
     }
 
@@ -152,10 +154,55 @@ public class LightningClientServiceTests
             timeLockDelta: 40,
             inboundBaseFeeMsat: null,
             inboundFeeRatePpm: null,
-            lightningClient.Object);
+            client: lightningClient.Object);
 
         // Assert
         capturedRequest.Should().NotBeNull();
         capturedRequest!.InboundFee.Should().BeNull();
+    }
+
+    [Fact]
+    public async Task SetChannelFeePolicy_SetsMaxHtlcMsat_WhenProvided()
+    {
+        // Arrange
+        var logger = new Mock<ILogger<LightningClientService>>();
+        var lightningClientService = new LightningClientService(logger.Object);
+        var lightningClient = new Mock<Lightning.LightningClient>();
+        var chanPoint = NBitcoin.OutPoint.Parse("0000000000000000000000000000000000000000000000000000000000000001:2");
+        var node = new Node
+        {
+            Endpoint = "127.0.0.1:10009",
+            ChannelAdminMacaroon = "test-macaroon"
+        };
+
+        PolicyUpdateRequest? capturedRequest = null;
+
+        lightningClient
+            .Setup(x => x.UpdateChannelPolicyAsync(
+                It.IsAny<PolicyUpdateRequest>(),
+                It.IsAny<Metadata>(),
+                It.IsAny<DateTime?>(),
+                It.IsAny<CancellationToken>()))
+            .Callback<PolicyUpdateRequest, Metadata, DateTime?, CancellationToken>((request, _, _, _) =>
+            {
+                capturedRequest = request;
+            })
+            .Returns(MockHelpers.CreateAsyncUnaryCall(new PolicyUpdateResponse()));
+
+        // Act
+        await lightningClientService.SetChannelFeePolicy(
+            node,
+            chanPoint,
+            baseFeeMsat: 1000,
+            feeRatePpm: 250,
+            timeLockDelta: 40,
+            inboundBaseFeeMsat: null,
+            inboundFeeRatePpm: null,
+            maxHtlcMsat: 5_000_000,
+            client: lightningClient.Object);
+
+        // Assert
+        capturedRequest.Should().NotBeNull();
+        capturedRequest!.MaxHtlcMsat.Should().Be(5_000_000);
     }
 }

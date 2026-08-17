@@ -566,6 +566,10 @@
                                                                     <td class="fw-bold">Time Lock Delta:</td>
                                                                     <td><Badge Color="Color.Light">@_currentFeePolicies.ManagedNodePolicy.TimeLockDelta</Badge></td>
                                                                 </tr>
+                                                                <tr>
+                                                                    <td class="fw-bold">Max HTLC (sats):</td>
+                                                                    <td><Badge Color="Color.Light">@(_currentFeePolicies.ManagedNodePolicy.MaxHtlcMsat / 1000)</Badge></td>
+                                                                </tr>
                                                                 @if (_currentFeePolicies.ManagedNodePolicy.InboundFeeRateMilliMsat != 0 || _currentFeePolicies.ManagedNodePolicy.InboundFeeBaseMsat != 0)
                                                                 {
                                                                     <tr>
@@ -603,6 +607,10 @@
                                                                     <td class="fw-bold">Time Lock Delta:</td>
                                                                     <td><Badge Color="Color.Light">@_currentFeePolicies.CounterpartyPolicy.TimeLockDelta</Badge></td>
                                                                 </tr>
+                                                                <tr>
+                                                                    <td class="fw-bold">Max HTLC (sats):</td>
+                                                                    <td><Badge Color="Color.Light">@(_currentFeePolicies.CounterpartyPolicy.MaxHtlcMsat / 1000)</Badge></td>
+                                                                </tr>
                                                                 @if (_currentFeePolicies.CounterpartyPolicy.InboundFeeRateMilliMsat != 0 || _currentFeePolicies.CounterpartyPolicy.InboundFeeBaseMsat != 0)
                                                                 {
                                                                     <tr>
@@ -626,6 +634,21 @@
                                         </CardBody>
                                     </Card>
                                 }
+
+                                <Divider class="my-4"></Divider>
+                                <h6 class="mb-3"><strong>Max HTLC</strong></h6>
+                                <Field>
+                                    <Validation Validator="ValidateChannelMaxHtlcSats">
+                                        <FieldLabel>Max HTLC (sats)</FieldLabel>
+                                        <FieldHelp>Largest single HTLC this channel will forward, in satoshis. Leave blank to keep the current value. This can be updated even while dynamic fees are enabled.</FieldHelp>
+                                        <NumericEdit TValue="ulong?" Min="0L" Max="@((ulong)_selectedChannel.SatsAmount)"
+                                                        @bind-Value="_channelFeePolicy.MaxHtlcSats">
+                                            <Feedback>
+                                                <ValidationError />
+                                            </Feedback>
+                                        </NumericEdit>
+                                    </Validation>
+                                </Field>
 
                                 <Divider class="my-4"></Divider>
                                 <h6 class="mb-3"><strong>Set New Fee Policy</strong></h6>
@@ -843,6 +866,8 @@
         public long? TimeLockDelta { get; set; } = Constants.DEFAULT_CHANNEL_FEE_POLICY_TIMELOCK_DELTA_BLOCKS;
         public int? InboundBaseFeeMsat { get; set; }
         public int? InboundFeeRatePpm { get; set; }
+
+        public ulong? MaxHtlcSats { get; set; }
     }
 
     private sealed class CurrentFeePolicies
@@ -1112,6 +1137,16 @@
                 CounterpartyPolicy = result.Item2,
                 IsLoading = false
             };
+
+            if (result.Item1 != null)
+            {
+                _channelFeePolicy.BaseFeeMsat = result.Item1.FeeBaseMsat;
+                _channelFeePolicy.FeeRatePpm = result.Item1.FeeRateMilliMsat;
+                _channelFeePolicy.TimeLockDelta = result.Item1.TimeLockDelta;
+                _channelFeePolicy.InboundBaseFeeMsat = result.Item1.InboundFeeBaseMsat;
+                _channelFeePolicy.InboundFeeRatePpm = result.Item1.InboundFeeRateMilliMsat;
+                _channelFeePolicy.MaxHtlcSats = result.Item1.MaxHtlcMsat/1000;
+            }
         }
         catch (Exception ex)
         {
@@ -1224,6 +1259,12 @@
             return;
         }
 
+        if (_channelFeePolicyValidationsRef == null || !await _channelFeePolicyValidationsRef.ValidateAll())
+        {
+            ToastService.ShowError("Please fix the errors");
+            return;
+        }
+
         var channelUpdateResult = ChannelRepository.Update(_selectedChannel);
         if (!channelUpdateResult.Item1)
         {
@@ -1242,21 +1283,44 @@
         // cold-starts from the category baseline rather than resuming from outdated ChannelFeeState.
         await FeeEngineStateService.PurgeChannelStateIfDisabled(_selectedChannel);
 
-        if (_selectedChannel.IsDynamicFeeEnabled)
-        {
-            ToastService.ShowSuccess("Channel dynamic fee management enabled.");
-            await CloseChannelManagementModal();
-            return;
-        }
-
-        if (_channelFeePolicyValidationsRef == null || !await _channelFeePolicyValidationsRef.ValidateAll())
-        {
-            ToastService.ShowError("Please fix the errors");
-            return;
-        }
+        // Blank Max HTLC leaves the current value unchanged (LND treats max_htlc_msat == 0 as "no change").
+        ulong? maxHtlcMsat = _channelFeePolicy.MaxHtlcSats.HasValue
+            ? (ulong)(_channelFeePolicy.MaxHtlcSats.Value * 1000L)
+            : null;
 
         try
         {
+            if (_selectedChannel.IsDynamicFeeEnabled)
+            {
+                // The routing engine owns the fee fields for this channel, so only Max HTLC can be
+                // changed here.
+                if (maxHtlcMsat.HasValue)
+                {
+                    var current = _currentFeePolicies.ManagedNodePolicy;
+                    if (current == null)
+                    {
+                        ToastService.ShowError("The current fee policy could not be loaded, so Max HTLC cannot be updated right now.");
+                        return;
+                    }
+
+                    await LightningService.SetChannelFeePolicy(
+                        _selectedChannelOutpoint,
+                        _selectedChannelNodePubKey,
+                        current.FeeBaseMsat,
+                        checked((uint)current.FeeRateMilliMsat),
+                        current.TimeLockDelta,
+                        inboundBaseFeeMsat: null,
+                        inboundFeeRatePpm: null,
+                        maxHtlcMsat: maxHtlcMsat);
+
+                    ToastService.ShowSuccess("Max HTLC updated successfully");
+                }
+
+                ToastService.ShowSuccess("Channel dynamic fee management enabled.");
+                await CloseChannelManagementModal();
+                return;
+            }
+
             await LightningService.SetChannelFeePolicy(
                 _selectedChannelOutpoint,
                 _selectedChannelNodePubKey,
@@ -1264,7 +1328,8 @@
                 checked((uint)_channelFeePolicy.FeeRatePpm!.Value),
                 checked((uint)_channelFeePolicy.TimeLockDelta!.Value),
                 _channelFeePolicy.InboundBaseFeeMsat,
-                _channelFeePolicy.InboundFeeRatePpm);
+                _channelFeePolicy.InboundFeeRatePpm,
+                maxHtlcMsat);
 
             ToastService.ShowSuccess("Channel fee policy updated successfully");
             await CloseChannelManagementModal();
@@ -1523,6 +1588,30 @@
         {
             arg1.Status = ValidationStatus.Error;
             arg1.ErrorText = $"Time lock delta must be between 0 and {uint.MaxValue}.";
+        }
+    }
+
+    private void ValidateChannelMaxHtlcSats(ValidatorEventArgs arg1)
+    {
+        arg1.Status = ValidationStatus.Success;
+
+        // Optional field: blank leaves the current max HTLC unchanged.
+        if (_channelFeePolicy.MaxHtlcSats == null)
+        {
+            return;
+        }
+
+        if (_channelFeePolicy.MaxHtlcSats <= 0)
+        {
+            arg1.Status = ValidationStatus.Error;
+            arg1.ErrorText = "Max HTLC must be greater than zero.";
+            return;
+        }
+
+        if (_selectedChannel != null && _channelFeePolicy.MaxHtlcSats > (ulong)_selectedChannel.SatsAmount)
+        {
+            arg1.Status = ValidationStatus.Error;
+            arg1.ErrorText = $"Max HTLC cannot exceed the channel capacity ({_selectedChannel.SatsAmount} sats).";
         }
     }
 
