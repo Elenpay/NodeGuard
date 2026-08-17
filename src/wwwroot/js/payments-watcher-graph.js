@@ -188,7 +188,10 @@
     edges.forEach(function (e) { e.split = !!chanMap[e.to + '|' + e.from]; });
 
     // ── Zoom controls ──
-    var wrap = el('div', { style: 'position:relative;' });
+    // Fixed 60vh viewport (not max-height): the graph pane keeps a stable size even
+    // when the layout is small, instead of collapsing to the content height. The height
+    // lives here, on the in-flow box, because the scroller below is taken out of flow.
+    var wrap = el('div', { style: 'position:relative;height:60vh;' });
     var zoomBox = el('div', { style: 'position:absolute;top:12px;right:16px;z-index:20;display:flex;flex-direction:column;gap:6px;' });
     function zbtn(label, title, fn, small) {
       var b = el('button', { title: title, type: 'button',
@@ -197,9 +200,13 @@
       b.addEventListener('click', fn);
       return b;
     }
-    // Fixed 60vh viewport (not max-height): the graph pane keeps a stable size even
-    // when the layout is small, instead of collapsing to the content height.
-    var scroller = el('div', { style: 'overflow:auto;padding:20px 18px;height:60vh;box-sizing:border-box;' });
+    // Absolutely positioned on purpose: MainLayout's <main> is a `flex:1` item with no
+    // `min-width:0`, so its automatic minimum size is its min-content width. An in-flow
+    // scroller still contributes the stage's width to that (overflow:auto only zeroes
+    // the automatic minimum size of the flex item that carries it — <main> — not of a
+    // descendant), so a node dragged right would widen <main> and stretch the whole
+    // toolbar. Out of flow, the stage contributes nothing to the page's intrinsic width.
+    var scroller = el('div', { style: 'position:absolute;top:0;left:0;right:0;bottom:0;overflow:auto;padding:20px 18px;box-sizing:border-box;' });
     var stage = el('div', { style: 'position:relative;width:' + size.width + 'px;height:' + size.height + 'px;min-width:' + size.width + 'px;transform-origin:top left;' });
     function applyZoom() { stage.style.transform = 'scale(' + state.zoom + ')'; }
     zoomBox.appendChild(zbtn('+', 'Zoom in', function () { state.zoom = Math.min(2, +(state.zoom + 0.15).toFixed(2)); applyZoom(); }));
@@ -208,29 +215,16 @@
     applyZoom();
 
     // ── Edges (SVG) ──
-    var svg = svgEl('svg', { width: size.width, height: size.height, style: 'position:absolute;top:0;left:0;pointer-events:none;' });
-    edges.forEach(function (e) {
-      var fp = positions[e.from], tp = positions[e.to];
-      if (!fp || !tp) return;
-      var fcx = fp.x + fp.w / 2, fcy = fp.y + fp.h / 2, tcx = tp.x + tp.w / 2, tcy = tp.y + tp.h / 2;
-      var sp = borderPoint(fcx, fcy, fp.w / 2, fp.h / 2, tcx, tcy);
-      var GAP = 7;
-      var ep = borderPoint(tcx, tcy, tp.w / 2 + GAP, tp.h / 2 + GAP, fcx, fcy);
-      if (e.split) {
-        var dx = ep.x - sp.x, dy = ep.y - sp.y, len = Math.hypot(dx, dy) || 1, SEP = 6;
-        var ox = -dy / len * SEP, oy = dx / len * SEP;
-        sp = { x: sp.x + ox, y: sp.y + oy }; ep = { x: ep.x + ox, y: ep.y + oy };
-      }
-      var total = e.ok + e.fail, color = colorByRatio(total === 0 ? 0 : e.ok / total);
-      var mid = 'pw-arrow-' + e.key.replace(/[^a-zA-Z0-9]/g, '_');
-      var defs = svgEl('defs');
-      var marker = svgEl('marker', { id: mid, markerWidth: 7, markerHeight: 7, refX: 5, refY: 3.5, orient: 'auto' });
-      marker.appendChild(svgEl('polygon', { points: '0,0 7,3.5 0,7', fill: color }));
-      defs.appendChild(marker); svg.appendChild(defs);
-      svg.appendChild(svgEl('line', { x1: sp.x, y1: sp.y, x2: ep.x, y2: ep.y, stroke: color,
-        'stroke-width': 1.8, 'stroke-linecap': 'round', 'marker-end': 'url(#' + mid + ')', opacity: 0.9 }));
-    });
+    // Nodes are absolutely positioned HTML, so dragging one past the initial layout
+    // bounds just overflows the stage. SVG children are not so lucky: the UA style
+    // sheet clips the root <svg> to its width/height, which cut lines and arrowheads
+    // mid-canvas. Hence `overflow:visible` (stops the clipping) *and* drawEdges()
+    // growing the svg/stage (makes the overflowing area reachable by the scroller —
+    // ink outside an svg's box contributes no scrollable overflow on its own).
+    var svg = svgEl('svg', { width: size.width, height: size.height,
+      style: 'position:absolute;top:0;left:0;overflow:visible;pointer-events:none;' });
     stage.appendChild(svg);
+    drawEdges(positions);
 
     // ── Nodes ──
     var drag = null;
@@ -274,7 +268,11 @@
 
       box.addEventListener('mousedown', function (ev) {
         ev.preventDefault(); ev.stopPropagation();
-        drag = { id: node.id, sx: ev.clientX, sy: ev.clientY, x0: pos.x, y0: pos.y, moved: false };
+        // Anchor on state.moved, not on `pos`: a drag doesn't re-render, so `pos`
+        // still holds the position this node had when the graph was last drawn and
+        // a second drag would snap the node back there.
+        var cur = state.moved[node.id] || pos;
+        drag = { id: node.id, sx: ev.clientX, sy: ev.clientY, x0: cur.x, y0: cur.y, moved: false };
         window.addEventListener('mousemove', onMove);
         window.addEventListener('mouseup', onUp);
       });
@@ -293,7 +291,7 @@
         box.style.left = state.moved[drag.id].x + 'px';
         box.style.top = state.moved[drag.id].y + 'px';
         // Redraw edges live so arrows follow the dragged node.
-        redrawEdges();
+        drawEdges();
       }
       function onUp() {
         window.removeEventListener('mousemove', onMove);
@@ -303,12 +301,28 @@
       stage.appendChild(box);
     });
 
-    function redrawEdges() {
+    // Grow the stage and the SVG viewport to cover the current node positions, never
+    // shrinking below the auto layout so the scroll position doesn't jump when a node
+    // is dragged back towards the origin.
+    function fitStage(np) {
+      var s = canvasSize(np);
+      var w = Math.max(s.width, size.width), h = Math.max(s.height, size.height);
+      stage.style.width = w + 'px';
+      stage.style.minWidth = w + 'px';
+      stage.style.height = h + 'px';
+      svg.setAttribute('width', w);
+      svg.setAttribute('height', h);
+    }
+
+    function drawEdges(np) {
       // Recompute positions from state.moved and rebuild the SVG in place.
-      var np = {};
-      Object.keys(auto).forEach(function (id) {
-        np[id] = state.moved[id] ? Object.assign({}, auto[id], state.moved[id]) : auto[id];
-      });
+      if (!np) {
+        np = {};
+        Object.keys(auto).forEach(function (id) {
+          np[id] = state.moved[id] ? Object.assign({}, auto[id], state.moved[id]) : auto[id];
+        });
+      }
+      fitStage(np);
       while (svg.firstChild) svg.removeChild(svg.firstChild);
       edges.forEach(function (e) {
         var fp = np[e.from], tp = np[e.to];
