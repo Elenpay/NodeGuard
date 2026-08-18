@@ -45,6 +45,7 @@ public class FeeEngineFlowE2ETests : FeeEngineE2EBase
     // forward, so it doesn't touch the categorizer's windows).
     private static long BobTopupSats => long.Parse(Env("FLOW_BOB_TOPUP_SATS", "2000000"));
     private const long AliceCarolLocalSats = 8_000_000; // alice's phase-2 exit hop
+    private static long FeeMinChannelSizeSats => long.Parse(Env("ROUTING_ENGINE_FEE_MIN_CHANNEL_SIZE_SATS", "15000000"));
 
     public FeeEngineFlowE2ETests(ITestOutputHelper output) : base(output)
     {
@@ -187,25 +188,29 @@ public class FeeEngineFlowE2ETests : FeeEngineE2EBase
     private async Task<(ulong aliceBobScid, ulong carolAliceScid, ulong bobAliceScid)> SetUpFlowTopologyAsync(
         LndTestClient alice, LndTestClient bob, LndTestClient carol, NBitcoin.RPC.RPCClient rpc)
     {
-        var aliceBobScid = await alice.ScidToAsync(bob.PubKey);
+        // Reuse an Alice→Bob channel only if it clears the fee-engine min channel size — the optimizer skips
+        // smaller ones (e.g. the 5M channel the HTLC-reconnect scenario opens), so a smaller reused channel
+        // would categorize but never get a fee. Pin the largest that qualifies, else open a fresh 16M one.
+        var aliceBobScid = await alice.ScidToAsync(bob.PubKey, minCapacitySats: FeeMinChannelSizeSats);
         if (aliceBobScid is null)
         {
-            _output.WriteLine("[flow] Alice→Bob absent — opening it with push");
+            _output.WriteLine($"[flow] no Alice→Bob >= {FeeMinChannelSizeSats} sat — opening one with push");
             await alice.ConnectAsync(bob.PubKey, $"{bob.Name}:9735");
             await alice.OpenChannelAsync(bob.PubKey, localSats: 16_000_000, pushSats: 8_000_000);
-            aliceBobScid = await MineUntilScidAsync(rpc, () => alice.ScidToAsync(bob.PubKey), "Alice→Bob");
+            aliceBobScid = await MineUntilScidAsync(
+                rpc, () => alice.ScidToAsync(bob.PubKey, FeeMinChannelSizeSats), "Alice→Bob (>= fee min)");
         }
-        _output.WriteLine($"[flow] Alice→Bob scid={aliceBobScid}");
+        _output.WriteLine($"[flow] Alice→Bob scid={aliceBobScid} (>= {FeeMinChannelSizeSats} sat)");
 
         // Top up bob via a DIRECT alice→bob payment (not a forward, so it doesn't touch the categorizer's
-        // windows) until bob has the sending liquidity phase 2 needs.
-        var bobLocal = await alice.RemoteBalanceToAsync(bob.PubKey);
+        // windows) until bob has the sending liquidity test needs.
+        var bobLocal = await alice.RemoteBalanceOnScidAsync(bob.PubKey, aliceBobScid.Value);
         _output.WriteLine($"[flow] bob local on Alice→Bob = {bobLocal} sat (target {BobTopupSats})");
         for (var i = 0; i < 8 && bobLocal < BobTopupSats; i++)
         {
             if (!await alice.PayViaScidAsync(bob, aliceBobScid.Value, 1_000_000))
                 await Task.Delay(TimeSpan.FromSeconds(2));
-            bobLocal = await alice.RemoteBalanceToAsync(bob.PubKey);
+            bobLocal = await alice.RemoteBalanceOnScidAsync(bob.PubKey, aliceBobScid.Value);
         }
         _output.WriteLine($"[flow] bob local on Alice→Bob = {bobLocal} sat");
 
@@ -223,13 +228,12 @@ public class FeeEngineFlowE2ETests : FeeEngineE2EBase
 
         // Forced first hops as each SENDER sees them.
         var carolAliceScid = await carol.ScidToAsync(alice.PubKey);
-        var bobAliceScid = await bob.ScidToAsync(alice.PubKey);
         carolAliceScid.Should().NotBeNull("Carol→Alice scid is needed to force the phase-1 route");
-        bobAliceScid.Should().NotBeNull("Bob→Alice scid is needed to force the phase-2 route");
+        var bobAliceScid = aliceBobScid.Value;
         _output.WriteLine($"[flow] Carol→Alice scid={carolAliceScid} Bob→Alice scid={bobAliceScid}");
 
         await Task.Delay(TimeSpan.FromSeconds(15)); // gossip settle so senders can build the two-hop routes
-        return (aliceBobScid.Value, carolAliceScid!.Value, bobAliceScid!.Value);
+        return (aliceBobScid.Value, carolAliceScid!.Value, bobAliceScid);
     }
 
     // Mines until readScid returns a confirmed scid (channel active), or throws.

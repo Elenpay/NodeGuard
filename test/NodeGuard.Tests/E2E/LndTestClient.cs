@@ -84,9 +84,13 @@ internal sealed class LndTestClient
         return resp.Channels.Where(c => c.RemotePubkey == peerPubKey).ToList();
     }
 
-    // First CONFIRMED channel (ChanId != 0) toward the peer, or null if none yet.
-    public async Task<ulong?> ScidToAsync(string peerPubKey)
-        => (await ChannelsToAsync(peerPubKey)).FirstOrDefault(c => c.ChanId != 0)?.ChanId;
+    // Largest-capacity CONFIRMED channel (ChanId != 0) toward the peer whose capacity is at least
+    // minCapacitySats, or null if none qualifies.
+    public async Task<ulong?> ScidToAsync(string peerPubKey, long minCapacitySats = 0)
+        => (await ChannelsToAsync(peerPubKey))
+            .Where(c => c.ChanId != 0 && c.Capacity >= minCapacitySats)
+            .OrderByDescending(c => c.Capacity)
+            .FirstOrDefault()?.ChanId;
 
     public async Task<long> LocalBalanceToAsync(string peerPubKey)
         => (await ChannelsToAsync(peerPubKey)).Select(c => c.LocalBalance).DefaultIfEmpty(0).Max();
@@ -94,6 +98,10 @@ internal sealed class LndTestClient
     // Peer's local balance = their sending liquidity toward us.
     public async Task<long> RemoteBalanceToAsync(string peerPubKey)
         => (await ChannelsToAsync(peerPubKey)).Select(c => c.RemoteBalance).DefaultIfEmpty(0).Max();
+
+    // Peer's local balance on a SPECIFIC channel (by scid).
+    public async Task<long> RemoteBalanceOnScidAsync(string peerPubKey, ulong scid)
+        => (await ChannelsToAsync(peerPubKey)).Where(c => c.ChanId == scid).Select(c => c.RemoteBalance).DefaultIfEmpty(0).Max();
 
     // Idempotent — an "already connected" RpcException is expected and swallowed.
     public async Task ConnectAsync(string peerPubKey, string hostPort)

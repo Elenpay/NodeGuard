@@ -131,6 +131,7 @@ services:
       E2E_HOT_WALLET_ID: "3"
       POSTGRES_CONNECTIONSTRING: "Host=postgres;Port=5432;Database=nodeguard;User ID=postgres;"
       E2E_FORWARDING_NODE_CONTAINER: "polar-n1-bob"
+      ROUTING_ENGINE_FEE_MIN_CHANNEL_SIZE_SATS: "15000000"
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock # Lets the reconnect test restart an LND container via the Docker Engine API socket.
       - e2e_env:/shared:ro   # LND host+macaroon env (extract-env); the flow scenario reads it directly
