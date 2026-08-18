@@ -37,7 +37,7 @@ public abstract class FeeEngineE2EBase : E2ETestBase
 
     protected static ApplicationDbContext CreateDbContext()
     {
-        var cs = Env("NODEGUARD_DB_CONNECTIONSTRING", "Host=localhost;Port=25432;Database=nodeguard;User ID=postgres;");
+        var cs = Env("POSTGRES_CONNECTIONSTRING", "Host=localhost;Port=25432;Database=nodeguard;User ID=postgres;");
         // Retry transient failures — a momentary DNS/socket blip must not fail a multi-minute run.
         var options = new DbContextOptionsBuilder<ApplicationDbContext>()
             .UseNpgsql(cs, o => o.EnableRetryOnFailure(5, TimeSpan.FromSeconds(3), null))
