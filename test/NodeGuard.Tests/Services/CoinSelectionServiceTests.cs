@@ -374,6 +374,36 @@ public class CoinSelectionServiceTests
     }
 
     [Fact]
+    public async Task SelectAndLockUTXOsAsync_ForABumpWhoseUTXOIsAlreadyConfirmed_Throws()
+    {
+        // A fee bump has to spend the same input as the transaction it replaces. Owning no UTXOs means
+        // that input already confirmed and was released, so selecting would silently bump onto a
+        // different one - refuse instead. Enforced here, next to the read it depends on, so a
+        // confirmation landing mid-selection cannot slip past it.
+        var wallet = CreateWallet.SingleSig(_internalWallet);
+        var service = CreateServiceForSelectAndLock(new List<UTXO> { CreateUtxo(1, 100_000) },
+            out var walletWithdrawalRequestRepository);
+        var bumpRequest = new WalletWithdrawalRequest
+        {
+            Id = 100,
+            WalletId = wallet.Id,
+            Wallet = wallet,
+            BumpingWalletWithdrawalRequestId = 42,
+            WalletWithdrawalRequestDestinations = new List<WalletWithdrawalRequestDestination>
+            {
+                new() { Address = "1", Amount = 0.0001m }
+            }
+        };
+
+        var act = () => service.SelectAndLockUTXOsAsync(bumpRequest, BitcoinRequestType.WalletWithdrawal,
+            wallet.GetDerivationStrategy());
+
+        await act.Should().ThrowAsync<ShowToUserException>();
+        walletWithdrawalRequestRepository.Verify(
+            x => x.AddUTXOs(It.IsAny<IBitcoinRequest>(), It.IsAny<List<FMUTXO>>()), Times.Never);
+    }
+
+    [Fact]
     public async Task SelectAndLockUTXOsAsync_WhenRequestAlreadyOwnsUTXOs_DoesNotLockASecondSet()
     {
         // A retried/resumed request must reuse the UTXOs already locked to it rather than selecting

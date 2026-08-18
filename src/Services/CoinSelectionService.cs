@@ -197,6 +197,18 @@ public class CoinSelectionService: ICoinSelectionService
             // A request that already owns UTXOs is being retried/resumed, so reuse exactly those
             // instead of selecting (and locking) a second, different set.
             var previouslyLockedUTXOs = await GetLockedUTXOsForRequest(request, requestType);
+
+            // A fee bump must spend the same input as the transaction it replaces. Owning no UTXOs at
+            // this point means that input was already confirmed and released, so selecting below would
+            // silently bump onto a different one. Checked here, with the read it depends on, so a
+            // confirmation landing mid-selection cannot slip past it.
+            if (previouslyLockedUTXOs.Count == 0
+                && request is WalletWithdrawalRequest { BumpingWalletWithdrawalRequestId: not null } bump)
+            {
+                throw new ShowToUserException(
+                    $"Cannot generate a template PSBT for an already confirmed bumped transaction. The UTXO for request {bump.BumpingWalletWithdrawalRequestId} is already confirmed");
+            }
+
             var availableUTXOs = previouslyLockedUTXOs.Count > 0
                 ? previouslyLockedUTXOs
                 : await GetAvailableUTXOsAsync(derivationStrategy);
