@@ -1,7 +1,5 @@
-using System.Text;
-using Humanizer;
 using NBitcoin;
-using NBitcoin.Scripting;
+using NBitcoin.WalletPolicies;
 using NBXplorer.DerivationStrategy;
 using NodeGuard.Data.Models;
 
@@ -10,9 +8,15 @@ namespace NodeGuard.Helpers;
 public static class WalletParser
 {
     /// <summary>
-    /// Parse the output descriptor string to get the wallet info, Took from BTCPAYServer codebase
+    /// Parse the output descriptor string to get the wallet info.
+    /// NodeGuard accepts a deliberately small descriptor grammar: wpkh/pkh single-sig and
+    /// (w)sh-less multi/sortedmulti or wsh(multi/sortedmulti), with external-chain-only keys
+    /// ("xpub" or "xpub/0/*"). NBitcoin 10 removed the NBitcoin.Scripting OutputDescriptor API and
+    /// its Miniscript replacement only parses BIP388 multipath descriptors ("/**"), which NodeGuard
+    /// rejects — so the accepted grammar is parsed here directly, preserving the old behaviour.
     /// </summary>
     /// <param name="outputDescriptorStr"></param>
+    /// <param name="currentNetwork"></param>
     public static (DerivationStrategyBase, (BitcoinExtPubKey, RootedKeyPath)[]) ParseOutputDescriptor(
         string outputDescriptorStr, Network currentNetwork)
     {
@@ -28,77 +32,116 @@ public static class WalletParser
             throw new ArgumentException("Descriptor contains <0;1> which is not supported, please use <0/*>");
         }
 
-        var outputDescriptor = OutputDescriptor.Parse(outputDescriptorStr, currentNetwork);
-        switch (outputDescriptor)
+        var body = StripAndValidateChecksum(outputDescriptorStr);
+
+        var (fragment, inner) = ReadFragment(body);
+        switch (fragment)
         {
             //TODO TR descriptor when NBitcoin supports it
-            case OutputDescriptor.PK _:
+            case "pk":
+            case "raw":
+            case "addr":
+            case "combo":
+            case "tr":
                 throw new FormatException("Output descriptor not supported: " + outputDescriptorStr);
-            case OutputDescriptor.Raw _:
-                throw new FormatException("Output descriptor not supported: " + outputDescriptorStr);
-
-            case OutputDescriptor.Addr _:
-                throw new FormatException("Output descriptor not supported: " + outputDescriptorStr);
-            case OutputDescriptor.Combo _:
-                throw new FormatException("Output descriptor not supported: " + outputDescriptorStr);
-            case OutputDescriptor.Multi multi:
-                return ExtractFromMulti(multi);
-            case OutputDescriptor.PKH pkh:
-                return ExtractFromPkProvider(pkh.PkProvider, "-[legacy]");
-            case OutputDescriptor.SH _:
+            case "multi":
+            case "sortedmulti":
+                return ExtractFromMulti(fragment == "sortedmulti", inner);
+            case "pkh":
+                return ExtractFromKey(inner, "-[legacy]");
+            case "sh":
                 throw new FormatException(
                     "Legacy multisig is not supported, please use segwit multisig instead.");
-            case OutputDescriptor.WPKH wpkh:
-                return ExtractFromPkProvider(wpkh.PkProvider, "");
-            case OutputDescriptor.WSH {Inner: OutputDescriptor.Multi multi}:
-                return ExtractFromMulti(multi);
-            case OutputDescriptor.WSH:
+            case "wpkh":
+                return ExtractFromKey(inner, "");
+            case "wsh":
+                var (innerFragment, innerExpression) = ReadFragment(inner);
+                if (innerFragment is "multi" or "sortedmulti")
+                    return ExtractFromMulti(innerFragment == "sortedmulti", innerExpression);
                 throw new FormatException("wsh descriptors are only supported with multisig");
             default:
-                throw new ArgumentOutOfRangeException(nameof(outputDescriptor));
+                throw new FormatException("Output descriptor not supported: " + outputDescriptorStr);
         }
 
-        (DerivationStrategyBase, (BitcoinExtPubKey, RootedKeyPath)[]) ExtractFromMulti(OutputDescriptor.Multi multi)
+        static string StripAndValidateChecksum(string descriptor)
         {
-            var multiPkProviders = multi.PkProviders;
-            
-            var xpubs = multiPkProviders.Select(provider => ExtractFromPkProvider(provider)).ToArray();
+            var hashIndex = descriptor.IndexOf('#');
+            if (hashIndex < 0) return descriptor;
+
+            var body = descriptor[..hashIndex];
+            var checksum = descriptor[(hashIndex + 1)..];
+            if (Miniscript.GetCheckSum(body) != checksum)
+                throw new FormatException("Invalid checksum in output descriptor: " + descriptor);
+
+            return body;
+        }
+
+        static (string fragment, string inner) ReadFragment(string expression)
+        {
+            var open = expression.IndexOf('(');
+            if (open <= 0 || !expression.EndsWith(')'))
+                throw new FormatException("Output descriptor not supported: " + expression);
+
+            return (expression[..open], expression[(open + 1)..^1]);
+        }
+
+        (DerivationStrategyBase, (BitcoinExtPubKey, RootedKeyPath)[]) ExtractFromMulti(bool isSorted, string inner)
+        {
+            var parts = inner.Split(',');
+            if (parts.Length < 2)
+                throw new FormatException("Output descriptor not supported: " + inner);
+
+            var threshold = uint.Parse(parts[0].Trim());
+
+            var xpubs = parts.Skip(1).Select(key => ExtractFromKey(key)).ToArray();
 
             var xpubsStrings = xpubs.Select(tuple => tuple.Item1.ToString()).ToArray();
-            
-            if(multi.IsSorted)
+
+            if (isSorted)
                 xpubsStrings = xpubsStrings.OrderBy(x => x).ToArray();
-            
+
             var extractFromMulti = (
                 Parse(
-                    $"{multi.Threshold}-of-{(string.Join('-', xpubsStrings))}{(multi.IsSorted ? "" : "-[keeporder]")}"),
+                    $"{threshold}-of-{(string.Join('-', xpubsStrings))}{(isSorted ? "" : "-[keeporder]")}"),
                 xpubs.SelectMany(tuple => tuple.Item2).ToArray());
             return extractFromMulti;
         }
 
-        (DerivationStrategyBase, (BitcoinExtPubKey, RootedKeyPath)[]) ExtractFromPkProvider(
-            PubKeyProvider pubKeyProvider,
+        (DerivationStrategyBase, (BitcoinExtPubKey, RootedKeyPath)[]) ExtractFromKey(
+            string keyExpression,
             string suffix = "")
         {
-            switch (pubKeyProvider)
-            {
-                case PubKeyProvider.Const _:
-                    throw new FormatException("Only HD output descriptors are supported.");
-                case PubKeyProvider.HD hd:
-                    if (hd.Path != null && hd.Path.ToString() != "0")
-                    {
-                        throw new FormatException("Custom change paths are not supported.");
-                    }
+            keyExpression = keyExpression.Trim();
 
-                    return (Parse($"{hd.Extkey}{suffix}"), null);
-                case PubKeyProvider.Origin origin:
-                    var innerResult = ExtractFromPkProvider(origin.Inner, suffix);
-                    var bitcoinExtPubKey = innerResult.Item1.GetExtPubKeys().First().GetWif(currentNetwork);
-                    var rootedKeyPath = origin.KeyOriginInfo;
-                    return (innerResult.Item1, new[] {(extPubKey: bitcoinExtPubKey, KeyOriginInfo: rootedKeyPath)});
-                default:
-                    throw new ArgumentOutOfRangeException();
+            RootedKeyPath? keyOriginInfo = null;
+            if (keyExpression.StartsWith('['))
+            {
+                var close = keyExpression.IndexOf(']');
+                if (close < 0)
+                    throw new FormatException("Output descriptor not supported: " + keyExpression);
+
+                keyOriginInfo = RootedKeyPath.Parse(keyExpression[1..close]);
+                keyExpression = keyExpression[(close + 1)..];
             }
+
+            var slash = keyExpression.IndexOf('/');
+            var xpubString = slash < 0 ? keyExpression : keyExpression[..slash];
+            var derivation = slash < 0 ? null : keyExpression[(slash + 1)..];
+
+            //Only the external chain ("0/*") is supported, like the previous OutputDescriptor-based parser
+            if (derivation != null && derivation != "0/*")
+            {
+                throw new FormatException("Custom change paths are not supported.");
+            }
+
+            var bitcoinExtPubKey = new BitcoinExtPubKey(xpubString, currentNetwork);
+
+            var strategy = Parse($"{bitcoinExtPubKey}{suffix}");
+
+            if (keyOriginInfo == null)
+                return (strategy, null);
+
+            return (strategy, new[] {(extPubKey: bitcoinExtPubKey, KeyOriginInfo: keyOriginInfo)});
         }
 
         DerivationStrategyBase Parse(string str)
@@ -121,93 +164,56 @@ public static class WalletParser
     /// This method first determines the network based on the provided string. It then checks if the wallet is a hot wallet or not.
     /// If it is, it generates the output descriptor based on the first key in the wallet and the wallet's address type.
     /// If it's not a hot wallet, it generates a multi-signature output descriptor based on all the keys in the wallet and the wallet's address type.
+    /// The BIP380 checksum is appended, like the previous OutputDescriptor-based implementation did.
     /// </remarks>
     public static string GetOutputDescriptor(this Wallet wallet, string bitcoinNetwork)
     {
         var network = Network.GetNetwork(bitcoinNetwork);
-        OutputDescriptor outputDescriptor = null;
-        PubKeyProvider pubKeyProvider;
 
+        string RenderKey(Data.Models.Key key)
+        {
+            var rootedKeyPath = new RootedKeyPath(
+                new HDFingerprint(GetMasterFingerprint(key.MasterFingerprint)),
+                KeyPath.Parse(key.Path)
+            );
+            var bitcoinExtPubKey = new BitcoinExtPubKey(ExtPubKey.Parse(key.XPUB, network), network);
+            return $"[{rootedKeyPath}]{bitcoinExtPubKey}/0/*";
+        }
+
+        string body;
         if (wallet.IsHotWallet)
         {
             var key = wallet.Keys.FirstOrDefault();
-            pubKeyProvider = PubKeyProvider.NewHD(
-                new BitcoinExtPubKey(
-                    ExtPubKey.Parse(key.XPUB, network),
-                    network
-                ),
-                new KeyPath("/0"),
-                PubKeyProvider.DeriveType.UNHARDENED
-            );
-            var fingerprint = GetMasterFingerprint(key.MasterFingerprint);
-            var rootedKeyPath = new RootedKeyPath(
-                new HDFingerprint(fingerprint),
-                KeyPath.Parse(key.Path)
-            );
-            pubKeyProvider = PubKeyProvider.NewOrigin(rootedKeyPath, pubKeyProvider);
-            
-            switch (wallet.WalletAddressType)
+            var keyExpression = RenderKey(key);
+
+            body = wallet.WalletAddressType switch
             {
-                case WalletAddressType.NativeSegwit:
-                    outputDescriptor = OutputDescriptor.NewWPKH(pubKeyProvider, network);
-                    break;
-                case WalletAddressType.NestedSegwit:
-                    outputDescriptor = OutputDescriptor.NewWPKH(pubKeyProvider, network);
-                    outputDescriptor = OutputDescriptor.NewSH(outputDescriptor, network);
-                    break;
-                case WalletAddressType.Legacy:
-                    outputDescriptor = OutputDescriptor.NewPKH(pubKeyProvider, network);
-                    break;
-                case WalletAddressType.Taproot:
-                    throw new NotImplementedException();
-            }
+                WalletAddressType.NativeSegwit => $"wpkh({keyExpression})",
+                WalletAddressType.NestedSegwit => $"sh(wpkh({keyExpression}))",
+                WalletAddressType.Legacy => $"pkh({keyExpression})",
+                WalletAddressType.Taproot => throw new NotImplementedException(),
+                _ => throw new Exception("Something went wrong")
+            };
         }
         else
         {
-            var pubKeyProviders = new List<PubKeyProvider>();
-            foreach (var k in wallet.Keys)
+            var keyExpressions = string.Join(',', wallet.Keys.Select(RenderKey));
+            var multi =
+                $"{(wallet.IsUnSortedMultiSig ? "multi" : "sortedmulti")}({wallet.MofN},{keyExpressions})";
+
+            body = wallet.WalletAddressType switch
             {
-                var rootedKeyPath = new RootedKeyPath(
-                    new HDFingerprint(GetMasterFingerprint(k.MasterFingerprint)),
-                    KeyPath.Parse(k.Path)
-                );
-                pubKeyProvider = PubKeyProvider.NewOrigin(
-                    rootedKeyPath,
-                    PubKeyProvider.NewHD(
-                        new BitcoinExtPubKey(
-                            ExtPubKey.Parse(k.XPUB, network),
-                            network
-                        ),
-                        new KeyPath("/0"),
-                        PubKeyProvider.DeriveType.UNHARDENED
-                    )
-                );
-                pubKeyProviders.Add(pubKeyProvider);
-            }
-            outputDescriptor = OutputDescriptor.NewMulti(
-                (uint)wallet.MofN,
-                pubKeyProviders,
-                !wallet.IsUnSortedMultiSig,
-                network);
-            
-            switch (wallet.WalletAddressType)
-            {
-                case WalletAddressType.NativeSegwit:
-                    outputDescriptor = OutputDescriptor.NewWSH(outputDescriptor, network);
-                    break;
-                case WalletAddressType.NestedSegwit:
-                    outputDescriptor = OutputDescriptor.NewSH(outputDescriptor, network);
-                    break;
-                case WalletAddressType.Legacy:
-                    break;
-                case WalletAddressType.Taproot:
-                    throw new NotImplementedException();
-            }
+                WalletAddressType.NativeSegwit => $"wsh({multi})",
+                WalletAddressType.NestedSegwit => $"sh({multi})",
+                WalletAddressType.Legacy => multi,
+                WalletAddressType.Taproot => throw new NotImplementedException(),
+                _ => throw new Exception("Something went wrong")
+            };
         }
 
-        return outputDescriptor is not null ? outputDescriptor.ToString() : throw new Exception("Something went wrong");
+        return Miniscript.AddChecksum(body);
     }
-    
+
     /// <summary>
     /// Converts a hexadecimal string representation of a master fingerprint into a byte array.
     /// </summary>

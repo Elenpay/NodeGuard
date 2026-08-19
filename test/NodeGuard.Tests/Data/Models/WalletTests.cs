@@ -2,7 +2,6 @@ using FluentAssertions;
 using NodeGuard.Data.Models;
 using NodeGuard.TestHelpers;
 using NBitcoin;
-using NBitcoin.Scripting;
 using NBXplorer.DerivationStrategy;
 
 namespace NodeGuard.Tests;
@@ -169,9 +168,11 @@ public class WalletTests
             testingMultisigWallet.Keys = testingMultisigWallet.Keys.OrderBy(a => Guid.NewGuid()).ToList();
             //We derive address 0/0 and check against the output descriptor by sparrow
             var script = ((P2WSHDerivationStrategy)testingMultisigWallet.GetDerivationStrategy()).GetDerivation(new KeyPath("0/0"));
-            var outputDescriptor = OutputDescriptor.InferFromScript(script.Redeem, new FlatSigningRepository(), Network.RegTest);
-            //We split after the #checksum
-            var outputDescriptorString = outputDescriptor.ToString().Split("#", StringSplitOptions.TrimEntries).First();
+            //NBitcoin 10 removed OutputDescriptor.InferFromScript, so the descriptor is rebuilt from
+            //the multisig script parameters (the script pubkey order IS the lexicographical order)
+            var multisigParameters = PayToMultiSigTemplate.Instance.ExtractScriptPubKeyParameters(script.Redeem);
+            var outputDescriptorString =
+                $"sortedmulti({multisigParameters!.SignatureCount},{string.Join(',', multisigParameters.PubKeys.Select(x => x.ToHex()))})";
 
             //Assert
             outputDescriptorString.Should().Be(expectedOutputDescriptor.Trim());
