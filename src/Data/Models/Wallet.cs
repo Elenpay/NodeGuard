@@ -20,7 +20,6 @@
 using System.ComponentModel.DataAnnotations.Schema;
 using NodeGuard.Helpers;
 using NBitcoin;
-using NBitcoin.Scripting;
 using NBXplorer.DerivationStrategy;
 
 namespace NodeGuard.Data.Models
