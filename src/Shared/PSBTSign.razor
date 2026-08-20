@@ -140,53 +140,20 @@
         }
     }
 
+    /// <summary>
+    /// Validates the pasted PSBT against the TEMPLATE this request was created for.
+    ///
+    /// Previously both sides of the comparison were parsed from the pasted string, so the txid and UTXO checks
+    /// compared it against itself and could never fail. The logic now lives in PsbtApprovalValidator, which is
+    /// also enforced server side in the PSBT repositories — this call gives the approver immediate feedback,
+    /// but the repositories are the boundary that actually holds.
+    /// </summary>
     private string ValidatePSBT(string psbtBase64)
     {
-        var errorText =string.Empty;
-        if (psbtBase64 != null && PSBT.TryParse(psbtBase64, CurrentNetworkHelper.GetCurrentNetwork(), out var templatePSBT))
-        {
-            if (PSBT.TryParse(psbtBase64, CurrentNetworkHelper.GetCurrentNetwork(), out var parsedPSBT))
-            {
-                var templateInputsOutpoints = templatePSBT.Inputs.Select(x => x.PrevOut).ToList();
-                var parsedPSBTInputsOutpoints = parsedPSBT.Inputs.Select(x => x.PrevOut).ToList();
+        var errorText = PsbtApprovalValidator.ValidateForDisplay(
+            TemplatePsbtString, psbtBase64, SigHashMode, CurrentNetworkHelper.GetCurrentNetwork());
 
-                //TXID Validation
-                if (parsedPSBT.GetGlobalTransaction().GetHash() != templatePSBT.GetGlobalTransaction().GetHash())
-                {
-                    errorText += "Invalid PSBT, the transactions id do not match. ";
-
-                }
-                //If all the inputs are not signed this is invalid
-                else if (!parsedPSBT.Inputs.All(x => x.PartialSigs.Any()))
-                {
-                    errorText += $"Invalid PSBT, please make sure to use Sighash: {SigHashMode} and that every input is signed. ";
-                }
-
-                //Sighash check
-                else if (!parsedPSBT.Inputs.Any(x => x.PartialSigs.All(y=> y.Value.SigHash == SigHashMode)))
-                {
-                    errorText += $"Invalid PSBT, please make sure to use Sighash: {SigHashMode} and that every input is signed. ";
-                }
-                //If the inputs outpoints (utxos) are not the same to the template invalidate it
-                else if (templateInputsOutpoints.Union(parsedPSBTInputsOutpoints).Count() != templateInputsOutpoints.Count())
-                {
-                    errorText += "Invalid PSBT, the UTXOs do not match ";
-                }
-                else
-                {
-                    //It looks good
-                    _isSignedPSBTInvalid = false;
-                }
-            }
-            else
-            {
-                errorText = "Invalid PSBT, it could not be parsed";
-            }
-        }
-        else
-        {
-            errorText = "Invalid template PSBT, it could not be parsed";
-        }
+        _isSignedPSBTInvalid = errorText.Length > 0;
 
         return errorText;
     }

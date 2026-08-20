@@ -11,7 +11,6 @@
 @inject ILightningService LightningService
 @inject IWalletWithdrawalRequestRepository WalletWithdrawalRequestRepository
 @inject IAuditService AuditService
-@inject IWalletWithdrawalRequestPsbtRepository WalletWithdrawalRequestPsbtRepository
 @inject ISchedulerFactory SchedulerFactory
 @inject IWalletRepository WalletRepository
 @inject ILogger<TransferFundsModal> Logger
@@ -535,14 +534,13 @@ _amountToTransfer;
             }
         }
 
-        var walletWithdrawalRequestPsbt = new WalletWithdrawalRequestPSBT();
-
         try
         {
-            var templatePSBT = await BitcoinService.GenerateTemplatePSBT(withdrawalRequest);
-            walletWithdrawalRequestPsbt.WalletWithdrawalRequestId = withdrawalRequest.Id;
-            walletWithdrawalRequestPsbt.PSBT = templatePSBT.ToBase64();
-            walletWithdrawalRequestPsbt.SignerId = null;
+            // GenerateTemplatePSBT persists the template row itself (tagged IsTemplatePSBT = true). This used
+            // to store a second, UNTAGGED copy of the same PSBT, which NumberOfSignaturesCollected counted as
+            // a human signature. Tagging that copy is not an option either — PerformWithdrawal selects the
+            // template with .Single(x => x.IsTemplatePSBT) and would throw on two rows.
+            await BitcoinService.GenerateTemplatePSBT(withdrawalRequest);
         }
         catch (NoUTXOsAvailableException e)
         {
@@ -560,13 +558,6 @@ _amountToTransfer;
             Logger.LogError(e, "Error while generating the PSBT for the withdrawal request");
             await CleanUpWithdrawalRequest("Something went wrong");
             return result;
-        }
-
-        var addResult = await WalletWithdrawalRequestPsbtRepository.AddAsync(walletWithdrawalRequestPsbt);
-
-        if (!addResult.Item1)
-        {
-            throw new ShowToUserException("Error while saving the signature");
         }
 
         var req = await WalletWithdrawalRequestRepository.GetById(withdrawalRequest.Id);

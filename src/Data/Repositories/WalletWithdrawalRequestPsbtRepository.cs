@@ -20,6 +20,8 @@
 ﻿using NodeGuard.Data.Models;
 using NodeGuard.Data.Repositories.Interfaces;
 using Microsoft.EntityFrameworkCore;
+using NBitcoin;
+using NodeGuard.Helpers;
 
 namespace NodeGuard.Data.Repositories
 {
@@ -58,8 +60,23 @@ namespace NodeGuard.Data.Repositories
 
             //We set the request status to PSBTSignaturesPending
             var request = await
-                applicationDbContext.WalletWithdrawalRequests.FirstOrDefaultAsync(x =>
-                    x.Id == type.WalletWithdrawalRequestId);
+                applicationDbContext.WalletWithdrawalRequests
+                    .Include(x => x.WalletWithdrawalRequestPSBTs)
+                    .FirstOrDefaultAsync(x => x.Id == type.WalletWithdrawalRequestId);
+
+            // An approval is untrusted input: the approver pastes base64 they produced offline. It must be
+            // proven to describe the transaction this request was actually raised for BEFORE it is stored and
+            // counted toward the signature threshold. Without this, a keyholder can substitute a transaction
+            // paying themselves and have NodeGuard co-sign it.
+            var validation = ValidateApproval(request, type);
+            if (!validation.IsValid)
+            {
+                _logger.LogWarning("Rejected PSBT for withdrawal request {RequestId}: {Reason}",
+                    type.WalletWithdrawalRequestId, validation.Error);
+
+                return (false, validation.Error);
+            }
+
             try
             {
                 if (request != null && !type.IsTemplatePSBT )
@@ -83,7 +100,61 @@ namespace NodeGuard.Data.Repositories
         {
             await using var applicationDbContext = await _dbContextFactory.CreateDbContextAsync();
 
+            // Currently unused, but it writes to the same table, so it gets the same gate rather than being
+            // left as a way to store an unvalidated approval later on.
+            foreach (var psbt in type)
+            {
+                var request = await applicationDbContext.WalletWithdrawalRequests
+                    .Include(x => x.WalletWithdrawalRequestPSBTs)
+                    .FirstOrDefaultAsync(x => x.Id == psbt.WalletWithdrawalRequestId);
+
+                var validation = ValidateApproval(request, psbt);
+                if (!validation.IsValid)
+                {
+                    _logger.LogWarning("Rejected PSBT for withdrawal request {RequestId}: {Reason}",
+                        psbt.WalletWithdrawalRequestId, validation.Error);
+
+                    return (false, validation.Error);
+                }
+            }
+
             return await _repository.AddRangeAsync(type, applicationDbContext);
+        }
+
+        /// <summary>
+        /// Validates a human approval against the request's template PSBT. Rows that are not human approvals —
+        /// the template itself, NodeGuard's own internal-wallet signature, and the finalised PSBT — are
+        /// generated server side rather than submitted, so they pass through.
+        /// </summary>
+        private static PsbtApprovalValidator.Result ValidateApproval(WalletWithdrawalRequest? request,
+            WalletWithdrawalRequestPSBT type)
+        {
+            if (type.IsTemplatePSBT || type.IsInternalWalletPSBT || type.IsFinalisedPSBT)
+            {
+                return PsbtApprovalValidator.Result.Ok;
+            }
+
+            if (request == null)
+            {
+                return PsbtApprovalValidator.Result.Fail("The withdrawal request could not be found.");
+            }
+
+            var existing = request.WalletWithdrawalRequestPSBTs?
+                .Where(x => !x.IsTemplatePSBT && !x.IsInternalWalletPSBT && !x.IsFinalisedPSBT)
+                .Select(x => x.PSBT)
+                .ToList() ?? new List<string>();
+
+            var template = request.WalletWithdrawalRequestPSBTs?
+                .FirstOrDefault(x => x.IsTemplatePSBT)?.PSBT;
+
+            if (string.IsNullOrWhiteSpace(template))
+            {
+                return PsbtApprovalValidator.Result.Fail(
+                    "This request has no template PSBT to validate the signature against.");
+            }
+
+            return PsbtApprovalValidator.Validate(template, type.PSBT, SigHash.All,
+                CurrentNetworkHelper.GetCurrentNetwork(), existing);
         }
 
         public (bool, string?) Remove(WalletWithdrawalRequestPSBT type)
