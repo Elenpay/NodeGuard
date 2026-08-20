@@ -83,17 +83,29 @@ public class PaymentRoutesGraphService : IPaymentRoutesGraphService
     }
 
     /// <summary>
-    /// Resolves a human-readable alias for every pubkey that appears in the graph, so the
-    /// frontend can label nodes instead of falling back to A/B/C… letters (the port of
-    /// LightningEye's <c>nodes_cache</c>/aliases.js). The origin uses its managed
-    /// <see cref="Node.Name"/>; every other pubkey is looked up from the origin node's LND
-    /// gossip view via <c>GetNodeInfo</c>. Resolution is best-effort: any pubkey we can't
-    /// resolve is simply left out of the map (JS then falls back to a letter), and the whole
-    /// step is skipped if the origin node isn't reachable.
+    /// Resolves a human-readable alias for every pubkey that appears in the graph. Two sources,
+    /// in order: NodeGuard's own <c>Nodes</c> table (managed nodes plus the peers recorded by
+    /// <c>GetOrCreateByPubKey</c>), then the origin node's LND gossip view via <c>GetNodeInfo</c>.
+    /// <para>The table is consulted first because it is free and, unlike gossip, it survives LND
+    /// zombie-pruning a stale channel out of the origin's graph — once that happens the routing
+    /// node disappears from <c>GetNodeInfo</c> and its alias is unrecoverable from that node.</para>
+    /// Resolution is best-effort: an unresolved pubkey is left out of the map and the frontend
+    /// labels it by its pubkey prefix. It must never invent a name — a made-up label is
+    /// indistinguishable from a real alias to whoever reads the graph.
     /// </summary>
     private async Task<Dictionary<string, string>> ResolveAliasesAsync(string originNodePubKey, List<PaymentRouteHop> hops)
     {
-        var aliases = new Dictionary<string, string>();
+        var graphPubKeys = hops
+            .SelectMany(h => new[] { h.FromNode, h.ToNode })
+            .Append(originNodePubKey)
+            .Where(pk => !string.IsNullOrWhiteSpace(pk))
+            .Distinct()
+            .ToList();
+
+        // Names we already hold locally. GetNamesByPubKeys drops empty names, which matters:
+        // GetOrCreateByPubKey stores Name = "" when its own alias lookup failed, and treating
+        // that as resolved would suppress the gossip call below that may well succeed.
+        var aliases = await _nodeRepository.GetNamesByPubKeys(graphPubKeys) ?? new Dictionary<string, string>();
 
         var originNode = await _nodeRepository.GetByPubkey(originNodePubKey);
         if (originNode is not null && !string.IsNullOrWhiteSpace(originNode.Name))
@@ -109,11 +121,7 @@ public class PaymentRoutesGraphService : IPaymentRoutesGraphService
             return aliases;
         }
 
-        var pubKeys = hops
-            .SelectMany(h => new[] { h.FromNode, h.ToNode })
-            .Where(pk => !string.IsNullOrWhiteSpace(pk) && !aliases.ContainsKey(pk))
-            .Distinct()
-            .ToList();
+        var pubKeys = graphPubKeys.Where(pk => !aliases.ContainsKey(pk)).ToList();
 
         // One GetNodeInfo per distinct pubkey, in parallel. Failures come back as null and
         // are ignored (best-effort labelling must never break the graph).
