@@ -261,11 +261,11 @@ public class Constants
     public static double ROUTING_ENGINE_TARGET_ALPHA = 0.10;
 
     /// <summary>
-    /// EWMA smoothing factor for EmaLocalRatio (~24h effective window at 30-min sampling).
-    /// Default 0.04 (49 cycles to converge). ⍺ = 2/(cycles+1). It smooths out the observed
+    /// EWMA smoothing factor for EmaLocalRatio (~12h effective window at 30-min sampling).
+    /// Default 0.08 (24 cycles to converge). ⍺ = 2/(cycles+1). It smooths out the observed
     /// local ratio to avoid overreacting to transient flow spikes.
     /// </summary>
-    public static double ROUTING_ENGINE_FEE_EMA_ALPHA = 0.04;
+    public static double ROUTING_ENGINE_FEE_EMA_ALPHA = 0.08;
 
     /// <summary>
     /// Consecutive divergent cycles required before a category flip commits (anti-flap hysteresis).
