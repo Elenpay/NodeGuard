@@ -85,7 +85,32 @@ dotnet tool install -g dotnet-ef
 
 ### Using polar
 
-1. You can run the Polar network by importing the `devnetwork.zip` into it. Then you have to run `docker compose up -d` for the rest of the needed containers to start.
+The `polar` profile above ships a self-contained regtest network (`bitcoind` + `alice`/`bob`/`carol`, the `polar-n1-*` containers) that **replaces** the Polar app — it does not attach to a network started from it. Use one or the other, not both.
+
+If you already have a network running in the Polar app (or any other externally-managed regtest), use the `external` profile instead. It starts only NodeGuard's own dependencies — postgres and nbxplorer — and points them at your chain:
+
+1. Copy [.env.example](.env.example) to `.env` and set the containers to use:
+   ```
+   BITCOIND_CONTAINER=polar-n3-backend1
+   MANAGED_NODES=polar-n3-alice,polar-n3-bob,polar-n3-carol
+   ```
+   `BITCOIND_CONTAINER` is the name of your running bitcoind container; `MANAGED_NODES` is the list of LND containers NodeGuard should manage. Both are reached through their **published host ports** (`docker port <container>`), so there is no need to share a docker network. Each node's env var prefix comes from the last segment of its container name (`polar-n3-alice` → `ALICE_HOST`, `ALICE_MACAROON`, `ALICE_PUBKEY`).
+2. Bring the dependencies up:
+   ```
+   just external-up
+   ```
+   This resolves the bitcoind RPC/P2P host ports, starts postgres + nbxplorer against them, and runs a setup container that prepares the miner wallet NodeGuard expects. It never funds your nodes or opens channels — the topology is left alone — but it does two things to your chain:
+   - Creates a wallet named `default` and leaves it as the **only loaded** wallet, because NodeGuard issues wallet RPCs without `-rpcwallet`. The unnamed wallet Polar ships gets unloaded.
+   - Mines to `default` until it holds `EXTERNAL_MINE_TARGET_BTC` (default 100) of mature coin, since NodeGuard's dev seeding spends 4 × 20 BTC. On an already-halved regtest chain that can be a couple hundred blocks (`EXTERNAL_MINE_MAX_BLOCKS`, default 1000, caps it).
+3. Run NodeGuard as usual (`just run` / `just watch`). [docker/extract-macaroons.sh](docker/extract-macaroons.sh) reads the same `.env`, so macaroons, TLS certs, pubkeys and endpoints come from the containers you listed.
+4. `just external-down` stops postgres/nbxplorer and leaves your regtest network alone.
+
+Caveats:
+- Only nodes whose container name ends in `alice`, `bob` or `carol` are seeded automatically, because [src/Data/DbInitializer.cs](src/Data/DbInitializer.cs) has those three fixed dev slots. Any other node is still extracted to `src/nodeguard-macaroons.env` (and the script tells you so) but has to be added from the UI.
+- Nothing is lost when the unnamed wallet is unloaded — reload it with `bitcoin-cli -regtest loadwallet ""` — but while NodeGuard runs use `just mine` (which honours `BITCOIND_CONTAINER`) rather than Polar's mining UI, which drives that wallet.
+- `EXTERNAL_MINE_BLOCKS=0` skips all mining but still unloads the unnamed wallet, so `default` stays empty and NodeGuard's dev seeding fails when it tries to send its 20 BTC. Only use it if you fund `default` yourself.
+- nbxplorer logs a `not whitelisted by your node` warning; it is harmless. Add `whitelist=<the IP from the warning>` to the node's advanced options in Polar to silence it.
+- `docker compose up -d` on its own starts nothing usable — every chain service lives behind a profile. Pick `--profile polar` (in-repo network) or `--profile external` (your own).
 
 ## Running the project
 

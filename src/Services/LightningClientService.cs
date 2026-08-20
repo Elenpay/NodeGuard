@@ -40,6 +40,7 @@ public interface ILightningClientService
     public Task<ChannelEdge?> GetChanInfo(Node node, ulong chanId, Lightning.LightningClient? client = null);
     public Task<AddInvoiceResponse?> AddInvoice(Node node, Invoice invoice, Lightning.LightningClient? client = null);
     public Task<QueryRoutesResponse?> QueryRoutes(Node node, QueryRoutesRequest request, Lightning.LightningClient? client = null);
+    public Task<ListPaymentsResponse?> ListPayments(Node node, ListPaymentsRequest request, Lightning.LightningClient? client = null);
     public AsyncServerStreamingCall<CloseStatusUpdate>? CloseChannel(Node node, Channel channel, bool forceClose = false, Lightning.LightningClient? client = null);
     public AsyncServerStreamingCall<ChannelEventUpdate> SubscribeChannelEvents(Node node, Lightning.LightningClient? client = null);
     public Task<LightningNode?> GetNodeInfo(Node node, string pubKey, Lightning.LightningClient? client = null);
@@ -180,6 +181,30 @@ public class LightningClientService : ILightningClientService
         }
 
         return listChannelsResponse;
+    }
+
+    public async Task<ListPaymentsResponse?> ListPayments(Node node, ListPaymentsRequest request, Lightning.LightningClient? client = null)
+    {
+        // Currently unused: the payment watcher used to paginate this by index_offset, but moved to
+        // the router's payment stream because ListPayments cannot see failed HTLC attempts (LND
+        // deletes them when a payment goes terminal). Kept as the only payment-history read
+        // available, e.g. for a future catch-up import.
+        try
+        {
+            client ??= GetLightningClient(node.Endpoint);
+            return await client.ListPaymentsAsync(request,
+                new Metadata
+                {
+                    {
+                        "macaroon", node.ChannelAdminMacaroon
+                    }
+                });
+        }
+        catch (Exception e)
+        {
+            _logger.LogError(e, "Error while listing payments for node {NodeId}", node.Id);
+            return null;
+        }
     }
 
     public async Task<ChannelBalanceResponse?> ChannelBalanceAsync(Node node, Lightning.LightningClient? client = null)

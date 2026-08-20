@@ -128,6 +128,8 @@ namespace NodeGuard
             builder.Services.AddTransient<IForwardingHtlcEventRepository, ForwardingHtlcEventRepository>();
             builder.Services.AddTransient<IChannelRoutingStateRepository, ChannelRoutingStateRepository>();
             builder.Services.AddTransient<IChannelFeeStateRepository, ChannelFeeStateRepository>();
+            builder.Services.AddTransient<IPaymentRouteRepository, PaymentRouteRepository>();
+            builder.Services.AddTransient<IPaymentRoutesGraphService, PaymentRoutesGraphService>();
             builder.Services.AddTransient<ICoinSelectionService, CoinSelectionService>();
             builder.Services.AddTransient<IPriceConversionService, PriceConversionService>();
             builder.Services.AddTransient<IHtlcMonitoringScheduler, HtlcMonitoringScheduler>();
@@ -136,6 +138,12 @@ namespace NodeGuard
             builder.Services.AddTransient<IFeeEngineStateService, FeeEngineStateService>();
             builder.Services.AddSingleton<ILoopService, LoopService>();
             builder.Services.AddSingleton<IFortySwapService, FortySwapService>();
+
+            // Payment watcher. A hosted service rather than a Quartz job (the convention for the
+            // other jobs) because it holds one long-lived LND payment stream per managed node for
+            // the life of the process: LND deletes failed HTLC attempts synchronously when a
+            // payment goes terminal, so an interval trigger can never observe them.
+            builder.Services.AddHostedService<MonitorPaymentRoutesJob>();
 
             //BlazoredToast
             builder.Services.AddBlazoredToast();
@@ -416,6 +424,7 @@ namespace NodeGuard
                             }
                         });
                 });
+
                 // Audit Log Cleanup Job
                 q.AddJob<AuditLogCleanupJob>(opts =>
                 {
@@ -493,6 +502,33 @@ namespace NodeGuard
                     var logger = servicesProvider.GetRequiredService<ILogger<Program>>();
                     logger.LogError(ex, "An error occurred while seeding the database.");
                     throw;
+                }
+
+                // MonitorPaymentRoutesJob used to be a Quartz job and Quartz's store is persistent,
+                // so upgrading deployments still hold a durable job + WAITING trigger pointing at a
+                // class that is now a hosted service and no longer an IJob. Quartz would fail to
+                // instantiate it on every fire, so retire the leftover schedule here. Safe to keep
+                // permanently: deleting an absent job key is a no-op.
+                try
+                {
+                    var schedulerFactory = servicesProvider.GetRequiredService<ISchedulerFactory>();
+                    var scheduler = await schedulerFactory.GetScheduler();
+                    var staleJobKey = new JobKey(nameof(MonitorPaymentRoutesJob));
+
+                    if (await scheduler.DeleteJob(staleJobKey))
+                    {
+                        servicesProvider.GetRequiredService<ILogger<Program>>()
+                            .LogInformation(
+                                "Removed the obsolete Quartz schedule for {JobName}; it now runs as a hosted service",
+                                nameof(MonitorPaymentRoutesJob));
+                    }
+                }
+                catch (Exception ex)
+                {
+                    // Never block startup over a cleanup: log and continue.
+                    servicesProvider.GetRequiredService<ILogger<Program>>()
+                        .LogWarning(ex, "Could not remove the obsolete Quartz schedule for {JobName}",
+                            nameof(MonitorPaymentRoutesJob));
                 }
             }
 

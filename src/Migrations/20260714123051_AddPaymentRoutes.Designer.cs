@@ -3,6 +3,7 @@ using System;
 using System.Collections.Generic;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using NodeGuard.Data;
 using NodeGuard.Helpers;
@@ -13,9 +14,11 @@ using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 namespace NodeGuard.Migrations
 {
     [DbContext(typeof(ApplicationDbContext))]
-    partial class ApplicationDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260714123051_AddPaymentRoutes")]
+    partial class AddPaymentRoutes
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -412,11 +415,6 @@ namespace NodeGuard.Migrations
                     b.Property<bool>("IsAutomatedLiquidityEnabled")
                         .HasColumnType("boolean");
 
-                    b.Property<bool>("IsDynamicFeeEnabled")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("boolean")
-                        .HasDefaultValue(false);
-
                     b.Property<bool>("IsPrivate")
                         .HasColumnType("boolean");
 
@@ -439,52 +437,6 @@ namespace NodeGuard.Migrations
                     b.HasIndex("SourceNodeId");
 
                     b.ToTable("Channels");
-                });
-
-            modelBuilder.Entity("NodeGuard.Data.Models.ChannelFeeState", b =>
-                {
-                    b.Property<int>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("integer");
-
-                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
-
-                    b.Property<int>("ChannelId")
-                        .HasColumnType("integer");
-
-                    b.Property<DateTimeOffset>("CreationDatetime")
-                        .HasColumnType("timestamp with time zone");
-
-                    b.Property<int?>("LastAppliedInboundBaseMsat")
-                        .HasColumnType("integer");
-
-                    b.Property<int?>("LastAppliedInboundPpm")
-                        .HasColumnType("integer");
-
-                    b.Property<long?>("LastAppliedOutboundBaseFeeMsat")
-                        .HasColumnType("bigint");
-
-                    b.Property<long?>("LastAppliedOutboundPpm")
-                        .HasColumnType("bigint");
-
-                    b.Property<double?>("LastComputedTarget")
-                        .HasColumnType("double precision");
-
-                    b.Property<DateTimeOffset?>("LastFeeUpdateAt")
-                        .HasColumnType("timestamp with time zone");
-
-                    b.Property<double?>("LastObservedRatio")
-                        .HasColumnType("double precision");
-
-                    b.Property<DateTimeOffset>("UpdateDatetime")
-                        .HasColumnType("timestamp with time zone");
-
-                    b.HasKey("Id");
-
-                    b.HasIndex("ChannelId")
-                        .IsUnique();
-
-                    b.ToTable("ChannelFeeStates");
                 });
 
             modelBuilder.Entity("NodeGuard.Data.Models.ChannelOperationRequest", b =>
@@ -613,86 +565,6 @@ namespace NodeGuard.Migrations
                     b.HasIndex("UserSignerId");
 
                     b.ToTable("ChannelOperationRequestPSBTs");
-                });
-
-            modelBuilder.Entity("NodeGuard.Data.Models.ChannelRoutingState", b =>
-                {
-                    b.Property<int>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("integer");
-
-                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
-
-                    b.Property<long?>("AgeBlocks")
-                        .HasColumnType("bigint");
-
-                    b.Property<decimal>("ChanIdLnd")
-                        .HasColumnType("numeric(20,0)");
-
-                    b.Property<int>("ChannelId")
-                        .HasColumnType("integer");
-
-                    b.Property<long>("ConsecutiveCategoryCyclesInNewState")
-                        .HasColumnType("bigint");
-
-                    b.Property<DateTimeOffset>("CreationDatetime")
-                        .HasColumnType("timestamp with time zone");
-
-                    b.Property<double>("EmaLocalRatio")
-                        .HasColumnType("double precision");
-
-                    b.Property<long?>("FundingBlockHeight")
-                        .HasColumnType("bigint");
-
-                    b.Property<DateTimeOffset?>("LastCategorizedAt")
-                        .HasColumnType("timestamp with time zone");
-
-                    b.Property<DateTimeOffset>("LastEvaluatedAt")
-                        .HasColumnType("timestamp with time zone");
-
-                    b.Property<long?>("LastKnownLifetime")
-                        .HasColumnType("bigint");
-
-                    b.Property<long?>("LastKnownNumUpdates")
-                        .HasColumnType("bigint");
-
-                    b.Property<long?>("LastKnownUptime")
-                        .HasColumnType("bigint");
-
-                    b.Property<string>("ManagedNodePubKey")
-                        .IsRequired()
-                        .HasColumnType("text");
-
-                    b.Property<double>("NetFlowRatio")
-                        .HasColumnType("double precision");
-
-                    b.Property<int>("PeerFlowCategory")
-                        .HasColumnType("integer");
-
-                    b.Property<bool>("PeerInitiated")
-                        .HasColumnType("boolean");
-
-                    b.Property<int?>("PendingCategory")
-                        .HasColumnType("integer");
-
-                    b.Property<long>("PullMsatWindow")
-                        .HasColumnType("bigint");
-
-                    b.Property<long>("PushMsatWindow")
-                        .HasColumnType("bigint");
-
-                    b.Property<double>("TargetLocalRatio")
-                        .HasColumnType("double precision");
-
-                    b.Property<DateTimeOffset>("UpdateDatetime")
-                        .HasColumnType("timestamp with time zone");
-
-                    b.HasKey("Id");
-
-                    b.HasIndex("ChannelId")
-                        .IsUnique();
-
-                    b.ToTable("ChannelRoutingStates");
                 });
 
             modelBuilder.Entity("NodeGuard.Data.Models.FMUTXO", b =>
@@ -968,13 +840,7 @@ namespace NodeGuard.Migrations
 
                     NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
 
-                    b.Property<bool>("AllowPositiveInboundFees")
-                        .HasColumnType("boolean");
-
                     b.Property<bool>("AutoLiquidityManagementEnabled")
-                        .HasColumnType("boolean");
-
-                    b.Property<bool>("AutoRebalanceEnabled")
                         .HasColumnType("boolean");
 
                     b.Property<bool>("AutosweepEnabled")
@@ -988,9 +854,6 @@ namespace NodeGuard.Migrations
 
                     b.Property<string>("Description")
                         .HasColumnType("text");
-
-                    b.Property<bool>("DynamicFeeManagementEnabled")
-                        .HasColumnType("boolean");
 
                     b.Property<string>("Endpoint")
                         .HasColumnType("text");
@@ -1019,12 +882,6 @@ namespace NodeGuard.Migrations
                     b.Property<string>("LoopdMacaroon")
                         .HasColumnType("text");
 
-                    b.Property<double?>("MaxRebalanceCostToEarnRatio")
-                        .HasColumnType("double precision");
-
-                    b.Property<int?>("MaxRebalancesInFlight")
-                        .HasColumnType("integer");
-
                     b.Property<decimal>("MaxSwapRoutingFeeRatio")
                         .HasColumnType("numeric");
 
@@ -1041,20 +898,6 @@ namespace NodeGuard.Migrations
                     b.Property<string>("PubKey")
                         .IsRequired()
                         .HasColumnType("text");
-
-                    b.Property<TimeSpan?>("RebalanceBudgetRefreshInterval")
-                        .HasColumnType("interval");
-
-                    b.Property<long?>("RebalanceBudgetSats")
-                        .HasColumnType("bigint");
-
-                    b.Property<DateTimeOffset?>("RebalanceBudgetStartDatetime")
-                        .HasColumnType("timestamp with time zone");
-
-                    b.Property<bool>("RoutingEngineDryRun")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("boolean")
-                        .HasDefaultValue(false);
 
                     b.Property<TimeSpan>("SwapBudgetRefreshInterval")
                         .HasColumnType("interval");
@@ -1133,18 +976,8 @@ namespace NodeGuard.Migrations
                     b.Property<int>("AttemptIndex")
                         .HasColumnType("integer");
 
-                    b.Property<int>("AttemptStatus")
-                        .HasColumnType("integer");
-
                     b.Property<decimal>("ChannelId")
                         .HasColumnType("numeric(20,0)");
-
-                    b.Property<string>("FailureCode")
-                        .HasMaxLength(64)
-                        .HasColumnType("character varying(64)");
-
-                    b.Property<int?>("FailureSourceIndex")
-                        .HasColumnType("integer");
 
                     b.Property<string>("FromNode")
                         .IsRequired()
@@ -1714,17 +1547,6 @@ namespace NodeGuard.Migrations
                     b.Navigation("SourceNode");
                 });
 
-            modelBuilder.Entity("NodeGuard.Data.Models.ChannelFeeState", b =>
-                {
-                    b.HasOne("NodeGuard.Data.Models.Channel", "Channel")
-                        .WithOne()
-                        .HasForeignKey("NodeGuard.Data.Models.ChannelFeeState", "ChannelId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
-
-                    b.Navigation("Channel");
-                });
-
             modelBuilder.Entity("NodeGuard.Data.Models.ChannelOperationRequest", b =>
                 {
                     b.HasOne("NodeGuard.Data.Models.Channel", "Channel")
@@ -1775,17 +1597,6 @@ namespace NodeGuard.Migrations
                     b.Navigation("ChannelOperationRequest");
 
                     b.Navigation("UserSigner");
-                });
-
-            modelBuilder.Entity("NodeGuard.Data.Models.ChannelRoutingState", b =>
-                {
-                    b.HasOne("NodeGuard.Data.Models.Channel", "Channel")
-                        .WithOne()
-                        .HasForeignKey("NodeGuard.Data.Models.ChannelRoutingState", "ChannelId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
-
-                    b.Navigation("Channel");
                 });
 
             modelBuilder.Entity("NodeGuard.Data.Models.Key", b =>

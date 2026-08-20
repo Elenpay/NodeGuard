@@ -132,6 +132,20 @@ namespace NodeGuard.Data
             modelBuilder.Entity<Channel>().Property(x => x.IsDynamicFeeEnabled).HasDefaultValue(false);
             modelBuilder.Entity<Node>().Property(x => x.RoutingEngineDryRun).HasDefaultValue(false);
 
+    
+            // Payments Watcher Models
+            modelBuilder.Entity<PaymentRoute>()
+                .HasIndex(p => p.CreatedAt);
+
+            modelBuilder.Entity<PaymentRouteHop>()
+                .HasOne(h => h.Payment)
+                .WithMany(p => p.Hops)
+                .HasForeignKey(h => h.PaymentHash)
+                .OnDelete(DeleteBehavior.Cascade);
+
+            modelBuilder.Entity<PaymentRouteHop>()
+                .HasIndex(h => h.PaymentHash);
+
             base.OnModelCreating(modelBuilder);
         }
 
@@ -176,5 +190,9 @@ namespace NodeGuard.Data
         public DbSet<ChannelRoutingState> ChannelRoutingStates { get; set; }
 
         public DbSet<ChannelFeeState> ChannelFeeStates { get; set; }
+
+        public DbSet<PaymentRoute> PaymentRoutes { get; set; }
+
+        public DbSet<PaymentRouteHop> PaymentRouteHops { get; set; }
     }
 }

@@ -85,8 +85,9 @@ add-migration name:
    cd {{PROJECT_DIR}} && dotnet ef migrations add --context ApplicationDbContext {{name}}
 remove-migration:
     cd {{PROJECT_DIR}} && dotnet ef migrations remove --context ApplicationDbContext
+# Mines a block a minute — set BITCOIND_CONTAINER to target an external regtest (see external-up)
 mine:
-    while true; do docker exec polar-n1-backend1 bitcoin-cli -regtest -rpcuser=polaruser -rpcpassword=polarpass -generate 1; sleep 60; done
+    while true; do docker exec ${BITCOIND_CONTAINER:-polar-n1-backend} bitcoin-cli -regtest -rpcuser=polaruser -rpcpassword=polarpass -generate 1; sleep 60; done
 
 # Update protobuf definitions from LND and Loop repositories
 update-protos:
@@ -99,6 +100,34 @@ update-protos:
 # Builds and runs the development docker containers in the background, add DOCKER_COMPOSE_FILE to override the default file
 docker-up *args:
     docker compose --profile polar --profile loop --profile 40swap -f {{DOCKER_COMPOSE_FILE}} up --build -d {{args}}
+
+# Requires BITCOIND_CONTAINER (repo-root .env or inline), e.g.:
+#   BITCOIND_CONTAINER=polar-n3-backend1 just external-up
+# Brings up only NodeGuard's dependencies (postgres + nbxplorer) against an already-running regtest
+external-up *args:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    if [ -z "${BITCOIND_CONTAINER:-}" ]; then
+        echo "BITCOIND_CONTAINER is not set. Copy .env.example to .env and set it, or run:" >&2
+        echo "  BITCOIND_CONTAINER=<bitcoind container> just external-up" >&2
+        exit 1
+    fi
+    # nbxplorer runs in a container and NodeGuard on the host, so both reach the external
+    # bitcoind through its published ports rather than through its compose network.
+    BITCOIND_RPC_PORT=$(docker port "$BITCOIND_CONTAINER" 18443 | grep -m1 '^0\.0\.0\.0:' | cut -d: -f2)
+    BITCOIND_P2P_PORT=$(docker port "$BITCOIND_CONTAINER" 18444 | grep -m1 '^0\.0\.0\.0:' | cut -d: -f2)
+    if [ -z "$BITCOIND_RPC_PORT" ] || [ -z "$BITCOIND_P2P_PORT" ]; then
+        echo "Could not resolve the published 18443/18444 ports of $BITCOIND_CONTAINER" >&2
+        docker port "$BITCOIND_CONTAINER" >&2 || true
+        exit 1
+    fi
+    echo "Using $BITCOIND_CONTAINER: RPC on host port $BITCOIND_RPC_PORT, P2P on $BITCOIND_P2P_PORT"
+    export BITCOIND_CONTAINER BITCOIND_HOST=host.docker.internal BITCOIND_RPC_PORT BITCOIND_P2P_PORT
+    docker compose --profile external -f {{DOCKER_COMPOSE_FILE}} up -d {{args}}
+
+# Stops the containers started by external-up (leaves the external regtest network alone)
+external-down:
+    docker compose --profile external -f {{DOCKER_COMPOSE_FILE}} down
 
 # Stops the development docker containers, add DOCKER_COMPOSE_FILE to override the default file
 docker-down:
