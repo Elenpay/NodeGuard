@@ -30,6 +30,10 @@ public class Constants
     public static readonly bool ENABLE_HW_SUPPORT;
     public static bool NBXPLORER_ENABLE_CUSTOM_BACKEND = false; // Not readonly so we can change it in tests
     /// <summary>
+    /// Enables the coin selection strategy that picks the UTXOs whose amount is closest to the requested one.
+    /// </summary>
+    public static bool ENABLE_COIN_SELECTION_BY_CLOSEST = false; // Not readonly so we can change it in tests
+    /// <summary>
     /// Allow simultaneous channel opening operations using the same source and destination nodes
     /// </summary>
     public static bool ALLOW_SIMULTANEOUS_CHANNEL_OPENING_OPERATIONS; // Not readonly so we can change it in tests
@@ -379,6 +383,8 @@ public class Constants
         ENABLE_HW_SUPPORT = Environment.GetEnvironmentVariable("ENABLE_HW_SUPPORT") != "false"; // We default to true
 
         NBXPLORER_ENABLE_CUSTOM_BACKEND = Environment.GetEnvironmentVariable("NBXPLORER_ENABLE_CUSTOM_BACKEND") == "true";
+
+        ENABLE_COIN_SELECTION_BY_CLOSEST = StringHelper.IsTrue(Environment.GetEnvironmentVariable("ENABLE_COIN_SELECTION_BY_CLOSEST"));
 
         ALLOW_SIMULTANEOUS_CHANNEL_OPENING_OPERATIONS = Environment.GetEnvironmentVariable("ALLOW_SIMULTANEOUS_CHANNEL_OPENING_OPERATIONS") == "true";
 
