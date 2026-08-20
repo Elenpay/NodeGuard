@@ -20,6 +20,8 @@
 ﻿using NodeGuard.Data.Models;
 using NodeGuard.Data.Repositories.Interfaces;
 using Microsoft.EntityFrameworkCore;
+using NBitcoin;
+using NodeGuard.Helpers;
 
 namespace NodeGuard.Data.Repositories
 {
@@ -58,8 +60,21 @@ namespace NodeGuard.Data.Repositories
 
             //We set the request status to PSBTSignaturesPending
             var request = await
-                applicationDbContext.ChannelOperationRequests.FirstOrDefaultAsync(x =>
-                    x.Id == type.ChannelOperationRequestId);
+                applicationDbContext.ChannelOperationRequests
+                    .Include(x => x.ChannelOperationRequestPsbts)
+                    .FirstOrDefaultAsync(x => x.Id == type.ChannelOperationRequestId);
+
+            // See WalletWithdrawalRequestPsbtRepository.ValidateApproval. Channel operations are signed with
+            // SIGHASH_NONE (ChannelRequests.razor passes SigHashMode="SigHash.None").
+            var validation = ValidateApproval(request, type);
+            if (!validation.IsValid)
+            {
+                _logger.LogWarning("Rejected PSBT for channel operation request {RequestId}: {Reason}",
+                    type.ChannelOperationRequestId, validation.Error);
+
+                return (false, validation.Error);
+            }
+
             try
             {
                 if (request != null && !type.IsTemplatePSBT)
@@ -83,6 +98,23 @@ namespace NodeGuard.Data.Repositories
         {
             await using var applicationDbContext = await _dbContextFactory.CreateDbContextAsync();
 
+            // Same gate as AddAsync — it writes to the same table.
+            foreach (var psbt in type)
+            {
+                var request = await applicationDbContext.ChannelOperationRequests
+                    .Include(x => x.ChannelOperationRequestPsbts)
+                    .FirstOrDefaultAsync(x => x.Id == psbt.ChannelOperationRequestId);
+
+                var validation = ValidateApproval(request, psbt);
+                if (!validation.IsValid)
+                {
+                    _logger.LogWarning("Rejected PSBT for channel operation request {RequestId}: {Reason}",
+                        psbt.ChannelOperationRequestId, validation.Error);
+
+                    return (false, validation.Error);
+                }
+            }
+
             return await _repository.AddRangeAsync(type, applicationDbContext);
         }
 
@@ -98,6 +130,41 @@ namespace NodeGuard.Data.Repositories
             using var applicationDbContext = _dbContextFactory.CreateDbContext();
 
             return _repository.RemoveRange(types, applicationDbContext);
+        }
+
+        /// <summary>
+        /// Validates a human approval against the request's template PSBT. Server-generated rows (template,
+        /// internal wallet signature, finalised PSBT) pass through.
+        /// </summary>
+        private static PsbtApprovalValidator.Result ValidateApproval(ChannelOperationRequest? request,
+            ChannelOperationRequestPSBT type)
+        {
+            if (type.IsTemplatePSBT || type.IsInternalWalletPSBT || type.IsFinalisedPSBT)
+            {
+                return PsbtApprovalValidator.Result.Ok;
+            }
+
+            if (request == null)
+            {
+                return PsbtApprovalValidator.Result.Fail("The channel operation request could not be found.");
+            }
+
+            var existing = request.ChannelOperationRequestPsbts?
+                .Where(x => !x.IsTemplatePSBT && !x.IsInternalWalletPSBT && !x.IsFinalisedPSBT)
+                .Select(x => x.PSBT)
+                .ToList() ?? new List<string>();
+
+            var template = request.ChannelOperationRequestPsbts?
+                .FirstOrDefault(x => x.IsTemplatePSBT)?.PSBT;
+
+            if (string.IsNullOrWhiteSpace(template))
+            {
+                return PsbtApprovalValidator.Result.Fail(
+                    "This request has no template PSBT to validate the signature against.");
+            }
+
+            return PsbtApprovalValidator.Validate(template, type.PSBT, SigHash.None,
+                CurrentNetworkHelper.GetCurrentNetwork(), existing);
         }
 
         public (bool, string?) Update(ChannelOperationRequestPSBT type)
