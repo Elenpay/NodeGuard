@@ -17,10 +17,7 @@
  *
  */
 
-using System.Net;
 using FluentAssertions;
-using Grpc.Core;
-using Grpc.Net.Client;
 using NBitcoin;
 using NBitcoin.RPC;
 using Nodeguard;
@@ -33,7 +30,7 @@ namespace NodeGuard.Tests.E2E;
 /// 546-sat output sent to a NodeGuard hot wallet must be hidden from GetAvailableUtxos and must
 /// never be auto-selected as an input of a withdrawal, even though the coin selection picks the
 /// newest confirmed UTXO first (which the freshly-mined dust output would otherwise be).
-/// Exercised against a LIVE NodeGuard instance + bitcoind.
+/// Exercised against a LIVE NodeGuard instance + bitcoind; shared plumbing in <see cref="E2ETestBase"/>.
 /// Gated by <see cref="E2EFactAttribute"/> (RUN_E2E_TESTS=1). Connection via env:
 ///   NODEGUARD_GRPC_ENDPOINT  default http://localhost:50051 (h2c)
 ///   NODEGUARD_API_TOKEN      default the dev "Liquidator" token
@@ -42,20 +39,15 @@ namespace NodeGuard.Tests.E2E;
 /// </summary>
 [Trait("Category", "E2E")]
 [Collection("E2E")]
-public class DustUtxoWithdrawalE2ETests
+public class DustUtxoWithdrawalE2ETests : E2ETestBase
 {
-    private const string DefaultDevToken = "8rvSsUGeyXXdDQrHctcTey/xtHdZQEn945KHwccKp9Q=";
     private const long DustAmountSats = 546;
     // The custom NBXplorer selectutxos backend behind GetAvailableUtxos picks UTXOs toward a
     // target amount (amount=0 always yields an empty selection), so every call must request one.
     private const long ProbeAmountSats = 2_000_000;
 
-    private readonly ITestOutputHelper _output;
-
-    public DustUtxoWithdrawalE2ETests(ITestOutputHelper output)
+    public DustUtxoWithdrawalE2ETests(ITestOutputHelper output) : base(output)
     {
-        _output = output;
-        AppContext.SetSwitch("System.Net.Http.SocketsHttpHandler.Http2UnencryptedSupport", true);
     }
 
     [E2EFact]
@@ -174,42 +166,4 @@ public class DustUtxoWithdrawalE2ETests
         allUtxos.Confirmed.Select(u => u.Outpoint).Should().Contain(dustOutpoint.ToString(),
             "the dust UTXO must be left untouched in the wallet");
     }
-
-    // ---- helpers -----------------------------------------------------------------------------
-
-    private async Task MineAsync(RPCClient rpc, int blocks)
-    {
-        var addr = await rpc.GetNewAddressAsync();
-        await rpc.GenerateToAddressAsync(blocks, addr);
-    }
-
-    private async Task<T> RetryAsync<T>(Func<Task<T>> action, int attempts, TimeSpan delay, string what)
-    {
-        Exception? last = null;
-        for (var i = 0; i < attempts; i++)
-        {
-            try { return await action(); }
-            catch (Exception ex) { last = ex; _output.WriteLine($"{what} attempt {i + 1}/{attempts} failed: {ex.Message}"); }
-            await Task.Delay(delay);
-        }
-        throw new InvalidOperationException($"{what} did not succeed after {attempts} attempts", last);
-    }
-
-    private static NodeGuardService.NodeGuardServiceClient CreateClient(out Metadata headers)
-    {
-        var endpoint = Env("NODEGUARD_GRPC_ENDPOINT", "http://localhost:50051");
-        headers = new Metadata { { "auth-token", Env("NODEGUARD_API_TOKEN", DefaultDevToken) } };
-        return new NodeGuardService.NodeGuardServiceClient(GrpcChannel.ForAddress(endpoint));
-    }
-
-    private static RPCClient CreateBitcoindRpc()
-    {
-        var url = Env("BITCOIND_RPC_URL", "http://localhost:18443");
-        var cred = new NetworkCredential(Env("BITCOIND_RPC_USER", "polaruser"), Env("BITCOIND_RPC_PASS", "polarpass"));
-        var rpc = new RPCClient(cred, new Uri(url), Network.RegTest);
-        return rpc.SetWalletContext(Env("BITCOIND_RPC_WALLET", "default"));
-    }
-
-    private static string Env(string name, string fallback)
-        => Environment.GetEnvironmentVariable(name) is { Length: > 0 } v ? v : fallback;
 }

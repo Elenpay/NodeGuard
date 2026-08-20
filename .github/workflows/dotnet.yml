@@ -102,10 +102,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Run e2e tests
-        # Clean slate first (DbInitializer only funds the dev wallets on an empty DB), then `run`
-        # brings up the chain (bitcoind → alice/bob/carol → setup-e2e + extract-env → nodeguard →
-        # e2e-runner). The runner's exit code becomes the job result.
+      - name: Run e2e tests (one stack, one ordered pass)
+        # Clean slate first (DbInitializer only funds the dev wallets on an empty DB), then run the E2E suite (Category=E2E) in one pass: rebalance, fee-engine smoke, fee-engine flow, plus the wallet/UTXO e2e tests.
         run: |
           COMPOSE_PROFILES=polar,e2e docker compose -f docker-compose.yml down -v --remove-orphans || true
           COMPOSE_PROFILES=polar,e2e docker compose -f docker-compose.yml run --rm --build e2e-runner

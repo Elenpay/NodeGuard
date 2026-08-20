@@ -1,19 +1,22 @@
 # Option-B end-to-end stack: a LIVE NodeGuard whose gRPC API is driven by a .NET test runner.
 # All services are profile-gated ([e2e]) so a normal `tilt up` / `docker compose up` ignores them.
 #
-# Flow (depends_on order): bitcoind + alice/bob/carol (from the polar stack) →
+# depends_on order: bitcoind + alice/bob/carol (polar stack) →
 #   setup-e2e (loads bitcoind wallet, funds nodes, opens Bob→Carol + Carol→Alice — NOT Alice→Bob) +
-#   extract-env (writes the LND macaroon/host/pubkey env from the mounted data volumes) →
+#   extract-env (writes the LND macaroon/host/pubkey env) →
 #   nodeguard (seeds nodes, funds its hot wallet) →
-#   e2e-runner (opens Alice→Bob via gRPC, mines, then rebalances and asserts).
+#   e2e-runner (runs the whole E2E suite, Category=E2E, in one pass).
 #
-# NOTE: built but not yet runtime-verified as a stack (see docker/e2e/README.md) — every runtime
-# STEP was validated manually against a live NodeGuard; the compose wiring needs a CI shakeout.
+# The fee-engine flow scenario drives alice/bob/carol's LND directly (reading the extract-env creds file off
+# the mounted volume), so there's no traffic sidecar and no second runner. The scenarios are order-agnostic
+# but run serially (one test class).
+#
+# NOTE: not yet runtime-verified as a stack (see docker/e2e/README.md) — every runtime STEP was validated
+# manually against a live NodeGuard; the compose wiring needs a CI shakeout.
 
 services:
-  # Loads the bitcoind wallet + funds LND + opens the two non-source channels. docker.sock pattern
-  # mirrors the polar `setup` service. Must complete before nodeguard boots (NodeGuard funds its
-  # hot wallet via bitcoind RPC, which needs a loaded wallet).
+  # Loads the bitcoind wallet, funds LND, opens Bob→Carol + Carol→Alice (docker.sock, like polar `setup`).
+  # Must finish before nodeguard, which funds its hot wallet via bitcoind RPC (needs a loaded wallet).
   setup-e2e:
     profiles: [e2e]
     image: alpine:latest
@@ -58,9 +61,10 @@ services:
       nbxplorer: { condition: service_healthy }
       setup-e2e: { condition: service_completed_successfully }
       extract-env: { condition: service_completed_successfully }
-    # The published image (dotnet NodeGuard.dll) does NOT read launchSettings.json, so every env
-    # var the dev profile normally provides must be set here, container-adjusted (service names).
-    # ALICE/BOB/CAROL_HOST + *_MACAROON + *_PUBKEY are sourced from extract-env (overrides any here).
+    ports:
+      - "38080:8080" # NodeGuard gRPC + REST API
+    # The published image doesn't read launchSettings.json, so every dev-profile env var is set here
+    # (service-name-adjusted). *_HOST/*_MACAROON/*_PUBKEY come from extract-env.
     environment:
       IS_DEV_ENVIRONMENT: "true"
       ASPNETCORE_ENVIRONMENT: "Development"
@@ -89,13 +93,25 @@ services:
       COINGECKO_ENDPOINT: "https://pro-api.coingecko.com/api/v3/coins/markets?vs_currency=usd&ids=bitcoin"
       API_TOKEN_SALT: "H/fCx1+maAFMcdi6idIYEg=="
       FUNDSMANAGER_ENDPOINT: "http://nodeguard:8080"
+      # MonitorChannelsJob discovers the externally-opened channels the fee tests reuse (Bob→Carol,
+      # Alice→Bob); a fast 5s cron records them promptly (prod keeps the default hourly cron).
+      MONITOR_CHANNELS_CRON: "0/5 * * * * ?"
+      ROUTING_ENGINE_ENABLED: "true"
+      ROUTING_ENGINE_DRY_RUN: "false"
+      ROUTING_ENGINE_FEE_MIN_CHANNEL_SIZE_SATS: "15000000"
+      ROUTING_ENGINE_JOB_INTERVAL_SECONDS: "15"
+      ROUTING_ENGINE_CATEGORIZATION_MIN_AGE_BLOCKS: 0
+      ROUTING_ENGINE_FLOW_MIN_MSAT: 1000000
+      ROUTING_ENGINE_CATEGORY_FLIP_HYSTERESIS_CYCLES: 0
     entrypoint: ["/bin/sh", "/scripts/nodeguard-entrypoint.sh"]
     volumes:
       - ./nodeguard-entrypoint.sh:/scripts/nodeguard-entrypoint.sh:ro
       - e2e_env:/shared:ro
     restart: "no"
 
-  # Drives NodeGuard's gRPC: OpenChannel(Alice→Bob) → mine + poll → RequestRebalance → assert.
+  # Runs the whole E2E suite (Category=E2E) against one live NodeGuard in a single pass.
+  # Scenario (3) drives alice/bob/carol's LND directly, so the runner mounts the extract-env volume and
+  # its entrypoint sources the LND host+macaroon env before `dotnet test`.
   e2e-runner:
     profiles: [e2e]
     build:
@@ -103,6 +119,7 @@ services:
       dockerfile: docker/e2e/Dockerfile.runner
     depends_on:
       nodeguard: { condition: service_started }
+      extract-env: { condition: service_completed_successfully }
     environment:
       RUN_E2E_TESTS: "1"
       NODEGUARD_GRPC_ENDPOINT: "http://nodeguard:50051"
@@ -112,13 +129,12 @@ services:
       BITCOIND_RPC_PASS: "polarpass"
       BITCOIND_RPC_WALLET: "default"
       E2E_HOT_WALLET_ID: "3"
-      # The HTLC-reconnect test reads persisted ForwardingHtlcEvents straight from Postgres
-      # (there is no gRPC to list them) and restarts a forwarding LND node mid-test.
       POSTGRES_CONNECTIONSTRING: "Host=postgres;Port=5432;Database=nodeguard;User ID=postgres;"
       E2E_FORWARDING_NODE_CONTAINER: "polar-n1-bob"
+      ROUTING_ENGINE_FEE_MIN_CHANNEL_SIZE_SATS: "15000000"
     volumes:
-      # Lets the reconnect test restart an LND container via the Docker Engine API socket.
-      - /var/run/docker.sock:/var/run/docker.sock
+      - /var/run/docker.sock:/var/run/docker.sock # Lets the reconnect test restart an LND container via the Docker Engine API socket.
+      - e2e_env:/shared:ro   # LND host+macaroon env (extract-env); the flow scenario reads it directly
     restart: "no"
 
 volumes:
