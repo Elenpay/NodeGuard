@@ -422,7 +422,23 @@
                     <Content>
                         <TabPanel Name="@ChannelManagementLiquidityTab">
                             <Field>
+                                <FieldLabel>Automated rebalancing (Channel)</FieldLabel>
+                                <FieldHelp>
+                                    When enabled, the routing engine may drain this channel as the source of a circular
+                                    rebalance to refill a depleted one. The node's "Auto rebalance" setting and its fee
+                                    budget still gate every rebalance.
+                                </FieldHelp>
+                                <Check TValue="bool" Checked="@_selectedChannel.IsAutoRebalanceEnabled"
+                                       CheckedChanged="@((value) => _selectedChannel.IsAutoRebalanceEnabled = value)">
+                                    Enable automated rebalancing for this channel
+                                </Check>
+                            </Field>
+
+                            <Divider class="my-4"></Divider>
+
+                            <Field>
                                 <FieldLabel>Enable automated liquidity management</FieldLabel>
+                                <FieldHelp>Swap-based liquidity rules — independent of automated rebalancing above.</FieldHelp>
                                 <Check TValue="bool" Checked="@_selectedChannel.IsAutomatedLiquidityEnabled" CheckedChanged="OnEnableLiquidityMngmtChanged"></Check>
                             </Field>
                             @if (_selectedChannel.IsAutomatedLiquidityEnabled && _currentLiquidityRule != null)
@@ -1168,12 +1184,13 @@
                 ToastService.ShowSuccess("Channel updated successfully");
                 await AuditService.LogAsync(AuditActionType.Update, AuditEventType.Success, AuditObjectType.Channel,
                     _selectedChannel.Id.ToString(),
-                    $"Channel updated. ChanId: {_selectedChannel.ChanId}");
+                    $"Channel updated. ChanId: {_selectedChannel.ChanId}, IsAutoRebalanceEnabled: {_selectedChannel.IsAutoRebalanceEnabled}, IsAutomatedLiquidityEnabled: {_selectedChannel.IsAutomatedLiquidityEnabled}");
             }
         }
 
-        //Save the liquidity rule if the liquidity rule id is below or equal zero
-        if (_currentLiquidityRule != null)
+        // Save the liquidity rule if the liquidity rule id is below or equal zero
+        // and the channel has automated liquidity enabled
+        if (_selectedChannel?.IsAutomatedLiquidityEnabled == true && _currentLiquidityRule != null)
         {
             if (_currentLiquidityRule.Id <= 0)
             {

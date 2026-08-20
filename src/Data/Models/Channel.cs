@@ -74,6 +74,12 @@ namespace NodeGuard.Data.Models
         /// </summary>
         public bool IsDynamicFeeEnabled { get; set; } = false;
 
+        /// <summary>
+        /// Per-channel opt-in for the auto-rebalancer. Defaults false; the node-level
+        /// <see cref="Node.AutoRebalanceEnabled"/> flag still gates all rebalancing.
+        /// </summary>
+        public bool IsAutoRebalanceEnabled { get; set; } = false;
+
         [NotMapped]
         public int? OpenedWithId => ChannelOperationRequests?.FirstOrDefault()?.Wallet?.Id;
 
