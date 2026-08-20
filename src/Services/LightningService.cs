@@ -1193,15 +1193,13 @@ namespace NodeGuard.Services
                 }
             }
 
-            var previouslyLockedUTXOs =
-                await _coinSelectionService.GetLockedUTXOsForRequest(channelOperationRequest,
-                    BitcoinRequestType.ChannelOperation);
-            var availableUTXOs = previouslyLockedUTXOs.Count > 0
-                ? previouslyLockedUTXOs
-                : await _coinSelectionService.GetAvailableUTXOsAsync(derivationStrategy);
+            // Selects the inputs and locks them to this request as one indivisible step, so a
+            // concurrent PSBT generation for the same wallet cannot pick the same UTXOs (which would
+            // let both transactions conflict/RBF each other on broadcast). The per-wallet lock is
+            // released before we build the PSBT below, so that slower work never holds it.
             var (multisigCoins, selectedUtxOs) =
-                await _coinSelectionService.GetTxInputCoins(availableUTXOs, channelOperationRequest,
-                    derivationStrategy);
+                await _coinSelectionService.SelectAndLockUTXOsAsync(channelOperationRequest,
+                    BitcoinRequestType.ChannelOperation, derivationStrategy);
 
             if (multisigCoins == null || !multisigCoins.Any())
             {
@@ -1277,12 +1275,6 @@ namespace NodeGuard.Services
             catch (Exception e)
             {
                 _logger.LogError(e, "Error while generating base PSBT");
-            }
-
-            if (previouslyLockedUTXOs.Count == 0)
-            {
-                await _coinSelectionService.LockUTXOs(selectedUtxOs, channelOperationRequest,
-                    BitcoinRequestType.ChannelOperation);
             }
 
             // The template PSBT is saved for later reuse
