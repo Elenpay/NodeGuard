@@ -47,18 +47,26 @@
     return { border: colorByRatio(ok / relevant.length) };
   }
 
-  // ── Aliases (matches aliases.js) ─────────────────────────────────────────────
+  // ── Aliases ──────────────────────────────────────────────────────────────────
+  // Real aliases only. Nodes the backend could not resolve are labelled by their own
+  // pubkey prefix, never by an invented name: LightningEye's A/B/C… letters read like
+  // real node aliases, and they weren't even stable — they were assigned by index over
+  // whichever nodes happened to fail resolution in that particular query, so the same
+  // node could be "A" in one search and "B" in the next.
   function buildAliasMap(nodes) {
     var map = {};
     if (!nodes) return map;
     nodes.forEach(function (n) { if (n.alias && n.alias.trim()) map[n.id] = n.alias.trim(); });
-    var noAlias = nodes.filter(function (n) { return !map[n.id]; });
-    var origin = noAlias.find(function (n) { return n.isOrigin; });
-    if (origin) map[origin.id] = '★';
-    var rest = noAlias.filter(function (n) { return !n.isOrigin; }).map(function (n) { return n.id; }).sort();
-    var LETTERS = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ';
-    rest.forEach(function (id, i) { map[id] = i < LETTERS.length ? LETTERS[i] : 'N' + (i + 1); });
     return map;
+  }
+  function nodeLabel(aliasMap, id) { return aliasMap[id] || (id ? id.slice(0, 6) : '?'); }
+  // Unresolved labels are raw pubkey, so render them monospaced and dimmed — they must not
+  // be mistakable for an alias at a glance. The smaller size keeps all 6 hex chars inside the
+  // 56px trace pill: monospace is wider per character than the sans it replaces, and a
+  // silently clipped pubkey prefix is worse than no prefix (operators paste these into
+  // `lncli getnodeinfo`).
+  function unresolvedStyle(aliasMap, id) {
+    return aliasMap[id] ? '' : 'font-family:monospace;font-size:10.5px;opacity:0.7;';
   }
   function shortAlias(alias, max) {
     max = max || 6;
@@ -243,7 +251,7 @@
       var sel = state.selected === node.id;
 
       var box = el('div', {
-        title: (node.isOrigin ? 'Origin' : (aliasMap[node.id] || '?')) + '\n' + node.id + '\n(click to view and copy the pubkey)',
+        title: (node.isOrigin ? 'Origin' : nodeLabel(aliasMap, node.id)) + '\n' + node.id + '\n(click to view and copy the pubkey)',
         style: 'position:absolute;left:' + pos.x + 'px;top:' + pos.y + 'px;width:' + pos.w + 'px;height:' + pos.h + 'px;' +
           'display:flex;align-items:center;gap:13px;padding:0 12px;box-sizing:border-box;background:#fff;' +
           'border:' + (sel ? 2 : 1) + 'px solid ' + (sel ? border : '#cbd5e1') + ';border-radius:12px;' +
@@ -252,9 +260,10 @@
       var badge = el('div', {
         style: 'width:64px;height:36px;flex-shrink:0;border-radius:10px;background:' + (node.isOrigin ? strongBg : softBg) + ';' +
           'color:' + (node.isOrigin ? '#fff' : border) + ';display:flex;align-items:center;justify-content:center;' +
-          'font-size:12.5px;font-weight:700;padding:0 6px;box-sizing:border-box;white-space:nowrap;overflow:hidden;'
+          'font-size:12.5px;font-weight:700;padding:0 6px;box-sizing:border-box;white-space:nowrap;overflow:hidden;' +
+          (node.isOrigin ? '' : unresolvedStyle(aliasMap, node.id))
       });
-      badge.textContent = node.isOrigin ? 'origin' : shortAlias(aliasMap[node.id]);
+      badge.textContent = node.isOrigin ? 'origin' : shortAlias(nodeLabel(aliasMap, node.id));
       box.appendChild(badge);
 
       var info = el('div', { style: 'min-width:0;flex:0 1 auto;' });
@@ -395,7 +404,8 @@
     if (visible.length === 0) { container.style.display = 'none'; return container; }
 
     var list = el('div', { style: 'display:flex;flex-direction:column;gap:8px;' });
-    var alias = function (id) { return aliasMap[id] || '?'; };
+    var alias = function (id) { return nodeLabel(aliasMap, id); };
+    var mono = function (id) { return unresolvedStyle(aliasMap, id); };
 
     // Pagination (10 per page).
     var page = 0, PER = 10, totalPages = Math.ceil(visible.length / PER);
@@ -413,13 +423,13 @@
         meta.appendChild(hash); meta.appendChild(tag); row.appendChild(meta);
 
         var path = el('div', { style: 'display:flex;align-items:center;flex:1;min-width:0;' });
-        path.appendChild(hopPill(shortAlias(alias(t.origin)), failed ? 'ok' : 'success', t.origin, alias(t.origin), dotNetRef));
+        path.appendChild(hopPill(shortAlias(alias(t.origin)), failed ? 'ok' : 'success', t.origin, alias(t.origin), dotNetRef, mono(t.origin)));
         t.hops.forEach(function (hop) {
           var tone = hop.hopStatus || (failed ? 'failed' : 'success');
           var seg = el('div', { style: 'display:flex;align-items:center;flex:1;min-width:24px;' });
           var line = el('span', { style: 'flex:1;min-width:14px;height:' + (tone === 'unreached' ? '0' : '2.5px') + ';background:' + (tone === 'unreached' ? 'transparent' : SEG[tone]) + ';border-top:' + (tone === 'unreached' ? '2px dashed ' + SEG.unreached : 'none') + ';' });
           seg.appendChild(line);
-          seg.appendChild(hopPill(shortAlias(alias(hop.to)), tone, hop.to, alias(hop.to), dotNetRef));
+          seg.appendChild(hopPill(shortAlias(alias(hop.to)), tone, hop.to, alias(hop.to), dotNetRef, mono(hop.to)));
           path.appendChild(seg);
         });
         if (t.failureCode) {
@@ -444,14 +454,15 @@
     return container;
   }
 
-  function hopPill(label, tone, nodeId, fullAlias, dotNetRef) {
+  function hopPill(label, tone, nodeId, fullAlias, dotNetRef, extraStyle) {
     var dim = tone === 'unreached', failed = tone === 'failed_here';
     var pill = el('div', {
       title: fullAlias + '\n' + nodeId,
       style: 'position:relative;width:56px;height:26px;flex-shrink:0;border-radius:13px;display:flex;align-items:center;justify-content:center;' +
         'font-size:11px;font-weight:600;cursor:pointer;padding:0 6px;box-sizing:border-box;white-space:nowrap;overflow:hidden;' +
         'background:' + (failed ? '#E24B4A' : dim ? '#f8fafc' : '#fff') + ';border:1.5px solid ' + (SEG[tone] || '#B4B2A9') + ';' +
-        'color:' + (failed ? '#fff' : dim ? '#94a3b8' : (SEG[tone] || '#475569')) + ';opacity:' + (dim ? 0.6 : 1) + ';'
+        'color:' + (failed ? '#fff' : dim ? '#94a3b8' : (SEG[tone] || '#475569')) + ';opacity:' + (dim ? 0.6 : 1) + ';' +
+        (extraStyle || '')
     });
     pill.textContent = label;
     pill.addEventListener('click', function () { if (dotNetRef && nodeId) dotNetRef.invokeMethodAsync('OnNodeSelected', nodeId); });

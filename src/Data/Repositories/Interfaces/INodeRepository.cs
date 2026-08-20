@@ -32,6 +32,13 @@ public interface INodeRepository
 
     Task<List<Node>> GetAll();
 
+    /// <summary>
+    /// Names of the known nodes among <paramref name="pubKeys"/>, keyed by pubkey. Nodes stored
+    /// with an empty name are left out, so callers can tell "we have no name for this pubkey"
+    /// from "we have one". Lightweight on purpose (no eager loading) — meant for labelling.
+    /// </summary>
+    Task<Dictionary<string, string>> GetNamesByPubKeys(IReadOnlyCollection<string> pubKeys);
+
     Task<List<Node>> GetAllManagedByUser(string userId);
     
     /// <summary>
