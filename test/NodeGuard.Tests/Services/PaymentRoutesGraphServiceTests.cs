@@ -18,7 +18,11 @@
  */
 
 using FluentAssertions;
+using Lnrpc;
+using Microsoft.Extensions.Logging;
 using NodeGuard.Data.Models;
+using NodeGuard.Data.Repositories.Interfaces;
+using NSubstitute;
 
 namespace NodeGuard.Services;
 
@@ -133,5 +137,86 @@ public class PaymentRoutesGraphServiceTests
 
         status.Should().Be("failed");
         code.Should().BeNull();
+    }
+
+    // ── Alias resolution ────────────────────────────────────────────────────────
+    // A node whose alias we can't resolve must come back with Alias = null so the frontend
+    // labels it by its pubkey. It must never receive an invented name.
+
+    private const string OriginKey = "03origin";
+    private const string HopKey = "02hop";
+
+    private static PaymentRoute PaymentWithOneHop() => new()
+    {
+        PaymentHash = "hash1",
+        OriginNodePubKey = OriginKey,
+        Status = PaymentRouteStatus.Success,
+        Hops = new List<PaymentRouteHop>
+        {
+            new() { PaymentHash = "hash1", FromNode = OriginKey, ToNode = HopKey, AttemptStatus = PaymentRouteAttemptStatus.Succeeded }
+        }
+    };
+
+    private static (PaymentRoutesGraphService service, INodeRepository nodes, ILightningClientService clients) BuildService(
+        Dictionary<string, string> storedNames, string? gossipAlias)
+    {
+        var payments = Substitute.For<IPaymentRouteRepository>();
+        payments.GetByCreatedAtRangeAsync(OriginKey, Arg.Any<DateTimeOffset>(), Arg.Any<DateTimeOffset>())
+            .Returns(new List<PaymentRoute> { PaymentWithOneHop() });
+
+        var nodes = Substitute.For<INodeRepository>();
+        nodes.GetNamesByPubKeys(Arg.Any<IReadOnlyCollection<string>>()).Returns(storedNames);
+        nodes.GetByPubkey(OriginKey).Returns(new Node
+        {
+            PubKey = OriginKey, Name = "alice", Endpoint = "localhost:10009", ChannelAdminMacaroon = "0201"
+        });
+
+        var clients = Substitute.For<ILightningClientService>();
+        clients.GetNodeInfo(Arg.Any<Node>(), Arg.Any<string>(), Arg.Any<Lightning.LightningClient?>())
+            .Returns(gossipAlias is null ? (LightningNode?)null : new LightningNode { Alias = gossipAlias });
+
+        return (new PaymentRoutesGraphService(payments, nodes, clients,
+            Substitute.For<ILogger<PaymentRoutesGraphService>>()), nodes, clients);
+    }
+
+    private static async Task<PaymentGraphNode> HopNodeOf(PaymentRoutesGraphService service)
+    {
+        var graph = await service.BuildGraphAsync(OriginKey, DateTimeOffset.MinValue, DateTimeOffset.MaxValue);
+        return graph.Nodes.Single(n => n.Id == HopKey);
+    }
+
+    /// <summary>
+    /// The Nodes table outlives gossip: once LND zombie-prunes the channel, GetNodeInfo stops
+    /// resolving the routing node entirely, so a name we already hold must be used and must not
+    /// cost an RPC.
+    /// </summary>
+    [Fact]
+    public async Task BuildGraphAsync_PubKeyKnownLocally_UsesStoredNameWithoutQueryingGossip()
+    {
+        var (service, _, clients) = BuildService(new Dictionary<string, string> { [HopKey] = "frank" }, gossipAlias: "stale");
+
+        (await HopNodeOf(service)).Alias.Should().Be("frank");
+        await clients.DidNotReceive().GetNodeInfo(Arg.Any<Node>(), HopKey, Arg.Any<Lightning.LightningClient?>());
+    }
+
+    /// <summary>
+    /// GetOrCreateByPubKey stores Name = "" when its own alias lookup failed; GetNamesByPubKeys
+    /// drops those, so they arrive here as "unknown" and must still reach the gossip lookup.
+    /// </summary>
+    [Fact]
+    public async Task BuildGraphAsync_PubKeyNotKnownLocally_FallsBackToGossip()
+    {
+        var (service, _, clients) = BuildService(new Dictionary<string, string>(), gossipAlias: "frank");
+
+        (await HopNodeOf(service)).Alias.Should().Be("frank");
+        await clients.Received().GetNodeInfo(Arg.Any<Node>(), HopKey, Arg.Any<Lightning.LightningClient?>());
+    }
+
+    [Fact]
+    public async Task BuildGraphAsync_PubKeyUnresolvableAnywhere_LeavesAliasNull()
+    {
+        var (service, _, _) = BuildService(new Dictionary<string, string>(), gossipAlias: null);
+
+        (await HopNodeOf(service)).Alias.Should().BeNull();
     }
 }

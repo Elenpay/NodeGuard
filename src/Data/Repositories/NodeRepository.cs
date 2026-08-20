@@ -116,6 +116,22 @@ namespace NodeGuard.Data.Repositories
                 .ToListAsync();
         }
 
+        public async Task<Dictionary<string, string>> GetNamesByPubKeys(IReadOnlyCollection<string> pubKeys)
+        {
+            if (pubKeys.Count == 0) return new Dictionary<string, string>();
+
+            await using var applicationDbContext = await _dbContextFactory.CreateDbContextAsync();
+
+            var rows = await applicationDbContext.Nodes
+                .Where(node => pubKeys.Contains(node.PubKey) && node.Name != null && node.Name != "")
+                .Select(node => new { node.PubKey, node.Name })
+                .ToListAsync();
+
+            // GroupBy rather than ToDictionary: nothing enforces PubKey uniqueness at the DB level.
+            return rows.GroupBy(row => row.PubKey)
+                .ToDictionary(group => group.Key, group => group.First().Name);
+        }
+
         public async Task<List<Node>> GetAllManagedByNodeGuard(bool withDisabled = true)
         {
             await using var applicationDbContext = await _dbContextFactory.CreateDbContextAsync();
