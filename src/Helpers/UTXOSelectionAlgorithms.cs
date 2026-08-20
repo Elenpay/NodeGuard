@@ -89,5 +89,21 @@ namespace NodeGuard.Helpers
 
             return selectedUTXOs;
         }
+
+        /// <summary>
+        /// Selects utxos from a wallet for requests (Withdrawals, ChannelOperationRequest) by picking the
+        /// ones whose amount is closest to the requested one. Not implemented yet, it always returns an
+        /// empty selection.
+        /// </summary>
+        /// <param name="wallet"></param>
+        /// <param name="satsAmount"></param>
+        /// <param name="availableUTXOs"></param>
+        /// <param name="logger"></param>
+        /// <returns></returns>
+        public static List<UTXO> SelectUTXOsByClosest(
+            Wallet wallet, long satsAmount, List<UTXO> availableUTXOs, ILogger logger)
+        {
+            return new List<UTXO>();
+        }
     }
 }
