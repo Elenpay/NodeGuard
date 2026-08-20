@@ -22,6 +22,7 @@ using NodeGuard.Helpers;
 using NBitcoin;
 using NBitcoin.Scripting;
 using NBXplorer.DerivationStrategy;
+using NBXplorer.Models;
 
 namespace NodeGuard.Data.Models
 {
@@ -148,7 +149,7 @@ namespace NodeGuard.Data.Models
 
 
         public ICollection<LiquidityRule> LiquidityRulesAsSwapWallet { get; set; }
-        
+
         public ICollection<LiquidityRule> LiquidityRulesAsReverseSwapWallet { get; set; }
 
         public List<SwapOut> SwapOuts { get; set; }
@@ -208,6 +209,32 @@ namespace NodeGuard.Data.Models
             }
 
             return null;
+        }
+
+
+        /// <summary>
+        /// Maps the UTXOs to the coins that this wallet needs to spend them: plain coins for hot
+        /// wallets, script coins (redeem script) for multisig
+        /// </summary>
+        /// <param name="selectedUTXOs"></param>
+        /// <returns></returns>
+        public List<ICoin> ToCoins(List<UTXO> selectedUTXOs)
+        {
+            var derivationStrategy = GetDerivationStrategy();
+
+            //UTXOS to Enumerable of ICOINS
+            return [
+                .. selectedUTXOs.Select<UTXO, ICoin>(x =>
+                {
+                    var coin = x.AsCoin(derivationStrategy);
+                    if (IsHotWallet)
+                    {
+                        return coin;
+                    }
+
+                    return coin.ToScriptCoin(x.ScriptPubKey);
+                })
+            ];
         }
 
 
