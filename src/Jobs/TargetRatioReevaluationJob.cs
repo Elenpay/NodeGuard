@@ -83,7 +83,7 @@ public class TargetRatioReevaluationJob : IJob
             {
                 try
                 {
-                    await ReevaluateNode(managedNode, managedNodes, openChannelsByChanId);
+                    await ReevaluateNode(managedNode, openChannelsByChanId);
                 }
                 catch (Exception ex)
                 {
@@ -103,7 +103,6 @@ public class TargetRatioReevaluationJob : IJob
 
     private async Task ReevaluateNode(
         Node managedNode,
-        IReadOnlyCollection<Node> managedNodes,
         IReadOnlyDictionary<ulong, Channel> openChannelsByChanId)
     {
         var chainTip = await _lightningService.GetBlockHeight(managedNode);
@@ -125,16 +124,14 @@ public class TargetRatioReevaluationJob : IJob
         var now = DateTimeOffset.UtcNow;
         var windowStart = now - TimeSpan.FromDays(Constants.ROUTING_ENGINE_FLOW_WINDOW_DAYS);
 
+        // Every channel the node holds gets state, including channels shared with another managed
+        // node: routing state is per (channel, managed node), and each side's local balance, flow
+        // history and fee policy are its own. Deduping these to the initiator left the other side
+        // blind to its own depleted channels, so they never became rebalance destinations.
         foreach (var lndChannel in listResp.Channels)
         {
             try
             {
-                // Canonical ownership rule — a channel between two managed nodes is owned by one side.
-                if (!ChannelOwnershipHelper.IsOwnedByManagedNode(lndChannel, managedNodes))
-                {
-                    continue;
-                }
-
                 // Act only on a channel we have a confirmed, open DB row for (O(1) lookup by scid).
                 if (!openChannelsByChanId.TryGetValue(lndChannel.ChanId, out var dbChannel))
                 {

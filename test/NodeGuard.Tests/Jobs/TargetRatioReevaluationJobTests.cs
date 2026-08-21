@@ -35,6 +35,7 @@ namespace NodeGuard.Jobs;
 /// is used so these prove the JOB feeds it correctly: age gate, ownership/eligibility filter, the
 /// push/pull → net-flow sign convention, first-insert EMA seeding, failure handling, and the kill switch.
 /// </summary>
+[Collection("RoutingEngine")]
 public class TargetRatioReevaluationJobTests
 {
     private const string NodePubKey = "alicePubKey";
@@ -107,7 +108,7 @@ public class TargetRatioReevaluationJobTests
             .Setup(x => x.ListChannels(It.IsAny<Node>(), It.IsAny<Lnrpc.Lightning.LightningClient>()))
             .ReturnsAsync(listResp);
 
-        _routingStateRepository.Setup(x => x.GetByChannelId(ChannelDbId)).ReturnsAsync((ChannelRoutingState?)null);
+        _routingStateRepository.Setup(x => x.GetByChannelIdAndNode(ChannelDbId, NodePubKey)).ReturnsAsync((ChannelRoutingState?)null);
         _forwardingHtlcEventRepository
             .Setup(x => x.GetOutgoingAmountMsat(NodePubKey, ChanId, It.IsAny<DateTimeOffset>()))
             .ReturnsAsync(push);
@@ -120,10 +121,10 @@ public class TargetRatioReevaluationJobTests
 
     private ChannelRoutingState? _captured;
 
-    /// <summary>Captures the state handed to UpsertByChannelId so a test can assert the persisted result.</summary>
+    /// <summary>Captures the state handed to UpsertByChannelAndNode so a test can assert the persisted result.</summary>
     private void CaptureUpsert() =>
         _routingStateRepository
-            .Setup(x => x.UpsertByChannelId(It.IsAny<ChannelRoutingState>()))
+            .Setup(x => x.UpsertByChannelAndNode(It.IsAny<ChannelRoutingState>()))
             .Callback<ChannelRoutingState>(s => _captured = s)
             .Returns(Task.CompletedTask);
 
@@ -278,7 +279,7 @@ public class TargetRatioReevaluationJobTests
     }
 
     [Fact]
-    public async Task Execute_PeerInitiatedChannelToManagedPeer_IsSkipped()
+    public async Task Execute_PeerInitiatedChannelToManagedPeer_StillGetsItsOwnState()
     {
         var prevEnabled = Constants.ROUTING_ENGINE_ENABLED;
         var prevMinAge = Constants.ROUTING_ENGINE_CATEGORIZATION_MIN_AGE_BLOCKS;
@@ -297,7 +298,9 @@ public class TargetRatioReevaluationJobTests
             var node = BuildNode();
             var peer = new Node { Id = 21, PubKey = PeerPubKey, Name = "bob", DynamicFeeManagementEnabled = true };
 
-            // Both nodes are managed; the channel is peer-initiated ⇒ the dedup rule assigns it to the peer.
+            // Both nodes are managed and the channel is peer-initiated. There is no dedup any more:
+            // this side keeps its own routing state, because its local balance and fee policy are
+            // its own. Without it the node is blind to this channel when it runs dry.
             _nodeRepository.Setup(x => x.GetAllManagedByNodeGuard(false)).ReturnsAsync(new List<Node> { node, peer });
             _lightningService.Setup(x => x.GetBlockHeight(It.IsAny<Node>())).ReturnsAsync((uint?)5000);
 
@@ -311,11 +314,17 @@ public class TargetRatioReevaluationJobTests
             _lightningClientService.Setup(x => x.ListChannels(It.Is<Node>(n => n.PubKey == NodePubKey), It.IsAny<Lnrpc.Lightning.LightningClient>())).ReturnsAsync(aliceList);
             _lightningClientService.Setup(x => x.ListChannels(It.Is<Node>(n => n.PubKey == PeerPubKey), It.IsAny<Lnrpc.Lightning.LightningClient>())).ReturnsAsync(new Lnrpc.ListChannelsResponse());
 
+            _routingStateRepository.Setup(x => x.GetByChannelIdAndNode(ChannelDbId, NodePubKey)).ReturnsAsync((ChannelRoutingState?)null);
+            CaptureUpsert();
+
             await BuildJob().Execute(Mock.Of<IJobExecutionContext>());
 
-            _routingStateRepository.Verify(x => x.GetByChannelId(It.IsAny<int>()), Times.Never);
-            _routingStateRepository.Verify(x => x.UpsertByChannelId(It.IsAny<ChannelRoutingState>()), Times.Never);
-            _forwardingHtlcEventRepository.Verify(x => x.GetOutgoingAmountMsat(It.IsAny<string>(), It.IsAny<ulong>(), It.IsAny<DateTimeOffset>()), Times.Never);
+            _routingStateRepository.Verify(x => x.UpsertByChannelAndNode(It.IsAny<ChannelRoutingState>()), Times.Once);
+            _captured.Should().NotBeNull();
+            _captured!.ChannelId.Should().Be(ChannelDbId);
+            // Stamped with this node, not the initiator peer.
+            _captured.ManagedNodePubKey.Should().Be(NodePubKey);
+            _captured.PeerInitiated.Should().BeTrue();
         }
         finally
         {
@@ -350,8 +359,8 @@ public class TargetRatioReevaluationJobTests
 
             await BuildJob().Execute(Mock.Of<IJobExecutionContext>());
 
-            _routingStateRepository.Verify(x => x.GetByChannelId(It.IsAny<int>()), Times.Never);
-            _routingStateRepository.Verify(x => x.UpsertByChannelId(It.IsAny<ChannelRoutingState>()), Times.Never);
+            _routingStateRepository.Verify(x => x.GetByChannelIdAndNode(It.IsAny<int>(), It.IsAny<string>()), Times.Never);
+            _routingStateRepository.Verify(x => x.UpsertByChannelAndNode(It.IsAny<ChannelRoutingState>()), Times.Never);
         }
         finally
         {
@@ -389,7 +398,7 @@ public class TargetRatioReevaluationJobTests
 
             await act.Should().NotThrowAsync();
             _lightningClientService.Verify(x => x.ListChannels(It.IsAny<Node>(), It.IsAny<Lnrpc.Lightning.LightningClient>()), Times.Never);
-            _routingStateRepository.Verify(x => x.UpsertByChannelId(It.IsAny<ChannelRoutingState>()), Times.Never);
+            _routingStateRepository.Verify(x => x.UpsertByChannelAndNode(It.IsAny<ChannelRoutingState>()), Times.Never);
         }
         finally
         {
@@ -430,7 +439,7 @@ public class TargetRatioReevaluationJobTests
 
             await act.Should().NotThrowAsync();
             _forwardingHtlcEventRepository.Verify(x => x.GetOutgoingAmountMsat(It.IsAny<string>(), It.IsAny<ulong>(), It.IsAny<DateTimeOffset>()), Times.Never);
-            _routingStateRepository.Verify(x => x.UpsertByChannelId(It.IsAny<ChannelRoutingState>()), Times.Never);
+            _routingStateRepository.Verify(x => x.UpsertByChannelAndNode(It.IsAny<ChannelRoutingState>()), Times.Never);
         }
         finally
         {
