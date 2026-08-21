@@ -169,7 +169,7 @@ public class TargetRatioReevaluationJob : IJob
                             / Math.Max(1, lndChannel.LocalBalance + lndChannel.RemoteBalance);
 
         // Seed EmaLocalRatio with the first observation on insert — no 0.5 cold-start bias.
-        var state = await _routingStateRepository.GetByChannelId(dbChannel.Id)
+        var state = await _routingStateRepository.GetByChannelIdAndNode(dbChannel.Id, managedNode.PubKey)
                     ?? new ChannelRoutingState
                     {
                         ChannelId = dbChannel.Id,
@@ -229,6 +229,6 @@ public class TargetRatioReevaluationJob : IJob
         state.LastKnownUptime = lndChannel.Uptime;
         state.LastEvaluatedAt = now;
 
-        await _routingStateRepository.UpsertByChannelId(state);
+        await _routingStateRepository.UpsertByChannelAndNode(state);
     }
 }

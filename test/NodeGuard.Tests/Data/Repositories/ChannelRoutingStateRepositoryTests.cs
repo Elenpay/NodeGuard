@@ -40,13 +40,13 @@ public class ChannelRoutingStateRepositoryTests
     }
 
     [Fact]
-    public async Task UpsertByChannelId_InsertsThenUpdatesInPlace_PreservingSmoothedFields()
+    public async Task UpsertByChannelAndNode_InsertsThenUpdatesInPlace_PreservingSmoothedFields()
     {
         var (factory, options) = SetupDb();
         var sut = new ChannelRoutingStateRepository(factory.Object);
 
         // First call inserts.
-        await sut.UpsertByChannelId(new ChannelRoutingState
+        await sut.UpsertByChannelAndNode(new ChannelRoutingState
         {
             ChannelId = 42,
             ManagedNodePubKey = "02node",
@@ -56,13 +56,13 @@ public class ChannelRoutingStateRepositoryTests
             LastEvaluatedAt = DateTimeOffset.UtcNow,
         });
 
-        var afterInsert = await sut.GetByChannelId(42);
+        var afterInsert = await sut.GetByChannelIdAndNode(42, "02node");
         afterInsert.Should().NotBeNull();
         afterInsert!.EmaLocalRatio.Should().Be(0.70);
         afterInsert.PeerFlowCategory.Should().Be(PeerFlowCategory.Sink);
 
-        // Second call with the same ChannelId updates in place.
-        await sut.UpsertByChannelId(new ChannelRoutingState
+        // Second call with the same (ChannelId, node) updates in place.
+        await sut.UpsertByChannelAndNode(new ChannelRoutingState
         {
             ChannelId = 42,
             ManagedNodePubKey = "02node",
@@ -72,7 +72,7 @@ public class ChannelRoutingStateRepositoryTests
             LastEvaluatedAt = DateTimeOffset.UtcNow,
         });
 
-        var afterUpdate = await sut.GetByChannelId(42);
+        var afterUpdate = await sut.GetByChannelIdAndNode(42, "02node");
         afterUpdate!.EmaLocalRatio.Should().Be(0.75);
         afterUpdate.TargetLocalRatio.Should().Be(0.62);
         afterUpdate.PeerFlowCategory.Should().Be(PeerFlowCategory.Bidirectional);
@@ -88,12 +88,58 @@ public class ChannelRoutingStateRepositoryTests
         var (factory, _) = SetupDb();
         var sut = new ChannelRoutingStateRepository(factory.Object);
 
-        await sut.UpsertByChannelId(new ChannelRoutingState { ChannelId = 1, ManagedNodePubKey = "02a", LastEvaluatedAt = DateTimeOffset.UtcNow });
-        await sut.UpsertByChannelId(new ChannelRoutingState { ChannelId = 2, ManagedNodePubKey = "02a", LastEvaluatedAt = DateTimeOffset.UtcNow });
-        await sut.UpsertByChannelId(new ChannelRoutingState { ChannelId = 3, ManagedNodePubKey = "02b", LastEvaluatedAt = DateTimeOffset.UtcNow });
+        await sut.UpsertByChannelAndNode(new ChannelRoutingState { ChannelId = 1, ManagedNodePubKey = "02a", LastEvaluatedAt = DateTimeOffset.UtcNow });
+        await sut.UpsertByChannelAndNode(new ChannelRoutingState { ChannelId = 2, ManagedNodePubKey = "02a", LastEvaluatedAt = DateTimeOffset.UtcNow });
+        await sut.UpsertByChannelAndNode(new ChannelRoutingState { ChannelId = 3, ManagedNodePubKey = "02b", LastEvaluatedAt = DateTimeOffset.UtcNow });
 
         var forA = await sut.GetByManagedNodePubKey("02a");
         forA.Should().HaveCount(2);
         forA.Select(x => x.ChannelId).Should().BeEquivalentTo(new[] { 1, 2 });
+    }
+
+    [Fact]
+    public async Task UpsertByChannelAndNode_KeepsOneRowPerManagedSideOfTheSameChannel()
+    {
+        var (factory, options) = SetupDb();
+        var sut = new ChannelRoutingStateRepository(factory.Object);
+
+        // Both ends of channel 7 are managed by NodeGuard; each keeps its own view of it.
+        await sut.UpsertByChannelAndNode(new ChannelRoutingState
+        {
+            ChannelId = 7, ManagedNodePubKey = "02a", EmaLocalRatio = 0.95, LastEvaluatedAt = DateTimeOffset.UtcNow,
+        });
+        await sut.UpsertByChannelAndNode(new ChannelRoutingState
+        {
+            ChannelId = 7, ManagedNodePubKey = "02b", EmaLocalRatio = 0.05, LastEvaluatedAt = DateTimeOffset.UtcNow,
+        });
+
+        await using var verify = new ApplicationDbContext(options);
+        (await verify.ChannelRoutingStates.CountAsync(x => x.ChannelId == 7)).Should().Be(2);
+
+        (await sut.GetByChannelIdAndNode(7, "02a"))!.EmaLocalRatio.Should().Be(0.95);
+        (await sut.GetByChannelIdAndNode(7, "02b"))!.EmaLocalRatio.Should().Be(0.05);
+
+        // Updating one side leaves the other untouched.
+        await sut.UpsertByChannelAndNode(new ChannelRoutingState
+        {
+            ChannelId = 7, ManagedNodePubKey = "02a", EmaLocalRatio = 0.80, LastEvaluatedAt = DateTimeOffset.UtcNow,
+        });
+
+        (await sut.GetByChannelIdAndNode(7, "02a"))!.EmaLocalRatio.Should().Be(0.80);
+        (await sut.GetByChannelIdAndNode(7, "02b"))!.EmaLocalRatio.Should().Be(0.05);
+    }
+
+    [Fact]
+    public async Task GetByManagedNodePubKey_ReturnsThisNodesSideOfASharedChannel()
+    {
+        var (factory, _) = SetupDb();
+        var sut = new ChannelRoutingStateRepository(factory.Object);
+
+        await sut.UpsertByChannelAndNode(new ChannelRoutingState { ChannelId = 7, ManagedNodePubKey = "02a", EmaLocalRatio = 0.95, LastEvaluatedAt = DateTimeOffset.UtcNow });
+        await sut.UpsertByChannelAndNode(new ChannelRoutingState { ChannelId = 7, ManagedNodePubKey = "02b", EmaLocalRatio = 0.05, LastEvaluatedAt = DateTimeOffset.UtcNow });
+
+        var forB = await sut.GetByManagedNodePubKey("02b");
+        forB.Should().ContainSingle();
+        forB[0].EmaLocalRatio.Should().Be(0.05);
     }
 }
