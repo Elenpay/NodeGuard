@@ -39,21 +39,31 @@ public enum PeerFlowCategory
 }
 
 /// <summary>
-/// Per-channel routing-engine read model (1:1 with <see cref="Channel"/>). Written by
+/// Routing-engine read model for one channel <b>as seen by one managed node</b> — keyed by
+/// (<see cref="ChannelId"/>, <see cref="ManagedNodePubKey"/>). Written by
 /// TargetRatioReevaluationJob; read by the fee engine and rebalancer. This is the single
 /// canonical place target ratio / category / smoothed balance live — actuators must not
 /// re-derive them.
+/// <para>
+/// A channel between two managed nodes has <b>one row per side</b>. Local balance, forwarding
+/// history and fee policy are all per-node views of the same channel, so each node needs its own
+/// signal: with a single shared row, whichever node did not own it was blind to its own depleted
+/// channels and could never classify them as rebalance destinations.
+/// </para>
 /// </summary>
 public class ChannelRoutingState : Entity
 {
-    /// <summary>FK to <see cref="Channel"/> (unique — one routing state per channel).</summary>
+    /// <summary>FK to <see cref="Channel"/> (unique together with <see cref="ManagedNodePubKey"/>).</summary>
     public int ChannelId { get; set; }
     public Channel Channel { get; set; } = null!;
 
     /// <summary>LND short-channel-id snapshot, refreshed every evaluation (alias -&gt; confirmed scid).</summary>
     public ulong ChanIdLnd { get; set; }
 
-    /// <summary>66-hex pubkey of the managed node that owns routing state for this channel.</summary>
+    /// <summary>
+    /// 66-hex pubkey of the managed node this state belongs to — the side whose local balance,
+    /// flow history and fee policy the row describes.
+    /// </summary>
     public string ManagedNodePubKey { get; set; } = null!;
 
     /// <summary>Dynamic target local-balance ratio, clamped to [0.10, 0.90]. Defaults to 0.5.</summary>
