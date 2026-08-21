@@ -23,24 +23,25 @@ namespace NodeGuard.Data.Repositories.Interfaces;
 
 public interface IChannelFeeStateRepository
 {
-    Task<ChannelFeeState?> GetByChannelId(int channelId);
+    Task<ChannelFeeState?> GetByChannelIdAndNode(int channelId, string managedNodePubKey);
 
     /// <summary>
-    /// All fee-state rows for channels owned by the given managed node.
+    /// All fee-state rows belonging to the given managed node.
     /// Used by the fee engine to batch per-node state.
     /// </summary>
     Task<List<ChannelFeeState>> GetByManagedNodePubKey(string managedNodePubKey);
 
-    Task UpsertByChannelId(ChannelFeeState state);
+    Task UpsertByChannelAndNode(ChannelFeeState state);
 
     /// <summary>
-    /// Deletes the fee-state row for a single channel, if present.
+    /// Deletes the fee-state rows for a single channel — every managed side of it, since
+    /// <see cref="Channel.IsDynamicFeeEnabled"/> is a channel-level opt-out.
     /// </summary>
-    /// <returns><c>true</c> if a row was deleted; <c>false</c> if none existed.</returns>
+    /// <returns><c>true</c> if any row was deleted; <c>false</c> if none existed.</returns>
     Task<bool> DeleteByChannelId(int channelId);
 
     /// <summary>
-    /// Deletes the fee-state rows for every channel owned by the given managed node.
+    /// Deletes the fee-state rows belonging to the given managed node.
     /// </summary>
     /// <returns><c>true</c> if any rows were deleted; <c>false</c> if none existed.</returns>
     Task<bool> DeleteByManagedNodePubKey(string managedNodePubKey);

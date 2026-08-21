@@ -211,7 +211,7 @@ public class ChannelFeeOptimizerJob : IJob
         {
             _logger.LogInformation("Channel {ChanId} on {NodeName}: {Action} ({Reason})",
                 candidate.LndChannel.ChanId, node.Name, decision.Action, decision.Reason);
-            await _feeStateRepository.UpsertByChannelId(feeState);
+            await _feeStateRepository.UpsertByChannelAndNode(feeState);
             return;
         }
 
@@ -222,7 +222,7 @@ public class ChannelFeeOptimizerJob : IJob
         {
             _logger.LogWarning("Skipping channel {ChanId} on {NodeName}: current fee policy unavailable",
                 candidate.LndChannel.ChanId, node.Name);
-            await _feeStateRepository.UpsertByChannelId(feeState);
+            await _feeStateRepository.UpsertByChannelAndNode(feeState);
             return;
         }
 
@@ -241,7 +241,7 @@ public class ChannelFeeOptimizerJob : IJob
             feeState.LastAppliedInboundPpm = decision.InboundPpm;
             feeState.LastFeeUpdateAt = now;
 
-            await _feeStateRepository.UpsertByChannelId(feeState);
+            await _feeStateRepository.UpsertByChannelAndNode(feeState);
             return;
         }
 
@@ -269,7 +269,7 @@ public class ChannelFeeOptimizerJob : IJob
             _logger.LogInformation("{NodeName} chan {ChanId}: set outbound {Outbound}ppm inbound {Inbound}ppm ({Reason})",
                 node.Name, candidate.LndChannel.ChanId, decision.OutboundPpm, decision.InboundPpm, decision.Reason);
 
-            await _feeStateRepository.UpsertByChannelId(feeState);
+            await _feeStateRepository.UpsertByChannelAndNode(feeState);
         }
         catch (Exception ex)
         {
