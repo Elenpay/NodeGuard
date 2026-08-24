@@ -160,16 +160,28 @@ public class CoinSelectionService: ICoinSelectionService
     }
 
     /// <summary>
-    /// Outpoints that must never be offered for coin selection: locked, frozen and dust UTXOs.
+    /// Outpoints that must never be offered for coin selection: the locked and frozen UTXOs that
+    /// belong to this wallet.
     /// </summary>
+    /// <remarks>
+    /// Both the locked and the frozen lookups span every wallet in the database, so the result is
+    /// intersected with this wallet's own UTXO set. Outpoints the backend could never return are
+    /// dead weight on the request line, and enough of them push it past Kestrel's 8KB limit, which
+    /// answers with a 414 and knocks the whole selection back to the plain listing.
+    /// Dust is deliberately absent: the backend drops it by value instead, which costs one scalar
+    /// query parameter rather than one parameter per dust UTXO.
+    /// </remarks>
     private async Task<List<string>> GetIgnoredOutpoints(UTXOChanges utxos)
     {
-        var ignoredOutpoints = await GetLockedFrozenOutpoints();
-        ignoredOutpoints.AddRange(utxos.Confirmed.UTXOs
+        var walletOutpoints = utxos.Confirmed.UTXOs
             .Concat(utxos.Unconfirmed.UTXOs)
-            .Where(utxo => ((Money)utxo.Value).Satoshi <= Constants.MINIMUM_UTXO_VALUE_SATS)
-            .Select(utxo => utxo.Outpoint.ToString()));
-        return ignoredOutpoints;
+            .Select(utxo => utxo.Outpoint.ToString())
+            .ToHashSet();
+
+        return (await GetLockedFrozenOutpoints())
+            .Where(walletOutpoints.Contains)
+            .Distinct()
+            .ToList();
     }
 
     private async Task<List<UTXO>> FilterLockedFrozenUTXOs(UTXOChanges? utxoChanges)
@@ -232,9 +244,10 @@ public class CoinSelectionService: ICoinSelectionService
         {
             try
             {
-                // Tell the backend which UTXOs to skip (locked, frozen and dust), otherwise it
-                // counts them towards the requested amount and the local filter below strips them
-                // afterwards, returning a selection that falls short of that amount
+                // Tell the backend which UTXOs to skip, otherwise it counts them towards the
+                // requested amount and the local filter below strips them afterwards, returning a
+                // selection that falls short of that amount. Dust is excluded by the backend on
+                // value, so it does not need listing here
                 var allUtxos = await _nbXplorerService.GetUTXOsAsync(derivationStrategy);
                 allUtxos.RemoveDuplicateUTXOs();
                 var ignoreOutpoints = await GetIgnoredOutpoints(allUtxos);
