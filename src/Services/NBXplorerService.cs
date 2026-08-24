@@ -162,16 +162,26 @@ public class NBXplorerService : INBXplorerService
                 new("strategy", strategy.ToString()),
                 new("limit", limit.ToString()),
                 new("amount", amount.ToString()),
+                // Lets the backend drop dust by value, so callers do not have to spend one query
+                // parameter per dust outpoint saying the same thing
+                new("minimumValue", Constants.MINIMUM_UTXO_VALUE_SATS.ToString()),
             };
             if (strategy == CoinSelectionStrategy.ClosestToTargetFirst)
             {
                 keyValuePairs.Add(new("closestTo", closestTo.ToString()));
             }
 
-            ignoreOutpoints?.ForEach(outpoint => keyValuePairs.Add(new("ignoreOutpoint", outpoint)));
-
             var url = QueryHelpers.AddQueryString(requestUri, keyValuePairs);
-            var response = await _httpClient.GetAsync(url, cancellation);
+
+            // The ignored outpoints travel in the body. As one repeated ignoreOutpoint query
+            // parameter each they cost ~83 bytes apiece, so about ninety of them overflowed
+            // Kestrel's 8KB MaxRequestLineSize and NBXplorer answered 414 — which the callers
+            // swallow into a degraded selection. The body limit is 30MB, roughly 3,662x the
+            // room, so the list no longer has a practical ceiling.
+            // NOTE: this requires an NBXplorer serving POST /selectutxos (Elenpay/NBXplorer#18).
+            // Against an older build every call answers 405 and coin selection degrades.
+            var response = await _httpClient.PostAsync(url,
+                JsonContent.Create(new { ignoreOutpoints }), cancellation);
 
             if (response.IsSuccessStatusCode)
             {
