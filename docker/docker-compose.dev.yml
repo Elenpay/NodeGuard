@@ -6,6 +6,12 @@ include:
 services:
   nbxplorer:
     restart: unless-stopped
+    # Must carry the POST form of the custom selectutxos endpoint (Elenpay/NBXplorer): NodeGuard moves
+    # the ignored-outpoint list into a request body once it outgrows the request line, and a GET-only
+    # build answers 405 there. LargeIgnoreListCoinSelectionE2ETests probes the route and names this pin
+    # when it is missing. TODO before merging the POST transport: repin to the IMMUTABLE tag of the
+    # build that carries the route — compose does not re-pull a tag it already has locally, so a
+    # floating one lets a stale copy keep serving the GET-only route.
     image: ghcr.io/elenpay/nbxplorer:elenpay-develop
     platform: linux/amd64
     hostname: nbxplorer

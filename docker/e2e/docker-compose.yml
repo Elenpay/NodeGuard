@@ -119,10 +119,14 @@ services:
       dockerfile: docker/e2e/Dockerfile.runner
     depends_on:
       nodeguard: { condition: service_started }
+      nbxplorer: { condition: service_healthy } # the coin-selection e2e probes NBXplorer directly
       extract-env: { condition: service_completed_successfully }
     environment:
       RUN_E2E_TESTS: "1"
       NODEGUARD_GRPC_ENDPOINT: "http://nodeguard:50051"
+      # LargeIgnoreListCoinSelectionE2ETests probes this for the POST selectutxos route before it trusts
+      # an empty selection, so an unpatched backend reports itself instead of looking like a NodeGuard bug.
+      NBXPLORER_URI: "http://nbxplorer:32838"
       NODEGUARD_API_TOKEN: "8rvSsUGeyXXdDQrHctcTey/xtHdZQEn945KHwccKp9Q="
       BITCOIND_RPC_URL: "http://bitcoind:18443"
       BITCOIND_RPC_USER: "polaruser"

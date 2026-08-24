@@ -49,6 +49,13 @@ Tests live in `test/NodeGuard.Tests/E2E/`. The rebalance/fee-engine scenarios ar
   `{NODE}_HOST` + `{NODE}_MACAROON` (from `extract-env`). `LndTestClient` reads them from the process env
   or, failing that, straight from `nodeguard-macaroons.env` on the mounted `e2e_env` volume — so it works
   without the runner entrypoint exporting them.
+- **NBXplorer must serve `POST selectutxos`**: NodeGuard sends the coin-selection exclusion list in a
+  request body, so a GET-only NBXplorer answers 405 to every `selectutxos` call and coin selection degrades
+  for every wallet, not just the ones this test covers. It probes `NBXPLORER_URI` first
+  (`Allow: GET` = pre-fix, `Allow: GET, POST` = patched) and fails with that diagnostic rather than looking
+  like a coin-selection bug — without the probe the test is red identically pre-fix and post-fix, because
+  `GetAvailableUtxos` swallows the 405 into an empty selection. The image is pinned in
+  `docker/docker-compose.dev.yml`, which must point at a build carrying the route.
 - **Adding an e2e test**: put it in `[Collection("E2E")]` (so it serialises with the others on the one
   regtest chain — without it the class runs in parallel and they interfere), have it provision the
   resources it needs and reset its own state, and gate it with `[E2EFact]`.
