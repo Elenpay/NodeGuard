@@ -205,6 +205,14 @@ namespace NodeGuard.Services
         (Node node, string peerPubkey);
 
         /// <summary>
+        /// Returns the local-outbound fee rate (ppm) of a specific channel — the per-channel
+        /// variant of <see cref="GetLocalOutboundFeeRatePpmByPeerAsync"/>. Used by the
+        /// auto-rebalancer to pick the cheapest source to drain and to weight a destination
+        /// peer's earn rate for the profitability gate.
+        /// </summary>
+        Task<long?> GetLocalOutboundFeeRatePpmAsync(Node node, ulong chanId);
+
+        /// <summary>
         /// Sets the channel fee policy for a given channel identified by its chanPoint
         /// </summary>
         /// <param name="chanPoint"></param>
