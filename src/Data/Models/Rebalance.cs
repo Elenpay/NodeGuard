@@ -90,6 +90,12 @@ public class Rebalance : Entity
     [NotMapped]
     public Money FeePaid => new Money(FeePaidSats ?? 0, MoneyUnit.Satoshi);
 
+    /// <summary>
+    /// Worst-case fee a not-yet-settled rebalance can still consume: the whole amount at its fee cap.
+    /// </summary>
+    public static long WorstCaseFeeSats(long amountSats, double maxFeePct)
+        => (long)(amountSats * maxFeePct / 100.0);
+
     public int? SourceChannelId { get; set; }
     public Channel? SourceChannel { get; set; }
 
