@@ -826,7 +826,8 @@ namespace NodeGuard.Services
                 DestinationNodeId = destinationNodeId,
                 CreatedByNodeGuard = true,
                 IsPrivate = currentChannel.Private,
-                IsDynamicFeeEnabled = source.DynamicFeeManagementEnabled
+                IsDynamicFeeEnabled = source.DynamicFeeManagementEnabled,
+                IsAutoRebalanceEnabled = source.AutoRebalanceEnabled
             };
 
             return channel;

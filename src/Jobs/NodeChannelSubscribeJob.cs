@@ -103,7 +103,8 @@ public class NodeChannelSuscribeJob : IJob
                     CreationDatetime = DateTimeOffset.Now,
                     UpdateDatetime = DateTimeOffset.Now,
                     IsPrivate = channelOpened.Private,
-                    IsDynamicFeeEnabled = node.DynamicFeeManagementEnabled
+                    IsDynamicFeeEnabled = node.DynamicFeeManagementEnabled,
+                    IsAutoRebalanceEnabled = node.AutoRebalanceEnabled
                 };
 
                 var remoteNode = await _nodeRepository.GetOrCreateByPubKey(channelOpened.RemotePubkey, _lightningService);
