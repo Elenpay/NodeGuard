@@ -1558,7 +1558,7 @@ namespace NodeGuard.Services
                     if (channel == null) continue;
                     // If the source node is not the channel initiator, but the remote node is also managed by NodeGuard
                     // We skip and wait for the other node to report the channel
-                    if (nodes.Any((n) => !channel.Initiator && n.PubKey == channel.RemotePubkey)) continue;
+                    if (!ChannelOwnershipHelper.IsOwnedByManagedNode(channel, nodes)) continue;
 
                     var htlcsLocal = channel.PendingHtlcs.Where(x => x.Incoming == true).Sum(x => x.Amount);
                     var htlcsRemote = channel.PendingHtlcs.Where(x => x.Incoming == false).Sum(x => x.Amount);
