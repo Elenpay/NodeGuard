@@ -47,6 +47,15 @@ public class ChannelMonitorJobTests
         return dbContextFactory;
     }
 
+    private Quartz.IJobExecutionContext BuildJobContext(int nodeId)
+    {
+        var jobDetail = new Mock<Quartz.IJobDetail>();
+        jobDetail.Setup(x => x.JobDataMap).Returns(new Quartz.JobDataMap { { "nodeId", nodeId.ToString() } });
+        var context = new Mock<Quartz.IJobExecutionContext>();
+        context.Setup(x => x.JobDetail).Returns(jobDetail.Object);
+        return context.Object;
+    }
+
     [Fact]
     public async Task RecoverGhostChannels_ChannelIsNotInitiatorButManaged()
     {
@@ -225,6 +234,76 @@ public class ChannelMonitorJobTests
         createdChannel.SourceNodeId.Should().Be(destination.Id);
         createdChannel.DestinationNodeId.Should().Be(source.Id);
         context.Channels.Count().Should().Be(1);
+    }
+
+    [Fact]
+    public async Task Execute_SyncsMaxHtlcOfEveryChannel()
+    {
+        // Arrange
+        var logger = new Mock<ILogger<ChannelMonitorJob>>();
+        var dbContextFactory = SetupDbContextFactory();
+
+        var source = new Node() { Id = 3, Endpoint = "localhost", ChannelAdminMacaroon = "abc" };
+        // A managed peer we did not initiate with: ghost recovery and alias refresh both bail out early,
+        // leaving the max htlc sync as the only work Execute does per channel.
+        var remote = new Node() { Id = 9, PubKey = "peer", Endpoint = "localhost" };
+        var channel1 = new Lnrpc.Channel() { ChanId = 1, Capacity = 1000, RemotePubkey = remote.PubKey, Initiator = false };
+        var channel2 = new Lnrpc.Channel() { ChanId = 2, Capacity = 2000, RemotePubkey = remote.PubKey, Initiator = false };
+
+        var nodeRepository = new Mock<NodeGuard.Data.Repositories.Interfaces.INodeRepository>();
+        nodeRepository.Setup(x => x.GetById(source.Id)).ReturnsAsync(source);
+        nodeRepository.Setup(x => x.GetOrCreateByPubKey(remote.PubKey, It.IsAny<ILightningService>())).ReturnsAsync(remote);
+
+        var lightningClientService = new Mock<ILightningClientService>();
+        lightningClientService.Setup(x => x.ListChannels(source, It.IsAny<Lightning.LightningClient>()))
+            .ReturnsAsync(new ListChannelsResponse { Channels = { channel1, channel2 } });
+
+        var lightningService = new Mock<ILightningService>();
+        lightningService.Setup(x => x.SyncChannelMaxHtlc(source, It.IsAny<Lnrpc.Channel>())).ReturnsAsync(MaxHtlcSyncResult.Updated);
+
+        var channelMonitorJob = new ChannelMonitorJob(logger.Object, dbContextFactory.Object, nodeRepository.Object, lightningService.Object, lightningClientService.Object);
+
+        // Act
+        var act = () => channelMonitorJob.Execute(BuildJobContext(source.Id));
+
+        // Assert
+        await act.Should().NotThrowAsync();
+        lightningService.Verify(x => x.SyncChannelMaxHtlc(source, channel1), Times.Once);
+        lightningService.Verify(x => x.SyncChannelMaxHtlc(source, channel2), Times.Once);
+    }
+
+    [Fact]
+    public async Task Execute_MaxHtlcSyncThrows()
+    {
+        // Arrange
+        var logger = new Mock<ILogger<ChannelMonitorJob>>();
+        var dbContextFactory = SetupDbContextFactory();
+
+        var source = new Node() { Id = 3, Endpoint = "localhost", ChannelAdminMacaroon = "abc" };
+        var remote = new Node() { Id = 9, PubKey = "peer", Endpoint = "localhost" };
+        var channel1 = new Lnrpc.Channel() { ChanId = 1, Capacity = 1000, RemotePubkey = remote.PubKey, Initiator = false };
+        var channel2 = new Lnrpc.Channel() { ChanId = 2, Capacity = 2000, RemotePubkey = remote.PubKey, Initiator = false };
+
+        var nodeRepository = new Mock<NodeGuard.Data.Repositories.Interfaces.INodeRepository>();
+        nodeRepository.Setup(x => x.GetById(source.Id)).ReturnsAsync(source);
+        nodeRepository.Setup(x => x.GetOrCreateByPubKey(remote.PubKey, It.IsAny<ILightningService>())).ReturnsAsync(remote);
+
+        var lightningClientService = new Mock<ILightningClientService>();
+        lightningClientService.Setup(x => x.ListChannels(source, It.IsAny<Lightning.LightningClient>()))
+            .ReturnsAsync(new ListChannelsResponse { Channels = { channel1, channel2 } });
+
+        var lightningService = new Mock<ILightningService>();
+        lightningService.Setup(x => x.SyncChannelMaxHtlc(source, channel1)).ThrowsAsync(new Exception("policy update rejected"));
+        lightningService.Setup(x => x.SyncChannelMaxHtlc(source, channel2)).ReturnsAsync(MaxHtlcSyncResult.Updated);
+
+        var channelMonitorJob = new ChannelMonitorJob(logger.Object, dbContextFactory.Object, nodeRepository.Object, lightningService.Object, lightningClientService.Object);
+
+        // Act
+        var act = () => channelMonitorJob.Execute(BuildJobContext(source.Id));
+
+        // Assert - a failed policy write is contained, so the run finishes and the next channel is synced
+        await act.Should().NotThrowAsync();
+        lightningService.Verify(x => x.SyncChannelMaxHtlc(source, channel2), Times.Once);
     }
 
     [Fact]

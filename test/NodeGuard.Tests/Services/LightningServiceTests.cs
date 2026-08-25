@@ -297,7 +297,7 @@ namespace NodeGuard.Services
             var nbXplorerMock = new Mock<INBXplorerService>();
             //Mock to return a wallet address
             var keyPathInformation = new KeyPathInformation()
-                { Address = BitcoinAddress.Create("bcrt1q590shaxaf5u08ml8jwlzghz99dup3z9592vxal", Network.RegTest) };
+            { Address = BitcoinAddress.Create("bcrt1q590shaxaf5u08ml8jwlzghz99dup3z9592vxal", Network.RegTest) };
 
             nbXplorerMock
                 .Setup(x => x.GetUnusedAsync(It.IsAny<DerivationStrategyBase>(), It.IsAny<DerivationFeature>(),
@@ -497,7 +497,8 @@ namespace NodeGuard.Services
                 .ReturnsAsync((true, ""));
 
             lightningClientService.Setup(
-                x => x.FundingStateStepVerify(It.IsAny<Node>(), It.IsAny<PSBT>(), It.IsAny<byte[]>(), It.IsAny<Lightning.LightningClient>()));            lightningClientService.Setup(
+                x => x.FundingStateStepVerify(It.IsAny<Node>(), It.IsAny<PSBT>(), It.IsAny<byte[]>(), It.IsAny<Lightning.LightningClient>()));
+            lightningClientService.Setup(
                 x => x.FundingStateStepFinalize(It.IsAny<Node>(), It.IsAny<PSBT>(), It.IsAny<byte[]>(), It.IsAny<Lightning.LightningClient>()));
             // Mock channel repository
             var channelRepository = new Mock<IChannelRepository>();
@@ -700,7 +701,8 @@ namespace NodeGuard.Services
                     It.IsAny<PSBT>(),
                     It.IsAny<byte[]>(),
                     It.IsAny<Lightning.LightningClient>()
-                ));            lightningClient
+                ));
+            lightningClient
                 .Setup(x => x.FundingStateStepFinalize(
                     It.IsAny<Node>(),
                     It.IsAny<PSBT>(),
@@ -1998,7 +2000,7 @@ namespace NodeGuard.Services
             };
 
             lightningClientService.Setup(x => x.ListChannels(It.IsAny<Node>(), null)).ReturnsAsync(listChannelsResponse);
-            var lightningService = new LightningService(null, null, nodeRepository.Object, null, null, null, null, null ,null, lightningClientService.Object, null, null);
+            var lightningService = new LightningService(null, null, nodeRepository.Object, null, null, null, null, null, null, lightningClientService.Object, null, null);
 
             // Act
             var channelStatus = await lightningService.GetChannelsState();
@@ -2042,7 +2044,7 @@ namespace NodeGuard.Services
             };
 
             lightningClientService.Setup(x => x.ListChannels(It.IsAny<Node>(), null)).ReturnsAsync(listChannelsResponse);
-            var lightningService = new LightningService(null, null, nodeRepository.Object, null, null, null, null, null ,null, lightningClientService.Object, null, null);
+            var lightningService = new LightningService(null, null, nodeRepository.Object, null, null, null, null, null, null, lightningClientService.Object, null, null);
 
             // Act
             var channelStatus = await lightningService.GetChannelsState();
@@ -2109,7 +2111,7 @@ namespace NodeGuard.Services
             lightningClientService.SetupSequence(x => x.ListChannels(It.IsAny<Node>(), null))
                 .ReturnsAsync(listChannelsResponse1)
                 .ReturnsAsync(listChannelsResponse2);
-            var lightningService = new LightningService(null, null, nodeRepository.Object, null, null, null, null, null ,null, lightningClientService.Object, null, null);
+            var lightningService = new LightningService(null, null, nodeRepository.Object, null, null, null, null, null, null, lightningClientService.Object, null, null);
 
             // Act
             var channelStatus = await lightningService.GetChannelsState();
@@ -2176,7 +2178,7 @@ namespace NodeGuard.Services
             lightningClientService.SetupSequence(x => x.ListChannels(It.IsAny<Node>(), null))
                 .ReturnsAsync(listChannelsResponse1)
                 .ReturnsAsync(listChannelsResponse2);
-            var lightningService = new LightningService(null, null, nodeRepository.Object, null, null, null, null, null ,null, lightningClientService.Object, null, null);
+            var lightningService = new LightningService(null, null, nodeRepository.Object, null, null, null, null, null, null, lightningClientService.Object, null, null);
 
             // Act
             var channelStatus = await lightningService.GetChannelsState();
@@ -2393,7 +2395,7 @@ namespace NodeGuard.Services
                 .Setup(x => x.GetByPubkey(node.PubKey))
                 .ReturnsAsync(node);
             lightningClientService
-                .Setup(x => x.SetChannelFeePolicy(node, It.IsAny<NBitcoin.OutPoint>(), 1000, 250, 40, 0, 50, null))
+                .Setup(x => x.SetChannelFeePolicy(node, It.IsAny<NBitcoin.OutPoint>(), 1000, 250, 40, 0, 50, maxHtlcMsat: null, client: null))
                 .ReturnsAsync(new PolicyUpdateResponse());
 
             var lightningService = new LightningService(
@@ -2423,7 +2425,7 @@ namespace NodeGuard.Services
 
             // Assert — the positive inbound rate reached LND (no <= 0 throw)...
             lightningClientService.Verify(x => x.SetChannelFeePolicy(
-                node, It.IsAny<NBitcoin.OutPoint>(), 1000, 250, 40, 0, 50, null), Times.Once);
+                node, It.IsAny<NBitcoin.OutPoint>(), 1000, 250, 40, 0, 50, maxHtlcMsat: null, client: null), Times.Once);
 
             // ...and the write was audited through the system (engine-driven) path.
             auditService.Verify(x => x.LogSystemAsync(
@@ -2622,6 +2624,364 @@ namespace NodeGuard.Services
             await act.Should()
                 .ThrowAsync<ArgumentException>()
                 .WithMessage("Channel not found for the given chanId. (Parameter 'chanId')");
+        }
+
+        private const string MaxHtlcChanPoint = "0000000000000000000000000000000000000000000000000000000000000001:2";
+
+        private static Node MaxHtlcNode() => new()
+        {
+            Id = 30,
+            Name = "managedNode",
+            PubKey = "managedPubKey",
+            Endpoint = "127.0.0.1:10009",
+            ChannelAdminMacaroon = "test-macaroon"
+        };
+
+        private static Lnrpc.Channel MaxHtlcLndChannel(long capacitySats) => new()
+        {
+            ChanId = 123,
+            Capacity = capacitySats,
+            ChannelPoint = MaxHtlcChanPoint
+        };
+
+        /// <summary>
+        /// Wires up a LightningService with only the collaborators SyncChannelMaxHtlc touches: the LND
+        /// client (policy read + write), the channel repository (audit target) and the audit service.
+        /// A null <paramref name="channelEdge"/> reproduces LND having no graph edge for the channel.
+        /// </summary>
+        private (LightningService Service, Mock<ILightningClientService> Client, Mock<IAuditService> AuditService) BuildMaxHtlcService(
+            Node node,
+            ChannelEdge? channelEdge,
+            Channel? trackedChannel)
+        {
+            var outPoint = NBitcoin.OutPoint.Parse(MaxHtlcChanPoint);
+
+            var lightningClientService = new Mock<ILightningClientService>();
+            lightningClientService
+                .Setup(x => x.GetChanInfo(node, 123UL, null))
+                .ReturnsAsync(channelEdge);
+            lightningClientService
+                .Setup(x => x.SetChannelFeePolicy(
+                    node,
+                    It.IsAny<NBitcoin.OutPoint>(),
+                    It.IsAny<long>(),
+                    It.IsAny<uint>(),
+                    It.IsAny<uint>(),
+                    It.IsAny<int?>(),
+                    It.IsAny<int?>(),
+                    It.IsAny<ulong?>(),
+                    It.IsAny<Lightning.LightningClient?>()))
+                .ReturnsAsync(new PolicyUpdateResponse());
+
+            var channelRepository = new Mock<IChannelRepository>();
+            channelRepository
+                .Setup(x => x.GetByOutpoint(It.Is<NBitcoin.OutPoint>(point => point.Hash == outPoint.Hash && point.N == outPoint.N)))
+                .ReturnsAsync(trackedChannel);
+
+            var auditService = new Mock<IAuditService>();
+
+            var lightningService = new LightningService(
+                _logger, null, null, null, null, channelRepository.Object, null, null, null,
+                lightningClientService.Object, null, auditService.Object);
+
+            return (lightningService, lightningClientService, auditService);
+        }
+
+        private static ChannelEdge MaxHtlcChannelEdge(string managedPubKey, RoutingPolicy? managedPolicy) => new()
+        {
+            Node1Pub = managedPubKey,
+            Node2Pub = "counterpartyPubKey",
+            Node1Policy = managedPolicy,
+            Node2Policy = new RoutingPolicy { FeeBaseMsat = 5000, FeeRateMilliMsat = 900, TimeLockDelta = 80 }
+        };
+
+        [Fact]
+        public async Task SyncChannelMaxHtlc_AlreadyAtTarget_MakesNoPolicyUpdate()
+        {
+            // Arrange — 1M sat channel already advertising 99% of capacity.
+            var node = MaxHtlcNode();
+            var policy = new RoutingPolicy
+            {
+                FeeBaseMsat = 1000,
+                FeeRateMilliMsat = 250,
+                TimeLockDelta = 40,
+                MinHtlc = 1000,
+                MaxHtlcMsat = 990_000_000
+            };
+            var (service, client, auditService) = BuildMaxHtlcService(
+                node,
+                MaxHtlcChannelEdge(node.PubKey, policy),
+                new Channel { Id = 40 });
+
+            // Act
+            var result = await service.SyncChannelMaxHtlc(node, MaxHtlcLndChannel(1_000_000));
+
+            // Assert — LND rate-limits channel_update, so an unchanged policy must cost no write at all.
+            result.Should().Be(MaxHtlcSyncResult.NoOp);
+            client.Verify(x => x.SetChannelFeePolicy(
+                It.IsAny<Node>(), It.IsAny<NBitcoin.OutPoint>(), It.IsAny<long>(), It.IsAny<uint>(),
+                It.IsAny<uint>(), It.IsAny<int?>(), It.IsAny<int?>(), It.IsAny<ulong?>(),
+                It.IsAny<Lightning.LightningClient?>()), Times.Never);
+            auditService.VerifyNoOtherCalls();
+        }
+
+        [Fact]
+        public async Task SyncChannelMaxHtlc_OffTarget_EchoesFeePolicyAndAuditsTheWrite()
+        {
+            // Arrange — same channel, but advertising a stale 50k sat max htlc.
+            var node = MaxHtlcNode();
+            var policy = new RoutingPolicy
+            {
+                FeeBaseMsat = 1000,
+                FeeRateMilliMsat = 250,
+                TimeLockDelta = 40,
+                MinHtlc = 1000,
+                MaxHtlcMsat = 50_000_000
+            };
+            var (service, client, auditService) = BuildMaxHtlcService(
+                node,
+                MaxHtlcChannelEdge(node.PubKey, policy),
+                new Channel { Id = 40 });
+            var outPoint = NBitcoin.OutPoint.Parse(MaxHtlcChanPoint);
+
+            // Act
+            var result = await service.SyncChannelMaxHtlc(node, MaxHtlcLndChannel(1_000_000));
+
+            // Assert — the fee fields are absolute in a policy update, so they must be echoed back
+            // unchanged, and the inbound fee must be omitted for LND to retain it.
+            result.Should().Be(MaxHtlcSyncResult.Updated);
+            client.Verify(x => x.SetChannelFeePolicy(
+                node,
+                It.Is<NBitcoin.OutPoint>(point => point.Hash == outPoint.Hash && point.N == outPoint.N),
+                1000,
+                250u,
+                40u,
+                null,
+                null,
+                990_000_000UL,
+                null), Times.Once);
+            auditService.Verify(x => x.LogSystemAsync(
+                AuditActionType.Update,
+                AuditEventType.Success,
+                AuditObjectType.Channel,
+                "40",
+                It.IsAny<object>()), Times.Once);
+        }
+
+        [Theory]
+        // Plain ratio of capacity.
+        [InlineData(1_000_000L, 1_000L, 990_000_000UL)]
+        // Small channel, same ratio.
+        [InlineData(20_000L, 1_000L, 19_800_000UL)]
+        // The peer's min_htlc sits above the ratio result, so the floor wins — LND rejects a max_htlc
+        // below min_htlc outright.
+        [InlineData(20_000L, 19_900_000L, 19_900_000UL)]
+        public async Task SyncChannelMaxHtlc_ResolvesTargetWithinChannelBounds(long capacitySats, long minHtlcMsat, ulong expectedMaxHtlcMsat)
+        {
+            // Arrange
+            var node = MaxHtlcNode();
+            var policy = new RoutingPolicy
+            {
+                FeeBaseMsat = 0,
+                FeeRateMilliMsat = 1500,
+                TimeLockDelta = 40,
+                MinHtlc = minHtlcMsat,
+                MaxHtlcMsat = 1 // any value off target, so a write is attempted
+            };
+            var (service, client, _) = BuildMaxHtlcService(
+                node,
+                MaxHtlcChannelEdge(node.PubKey, policy),
+                new Channel { Id = 40 });
+
+            // Act
+            var result = await service.SyncChannelMaxHtlc(node, MaxHtlcLndChannel(capacitySats));
+
+            // Assert
+            result.Should().Be(MaxHtlcSyncResult.Updated);
+            client.Verify(x => x.SetChannelFeePolicy(
+                node, It.IsAny<NBitcoin.OutPoint>(), 0, 1500u, 40u, null, null,
+                expectedMaxHtlcMsat, null), Times.Once);
+        }
+
+        [Fact]
+        public async Task SyncChannelMaxHtlc_MinHtlcAboveCapacity_Skips()
+        {
+            // Arrange — no value satisfies both bounds, so there is nothing valid to write.
+            var node = MaxHtlcNode();
+            var policy = new RoutingPolicy
+            {
+                FeeBaseMsat = 0,
+                FeeRateMilliMsat = 1500,
+                TimeLockDelta = 40,
+                MinHtlc = 30_000_000,
+                MaxHtlcMsat = 1
+            };
+            var (service, client, _) = BuildMaxHtlcService(
+                node,
+                MaxHtlcChannelEdge(node.PubKey, policy),
+                new Channel { Id = 40 });
+
+            // Act
+            var result = await service.SyncChannelMaxHtlc(node, MaxHtlcLndChannel(20_000));
+
+            // Assert
+            result.Should().Be(MaxHtlcSyncResult.Skipped);
+            client.Verify(x => x.SetChannelFeePolicy(
+                It.IsAny<Node>(), It.IsAny<NBitcoin.OutPoint>(), It.IsAny<long>(), It.IsAny<uint>(),
+                It.IsAny<uint>(), It.IsAny<int?>(), It.IsAny<int?>(), It.IsAny<ulong?>(),
+                It.IsAny<Lightning.LightningClient?>()), Times.Never);
+        }
+
+        [Fact]
+        public async Task SyncChannelMaxHtlc_ZeroCapacity_Skips()
+        {
+            // Arrange — a 0 target would reach LND as "leave max_htlc unchanged", so it must never be
+            // sent: the write would report success while changing nothing, every single run.
+            var node = MaxHtlcNode();
+            var policy = new RoutingPolicy
+            {
+                FeeBaseMsat = 0,
+                FeeRateMilliMsat = 1500,
+                TimeLockDelta = 40,
+                MinHtlc = 0,
+                MaxHtlcMsat = 1
+            };
+            var (service, client, _) = BuildMaxHtlcService(
+                node,
+                MaxHtlcChannelEdge(node.PubKey, policy),
+                new Channel { Id = 40 });
+
+            // Act
+            var result = await service.SyncChannelMaxHtlc(node, MaxHtlcLndChannel(0));
+
+            // Assert
+            result.Should().Be(MaxHtlcSyncResult.Skipped);
+            client.Verify(x => x.SetChannelFeePolicy(
+                It.IsAny<Node>(), It.IsAny<NBitcoin.OutPoint>(), It.IsAny<long>(), It.IsAny<uint>(),
+                It.IsAny<uint>(), It.IsAny<int?>(), It.IsAny<int?>(), It.IsAny<ulong?>(),
+                It.IsAny<Lightning.LightningClient?>()), Times.Never);
+        }
+
+        [Fact]
+        public async Task SyncChannelMaxHtlc_NoGraphEdge_Skips()
+        {
+            // Arrange — a freshly confirmed or unannounced channel has no edge yet.
+            var node = MaxHtlcNode();
+            var (service, client, _) = BuildMaxHtlcService(node, null, new Channel { Id = 40 });
+
+            // Act
+            var result = await service.SyncChannelMaxHtlc(node, MaxHtlcLndChannel(1_000_000));
+
+            // Assert
+            result.Should().Be(MaxHtlcSyncResult.Skipped);
+            client.Verify(x => x.SetChannelFeePolicy(
+                It.IsAny<Node>(), It.IsAny<NBitcoin.OutPoint>(), It.IsAny<long>(), It.IsAny<uint>(),
+                It.IsAny<uint>(), It.IsAny<int?>(), It.IsAny<int?>(), It.IsAny<ulong?>(),
+                It.IsAny<Lightning.LightningClient?>()), Times.Never);
+        }
+
+        [Fact]
+        public async Task SyncChannelMaxHtlc_NoPolicyForManagedSide_Skips()
+        {
+            // Arrange — the edge exists but our side has no policy on it.
+            var node = MaxHtlcNode();
+            var (service, client, _) = BuildMaxHtlcService(
+                node,
+                MaxHtlcChannelEdge(node.PubKey, null),
+                new Channel { Id = 40 });
+
+            // Act
+            var result = await service.SyncChannelMaxHtlc(node, MaxHtlcLndChannel(1_000_000));
+
+            // Assert
+            result.Should().Be(MaxHtlcSyncResult.Skipped);
+            client.Verify(x => x.SetChannelFeePolicy(
+                It.IsAny<Node>(), It.IsAny<NBitcoin.OutPoint>(), It.IsAny<long>(), It.IsAny<uint>(),
+                It.IsAny<uint>(), It.IsAny<int?>(), It.IsAny<int?>(), It.IsAny<ulong?>(),
+                It.IsAny<Lightning.LightningClient?>()), Times.Never);
+        }
+
+        [Fact]
+        public async Task SyncChannelMaxHtlc_UntrackedChannel_SkipsWithoutWriting()
+        {
+            // Arrange — NodeGuard has no channel row yet (ghost recovery hasn't created it), so the write
+            // would not be auditable against a channel.
+            var node = MaxHtlcNode();
+            var policy = new RoutingPolicy
+            {
+                FeeBaseMsat = 1000,
+                FeeRateMilliMsat = 250,
+                TimeLockDelta = 40,
+                MinHtlc = 1000,
+                MaxHtlcMsat = 50_000_000
+            };
+            var (service, client, _) = BuildMaxHtlcService(
+                node,
+                MaxHtlcChannelEdge(node.PubKey, policy),
+                trackedChannel: null);
+
+            // Act
+            var result = await service.SyncChannelMaxHtlc(node, MaxHtlcLndChannel(1_000_000));
+
+            // Assert
+            result.Should().Be(MaxHtlcSyncResult.Skipped);
+            client.Verify(x => x.SetChannelFeePolicy(
+                It.IsAny<Node>(), It.IsAny<NBitcoin.OutPoint>(), It.IsAny<long>(), It.IsAny<uint>(),
+                It.IsAny<uint>(), It.IsAny<int?>(), It.IsAny<int?>(), It.IsAny<ulong?>(),
+                It.IsAny<Lightning.LightningClient?>()), Times.Never);
+        }
+
+        [Fact]
+        public async Task SyncChannelMaxHtlc_UnmanagedNode_Skips()
+        {
+            // Arrange — no endpoint means no gRPC surface to write to.
+            var node = new Node { Id = 31, Name = "externalNode", PubKey = "externalPubKey" };
+            var (service, client, _) = BuildMaxHtlcService(node, null, new Channel { Id = 40 });
+
+            // Act
+            var result = await service.SyncChannelMaxHtlc(node, MaxHtlcLndChannel(1_000_000));
+
+            // Assert
+            result.Should().Be(MaxHtlcSyncResult.Skipped);
+            client.VerifyNoOtherCalls();
+        }
+
+        [Fact]
+        public async Task SyncChannelMaxHtlc_FailedUpdates_Throws()
+        {
+            // Arrange
+            var node = MaxHtlcNode();
+            var policy = new RoutingPolicy
+            {
+                FeeBaseMsat = 1000,
+                FeeRateMilliMsat = 250,
+                TimeLockDelta = 40,
+                MinHtlc = 1000,
+                MaxHtlcMsat = 50_000_000
+            };
+            var (service, client, auditService) = BuildMaxHtlcService(
+                node,
+                MaxHtlcChannelEdge(node.PubKey, policy),
+                new Channel { Id = 40 });
+
+            var failedResponse = new PolicyUpdateResponse();
+            failedResponse.FailedUpdates.Add(new FailedUpdate { Reason = UpdateFailure.NotFound });
+            client
+                .Setup(x => x.SetChannelFeePolicy(
+                    It.IsAny<Node>(), It.IsAny<NBitcoin.OutPoint>(), It.IsAny<long>(), It.IsAny<uint>(),
+                    It.IsAny<uint>(), It.IsAny<int?>(), It.IsAny<int?>(), It.IsAny<ulong?>(),
+                    It.IsAny<Lightning.LightningClient?>()))
+                .ReturnsAsync(failedResponse);
+
+            // Act
+            var act = async () => await service.SyncChannelMaxHtlc(node, MaxHtlcLndChannel(1_000_000));
+
+            // Assert — a rejected write surfaces as an exception, never as a silent Skipped.
+            await act.Should().ThrowAsync<Exception>()
+                .WithMessage($"Failed to update max htlc for channel: {MaxHtlcChanPoint}");
+            auditService.Verify(x => x.LogSystemAsync(
+                It.IsAny<AuditActionType>(), It.IsAny<AuditEventType>(), It.IsAny<AuditObjectType>(),
+                It.IsAny<string>(), It.IsAny<object>()), Times.Never);
         }
     }
 }
