@@ -99,7 +99,7 @@ public class Constants
     public static readonly decimal MAXIMUM_WITHDRAWAL_BTC_AMOUNT = 21_000_000;
     public static readonly int TRANSACTION_CONFIRMATION_MINIMUM_BLOCKS;
     public static int DEFAULT_CHANNEL_FEE_POLICY_TIMELOCK_DELTA_BLOCKS = 40;
-    public static long DEFAULT_CHANNEL_FEE_POLICY_BASE_FEE_MSAT = 0; 
+    public static long DEFAULT_CHANNEL_FEE_POLICY_BASE_FEE_MSAT = 0;
     public static long DEFAULT_CHANNEL_FEE_POLICY_FEE_RATE_PPM = 1500;
     public static readonly long ANCHOR_CLOSINGS_MINIMUM_SATS;
     public static readonly long MINIMUM_SWEEP_TRANSACTION_AMOUNT_SATS = 25_000_000; //25M sats
@@ -327,6 +327,13 @@ public class Constants
     public static uint ROUTING_ENGINE_FEE_BASELINE_PPM_SINK = 2500;
     // Outbound ppm baseline for not-yet-categorized channels (safe mid default).
     public static uint ROUTING_ENGINE_FEE_BASELINE_PPM_UNCATEGORIZED = 1500;
+
+    /// <summary>
+    /// Fraction of a channel's capacity advertised as its max_htlc_msat. LND itself uses ~0.99 for
+    /// channels it opens, so at the default this reconciles drifted channels without touching
+    /// untouched ones.
+    /// </summary>
+    public static double MAX_HTLC_CAPACITY_RATIO = 0.99;
 
     public const string IsFrozenTag = "frozen";
     public const string IsManuallyFrozenTag = "manually_frozen";
@@ -648,6 +655,16 @@ public class Constants
 
         var feeBaselineUncategorized = Environment.GetEnvironmentVariable("ROUTING_ENGINE_FEE_BASELINE_PPM_UNCATEGORIZED");
         if (feeBaselineUncategorized != null) ROUTING_ENGINE_FEE_BASELINE_PPM_UNCATEGORIZED = uint.Parse(feeBaselineUncategorized);
+
+        // Max HTLC
+        var maxHtlcCapacityRatio = Environment.GetEnvironmentVariable("MAX_HTLC_CAPACITY_RATIO");
+        if (maxHtlcCapacityRatio != null)
+        {
+            var parsedRatio = double.Parse(maxHtlcCapacityRatio, NumberStyles.AllowDecimalPoint | NumberStyles.AllowLeadingSign, CultureInfo.InvariantCulture);
+            // A ratio outside (0, 1] would resolve to 0 or above capacity, both of which LND rejects.
+            if (parsedRatio > 0 && parsedRatio <= 1) MAX_HTLC_CAPACITY_RATIO = parsedRatio;
+            else throw new ArgumentOutOfRangeException(nameof(MAX_HTLC_CAPACITY_RATIO), parsedRatio, "MAX_HTLC_CAPACITY_RATIO must be in (0, 1]");
+        }
 
         // DB Initialization
         ALICE_PUBKEY = Environment.GetEnvironmentVariable("ALICE_PUBKEY") ?? ALICE_PUBKEY;
