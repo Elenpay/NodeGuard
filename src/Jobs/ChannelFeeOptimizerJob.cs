@@ -193,7 +193,10 @@ public class ChannelFeeOptimizerJob : IJob
     private async Task OptimizeChannel(Node node, Candidate candidate, FeeOptimizerTunables tunables, DateTimeOffset now)
     {
         var routingState = candidate.RoutingState;
-        var feeState = candidate.FeeState ?? new ChannelFeeState { ChannelId = candidate.DbChannel.Id };
+        var feeState = candidate.FeeState ?? new ChannelFeeState {
+            ChannelId = candidate.DbChannel.Id,
+            ManagedNodePubKey = node.PubKey,
+        };
 
         var decision = FeeOptimizerService.ComputeNextPolicy(
             routingState.EmaLocalRatio,
