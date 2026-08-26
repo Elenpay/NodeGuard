@@ -170,6 +170,30 @@ table.peers-tbl tbody tr.peer-row:hover { background: #faf9fe; }
 .df-none { background: #eeedf4; color: var(--muted); }
 .df-partial { background: rgba(221,164,72,.16); color: #a9791f; }
 
+/* flow category */
+.cat-badge {
+    font-family: var(--mono);
+    font-size: .68rem;
+    font-weight: 700;
+    letter-spacing: .02em;
+    padding: 3px 9px;
+    border-radius: 20px;
+    white-space: nowrap;
+}
+
+.cat-sink { background: rgba(221,164,72,.16); color: #a9791f; }
+.cat-source { background: rgba(59,119,226,.14); color: #2a5cb8; }
+.cat-bidi { background: rgba(151,51,239,.13); color: #7b23c9; }
+.cat-uncat { background: #eeedf4; color: var(--muted); }
+.cat-none { background: transparent; color: var(--faint); }
+
+.cat-pending {
+    font-family: var(--mono);
+    font-size: .62rem;
+    color: var(--faint);
+    margin-left: 5px;
+}
+
 .gate-warn {
     color: #a9791f;
     font-size: .72rem;
