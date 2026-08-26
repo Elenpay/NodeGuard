@@ -95,69 +95,67 @@ public class SweepNodeWalletsJob : IJob
                     });
                 var totalSatsAvailable = utxos.Sum(x => x.AmountSat);
 
-                if (returningAddress != null && lndChangeAddress != null && utxos.Any() && totalSatsAvailable > Constants.MINIMUM_SWEEP_TRANSACTION_AMOUNT_SATS)
+                var canSweep = returningAddress != null && lndChangeAddress != null && utxos.Any() && totalSatsAvailable > Constants.MINIMUM_SWEEP_TRANSACTION_AMOUNT_SATS;
+
+                if (!canSweep)
                 {
-                    // We need to maintain onchain balance to be at least RequiredAnchorChannelClosingAmount but also we apply a 10% buffer to pay for this sweep fees and let some more money on the wallet
-                    var sweepedFundsAmount = (long)((totalSatsAvailable - requiredAnchorChannelClosingAmount) * 0.9); 
-                    var sendManyResponse = await lightningClient.SendManyAsync(new SendManyRequest()
+                    // Sweep can't be performed, log the reason
+                    var reason = GetReasonFailureErrorSweeping(returningAddress, lndChangeAddress);
+                    if (!string.IsNullOrEmpty(reason))
                     {
-                        AddrToAmount =
-                            {
-                                {returningAddress.Address.ToString(), sweepedFundsAmount}, //Sweeped funds
-                            },
-                        MinConfs = 6,
-                        Label = $"Hot wallet Sweep tx on {DateTime.UtcNow.ToString("O")} to walletId:{wallet.Id}",
-                        SpendUnconfirmed = false,
-                        TargetConf = Constants.SWEEP_CONF_TARGET
-                    },
-                        new Metadata
-                        {
-                            {
-                                "macaroon", node.ChannelAdminMacaroon
-                            }
-                        });
-
-                    _logger.LogInformation("Utxos swept out for nodeId: {NodeId} on txid: {TxId} with returnAddress: {Address}",
-                        node.Id,
-                        sendManyResponse.Txid,
-                        returningAddress.Address);
-
-                    // Audit successful wallet sweep
-                    await _auditService.LogSystemAsync(
-                        AuditActionType.WalletSweep,
-                        AuditEventType.Success,
-                        AuditObjectType.Wallet,
-                        wallet.Id.ToString(),
-                        new
-                        {
-                            NodeId = node.Id,
-                            NodeName = node.Name,
-                            WalletId = wallet.Id,
-                            WalletName = wallet.Name,
-                            AmountSats = sweepedFundsAmount,
-                            TxId = sendManyResponse.Txid,
-                            ReturnAddress = returningAddress.Address.ToString()
-                        });
-
-                    //TODO We need to store the txid somewhere to monitor it..
+                        _logger.LogError("Error while funding sweep transaction reason: {Reason}", reason);
+                    } else
+                    {
+                        reason = GetReasonFailureWarningSweeping(utxos, requiredAnchorChannelClosingAmount, totalSatsAvailable);
+                        _logger.LogWarning("Cannot sweep transaction reason: {Reason}", reason);
+                    }
+                    return;              
                 }
-                else
+
+
+                // We need to maintain onchain balance to be at least RequiredAnchorChannelClosingAmount but also we apply a 10% buffer to pay for this sweep fees and let some more money on the wallet
+                var sweepedFundsAmount = (long)((totalSatsAvailable - requiredAnchorChannelClosingAmount) * 0.9); 
+                var sendManyResponse = await lightningClient.SendManyAsync(new SendManyRequest()
                 {
-                    var reason = returningAddress == null
-                        ? "Returning address not found / null"
-                        :
-                        lndChangeAddress == null
-                            ? "LND returning address not found / null"
-                            :
-                            !utxos.Any()
-                                ? "No UTXOs found to fund the sweep tx"
-                                :
-                                totalSatsAvailable <= requiredAnchorChannelClosingAmount
-                                    ?
-                                    "Total sats available is less than the required to have for channel closing amounts, ignoring tx" : string.Empty;
+                    AddrToAmount =
+                        {
+                            {returningAddress.Address.ToString(), sweepedFundsAmount}, //Sweeped funds
+                        },
+                    MinConfs = 6,
+                    Label = $"Hot wallet Sweep tx on {DateTime.UtcNow.ToString("O")} to walletId:{wallet.Id}",
+                    SpendUnconfirmed = false,
+                    TargetConf = Constants.SWEEP_CONF_TARGET
+                },
+                    new Metadata
+                    {
+                        {
+                            "macaroon", node.ChannelAdminMacaroon
+                        }
+                    });
 
-                    _logger.LogError("Error while funding sweep transaction reason: {Reason}", reason);
-                }
+                _logger.LogInformation("Utxos swept out for nodeId: {NodeId} on txid: {TxId} with returnAddress: {Address}",
+                    node.Id,
+                    sendManyResponse.Txid,
+                    returningAddress.Address);
+
+                // Audit successful wallet sweep
+                await _auditService.LogSystemAsync(
+                    AuditActionType.WalletSweep,
+                    AuditEventType.Success,
+                    AuditObjectType.Wallet,
+                    wallet.Id.ToString(),
+                    new
+                    {
+                        NodeId = node.Id,
+                        NodeName = node.Name,
+                        WalletId = wallet.Id,
+                        WalletName = wallet.Name,
+                        AmountSats = sweepedFundsAmount,
+                        TxId = sendManyResponse.Txid,
+                        ReturnAddress = returningAddress.Address.ToString()
+                    });
+
+                //TODO We need to store the txid somewhere to monitor it..
             }
         }
 
@@ -265,5 +263,35 @@ public class SweepNodeWalletsJob : IJob
             }
         }
         _logger.LogInformation("{JobName} ended on node: {NodeName}", nameof(SweepNodeWalletsJob), node.Name);
+    }
+
+    private static string GetReasonFailureErrorSweeping(
+        NBXplorer.Models.KeyPathInformation? returningAddress, NewAddressResponse? lndChangeAddress
+    )
+    {
+        if (returningAddress == null)
+        {
+            return "Returning address not found / null";
+        }
+        else if (lndChangeAddress == null)
+        {
+            return "LND returning address not found / null";
+        }
+
+        return string.Empty;
+    }
+    private static string GetReasonFailureWarningSweeping(
+        List<Utxo> utxos, long requiredAnchorChannelClosingAmount, long totalSatsAvailable)
+    {
+        if (!utxos.Any())
+        {
+            return "No UTXOs found to fund the sweep tx";
+        }
+        else if (totalSatsAvailable <= requiredAnchorChannelClosingAmount)
+        {
+            return "Total sats available is less than the required to have for channel closing amounts, ignoring tx";
+        }
+
+        return "Total sats available is below threshold for sweep transaction, ignoring tx";
     }
 }
