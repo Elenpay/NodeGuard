@@ -87,6 +87,15 @@ public class ChannelMonitorJob : IJob
                 // Recover Operations on channels
                 await RecoverGhostChannels(node1, node2, channel);
                 await RecoverChannelInConfirmationPendingStatus(node1);
+
+                try
+                {
+                    await _lightningService.SyncChannelMaxHtlc(node1, channel);
+                }
+                catch (Exception e)
+                {
+                    _logger.LogError(e, "Error while syncing max htlc for channel {ChanId} of node {NodeId}", channel.ChanId, node1.Id);
+                }
             }
         }
         catch (Exception e)
@@ -124,7 +133,7 @@ public class ChannelMonitorJob : IJob
             return;
         }
 
-        if (remoteNode.Name == nodeInfo.Alias) return;   
+        if (remoteNode.Name == nodeInfo.Alias) return;
         remoteNode.Name = nodeInfo.Alias;
         var (updated, error) = _nodeRepository.Update(remoteNode);
         if (!updated)
@@ -140,7 +149,7 @@ public class ChannelMonitorJob : IJob
         try
         {
             await using var dbContext = await _dbContextFactory.CreateDbContextAsync();
-            
+
             var channelPoint = channel.ChannelPoint.Split(":");
             var fundingTx = channelPoint[0];
             var outputIndex = Convert.ToUInt32(channelPoint[1]);
@@ -150,7 +159,8 @@ public class ChannelMonitorJob : IJob
 
             var parsedChannelPoint = new ChannelPoint
             {
-                FundingTxidStr = fundingTx, FundingTxidBytes = ByteString.CopyFrom(Convert.FromHexString(fundingTx).Reverse().ToArray()),
+                FundingTxidStr = fundingTx,
+                FundingTxidBytes = ByteString.CopyFrom(Convert.FromHexString(fundingTx).Reverse().ToArray()),
                 OutputIndex = outputIndex
             };
 

@@ -43,6 +43,22 @@ using OutPoint = NBitcoin.OutPoint;
 namespace NodeGuard.Services
 {
     /// <summary>
+    /// Outcome of a <see cref="ILightningService.SyncChannelMaxHtlc"/> call. A failed write is an
+    /// exception rather than a value here: <see cref="Skipped"/> means we decided not to act.
+    /// </summary>
+    public enum MaxHtlcSyncResult
+    {
+        /// <summary>The channel already advertises the target max_htlc_msat — no RPC was made.</summary>
+        NoOp = 0,
+
+        /// <summary>The channel's max_htlc_msat was written to LND.</summary>
+        Updated = 1,
+
+        /// <summary>The target could not be resolved or the channel is not one we act on.</summary>
+        Skipped = 2,
+    }
+
+    /// <summary>
     /// Service to interact with LND
     /// </summary>
     public interface ILightningService
@@ -209,6 +225,15 @@ namespace NodeGuard.Services
         /// <param name="nodePubKey"></param>
         /// <returns></returns>
         public Task<(RoutingPolicy?, RoutingPolicy?)> GetChannelFeePolicy(ulong chanId, Node node);
+
+        /// <summary>
+        /// Reconciles the max_htlc_msat that <paramref name="node"/> advertises on
+        /// <paramref name="lndChannel"/> with <see cref="Constants.MAX_HTLC_CAPACITY_RATIO"/> of the
+        /// channel's capacity, writing to LND only when the advertised value differs.
+        /// </summary>
+        /// <param name="node">The managed node whose side of the channel is updated.</param>
+        /// <param name="lndChannel">The channel as reported by LND — the authority on capacity and chan id.</param>
+        public Task<MaxHtlcSyncResult> SyncChannelMaxHtlc(Node node, Lnrpc.Channel lndChannel);
     }
 
     public class LightningService : ILightningService
@@ -1893,6 +1918,127 @@ namespace NodeGuard.Services
 
             return (managedNodePolicy, counterpartyNodePolicy);
 
+        }
+
+        public async Task<MaxHtlcSyncResult> SyncChannelMaxHtlc(Node node, Lnrpc.Channel lndChannel)
+        {
+            ArgumentNullException.ThrowIfNull(node);
+            ArgumentNullException.ThrowIfNull(lndChannel);
+
+            if (!node.IsManaged || string.IsNullOrWhiteSpace(node.ChannelAdminMacaroon))
+            {
+                _logger.LogWarning("Skipping max htlc sync for channel {ChanId}: node {NodeName} is not managed with channel admin access",
+                    lndChannel.ChanId, node.Name);
+                return MaxHtlcSyncResult.Skipped;
+            }
+
+            if (!OutPoint.TryParse(lndChannel.ChannelPoint, out var outPoint))
+            {
+                _logger.LogWarning("Skipping max htlc sync for channel {ChanId} on {NodeName}: invalid chanPoint {ChanPoint}",
+                    lndChannel.ChanId, node.Name, lndChannel.ChannelPoint);
+                return MaxHtlcSyncResult.Skipped;
+            }
+
+            RoutingPolicy? managedPolicy;
+            try
+            {
+                (managedPolicy, _) = await GetChannelFeePolicy(lndChannel.ChanId, node);
+            }
+            catch (Exception e)
+            {
+                // A channel with no graph edge yet (freshly confirmed, or unannounced) throws here.
+                // The next monitor pass retries it.
+                _logger.LogWarning(e, "Skipping max htlc sync for channel {ChanId} on {NodeName}: current policy unavailable",
+                    lndChannel.ChanId, node.Name);
+                return MaxHtlcSyncResult.Skipped;
+            }
+
+            if (managedPolicy == null)
+            {
+                _logger.LogWarning("Skipping max htlc sync for channel {ChanId} on {NodeName}: no policy for the managed side",
+                    lndChannel.ChanId, node.Name);
+                return MaxHtlcSyncResult.Skipped;
+            }
+
+            var capacityMsat = (ulong)lndChannel.Capacity * 1_000;
+            var minHtlcMsat = (ulong)Math.Max(managedPolicy.MinHtlc, 0);
+
+            if (capacityMsat == 0 || minHtlcMsat > capacityMsat)
+            {
+                _logger.LogWarning("Skipping max htlc sync for channel {ChanId} on {NodeName}: no valid target between min_htlc {MinHtlcMsat} msat and capacity {CapacityMsat} msat",
+                    lndChannel.ChanId, node.Name, minHtlcMsat, capacityMsat);
+                return MaxHtlcSyncResult.Skipped;
+            }
+
+            var desiredMaxHtlcMsat = Math.Clamp(
+                (ulong)(capacityMsat * Constants.MAX_HTLC_CAPACITY_RATIO),
+                minHtlcMsat,
+                capacityMsat);
+
+            if (managedPolicy.MaxHtlcMsat == desiredMaxHtlcMsat)
+            {
+                _logger.LogDebug("Channel {ChanId} on {NodeName} already advertises max htlc {MaxHtlcMsat} msat",
+                    lndChannel.ChanId, node.Name, desiredMaxHtlcMsat);
+                return MaxHtlcSyncResult.NoOp;
+            }
+
+            // Only channels NodeGuard tracks are acted on, so the write is always auditable against a
+            // channel row.
+            var channel = await _channelRepository.GetByOutpoint(outPoint);
+            if (channel == null)
+            {
+                _logger.LogWarning("Skipping max htlc sync for channel {ChanId} on {NodeName}: no channel found for chanPoint {ChanPoint}",
+                    lndChannel.ChanId, node.Name, lndChannel.ChannelPoint);
+                return MaxHtlcSyncResult.Skipped;
+            }
+
+            // The fee fields are not being changed, but LND requires them to be echoed back in a policy update.
+            // Except the inbound fees, which are omitted to retain the current inbound policy.
+            var response = await _lightningClientService.SetChannelFeePolicy(
+                node,
+                outPoint,
+                managedPolicy.FeeBaseMsat,
+                (uint)Math.Clamp(managedPolicy.FeeRateMilliMsat, 0, uint.MaxValue),
+                managedPolicy.TimeLockDelta,
+                inboundBaseFeeMsat: null,
+                inboundFeeRatePpm: null,
+                maxHtlcMsat: desiredMaxHtlcMsat);
+
+            if (response?.FailedUpdates != null && response.FailedUpdates.Count > 0)
+            {
+                _logger.LogError("Failed to update max htlc for channel: {ChanPoint}", lndChannel.ChannelPoint);
+                throw new Exception($"Failed to update max htlc for channel: {lndChannel.ChannelPoint}");
+            }
+
+            _logger.LogInformation("{NodeName} chan {ChanId}: set max htlc {PreviousMaxHtlcMsat}->{MaxHtlcMsat} msat (capacity {CapacityMsat} msat, ratio {Ratio})",
+                node.Name, lndChannel.ChanId, managedPolicy.MaxHtlcMsat, desiredMaxHtlcMsat, capacityMsat, Constants.MAX_HTLC_CAPACITY_RATIO);
+
+            try
+            {
+                await _auditService.LogSystemAsync(
+                    AuditActionType.Update,
+                    AuditEventType.Success,
+                    AuditObjectType.Channel,
+                    channel.Id.ToString(),
+                    new
+                    {
+                        ChanPoint = lndChannel.ChannelPoint,
+                        ChannelId = channel.Id,
+                        lndChannel.ChanId,
+                        NodeId = node.Id,
+                        NodePubKey = node.PubKey,
+                        PreviousMaxHtlcMsat = managedPolicy.MaxHtlcMsat,
+                        MaxHtlcMsat = desiredMaxHtlcMsat,
+                        CapacityMsat = capacityMsat,
+                        CapacityRatio = Constants.MAX_HTLC_CAPACITY_RATIO
+                    });
+            }
+            catch (Exception e)
+            {
+                _logger.LogError(e, "Error while saving max htlc audit log for chanPoint: {ChanPoint}", lndChannel.ChannelPoint);
+            }
+
+            return MaxHtlcSyncResult.Updated;
         }
     }
 }

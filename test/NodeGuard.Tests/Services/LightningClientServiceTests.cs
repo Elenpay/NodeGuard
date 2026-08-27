@@ -99,7 +99,7 @@ public class LightningClientServiceTests
             timeLockDelta: 40,
             inboundBaseFeeMsat: -100,
             inboundFeeRatePpm: -25,
-            lightningClient.Object);
+            client: lightningClient.Object);
 
         // Assert
         response.Should().NotBeNull();
@@ -152,7 +152,7 @@ public class LightningClientServiceTests
             timeLockDelta: 40,
             inboundBaseFeeMsat: null,
             inboundFeeRatePpm: null,
-            lightningClient.Object);
+            client: lightningClient.Object);
 
         // Assert
         capturedRequest.Should().NotBeNull();
