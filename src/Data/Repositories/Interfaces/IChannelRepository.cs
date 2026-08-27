@@ -32,8 +32,6 @@ public interface IChannelRepository
 
     Task<List<Channel>> GetOpenChannels();
 
-    Task <List<Channel>> GetChannelsByOpenAndDynamicFeeEnabled();
-
     Task<(bool, string?)> AddAsync(Channel type);
 
     Task<(bool, string?)> AddRangeAsync(List<Channel> type);
