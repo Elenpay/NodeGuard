@@ -201,14 +201,12 @@ namespace NodeGuard.Services
         /// a specific channel. If the peer has multiple channels with us, the first one
         /// returned by ListChannels is used as a representative.
         /// </summary>
-        Task<long?> GetLocalOutboundFeeRatePpmByPeerAsync
-        (Node node, string peerPubkey);
+        Task<long?> GetLocalOutboundFeeRatePpmByPeerAsync(Node node, string peerPubkey);
 
         /// <summary>
-        /// Returns the local-outbound fee rate (ppm) of a specific channel — the per-channel
-        /// variant of <see cref="GetLocalOutboundFeeRatePpmByPeerAsync"/>. Used by the
-        /// auto-rebalancer to pick the cheapest source to drain and to weight a destination
-        /// peer's earn rate for the profitability gate.
+        /// Returns the local-outbound fee rate (ppm) of a specific channel, read from the gossip
+        /// graph via GetChanInfo. Backs <see cref="GetLocalOutboundFeeRatePpmByPeerAsync"/>, its only
+        /// caller.
         /// </summary>
         Task<long?> GetLocalOutboundFeeRatePpmAsync(Node node, ulong chanId);
 

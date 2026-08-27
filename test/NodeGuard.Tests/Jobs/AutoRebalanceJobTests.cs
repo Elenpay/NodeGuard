@@ -23,6 +23,7 @@ using NodeGuard.Data.Repositories.Interfaces;
 using NodeGuard.Helpers;
 using NodeGuard.Services;
 using NodeGuard.Tests.Helpers;
+using NodeGuard.Tests.Jobs;
 using Quartz;
 using Channel = NodeGuard.Data.Models.Channel;
 
@@ -44,6 +45,7 @@ public class AutoRebalanceJobTests
     private readonly Mock<IRebalanceService> _rebalanceService = new();
     private readonly Mock<ILightningService> _lightningService = new();
     private readonly Mock<ILightningClientService> _lightningClientService = new();
+    private readonly Mock<IAuditService> _auditService = new();
 
     // The real snapshot service over the mocked repos/LND, so these tests still cover the
     // open-channel + routing-state filtering that feeds the job.
@@ -53,6 +55,26 @@ public class AutoRebalanceJobTests
             _feeStateRepository.Object,
             _lightningClientService.Object);
 
+    /// <summary>A NodeGuard channel row the rebalancer will consider, opted in or not.</summary>
+    private static Channel Db(int id, ulong chanId, bool optIn) => new()
+    {
+        Id = id, ChanId = chanId, Status = Channel.ChannelStatus.Open,
+        IsAutoRebalanceEnabled = optIn,
+        FundingTx = $"tx{id}", FundingTxOutputIndex = 0,
+    };
+
+    /// <summary>The matching LND channel, with the balances that drive sizing.</summary>
+    private static Lnrpc.Channel Lnd(ulong chanId, long local, long remote, string peer) => new()
+    {
+        ChanId = chanId, Capacity = 20_000_000, LocalBalance = local, RemoteBalance = remote,
+        Active = true, Initiator = true, RemotePubkey = peer,
+    };
+
+    /// <summary>
+    /// A scope factory whose scope hands back <see cref="_rebalanceService"/>, mirroring how the job
+    /// resolves a fresh IRebalanceService per dispatch so the payment doesn't run on the job's own
+    /// (soon-disposed) scope.
+    /// </summary>
     private AutoRebalanceJob BuildJob() =>
         new(
             _logger.Object,
@@ -61,21 +83,9 @@ public class AutoRebalanceJobTests
             _rebalanceRepository.Object,
             _rebalanceService.Object,
             BuildSnapshotService(),
-            _lightningService.Object);
+            _lightningService.Object,
+            _auditService.Object);
 
-    private static async Task WithEngine(bool enabled, Func<Task> body)
-    {
-        var prevEnabled = Constants.ROUTING_ENGINE_ENABLED;
-        Constants.ROUTING_ENGINE_ENABLED = enabled;
-        try
-        {
-            await body();
-        }
-        finally
-        {
-            Constants.ROUTING_ENGINE_ENABLED = prevEnabled;
-        }
-    }
 
 
     /// <summary>
@@ -150,7 +160,7 @@ public class AutoRebalanceJobTests
     {
         ArrangeRebalancePair(sourceOptedIn: true);
 
-        await WithEngine(enabled: true, async () =>
+        await RoutingEngineSwitch.WithEngine(enabled: true, async () =>
         {
             await BuildJob().Execute(Mock.Of<IJobExecutionContext>());
         });
@@ -164,27 +174,34 @@ public class AutoRebalanceJobTests
     }
 
     [Fact]
-    public async Task Execute_DoesNotWaitForTheRebalanceToSettle()
+    public async Task Execute_AwaitsEachPayment_BeforeDispatchingTheNext()
     {
-        ArrangeRebalancePair(sourceOptedIn: true);
+        ArrangeTwoRebalancePairs(maxRebalancesInFlight: 5);
 
-        // A payment that never resolves. Dispatch is fire-and-forget, so the run has to finish
-        // anyway; if it were awaited this would block until the test timed out.
-        var neverSettles = new TaskCompletionSource<Rebalance>();
+        // Two payments we control. Everything else the job awaits is mocked with completed tasks, so
+        // Execute runs straight through and hands the task back only once it is parked on the first
+        // payment — which is what makes the assertions below deterministic rather than timing-based.
+        var first = new TaskCompletionSource<Rebalance>();
+        var second = new TaskCompletionSource<Rebalance>();
+        var started = 0;
         _rebalanceService.Setup(x => x.RebalanceAsync(It.IsAny<RebalanceRequest>(), It.IsAny<CancellationToken>()))
-            .Returns(neverSettles.Task);
+            .Returns(() => Interlocked.Increment(ref started) == 1 ? first.Task : second.Task);
 
-        await WithEngine(enabled: true, async () =>
+        await RoutingEngineSwitch.WithEngine(enabled: true, async () =>
         {
             var run = BuildJob().Execute(Mock.Of<IJobExecutionContext>());
-            var first = await Task.WhenAny(run, Task.Delay(TimeSpan.FromSeconds(5)));
-            Assert.Same(run, first); // the run must not block on the payment
-            await run;
-        });
 
-        _rebalanceService.Verify(x => x.RebalanceAsync(
-            It.IsAny<RebalanceRequest>(), It.IsAny<CancellationToken>()), Times.Once);
-        Assert.False(neverSettles.Task.IsCompleted); // the payment is still outstanding
+            // Detached dispatch would have finished the run; concurrent dispatch would have started
+            // both payments. Being parked after exactly one is what "awaits each" means.
+            Assert.False(run.IsCompleted);
+            Assert.Equal(1, started);
+
+            first.SetResult(new Rebalance());
+            second.SetResult(new Rebalance());
+
+            await run;
+            Assert.Equal(2, started);
+        });
     }
 
     [Fact]
@@ -192,7 +209,7 @@ public class AutoRebalanceJobTests
     {
         ArrangeRebalancePair(sourceOptedIn: true);
 
-        await WithEngine(enabled: false, async () =>
+        await RoutingEngineSwitch.WithEngine(enabled: false, async () =>
         {
             await BuildJob().Execute(Mock.Of<IJobExecutionContext>());
         });
@@ -210,7 +227,7 @@ public class AutoRebalanceJobTests
         // swap flag must not be drained.
         ArrangeRebalancePair(sourceOptedIn: false, sourceLiquidityFlag: true);
 
-        await WithEngine(enabled: true, async () =>
+        await RoutingEngineSwitch.WithEngine(enabled: true, async () =>
         {
             await BuildJob().Execute(Mock.Of<IJobExecutionContext>());
         });
@@ -224,7 +241,7 @@ public class AutoRebalanceJobTests
     /// on a node pinned to one in-flight rebalance so the second plan is dropped. Pairing is
     /// first-fit in classification order, so chan 1001 pairs with peerD1 and chan 1003 with peerD2.
     /// </summary>
-    private void ArrangeTwoRebalancePairs()
+    private void ArrangeTwoRebalancePairs(int maxRebalancesInFlight = 1)
     {
         var node = new Node
         {
@@ -236,18 +253,12 @@ public class AutoRebalanceJobTests
             AutoRebalanceEnabled = true,
             RebalanceBudgetSats = 1_000_000,
             MaxRebalanceCostToEarnRatio = 0.5,
-            // Pinned, not inherited: this test asserts the drop path, so the cap has to be 1 here
-            // regardless of what ROUTING_ENGINE_REBALANCE_DEFAULT_MAX_IN_FLIGHT is set to.
-            MaxRebalancesInFlight = 1,
+            // Pinned, not inherited, so the cap tests don't depend on
+            // ROUTING_ENGINE_REBALANCE_DEFAULT_MAX_IN_FLIGHT.
+            MaxRebalancesInFlight = maxRebalancesInFlight,
         };
         _nodeRepository.Setup(x => x.GetAllManagedByNodeGuard(false)).ReturnsAsync(new List<Node> { node });
 
-        Channel Db(int id, ulong chanId, bool optIn) => new()
-        {
-            Id = id, ChanId = chanId, Status = Channel.ChannelStatus.Open,
-            IsAutoRebalanceEnabled = optIn,
-            FundingTx = $"tx{id}", FundingTxOutputIndex = 0,
-        };
 
         _channelRepository.Setup(x => x.GetOpenChannels()).ReturnsAsync(new List<Channel>
         {
@@ -270,11 +281,6 @@ public class AutoRebalanceJobTests
         _rebalanceRepository.Setup(x => x.GetConsumedFeesSince(node.Id, It.IsAny<DateTimeOffset>())).ReturnsAsync(0L);
         _rebalanceRepository.Setup(x => x.GetInFlightByNode(node.Id)).ReturnsAsync(0);
 
-        Lnrpc.Channel Lnd(ulong chanId, long local, long remote, string peer) => new()
-        {
-            ChanId = chanId, Capacity = 20_000_000, LocalBalance = local, RemoteBalance = remote,
-            Active = true, Initiator = true, RemotePubkey = peer,
-        };
 
         _lightningClientService
             .Setup(x => x.ListChannels(It.IsAny<Node>(), It.IsAny<Lnrpc.Lightning.LightningClient>()))
@@ -304,7 +310,7 @@ public class AutoRebalanceJobTests
     {
         ArrangeTwoRebalancePairs();
 
-        await WithEngine(enabled: true, async () =>
+        await RoutingEngineSwitch.WithEngine(enabled: true, async () =>
         {
             await BuildJob().Execute(Mock.Of<IJobExecutionContext>());
         });
@@ -341,9 +347,6 @@ public class AutoRebalanceJobTests
     [Fact]
     public async Task Execute_PricesEveryChannelInOneRoundTrip()
     {
-        // Each GetChanInfo is an LND round-trip, so only channels whose rate drives a decision are
-        // priced. Chan 1003 is a fallback source (live local 0.70 but ema 0.60, so it never tripped
-        // the +0.15 trigger) and fallback sources are chosen by balance, never by cost.
         var node = new Node
         {
             Id = 20,
@@ -356,11 +359,6 @@ public class AutoRebalanceJobTests
         };
         _nodeRepository.Setup(x => x.GetAllManagedByNodeGuard(false)).ReturnsAsync(new List<Node> { node });
 
-        Channel Db(int id, ulong chanId, bool optIn) => new()
-        {
-            Id = id, ChanId = chanId, Status = Channel.ChannelStatus.Open,
-            IsAutoRebalanceEnabled = optIn, FundingTx = $"tx{id}", FundingTxOutputIndex = 0,
-        };
         _channelRepository.Setup(x => x.GetOpenChannels()).ReturnsAsync(new List<Channel>
         {
             Db(101, 1001, optIn: true),   // detected source
@@ -396,7 +394,7 @@ public class AutoRebalanceJobTests
         _rebalanceService.Setup(x => x.RebalanceAsync(It.IsAny<RebalanceRequest>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(new Rebalance());
 
-        await WithEngine(enabled: true, async () =>
+        await RoutingEngineSwitch.WithEngine(enabled: true, async () =>
         {
             await BuildJob().Execute(Mock.Of<IJobExecutionContext>());
         });
@@ -418,7 +416,7 @@ public class AutoRebalanceJobTests
         _lightningService.Setup(x => x.GetLocalOutboundFeeRatesPpmAsync(It.IsAny<Node>()))
             .ReturnsAsync((Dictionary<ulong, long>?)null);
 
-        await WithEngine(enabled: true, async () =>
+        await RoutingEngineSwitch.WithEngine(enabled: true, async () =>
         {
             await BuildJob().Execute(Mock.Of<IJobExecutionContext>());
         });

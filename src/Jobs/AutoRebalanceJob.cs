@@ -46,6 +46,7 @@ public class AutoRebalanceJob : IJob
     private readonly IRebalanceService _rebalanceService;
     private readonly IRoutingEngineSnapshotService _snapshotService;
     private readonly ILightningService _lightningService;
+    private readonly IAuditService _auditService;
 
     public AutoRebalanceJob(
         ILogger<AutoRebalanceJob> logger,
@@ -54,7 +55,8 @@ public class AutoRebalanceJob : IJob
         IRebalanceRepository rebalanceRepository,
         IRebalanceService rebalanceService,
         IRoutingEngineSnapshotService snapshotService,
-        ILightningService lightningService)
+        ILightningService lightningService,
+        IAuditService auditService)
     {
         _logger = logger;
         _nodeRepository = nodeRepository;
@@ -63,6 +65,7 @@ public class AutoRebalanceJob : IJob
         _rebalanceService = rebalanceService;
         _snapshotService = snapshotService;
         _lightningService = lightningService;
+        _auditService = auditService;
     }
 
     public async Task Execute(IJobExecutionContext context)
@@ -173,7 +176,6 @@ public class AutoRebalanceJob : IJob
             oc.DbChannel.Id,
             oc.Lnd.ChanId,
             oc.Lnd.RemotePubkey,
-            oc.Lnd.Capacity,
             oc.Lnd.LocalBalance,
             oc.Lnd.RemoteBalance,
             oc.RoutingState.EmaLocalRatio,
@@ -183,7 +185,7 @@ public class AutoRebalanceJob : IJob
             oc.DbChannel.IsAutoRebalanceEnabled && !inFlightSourceChannelIds.Contains(oc.DbChannel.Id)))
             .ToList();
 
-        var tunables = BuildRebalanceTunables(node);
+        var tunables = RebalanceInitiatorTunables.FromConstants(node);
         var classification = RebalanceInitiatorService.Classify(signals, tunables);
 
         if (classification.Sources.Count == 0 && classification.Destinations.Count == 0)
@@ -198,7 +200,7 @@ public class AutoRebalanceJob : IJob
             node.Name, classification.Sources.Count, classification.Destinations.Count,
             classification.FallbackSources.Count, classification.FallbackDestinations.Count);
 
-        var earnRates = await FetchEarnRatesAsync(node, owned);
+        var earnRates = await _lightningService.GetLocalOutboundFeeRatesPpmAsync(node);
         if (earnRates == null)
         {
             _logger.LogWarning("Skipping node {NodeName}: FeeReport unavailable, so nothing can be profit-gated",
@@ -214,24 +216,25 @@ public class AutoRebalanceJob : IJob
         }
 
         var initiations = 0;
-        var planIndex = 0;
-        string? capStopReason = null;
 
-        for (; planIndex < plans.Count; planIndex++)
+        for (var i = 0; i < plans.Count; i++)
         {
-            var plan = plans[planIndex];
+            var plan = plans[i];
 
-            if (initiations >= tunables.MaxInitiations)
-            {
-                capStopReason = $"per-run initiation cap reached ({initiations}/{tunables.MaxInitiations})";
-                break;
-            }
-
+            // The cap stops the loop outright, so every remaining plan is abandoned
             if (inFlight + initiations >= maxInFlight)
             {
-                capStopReason =
-                    $"in-flight cap reached ({inFlight + initiations}/{maxInFlight}, {inFlight} already in flight " +
-                    "before this run; raise the node's MaxRebalancesInFlight to dispatch more per cycle)";
+                _logger.LogInformation(
+                    "Node {NodeName}: dropped {DroppedCount} of {PlannedCount} planned rebalance(s) — " +
+                    "in-flight cap reached ({Reached}/{Max}, {Before} already in flight before this run; " +
+                    "raise the node's MaxRebalancesInFlight to dispatch more per cycle)",
+                    node.Name, plans.Count - i, plans.Count, inFlight + initiations, maxInFlight, inFlight);
+
+                for (var dropped = i; dropped < plans.Count; dropped++)
+                {
+                    _logger.LogInformation("Node {NodeName}: dropped plan — {Reason}", node.Name, plans[dropped].Reason);
+                }
+
                 break;
             }
 
@@ -264,9 +267,30 @@ public class AutoRebalanceJob : IJob
                     // Keep retries within the profitable ceiling
                     RetryMaxFeePct: plan.MaxFeePct);
 
-                // Fire-and-forget, and deliberately not tracked: RebalanceService logs and audits
-                // the whole lifecycle itself and MonitorRebalancesJob reconciles anything this process abandons
-                _ = _rebalanceService.RebalanceAsync(request, CancellationToken.None);
+                await _rebalanceService.RebalanceAsync(request, CancellationToken.None);
+
+                // Audit the performed rebalance
+                await _auditService.LogSystemAsync(
+                    AuditActionType.RebalanceInitiated,
+                    AuditEventType.Attempt,
+                    AuditObjectType.Rebalance,
+                    plan.SourceChannelId.ToString(),
+                    new
+                    {
+                        NodeName = node.Name,
+                        NodeId = node.Id,
+                        NodePubKey = node.PubKey,
+                        SourceChannelId = plan.SourceChannelId,
+                        TargetPubkey = plan.DestinationPeerPubKey,
+                        AmountSats = plan.AmountSats,
+                        MaxFeePct = plan.MaxFeePct,
+                        ReservedFeeSats = reservedFee,
+                        BudgetRemainingSats = remainingBudget - reservedFee,
+                        BudgetTotalSats = budgetSats,
+                        InFlightCount = inFlight + initiations + 1,
+                        MaxInFlightCount = maxInFlight,
+                        Reason = plan.Reason
+                    });
 
                 remainingBudget -= reservedFee;
                 initiations++;
@@ -278,53 +302,8 @@ public class AutoRebalanceJob : IJob
             }
         }
 
-        // A cap stops the loop outright, so every remaining plan is abandoned
-        if (capStopReason != null)
-        {
-            var dropped = plans.Count - planIndex;
-            _logger.LogInformation(
-                "Node {NodeName}: dropped {DroppedCount} of {PlannedCount} planned rebalance(s) — {CapStopReason}",
-                node.Name, dropped, plans.Count, capStopReason);
-
-            for (var i = planIndex; i < plans.Count; i++)
-            {
-                _logger.LogInformation("Node {NodeName}: dropped plan — {Reason}", node.Name, plans[i].Reason);
-            }
-        }
-
         _logger.LogInformation(
             "Node {NodeName}: initiated {Count} of {PlannedCount} planned rebalance(s), remaining budget {Remaining}/{Budget} sats",
             node.Name, initiations, plans.Count, remainingBudget, budgetSats);
-    }
-
-    private static RebalanceInitiatorTunables BuildRebalanceTunables(Node node) => new(
-        RebalanceTrigger: Constants.ROUTING_ENGINE_REBALANCE_DEADBAND,
-        MinAmountSats: Constants.REBALANCE_MIN_AMOUNT_SATS,
-        MaxAmountSats: Constants.ROUTING_ENGINE_REBALANCE_MAX_AMOUNT_SATS,
-        CostToEarnRatio: node.MaxRebalanceCostToEarnRatio ?? Constants.ROUTING_ENGINE_REBALANCE_DEFAULT_COST_TO_EARN_RATIO,
-        MaxInitiations: Constants.ROUTING_ENGINE_REBALANCE_MAX_INITIATIONS_PER_RUN);
-
-    /// <summary>
-    /// Maps our channel id → live local-outbound ppm for every channel in the snapshot, from a single
-    /// FeeReport.
-    /// </summary>
-    private async Task<Dictionary<int, long>?> FetchEarnRatesAsync(Node node, IReadOnlyList<OwnedChannel> owned)
-    {
-        var ppmByChanId = await _lightningService.GetLocalOutboundFeeRatesPpmAsync(node);
-        if (ppmByChanId == null) return null;
-
-        var earnRates = new Dictionary<int, long>();
-        foreach (var oc in owned)
-        {
-            if (ppmByChanId.TryGetValue(oc.Lnd.ChanId, out var ppm))
-            {
-                earnRates[oc.DbChannel.Id] = ppm;
-            }
-        }
-
-        _logger.LogDebug("Node {NodeName}: priced {Priced} of {Total} channel(s) from FeeReport",
-            node.Name, earnRates.Count, owned.Count);
-
-        return earnRates;
     }
 }

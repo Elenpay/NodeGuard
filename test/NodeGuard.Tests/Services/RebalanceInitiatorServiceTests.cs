@@ -33,7 +33,7 @@ public class RebalanceInitiatorServiceTests
     private static ChannelSignal Chan(
         int id, string peer, long local, long remote,
         double ema, double target, bool active = true, bool optIn = true)
-        => new(id, (ulong)id, peer, local + remote, local, remote, ema, target, active, optIn);
+        => new(id, (ulong)id, peer, local, remote, ema, target, active, optIn);
 
     // ── Classify: sources ───────────────────────────────────────────────────────────────
 
@@ -137,7 +137,7 @@ public class RebalanceInitiatorServiceTests
             Chan(1, "dear", 800_000, 200_000, 0.80, 0.50),
             Chan(2, "cheap", 800_000, 200_000, 0.80, 0.50),
             Chan(3, "dest", 200_000, 800_000, 0.20, 0.50));
-        var earn = new Dictionary<int, long> { [1] = 2000, [2] = 50, [3] = 2500 };
+        var earn = new Dictionary<ulong, long> { [1] = 2000, [2] = 50, [3] = 2500 };
 
         var plans = RebalanceInitiatorService.BuildPlans(classification, earn, Tunables);
 
@@ -152,7 +152,7 @@ public class RebalanceInitiatorServiceTests
         var classification = Classify(
             Chan(1, "cheap", 800_000, 200_000, 0.80, 0.50),
             Chan(3, "dest", 200_000, 800_000, 0.20, 0.50));
-        var earn = new Dictionary<int, long> { [1] = 50, [3] = 2500 };
+        var earn = new Dictionary<ulong, long> { [1] = 50, [3] = 2500 };
 
         var plans = RebalanceInitiatorService.BuildPlans(classification, earn, Tunables);
 
@@ -167,7 +167,7 @@ public class RebalanceInitiatorServiceTests
         var classification = Classify(
             Chan(1, "cheap", 800_000, 200_000, 0.80, 0.50),
             Chan(3, "dest", 200_000, 800_000, 0.20, 0.50));
-        var earn = new Dictionary<int, long> { [1] = 50, [3] = 0 }; // dest earns nothing
+        var earn = new Dictionary<ulong, long> { [1] = 50, [3] = 0 }; // dest earns nothing
 
         RebalanceInitiatorService.BuildPlans(classification, earn, Tunables).Should().BeEmpty();
     }
@@ -178,7 +178,7 @@ public class RebalanceInitiatorServiceTests
         var classification = Classify(
             Chan(1, "cheap", 800_000, 200_000, 0.80, 0.50),
             Chan(3, "dest", 200_000, 800_000, 0.20, 0.50));
-        var earn = new Dictionary<int, long> { [1] = 50 }; // no entry for the dest channel
+        var earn = new Dictionary<ulong, long> { [1] = 50 }; // no entry for the dest channel
 
         RebalanceInitiatorService.BuildPlans(classification, earn, Tunables).Should().BeEmpty();
     }
@@ -193,7 +193,7 @@ public class RebalanceInitiatorServiceTests
             Chan(1, "A", 800_000, 200_000, 0.80, 0.50),        // source, peer A, excess 300_000
             Chan(2, "A", 50_000, 2_950_000, 0.02, 0.50),       // pulls peer A aggregate too-remote
             Chan(3, "B", 200_000, 800_000, 0.20, 0.50));       // destination, peer B
-        var earn = new Dictionary<int, long> { [1] = 4000, [2] = 4000, [3] = 2500 };
+        var earn = new Dictionary<ulong, long> { [1] = 4000, [2] = 4000, [3] = 2500 };
 
         var plans = RebalanceInitiatorService.BuildPlans(classification, earn, Tunables);
 
@@ -209,7 +209,7 @@ public class RebalanceInitiatorServiceTests
         var classification = Classify(
             Chan(1, "src", 800_000, 200_000, 0.80, 0.50),
             Chan(3, "dest", 100_000, 900_000, 0.10, 0.50));
-        var earn = new Dictionary<int, long> { [1] = 50, [3] = 2500 };
+        var earn = new Dictionary<ulong, long> { [1] = 50, [3] = 2500 };
 
         var plans = RebalanceInitiatorService.BuildPlans(classification, earn, Tunables);
 
@@ -224,27 +224,12 @@ public class RebalanceInitiatorServiceTests
         var classification = Classify(
             Chan(1, "src", 9_000_000, 3_000_000, 0.75, 0.25),   // excess = 9M - 3M = 6M
             Chan(3, "dest", 2_000_000, 18_000_000, 0.10, 0.50)); // deficit = 10M - 2M = 8M
-        var earn = new Dictionary<int, long> { [1] = 50, [3] = 2500 };
+        var earn = new Dictionary<ulong, long> { [1] = 50, [3] = 2500 };
 
         var plans = RebalanceInitiatorService.BuildPlans(classification, earn, Tunables);
 
         plans.Should().ContainSingle();
         plans[0].AmountSats.Should().Be(5_000_000);
-    }
-
-    [Fact]
-    public void BuildPlans_SkipsWhenSourceExcessBelowMin()
-    {
-        // Chan 1 qualifies as a source by the smoothed signal (ema 0.80 → d 0.30) but its LIVE excess
-        // is only 5_000 sats — below the 10_000 min — so it can't feed the depleted destination.
-        var classification = Classify(
-            Chan(1, "src", 505_000, 495_000, 0.80, 0.50),   // source, live excess = 505_000 - 500_000 = 5_000
-            Chan(3, "dest", 100_000, 900_000, 0.10, 0.50));
-        var earn = new Dictionary<int, long> { [1] = 50, [3] = 2500 };
-
-        classification.Sources.Should().ContainSingle();
-        classification.Sources[0].ExcessSats.Should().Be(5_000);
-        RebalanceInitiatorService.BuildPlans(classification, earn, Tunables).Should().BeEmpty();
     }
 
     [Fact]
@@ -255,7 +240,7 @@ public class RebalanceInitiatorServiceTests
             Chan(1, "src", 5_000_000, 1_000_000, 0.83, 0.50),
             Chan(3, "destA", 200_000, 800_000, 0.20, 0.50),
             Chan(4, "destB", 200_000, 800_000, 0.20, 0.50));
-        var earn = new Dictionary<int, long> { [1] = 50, [3] = 2500, [4] = 2400 };
+        var earn = new Dictionary<ulong, long> { [1] = 50, [3] = 2500, [4] = 2400 };
 
         var plans = RebalanceInitiatorService.BuildPlans(classification, earn, Tunables);
 
@@ -272,7 +257,7 @@ public class RebalanceInitiatorServiceTests
             Chan(2, "srcB", 800_000, 200_000, 0.80, 0.50),
             Chan(3, "destA", 200_000, 800_000, 0.20, 0.50),
             Chan(4, "destB", 200_000, 800_000, 0.20, 0.50));
-        var earn = new Dictionary<int, long> { [1] = 50, [2] = 60, [3] = 2500, [4] = 2400 };
+        var earn = new Dictionary<ulong, long> { [1] = 50, [2] = 60, [3] = 2500, [4] = 2400 };
 
         RebalanceInitiatorService.BuildPlans(classification, earn, tunables).Should().ContainSingle();
     }
@@ -286,7 +271,7 @@ public class RebalanceInitiatorServiceTests
             Chan(1, "src", 800_000, 200_000, 0.80, 0.50),
             Chan(3, "dest", 200_000, 800_000, 0.20, 0.50),      // base 1M
             Chan(4, "dest", 600_000, 2_400_000, 0.20, 0.50));   // base 3M
-        var earn = new Dictionary<int, long> { [1] = 50, [3] = 1000, [4] = 3000 };
+        var earn = new Dictionary<ulong, long> { [1] = 50, [3] = 1000, [4] = 3000 };
 
         var plans = RebalanceInitiatorService.BuildPlans(classification, earn, Tunables);
 
@@ -310,13 +295,39 @@ public class RebalanceInitiatorServiceTests
     }
 
     [Fact]
-    public void BuildPlans_SourceWithNoQualifyingDestination_DrainsIntoTheFirstFallbackPeerThatFits()
+    public void Classify_LendableBelowMinAmount_IsNotAFallbackSource()
+    {
+        // Inside the deadband, so not a detected source — and it can only lend down to 0.35
+        // (355_000 - 350_000 = 5_000), below the 10_000 floor, so it isn't worth a hop as a source.
+        var result = Classify(Chan(1, "peerA", local: 355_000, remote: 645_000, ema: 0.355, target: 0.50));
+
+        result.Sources.Should().BeEmpty();
+        result.FallbackSources.Should().BeEmpty("5_000 lendable is below MinAmountSats");
+        // Still a usable counterparty in the other direction: 650_000 - 355_000 = 295_000 to absorb.
+        result.FallbackDestinations.Should().ContainSingle().Which.DeficitSats.Should().Be(295_000);
+    }
+
+    [Fact]
+    public void Classify_AbsorbableBelowMinAmount_IsNotAFallbackDestination()
+    {
+        // Mirror image: inside the deadband, and it can only absorb up to 0.65
+        // (650_000 - 645_000 = 5_000), below the floor.
+        var result = Classify(Chan(1, "peerA", local: 645_000, remote: 355_000, ema: 0.645, target: 0.50));
+
+        result.Destinations.Should().BeEmpty();
+        result.FallbackDestinations.Should().BeEmpty("5_000 absorbable is below MinAmountSats");
+        // Still lendable: 645_000 - 350_000 = 295_000.
+        result.FallbackSources.Should().ContainSingle().Which.ExcessSats.Should().Be(295_000);
+    }
+
+    [Fact]
+    public void BuildPlans_SourceWithNoQualifyingDestination_DrainsIntoTheRoomiestFallbackPeer()
     {
         var classification = Classify(
             Chan(1, "src", 800_000, 200_000, 0.80, 0.50),    // source, excess 300_000
             Chan(2, "peerB", 500_000, 500_000, 0.50, 0.50),  // fallback dest, absorbable 150_000
             Chan(3, "peerC", 450_000, 550_000, 0.45, 0.50)); // fallback dest, absorbable 200_000
-        var earn = new Dictionary<int, long> { [1] = 50, [2] = 2000, [3] = 2000 };
+        var earn = new Dictionary<ulong, long> { [1] = 50, [2] = 2000, [3] = 2000 };
 
         classification.Destinations.Should().BeEmpty("neither peer tripped the -0.15 trigger");
 
@@ -324,35 +335,35 @@ public class RebalanceInitiatorServiceTests
 
         plans.Should().ContainSingle();
         plans[0].SourceChannelId.Should().Be(1);
-        // peerB, not the emptier peerC: pass 2 takes the first fallback destination that yields a
-        // plan, and has no preference for the one with the most room.
-        plans[0].DestinationPeerPubKey.Should().Be("peerB");
+        // peerC over peerB: fallback destinations are ranked by the room they have (200_000 vs
+        // 150_000), so the deeper one absorbs first.
+        plans[0].DestinationPeerPubKey.Should().Be("peerC");
         plans[0].IsFallbackPairing.Should().BeTrue();
-        // Capped by peerB's room up to target + deadband (650_000 - 500_000), NOT the source's
+        // Capped by peerC's room up to target + deadband (650_000 - 450_000), NOT the source's
         // full 300_000 excess — refilling must never turn the destination into next cycle's source.
-        plans[0].AmountSats.Should().Be(150_000);
+        plans[0].AmountSats.Should().Be(200_000);
     }
 
     [Fact]
-    public void BuildPlans_DestinationWithNoQualifyingSource_IsFundedByTheFirstFallbackChannel()
+    public void BuildPlans_DestinationWithNoQualifyingSource_IsFundedByTheLargestFallbackChannel()
     {
         var classification = Classify(
             Chan(1, "peerA", 600_000, 400_000, 0.60, 0.50),  // fallback source, lendable 250_000
             Chan(2, "peerB", 900_000, 100_000, 0.55, 0.50),  // fallback source, lendable 550_000
             Chan(3, "dest", 100_000, 900_000, 0.10, 0.50));  // destination, deficit 400_000
-        var earn = new Dictionary<int, long> { [1] = 50, [2] = 60, [3] = 2500 };
+        var earn = new Dictionary<ulong, long> { [1] = 50, [2] = 60, [3] = 2500 };
 
         classification.Sources.Should().BeEmpty("neither peer tripped the +0.15 trigger");
 
         var plans = RebalanceInitiatorService.BuildPlans(classification, earn, Tunables);
 
         plans.Should().ContainSingle();
-        // peerA, not the fuller peerB: the fallback pool is drawn from in classification order.
-        plans[0].SourceChannelId.Should().Be(1);
+        // peerB over peerA: the fallback pool is ranked by how much it can lend (550_000 vs 250_000).
+        plans[0].SourceChannelId.Should().Be(2);
         plans[0].DestinationPeerPubKey.Should().Be("dest");
         plans[0].IsFallbackPairing.Should().BeTrue();
-        // Bounded by what peerA may lend (250_000), not the destination's full 400_000 deficit.
-        plans[0].AmountSats.Should().Be(250_000);
+        // peerB can lend 550_000, so the destination's 400_000 deficit is what binds here.
+        plans[0].AmountSats.Should().Be(400_000);
     }
 
     [Fact]
@@ -361,7 +372,7 @@ public class RebalanceInitiatorServiceTests
         var classification = Classify(
             Chan(1, "peerA", 400_000, 600_000, 0.40, 0.50), // fallback source: lendable to 0.35 = 50_000
             Chan(2, "dest", 0, 1_000_000, 0.00, 0.50));     // destination, deficit 500_000
-        var earn = new Dictionary<int, long> { [1] = 50, [2] = 2500 };
+        var earn = new Dictionary<ulong, long> { [1] = 50, [2] = 2500 };
 
         var plans = RebalanceInitiatorService.BuildPlans(classification, earn, Tunables);
 
@@ -378,7 +389,7 @@ public class RebalanceInitiatorServiceTests
             Chan(1, "src", 800_000, 200_000, 0.80, 0.50),
             Chan(2, "peerB", 500_000, 500_000, 0.50, 0.50));
         // The only available destination earns nothing, so there is no margin to pay a route with.
-        var earn = new Dictionary<int, long> { [1] = 50, [2] = 0 };
+        var earn = new Dictionary<ulong, long> { [1] = 50, [2] = 0 };
 
         RebalanceInitiatorService.BuildPlans(classification, earn, Tunables).Should().BeEmpty();
     }
@@ -394,7 +405,7 @@ public class RebalanceInitiatorServiceTests
             Chan(1, "srcA", 800_000, 200_000, 0.80, 0.50),   // detected source, excess 300_000
             Chan(2, "srcB", 800_000, 200_000, 0.80, 0.50),   // detected source, excess 300_000
             Chan(3, "peerX", 500_000, 500_000, 0.50, 0.50)); // fallback dest, absorbable 150_000
-        var earn = new Dictionary<int, long> { [1] = 50, [2] = 50, [3] = 2000 };
+        var earn = new Dictionary<ulong, long> { [1] = 50, [2] = 50, [3] = 2000 };
 
         classification.Destinations.Should().BeEmpty("peerX did not trip the -0.15 trigger");
         classification.FallbackDestinations.Should().ContainSingle()
@@ -415,7 +426,7 @@ public class RebalanceInitiatorServiceTests
             Chan(1, "src", 800_000, 200_000, 0.80, 0.50),    // qualifying source
             Chan(2, "peerB", 950_000, 50_000, 0.55, 0.50),   // fallback source, far more to lend
             Chan(3, "dest", 100_000, 900_000, 0.10, 0.50));  // destination
-        var earn = new Dictionary<int, long> { [1] = 50, [2] = 60, [3] = 2500 };
+        var earn = new Dictionary<ulong, long> { [1] = 50, [2] = 60, [3] = 2500 };
 
         var plans = RebalanceInitiatorService.BuildPlans(classification, earn, Tunables);
 

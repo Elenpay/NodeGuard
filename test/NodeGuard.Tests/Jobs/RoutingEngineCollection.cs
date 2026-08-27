@@ -17,6 +17,8 @@
  *
  */
 
+using NodeGuard.Helpers;
+
 namespace NodeGuard.Tests.Jobs;
 
 /// <summary>
@@ -27,4 +29,29 @@ namespace NodeGuard.Tests.Jobs;
 [CollectionDefinition("RoutingEngine", DisableParallelization = true)]
 public class RoutingEngineCollection
 {
+}
+
+/// <summary>
+/// Helpers shared by the routing-engine job tests.
+/// </summary>
+public static class RoutingEngineSwitch
+{
+    /// <summary>
+    /// Runs <paramref name="body"/> with the global kill switch forced to <paramref name="enabled"/>,
+    /// restoring the previous value afterwards even if the body throws. One copy, because a missed
+    /// restore leaks static state into every other class in the collection.
+    /// </summary>
+    public static async Task WithEngine(bool enabled, Func<Task> body)
+    {
+        var prevEnabled = Constants.ROUTING_ENGINE_ENABLED;
+        Constants.ROUTING_ENGINE_ENABLED = enabled;
+        try
+        {
+            await body();
+        }
+        finally
+        {
+            Constants.ROUTING_ENGINE_ENABLED = prevEnabled;
+        }
+    }
 }

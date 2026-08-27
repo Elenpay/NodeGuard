@@ -17,18 +17,18 @@
  *
  */
 
+using NodeGuard.Helpers;
+
 namespace NodeGuard.Services;
 
 /// <summary>
 /// One of our channels, with the live balances and the smoothed routing-engine signal the
-/// rebalancer needs. Built by <see cref="Jobs.AutoRebalanceJob"/> from ListChannels +
-/// ChannelRoutingState; the decision logic itself never touches LND or the DB.
+/// rebalancer needs.
 /// </summary>
 public record ChannelSignal(
     int ChannelId,
     ulong ChanIdLnd,
     string PeerPubKey,
-    long CapacitySats,
     long LocalSats,
     long RemoteSats,
     double EmaLocalRatio,
@@ -38,51 +38,28 @@ public record ChannelSignal(
 
 /// <summary>
 /// A channel we can drain (send OUT of via <c>outgoing_chan_id</c>) — precise, per channel.
-/// <para>
-/// <see cref="ExcessSats"/> is how much this channel may contribute, not simply how much it holds.
-/// For a channel that tripped the trigger it is the excess over its own target. For a fallback
-/// source (see <see cref="RebalanceClassification.FallbackSources"/>) it is the room down to the
-/// low edge of its deadband, so lending liquidity can never turn it into next cycle's destination.
-/// </para>
 /// </summary>
 public record SourceChannel(
     int ChannelId,
     ulong ChanIdLnd,
     string PeerPubKey,
-    long ExcessSats,
-    long LocalSats);
+    long ExcessSats);
 
 /// <summary>One of our channels with a destination peer — carries the earn-rate weight (balance base).</summary>
-public record PeerMemberChannel(int ChannelId, ulong ChanIdLnd, long BalanceBaseSats);
+public record PeerMemberChannel(ulong ChanIdLnd, long BalanceBaseSats);
 
 /// <summary>
 /// A peer we want to refill, aggregated across all our channels with it. LND's
 /// <c>last_hop_pubkey</c> only constrains the peer, not the exact incoming channel, so the
 /// destination side is modelled at peer granularity.
-/// <para>
-/// <see cref="DeficitSats"/> is how much this peer may absorb. For a peer that tripped the trigger
-/// it is the shortfall against its own target. For a fallback destination (see
-/// <see cref="RebalanceClassification.FallbackDestinations"/>) it is the room up to the high edge
-/// of its deadband, so being refilled can never turn it into next cycle's source.
-/// </para>
 /// </summary>
 public record DestinationPeer(
     string PeerPubKey,
-    double AggregateEmaRatio,
-    double AggregateTargetRatio,
     long DeficitSats,
-    long RemoteSats,
     IReadOnlyList<PeerMemberChannel> Members);
 
 /// <summary>
 /// Output of <see cref="RebalanceInitiatorService.Classify"/>.
-/// <para>
-/// <see cref="Sources"/> and <see cref="Destinations"/> are the imbalances the engine actually
-/// detected. The two fallback pools are everything else that is merely *able* to take part, and
-/// exist so a detected imbalance is still acted on when nothing on the opposite side tripped the
-/// trigger — a lone too-local source still gets drained somewhere, a lone depleted peer still gets
-/// refilled from somewhere.
-/// </para>
 /// </summary>
 public record RebalanceClassification(
     IReadOnlyList<SourceChannel> Sources,
@@ -91,12 +68,11 @@ public record RebalanceClassification(
     IReadOnlyList<DestinationPeer> FallbackDestinations);
 
 /// <summary>
-/// A concrete rebalance the job should dispatch: drain <see cref="SourceChanIdLnd"/>, refill via
+/// A concrete rebalance the job should dispatch: drain <see cref="SourceChannelId"/>, refill via
 /// last-hop <see cref="DestinationPeerPubKey"/>, sized and profit-gated.
 /// </summary>
 public record RebalancePlan(
     int SourceChannelId,
-    ulong SourceChanIdLnd,
     string DestinationPeerPubKey,
     long AmountSats,
     double MaxFeePct,
@@ -104,16 +80,28 @@ public record RebalancePlan(
     string Reason);
 
 /// <summary>
-/// Control tunables for <see cref="RebalanceInitiatorService"/>. Passed in explicitly so the
-/// decision logic stays pure and unit-testable; the job builds these from the node config +
-/// ROUTING_ENGINE_REBALANCE_* constants.
+/// Control tunables for <see cref="RebalanceInitiatorService"/>.
 /// </summary>
 public record RebalanceInitiatorTunables(
     double RebalanceTrigger,
     long MinAmountSats,
     long MaxAmountSats,
     double CostToEarnRatio,
-    int MaxInitiations);
+    int MaxInitiations)
+{
+    /// <summary>
+    /// Production wiring: global ROUTING_ENGINE_REBALANCE_* defaults, with the cost-to-earn ratio
+    /// overridden per node. Lives on the record — as <see cref="FeeOptimizerTunables.FromConstants"/>
+    /// does — so the pure module owns its own configuration and the job never names a constant.
+    /// </summary>
+    public static RebalanceInitiatorTunables FromConstants(Data.Models.Node node) => new(
+        RebalanceTrigger: Constants.ROUTING_ENGINE_REBALANCE_DEADBAND,
+        MinAmountSats: Constants.REBALANCE_MIN_AMOUNT_SATS,
+        MaxAmountSats: Constants.ROUTING_ENGINE_REBALANCE_MAX_AMOUNT_SATS,
+        CostToEarnRatio: node.MaxRebalanceCostToEarnRatio
+                         ?? Constants.ROUTING_ENGINE_REBALANCE_DEFAULT_COST_TO_EARN_RATIO,
+        MaxInitiations: Constants.ROUTING_ENGINE_REBALANCE_MAX_INITIATIONS_PER_RUN);
+}
 
 /// <summary>
 /// Pure decision logic for the automated rebalancer — no I/O, no clock, no DB, so it is a static
@@ -143,24 +131,21 @@ public static class RebalanceInitiatorService
             var baseSats = c.LocalSats + c.RemoteSats;
             if (baseSats <= 0) continue;
 
-            var targetLocal = (long)Math.Round(c.TargetLocalRatio * baseSats, MidpointRounding.AwayFromZero);
-            var excess = c.LocalSats - targetLocal;
+            var excess = c.LocalSats - SatsAt(c.TargetLocalRatio, baseSats);
 
             // Too-local by the smoothed signal
             if (c.EmaLocalRatio - c.TargetLocalRatio > t.RebalanceTrigger && excess > 0)
             {
-                sources.Add(new SourceChannel(c.ChannelId, c.ChanIdLnd, c.PeerPubKey, excess, c.LocalSats));
+                sources.Add(new SourceChannel(c.ChannelId, c.ChanIdLnd, c.PeerPubKey, excess));
                 continue;
             }
 
             // Searching for fallback sources. Avoiding creating a next cycle rebalance by
             // lending liquidity down to the low edge of the deadband only
-            var floorRatio = Math.Max(0, c.TargetLocalRatio - t.RebalanceTrigger);
-            var floorLocal = (long)Math.Round(floorRatio * baseSats, MidpointRounding.AwayFromZero);
-            var lendable = c.LocalSats - floorLocal;
-            if (lendable > 0)
+            var lendable = c.LocalSats - SatsAt(Math.Max(0, c.TargetLocalRatio - t.RebalanceTrigger), baseSats);
+            if (lendable > 0 && lendable > t.MinAmountSats)
             {
-                fallbackSources.Add(new SourceChannel(c.ChannelId, c.ChanIdLnd, c.PeerPubKey, lendable, c.LocalSats));
+                fallbackSources.Add(new SourceChannel(c.ChannelId, c.ChanIdLnd, c.PeerPubKey, lendable));
             }
         }
 
@@ -170,7 +155,6 @@ public static class RebalanceInitiatorService
         foreach (var group in channels.Where(c => c.Active).GroupBy(c => c.PeerPubKey))
         {
             long peerLocal = 0;
-            long peerRemote = 0;
             long peerBase = 0;
             double weightedEma = 0;
             double weightedTarget = 0;
@@ -182,11 +166,10 @@ public static class RebalanceInitiatorService
                 if (baseSats <= 0) continue;
 
                 peerLocal += c.LocalSats;
-                peerRemote += c.RemoteSats;
                 peerBase += baseSats;
                 weightedEma += c.EmaLocalRatio * baseSats;
                 weightedTarget += c.TargetLocalRatio * baseSats;
-                members.Add(new PeerMemberChannel(c.ChannelId, c.ChanIdLnd, baseSats));
+                members.Add(new PeerMemberChannel(c.ChanIdLnd, baseSats));
             }
 
             if (peerBase <= 0) continue;
@@ -201,19 +184,16 @@ public static class RebalanceInitiatorService
             // Too-remote in aggregate (smoothed): the peer holds too little of our local
             if (aggEma - aggTarget < -t.RebalanceTrigger && deficit > 0)
             {
-                destinations.Add(new DestinationPeer(group.Key, aggEma, aggTarget, deficit, peerRemote, members));
+                destinations.Add(new DestinationPeer(group.Key, deficit, members));
                 continue;
             }
 
             // Searching for fallback destinations. Avoiding creating a next cycle rebalance by
             // lending liquidity up to the high edge of the deadband only
-            var ceilingRatio = Math.Min(1.0, aggTarget + t.RebalanceTrigger);
-            var ceilingLocal = (long)Math.Round(ceilingRatio * peerBase, MidpointRounding.AwayFromZero);
-            var absorbable = ceilingLocal - peerLocal;
-            if (absorbable > 0)
+            var absorbable = SatsAt(Math.Min(1.0, aggTarget + t.RebalanceTrigger), peerBase) - peerLocal;
+            if (absorbable > 0 && absorbable > t.MinAmountSats)
             {
-                fallbackDestinations.Add(
-                    new DestinationPeer(group.Key, aggEma, aggTarget, absorbable, peerRemote, members));
+                fallbackDestinations.Add(new DestinationPeer(group.Key, absorbable, members));
             }
         }
 
@@ -230,27 +210,32 @@ public static class RebalanceInitiatorService
     /// </summary>
     public static IReadOnlyList<RebalancePlan> BuildPlans(
         RebalanceClassification classification,
-        IReadOnlyDictionary<int, long> outboundEarnPpmByChannelId,
+        IReadOnlyDictionary<ulong, long> earnPpmByChanIdLnd,
         RebalanceInitiatorTunables t)
     {
         var plans = new List<RebalancePlan>();
         var usedSourceIds = new HashSet<int>();
 
-        // Only counterparties big enough to be worth a hop
         var sources = classification.Sources
-            .Where(s => s.ExcessSats >= t.MinAmountSats)
+            .OrderByDescending(s => s.ExcessSats)
             .ToList();
         var fallbackSources = classification.FallbackSources
-            .Where(s => s.ExcessSats >= t.MinAmountSats)
+            .OrderByDescending(s => s.ExcessSats)
+            .ToList();
+        var destinations = classification.Destinations
+            .OrderByDescending(d => d.DeficitSats)
+            .ToList();
+        var fallbackDestinations = classification.FallbackDestinations
+            .OrderByDescending(d => d.DeficitSats)
             .ToList();
 
         // Pass 1: refill every detected destination
-        foreach (var dest in classification.Destinations)
+        foreach (var dest in destinations)
         {
             if (plans.Count >= t.MaxInitiations) return plans;
 
             // No known earn rate ⇒ nothing to profit-gate against ⇒ leave the peer alone.
-            var destEarnPpm = WeightedAverageEarnPpm(dest.Members, outboundEarnPpmByChannelId);
+            var destEarnPpm = WeightedAverageEarnPpm(dest.Members, earnPpmByChanIdLnd);
             if (destEarnPpm == null) continue;
 
             // A channel that tripped the trigger first; failing that, borrow from the fallback pool
@@ -260,7 +245,7 @@ public static class RebalanceInitiatorService
             source ??= FirstFreeSource(fallbackSources, dest, usedSourceIds);
             if (source == null) continue;
 
-            var plan = TryBuildPlan(source, dest, destEarnPpm.Value, outboundEarnPpmByChannelId, t, isFallback);
+            var plan = TryBuildPlan(source, dest, destEarnPpm.Value, earnPpmByChanIdLnd, t, isFallback);
             if (plan == null) continue;
 
             usedSourceIds.Add(source.ChannelId);
@@ -268,8 +253,8 @@ public static class RebalanceInitiatorService
         }
 
         // Pass 2: drain every detected source pass 1 left unused
-        var gatedFallbackDestinations = classification.FallbackDestinations
-            .Select(d => (Dest: d, EarnPpm: WeightedAverageEarnPpm(d.Members, outboundEarnPpmByChannelId)))
+        var gatedFallbackDestinations = fallbackDestinations
+            .Select(d => (Dest: d, EarnPpm: WeightedAverageEarnPpm(d.Members, earnPpmByChanIdLnd)))
             .Where(x => x.EarnPpm.HasValue)
             .ToList();
 
@@ -285,7 +270,7 @@ public static class RebalanceInitiatorService
                 if (dest.PeerPubKey == source.PeerPubKey) continue;
                 if (refilledFallbackPeers.Contains(dest.PeerPubKey)) continue;
 
-                var plan = TryBuildPlan(source, dest, destEarnPpm!.Value, outboundEarnPpmByChannelId, t,
+                var plan = TryBuildPlan(source, dest, destEarnPpm!.Value, earnPpmByChanIdLnd, t,
                     isFallbackPairing: true);
                 if (plan == null) continue;
 
@@ -301,6 +286,12 @@ public static class RebalanceInitiatorService
         return plans;
     }
 
+    /// <summary>
+    /// Sats corresponding to <paramref name="ratio"/> of <paramref name="baseSats"/>.
+    /// </summary>
+    private static long SatsAt(double ratio, long baseSats)
+        => (long)Math.Round(ratio * baseSats, MidpointRounding.AwayFromZero);
+
     private static SourceChannel? FirstFreeSource(
         IReadOnlyList<SourceChannel> pool,
         DestinationPeer dest,
@@ -315,7 +306,7 @@ public static class RebalanceInitiatorService
         SourceChannel source,
         DestinationPeer dest,
         long destEarnPpm,
-        IReadOnlyDictionary<int, long> outboundEarnPpmByChannelId,
+        IReadOnlyDictionary<ulong, long> earnPpmByChanIdLnd,
         RebalanceInitiatorTunables t,
         bool isFallbackPairing)
     {
@@ -326,14 +317,12 @@ public static class RebalanceInitiatorService
 
         // What the source can give, bounded by what the destination can take
         var raw = Math.Min(source.ExcessSats, dest.DeficitSats);
-        if (raw < t.MinAmountSats) return null;
         var amount = Math.Min(raw, t.MaxAmountSats);
 
-        var sourceEarn = outboundEarnPpmByChannelId.TryGetValue(source.ChannelId, out var se) ? se : (long?)null;
+        var sourceEarn = earnPpmByChanIdLnd.TryGetValue(source.ChanIdLnd, out var se) ? se : (long?)null;
         var kind = isFallbackPairing ? "fallback " : string.Empty;
         return new RebalancePlan(
             source.ChannelId,
-            source.ChanIdLnd,
             dest.PeerPubKey,
             amount,
             maxFeePct,
@@ -348,13 +337,13 @@ public static class RebalanceInitiatorService
     /// </summary>
     private static long? WeightedAverageEarnPpm(
         IReadOnlyList<PeerMemberChannel> members,
-        IReadOnlyDictionary<int, long> outboundEarnPpmByChannelId)
+        IReadOnlyDictionary<ulong, long> earnPpmByChanIdLnd)
     {
         double weightedSum = 0;
         long totalWeight = 0;
         foreach (var m in members)
         {
-            if (!outboundEarnPpmByChannelId.TryGetValue(m.ChannelId, out var ppm)) continue;
+            if (!earnPpmByChanIdLnd.TryGetValue(m.ChanIdLnd, out var ppm)) continue;
             weightedSum += (double)ppm * m.BalanceBaseSats;
             totalWeight += m.BalanceBaseSats;
         }

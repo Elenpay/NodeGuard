@@ -114,7 +114,7 @@ public class RebalanceService : IRebalanceService
                 "Target pubkey is required.",
                 nameof(request.TargetPubkey));
 
-        var node = await _nodeRepository.GetById(request.NodeId);
+        var node = await _nodeRepository.GetById(request.NodeId, includeRelatedData: false);
         if (node == null)
             throw new ArgumentException($"Node {request.NodeId} not found", nameof(request.NodeId));
 
@@ -129,7 +129,7 @@ public class RebalanceService : IRebalanceService
             ? sourceChannel.DestinationNodeId
             : sourceChannel.SourceNodeId;
 
-        var counterpartyPeer = await _nodeRepository.GetById(counterpartyPeerId);
+        var counterpartyPeer = await _nodeRepository.GetById(counterpartyPeerId, includeRelatedData: false);
         if (counterpartyPeer == null)
             throw new InvalidOperationException(
                 $"Counterparty peer node {counterpartyPeerId} not found for source channel {request.SourceChannelId}");
@@ -202,7 +202,7 @@ public class RebalanceService : IRebalanceService
         if (rebalance == null)
             throw new InvalidOperationException($"Rebalance {rebalanceId} not found");
 
-        var node = rebalance.Node ?? await _nodeRepository.GetById(rebalance.NodeId);
+        var node = rebalance.Node ?? await _nodeRepository.GetById(rebalance.NodeId, includeRelatedData: false);
         if (node == null)
             throw new InvalidOperationException($"Node {rebalance.NodeId} not found for rebalance {rebalanceId}");
 

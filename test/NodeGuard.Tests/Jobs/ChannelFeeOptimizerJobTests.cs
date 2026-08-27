@@ -23,6 +23,7 @@ using NodeGuard.Data.Repositories.Interfaces;
 using NodeGuard.Helpers;
 using NodeGuard.Services;
 using NodeGuard.Tests.Helpers;
+using NodeGuard.Tests.Jobs;
 using Quartz;
 using Channel = NodeGuard.Data.Models.Channel;
 
@@ -145,19 +146,6 @@ public class ChannelFeeOptimizerJobTests
             BuildSnapshotService(),
             _lightningService.Object);
 
-    private static async Task WithEngine(bool enabled, Func<Task> body)
-    {
-        var prevEnabled = Constants.ROUTING_ENGINE_ENABLED;
-        Constants.ROUTING_ENGINE_ENABLED = enabled;
-        try
-        {
-            await body();
-        }
-        finally
-        {
-            Constants.ROUTING_ENGINE_ENABLED = prevEnabled;
-        }
-    }
 
     [Fact]
     public async Task Execute_LiveNode_AppliesComputedPolicy()
@@ -165,7 +153,7 @@ public class ChannelFeeOptimizerJobTests
         var node = BuildNode();
         ArrangeSingleSinkChannel(node, inFlightRebalance: false);
 
-        await WithEngine(enabled: true, async () =>
+        await RoutingEngineSwitch.WithEngine(enabled: true, async () =>
         {
             await BuildJob().Execute(Mock.Of<IJobExecutionContext>());
         });
@@ -181,7 +169,7 @@ public class ChannelFeeOptimizerJobTests
         var node = BuildNode();
         ArrangeSingleSinkChannel(node, inFlightRebalance: true);
 
-        await WithEngine(enabled: true, async () =>
+        await RoutingEngineSwitch.WithEngine(enabled: true, async () =>
         {
             await BuildJob().Execute(Mock.Of<IJobExecutionContext>());
         });
@@ -199,7 +187,7 @@ public class ChannelFeeOptimizerJobTests
         var node = BuildNode();
         ArrangeSingleSinkChannel(node, inFlightRebalance: false);
 
-        await WithEngine(enabled: false, async () =>
+        await RoutingEngineSwitch.WithEngine(enabled: false, async () =>
         {
             await BuildJob().Execute(Mock.Of<IJobExecutionContext>());
         });
@@ -410,7 +398,7 @@ public class ChannelFeeOptimizerJobTests
                 },
             });
 
-        await WithEngine(enabled: true, async () =>
+        await RoutingEngineSwitch.WithEngine(enabled: true, async () =>
         {
             await BuildJob().Execute(Mock.Of<IJobExecutionContext>());
         });
@@ -425,7 +413,7 @@ public class ChannelFeeOptimizerJobTests
         var node = BuildNode();
         ArrangeSingleSinkChannel(node, inFlightRebalance: false);
 
-        await WithEngine(enabled: true, async () =>
+        await RoutingEngineSwitch.WithEngine(enabled: true, async () =>
         {
             await BuildJob().Execute(Mock.Of<IJobExecutionContext>());
         });
