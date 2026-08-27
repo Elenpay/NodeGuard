@@ -284,6 +284,12 @@ public class Constants
     /// </summary>
     public static int ROUTING_ENGINE_ACTUATOR_OFFSET_MINUTES = 5;
 
+    /// <summary>
+    /// Cadence of AutoRebalanceJob in prod, in minutes. Independent of
+    /// ROUTING_ENGINE_JOB_INTERVAL_MINUTES. In dev it is 1 minute.
+    /// </summary>
+    public static int ROUTING_ENGINE_REBALANCE_JOB_INTERVAL_MINUTES = 10;
+
     // Both fees use integral control: each cycle the applied value is nudged by gain·deviation·baseline
     // off its previous value, so a persistent deviation keeps driving the fee until the channel balances.
     public static double ROUTING_ENGINE_FEE_OUTBOUND_INTEGRAL_GAIN = 0.8;
@@ -356,7 +362,7 @@ public class Constants
 
     /// Fallback max concurrent (Pending/InFlight) rebalances when a node leaves
     /// MaxRebalancesInFlight unset.
-    public static int ROUTING_ENGINE_REBALANCE_DEFAULT_MAX_IN_FLIGHT = 1;
+    public static int ROUTING_ENGINE_REBALANCE_DEFAULT_MAX_IN_FLIGHT = 5;
 
     /// Fallback rebalance-budget refresh window (hours) when a node leaves
     /// RebalanceBudgetRefreshInterval unset.
@@ -635,6 +641,8 @@ public class Constants
         if (reJobInterval != null) ROUTING_ENGINE_JOB_INTERVAL_MINUTES = int.Parse(reJobInterval);
         var reActuatorOffset = Environment.GetEnvironmentVariable("ROUTING_ENGINE_ACTUATOR_OFFSET_MINUTES");
         if (reActuatorOffset != null) ROUTING_ENGINE_ACTUATOR_OFFSET_MINUTES = int.Parse(reActuatorOffset);
+        var reRebalanceInterval = Environment.GetEnvironmentVariable("ROUTING_ENGINE_REBALANCE_JOB_INTERVAL_MINUTES");
+        if (reRebalanceInterval != null) ROUTING_ENGINE_REBALANCE_JOB_INTERVAL_MINUTES = int.Parse(reRebalanceInterval);
 
         // Routing Engine
         var feeOutboundIntegralGain = Environment.GetEnvironmentVariable("ROUTING_ENGINE_FEE_OUTBOUND_INTEGRAL_GAIN");

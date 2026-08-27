@@ -149,6 +149,7 @@ namespace NodeGuard
             builder.Services.AddTransient<INBXplorerService, NBXplorerService>();
             builder.Services.AddTransient<ISwapsService, SwapsService>();
             builder.Services.AddTransient<IRebalanceService, RebalanceService>();
+            builder.Services.AddTransient<IRoutingEngineSnapshotService, RoutingEngineSnapshotService>();
             builder.Services.AddScoped<IAuditService, AuditService>();
 
             //DbContext
@@ -306,7 +307,7 @@ namespace NodeGuard
                         .StartNow().WithSimpleSchedule(ScheduleRoutingJob);
                 });
 
-                //Channel Fee Optimizer Job
+                //Channel Fee Optimizer Job (routing-engine fee actuator)
                 q.AddJob<ChannelFeeOptimizerJob>(opts =>
                 {
                     opts.DisallowConcurrentExecution();
@@ -316,8 +317,47 @@ namespace NodeGuard
                 q.AddTrigger(opts =>
                 {
                     opts.ForJob(nameof(ChannelFeeOptimizerJob))
-                        .WithIdentity($"{nameof(ChannelFeeOptimizerJob)}Trigger")
-                        .StartNow().WithSimpleSchedule(ScheduleRoutingJob);
+                        .WithIdentity($"{nameof(ChannelFeeOptimizerJob)}Trigger");
+
+                    if (Constants.IS_DEV_ENVIRONMENT)
+                    {
+                        opts.StartNow()
+                            .WithSimpleSchedule(scheduleBuilder => scheduleBuilder.WithIntervalInMinutes(1).RepeatForever());
+                    }
+                    else
+                    {
+                        // Start a few minutes after TargetRatioReevaluationJob (which uses StartNow) so the
+                        // fee control law always acts on freshly-written routing state.
+                        opts.StartAt(DateBuilder.FutureDate(Constants.ROUTING_ENGINE_ACTUATOR_OFFSET_MINUTES, IntervalUnit.Minute))
+                            .WithSimpleSchedule(scheduleBuilder => scheduleBuilder.WithIntervalInMinutes(Constants.ROUTING_ENGINE_JOB_INTERVAL_MINUTES).RepeatForever());
+                    }
+                });
+
+                //Auto Rebalance Job (routing-engine rebalance actuator, own cadence)
+                q.AddJob<AutoRebalanceJob>(opts =>
+                {
+                    opts.DisallowConcurrentExecution();
+                    opts.WithIdentity(nameof(AutoRebalanceJob));
+                });
+
+                q.AddTrigger(opts =>
+                {
+                    opts.ForJob(nameof(AutoRebalanceJob))
+                        .WithIdentity($"{nameof(AutoRebalanceJob)}Trigger");
+
+                    if (Constants.IS_DEV_ENVIRONMENT)
+                    {
+                        opts.StartNow()
+                            .WithSimpleSchedule(scheduleBuilder => scheduleBuilder.WithIntervalInMinutes(1).RepeatForever());
+                    }
+                    else
+                    {
+                        // Same post-signal offset as the fee job, but its own cadence thereafter. Running
+                        // first means the Pending rows it writes are already visible to the fee job, which
+                        // is what keeps the fee-vs-rebalance authority split intact.
+                        opts.StartAt(DateBuilder.FutureDate(Constants.ROUTING_ENGINE_ACTUATOR_OFFSET_MINUTES, IntervalUnit.Minute))
+                            .WithSimpleSchedule(scheduleBuilder => scheduleBuilder.WithIntervalInMinutes(Constants.ROUTING_ENGINE_REBALANCE_JOB_INTERVAL_MINUTES).RepeatForever());
+                    }
                 });
 
                 //Monitor Withdrawals Job
