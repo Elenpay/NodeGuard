@@ -33,7 +33,7 @@ namespace NodeGuard.Tests.E2E;
 /// </summary>
 [Trait("Category", "E2E")]
 [Collection("E2E")]
-public class FeeEngineE2ETests : FeeEngineE2EBase
+public class FeeEngineE2ETests : RoutingEngineE2EBase
 {
     public FeeEngineE2ETests(ITestOutputHelper output) : base(output)
     {
@@ -51,7 +51,7 @@ public class FeeEngineE2ETests : FeeEngineE2EBase
         try
         {
             // Clean slate so leftover HTLCs from another scenario can't skew categorization.
-            await ResetFeeEngineStateAsync();
+            await ResetRoutingEngineStateAsync();
 
             // Enable bob's fee engine. ExecuteUpdate avoids materialising the Node's encrypted macaroon column.
             await using (var db = CreateDbContext())
@@ -96,7 +96,7 @@ public class FeeEngineE2ETests : FeeEngineE2EBase
 
             // LastAppliedOutboundPpm is set only on a real Update (a NoOp leaves it null), so this waits for
             // an actual fee write.
-            var feeState = await PollFeeAppliedAsync(channelId, "ChannelFeeState fee applied", delaySeconds: 3);
+            var feeState = await PollFeeAppliedAsync(channelId, bob.PubKey, "ChannelFeeState fee applied", delaySeconds: 3);
             _output.WriteLine($"feeState: outbound={feeState!.LastAppliedOutboundPpm} inbound={feeState.LastAppliedInboundPpm} at={feeState.LastFeeUpdateAt:o}");
             feeState.LastAppliedOutboundPpm.Should().NotBeNull();
             feeState.LastFeeUpdateAt.Should().NotBeNull();
@@ -113,11 +113,11 @@ public class FeeEngineE2ETests : FeeEngineE2EBase
             // reads is race-free vs the last pre-disable update. (LastFeeUpdateAt is written only by
             // ChannelFeeOptimizerJob.)
             await Task.Delay(TimeSpan.FromSeconds(6));
-            var afterDisable = await ReadFeeStateAsync(channelId);
+            var afterDisable = await ReadFeeStateAsync(channelId, bob.PubKey);
             afterDisable.Should().NotBeNull();
 
             await Task.Delay(TimeSpan.FromSeconds(18));
-            var settled = await ReadFeeStateAsync(channelId);
+            var settled = await ReadFeeStateAsync(channelId, bob.PubKey);
             settled.Should().NotBeNull();
 
             settled!.LastFeeUpdateAt.Should().Be(afterDisable!.LastFeeUpdateAt,

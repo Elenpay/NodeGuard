@@ -77,12 +77,16 @@ internal sealed class LndTestClient
         return new LndTestClient(name, pubKey, channel, macaroon);
     }
 
-    // One ListChannels round-trip; the scid/balance helpers below each build on it.
-    private async Task<IReadOnlyList<Lnrpc.Channel>> ChannelsToAsync(string peerPubKey)
+    // One ListChannels round-trip. Callers needing several numbers at once should take this snapshot and
+    // read them off it, rather than calling a helper per field and comparing across snapshots.
+    public async Task<IReadOnlyList<Lnrpc.Channel>> ChannelsAsync()
     {
         var resp = await Lightning.ListChannelsAsync(new ListChannelsRequest(), _auth);
-        return resp.Channels.Where(c => c.RemotePubkey == peerPubKey).ToList();
+        return resp.Channels;
     }
+
+    public async Task<IReadOnlyList<Lnrpc.Channel>> ChannelsToAsync(string peerPubKey)
+        => (await ChannelsAsync()).Where(c => c.RemotePubkey == peerPubKey).ToList();
 
     // Largest-capacity CONFIRMED channel (ChanId != 0) toward the peer whose capacity is at least
     // minCapacitySats, or null if none qualifies.
@@ -102,6 +106,21 @@ internal sealed class LndTestClient
     // Peer's local balance on a SPECIFIC channel (by scid).
     public async Task<long> RemoteBalanceOnScidAsync(string peerPubKey, ulong scid)
         => (await ChannelsToAsync(peerPubKey)).Where(c => c.ChanId == scid).Select(c => c.RemoteBalance).DefaultIfEmpty(0).Max();
+
+    /// <summary>
+    /// Sets OUR outbound policy on one channel, identified by its <c>txid:index</c> channel point.
+    /// </summary>
+    public async Task UpdateOutboundPolicyAsync(string channelPoint, long baseFeeMsat, uint feeRatePpm, uint timeLockDelta = 40)
+    {
+        var parts = channelPoint.Split(':');
+        await Lightning.UpdateChannelPolicyAsync(new PolicyUpdateRequest
+        {
+            ChanPoint = new ChannelPoint { FundingTxidStr = parts[0], OutputIndex = uint.Parse(parts[1]) },
+            BaseFeeMsat = baseFeeMsat,
+            FeeRatePpm = feeRatePpm,
+            TimeLockDelta = timeLockDelta,
+        }, _auth);
+    }
 
     // Idempotent — an "already connected" RpcException is expected and swallowed.
     public async Task ConnectAsync(string peerPubKey, string hostPort)
