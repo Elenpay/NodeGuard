@@ -92,6 +92,22 @@ mine:
 update-protos:
     ./src/Proto/update-protos.sh
 
+##############
+# Submodules #
+##############
+
+REMOTE_SIGNER_URL := 'https://github.com/Elenpay/Nodeguard-Remote-Signer'
+REMOTE_SIGNER_DIR := 'remote-signer'
+
+# Add the Remote Signer submodule, or initialize it on a fresh clone
+add-remote-signer:
+    git submodule add -b develop {{REMOTE_SIGNER_URL}} {{REMOTE_SIGNER_DIR}} 2>/dev/null || git submodule update --init {{REMOTE_SIGNER_DIR}}
+
+# Sync the Remote Signer submodule config and update it to the latest remote develop commit
+sync-remote-signer:
+    git submodule sync {{REMOTE_SIGNER_DIR}}
+    git submodule update --init --remote {{REMOTE_SIGNER_DIR}}
+
 ##########
 # Docker #
 ##########

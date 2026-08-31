@@ -16,3 +16,7 @@
 [submodule "reference-code/rebalance-lnd"]
 	path = reference-code/rebalance-lnd
 	url = https://github.com/C-Otto/rebalance-lnd
+[submodule "remote-signer"]
+	path = remote-signer
+	url = https://github.com/Elenpay/Nodeguard-Remote-Signer
+	branch = develop
