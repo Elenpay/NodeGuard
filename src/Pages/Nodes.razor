@@ -506,6 +506,16 @@
                                 </Field>
                             </Column>
                         </Row>
+                        <Row>
+                            <Column>
+                                <Field>
+                                    <FieldLabel>Rebalance Timeout (seconds)</FieldLabel>
+                                    <FieldHelp>How long a rebalance payment may keep searching for a route before giving up. 0 = unset (defaults to @Constants.ROUTING_ENGINE_REBALANCE_TIMEOUT_SECONDS s).</FieldHelp>
+                                    <NumericEdit TValue="int" @bind-Value="@_rebalanceTimeoutSeconds" Min="0" />
+                                </Field>
+                            </Column>
+                            <Column />
+                        </Row>
                     }
 
                     @if (_selectedNodeForLiquidity.DynamicFeeManagementEnabled || _selectedNodeForLiquidity.AutoRebalanceEnabled)
@@ -586,6 +596,7 @@
     private int _rebalanceBudgetRefreshDays;
     private int _maxRebalancesInFlight;
     private double _maxRebalanceCostToEarnRatio;
+    private int _rebalanceTimeoutSeconds;
 
     public abstract class NodesColumnName
     {
@@ -935,6 +946,7 @@
         _rebalanceBudgetRefreshDays = node.RebalanceBudgetRefreshInterval?.Days ?? 0;
         _maxRebalancesInFlight = node.MaxRebalancesInFlight ?? 0;
         _maxRebalanceCostToEarnRatio = node.MaxRebalanceCostToEarnRatio ?? 0;
+        _rebalanceTimeoutSeconds = node.RebalanceTimeoutSeconds ?? 0;
 
         if (_nodeLiquidityModal != null) await _nodeLiquidityModal.Show();
     }
@@ -965,6 +977,7 @@
             _selectedNodeForLiquidity.RebalanceBudgetRefreshInterval = _rebalanceBudgetRefreshDays > 0 ? TimeSpan.FromDays(_rebalanceBudgetRefreshDays) : null;
             _selectedNodeForLiquidity.MaxRebalancesInFlight = _maxRebalancesInFlight > 0 ? _maxRebalancesInFlight : null;
             _selectedNodeForLiquidity.MaxRebalanceCostToEarnRatio = _maxRebalanceCostToEarnRatio > 0 ? _maxRebalanceCostToEarnRatio : null;
+            _selectedNodeForLiquidity.RebalanceTimeoutSeconds = _rebalanceTimeoutSeconds > 0 ? _rebalanceTimeoutSeconds : null;
 
             _selectedNodeForLiquidity.UpdateDatetime = DateTimeOffset.Now;
             var updateResult = NodeRepository.Update(_selectedNodeForLiquidity);

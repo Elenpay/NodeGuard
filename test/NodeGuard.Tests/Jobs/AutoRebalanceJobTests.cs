@@ -92,9 +92,11 @@ public class AutoRebalanceJobTests
     /// A drainable source (too-local 0.75 vs 0.50, cheap 50 ppm) and a depleted destination on a
     /// different peer (0.10 vs 0.50, dear 2500 ppm), on a node with budget to spend.
     /// <paramref name="sourceOptedIn"/> drives the per-channel rebalance opt-in;
-    /// <paramref name="sourceLiquidityFlag"/> drives the unrelated swap-liquidity flag.
+    /// <paramref name="sourceLiquidityFlag"/> drives the unrelated swap-liquidity flag;
+    /// <paramref name="rebalanceTimeoutSeconds"/> leaves the node's timeout override unset when null.
     /// </summary>
-    private void ArrangeRebalancePair(bool sourceOptedIn, bool sourceLiquidityFlag = false)
+    private void ArrangeRebalancePair(bool sourceOptedIn, bool sourceLiquidityFlag = false,
+        int? rebalanceTimeoutSeconds = null)
     {
         var node = new Node
         {
@@ -105,6 +107,7 @@ public class AutoRebalanceJobTests
             RebalanceBudgetSats = 1_000_000,
             MaxRebalancesInFlight = 5,
             MaxRebalanceCostToEarnRatio = 0.5,
+            RebalanceTimeoutSeconds = rebalanceTimeoutSeconds,
         };
         _nodeRepository.Setup(x => x.GetAllManagedByNodeGuard(false)).ReturnsAsync(new List<Node> { node });
 
@@ -170,6 +173,36 @@ public class AutoRebalanceJobTests
             It.Is<RebalanceRequest>(r => r.SourceChannelId == 101 && r.TargetPubkey == "peerD"
                 && r.AmountSats == 5_000_000 && !r.IsManual
                 && r.MaxFeePct.HasValue && Math.Abs(r.MaxFeePct.Value - 0.125) < 1e-9),
+            It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    [Fact]
+    public async Task Execute_UsesTheNodesTimeoutOverride_WhenSet()
+    {
+        ArrangeRebalancePair(sourceOptedIn: true, rebalanceTimeoutSeconds: 45);
+
+        await RoutingEngineSwitch.WithEngine(enabled: true, async () =>
+        {
+            await BuildJob().Execute(Mock.Of<IJobExecutionContext>());
+        });
+
+        _rebalanceService.Verify(x => x.RebalanceAsync(
+            It.Is<RebalanceRequest>(r => r.TimeoutSeconds == 45),
+            It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    [Fact]
+    public async Task Execute_FallsBackToTheConstantTimeout_WhenTheNodeLeavesItUnset()
+    {
+        ArrangeRebalancePair(sourceOptedIn: true);
+
+        await RoutingEngineSwitch.WithEngine(enabled: true, async () =>
+        {
+            await BuildJob().Execute(Mock.Of<IJobExecutionContext>());
+        });
+
+        _rebalanceService.Verify(x => x.RebalanceAsync(
+            It.Is<RebalanceRequest>(r => r.TimeoutSeconds == Constants.ROUTING_ENGINE_REBALANCE_TIMEOUT_SECONDS),
             It.IsAny<CancellationToken>()), Times.Once);
     }
 
