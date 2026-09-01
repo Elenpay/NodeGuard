@@ -126,4 +126,43 @@ public class RebalanceRepositoryRoutingEngineTests
 
         (await sut.GetPessimisticConsumedFeesSince(NodeId, since)).Should().Be(100 + 30 + 200);
     }
+
+    [Fact]
+    public async Task GetConsumedFeesSince_CountsOnlyPaidFeesOfSucceededRowsInWindow()
+    {
+        var (sut, seed) = SetupDb();
+        var now = DateTimeOffset.UtcNow;
+        var since = now.AddHours(-1);
+
+        seed.Rebalances.AddRange(
+            // Succeeded → counts paid (200), not the reservation (999).
+            Reb(NodeId, RebalanceStatus.Succeeded, now, feePaid: 200, reserved: 999),
+            // Succeeded with no fee recorded → contributes 0, not null.
+            Reb(NodeId, RebalanceStatus.Succeeded, now, feePaid: null, reserved: 999),
+            // Non-terminal → excluded here; only the pessimistic variant reserves for these.
+            Reb(NodeId, RebalanceStatus.Pending, now, feePaid: null, reserved: 100),
+            Reb(NodeId, RebalanceStatus.InFlight, now, feePaid: 50, reserved: 30),
+            // Failed → paid nothing.
+            Reb(NodeId, RebalanceStatus.Failed, now, feePaid: null, reserved: 999),
+            // Succeeded but before the window → excluded.
+            Reb(NodeId, RebalanceStatus.Succeeded, now.AddHours(-2), feePaid: 777),
+            // Different node → excluded.
+            Reb(OtherNodeId, RebalanceStatus.Succeeded, now, feePaid: 500)
+        );
+        await seed.SaveChangesAsync();
+
+        (await sut.GetConsumedFeesSince(NodeId, since)).Should().Be(200);
+    }
+
+    [Fact]
+    public async Task GetConsumedFeesSince_ReturnsZeroWhenNothingMatches()
+    {
+        var (sut, seed) = SetupDb();
+        var now = DateTimeOffset.UtcNow;
+
+        seed.Rebalances.Add(Reb(NodeId, RebalanceStatus.Failed, now, feePaid: null, reserved: 999));
+        await seed.SaveChangesAsync();
+
+        (await sut.GetConsumedFeesSince(NodeId, now.AddHours(-1))).Should().Be(0);
+    }
 }
