@@ -181,9 +181,8 @@ public class RebalanceRepository : IRebalanceRepository
         foreach (var r in rows)
         {
             var feePaid = r.FeePaidSats ?? 0;
-            // Conservative worst-case reservation for a still-in-flight rebalance: RequestedAmountSats ×
-            // (MaxFeePct/100).
-            var reserved = (long)(r.RequestedAmountSats * r.MaxFeePct / 100.0);
+            // Conservative worst-case reservation for a still-in-flight rebalance.
+            var reserved = Rebalance.WorstCaseFeeSats(r.RequestedAmountSats, r.MaxFeePct);
             total += r.Status == RebalanceStatus.Succeeded
                 ? feePaid
                 : reserved;

@@ -27,11 +27,10 @@ using Channel = NodeGuard.Data.Models.Channel;
 namespace NodeGuard.Jobs;
 
 /// <summary>
-/// Dynamic fee actuator. For every eligible, owned channel
-/// on a node with dynamic fee management enabled it reads the signal
+/// The routing engine's fee actuator. For every eligible channel on a node with
+/// <see cref="Node.DynamicFeeManagementEnabled"/> it reads the signal
 /// (<see cref="ChannelRoutingState"/>), runs the pure <see cref="FeeOptimizerService"/> control
-/// law, and applies the resulting outbound/inbound ppm via LND — enforcing the fee-vs-rebalance
-/// authority split.
+/// law, and applies the resulting outbound/inbound ppm via LND.
 /// Everything is gated by the global ROUTING_ENGINE_ENABLED kill switch.
 /// </summary>
 [DisallowConcurrentExecution]
@@ -40,30 +39,27 @@ public class ChannelFeeOptimizerJob : IJob
     private readonly ILogger<ChannelFeeOptimizerJob> _logger;
     private readonly INodeRepository _nodeRepository;
     private readonly IChannelRepository _channelRepository;
-    private readonly IChannelRoutingStateRepository _routingStateRepository;
     private readonly IChannelFeeStateRepository _feeStateRepository;
     private readonly IRebalanceRepository _rebalanceRepository;
+    private readonly IRoutingEngineSnapshotService _snapshotService;
     private readonly ILightningService _lightningService;
-    private readonly ILightningClientService _lightningClientService;
 
     public ChannelFeeOptimizerJob(
         ILogger<ChannelFeeOptimizerJob> logger,
         INodeRepository nodeRepository,
         IChannelRepository channelRepository,
-        IChannelRoutingStateRepository routingStateRepository,
         IChannelFeeStateRepository feeStateRepository,
         IRebalanceRepository rebalanceRepository,
-        ILightningService lightningService,
-        ILightningClientService lightningClientService)
+        IRoutingEngineSnapshotService snapshotService,
+        ILightningService lightningService)
     {
         _logger = logger;
         _nodeRepository = nodeRepository;
         _channelRepository = channelRepository;
-        _routingStateRepository = routingStateRepository;
         _feeStateRepository = feeStateRepository;
         _rebalanceRepository = rebalanceRepository;
+        _snapshotService = snapshotService;
         _lightningService = lightningService;
-        _lightningClientService = lightningClientService;
     }
 
     public async Task Execute(IJobExecutionContext context)
@@ -81,31 +77,33 @@ public class ChannelFeeOptimizerJob : IJob
             var tunables = FeeOptimizerTunables.FromConstants();
             var managedNodes = await _nodeRepository.GetAllManagedByNodeGuard(withDisabled: false);
 
-            var anyEnabled = managedNodes.Any(n => n.DynamicFeeManagementEnabled);
-            if (!anyEnabled)
+            var relevantNodes = managedNodes.Where(n => n.DynamicFeeManagementEnabled).ToList();
+            if (relevantNodes.Count == 0)
             {
                 _logger.LogInformation("No managed nodes with dynamic fee management enabled; skipping {JobName}",
                     nameof(ChannelFeeOptimizerJob));
                 return;
             }
 
-            // Shared per-run context, only needed when at least one node is under management.
-            var channelsByChanId = (await _channelRepository.GetChannelsByOpenAndDynamicFeeEnabled())
-                .ToDictionary(c => c.ChanId);
             var inFlightSourceChannelIds = await _rebalanceRepository.GetPendingInFlightSourceChannelIds();
 
-            foreach (var managedNode in managedNodes)
+            // Get all the open channels that are eligible for fee optimization in one DB call, then filter per node.
+            var openChannelsByChanId = (await _channelRepository.GetOpenChannels())
+                .Where(c => c.IsDynamicFeeEnabled)
+                .Where(c => c.SatsAmount >= Constants.ROUTING_ENGINE_FEE_MIN_CHANNEL_SIZE_SATS)
+                .Where(c => !inFlightSourceChannelIds.Contains(c.Id))
+                .ToDictionary(c => c.ChanId);
+
+            foreach (var node in relevantNodes)
             {
                 try
                 {
-                    if (!managedNode.DynamicFeeManagementEnabled) continue;
-
-                    await OptimizeNode(managedNode, managedNodes, channelsByChanId, inFlightSourceChannelIds, tunables);
+                    await OptimizeNode(node, openChannelsByChanId, inFlightSourceChannelIds, tunables);
                 }
                 catch (Exception ex)
                 {
                     _logger.LogError(ex, "Error optimizing fees for node {NodeName} ({NodePubKey})",
-                        managedNode.Name, managedNode.PubKey);
+                        node.Name, node.PubKey);
                 }
             }
         }
@@ -118,85 +116,44 @@ public class ChannelFeeOptimizerJob : IJob
         _logger.LogInformation("{JobName} ended", nameof(ChannelFeeOptimizerJob));
     }
 
-    private sealed class Candidate
-    {
-        public required Lnrpc.Channel LndChannel { get; init; }
-        public required Channel DbChannel { get; init; }
-        public required ChannelRoutingState RoutingState { get; init; }
-        public required ChannelFeeState? FeeState { get; init; }
-    }
-
     private async Task OptimizeNode(
         Node node,
-        IReadOnlyCollection<Node> managedNodes,
-        IReadOnlyDictionary<ulong, Channel> channelsByChanId,
+        IReadOnlyDictionary<ulong, Channel> openChannelsByChanId,
         IReadOnlySet<int> inFlightSourceChannelIds,
         FeeOptimizerTunables tunables)
     {
-        var listResp = await _lightningClientService.ListChannels(node);
-        if (listResp == null)
+        var owned = await _snapshotService.GetOwnedChannelsAsync(node, openChannelsByChanId, withFeeState: true);
+        if (owned == null)
         {
-            _logger.LogWarning("Skipping fee optimization for node {NodeName}: ListChannels unavailable", node.Name);
+            _logger.LogWarning("Skipping node {NodeName}: ListChannels unavailable", node.Name);
             return;
         }
 
-        var routingStates = (await _routingStateRepository.GetByManagedNodePubKey(node.PubKey))
-            .ToDictionary(s => s.ChannelId);
-        var feeStates = (await _feeStateRepository.GetByManagedNodePubKey(node.PubKey))
-            .ToDictionary(s => s.ChannelId);
-
-        var now = DateTimeOffset.UtcNow;
-
-        // Eligibility filter.
-        var candidates = new List<Candidate>();
-        foreach (var lndChannel in listResp.Channels)
+        foreach (var oc in owned)
         {
-            if (!ChannelOwnershipHelper.IsOwnedByManagedNode(lndChannel, managedNodes)) continue;
-            if (!channelsByChanId.TryGetValue(lndChannel.ChanId, out var dbChannel)) continue;
-            if (lndChannel.Capacity < Constants.ROUTING_ENGINE_FEE_MIN_CHANNEL_SIZE_SATS) continue;
-            if (!routingStates.TryGetValue(dbChannel.Id, out var routingState)) continue; // no signal yet
-
-            feeStates.TryGetValue(dbChannel.Id, out var feeState);
-
-            candidates.Add(new Candidate
-            {
-                LndChannel = lndChannel,
-                DbChannel = dbChannel,
-                RoutingState = routingState,
-                FeeState = feeState,
-            });
-        }
-
-        foreach (var candidate in candidates)
-        {
-            // Authority split: never touch a channel the rebalancer is actively moving.
-            if (inFlightSourceChannelIds.Contains(candidate.DbChannel.Id))
-            {
-                _logger.LogDebug("Skipping channel {ChanId} on {NodeName}: in-flight rebalance owns it",
-                    candidate.LndChannel.ChanId, node.Name);
-                continue;
-            }
-
             try
             {
-                await OptimizeChannel(node, candidate, tunables, now);
+                await OptimizeChannel(node, oc, tunables);
             }
             catch (Exception ex)
             {
                 _logger.LogError(ex, "Error optimizing fees for channel {ChanId} on node {NodeName}",
-                    candidate.LndChannel.ChanId, node.Name);
+                    oc.Lnd.ChanId, node.Name);
             }
         }
     }
 
     /// <summary>Runs the control law for one channel and applies the resulting fee update when needed.</summary>
-    private async Task OptimizeChannel(Node node, Candidate candidate, FeeOptimizerTunables tunables, DateTimeOffset now)
+    private async Task OptimizeChannel(Node node, OwnedChannel candidate, FeeOptimizerTunables tunables)
     {
         var routingState = candidate.RoutingState;
-        var feeState = candidate.FeeState ?? new ChannelFeeState {
+        var feeState = candidate.FeeState ?? new ChannelFeeState
+        {
             ChannelId = candidate.DbChannel.Id,
             ManagedNodePubKey = node.PubKey,
         };
+
+        var now = DateTimeOffset.UtcNow;
 
         var decision = FeeOptimizerService.ComputeNextPolicy(
             routingState.EmaLocalRatio,
@@ -213,18 +170,18 @@ public class ChannelFeeOptimizerJob : IJob
         if (decision.Action != FeeAction.Update)
         {
             _logger.LogInformation("Channel {ChanId} on {NodeName}: {Action} ({Reason})",
-                candidate.LndChannel.ChanId, node.Name, decision.Action, decision.Reason);
+                candidate.Lnd.ChanId, node.Name, decision.Action, decision.Reason);
             await _feeStateRepository.UpsertByChannelAndNode(feeState);
             return;
         }
 
         // The live policy is needed only on the write path for the untouched base fee/timelock.
         // NoOp channels never cost an LND round-trip.
-        var (managedPolicy, _) = await _lightningService.GetChannelFeePolicy(candidate.LndChannel.ChanId, node);
+        var (managedPolicy, _) = await _lightningService.GetChannelFeePolicy(candidate.Lnd.ChanId, node);
         if (managedPolicy == null)
         {
             _logger.LogWarning("Skipping channel {ChanId} on {NodeName}: current fee policy unavailable",
-                candidate.LndChannel.ChanId, node.Name);
+                candidate.Lnd.ChanId, node.Name);
             await _feeStateRepository.UpsertByChannelAndNode(feeState);
             return;
         }
@@ -237,7 +194,7 @@ public class ChannelFeeOptimizerJob : IJob
         if (node.RoutingEngineDryRun)
         {
             _logger.LogInformation("Dry-run: would set channel {ChanId} ({NodeName}-{PeerAlias}) to outbound {Outbound}ppm inbound {Inbound}ppm ({Reason})",
-                candidate.LndChannel.ChanId, node.Name, candidate.LndChannel.PeerAlias, decision.OutboundPpm, decision.InboundPpm, decision.Reason);
+                candidate.Lnd.ChanId, node.Name, candidate.Lnd.PeerAlias, decision.OutboundPpm, decision.InboundPpm, decision.Reason);
             feeState.LastAppliedOutboundBaseFeeMsat = baseFeeMsat;
             feeState.LastAppliedOutboundPpm = decision.OutboundPpm;
             feeState.LastAppliedInboundBaseMsat = inboundBaseMsat;
@@ -270,7 +227,7 @@ public class ChannelFeeOptimizerJob : IJob
             feeState.LastFeeUpdateAt = now;
 
             _logger.LogInformation("{NodeName} chan {ChanId}: set outbound {Outbound}ppm inbound {Inbound}ppm ({Reason})",
-                node.Name, candidate.LndChannel.ChanId, decision.OutboundPpm, decision.InboundPpm, decision.Reason);
+                node.Name, candidate.Lnd.ChanId, decision.OutboundPpm, decision.InboundPpm, decision.Reason);
 
             await _feeStateRepository.UpsertByChannelAndNode(feeState);
         }
@@ -278,7 +235,7 @@ public class ChannelFeeOptimizerJob : IJob
         {
             // Log and skip this channel for this cycle; the next cycle retries.
             _logger.LogError(ex, "Failed to set fee policy for channel {ChanId} on {NodeName}",
-                candidate.LndChannel.ChanId, node.Name);
+                candidate.Lnd.ChanId, node.Name);
         }
     }
 }

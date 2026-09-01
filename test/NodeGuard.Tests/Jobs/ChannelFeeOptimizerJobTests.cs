@@ -23,25 +23,43 @@ using NodeGuard.Data.Repositories.Interfaces;
 using NodeGuard.Helpers;
 using NodeGuard.Services;
 using NodeGuard.Tests.Helpers;
+using NodeGuard.Tests.Jobs;
 using Quartz;
 using Channel = NodeGuard.Data.Models.Channel;
 
 namespace NodeGuard.Jobs;
 
+
+[Collection("RoutingEngine")]
 public class ChannelFeeOptimizerJobTests
 {
     private const string NodePubKey = "managedPubKey";
     private const ulong ChanId = 123;
     private const int ChannelDbId = 10;
 
+    // The arranged channel is comfortably above ROUTING_ENGINE_FEE_MIN_CHANNEL_SIZE_SATS (10M).
+    // Kept as one constant because the job gates on the DB SatsAmount while the control law reads
+    // the LND balances — if the two drift the channel is silently filtered out of every test.
+    private const long ChannelSizeSats = 16_000_000;
+
+    private readonly Mock<ILogger<ChannelFeeOptimizerJob>> _logger = new();
+
     private readonly Mock<INodeRepository> _nodeRepository = new();
     private readonly Mock<IChannelRepository> _channelRepository = new();
     private readonly Mock<IChannelRoutingStateRepository> _routingStateRepository = new();
     private readonly Mock<IChannelFeeStateRepository> _feeStateRepository = new();
-    private readonly Mock<IForwardingHtlcEventRepository> _forwardingHtlcEventRepository = new();
     private readonly Mock<IRebalanceRepository> _rebalanceRepository = new();
+    private readonly Mock<IRebalanceService> _rebalanceService = new();
     private readonly Mock<ILightningService> _lightningService = new();
     private readonly Mock<ILightningClientService> _lightningClientService = new();
+
+    // The real snapshot service over the mocked repos/LND, so these tests still cover the
+    // open-channel + routing-state filtering that feeds the job.
+    private IRoutingEngineSnapshotService BuildSnapshotService() =>
+        new RoutingEngineSnapshotService(
+            _routingStateRepository.Object,
+            _feeStateRepository.Object,
+            _lightningClientService.Object);
 
     private Node BuildNode() => new()
     {
@@ -61,11 +79,12 @@ public class ChannelFeeOptimizerJobTests
             Id = ChannelDbId,
             ChanId = ChanId,
             Status = Channel.ChannelStatus.Open,
+            SatsAmount = ChannelSizeSats,
             IsDynamicFeeEnabled = true,
             FundingTx = "txid123",
             FundingTxOutputIndex = 1,
         };
-        _channelRepository.Setup(x => x.GetChannelsByOpenAndDynamicFeeEnabled())
+        _channelRepository.Setup(x => x.GetOpenChannels())
             .ReturnsAsync(new List<Channel> { dbChannel });
 
         // Too remote (ema 0.40 < target 0.50) + Sink → raise outbound, negative inbound.
@@ -92,7 +111,7 @@ public class ChannelFeeOptimizerJobTests
                 new Lnrpc.Channel
                 {
                     ChanId = ChanId,
-                    Capacity = 16_000_000,
+                    Capacity = ChannelSizeSats,
                     LocalBalance = 4_000_000,
                     RemoteBalance = 12_000_000,
                     Active = true,
@@ -119,28 +138,14 @@ public class ChannelFeeOptimizerJobTests
 
     private ChannelFeeOptimizerJob BuildJob() =>
         new(
-            new Mock<ILogger<ChannelFeeOptimizerJob>>().Object,
+            _logger.Object,
             _nodeRepository.Object,
             _channelRepository.Object,
-            _routingStateRepository.Object,
             _feeStateRepository.Object,
             _rebalanceRepository.Object,
-            _lightningService.Object,
-            _lightningClientService.Object);
+            BuildSnapshotService(),
+            _lightningService.Object);
 
-    private static async Task WithEngine(bool enabled, Func<Task> body)
-    {
-        var prevEnabled = Constants.ROUTING_ENGINE_ENABLED;
-        Constants.ROUTING_ENGINE_ENABLED = enabled;
-        try
-        {
-            await body();
-        }
-        finally
-        {
-            Constants.ROUTING_ENGINE_ENABLED = prevEnabled;
-        }
-    }
 
     [Fact]
     public async Task Execute_LiveNode_AppliesComputedPolicy()
@@ -148,7 +153,7 @@ public class ChannelFeeOptimizerJobTests
         var node = BuildNode();
         ArrangeSingleSinkChannel(node, inFlightRebalance: false);
 
-        await WithEngine(enabled: true, async () =>
+        await RoutingEngineSwitch.WithEngine(enabled: true, async () =>
         {
             await BuildJob().Execute(Mock.Of<IJobExecutionContext>());
         });
@@ -164,7 +169,7 @@ public class ChannelFeeOptimizerJobTests
         var node = BuildNode();
         ArrangeSingleSinkChannel(node, inFlightRebalance: true);
 
-        await WithEngine(enabled: true, async () =>
+        await RoutingEngineSwitch.WithEngine(enabled: true, async () =>
         {
             await BuildJob().Execute(Mock.Of<IJobExecutionContext>());
         });
@@ -182,7 +187,7 @@ public class ChannelFeeOptimizerJobTests
         var node = BuildNode();
         ArrangeSingleSinkChannel(node, inFlightRebalance: false);
 
-        await WithEngine(enabled: false, async () =>
+        await RoutingEngineSwitch.WithEngine(enabled: false, async () =>
         {
             await BuildJob().Execute(Mock.Of<IJobExecutionContext>());
         });
@@ -235,7 +240,7 @@ public class ChannelFeeOptimizerJobTests
 
             await BuildJob().Execute(Mock.Of<IJobExecutionContext>());
 
-            _channelRepository.Verify(x => x.GetChannelsByOpenAndDynamicFeeEnabled(), Times.Never);
+            _channelRepository.Verify(x => x.GetOpenChannels(), Times.Never);
             VerifyNoFeeWrite();
         }
         finally
@@ -274,7 +279,8 @@ public class ChannelFeeOptimizerJobTests
         var prevEnabled = Constants.ROUTING_ENGINE_ENABLED;
         var prevMinSize = Constants.ROUTING_ENGINE_FEE_MIN_CHANNEL_SIZE_SATS;
         Constants.ROUTING_ENGINE_ENABLED = true;
-        Constants.ROUTING_ENGINE_FEE_MIN_CHANNEL_SIZE_SATS = 20_000_000; // the arranged channel is 16M
+        // One sat above the arranged channel, so this pins the exact boundary of the size gate.
+        Constants.ROUTING_ENGINE_FEE_MIN_CHANNEL_SIZE_SATS = ChannelSizeSats + 1;
         try
         {
             var node = BuildNode();
@@ -357,4 +363,66 @@ public class ChannelFeeOptimizerJobTests
             Constants.ROUTING_ENGINE_ENABLED = prevEnabled;
         }
     }
+
+    [Fact]
+    public async Task Execute_ChannelSharedWithAnotherManagedNode_IsStillActuated()
+    {
+        var node = BuildNode();
+        ArrangeSingleSinkChannel(node, inFlightRebalance: false);
+
+        // The peer is also managed by NodeGuard and it opened the channel. The old ownership dedup
+        // handed the channel to the initiator alone, so this side was never actuated: it could not
+        // see its own depleted channel as a rebalance destination and its outbound policy was
+        // frozen. Both sides now carry their own state and both get actuated.
+        var peer = new Node { Id = 21, PubKey = "peerPubKey", Name = "bob", DynamicFeeManagementEnabled = true };
+        _nodeRepository.Setup(x => x.GetAllManagedByNodeGuard(false)).ReturnsAsync(new List<Node> { node, peer });
+        _routingStateRepository.Setup(x => x.GetByManagedNodePubKey(peer.PubKey)).ReturnsAsync(new List<ChannelRoutingState>());
+        _feeStateRepository.Setup(x => x.GetByManagedNodePubKey(peer.PubKey)).ReturnsAsync(new List<ChannelFeeState>());
+
+        _lightningClientService
+            .Setup(x => x.ListChannels(It.IsAny<Node>(), It.IsAny<Lnrpc.Lightning.LightningClient>()))
+            .ReturnsAsync(new Lnrpc.ListChannelsResponse
+            {
+                Channels =
+                {
+                    new Lnrpc.Channel
+                    {
+                        ChanId = ChanId,
+                        Capacity = ChannelSizeSats,
+                        LocalBalance = 4_000_000,
+                        RemoteBalance = 12_000_000,
+                        Active = true,
+                        Initiator = false, // the managed peer opened it
+                        RemotePubkey = peer.PubKey,
+                    },
+                },
+            });
+
+        await RoutingEngineSwitch.WithEngine(enabled: true, async () =>
+        {
+            await BuildJob().Execute(Mock.Of<IJobExecutionContext>());
+        });
+
+        _lightningService.Verify(x => x.SetChannelFeePolicy(
+            "txid123:1", NodePubKey, 1000, 2550u, 40u, 0, -50, true), Times.Once);
+    }
+
+    [Fact]
+    public async Task Execute_ColdStartFeeState_IsStampedWithTheActuatingNode()
+    {
+        var node = BuildNode();
+        ArrangeSingleSinkChannel(node, inFlightRebalance: false);
+
+        await RoutingEngineSwitch.WithEngine(enabled: true, async () =>
+        {
+            await BuildJob().Execute(Mock.Of<IJobExecutionContext>());
+        });
+
+        // A fee state created from scratch must name its node, or it lands outside every
+        // per-node query and the control loop cold-starts forever.
+        _feeStateRepository.Verify(x => x.UpsertByChannelAndNode(
+            It.Is<ChannelFeeState>(f => f.ChannelId == ChannelDbId && f.ManagedNodePubKey == NodePubKey)),
+            Times.Once);
+    }
+
 }

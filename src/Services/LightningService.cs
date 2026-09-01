@@ -201,8 +201,21 @@ namespace NodeGuard.Services
         /// a specific channel. If the peer has multiple channels with us, the first one
         /// returned by ListChannels is used as a representative.
         /// </summary>
-        Task<long?> GetLocalOutboundFeeRatePpmByPeerAsync
-        (Node node, string peerPubkey);
+        Task<long?> GetLocalOutboundFeeRatePpmByPeerAsync(Node node, string peerPubkey);
+
+        /// <summary>
+        /// Returns the local-outbound fee rate (ppm) of a specific channel, read from the gossip
+        /// graph via GetChanInfo. Backs <see cref="GetLocalOutboundFeeRatePpmByPeerAsync"/>, its only
+        /// caller.
+        /// </summary>
+        Task<long?> GetLocalOutboundFeeRatePpmAsync(Node node, ulong chanId);
+
+        /// <summary>
+        /// Local-outbound fee rate (ppm) for every channel on the node, keyed by LND chan_id.
+        /// Returns null when FeeReport is unavailable, which callers should treat as "skip this node
+        /// this cycle" rather than as "every channel earns nothing".
+        /// </summary>
+        Task<Dictionary<ulong, long>?> GetLocalOutboundFeeRatesPpmAsync(Node node);
 
         /// <summary>
         /// Sets the channel fee policy for a given channel identified by its chanPoint
@@ -826,7 +839,8 @@ namespace NodeGuard.Services
                 DestinationNodeId = destinationNodeId,
                 CreatedByNodeGuard = true,
                 IsPrivate = currentChannel.Private,
-                IsDynamicFeeEnabled = source.DynamicFeeManagementEnabled
+                IsDynamicFeeEnabled = source.DynamicFeeManagementEnabled,
+                IsAutoRebalanceEnabled = source.AutoRebalanceEnabled
             };
 
             return channel;
@@ -1558,7 +1572,7 @@ namespace NodeGuard.Services
                     if (channel == null) continue;
                     // If the source node is not the channel initiator, but the remote node is also managed by NodeGuard
                     // We skip and wait for the other node to report the channel
-                    if (nodes.Any((n) => !channel.Initiator && n.PubKey == channel.RemotePubkey)) continue;
+                    if (!ChannelOwnershipHelper.IsOwnedByManagedNode(channel, nodes)) continue;
 
                     var htlcsLocal = channel.PendingHtlcs.Where(x => x.Incoming == true).Sum(x => x.Amount);
                     var htlcsRemote = channel.PendingHtlcs.Where(x => x.Incoming == false).Sum(x => x.Amount);
@@ -1774,6 +1788,26 @@ namespace NodeGuard.Services
 
             // FeeRateMilliMsat is "milli-msat per msat" which numerically equals ppm.
             return policy?.FeeRateMilliMsat;
+        }
+
+        public async Task<Dictionary<ulong, long>?> GetLocalOutboundFeeRatesPpmAsync(Node node)
+        {
+            var report = await _lightningClientService.FeeReport(node);
+            if (report == null) return null;
+
+            // FeePerMil is "per million" of the amount forwarded, i.e. the same ppm figure as
+            // RoutingPolicy.FeeRateMilliMsat — but reported for our own side, so unlike GetChanInfo
+            // there is no Node1Pub/Node2Pub comparison to get right.
+            //
+            // Indexer rather than ToDictionary: a duplicate chan_id from LND would throw and take
+            // out the whole node's cycle, and last-wins is harmless for a fee rate.
+            var byChanId = new Dictionary<ulong, long>(report.ChannelFees.Count);
+            foreach (var fee in report.ChannelFees)
+            {
+                byChanId[fee.ChanId] = fee.FeePerMil;
+            }
+
+            return byChanId;
         }
 
         public async Task<long?> GetLocalOutboundFeeRatePpmByPeerAsync(Node node, string peerPubkey)

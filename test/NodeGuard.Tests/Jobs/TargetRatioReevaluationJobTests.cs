@@ -30,7 +30,7 @@ using Channel = NodeGuard.Data.Models.Channel;
 namespace NodeGuard.Jobs;
 
 /// <summary>
-/// Wiring tests for the Phase-1 sensor/classifier. The pure categorization math lives in
+/// Wiring tests for the sensor/classifier. The pure categorization math lives in
 /// <see cref="PeerCategorizationServiceTests"/>; here the real <see cref="PeerCategorizationService"/>
 /// is used so these prove the JOB feeds it correctly: age gate, ownership/eligibility filter, the
 /// push/pull → net-flow sign convention, first-insert EMA seeding, failure handling, and the kill switch.

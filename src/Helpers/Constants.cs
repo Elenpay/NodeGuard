@@ -273,10 +273,22 @@ public class Constants
     public static int ROUTING_ENGINE_CATEGORY_FLIP_HYSTERESIS_CYCLES = 3;
 
     /// <summary>
-    /// Cadence of TargetRatioReevaluationJob and ChannelFeeOptimizerJob in prod, in minutes. Default 30. In dev
+    /// Cadence of TargetRatioReevaluationJob and RoutingEngineActuatorJob in prod, in minutes. Default 30. In dev
     /// (IS_DEV_ENVIRONMENT) the job runs every 5 minutes regardless.
     /// </summary>
     public static int ROUTING_ENGINE_JOB_INTERVAL_MINUTES = 30;
+
+    /// <summary>
+    /// How long after TargetRatioReevaluationJob the RoutingEngineActuatorJob first fires,
+    /// in minutes (prod only).
+    /// </summary>
+    public static int ROUTING_ENGINE_ACTUATOR_OFFSET_MINUTES = 5;
+
+    /// <summary>
+    /// Cadence of AutoRebalanceJob in prod, in minutes. Independent of
+    /// ROUTING_ENGINE_JOB_INTERVAL_MINUTES. In dev it is 1 minute.
+    /// </summary>
+    public static int ROUTING_ENGINE_REBALANCE_JOB_INTERVAL_MINUTES = 10;
 
     // Both fees use integral control: each cycle the applied value is nudged by gain·deviation·baseline
     // off its previous value, so a persistent deviation keeps driving the fee until the channel balances.
@@ -288,7 +300,7 @@ public class Constants
     public static double ROUTING_ENGINE_FEE_DEADBAND = 0.03;
 
     // The rebalancer's imbalance deadband is a separate, more aggressive threshold for triggering rebalances.
-    public static double ROUTING_ENGINE_REBALANCE_TRIGGER = 0.15;
+    public static double ROUTING_ENGINE_REBALANCE_DEADBAND = 0.15;
 
     // Max outbound ppm change applied in a single cycle (rate limiter / anti-jump).
     public static uint ROUTING_ENGINE_FEE_MAX_STEP_PPM = 50;
@@ -334,6 +346,27 @@ public class Constants
     /// untouched ones.
     /// </summary>
     public static double MAX_HTLC_CAPACITY_RATIO = 0.99;
+
+    // Routing Engine: automated rebalancer
+
+    /// Upper clamp on a single automated rebalance amount (sats)
+    public static long ROUTING_ENGINE_REBALANCE_MAX_AMOUNT_SATS = 10_000_000;
+
+    /// Max rebalances the routing-engine actuator initiates per node per run
+    public static int ROUTING_ENGINE_REBALANCE_MAX_INITIATIONS_PER_RUN = 5;
+
+    /// Fallback profitability margin when a node leaves MaxRebalanceCostToEarnRatio unset. The
+    /// gate caps rebalance cost at ratio × (capacity-weighted-avg outbound ppm of the refilled
+    /// peer). 0.5 = spend at most half the destination's earn rate.
+    public static double ROUTING_ENGINE_REBALANCE_DEFAULT_COST_TO_EARN_RATIO = 0.5;
+
+    /// Fallback max concurrent (Pending/InFlight) rebalances when a node leaves
+    /// MaxRebalancesInFlight unset.
+    public static int ROUTING_ENGINE_REBALANCE_DEFAULT_MAX_IN_FLIGHT = 5;
+
+    /// Fallback rebalance-budget refresh window (hours) when a node leaves
+    /// RebalanceBudgetRefreshInterval unset.
+    public static int ROUTING_ENGINE_REBALANCE_DEFAULT_BUDGET_REFRESH_HOURS = 24;
 
     public const string IsFrozenTag = "frozen";
     public const string IsManuallyFrozenTag = "manually_frozen";
@@ -606,6 +639,10 @@ public class Constants
 
         var reJobInterval = Environment.GetEnvironmentVariable("ROUTING_ENGINE_JOB_INTERVAL_MINUTES");
         if (reJobInterval != null) ROUTING_ENGINE_JOB_INTERVAL_MINUTES = int.Parse(reJobInterval);
+        var reActuatorOffset = Environment.GetEnvironmentVariable("ROUTING_ENGINE_ACTUATOR_OFFSET_MINUTES");
+        if (reActuatorOffset != null) ROUTING_ENGINE_ACTUATOR_OFFSET_MINUTES = int.Parse(reActuatorOffset);
+        var reRebalanceInterval = Environment.GetEnvironmentVariable("ROUTING_ENGINE_REBALANCE_JOB_INTERVAL_MINUTES");
+        if (reRebalanceInterval != null) ROUTING_ENGINE_REBALANCE_JOB_INTERVAL_MINUTES = int.Parse(reRebalanceInterval);
 
         // Routing Engine
         var feeOutboundIntegralGain = Environment.GetEnvironmentVariable("ROUTING_ENGINE_FEE_OUTBOUND_INTEGRAL_GAIN");
@@ -618,7 +655,7 @@ public class Constants
         if (feeDeadband != null) ROUTING_ENGINE_FEE_DEADBAND = double.Parse(feeDeadband, NumberStyles.AllowDecimalPoint | NumberStyles.AllowLeadingSign, CultureInfo.InvariantCulture);
 
         var rebalanceDeadband = Environment.GetEnvironmentVariable("ROUTING_ENGINE_REBALANCE_DEADBAND");
-        if (rebalanceDeadband != null) ROUTING_ENGINE_REBALANCE_TRIGGER = double.Parse(rebalanceDeadband, NumberStyles.AllowDecimalPoint | NumberStyles.AllowLeadingSign, CultureInfo.InvariantCulture);
+        if (rebalanceDeadband != null) ROUTING_ENGINE_REBALANCE_DEADBAND = double.Parse(rebalanceDeadband, NumberStyles.AllowDecimalPoint | NumberStyles.AllowLeadingSign, CultureInfo.InvariantCulture);
 
         var feeMaxStep = Environment.GetEnvironmentVariable("ROUTING_ENGINE_FEE_MAX_STEP_PPM");
         if (feeMaxStep != null) ROUTING_ENGINE_FEE_MAX_STEP_PPM = uint.Parse(feeMaxStep);
@@ -665,6 +702,17 @@ public class Constants
             if (parsedRatio > 0 && parsedRatio <= 1) MAX_HTLC_CAPACITY_RATIO = parsedRatio;
             else throw new ArgumentOutOfRangeException(nameof(MAX_HTLC_CAPACITY_RATIO), parsedRatio, "MAX_HTLC_CAPACITY_RATIO must be in (0, 1]");
         }
+        
+        var reRebalanceMaxAmount = Environment.GetEnvironmentVariable("ROUTING_ENGINE_REBALANCE_MAX_AMOUNT_SATS");
+        if (reRebalanceMaxAmount != null) ROUTING_ENGINE_REBALANCE_MAX_AMOUNT_SATS = long.Parse(reRebalanceMaxAmount);
+        var reRebalanceMaxInit = Environment.GetEnvironmentVariable("ROUTING_ENGINE_REBALANCE_MAX_INITIATIONS_PER_RUN");
+        if (reRebalanceMaxInit != null) ROUTING_ENGINE_REBALANCE_MAX_INITIATIONS_PER_RUN = int.Parse(reRebalanceMaxInit);
+        var reRebalanceDefaultRatio = Environment.GetEnvironmentVariable("ROUTING_ENGINE_REBALANCE_DEFAULT_COST_TO_EARN_RATIO");
+        if (reRebalanceDefaultRatio != null) ROUTING_ENGINE_REBALANCE_DEFAULT_COST_TO_EARN_RATIO = double.Parse(reRebalanceDefaultRatio, NumberStyles.AllowDecimalPoint | NumberStyles.AllowLeadingSign, CultureInfo.InvariantCulture);
+        var reRebalanceDefaultMaxInFlight = Environment.GetEnvironmentVariable("ROUTING_ENGINE_REBALANCE_DEFAULT_MAX_IN_FLIGHT");
+        if (reRebalanceDefaultMaxInFlight != null) ROUTING_ENGINE_REBALANCE_DEFAULT_MAX_IN_FLIGHT = int.Parse(reRebalanceDefaultMaxInFlight);
+        var reRebalanceDefaultRefreshHours = Environment.GetEnvironmentVariable("ROUTING_ENGINE_REBALANCE_DEFAULT_BUDGET_REFRESH_HOURS");
+        if (reRebalanceDefaultRefreshHours != null) ROUTING_ENGINE_REBALANCE_DEFAULT_BUDGET_REFRESH_HOURS = int.Parse(reRebalanceDefaultRefreshHours);
 
         // DB Initialization
         ALICE_PUBKEY = Environment.GetEnvironmentVariable("ALICE_PUBKEY") ?? ALICE_PUBKEY;

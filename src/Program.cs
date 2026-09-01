@@ -149,6 +149,7 @@ namespace NodeGuard
             builder.Services.AddTransient<INBXplorerService, NBXplorerService>();
             builder.Services.AddTransient<ISwapsService, SwapsService>();
             builder.Services.AddTransient<IRebalanceService, RebalanceService>();
+            builder.Services.AddTransient<IRoutingEngineSnapshotService, RoutingEngineSnapshotService>();
             builder.Services.AddScoped<IAuditService, AuditService>();
 
             //DbContext
@@ -273,23 +274,19 @@ namespace NodeGuard
                         });
                 });
 
-                // Both routing (dynamic-fee) jobs share a cadence: ROUTING_ENGINE_JOB_INTERVAL_SECONDS wins
-                // when set (the fee-engine e2e uses a few seconds so it converges fast); otherwise
-                // ROUTING_ENGINE_JOB_INTERVAL_MINUTES (default 30). Except when the environment is 
-                // DEV, then overridden to 5 minutes (faster convergence for devs).
                 var routingJobIntervalSeconds =
                     int.TryParse(Environment.GetEnvironmentVariable("ROUTING_ENGINE_JOB_INTERVAL_SECONDS"), out var rjs)
                         ? rjs
                         : (int?)null;
 
-                void ScheduleRoutingJob(SimpleScheduleBuilder sb)
+                void ScheduleRoutingJob(SimpleScheduleBuilder sb, int minutes)
                 {
                     if (routingJobIntervalSeconds is int seconds)
                         sb.WithIntervalInSeconds(seconds).RepeatForever();
                     else if (Constants.IS_DEV_ENVIRONMENT)
-                        sb.WithIntervalInMinutes(5).RepeatForever();
+                        sb.WithIntervalInMinutes(1).RepeatForever();
                     else
-                        sb.WithIntervalInMinutes(Constants.ROUTING_ENGINE_JOB_INTERVAL_MINUTES).RepeatForever();
+                        sb.WithIntervalInMinutes(minutes).RepeatForever();
                 }
 
                 //Target Ratio Reevaluation Job
@@ -303,10 +300,10 @@ namespace NodeGuard
                 {
                     opts.ForJob(nameof(TargetRatioReevaluationJob))
                         .WithIdentity($"{nameof(TargetRatioReevaluationJob)}Trigger")
-                        .StartNow().WithSimpleSchedule(ScheduleRoutingJob);
+                        .StartNow().WithSimpleSchedule(sb => ScheduleRoutingJob(sb, Constants.ROUTING_ENGINE_JOB_INTERVAL_MINUTES));
                 });
 
-                //Channel Fee Optimizer Job
+                //Channel Fee Optimizer Job (routing-engine fee actuator)
                 q.AddJob<ChannelFeeOptimizerJob>(opts =>
                 {
                     opts.DisallowConcurrentExecution();
@@ -317,7 +314,35 @@ namespace NodeGuard
                 {
                     opts.ForJob(nameof(ChannelFeeOptimizerJob))
                         .WithIdentity($"{nameof(ChannelFeeOptimizerJob)}Trigger")
-                        .StartNow().WithSimpleSchedule(ScheduleRoutingJob);
+                        .WithSimpleSchedule(sb => ScheduleRoutingJob(sb, Constants.ROUTING_ENGINE_JOB_INTERVAL_MINUTES));
+
+                    if (Constants.IS_DEV_ENVIRONMENT)
+                        opts.StartNow();
+                    // Start a few minutes after TargetRatioReevaluationJob (which uses StartNow) so the
+                    // fee control law always acts on freshly-written routing state.
+                    else
+                        opts.StartAt(DateBuilder.FutureDate(Constants.ROUTING_ENGINE_ACTUATOR_OFFSET_MINUTES, IntervalUnit.Minute));
+                });
+
+                //Auto Rebalance Job (routing-engine rebalance actuator, own cadence)
+                q.AddJob<AutoRebalanceJob>(opts =>
+                {
+                    opts.DisallowConcurrentExecution();
+                    opts.WithIdentity(nameof(AutoRebalanceJob));
+                });
+
+                q.AddTrigger(opts =>
+                {
+                    opts.ForJob(nameof(AutoRebalanceJob))
+                        .WithIdentity($"{nameof(AutoRebalanceJob)}Trigger")
+                        .WithSimpleSchedule(sb => ScheduleRoutingJob(sb, Constants.ROUTING_ENGINE_REBALANCE_JOB_INTERVAL_MINUTES));
+
+                    if (Constants.IS_DEV_ENVIRONMENT)
+                        opts.StartNow();
+                    // Start a few minutes after TargetRatioReevaluationJob (which uses StartNow) so the
+                    // fee control law always acts on freshly-written routing state.
+                    else
+                        opts.StartAt(DateBuilder.FutureDate(Constants.ROUTING_ENGINE_ACTUATOR_OFFSET_MINUTES, IntervalUnit.Minute));
                 });
 
                 //Monitor Withdrawals Job
