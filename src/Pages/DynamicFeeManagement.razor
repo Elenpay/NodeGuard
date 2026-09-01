@@ -178,6 +178,7 @@
                                                         <th>Channel</th>
                                                         <th class="r">Capacity</th>
                                                         <th>Local / Remote</th>
+                                                        <th class="c">Category</th>
                                                         <th class="c">Dynamic fee</th>
                                                     </tr>
                                                 </thead>
@@ -201,6 +202,20 @@
                                                                 else
                                                                 {
                                                                     @("—")
+                                                                }
+                                                            </td>
+                                                            <td class="c">
+                                                                @if (ch.RoutingState is { } rs)
+                                                                {
+                                                                    <span class="cat-badge @CategoryClass(rs.PeerFlowCategory)">@CategoryLabel(rs.PeerFlowCategory)</span>
+                                                                    @if (rs.PendingCategory is { } pending)
+                                                                    {
+                                                                        <span class="cat-pending">→ @CategoryLabel(pending)</span>
+                                                                    }
+                                                                }
+                                                                else
+                                                                {
+                                                                    <span class="cat-badge cat-none">—</span>
                                                                 }
                                                             </td>
                                                             <td class="c">
@@ -232,6 +247,7 @@
 
 @inject INodeRepository NodeRepository
 @inject IChannelRepository ChannelRepository
+@inject IChannelRoutingStateRepository ChannelRoutingStateRepository
 @inject IFeeEngineStateService FeeEngineStateService
 @inject IAuditService AuditService
 @inject ILightningService LightningService
@@ -247,6 +263,7 @@
     private List<Channel> _channels = new();
     private List<Channel> _nodeChannels = new();
     private IReadOnlyDictionary<ulong, ChannelState>? _live;
+    private Dictionary<int, ChannelRoutingState> _routingStates = new();
     private List<PeerOverview> _peers = new();
     private readonly HashSet<string> _expanded = new();
     private string _search = string.Empty;
@@ -272,6 +289,8 @@
 
             var allChannels = await ChannelRepository.GetAllManagedByUserNodes(LoggedUser.Id);
             _channels = allChannels.Where(c => c.Status == Channel.ChannelStatus.Open).ToList();
+
+            await LoadRoutingStatesAsync();
 
             // Live balances are best-effort — structural stats and the toggles still work without LND.
             _live = null;
@@ -336,6 +355,8 @@
             ChannelState? live = null;
             _live?.TryGetValue(channel.ChanId, out live);
 
+            _routingStates.TryGetValue(channel.Id, out var routingState);
+
             overview.Channels.Add(new PeerChannelRow
             {
                 Channel = channel,
@@ -346,6 +367,7 @@
                 RemoteBalanceSats = live?.RemoteBalance,
                 Active = live?.Active,
                 BelowMinSize = channel.SatsAmount < Constants.ROUTING_ENGINE_FEE_MIN_CHANNEL_SIZE_SATS,
+                RoutingState = routingState,
             });
         }
 
@@ -368,12 +390,30 @@
         Rebuild();
     }
 
-    private void OnNodeChanged()
+    private async Task OnNodeChanged()
     {
         _selectedNode = _managedNodes.FirstOrDefault(n => n.Id == _selectedNodeId);
         _expanded.Clear();
         _search = string.Empty;
+        await LoadRoutingStatesAsync();
         Rebuild();
+    }
+
+    // Routing state is per managed node, so it's re-read whenever the selected node changes.
+    // Best-effort: categories just render as "—" when it can't be loaded.
+    private async Task LoadRoutingStatesAsync()
+    {
+        _routingStates = new();
+        if (_selectedNode is null) return;
+        try
+        {
+            var states = await ChannelRoutingStateRepository.GetByManagedNodePubKey(_selectedNode.PubKey);
+            _routingStates = states.ToDictionary(s => s.ChannelId);
+        }
+        catch (Exception ex)
+        {
+            Logger.LogWarning(ex, "Could not load routing state for node {PubKey}", _selectedNode.PubKey);
+        }
     }
 
     private IEnumerable<PeerOverview> FilteredPeers()
@@ -517,6 +557,22 @@
         return (updated, failed);
     }
 
+    private static string CategoryLabel(PeerFlowCategory category) => category switch
+    {
+        PeerFlowCategory.Sink => "Sink",
+        PeerFlowCategory.Source => "Source",
+        PeerFlowCategory.Bidirectional => "Bidirectional",
+        _ => "Uncategorized",
+    };
+
+    private static string CategoryClass(PeerFlowCategory category) => category switch
+    {
+        PeerFlowCategory.Sink => "cat-sink",
+        PeerFlowCategory.Source => "cat-source",
+        PeerFlowCategory.Bidirectional => "cat-bidi",
+        _ => "cat-uncat",
+    };
+
     private static string Btc(long sats) => (sats / 100_000_000m).ToString("0.####");
     private static string Sats(long sats) => sats.ToString("N0");
     private static string F(double d) => d.ToString("0.##", System.Globalization.CultureInfo.InvariantCulture);
@@ -556,5 +612,6 @@
         public long? RemoteBalanceSats { get; init; }
         public bool? Active { get; init; }
         public bool BelowMinSize { get; init; } // below the engine's minimum size, so it won't be fee-managed
+        public ChannelRoutingState? RoutingState { get; init; } // null until the engine has evaluated the channel
     }
 }
