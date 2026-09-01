@@ -124,6 +124,6 @@ public class RebalanceRepositoryRoutingEngineTests
         );
         await seed.SaveChangesAsync();
 
-        (await sut.GetConsumedFeesSince(NodeId, since)).Should().Be(100 + 30 + 200);
+        (await sut.GetPessimisticConsumedFeesSince(NodeId, since)).Should().Be(100 + 30 + 200);
     }
 }
