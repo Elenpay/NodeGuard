@@ -213,7 +213,7 @@ public class ChannelFeeOptimizerJobTests
             // and the computed values are recorded so the operator can see what WOULD have been applied.
             _lightningService.Verify(x => x.GetChannelFeePolicy(ChanId, It.IsAny<Node>()), Times.Once);
             VerifyNoFeeWrite();
-            _feeStateRepository.Verify(x => x.UpsertByChannelId(
+            _feeStateRepository.Verify(x => x.UpsertByChannelAndNode(
                 It.Is<ChannelFeeState>(s => s.LastAppliedOutboundPpm == 2550u && s.LastFeeUpdateAt != null)), Times.Once);
         }
         finally
@@ -260,7 +260,7 @@ public class ChannelFeeOptimizerJobTests
 
             _lightningService.Verify(x => x.GetChannelFeePolicy(It.IsAny<ulong>(), It.IsAny<Node>()), Times.Never);
             VerifyNoFeeWrite();
-            _feeStateRepository.Verify(x => x.UpsertByChannelId(It.IsAny<ChannelFeeState>()), Times.Never);
+            _feeStateRepository.Verify(x => x.UpsertByChannelAndNode(It.IsAny<ChannelFeeState>()), Times.Never);
         }
         finally
         {
@@ -320,7 +320,7 @@ public class ChannelFeeOptimizerJobTests
             // NoOp channels never cost an LND round-trip, but the observed ratio/target are still persisted.
             _lightningService.Verify(x => x.GetChannelFeePolicy(It.IsAny<ulong>(), It.IsAny<Node>()), Times.Never);
             VerifyNoFeeWrite();
-            _feeStateRepository.Verify(x => x.UpsertByChannelId(It.IsAny<ChannelFeeState>()), Times.Once);
+            _feeStateRepository.Verify(x => x.UpsertByChannelAndNode(It.IsAny<ChannelFeeState>()), Times.Once);
         }
         finally
         {
@@ -350,7 +350,7 @@ public class ChannelFeeOptimizerJobTests
                 It.IsAny<string>(), It.IsAny<string>(), It.IsAny<long>(), It.IsAny<uint>(),
                 It.IsAny<uint>(), It.IsAny<int?>(), It.IsAny<int?>(), It.IsAny<bool>()), Times.Once);
             // On write failure the fee state is NOT persisted (LastApplied stays null → next cycle re-seeds).
-            _feeStateRepository.Verify(x => x.UpsertByChannelId(It.IsAny<ChannelFeeState>()), Times.Never);
+            _feeStateRepository.Verify(x => x.UpsertByChannelAndNode(It.IsAny<ChannelFeeState>()), Times.Never);
         }
         finally
         {

@@ -109,23 +109,28 @@ namespace NodeGuard.Data
                 .HasForeignKey(r => r.SourceChannelId)
                 .OnDelete(DeleteBehavior.Restrict);
 
-            // Routing engine: 1:1 read models keyed on ChannelId.
+            // Routing engine read models are keyed per (channel, managed node), not per channel:
+            // a channel between two managed nodes has one row per side, since local balance, flow
+            // history and fee policy are all per-node views of the same channel.
             modelBuilder.Entity<ChannelRoutingState>()
                 .HasOne(x => x.Channel)
-                .WithOne()
-                .HasForeignKey<ChannelRoutingState>(x => x.ChannelId)
+                .WithMany()
+                .HasForeignKey(x => x.ChannelId)
                 .OnDelete(DeleteBehavior.Cascade);
 
-            // Only one ChannelRoutingState per channel.
-            modelBuilder.Entity<ChannelRoutingState>().HasIndex(x => x.ChannelId).IsUnique();
+            // One ChannelRoutingState per channel per managed node.
+            modelBuilder.Entity<ChannelRoutingState>()
+                .HasIndex(x => new { x.ChannelId, x.ManagedNodePubKey }).IsUnique();
 
             modelBuilder.Entity<ChannelFeeState>()
                 .HasOne(x => x.Channel)
-                .WithOne()
-                .HasForeignKey<ChannelFeeState>(x => x.ChannelId)
+                .WithMany()
+                .HasForeignKey(x => x.ChannelId)
                 .OnDelete(DeleteBehavior.Cascade);
-            // Only one ChannelFeeState per channel.
-            modelBuilder.Entity<ChannelFeeState>().HasIndex(x => x.ChannelId).IsUnique();
+
+            // One ChannelFeeState per channel per managed node.
+            modelBuilder.Entity<ChannelFeeState>()
+                .HasIndex(x => new { x.ChannelId, x.ManagedNodePubKey }).IsUnique();
 
             // These default ON: existing rows must be backfilled true (the C# initializer
             // only affects new in-code instances, not the DB column default / migration backfill).

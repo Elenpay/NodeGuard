@@ -32,12 +32,12 @@ public class ChannelRoutingStateRepository : IChannelRoutingStateRepository
         _dbContextFactory = dbContextFactory;
     }
 
-    public async Task<ChannelRoutingState?> GetByChannelId(int channelId)
+    public async Task<ChannelRoutingState?> GetByChannelIdAndNode(int channelId, string managedNodePubKey)
     {
         await using var context = await _dbContextFactory.CreateDbContextAsync();
 
         return await context.ChannelRoutingStates
-            .FirstOrDefaultAsync(x => x.ChannelId == channelId);
+            .FirstOrDefaultAsync(x => x.ChannelId == channelId && x.ManagedNodePubKey == managedNodePubKey);
     }
 
     public async Task<List<ChannelRoutingState>> GetByManagedNodePubKey(string managedNodePubKey)
@@ -49,12 +49,13 @@ public class ChannelRoutingStateRepository : IChannelRoutingStateRepository
             .ToListAsync();
     }
 
-    public async Task UpsertByChannelId(ChannelRoutingState state)
+    public async Task UpsertByChannelAndNode(ChannelRoutingState state)
     {
         await using var context = await _dbContextFactory.CreateDbContextAsync();
 
         var existing = await context.ChannelRoutingStates
-            .FirstOrDefaultAsync(x => x.ChannelId == state.ChannelId);
+            .FirstOrDefaultAsync(x => x.ChannelId == state.ChannelId
+                                      && x.ManagedNodePubKey == state.ManagedNodePubKey);
 
         if (existing == null)
         {
@@ -67,7 +68,6 @@ public class ChannelRoutingStateRepository : IChannelRoutingStateRepository
         else
         {
             existing.ChanIdLnd = state.ChanIdLnd;
-            existing.ManagedNodePubKey = state.ManagedNodePubKey;
             existing.TargetLocalRatio = state.TargetLocalRatio;
             existing.PeerFlowCategory = state.PeerFlowCategory;
             existing.PendingCategory = state.PendingCategory;

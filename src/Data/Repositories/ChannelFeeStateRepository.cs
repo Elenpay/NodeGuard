@@ -32,36 +32,30 @@ public class ChannelFeeStateRepository : IChannelFeeStateRepository
         _dbContextFactory = dbContextFactory;
     }
 
-    public async Task<ChannelFeeState?> GetByChannelId(int channelId)
+    public async Task<ChannelFeeState?> GetByChannelIdAndNode(int channelId, string managedNodePubKey)
     {
         await using var context = await _dbContextFactory.CreateDbContextAsync();
 
         return await context.ChannelFeeStates
-            .FirstOrDefaultAsync(x => x.ChannelId == channelId);
+            .FirstOrDefaultAsync(x => x.ChannelId == channelId && x.ManagedNodePubKey == managedNodePubKey);
     }
 
     public async Task<List<ChannelFeeState>> GetByManagedNodePubKey(string managedNodePubKey)
     {
         await using var context = await _dbContextFactory.CreateDbContextAsync();
 
-        // ChannelFeeState carries no node pubkey; the owning node lives on ChannelRoutingState
-        // (1:1 with the same Channel), so filter through it.
-        var channelIds = context.ChannelRoutingStates
-            .Where(s => s.ManagedNodePubKey == managedNodePubKey)
-            .Select(s => s.ChannelId);
-
         return await context.ChannelFeeStates
-            .Include(x => x.Channel)
-            .Where(x => channelIds.Contains(x.ChannelId))
+            .Where(x => x.ManagedNodePubKey == managedNodePubKey)
             .ToListAsync();
     }
 
-    public async Task UpsertByChannelId(ChannelFeeState state)
+    public async Task UpsertByChannelAndNode(ChannelFeeState state)
     {
         await using var context = await _dbContextFactory.CreateDbContextAsync();
 
         var existing = await context.ChannelFeeStates
-            .FirstOrDefaultAsync(x => x.ChannelId == state.ChannelId);
+            .FirstOrDefaultAsync(x => x.ChannelId == state.ChannelId
+                                      && x.ManagedNodePubKey == state.ManagedNodePubKey);
 
         if (existing == null)
         {
@@ -90,14 +84,15 @@ public class ChannelFeeStateRepository : IChannelFeeStateRepository
         await using var context = await _dbContextFactory.CreateDbContextAsync();
 
         var existing = await context.ChannelFeeStates
-            .FirstOrDefaultAsync(x => x.ChannelId == channelId);
+            .Where(x => x.ChannelId == channelId)
+            .ToListAsync();
 
-        if (existing == null)
+        if (existing.Count == 0)
         {
             return false;
         }
 
-        context.ChannelFeeStates.Remove(existing);
+        context.ChannelFeeStates.RemoveRange(existing);
         await context.SaveChangesAsync();
         return true;
     }
@@ -106,12 +101,8 @@ public class ChannelFeeStateRepository : IChannelFeeStateRepository
     {
         await using var context = await _dbContextFactory.CreateDbContextAsync();
 
-        var channelIds = context.ChannelRoutingStates
-            .Where(s => s.ManagedNodePubKey == managedNodePubKey)
-            .Select(s => s.ChannelId);
-
         var states = await context.ChannelFeeStates
-            .Where(x => channelIds.Contains(x.ChannelId))
+            .Where(x => x.ManagedNodePubKey == managedNodePubKey)
             .ToListAsync();
 
         if (states.Count == 0)
