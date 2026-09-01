@@ -7,9 +7,9 @@
 #   nodeguard (seeds nodes, funds its hot wallet) →
 #   e2e-runner (runs the whole E2E suite, Category=E2E, in one pass).
 #
-# The fee-engine flow scenario drives alice/bob/carol's LND directly (reading the extract-env creds file off
-# the mounted volume), so there's no traffic sidecar and no second runner. The scenarios are order-agnostic
-# but run serially (one test class).
+# The fee-engine flow and auto-rebalance scenarios drive alice/bob/carol's LND directly (reading the
+# extract-env creds file off the mounted volume), so there's no traffic sidecar and no second runner. The
+# scenarios are order-agnostic but run serially (one xUnit collection).
 #
 # NOTE: not yet runtime-verified as a stack (see docker/e2e/README.md) — every runtime STEP was validated
 # manually against a live NodeGuard; the compose wiring needs a CI shakeout.
@@ -99,6 +99,8 @@ services:
       ROUTING_ENGINE_ENABLED: "true"
       ROUTING_ENGINE_DRY_RUN: "false"
       ROUTING_ENGINE_FEE_MIN_CHANNEL_SIZE_SATS: "15000000"
+      ROUTING_ENGINE_REBALANCE_MAX_AMOUNT_SATS: "3000000"
+      ROUTING_ENGINE_REBALANCE_DEADBAND: "0.15"
       ROUTING_ENGINE_JOB_INTERVAL_SECONDS: "15"
       ROUTING_ENGINE_CATEGORIZATION_MIN_AGE_BLOCKS: 0
       ROUTING_ENGINE_FLOW_MIN_MSAT: 1000000
@@ -136,6 +138,8 @@ services:
       POSTGRES_CONNECTIONSTRING: "Host=postgres;Port=5432;Database=nodeguard;User ID=postgres;"
       E2E_FORWARDING_NODE_CONTAINER: "polar-n1-bob"
       ROUTING_ENGINE_FEE_MIN_CHANNEL_SIZE_SATS: "15000000"
+      ROUTING_ENGINE_REBALANCE_MAX_AMOUNT_SATS: "3000000"
+      ROUTING_ENGINE_REBALANCE_DEADBAND: "0.15"
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock # Lets the reconnect test restart an LND container via the Docker Engine API socket.
       - e2e_env:/shared:ro   # LND host+macaroon env (extract-env); the flow scenario reads it directly

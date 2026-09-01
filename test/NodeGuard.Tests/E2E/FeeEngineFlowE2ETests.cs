@@ -34,7 +34,7 @@ namespace NodeGuard.Tests.E2E;
 /// </summary>
 [Trait("Category", "E2E")]
 [Collection("E2E")]
-public class FeeEngineFlowE2ETests : FeeEngineE2EBase
+public class FeeEngineFlowE2ETests : RoutingEngineE2EBase
 {
     // Flow knobs (former generate-flow.sh defaults). The ~2.4x pull:push ratio flips SINK→SOURCE; each
     // 25k-sat payment clears the 1M-msat floor.
@@ -69,7 +69,7 @@ public class FeeEngineFlowE2ETests : FeeEngineE2EBase
 
         try
         {
-            await ResetFeeEngineStateAsync();
+            await ResetRoutingEngineStateAsync();
 
             // Enable alice's fee engine — alice is the node whose Alice→Bob channel NodeGuard categorizes.
             await using (var db = CreateDbContext())
@@ -95,20 +95,7 @@ public class FeeEngineFlowE2ETests : FeeEngineE2EBase
 
             // Find NodeGuard's row for the exact channel we'll drive, by its LND scid (ChanId) — unambiguous
             // even if a second Alice→Bob exists. NodeGuard records externally-opened channels via MonitorChannelsJob.
-            var channelId = await PollAsync(
-                async () =>
-                {
-                    await using var db = CreateDbContext();
-                    var chans = await db.Channels.AsNoTracking()
-                        .Select(c => new { c.Id, c.ChanId, c.Status })
-                        .ToListAsync();
-                    _output.WriteLine($"[chan] {chans.Count} rows: " + string.Join(" | ",
-                        chans.Select(c => $"Id={c.Id} chanId={c.ChanId} st={c.Status}")));
-                    var match = chans.FirstOrDefault(c => c.ChanId == aliceBobScid && c.Status == Channel.ChannelStatus.Open);
-                    return match?.Id ?? 0;
-                },
-                id => id != 0,
-                attempts: 60, delay: TimeSpan.FromSeconds(3), what: $"Alice→Bob (scid {aliceBobScid}) discovered by NodeGuard");
+            var channelId = await PollChannelIdByScidAsync(aliceBobScid);
 
             await using (var db = CreateDbContext())
             {
@@ -129,7 +116,7 @@ public class FeeEngineFlowE2ETests : FeeEngineE2EBase
             }
             pushed.Should().BeGreaterThan(0, "at least one Carol→Alice→Bob push payment must settle to drive SINK");
 
-            var sink = await PollRoutingStateAsync(channelId,
+            var sink = await PollRoutingStateAsync(channelId, aliceNode.PubKey,
                 rs => rs is { PeerFlowCategory: PeerFlowCategory.Sink },
                 tag: "poll-sink", what: "Alice→Bob categorized as SINK (side 1)", attempts: 60);
 
@@ -140,7 +127,7 @@ public class FeeEngineFlowE2ETests : FeeEngineE2EBase
             sink.NetFlowRatio.Should().BeGreaterThan(0, "outbound-heavy flow on Alice→Bob is a SINK signal");
             sink.TargetLocalRatio.Should().BeGreaterThan(0.5, "a SINK's target ratio drifts upward");
 
-            var sinkFee = await PollFeeAppliedAsync(channelId, "ChannelFeeState fee applied (SINK)");
+            var sinkFee = await PollFeeAppliedAsync(channelId, aliceNode.PubKey, "ChannelFeeState fee applied (SINK)");
             _output.WriteLine($"[sink-fee] outbound={sinkFee!.LastAppliedOutboundPpm} inbound={sinkFee.LastAppliedInboundPpm}");
             sinkFee.LastAppliedOutboundPpm.Should().NotBeNull("the fee engine should have applied a policy to the SINK channel");
 
@@ -157,7 +144,7 @@ public class FeeEngineFlowE2ETests : FeeEngineE2EBase
 
             // Category flips on net-flow crossing, but TargetLocalRatio is a slow EMA — wait for BOTH (a
             // mid-drift ~0.503 would fail the < 0.5 assertion).
-            var source = await PollRoutingStateAsync(channelId,
+            var source = await PollRoutingStateAsync(channelId, aliceNode.PubKey,
                 rs => rs is { PeerFlowCategory: PeerFlowCategory.Source } && rs.TargetLocalRatio < 0.5,
                 tag: "poll-source", what: "Alice→Bob flipped to SOURCE with target < 0.5 (side 2)", attempts: 90);
 
@@ -169,7 +156,7 @@ public class FeeEngineFlowE2ETests : FeeEngineE2EBase
             source.PushMsatWindow.Should().BeGreaterThan(0, "side 1 push flow should still be on record");
             source.PullMsatWindow.Should().BeGreaterThan(0, "side 2 pull flow drove the flip");
 
-            var sourceFee = await PollFeeAppliedAsync(channelId, "ChannelFeeState fee applied (SOURCE)");
+            var sourceFee = await PollFeeAppliedAsync(channelId, aliceNode.PubKey, "ChannelFeeState fee applied (SOURCE)");
             _output.WriteLine($"[source-fee] outbound={sourceFee!.LastAppliedOutboundPpm} inbound={sourceFee.LastAppliedInboundPpm}");
             sourceFee.LastAppliedOutboundPpm.Should().NotBeNull("the fee engine should have applied a policy to the categorized channel");
         }
@@ -249,24 +236,4 @@ public class FeeEngineFlowE2ETests : FeeEngineE2EBase
         }
         throw new InvalidOperationException($"{what} never got a confirmed scid after mining");
     }
-
-    // Reads the channel's routing state, or null if the categorizer hasn't written a row yet.
-    private static async Task<ChannelRoutingState?> ReadRoutingStateAsync(int channelId)
-    {
-        await using var db = CreateDbContext();
-        return await db.ChannelRoutingStates.AsNoTracking().FirstOrDefaultAsync(x => x.ChannelId == channelId);
-    }
-
-    // Polls the routing state until done holds, logging the evolving signal under tag each attempt.
-    private Task<ChannelRoutingState?> PollRoutingStateAsync(
-        int channelId, Func<ChannelRoutingState?, bool> done, string tag, string what, int attempts)
-        => PollAsync(
-            async () =>
-            {
-                var rs = await ReadRoutingStateAsync(channelId);
-                if (rs != null)
-                    _output.WriteLine($"[{tag}] cat={rs.PeerFlowCategory} netFlow={rs.NetFlowRatio:0.###} push={rs.PushMsatWindow} pull={rs.PullMsatWindow} age={rs.AgeBlocks} chanIdLnd={rs.ChanIdLnd}");
-                return rs;
-            },
-            done, attempts, TimeSpan.FromSeconds(4), what);
 }
