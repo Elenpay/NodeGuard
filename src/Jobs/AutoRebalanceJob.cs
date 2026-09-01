@@ -264,6 +264,7 @@ public class AutoRebalanceJob : IJob
                     AmountSats: plan.AmountSats,
                     MaxFeePct: plan.MaxFeePct,
                     IsManual: false,
+                    TimeoutSeconds: Constants.ROUTING_ENGINE_REBALANCE_TIMEOUT_SECONDS,
                     // Keep retries within the profitable ceiling
                     RetryMaxFeePct: plan.MaxFeePct);
 
