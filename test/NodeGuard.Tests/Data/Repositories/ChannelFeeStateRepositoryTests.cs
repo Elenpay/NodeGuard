@@ -45,12 +45,28 @@ public class ChannelFeeStateRepositoryTests
         var (factory, _) = SetupDb();
         var sut = new ChannelFeeStateRepository(factory.Object);
 
-        await sut.UpsertByChannelId(new ChannelFeeState { ChannelId = 7, LastAppliedOutboundPpm = 1234 });
+        await sut.UpsertByChannelAndNode(new ChannelFeeState { ChannelId = 7, ManagedNodePubKey = "02a", LastAppliedOutboundPpm = 1234 });
 
         var deleted = await sut.DeleteByChannelId(7);
 
         deleted.Should().BeTrue();
-        (await sut.GetByChannelId(7)).Should().BeNull();
+        (await sut.GetByChannelIdAndNode(7, "02a")).Should().BeNull();
+    }
+
+    [Fact]
+    public async Task DeleteByChannelId_RemovesEverySideOfTheChannel()
+    {
+        var (factory, _) = SetupDb();
+        var sut = new ChannelFeeStateRepository(factory.Object);
+
+        // IsDynamicFeeEnabled is channel-level, so opting out drops both managed sides' state.
+        await sut.UpsertByChannelAndNode(new ChannelFeeState { ChannelId = 7, ManagedNodePubKey = "02a", LastAppliedOutboundPpm = 10 });
+        await sut.UpsertByChannelAndNode(new ChannelFeeState { ChannelId = 7, ManagedNodePubKey = "02b", LastAppliedOutboundPpm = 20 });
+
+        (await sut.DeleteByChannelId(7)).Should().BeTrue();
+
+        (await sut.GetByChannelIdAndNode(7, "02a")).Should().BeNull();
+        (await sut.GetByChannelIdAndNode(7, "02b")).Should().BeNull();
     }
 
     [Fact]
@@ -63,32 +79,66 @@ public class ChannelFeeStateRepositoryTests
     }
 
     [Fact]
-    public async Task DeleteByManagedNodePubKey_RemovesOnlyThatNodesFeeStates_ResolvedViaRoutingState()
+    public async Task UpsertByChannelAndNode_KeepsOneRowPerManagedSideOfTheSameChannel()
     {
         var (factory, options) = SetupDb();
         var sut = new ChannelFeeStateRepository(factory.Object);
 
-        // Fee states for three channels.
-        await sut.UpsertByChannelId(new ChannelFeeState { ChannelId = 1, LastAppliedOutboundPpm = 10 });
-        await sut.UpsertByChannelId(new ChannelFeeState { ChannelId = 2, LastAppliedOutboundPpm = 20 });
-        await sut.UpsertByChannelId(new ChannelFeeState { ChannelId = 3, LastAppliedOutboundPpm = 30 });
+        // Each side of a channel sets its own outbound policy, so each keeps its own fee state.
+        await sut.UpsertByChannelAndNode(new ChannelFeeState { ChannelId = 7, ManagedNodePubKey = "02a", LastAppliedOutboundPpm = 100 });
+        await sut.UpsertByChannelAndNode(new ChannelFeeState { ChannelId = 7, ManagedNodePubKey = "02b", LastAppliedOutboundPpm = 900 });
 
-        // Ownership lives on ChannelRoutingState: channels 1 & 2 belong to node A, channel 3 to node B.
-        await using (var seed = new ApplicationDbContext(options))
-        {
-            seed.ChannelRoutingStates.AddRange(
-                new ChannelRoutingState { ChannelId = 1, ManagedNodePubKey = "02a", LastEvaluatedAt = DateTimeOffset.UtcNow },
-                new ChannelRoutingState { ChannelId = 2, ManagedNodePubKey = "02a", LastEvaluatedAt = DateTimeOffset.UtcNow },
-                new ChannelRoutingState { ChannelId = 3, ManagedNodePubKey = "02b", LastEvaluatedAt = DateTimeOffset.UtcNow });
-            await seed.SaveChangesAsync();
-        }
+        await using var verify = new ApplicationDbContext(options);
+        (await verify.ChannelFeeStates.CountAsync(x => x.ChannelId == 7)).Should().Be(2);
+
+        // Updating one side leaves the other untouched.
+        await sut.UpsertByChannelAndNode(new ChannelFeeState { ChannelId = 7, ManagedNodePubKey = "02a", LastAppliedOutboundPpm = 150 });
+
+        (await sut.GetByChannelIdAndNode(7, "02a"))!.LastAppliedOutboundPpm.Should().Be(150);
+        (await sut.GetByChannelIdAndNode(7, "02b"))!.LastAppliedOutboundPpm.Should().Be(900);
+    }
+
+    [Fact]
+    public async Task GetByManagedNodePubKey_ReturnsOnlyThatNodesRows()
+    {
+        var (factory, _) = SetupDb();
+        var sut = new ChannelFeeStateRepository(factory.Object);
+
+        await sut.UpsertByChannelAndNode(new ChannelFeeState { ChannelId = 1, ManagedNodePubKey = "02a", LastAppliedOutboundPpm = 10 });
+        await sut.UpsertByChannelAndNode(new ChannelFeeState { ChannelId = 2, ManagedNodePubKey = "02a", LastAppliedOutboundPpm = 20 });
+        await sut.UpsertByChannelAndNode(new ChannelFeeState { ChannelId = 2, ManagedNodePubKey = "02b", LastAppliedOutboundPpm = 30 });
+
+        var forA = await sut.GetByManagedNodePubKey("02a");
+
+        forA.Should().HaveCount(2);
+        forA.Select(x => x.ChannelId).Should().BeEquivalentTo(new[] { 1, 2 });
+    }
+
+    [Fact]
+    public async Task DeleteByManagedNodePubKey_RemovesOnlyThatNodesFeeStates()
+    {
+        var (factory, _) = SetupDb();
+        var sut = new ChannelFeeStateRepository(factory.Object);
+
+        await sut.UpsertByChannelAndNode(new ChannelFeeState { ChannelId = 1, ManagedNodePubKey = "02a", LastAppliedOutboundPpm = 10 });
+        await sut.UpsertByChannelAndNode(new ChannelFeeState { ChannelId = 2, ManagedNodePubKey = "02a", LastAppliedOutboundPpm = 20 });
+        // Same channel, other managed side — must survive.
+        await sut.UpsertByChannelAndNode(new ChannelFeeState { ChannelId = 2, ManagedNodePubKey = "02b", LastAppliedOutboundPpm = 30 });
 
         var deleted = await sut.DeleteByManagedNodePubKey("02a");
 
         deleted.Should().BeTrue();
-        (await sut.GetByChannelId(1)).Should().BeNull();
-        (await sut.GetByChannelId(2)).Should().BeNull();
-        // Node B's channel is untouched.
-        (await sut.GetByChannelId(3)).Should().NotBeNull();
+        (await sut.GetByChannelIdAndNode(1, "02a")).Should().BeNull();
+        (await sut.GetByChannelIdAndNode(2, "02a")).Should().BeNull();
+        (await sut.GetByChannelIdAndNode(2, "02b")).Should().NotBeNull();
+    }
+
+    [Fact]
+    public async Task DeleteByManagedNodePubKey_ReturnsFalse_WhenAbsent()
+    {
+        var (factory, _) = SetupDb();
+        var sut = new ChannelFeeStateRepository(factory.Object);
+
+        (await sut.DeleteByManagedNodePubKey("02a")).Should().BeFalse();
     }
 }

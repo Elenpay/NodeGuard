@@ -23,14 +23,9 @@ namespace NodeGuard.Data.Repositories.Interfaces;
 
 public interface IChannelRoutingStateRepository
 {
-    Task<ChannelRoutingState?> GetByChannelId(int channelId);
+    Task<ChannelRoutingState?> GetByChannelIdAndNode(int channelId, string managedNodePubKey);
 
     Task<List<ChannelRoutingState>> GetByManagedNodePubKey(string managedNodePubKey);
 
-    /// <summary>
-    /// Insert-or-update keyed on <see cref="ChannelRoutingState.ChannelId"/>. Load-then-update
-    /// is sufficient because TargetRatioReevaluationJob is the sole writer under
-    /// [DisallowConcurrentExecution].
-    /// </summary>
-    Task UpsertByChannelId(ChannelRoutingState state);
+    Task UpsertByChannelAndNode(ChannelRoutingState state);
 }
