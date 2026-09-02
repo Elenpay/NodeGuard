@@ -32,7 +32,10 @@ public record RebalanceRequest(
     string TargetPubkey,
     long AmountSats,
     double? MaxFeePct,
-    int TimeoutSeconds = 60,
+    // Required: every caller states its own timeout. 0 means "use
+    // Constants.DEFAULT_REBALANCE_TIMEOUT_SECONDS" — it is env-overridable and therefore not a
+    // compile-time constant, so it cannot be expressed as a parameter default here.
+    int TimeoutSeconds,
     bool IsManual = true,
     string? UserRequestorId = null,
     double? AmountBackoffRatio = null,
@@ -159,7 +162,7 @@ public class RebalanceService : IRebalanceService
             SourceChanIdLnd = sourceChanIdLnd,
             TargetPubkey = targetPubkey,
             UserRequestorId = request.UserRequestorId,
-            TimeoutSeconds = request.TimeoutSeconds == 0 ? 60 : request.TimeoutSeconds,
+            TimeoutSeconds = request.TimeoutSeconds == 0 ? Constants.DEFAULT_REBALANCE_TIMEOUT_SECONDS : request.TimeoutSeconds,
             AmountBackoffRatio = request.AmountBackoffRatio,
             MaxAttempts = request.MaxAttempts,
             RetryMaxFeePct = request.RetryMaxFeePct,

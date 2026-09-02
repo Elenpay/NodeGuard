@@ -136,7 +136,7 @@ public class Rebalance : Entity
     /// <summary>
     /// Pathfinding/payment timeout we passed to SendPaymentV2.
     /// </summary>
-    public int TimeoutSeconds { get; set; } = 60;
+    public int TimeoutSeconds { get; set; } = Constants.DEFAULT_REBALANCE_TIMEOUT_SECONDS;
 
     /// <summary>
     /// Multiplier applied to the rebalanced amount on each retry attempt. Range: (0, 1].

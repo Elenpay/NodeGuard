@@ -144,9 +144,9 @@ public class AutoRebalanceJob : IJob
 
         var periodStart = node.RebalanceBudgetStartDatetime ?? now;
 
-        // Remaining fee budget for this period. GetConsumedFeesSince already counts in-flight
+        // Remaining fee budget for this period. GetPessimisticFeesSince already counts in-flight
         // reservations, so a rebalance started earlier this period is charged immediately
-        var consumed = await _rebalanceRepository.GetConsumedFeesSince(node.Id, periodStart);
+        var consumed = await _rebalanceRepository.GetPessimisticConsumedFeesSince(node.Id, periodStart);
         var remainingBudget = budgetSats - consumed;
         if (remainingBudget <= 0)
         {
@@ -264,6 +264,7 @@ public class AutoRebalanceJob : IJob
                     AmountSats: plan.AmountSats,
                     MaxFeePct: plan.MaxFeePct,
                     IsManual: false,
+                    TimeoutSeconds: Constants.DEFAULT_REBALANCE_TIMEOUT_SECONDS,
                     // Keep retries within the profitable ceiling
                     RetryMaxFeePct: plan.MaxFeePct);
 

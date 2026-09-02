@@ -166,6 +166,17 @@ public class RebalanceRepository : IRebalanceRepository
     {
         await using var context = await _dbContextFactory.CreateDbContextAsync();
 
+        return await context.Rebalances
+            .Where(r => r.NodeId == nodeId
+                        && r.CreationDatetime >= since
+                        && r.Status == RebalanceStatus.Succeeded)
+            .SumAsync(r => r.FeePaidSats ?? 0);
+    }
+
+    public async Task<long> GetPessimisticConsumedFeesSince(int nodeId, DateTimeOffset since)
+    {
+        await using var context = await _dbContextFactory.CreateDbContextAsync();
+
         // Only rows that can have consumed budget: in-flight (reserved or partially paid) and
         // settled. Other terminal states (Failed/NoRoute/Timeout/…) paid nothing → excluded.
         var rows = await context.Rebalances

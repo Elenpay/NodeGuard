@@ -132,7 +132,7 @@ public class AutoRebalanceJobTests
         _feeStateRepository.Setup(x => x.GetByManagedNodePubKey(NodePubKey)).ReturnsAsync(new List<ChannelFeeState>());
 
         _rebalanceRepository.Setup(x => x.GetPendingInFlightSourceChannelIds()).ReturnsAsync(new HashSet<int>());
-        _rebalanceRepository.Setup(x => x.GetConsumedFeesSince(node.Id, It.IsAny<DateTimeOffset>())).ReturnsAsync(0L);
+        _rebalanceRepository.Setup(x => x.GetPessimisticConsumedFeesSince(node.Id, It.IsAny<DateTimeOffset>())).ReturnsAsync(0L);
         _rebalanceRepository.Setup(x => x.GetInFlightByNode(node.Id)).ReturnsAsync(0);
 
         var listResp = new Lnrpc.ListChannelsResponse
@@ -170,6 +170,21 @@ public class AutoRebalanceJobTests
             It.Is<RebalanceRequest>(r => r.SourceChannelId == 101 && r.TargetPubkey == "peerD"
                 && r.AmountSats == 5_000_000 && !r.IsManual
                 && r.MaxFeePct.HasValue && Math.Abs(r.MaxFeePct.Value - 0.125) < 1e-9),
+            It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    [Fact]
+    public async Task Execute_DispatchesWithTheDefaultRebalanceTimeout()
+    {
+        ArrangeRebalancePair(sourceOptedIn: true);
+
+        await RoutingEngineSwitch.WithEngine(enabled: true, async () =>
+        {
+            await BuildJob().Execute(Mock.Of<IJobExecutionContext>());
+        });
+
+        _rebalanceService.Verify(x => x.RebalanceAsync(
+            It.Is<RebalanceRequest>(r => r.TimeoutSeconds == Constants.DEFAULT_REBALANCE_TIMEOUT_SECONDS),
             It.IsAny<CancellationToken>()), Times.Once);
     }
 
@@ -278,7 +293,7 @@ public class AutoRebalanceJobTests
         _feeStateRepository.Setup(x => x.GetByManagedNodePubKey(NodePubKey)).ReturnsAsync(new List<ChannelFeeState>());
 
         _rebalanceRepository.Setup(x => x.GetPendingInFlightSourceChannelIds()).ReturnsAsync(new HashSet<int>());
-        _rebalanceRepository.Setup(x => x.GetConsumedFeesSince(node.Id, It.IsAny<DateTimeOffset>())).ReturnsAsync(0L);
+        _rebalanceRepository.Setup(x => x.GetPessimisticConsumedFeesSince(node.Id, It.IsAny<DateTimeOffset>())).ReturnsAsync(0L);
         _rebalanceRepository.Setup(x => x.GetInFlightByNode(node.Id)).ReturnsAsync(0);
 
 
@@ -374,7 +389,7 @@ public class AutoRebalanceJobTests
         });
 
         _rebalanceRepository.Setup(x => x.GetPendingInFlightSourceChannelIds()).ReturnsAsync(new HashSet<int>());
-        _rebalanceRepository.Setup(x => x.GetConsumedFeesSince(node.Id, It.IsAny<DateTimeOffset>())).ReturnsAsync(0L);
+        _rebalanceRepository.Setup(x => x.GetPessimisticConsumedFeesSince(node.Id, It.IsAny<DateTimeOffset>())).ReturnsAsync(0L);
         _rebalanceRepository.Setup(x => x.GetInFlightByNode(node.Id)).ReturnsAsync(0);
 
         _lightningClientService
