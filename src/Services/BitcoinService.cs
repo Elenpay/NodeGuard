@@ -183,20 +183,8 @@ namespace NodeGuard.Services
                 }
             }
 
-            // Edge case: If you bumped a multisig transaction and a block was mined in between, the utxo is now unlocked, so we need to fail here
-            // So a new withdrawal isn't performed with a new utxo
-            if (previouslyLockedUTXOs.Count == 0 && walletWithdrawalRequest.BumpingWalletWithdrawalRequestId != null)
-            {
-                throw new ShowToUserException($"Cannot generate a template PSBT for an already confirmed bumped transaction. The UTXO for request {walletWithdrawalRequest.BumpingWalletWithdrawalRequestId} is already confirmed");
-            }
-
-
-            var availableUTXOs = previouslyLockedUTXOs.Count > 0
-                ? previouslyLockedUTXOs
-                : await _coinSelectionService.GetAvailableUTXOsAsync(derivationStrategy);
-            var (scriptCoins, selectedUTXOs) =
-                await _coinSelectionService.GetTxInputCoins(availableUTXOs, walletWithdrawalRequest,
-                    derivationStrategy);
+            var (scriptCoins, selectedUTXOs) = await _coinSelectionService.SelectAndLockUTXOsAsync(
+                walletWithdrawalRequest, BitcoinRequestType.WalletWithdrawal, derivationStrategy);
 
             if (scriptCoins == null || !scriptCoins.Any())
             {
@@ -309,18 +297,6 @@ namespace NodeGuard.Services
             originalPSBT = LightningHelper.AddDerivationData(walletWithdrawalRequest.Wallet, originalPSBT,
                 selectedUTXOs, scriptCoins, _logger);
 
-
-            // We "lock" the PSBT to the channel operation request by adding to its UTXOs collection for later checking
-            var utxos = selectedUTXOs.Select(x => _mapper.Map<UTXO, FMUTXO>(x)).ToList();
-
-            var addUTXOSOperation = await _walletWithdrawalRequestRepository.AddUTXOs(walletWithdrawalRequest, utxos);
-            if (!addUTXOSOperation.Item1)
-            {
-                var message =
-                    $"Could not add the following utxos({utxos.Humanize()}) to op request:{walletWithdrawalRequest.Id}";
-                _logger.LogError(message);
-                throw new Exception(message);
-            }
 
             if (originalPSBT == null)
             {

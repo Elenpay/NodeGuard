@@ -259,14 +259,14 @@ public class NodeGuardService : Nodeguard.NodeGuardService.NodeGuardServiceBase,
                     outpoints.Add(OutPoint.Parse(outpoint));
                 }
 
-                // Search the utxos and lock them
+                // Search the utxos (not locked yet - LockUTXOs below is what checks and commits
+                // the lock atomically, since this is a pure, unprotected read)
                 var derivationStrategyBase = wallet.GetDerivationStrategy();
 
                 if (derivationStrategyBase == null)
                     throw new RpcException(new Status(StatusCode.Internal, "Derivation strategy not found"));
 
                 utxos = await _coinSelectionService.GetUTXOsByOutpointAsync(derivationStrategyBase, outpoints);
-      
             }
 
             // Create destination objects for the withdrawal request
@@ -307,19 +307,13 @@ public class NodeGuardService : Nodeguard.NodeGuardService.NodeGuardServiceBase,
 
             if (request.Changeless)
             {
-                // Lock the utxos
+                // Checks the utxos aren't already locked/frozen and locks them, atomically per wallet
                 await _coinSelectionService.LockUTXOs(utxos, withdrawalRequest,
                     BitcoinRequestType.WalletWithdrawal);
             }
 
             // Update to refresh from db
             withdrawalRequest = await _walletWithdrawalRequestRepository.GetById(withdrawalRequest.Id);
-
-            if (!withdrawalSaved.Item1)
-            {
-                _logger.LogError("Error saving withdrawal request for wallet with id {walletId}", request.WalletId);
-                throw new RpcException(new Status(StatusCode.Internal, "Error saving withdrawal request for wallet"));
-            }
 
             // Template PSBT generation with SIGHASH_ALL
             var psbt = await _bitcoinService.GenerateTemplatePSBT(withdrawalRequest ??
@@ -354,6 +348,12 @@ public class NodeGuardService : Nodeguard.NodeGuardService.NodeGuardServiceBase,
             _logger.LogError(e.Message);
             throw new RpcException(new Status(StatusCode.ResourceExhausted, e.Message));
         }
+        catch (UtxoAlreadyLockedException e)
+        {
+            CancelWithdrawalRequest(withdrawalRequest);
+            _logger.LogError(e.Message);
+            throw new RpcException(new Status(StatusCode.FailedPrecondition, e.Message));
+        }
         catch (RpcException e)
         {
             CancelWithdrawalRequest(withdrawalRequest);
@@ -378,6 +378,20 @@ public class NodeGuardService : Nodeguard.NodeGuardService.NodeGuardServiceBase,
             {
                 _logger.LogError(error, "Error updating status of withdrawal request {RequestId} for wallet {WalletId}",
                     withdrawalRequest.Id, withdrawalRequest.WalletId);
+            }
+        }
+    }
+
+    private void CancelChannelOperationRequest(ChannelOperationRequest? channelOperationRequest)
+    {
+        if (channelOperationRequest != null)
+        {
+            channelOperationRequest.Status = ChannelOperationRequestStatus.Failed;
+            var (success, error) = _channelOperationRequestRepository.Update(channelOperationRequest);
+            if (!success)
+            {
+                _logger?.LogError(error, "Error updating status of channel operation request {RequestId} for wallet {WalletId}",
+                    channelOperationRequest.Id, channelOperationRequest.WalletId);
             }
         }
     }
@@ -561,6 +575,7 @@ public class NodeGuardService : Nodeguard.NodeGuardService.NodeGuardServiceBase,
         }
 
         int requestId;
+        ChannelOperationRequest? channelOperationRequest = null;
 
         try
         {
@@ -574,7 +589,8 @@ public class NodeGuardService : Nodeguard.NodeGuardService.NodeGuardServiceBase,
                     outpoints.Add(OutPoint.Parse(outpoint));
                 }
 
-                // Search the utxos and lock them
+                // Search the utxos (not locked yet - LockUTXOs below is what checks and commits
+                // the lock atomically, since this is a pure, unprotected read)
                 var derivationStrategy = wallet.GetDerivationStrategy();
                 if (derivationStrategy == null)
                 {
@@ -601,7 +617,7 @@ public class NodeGuardService : Nodeguard.NodeGuardService.NodeGuardServiceBase,
                 throw new RpcException(new Status(StatusCode.NotFound, "Custom fee rate is required"));
             }
 
-            var channelOperationRequest = new ChannelOperationRequest
+            channelOperationRequest = new ChannelOperationRequest
             {
                 SatsAmount = request.SatsAmount,
                 Description = $"Channel open from {sourceNode.PubKey} to {destNode.PubKey} (API)",
@@ -629,7 +645,7 @@ public class NodeGuardService : Nodeguard.NodeGuardService.NodeGuardServiceBase,
 
             if (request.Changeless)
             {
-                // Lock the utxos
+                // Checks the utxos aren't already locked/frozen and locks them, atomically per wallet
                 await _coinSelectionService.LockUTXOs(utxos, channelOperationRequest,
                     BitcoinRequestType.ChannelOperation);
             }
@@ -673,8 +689,15 @@ public class NodeGuardService : Nodeguard.NodeGuardService.NodeGuardServiceBase,
 
             requestId = channelOperationRequest.Id;
         }
+        catch (UtxoAlreadyLockedException e)
+        {
+            CancelChannelOperationRequest(channelOperationRequest);
+            _logger?.LogError(e.Message);
+            throw new RpcException(new Status(StatusCode.FailedPrecondition, e.Message));
+        }
         catch (Exception e)
         {
+            CancelChannelOperationRequest(channelOperationRequest);
             _logger?.LogError(e, "Error opening channel through gRPC");
             throw new RpcException(new Status(StatusCode.Internal, e.Message));
         }

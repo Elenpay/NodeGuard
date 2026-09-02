@@ -46,6 +46,13 @@ public class BumpingException : Exception
    public BumpingException(string? message = null): base(message) {}
 }
 
+// A ShowToUserException: picking a UTXO someone else already took is a normal thing for a user to
+// hit, so it should reach them as a message rather than as an unhandled error.
+public class UtxoAlreadyLockedException : ShowToUserException
+{
+   public UtxoAlreadyLockedException(string? message = null): base(message) {}
+}
+
 public class CustomArgumentNullException : ArgumentNullException
 {
    public static void ThrowIfNull([NotNull] object? obj, string paramName, string message, params object[] args)

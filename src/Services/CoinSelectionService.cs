@@ -55,11 +55,42 @@ public interface ICoinSelectionService
     public Task<List<UTXO>> GetUTXOsByOutpointAsync(DerivationStrategyBase derivationStrategy, List<OutPoint> outPoints);
 
     /// <summary>
-    /// Locks the UTXOs for using in a specific transaction
+    /// Locks the UTXOs for using in a specific transaction. Serializes with other selections and
+    /// throws <see cref="NodeGuard.Helpers.UtxoAlreadyLockedException"/> if any of the given UTXOs
+    /// is already locked by a different active request or frozen - this is the only guard for
+    /// explicitly/manually selected UTXOs, since (unlike automatic coin selection) nothing else
+    /// filters them beforehand.
     /// </summary>
     /// <param name="selectedUTXOs"></param>
-    /// <param name="channelOperationRequest"></param>
-    public Task LockUTXOs(List<UTXO> selectedUTXOs, IBitcoinRequest bitcoinRequest, BitcoinRequestType requestType);
+    /// <param name="bitcoinRequest"></param>
+    /// <param name="requestType"></param>
+    /// <param name="previousRequestIdAllowedToShareUtxos">
+    /// If set, a UTXO already locked by this specific request id (of the same <paramref name="requestType"/>)
+    /// is not treated as a conflict. Used for fee-bump (RBF): a bump intentionally reuses the exact
+    /// UTXO(s) of the request it replaces, so that specific, known-related lock must be allowed
+    /// while a lock from any other, unrelated request must still be rejected.
+    /// </param>
+    /// <remarks>
+    /// Use this when the caller already knows which UTXOs it wants (explicit/manual selection); use
+    /// <see cref="SelectAndLockUTXOsAsync"/> to have them selected too. Both hold the selection mutex
+    /// for their whole duration, so neither may be called from inside the other.
+    /// </remarks>
+    public Task LockUTXOs(List<UTXO> selectedUTXOs, IBitcoinRequest bitcoinRequest, BitcoinRequestType requestType,
+        int? previousRequestIdAllowedToShareUtxos = null);
+
+    /// <summary>
+    /// Atomically picks the UTXOs to fund <paramref name="request"/> and locks them to it: reads the
+    /// wallet's available UTXOs, selects enough to cover the amount and records them as locked to it,
+    /// all under the selection mutex. That makes read -> select -> claim indivisible, so two concurrent
+    /// requests can never select the same UTXO (which would make one transaction double-spend/RBF-replace
+    /// the other). The mutex is released before returning, so the caller builds its (comparatively slow)
+    /// PSBT without holding it.
+    /// If the request already has UTXOs locked to it (a retry/resume), those are reused instead of
+    /// selecting and locking a second, different set.
+    /// Returns empty collections when the wallet has no UTXOs that can fund the request.
+    /// </summary>
+    public Task<(List<ICoin> coins, List<UTXO> selectedUTXOs)> SelectAndLockUTXOsAsync(
+        IBitcoinRequest request, BitcoinRequestType requestType, DerivationStrategyBase derivationStrategy);
 
     /// <summary>
     /// Gets the locked UTXOs from a request
@@ -81,6 +112,17 @@ public interface ICoinSelectionService
 
 public class CoinSelectionService: ICoinSelectionService
 {
+    // Guards UTXO selection so only one request at a time can go from "read what is available" to
+    // "claim what it picked". A selection is a handful of short DB/NBXplorer reads and these are
+    // human-initiated operations, so one mutex for all wallets is plenty and avoids the bookkeeping a
+    // per-wallet mutex table would need.
+    // Not reentrant: LockUTXOs and SelectAndLockUTXOsAsync each hold it for their whole duration, so
+    // neither may be called from inside the other.
+    private static readonly SemaphoreSlim SelectionMutex = new(1, 1);
+
+    // Bounds the wait so a mutex bug surfaces as a failed request instead of an indefinite hang.
+    private static readonly TimeSpan SelectionMutexTimeout = TimeSpan.FromMinutes(2);
+
     private readonly ILogger<BitcoinService> _logger;
     private readonly IMapper _mapper;
     private readonly IFMUTXORepository _fmutxoRepository;
@@ -118,8 +160,104 @@ public class CoinSelectionService: ICoinSelectionService
        };
     }
 
-    public async Task LockUTXOs(List<UTXO> selectedUTXOs, IBitcoinRequest bitcoinRequest, BitcoinRequestType requestType)
+    /// <summary>
+    /// Runs <paramref name="body"/> with the selection mutex held.
+    /// </summary>
+    private static async Task<T> WithSelectionMutexAsync<T>(Func<Task<T>> body)
     {
+        if (!await SelectionMutex.WaitAsync(SelectionMutexTimeout))
+        {
+            throw new TimeoutException(
+                $"Timed out after {SelectionMutexTimeout.TotalSeconds}s waiting for the UTXO selection mutex");
+        }
+
+        try
+        {
+            return await body();
+        }
+        finally
+        {
+            SelectionMutex.Release();
+        }
+    }
+
+    public Task LockUTXOs(List<UTXO> selectedUTXOs, IBitcoinRequest bitcoinRequest, BitcoinRequestType requestType,
+        int? previousRequestIdAllowedToShareUtxos = null)
+    {
+        return WithSelectionMutexAsync(() =>
+            ClaimUTXOsForRequestAsync(selectedUTXOs, bitcoinRequest, requestType,
+                previousRequestIdAllowedToShareUtxos));
+    }
+
+    public Task<(List<ICoin> coins, List<UTXO> selectedUTXOs)> SelectAndLockUTXOsAsync(
+        IBitcoinRequest request, BitcoinRequestType requestType, DerivationStrategyBase derivationStrategy)
+    {
+        return WithSelectionMutexAsync(async () =>
+        {
+            // A request that already owns UTXOs is being retried/resumed, so reuse exactly those
+            // instead of selecting (and locking) a second, different set.
+            var previouslyLockedUTXOs = await GetLockedUTXOsForRequest(request, requestType);
+
+            // A fee bump must spend the same input as the transaction it replaces. Owning no UTXOs at
+            // this point means that input was already confirmed and released, so selecting below would
+            // silently bump onto a different one. Checked here, with the read it depends on, so a
+            // confirmation landing mid-selection cannot slip past it.
+            if (previouslyLockedUTXOs.Count == 0
+                && request is WalletWithdrawalRequest { BumpingWalletWithdrawalRequestId: not null } bump)
+            {
+                throw new ShowToUserException(
+                    $"Cannot generate a template PSBT for an already confirmed bumped transaction. The UTXO for request {bump.BumpingWalletWithdrawalRequestId} is already confirmed");
+            }
+
+            var availableUTXOs = previouslyLockedUTXOs.Count > 0
+                ? previouslyLockedUTXOs
+                : await GetAvailableUTXOsAsync(derivationStrategy);
+
+            var (coins, selectedUTXOs) = await GetTxInputCoins(availableUTXOs, request, derivationStrategy);
+
+            if (coins.Count > 0 && previouslyLockedUTXOs.Count == 0
+                && !await ClaimUTXOsForRequestAsync(selectedUTXOs, request, requestType, null))
+            {
+                throw new InvalidOperationException(
+                    $"Could not lock the selected UTXOs to {requestType} request {request.Id}");
+            }
+
+            return (coins, selectedUTXOs);
+        });
+    }
+
+    /// <summary>
+    /// Verifies none of <paramref name="selectedUTXOs"/> is already locked by another active request
+    /// or frozen, then records them as locked to this one. Must be called with the selection mutex
+    /// held, which is what makes that check-then-record atomic. Returns false if the record failed.
+    /// </summary>
+    private async Task<bool> ClaimUTXOsForRequestAsync(List<UTXO> selectedUTXOs, IBitcoinRequest bitcoinRequest,
+        BitcoinRequestType requestType, int? previousRequestIdAllowedToShareUtxos)
+    {
+        // Explicitly/manually selected UTXOs never went through the automatic-selection
+        // filtering (GetAvailableUTXOsAsync), so this is the only place that checks they
+        // aren't already locked by someone else before committing to them - a UTXO already
+        // locked by the specific request being bumped is allowed through, since fee-bumping
+        // intentionally reuses the same input(s) as the request it replaces.
+        var ignoredWalletWithdrawalRequestId = requestType == BitcoinRequestType.WalletWithdrawal
+            ? previousRequestIdAllowedToShareUtxos : null;
+        var ignoredChannelOperationRequestId = requestType == BitcoinRequestType.ChannelOperation
+            ? previousRequestIdAllowedToShareUtxos : null;
+
+        var lockedUtxos = await _fmutxoRepository.GetLockedUTXOs(ignoredWalletWithdrawalRequestId, ignoredChannelOperationRequestId);
+        var lockedOutpoints = lockedUtxos.Select(u => $"{u.TxId}-{u.OutputIndex}").ToHashSet();
+        var frozenOutpoints = await GetFrozenUTXOs();
+
+        var conflictingOutpoints = selectedUTXOs
+            .Select(u => u.Outpoint.ToString())
+            .Where(outpoint => lockedOutpoints.Contains(outpoint) || frozenOutpoints.Contains(outpoint))
+            .ToList();
+        if (conflictingOutpoints.Any())
+        {
+            throw new UtxoAlreadyLockedException(
+                $"UTXO(s) already locked by another request or frozen: {string.Join(", ", conflictingOutpoints)}");
+        }
+
         // We "lock" the PSBT to the channel operation request by adding to its UTXOs collection for later checking
         var utxos = selectedUTXOs.Select(x => _mapper.Map<UTXO, FMUTXO>(x)).ToList();
 
@@ -128,7 +266,10 @@ public class CoinSelectionService: ICoinSelectionService
         {
             _logger.LogError(
                 $"Could not add the following utxos({utxos.Humanize()}) to op request:{bitcoinRequest.Id}");
+            return false;
         }
+
+        return true;
     }
 
     public async Task<List<UTXO>> GetLockedUTXOsForRequest(IBitcoinRequest bitcoinRequest, BitcoinRequestType requestType)

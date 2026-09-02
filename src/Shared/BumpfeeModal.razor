@@ -167,7 +167,8 @@
             var outpoints = mUTXOs.Select(u => OutPoint.Parse($"{u.TxId}:{u.OutputIndex}")).ToList();
             var UTXOs = await CoinSelectionService.GetUTXOsByOutpointAsync(WithdrawalRequest.Wallet.GetDerivationStrategy()!, outpoints);
 
-            await CoinSelectionService.LockUTXOs(UTXOs, newRequest, BitcoinRequestType.WalletWithdrawal);
+            await CoinSelectionService.LockUTXOs(UTXOs, newRequest, BitcoinRequestType.WalletWithdrawal,
+                previousRequestIdAllowedToShareUtxos: WithdrawalRequest.Id);
 
             var updateResult = WalletWithdrawalRequestRepository.Update(newRequest);
             if (!updateResult.Item1)

@@ -126,10 +126,10 @@ namespace NodeGuard.Data.Repositories
                 walletWithdrawalRequestsLockedUTXOs = await applicationDbContext.WalletWithdrawalRequests
                     .Include(x => x.UTXOs)
                     .Where(x => x.Id != ignoredWalletWithdrawalRequestId
-                                && x.Status == WalletWithdrawalRequestStatus.Pending ||
+                                && (x.Status == WalletWithdrawalRequestStatus.Pending ||
                                 x.Status == WalletWithdrawalRequestStatus.PSBTSignaturesPending ||
                                 x.Status == WalletWithdrawalRequestStatus.FinalizingPSBT ||
-                                x.Status == WalletWithdrawalRequestStatus.OnChainConfirmationPending)
+                                x.Status == WalletWithdrawalRequestStatus.OnChainConfirmationPending))
                     .SelectMany(x => x.UTXOs).ToListAsync();
             }
 
@@ -148,10 +148,10 @@ namespace NodeGuard.Data.Repositories
             {
                 channelOperationRequestsLockedUTXOs = await applicationDbContext.ChannelOperationRequests.Include(x => x.Utxos)
                     .Where(x => x.Id != ignoredChannelOperationRequestId
-                        && x.Status == ChannelOperationRequestStatus.Pending ||
+                        && (x.Status == ChannelOperationRequestStatus.Pending ||
                                 x.Status == ChannelOperationRequestStatus.PSBTSignaturesPending ||
                                 x.Status == ChannelOperationRequestStatus.FinalizingPSBT ||
-                                x.Status == ChannelOperationRequestStatus.OnChainConfirmationPending)
+                                x.Status == ChannelOperationRequestStatus.OnChainConfirmationPending))
                     .SelectMany(x => x.Utxos).ToListAsync();
             }
 
