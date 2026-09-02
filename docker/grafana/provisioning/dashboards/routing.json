@@ -1504,6 +1504,299 @@
         "type": "grafana-postgresql-datasource",
         "uid": "$datasource"
       },
+      "description": "Weekly (calendar-week) routed volume with a 4-week rolling average, settled routing profit in sats, plus success rate per week. Success rate = settled / (settled + locally-failed, EventCase 4). Downstream failures (EventCase 2, ForwardFailEvent) are excluded since they were never within this node's control. Only complete weeks are shown: the in-progress week and any partial week at the window edges are dropped.",
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "axisBorderShow": false,
+            "axisCenteredZero": false,
+            "axisColorMode": "text",
+            "axisLabel": "Volume (BTC)",
+            "axisPlacement": "auto",
+            "barAlignment": 0,
+            "barWidthFactor": 0.6,
+            "drawStyle": "bars",
+            "fillOpacity": 60,
+            "gradientMode": "none",
+            "hideFrom": {
+              "legend": false,
+              "tooltip": false,
+              "viz": false
+            },
+            "insertNulls": false,
+            "lineInterpolation": "linear",
+            "lineWidth": 1,
+            "pointSize": 5,
+            "scaleDistribution": {
+              "type": "linear"
+            },
+            "showPoints": "auto",
+            "showValues": false,
+            "spanNulls": false,
+            "stacking": {
+              "group": "A",
+              "mode": "none"
+            },
+            "thresholdsStyle": {
+              "mode": "off"
+            }
+          },
+          "fieldMinMax": false,
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          },
+          "unit": "currencyBTC"
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "4w Rolling Avg Volume (BTC)"
+            },
+            "properties": [
+              {
+                "id": "custom.drawStyle",
+                "value": "line"
+              },
+              {
+                "id": "custom.lineWidth",
+                "value": 2
+              },
+              {
+                "id": "custom.fillOpacity",
+                "value": 0
+              },
+              {
+                "id": "color",
+                "value": {
+                  "fixedColor": "orange",
+                  "mode": "fixed"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byRegexp",
+              "options": "Success Rate.*"
+            },
+            "properties": [
+              {
+                "id": "custom.drawStyle",
+                "value": "line"
+              },
+              {
+                "id": "custom.lineWidth",
+                "value": 2
+              },
+              {
+                "id": "custom.fillOpacity",
+                "value": 0
+              },
+              {
+                "id": "custom.axisPlacement",
+                "value": "right"
+              },
+              {
+                "id": "custom.axisLabel",
+                "value": "Success rate"
+              },
+              {
+                "id": "unit",
+                "value": "percentunit"
+              },
+              {
+                "id": "min",
+                "value": 0
+              },
+              {
+                "id": "max",
+                "value": 1
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Success Rate (volume)"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "fixedColor": "green",
+                  "mode": "fixed"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Success Rate (HTLC count)"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "fixedColor": "blue",
+                  "mode": "fixed"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Profit (sats)"
+            },
+            "properties": [
+              {
+                "id": "custom.drawStyle",
+                "value": "line"
+              },
+              {
+                "id": "custom.lineWidth",
+                "value": 2
+              },
+              {
+                "id": "custom.fillOpacity",
+                "value": 0
+              },
+              {
+                "id": "custom.axisPlacement",
+                "value": "right"
+              },
+              {
+                "id": "custom.axisLabel",
+                "value": "Profit (sats)"
+              },
+              {
+                "id": "unit",
+                "value": "suffix:sats"
+              },
+              {
+                "id": "color",
+                "value": {
+                  "fixedColor": "purple",
+                  "mode": "fixed"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "4w Rolling Avg Profit (sats)"
+            },
+            "properties": [
+              {
+                "id": "custom.drawStyle",
+                "value": "line"
+              },
+              {
+                "id": "custom.lineWidth",
+                "value": 2
+              },
+              {
+                "id": "custom.fillOpacity",
+                "value": 0
+              },
+              {
+                "id": "custom.lineStyle",
+                "value": {
+                  "dash": [
+                    10,
+                    10
+                  ],
+                  "fill": "dash"
+                }
+              },
+              {
+                "id": "custom.axisPlacement",
+                "value": "right"
+              },
+              {
+                "id": "custom.axisLabel",
+                "value": "Profit (sats)"
+              },
+              {
+                "id": "unit",
+                "value": "suffix:sats"
+              },
+              {
+                "id": "color",
+                "value": {
+                  "fixedColor": "magenta",
+                  "mode": "fixed"
+                }
+              }
+            ]
+          }
+        ]
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 24,
+        "x": 0,
+        "y": 21
+      },
+      "id": 511,
+      "options": {
+        "legend": {
+          "calcs": [],
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "hideZeros": false,
+          "mode": "multi",
+          "sort": "none"
+        }
+      },
+      "pluginVersion": "12.4.2",
+      "targets": [
+        {
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "$datasource"
+          },
+          "editorMode": "code",
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "SELECT\n  date_trunc('week', \"EventTimestamp\") AS \"time\",\n\n  -- Settled (routed) volume for the week, in BTC:\n  SUM(CASE WHEN \"Outcome\" = 1 THEN COALESCE(\"OutgoingAmountMsat\", \"IncomingAmountMsat\") ELSE 0 END) / 1e11 AS \"Routed Volume (BTC)\",\n\n  -- 4-week rolling average of routed volume, to read the trend:\n  AVG(SUM(CASE WHEN \"Outcome\" = 1 THEN COALESCE(\"OutgoingAmountMsat\", \"IncomingAmountMsat\") ELSE 0 END) / 1e11) OVER (\n    ORDER BY date_trunc('week', \"EventTimestamp\")\n    ROWS BETWEEN 3 PRECEDING AND CURRENT ROW\n  ) AS \"4w Rolling Avg Volume (BTC)\",\n\n  -- Settled routing profit for the week, in sats:\n  SUM(CASE WHEN \"Outcome\" = 1 THEN \"FeeMsat\" ELSE 0 END) / 1000.0 AS \"Profit (sats)\",\n\n  -- 4-week rolling average of profit, to read the trend:\n  AVG(SUM(CASE WHEN \"Outcome\" = 1 THEN \"FeeMsat\" ELSE 0 END) / 1000.0) OVER (\n    ORDER BY date_trunc('week', \"EventTimestamp\")\n    ROWS BETWEEN 3 PRECEDING AND CURRENT ROW\n  ) AS \"4w Rolling Avg Profit (sats)\",\n\n  -- Volume-weighted success rate: settled / (settled + locally-failed). Downstream failures (EventCase = 2) excluded:\n  SUM(CASE WHEN \"Outcome\" = 1 THEN COALESCE(\"OutgoingAmountMsat\", \"IncomingAmountMsat\") ELSE 0 END)::float8\n    / NULLIF(SUM(CASE WHEN \"Outcome\" = 1 OR (\"Outcome\" = 2 AND \"EventCase\" = 4) THEN COALESCE(\"OutgoingAmountMsat\", \"IncomingAmountMsat\") ELSE 0 END), 0) AS \"Success Rate (volume)\",\n\n  -- HTLC-count success rate over the same population:\n  COUNT(*) FILTER (WHERE \"Outcome\" = 1)::float8\n    / NULLIF(COUNT(*) FILTER (WHERE \"Outcome\" = 1 OR (\"Outcome\" = 2 AND \"EventCase\" = 4)), 0) AS \"Success Rate (HTLC count)\"\n\nFROM \"ForwardingHtlcEvents\"\nWHERE\n  $__timeFilter(\"EventTimestamp\")\n  AND \"ManagedNodePubKey\" IN ($node)\n  -- only complete weeks: drop the trailing in-progress week and a leading partial week\n  AND date_trunc('week', \"EventTimestamp\") + interval '7 days' <= $__timeTo()::timestamptz\n  AND date_trunc('week', \"EventTimestamp\") >= $__timeFrom()::timestamptz\nGROUP BY 1\nORDER BY 1",
+          "refId": "A",
+          "sql": {
+            "columns": [
+              {
+                "parameters": [],
+                "type": "function"
+              }
+            ],
+            "groupBy": [],
+            "limit": 50
+          }
+        }
+      ],
+      "title": "Weekly routing volume, profit & success rate",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "$datasource"
+      },
       "fieldConfig": {
         "defaults": {
           "color": {
@@ -1590,7 +1883,7 @@
         "h": 8,
         "w": 24,
         "x": 0,
-        "y": 21
+        "y": 29
       },
       "id": 18,
       "options": {
@@ -1703,7 +1996,7 @@
         "h": 8,
         "w": 24,
         "x": 0,
-        "y": 29
+        "y": 37
       },
       "id": 19,
       "options": {
@@ -1777,7 +2070,7 @@
         "h": 8,
         "w": 12,
         "x": 0,
-        "y": 37
+        "y": 45
       },
       "id": 9,
       "options": {
@@ -1993,7 +2286,7 @@
         "h": 8,
         "w": 12,
         "x": 12,
-        "y": 37
+        "y": 45
       },
       "id": 13,
       "options": {
@@ -2209,7 +2502,7 @@
         "h": 8,
         "w": 12,
         "x": 0,
-        "y": 45
+        "y": 53
       },
       "id": 14,
       "options": {
@@ -2451,7 +2744,7 @@
         "h": 8,
         "w": 12,
         "x": 12,
-        "y": 45
+        "y": 53
       },
       "id": 15,
       "options": {
@@ -2714,7 +3007,7 @@
         "h": 8,
         "w": 12,
         "x": 0,
-        "y": 53
+        "y": 61
       },
       "id": 8,
       "options": {
@@ -2973,7 +3266,7 @@
         "h": 8,
         "w": 12,
         "x": 12,
-        "y": 53
+        "y": 61
       },
       "id": 16,
       "options": {
@@ -3227,7 +3520,7 @@
         "h": 8,
         "w": 12,
         "x": 0,
-        "y": 61
+        "y": 69
       },
       "id": 21,
       "options": {
@@ -3419,7 +3712,7 @@
         "h": 8,
         "w": 12,
         "x": 12,
-        "y": 61
+        "y": 69
       },
       "id": 22,
       "options": {
@@ -3633,7 +3926,7 @@
         "h": 8,
         "w": 8,
         "x": 0,
-        "y": 69
+        "y": 77
       },
       "id": 17,
       "options": {
@@ -3809,7 +4102,7 @@
         "h": 8,
         "w": 8,
         "x": 8,
-        "y": 69
+        "y": 77
       },
       "id": 504,
       "options": {
@@ -3912,7 +4205,7 @@
         "h": 8,
         "w": 8,
         "x": 16,
-        "y": 69
+        "y": 77
       },
       "id": 403,
       "options": {
@@ -4029,7 +4322,7 @@
         "h": 10,
         "w": 12,
         "x": 0,
-        "y": 108
+        "y": 116
       },
       "id": 100,
       "options": {
@@ -4127,7 +4420,7 @@
         "h": 10,
         "w": 12,
         "x": 12,
-        "y": 108
+        "y": 116
       },
       "id": 101,
       "options": {
@@ -4221,7 +4514,7 @@
         "h": 8,
         "w": 24,
         "x": 0,
-        "y": 118
+        "y": 126
       },
       "id": 102,
       "options": {
@@ -4365,7 +4658,7 @@
         "h": 10,
         "w": 24,
         "x": 0,
-        "y": 127
+        "y": 135
       },
       "id": 103,
       "options": {
@@ -4509,7 +4802,7 @@
         "h": 10,
         "w": 24,
         "x": 0,
-        "y": 137
+        "y": 145
       },
       "id": 104,
       "options": {
@@ -4585,7 +4878,7 @@
         "h": 7,
         "w": 8,
         "x": 0,
-        "y": 100
+        "y": 108
       },
       "id": 105,
       "options": {
@@ -4656,7 +4949,7 @@
         "h": 7,
         "w": 8,
         "x": 8,
-        "y": 100
+        "y": 108
       },
       "id": 109,
       "options": {
@@ -4735,7 +5028,7 @@
         "h": 7,
         "w": 8,
         "x": 16,
-        "y": 100
+        "y": 108
       },
       "id": 107,
       "options": {
@@ -4881,7 +5174,7 @@
         "h": 10,
         "w": 24,
         "x": 0,
-        "y": 168
+        "y": 176
       },
       "id": 108,
       "options": {
@@ -5060,7 +5353,7 @@
         "h": 10,
         "w": 24,
         "x": 0,
-        "y": 179
+        "y": 187
       },
       "id": 112,
       "options": {
@@ -5204,7 +5497,7 @@
         "h": 10,
         "w": 24,
         "x": 0,
-        "y": 147
+        "y": 155
       },
       "id": 110,
       "options": {
@@ -5348,7 +5641,7 @@
         "h": 10,
         "w": 24,
         "x": 0,
-        "y": 157
+        "y": 165
       },
       "id": 111,
       "options": {
@@ -5388,7 +5681,7 @@
         "h": 1,
         "w": 24,
         "x": 0,
-        "y": 99
+        "y": 107
       },
       "id": 200,
       "panels": [],
@@ -5401,7 +5694,7 @@
         "h": 1,
         "w": 24,
         "x": 0,
-        "y": 107
+        "y": 115
       },
       "id": 201,
       "panels": [],
@@ -5414,7 +5707,7 @@
         "h": 1,
         "w": 24,
         "x": 0,
-        "y": 126
+        "y": 134
       },
       "id": 202,
       "panels": [],
@@ -5427,7 +5720,7 @@
         "h": 1,
         "w": 24,
         "x": 0,
-        "y": 167
+        "y": 175
       },
       "id": 203,
       "panels": [],
@@ -5440,7 +5733,7 @@
         "h": 1,
         "w": 24,
         "x": 0,
-        "y": 189
+        "y": 197
       },
       "id": 204,
       "panels": [],
@@ -5527,7 +5820,7 @@
         "h": 9,
         "w": 24,
         "x": 0,
-        "y": 190
+        "y": 198
       },
       "id": 113,
       "options": {
@@ -5623,7 +5916,7 @@
         "h": 9,
         "w": 24,
         "x": 0,
-        "y": 199
+        "y": 207
       },
       "id": 206,
       "options": {
@@ -5664,7 +5957,7 @@
         "h": 1,
         "w": 24,
         "x": 0,
-        "y": 209
+        "y": 217
       },
       "id": 250,
       "panels": [],
@@ -5701,7 +5994,7 @@
         "h": 7,
         "w": 5,
         "x": 0,
-        "y": 210
+        "y": 218
       },
       "id": 303,
       "options": {
@@ -5768,7 +6061,7 @@
         "h": 7,
         "w": 5,
         "x": 5,
-        "y": 210
+        "y": 218
       },
       "id": 300,
       "options": {
@@ -5835,7 +6128,7 @@
         "h": 7,
         "w": 5,
         "x": 10,
-        "y": 210
+        "y": 218
       },
       "id": 307,
       "options": {
@@ -5914,7 +6207,7 @@
         "h": 7,
         "w": 5,
         "x": 15,
-        "y": 210
+        "y": 218
       },
       "id": 302,
       "options": {
@@ -5985,7 +6278,7 @@
         "h": 7,
         "w": 4,
         "x": 20,
-        "y": 210
+        "y": 218
       },
       "id": 304,
       "options": {
@@ -6102,7 +6395,7 @@
         "h": 9,
         "w": 24,
         "x": 0,
-        "y": 217
+        "y": 225
       },
       "id": 301,
       "options": {
@@ -6198,7 +6491,7 @@
         "h": 9,
         "w": 24,
         "x": 0,
-        "y": 226
+        "y": 234
       },
       "id": 306,
       "options": {
@@ -6239,7 +6532,7 @@
         "h": 1,
         "w": 24,
         "x": 0,
-        "y": 235
+        "y": 243
       },
       "id": 500,
       "panels": [],
@@ -6276,7 +6569,7 @@
         "h": 8,
         "w": 8,
         "x": 0,
-        "y": 236
+        "y": 244
       },
       "id": 501,
       "options": {
@@ -6343,7 +6636,7 @@
         "h": 8,
         "w": 8,
         "x": 8,
-        "y": 236
+        "y": 244
       },
       "id": 502,
       "options": {
@@ -6407,7 +6700,7 @@
         "h": 8,
         "w": 8,
         "x": 16,
-        "y": 236
+        "y": 244
       },
       "id": 503,
       "options": {
@@ -6494,7 +6787,7 @@
         "h": 1,
         "w": 24,
         "x": 0,
-        "y": 244
+        "y": 252
       },
       "id": 400,
       "panels": [],
@@ -6588,7 +6881,7 @@
         "h": 10,
         "w": 12,
         "x": 0,
-        "y": 245
+        "y": 253
       },
       "id": 401,
       "options": {
@@ -6739,7 +7032,7 @@
         "h": 10,
         "w": 12,
         "x": 12,
-        "y": 245
+        "y": 253
       },
       "id": 402,
       "options": {
@@ -6904,7 +7197,7 @@
         "h": 10,
         "w": 12,
         "x": 0,
-        "y": 255
+        "y": 263
       },
       "id": 404,
       "options": {
@@ -7075,7 +7368,7 @@
         "h": 10,
         "w": 12,
         "x": 12,
-        "y": 255
+        "y": 263
       },
       "id": 405,
       "options": {
@@ -7275,7 +7568,7 @@
         "h": 9,
         "w": 24,
         "x": 0,
-        "y": 265
+        "y": 273
       },
       "id": 406,
       "options": {
