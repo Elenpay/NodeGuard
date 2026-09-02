@@ -1693,7 +1693,7 @@ namespace NodeGuard.Services
                 PaymentRequest = paymentRequest,
                 Amt = amountSats,      // amountless invoice: the amount is set per attempt here
                 FeeLimitMsat = feeLimitMsat,
-                TimeoutSeconds = timeoutSeconds > 0 ? timeoutSeconds : 60,
+                TimeoutSeconds = timeoutSeconds > 0 ? timeoutSeconds : Constants.DEFAULT_REBALANCE_TIMEOUT_SECONDS,
                 AllowSelfPayment = true,            // mandatory for circular self-pay
                 MaxParts = Constants.REBALANCE_MAX_PARTS, // let LND split (MPP) across routes
                 NoInflightUpdates = true,           // we only care about the terminal Payment update

@@ -292,7 +292,7 @@
     private decimal _targetInboundPct = 50m;
     private decimal _maxFeePct = Constants.REBALANCE_DEFAULT_MAX_FEE_PCT;
     private decimal _retryMaxFeePct = Constants.REBALANCE_DEFAULT_RETRY_MAX_FEE_PCT;
-    private int _timeoutSeconds = 60;
+    private int _timeoutSeconds = Constants.DEFAULT_REBALANCE_TIMEOUT_SECONDS;
     private decimal _amountBackoffRatio = (decimal)Constants.REBALANCE_AMOUNT_BACKOFF_RATIO;
     private int _maxAttempts = Constants.REBALANCE_MAX_ATTEMPTS;
     private bool _showAdvanced;
@@ -413,7 +413,7 @@
         _targetInboundPct = 50m;
         _maxFeePct = Constants.REBALANCE_DEFAULT_MAX_FEE_PCT;
         _retryMaxFeePct = Constants.REBALANCE_DEFAULT_RETRY_MAX_FEE_PCT;
-        _timeoutSeconds = 60;
+        _timeoutSeconds = Constants.DEFAULT_REBALANCE_TIMEOUT_SECONDS;
         _amountBackoffRatio = (decimal)Constants.REBALANCE_AMOUNT_BACKOFF_RATIO;
         _maxAttempts = Constants.REBALANCE_MAX_ATTEMPTS;
         _showAdvanced = false;

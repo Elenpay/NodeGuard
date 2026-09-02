@@ -368,9 +368,8 @@ public class Constants
     /// RebalanceBudgetRefreshInterval unset.
     public static int ROUTING_ENGINE_REBALANCE_DEFAULT_BUDGET_REFRESH_HOURS = 24;
 
-    /// Payment timeout (seconds) handed to each rebalance the routing-engine actuator initiates.
-    /// Circular routes need more room than the RebalanceRequest default of 60s.
-    public static int ROUTING_ENGINE_REBALANCE_TIMEOUT_SECONDS = 180;
+    /// Default timeout (seconds) for a rebalance payment to search for a route before giving up.
+    public static int DEFAULT_REBALANCE_TIMEOUT_SECONDS = 180;
 
     public const string IsFrozenTag = "frozen";
     public const string IsManuallyFrozenTag = "manually_frozen";
@@ -717,8 +716,8 @@ public class Constants
         if (reRebalanceDefaultMaxInFlight != null) ROUTING_ENGINE_REBALANCE_DEFAULT_MAX_IN_FLIGHT = int.Parse(reRebalanceDefaultMaxInFlight);
         var reRebalanceDefaultRefreshHours = Environment.GetEnvironmentVariable("ROUTING_ENGINE_REBALANCE_DEFAULT_BUDGET_REFRESH_HOURS");
         if (reRebalanceDefaultRefreshHours != null) ROUTING_ENGINE_REBALANCE_DEFAULT_BUDGET_REFRESH_HOURS = int.Parse(reRebalanceDefaultRefreshHours);
-        var reRebalanceTimeoutSeconds = Environment.GetEnvironmentVariable("ROUTING_ENGINE_REBALANCE_TIMEOUT_SECONDS");
-        if (reRebalanceTimeoutSeconds != null) ROUTING_ENGINE_REBALANCE_TIMEOUT_SECONDS = int.Parse(reRebalanceTimeoutSeconds);
+        var rebalanceTimeoutSeconds = Environment.GetEnvironmentVariable("DEFAULT_REBALANCE_TIMEOUT_SECONDS");
+        if (rebalanceTimeoutSeconds != null) DEFAULT_REBALANCE_TIMEOUT_SECONDS = int.Parse(rebalanceTimeoutSeconds);
 
         // DB Initialization
         ALICE_PUBKEY = Environment.GetEnvironmentVariable("ALICE_PUBKEY") ?? ALICE_PUBKEY;

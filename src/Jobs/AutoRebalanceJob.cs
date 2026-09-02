@@ -165,8 +165,6 @@ public class AutoRebalanceJob : IJob
             return;
         }
 
-        var timeoutSeconds = node.RebalanceTimeoutSeconds ?? Constants.ROUTING_ENGINE_REBALANCE_TIMEOUT_SECONDS;
-
         var owned = await _snapshotService.GetOwnedChannelsAsync(node, openChannelsByChanId, withFeeState: false);
         if (owned == null)
         {
@@ -266,7 +264,7 @@ public class AutoRebalanceJob : IJob
                     AmountSats: plan.AmountSats,
                     MaxFeePct: plan.MaxFeePct,
                     IsManual: false,
-                    TimeoutSeconds: timeoutSeconds,
+                    TimeoutSeconds: Constants.DEFAULT_REBALANCE_TIMEOUT_SECONDS,
                     // Keep retries within the profitable ceiling
                     RetryMaxFeePct: plan.MaxFeePct);
 

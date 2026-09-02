@@ -183,12 +183,6 @@ namespace NodeGuard.Data.Models
         /// </summary>
         public double? MaxRebalanceCostToEarnRatio { get; set; }
 
-        /// <summary>
-        /// Payment timeout (seconds) for rebalances the routing engine initiates on this node.
-        /// Falls back to Constants.ROUTING_ENGINE_REBALANCE_TIMEOUT_SECONDS when unset.
-        /// </summary>
-        public int? RebalanceTimeoutSeconds { get; set; }
-
         #endregion Routing Engine
 
         #region Relationships
