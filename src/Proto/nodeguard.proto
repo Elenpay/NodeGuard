@@ -534,7 +534,7 @@ message RequestRebalanceRequest {
   // Last-hop peer pubkey (33-byte hex) that constrains the receiving peer of the
   // circular payment. Required.
   optional string target_pubkey = 6;
-  // Pathfinding/payment timeout in seconds; 0 → server default (60s)
+  // Pathfinding/payment timeout in seconds; 0 → server default (DEFAULT_REBALANCE_TIMEOUT_SECONDS, 180s)
   int32 timeout_seconds = 7;
   // Multiplier applied to the rebalanced amount on each retry attempt. Range: (0, 1].
   // 1 = never shrink (every attempt retries the full amount); 0.8 = each retry is 20%
