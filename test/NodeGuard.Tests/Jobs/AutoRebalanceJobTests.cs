@@ -70,11 +70,7 @@ public class AutoRebalanceJobTests
         Active = true, Initiator = true, RemotePubkey = peer,
     };
 
-    /// <summary>
-    /// A scope factory whose scope hands back <see cref="_rebalanceService"/>, mirroring how the job
-    /// resolves a fresh IRebalanceService per dispatch so the payment doesn't run on the job's own
-    /// (soon-disposed) scope.
-    /// </summary>
+    /// <summary>The job under test, over the mocked collaborators and the real snapshot service.</summary>
     private AutoRebalanceJob BuildJob() =>
         new(
             _logger.Object,
@@ -93,8 +89,12 @@ public class AutoRebalanceJobTests
     /// different peer (0.10 vs 0.50, dear 2500 ppm), on a node with budget to spend.
     /// <paramref name="sourceOptedIn"/> drives the per-channel rebalance opt-in;
     /// <paramref name="sourceLiquidityFlag"/> drives the unrelated swap-liquidity flag.
+    /// <paramref name="budgetSats"/> and <paramref name="consumedFeesSats"/> drive the fee budget;
+    /// they default to a budget that can never bind, so the other scenarios stay about their own gate.
+    /// The single plan this produces reserves 6_250 sats (5_000_000 at its 0.125% cap).
     /// </summary>
-    private void ArrangeRebalancePair(bool sourceOptedIn, bool sourceLiquidityFlag = false)
+    private void ArrangeRebalancePair(bool sourceOptedIn, bool sourceLiquidityFlag = false,
+        long? budgetSats = 1_000_000, long consumedFeesSats = 0)
     {
         var node = new Node
         {
@@ -102,7 +102,7 @@ public class AutoRebalanceJobTests
             PubKey = NodePubKey,
             Name = "alice",
             AutoRebalanceEnabled = true,
-            RebalanceBudgetSats = 1_000_000,
+            RebalanceBudgetSats = budgetSats,
             MaxRebalancesInFlight = 5,
             MaxRebalanceCostToEarnRatio = 0.5,
         };
@@ -132,7 +132,7 @@ public class AutoRebalanceJobTests
         _feeStateRepository.Setup(x => x.GetByManagedNodePubKey(NodePubKey)).ReturnsAsync(new List<ChannelFeeState>());
 
         _rebalanceRepository.Setup(x => x.GetPendingInFlightSourceChannelIds()).ReturnsAsync(new HashSet<int>());
-        _rebalanceRepository.Setup(x => x.GetPessimisticConsumedFeesSince(node.Id, It.IsAny<DateTimeOffset>())).ReturnsAsync(0L);
+        _rebalanceRepository.Setup(x => x.GetPessimisticConsumedFeesSince(node.Id, It.IsAny<DateTimeOffset>())).ReturnsAsync(consumedFeesSats);
         _rebalanceRepository.Setup(x => x.GetInFlightByNode(node.Id)).ReturnsAsync(0);
 
         var listResp = new Lnrpc.ListChannelsResponse
@@ -255,8 +255,10 @@ public class AutoRebalanceJobTests
     /// Two drainable sources and two depleted destination peers, so the planner produces two plans,
     /// on a node pinned to one in-flight rebalance so the second plan is dropped. Pairing is
     /// first-fit in classification order, so chan 1001 pairs with peerD1 and chan 1003 with peerD2.
+    /// The plans reserve 6_250 and 6_000 sats respectively (5_000_000 each, at their 0.125% and
+    /// 0.12% caps), which is what <paramref name="budgetSats"/> is sized against.
     /// </summary>
-    private void ArrangeTwoRebalancePairs(int maxRebalancesInFlight = 1)
+    private void ArrangeTwoRebalancePairs(int maxRebalancesInFlight = 1, long? budgetSats = 1_000_000)
     {
         var node = new Node
         {
@@ -266,7 +268,7 @@ public class AutoRebalanceJobTests
             // Fee pass off: this test is only about rebalance dispatch accounting.
             DynamicFeeManagementEnabled = false,
             AutoRebalanceEnabled = true,
-            RebalanceBudgetSats = 1_000_000,
+            RebalanceBudgetSats = budgetSats,
             MaxRebalanceCostToEarnRatio = 0.5,
             // Pinned, not inherited, so the cap tests don't depend on
             // ROUTING_ENGINE_REBALANCE_DEFAULT_MAX_IN_FLIGHT.
@@ -357,6 +359,108 @@ public class AutoRebalanceJobTests
             It.IsAny<Exception>(),
             It.IsAny<Func<It.IsAnyType, Exception, string>>()),
             Times.Once);
+    }
+
+    [Fact]
+    public async Task Execute_NoBudgetConfigured_SkipsTheNodeBeforeSpendingAnLndRoundTrip()
+    {
+        // Null, not 0: the column is nullable and "never configured" is the state a node sits in until
+        // an operator sets one, so it is the one that must not be read as "unlimited".
+        ArrangeRebalancePair(sourceOptedIn: true, budgetSats: null);
+
+        await RoutingEngineSwitch.WithEngine(enabled: true, async () =>
+        {
+            await BuildJob().Execute(Mock.Of<IJobExecutionContext>());
+        });
+
+        _rebalanceService.Verify(x => x.RebalanceAsync(
+            It.IsAny<RebalanceRequest>(), It.IsAny<CancellationToken>()), Times.Never);
+
+        // The gate is deliberately ahead of ListChannels, so an unbudgeted node costs nothing to skip.
+        _lightningClientService.Verify(x => x.ListChannels(
+            It.IsAny<Node>(), It.IsAny<Lnrpc.Lightning.LightningClient>()), Times.Never);
+
+        // It is also ahead of the consumed-fees query, and that is what tells this skip apart from the
+        // exhausted-budget one below: an unconfigured node never asks what it has already spent.
+        _rebalanceRepository.Verify(x => x.GetPessimisticConsumedFeesSince(
+            It.IsAny<int>(), It.IsAny<DateTimeOffset>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task Execute_BudgetFullySpentThisPeriod_SkipsTheNodeBeforeSpendingAnLndRoundTrip()
+    {
+        // Spend equal to the budget leaves nothing, and GetPessimisticConsumedFeesSince already counts
+        // the reservations of rebalances still in flight — so this is the "came back too soon" case.
+        ArrangeRebalancePair(sourceOptedIn: true, budgetSats: 1_000_000, consumedFeesSats: 1_000_000);
+
+        await RoutingEngineSwitch.WithEngine(enabled: true, async () =>
+        {
+            await BuildJob().Execute(Mock.Of<IJobExecutionContext>());
+        });
+
+        _rebalanceService.Verify(x => x.RebalanceAsync(
+            It.IsAny<RebalanceRequest>(), It.IsAny<CancellationToken>()), Times.Never);
+
+        // Stopped AT the budget gate rather than before it: the spend query ran — which the
+        // never-configured path above never reaches — and the LND round-trip after it did not.
+        _rebalanceRepository.Verify(x => x.GetPessimisticConsumedFeesSince(
+            It.IsAny<int>(), It.IsAny<DateTimeOffset>()), Times.Once);
+        _lightningClientService.Verify(x => x.ListChannels(
+            It.IsAny<Node>(), It.IsAny<Lnrpc.Lightning.LightningClient>()), Times.Never);
+    }
+
+    /// <summary>
+    /// The reservation is the worst case, not the fee a route would probably cost: a plan is only
+    /// affordable if the whole amount clearing at its cap would still fit. Straddling the exact figure
+    /// pins it — 5_000_000 sats at the plan's 0.125% cap reserves 6_250, so one sat short buys nothing.
+    /// </summary>
+    [Theory]
+    [InlineData(6_249, 0)]
+    [InlineData(6_250, 1)]
+    public async Task Execute_DispatchesAPlanOnlyWhenTheBudgetCoversItsWorstCaseFee(
+        long budgetSats, int expectedDispatches)
+    {
+        // The budget is the only thing that can bind: it clears the >0 gate, and the in-flight cap is 5
+        // with none in flight, so the count below comes from the per-plan reservation check alone.
+        ArrangeRebalancePair(sourceOptedIn: true, budgetSats: budgetSats);
+
+        await RoutingEngineSwitch.WithEngine(enabled: true, async () =>
+        {
+            await BuildJob().Execute(Mock.Of<IJobExecutionContext>());
+        });
+
+        _rebalanceService.Verify(x => x.RebalanceAsync(
+            It.IsAny<RebalanceRequest>(), It.IsAny<CancellationToken>()),
+            Times.Exactly(expectedDispatches));
+    }
+
+    /// <summary>
+    /// The two plans reserve 6_250 and 6_000, so 12_250 is exactly enough for both. Straddling that sum
+    /// is what proves each dispatch is charged against the running budget as it goes: at 12_249 the
+    /// first dispatch leaves 5_999 and plan 2 no longer fits, and without the decrement both plans
+    /// would go out at either budget and the node would overspend.
+    /// </summary>
+    [Theory]
+    [InlineData(12_249, 1)]
+    [InlineData(12_250, 2)]
+    public async Task Execute_ChargesEachDispatchAgainstTheBudget_SoTheNextPlanCanNoLongerAffordIt(
+        long budgetSats, int expectedDispatches)
+    {
+        // The in-flight cap is lifted so the only thing that can stop plan 2 is the money.
+        ArrangeTwoRebalancePairs(maxRebalancesInFlight: 5, budgetSats: budgetSats);
+
+        await RoutingEngineSwitch.WithEngine(enabled: true, async () =>
+        {
+            await BuildJob().Execute(Mock.Of<IJobExecutionContext>());
+        });
+
+        // Plan 1 is affordable either way; the boundary decides only plan 2's fate.
+        _rebalanceService.Verify(x => x.RebalanceAsync(
+            It.Is<RebalanceRequest>(r => r.SourceChannelId == 101 && r.TargetPubkey == "peerD1"),
+            It.IsAny<CancellationToken>()), Times.Once);
+        _rebalanceService.Verify(x => x.RebalanceAsync(
+            It.IsAny<RebalanceRequest>(), It.IsAny<CancellationToken>()),
+            Times.Exactly(expectedDispatches));
     }
 
     [Fact]
