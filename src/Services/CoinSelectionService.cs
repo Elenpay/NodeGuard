@@ -73,10 +73,18 @@ public interface ICoinSelectionService
     /// </summary>
     public Task<List<string>> GetFrozenUTXOs();
 
+    /// <summary>
+    /// Picks the UTXOs that fund the request and turns them into coins
+    /// </summary>
+    /// <param name="availableUTXOs"></param>
+    /// <param name="request"></param>
+    /// <param name="derivationStrategy"></param>
+    /// <param name="preserveOrder">Consume availableUTXOs in the given order instead of re-sorting by confirmations</param>
     public Task<(List<ICoin> coins, List<UTXO> selectedUTXOs)> GetTxInputCoins(
         List<UTXO> availableUTXOs,
         IBitcoinRequest request,
-        DerivationStrategyBase derivationStrategy);
+        DerivationStrategyBase derivationStrategy,
+        bool preserveOrder = false);
 }
 
 public class CoinSelectionService: ICoinSelectionService
@@ -283,11 +291,15 @@ public class CoinSelectionService: ICoinSelectionService
     public async Task<(List<ICoin> coins, List<UTXO> selectedUTXOs)> GetTxInputCoins(
         List<UTXO> availableUTXOs,
         IBitcoinRequest request,
-        DerivationStrategyBase derivationStrategy)
+        DerivationStrategyBase derivationStrategy,
+        bool preserveOrder = false)
     {
         var satsAmount = request.SatsAmount;
 
-        var selectedUTXOs = await LightningHelper.SelectUTXOsByOldest(request.Wallet, satsAmount, availableUTXOs, _logger);
+        var selectedUTXOs = preserveOrder
+            ? LightningHelper.SelectUTXOsInOrder(request.Wallet, satsAmount, availableUTXOs, _logger)
+            : await LightningHelper.SelectUTXOsByOldest(request.Wallet, satsAmount, availableUTXOs, _logger);
+
         var coins = await LightningHelper.SelectCoins(request.Wallet, selectedUTXOs);
 
         return (coins, selectedUTXOs);

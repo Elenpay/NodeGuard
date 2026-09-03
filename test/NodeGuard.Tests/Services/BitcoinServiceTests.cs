@@ -1754,4 +1754,160 @@ public class BitcoinServiceTests
             },
         };
     }
+
+    /// <summary>
+    /// Minimal fixture for the coin selection branch in GenerateTemplatePSBT. The mocked selection
+    /// service returns nothing, so the call throws once the branch has been taken, which is all these
+    /// tests need to see.
+    /// </summary>
+    private static (BitcoinService service, WalletWithdrawalRequest request, Mock<ICoinSelectionService> coinSelectionService)
+        CreateServiceForSelectionBranch(ILogger<BitcoinService> logger, InternalWallet internalWallet,
+            bool withdrawAllFunds = false, List<UTXO>? plainListingUtxos = null)
+    {
+        var withdrawalRequest = new WalletWithdrawalRequest()
+        {
+            Id = 1,
+            Status = WalletWithdrawalRequestStatus.Pending,
+            Wallet = CreateWallet.SingleSig(internalWallet),
+            WithdrawAllFunds = withdrawAllFunds,
+            WalletWithdrawalRequestPSBTs = new List<WalletWithdrawalRequestPSBT>(),
+            WalletWithdrawalRequestDestinations = new List<WalletWithdrawalRequestDestination>
+            {
+                new()
+                {
+                    Address = "bcrt1q8k3av6q5yp83rn332lx8a90k6kukhg28hs5qw7krdq95t629hgsqk6ztmf",
+                    Amount = 0.01m
+                }
+            }
+        };
+
+        var walletWithdrawalRequestRepository = new Mock<IWalletWithdrawalRequestRepository>();
+        walletWithdrawalRequestRepository.Setup(x => x.GetById(It.IsAny<int>())).ReturnsAsync(withdrawalRequest);
+        walletWithdrawalRequestRepository.Setup(x => x.Update(It.IsAny<WalletWithdrawalRequest>())).Returns((true, null));
+
+        var nbXplorerService = new Mock<INBXplorerService>();
+        nbXplorerService.Setup(x => x.GetStatusAsync(default))
+            .ReturnsAsync(new StatusResult() { IsFullySynched = true });
+
+        var coinSelectionService = new Mock<ICoinSelectionService>();
+        coinSelectionService
+            .Setup(x => x.GetLockedUTXOsForRequest(It.IsAny<IBitcoinRequest>(), It.IsAny<BitcoinRequestType>()))
+            .ReturnsAsync(new List<UTXO>());
+        coinSelectionService
+            .Setup(x => x.GetAvailableUTXOsAsync(It.IsAny<DerivationStrategyBase>()))
+            .ReturnsAsync(plainListingUtxos ?? new List<UTXO>());
+        coinSelectionService
+            .Setup(x => x.GetAvailableUTXOsAsync(It.IsAny<DerivationStrategyBase>(),
+                It.IsAny<CoinSelectionStrategy>(), It.IsAny<int>(), It.IsAny<long>(), It.IsAny<long>()))
+            .ReturnsAsync(new List<UTXO>());
+
+        var bitcoinService = new BitcoinService(logger, new Mock<IMapper>().Object,
+            walletWithdrawalRequestRepository.Object, new Mock<IWalletWithdrawalRequestPsbtRepository>().Object,
+            null, null, nbXplorerService.Object, coinSelectionService.Object);
+
+        return (bitcoinService, withdrawalRequest, coinSelectionService);
+    }
+
+    [Fact]
+    async Task GenerateTemplatePSBT_WithNBXplorerCoinSelection_AsksForTheUTXOsClosestToTheAmount()
+    {
+        var previousFlag = Constants.COIN_SELECTION_FROM_NBXPLORER_ENABLED;
+        Constants.COIN_SELECTION_FROM_NBXPLORER_ENABLED = true;
+        try
+        {
+            // Arrange
+            var (bitcoinService, withdrawalRequest, coinSelectionService) =
+                CreateServiceForSelectionBranch(_logger, _internalWallet);
+            var target = withdrawalRequest.SatsAmount;
+
+            // Act
+            var act = () => bitcoinService.GenerateTemplatePSBT(withdrawalRequest);
+
+            // Assert
+            await act.Should().ThrowAsync<NoUTXOsAvailableException>();
+
+            coinSelectionService.Verify(x => x.GetAvailableUTXOsAsync(
+                It.IsAny<DerivationStrategyBase>(), CoinSelectionStrategy.ClosestToTargetFirst,
+                0, target, target), Times.Once);
+            coinSelectionService.Verify(x => x.GetAvailableUTXOsAsync(It.IsAny<DerivationStrategyBase>()), Times.Never);
+            coinSelectionService.Verify(x => x.GetTxInputCoins(It.IsAny<List<UTXO>>(), It.IsAny<IBitcoinRequest>(),
+                It.IsAny<DerivationStrategyBase>(), true), Times.Once);
+        }
+        finally
+        {
+            Constants.COIN_SELECTION_FROM_NBXPLORER_ENABLED = previousFlag;
+        }
+    }
+
+    [Fact]
+    async Task GenerateTemplatePSBT_WithNBXplorerCoinSelection_AlsoCoversWithdrawAllFunds()
+    {
+        var previousFlag = Constants.COIN_SELECTION_FROM_NBXPLORER_ENABLED;
+        Constants.COIN_SELECTION_FROM_NBXPLORER_ENABLED = true;
+        try
+        {
+            // Arrange
+            // A full withdrawal takes every UTXO whichever selector runs, because the amount is set to
+            // the whole balance just above. It goes through NBXplorer as well rather than being a case
+            // of its own
+            var walletUtxo = new UTXO
+            {
+                Outpoint = new OutPoint(new uint256(1), 0),
+                Value = new Money(500_000L)
+            };
+            var (bitcoinService, withdrawalRequest, coinSelectionService) =
+                CreateServiceForSelectionBranch(_logger, _internalWallet, withdrawAllFunds: true,
+                    plainListingUtxos: new List<UTXO> { walletUtxo });
+
+            // Act
+            var act = () => bitcoinService.GenerateTemplatePSBT(withdrawalRequest);
+
+            // Assert
+            await act.Should().ThrowAsync<NoUTXOsAvailableException>();
+
+            // The amount became the wallet balance, and that is what NBXplorer is asked to aim for
+            withdrawalRequest.SatsAmount.Should().Be(500_000);
+            coinSelectionService.Verify(x => x.GetAvailableUTXOsAsync(
+                It.IsAny<DerivationStrategyBase>(), CoinSelectionStrategy.ClosestToTargetFirst,
+                0, 500_000, 500_000), Times.Once);
+            coinSelectionService.Verify(x => x.GetTxInputCoins(It.IsAny<List<UTXO>>(), It.IsAny<IBitcoinRequest>(),
+                It.IsAny<DerivationStrategyBase>(), true), Times.Once);
+
+            // The plain listing is still read once, to work out the balance rather than to select
+            coinSelectionService.Verify(x => x.GetAvailableUTXOsAsync(It.IsAny<DerivationStrategyBase>()), Times.Once);
+        }
+        finally
+        {
+            Constants.COIN_SELECTION_FROM_NBXPLORER_ENABLED = previousFlag;
+        }
+    }
+
+    [Fact]
+    async Task GenerateTemplatePSBT_WithoutNBXplorerCoinSelection_UsesThePlainListing()
+    {
+        var previousFlag = Constants.COIN_SELECTION_FROM_NBXPLORER_ENABLED;
+        Constants.COIN_SELECTION_FROM_NBXPLORER_ENABLED = false;
+        try
+        {
+            // Arrange
+            var (bitcoinService, withdrawalRequest, coinSelectionService) =
+                CreateServiceForSelectionBranch(_logger, _internalWallet);
+
+            // Act
+            var act = () => bitcoinService.GenerateTemplatePSBT(withdrawalRequest);
+
+            // Assert
+            await act.Should().ThrowAsync<NoUTXOsAvailableException>();
+
+            coinSelectionService.Verify(x => x.GetAvailableUTXOsAsync(It.IsAny<DerivationStrategyBase>()), Times.Once);
+            coinSelectionService.Verify(x => x.GetAvailableUTXOsAsync(It.IsAny<DerivationStrategyBase>(),
+                It.IsAny<CoinSelectionStrategy>(), It.IsAny<int>(), It.IsAny<long>(), It.IsAny<long>()), Times.Never);
+            coinSelectionService.Verify(x => x.GetTxInputCoins(It.IsAny<List<UTXO>>(), It.IsAny<IBitcoinRequest>(),
+                It.IsAny<DerivationStrategyBase>(), false), Times.Once);
+        }
+        finally
+        {
+            Constants.COIN_SELECTION_FROM_NBXPLORER_ENABLED = previousFlag;
+        }
+    }
 }

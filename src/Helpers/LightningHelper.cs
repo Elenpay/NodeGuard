@@ -194,6 +194,61 @@ namespace NodeGuard.Helpers
         }
 
         /// <summary>
+        /// Takes UTXOs from a list that is already in the order the caller wants, until the amount is
+        /// covered. Unlike <see cref="SelectUTXOsByOldest"/> this does not re-sort by confirmations, so
+        /// an ordering decided elsewhere survives.
+        /// </summary>
+        /// <param name="wallet"></param>
+        /// <param name="satsAmount"></param>
+        /// <param name="orderedUTXOs">UTXOs in the order they should be consumed</param>
+        /// <param name="logger"></param>
+        /// <returns>The selected UTXOs, or an empty list when the wallet cannot cover the amount</returns>
+        public static List<UTXO> SelectUTXOsInOrder(
+            Wallet wallet, long satsAmount, List<UTXO> orderedUTXOs, ILogger logger)
+        {
+            ArgumentNullException.ThrowIfNull(wallet);
+            ArgumentNullException.ThrowIfNull(logger);
+            ArgumentOutOfRangeException.ThrowIfNegativeOrZero(satsAmount);
+
+            var selectedUTXOs = new List<UTXO>();
+
+            if (orderedUTXOs.Count == 0)
+            {
+                logger.LogError("The PSBT cannot be generated, no UTXOs are available for walletId: {WalletId}",
+                    wallet.Id);
+                return selectedUTXOs;
+            }
+
+            var totalUTXOsConfirmedSats = orderedUTXOs.Sum(x => ((Money)x.Value).Satoshi);
+
+            if (totalUTXOsConfirmedSats < satsAmount)
+            {
+                logger.LogError(
+                    "Error, the total UTXOs set balance for walletid: {WalletId} ({AvailableSats} sats) is less than the amount in the request ({RequestedSats} sats)",
+                    wallet.Id, totalUTXOsConfirmedSats, satsAmount);
+                return selectedUTXOs;
+            }
+
+            var utxosSatsAmountAccumulator = 0L;
+
+            foreach (var utxo in orderedUTXOs)
+            {
+                selectedUTXOs.Add(utxo);
+                utxosSatsAmountAccumulator += ((Money)utxo.Value).Satoshi;
+
+                // Stop once the accumulator is over the amount, not when it reaches it. The extra input
+                // on an exact match is the only headroom the selection leaves for fees, and
+                // SelectUTXOsByOldest does the same
+                if (utxosSatsAmountAccumulator > satsAmount)
+                {
+                    break;
+                }
+            }
+
+            return selectedUTXOs;
+        }
+
+        /// <summary>
         /// Helper to select coins from a wallet for requests (Withdrawals, ChannelOperationRequest). FIFO is the coin selection
         /// </summary>
         /// <param name="wallet"></param>
