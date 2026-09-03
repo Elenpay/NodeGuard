@@ -299,7 +299,7 @@ public class Constants
     // so it never reacts to tiny imbalance.
     public static double ROUTING_ENGINE_FEE_DEADBAND = 0.03;
 
-    // The rebalancer's imbalance deadband is a separate, more aggressive threshold for triggering rebalances.
+    // How far off target before requesting a rebalance.
     public static double ROUTING_ENGINE_REBALANCE_DEADBAND = 0.15;
 
     // Max outbound ppm change applied in a single cycle (rate limiter / anti-jump).
