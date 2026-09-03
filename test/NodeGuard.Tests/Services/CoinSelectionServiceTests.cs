@@ -438,4 +438,55 @@ public class CoinSelectionServiceTests
         availableUTXOs.Should().ContainSingle();
         availableUTXOs[0].Outpoint.Should().Be(availableUtxo.Outpoint);
     }
+
+    [Fact]
+    public async Task GetTxInputCoins_WithPreserveOrder_TakesTheHeadOfTheListInsteadOfSortingByConfirmations()
+    {
+        // Arrange
+        var wallet = CreateWallet.SingleSig(_internalWallet);
+        var derivationStrategy = (wallet.GetDerivationStrategy() as StandardDerivationStrategyBase)!;
+        var scriptPubKey = derivationStrategy.GetDerivation(KeyPath.Parse("0/0")).ScriptPubKey;
+
+        // The head of the list is what NBXplorer picked as closest to the amount. It also has the most
+        // confirmations, so the two selectors disagree: SelectUTXOsByOldest takes the
+        // fewest-confirmation UTXO first despite its name, which is the UTXO at the tail here
+        var closest = new UTXO
+        {
+            Outpoint = new OutPoint(new uint256(1), 0),
+            Value = new Money(60_000L),
+            ScriptPubKey = scriptPubKey,
+            KeyPath = KeyPath.Parse("0/0"),
+            Confirmations = 500
+        };
+        var fewestConfirmations = new UTXO
+        {
+            Outpoint = new OutPoint(new uint256(2), 0),
+            Value = new Money(70_000L),
+            ScriptPubKey = scriptPubKey,
+            KeyPath = KeyPath.Parse("0/0"),
+            Confirmations = 1
+        };
+        var availableUTXOs = new List<UTXO> { closest, fewestConfirmations };
+
+        var request = new ChannelOperationRequest { Id = 1, Wallet = wallet, SatsAmount = 50_000 };
+        var coinSelectionService = CreateCoinSelectionService(availableUTXOs);
+
+        // Act
+        var (orderedCoins, orderedSelection) = await coinSelectionService.GetTxInputCoins(
+            availableUTXOs, request, derivationStrategy, preserveOrder: true);
+        var (_, defaultSelection) = await coinSelectionService.GetTxInputCoins(
+            availableUTXOs, request, derivationStrategy);
+
+        // Assert
+        orderedSelection.Should().ContainSingle();
+        orderedSelection[0].Outpoint.Should().Be(closest.Outpoint);
+
+        // The coins keep the same order as the UTXOs. AddDerivationData pairs the two lists by
+        // position, so they have to line up
+        orderedCoins.Select(x => x.Outpoint).Should().ContainInOrder(orderedSelection.Select(x => x.Outpoint));
+
+        // Without preserveOrder the list is re-sorted by confirmations, so a different UTXO wins
+        defaultSelection.Should().ContainSingle();
+        defaultSelection[0].Outpoint.Should().Be(fewestConfirmations.Outpoint);
+    }
 }

@@ -29,6 +29,12 @@ public class Constants
     public static readonly bool PUSH_NOTIFICATIONS_ONESIGNAL_ENABLED;
     public static readonly bool ENABLE_HW_SUPPORT;
     public static bool NBXPLORER_ENABLE_CUSTOM_BACKEND = false; // Not readonly so we can change it in tests
+
+    /// <summary>
+    /// Let NBXplorer pick the UTXOs for a withdrawal, ordered by how close each one is to the amount,
+    /// instead of taking them from the plain listing.
+    /// </summary>
+    public static bool COIN_SELECTION_FROM_NBXPLORER_ENABLED = false; // Not readonly so we can change it in tests
     /// <summary>
     /// Allow simultaneous channel opening operations using the same source and destination nodes
     /// </summary>
@@ -422,6 +428,8 @@ public class Constants
         ENABLE_HW_SUPPORT = Environment.GetEnvironmentVariable("ENABLE_HW_SUPPORT") != "false"; // We default to true
 
         NBXPLORER_ENABLE_CUSTOM_BACKEND = Environment.GetEnvironmentVariable("NBXPLORER_ENABLE_CUSTOM_BACKEND") == "true";
+
+        COIN_SELECTION_FROM_NBXPLORER_ENABLED = StringHelper.IsTrue(Environment.GetEnvironmentVariable("COIN_SELECTION_FROM_NBXPLORER_ENABLED"));
 
         ALLOW_SIMULTANEOUS_CHANNEL_OPENING_OPERATIONS = Environment.GetEnvironmentVariable("ALLOW_SIMULTANEOUS_CHANNEL_OPENING_OPERATIONS") == "true";
 

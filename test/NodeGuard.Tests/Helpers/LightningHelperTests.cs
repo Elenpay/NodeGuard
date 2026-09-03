@@ -24,12 +24,14 @@ using NodeGuard.TestHelpers;
 using NBitcoin;
 using NBXplorer.Models;
 using NBXplorer.DerivationStrategy;
+using Microsoft.Extensions.Logging;
 
 namespace NodeGuard.Tests
 {
     public class LightningHelperTests
     {
         private InternalWallet _internalWallet = CreateWallet.CreateInternalWallet();
+        private readonly ILogger<LightningHelperTests> _logger = new Mock<ILogger<LightningHelperTests>>().Object;
 
         [Fact]
         public void UTXODuplicateTest_Duplicated()
@@ -165,6 +167,110 @@ namespace NodeGuard.Tests
             // Assert
             var psbt = PSBT.Parse(  "cHNidP8BAIkBAAAAAQAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA/////wD/////AhAnAAAAAAAAIgAgPHfzrZk7L68p0NnijKzJFlfQcBGipD0uqora6TGiimLwvAtUAgAAACIAID2j1mgUIE8RzjFXzH6V9tW5a6FHvCgHesNoC0XpRbogAAAAAE8BBDWHzwN9uUaNAAAAAYPR/OiA1LbTzxbLPvbXvtAwckIG3g+0T1zblR/ZodaiA5zBFsigPpL8htN/KJ/Ph8SPvQA/K+mSNXTSA0hgvPNuEO0CEMgwAACAAQAAgAEAAAAAAQEfAOQLVAIAAAAWABTpOvUBMqNMfl7P81etji6x4fXrMyIGA3uD9HVjgF5E+eQhHp+Na6femVYpc4bCA4DmimehAdWcGO0CEMgwAACAAQAAgAEAAAAAAAAAAAAAAAAAAA==", network);
             result.Should().BeEquivalentTo(psbt);
+        }
+
+        private static UTXO CreateUtxo(uint index, long satoshis)
+        {
+            return new UTXO
+            {
+                Outpoint = new OutPoint(new uint256(index), 0),
+                Value = new Money(satoshis),
+                ScriptPubKey = new Script()
+            };
+        }
+
+        [Fact]
+        public void SelectUTXOsInOrder_TakesTheFirstUTXOThatCoversTheAmount()
+        {
+            //Arrange
+            var wallet = CreateWallet.SingleSig(_internalWallet);
+            var orderedUTXOs = new List<UTXO> { CreateUtxo(1, 60_000), CreateUtxo(2, 10_000), CreateUtxo(3, 50_000) };
+
+            //Act
+            var selected = LightningHelper.SelectUTXOsInOrder(wallet, 50_000, orderedUTXOs, _logger);
+
+            //Assert
+            selected.Should().ContainSingle();
+            selected[0].Outpoint.Should().Be(orderedUTXOs[0].Outpoint);
+        }
+
+        [Fact]
+        public void SelectUTXOsInOrder_KeepsTakingUntilTheAmountIsCovered()
+        {
+            //Arrange
+            var wallet = CreateWallet.SingleSig(_internalWallet);
+            var orderedUTXOs = new List<UTXO> { CreateUtxo(1, 30_000), CreateUtxo(2, 40_000), CreateUtxo(3, 90_000) };
+
+            //Act
+            var selected = LightningHelper.SelectUTXOsInOrder(wallet, 50_000, orderedUTXOs, _logger);
+
+            //Assert
+            selected.Should().HaveCount(2);
+            selected.Select(x => x.Outpoint).Should()
+                .ContainInOrder(orderedUTXOs[0].Outpoint, orderedUTXOs[1].Outpoint);
+        }
+
+        [Fact]
+        public void SelectUTXOsInOrder_TakesAnExtraUTXOOnAnExactMatch()
+        {
+            //Arrange
+            var wallet = CreateWallet.SingleSig(_internalWallet);
+            var orderedUTXOs = new List<UTXO> { CreateUtxo(1, 50_000), CreateUtxo(2, 20_000) };
+
+            //Act
+            var selected = LightningHelper.SelectUTXOsInOrder(wallet, 50_000, orderedUTXOs, _logger);
+
+            //Assert
+            // An exact match leaves nothing for the fee, so the second UTXO comes along. This is the
+            // same headroom SelectUTXOsByOldest leaves
+            selected.Should().HaveCount(2);
+        }
+
+        [Fact]
+        public void SelectUTXOsInOrder_DoesNotReorderTheList()
+        {
+            //Arrange
+            var wallet = CreateWallet.SingleSig(_internalWallet);
+            var newest = CreateUtxo(1, 60_000);
+            newest.Confirmations = 1;
+            var oldest = CreateUtxo(2, 60_000);
+            oldest.Confirmations = 500;
+
+            //Act
+            var selected = LightningHelper.SelectUTXOsInOrder(wallet, 50_000, new List<UTXO> { oldest, newest }, _logger);
+
+            //Assert
+            selected.Should().ContainSingle();
+            selected[0].Outpoint.Should().Be(oldest.Outpoint);
+        }
+
+        [Fact]
+        public void SelectUTXOsInOrder_ReturnsEmptyWhenTheWalletCannotCoverTheAmount()
+        {
+            //Arrange
+            var wallet = CreateWallet.SingleSig(_internalWallet);
+            var orderedUTXOs = new List<UTXO> { CreateUtxo(1, 10_000), CreateUtxo(2, 20_000) };
+
+            //Act
+            var selected = LightningHelper.SelectUTXOsInOrder(wallet, 50_000, orderedUTXOs, _logger);
+
+            //Assert
+            // Callers read an empty selection as "no UTXOs" and fail the request from there
+            selected.Should().BeEmpty();
+        }
+
+        [Fact]
+        public void SelectUTXOsInOrder_ThrowsOnANonPositiveAmount()
+        {
+            //Arrange
+            var wallet = CreateWallet.SingleSig(_internalWallet);
+            var orderedUTXOs = new List<UTXO> { CreateUtxo(1, 10_000) };
+
+            //Act
+            var act = () => LightningHelper.SelectUTXOsInOrder(wallet, 0, orderedUTXOs, _logger);
+
+            //Assert
+            act.Should().Throw<ArgumentOutOfRangeException>();
         }
     }
 }

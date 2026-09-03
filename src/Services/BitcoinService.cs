@@ -191,12 +191,34 @@ namespace NodeGuard.Services
             }
 
 
-            var availableUTXOs = previouslyLockedUTXOs.Count > 0
-                ? previouslyLockedUTXOs
-                : await _coinSelectionService.GetAvailableUTXOsAsync(derivationStrategy);
+            List<UTXO> availableUTXOs;
+            var preserveOrder = false;
+
+            if (previouslyLockedUTXOs.Count > 0)
+            {
+                // The inputs were picked and locked when the request was created, which covers every
+                // changeless withdrawal and every fee bump. Selecting again here would pick different ones
+                availableUTXOs = previouslyLockedUTXOs;
+            }
+            else if (Constants.COIN_SELECTION_FROM_NBXPLORER_ENABLED)
+            {
+                // NBXplorer returns the UTXOs closest to the amount first, so a single well sized input
+                // can fund the request instead of a pile of unrelated ones. A limit of 0 keeps the rest
+                // of the set behind them, to fall back on when the closest ones do not cover the amount
+                var target = walletWithdrawalRequest.SatsAmount;
+                availableUTXOs = await _coinSelectionService.GetAvailableUTXOsAsync(
+                    derivationStrategy, CoinSelectionStrategy.ClosestToTargetFirst,
+                    limit: 0, amount: target, closestTo: target);
+                preserveOrder = true;
+            }
+            else
+            {
+                availableUTXOs = await _coinSelectionService.GetAvailableUTXOsAsync(derivationStrategy);
+            }
+
             var (scriptCoins, selectedUTXOs) =
                 await _coinSelectionService.GetTxInputCoins(availableUTXOs, walletWithdrawalRequest,
-                    derivationStrategy);
+                    derivationStrategy, preserveOrder);
 
             if (scriptCoins == null || !scriptCoins.Any())
             {
