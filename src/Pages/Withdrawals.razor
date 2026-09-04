@@ -448,6 +448,7 @@
                                 </DropdownToggle>
                                 <DropdownMenu>
                                     <DropdownItem Clicked="async () => await ShowBumpfeeModal(context)">Bump fee</DropdownItem>
+                                    <DropdownItem Clicked="async () => await ShowBumpfeeModal(context, cancellation: true)">Cancel (RBF)</DropdownItem>
                                 </DropdownMenu>
                             </Dropdown>
                     }
@@ -481,6 +482,7 @@
 <BumpfeeModal
     @ref="_bumpfeeRef"
     WithdrawalRequest="_selectedRequest"
+    Cancellation="_bumpIsCancellation"
     SubmitBumpfeeModal="@SubmitBumpfeeModal"/>
 
 <CancelOrRejectPopup
@@ -540,6 +542,7 @@
     private WalletWithdrawalRequest? _selectedRequest;
     private PSBTSign? _psbtSignRef;
     private BumpfeeModal? _bumpfeeRef;
+    private bool _bumpIsCancellation;
     private string _signedPSBT;
     private string? _templatePsbtString;
     private int? _selectedWalletId;
@@ -931,8 +934,9 @@
         }
     }
 
-    private async Task ShowBumpfeeModal(WalletWithdrawalRequest walletWithdrawalRequest)
+    private async Task ShowBumpfeeModal(WalletWithdrawalRequest walletWithdrawalRequest, bool cancellation = false)
     {   
+        _bumpIsCancellation = cancellation;
         if (walletWithdrawalRequest == null)
         {
             ToastService.ShowError("Invalid request");
@@ -980,7 +984,8 @@
             return;
         }
         
-        if (request.Changeless && request.WalletWithdrawalRequestDestinations!.Count > 1)
+        // A cancellation replaces every output, so the shape of the original does not matter to it.
+        if (!cancellation && request.Changeless && request.WalletWithdrawalRequestDestinations!.Count > 1)
         {
             ToastService.ShowError("Fee bumping is not supported for changeless transactions. Please create a new withdrawal with higher fees instead.");
             await LogWithdrawalAuditAsync(AuditActionType.BumpFee, AuditEventType.Failure, request, "Bump requested for changeless transaction with multiple outputs.");
@@ -1044,7 +1049,7 @@
                                 await CreateJob();
                                 if (_selectedRequest?.BumpingWalletWithdrawalRequestId != null)
                                 {
-                                    await WithdrawalRequestService.MarkOriginalAsBumpedAsync(_selectedRequest);
+                                    await WithdrawalRequestService.MarkOriginalAsReplacedAsync(_selectedRequest);
                                 }
                             }
                         }
@@ -1096,10 +1101,12 @@
                 return;
             }
 
-            // The bump was validated, created and its UTXOs locked by WithdrawalRequestService (see BumpfeeModal).
+            // The replacement was validated, created and its UTXOs locked by WithdrawalRequestService (see BumpfeeModal).
             _selectedRequest = newRequest;
             await _bumpfeeRef.HideModal();
-            await LogWithdrawalAuditAsync(AuditActionType.BumpFee, AuditEventType.Success, newRequest, "Bump withdrawal request created.");
+            await LogWithdrawalAuditAsync(newRequest.IsRbfCancellation ? AuditActionType.Cancel : AuditActionType.BumpFee,
+                AuditEventType.Success, newRequest,
+                newRequest.IsRbfCancellation ? "RBF cancellation request created." : "Bump withdrawal request created.");
             await GetData();
 
             if (newRequest.Wallet?.IsHotWallet == true)

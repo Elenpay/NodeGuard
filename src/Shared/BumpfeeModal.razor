@@ -5,10 +5,19 @@
     {
     <ModalContent Centered>
         <ModalHeader>
-            <ModalTitle>Request fee bump</ModalTitle>
+            <ModalTitle>@(Cancellation ? "Cancel withdrawal (RBF)" : "Request fee bump")</ModalTitle>
             <CloseButton />
         </ModalHeader>
         <ModalBody>
+            @if (Cancellation)
+            {
+                <Alert Color="Color.Warning" Visible>
+                    <AlertMessage>
+                        The pending transaction is replaced by one that spends the same inputs and returns the funds to this
+                        wallet. The destination will not be paid. The replacement needs a higher fee rate than the current one.
+                    </AlertMessage>
+                </Alert>
+            }
             <Fields Flex="Flex.JustifyContent.Center">
                 <Field>
                     <FieldLabel>New fee rate</FieldLabel>
@@ -53,8 +62,8 @@
         </ModalBody>
         <ModalFooter>
             <Button Color="Color.Secondary" Clicked="@HideModal">Cancel</Button>
-            <Button id="approve-button" Color="Color.Primary" Clicked="@HandleOnClick">
-                Approve
+            <Button id="approve-button" Color="@(Cancellation ? Color.Danger : Color.Primary)" Clicked="@HandleOnClick">
+                @(Cancellation ? "Cancel withdrawal" : "Approve")
             </Button>
         </ModalFooter>
     </ModalContent>
@@ -76,6 +85,10 @@
 
     [Parameter]
     public Action<WalletWithdrawalRequest> SubmitBumpfeeModal { get; set; }
+
+    /// <summary>False: bump the fee of the withdrawal. True: cancel it with an RBF replacement that returns the funds to the wallet.</summary>
+    [Parameter]
+    public bool Cancellation { get; set; }
 
     private decimal? _selectedWalletBalance;
     private decimal _btcPrice;
@@ -118,10 +131,13 @@
 
         try
         {
-            // Validation, creation and UTXO locking of the bump live in WithdrawalRequestService, shared with the
-            // BumpWithdrawal gRPC method (and covered end to end there).
-            var newRequest = await WithdrawalRequestService.CreateBumpRequestAsync(WithdrawalRequest.Id,
-                _selectedMempoolRecommendedFeesType, _customSatPerVbAmount);
+            // Validation, creation and UTXO locking of the replacement live in WithdrawalRequestService, shared with
+            // the BumpWithdrawal / CancelWithdrawal gRPC methods (and covered end to end there).
+            var newRequest = Cancellation
+                ? await WithdrawalRequestService.CreateCancelRequestAsync(WithdrawalRequest.Id,
+                    _selectedMempoolRecommendedFeesType, _customSatPerVbAmount)
+                : await WithdrawalRequestService.CreateBumpRequestAsync(WithdrawalRequest.Id,
+                    _selectedMempoolRecommendedFeesType, _customSatPerVbAmount);
 
             SubmitBumpfeeModal?.Invoke(newRequest);
         }
@@ -131,7 +147,7 @@
         }
         catch (Exception e)
         {
-            Logger.LogError(e, "Error creating a new withdrawal request for bumping fee");
+            Logger.LogError(e, "Error creating the RBF replacement of withdrawal request {RequestId}", WithdrawalRequest.Id);
             ToastService.ShowError("Something went wrong");
         }
     }

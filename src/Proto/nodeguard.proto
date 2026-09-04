@@ -28,6 +28,14 @@ service NodeGuardService {
     replaced request moves to WITHDRAWAL_BUMPED.
     */
   rpc BumpWithdrawal(BumpWithdrawalRequest) returns (BumpWithdrawalResponse);
+
+  /*
+    Cancels a withdrawal that is still waiting for on-chain confirmation by replacing its transaction (RBF) with one
+    that spends the same inputs and returns the funds, minus a higher fee, to a fresh address of the wallet, so the
+    original payment never confirms. Cold wallets get a new request that waits for approvals like RequestWithdrawal;
+    hot wallets sign and broadcast it asynchronously and the replaced request moves to WITHDRAWAL_CANCELLED.
+    */
+  rpc CancelWithdrawal(CancelWithdrawalRequest) returns (CancelWithdrawalResponse);
   /*
     Adds a new node to the nodeguard
    */
@@ -216,6 +224,27 @@ message BumpWithdrawalRequest {
 
 message BumpWithdrawalResponse {
   // Id of the new (bumping) withdrawal request
+  int32 request_id = 1;
+  // Transaction ID of the replacement
+  string txid = 2;
+  bool is_hot_wallet = 3;
+}
+
+message CancelWithdrawalRequest {
+  // The withdrawal to cancel, either by NodeGuard request id or by the txid RequestWithdrawal returned. It must be
+  // waiting for on-chain confirmation with zero confirmations.
+  oneof target {
+    int32 request_id = 1;
+    string tx_id = 4;
+  }
+  // MempoolRecommended fee rate for the replacement
+  FEES_TYPE mempool_fee_rate = 2;
+  // Fee rate in sat/vbyte, required when mempool_fee_rate is CUSTOM_FEE. Must be higher than the rate of the replaced request.
+  optional int32 custom_fee_rate = 3;
+}
+
+message CancelWithdrawalResponse {
+  // Id of the new (cancelling) withdrawal request, which returns the funds to the wallet
   int32 request_id = 1;
   // Transaction ID of the replacement
   string txid = 2;

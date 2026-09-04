@@ -43,6 +43,7 @@ public class WithdrawalRequestServiceTests
         "tpubDCfM7v7fKZ31gTGGggNMycfCr5cDGinyijveRZ44RYSgAgEARwhaBd6PPpWst8kKbhEVoqNasgjHFWZKrEQoJ9pzPVEmNZDNe92hShzEMDy";
 
     private const string DestinationAddress = "bcrt1q590shaxaf5u08ml8jwlzghz99dup3z9592vxal";
+    private const string ReturnAddress = "bcrt1q8k3av6q5yp83rn332lx8a90k6kukhg28hs5qw7krdq95t629hgsqk6ztmf";
     private const int OriginalId = 10;
     private const int BumpId = 11;
 
@@ -71,9 +72,6 @@ public class WithdrawalRequestServiceTests
         _requests.Setup(x => x.GetById(BumpId)).ReturnsAsync(() => _storedBump);
         _requests.Setup(x => x.Update(It.IsAny<WalletWithdrawalRequest>())).Returns((true, (string?)null));
 
-        _fmutxos.Setup(x => x.GetLockedUTXOsByWithdrawalId(OriginalId))
-            .ReturnsAsync(new List<FMUTXO> { new() { TxId = _fundingTxId.ToString(), OutputIndex = 0, SatsAmount = 10_000_000 } });
-
         _coinSelection.Setup(x => x.GetUTXOsByOutpointAsync(It.IsAny<DerivationStrategyBase>(), It.IsAny<List<OutPoint>>()))
             .ReturnsAsync((DerivationStrategyBase _, List<OutPoint> outpoints) =>
                 outpoints.Select(o => new UTXO { Outpoint = o, Value = Money.Satoshis(10_000_000) }).ToList());
@@ -83,6 +81,9 @@ public class WithdrawalRequestServiceTests
             .ReturnsAsync(DateTimeOffset.UtcNow);
 
         _bitcoin.Setup(x => x.GenerateTemplatePSBT(It.IsAny<WalletWithdrawalRequest>())).ReturnsAsync(EmptyPsbt());
+
+        _nbXplorer.Setup(x => x.GetUnusedAsync(It.IsAny<DerivationStrategyBase>(), DerivationFeature.Deposit, 0, true, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new KeyPathInformation { Address = BitcoinAddress.Create(ReturnAddress, Network.RegTest) });
     }
 
     private WithdrawalRequestService CreateService() => new(
@@ -235,10 +236,21 @@ public class WithdrawalRequestServiceTests
     }
 
     [Fact]
-    public async Task CreateBumpRequestAsync_OriginalWithoutLockedUtxos_CancelsTheHalfCreatedBump()
+    public async Task CreateBumpRequestAsync_OriginalWithoutLockedUtxos_IsRefusedBeforeAnythingIsCreated()
     {
         SetupOriginal(HotWallet());
         _fmutxos.Setup(x => x.GetLockedUTXOsByWithdrawalId(OriginalId)).ReturnsAsync(new List<FMUTXO>());
+
+        await AssertRefusedAsync(BumpingErrorReason.InvalidState, MempoolRecommendedFeesType.CustomFee, 10m);
+    }
+
+    [Fact]
+    public async Task CreateBumpRequestAsync_UtxosNoLongerSpendable_CancelsTheHalfCreatedBump()
+    {
+        SetupOriginal(HotWallet());
+        // The inputs left NBXplorer's confirmed UTXO set (e.g. the original got mined in the meantime).
+        _coinSelection.Setup(x => x.GetUTXOsByOutpointAsync(It.IsAny<DerivationStrategyBase>(), It.IsAny<List<OutPoint>>()))
+            .ReturnsAsync(new List<UTXO>());
 
         var act = () => CreateService().CreateBumpRequestAsync(OriginalId, MempoolRecommendedFeesType.CustomFee, 10m);
 
@@ -247,6 +259,73 @@ public class WithdrawalRequestServiceTests
         _storedBump!.Status.Should().Be(WalletWithdrawalRequestStatus.Cancelled, "a half-prepared bump must not linger as a pending request");
         _requests.Verify(x => x.Update(It.Is<WalletWithdrawalRequest>(r => r.Id == BumpId
             && r.Status == WalletWithdrawalRequestStatus.Cancelled)), Times.Once);
+    }
+
+    // ---- CreateCancelRequestAsync --------------------------------------------------------------------------------
+
+    [Fact]
+    public async Task CreateCancelRequestAsync_HotWallet_ReturnsTheFundsToTheWallet()
+    {
+        var original = SetupOriginal(HotWallet());
+
+        var cancel = await CreateService().CreateCancelRequestAsync(OriginalId, MempoolRecommendedFeesType.CustomFee, 10m);
+
+        cancel.Should().BeSameAs(_storedBump);
+        cancel.IsRbfCancellation.Should().BeTrue();
+        cancel.BumpingWalletWithdrawalRequestId.Should().Be(OriginalId);
+        cancel.Status.Should().Be(WalletWithdrawalRequestStatus.PSBTSignaturesPending);
+        cancel.Description.Should().Be($"Cancel of request {OriginalId}: pay rent");
+        cancel.Changeless.Should().BeTrue("the single output absorbs the fee (GenerateTemplatePSBT's changeless branch)");
+        cancel.WithdrawAllFunds.Should().BeFalse();
+        cancel.CustomFeeRate.Should().Be(10m);
+        cancel.WalletWithdrawalRequestDestinations.Should().ContainSingle()
+            .Which.Should().BeEquivalentTo(new { Address = ReturnAddress, Amount = 0.1m },
+                "everything the locked inputs hold goes back to a fresh address of the wallet");
+        cancel.WalletWithdrawalRequestDestinations.Single().Address.Should().NotBe(original.WalletWithdrawalRequestDestinations.Single().Address,
+            "the original destination must not be paid");
+
+        _coinSelection.Verify(x => x.LockUTXOs(
+            It.Is<List<UTXO>>(l => l.Count == 1 && l[0].Outpoint == new OutPoint(_fundingTxId, 0)),
+            It.Is<IBitcoinRequest>(r => r.Id == BumpId),
+            BitcoinRequestType.WalletWithdrawal), Times.Once);
+    }
+
+    [Fact]
+    public async Task CreateCancelRequestAsync_ColdWallet_CreatesTheCancellationPendingForApprovers()
+    {
+        SetupOriginal(ColdWallet());
+
+        var cancel = await CreateService().CreateCancelRequestAsync(OriginalId, MempoolRecommendedFeesType.CustomFee, 10m);
+
+        cancel.Status.Should().Be(WalletWithdrawalRequestStatus.Pending);
+        cancel.IsRbfCancellation.Should().BeTrue();
+    }
+
+    [Fact]
+    public async Task CreateCancelRequestAsync_ChangelessOriginalWithSeveralDestinations_IsAllowed()
+    {
+        // A fee bump of this shape is refused (no change to take the fee from); a cancellation replaces every output.
+        SetupOriginal(HotWallet(), destinations: 2, changeless: true, inputSats: 2_000_000);
+
+        var cancel = await CreateService().CreateCancelRequestAsync(OriginalId, MempoolRecommendedFeesType.CustomFee, 10m);
+
+        cancel.WalletWithdrawalRequestDestinations.Should().ContainSingle().Which.Amount.Should().Be(0.02m);
+    }
+
+    [Fact]
+    public async Task CreateCancelRequestAsync_FeeRateNotHigherThanTheCurrentOne_IsRefused()
+    {
+        SetupOriginal(HotWallet(), customFeeRate: 2);
+
+        await AssertRefusedAsync(BumpingErrorReason.FeeRateNotHigher, MempoolRecommendedFeesType.CustomFee, 2m, cancellation: true);
+    }
+
+    [Fact]
+    public async Task CreateCancelRequestAsync_AlreadyMined_IsRefused()
+    {
+        SetupOriginal(HotWallet(), confirmations: 1);
+
+        await AssertRefusedAsync(BumpingErrorReason.AlreadyConfirmed, MempoolRecommendedFeesType.CustomFee, 10m, cancellation: true);
     }
 
     // ---- ScheduleHotWalletWithdrawalAsync -----------------------------------------------------------------------
@@ -301,6 +380,33 @@ public class WithdrawalRequestServiceTests
         original.Status.Should().Be(WalletWithdrawalRequestStatus.Bumped);
         _requests.Verify(x => x.Update(It.Is<WalletWithdrawalRequest>(r => r.Id == OriginalId
             && r.Status == WalletWithdrawalRequestStatus.Bumped)), Times.Once);
+    }
+
+    [Fact]
+    public async Task ScheduleHotWalletWithdrawalAsync_Cancellation_MarksTheReplacedRequestCancelledWithAReason()
+    {
+        var original = SetupOriginal(HotWallet());
+        HotRequest(WalletWithdrawalRequestStatus.PSBTSignaturesPending, bumping: OriginalId, cancellation: true);
+
+        await CreateService().ScheduleHotWalletWithdrawalAsync(BumpId);
+
+        original.Status.Should().Be(WalletWithdrawalRequestStatus.Cancelled, "the payment is not happening, it is not merely re-fed");
+        original.RejectCancelDescription.Should().Contain("RBF").And.Contain(BumpId.ToString());
+    }
+
+    [Fact]
+    public async Task ScheduleHotWalletWithdrawalAsync_CancellationSchedulingFails_RestoresTheReplacedRequest()
+    {
+        var original = SetupOriginal(HotWallet());
+        HotRequest(WalletWithdrawalRequestStatus.PSBTSignaturesPending, bumping: OriginalId, cancellation: true);
+        _scheduler.Setup(x => x.ScheduleJob(It.IsAny<IJobDetail>(), It.IsAny<ITrigger>(), It.IsAny<CancellationToken>()))
+            .ThrowsAsync(new InvalidOperationException("quartz down"));
+
+        var act = () => CreateService().ScheduleHotWalletWithdrawalAsync(BumpId);
+
+        await act.Should().ThrowAsync<InvalidOperationException>();
+        original.Status.Should().Be(WalletWithdrawalRequestStatus.OnChainConfirmationPending);
+        original.RejectCancelDescription.Should().BeNull();
     }
 
     [Fact]
@@ -374,20 +480,37 @@ public class WithdrawalRequestServiceTests
     }
 
     [Fact]
-    public async Task MarkOriginalAsBumpedAsync_NotABump_IsANoOp()
+    public async Task RevertOriginalAsync_CancellationByAnotherReplacement_IsLeftAlone()
+    {
+        var original = SetupOriginal(HotWallet(), status: WalletWithdrawalRequestStatus.Cancelled);
+        original.RejectCancelDescription = "Cancelled by RBF replacement request 99";
+        var cancel = HotRequest(WalletWithdrawalRequestStatus.Failed, bumping: OriginalId, cancellation: true);
+
+        await CreateService().RevertOriginalAsync(cancel);
+
+        original.Status.Should().Be(WalletWithdrawalRequestStatus.Cancelled);
+        _requests.Verify(x => x.Update(It.IsAny<WalletWithdrawalRequest>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task MarkOriginalAsReplacedAsync_NotAReplacement_IsANoOp()
     {
         var request = HotRequest(WalletWithdrawalRequestStatus.PSBTSignaturesPending);
 
-        await CreateService().MarkOriginalAsBumpedAsync(request);
+        await CreateService().MarkOriginalAsReplacedAsync(request);
 
         _requests.Verify(x => x.Update(It.IsAny<WalletWithdrawalRequest>()), Times.Never);
     }
 
     // ---- fixtures ---------------------------------------------------------------------------------------------
 
-    private async Task AssertRefusedAsync(BumpingErrorReason reason, MempoolRecommendedFeesType feeType, decimal? customFeeRate)
+    private async Task AssertRefusedAsync(BumpingErrorReason reason, MempoolRecommendedFeesType feeType, decimal? customFeeRate,
+        bool cancellation = false)
     {
-        var act = () => CreateService().CreateBumpRequestAsync(OriginalId, feeType, customFeeRate);
+        var service = CreateService();
+        var act = () => cancellation
+            ? service.CreateCancelRequestAsync(OriginalId, feeType, customFeeRate)
+            : service.CreateBumpRequestAsync(OriginalId, feeType, customFeeRate);
 
         (await act.Should().ThrowAsync<BumpingException>()).Which.Reason.Should().Be(reason);
         _requests.Verify(x => x.AddAsync(It.IsAny<WalletWithdrawalRequest>()), Times.Never,
@@ -441,6 +564,7 @@ public class WithdrawalRequestServiceTests
         };
 
         _requests.Setup(x => x.GetById(OriginalId)).ReturnsAsync(original);
+        _fmutxos.Setup(x => x.GetLockedUTXOsByWithdrawalId(OriginalId)).ReturnsAsync(original.UTXOs);
 
         var network = Network.RegTest;
         var tx = network.CreateTransaction();
@@ -457,7 +581,7 @@ public class WithdrawalRequestServiceTests
     }
 
     /// <summary>The hot-wallet request to execute (a bump when <paramref name="bumping"/> is set).</summary>
-    private WalletWithdrawalRequest HotRequest(WalletWithdrawalRequestStatus status, int? bumping = null)
+    private WalletWithdrawalRequest HotRequest(WalletWithdrawalRequestStatus status, int? bumping = null, bool cancellation = false)
     {
         var request = new WalletWithdrawalRequest
         {
@@ -467,6 +591,7 @@ public class WithdrawalRequestServiceTests
             WalletId = 3,
             Description = "pay rent",
             BumpingWalletWithdrawalRequestId = bumping,
+            IsRbfCancellation = cancellation,
             WalletWithdrawalRequestDestinations = new List<WalletWithdrawalRequestDestination>
             {
                 new() { Address = DestinationAddress, Amount = 0.01m },

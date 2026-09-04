@@ -28,6 +28,8 @@ public interface INodeGuardService
 
     Task<BumpWithdrawalResponse> BumpWithdrawal(BumpWithdrawalRequest request, ServerCallContext context);
 
+    Task<CancelWithdrawalResponse> CancelWithdrawal(CancelWithdrawalRequest request, ServerCallContext context);
+
     Task<GetAvailableWalletsResponse>
         GetAvailableWallets(GetAvailableWalletsRequest request, ServerCallContext context);
 
@@ -350,7 +352,7 @@ public class NodeGuardService : Nodeguard.NodeGuardService.NodeGuardServiceBase,
         }
         catch (NoUTXOsAvailableException)
         {
-            CancelWithdrawalRequest(withdrawalRequest);
+            MarkWithdrawalRequestCancelled(withdrawalRequest);
             _logger.LogError("No available UTXOs for wallet with id {walletId}", request.WalletId);
             throw new RpcException(new Status(StatusCode.ResourceExhausted, "No available UTXOs for wallet"));
         }
@@ -361,19 +363,19 @@ public class NodeGuardService : Nodeguard.NodeGuardService.NodeGuardServiceBase,
         }
         catch (RpcException e)
         {
-            CancelWithdrawalRequest(withdrawalRequest);
+            MarkWithdrawalRequestCancelled(withdrawalRequest);
             _logger.LogError(e.Message);
             throw new RpcException(new Status(e.Status.StatusCode, e.Status.Detail));
         }
         catch (Exception e)
         {
-            CancelWithdrawalRequest(withdrawalRequest);
+            MarkWithdrawalRequestCancelled(withdrawalRequest);
             _logger.LogError(e, "Error requesting withdrawal for wallet with id {walletId}", request.WalletId);
             throw new RpcException(new Status(StatusCode.Internal, "Error requesting withdrawal for wallet"));
         }
     }
 
-    private void CancelWithdrawalRequest(WalletWithdrawalRequest? withdrawalRequest)
+    private void MarkWithdrawalRequestCancelled(WalletWithdrawalRequest? withdrawalRequest)
     {
         if (withdrawalRequest != null)
         {
@@ -390,100 +392,131 @@ public class NodeGuardService : Nodeguard.NodeGuardService.NodeGuardServiceBase,
     public override async Task<BumpWithdrawalResponse> BumpWithdrawal(BumpWithdrawalRequest request,
         ServerCallContext context)
     {
-        WalletWithdrawalRequest? bumpRequest = null;
-        var target = DescribeBumpTarget(request);
+        var target = request.TargetCase switch
+        {
+            BumpWithdrawalRequest.TargetOneofCase.RequestId => new ReplacementTarget(request.RequestId, null),
+            BumpWithdrawalRequest.TargetOneofCase.TxId => new ReplacementTarget(null, request.TxId),
+            _ => new ReplacementTarget(null, null),
+        };
+
+        var (requestId, txid, isHotWallet) = await ReplaceWithdrawalAsync(target,
+            (MempoolRecommendedFeesType)request.MempoolFeeRate,
+            request.HasCustomFeeRate ? request.CustomFeeRate : null,
+            cancellation: false);
+
+        return new BumpWithdrawalResponse { RequestId = requestId, Txid = txid, IsHotWallet = isHotWallet };
+    }
+
+    public override async Task<CancelWithdrawalResponse> CancelWithdrawal(CancelWithdrawalRequest request,
+        ServerCallContext context)
+    {
+        var target = request.TargetCase switch
+        {
+            CancelWithdrawalRequest.TargetOneofCase.RequestId => new ReplacementTarget(request.RequestId, null),
+            CancelWithdrawalRequest.TargetOneofCase.TxId => new ReplacementTarget(null, request.TxId),
+            _ => new ReplacementTarget(null, null),
+        };
+
+        var (requestId, txid, isHotWallet) = await ReplaceWithdrawalAsync(target,
+            (MempoolRecommendedFeesType)request.MempoolFeeRate,
+            request.HasCustomFeeRate ? request.CustomFeeRate : null,
+            cancellation: true);
+
+        return new CancelWithdrawalResponse { RequestId = requestId, Txid = txid, IsHotWallet = isHotWallet };
+    }
+
+    /// <summary>The withdrawal to replace, addressed by NodeGuard request id or by the txid RequestWithdrawal returned.</summary>
+    private readonly record struct ReplacementTarget(int? RequestId, string? TxId)
+    {
+        public override string ToString() => TxId != null ? $"txid {TxId}" : $"id {RequestId}";
+    }
+
+    /// <summary>
+    /// Shared body of BumpWithdrawal and CancelWithdrawal: resolve the target, create the replacement through
+    /// WithdrawalRequestService and, for hot wallets, execute it; cold wallets only get the template so the approvers
+    /// reuse it, exactly as RequestWithdrawal does.
+    /// </summary>
+    private async Task<(int RequestId, string Txid, bool IsHotWallet)> ReplaceWithdrawalAsync(ReplacementTarget target,
+        MempoolRecommendedFeesType feeType, decimal? customFeeRate, bool cancellation)
+    {
+        var action = cancellation ? "cancellation" : "fee bump";
+        WalletWithdrawalRequest? replacement = null;
         try
         {
-            var feeType = (MempoolRecommendedFeesType)request.MempoolFeeRate;
-            decimal? customFeeRate = request.HasCustomFeeRate ? request.CustomFeeRate : null;
+            var originalRequestId = await ResolveReplacementTargetAsync(target);
 
-            var originalRequestId = await ResolveBumpTargetAsync(request);
-            bumpRequest = await _withdrawalRequestService.CreateBumpRequestAsync(originalRequestId, feeType, customFeeRate);
+            replacement = cancellation
+                ? await _withdrawalRequestService.CreateCancelRequestAsync(originalRequestId, feeType, customFeeRate)
+                : await _withdrawalRequestService.CreateBumpRequestAsync(originalRequestId, feeType, customFeeRate);
 
-            var isHotWallet = bumpRequest.Wallet?.IsHotWallet ?? false;
+            var isHotWallet = replacement.Wallet?.IsHotWallet ?? false;
 
-            // Hot wallets: NodeGuard signs and broadcasts through PerformWithdrawalJob. Cold wallets: the template is
-            // generated now so the approvers reuse it, exactly as RequestWithdrawal does.
             var psbt = isHotWallet
-                ? await _withdrawalRequestService.ScheduleHotWalletWithdrawalAsync(bumpRequest.Id)
-                : await _bitcoinService.GenerateTemplatePSBT(bumpRequest);
+                ? await _withdrawalRequestService.ScheduleHotWalletWithdrawalAsync(replacement.Id)
+                : await _bitcoinService.GenerateTemplatePSBT(replacement);
 
-            return new BumpWithdrawalResponse
-            {
-                RequestId = bumpRequest.Id,
-                Txid = psbt.GetGlobalTransaction().GetHash().ToString(),
-                IsHotWallet = isHotWallet,
-            };
+            return (replacement.Id, psbt.GetGlobalTransaction().GetHash().ToString(), isHotWallet);
         }
         catch (BumpingException e)
         {
-            _logger.LogWarning("Fee bump of withdrawal request {Target} refused ({Reason}): {Message}",
-                target, e.Reason, e.Message);
-            CancelWithdrawalRequest(bumpRequest);
+            _logger.LogWarning("RBF {Action} of withdrawal request {Target} refused ({Reason}): {Message}",
+                action, target, e.Reason, e.Message);
+            MarkWithdrawalRequestCancelled(replacement);
             throw new RpcException(new Status(ToStatusCode(e.Reason), e.Message));
         }
         catch (NoUTXOsAvailableException)
         {
-            CancelWithdrawalRequest(bumpRequest);
-            _logger.LogError("No available UTXOs to bump withdrawal request {Target}", target);
+            MarkWithdrawalRequestCancelled(replacement);
+            _logger.LogError("No available UTXOs for the RBF {Action} of withdrawal request {Target}", action, target);
             throw new RpcException(new Status(StatusCode.ResourceExhausted, "No available UTXOs for wallet"));
         }
         catch (ShowToUserException e)
         {
-            CancelWithdrawalRequest(bumpRequest);
-            _logger.LogError(e, "Error bumping withdrawal request {Target}", target);
+            MarkWithdrawalRequestCancelled(replacement);
+            _logger.LogError(e, "Error in the RBF {Action} of withdrawal request {Target}", action, target);
             throw new RpcException(new Status(StatusCode.FailedPrecondition, e.Message));
         }
         catch (RpcException)
         {
-            CancelWithdrawalRequest(bumpRequest);
+            MarkWithdrawalRequestCancelled(replacement);
             throw;
         }
         catch (Exception e)
         {
-            CancelWithdrawalRequest(bumpRequest);
-            _logger.LogError(e, "Error bumping withdrawal request {Target}", target);
-            throw new RpcException(new Status(StatusCode.Internal, "Error bumping withdrawal request"));
+            MarkWithdrawalRequestCancelled(replacement);
+            _logger.LogError(e, "Error in the RBF {Action} of withdrawal request {Target}", action, target);
+            throw new RpcException(new Status(StatusCode.Internal, $"Error in the RBF {action} of the withdrawal request"));
         }
     }
 
     /// <summary>
-    /// The withdrawal to bump can be addressed by NodeGuard request id or by the txid RequestWithdrawal returned; the
-    /// latter is resolved here so the service only ever deals with request ids.
+    /// A txid is validated, normalised (stored txids are lowercase hex) and resolved to the request that broadcast it,
+    /// so the service only ever deals with request ids.
     /// </summary>
-    private async Task<int> ResolveBumpTargetAsync(BumpWithdrawalRequest request)
+    private async Task<int> ResolveReplacementTargetAsync(ReplacementTarget target)
     {
-        switch (request.TargetCase)
+        if (target.RequestId is { } requestId)
         {
-            case BumpWithdrawalRequest.TargetOneofCase.RequestId:
-                return request.RequestId;
-
-            case BumpWithdrawalRequest.TargetOneofCase.TxId:
-                if (!uint256.TryParse(request.TxId, out var txId))
-                {
-                    throw new RpcException(new Status(StatusCode.InvalidArgument, "tx_id is not a valid transaction id"));
-                }
-
-                // Stored txids are lowercase hex; normalising through uint256 makes the lookup case-insensitive.
-                var withdrawalRequest = await _walletWithdrawalRequestRepository.GetByTxHash(txId.ToString());
-                if (withdrawalRequest == null)
-                {
-                    throw new RpcException(new Status(StatusCode.NotFound,
-                        $"No withdrawal request found for txid {txId}"));
-                }
-
-                return withdrawalRequest.Id;
-
-            default:
-                throw new RpcException(new Status(StatusCode.InvalidArgument, "request_id or tx_id is required"));
+            return requestId;
         }
-    }
 
-    private static string DescribeBumpTarget(BumpWithdrawalRequest request)
-    {
-        return request.TargetCase == BumpWithdrawalRequest.TargetOneofCase.TxId
-            ? $"txid {request.TxId}"
-            : $"id {request.RequestId}";
+        if (target.TxId is { } rawTxId)
+        {
+            if (!uint256.TryParse(rawTxId, out var txId))
+            {
+                throw new RpcException(new Status(StatusCode.InvalidArgument, "tx_id is not a valid transaction id"));
+            }
+
+            var withdrawalRequest = await _walletWithdrawalRequestRepository.GetByTxHash(txId.ToString());
+            if (withdrawalRequest == null)
+            {
+                throw new RpcException(new Status(StatusCode.NotFound, $"No withdrawal request found for txid {txId}"));
+            }
+
+            return withdrawalRequest.Id;
+        }
+
+        throw new RpcException(new Status(StatusCode.InvalidArgument, "request_id or tx_id is required"));
     }
 
     private static StatusCode ToStatusCode(BumpingErrorReason reason)

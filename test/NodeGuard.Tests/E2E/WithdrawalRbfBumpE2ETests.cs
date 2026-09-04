@@ -27,15 +27,17 @@ using Xunit.Abstractions;
 namespace NodeGuard.Tests.E2E;
 
 /// <summary>
-/// End-to-end coverage for RBF fee bumping of a hot-wallet withdrawal against a LIVE NodeGuard + bitcoind, driven over
-/// gRPC: RequestWithdrawal broadcasts an RBF-signalling transaction; BumpWithdrawal replaces it with a higher-fee version
-/// of the same payment; bitcoind evicts the original; NodeGuard marks the original WITHDRAWAL_BUMPED and, once mined,
-/// settles the replacement. The UI and the RPC share WithdrawalRequestService, so this scenario exercises the same
-/// orchestration the Withdrawals page runs.
+/// End-to-end coverage for the RBF replacements of a hot-wallet withdrawal against a LIVE NodeGuard + bitcoind, driven
+/// over gRPC. Fee bump: RequestWithdrawal broadcasts an RBF-signalling transaction, BumpWithdrawal replaces it with a
+/// higher-fee version of the same payment, bitcoind evicts the original, NodeGuard marks it WITHDRAWAL_BUMPED and, once
+/// mined, settles the replacement. Cancellation: CancelWithdrawal replaces it with a transaction that returns the funds to
+/// the wallet, the destination is never paid and the original ends up WITHDRAWAL_CANCELLED. The UI and the RPCs share
+/// WithdrawalRequestService, so these scenarios exercise the same orchestration the Withdrawals page runs.
 ///
 /// Shared plumbing in <see cref="E2ETestBase"/>; gated by <see cref="E2EFactAttribute"/>. Env: see
-/// <see cref="DustUtxoWithdrawalE2ETests"/>. Never mine between the withdrawal and the bump — the original must still be
-/// unconfirmed. Settlement needs MonitorWithdrawalsJob to run promptly (MONITOR_WITHDRAWALS_CRON is 10s in the e2e stack).
+/// <see cref="DustUtxoWithdrawalE2ETests"/>. Never mine between the withdrawal and its replacement — the original must
+/// still be unconfirmed. Settlement needs MonitorWithdrawalsJob to run promptly (MONITOR_WITHDRAWALS_CRON is 10s in the
+/// e2e stack).
 /// </summary>
 [Trait("Category", "E2E")]
 [Collection("E2E")]
@@ -55,37 +57,11 @@ public class WithdrawalRbfBumpE2ETests : E2ETestBase
     {
         var client = CreateClient(out var headers);
         var rpc = CreateBitcoindRpc();
-        var walletId = int.Parse(Env("E2E_HOT_WALLET_ID", "3"));
-
-        // 0. NodeGuard up and the dev hot wallet spendable (DbInitializer funds it; another e2e may hold it briefly).
-        await RetryAsync(async () =>
-        {
-            var resp = await client.GetNodesAsync(new GetNodesRequest(), headers);
-            if (resp.Nodes.Count == 0) throw new InvalidOperationException("no nodes seeded yet");
-            return true;
-        }, attempts: 90, delay: TimeSpan.FromSeconds(4), what: "GetNodes (NodeGuard readiness)");
-
-        await RetryAsync(async () =>
-        {
-            var available = await client.GetAvailableUtxosAsync(
-                new GetAvailableUtxosRequest { WalletId = walletId, Amount = ProbeAmountSats }, headers);
-            if (available.Confirmed.Sum(u => u.Amount) < ProbeAmountSats)
-                throw new InvalidOperationException("hot wallet has no spendable UTXO yet");
-            return true;
-        }, attempts: 60, delay: TimeSpan.FromSeconds(4), what: "GetAvailableUtxos (hot wallet funded)");
+        var walletId = await EnsureHotWalletReadyAsync(client, headers);
 
         // 1. A hot-wallet withdrawal at a low fee rate. NodeGuard signs and broadcasts it asynchronously.
         var destination = await rpc.GetNewAddressAsync();
-        var withdrawal = await client.RequestWithdrawalAsync(new RequestWithdrawalRequest
-        {
-            WalletId = walletId,
-            Description = "E2E RBF bump test",
-            Destinations = { new Destination { Address = destination.ToString(), AmountSats = WithdrawalAmountSats } },
-            MempoolFeeRate = FEES_TYPE.CustomFee,
-            CustomFeeRate = OriginalFeeRateSatPerVb,
-        }, headers);
-        _output.WriteLine($"withdrawal request {withdrawal.RequestId} → txid {withdrawal.Txid}");
-        withdrawal.IsHotWallet.Should().BeTrue();
+        var withdrawal = await RequestHotWithdrawalAsync(client, headers, walletId, destination, "E2E RBF bump test");
         var originalTxId = uint256.Parse(withdrawal.Txid);
 
         var originalTx = await WaitForBroadcastAsync(rpc, originalTxId, "original withdrawal broadcast");
@@ -113,11 +89,7 @@ public class WithdrawalRbfBumpE2ETests : E2ETestBase
         // 3. The replacement is in the mempool, the original was evicted, and the replacement is the same payment at a
         //    higher fee: same inputs, same destination output, smaller change.
         var bumpTx = await WaitForBroadcastAsync(rpc, bumpTxId, "replacement broadcast");
-        await RetryAsync(async () =>
-        {
-            var evicted = await rpc.GetMempoolEntryAsync(originalTxId, throwIfNotFound: false);
-            return evicted == null ? true : throw new InvalidOperationException("original still in the mempool");
-        }, attempts: 15, delay: TimeSpan.FromSeconds(2), what: "original evicted by the replacement");
+        await WaitUntilEvictedAsync(rpc, originalTxId);
 
         bumpTx.Inputs.Select(i => i.PrevOut).Should().BeEquivalentTo(originalTx.Inputs.Select(i => i.PrevOut),
             "RBF replaces the very same inputs");
@@ -140,7 +112,7 @@ public class WithdrawalRbfBumpE2ETests : E2ETestBase
             attempts: 30, delay: TimeSpan.FromSeconds(2), what: "bump pending confirmation, original bumped");
         statuses[bump.RequestId].TxId.Should().Be(bump.Txid);
 
-        // 4. Guards: a bumped request cannot be bumped again, and a bump must raise the fee rate.
+        // 4. Guards: a bumped request cannot be bumped again, a bump must raise the fee rate, and an unknown txid is not found.
         var bumpAgain = () => client.BumpWithdrawalAsync(new BumpWithdrawalRequest
         {
             RequestId = withdrawal.RequestId,
@@ -183,6 +155,132 @@ public class WithdrawalRbfBumpE2ETests : E2ETestBase
             "the replaced request stays bumped");
     }
 
+    [E2EFact]
+    public async Task CancelWithdrawal_ReturnsTheFundsOfTheUnconfirmedHotWalletTransaction()
+    {
+        var client = CreateClient(out var headers);
+        var rpc = CreateBitcoindRpc();
+        var walletId = await EnsureHotWalletReadyAsync(client, headers);
+
+        // 1. A hot-wallet withdrawal at a low fee rate, broadcast but unconfirmed.
+        var destination = await rpc.GetNewAddressAsync();
+        var withdrawal = await RequestHotWithdrawalAsync(client, headers, walletId, destination, "E2E RBF cancel test");
+        var originalTxId = uint256.Parse(withdrawal.Txid);
+
+        var originalTx = await WaitForBroadcastAsync(rpc, originalTxId, "original withdrawal broadcast");
+        var originalEntry = await rpc.GetMempoolEntryAsync(originalTxId);
+
+        await PollAsync(() => GetStatusesAsync(client, headers, withdrawal.RequestId),
+            s => s[withdrawal.RequestId].Status == WITHDRAWAL_REQUEST_STATUS.WithdrawalPendingConfirmation,
+            attempts: 30, delay: TimeSpan.FromSeconds(2), what: "original pending confirmation");
+
+        // 2. Cancel it by txid: same inputs, the funds come back to the wallet at a higher fee rate.
+        var cancel = await client.CancelWithdrawalAsync(new CancelWithdrawalRequest
+        {
+            TxId = withdrawal.Txid,
+            MempoolFeeRate = FEES_TYPE.CustomFee,
+            CustomFeeRate = BumpedFeeRateSatPerVb,
+        }, headers);
+        _output.WriteLine($"cancel request {cancel.RequestId} → txid {cancel.Txid}");
+        cancel.IsHotWallet.Should().BeTrue();
+        cancel.RequestId.Should().NotBe(withdrawal.RequestId);
+        cancel.Txid.Should().NotBe(withdrawal.Txid);
+        var cancelTxId = uint256.Parse(cancel.Txid);
+
+        // 3. The replacement evicted the original and pays nobody but the wallet itself.
+        var cancelTx = await WaitForBroadcastAsync(rpc, cancelTxId, "cancellation broadcast");
+        await WaitUntilEvictedAsync(rpc, originalTxId);
+
+        cancelTx.Inputs.Select(i => i.PrevOut).Should().BeEquivalentTo(originalTx.Inputs.Select(i => i.PrevOut),
+            "RBF replaces the very same inputs");
+        cancelTx.Outputs.Should().ContainSingle("everything goes back to one fresh address of the wallet");
+        cancelTx.Outputs.Should().NotContain(o => o.ScriptPubKey == destination.ScriptPubKey,
+            "the original destination must never be paid");
+
+        var cancelEntry = await rpc.GetMempoolEntryAsync(cancelTxId);
+        cancelEntry.BaseFee.Satoshi.Should().BeGreaterThan(originalEntry.BaseFee.Satoshi, "BIP125 requires the replacement to pay more");
+        (cancelTx.TotalOut + cancelEntry.BaseFee).Should().Be(originalTx.TotalOut + originalEntry.BaseFee,
+            "both transactions spend the same inputs: whatever is not fee comes back to the wallet");
+
+        // NodeGuard's view: the cancellation is pending confirmation, the original is cancelled with a reason.
+        var statuses = await PollAsync(() => GetStatusesAsync(client, headers, withdrawal.RequestId, cancel.RequestId),
+            s => s[cancel.RequestId].Status == WITHDRAWAL_REQUEST_STATUS.WithdrawalPendingConfirmation
+                 && s[withdrawal.RequestId].Status == WITHDRAWAL_REQUEST_STATUS.WithdrawalCancelled,
+            attempts: 30, delay: TimeSpan.FromSeconds(2), what: "cancellation pending confirmation, original cancelled");
+        statuses[cancel.RequestId].TxId.Should().Be(cancel.Txid);
+        statuses[withdrawal.RequestId].RejectOrCancelReason.Should().Contain("RBF");
+
+        // 4. Guard: a cancelled request cannot be replaced again.
+        var cancelAgain = () => client.CancelWithdrawalAsync(new CancelWithdrawalRequest
+        {
+            RequestId = withdrawal.RequestId,
+            MempoolFeeRate = FEES_TYPE.CustomFee,
+            CustomFeeRate = BumpedFeeRateSatPerVb + 5,
+        }, headers).ResponseAsync;
+        (await cancelAgain.Should().ThrowAsync<RpcException>()).Which.StatusCode.Should().Be(StatusCode.FailedPrecondition);
+
+        // 5. Mine: the cancellation confirms, the original never does, the funds are a spendable UTXO of the wallet again.
+        await MineAsync(rpc, 6);
+        (await rpc.GetRawTransactionAsync(originalTxId, throwIfNotFound: false)).Should().BeNull(
+            "the cancelled transaction was evicted and can never confirm");
+
+        var settled = await PollAsync(() => GetStatusesAsync(client, headers, withdrawal.RequestId, cancel.RequestId),
+            s => s[cancel.RequestId].Status == WITHDRAWAL_REQUEST_STATUS.WithdrawalSettled,
+            attempts: 40, delay: TimeSpan.FromSeconds(5), what: "cancellation settled by MonitorWithdrawalsJob");
+        settled[withdrawal.RequestId].Status.Should().Be(WITHDRAWAL_REQUEST_STATUS.WithdrawalCancelled);
+
+        var returnedOutpoint = new OutPoint(cancelTxId, 0).ToString();
+        await RetryAsync(async () =>
+        {
+            var utxos = await client.GetUtxosAsync(new GetUtxosRequest(), headers);
+            return utxos.Confirmed.Any(u => u.Outpoint == returnedOutpoint)
+                ? true
+                : throw new InvalidOperationException("returned funds not indexed as a confirmed UTXO of the wallet yet");
+        }, attempts: 30, delay: TimeSpan.FromSeconds(4), what: "returned funds spendable again");
+    }
+
+    // ---- plumbing ------------------------------------------------------------------------------------------------
+
+    /// <summary>NodeGuard up and the dev hot wallet spendable (DbInitializer funds it; another e2e may hold it briefly).</summary>
+    private async Task<int> EnsureHotWalletReadyAsync(NodeGuardService.NodeGuardServiceClient client, Metadata headers)
+    {
+        var walletId = int.Parse(Env("E2E_HOT_WALLET_ID", "3"));
+
+        await RetryAsync(async () =>
+        {
+            var resp = await client.GetNodesAsync(new GetNodesRequest(), headers);
+            if (resp.Nodes.Count == 0) throw new InvalidOperationException("no nodes seeded yet");
+            return true;
+        }, attempts: 90, delay: TimeSpan.FromSeconds(4), what: "GetNodes (NodeGuard readiness)");
+
+        await RetryAsync(async () =>
+        {
+            var available = await client.GetAvailableUtxosAsync(
+                new GetAvailableUtxosRequest { WalletId = walletId, Amount = ProbeAmountSats }, headers);
+            if (available.Confirmed.Sum(u => u.Amount) < ProbeAmountSats)
+                throw new InvalidOperationException("hot wallet has no spendable UTXO yet");
+            return true;
+        }, attempts: 60, delay: TimeSpan.FromSeconds(4), what: "GetAvailableUtxos (hot wallet funded)");
+
+        return walletId;
+    }
+
+    private async Task<RequestWithdrawalResponse> RequestHotWithdrawalAsync(NodeGuardService.NodeGuardServiceClient client,
+        Metadata headers, int walletId, BitcoinAddress destination, string description)
+    {
+        var withdrawal = await client.RequestWithdrawalAsync(new RequestWithdrawalRequest
+        {
+            WalletId = walletId,
+            Description = description,
+            Destinations = { new Destination { Address = destination.ToString(), AmountSats = WithdrawalAmountSats } },
+            MempoolFeeRate = FEES_TYPE.CustomFee,
+            CustomFeeRate = OriginalFeeRateSatPerVb,
+        }, headers);
+        _output.WriteLine($"withdrawal request {withdrawal.RequestId} → txid {withdrawal.Txid}");
+        withdrawal.IsHotWallet.Should().BeTrue();
+        return withdrawal;
+    }
+
     private async Task<Transaction> WaitForBroadcastAsync(RPCClient rpc, uint256 txId, string what)
     {
         return await RetryAsync(async () =>
@@ -190,6 +288,15 @@ public class WithdrawalRbfBumpE2ETests : E2ETestBase
             var tx = await rpc.GetRawTransactionAsync(txId, throwIfNotFound: false);
             return tx ?? throw new InvalidOperationException($"{txId} not broadcast yet");
         }, attempts: 30, delay: TimeSpan.FromSeconds(4), what: what);
+    }
+
+    private async Task WaitUntilEvictedAsync(RPCClient rpc, uint256 txId)
+    {
+        await RetryAsync(async () =>
+        {
+            var entry = await rpc.GetMempoolEntryAsync(txId, throwIfNotFound: false);
+            return entry == null ? true : throw new InvalidOperationException("original still in the mempool");
+        }, attempts: 15, delay: TimeSpan.FromSeconds(2), what: "original evicted by the replacement");
     }
 
     private static async Task<Dictionary<int, WithdrawalRequest>> GetStatusesAsync(

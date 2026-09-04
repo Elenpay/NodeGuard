@@ -18,6 +18,7 @@
  */
 
 using NBitcoin;
+using NBXplorer.DerivationStrategy;
 using NodeGuard.Data.Models;
 using NodeGuard.Data.Repositories.Interfaces;
 using NodeGuard.Helpers;
@@ -47,6 +48,15 @@ public interface IWithdrawalRequestService
         decimal? customFeeRate);
 
     /// <summary>
+    /// Validates and creates the RBF CANCELLATION of a withdrawal that is waiting for on-chain confirmation: the same
+    /// locked UTXOs, a higher fee rate, and a single output that returns the funds to a fresh address of the wallet, so
+    /// the original payment never confirms. Same status rules as <see cref="CreateBumpRequestAsync"/>; once executed the
+    /// replaced request ends up Cancelled instead of Bumped.
+    /// </summary>
+    Task<WalletWithdrawalRequest> CreateCancelRequestAsync(int originalRequestId, MempoolRecommendedFeesType feeType,
+        decimal? customFeeRate);
+
+    /// <summary>
     /// Executes a hot-wallet request (fresh or bump): moves it to PSBTSignaturesPending, generates and persists the
     /// template PSBT, marks the request it replaces (if any) as Bumped and schedules <see cref="PerformWithdrawalJob"/>,
     /// which signs and broadcasts. On failure the replaced request is put back to OnChainConfirmationPending and the
@@ -56,21 +66,24 @@ public interface IWithdrawalRequestService
     Task<PSBT> ScheduleHotWalletWithdrawalAsync(int requestId);
 
     /// <summary>
-    /// Marks the request replaced by <paramref name="bumpRequest"/> as Bumped. Cold-wallet flow: called when the last
-    /// human signature lands and the withdrawal job is scheduled. No-op when the request is not a bump.
+    /// Marks the request replaced by <paramref name="replacement"/> as Bumped (fee bump) or Cancelled (RBF cancellation).
+    /// Cold-wallet flow: called when the last human signature lands and the withdrawal job is scheduled. No-op when the
+    /// request is not a replacement.
     /// </summary>
-    Task MarkOriginalAsBumpedAsync(WalletWithdrawalRequest bumpRequest);
+    Task MarkOriginalAsReplacedAsync(WalletWithdrawalRequest replacement);
 
     /// <summary>
-    /// Puts the request replaced by <paramref name="bumpRequest"/> back to OnChainConfirmationPending when the bump is
-    /// abandoned (cancelled, rejected or failed) and the original had already been marked Bumped. No-op otherwise.
+    /// Puts the request replaced by <paramref name="replacement"/> back to OnChainConfirmationPending when the replacement
+    /// is abandoned (cancelled, rejected or failed) and the original had already been marked Bumped / Cancelled by it.
+    /// No-op otherwise.
     /// </summary>
-    Task RevertOriginalAsync(WalletWithdrawalRequest bumpRequest);
+    Task RevertOriginalAsync(WalletWithdrawalRequest replacement);
 }
 
 public class WithdrawalRequestService : IWithdrawalRequestService
 {
     public const string BumpDescriptionPrefix = "Bump of request";
+    public const string CancelDescriptionPrefix = "Cancel of request";
 
     private readonly ILogger<WithdrawalRequestService> _logger;
     private readonly IWalletWithdrawalRequestRepository _walletWithdrawalRequestRepository;
@@ -97,8 +110,21 @@ public class WithdrawalRequestService : IWithdrawalRequestService
         _schedulerFactory = schedulerFactory;
     }
 
-    public async Task<WalletWithdrawalRequest> CreateBumpRequestAsync(int originalRequestId,
+    public Task<WalletWithdrawalRequest> CreateBumpRequestAsync(int originalRequestId,
         MempoolRecommendedFeesType feeType, decimal? customFeeRate)
+        => CreateReplacementAsync(originalRequestId, feeType, customFeeRate, cancellation: false);
+
+    public Task<WalletWithdrawalRequest> CreateCancelRequestAsync(int originalRequestId,
+        MempoolRecommendedFeesType feeType, decimal? customFeeRate)
+        => CreateReplacementAsync(originalRequestId, feeType, customFeeRate, cancellation: true);
+
+    /// <summary>
+    /// A fee bump keeps the original destinations and pays the higher fee from the change; a cancellation keeps only the
+    /// inputs and sends everything, minus the fee, back to the wallet. Everything else — validation, status rules, UTXO
+    /// locking — is the same.
+    /// </summary>
+    private async Task<WalletWithdrawalRequest> CreateReplacementAsync(int originalRequestId,
+        MempoolRecommendedFeesType feeType, decimal? customFeeRate, bool cancellation)
     {
         var original = await _walletWithdrawalRequestRepository.GetById(originalRequestId)
                        ?? throw new BumpingException("Withdrawal request not found", BumpingErrorReason.RequestNotFound);
@@ -106,7 +132,7 @@ public class WithdrawalRequestService : IWithdrawalRequestService
         if (original.Status != WalletWithdrawalRequestStatus.OnChainConfirmationPending)
         {
             throw new BumpingException(
-                "Bumpfee can only be used for transactions that are pending on-chain confirmation.",
+                "Only withdrawals that are pending on-chain confirmation can be replaced.",
                 BumpingErrorReason.InvalidState);
         }
 
@@ -123,7 +149,7 @@ public class WithdrawalRequestService : IWithdrawalRequestService
         if (originalTx.Confirmations > 0)
         {
             throw new BumpingException(
-                "Bumpfee can only be used for transactions with no confirmations. This transaction has already been mined.",
+                "Only transactions with no confirmations can be replaced. This transaction has already been mined.",
                 BumpingErrorReason.AlreadyConfirmed);
         }
 
@@ -134,7 +160,8 @@ public class WithdrawalRequestService : IWithdrawalRequestService
                 BumpingErrorReason.InvalidState);
         }
 
-        if (original.Changeless && destinations.Count > 1)
+        // A cancellation replaces every output, so the shape of the original does not matter to it.
+        if (!cancellation && original.Changeless && destinations.Count > 1)
         {
             throw new BumpingException(
                 "Fee bumping is not supported for changeless transactions. Please create a new withdrawal with higher fees instead.",
@@ -144,6 +171,10 @@ public class WithdrawalRequestService : IWithdrawalRequestService
         var wallet = original.Wallet
                      ?? throw new BumpingException("The wallet of the withdrawal request could not be loaded.",
                          BumpingErrorReason.InvalidState);
+
+        var derivationStrategy = wallet.GetDerivationStrategy()
+                                 ?? throw new BumpingException("The wallet has no derivation strategy.",
+                                     BumpingErrorReason.InvalidState);
 
         var newFeeRate = await ResolveFeeRateAsync(feeType, customFeeRate);
 
@@ -156,8 +187,8 @@ public class WithdrawalRequestService : IWithdrawalRequestService
 
         // A single-destination request can shrink its destination to pay the higher fee (GenerateTemplatePSBT's
         // changeless branch subtracts the fee from the output), so the inputs-cover-everything check only applies
-        // when there is more than one destination.
-        if (original.UTXOs is { Count: > 0 } && destinations.Count > 1)
+        // when there is more than one destination. A cancellation has a single output by construction.
+        if (!cancellation && original.UTXOs is { Count: > 0 } && destinations.Count > 1)
         {
             var vSize = originalTx.Transaction.GetVirtualSize();
             var newFee = vSize * newFeeRate / 100_000_000m;
@@ -170,49 +201,70 @@ public class WithdrawalRequestService : IWithdrawalRequestService
             }
         }
 
-        var bump = new WalletWithdrawalRequest
+        // RBF replaces the very same inputs: the replacement locks exactly the UTXOs of the request it replaces.
+        var lockedUtxos = await _fmutxoRepository.GetLockedUTXOsByWithdrawalId(original.Id);
+        if (lockedUtxos.Count == 0)
         {
-            Description = $"{BumpDescriptionPrefix} {original.Id}: {StripBumpPrefix(original.Description)}",
-            Changeless = original.Changeless,
-            WithdrawAllFunds = original.WithdrawAllFunds,
+            throw new BumpingException("The withdrawal request to replace has no UTXOs locked.",
+                BumpingErrorReason.InvalidState);
+        }
+
+        List<WalletWithdrawalRequestDestination> replacementDestinations;
+        if (cancellation)
+        {
+            // Everything the inputs hold goes back to a fresh address of the same wallet; GenerateTemplatePSBT's
+            // changeless branch then subtracts the fee from that single output.
+            var returnAddress = await _nbXplorerService.GetUnusedAsync(derivationStrategy, DerivationFeature.Deposit, 0, true)
+                                ?? throw new BumpingException("Could not derive an address of the wallet to return the funds to.",
+                                    BumpingErrorReason.PersistenceError);
+
+            replacementDestinations = new List<WalletWithdrawalRequestDestination>
+            {
+                new()
+                {
+                    Address = returnAddress.Address.ToString(),
+                    Amount = Money.Satoshis(lockedUtxos.Sum(u => u.SatsAmount)).ToDecimal(MoneyUnit.BTC),
+                },
+            };
+        }
+        else
+        {
+            replacementDestinations = destinations
+                .Select(d => new WalletWithdrawalRequestDestination { Address = d.Address, Amount = d.Amount })
+                .ToList();
+        }
+
+        var prefix = cancellation ? CancelDescriptionPrefix : BumpDescriptionPrefix;
+        var replacement = new WalletWithdrawalRequest
+        {
+            Description = $"{prefix} {original.Id}: {StripReplacementPrefix(original.Description)}",
+            Changeless = cancellation || original.Changeless,
+            WithdrawAllFunds = !cancellation && original.WithdrawAllFunds,
             MempoolRecommendedFeesType = feeType,
             CustomFeeRate = newFeeRate,
             UserRequestorId = original.UserRequestorId,
             RequestMetadata = original.RequestMetadata,
             BumpingWalletWithdrawalRequestId = original.Id,
+            IsRbfCancellation = cancellation,
             WalletId = original.WalletId,
             // Hot wallets have no human approvers, so the request goes straight to PSBTSignaturesPending, the status
             // PerformWithdrawal requires. Same convention as TransferFundsModal and NodeGuardService.RequestWithdrawal.
             Status = wallet.IsHotWallet
                 ? WalletWithdrawalRequestStatus.PSBTSignaturesPending
                 : WalletWithdrawalRequestStatus.Pending,
-            WalletWithdrawalRequestDestinations = destinations
-                .Select(d => new WalletWithdrawalRequestDestination { Address = d.Address, Amount = d.Amount })
-                .ToList(),
+            WalletWithdrawalRequestDestinations = replacementDestinations,
         };
 
-        var (added, addError) = await _walletWithdrawalRequestRepository.AddAsync(bump);
+        var (added, addError) = await _walletWithdrawalRequestRepository.AddAsync(replacement);
         if (!added)
         {
-            _logger.LogError("Error creating the bump of withdrawal request {RequestId}: {Error}", original.Id, addError);
-            throw new BumpingException(addError ?? "Could not create the bump request",
+            _logger.LogError("Error creating the replacement of withdrawal request {RequestId}: {Error}", original.Id, addError);
+            throw new BumpingException(addError ?? "Could not create the replacement request",
                 BumpingErrorReason.PersistenceError);
         }
 
         try
         {
-            // RBF replaces the very same inputs: the bump locks exactly the UTXOs of the request it replaces.
-            var lockedUtxos = await _fmutxoRepository.GetLockedUTXOsByWithdrawalId(original.Id);
-            if (lockedUtxos.Count == 0)
-            {
-                throw new BumpingException("The withdrawal request to replace has no UTXOs locked.",
-                    BumpingErrorReason.InvalidState);
-            }
-
-            var derivationStrategy = wallet.GetDerivationStrategy()
-                                     ?? throw new BumpingException("The wallet has no derivation strategy.",
-                                         BumpingErrorReason.InvalidState);
-
             var outpoints = lockedUtxos.Select(u => OutPoint.Parse($"{u.TxId}:{u.OutputIndex}")).ToList();
             var utxos = await _coinSelectionService.GetUTXOsByOutpointAsync(derivationStrategy, outpoints);
             if (utxos.Select(u => u.Outpoint).Distinct().Count() != outpoints.Count)
@@ -222,18 +274,18 @@ public class WithdrawalRequestService : IWithdrawalRequestService
                     BumpingErrorReason.InvalidState);
             }
 
-            await _coinSelectionService.LockUTXOs(utxos, bump, BitcoinRequestType.WalletWithdrawal);
+            await _coinSelectionService.LockUTXOs(utxos, replacement, BitcoinRequestType.WalletWithdrawal);
         }
         catch (Exception)
         {
-            // Never leave a half-prepared bump behind as a pending request.
-            bump.Status = WalletWithdrawalRequestStatus.Cancelled;
-            bump.RejectCancelDescription = "The bump request could not be prepared";
-            _walletWithdrawalRequestRepository.Update(bump);
+            // Never leave a half-prepared replacement behind as a pending request.
+            replacement.Status = WalletWithdrawalRequestStatus.Cancelled;
+            replacement.RejectCancelDescription = "The replacement request could not be prepared";
+            _walletWithdrawalRequestRepository.Update(replacement);
             throw;
         }
 
-        return await _walletWithdrawalRequestRepository.GetById(bump.Id) ?? bump;
+        return await _walletWithdrawalRequestRepository.GetById(replacement.Id) ?? replacement;
     }
 
     public async Task<PSBT> ScheduleHotWalletWithdrawalAsync(int requestId)
@@ -275,7 +327,7 @@ public class WithdrawalRequestService : IWithdrawalRequestService
 
             if (request.BumpingWalletWithdrawalRequestId != null)
             {
-                await MarkOriginalAsBumpedAsync(request);
+                await MarkOriginalAsReplacedAsync(request);
             }
 
             var scheduler = await _schedulerFactory.GetScheduler();
@@ -294,33 +346,48 @@ public class WithdrawalRequestService : IWithdrawalRequestService
         }
     }
 
-    public async Task MarkOriginalAsBumpedAsync(WalletWithdrawalRequest bumpRequest)
+    public async Task MarkOriginalAsReplacedAsync(WalletWithdrawalRequest replacement)
     {
-        if (bumpRequest.BumpingWalletWithdrawalRequestId is not { } originalId) return;
+        if (replacement.BumpingWalletWithdrawalRequestId is not { } originalId) return;
 
         var original = await _walletWithdrawalRequestRepository.GetById(originalId)
-                       ?? throw new BumpingException("Could not find bumping withdrawal request",
+                       ?? throw new BumpingException("Could not find the replaced withdrawal request",
                            BumpingErrorReason.RequestNotFound);
 
-        if (original.Status == WalletWithdrawalRequestStatus.Bumped) return;
+        var targetStatus = replacement.IsRbfCancellation
+            ? WalletWithdrawalRequestStatus.Cancelled
+            : WalletWithdrawalRequestStatus.Bumped;
+        if (original.Status == targetStatus) return;
 
-        original.Status = WalletWithdrawalRequestStatus.Bumped;
+        original.Status = targetStatus;
+        if (replacement.IsRbfCancellation)
+        {
+            original.RejectCancelDescription = CancellationReason(replacement.Id);
+        }
+
         var (updated, error) = _walletWithdrawalRequestRepository.Update(original);
         if (!updated)
         {
-            throw new BumpingException($"Could not mark withdrawal request {originalId} as bumped: {error}",
+            throw new BumpingException($"Could not mark withdrawal request {originalId} as {targetStatus}: {error}",
                 BumpingErrorReason.PersistenceError);
         }
     }
 
-    public async Task RevertOriginalAsync(WalletWithdrawalRequest bumpRequest)
+    public async Task RevertOriginalAsync(WalletWithdrawalRequest replacement)
     {
-        if (bumpRequest.BumpingWalletWithdrawalRequestId is not { } originalId) return;
+        if (replacement.BumpingWalletWithdrawalRequestId is not { } originalId) return;
 
         var original = await _walletWithdrawalRequestRepository.GetById(originalId);
-        if (original == null || original.Status != WalletWithdrawalRequestStatus.Bumped) return;
+        if (original == null) return;
+
+        var markedByThisReplacement = original.Status == WalletWithdrawalRequestStatus.Bumped
+                                      || (replacement.IsRbfCancellation
+                                          && original.Status == WalletWithdrawalRequestStatus.Cancelled
+                                          && original.RejectCancelDescription == CancellationReason(replacement.Id));
+        if (!markedByThisReplacement) return;
 
         original.Status = WalletWithdrawalRequestStatus.OnChainConfirmationPending;
+        original.RejectCancelDescription = null;
         var (updated, error) = _walletWithdrawalRequestRepository.Update(original);
         if (!updated)
         {
@@ -352,11 +419,16 @@ public class WithdrawalRequestService : IWithdrawalRequestService
         return recommended.Value;
     }
 
-    /// <summary>Bumps of bumps keep a single "Bump of request N:" prefix, pointing at the request being replaced.</summary>
-    private static string StripBumpPrefix(string? description)
+    private static string CancellationReason(int replacementId) => $"Cancelled by RBF replacement request {replacementId}";
+
+    /// <summary>
+    /// Replacements of replacements keep a single "Bump of request N:" / "Cancel of request N:" prefix, pointing at the
+    /// request being replaced.
+    /// </summary>
+    private static string StripReplacementPrefix(string? description)
     {
         var text = description ?? string.Empty;
-        if (!text.StartsWith(BumpDescriptionPrefix)) return text;
+        if (!text.StartsWith(BumpDescriptionPrefix) && !text.StartsWith(CancelDescriptionPrefix)) return text;
 
         var colon = text.IndexOf(':');
         return colon >= 0 ? text[(colon + 1)..].Trim() : text;
