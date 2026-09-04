@@ -271,7 +271,7 @@ public class NodeGuardService : Nodeguard.NodeGuardService.NodeGuardServiceBase,
                     throw new RpcException(new Status(StatusCode.Internal, "Derivation strategy not found"));
 
                 utxos = await _coinSelectionService.GetUTXOsByOutpointAsync(derivationStrategyBase, outpoints);
-      
+
             }
 
             // Create destination objects for the withdrawal request
@@ -391,12 +391,14 @@ public class NodeGuardService : Nodeguard.NodeGuardService.NodeGuardServiceBase,
         ServerCallContext context)
     {
         WalletWithdrawalRequest? bumpRequest = null;
+        var target = DescribeBumpTarget(request);
         try
         {
             var feeType = (MempoolRecommendedFeesType)request.MempoolFeeRate;
             decimal? customFeeRate = request.HasCustomFeeRate ? request.CustomFeeRate : null;
 
-            bumpRequest = await _withdrawalRequestService.CreateBumpRequestAsync(request.RequestId, feeType, customFeeRate);
+            var originalRequestId = await ResolveBumpTargetAsync(request);
+            bumpRequest = await _withdrawalRequestService.CreateBumpRequestAsync(originalRequestId, feeType, customFeeRate);
 
             var isHotWallet = bumpRequest.Wallet?.IsHotWallet ?? false;
 
@@ -415,21 +417,21 @@ public class NodeGuardService : Nodeguard.NodeGuardService.NodeGuardServiceBase,
         }
         catch (BumpingException e)
         {
-            _logger.LogWarning("Fee bump of withdrawal request {RequestId} refused ({Reason}): {Message}",
-                request.RequestId, e.Reason, e.Message);
+            _logger.LogWarning("Fee bump of withdrawal request {Target} refused ({Reason}): {Message}",
+                target, e.Reason, e.Message);
             CancelWithdrawalRequest(bumpRequest);
             throw new RpcException(new Status(ToStatusCode(e.Reason), e.Message));
         }
         catch (NoUTXOsAvailableException)
         {
             CancelWithdrawalRequest(bumpRequest);
-            _logger.LogError("No available UTXOs to bump withdrawal request {RequestId}", request.RequestId);
+            _logger.LogError("No available UTXOs to bump withdrawal request {Target}", target);
             throw new RpcException(new Status(StatusCode.ResourceExhausted, "No available UTXOs for wallet"));
         }
         catch (ShowToUserException e)
         {
             CancelWithdrawalRequest(bumpRequest);
-            _logger.LogError(e, "Error bumping withdrawal request {RequestId}", request.RequestId);
+            _logger.LogError(e, "Error bumping withdrawal request {Target}", target);
             throw new RpcException(new Status(StatusCode.FailedPrecondition, e.Message));
         }
         catch (RpcException)
@@ -440,9 +442,48 @@ public class NodeGuardService : Nodeguard.NodeGuardService.NodeGuardServiceBase,
         catch (Exception e)
         {
             CancelWithdrawalRequest(bumpRequest);
-            _logger.LogError(e, "Error bumping withdrawal request {RequestId}", request.RequestId);
+            _logger.LogError(e, "Error bumping withdrawal request {Target}", target);
             throw new RpcException(new Status(StatusCode.Internal, "Error bumping withdrawal request"));
         }
+    }
+
+    /// <summary>
+    /// The withdrawal to bump can be addressed by NodeGuard request id or by the txid RequestWithdrawal returned; the
+    /// latter is resolved here so the service only ever deals with request ids.
+    /// </summary>
+    private async Task<int> ResolveBumpTargetAsync(BumpWithdrawalRequest request)
+    {
+        switch (request.TargetCase)
+        {
+            case BumpWithdrawalRequest.TargetOneofCase.RequestId:
+                return request.RequestId;
+
+            case BumpWithdrawalRequest.TargetOneofCase.TxId:
+                if (!uint256.TryParse(request.TxId, out var txId))
+                {
+                    throw new RpcException(new Status(StatusCode.InvalidArgument, "tx_id is not a valid transaction id"));
+                }
+
+                // Stored txids are lowercase hex; normalising through uint256 makes the lookup case-insensitive.
+                var withdrawalRequest = await _walletWithdrawalRequestRepository.GetByTxHash(txId.ToString());
+                if (withdrawalRequest == null)
+                {
+                    throw new RpcException(new Status(StatusCode.NotFound,
+                        $"No withdrawal request found for txid {txId}"));
+                }
+
+                return withdrawalRequest.Id;
+
+            default:
+                throw new RpcException(new Status(StatusCode.InvalidArgument, "request_id or tx_id is required"));
+        }
+    }
+
+    private static string DescribeBumpTarget(BumpWithdrawalRequest request)
+    {
+        return request.TargetCase == BumpWithdrawalRequest.TargetOneofCase.TxId
+            ? $"txid {request.TxId}"
+            : $"id {request.RequestId}";
     }
 
     private static StatusCode ToStatusCode(BumpingErrorReason reason)
@@ -1499,7 +1540,8 @@ public class NodeGuardService : Nodeguard.NodeGuardService.NodeGuardServiceBase,
 
     public override async Task<SetChannelFeePolicyResponse> SetChannelFeePolicy(SetChannelFeePolicyRequest request, ServerCallContext context)
     {
-        try {
+        try
+        {
             await _lightningService.SetChannelFeePolicy(request.ChanPoint, request.NodePubkey, request.BaseFeeMsat, request.FeeRatePpm, request.TimeLockDelta, request.InboundFeePolicy?.BaseFeeMsat, request.InboundFeePolicy?.FeeRatePpm);
         }
         catch (ArgumentException e)

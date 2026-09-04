@@ -96,10 +96,11 @@ public class WithdrawalRbfBumpE2ETests : E2ETestBase
             s => s[withdrawal.RequestId].Status == WITHDRAWAL_REQUEST_STATUS.WithdrawalPendingConfirmation,
             attempts: 30, delay: TimeSpan.FromSeconds(2), what: "original pending confirmation");
 
-        // 2. Bump it. Nothing has been mined, so the original is still replaceable.
+        // 2. Bump it, addressed by the txid RequestWithdrawal returned (the id form is exercised by the guards below).
+        //    Nothing has been mined, so the original is still replaceable.
         var bump = await client.BumpWithdrawalAsync(new BumpWithdrawalRequest
         {
-            RequestId = withdrawal.RequestId,
+            TxId = withdrawal.Txid,
             MempoolFeeRate = FEES_TYPE.CustomFee,
             CustomFeeRate = BumpedFeeRateSatPerVb,
         }, headers);
@@ -157,6 +158,15 @@ public class WithdrawalRbfBumpE2ETests : E2ETestBase
         }, headers).ResponseAsync;
         (await bumpLower.Should().ThrowAsync<RpcException>()).Which.StatusCode.Should().Be(StatusCode.InvalidArgument,
             "a replacement must pay a higher fee rate than the transaction it replaces");
+
+        var unknownTxId = () => client.BumpWithdrawalAsync(new BumpWithdrawalRequest
+        {
+            TxId = uint256.One.ToString(),
+            MempoolFeeRate = FEES_TYPE.CustomFee,
+            CustomFeeRate = BumpedFeeRateSatPerVb,
+        }, headers).ResponseAsync;
+        (await unknownTxId.Should().ThrowAsync<RpcException>()).Which.StatusCode.Should().Be(StatusCode.NotFound,
+            "a txid NodeGuard never broadcast cannot be bumped");
 
         // 5. Mine: the replacement confirms, the original never does, and NodeGuard settles the bump.
         await MineAsync(rpc, 6);

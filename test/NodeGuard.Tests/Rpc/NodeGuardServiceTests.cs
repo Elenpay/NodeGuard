@@ -930,6 +930,102 @@ namespace NodeGuard.Rpc
                 "a bump that could not be executed must not stay pending");
         }
 
+        [Fact]
+        public async Task BumpWithdrawal_ByTxId_ResolvesTheRequestToBump()
+        {
+            //Arrange
+            const string txId = "5f59c45bc3fa8362d5c38bce5c633bb901a57f268ec75e55548c00d2baec0d65";
+            var original = new WalletWithdrawalRequest { Id = 10, TxId = txId };
+            var bump = new WalletWithdrawalRequest { Id = 11, Wallet = new Wallet { IsHotWallet = true }, BumpingWalletWithdrawalRequestId = 10 };
+            var walletWithdrawalRequestRepository = new Mock<IWalletWithdrawalRequestRepository>();
+            walletWithdrawalRequestRepository.Setup(x => x.GetByTxHash(txId)).ReturnsAsync(original);
+            var withdrawalRequestService = new Mock<IWithdrawalRequestService>();
+            withdrawalRequestService.Setup(x => x.CreateBumpRequestAsync(10, MempoolRecommendedFeesType.CustomFee, 10m)).ReturnsAsync(bump);
+            withdrawalRequestService.Setup(x => x.ScheduleHotWalletWithdrawalAsync(11)).ReturnsAsync(SamplePsbt());
+
+            var mockNodeGuardService = CreateNodeGuardService(
+                walletWithdrawalRequestRepository: walletWithdrawalRequestRepository.Object,
+                withdrawalRequestService: withdrawalRequestService.Object);
+
+            //Act
+            var resp = await mockNodeGuardService.BumpWithdrawal(new BumpWithdrawalRequest
+            {
+                // Uppercase on purpose: stored txids are lowercase and the lookup must not be case-sensitive.
+                TxId = txId.ToUpperInvariant(),
+                MempoolFeeRate = FEES_TYPE.CustomFee,
+                CustomFeeRate = 10,
+            }, TestServerCallContext.Create());
+
+            //Assert
+            resp.RequestId.Should().Be(11);
+            withdrawalRequestService.Verify(x => x.CreateBumpRequestAsync(10, MempoolRecommendedFeesType.CustomFee, 10m), Times.Once,
+                "the txid must resolve to the request that broadcast it");
+        }
+
+        [Fact]
+        public async Task BumpWithdrawal_UnknownTxId_MapsToNotFound()
+        {
+            //Arrange
+            var walletWithdrawalRequestRepository = new Mock<IWalletWithdrawalRequestRepository>();
+            walletWithdrawalRequestRepository.Setup(x => x.GetByTxHash(It.IsAny<string>())).ReturnsAsync((WalletWithdrawalRequest?)null);
+            var withdrawalRequestService = new Mock<IWithdrawalRequestService>();
+
+            var mockNodeGuardService = CreateNodeGuardService(
+                walletWithdrawalRequestRepository: walletWithdrawalRequestRepository.Object,
+                withdrawalRequestService: withdrawalRequestService.Object);
+
+            //Act
+            var act = () => mockNodeGuardService.BumpWithdrawal(new BumpWithdrawalRequest
+            {
+                TxId = uint256.One.ToString(),
+                MempoolFeeRate = FEES_TYPE.CustomFee,
+                CustomFeeRate = 10,
+            }, TestServerCallContext.Create());
+
+            //Assert
+            (await act.Should().ThrowAsync<RpcException>()).Which.StatusCode.Should().Be(StatusCode.NotFound);
+            withdrawalRequestService.Verify(x => x.CreateBumpRequestAsync(It.IsAny<int>(), It.IsAny<MempoolRecommendedFeesType>(), It.IsAny<decimal?>()), Times.Never);
+        }
+
+        [Theory]
+        [InlineData("not-a-txid")]
+        [InlineData("")]
+        public async Task BumpWithdrawal_MalformedTxId_MapsToInvalidArgument(string txId)
+        {
+            //Arrange
+            var mockNodeGuardService = CreateNodeGuardService(withdrawalRequestService: new Mock<IWithdrawalRequestService>().Object);
+
+            //Act
+            var act = () => mockNodeGuardService.BumpWithdrawal(new BumpWithdrawalRequest
+            {
+                TxId = txId,
+                MempoolFeeRate = FEES_TYPE.CustomFee,
+                CustomFeeRate = 10,
+            }, TestServerCallContext.Create());
+
+            //Assert
+            (await act.Should().ThrowAsync<RpcException>()).Which.StatusCode.Should().Be(StatusCode.InvalidArgument);
+        }
+
+        [Fact]
+        public async Task BumpWithdrawal_WithoutTarget_MapsToInvalidArgument()
+        {
+            //Arrange
+            var withdrawalRequestService = new Mock<IWithdrawalRequestService>();
+            var mockNodeGuardService = CreateNodeGuardService(withdrawalRequestService: withdrawalRequestService.Object);
+
+            //Act
+            var act = () => mockNodeGuardService.BumpWithdrawal(new BumpWithdrawalRequest
+            {
+                MempoolFeeRate = FEES_TYPE.CustomFee,
+                CustomFeeRate = 10,
+            }, TestServerCallContext.Create());
+
+            //Assert
+            (await act.Should().ThrowAsync<RpcException>()).Which.StatusCode.Should().Be(StatusCode.InvalidArgument);
+            withdrawalRequestService.Verify(x => x.CreateBumpRequestAsync(It.IsAny<int>(), It.IsAny<MempoolRecommendedFeesType>(), It.IsAny<decimal?>()), Times.Never);
+        }
+
         /// <summary>A parseable one-in/one-out PSBT; PSBT.FromTransaction refuses a transaction without inputs.</summary>
         private static PSBT SamplePsbt()
         {

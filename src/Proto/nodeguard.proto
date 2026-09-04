@@ -202,8 +202,12 @@ message RequestWithdrawalResponse {
 }
 
 message BumpWithdrawalRequest {
-  // The withdrawal request to replace. It must be waiting for on-chain confirmation with zero confirmations.
-  int32 request_id = 1;
+  // The withdrawal to replace, either by NodeGuard request id or by the txid RequestWithdrawal returned. It must be
+  // waiting for on-chain confirmation with zero confirmations.
+  oneof target {
+    int32 request_id = 1;
+    string tx_id = 4;
+  }
   // MempoolRecommended fee rate for the replacement
   FEES_TYPE mempool_fee_rate = 2;
   // Fee rate in sat/vbyte, required when mempool_fee_rate is CUSTOM_FEE. Must be higher than the rate of the replaced request.
