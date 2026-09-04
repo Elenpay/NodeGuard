@@ -81,10 +81,11 @@
             "type": "grafana-postgresql-datasource",
             "uid": "$datasource"
           },
-          "editorMode": "builder",
+          "editorMode": "code",
           "format": "table",
           "hide": true,
-          "rawSql": "SELECT SUM(\"FeeMsat\") FROM \"ForwardingHtlcEvents\" WHERE ($__timeFilter(\"CreationDatetime\") AND \"Outcome\" = 1 AND \"ManagedNodePubKey\" IN ($node)) LIMIT 50 ",
+          "rawQuery": true,
+          "rawSql": "WITH fees AS (SELECT SUM(\"FeeMsat\") AS fee_msat FROM \"ForwardingHtlcEvents\" WHERE ($__timeFilter(\"CreationDatetime\") AND \"Outcome\" = 1 AND \"ManagedNodePubKey\" IN ($node))), rebalance_costs AS (SELECT COALESCE(SUM($applyRebalanceCosts * r.\"FeePaidSats\"), 0) AS cost_sats FROM \"Rebalances\" r JOIN \"Nodes\" n ON n.\"Id\" = r.\"NodeId\" WHERE r.\"Status\" = 3 AND r.\"FeePaidSats\" IS NOT NULL AND $__timeFilter(r.\"CreationDatetime\") AND n.\"PubKey\" IN ($node)) SELECT COALESCE(fees.fee_msat, 0) - (rebalance_costs.cost_sats * 1000) AS \"SUM\" FROM fees, rebalance_costs",
           "refId": "A",
           "sql": {
             "columns": [
@@ -186,7 +187,8 @@
         }
       ],
       "title": "Total P&L (Routing)",
-      "type": "stat"
+      "type": "stat",
+      "description": "Settled routing fees minus succeeded rebalance fees, when Apply Rebalance Costs is enabled."
     },
     {
       "datasource": {
@@ -249,10 +251,11 @@
             "type": "grafana-postgresql-datasource",
             "uid": "$datasource"
           },
-          "editorMode": "builder",
+          "editorMode": "code",
           "format": "table",
           "hide": true,
-          "rawSql": "SELECT SUM(\"FeeMsat\"), \"ManagedNodeName\" FROM \"ForwardingHtlcEvents\" WHERE ($__timeFilter(\"CreationDatetime\") AND \"Outcome\" = 1 AND \"ManagedNodePubKey\" IN ($node)) GROUP BY \"ManagedNodeName\" LIMIT 50 ",
+          "rawQuery": true,
+          "rawSql": "WITH fees AS (SELECT \"ManagedNodePubKey\", MAX(\"ManagedNodeName\") AS \"ManagedNodeName\", SUM(\"FeeMsat\") AS fee_msat FROM \"ForwardingHtlcEvents\" WHERE ($__timeFilter(\"CreationDatetime\") AND \"Outcome\" = 1 AND \"ManagedNodePubKey\" IN ($node)) GROUP BY \"ManagedNodePubKey\"), rebalance_costs AS (SELECT n.\"PubKey\" AS \"ManagedNodePubKey\", COALESCE(SUM($applyRebalanceCosts * r.\"FeePaidSats\"), 0) AS cost_sats FROM \"Rebalances\" r JOIN \"Nodes\" n ON n.\"Id\" = r.\"NodeId\" WHERE r.\"Status\" = 3 AND r.\"FeePaidSats\" IS NOT NULL AND $__timeFilter(r.\"CreationDatetime\") AND n.\"PubKey\" IN ($node) GROUP BY n.\"PubKey\") SELECT fees.\"ManagedNodeName\", COALESCE(fees.fee_msat, 0) - (COALESCE(rebalance_costs.cost_sats, 0) * 1000) AS \"SUM\" FROM fees LEFT JOIN rebalance_costs ON rebalance_costs.\"ManagedNodePubKey\" = fees.\"ManagedNodePubKey\"",
           "refId": "A",
           "sql": {
             "columns": [
@@ -371,7 +374,8 @@
         }
       ],
       "title": "Total P&L per node (Routing)",
-      "type": "stat"
+      "type": "stat",
+      "description": "Settled routing fees minus succeeded rebalance fees, when Apply Rebalance Costs is enabled."
     },
     {
       "datasource": {
