@@ -12,7 +12,7 @@ Its rebalance/routing-engine core is four scenarios — **(1)** manual rebalance
 SINK→SOURCE, driving its own LND traffic in-process via `LndTestClient`), **(4)** automatic rebalancing
 (`AutoRebalanceE2ETests`; shapes an imbalance, switches the node's rebalancer on and asserts on what
 `AutoRebalanceJob` decided) — and the same pass also runs the wallet/UTXO e2e tests
-(`DustUtxoWithdrawalE2ETests`, `GetNewWalletAddressE2ETests`). Every e2e class is **order-agnostic** (it
+(`DustUtxoWithdrawalE2ETests`, `WithdrawalRbfBumpE2ETests`, `GetNewWalletAddressE2ETests`). Every e2e class is **order-agnostic** (it
 provisions its own channels and resets its own state) and they run **serially** via the shared
 `[Collection("E2E")]` — one regtest chain can't take concurrent channel opens/traffic.
 
@@ -38,7 +38,7 @@ Tests live in `test/NodeGuard.Tests/E2E/`. The rebalance/routing-engine scenario
 `FeeEngineE2ETests`, `FeeEngineFlowE2ETests` and `AutoRebalanceE2ETests`, layered on `E2ETestBase` →
 `RoutingEngineE2EBase` (Postgres + routing-state plumbing) → `FeeEngineE2EBase` (fee-state helpers), with
 `LndTestClient` (direct LND gRPC driver used by the flow and auto-rebalance scenarios); the wallet/UTXO
-tests (`DustUtxoWithdrawalE2ETests`, `GetNewWalletAddressE2ETests`) sit alongside them. All are
+tests (`DustUtxoWithdrawalE2ETests`, `WithdrawalRbfBumpE2ETests`, `GetNewWalletAddressE2ETests`) sit alongside them. All are
 `[Collection("E2E")]` and gated by `[E2EFact]` (they run when NodeGuard gRPC is reachable, or
 `RUN_E2E_TESTS=1`).
 
@@ -69,6 +69,10 @@ tests (`DustUtxoWithdrawalE2ETests`, `GetNewWalletAddressE2ETests`) sit alongsid
   `ROUTING_ENGINE_REBALANCE_MAX_AMOUNT_SATS` / `ROUTING_ENGINE_REBALANCE_DEADBAND` from its own env — **keep
   those two in sync between the `nodeguard` and `e2e-runner` services**, or the test asserts against numbers
   NodeGuard didn't plan with.
+- **RBF bump scenario** (`WithdrawalRbfBumpE2ETests`): `RequestWithdrawal` on the hot wallet, then `BumpWithdrawal`
+  over gRPC, asserting bitcoind evicts the original for the higher-fee replacement, NodeGuard marks the original
+  `WITHDRAWAL_BUMPED`, and the replacement settles once mined. It relies on `MONITOR_WITHDRAWALS_CRON` being fast on
+  the `nodeguard` service (10s here; prod keeps the every-5-minutes default) and never mines between the two calls.
 - **Adding an e2e test**: put it in `[Collection("E2E")]` (so it serialises with the others on the one
   regtest chain — without it the class runs in parallel and they interfere), have it provision the
   resources it needs and reset its own state, and gate it with `[E2EFact]`.

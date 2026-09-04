@@ -26,6 +26,8 @@ public interface INodeGuardService
 
     Task<RequestWithdrawalResponse> RequestWithdrawal(RequestWithdrawalRequest request, ServerCallContext context);
 
+    Task<BumpWithdrawalResponse> BumpWithdrawal(BumpWithdrawalRequest request, ServerCallContext context);
+
     Task<GetAvailableWalletsResponse>
         GetAvailableWallets(GetAvailableWalletsRequest request, ServerCallContext context);
 
@@ -90,6 +92,7 @@ public class NodeGuardService : Nodeguard.NodeGuardService.NodeGuardServiceBase,
     private readonly IHtlcMonitoringScheduler _htlcMonitoringScheduler;
     private readonly IRebalanceService _rebalanceService;
     private readonly IRebalanceRepository _rebalanceRepository;
+    private readonly IWithdrawalRequestService _withdrawalRequestService;
 
     public NodeGuardService(ILogger<NodeGuardService> logger,
         ILiquidityRuleRepository liquidityRuleRepository,
@@ -108,7 +111,8 @@ public class NodeGuardService : Nodeguard.NodeGuardService.NodeGuardServiceBase,
         IUTXOTagRepository utxoTagRepository,
         IHtlcMonitoringScheduler htlcMonitoringScheduler,
         IRebalanceService rebalanceService,
-        IRebalanceRepository rebalanceRepository
+        IRebalanceRepository rebalanceRepository,
+        IWithdrawalRequestService withdrawalRequestService
     )
     {
         _logger = logger;
@@ -129,6 +133,7 @@ public class NodeGuardService : Nodeguard.NodeGuardService.NodeGuardServiceBase,
         _htlcMonitoringScheduler = htlcMonitoringScheduler;
         _rebalanceService = rebalanceService;
         _rebalanceRepository = rebalanceRepository;
+        _withdrawalRequestService = withdrawalRequestService;
         _scheduler = Task.Run(() => _schedulerFactory.GetScheduler()).Result;
     }
 
@@ -380,6 +385,80 @@ public class NodeGuardService : Nodeguard.NodeGuardService.NodeGuardServiceBase,
                     withdrawalRequest.Id, withdrawalRequest.WalletId);
             }
         }
+    }
+
+    public override async Task<BumpWithdrawalResponse> BumpWithdrawal(BumpWithdrawalRequest request,
+        ServerCallContext context)
+    {
+        WalletWithdrawalRequest? bumpRequest = null;
+        try
+        {
+            var feeType = (MempoolRecommendedFeesType)request.MempoolFeeRate;
+            decimal? customFeeRate = request.HasCustomFeeRate ? request.CustomFeeRate : null;
+
+            bumpRequest = await _withdrawalRequestService.CreateBumpRequestAsync(request.RequestId, feeType, customFeeRate);
+
+            var isHotWallet = bumpRequest.Wallet?.IsHotWallet ?? false;
+
+            // Hot wallets: NodeGuard signs and broadcasts through PerformWithdrawalJob. Cold wallets: the template is
+            // generated now so the approvers reuse it, exactly as RequestWithdrawal does.
+            var psbt = isHotWallet
+                ? await _withdrawalRequestService.ScheduleHotWalletWithdrawalAsync(bumpRequest.Id)
+                : await _bitcoinService.GenerateTemplatePSBT(bumpRequest);
+
+            return new BumpWithdrawalResponse
+            {
+                RequestId = bumpRequest.Id,
+                Txid = psbt.GetGlobalTransaction().GetHash().ToString(),
+                IsHotWallet = isHotWallet,
+            };
+        }
+        catch (BumpingException e)
+        {
+            _logger.LogWarning("Fee bump of withdrawal request {RequestId} refused ({Reason}): {Message}",
+                request.RequestId, e.Reason, e.Message);
+            CancelWithdrawalRequest(bumpRequest);
+            throw new RpcException(new Status(ToStatusCode(e.Reason), e.Message));
+        }
+        catch (NoUTXOsAvailableException)
+        {
+            CancelWithdrawalRequest(bumpRequest);
+            _logger.LogError("No available UTXOs to bump withdrawal request {RequestId}", request.RequestId);
+            throw new RpcException(new Status(StatusCode.ResourceExhausted, "No available UTXOs for wallet"));
+        }
+        catch (ShowToUserException e)
+        {
+            CancelWithdrawalRequest(bumpRequest);
+            _logger.LogError(e, "Error bumping withdrawal request {RequestId}", request.RequestId);
+            throw new RpcException(new Status(StatusCode.FailedPrecondition, e.Message));
+        }
+        catch (RpcException)
+        {
+            CancelWithdrawalRequest(bumpRequest);
+            throw;
+        }
+        catch (Exception e)
+        {
+            CancelWithdrawalRequest(bumpRequest);
+            _logger.LogError(e, "Error bumping withdrawal request {RequestId}", request.RequestId);
+            throw new RpcException(new Status(StatusCode.Internal, "Error bumping withdrawal request"));
+        }
+    }
+
+    private static StatusCode ToStatusCode(BumpingErrorReason reason)
+    {
+        return reason switch
+        {
+            BumpingErrorReason.RequestNotFound => StatusCode.NotFound,
+            BumpingErrorReason.InvalidState
+                or BumpingErrorReason.AlreadyConfirmed
+                or BumpingErrorReason.TransactionNotFound
+                or BumpingErrorReason.ChangelessMultipleDestinations => StatusCode.FailedPrecondition,
+            BumpingErrorReason.InvalidFeeRate
+                or BumpingErrorReason.FeeRateNotHigher
+                or BumpingErrorReason.FeeExceedsInputs => StatusCode.InvalidArgument,
+            _ => StatusCode.Internal,
+        };
     }
 
     public override async Task<GetAvailableWalletsResponse> GetAvailableWallets(GetAvailableWalletsRequest request,
