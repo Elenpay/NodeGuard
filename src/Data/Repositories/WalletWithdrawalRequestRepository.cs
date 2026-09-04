@@ -236,18 +236,23 @@ namespace NodeGuard.Data.Repositories
                 return (false, "The wallet does not have a derivation strategy.");
             }
 
-            var balance = await _nBXplorerService.GetBalanceAsync(derivationStrategyBase, default);
-
-            if (balance == null)
+            // An RBF replacement (fee bump or cancellation) re-spends inputs that are already locked by the request it
+            // replaces, so the wallet's confirmed balance says nothing about whether it can be funded.
+            if (type.BumpingWalletWithdrawalRequestId == null)
             {
-                return (false, "Balance could not be retrieved from the wallet.");
-            }
+                var balance = await _nBXplorerService.GetBalanceAsync(derivationStrategyBase, default);
 
-            var requestMoneyAmount = new Money(type.TotalAmount, MoneyUnit.BTC);
+                if (balance == null)
+                {
+                    return (false, "Balance could not be retrieved from the wallet.");
+                }
 
-            if ((Money)balance.Confirmed < requestMoneyAmount)
-            {
-                return (false, $"The wallet {type.Wallet.Name} does not have enough funds to complete this withdrawal request. The wallet has {balance.Confirmed} BTC and the withdrawal request is for {requestMoneyAmount} BTC.");
+                var requestMoneyAmount = new Money(type.TotalAmount, MoneyUnit.BTC);
+
+                if ((Money)balance.Confirmed < requestMoneyAmount)
+                {
+                    return (false, $"The wallet {type.Wallet.Name} does not have enough funds to complete this withdrawal request. The wallet has {balance.Confirmed} BTC and the withdrawal request is for {requestMoneyAmount} BTC.");
+                }
             }
 
 

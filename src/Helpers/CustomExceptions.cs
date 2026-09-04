@@ -41,9 +41,32 @@ public class NotEnoughBalanceInWalletException : Exception
    public NotEnoughBalanceInWalletException(string? message = null): base(message) {}
 }
 
+/// <summary>
+/// Why a fee bump (RBF) was refused. Lets callers act on the refusal without matching message text: the UI shows the
+/// message as-is, the gRPC API maps the reason to a status code.
+/// </summary>
+public enum BumpingErrorReason
+{
+   Unknown,
+   RequestNotFound,
+   InvalidState,
+   AlreadyConfirmed,
+   TransactionNotFound,
+   ChangelessMultipleDestinations,
+   InvalidFeeRate,
+   FeeRateNotHigher,
+   FeeExceedsInputs,
+   PersistenceError
+}
+
 public class BumpingException : Exception
 {
-   public BumpingException(string? message = null): base(message) {}
+   public BumpingErrorReason Reason { get; }
+
+   public BumpingException(string? message = null, BumpingErrorReason reason = BumpingErrorReason.Unknown): base(message)
+   {
+      Reason = reason;
+   }
 }
 
 public class CustomArgumentNullException : ArgumentNullException

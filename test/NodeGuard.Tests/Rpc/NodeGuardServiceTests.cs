@@ -78,7 +78,8 @@ namespace NodeGuard.Rpc
             IUTXOTagRepository? utxoTagRepository = null,
             IHtlcMonitoringScheduler? htlcMonitoringScheduler = null,
             IRebalanceService? rebalanceService = null,
-            IRebalanceRepository? rebalanceRepository = null)
+            IRebalanceRepository? rebalanceRepository = null,
+            IWithdrawalRequestService? withdrawalRequestService = null)
         {
             return new NodeGuardService(
                 logger ?? _logger.Object,
@@ -98,7 +99,8 @@ namespace NodeGuard.Rpc
                 utxoTagRepository ?? new Mock<IUTXOTagRepository>().Object,
                 htlcMonitoringScheduler ?? CreateHtlcMonitoringSchedulerMock().Object,
                 rebalanceService ?? new Mock<IRebalanceService>().Object,
-                rebalanceRepository ?? new Mock<IRebalanceRepository>().Object);
+                rebalanceRepository ?? new Mock<IRebalanceRepository>().Object,
+                withdrawalRequestService ?? new Mock<IWithdrawalRequestService>().Object);
         }
 
         [Fact]
@@ -800,6 +802,324 @@ namespace NodeGuard.Rpc
 
             //Assert
             await resp.Should().ThrowAsync<RpcException>();
+        }
+
+        [Fact]
+        public async Task BumpWithdrawal_HotWallet_SchedulesTheReplacementAndReturnsItsTxid()
+        {
+            //Arrange
+            var bump = new WalletWithdrawalRequest { Id = 11, Wallet = new Wallet { IsHotWallet = true }, BumpingWalletWithdrawalRequestId = 10 };
+            var psbt = SamplePsbt();
+            var withdrawalRequestService = new Mock<IWithdrawalRequestService>();
+            withdrawalRequestService.Setup(x => x.CreateBumpRequestAsync(10, MempoolRecommendedFeesType.CustomFee, 10m)).ReturnsAsync(bump);
+            withdrawalRequestService.Setup(x => x.ScheduleHotWalletWithdrawalAsync(11)).ReturnsAsync(psbt);
+            var bitcoinService = new Mock<IBitcoinService>();
+
+            var mockNodeGuardService = CreateNodeGuardService(
+                bitcoinService: bitcoinService.Object,
+                withdrawalRequestService: withdrawalRequestService.Object);
+
+            //Act
+            var resp = await mockNodeGuardService.BumpWithdrawal(new BumpWithdrawalRequest
+            {
+                RequestId = 10,
+                MempoolFeeRate = FEES_TYPE.CustomFee,
+                CustomFeeRate = 10,
+            }, TestServerCallContext.Create());
+
+            //Assert
+            resp.RequestId.Should().Be(11);
+            resp.IsHotWallet.Should().BeTrue();
+            resp.Txid.Should().Be(psbt.GetGlobalTransaction().GetHash().ToString());
+            withdrawalRequestService.Verify(x => x.ScheduleHotWalletWithdrawalAsync(11), Times.Once);
+            bitcoinService.Verify(x => x.GenerateTemplatePSBT(It.IsAny<WalletWithdrawalRequest>()), Times.Never,
+                "the hot-wallet execution (template + job) is the service's job");
+        }
+
+        [Fact]
+        public async Task BumpWithdrawal_ColdWallet_GeneratesTheTemplateWithoutScheduling()
+        {
+            //Arrange
+            var bump = new WalletWithdrawalRequest { Id = 11, Wallet = new Wallet { IsHotWallet = false }, BumpingWalletWithdrawalRequestId = 10 };
+            var psbt = SamplePsbt();
+            var withdrawalRequestService = new Mock<IWithdrawalRequestService>();
+            withdrawalRequestService.Setup(x => x.CreateBumpRequestAsync(10, MempoolRecommendedFeesType.FastestFee, null)).ReturnsAsync(bump);
+            var bitcoinService = new Mock<IBitcoinService>();
+            bitcoinService.Setup(x => x.GenerateTemplatePSBT(bump)).ReturnsAsync(psbt);
+
+            var mockNodeGuardService = CreateNodeGuardService(
+                bitcoinService: bitcoinService.Object,
+                withdrawalRequestService: withdrawalRequestService.Object);
+
+            //Act
+            var resp = await mockNodeGuardService.BumpWithdrawal(new BumpWithdrawalRequest
+            {
+                RequestId = 10,
+                MempoolFeeRate = FEES_TYPE.FastestFee,
+            }, TestServerCallContext.Create());
+
+            //Assert
+            resp.RequestId.Should().Be(11);
+            resp.IsHotWallet.Should().BeFalse();
+            resp.Txid.Should().Be(psbt.GetGlobalTransaction().GetHash().ToString());
+            withdrawalRequestService.Verify(x => x.ScheduleHotWalletWithdrawalAsync(It.IsAny<int>()), Times.Never,
+                "a cold-wallet bump waits for the approvers' signatures");
+        }
+
+        [Theory]
+        [InlineData(BumpingErrorReason.RequestNotFound, StatusCode.NotFound)]
+        [InlineData(BumpingErrorReason.InvalidState, StatusCode.FailedPrecondition)]
+        [InlineData(BumpingErrorReason.AlreadyConfirmed, StatusCode.FailedPrecondition)]
+        [InlineData(BumpingErrorReason.TransactionNotFound, StatusCode.FailedPrecondition)]
+        [InlineData(BumpingErrorReason.ChangelessMultipleDestinations, StatusCode.FailedPrecondition)]
+        [InlineData(BumpingErrorReason.InvalidFeeRate, StatusCode.InvalidArgument)]
+        [InlineData(BumpingErrorReason.FeeRateNotHigher, StatusCode.InvalidArgument)]
+        [InlineData(BumpingErrorReason.FeeExceedsInputs, StatusCode.InvalidArgument)]
+        [InlineData(BumpingErrorReason.PersistenceError, StatusCode.Internal)]
+        public async Task BumpWithdrawal_RefusedByTheService_MapsTheReasonToAStatusCode(BumpingErrorReason reason, StatusCode expected)
+        {
+            //Arrange
+            var withdrawalRequestService = new Mock<IWithdrawalRequestService>();
+            withdrawalRequestService
+                .Setup(x => x.CreateBumpRequestAsync(It.IsAny<int>(), It.IsAny<MempoolRecommendedFeesType>(), It.IsAny<decimal?>()))
+                .ThrowsAsync(new BumpingException("refused", reason));
+
+            var mockNodeGuardService = CreateNodeGuardService(withdrawalRequestService: withdrawalRequestService.Object);
+
+            //Act
+            var act = () => mockNodeGuardService.BumpWithdrawal(new BumpWithdrawalRequest
+            {
+                RequestId = 10,
+                MempoolFeeRate = FEES_TYPE.CustomFee,
+                CustomFeeRate = 10,
+            }, TestServerCallContext.Create());
+
+            //Assert
+            var exception = (await act.Should().ThrowAsync<RpcException>()).Which;
+            exception.StatusCode.Should().Be(expected);
+            exception.Status.Detail.Should().Be("refused", "the user-facing reason travels to the API caller");
+        }
+
+        [Fact]
+        public async Task BumpWithdrawal_SchedulingFails_CancelsTheBumpRequest()
+        {
+            //Arrange
+            var bump = new WalletWithdrawalRequest { Id = 11, Wallet = new Wallet { IsHotWallet = true }, BumpingWalletWithdrawalRequestId = 10 };
+            var withdrawalRequestService = new Mock<IWithdrawalRequestService>();
+            withdrawalRequestService.Setup(x => x.CreateBumpRequestAsync(10, MempoolRecommendedFeesType.CustomFee, 10m)).ReturnsAsync(bump);
+            withdrawalRequestService.Setup(x => x.ScheduleHotWalletWithdrawalAsync(11)).ThrowsAsync(new Exception("boom"));
+            var walletWithdrawalRequestRepository = new Mock<IWalletWithdrawalRequestRepository>();
+            walletWithdrawalRequestRepository.Setup(x => x.Update(It.IsAny<WalletWithdrawalRequest>())).Returns((true, (string?)null));
+
+            var mockNodeGuardService = CreateNodeGuardService(
+                walletWithdrawalRequestRepository: walletWithdrawalRequestRepository.Object,
+                withdrawalRequestService: withdrawalRequestService.Object);
+
+            //Act
+            var act = () => mockNodeGuardService.BumpWithdrawal(new BumpWithdrawalRequest
+            {
+                RequestId = 10,
+                MempoolFeeRate = FEES_TYPE.CustomFee,
+                CustomFeeRate = 10,
+            }, TestServerCallContext.Create());
+
+            //Assert
+            (await act.Should().ThrowAsync<RpcException>()).Which.StatusCode.Should().Be(StatusCode.Internal);
+            walletWithdrawalRequestRepository.Verify(x => x.Update(It.Is<WalletWithdrawalRequest>(r => r.Id == 11
+                && r.Status == WalletWithdrawalRequestStatus.Cancelled)), Times.Once,
+                "a bump that could not be executed must not stay pending");
+        }
+
+        [Fact]
+        public async Task BumpWithdrawal_ByTxId_ResolvesTheRequestToBump()
+        {
+            //Arrange
+            const string txId = "5f59c45bc3fa8362d5c38bce5c633bb901a57f268ec75e55548c00d2baec0d65";
+            var original = new WalletWithdrawalRequest { Id = 10, TxId = txId };
+            var bump = new WalletWithdrawalRequest { Id = 11, Wallet = new Wallet { IsHotWallet = true }, BumpingWalletWithdrawalRequestId = 10 };
+            var walletWithdrawalRequestRepository = new Mock<IWalletWithdrawalRequestRepository>();
+            walletWithdrawalRequestRepository.Setup(x => x.GetByTxHash(txId)).ReturnsAsync(original);
+            var withdrawalRequestService = new Mock<IWithdrawalRequestService>();
+            withdrawalRequestService.Setup(x => x.CreateBumpRequestAsync(10, MempoolRecommendedFeesType.CustomFee, 10m)).ReturnsAsync(bump);
+            withdrawalRequestService.Setup(x => x.ScheduleHotWalletWithdrawalAsync(11)).ReturnsAsync(SamplePsbt());
+
+            var mockNodeGuardService = CreateNodeGuardService(
+                walletWithdrawalRequestRepository: walletWithdrawalRequestRepository.Object,
+                withdrawalRequestService: withdrawalRequestService.Object);
+
+            //Act
+            var resp = await mockNodeGuardService.BumpWithdrawal(new BumpWithdrawalRequest
+            {
+                // Uppercase on purpose: stored txids are lowercase and the lookup must not be case-sensitive.
+                TxId = txId.ToUpperInvariant(),
+                MempoolFeeRate = FEES_TYPE.CustomFee,
+                CustomFeeRate = 10,
+            }, TestServerCallContext.Create());
+
+            //Assert
+            resp.RequestId.Should().Be(11);
+            withdrawalRequestService.Verify(x => x.CreateBumpRequestAsync(10, MempoolRecommendedFeesType.CustomFee, 10m), Times.Once,
+                "the txid must resolve to the request that broadcast it");
+        }
+
+        [Fact]
+        public async Task BumpWithdrawal_UnknownTxId_MapsToNotFound()
+        {
+            //Arrange
+            var walletWithdrawalRequestRepository = new Mock<IWalletWithdrawalRequestRepository>();
+            walletWithdrawalRequestRepository.Setup(x => x.GetByTxHash(It.IsAny<string>())).ReturnsAsync((WalletWithdrawalRequest?)null);
+            var withdrawalRequestService = new Mock<IWithdrawalRequestService>();
+
+            var mockNodeGuardService = CreateNodeGuardService(
+                walletWithdrawalRequestRepository: walletWithdrawalRequestRepository.Object,
+                withdrawalRequestService: withdrawalRequestService.Object);
+
+            //Act
+            var act = () => mockNodeGuardService.BumpWithdrawal(new BumpWithdrawalRequest
+            {
+                TxId = uint256.One.ToString(),
+                MempoolFeeRate = FEES_TYPE.CustomFee,
+                CustomFeeRate = 10,
+            }, TestServerCallContext.Create());
+
+            //Assert
+            (await act.Should().ThrowAsync<RpcException>()).Which.StatusCode.Should().Be(StatusCode.NotFound);
+            withdrawalRequestService.Verify(x => x.CreateBumpRequestAsync(It.IsAny<int>(), It.IsAny<MempoolRecommendedFeesType>(), It.IsAny<decimal?>()), Times.Never);
+        }
+
+        [Theory]
+        [InlineData("not-a-txid")]
+        [InlineData("")]
+        public async Task BumpWithdrawal_MalformedTxId_MapsToInvalidArgument(string txId)
+        {
+            //Arrange
+            var mockNodeGuardService = CreateNodeGuardService(withdrawalRequestService: new Mock<IWithdrawalRequestService>().Object);
+
+            //Act
+            var act = () => mockNodeGuardService.BumpWithdrawal(new BumpWithdrawalRequest
+            {
+                TxId = txId,
+                MempoolFeeRate = FEES_TYPE.CustomFee,
+                CustomFeeRate = 10,
+            }, TestServerCallContext.Create());
+
+            //Assert
+            (await act.Should().ThrowAsync<RpcException>()).Which.StatusCode.Should().Be(StatusCode.InvalidArgument);
+        }
+
+        [Fact]
+        public async Task BumpWithdrawal_WithoutTarget_MapsToInvalidArgument()
+        {
+            //Arrange
+            var withdrawalRequestService = new Mock<IWithdrawalRequestService>();
+            var mockNodeGuardService = CreateNodeGuardService(withdrawalRequestService: withdrawalRequestService.Object);
+
+            //Act
+            var act = () => mockNodeGuardService.BumpWithdrawal(new BumpWithdrawalRequest
+            {
+                MempoolFeeRate = FEES_TYPE.CustomFee,
+                CustomFeeRate = 10,
+            }, TestServerCallContext.Create());
+
+            //Assert
+            (await act.Should().ThrowAsync<RpcException>()).Which.StatusCode.Should().Be(StatusCode.InvalidArgument);
+            withdrawalRequestService.Verify(x => x.CreateBumpRequestAsync(It.IsAny<int>(), It.IsAny<MempoolRecommendedFeesType>(), It.IsAny<decimal?>()), Times.Never);
+        }
+
+        [Fact]
+        public async Task CancelWithdrawal_HotWallet_SchedulesTheReplacementAndReturnsItsTxid()
+        {
+            //Arrange
+            var cancel = new WalletWithdrawalRequest { Id = 11, Wallet = new Wallet { IsHotWallet = true }, BumpingWalletWithdrawalRequestId = 10, IsRbfCancellation = true };
+            var psbt = SamplePsbt();
+            var withdrawalRequestService = new Mock<IWithdrawalRequestService>();
+            withdrawalRequestService.Setup(x => x.CreateCancelRequestAsync(10, MempoolRecommendedFeesType.CustomFee, 10m)).ReturnsAsync(cancel);
+            withdrawalRequestService.Setup(x => x.ScheduleHotWalletWithdrawalAsync(11)).ReturnsAsync(psbt);
+
+            var mockNodeGuardService = CreateNodeGuardService(withdrawalRequestService: withdrawalRequestService.Object);
+
+            //Act
+            var resp = await mockNodeGuardService.CancelWithdrawal(new CancelWithdrawalRequest
+            {
+                RequestId = 10,
+                MempoolFeeRate = FEES_TYPE.CustomFee,
+                CustomFeeRate = 10,
+            }, TestServerCallContext.Create());
+
+            //Assert
+            resp.RequestId.Should().Be(11);
+            resp.IsHotWallet.Should().BeTrue();
+            resp.Txid.Should().Be(psbt.GetGlobalTransaction().GetHash().ToString());
+            withdrawalRequestService.Verify(x => x.CreateBumpRequestAsync(It.IsAny<int>(), It.IsAny<MempoolRecommendedFeesType>(), It.IsAny<decimal?>()), Times.Never,
+                "a cancellation must not be turned into a fee bump");
+        }
+
+        [Fact]
+        public async Task CancelWithdrawal_ByTxId_ResolvesTheRequestToCancel()
+        {
+            //Arrange
+            const string txId = "5f59c45bc3fa8362d5c38bce5c633bb901a57f268ec75e55548c00d2baec0d65";
+            var walletWithdrawalRequestRepository = new Mock<IWalletWithdrawalRequestRepository>();
+            walletWithdrawalRequestRepository.Setup(x => x.GetByTxHash(txId)).ReturnsAsync(new WalletWithdrawalRequest { Id = 10, TxId = txId });
+            var cancel = new WalletWithdrawalRequest { Id = 11, Wallet = new Wallet { IsHotWallet = false }, BumpingWalletWithdrawalRequestId = 10, IsRbfCancellation = true };
+            var withdrawalRequestService = new Mock<IWithdrawalRequestService>();
+            withdrawalRequestService.Setup(x => x.CreateCancelRequestAsync(10, MempoolRecommendedFeesType.FastestFee, null)).ReturnsAsync(cancel);
+            var bitcoinService = new Mock<IBitcoinService>();
+            bitcoinService.Setup(x => x.GenerateTemplatePSBT(cancel)).ReturnsAsync(SamplePsbt());
+
+            var mockNodeGuardService = CreateNodeGuardService(
+                walletWithdrawalRequestRepository: walletWithdrawalRequestRepository.Object,
+                bitcoinService: bitcoinService.Object,
+                withdrawalRequestService: withdrawalRequestService.Object);
+
+            //Act
+            var resp = await mockNodeGuardService.CancelWithdrawal(new CancelWithdrawalRequest
+            {
+                TxId = txId,
+                MempoolFeeRate = FEES_TYPE.FastestFee,
+            }, TestServerCallContext.Create());
+
+            //Assert
+            resp.RequestId.Should().Be(11);
+            resp.IsHotWallet.Should().BeFalse();
+            withdrawalRequestService.Verify(x => x.ScheduleHotWalletWithdrawalAsync(It.IsAny<int>()), Times.Never,
+                "a cold-wallet cancellation waits for the approvers' signatures");
+        }
+
+        [Fact]
+        public async Task CancelWithdrawal_RefusedByTheService_MapsTheReasonToAStatusCode()
+        {
+            //Arrange
+            var withdrawalRequestService = new Mock<IWithdrawalRequestService>();
+            withdrawalRequestService
+                .Setup(x => x.CreateCancelRequestAsync(It.IsAny<int>(), It.IsAny<MempoolRecommendedFeesType>(), It.IsAny<decimal?>()))
+                .ThrowsAsync(new BumpingException("already mined", BumpingErrorReason.AlreadyConfirmed));
+
+            var mockNodeGuardService = CreateNodeGuardService(withdrawalRequestService: withdrawalRequestService.Object);
+
+            //Act
+            var act = () => mockNodeGuardService.CancelWithdrawal(new CancelWithdrawalRequest
+            {
+                RequestId = 10,
+                MempoolFeeRate = FEES_TYPE.CustomFee,
+                CustomFeeRate = 10,
+            }, TestServerCallContext.Create());
+
+            //Assert
+            var exception = (await act.Should().ThrowAsync<RpcException>()).Which;
+            exception.StatusCode.Should().Be(StatusCode.FailedPrecondition);
+            exception.Status.Detail.Should().Be("already mined");
+        }
+
+        /// <summary>A parseable one-in/one-out PSBT; PSBT.FromTransaction refuses a transaction without inputs.</summary>
+        private static PSBT SamplePsbt()
+        {
+            var network = Network.RegTest;
+            var tx = network.CreateTransaction();
+            tx.Inputs.Add(new TxIn(new OutPoint(uint256.One, 0)));
+            tx.Outputs.Add(new TxOut(Money.Coins(0.01m),
+                BitcoinAddress.Create("bcrt1q590shaxaf5u08ml8jwlzghz99dup3z9592vxal", network)));
+            return PSBT.FromTransaction(tx, network);
         }
 
         private Wallet InitMockRequestWithdrawal(out Mock<IWalletRepository> walletRepository,
