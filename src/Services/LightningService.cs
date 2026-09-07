@@ -2040,7 +2040,9 @@ namespace NodeGuard.Services
 
             if (response?.FailedUpdates != null && response.FailedUpdates.Count > 0)
             {
-                _logger.LogError("Failed to update max htlc for channel: {ChanPoint}", lndChannel.ChannelPoint);
+                string errorMessages = string.Join("; ", response.FailedUpdates);
+                _logger.LogError("Failed to update max htlc for channel {ChanPoint}: [{Errors}]", lndChannel.ChannelPoint, errorMessages);
+                
                 throw new Exception($"Failed to update max htlc for channel: {lndChannel.ChannelPoint}");
             }
 
