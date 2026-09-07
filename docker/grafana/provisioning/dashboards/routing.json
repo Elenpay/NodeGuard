@@ -1508,6 +1508,217 @@
         "type": "grafana-postgresql-datasource",
         "uid": "$datasource"
       },
+      "description": "Rebalances created in the window on the selected nodes, all statuses. One row per rebalance (retries reuse the same row and bump AttemptNumber), so this counts rebalances, not attempts. Matches the stacked total of Rebalances over time.",
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "thresholds"
+          },
+          "decimals": 0,
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "blue",
+                "value": 0
+              }
+            ]
+          },
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 7,
+        "w": 4,
+        "x": 0,
+        "y": 21
+      },
+      "id": 512,
+      "options": {
+        "colorMode": "value",
+        "graphMode": "none",
+        "justifyMode": "auto",
+        "orientation": "auto",
+        "percentChangeColorMode": "standard",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": true
+        },
+        "showPercentChange": false,
+        "textMode": "auto",
+        "wideLayout": true
+      },
+      "pluginVersion": "12.4.2",
+      "targets": [
+        {
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "$datasource"
+          },
+          "editorMode": "code",
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "SELECT COUNT(*) AS \"Rebalances\"\nFROM \"Rebalances\" r\nJOIN \"Nodes\" n ON n.\"Id\" = r.\"NodeId\"\nWHERE\n  $__timeFilter(r.\"CreationDatetime\")\n  AND n.\"PubKey\" IN ($node)",
+          "refId": "A"
+        }
+      ],
+      "title": "Rebalances (total)",
+      "type": "stat"
+    },
+    {
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "$datasource"
+      },
+      "description": "Rebalances over time, bucketed by the panel interval and split by outcome. Succeeded = Status Succeeded; Failed = any terminal non-success status (Failed / No Route / Timeout / Insufficient Balance / Exceeded Fee Limit); In flight = Pending / In Flight. Bars are stacked, so each bar's height is every rebalance created in that bucket.",
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "axisBorderShow": false,
+            "axisCenteredZero": false,
+            "axisColorMode": "text",
+            "axisLabel": "",
+            "axisPlacement": "auto",
+            "barAlignment": 0,
+            "barWidthFactor": 0.9,
+            "drawStyle": "bars",
+            "fillOpacity": 80,
+            "gradientMode": "none",
+            "hideFrom": {
+              "legend": false,
+              "tooltip": false,
+              "viz": false
+            },
+            "insertNulls": false,
+            "lineInterpolation": "linear",
+            "lineWidth": 1,
+            "pointSize": 5,
+            "scaleDistribution": {
+              "type": "linear"
+            },
+            "showPoints": "auto",
+            "showValues": false,
+            "spanNulls": false,
+            "stacking": {
+              "group": "A",
+              "mode": "normal"
+            },
+            "thresholdsStyle": {
+              "mode": "off"
+            }
+          },
+          "decimals": 0,
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "blue",
+                "value": 0
+              }
+            ]
+          },
+          "unit": "short"
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Succeeded"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "fixedColor": "green",
+                  "mode": "fixed"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Failed"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "fixedColor": "red",
+                  "mode": "fixed"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "In flight"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "fixedColor": "yellow",
+                  "mode": "fixed"
+                }
+              }
+            ]
+          }
+        ]
+      },
+      "gridPos": {
+        "h": 7,
+        "w": 20,
+        "x": 4,
+        "y": 21
+      },
+      "id": 513,
+      "interval": "1h",
+      "options": {
+        "legend": {
+          "calcs": [],
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "hideZeros": false,
+          "mode": "multi",
+          "sort": "none"
+        }
+      },
+      "pluginVersion": "12.4.2",
+      "targets": [
+        {
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "$datasource"
+          },
+          "editorMode": "code",
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "SELECT\n  $__timeGroup(r.\"CreationDatetime\", $__interval, 0) AS \"time\",\n  COUNT(*) FILTER (WHERE r.\"Status\" = 3) AS \"Succeeded\",\n  -- Everything that is neither settled nor still running, so the three series always sum to\n  -- every rebalance in the bucket (Status 1 is the removed Probing value, kept as a gap):\n  COUNT(*) FILTER (WHERE r.\"Status\" NOT IN (0, 1, 2, 3)) AS \"Failed\",\n  COUNT(*) FILTER (WHERE r.\"Status\" IN (0, 1, 2)) AS \"In flight\"\nFROM \"Rebalances\" r\nJOIN \"Nodes\" n ON n.\"Id\" = r.\"NodeId\"\nWHERE\n  $__timeFilter(r.\"CreationDatetime\")\n  AND n.\"PubKey\" IN ($node)\nGROUP BY 1\nORDER BY 1",
+          "refId": "A"
+        }
+      ],
+      "title": "Rebalances over time",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "$datasource"
+      },
       "description": "Weekly (calendar-week) routed volume with a 4-week rolling average, settled routing profit in sats, plus success rate per week. Success rate = settled / (settled + locally-failed, EventCase 4). Downstream failures (EventCase 2, ForwardFailEvent) are excluded since they were never within this node's control. Only complete weeks are shown: the in-progress week and any partial week at the window edges are dropped.",
       "fieldConfig": {
         "defaults": {
@@ -1753,7 +1964,7 @@
         "h": 8,
         "w": 24,
         "x": 0,
-        "y": 21
+        "y": 28
       },
       "id": 511,
       "options": {
@@ -1887,7 +2098,7 @@
         "h": 8,
         "w": 24,
         "x": 0,
-        "y": 29
+        "y": 36
       },
       "id": 18,
       "options": {
@@ -2000,7 +2211,7 @@
         "h": 8,
         "w": 24,
         "x": 0,
-        "y": 37
+        "y": 44
       },
       "id": 19,
       "options": {
@@ -2074,7 +2285,7 @@
         "h": 8,
         "w": 12,
         "x": 0,
-        "y": 45
+        "y": 52
       },
       "id": 9,
       "options": {
@@ -2290,7 +2501,7 @@
         "h": 8,
         "w": 12,
         "x": 12,
-        "y": 45
+        "y": 52
       },
       "id": 13,
       "options": {
@@ -2506,7 +2717,7 @@
         "h": 8,
         "w": 12,
         "x": 0,
-        "y": 53
+        "y": 60
       },
       "id": 14,
       "options": {
@@ -2748,7 +2959,7 @@
         "h": 8,
         "w": 12,
         "x": 12,
-        "y": 53
+        "y": 60
       },
       "id": 15,
       "options": {
@@ -3011,7 +3222,7 @@
         "h": 8,
         "w": 12,
         "x": 0,
-        "y": 61
+        "y": 68
       },
       "id": 8,
       "options": {
@@ -3270,7 +3481,7 @@
         "h": 8,
         "w": 12,
         "x": 12,
-        "y": 61
+        "y": 68
       },
       "id": 16,
       "options": {
@@ -3524,7 +3735,7 @@
         "h": 8,
         "w": 12,
         "x": 0,
-        "y": 69
+        "y": 76
       },
       "id": 21,
       "options": {
@@ -3716,7 +3927,7 @@
         "h": 8,
         "w": 12,
         "x": 12,
-        "y": 69
+        "y": 76
       },
       "id": 22,
       "options": {
@@ -3930,7 +4141,7 @@
         "h": 8,
         "w": 8,
         "x": 0,
-        "y": 77
+        "y": 84
       },
       "id": 17,
       "options": {
@@ -4106,7 +4317,7 @@
         "h": 8,
         "w": 8,
         "x": 8,
-        "y": 77
+        "y": 84
       },
       "id": 504,
       "options": {
@@ -4209,7 +4420,7 @@
         "h": 8,
         "w": 8,
         "x": 16,
-        "y": 77
+        "y": 84
       },
       "id": 403,
       "options": {
@@ -4326,7 +4537,7 @@
         "h": 10,
         "w": 12,
         "x": 0,
-        "y": 116
+        "y": 123
       },
       "id": 100,
       "options": {
@@ -4424,7 +4635,7 @@
         "h": 10,
         "w": 12,
         "x": 12,
-        "y": 116
+        "y": 123
       },
       "id": 101,
       "options": {
@@ -4518,7 +4729,7 @@
         "h": 8,
         "w": 24,
         "x": 0,
-        "y": 126
+        "y": 133
       },
       "id": 102,
       "options": {
@@ -4662,7 +4873,7 @@
         "h": 10,
         "w": 24,
         "x": 0,
-        "y": 135
+        "y": 142
       },
       "id": 103,
       "options": {
@@ -4806,7 +5017,7 @@
         "h": 10,
         "w": 24,
         "x": 0,
-        "y": 145
+        "y": 152
       },
       "id": 104,
       "options": {
@@ -4882,7 +5093,7 @@
         "h": 7,
         "w": 8,
         "x": 0,
-        "y": 108
+        "y": 115
       },
       "id": 105,
       "options": {
@@ -4953,7 +5164,7 @@
         "h": 7,
         "w": 8,
         "x": 8,
-        "y": 108
+        "y": 115
       },
       "id": 109,
       "options": {
@@ -5032,7 +5243,7 @@
         "h": 7,
         "w": 8,
         "x": 16,
-        "y": 108
+        "y": 115
       },
       "id": 107,
       "options": {
@@ -5178,7 +5389,7 @@
         "h": 10,
         "w": 24,
         "x": 0,
-        "y": 176
+        "y": 183
       },
       "id": 108,
       "options": {
@@ -5357,7 +5568,7 @@
         "h": 10,
         "w": 24,
         "x": 0,
-        "y": 187
+        "y": 194
       },
       "id": 112,
       "options": {
@@ -5501,7 +5712,7 @@
         "h": 10,
         "w": 24,
         "x": 0,
-        "y": 155
+        "y": 162
       },
       "id": 110,
       "options": {
@@ -5645,7 +5856,7 @@
         "h": 10,
         "w": 24,
         "x": 0,
-        "y": 165
+        "y": 172
       },
       "id": 111,
       "options": {
@@ -5685,7 +5896,7 @@
         "h": 1,
         "w": 24,
         "x": 0,
-        "y": 107
+        "y": 114
       },
       "id": 200,
       "panels": [],
@@ -5698,7 +5909,7 @@
         "h": 1,
         "w": 24,
         "x": 0,
-        "y": 115
+        "y": 122
       },
       "id": 201,
       "panels": [],
@@ -5711,7 +5922,7 @@
         "h": 1,
         "w": 24,
         "x": 0,
-        "y": 134
+        "y": 141
       },
       "id": 202,
       "panels": [],
@@ -5724,7 +5935,7 @@
         "h": 1,
         "w": 24,
         "x": 0,
-        "y": 175
+        "y": 182
       },
       "id": 203,
       "panels": [],
@@ -5737,7 +5948,7 @@
         "h": 1,
         "w": 24,
         "x": 0,
-        "y": 197
+        "y": 204
       },
       "id": 204,
       "panels": [],
@@ -5824,7 +6035,7 @@
         "h": 9,
         "w": 24,
         "x": 0,
-        "y": 198
+        "y": 205
       },
       "id": 113,
       "options": {
@@ -5920,7 +6131,7 @@
         "h": 9,
         "w": 24,
         "x": 0,
-        "y": 207
+        "y": 214
       },
       "id": 206,
       "options": {
@@ -5961,7 +6172,7 @@
         "h": 1,
         "w": 24,
         "x": 0,
-        "y": 217
+        "y": 224
       },
       "id": 250,
       "panels": [],
@@ -5998,7 +6209,7 @@
         "h": 7,
         "w": 5,
         "x": 0,
-        "y": 218
+        "y": 225
       },
       "id": 303,
       "options": {
@@ -6065,7 +6276,7 @@
         "h": 7,
         "w": 5,
         "x": 5,
-        "y": 218
+        "y": 225
       },
       "id": 300,
       "options": {
@@ -6132,7 +6343,7 @@
         "h": 7,
         "w": 5,
         "x": 10,
-        "y": 218
+        "y": 225
       },
       "id": 307,
       "options": {
@@ -6211,7 +6422,7 @@
         "h": 7,
         "w": 5,
         "x": 15,
-        "y": 218
+        "y": 225
       },
       "id": 302,
       "options": {
@@ -6282,7 +6493,7 @@
         "h": 7,
         "w": 4,
         "x": 20,
-        "y": 218
+        "y": 225
       },
       "id": 304,
       "options": {
@@ -6399,7 +6610,7 @@
         "h": 9,
         "w": 24,
         "x": 0,
-        "y": 225
+        "y": 232
       },
       "id": 301,
       "options": {
@@ -6495,7 +6706,7 @@
         "h": 9,
         "w": 24,
         "x": 0,
-        "y": 234
+        "y": 241
       },
       "id": 306,
       "options": {
@@ -6536,7 +6747,7 @@
         "h": 1,
         "w": 24,
         "x": 0,
-        "y": 243
+        "y": 250
       },
       "id": 500,
       "panels": [],
@@ -6573,7 +6784,7 @@
         "h": 8,
         "w": 8,
         "x": 0,
-        "y": 244
+        "y": 251
       },
       "id": 501,
       "options": {
@@ -6640,7 +6851,7 @@
         "h": 8,
         "w": 8,
         "x": 8,
-        "y": 244
+        "y": 251
       },
       "id": 502,
       "options": {
@@ -6704,7 +6915,7 @@
         "h": 8,
         "w": 8,
         "x": 16,
-        "y": 244
+        "y": 251
       },
       "id": 503,
       "options": {
@@ -6791,7 +7002,7 @@
         "h": 1,
         "w": 24,
         "x": 0,
-        "y": 252
+        "y": 259
       },
       "id": 400,
       "panels": [],
@@ -6885,7 +7096,7 @@
         "h": 10,
         "w": 12,
         "x": 0,
-        "y": 253
+        "y": 260
       },
       "id": 401,
       "options": {
@@ -7036,7 +7247,7 @@
         "h": 10,
         "w": 12,
         "x": 12,
-        "y": 253
+        "y": 260
       },
       "id": 402,
       "options": {
@@ -7201,7 +7412,7 @@
         "h": 10,
         "w": 12,
         "x": 0,
-        "y": 263
+        "y": 270
       },
       "id": 404,
       "options": {
@@ -7372,7 +7583,7 @@
         "h": 10,
         "w": 12,
         "x": 12,
-        "y": 263
+        "y": 270
       },
       "id": 405,
       "options": {
@@ -7572,7 +7783,7 @@
         "h": 9,
         "w": 24,
         "x": 0,
-        "y": 273
+        "y": 280
       },
       "id": 406,
       "options": {
