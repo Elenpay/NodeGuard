@@ -5,10 +5,19 @@
     {
     <ModalContent Centered>
         <ModalHeader>
-            <ModalTitle>Request fee bump</ModalTitle>
+            <ModalTitle>@(Cancellation ? "Cancel withdrawal (RBF)" : "Request fee bump")</ModalTitle>
             <CloseButton />
         </ModalHeader>
         <ModalBody>
+            @if (Cancellation)
+            {
+                <Alert Color="Color.Warning" Visible>
+                    <AlertMessage>
+                        The pending transaction is replaced by one that spends the same inputs and returns the funds to this
+                        wallet. The destination will not be paid. The replacement needs a higher fee rate than the current one.
+                    </AlertMessage>
+                </Alert>
+            }
             <Fields Flex="Flex.JustifyContent.Center">
                 <Field>
                     <FieldLabel>New fee rate</FieldLabel>
@@ -53,8 +62,8 @@
         </ModalBody>
         <ModalFooter>
             <Button Color="Color.Secondary" Clicked="@HideModal">Cancel</Button>
-            <Button id="approve-button" Color="Color.Primary" Clicked="@HandleOnClick">
-                Approve
+            <Button id="approve-button" Color="@(Cancellation ? Color.Danger : Color.Primary)" Clicked="@HandleOnClick">
+                @(Cancellation ? "Cancel withdrawal" : "Approve")
             </Button>
         </ModalFooter>
     </ModalContent>
@@ -64,11 +73,8 @@
 @inject IBitcoinService BitcoinService
 @inject IPriceConversionService PriceConversionService
 @inject INBXplorerService NBXplorerService
-@inject IWalletWithdrawalRequestRepository WalletWithdrawalRequestRepository
-@inject IWalletWithdrawalRequestDestinationRepository WalletWithdrawalRequestDestinationRepository
-@inject ICoinSelectionService CoinSelectionService
 @inject IWalletRepository WalletRepository
-@inject IFMUTXORepository FMUTXORepository
+@inject IWithdrawalRequestService WithdrawalRequestService
 @inject IToastService ToastService
 @inject ILogger<BumpfeeModal> Logger
 @code {
@@ -79,6 +85,10 @@
 
     [Parameter]
     public Action<WalletWithdrawalRequest> SubmitBumpfeeModal { get; set; }
+
+    /// <summary>False: bump the fee of the withdrawal. True: cancel it with an RBF replacement that returns the funds to the wallet.</summary>
+    [Parameter]
+    public bool Cancellation { get; set; }
 
     private decimal? _selectedWalletBalance;
     private decimal _btcPrice;
@@ -116,69 +126,29 @@
         if (_customSatPerVbAmount <= oldFee)
         {
             ToastService.ShowError($"Fee must be greater than the current one ({oldFee} sat/vb)");
+            return;
         }
-        else
+
+        try
         {
-            var newRequest = new WalletWithdrawalRequest();
-            if (WithdrawalRequest.Description.StartsWith("Bump of request"))
-            {
-                var formerDescription = WithdrawalRequest.Description.Substring(WithdrawalRequest.Description.IndexOf(":") + 1);
-                WithdrawalRequest.Description = formerDescription.Trim();
-            }
-
-            newRequest.Description = $"Bump of request {WithdrawalRequest.Id}: {WithdrawalRequest.Description}";
-            newRequest.Changeless = WithdrawalRequest.Changeless;
-            newRequest.WithdrawAllFunds = WithdrawalRequest.WithdrawAllFunds;
-            newRequest.MempoolRecommendedFeesType = _selectedMempoolRecommendedFeesType;
-            newRequest.CustomFeeRate = _customSatPerVbAmount;
-            newRequest.UserRequestorId = WithdrawalRequest.UserRequestorId;
-            newRequest.RequestMetadata = WithdrawalRequest.RequestMetadata;
-            newRequest.BumpingWalletWithdrawalRequestId = WithdrawalRequest.Id;
-            newRequest.WalletId = WithdrawalRequest.WalletId;
-
-            // Get destinations from the original request
-            var originalDestinations = await WalletWithdrawalRequestDestinationRepository.GetByWalletWithdrawalRequestId(WithdrawalRequest.Id);
-            if (originalDestinations == null || originalDestinations.Count == 0)
-            {
-                throw new ShowToUserException("Original withdrawal request destinations not found");
-            }
-
-            newRequest.WalletWithdrawalRequestDestinations = originalDestinations.Select(d => new WalletWithdrawalRequestDestination
-            {
-                Address = d.Address,
-                Amount = d.Amount,
-                WalletWithdrawalRequestId = newRequest.Id
-            }).ToList();
-
-            var addResult = await WalletWithdrawalRequestRepository.AddAsync(newRequest);
-            if (!addResult.Item1)
-            {
-                Logger.LogError("Error creating a new withdrawal request for bumping fee: {Error}", addResult.Item2);
-                ToastService.ShowError("Something went wrong");
-                return;
-            }
-
-            newRequest = await WalletWithdrawalRequestRepository.GetById(newRequest.Id);
-
-            // Get utxos from the original request
-            var mUTXOs = await FMUTXORepository.GetLockedUTXOsByWithdrawalId(WithdrawalRequest.Id);
-
-            newRequest!.UTXOs = mUTXOs;
-            var outpoints = mUTXOs.Select(u => OutPoint.Parse($"{u.TxId}:{u.OutputIndex}")).ToList();
-            var UTXOs = await CoinSelectionService.GetUTXOsByOutpointAsync(WithdrawalRequest.Wallet.GetDerivationStrategy()!, outpoints);
-
-            await CoinSelectionService.LockUTXOs(UTXOs, newRequest, BitcoinRequestType.WalletWithdrawal);
-
-            var updateResult = WalletWithdrawalRequestRepository.Update(newRequest);
-            if (!updateResult.Item1)
-            {
-                Logger.LogError("Error creating a new withdrawal request for bumping fee: {Error}", updateResult.Item2);
-                ToastService.ShowError("Something went wrong");
-                return;
-            }
-
+            // Validation, creation and UTXO locking of the replacement live in WithdrawalRequestService, shared with
+            // the BumpWithdrawal / CancelWithdrawal gRPC methods (and covered end to end there).
+            var newRequest = Cancellation
+                ? await WithdrawalRequestService.CreateCancelRequestAsync(WithdrawalRequest.Id,
+                    _selectedMempoolRecommendedFeesType, _customSatPerVbAmount)
+                : await WithdrawalRequestService.CreateBumpRequestAsync(WithdrawalRequest.Id,
+                    _selectedMempoolRecommendedFeesType, _customSatPerVbAmount);
 
             SubmitBumpfeeModal?.Invoke(newRequest);
+        }
+        catch (BumpingException e)
+        {
+            ToastService.ShowError(e.Message);
+        }
+        catch (Exception e)
+        {
+            Logger.LogError(e, "Error creating the RBF replacement of withdrawal request {RequestId}", WithdrawalRequest.Id);
+            ToastService.ShowError("Something went wrong");
         }
     }
     

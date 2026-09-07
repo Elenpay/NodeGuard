@@ -26,6 +26,10 @@ public interface INodeGuardService
 
     Task<RequestWithdrawalResponse> RequestWithdrawal(RequestWithdrawalRequest request, ServerCallContext context);
 
+    Task<BumpWithdrawalResponse> BumpWithdrawal(BumpWithdrawalRequest request, ServerCallContext context);
+
+    Task<CancelWithdrawalResponse> CancelWithdrawal(CancelWithdrawalRequest request, ServerCallContext context);
+
     Task<GetAvailableWalletsResponse>
         GetAvailableWallets(GetAvailableWalletsRequest request, ServerCallContext context);
 
@@ -90,6 +94,7 @@ public class NodeGuardService : Nodeguard.NodeGuardService.NodeGuardServiceBase,
     private readonly IHtlcMonitoringScheduler _htlcMonitoringScheduler;
     private readonly IRebalanceService _rebalanceService;
     private readonly IRebalanceRepository _rebalanceRepository;
+    private readonly IWithdrawalRequestService _withdrawalRequestService;
 
     public NodeGuardService(ILogger<NodeGuardService> logger,
         ILiquidityRuleRepository liquidityRuleRepository,
@@ -108,7 +113,8 @@ public class NodeGuardService : Nodeguard.NodeGuardService.NodeGuardServiceBase,
         IUTXOTagRepository utxoTagRepository,
         IHtlcMonitoringScheduler htlcMonitoringScheduler,
         IRebalanceService rebalanceService,
-        IRebalanceRepository rebalanceRepository
+        IRebalanceRepository rebalanceRepository,
+        IWithdrawalRequestService withdrawalRequestService
     )
     {
         _logger = logger;
@@ -129,6 +135,7 @@ public class NodeGuardService : Nodeguard.NodeGuardService.NodeGuardServiceBase,
         _htlcMonitoringScheduler = htlcMonitoringScheduler;
         _rebalanceService = rebalanceService;
         _rebalanceRepository = rebalanceRepository;
+        _withdrawalRequestService = withdrawalRequestService;
         _scheduler = Task.Run(() => _schedulerFactory.GetScheduler()).Result;
     }
 
@@ -266,7 +273,7 @@ public class NodeGuardService : Nodeguard.NodeGuardService.NodeGuardServiceBase,
                     throw new RpcException(new Status(StatusCode.Internal, "Derivation strategy not found"));
 
                 utxos = await _coinSelectionService.GetUTXOsByOutpointAsync(derivationStrategyBase, outpoints);
-      
+
             }
 
             // Create destination objects for the withdrawal request
@@ -345,7 +352,7 @@ public class NodeGuardService : Nodeguard.NodeGuardService.NodeGuardServiceBase,
         }
         catch (NoUTXOsAvailableException)
         {
-            CancelWithdrawalRequest(withdrawalRequest);
+            MarkWithdrawalRequestCancelled(withdrawalRequest);
             _logger.LogError("No available UTXOs for wallet with id {walletId}", request.WalletId);
             throw new RpcException(new Status(StatusCode.ResourceExhausted, "No available UTXOs for wallet"));
         }
@@ -356,19 +363,19 @@ public class NodeGuardService : Nodeguard.NodeGuardService.NodeGuardServiceBase,
         }
         catch (RpcException e)
         {
-            CancelWithdrawalRequest(withdrawalRequest);
+            MarkWithdrawalRequestCancelled(withdrawalRequest);
             _logger.LogError(e.Message);
             throw new RpcException(new Status(e.Status.StatusCode, e.Status.Detail));
         }
         catch (Exception e)
         {
-            CancelWithdrawalRequest(withdrawalRequest);
+            MarkWithdrawalRequestCancelled(withdrawalRequest);
             _logger.LogError(e, "Error requesting withdrawal for wallet with id {walletId}", request.WalletId);
             throw new RpcException(new Status(StatusCode.Internal, "Error requesting withdrawal for wallet"));
         }
     }
 
-    private void CancelWithdrawalRequest(WalletWithdrawalRequest? withdrawalRequest)
+    private void MarkWithdrawalRequestCancelled(WalletWithdrawalRequest? withdrawalRequest)
     {
         if (withdrawalRequest != null)
         {
@@ -380,6 +387,152 @@ public class NodeGuardService : Nodeguard.NodeGuardService.NodeGuardServiceBase,
                     withdrawalRequest.Id, withdrawalRequest.WalletId);
             }
         }
+    }
+
+    public override async Task<BumpWithdrawalResponse> BumpWithdrawal(BumpWithdrawalRequest request,
+        ServerCallContext context)
+    {
+        var target = request.TargetCase switch
+        {
+            BumpWithdrawalRequest.TargetOneofCase.RequestId => new ReplacementTarget(request.RequestId, null),
+            BumpWithdrawalRequest.TargetOneofCase.TxId => new ReplacementTarget(null, request.TxId),
+            _ => new ReplacementTarget(null, null),
+        };
+
+        var (requestId, txid, isHotWallet) = await ReplaceWithdrawalAsync(target,
+            (MempoolRecommendedFeesType)request.MempoolFeeRate,
+            request.HasCustomFeeRate ? request.CustomFeeRate : null,
+            cancellation: false);
+
+        return new BumpWithdrawalResponse { RequestId = requestId, Txid = txid, IsHotWallet = isHotWallet };
+    }
+
+    public override async Task<CancelWithdrawalResponse> CancelWithdrawal(CancelWithdrawalRequest request,
+        ServerCallContext context)
+    {
+        var target = request.TargetCase switch
+        {
+            CancelWithdrawalRequest.TargetOneofCase.RequestId => new ReplacementTarget(request.RequestId, null),
+            CancelWithdrawalRequest.TargetOneofCase.TxId => new ReplacementTarget(null, request.TxId),
+            _ => new ReplacementTarget(null, null),
+        };
+
+        var (requestId, txid, isHotWallet) = await ReplaceWithdrawalAsync(target,
+            (MempoolRecommendedFeesType)request.MempoolFeeRate,
+            request.HasCustomFeeRate ? request.CustomFeeRate : null,
+            cancellation: true);
+
+        return new CancelWithdrawalResponse { RequestId = requestId, Txid = txid, IsHotWallet = isHotWallet };
+    }
+
+    /// <summary>The withdrawal to replace, addressed by NodeGuard request id or by the txid RequestWithdrawal returned.</summary>
+    private readonly record struct ReplacementTarget(int? RequestId, string? TxId)
+    {
+        public override string ToString() => TxId != null ? $"txid {TxId}" : $"id {RequestId}";
+    }
+
+    /// <summary>
+    /// Shared body of BumpWithdrawal and CancelWithdrawal: resolve the target, create the replacement through
+    /// WithdrawalRequestService and, for hot wallets, execute it; cold wallets only get the template so the approvers
+    /// reuse it, exactly as RequestWithdrawal does.
+    /// </summary>
+    private async Task<(int RequestId, string Txid, bool IsHotWallet)> ReplaceWithdrawalAsync(ReplacementTarget target,
+        MempoolRecommendedFeesType feeType, decimal? customFeeRate, bool cancellation)
+    {
+        var action = cancellation ? "cancellation" : "fee bump";
+        WalletWithdrawalRequest? replacement = null;
+        try
+        {
+            var originalRequestId = await ResolveReplacementTargetAsync(target);
+
+            replacement = cancellation
+                ? await _withdrawalRequestService.CreateCancelRequestAsync(originalRequestId, feeType, customFeeRate)
+                : await _withdrawalRequestService.CreateBumpRequestAsync(originalRequestId, feeType, customFeeRate);
+
+            var isHotWallet = replacement.Wallet?.IsHotWallet ?? false;
+
+            var psbt = isHotWallet
+                ? await _withdrawalRequestService.ScheduleHotWalletWithdrawalAsync(replacement.Id)
+                : await _bitcoinService.GenerateTemplatePSBT(replacement);
+
+            return (replacement.Id, psbt.GetGlobalTransaction().GetHash().ToString(), isHotWallet);
+        }
+        catch (BumpingException e)
+        {
+            _logger.LogWarning("RBF {Action} of withdrawal request {Target} refused ({Reason}): {Message}",
+                action, target, e.Reason, e.Message);
+            MarkWithdrawalRequestCancelled(replacement);
+            throw new RpcException(new Status(ToStatusCode(e.Reason), e.Message));
+        }
+        catch (NoUTXOsAvailableException)
+        {
+            MarkWithdrawalRequestCancelled(replacement);
+            _logger.LogError("No available UTXOs for the RBF {Action} of withdrawal request {Target}", action, target);
+            throw new RpcException(new Status(StatusCode.ResourceExhausted, "No available UTXOs for wallet"));
+        }
+        catch (ShowToUserException e)
+        {
+            MarkWithdrawalRequestCancelled(replacement);
+            _logger.LogError(e, "Error in the RBF {Action} of withdrawal request {Target}", action, target);
+            throw new RpcException(new Status(StatusCode.FailedPrecondition, e.Message));
+        }
+        catch (RpcException)
+        {
+            MarkWithdrawalRequestCancelled(replacement);
+            throw;
+        }
+        catch (Exception e)
+        {
+            MarkWithdrawalRequestCancelled(replacement);
+            _logger.LogError(e, "Error in the RBF {Action} of withdrawal request {Target}", action, target);
+            throw new RpcException(new Status(StatusCode.Internal, $"Error in the RBF {action} of the withdrawal request"));
+        }
+    }
+
+    /// <summary>
+    /// A txid is validated, normalised (stored txids are lowercase hex) and resolved to the request that broadcast it,
+    /// so the service only ever deals with request ids.
+    /// </summary>
+    private async Task<int> ResolveReplacementTargetAsync(ReplacementTarget target)
+    {
+        if (target.RequestId is { } requestId)
+        {
+            return requestId;
+        }
+
+        if (target.TxId is { } rawTxId)
+        {
+            if (!uint256.TryParse(rawTxId, out var txId))
+            {
+                throw new RpcException(new Status(StatusCode.InvalidArgument, "tx_id is not a valid transaction id"));
+            }
+
+            var withdrawalRequest = await _walletWithdrawalRequestRepository.GetByTxHash(txId.ToString());
+            if (withdrawalRequest == null)
+            {
+                throw new RpcException(new Status(StatusCode.NotFound, $"No withdrawal request found for txid {txId}"));
+            }
+
+            return withdrawalRequest.Id;
+        }
+
+        throw new RpcException(new Status(StatusCode.InvalidArgument, "request_id or tx_id is required"));
+    }
+
+    private static StatusCode ToStatusCode(BumpingErrorReason reason)
+    {
+        return reason switch
+        {
+            BumpingErrorReason.RequestNotFound => StatusCode.NotFound,
+            BumpingErrorReason.InvalidState
+                or BumpingErrorReason.AlreadyConfirmed
+                or BumpingErrorReason.TransactionNotFound
+                or BumpingErrorReason.ChangelessMultipleDestinations => StatusCode.FailedPrecondition,
+            BumpingErrorReason.InvalidFeeRate
+                or BumpingErrorReason.FeeRateNotHigher
+                or BumpingErrorReason.FeeExceedsInputs => StatusCode.InvalidArgument,
+            _ => StatusCode.Internal,
+        };
     }
 
     public override async Task<GetAvailableWalletsResponse> GetAvailableWallets(GetAvailableWalletsRequest request,
@@ -1420,7 +1573,8 @@ public class NodeGuardService : Nodeguard.NodeGuardService.NodeGuardServiceBase,
 
     public override async Task<SetChannelFeePolicyResponse> SetChannelFeePolicy(SetChannelFeePolicyRequest request, ServerCallContext context)
     {
-        try {
+        try
+        {
             await _lightningService.SetChannelFeePolicy(request.ChanPoint, request.NodePubkey, request.BaseFeeMsat, request.FeeRatePpm, request.TimeLockDelta, request.InboundFeePolicy?.BaseFeeMsat, request.InboundFeePolicy?.FeeRatePpm);
         }
         catch (ArgumentException e)

@@ -145,6 +145,7 @@ namespace NodeGuard
             builder.Services.AddTransient<ILocalStorageService, LocalStorageService>();
             builder.Services.AddTransient<ILightningService, LightningService>();
             builder.Services.AddTransient<IBitcoinService, BitcoinService>();
+            builder.Services.AddTransient<IWithdrawalRequestService, WithdrawalRequestService>();
             builder.Services.AddTransient<NotificationService, NotificationService>();
             builder.Services.AddTransient<INBXplorerService, NBXplorerService>();
             builder.Services.AddTransient<ISwapsService, SwapsService>();
