@@ -1508,7 +1508,7 @@
         "type": "grafana-postgresql-datasource",
         "uid": "$datasource"
       },
-      "description": "Rebalances created in the window on the selected nodes, all statuses. One row per rebalance (retries reuse the same row and bump AttemptNumber), so this counts rebalances, not attempts. Matches the stacked total of Rebalances over time.",
+      "description": "Succeeded rebalances created in the window on the selected nodes. One row per rebalance (retries reuse the row and bump AttemptNumber), so this counts rebalances, not attempts. Matches the total of Successful rebalances over time.",
       "fieldConfig": {
         "defaults": {
           "color": {
@@ -1563,11 +1563,11 @@
           "editorMode": "code",
           "format": "table",
           "rawQuery": true,
-          "rawSql": "SELECT COUNT(*) AS \"Rebalances\"\nFROM \"Rebalances\" r\nJOIN \"Nodes\" n ON n.\"Id\" = r.\"NodeId\"\nWHERE\n  $__timeFilter(r.\"CreationDatetime\")\n  AND n.\"PubKey\" IN ($node)",
+          "rawSql": "SELECT COUNT(*) AS \"Rebalances\"\nFROM \"Rebalances\" r\nJOIN \"Nodes\" n ON n.\"Id\" = r.\"NodeId\"\nWHERE\n  $__timeFilter(r.\"CreationDatetime\")\n  AND r.\"Status\" = 3\n  AND n.\"PubKey\" IN ($node)",
           "refId": "A"
         }
       ],
-      "title": "Rebalances (total)",
+      "title": "Rebalances (successful)",
       "type": "stat"
     },
     {
@@ -1609,7 +1609,7 @@
             "spanNulls": false,
             "stacking": {
               "group": "A",
-              "mode": "normal"
+              "mode": "none"
             },
             "thresholdsStyle": {
               "mode": "off"
