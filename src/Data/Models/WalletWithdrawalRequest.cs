@@ -198,6 +198,12 @@ namespace NodeGuard.Data.Models
 
         public WalletWithdrawalRequest? BumpingWalletWithdrawalRequest { get; set; }
 
+        /// <summary>
+        /// True when this request replaces <see cref="BumpingWalletWithdrawalRequest"/> to CANCEL it (RBF): same inputs,
+        /// a single output back to the wallet, and the replaced request ends up Cancelled instead of Bumped.
+        /// </summary>
+        public bool IsRbfCancellation { get; set; }
+
         public List<WalletWithdrawalRequestPSBT> WalletWithdrawalRequestPSBTs { get; set; }
 
         public List<FMUTXO> UTXOs { get; set; }
