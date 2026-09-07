@@ -17,13 +17,20 @@
  *
  */
 
-﻿using NodeGuard.Data.Models;
+using NodeGuard.Data.Models;
 
 namespace NodeGuard.Data.Repositories.Interfaces;
 
 public interface IWalletWithdrawalRequestPsbtRepository
 {
     Task<WalletWithdrawalRequestPSBT?> GetById(int id);
+
+    /// <summary>
+    /// The persisted template PSBT of a request (the one approvals are validated against), or null. Reads
+    /// from the database rather than a navigation collection so that a caller who lost the generation race
+    /// sees the winner's row.
+    /// </summary>
+    Task<WalletWithdrawalRequestPSBT?> GetTemplateByRequestId(int walletWithdrawalRequestId);
     Task<List<WalletWithdrawalRequestPSBT>> GetAll();
     Task<(bool, string?)> AddAsync(WalletWithdrawalRequestPSBT type);
     Task<(bool, string?)> AddRangeAsync(List<WalletWithdrawalRequestPSBT> type);

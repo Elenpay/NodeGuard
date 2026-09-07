@@ -161,6 +161,24 @@ namespace NodeGuard.Data.Models
         public int NumberOfSignaturesCollected => ChannelOperationRequestPsbts == null ? 0 : ChannelOperationRequestPsbts.Count(x => !x.IsFinalisedPSBT && !x.IsTemplatePSBT && !x.IsInternalWalletPSBT);
 
         /// <summary>
+        /// The single template PSBT of this request, or null when none has been generated yet.
+        /// The database enforces at most one (IX_ChannelOperationRequestPSBTs_Template); finding more is a
+        /// data-integrity fault and this throws rather than silently picking one.
+        /// </summary>
+        public ChannelOperationRequestPSBT? GetSingleTemplatePsbt()
+        {
+            try
+            {
+                return ChannelOperationRequestPsbts?.SingleOrDefault(x => x.IsTemplatePSBT);
+            }
+            catch (InvalidOperationException e)
+            {
+                throw new InvalidOperationException(
+                    $"Channel operation request {Id} has more than one template PSBT, expected exactly one", e);
+            }
+        }
+
+        /// <summary>
         /// This indicates if the user requested a changeless operation by selecting UTXOs
         /// </summary>
         public bool Changeless { get; set; }
@@ -179,13 +197,13 @@ namespace NodeGuard.Data.Models
 
                 //We add the internal Wallet signature
                 if (Wallet != null && Wallet.IsHotWallet) return ChannelOperationRequestPsbts.Count(x => x.IsTemplatePSBT) == 1;
-                
+
                 //if it is a BIP39 or watch only wallet, we don't need to add the internal wallet signature
                 if (Wallet != null && (Wallet.IsBIP39Imported || Wallet.IsWatchOnly))
                 {
                     return userPSBTsCount == Wallet.MofN;
                 }
-                
+
                 userPSBTsCount++;
 
                 if (userPSBTsCount == Wallet.MofN)

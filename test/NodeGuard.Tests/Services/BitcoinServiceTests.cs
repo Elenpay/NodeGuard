@@ -1,6 +1,7 @@
 using AutoMapper;
 using FluentAssertions;
 using NodeGuard.Data.Models;
+using NodeGuard.Data.Repositories;
 using NodeGuard.Data.Repositories.Interfaces;
 using NodeGuard.Helpers;
 using NodeGuard.TestHelpers;
@@ -1753,5 +1754,179 @@ public class BitcoinServiceTests
                 },
             },
         };
+    }
+
+    // ---- template persistence race -----------------------------------------------------------------------
+
+    /// <summary>
+    /// Builds a pending single-sig request with no template and every mock needed to run the full generation
+    /// path; the PSBT repository mock is returned so each test can script the insert outcome.
+    /// </summary>
+    private (BitcoinService Service, WalletWithdrawalRequest Request, Mock<IWalletWithdrawalRequestPsbtRepository> PsbtRepository)
+        SetupGenerationWithoutTemplate()
+    {
+        var wallet = CreateWallet.SingleSig(_internalWallet);
+        var withdrawalRequest = new WalletWithdrawalRequest
+        {
+            Id = 1,
+            Status = WalletWithdrawalRequestStatus.Pending,
+            Wallet = wallet,
+            WalletWithdrawalRequestPSBTs = new List<WalletWithdrawalRequestPSBT>(),
+            WalletWithdrawalRequestDestinations = new List<WalletWithdrawalRequestDestination>
+            {
+                new() { Address = "bcrt1q8k3av6q5yp83rn332lx8a90k6kukhg28hs5qw7krdq95t629hgsqk6ztmf", Amount = 0.01m },
+            },
+        };
+
+        var walletWithdrawalRequestRepository = new Mock<IWalletWithdrawalRequestRepository>();
+        var walletWithdrawalRequestPsbtRepository = new Mock<IWalletWithdrawalRequestPsbtRepository>();
+        var fmutxoRepository = new Mock<IFMUTXORepository>();
+        var nbXplorerService = new Mock<INBXplorerService>();
+        var utxoTagRepository = new Mock<IUTXOTagRepository>();
+        var mapper = new Mock<IMapper>();
+        walletWithdrawalRequestRepository.Setup(w => w.GetById(It.IsAny<int>())).ReturnsAsync(withdrawalRequest);
+        walletWithdrawalRequestRepository
+            .Setup(w => w.AddUTXOs(It.IsAny<WalletWithdrawalRequest>(), It.IsAny<List<FMUTXO>>()))
+            .ReturnsAsync((true, null));
+        nbXplorerService.Setup(x => x.GetStatusAsync(default)).ReturnsAsync(new StatusResult { IsFullySynched = true });
+        nbXplorerService
+            .Setup(x => x.GetUnusedAsync(It.IsAny<DerivationStrategyBase>(), DerivationFeature.Change, 0, false, default))
+            .ReturnsAsync(new KeyPathInformation
+            {
+                Address = BitcoinAddress.Create("bcrt1q83ml8tve8vh672wsm83getxfzetaquq352jr6t423tdwjvdz3f3qe4r4t7", Network.RegTest),
+            });
+        nbXplorerService
+            .Setup(x => x.GetUTXOsAsync(It.IsAny<DerivationStrategyBase>(), default))
+            .ReturnsAsync(new UTXOChanges
+            {
+                Confirmed = new UTXOChange
+                {
+                    UTXOs = new List<UTXO>
+                    {
+                        new()
+                        {
+                            Value = new Money((long)10000000),
+                            ScriptPubKey = (wallet.GetDerivationStrategy() as StandardDerivationStrategyBase)!
+                                .GetDerivation(KeyPath.Parse("0/0")).ScriptPubKey,
+                            KeyPath = KeyPath.Parse("0/0"),
+                        },
+                    },
+                },
+            });
+        fmutxoRepository.Setup(x => x.GetLockedUTXOs(null, null)).ReturnsAsync(new List<FMUTXO>());
+        utxoTagRepository.Setup(x => x.GetByKeyValue(It.IsAny<string>(), It.IsAny<string>())).ReturnsAsync(new List<UTXOTag>());
+
+        var coinSelectionService = new CoinSelectionService(_logger, mapper.Object, fmutxoRepository.Object,
+            nbXplorerService.Object, null, walletWithdrawalRequestRepository.Object, utxoTagRepository.Object);
+
+        var bitcoinService = new BitcoinService(_logger, mapper.Object, walletWithdrawalRequestRepository.Object,
+            walletWithdrawalRequestPsbtRepository.Object, null, null, nbXplorerService.Object, coinSelectionService);
+
+        return (bitcoinService, withdrawalRequest, walletWithdrawalRequestPsbtRepository);
+    }
+
+    /// <summary>
+    /// Two approvers click Approve at once. Both build a template; the database accepts one. The loser must
+    /// hand its caller the STORED template, not the one it built: approvals are validated against the stored
+    /// row, so showing the unstored PSBT makes the approver sign something that is then rejected.
+    /// </summary>
+    [Fact]
+    async Task GenerateTemplatePSBT_WhenTemplateInsertIsRejected_ReturnsThePersistedTemplate()
+    {
+        // Arrange
+        var (bitcoinService, withdrawalRequest, psbtRepository) = SetupGenerationWithoutTemplate();
+
+        // The winner's template: same shape as the one about to be built, different input, so different txid.
+        var network = CurrentNetworkHelper.GetCurrentNetwork();
+        var winnerTx = network.CreateTransaction();
+        winnerTx.Inputs.Add(new TxIn(new OutPoint(uint256.Parse("ab".PadLeft(64, '0')), 0)));
+        winnerTx.Outputs.Add(new TxOut(Money.Coins(0.01m),
+            BitcoinAddress.Create("bcrt1q8k3av6q5yp83rn332lx8a90k6kukhg28hs5qw7krdq95t629hgsqk6ztmf", network)));
+        var winnerTemplate = PSBT.FromTransaction(winnerTx, network).ToBase64();
+
+        psbtRepository
+            .Setup(x => x.AddAsync(It.Is<WalletWithdrawalRequestPSBT>(p => p.IsTemplatePSBT)))
+            .ReturnsAsync((false, WalletWithdrawalRequestPsbtRepository.TemplateAlreadyExists));
+        psbtRepository
+            .Setup(x => x.GetTemplateByRequestId(withdrawalRequest.Id))
+            .ReturnsAsync(new WalletWithdrawalRequestPSBT
+            {
+                Id = 42,
+                WalletWithdrawalRequestId = withdrawalRequest.Id,
+                IsTemplatePSBT = true,
+                PSBT = winnerTemplate,
+            });
+
+        // Act
+        var result = await bitcoinService.GenerateTemplatePSBT(withdrawalRequest);
+
+        // Assert
+        result.ToBase64().Should().Be(winnerTemplate, "the caller must only ever see the persisted template");
+        psbtRepository.Verify(x => x.AddAsync(It.IsAny<WalletWithdrawalRequestPSBT>()), Times.Once);
+        psbtRepository.Verify(x => x.GetTemplateByRequestId(withdrawalRequest.Id), Times.Once);
+    }
+
+    [Fact]
+    async Task GenerateTemplatePSBT_WhenTemplateInsertFailsAndNoTemplateExists_Throws()
+    {
+        // Arrange
+        var (bitcoinService, withdrawalRequest, psbtRepository) = SetupGenerationWithoutTemplate();
+
+        psbtRepository
+            .Setup(x => x.AddAsync(It.IsAny<WalletWithdrawalRequestPSBT>()))
+            .ReturnsAsync((false, null));
+        psbtRepository
+            .Setup(x => x.GetTemplateByRequestId(withdrawalRequest.Id))
+            .ReturnsAsync((WalletWithdrawalRequestPSBT?)null);
+
+        // Act
+        var act = () => bitcoinService.GenerateTemplatePSBT(withdrawalRequest);
+
+        // Assert: an unpersisted PSBT is never returned.
+        await act.Should().ThrowAsync<Exception>().WithMessage("*Could not persist the template PSBT*");
+    }
+
+    /// <summary>
+    /// Complements <see cref="PerformWithdrawal_WithDuplicateTemplateRows_FailsLoudly"/> on the generation
+    /// side: a request that already carries two templates is refused before any coin selection or NBXplorer
+    /// call, instead of silently reusing one of them.
+    /// </summary>
+    [Fact]
+    async Task GenerateTemplatePSBT_WithDuplicateTemplateRows_FailsLoudly()
+    {
+        // Arrange
+        var wallet = CreateWallet.SingleSig(_internalWallet);
+        var withdrawalRequest = new WalletWithdrawalRequest
+        {
+            Id = 1,
+            Status = WalletWithdrawalRequestStatus.Pending,
+            Wallet = wallet,
+            WalletWithdrawalRequestPSBTs = new List<WalletWithdrawalRequestPSBT>
+            {
+                new() { Id = 1, IsTemplatePSBT = true, PSBT = "a" },
+                new() { Id = 2, IsTemplatePSBT = true, PSBT = "b" },
+            },
+            WalletWithdrawalRequestDestinations = new List<WalletWithdrawalRequestDestination>
+            {
+                new() { Address = "bcrt1q8k3av6q5yp83rn332lx8a90k6kukhg28hs5qw7krdq95t629hgsqk6ztmf", Amount = 0.01m },
+            },
+        };
+
+        var walletWithdrawalRequestRepository = new Mock<IWalletWithdrawalRequestRepository>();
+        walletWithdrawalRequestRepository.Setup(w => w.GetById(It.IsAny<int>())).ReturnsAsync(withdrawalRequest);
+        var nbXplorerService = new Mock<INBXplorerService>();
+        nbXplorerService.Setup(x => x.GetStatusAsync(default)).ReturnsAsync(new StatusResult { IsFullySynched = true });
+        var psbtRepository = new Mock<IWalletWithdrawalRequestPsbtRepository>();
+
+        var bitcoinService = new BitcoinService(_logger, null, walletWithdrawalRequestRepository.Object,
+            psbtRepository.Object, null, null, nbXplorerService.Object, null);
+
+        // Act
+        var act = () => bitcoinService.GenerateTemplatePSBT(withdrawalRequest);
+
+        // Assert
+        await act.Should().ThrowAsync<InvalidOperationException>().WithMessage("*more than one template*");
+        nbXplorerService.Verify(x => x.GetUTXOsAsync(It.IsAny<DerivationStrategyBase>(), default), Times.Never);
+        psbtRepository.Verify(x => x.AddAsync(It.IsAny<WalletWithdrawalRequestPSBT>()), Times.Never);
     }
 }

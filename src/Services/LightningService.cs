@@ -1199,8 +1199,8 @@ namespace NodeGuard.Services
 
             //If there is already a PSBT as template with the inputs as still valid UTXOs we avoid generating the whole process again to
             //avoid non-deterministic issues (e.g. Input order and other potential errors)
-            var templatePSBT =
-                channelOperationRequest.ChannelOperationRequestPsbts.Where(x => x.IsTemplatePSBT).MaxBy(x => x.Id);
+            //There is exactly one template per request (IX_ChannelOperationRequestPSBTs_Template); two rows is a fault and this throws.
+            var templatePSBT = channelOperationRequest.GetSingleTemplatePsbt();
 
             if (templatePSBT != null && PSBT.TryParse(templatePSBT.PSBT, CurrentNetworkHelper.GetCurrentNetwork(),
                     out var parsedTemplatePSBT))
@@ -1340,8 +1340,26 @@ namespace NodeGuard.Services
 
                 if (addPsbtResult.Item1 == false)
                 {
-                    _logger.LogError("Error while saving template PSBT to channel operation request: {RequestId}",
+                    // Never hand out an unpersisted PSBT (see BitcoinService.GenerateTemplatePSBT). If a
+                    // concurrent generation won the race, its stored row is the template for this request.
+                    var persistedTemplate =
+                        await _channelOperationRequestPsbtRepository.GetTemplateByRequestId(channelOperationRequest.Id);
+
+                    if (persistedTemplate != null && PSBT.TryParse(persistedTemplate.PSBT,
+                            CurrentNetworkHelper.GetCurrentNetwork(), out var persistedPsbt))
+                    {
+                        _logger.LogWarning(
+                            "Template PSBT for channel operation request {RequestId} was persisted concurrently ({Reason}), returning the stored template",
+                            channelOperationRequest.Id, addPsbtResult.Item2 ?? "unknown error");
+
+                        return (persistedPsbt, false);
+                    }
+
+                    _logger.LogError(
+                        "Error while saving template PSBT to channel operation request: {RequestId} and no template exists",
                         channelOperationRequest.Id);
+
+                    return (null, false);
                 }
             }
 
@@ -2042,7 +2060,7 @@ namespace NodeGuard.Services
             {
                 string errorMessages = string.Join("; ", response.FailedUpdates);
                 _logger.LogError("Failed to update max htlc for channel {ChanPoint}: [{Errors}]", lndChannel.ChannelPoint, errorMessages);
-                
+
                 throw new Exception($"Failed to update max htlc for channel: {lndChannel.ChannelPoint}");
             }
 
