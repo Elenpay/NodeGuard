@@ -1575,7 +1575,7 @@
         "type": "grafana-postgresql-datasource",
         "uid": "$datasource"
       },
-      "description": "Rebalances over time, bucketed by the panel interval and split by outcome. Succeeded = Status Succeeded; Failed = any terminal non-success status (Failed / No Route / Timeout / Insufficient Balance / Exceeded Fee Limit); In flight = Pending / In Flight. Bars are stacked, so each bar's height is every rebalance created in that bucket.",
+      "description": "Rebalances over time, bucketed by the panel interval and split by outcome. Succeeded = Status Succeeded; Failed = any terminal non-success status (Failed / No Route / Timeout / Insufficient Balance / Exceeded Fee Limit); In flight = Pending / In Flight. Bars are stacked, so each bar's height is every rebalance created in that bucket. Rebalanced Amount (sats) is the amount actually moved by the succeeded rebalances in the bucket (SatsAmount, not the requested amount). Success Rate = Succeeded / (Succeeded + Failed), on the right axis; in-flight rebalances are excluded since they have no outcome yet.",
       "fieldConfig": {
         "defaults": {
           "color": {
@@ -1673,6 +1673,104 @@
                 }
               }
             ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Rebalanced Amount (sats)"
+            },
+            "properties": [
+              {
+                "id": "custom.drawStyle",
+                "value": "line"
+              },
+              {
+                "id": "custom.lineWidth",
+                "value": 2
+              },
+              {
+                "id": "custom.fillOpacity",
+                "value": 0
+              },
+              {
+                "id": "custom.axisPlacement",
+                "value": "right"
+              },
+              {
+                "id": "custom.axisLabel",
+                "value": "Rebalanced (sats)"
+              },
+              {
+                "id": "unit",
+                "value": "suffix:sats"
+              },
+              {
+                "id": "min",
+                "value": 0
+              },
+              {
+                "id": "color",
+                "value": {
+                  "fixedColor": "purple",
+                  "mode": "fixed"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Success Rate"
+            },
+            "properties": [
+              {
+                "id": "custom.drawStyle",
+                "value": "line"
+              },
+              {
+                "id": "custom.lineWidth",
+                "value": 2
+              },
+              {
+                "id": "custom.fillOpacity",
+                "value": 0
+              },
+              {
+                "id": "custom.showPoints",
+                "value": "always"
+              },
+              {
+                "id": "custom.axisPlacement",
+                "value": "right"
+              },
+              {
+                "id": "custom.axisLabel",
+                "value": "Success rate"
+              },
+              {
+                "id": "unit",
+                "value": "percentunit"
+              },
+              {
+                "id": "decimals",
+                "value": 1
+              },
+              {
+                "id": "min",
+                "value": 0
+              },
+              {
+                "id": "max",
+                "value": 1
+              },
+              {
+                "id": "color",
+                "value": {
+                  "fixedColor": "blue",
+                  "mode": "fixed"
+                }
+              }
+            ]
           }
         ]
       },
@@ -1707,7 +1805,7 @@
           "editorMode": "code",
           "format": "table",
           "rawQuery": true,
-          "rawSql": "SELECT\n  $__timeGroup(r.\"CreationDatetime\", $__interval, 0) AS \"time\",\n  COUNT(*) FILTER (WHERE r.\"Status\" = 3) AS \"Succeeded\",\n  -- Everything that is neither settled nor still running, so the three series always sum to\n  -- every rebalance in the bucket (Status 1 is the removed Probing value, kept as a gap):\n  COUNT(*) FILTER (WHERE r.\"Status\" NOT IN (0, 1, 2, 3)) AS \"Failed\",\n  COUNT(*) FILTER (WHERE r.\"Status\" IN (0, 1, 2)) AS \"In flight\"\nFROM \"Rebalances\" r\nJOIN \"Nodes\" n ON n.\"Id\" = r.\"NodeId\"\nWHERE\n  $__timeFilter(r.\"CreationDatetime\")\n  AND n.\"PubKey\" IN ($node)\nGROUP BY 1\nORDER BY 1",
+          "rawSql": "SELECT\n  $__timeGroup(r.\"CreationDatetime\", $__interval, 0) AS \"time\",\n  COUNT(*) FILTER (WHERE r.\"Status\" = 3) AS \"Succeeded\",\n  -- Everything that is neither settled nor still running, so the three series always sum to\n  -- every rebalance in the bucket (Status 1 is the removed Probing value, kept as a gap):\n  COUNT(*) FILTER (WHERE r.\"Status\" NOT IN (0, 1, 2, 3)) AS \"Failed\",\n  COUNT(*) FILTER (WHERE r.\"Status\" IN (0, 1, 2)) AS \"In flight\",\n\n  -- Amount actually moved by the succeeded rebalances, not the amount originally requested:\n  COALESCE(SUM(r.\"SatsAmount\") FILTER (WHERE r.\"Status\" = 3), 0) AS \"Rebalanced Amount (sats)\",\n\n  -- Resolved rebalances only; in-flight ones have no outcome yet and would drag the ratio down:\n  COUNT(*) FILTER (WHERE r.\"Status\" = 3)::float8\n    / NULLIF(COUNT(*) FILTER (WHERE r.\"Status\" NOT IN (0, 1, 2)), 0) AS \"Success Rate\"\n\nFROM \"Rebalances\" r\nJOIN \"Nodes\" n ON n.\"Id\" = r.\"NodeId\"\nWHERE\n  $__timeFilter(r.\"CreationDatetime\")\n  AND n.\"PubKey\" IN ($node)\nGROUP BY 1\nORDER BY 1",
           "refId": "A"
         }
       ],
