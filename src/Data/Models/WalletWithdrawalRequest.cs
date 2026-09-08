@@ -104,6 +104,25 @@ namespace NodeGuard.Data.Models
             !x.IsTemplatePSBT && !x.IsFinalisedPSBT && !x.IsInternalWalletPSBT);
 
         /// <summary>
+        /// The single template PSBT of this request, or null when none has been generated yet.
+        /// The database enforces at most one (IX_WalletWithdrawalRequestPSBTs_Template); finding more is a
+        /// data-integrity fault and this throws rather than silently picking one, because the template is
+        /// what every approval is validated against and what the internal wallet co-signs.
+        /// </summary>
+        public WalletWithdrawalRequestPSBT? GetSingleTemplatePsbt()
+        {
+            try
+            {
+                return WalletWithdrawalRequestPSBTs?.SingleOrDefault(x => x.IsTemplatePSBT);
+            }
+            catch (InvalidOperationException e)
+            {
+                throw new InvalidOperationException(
+                    $"Withdrawal request {Id} has more than one template PSBT, expected exactly one", e);
+            }
+        }
+
+        /// <summary>
         /// This indicates if the user requested a changeless operation by selecting UTXOs
         /// </summary>
         public bool Changeless { get; set; }

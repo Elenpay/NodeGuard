@@ -62,7 +62,7 @@
             <DataGridColumn TItem="WalletWithdrawalRequest" Filterable="false" Field="@nameof(WalletWithdrawalRequest.Id)" Caption="#" Sortable="false" Displayable="true"/>
             <DataGridColumn TItem="WalletWithdrawalRequest" Filterable="false" Caption="Actions" Sortable="false" Displayable="true">
                 <DisplayTemplate>
-                    <Button Color="Color.Success" hidden="@(!_isFinanceManager)" Clicked="() => ShowApprovalModal(context)">Approve</Button>
+                    <Button Color="Color.Success" hidden="@(!_isFinanceManager)" Disabled="@_approvalInFlight" Clicked="() => ShowApprovalModal(context)">Approve</Button>
                 </DisplayTemplate>
             </DataGridColumn>
             <DataGridColumn TItem="WalletWithdrawalRequest" Filterable="false" Caption="" Sortable="false" Displayable="true">
@@ -545,6 +545,9 @@
     private bool _bumpIsCancellation;
     private string _signedPSBT;
     private string? _templatePsbtString;
+    // Guards ShowApprovalModal against re-entry (double click, repeated render dispatch) while the template
+    // PSBT is being generated. Cross-user/cross-circuit races are handled by the database unique index.
+    private bool _approvalInFlight;
     private int? _selectedWalletId;
     private static readonly decimal _minimumWithdrawalAmount = Constants.MINIMUM_WITHDRAWAL_BTC_AMOUNT;
 
@@ -896,14 +899,34 @@
 
     private async Task ShowApprovalModal(WalletWithdrawalRequest walletWithdrawalRequest)
     {
+        if (_approvalInFlight) return;
+        _approvalInFlight = true;
+
+        try
+        {
+            await ShowApprovalModalCore(walletWithdrawalRequest);
+        }
+        finally
+        {
+            _approvalInFlight = false;
+        }
+    }
+
+    private async Task ShowApprovalModalCore(WalletWithdrawalRequest walletWithdrawalRequest)
+    {
         _selectedRequest = await WalletWithdrawalRequestRepository.GetById(walletWithdrawalRequest.Id);
 
         //PSBT Generation
         try
         {
+            // GenerateTemplatePSBT persists the template and returns the persisted one (also when a
+            // concurrent generation won), so what the approver sees here is what the validator will
+            // compare their signature against.
             var templatePSBT = await BitcoinService.GenerateTemplatePSBT(walletWithdrawalRequest);
 
-            //TODO Save template PSBT (?)
+            // Re-read so the request carries the template row for the later duplicate/threshold checks.
+            _selectedRequest = await WalletWithdrawalRequestRepository.GetById(walletWithdrawalRequest.Id) ?? _selectedRequest;
+
             _templatePsbtString = templatePSBT.ToBase64();
             if (_psbtSignRef != null) await _psbtSignRef.ShowModal();
         }

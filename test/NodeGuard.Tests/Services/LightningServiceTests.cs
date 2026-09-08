@@ -21,6 +21,7 @@ using System.Security.Cryptography;
 using Microsoft.Extensions.Logging;
 using NodeGuard.Data;
 using NodeGuard.Data.Models;
+using NodeGuard.Data.Repositories;
 using NodeGuard.Data.Repositories.Interfaces;
 using NodeGuard.TestHelpers;
 using NBXplorer.Models;
@@ -2982,6 +2983,141 @@ namespace NodeGuard.Services
             auditService.Verify(x => x.LogSystemAsync(
                 It.IsAny<AuditActionType>(), It.IsAny<AuditEventType>(), It.IsAny<AuditObjectType>(),
                 It.IsAny<string>(), It.IsAny<object>()), Times.Never);
+        }
+
+        // ---- template persistence race ---------------------------------------------------------------------
+
+        /// <summary>
+        /// Mirror of BitcoinServiceTests.GenerateTemplatePSBT_WhenTemplateInsertIsRejected_ReturnsThePersistedTemplate
+        /// for channel opens: when the template insert loses the race (unique index), the caller receives the
+        /// STORED template, never the freshly built one it could not persist.
+        /// </summary>
+        [Fact]
+        public async Task GenerateTemplatePSBT_WhenTemplateInsertIsRejected_ReturnsThePersistedTemplate()
+        {
+            // Arrange
+            var network = CurrentNetworkHelper.GetCurrentNetwork();
+            var wallet = CreateWallet.SingleSig(_internalWallet);
+            var walletScript = (wallet.GetDerivationStrategy() as StandardDerivationStrategyBase)!
+                .GetDerivation(KeyPath.Parse("0/0")).ScriptPubKey;
+
+            var request = new ChannelOperationRequest
+            {
+                Id = 7,
+                RequestType = OperationRequestType.Open,
+                Status = ChannelOperationRequestStatus.Pending,
+                Wallet = wallet,
+                WalletId = wallet.Id,
+                SatsAmount = 1_000_000,
+                FeeRate = 2,
+                ChannelOperationRequestPsbts = new List<ChannelOperationRequestPSBT>(),
+            };
+
+            var fundingTx = network.CreateTransaction();
+            fundingTx.Outputs.Add(new TxOut(Money.Coins(0.1m), walletScript));
+            var coin = new Coin(fundingTx, 0U);
+            var utxo = new UTXO
+            {
+                Outpoint = coin.Outpoint,
+                Value = coin.Amount,
+                ScriptPubKey = walletScript,
+                KeyPath = KeyPath.Parse("0/0"),
+            };
+
+            var channelOperationRequestRepository = new Mock<IChannelOperationRequestRepository>();
+            channelOperationRequestRepository.Setup(x => x.GetById(request.Id)).ReturnsAsync(request);
+
+            var nbXplorerService = new Mock<INBXplorerService>();
+            nbXplorerService.Setup(x => x.GetStatusAsync(default)).ReturnsAsync(new StatusResult { IsFullySynched = true });
+            nbXplorerService.Setup(x => x.GetFeesByType(It.IsAny<MempoolRecommendedFeesType>(), default)).ReturnsAsync(2m);
+            nbXplorerService
+                .Setup(x => x.GetUnusedAsync(It.IsAny<DerivationStrategyBase>(), DerivationFeature.Change, 0, false, default))
+                .ReturnsAsync(new KeyPathInformation
+                {
+                    Address = BitcoinAddress.Create("bcrt1q83ml8tve8vh672wsm83getxfzetaquq352jr6t423tdwjvdz3f3qe4r4t7", Network.RegTest),
+                });
+
+            var coinSelectionService = new Mock<ICoinSelectionService>();
+            coinSelectionService
+                .Setup(x => x.GetLockedUTXOsForRequest(request, BitcoinRequestType.ChannelOperation))
+                .ReturnsAsync(new List<UTXO>());
+            coinSelectionService
+                .Setup(x => x.GetAvailableUTXOsAsync(It.IsAny<DerivationStrategyBase>()))
+                .ReturnsAsync(new List<UTXO> { utxo });
+            coinSelectionService
+                .Setup(x => x.GetTxInputCoins(It.IsAny<List<UTXO>>(), request, It.IsAny<DerivationStrategyBase>()))
+                .ReturnsAsync((new List<ICoin> { coin }, new List<UTXO> { utxo }));
+
+            // The winner's template: a different transaction than the one about to be built.
+            var winnerTx = network.CreateTransaction();
+            winnerTx.Inputs.Add(new TxIn(new NBitcoin.OutPoint(uint256.Parse("cd".PadLeft(64, '0')), 0)));
+            var winnerTemplate = PSBT.FromTransaction(winnerTx, network).ToBase64();
+
+            var psbtRepository = new Mock<IChannelOperationRequestPSBTRepository>();
+            psbtRepository
+                .Setup(x => x.AddAsync(It.Is<ChannelOperationRequestPSBT>(p => p.IsTemplatePSBT)))
+                .ReturnsAsync((false, ChannelOperationRequestPSBTRepository.TemplateAlreadyExists));
+            psbtRepository
+                .Setup(x => x.GetTemplateByRequestId(request.Id))
+                .ReturnsAsync(new ChannelOperationRequestPSBT
+                {
+                    Id = 42,
+                    ChannelOperationRequestId = request.Id,
+                    IsTemplatePSBT = true,
+                    PSBT = winnerTemplate,
+                });
+
+            var lightningService = new LightningService(_logger, channelOperationRequestRepository.Object, null,
+                new Mock<IDbContextFactory<ApplicationDbContext>>().Object, psbtRepository.Object, null, null,
+                nbXplorerService.Object, coinSelectionService.Object, null, null, null);
+
+            // Act
+            var (result, noUtxos) = await lightningService.GenerateTemplatePSBT(request);
+
+            // Assert
+            noUtxos.Should().BeFalse();
+            result.Should().NotBeNull();
+            result!.ToBase64().Should().Be(winnerTemplate, "the caller must only ever see the persisted template");
+            psbtRepository.Verify(x => x.AddAsync(It.IsAny<ChannelOperationRequestPSBT>()), Times.Once);
+            psbtRepository.Verify(x => x.GetTemplateByRequestId(request.Id), Times.Once);
+        }
+
+        [Fact]
+        public async Task GenerateTemplatePSBT_WithDuplicateTemplateRows_FailsLoudly()
+        {
+            // Arrange
+            var wallet = CreateWallet.SingleSig(_internalWallet);
+            var request = new ChannelOperationRequest
+            {
+                Id = 704,
+                RequestType = OperationRequestType.Open,
+                Status = ChannelOperationRequestStatus.Pending,
+                Wallet = wallet,
+                ChannelOperationRequestPsbts = new List<ChannelOperationRequestPSBT>
+                {
+                    new() { Id = 1, IsTemplatePSBT = true, PSBT = "a" },
+                    new() { Id = 2, IsTemplatePSBT = true, PSBT = "b" },
+                },
+            };
+
+            var channelOperationRequestRepository = new Mock<IChannelOperationRequestRepository>();
+            channelOperationRequestRepository.Setup(x => x.GetById(request.Id)).ReturnsAsync(request);
+            var nbXplorerService = new Mock<INBXplorerService>();
+            nbXplorerService.Setup(x => x.GetStatusAsync(default)).ReturnsAsync(new StatusResult { IsFullySynched = true });
+            var coinSelectionService = new Mock<ICoinSelectionService>();
+            var psbtRepository = new Mock<IChannelOperationRequestPSBTRepository>();
+
+            var lightningService = new LightningService(_logger, channelOperationRequestRepository.Object, null,
+                new Mock<IDbContextFactory<ApplicationDbContext>>().Object, psbtRepository.Object, null, null,
+                nbXplorerService.Object, coinSelectionService.Object, null, null, null);
+
+            // Act
+            var act = () => lightningService.GenerateTemplatePSBT(request);
+
+            // Assert
+            await act.Should().ThrowAsync<InvalidOperationException>().WithMessage("*704*more than one template*");
+            coinSelectionService.Verify(x => x.GetAvailableUTXOsAsync(It.IsAny<DerivationStrategyBase>()), Times.Never);
+            psbtRepository.Verify(x => x.AddAsync(It.IsAny<ChannelOperationRequestPSBT>()), Times.Never);
         }
     }
 }

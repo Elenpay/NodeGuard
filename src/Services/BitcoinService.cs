@@ -112,10 +112,9 @@ namespace NodeGuard.Services
             }
 
             //If there is already a PSBT as template with the inputs as still valid UTXOs we avoid generating the whole process again to
-            //avoid non-deterministic issues (e.g. Input order and other potential errors)
-            var templatePSBT = walletWithdrawalRequest.WalletWithdrawalRequestPSBTs.Where(x => x.IsTemplatePSBT)
-                .OrderBy(x => x.Id)
-                .LastOrDefault(); //We take the oldest
+            //avoid non-deterministic issues (e.g. Input order and other potential errors).
+            //There is exactly one template per request (IX_WalletWithdrawalRequestPSBTs_Template); two rows is a fault and this throws.
+            var templatePSBT = walletWithdrawalRequest.GetSingleTemplatePsbt();
 
             if (templatePSBT != null && PSBT.TryParse(templatePSBT.PSBT, CurrentNetworkHelper.GetCurrentNetwork(),
                     out var parsedTemplatePSBT))
@@ -310,7 +309,9 @@ namespace NodeGuard.Services
                 selectedUTXOs, scriptCoins, _logger);
 
 
-            // We "lock" the PSBT to the channel operation request by adding to its UTXOs collection for later checking
+            // We "lock" the PSBT to the channel operation request by adding to its UTXOs collection for later checking.
+            // If two generators race, both reach here with the same coin selection (same available set, no
+            // locked UTXOs yet) and AddUTXOs de-duplicates by Except, so the loser leaves no stray UTXO rows.
             var utxos = selectedUTXOs.Select(x => _mapper.Map<UTXO, FMUTXO>(x)).ToList();
 
             var addUTXOSOperation = await _walletWithdrawalRequestRepository.AddUTXOs(walletWithdrawalRequest, utxos);
@@ -338,14 +339,33 @@ namespace NodeGuard.Services
             };
 
             var addPsbtResult = await _walletWithdrawalRequestPsbtRepository.AddAsync(psbt);
-
-            if (addPsbtResult.Item1 == false)
+            if (addPsbtResult.Item1)
             {
-                _logger.LogError("Error while saving template PSBT to wallet withdrawal request: {RequestId}",
-                    walletWithdrawalRequest.Id);
+                return originalPSBT;
             }
 
-            return originalPSBT;
+            // Never hand out an unpersisted PSBT. Approvals are validated against the stored template, so a
+            // PSBT that is not the stored one can never be approved: the signer would sign something the
+            // validator then rejects. If a concurrent generation won the race (unique index violation), the
+            // stored row is the template for this request and is what the caller gets.
+            var persistedTemplate =
+                await _walletWithdrawalRequestPsbtRepository.GetTemplateByRequestId(walletWithdrawalRequest.Id);
+
+            if (persistedTemplate != null && PSBT.TryParse(persistedTemplate.PSBT,
+                    CurrentNetworkHelper.GetCurrentNetwork(), out var persistedPsbt))
+            {
+                _logger.LogWarning(
+                    "Template PSBT for withdrawal request {RequestId} was persisted concurrently ({Reason}), returning the stored template",
+                    walletWithdrawalRequest.Id, addPsbtResult.Item2 ?? "unknown error");
+
+                return persistedPsbt;
+            }
+
+            var error =
+                $"Could not persist the template PSBT for withdrawal request {walletWithdrawalRequest.Id} and no template exists";
+            _logger.LogError(error);
+
+            throw new Exception(error);
         }
 
         public async Task PerformWithdrawal(WalletWithdrawalRequest walletWithdrawalRequest)
@@ -382,10 +402,13 @@ namespace NodeGuard.Services
             //If it is a hot wallet or a BIP39 imported wallet, we dont need to combine the PSBTs
             if (walletWithdrawalRequest.Wallet.IsHotWallet || walletWithdrawalRequest.Wallet.IsBIP39Imported)
             {
-                psbtToSign = PSBT.Parse(walletWithdrawalRequest.WalletWithdrawalRequestPSBTs
-                        .Single(x => x.IsTemplatePSBT)
-                        .PSBT,
-                    CurrentNetworkHelper.GetCurrentNetwork());
+                // GetSingleTemplatePsbt throws on two rows: a request with more than one template must never
+                // be signed, since it is unknowable which transaction was approved.
+                var singleTemplate = walletWithdrawalRequest.GetSingleTemplatePsbt()
+                                     ?? throw new InvalidOperationException(
+                                         $"No template PSBT found for withdrawal request:{walletWithdrawalRequest.Id}");
+
+                psbtToSign = PSBT.Parse(singleTemplate.PSBT, CurrentNetworkHelper.GetCurrentNetwork());
             }
             else //If it is a cold multisig wallet, we need to combine the PSBTs
             {
@@ -413,8 +436,7 @@ namespace NodeGuard.Services
                 // internal wallet applies its signature. Matching the template's txid transitively guarantees
                 // the destinations and amounts are those the request was approved for, since NodeGuard built
                 // that template itself from WalletWithdrawalRequestDestinations.
-                var templatePsbtString = walletWithdrawalRequest.WalletWithdrawalRequestPSBTs
-                    ?.FirstOrDefault(x => x.IsTemplatePSBT)?.PSBT;
+                var templatePsbtString = walletWithdrawalRequest.GetSingleTemplatePsbt()?.PSBT;
 
                 if (string.IsNullOrWhiteSpace(templatePsbtString))
                 {

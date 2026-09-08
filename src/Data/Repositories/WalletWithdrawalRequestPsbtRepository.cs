@@ -17,16 +17,23 @@
  *
  */
 
-﻿using NodeGuard.Data.Models;
+using NodeGuard.Data.Models;
 using NodeGuard.Data.Repositories.Interfaces;
 using Microsoft.EntityFrameworkCore;
 using NBitcoin;
 using NodeGuard.Helpers;
+using Npgsql;
 
 namespace NodeGuard.Data.Repositories
 {
     public class WalletWithdrawalRequestPsbtRepository : IWalletWithdrawalRequestPsbtRepository
     {
+        /// <summary>
+        /// Returned as the message when a template insert loses the race against another generator. The
+        /// database (IX_WalletWithdrawalRequestPSBTs_Template) is what rejects it; this just names it.
+        /// </summary>
+        public const string TemplateAlreadyExists = "A template PSBT already exists for this request.";
+
         private readonly IRepository<WalletWithdrawalRequestPSBT> _repository;
         private readonly ILogger<WalletWithdrawalRequestPsbtRepository> _logger;
         private readonly IDbContextFactory<ApplicationDbContext> _dbContextFactory;
@@ -45,6 +52,16 @@ namespace NodeGuard.Data.Repositories
             await using var applicationDbContext = await _dbContextFactory.CreateDbContextAsync();
 
             return await applicationDbContext.WalletWithdrawalRequestPSBTs.FirstOrDefaultAsync(x => x.Id == id);
+        }
+
+        public async Task<WalletWithdrawalRequestPSBT?> GetTemplateByRequestId(int walletWithdrawalRequestId)
+        {
+            await using var applicationDbContext = await _dbContextFactory.CreateDbContextAsync();
+
+            // SingleOrDefault on purpose: the unique index guarantees at most one, and a second row must
+            // surface as an error rather than be papered over.
+            return await applicationDbContext.WalletWithdrawalRequestPSBTs
+                .SingleOrDefaultAsync(x => x.WalletWithdrawalRequestId == walletWithdrawalRequestId && x.IsTemplatePSBT);
         }
 
         public async Task<List<WalletWithdrawalRequestPSBT>> GetAll()
@@ -77,9 +94,14 @@ namespace NodeGuard.Data.Repositories
                 return (false, validation.Error);
             }
 
+            if (type.IsTemplatePSBT)
+            {
+                return await AddTemplateAsync(type, applicationDbContext);
+            }
+
             try
             {
-                if (request != null && !type.IsTemplatePSBT )
+                if (request != null)
                 {
                     request.Status = WalletWithdrawalRequestStatus.PSBTSignaturesPending;
 
@@ -94,6 +116,41 @@ namespace NodeGuard.Data.Repositories
             }
 
             return await _repository.AddAsync(type, applicationDbContext);
+        }
+
+        /// <summary>
+        /// Template inserts bypass the generic repository because it swallows every exception into
+        /// (false, null). GenerateTemplatePSBT needs to tell "lost the race, a template now exists" apart
+        /// from a genuine failure, so the unique-index violation is surfaced with a dedicated message.
+        /// </summary>
+        private async Task<(bool, string?)> AddTemplateAsync(WalletWithdrawalRequestPSBT type,
+            ApplicationDbContext applicationDbContext)
+        {
+            try
+            {
+                applicationDbContext.Add(type);
+                await applicationDbContext.SaveChangesAsync();
+
+                return (true, null);
+            }
+            catch (DbUpdateException e) when (e.InnerException is PostgresException
+            {
+                SqlState: PostgresErrorCodes.UniqueViolation
+            })
+            {
+                _logger.LogWarning(
+                    "Template PSBT for withdrawal request {RequestId} already exists, a concurrent generation won the race",
+                    type.WalletWithdrawalRequestId);
+
+                return (false, TemplateAlreadyExists);
+            }
+            catch (Exception e)
+            {
+                _logger.LogError(e, "Error saving template PSBT for withdrawal request {RequestId}",
+                    type.WalletWithdrawalRequestId);
+
+                return (false, null);
+            }
         }
 
         public async Task<(bool, string?)> AddRangeAsync(List<WalletWithdrawalRequestPSBT> type)
@@ -144,8 +201,17 @@ namespace NodeGuard.Data.Repositories
                 .Select(x => x.PSBT)
                 .ToList() ?? new List<string>();
 
-            var template = request.WalletWithdrawalRequestPSBTs?
-                .FirstOrDefault(x => x.IsTemplatePSBT)?.PSBT;
+            string? template;
+            try
+            {
+                template = request.GetSingleTemplatePsbt()?.PSBT;
+            }
+            catch (InvalidOperationException e)
+            {
+                // Two templates means the approver may have signed a different transaction than the one we
+                // would compare against. Refuse rather than guess which template is "the" template.
+                return PsbtApprovalValidator.Result.Fail(e.Message);
+            }
 
             if (string.IsNullOrWhiteSpace(template))
             {

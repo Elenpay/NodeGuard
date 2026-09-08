@@ -66,6 +66,26 @@ namespace NodeGuard.Data
             //There should be only one Liquidity Rule per Channel
             modelBuilder.Entity<LiquidityRule>().HasIndex(x => x.ChannelId).IsUnique();
 
+            // Exactly one template PSBT per request. The template is the trust anchor every approval is
+            // validated against (PsbtApprovalValidator); two concurrent GenerateTemplatePSBT calls used to
+            // persist two templates with different txids, so the approver signed a transaction the validator
+            // then rejected. Partial unique index: only rows tagged IsTemplatePSBT participate. The named
+            // overload is deliberate: HasIndex(props) alone would return and mutate the convention FK index
+            // instead of adding a second one.
+            // The plain FK indexes must be declared too: once any explicit index covers the FK property, EF no
+            // longer creates the convention one, and the migration would drop it.
+            modelBuilder.Entity<WalletWithdrawalRequestPSBT>().HasIndex(x => x.WalletWithdrawalRequestId);
+            modelBuilder.Entity<WalletWithdrawalRequestPSBT>()
+                .HasIndex(x => x.WalletWithdrawalRequestId, "IX_WalletWithdrawalRequestPSBTs_Template")
+                .IsUnique()
+                .HasFilter("\"IsTemplatePSBT\"");
+
+            modelBuilder.Entity<ChannelOperationRequestPSBT>().HasIndex(x => x.ChannelOperationRequestId);
+            modelBuilder.Entity<ChannelOperationRequestPSBT>()
+                .HasIndex(x => x.ChannelOperationRequestId, "IX_ChannelOperationRequestPSBTs_Template")
+                .IsUnique()
+                .HasFilter("\"IsTemplatePSBT\"");
+
             modelBuilder.Entity<ApplicationUser>().HasIndex(x => x.NormalizedUserName).IsUnique();
 
 

@@ -17,16 +17,22 @@
  *
  */
 
-﻿using NodeGuard.Data.Models;
+using NodeGuard.Data.Models;
 using NodeGuard.Data.Repositories.Interfaces;
 using Microsoft.EntityFrameworkCore;
 using NBitcoin;
 using NodeGuard.Helpers;
+using Npgsql;
 
 namespace NodeGuard.Data.Repositories
 {
     public class ChannelOperationRequestPSBTRepository : IChannelOperationRequestPSBTRepository
     {
+        /// <summary>
+        /// See WalletWithdrawalRequestPsbtRepository.TemplateAlreadyExists.
+        /// </summary>
+        public const string TemplateAlreadyExists = "A template PSBT already exists for this request.";
+
         private readonly IRepository<ChannelOperationRequestPSBT> _repository;
         private readonly ILogger<ChannelOperationRequestPSBTRepository> _logger;
         private readonly IDbContextFactory<ApplicationDbContext> _dbContextFactory;
@@ -45,6 +51,14 @@ namespace NodeGuard.Data.Repositories
             await using var applicationDbContext = await _dbContextFactory.CreateDbContextAsync();
 
             return await applicationDbContext.ChannelOperationRequestPSBTs.FirstOrDefaultAsync(x => x.Id == id);
+        }
+
+        public async Task<ChannelOperationRequestPSBT?> GetTemplateByRequestId(int channelOperationRequestId)
+        {
+            await using var applicationDbContext = await _dbContextFactory.CreateDbContextAsync();
+
+            return await applicationDbContext.ChannelOperationRequestPSBTs
+                .SingleOrDefaultAsync(x => x.ChannelOperationRequestId == channelOperationRequestId && x.IsTemplatePSBT);
         }
 
         public async Task<List<ChannelOperationRequestPSBT>> GetAll()
@@ -75,9 +89,14 @@ namespace NodeGuard.Data.Repositories
                 return (false, validation.Error);
             }
 
+            if (type.IsTemplatePSBT)
+            {
+                return await AddTemplateAsync(type, applicationDbContext);
+            }
+
             try
             {
-                if (request != null && !type.IsTemplatePSBT)
+                if (request != null)
                 {
                     request.Status = ChannelOperationRequestStatus.PSBTSignaturesPending;
 
@@ -92,6 +111,40 @@ namespace NodeGuard.Data.Repositories
             }
 
             return await _repository.AddAsync(type, applicationDbContext);
+        }
+
+        /// <summary>
+        /// See WalletWithdrawalRequestPsbtRepository.AddTemplateAsync: surfaces the unique-index violation
+        /// (IX_ChannelOperationRequestPSBTs_Template) instead of the generic repository's (false, null).
+        /// </summary>
+        private async Task<(bool, string?)> AddTemplateAsync(ChannelOperationRequestPSBT type,
+            ApplicationDbContext applicationDbContext)
+        {
+            try
+            {
+                applicationDbContext.Add(type);
+                await applicationDbContext.SaveChangesAsync();
+
+                return (true, null);
+            }
+            catch (DbUpdateException e) when (e.InnerException is PostgresException
+            {
+                SqlState: PostgresErrorCodes.UniqueViolation
+            })
+            {
+                _logger.LogWarning(
+                    "Template PSBT for channel operation request {RequestId} already exists, a concurrent generation won the race",
+                    type.ChannelOperationRequestId);
+
+                return (false, TemplateAlreadyExists);
+            }
+            catch (Exception e)
+            {
+                _logger.LogError(e, "Error saving template PSBT for channel operation request {RequestId}",
+                    type.ChannelOperationRequestId);
+
+                return (false, null);
+            }
         }
 
         public async Task<(bool, string?)> AddRangeAsync(List<ChannelOperationRequestPSBT> type)
@@ -154,8 +207,15 @@ namespace NodeGuard.Data.Repositories
                 .Select(x => x.PSBT)
                 .ToList() ?? new List<string>();
 
-            var template = request.ChannelOperationRequestPsbts?
-                .FirstOrDefault(x => x.IsTemplatePSBT)?.PSBT;
+            string? template;
+            try
+            {
+                template = request.GetSingleTemplatePsbt()?.PSBT;
+            }
+            catch (InvalidOperationException e)
+            {
+                return PsbtApprovalValidator.Result.Fail(e.Message);
+            }
 
             if (string.IsNullOrWhiteSpace(template))
             {
