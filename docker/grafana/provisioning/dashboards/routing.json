@@ -2383,7 +2383,7 @@
           "editorMode": "code",
           "format": "table",
           "rawQuery": true,
-          "rawSql": "SELECT\n  $__timeGroup(\"CreationDatetime\", '1h', 0) AS \"time\",\n  \n  -- The raw profit for that specific hour:\n  SUM(\"FeeMsat\") / 1e11 AS \"Hourly Profit\",\n\n  -- The 24-hour rolling average (averages the last 24 one-hour buckets):\n  AVG(SUM(\"FeeMsat\") / 1e11) OVER (\n    ORDER BY $__timeGroup(\"CreationDatetime\", '1h', 0)\n    ROWS BETWEEN 23 PRECEDING AND CURRENT ROW\n  ) AS \"24h Rolling Avg\"\n\nFROM \"ForwardingHtlcEvents\"\nWHERE\n  $__timeFilter(\"CreationDatetime\")\n  AND \"Outcome\" = 1\n  AND \"ManagedNodePubKey\" IN ($node)\nGROUP BY 1\nORDER BY 1",
+          "rawSql": "WITH forwards AS (\n  SELECT\n    $__timeGroup(\"CreationDatetime\", '1h', 0) AS bucket,\n    SUM(\"FeeMsat\") AS fee_msat\n  FROM \"ForwardingHtlcEvents\"\n  WHERE\n    $__timeFilter(\"CreationDatetime\")\n    AND \"Outcome\" = 1\n    AND \"ManagedNodePubKey\" IN ($node)\n  GROUP BY 1\n),\nrebalances AS (\n  SELECT\n    $__timeGroup(r.\"CreationDatetime\", '1h', 0) AS bucket,\n    COALESCE(SUM(r.\"FeePaidSats\"), 0) AS cost_sats\n  FROM \"Rebalances\" r\n  JOIN \"Nodes\" n ON n.\"Id\" = r.\"NodeId\"\n  WHERE\n    r.\"Status\" = 3\n    AND $__timeFilter(r.\"CreationDatetime\")\n    AND n.\"PubKey\" IN ($node)\n  GROUP BY 1\n),\nhourly AS (\n  -- FULL OUTER JOIN so an hour with rebalance spend but no forwards still shows its loss\n  SELECT\n    COALESCE(f.bucket, b.bucket) AS bucket,\n    COALESCE(f.fee_msat, 0) AS fee_msat,\n    $applyRebalanceCosts * COALESCE(b.cost_sats, 0) AS cost_sats\n  FROM forwards f\n  FULL OUTER JOIN rebalances b ON b.bucket = f.bucket\n)\nSELECT\n  bucket AS \"time\",\n\n  -- Routing fees minus succeeded rebalance fees for that hour, in BTC:\n  (fee_msat / 1000.0 - cost_sats) / 1e8 AS \"Hourly Profit\",\n\n  -- The 24-hour rolling average (averages the last 24 one-hour buckets):\n  AVG((fee_msat / 1000.0 - cost_sats) / 1e8) OVER (\n    ORDER BY bucket\n    ROWS BETWEEN 23 PRECEDING AND CURRENT ROW\n  ) AS \"24h Rolling Avg\"\n\nFROM hourly\nORDER BY bucket",
           "refId": "A",
           "sql": {
             "columns": [
@@ -2405,7 +2405,8 @@
         }
       ],
       "title": "Profit over time",
-      "type": "timeseries"
+      "type": "timeseries",
+      "description": "Hourly routing profit in BTC, net of succeeded rebalance fees when Apply Rebalance Costs is enabled, with a 24-hour rolling average. Rebalance fees are attributed to the hour the rebalance was created."
     },
     {
       "datasource": {
