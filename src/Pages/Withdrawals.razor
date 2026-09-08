@@ -498,6 +498,7 @@
     Title="Are you sure?"
     Body="You selected a hot wallet. This means that the system will automatically use the funds in it without the need of manual approval. Are you sure you want to perform this operation?"
     OkLabel="Yes, I am sure"
+    OkDisabled="@_createInFlight"
     OnCancel="@CloseConfirmationModal"
     OnSubmit="@SubmitConfirmationModal"/>
 
@@ -548,6 +549,8 @@
     // Guards ShowApprovalModal against re-entry (double click, repeated render dispatch) while the template
     // PSBT is being generated. Cross-user/cross-circuit races are handled by the database unique index.
     private bool _approvalInFlight;
+    // Same guard for the New-withdrawal confirmation, which creates the request (and schedules it on hot wallets).
+    private bool _createInFlight;
     private int? _selectedWalletId;
     private static readonly decimal _minimumWithdrawalAmount = Constants.MINIMUM_WITHDRAWAL_BTC_AMOUNT;
 
@@ -1275,6 +1278,21 @@
     }
 
     private async Task SubmitConfirmationModal()
+    {
+        if (_createInFlight) return;
+        _createInFlight = true;
+
+        try
+        {
+            await SubmitConfirmationModalCore();
+        }
+        finally
+        {
+            _createInFlight = false;
+        }
+    }
+
+    private async Task SubmitConfirmationModalCore()
     {
         async Task CleanUp(string errorMessage)
         {

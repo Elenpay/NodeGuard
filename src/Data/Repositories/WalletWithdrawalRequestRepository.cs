@@ -288,9 +288,11 @@ namespace NodeGuard.Data.Repositories
         {
             using var applicationDbContext = _dbContextFactory.CreateDbContext();
 
+            // Stamp before mapping, otherwise the stripped copy that is persisted keeps the old UpdateDatetime.
+            type.SetUpdateDatetime();
+
             //Automapper to remove collections
             var strippedType = _mapper.Map<WalletWithdrawalRequest, WalletWithdrawalRequest>(type);
-            type.SetUpdateDatetime();
 
             return _repository.Update(strippedType, applicationDbContext);
         }

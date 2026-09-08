@@ -277,7 +277,7 @@
                     <Button Color="Color.Primary" hidden></Button>
                 </DeleteCommandTemplate>
                 <SaveCommandTemplate>
-                    <Button Color="Color.Primary" Clicked="@(async () => await CreateChannelRequest())">Save</Button>
+                    <Button Color="Color.Primary" Disabled="@_createInFlight" Clicked="@(async () => await CreateChannelRequest())">Save</Button>
                 </SaveCommandTemplate>
             </DataGridCommandColumn>
             <DataGridColumn TItem="ChannelOperationRequest" Field="@nameof(ChannelOperationRequest.CreationDatetime)" Sortable="true" Displayable="false" SortDirection="SortDirection.Descending">
@@ -633,6 +633,8 @@
     // Guards template generation against re-entry (double click) on this circuit; cross-circuit races are
     // handled by the database unique index on template PSBTs.
     private bool _approvalInFlight;
+    // Same guard for the Save button of a new channel request.
+    private bool _createInFlight;
     private ConfirmationModal _approveOperationConfirmationModal;
     private ConfirmationModal _markRequestAsFailedConfirmationModal;
     private UTXOSelectorModal _utxoSelectorModalRef;
@@ -850,6 +852,22 @@
     }
 
     private async Task CreateChannelRequest()
+    {
+        if (LoggedUser == null) return;
+        if (_createInFlight) return;
+        _createInFlight = true;
+
+        try
+        {
+            await CreateChannelRequestCore();
+        }
+        finally
+        {
+            _createInFlight = false;
+        }
+    }
+
+    private async Task CreateChannelRequestCore()
     {
         if (LoggedUser == null) return;
 
