@@ -163,7 +163,8 @@ namespace NodeGuard.Data.Models
         /// <summary>
         /// The single template PSBT of this request, or null when none has been generated yet.
         /// The database enforces at most one (IX_ChannelOperationRequestPSBTs_Template); finding more is a
-        /// data-integrity fault and this throws rather than silently picking one.
+        /// data-integrity fault and this throws rather than silently picking one, because the template is
+        /// what every approval is validated against and what the internal wallet co-signs.
         /// </summary>
         public ChannelOperationRequestPSBT? GetSingleTemplatePsbt()
         {
