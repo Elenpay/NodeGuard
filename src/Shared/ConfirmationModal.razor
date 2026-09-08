@@ -10,7 +10,7 @@
         <ModalFooter>
             <Button Color="Color.Secondary" Clicked="@OnCancel">@CancelLabel</Button>
             @if (OnSubmit.HasDelegate) {
-                <Button Color="Color.Primary" Clicked="@OnSubmit">
+                <Button Color="Color.Primary" Clicked="@OnSubmit" Disabled="@OkDisabled">
                     @OkLabel
                 </Button>
             }
@@ -37,6 +37,13 @@
     public EventCallback OnCancel { get; set; }
     [Parameter]
     public EventCallback OnSubmit { get; set; }
+
+    /// <summary>
+    /// Lets the owner disable the Ok button while its submit handler is running, so a double click cannot
+    /// re-enter a handler that creates requests or moves funds.
+    /// </summary>
+    [Parameter]
+    public bool OkDisabled { get; set; }
 
     private Dictionary<string, object> _data = new();
 

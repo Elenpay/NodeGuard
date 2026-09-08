@@ -177,7 +177,7 @@
         <ModalFooter>
             <Button Color="@Color.Secondary" Clicked="@CloseAndCleanTransferFundsModal">Close</Button>
             <Button Color="@Color.Primary" Clicked="@ValidateAndSelectConfirmModal"
-                    Disabled="@(_sourceTransferWallet == null || _availableUTXOs.Count == 0)">Transfer</Button>
+                    Disabled="@(_sourceTransferWallet == null || _availableUTXOs.Count == 0 || _transferInFlight)">Transfer</Button>
         </ModalFooter>
     </ModalContent>
 </Modal>
@@ -187,7 +187,7 @@
                    CancelLabel="Yes, understood" OnCancel="CloseMultisigTransferModal" />
 <ConfirmationModal @ref="_hotWalletTransferModal" Title="Are you sure?"
                    Body="You're about to transfer funds from this wallet. This means that the system will automatically use the funds in it without the need of manual approval. Are you sure you want to perform this operation?"
-                   OkLabel="Yes, understood" OnCancel="CloseHotWalletTransferModal" OnSubmit="TransferFundsHotWallet" />
+                   OkLabel="Yes, understood" OkDisabled="@_transferInFlight" OnCancel="CloseHotWalletTransferModal" OnSubmit="TransferFundsHotWallet" />
 <UTXOSelectorModal @ref="_utxoSelectorModalRef" OnClose="@OnCloseCoinSelectionModal"
                    IsWalletWithdrawalValidation="true" />
 
@@ -214,6 +214,9 @@
     private List<UTXO> _availableUTXOs = new();
 
     private bool _transferAllFunds;
+    // Re-entry guard for the Transfer and "Yes, understood" buttons on this circuit: a multi-click used to create
+    // one withdrawal request per click. Cross-circuit template races are handled by the DB unique index.
+    private bool _transferInFlight;
     private decimal _amountToTransfer;
     private decimal _maxWithdrawal = Constants.MAXIMUM_WITHDRAWAL_BTC_AMOUNT;
     private decimal _minWithdrawal = Constants.MINIMUM_WITHDRAWAL_BTC_AMOUNT;
@@ -415,6 +418,21 @@ _amountToTransfer;
 
     private async Task ValidateAndSelectConfirmModal()
     {
+        if (_transferInFlight) return;
+        _transferInFlight = true;
+
+        try
+        {
+            await ValidateAndSelectConfirmModalCore();
+        }
+        finally
+        {
+            _transferInFlight = false;
+        }
+    }
+
+    private async Task ValidateAndSelectConfirmModalCore()
+    {
         try
         {
             if (!await _transferFundsValidations.ValidateAll())
@@ -456,6 +474,22 @@ _amountToTransfer;
     }
 
     private async Task TransferFundsHotWallet()
+    {
+        // This handler creates the request AND schedules the transfer, so a second click here would move funds twice.
+        if (_transferInFlight) return;
+        _transferInFlight = true;
+
+        try
+        {
+            await TransferFundsHotWalletCore();
+        }
+        finally
+        {
+            _transferInFlight = false;
+        }
+    }
+
+    private async Task TransferFundsHotWalletCore()
     {
         try
         {
