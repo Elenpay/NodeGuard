@@ -254,7 +254,7 @@
             </DataGridColumn>
             <DataGridCommandColumn TItem="ChannelOperationRequest" Caption="Actions" Displayable="true">
                 <EditCommandTemplate>
-                    <Button Color="Color.Primary" hidden=@(!_isFinanceManager) Clicked="@(() => ShowModal(context.Item))">Approve</Button>
+                    <Button Color="Color.Primary" hidden=@(!_isFinanceManager) Disabled="@_approvalInFlight" Clicked="@(() => ShowModal(context.Item))">Approve</Button>
                     @{
                         if (LoggedUser?.Id == context.Item.UserId)
                         {
@@ -630,6 +630,9 @@
     private string? _selectedStatusActionString;
     private bool _isFinanceManager = false;
     private bool _isNodeManager = false;
+    // Guards template generation against re-entry (double click) on this circuit; cross-circuit races are
+    // handled by the database unique index on template PSBTs.
+    private bool _approvalInFlight;
     private ConfirmationModal _approveOperationConfirmationModal;
     private ConfirmationModal _markRequestAsFailedConfirmationModal;
     private UTXOSelectorModal _utxoSelectorModalRef;
@@ -1000,27 +1003,37 @@
 
     private async Task ShowModal(ChannelOperationRequest channelOperationRequest)
     {
-        _selectedRequest = channelOperationRequest;
-        _psbt = string.Empty;
-        if (_selectedRequest != null && !_selectedRequest.AreAllRequiredHumanSignaturesCollected)
+        if (_approvalInFlight) return;
+        _approvalInFlight = true;
+
+        try
         {
-            var (templatePsbt,noUtxosAvailable) = (await LightningService.GenerateTemplatePSBT(_selectedRequest));
-            if (templatePsbt != null)
+            _selectedRequest = channelOperationRequest;
+            _psbt = string.Empty;
+            if (_selectedRequest != null && !_selectedRequest.AreAllRequiredHumanSignaturesCollected)
             {
-                _templatePSBTString = templatePsbt.ToBase64();
-                await _psbtSignRef.ShowModal();
-            }
-            else
-            {
-                if (noUtxosAvailable)
+                var (templatePsbt,noUtxosAvailable) = (await LightningService.GenerateTemplatePSBT(_selectedRequest));
+                if (templatePsbt != null)
                 {
-                    ToastService.ShowError("No UTXOs found for this wallet, please wait for other requests to be confirmed or fund the wallet with more UTXOs");
+                    _templatePSBTString = templatePsbt.ToBase64();
+                    await _psbtSignRef.ShowModal();
                 }
                 else
                 {
-                    ToastService.ShowError("Something went wrong");
+                    if (noUtxosAvailable)
+                    {
+                        ToastService.ShowError("No UTXOs found for this wallet, please wait for other requests to be confirmed or fund the wallet with more UTXOs");
+                    }
+                    else
+                    {
+                        ToastService.ShowError("Something went wrong");
+                    }
                 }
             }
+        }
+        finally
+        {
+            _approvalInFlight = false;
         }
     }
 
@@ -1105,6 +1118,21 @@
     }
 
     private async Task ApproveOperationSubmitConfirmationModal()
+    {
+        if (_approvalInFlight) return;
+        _approvalInFlight = true;
+
+        try
+        {
+            await ApproveOperationSubmitConfirmationModalCore();
+        }
+        finally
+        {
+            _approvalInFlight = false;
+        }
+    }
+
+    private async Task ApproveOperationSubmitConfirmationModalCore()
     {
         if (_selectedRequest != null)
         {

@@ -17,13 +17,20 @@
  *
  */
 
-﻿using NodeGuard.Data.Models;
+using NodeGuard.Data.Models;
 
 namespace NodeGuard.Data.Repositories.Interfaces;
 
 public interface IChannelOperationRequestPSBTRepository
 {
     Task<ChannelOperationRequestPSBT?> GetById(int id);
+
+    /// <summary>
+    /// The persisted template PSBT of a request (the one approvals are validated against), or null. Reads
+    /// from the database rather than a navigation collection so that a caller who lost the generation race
+    /// sees the winner's row.
+    /// </summary>
+    Task<ChannelOperationRequestPSBT?> GetTemplateByRequestId(int channelOperationRequestId);
 
     Task<List<ChannelOperationRequestPSBT>> GetAll();
 
