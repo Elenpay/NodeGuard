@@ -472,21 +472,38 @@
                         </Check>
                     </Field>
 
+                    @* MinMaxLimitsOverride is required: Blazorise defaults it to Ignore, which makes Min inert. *@
                     @if (_selectedNodeForLiquidity.AutoRebalanceEnabled)
                     {
                         <Row>
                             <Column>
                                 <Field>
-                                    <FieldLabel>Rebalance Fee Budget (sats)</FieldLabel>
-                                    <FieldHelp>Max sats spendable on rebalance fees per refresh period. 0 = unset.</FieldHelp>
-                                    <NumericEdit TValue="long" @bind-Value="@_rebalanceBudgetSats" Min="0" />
+                                    <Validation Validator="ValidateRebalanceBudget">
+                                        <FieldLabel>Rebalance Fee Budget (sats)</FieldLabel>
+                                        <FieldHelp>Max sats spendable on rebalance fees per refresh period. Required: the rebalancer skips a node with no budget.</FieldHelp>
+                                        <NumericPicker TValue="long"
+                                                       @bind-Value="@_rebalanceBudgetSats"
+                                                       Decimals="0"
+                                                       Step="1000"
+                                                       Min="0"
+                                                       MinMaxLimitsOverride="NumericMinMaxLimitsOverride.Floor">
+                                            <Feedback>
+                                                <ValidationError>Set a budget above 0, or the rebalancer will skip this node</ValidationError>
+                                            </Feedback>
+                                        </NumericPicker>
+                                    </Validation>
                                 </Field>
                             </Column>
                             <Column>
                                 <Field>
                                     <FieldLabel>Budget Refresh Interval (days)</FieldLabel>
                                     <FieldHelp>Period after which the rebalance fee budget resets. 0 = unset.</FieldHelp>
-                                    <NumericEdit TValue="int" @bind-Value="@_rebalanceBudgetRefreshDays" Min="0" />
+                                    <NumericPicker TValue="int"
+                                                   @bind-Value="@_rebalanceBudgetRefreshDays"
+                                                   Decimals="0"
+                                                   Step="1"
+                                                   Min="0"
+                                                   MinMaxLimitsOverride="NumericMinMaxLimitsOverride.Floor" />
                                 </Field>
                             </Column>
                         </Row>
@@ -495,14 +512,24 @@
                                 <Field>
                                     <FieldLabel>Max Rebalances In Flight</FieldLabel>
                                     <FieldHelp>Maximum concurrent (Pending/InFlight) rebalances for this node. 0 = unset.</FieldHelp>
-                                    <NumericEdit TValue="int" @bind-Value="@_maxRebalancesInFlight" Min="0" />
+                                    <NumericPicker TValue="int"
+                                                   @bind-Value="@_maxRebalancesInFlight"
+                                                   Decimals="0"
+                                                   Step="1"
+                                                   Min="0"
+                                                   MinMaxLimitsOverride="NumericMinMaxLimitsOverride.Floor" />
                                 </Field>
                             </Column>
                             <Column>
                                 <Field>
                                     <FieldLabel>Max Cost-to-Earn Ratio</FieldLabel>
                                     <FieldHelp>Profitability gate: spend at most this fraction of a channel's earn rate on rebalancing it (e.g. 0.5 = 50%). 0 = unset.</FieldHelp>
-                                    <NumericEdit TValue="double" @bind-Value="@_maxRebalanceCostToEarnRatio" Min="0" />
+                                    <NumericPicker TValue="double"
+                                                   @bind-Value="@_maxRebalanceCostToEarnRatio"
+                                                   Decimals="2"
+                                                   Step="0.05m"
+                                                   Min="0"
+                                                   MinMaxLimitsOverride="NumericMinMaxLimitsOverride.Floor" />
                                 </Field>
                             </Column>
                         </Row>
@@ -948,7 +975,13 @@
 
     private async Task SaveAndCloseLiquidityManagementModal()
     {
-        if (_nodeLiquidityValidationsRef != null && await _nodeLiquidityValidationsRef.ValidateAll() && _selectedNodeForLiquidity != null)
+        if (_nodeLiquidityValidationsRef != null && !await _nodeLiquidityValidationsRef.ValidateAll())
+        {
+            ToastService.ShowError("Please fix the errors");
+            return;
+        }
+
+        if (_nodeLiquidityValidationsRef != null && _selectedNodeForLiquidity != null)
         {
 
             // Convert BTC back to sats and percent back to ratio (0-1)
@@ -1070,5 +1103,18 @@
         }
     }
 
+    // AutoRebalanceJob skips any node whose budget is null or 0, silently and forever, so the page
+    // that owns the field refuses to save the gate and an empty budget together.
+    private void ValidateRebalanceBudget(ValidatorEventArgs arg)
+    {
+        arg.Status = ValidationStatus.Success;
 
+        if (_selectedNodeForLiquidity?.AutoRebalanceEnabled != true) return;
+
+        if (arg.Value is not long budget || budget <= 0)
+        {
+            arg.Status = ValidationStatus.Error;
+            arg.ErrorText = "Automated rebalancing needs a fee budget above 0; the rebalancer skips nodes without one.";
+        }
+    }
 }
