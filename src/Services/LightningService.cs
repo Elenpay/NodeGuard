@@ -2015,17 +2015,22 @@ namespace NodeGuard.Services
             var capacityMsat = (ulong)lndChannel.Capacity * 1_000;
             var minHtlcMsat = (ulong)Math.Max(managedPolicy.MinHtlc, 0);
 
-            if (capacityMsat == 0 || minHtlcMsat > capacityMsat)
+            // The peer's in-flight cap (max_htlc_value_in_flight_msat, negotiated at open) bounds the
+            // target as hard as capacity does: LND rejects a max_htlc above it with INVALID_PARAMETER.
+            var inFlightCapMsat = lndChannel.LocalConstraints?.MaxPendingAmtMsat ?? 0;
+            var ceilingMsat = inFlightCapMsat > 0 ? Math.Min(capacityMsat, inFlightCapMsat) : capacityMsat;
+
+            if (ceilingMsat == 0 || minHtlcMsat > ceilingMsat)
             {
-                _logger.LogWarning("Skipping max htlc sync for channel {ChanId} on {NodeName}: no valid target between min_htlc {MinHtlcMsat} msat and capacity {CapacityMsat} msat",
-                    lndChannel.ChanId, node.Name, minHtlcMsat, capacityMsat);
+                _logger.LogWarning("Skipping max htlc sync for channel {ChanId} on {NodeName}: no valid target between min_htlc {MinHtlcMsat} msat and ceiling {CeilingMsat} msat (capacity {CapacityMsat} msat, in-flight cap {InFlightCapMsat} msat)",
+                    lndChannel.ChanId, node.Name, minHtlcMsat, ceilingMsat, capacityMsat, inFlightCapMsat);
                 return MaxHtlcSyncResult.Skipped;
             }
 
             var desiredMaxHtlcMsat = Math.Clamp(
                 (ulong)(capacityMsat * Constants.MAX_HTLC_CAPACITY_RATIO),
                 minHtlcMsat,
-                capacityMsat);
+                ceilingMsat);
 
             if (managedPolicy.MaxHtlcMsat == desiredMaxHtlcMsat)
             {

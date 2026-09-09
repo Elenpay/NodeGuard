@@ -2638,11 +2638,14 @@ namespace NodeGuard.Services
             ChannelAdminMacaroon = "test-macaroon"
         };
 
-        private static Lnrpc.Channel MaxHtlcLndChannel(long capacitySats) => new()
+        private static Lnrpc.Channel MaxHtlcLndChannel(long capacitySats, ulong maxPendingAmtMsat = 0) => new()
         {
             ChanId = 123,
             Capacity = capacitySats,
-            ChannelPoint = MaxHtlcChanPoint
+            ChannelPoint = MaxHtlcChanPoint,
+            LocalConstraints = maxPendingAmtMsat == 0
+                ? null
+                : new ChannelConstraints { MaxPendingAmtMsat = maxPendingAmtMsat }
         };
 
         /// <summary>
@@ -2802,6 +2805,67 @@ namespace NodeGuard.Services
             client.Verify(x => x.SetChannelFeePolicy(
                 node, It.IsAny<NBitcoin.OutPoint>(), 0, 1500u, 40u, null, null,
                 expectedMaxHtlcMsat, null), Times.Once);
+        }
+
+        [Theory]
+        // The peer's in-flight cap sits below the ratio result, so it becomes the target.
+        [InlineData(1_000_000L, 200_000_000UL, 200_000_000UL)]
+        // A cap above the ratio result changes nothing.
+        [InlineData(1_000_000L, 999_000_000UL, 990_000_000UL)]
+        public async Task SyncChannelMaxHtlc_CapsTargetAtInFlightLimit(long capacitySats, ulong maxPendingAmtMsat, ulong expectedMaxHtlcMsat)
+        {
+            // Arrange
+            var node = MaxHtlcNode();
+            var policy = new RoutingPolicy
+            {
+                FeeBaseMsat = 0,
+                FeeRateMilliMsat = 1500,
+                TimeLockDelta = 40,
+                MinHtlc = 1_000,
+                MaxHtlcMsat = 1
+            };
+            var (service, client, _) = BuildMaxHtlcService(
+                node,
+                MaxHtlcChannelEdge(node.PubKey, policy),
+                new Channel { Id = 40 });
+
+            // Act
+            var result = await service.SyncChannelMaxHtlc(node, MaxHtlcLndChannel(capacitySats, maxPendingAmtMsat));
+
+            // Assert
+            result.Should().Be(MaxHtlcSyncResult.Updated);
+            client.Verify(x => x.SetChannelFeePolicy(
+                node, It.IsAny<NBitcoin.OutPoint>(), 0, 1500u, 40u, null, null,
+                expectedMaxHtlcMsat, null), Times.Once);
+        }
+
+        [Fact]
+        public async Task SyncChannelMaxHtlc_MinHtlcAboveInFlightLimit_Skips()
+        {
+            // Arrange — min_htlc above the in-flight cap leaves no value LND would accept.
+            var node = MaxHtlcNode();
+            var policy = new RoutingPolicy
+            {
+                FeeBaseMsat = 0,
+                FeeRateMilliMsat = 1500,
+                TimeLockDelta = 40,
+                MinHtlc = 300_000_000,
+                MaxHtlcMsat = 1
+            };
+            var (service, client, _) = BuildMaxHtlcService(
+                node,
+                MaxHtlcChannelEdge(node.PubKey, policy),
+                new Channel { Id = 40 });
+
+            // Act
+            var result = await service.SyncChannelMaxHtlc(node, MaxHtlcLndChannel(1_000_000, 200_000_000UL));
+
+            // Assert
+            result.Should().Be(MaxHtlcSyncResult.Skipped);
+            client.Verify(x => x.SetChannelFeePolicy(
+                It.IsAny<Node>(), It.IsAny<NBitcoin.OutPoint>(), It.IsAny<long>(), It.IsAny<uint>(),
+                It.IsAny<uint>(), It.IsAny<int?>(), It.IsAny<int?>(), It.IsAny<ulong?>(),
+                It.IsAny<Lightning.LightningClient?>()), Times.Never);
         }
 
         [Fact]
