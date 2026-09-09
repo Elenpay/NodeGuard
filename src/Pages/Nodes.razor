@@ -472,81 +472,58 @@
                         </Check>
                     </Field>
 
+                    @* MinMaxLimitsOverride is required: Blazorise defaults it to Ignore, which makes Min inert. *@
                     @if (_selectedNodeForLiquidity.AutoRebalanceEnabled)
                     {
                         <Row>
                             <Column>
                                 <Field>
-                                    <Validation Validator="ValidateRebalanceBudget">
-                                        <FieldLabel>Rebalance Fee Budget (sats)</FieldLabel>
-                                        <FieldHelp>Max sats spendable on rebalance fees per refresh period. 0 = unset.</FieldHelp>
-                                        <NumericPicker TValue="long"
-                                                       @bind-Value="@_rebalanceBudgetSats"
-                                                       Decimals="0"
-                                                       Step="1000"
-                                                       Min="0"
-                                                       MinMaxLimitsOverride="NumericMinMaxLimitsOverride.Floor">
-                                            <Feedback>
-                                                <ValidationError>Rebalance fee budget must be ≥ 0</ValidationError>
-                                            </Feedback>
-                                        </NumericPicker>
-                                    </Validation>
+                                    <FieldLabel>Rebalance Fee Budget (sats)</FieldLabel>
+                                    <FieldHelp>Max sats spendable on rebalance fees per refresh period. 0 = unset.</FieldHelp>
+                                    <NumericPicker TValue="long"
+                                                   @bind-Value="@_rebalanceBudgetSats"
+                                                   Decimals="0"
+                                                   Step="1000"
+                                                   Min="0"
+                                                   MinMaxLimitsOverride="NumericMinMaxLimitsOverride.Floor" />
                                 </Field>
                             </Column>
                             <Column>
                                 <Field>
-                                    <Validation Validator="ValidateRebalanceBudgetRefresh">
-                                        <FieldLabel>Budget Refresh Interval (days)</FieldLabel>
-                                        <FieldHelp>Period after which the rebalance fee budget resets. 0 = unset.</FieldHelp>
-                                        <NumericPicker TValue="int"
-                                                       @bind-Value="@_rebalanceBudgetRefreshDays"
-                                                       Decimals="0"
-                                                       Step="1"
-                                                       Min="0"
-                                                       MinMaxLimitsOverride="NumericMinMaxLimitsOverride.Floor">
-                                            <Feedback>
-                                                <ValidationError>Budget refresh interval must be ≥ 0 days</ValidationError>
-                                            </Feedback>
-                                        </NumericPicker>
-                                    </Validation>
+                                    <FieldLabel>Budget Refresh Interval (days)</FieldLabel>
+                                    <FieldHelp>Period after which the rebalance fee budget resets. 0 = unset.</FieldHelp>
+                                    <NumericPicker TValue="int"
+                                                   @bind-Value="@_rebalanceBudgetRefreshDays"
+                                                   Decimals="0"
+                                                   Step="1"
+                                                   Min="0"
+                                                   MinMaxLimitsOverride="NumericMinMaxLimitsOverride.Floor" />
                                 </Field>
                             </Column>
                         </Row>
                         <Row>
                             <Column>
                                 <Field>
-                                    <Validation Validator="ValidateMaxRebalancesInFlight">
-                                        <FieldLabel>Max Rebalances In Flight</FieldLabel>
-                                        <FieldHelp>Maximum concurrent (Pending/InFlight) rebalances for this node. 0 = unset.</FieldHelp>
-                                        <NumericPicker TValue="int"
-                                                       @bind-Value="@_maxRebalancesInFlight"
-                                                       Decimals="0"
-                                                       Step="1"
-                                                       Min="0"
-                                                       MinMaxLimitsOverride="NumericMinMaxLimitsOverride.Floor">
-                                            <Feedback>
-                                                <ValidationError>Max rebalances in flight must be ≥ 0</ValidationError>
-                                            </Feedback>
-                                        </NumericPicker>
-                                    </Validation>
+                                    <FieldLabel>Max Rebalances In Flight</FieldLabel>
+                                    <FieldHelp>Maximum concurrent (Pending/InFlight) rebalances for this node. 0 = unset.</FieldHelp>
+                                    <NumericPicker TValue="int"
+                                                   @bind-Value="@_maxRebalancesInFlight"
+                                                   Decimals="0"
+                                                   Step="1"
+                                                   Min="0"
+                                                   MinMaxLimitsOverride="NumericMinMaxLimitsOverride.Floor" />
                                 </Field>
                             </Column>
                             <Column>
                                 <Field>
-                                    <Validation Validator="ValidateMaxRebalanceCostToEarnRatio">
-                                        <FieldLabel>Max Cost-to-Earn Ratio</FieldLabel>
-                                        <FieldHelp>Profitability gate: spend at most this fraction of a channel's earn rate on rebalancing it (e.g. 0.5 = 50%). 0 = unset.</FieldHelp>
-                                        <NumericPicker TValue="double"
-                                                       @bind-Value="@_maxRebalanceCostToEarnRatio"
-                                                       Decimals="2"
-                                                       Step="0.05m"
-                                                       Min="0"
-                                                       MinMaxLimitsOverride="NumericMinMaxLimitsOverride.Floor">
-                                            <Feedback>
-                                                <ValidationError>Max cost-to-earn ratio must be ≥ 0</ValidationError>
-                                            </Feedback>
-                                        </NumericPicker>
-                                    </Validation>
+                                    <FieldLabel>Max Cost-to-Earn Ratio</FieldLabel>
+                                    <FieldHelp>Profitability gate: spend at most this fraction of a channel's earn rate on rebalancing it (e.g. 0.5 = 50%). 0 = unset.</FieldHelp>
+                                    <NumericPicker TValue="double"
+                                                   @bind-Value="@_maxRebalanceCostToEarnRatio"
+                                                   Decimals="2"
+                                                   Step="0.05m"
+                                                   Min="0"
+                                                   MinMaxLimitsOverride="NumericMinMaxLimitsOverride.Floor" />
                                 </Field>
                             </Column>
                         </Row>
@@ -1113,41 +1090,4 @@
             return;
         }
     }
-
-    // NumericEdit never renders min/max, and NumericPicker ignores them unless MinMaxLimitsOverride
-    // is set — hence Floor in the markup, plus these validators, which are what block the save.
-    private static void ValidateNonNegative(ValidatorEventArgs arg, string label)
-    {
-        var value = arg.Value switch
-        {
-            long l => l,
-            int i => i,
-            double d => d,
-            decimal m => (double)m,
-            _ => 0d
-        };
-
-        if (value < 0)
-        {
-            arg.Status = ValidationStatus.Error;
-            arg.ErrorText = $"{label} must be ≥ 0";
-            return;
-        }
-
-        arg.Status = ValidationStatus.Success;
-    }
-
-    private void ValidateRebalanceBudget(ValidatorEventArgs arg)
-        => ValidateNonNegative(arg, "Rebalance fee budget");
-
-    private void ValidateRebalanceBudgetRefresh(ValidatorEventArgs arg)
-        => ValidateNonNegative(arg, "Budget refresh interval");
-
-    private void ValidateMaxRebalancesInFlight(ValidatorEventArgs arg)
-        => ValidateNonNegative(arg, "Max rebalances in flight");
-
-    private void ValidateMaxRebalanceCostToEarnRatio(ValidatorEventArgs arg)
-        => ValidateNonNegative(arg, "Max cost-to-earn ratio");
-
-
 }
