@@ -478,14 +478,20 @@
                         <Row>
                             <Column>
                                 <Field>
-                                    <FieldLabel>Rebalance Fee Budget (sats)</FieldLabel>
-                                    <FieldHelp>Max sats spendable on rebalance fees per refresh period. 0 = unset.</FieldHelp>
-                                    <NumericPicker TValue="long"
-                                                   @bind-Value="@_rebalanceBudgetSats"
-                                                   Decimals="0"
-                                                   Step="1000"
-                                                   Min="0"
-                                                   MinMaxLimitsOverride="NumericMinMaxLimitsOverride.Floor" />
+                                    <Validation Validator="ValidateRebalanceBudget">
+                                        <FieldLabel>Rebalance Fee Budget (sats)</FieldLabel>
+                                        <FieldHelp>Max sats spendable on rebalance fees per refresh period. Required: the rebalancer skips a node with no budget.</FieldHelp>
+                                        <NumericPicker TValue="long"
+                                                       @bind-Value="@_rebalanceBudgetSats"
+                                                       Decimals="0"
+                                                       Step="1000"
+                                                       Min="0"
+                                                       MinMaxLimitsOverride="NumericMinMaxLimitsOverride.Floor">
+                                            <Feedback>
+                                                <ValidationError>Set a budget above 0, or the rebalancer will skip this node</ValidationError>
+                                            </Feedback>
+                                        </NumericPicker>
+                                    </Validation>
                                 </Field>
                             </Column>
                             <Column>
@@ -969,7 +975,13 @@
 
     private async Task SaveAndCloseLiquidityManagementModal()
     {
-        if (_nodeLiquidityValidationsRef != null && await _nodeLiquidityValidationsRef.ValidateAll() && _selectedNodeForLiquidity != null)
+        if (_nodeLiquidityValidationsRef != null && !await _nodeLiquidityValidationsRef.ValidateAll())
+        {
+            ToastService.ShowError("Please fix the errors");
+            return;
+        }
+
+        if (_nodeLiquidityValidationsRef != null && _selectedNodeForLiquidity != null)
         {
 
             // Convert BTC back to sats and percent back to ratio (0-1)
@@ -1088,6 +1100,21 @@
             arg.Status = ValidationStatus.Error;
             arg.ErrorText = "40swap endpoint must be configured when 40swap weight > 0";
             return;
+        }
+    }
+
+    // AutoRebalanceJob skips any node whose budget is null or 0, silently and forever, so the page
+    // that owns the field refuses to save the gate and an empty budget together.
+    private void ValidateRebalanceBudget(ValidatorEventArgs arg)
+    {
+        arg.Status = ValidationStatus.Success;
+
+        if (_selectedNodeForLiquidity?.AutoRebalanceEnabled != true) return;
+
+        if (arg.Value is not long budget || budget <= 0)
+        {
+            arg.Status = ValidationStatus.Error;
+            arg.ErrorText = "Automated rebalancing needs a fee budget above 0; the rebalancer skips nodes without one.";
         }
     }
 }
