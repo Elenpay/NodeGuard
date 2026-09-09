@@ -81,10 +81,11 @@
             "type": "grafana-postgresql-datasource",
             "uid": "$datasource"
           },
-          "editorMode": "builder",
+          "editorMode": "code",
           "format": "table",
           "hide": true,
-          "rawSql": "SELECT SUM(\"FeeMsat\") FROM \"ForwardingHtlcEvents\" WHERE ($__timeFilter(\"CreationDatetime\") AND \"Outcome\" = 1 AND \"ManagedNodePubKey\" IN ($node)) LIMIT 50 ",
+          "rawQuery": true,
+          "rawSql": "WITH fees AS (SELECT SUM(\"FeeMsat\") AS fee_msat FROM \"ForwardingHtlcEvents\" WHERE ($__timeFilter(\"CreationDatetime\") AND \"Outcome\" = 1 AND \"ManagedNodePubKey\" IN ($node))), rebalance_costs AS (SELECT COALESCE(SUM($applyRebalanceCosts * r.\"FeePaidSats\"), 0) AS cost_sats FROM \"Rebalances\" r JOIN \"Nodes\" n ON n.\"Id\" = r.\"NodeId\" WHERE r.\"Status\" = 3 AND r.\"FeePaidSats\" IS NOT NULL AND $__timeFilter(r.\"CreationDatetime\") AND n.\"PubKey\" IN ($node)) SELECT COALESCE(fees.fee_msat, 0) - (rebalance_costs.cost_sats * 1000) AS \"SUM\" FROM fees, rebalance_costs",
           "refId": "A",
           "sql": {
             "columns": [
@@ -186,7 +187,8 @@
         }
       ],
       "title": "Total P&L (Routing)",
-      "type": "stat"
+      "type": "stat",
+      "description": "Settled routing fees minus succeeded rebalance fees, when Apply Rebalance Costs is enabled."
     },
     {
       "datasource": {
@@ -249,10 +251,11 @@
             "type": "grafana-postgresql-datasource",
             "uid": "$datasource"
           },
-          "editorMode": "builder",
+          "editorMode": "code",
           "format": "table",
           "hide": true,
-          "rawSql": "SELECT SUM(\"FeeMsat\"), \"ManagedNodeName\" FROM \"ForwardingHtlcEvents\" WHERE ($__timeFilter(\"CreationDatetime\") AND \"Outcome\" = 1 AND \"ManagedNodePubKey\" IN ($node)) GROUP BY \"ManagedNodeName\" LIMIT 50 ",
+          "rawQuery": true,
+          "rawSql": "WITH fees AS (SELECT \"ManagedNodePubKey\", MAX(\"ManagedNodeName\") AS \"ManagedNodeName\", SUM(\"FeeMsat\") AS fee_msat FROM \"ForwardingHtlcEvents\" WHERE ($__timeFilter(\"CreationDatetime\") AND \"Outcome\" = 1 AND \"ManagedNodePubKey\" IN ($node)) GROUP BY \"ManagedNodePubKey\"), rebalance_costs AS (SELECT n.\"PubKey\" AS \"ManagedNodePubKey\", COALESCE(SUM($applyRebalanceCosts * r.\"FeePaidSats\"), 0) AS cost_sats FROM \"Rebalances\" r JOIN \"Nodes\" n ON n.\"Id\" = r.\"NodeId\" WHERE r.\"Status\" = 3 AND r.\"FeePaidSats\" IS NOT NULL AND $__timeFilter(r.\"CreationDatetime\") AND n.\"PubKey\" IN ($node) GROUP BY n.\"PubKey\") SELECT fees.\"ManagedNodeName\", COALESCE(fees.fee_msat, 0) - (COALESCE(rebalance_costs.cost_sats, 0) * 1000) AS \"SUM\" FROM fees LEFT JOIN rebalance_costs ON rebalance_costs.\"ManagedNodePubKey\" = fees.\"ManagedNodePubKey\"",
           "refId": "A",
           "sql": {
             "columns": [
@@ -371,7 +374,8 @@
         }
       ],
       "title": "Total P&L per node (Routing)",
-      "type": "stat"
+      "type": "stat",
+      "description": "Settled routing fees minus succeeded rebalance fees, when Apply Rebalance Costs is enabled."
     },
     {
       "datasource": {
@@ -1504,7 +1508,7 @@
         "type": "grafana-postgresql-datasource",
         "uid": "$datasource"
       },
-      "description": "Weekly (calendar-week) routed volume with a 4-week rolling average, settled routing profit in sats, plus success rate per week. Success rate = settled / (settled + locally-failed, EventCase 4). Downstream failures (EventCase 2, ForwardFailEvent) are excluded since they were never within this node's control. Only complete weeks are shown: the in-progress week and any partial week at the window edges are dropped.",
+      "description": "Weekly (calendar-week) routed volume with a 4-week rolling average, routing profit in sats net of succeeded rebalance fees when Apply Rebalance Costs is enabled, the count of succeeded rebalances, plus success rate per week. Success rate = settled / (settled + locally-failed, EventCase 4). Downstream failures (EventCase 2, ForwardFailEvent) are excluded since they were never within this node's control. Only complete weeks are shown: the in-progress week and any partial week at the window edges are dropped.",
       "fieldConfig": {
         "defaults": {
           "color": {
@@ -1742,6 +1746,57 @@
                 }
               }
             ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Rebalances"
+            },
+            "properties": [
+              {
+                "id": "custom.drawStyle",
+                "value": "line"
+              },
+              {
+                "id": "custom.lineWidth",
+                "value": 2
+              },
+              {
+                "id": "custom.fillOpacity",
+                "value": 0
+              },
+              {
+                "id": "custom.showPoints",
+                "value": "always"
+              },
+              {
+                "id": "custom.axisPlacement",
+                "value": "right"
+              },
+              {
+                "id": "custom.axisLabel",
+                "value": "Rebalances"
+              },
+              {
+                "id": "unit",
+                "value": "short"
+              },
+              {
+                "id": "decimals",
+                "value": 0
+              },
+              {
+                "id": "min",
+                "value": 0
+              },
+              {
+                "id": "color",
+                "value": {
+                  "fixedColor": "yellow",
+                  "mode": "fixed"
+                }
+              }
+            ]
           }
         ]
       },
@@ -1775,7 +1830,7 @@
           "editorMode": "code",
           "format": "table",
           "rawQuery": true,
-          "rawSql": "SELECT\n  date_trunc('week', \"EventTimestamp\") AS \"time\",\n\n  -- Settled (routed) volume for the week, in BTC:\n  SUM(CASE WHEN \"Outcome\" = 1 THEN COALESCE(\"OutgoingAmountMsat\", \"IncomingAmountMsat\") ELSE 0 END) / 1e11 AS \"Routed Volume (BTC)\",\n\n  -- 4-week rolling average of routed volume, to read the trend:\n  AVG(SUM(CASE WHEN \"Outcome\" = 1 THEN COALESCE(\"OutgoingAmountMsat\", \"IncomingAmountMsat\") ELSE 0 END) / 1e11) OVER (\n    ORDER BY date_trunc('week', \"EventTimestamp\")\n    ROWS BETWEEN 3 PRECEDING AND CURRENT ROW\n  ) AS \"4w Rolling Avg Volume (BTC)\",\n\n  -- Settled routing profit for the week, in sats:\n  SUM(CASE WHEN \"Outcome\" = 1 THEN \"FeeMsat\" ELSE 0 END) / 1000.0 AS \"Profit (sats)\",\n\n  -- 4-week rolling average of profit, to read the trend:\n  AVG(SUM(CASE WHEN \"Outcome\" = 1 THEN \"FeeMsat\" ELSE 0 END) / 1000.0) OVER (\n    ORDER BY date_trunc('week', \"EventTimestamp\")\n    ROWS BETWEEN 3 PRECEDING AND CURRENT ROW\n  ) AS \"4w Rolling Avg Profit (sats)\",\n\n  -- Volume-weighted success rate: settled / (settled + locally-failed). Downstream failures (EventCase = 2) excluded:\n  SUM(CASE WHEN \"Outcome\" = 1 THEN COALESCE(\"OutgoingAmountMsat\", \"IncomingAmountMsat\") ELSE 0 END)::float8\n    / NULLIF(SUM(CASE WHEN \"Outcome\" = 1 OR (\"Outcome\" = 2 AND \"EventCase\" = 4) THEN COALESCE(\"OutgoingAmountMsat\", \"IncomingAmountMsat\") ELSE 0 END), 0) AS \"Success Rate (volume)\",\n\n  -- HTLC-count success rate over the same population:\n  COUNT(*) FILTER (WHERE \"Outcome\" = 1)::float8\n    / NULLIF(COUNT(*) FILTER (WHERE \"Outcome\" = 1 OR (\"Outcome\" = 2 AND \"EventCase\" = 4)), 0) AS \"Success Rate (HTLC count)\"\n\nFROM \"ForwardingHtlcEvents\"\nWHERE\n  $__timeFilter(\"EventTimestamp\")\n  AND \"ManagedNodePubKey\" IN ($node)\n  -- only complete weeks: drop the trailing in-progress week and a leading partial week\n  AND date_trunc('week', \"EventTimestamp\") + interval '7 days' <= $__timeTo()::timestamptz\n  AND date_trunc('week', \"EventTimestamp\") >= $__timeFrom()::timestamptz\nGROUP BY 1\nORDER BY 1",
+          "rawSql": "WITH forwards AS (\n  SELECT\n    date_trunc('week', \"EventTimestamp\") AS week,\n    SUM(CASE WHEN \"Outcome\" = 1 THEN COALESCE(\"OutgoingAmountMsat\", \"IncomingAmountMsat\") ELSE 0 END) AS settled_msat,\n    -- Settled + locally-failed only; downstream failures (EventCase 2) are out of this node's control\n    SUM(CASE WHEN \"Outcome\" = 1 OR (\"Outcome\" = 2 AND \"EventCase\" = 4) THEN COALESCE(\"OutgoingAmountMsat\", \"IncomingAmountMsat\") ELSE 0 END) AS attempted_msat,\n    SUM(CASE WHEN \"Outcome\" = 1 THEN \"FeeMsat\" ELSE 0 END) AS fee_msat,\n    COUNT(*) FILTER (WHERE \"Outcome\" = 1) AS settled_htlcs,\n    COUNT(*) FILTER (WHERE \"Outcome\" = 1 OR (\"Outcome\" = 2 AND \"EventCase\" = 4)) AS attempted_htlcs\n  FROM \"ForwardingHtlcEvents\"\n  WHERE\n    $__timeFilter(\"EventTimestamp\")\n    AND \"ManagedNodePubKey\" IN ($node)\n    -- only complete weeks: drop the trailing in-progress week and a leading partial week\n    AND date_trunc('week', \"EventTimestamp\") + interval '7 days' <= $__timeTo()::timestamptz\n    AND date_trunc('week', \"EventTimestamp\") >= $__timeFrom()::timestamptz\n  GROUP BY 1\n),\nrebalances AS (\n  SELECT\n    date_trunc('week', r.\"CreationDatetime\") AS week,\n    COUNT(*) AS rebalance_count,\n    COALESCE(SUM(r.\"FeePaidSats\"), 0) AS cost_sats\n  FROM \"Rebalances\" r\n  JOIN \"Nodes\" n ON n.\"Id\" = r.\"NodeId\"\n  WHERE\n    r.\"Status\" = 3\n    AND $__timeFilter(r.\"CreationDatetime\")\n    AND n.\"PubKey\" IN ($node)\n    -- same complete-week window as the forwards above, so the two series line up\n    AND date_trunc('week', r.\"CreationDatetime\") + interval '7 days' <= $__timeTo()::timestamptz\n    AND date_trunc('week', r.\"CreationDatetime\") >= $__timeFrom()::timestamptz\n  GROUP BY 1\n),\nweekly AS (\n  -- FULL OUTER JOIN so a week with rebalances but no forwards (or vice versa) still shows up\n  SELECT\n    COALESCE(f.week, b.week) AS week,\n    COALESCE(f.settled_msat, 0) AS settled_msat,\n    COALESCE(f.attempted_msat, 0) AS attempted_msat,\n    COALESCE(f.fee_msat, 0) AS fee_msat,\n    COALESCE(f.settled_htlcs, 0) AS settled_htlcs,\n    COALESCE(f.attempted_htlcs, 0) AS attempted_htlcs,\n    COALESCE(b.rebalance_count, 0) AS rebalance_count,\n    $applyRebalanceCosts * COALESCE(b.cost_sats, 0) AS cost_sats\n  FROM forwards f\n  FULL OUTER JOIN rebalances b ON b.week = f.week\n)\nSELECT\n  week AS \"time\",\n\n  -- Settled (routed) volume for the week, in BTC:\n  settled_msat / 1e11 AS \"Routed Volume (BTC)\",\n\n  -- 4-week rolling average of routed volume, to read the trend:\n  AVG(settled_msat / 1e11) OVER (\n    ORDER BY week\n    ROWS BETWEEN 3 PRECEDING AND CURRENT ROW\n  ) AS \"4w Rolling Avg Volume (BTC)\",\n\n  -- Settled routing fees minus succeeded rebalance fees, in sats:\n  fee_msat / 1000.0 - cost_sats AS \"Profit (sats)\",\n\n  -- 4-week rolling average of that same net profit:\n  AVG(fee_msat / 1000.0 - cost_sats) OVER (\n    ORDER BY week\n    ROWS BETWEEN 3 PRECEDING AND CURRENT ROW\n  ) AS \"4w Rolling Avg Profit (sats)\",\n\n  -- Succeeded rebalances that week, i.e. the ones whose fees were charged above:\n  rebalance_count AS \"Rebalances\",\n\n  -- Volume-weighted success rate: settled / (settled + locally-failed):\n  settled_msat::float8 / NULLIF(attempted_msat, 0) AS \"Success Rate (volume)\",\n\n  -- HTLC-count success rate over the same population:\n  settled_htlcs::float8 / NULLIF(attempted_htlcs, 0) AS \"Success Rate (HTLC count)\"\n\nFROM weekly\nORDER BY week",
           "refId": "A",
           "sql": {
             "columns": [
@@ -1906,7 +1961,7 @@
           "editorMode": "code",
           "format": "table",
           "rawQuery": true,
-          "rawSql": "SELECT\n  $__timeGroup(\"CreationDatetime\", '1h', 0) AS \"time\",\n  \n  -- The raw profit for that specific hour:\n  SUM(\"FeeMsat\") / 1e11 AS \"Hourly Profit\",\n\n  -- The 24-hour rolling average (averages the last 24 one-hour buckets):\n  AVG(SUM(\"FeeMsat\") / 1e11) OVER (\n    ORDER BY $__timeGroup(\"CreationDatetime\", '1h', 0)\n    ROWS BETWEEN 23 PRECEDING AND CURRENT ROW\n  ) AS \"24h Rolling Avg\"\n\nFROM \"ForwardingHtlcEvents\"\nWHERE\n  $__timeFilter(\"CreationDatetime\")\n  AND \"Outcome\" = 1\n  AND \"ManagedNodePubKey\" IN ($node)\nGROUP BY 1\nORDER BY 1",
+          "rawSql": "WITH forwards AS (\n  SELECT\n    $__timeGroup(\"CreationDatetime\", '1h', 0) AS bucket,\n    SUM(\"FeeMsat\") AS fee_msat\n  FROM \"ForwardingHtlcEvents\"\n  WHERE\n    $__timeFilter(\"CreationDatetime\")\n    AND \"Outcome\" = 1\n    AND \"ManagedNodePubKey\" IN ($node)\n  GROUP BY 1\n),\nrebalances AS (\n  SELECT\n    $__timeGroup(r.\"CreationDatetime\", '1h', 0) AS bucket,\n    COALESCE(SUM(r.\"FeePaidSats\"), 0) AS cost_sats\n  FROM \"Rebalances\" r\n  JOIN \"Nodes\" n ON n.\"Id\" = r.\"NodeId\"\n  WHERE\n    r.\"Status\" = 3\n    AND $__timeFilter(r.\"CreationDatetime\")\n    AND n.\"PubKey\" IN ($node)\n  GROUP BY 1\n),\nhourly AS (\n  -- FULL OUTER JOIN so an hour with rebalance spend but no forwards still shows its loss\n  SELECT\n    COALESCE(f.bucket, b.bucket) AS bucket,\n    COALESCE(f.fee_msat, 0) AS fee_msat,\n    $applyRebalanceCosts * COALESCE(b.cost_sats, 0) AS cost_sats\n  FROM forwards f\n  FULL OUTER JOIN rebalances b ON b.bucket = f.bucket\n)\nSELECT\n  bucket AS \"time\",\n\n  -- Routing fees minus succeeded rebalance fees for that hour, in BTC:\n  (fee_msat / 1000.0 - cost_sats) / 1e8 AS \"Hourly Profit\",\n\n  -- The 24-hour rolling average (averages the last 24 one-hour buckets):\n  AVG((fee_msat / 1000.0 - cost_sats) / 1e8) OVER (\n    ORDER BY bucket\n    ROWS BETWEEN 23 PRECEDING AND CURRENT ROW\n  ) AS \"24h Rolling Avg\"\n\nFROM hourly\nORDER BY bucket",
           "refId": "A",
           "sql": {
             "columns": [
@@ -1928,7 +1983,8 @@
         }
       ],
       "title": "Profit over time",
-      "type": "timeseries"
+      "type": "timeseries",
+      "description": "Hourly routing profit in BTC, net of succeeded rebalance fees when Apply Rebalance Costs is enabled, with a 24-hour rolling average. Rebalance fees are attributed to the hour the rebalance was created."
     },
     {
       "datasource": {
