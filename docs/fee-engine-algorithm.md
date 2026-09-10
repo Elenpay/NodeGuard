@@ -35,7 +35,7 @@ dry-run, persistence, and safety (§7).
 |---|---|---|
 | `emaLocalRatio` | `ChannelRoutingState` | EMA-smoothed `local / (local + remote)`. Already smoothed by the sensor (α = 0.08), so the optimizer reads a stable signal and does **not** smooth again. |
 | `targetLocalRatio` | `ChannelRoutingState` | Where we want that ratio. Drifts with observed peer flow; clamped `[0.10, 0.90]`. |
-| `category` | `ChannelRoutingState` | `Sink` / `Source` / `Bidirectional` / `Uncategorized` — selects the baseline `p₀`. |
+| `category` | `ChannelRoutingState` | `Sink` / `Source` / `Bidirectional` / `Uncategorized` / `Idle` — selects the baseline `p₀`. |
 | `lastOutboundPpm` | `ChannelFeeState` | Last outbound ppm **we** applied; `null` on first evaluation. |
 | `lastInboundPpm` | `ChannelFeeState` | Last inbound ppm **we** applied; `null` on first evaluation. |
 | `allowPositiveInboundFees` | `Node` flag | When false, inbound is collapsed to `≤ 0` (discount-only). |
@@ -69,10 +69,11 @@ evaluation.
 | **Source** | `50` | Peer feeds *us* liquidity — keep cheap so the flow keeps coming. |
 | **Bidirectional** | `1500` | Balanced peer — mid fee. |
 | **Sink** | `2500` | Peer *drains* us — outbound liquidity here is scarce and valuable, charge a lot. |
-| **Uncategorized** | `1500` | No signal yet — same as bidirectional. |
+| **Uncategorized** | `1500` | No signal yet (too young / not yet evaluated) — same as bidirectional. |
+| **Idle** | `1500` | Mature but below the volume gate — no flow to read. Defaults to the mid tier so behaviour matches `Uncategorized`; lower it to price idle channels down and try to attract flow. |
 
 Because steps scale with `p₀`, a Source channel moves in ~1 ppm increments while a Sink moves in
-tens. **Get the three baselines right before touching the gains** — they set the fee tier, the
+tens. **Get the baselines right before touching the gains** — they set the fee tier, the
 gains only set how fast it converges.
 
 ## 5. Decision flow
@@ -244,6 +245,7 @@ off-target channels issues many `UpdateChannelPolicy` calls per cycle.
 | `ROUTING_ENGINE_FEE_BASELINE_PPM_BIDIRECTIONAL` | `1500` |
 | `ROUTING_ENGINE_FEE_BASELINE_PPM_SINK` | `2500` |
 | `ROUTING_ENGINE_FEE_BASELINE_PPM_UNCATEGORIZED` | `1500` |
+| `ROUTING_ENGINE_FEE_BASELINE_PPM_IDLE` | `1500` |
 
 **Job-level (not used by the pure law)**
 
