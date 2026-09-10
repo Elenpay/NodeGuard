@@ -35,6 +35,9 @@ public class AutoRebalanceJobTests
 {
     private const string NodePubKey = "managedPubKey";
 
+    /// <summary>Capacity of every arranged channel, comfortably over the size floor (10M default).</summary>
+    private const long ChannelSizeSats = 20_000_000;
+
     private readonly Mock<ILogger<AutoRebalanceJob>> _logger = new();
 
     private readonly Mock<INodeRepository> _nodeRepository = new();
@@ -56,10 +59,12 @@ public class AutoRebalanceJobTests
             _lightningClientService.Object);
 
     /// <summary>A NodeGuard channel row the rebalancer will consider, opted in or not.</summary>
-    private static Channel Db(int id, ulong chanId, bool optIn) => new()
+    private static Channel Db(int id, ulong chanId, bool optIn, long? satsAmount = null) => new()
     {
         Id = id, ChanId = chanId, Status = Channel.ChannelStatus.Open,
         IsAutoRebalanceEnabled = optIn,
+        // Matches the paired LND capacity, and clears the routing-engine size floor.
+        SatsAmount = satsAmount ?? ChannelSizeSats,
         FundingTx = $"tx{id}", FundingTxOutputIndex = 0,
     };
 
@@ -94,7 +99,8 @@ public class AutoRebalanceJobTests
     /// The single plan this produces reserves 6_250 sats (5_000_000 at its 0.125% cap).
     /// </summary>
     private void ArrangeRebalancePair(bool sourceOptedIn, bool sourceLiquidityFlag = false,
-        long? budgetSats = 1_000_000, long consumedFeesSats = 0)
+        long? budgetSats = 1_000_000, long consumedFeesSats = 0,
+        long sourceSatsAmount = ChannelSizeSats, long destSatsAmount = ChannelSizeSats)
     {
         var node = new Node
         {
@@ -114,12 +120,14 @@ public class AutoRebalanceJobTests
             IsDynamicFeeEnabled = true,
             IsAutoRebalanceEnabled = sourceOptedIn,
             IsAutomatedLiquidityEnabled = sourceLiquidityFlag,
+            SatsAmount = sourceSatsAmount,
             FundingTx = "txS", FundingTxOutputIndex = 0,
         };
         var destDb = new Channel
         {
             Id = 102, ChanId = 1002, Status = Channel.ChannelStatus.Open,
             IsDynamicFeeEnabled = true, IsAutoRebalanceEnabled = false,
+            SatsAmount = destSatsAmount,
             FundingTx = "txD", FundingTxOutputIndex = 0,
         };
         _channelRepository.Setup(x => x.GetOpenChannels()).ReturnsAsync(new List<Channel> { sourceDb, destDb });
@@ -249,6 +257,61 @@ public class AutoRebalanceJobTests
 
         _rebalanceService.Verify(x => x.RebalanceAsync(
             It.IsAny<RebalanceRequest>(), It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task Execute_SourceBelowMinChannelSize_IsNeverDrained()
+    {
+        // One sat under the floor, so this pins the exact boundary of the size gate. The channel is
+        // too-local and opted in — the only thing stopping it is its size.
+        ArrangeRebalancePair(sourceOptedIn: true,
+            sourceSatsAmount: Constants.ROUTING_ENGINE_FEE_MIN_CHANNEL_SIZE_SATS - 1);
+
+        await RoutingEngineSwitch.WithEngine(enabled: true, async () =>
+        {
+            await BuildJob().Execute(Mock.Of<IJobExecutionContext>());
+        });
+
+        _rebalanceService.Verify(x => x.RebalanceAsync(
+            It.IsAny<RebalanceRequest>(), It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task Execute_DestinationBelowMinChannelSize_IsNeverRefilled()
+    {
+        // The mirror image: the drainable source is fine, but the only depleted peer is too small
+        // to be worth refilling. Filtering at the repository is what covers this direction — a gate
+        // inside the planner's source loop would happily pay to fill it.
+        ArrangeRebalancePair(sourceOptedIn: true,
+            destSatsAmount: Constants.ROUTING_ENGINE_FEE_MIN_CHANNEL_SIZE_SATS - 1);
+
+        await RoutingEngineSwitch.WithEngine(enabled: true, async () =>
+        {
+            await BuildJob().Execute(Mock.Of<IJobExecutionContext>());
+        });
+
+        _rebalanceService.Verify(x => x.RebalanceAsync(
+            It.IsAny<RebalanceRequest>(), It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task Execute_ChannelsAtExactlyMinChannelSize_AreStillRebalanced()
+    {
+        // Capacity == the floor, and the comparison is >=, so both ends must survive the filter.
+        // SatsAmount is all the gate reads; the LND balances still drive sizing, hence 5_000_000.
+        ArrangeRebalancePair(sourceOptedIn: true,
+            sourceSatsAmount: Constants.ROUTING_ENGINE_FEE_MIN_CHANNEL_SIZE_SATS,
+            destSatsAmount: Constants.ROUTING_ENGINE_FEE_MIN_CHANNEL_SIZE_SATS);
+
+        await RoutingEngineSwitch.WithEngine(enabled: true, async () =>
+        {
+            await BuildJob().Execute(Mock.Of<IJobExecutionContext>());
+        });
+
+        _rebalanceService.Verify(x => x.RebalanceAsync(
+            It.Is<RebalanceRequest>(r => r.SourceChannelId == 101 && r.TargetPubkey == "peerD"
+                && r.AmountSats == 5_000_000),
+            It.IsAny<CancellationToken>()), Times.Once);
     }
 
     /// <summary>
