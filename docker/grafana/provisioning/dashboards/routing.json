@@ -1508,7 +1508,7 @@
         "type": "grafana-postgresql-datasource",
         "uid": "$datasource"
       },
-      "description": "Succeeded rebalances created in the window on the selected nodes. One row per rebalance (retries reuse the row and bump AttemptNumber), so this counts rebalances, not attempts. Matches the total of Successful rebalances over time.",
+      "description": "Succeeded rebalances created in the window on the selected nodes. One row per rebalance (retries reuse the row and bump AttemptNumber), so this counts rebalances, not attempts. Matches the last point of Succeeded (cumulative) in Rebalance totals.",
       "fieldConfig": {
         "defaults": {
           "color": {
@@ -1575,7 +1575,7 @@
         "type": "grafana-postgresql-datasource",
         "uid": "$datasource"
       },
-      "description": "Rebalances over time, bucketed by the panel interval and split by outcome. Succeeded = Status Succeeded; Failed = any terminal non-success status (Failed / No Route / Timeout / Insufficient Balance / Exceeded Fee Limit); In flight = Pending / In Flight. Bars are stacked, so each bar's height is every rebalance created in that bucket. Rebalanced Amount (sats) is the amount actually moved by the succeeded rebalances in the bucket (SatsAmount, not the requested amount).",
+      "description": "Running totals from the start of the selected time range, so every line only ever climbs. The left (count) axis is log10, so a series plots only from the bucket where it first goes above 0 — read this panel for \"how much have we rebalanced in this window\", and Rebalance activity below it for the per-bucket trend. Succeeded = Status Succeeded; Failed = any terminal non-success status (Failed / No Route / Timeout / Insufficient Balance / Exceeded Fee Limit); In flight = Pending / In Flight (current status, so a rebalance moves between series as it settles). Rebalanced Amount (cumulative BTC) on the right axis is the running total of the amount actually moved by the succeeded rebalances (SatsAmount converted to BTC, not the requested amount).",
       "fieldConfig": {
         "defaults": {
           "color": {
@@ -1585,7 +1585,227 @@
             "axisBorderShow": false,
             "axisCenteredZero": false,
             "axisColorMode": "text",
-            "axisLabel": "",
+            "axisLabel": "Rebalances (cumulative, log10)",
+            "axisPlacement": "auto",
+            "barAlignment": 0,
+            "barWidthFactor": 0.9,
+            "drawStyle": "line",
+            "fillOpacity": 0,
+            "gradientMode": "none",
+            "hideFrom": {
+              "legend": false,
+              "tooltip": false,
+              "viz": false
+            },
+            "insertNulls": false,
+            "lineInterpolation": "linear",
+            "lineWidth": 2,
+            "pointSize": 5,
+            "scaleDistribution": {
+              "log": 10,
+              "type": "log"
+            },
+            "showPoints": "auto",
+            "showValues": false,
+            "spanNulls": false,
+            "stacking": {
+              "group": "A",
+              "mode": "none"
+            },
+            "thresholdsStyle": {
+              "mode": "off"
+            }
+          },
+          "decimals": 0,
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "blue",
+                "value": 0
+              }
+            ]
+          },
+          "unit": "short"
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Succeeded (cumulative)"
+            },
+            "properties": [
+              {
+                "id": "custom.lineWidth",
+                "value": 3
+              },
+              {
+                "id": "custom.fillOpacity",
+                "value": 20
+              },
+              {
+                "id": "custom.gradientMode",
+                "value": "opacity"
+              },
+              {
+                "id": "custom.pointSize",
+                "value": 6
+              },
+              {
+                "id": "color",
+                "value": {
+                  "fixedColor": "green",
+                  "mode": "fixed"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Failed (cumulative)"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "fixedColor": "red",
+                  "mode": "fixed"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "In flight (cumulative)"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "fixedColor": "yellow",
+                  "mode": "fixed"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Rebalanced Amount (cumulative BTC)"
+            },
+            "properties": [
+              {
+                "id": "custom.scaleDistribution",
+                "value": {
+                  "type": "linear"
+                }
+              },
+              {
+                "id": "custom.lineWidth",
+                "value": 2
+              },
+              {
+                "id": "custom.fillOpacity",
+                "value": 0
+              },
+              {
+                "id": "custom.lineStyle",
+                "value": {
+                  "dash": [
+                    10,
+                    10
+                  ],
+                  "fill": "dash"
+                }
+              },
+              {
+                "id": "custom.axisPlacement",
+                "value": "right"
+              },
+              {
+                "id": "custom.axisLabel",
+                "value": "Rebalanced, cumulative (BTC)"
+              },
+              {
+                "id": "unit",
+                "value": "currencyBTC"
+              },
+              {
+                "id": "min",
+                "value": 0
+              },
+              {
+                "id": "color",
+                "value": {
+                  "fixedColor": "purple",
+                  "mode": "fixed"
+                }
+              },
+              {
+                "id": "decimals",
+                "value": 4
+              }
+            ]
+          }
+        ]
+      },
+      "gridPos": {
+        "h": 7,
+        "w": 20,
+        "x": 4,
+        "y": 21
+      },
+      "id": 513,
+      "interval": "1h",
+      "options": {
+        "legend": {
+          "calcs": [],
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "hideZeros": false,
+          "mode": "multi",
+          "sort": "none"
+        }
+      },
+      "pluginVersion": "12.4.2",
+      "targets": [
+        {
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "$datasource"
+          },
+          "editorMode": "code",
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "WITH buckets AS (\n  SELECT\n    $__timeGroup(r.\"CreationDatetime\", $__interval) AS \"time\",\n    COUNT(*) FILTER (WHERE r.\"Status\" = 3) AS succeeded,\n    -- Everything that is neither settled nor still running, so the three counts always sum to\n    -- every rebalance created up to that point (Status 1 is the removed Probing value, kept as a gap):\n    COUNT(*) FILTER (WHERE r.\"Status\" NOT IN (0, 1, 2, 3)) AS failed,\n    COUNT(*) FILTER (WHERE r.\"Status\" IN (0, 1, 2)) AS in_flight,\n\n    -- Amount actually moved by the succeeded rebalances, not the amount originally requested,\n    -- converted from sats to BTC for the right-hand axis:\n    COALESCE(SUM(r.\"SatsAmount\") FILTER (WHERE r.\"Status\" = 3), 0) / 100000000.0 AS rebalanced_btc\n\n  FROM \"Rebalances\" r\n  JOIN \"Nodes\" n ON n.\"Id\" = r.\"NodeId\"\n  WHERE\n    $__timeFilter(r.\"CreationDatetime\")\n    AND n.\"PubKey\" IN ($node)\n  GROUP BY 1\n)\n-- Running totals across the window, so every line only ever climbs. Succeeded comes last so the\n-- panel draws it on top of the other counts:\nSELECT\n  \"time\",\n  SUM(failed)          OVER w AS \"Failed (cumulative)\",\n  SUM(in_flight)       OVER w AS \"In flight (cumulative)\",\n  SUM(succeeded)       OVER w AS \"Succeeded (cumulative)\",\n  SUM(rebalanced_btc)  OVER w AS \"Rebalanced Amount (cumulative BTC)\"\nFROM buckets\nWINDOW w AS (ORDER BY \"time\" ROWS UNBOUNDED PRECEDING)\nORDER BY \"time\"",
+          "refId": "A"
+        }
+      ],
+      "title": "Rebalance totals (cumulative)",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "$datasource"
+      },
+      "description": "Succeeded rebalances per bucket (green bars, left axis) with a trailing 7-bucket mean so the trend reads through the noise. Failures do not share that axis: Failed and In flight are thin lines on their own right-hand scale, so a large failure count cannot squash the green bars. Failed = any terminal non-success status (Failed / No Route / Timeout / Insufficient Balance / Exceeded Fee Limit); In flight = Pending / In Flight. Success rate is a trailing 7-bucket mean weighted by volume, over settled rebalances only (in-flight excluded from the denominator); it is blank across stretches where nothing settled. Rebalance totals above carries the running totals.",
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "axisBorderShow": false,
+            "axisCenteredZero": false,
+            "axisColorMode": "text",
+            "axisLabel": "Succeeded per bucket",
             "axisPlacement": "auto",
             "barAlignment": 0,
             "barWidthFactor": 0.9,
@@ -1647,9 +1867,72 @@
           {
             "matcher": {
               "id": "byName",
+              "options": "Succeeded (7-bucket mean)"
+            },
+            "properties": [
+              {
+                "id": "custom.drawStyle",
+                "value": "line"
+              },
+              {
+                "id": "custom.lineWidth",
+                "value": 3
+              },
+              {
+                "id": "custom.lineInterpolation",
+                "value": "smooth"
+              },
+              {
+                "id": "custom.fillOpacity",
+                "value": 0
+              },
+              {
+                "id": "decimals",
+                "value": 1
+              },
+              {
+                "id": "color",
+                "value": {
+                  "fixedColor": "dark-green",
+                  "mode": "fixed"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
               "options": "Failed"
             },
             "properties": [
+              {
+                "id": "custom.drawStyle",
+                "value": "line"
+              },
+              {
+                "id": "custom.fillOpacity",
+                "value": 0
+              },
+              {
+                "id": "custom.axisPlacement",
+                "value": "right"
+              },
+              {
+                "id": "custom.axisLabel",
+                "value": "Failed / In flight per bucket"
+              },
+              {
+                "id": "unit",
+                "value": "short"
+              },
+              {
+                "id": "min",
+                "value": 0
+              },
+              {
+                "id": "custom.lineWidth",
+                "value": 1
+              },
               {
                 "id": "color",
                 "value": {
@@ -1666,27 +1949,8 @@
             },
             "properties": [
               {
-                "id": "color",
-                "value": {
-                  "fixedColor": "yellow",
-                  "mode": "fixed"
-                }
-              }
-            ]
-          },
-          {
-            "matcher": {
-              "id": "byName",
-              "options": "Rebalanced Amount (sats)"
-            },
-            "properties": [
-              {
                 "id": "custom.drawStyle",
                 "value": "line"
-              },
-              {
-                "id": "custom.lineWidth",
-                "value": 2
               },
               {
                 "id": "custom.fillOpacity",
@@ -1698,20 +1962,93 @@
               },
               {
                 "id": "custom.axisLabel",
-                "value": "Rebalanced (sats)"
+                "value": "Failed / In flight per bucket"
               },
               {
                 "id": "unit",
-                "value": "suffix:sats"
+                "value": "short"
               },
               {
                 "id": "min",
                 "value": 0
               },
               {
+                "id": "custom.lineWidth",
+                "value": 1
+              },
+              {
+                "id": "custom.lineStyle",
+                "value": {
+                  "dash": [
+                    10,
+                    10
+                  ],
+                  "fill": "dash"
+                }
+              },
+              {
                 "id": "color",
                 "value": {
-                  "fixedColor": "purple",
+                  "fixedColor": "yellow",
+                  "mode": "fixed"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Success rate (7-bucket mean)"
+            },
+            "properties": [
+              {
+                "id": "custom.drawStyle",
+                "value": "line"
+              },
+              {
+                "id": "custom.lineWidth",
+                "value": 2
+              },
+              {
+                "id": "custom.lineInterpolation",
+                "value": "smooth"
+              },
+              {
+                "id": "custom.fillOpacity",
+                "value": 0
+              },
+              {
+                "id": "custom.axisPlacement",
+                "value": "right"
+              },
+              {
+                "id": "custom.axisLabel",
+                "value": "Success rate"
+              },
+              {
+                "id": "custom.spanNulls",
+                "value": true
+              },
+              {
+                "id": "unit",
+                "value": "percent"
+              },
+              {
+                "id": "min",
+                "value": 0
+              },
+              {
+                "id": "max",
+                "value": 100
+              },
+              {
+                "id": "decimals",
+                "value": 1
+              },
+              {
+                "id": "color",
+                "value": {
+                  "fixedColor": "blue",
                   "mode": "fixed"
                 }
               }
@@ -1720,12 +2057,12 @@
         ]
       },
       "gridPos": {
-        "h": 7,
-        "w": 20,
-        "x": 4,
-        "y": 21
+        "h": 8,
+        "w": 24,
+        "x": 0,
+        "y": 28
       },
-      "id": 513,
+      "id": 514,
       "interval": "1h",
       "options": {
         "legend": {
@@ -1750,11 +2087,11 @@
           "editorMode": "code",
           "format": "table",
           "rawQuery": true,
-          "rawSql": "SELECT\n  $__timeGroup(r.\"CreationDatetime\", $__interval, 0) AS \"time\",\n  COUNT(*) FILTER (WHERE r.\"Status\" = 3) AS \"Succeeded\",\n  -- Everything that is neither settled nor still running, so the three series always sum to\n  -- every rebalance in the bucket (Status 1 is the removed Probing value, kept as a gap):\n  COUNT(*) FILTER (WHERE r.\"Status\" NOT IN (0, 1, 2, 3)) AS \"Failed\",\n  COUNT(*) FILTER (WHERE r.\"Status\" IN (0, 1, 2)) AS \"In flight\",\n\n  -- Amount actually moved by the succeeded rebalances, not the amount originally requested:\n  COALESCE(SUM(r.\"SatsAmount\") FILTER (WHERE r.\"Status\" = 3), 0) AS \"Rebalanced Amount (sats)\"\n\nFROM \"Rebalances\" r\nJOIN \"Nodes\" n ON n.\"Id\" = r.\"NodeId\"\nWHERE\n  $__timeFilter(r.\"CreationDatetime\")\n  AND n.\"PubKey\" IN ($node)\nGROUP BY 1\nORDER BY 1",
+          "rawSql": "WITH buckets AS (\n  SELECT\n    $__timeGroup(r.\"CreationDatetime\", $__interval) AS \"time\",\n    COUNT(*) FILTER (WHERE r.\"Status\" = 3) AS succeeded,\n    -- Everything that is neither settled nor still running, so the three counts always sum to\n    -- every rebalance created in the bucket (Status 1 is the removed Probing value, kept as a gap):\n    COUNT(*) FILTER (WHERE r.\"Status\" NOT IN (0, 1, 2, 3)) AS failed,\n    COUNT(*) FILTER (WHERE r.\"Status\" IN (0, 1, 2)) AS in_flight\n\n  FROM \"Rebalances\" r\n  JOIN \"Nodes\" n ON n.\"Id\" = r.\"NodeId\"\n  WHERE\n    $__timeFilter(r.\"CreationDatetime\")\n    AND n.\"PubKey\" IN ($node)\n  GROUP BY 1\n)\nSELECT\n  \"time\",\n  succeeded AS \"Succeeded\",\n  AVG(succeeded) OVER w AS \"Succeeded (7-bucket mean)\",\n  failed    AS \"Failed\",\n  in_flight AS \"In flight\",\n\n  -- Trailing 7-bucket success rate, weighted by volume rather than averaging per-bucket rates.\n  -- In-flight rebalances are left out of the denominator (not settled yet), and a window with\n  -- nothing settled yields NULL so a quiet stretch does not read as 0%:\n  CASE WHEN SUM(succeeded + failed) OVER w > 0\n       THEN 100.0 * SUM(succeeded) OVER w / SUM(succeeded + failed) OVER w\n  END AS \"Success rate (7-bucket mean)\"\n\nFROM buckets\nWINDOW w AS (ORDER BY \"time\" ROWS BETWEEN 6 PRECEDING AND CURRENT ROW)\nORDER BY \"time\"",
           "refId": "A"
         }
       ],
-      "title": "Rebalances over time",
+      "title": "Rebalance activity (per bucket)",
       "type": "timeseries"
     },
     {
@@ -2058,7 +2395,7 @@
         "h": 8,
         "w": 24,
         "x": 0,
-        "y": 28
+        "y": 36
       },
       "id": 511,
       "options": {
@@ -2192,7 +2529,7 @@
         "h": 8,
         "w": 24,
         "x": 0,
-        "y": 36
+        "y": 44
       },
       "id": 18,
       "options": {
@@ -2306,7 +2643,7 @@
         "h": 8,
         "w": 24,
         "x": 0,
-        "y": 44
+        "y": 52
       },
       "id": 19,
       "options": {
@@ -2380,7 +2717,7 @@
         "h": 8,
         "w": 12,
         "x": 0,
-        "y": 52
+        "y": 60
       },
       "id": 9,
       "options": {
@@ -2596,7 +2933,7 @@
         "h": 8,
         "w": 12,
         "x": 12,
-        "y": 52
+        "y": 60
       },
       "id": 13,
       "options": {
@@ -2812,7 +3149,7 @@
         "h": 8,
         "w": 12,
         "x": 0,
-        "y": 60
+        "y": 68
       },
       "id": 14,
       "options": {
@@ -3054,7 +3391,7 @@
         "h": 8,
         "w": 12,
         "x": 12,
-        "y": 60
+        "y": 68
       },
       "id": 15,
       "options": {
@@ -3317,7 +3654,7 @@
         "h": 8,
         "w": 12,
         "x": 0,
-        "y": 68
+        "y": 76
       },
       "id": 8,
       "options": {
@@ -3576,7 +3913,7 @@
         "h": 8,
         "w": 12,
         "x": 12,
-        "y": 68
+        "y": 76
       },
       "id": 16,
       "options": {
@@ -3830,7 +4167,7 @@
         "h": 8,
         "w": 12,
         "x": 0,
-        "y": 76
+        "y": 84
       },
       "id": 21,
       "options": {
@@ -4022,7 +4359,7 @@
         "h": 8,
         "w": 12,
         "x": 12,
-        "y": 76
+        "y": 84
       },
       "id": 22,
       "options": {
@@ -4236,7 +4573,7 @@
         "h": 8,
         "w": 8,
         "x": 0,
-        "y": 84
+        "y": 92
       },
       "id": 17,
       "options": {
@@ -4412,7 +4749,7 @@
         "h": 8,
         "w": 8,
         "x": 8,
-        "y": 84
+        "y": 92
       },
       "id": 504,
       "options": {
@@ -4515,7 +4852,7 @@
         "h": 8,
         "w": 8,
         "x": 16,
-        "y": 84
+        "y": 92
       },
       "id": 403,
       "options": {
@@ -4632,7 +4969,7 @@
         "h": 10,
         "w": 12,
         "x": 0,
-        "y": 123
+        "y": 131
       },
       "id": 100,
       "options": {
@@ -4730,7 +5067,7 @@
         "h": 10,
         "w": 12,
         "x": 12,
-        "y": 123
+        "y": 131
       },
       "id": 101,
       "options": {
@@ -4824,7 +5161,7 @@
         "h": 8,
         "w": 24,
         "x": 0,
-        "y": 133
+        "y": 141
       },
       "id": 102,
       "options": {
@@ -4968,7 +5305,7 @@
         "h": 10,
         "w": 24,
         "x": 0,
-        "y": 142
+        "y": 150
       },
       "id": 103,
       "options": {
@@ -5112,7 +5449,7 @@
         "h": 10,
         "w": 24,
         "x": 0,
-        "y": 152
+        "y": 160
       },
       "id": 104,
       "options": {
@@ -5188,7 +5525,7 @@
         "h": 7,
         "w": 8,
         "x": 0,
-        "y": 115
+        "y": 123
       },
       "id": 105,
       "options": {
@@ -5259,7 +5596,7 @@
         "h": 7,
         "w": 8,
         "x": 8,
-        "y": 115
+        "y": 123
       },
       "id": 109,
       "options": {
@@ -5338,7 +5675,7 @@
         "h": 7,
         "w": 8,
         "x": 16,
-        "y": 115
+        "y": 123
       },
       "id": 107,
       "options": {
@@ -5484,7 +5821,7 @@
         "h": 10,
         "w": 24,
         "x": 0,
-        "y": 183
+        "y": 191
       },
       "id": 108,
       "options": {
@@ -5663,7 +6000,7 @@
         "h": 10,
         "w": 24,
         "x": 0,
-        "y": 194
+        "y": 202
       },
       "id": 112,
       "options": {
@@ -5807,7 +6144,7 @@
         "h": 10,
         "w": 24,
         "x": 0,
-        "y": 162
+        "y": 170
       },
       "id": 110,
       "options": {
@@ -5951,7 +6288,7 @@
         "h": 10,
         "w": 24,
         "x": 0,
-        "y": 172
+        "y": 180
       },
       "id": 111,
       "options": {
@@ -5991,7 +6328,7 @@
         "h": 1,
         "w": 24,
         "x": 0,
-        "y": 114
+        "y": 122
       },
       "id": 200,
       "panels": [],
@@ -6004,7 +6341,7 @@
         "h": 1,
         "w": 24,
         "x": 0,
-        "y": 122
+        "y": 130
       },
       "id": 201,
       "panels": [],
@@ -6017,7 +6354,7 @@
         "h": 1,
         "w": 24,
         "x": 0,
-        "y": 141
+        "y": 149
       },
       "id": 202,
       "panels": [],
@@ -6030,7 +6367,7 @@
         "h": 1,
         "w": 24,
         "x": 0,
-        "y": 182
+        "y": 190
       },
       "id": 203,
       "panels": [],
@@ -6043,7 +6380,7 @@
         "h": 1,
         "w": 24,
         "x": 0,
-        "y": 204
+        "y": 212
       },
       "id": 204,
       "panels": [],
@@ -6130,7 +6467,7 @@
         "h": 9,
         "w": 24,
         "x": 0,
-        "y": 205
+        "y": 213
       },
       "id": 113,
       "options": {
@@ -6226,7 +6563,7 @@
         "h": 9,
         "w": 24,
         "x": 0,
-        "y": 214
+        "y": 222
       },
       "id": 206,
       "options": {
@@ -6267,7 +6604,7 @@
         "h": 1,
         "w": 24,
         "x": 0,
-        "y": 224
+        "y": 232
       },
       "id": 250,
       "panels": [],
@@ -6304,7 +6641,7 @@
         "h": 7,
         "w": 5,
         "x": 0,
-        "y": 225
+        "y": 233
       },
       "id": 303,
       "options": {
@@ -6371,7 +6708,7 @@
         "h": 7,
         "w": 5,
         "x": 5,
-        "y": 225
+        "y": 233
       },
       "id": 300,
       "options": {
@@ -6438,7 +6775,7 @@
         "h": 7,
         "w": 5,
         "x": 10,
-        "y": 225
+        "y": 233
       },
       "id": 307,
       "options": {
@@ -6517,7 +6854,7 @@
         "h": 7,
         "w": 5,
         "x": 15,
-        "y": 225
+        "y": 233
       },
       "id": 302,
       "options": {
@@ -6588,7 +6925,7 @@
         "h": 7,
         "w": 4,
         "x": 20,
-        "y": 225
+        "y": 233
       },
       "id": 304,
       "options": {
@@ -6705,7 +7042,7 @@
         "h": 9,
         "w": 24,
         "x": 0,
-        "y": 232
+        "y": 240
       },
       "id": 301,
       "options": {
@@ -6801,7 +7138,7 @@
         "h": 9,
         "w": 24,
         "x": 0,
-        "y": 241
+        "y": 249
       },
       "id": 306,
       "options": {
@@ -6842,7 +7179,7 @@
         "h": 1,
         "w": 24,
         "x": 0,
-        "y": 250
+        "y": 258
       },
       "id": 500,
       "panels": [],
@@ -6879,7 +7216,7 @@
         "h": 8,
         "w": 8,
         "x": 0,
-        "y": 251
+        "y": 259
       },
       "id": 501,
       "options": {
@@ -6946,7 +7283,7 @@
         "h": 8,
         "w": 8,
         "x": 8,
-        "y": 251
+        "y": 259
       },
       "id": 502,
       "options": {
@@ -7010,7 +7347,7 @@
         "h": 8,
         "w": 8,
         "x": 16,
-        "y": 251
+        "y": 259
       },
       "id": 503,
       "options": {
@@ -7097,7 +7434,7 @@
         "h": 1,
         "w": 24,
         "x": 0,
-        "y": 259
+        "y": 267
       },
       "id": 400,
       "panels": [],
@@ -7191,7 +7528,7 @@
         "h": 10,
         "w": 12,
         "x": 0,
-        "y": 260
+        "y": 268
       },
       "id": 401,
       "options": {
@@ -7342,7 +7679,7 @@
         "h": 10,
         "w": 12,
         "x": 12,
-        "y": 260
+        "y": 268
       },
       "id": 402,
       "options": {
@@ -7507,7 +7844,7 @@
         "h": 10,
         "w": 12,
         "x": 0,
-        "y": 270
+        "y": 278
       },
       "id": 404,
       "options": {
@@ -7678,7 +8015,7 @@
         "h": 10,
         "w": 12,
         "x": 12,
-        "y": 270
+        "y": 278
       },
       "id": 405,
       "options": {
@@ -7878,7 +8215,7 @@
         "h": 9,
         "w": 24,
         "x": 0,
-        "y": 280
+        "y": 288
       },
       "id": 406,
       "options": {
