@@ -235,6 +235,91 @@ public class TargetRatioReevaluationJobTests
     }
 
     [Fact]
+    public async Task Execute_MatureChannelMidHysteresis_HoldsUncategorizedAtNeutralTarget()
+    {
+        var prevEnabled = Constants.ROUTING_ENGINE_ENABLED;
+        var prevMinAge = Constants.ROUTING_ENGINE_CATEGORIZATION_MIN_AGE_BLOCKS;
+        var prevMinFlow = Constants.ROUTING_ENGINE_FLOW_MIN_MSAT;
+        var prevThreshold = Constants.ROUTING_ENGINE_CATEGORY_NET_FLOW_THRESHOLD;
+        var prevHysteresis = Constants.ROUTING_ENGINE_CATEGORY_FLIP_HYSTERESIS_CYCLES;
+
+        Constants.ROUTING_ENGINE_ENABLED = true;
+        Constants.ROUTING_ENGINE_CATEGORIZATION_MIN_AGE_BLOCKS = 10;
+        Constants.ROUTING_ENGINE_FLOW_MIN_MSAT = 100_000_000;
+        Constants.ROUTING_ENGINE_CATEGORY_NET_FLOW_THRESHOLD = 0.25;
+        Constants.ROUTING_ENGINE_CATEGORY_FLIP_HYSTERESIS_CYCLES = 3;
+
+        try
+        {
+            var node = BuildNode();
+            // Past the age gate with ample push-only flow, but the very first cycle of a 3-cycle
+            // hysteresis: the SINK verdict is only pending, so nothing may steer off it yet.
+            ArrangeSingleChannel(node, localBalance: 3_000_000, remoteBalance: 1_000_000,
+                push: 1_000_000_000, pull: 0, chainTip: 5000);
+            CaptureUpsert();
+
+            await BuildJob().Execute(Mock.Of<IJobExecutionContext>());
+
+            var state = _captured;
+            state.Should().NotBeNull();
+            state!.PeerFlowCategory.Should().Be(PeerFlowCategory.Uncategorized, "the flip has not committed yet");
+            state.PendingCategory.Should().Be(PeerFlowCategory.Sink);
+            state.ConsecutiveCategoryCyclesInNewState.Should().Be(1);
+            state.TargetLocalRatio.Should().Be(0.5,
+                "an uncommitted verdict must not drift the target, even with a strong flow signal");
+        }
+        finally
+        {
+            Constants.ROUTING_ENGINE_ENABLED = prevEnabled;
+            Constants.ROUTING_ENGINE_CATEGORIZATION_MIN_AGE_BLOCKS = prevMinAge;
+            Constants.ROUTING_ENGINE_FLOW_MIN_MSAT = prevMinFlow;
+            Constants.ROUTING_ENGINE_CATEGORY_NET_FLOW_THRESHOLD = prevThreshold;
+            Constants.ROUTING_ENGINE_CATEGORY_FLIP_HYSTERESIS_CYCLES = prevHysteresis;
+        }
+    }
+
+    [Fact]
+    public async Task Execute_OldChannelWithoutTraffic_CategorizesIdle_AtNeutralTarget()
+    {
+        var prevEnabled = Constants.ROUTING_ENGINE_ENABLED;
+        var prevMinAge = Constants.ROUTING_ENGINE_CATEGORIZATION_MIN_AGE_BLOCKS;
+        var prevMinFlow = Constants.ROUTING_ENGINE_FLOW_MIN_MSAT;
+        var prevThreshold = Constants.ROUTING_ENGINE_CATEGORY_NET_FLOW_THRESHOLD;
+        var prevHysteresis = Constants.ROUTING_ENGINE_CATEGORY_FLIP_HYSTERESIS_CYCLES;
+
+        Constants.ROUTING_ENGINE_ENABLED = true;
+        Constants.ROUTING_ENGINE_CATEGORIZATION_MIN_AGE_BLOCKS = 10;
+        Constants.ROUTING_ENGINE_FLOW_MIN_MSAT = 100_000_000;
+        Constants.ROUTING_ENGINE_CATEGORY_NET_FLOW_THRESHOLD = 0.25;
+        Constants.ROUTING_ENGINE_CATEGORY_FLIP_HYSTERESIS_CYCLES = 1;
+
+        try
+        {
+            var node = BuildNode();
+            // Past the age gate, but push-only flow far below the volume gate ⇒ IDLE, not SINK.
+            ArrangeSingleChannel(node, localBalance: 3_000_000, remoteBalance: 1_000_000,
+                push: 1_000_000, pull: 0, chainTip: 5000);
+            CaptureUpsert();
+
+            await BuildJob().Execute(Mock.Of<IJobExecutionContext>());
+
+            var state = _captured;
+            state.Should().NotBeNull();
+            state!.PeerFlowCategory.Should().Be(PeerFlowCategory.Idle, "the volume gate yields Idle, not Uncategorized");
+            state.NetFlowRatio.Should().Be(1.0, "flow is still measured, it is just too small to judge on");
+            state.TargetLocalRatio.Should().Be(0.5, "an Idle channel's target holds at neutral");
+        }
+        finally
+        {
+            Constants.ROUTING_ENGINE_ENABLED = prevEnabled;
+            Constants.ROUTING_ENGINE_CATEGORIZATION_MIN_AGE_BLOCKS = prevMinAge;
+            Constants.ROUTING_ENGINE_FLOW_MIN_MSAT = prevMinFlow;
+            Constants.ROUTING_ENGINE_CATEGORY_NET_FLOW_THRESHOLD = prevThreshold;
+            Constants.ROUTING_ENGINE_CATEGORY_FLIP_HYSTERESIS_CYCLES = prevHysteresis;
+        }
+    }
+
+    [Fact]
     public async Task Execute_YoungChannel_StaysUncategorized_ButStillSensesFlow()
     {
         var prevEnabled = Constants.ROUTING_ENGINE_ENABLED;
