@@ -92,7 +92,9 @@ public class AutoRebalanceJob : IJob
 
             // Shared per-run context, only needed when at least one node is under management
             var openChannelsByChanId = (await _channelRepository.GetOpenChannels())
+                .Where(c => c.SatsAmount >= Constants.ROUTING_ENGINE_FEE_MIN_CHANNEL_SIZE_SATS)
                 .ToDictionary(c => c.ChanId);
+
             var inFlightSourceChannelIds = await _rebalanceRepository.GetPendingInFlightSourceChannelIds();
 
             foreach (var node in relevantNodes)
