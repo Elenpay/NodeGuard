@@ -134,6 +134,12 @@ cycles, and comes back the same way when volume returns.
 Because `ComputeCategory` no longer emits `Uncategorized`, it is now effectively **write-once**: a
 channel that leaves it never returns short of the row being reset.
 
+`Uncategorized` is also **hands-off** for both actuators: the fee engine leaves the operator's fees
+alone and the rebalancer will not drain the channel (nor refill a peer whose channels are all
+uncategorized). `Idle` is a committed verdict, so it stays under management. See
+[fee-engine-algorithm.md](fee-engine-algorithm.md) §7 and
+[rebalance-algorithm.md](rebalance-algorithm.md) §3–4.
+
 Both `Uncategorized` and `Idle` hold the target ratio at a neutral `0.5`, but for **different reasons** — the shared
 predicate is about the setpoint, not about flow:
 
