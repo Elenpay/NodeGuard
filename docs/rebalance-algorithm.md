@@ -56,6 +56,11 @@ routing state, via [`RoutingEngineSnapshotService`](../src/Services/RoutingEngin
 | `Active` | `ListChannels` | Inactive channels take no part, either side. |
 | `SourceOptIn` | `Channel.IsAutoRebalanceEnabled` **and** not already being drained | Per-channel opt-in, ANDed with `GetPendingInFlightSourceChannelIds`. **Source side only** — see §8. |
 
+`Classify` knows nothing about `PeerFlowCategory`. The policy is a single filter in
+`AutoRebalanceJob`: channels whose `PeerFlowCategory` is `Uncategorized` are dropped before the
+signals are built, so they are neither drained nor counted toward any destination peer. `Idle` is a
+real verdict and stays eligible. The cost of that simplicity is the mixed-peer case in §8.
+
 The split matters: **direction is decided on the EMA** so a single forward can't trigger a payment,
 while **sizing uses live balances** because those are the sats that actually move.
 
@@ -72,7 +77,8 @@ Let `T` = `TargetLocalRatio`, `E` = `EmaLocalRatio`, `db` = `ROUTING_ENGINE_REBA
 
 ### Source side — per channel
 
-Gated on `Active && SourceOptIn && base > 0`.
+Gated on `Active && SourceOptIn && base > 0`. `Uncategorized` channels never reach `Classify` at
+all, having been filtered in the job (§3).
 
 | Pool | Condition | How much it may give |
 |---|---|---|
@@ -88,8 +94,12 @@ Channels grouped by `PeerPubKey`; `aggEma` and `aggTarget` are weighted by each 
 | `Destinations` | `aggEma − aggTarget < −db` **and** deficit `> 0` | `round(Σ T·base) − peerLocal` — up to its **own target** |
 | `FallbackDestinations` | otherwise, if absorbable `> min` | `round(min(1, aggTarget + db) · peerBase) − peerLocal` — up to the **high edge of its deadband** |
 
-Note the destination loop groups on `Active` alone — it does **not** filter on `SourceOptIn`.
-Opting a channel out stops it being drained, not from receiving (§8).
+The loop aggregates over every channel it receives — which excludes uncategorized ones, filtered
+upstream (§3). On a peer with a mix of categorized and uncategorized channels that under-reports the
+peer's liquidity; see §8.
+
+The loop groups on `Active` alone — it does **not** filter on `SourceOptIn`. Opting a
+channel out stops it being drained, not from receiving (§8).
 
 ### Why the fallback pools stop at the deadband edge
 
@@ -268,6 +278,22 @@ at a peer whose previous refill is still pending.
 
 Arguably a policy question rather than a bug — "don't drain this" and "don't send traffic here" are
 different intents — but the current toggle only implements the first.
+
+### A mixed peer is over-refilled while one of its channels is uncategorized
+
+Uncategorized channels are filtered out in the job, so their balance is invisible to the destination
+aggregate. On a peer where some channels are categorized and one is not, the peer reads as holding
+less local than it really does, and can be classified as a real destination — with a deficit — while
+actually sitting on target.
+
+The common trigger is opening a **second channel to an existing peer**: the new channel is
+`Uncategorized` until it clears the age gate (~21 days) and is typically full, so for that window the
+rebalancer can keep buying inbound for a peer that already has plenty.
+
+Pinned by `AutoRebalanceJobTests.Execute_MixedPeer_OverRefillsBecauseUncategorizedSiblingIsInvisible`
+(7M sent where counting both channels would have capped it at 6M). Accepted in exchange for the
+policy being one filter in the job rather than a rule threaded through `Classify`. Closing it means
+keeping uncategorized channels in the signal list and gating the two sides separately.
 
 ### A slow run can starve the cadence
 
