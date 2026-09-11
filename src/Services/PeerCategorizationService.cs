@@ -77,7 +77,7 @@ public static class PeerCategorizationService
     private static PeerFlowCategory ComputeTentative(
         double netFlowRatio, long windowVolumeMsat, double netFlowThreshold, long minVolumeMsat)
     {
-        if (windowVolumeMsat < minVolumeMsat) return PeerFlowCategory.Uncategorized;
+        if (windowVolumeMsat < minVolumeMsat) return PeerFlowCategory.Idle;
         if (netFlowRatio >= netFlowThreshold) return PeerFlowCategory.Sink;
         if (netFlowRatio <= -netFlowThreshold) return PeerFlowCategory.Source;
         return PeerFlowCategory.Bidirectional;

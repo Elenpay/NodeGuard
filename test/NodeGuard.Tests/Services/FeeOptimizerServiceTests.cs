@@ -40,7 +40,8 @@ public class FeeOptimizerServiceTests
         BaselineSourcePpm: 50,
         BaselineBidirectionalPpm: 1500,
         BaselineSinkPpm: 2500,
-        BaselineUncategorizedPpm: 1500);
+        BaselineUncategorizedPpm: 1500,
+        BaselineIdlePpm: 900);
 
     private FeePolicyDecision Compute(
         double ema,
@@ -160,7 +161,7 @@ public class FeeOptimizerServiceTests
     }
 
     [Fact]
-    public void FromConstants_MapsBaselineTriple()
+    public void FromConstants_MapsEveryCategoryBaseline()
     {
         var t = FeeOptimizerTunables.FromConstants();
 
@@ -168,5 +169,17 @@ public class FeeOptimizerServiceTests
         t.BaselineBidirectionalPpm.Should().Be(Constants.ROUTING_ENGINE_FEE_BASELINE_PPM_BIDIRECTIONAL);
         t.BaselineSinkPpm.Should().Be(Constants.ROUTING_ENGINE_FEE_BASELINE_PPM_SINK);
         t.BaselineUncategorizedPpm.Should().Be(Constants.ROUTING_ENGINE_FEE_BASELINE_PPM_UNCATEGORIZED);
+        t.BaselineIdlePpm.Should().Be(Constants.ROUTING_ENGINE_FEE_BASELINE_PPM_IDLE);
+    }
+
+    [Fact]
+    public void Idle_SeedsFromItsOwnBaseline_NotTheUncategorizedOne()
+    {
+        // First evaluation (no last-applied value) seeds pLast from the Idle baseline of 900:
+        // d = 0.60 - 0.50 = 0.10 → pNew = 900 - 0.8*0.10*900 = 828, clamped to a 50ppm step.
+        var decision = Compute(0.60, 0.50, PeerFlowCategory.Idle, null, null, allowPositiveInbound: true);
+
+        decision.Action.Should().Be(FeeAction.Update);
+        decision.OutboundPpm.Should().Be(850);
     }
 }

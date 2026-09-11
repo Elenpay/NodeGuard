@@ -221,6 +221,7 @@ table.peers-tbl tbody tr.peer-row:hover { background: #faf9fe; }
 .cat-source { background: rgba(59,119,226,.14); color: #2a5cb8; }
 .cat-bidi { background: rgba(151,51,239,.13); color: #7b23c9; }
 .cat-uncat { background: #eeedf4; color: var(--muted); }
+.cat-idle { background: rgba(120,132,148,.16); color: #5b6675; }
 .cat-none { background: transparent; color: var(--faint); }
 
 .cat-pending {

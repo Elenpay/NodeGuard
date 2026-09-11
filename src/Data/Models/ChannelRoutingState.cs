@@ -26,6 +26,10 @@ namespace NodeGuard.Data.Models;
 /// </summary>
 public enum PeerFlowCategory
 {
+    /// <summary>
+    /// No verdict yet: the channel is too young to categorize (age gate), has no confirmed scid
+    /// (pending/alias/zero-conf), or has never been evaluated. Target ratio held at 0.5.
+    /// </summary>
     Uncategorized = 0,
 
     /// <summary>Push-heavy (NetFlowRatio > 0): the peer drains our local balance. Hold more local, higher fees.</summary>
@@ -35,7 +39,13 @@ public enum PeerFlowCategory
     Source = 2,
 
     /// <summary>Balanced flow: target ratio held near 0.5.</summary>
-    Bidirectional = 3
+    Bidirectional = 3,
+
+    /// <summary>
+    /// Old enough to judge but routed too little to judge on — in-window volume is below the
+    /// volume gate, so NetFlowRatio is noise. Target ratio held at 0.5.
+    /// </summary>
+    Idle = 4
 }
 
 /// <summary>

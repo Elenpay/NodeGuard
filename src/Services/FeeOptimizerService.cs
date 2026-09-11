@@ -59,7 +59,8 @@ public record FeeOptimizerTunables(
     uint BaselineSourcePpm,
     uint BaselineBidirectionalPpm,
     uint BaselineSinkPpm,
-    uint BaselineUncategorizedPpm)
+    uint BaselineUncategorizedPpm,
+    uint BaselineIdlePpm)
 {
     /// <summary>Builds the tunable set from the ROUTING_ENGINE_FEE_* constants (the production configuration).</summary>
     public static FeeOptimizerTunables FromConstants() => new(
@@ -76,7 +77,8 @@ public record FeeOptimizerTunables(
         BaselineSourcePpm: Constants.ROUTING_ENGINE_FEE_BASELINE_PPM_SOURCE,
         BaselineBidirectionalPpm: Constants.ROUTING_ENGINE_FEE_BASELINE_PPM_BIDIRECTIONAL,
         BaselineSinkPpm: Constants.ROUTING_ENGINE_FEE_BASELINE_PPM_SINK,
-        BaselineUncategorizedPpm: Constants.ROUTING_ENGINE_FEE_BASELINE_PPM_UNCATEGORIZED);
+        BaselineUncategorizedPpm: Constants.ROUTING_ENGINE_FEE_BASELINE_PPM_UNCATEGORIZED,
+        BaselineIdlePpm: Constants.ROUTING_ENGINE_FEE_BASELINE_PPM_IDLE);
 }
 
 /// <summary>
@@ -168,6 +170,7 @@ public static class FeeOptimizerService
         PeerFlowCategory.Source => t.BaselineSourcePpm,
         PeerFlowCategory.Bidirectional => t.BaselineBidirectionalPpm,
         PeerFlowCategory.Sink => t.BaselineSinkPpm,
+        PeerFlowCategory.Idle => t.BaselineIdlePpm,
         _ => t.BaselineUncategorizedPpm,
     };
 
