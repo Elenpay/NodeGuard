@@ -2099,7 +2099,7 @@
         "type": "grafana-postgresql-datasource",
         "uid": "$datasource"
       },
-      "description": "Weekly (calendar-week) routed volume with a 4-week rolling average, routing profit in sats net of succeeded rebalance fees when Apply Rebalance Costs is enabled, the count of succeeded rebalances, plus success rate per week. Success rate = settled / (settled + locally-failed, EventCase 4). Downstream failures (EventCase 2, ForwardFailEvent) are excluded since they were never within this node's control. Only complete weeks are shown: the in-progress week and any partial week at the window edges are dropped.",
+      "description": "Weekly (calendar-week, Monday to Sunday, UTC) routed volume with a 4-week rolling average, routing profit in BTC net of succeeded rebalance fees when Apply Rebalance Costs is enabled, the count of succeeded rebalances, plus success rate per week. Reading the axis: each bar starts at its Monday (the timestamp shown in the tooltip) and spans the week to the right, so the date tick nearest a bar's left edge is that week's start; a week with no traffic shows as a zero bar. Axes: Volume (BTC) on the left from zero; Profit (BTC) and Success rate on the right, the profit axis always including zero. Rebalances has no axis of its own (hover for the count). Success rate = settled / (settled + locally-failed, EventCase 4). Downstream failures (EventCase 2, ForwardFailEvent) are excluded since they were never within this node's control. Complete weeks are drawn in full colour. The current, still-running week is included as the muted, dashed '[in progress]' series so you can watch it fill in; its values are provisional and it is left out of the 4-week rolling averages. A leading partial week (range starting mid-week) is dropped, as is a trailing week cut short by a range that ends mid-week in the past.",
       "fieldConfig": {
         "defaults": {
           "color": {
@@ -2111,8 +2111,8 @@
             "axisColorMode": "text",
             "axisLabel": "Volume (BTC)",
             "axisPlacement": "auto",
-            "barAlignment": 0,
-            "barWidthFactor": 0.6,
+            "barAlignment": 1,
+            "barWidthFactor": 0.95,
             "drawStyle": "bars",
             "fillOpacity": 60,
             "gradientMode": "none",
@@ -2222,8 +2222,8 @@
           },
           {
             "matcher": {
-              "id": "byName",
-              "options": "Success Rate (volume)"
+              "id": "byRegexp",
+              "options": "Success Rate \\(volume\\).*"
             },
             "properties": [
               {
@@ -2237,8 +2237,8 @@
           },
           {
             "matcher": {
-              "id": "byName",
-              "options": "Success Rate (HTLC count)"
+              "id": "byRegexp",
+              "options": "Success Rate \\(HTLC count\\).*"
             },
             "properties": [
               {
@@ -2252,8 +2252,8 @@
           },
           {
             "matcher": {
-              "id": "byName",
-              "options": "Profit (sats)"
+              "id": "byRegexp",
+              "options": "Profit \\(BTC\\)( \\[in progress\\])?"
             },
             "properties": [
               {
@@ -2274,11 +2274,11 @@
               },
               {
                 "id": "custom.axisLabel",
-                "value": "Profit (sats)"
+                "value": "Profit (BTC)"
               },
               {
                 "id": "unit",
-                "value": "suffix:sats"
+                "value": "currencyBTC"
               },
               {
                 "id": "color",
@@ -2292,7 +2292,7 @@
           {
             "matcher": {
               "id": "byName",
-              "options": "4w Rolling Avg Profit (sats)"
+              "options": "4w Rolling Avg Profit (BTC)"
             },
             "properties": [
               {
@@ -2323,11 +2323,11 @@
               },
               {
                 "id": "custom.axisLabel",
-                "value": "Profit (sats)"
+                "value": "Profit (BTC)"
               },
               {
                 "id": "unit",
-                "value": "suffix:sats"
+                "value": "currencyBTC"
               },
               {
                 "id": "color",
@@ -2340,8 +2340,8 @@
           },
           {
             "matcher": {
-              "id": "byName",
-              "options": "Rebalances"
+              "id": "byRegexp",
+              "options": "Rebalances( \\[in progress\\])?"
             },
             "properties": [
               {
@@ -2388,6 +2388,147 @@
                 }
               }
             ]
+          },
+          {
+            "matcher": {
+              "id": "byRegexp",
+              "options": ".*\\[in progress\\]"
+            },
+            "properties": [
+              {
+                "id": "custom.lineStyle",
+                "value": {
+                  "dash": [
+                    6,
+                    6
+                  ],
+                  "fill": "dash"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Routed Volume (BTC) [in progress]"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "fixedColor": "#8e8e8e",
+                  "mode": "fixed"
+                }
+              },
+              {
+                "id": "custom.fillOpacity",
+                "value": 30
+              },
+              {
+                "id": "custom.lineWidth",
+                "value": 1
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Profit (BTC) [in progress]"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "fixedColor": "light-purple",
+                  "mode": "fixed"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Rebalances [in progress]"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "fixedColor": "light-yellow",
+                  "mode": "fixed"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Success Rate (volume) [in progress]"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "fixedColor": "light-green",
+                  "mode": "fixed"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Success Rate (HTLC count) [in progress]"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "fixedColor": "light-blue",
+                  "mode": "fixed"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byRegexp",
+              "options": ".*Volume \\(BTC\\).*"
+            },
+            "properties": [
+              {
+                "id": "min",
+                "value": 0
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byRegexp",
+              "options": ".*Profit \\(BTC\\).*"
+            },
+            "properties": [
+              {
+                "id": "custom.axisSoftMin",
+                "value": 0
+              },
+              {
+                "id": "unit",
+                "value": "currencyBTC"
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byRegexp",
+              "options": "Rebalances.*"
+            },
+            "properties": [
+              {
+                "id": "custom.axisPlacement",
+                "value": "hidden"
+              }
+            ]
           }
         ]
       },
@@ -2409,7 +2550,10 @@
           "hideZeros": false,
           "mode": "multi",
           "sort": "none"
-        }
+        },
+        "timezone": [
+          "utc"
+        ]
       },
       "pluginVersion": "12.4.2",
       "targets": [
@@ -2421,7 +2565,7 @@
           "editorMode": "code",
           "format": "table",
           "rawQuery": true,
-          "rawSql": "WITH forwards AS (\n  SELECT\n    date_trunc('week', \"EventTimestamp\") AS week,\n    SUM(CASE WHEN \"Outcome\" = 1 THEN COALESCE(\"OutgoingAmountMsat\", \"IncomingAmountMsat\") ELSE 0 END) AS settled_msat,\n    -- Settled + locally-failed only; downstream failures (EventCase 2) are out of this node's control\n    SUM(CASE WHEN \"Outcome\" = 1 OR (\"Outcome\" = 2 AND \"EventCase\" = 4) THEN COALESCE(\"OutgoingAmountMsat\", \"IncomingAmountMsat\") ELSE 0 END) AS attempted_msat,\n    SUM(CASE WHEN \"Outcome\" = 1 THEN \"FeeMsat\" ELSE 0 END) AS fee_msat,\n    COUNT(*) FILTER (WHERE \"Outcome\" = 1) AS settled_htlcs,\n    COUNT(*) FILTER (WHERE \"Outcome\" = 1 OR (\"Outcome\" = 2 AND \"EventCase\" = 4)) AS attempted_htlcs\n  FROM \"ForwardingHtlcEvents\"\n  WHERE\n    $__timeFilter(\"EventTimestamp\")\n    AND \"ManagedNodePubKey\" IN ($node)\n    -- only complete weeks: drop the trailing in-progress week and a leading partial week\n    AND date_trunc('week', \"EventTimestamp\") + interval '7 days' <= $__timeTo()::timestamptz\n    AND date_trunc('week', \"EventTimestamp\") >= $__timeFrom()::timestamptz\n  GROUP BY 1\n),\nrebalances AS (\n  SELECT\n    date_trunc('week', r.\"CreationDatetime\") AS week,\n    COUNT(*) AS rebalance_count,\n    COALESCE(SUM(r.\"FeePaidSats\"), 0) AS cost_sats\n  FROM \"Rebalances\" r\n  JOIN \"Nodes\" n ON n.\"Id\" = r.\"NodeId\"\n  WHERE\n    r.\"Status\" = 3\n    AND $__timeFilter(r.\"CreationDatetime\")\n    AND n.\"PubKey\" IN ($node)\n    -- same complete-week window as the forwards above, so the two series line up\n    AND date_trunc('week', r.\"CreationDatetime\") + interval '7 days' <= $__timeTo()::timestamptz\n    AND date_trunc('week', r.\"CreationDatetime\") >= $__timeFrom()::timestamptz\n  GROUP BY 1\n),\nweekly AS (\n  -- FULL OUTER JOIN so a week with rebalances but no forwards (or vice versa) still shows up\n  SELECT\n    COALESCE(f.week, b.week) AS week,\n    COALESCE(f.settled_msat, 0) AS settled_msat,\n    COALESCE(f.attempted_msat, 0) AS attempted_msat,\n    COALESCE(f.fee_msat, 0) AS fee_msat,\n    COALESCE(f.settled_htlcs, 0) AS settled_htlcs,\n    COALESCE(f.attempted_htlcs, 0) AS attempted_htlcs,\n    COALESCE(b.rebalance_count, 0) AS rebalance_count,\n    $applyRebalanceCosts * COALESCE(b.cost_sats, 0) AS cost_sats\n  FROM forwards f\n  FULL OUTER JOIN rebalances b ON b.week = f.week\n)\nSELECT\n  week AS \"time\",\n\n  -- Settled (routed) volume for the week, in BTC:\n  settled_msat / 1e11 AS \"Routed Volume (BTC)\",\n\n  -- 4-week rolling average of routed volume, to read the trend:\n  AVG(settled_msat / 1e11) OVER (\n    ORDER BY week\n    ROWS BETWEEN 3 PRECEDING AND CURRENT ROW\n  ) AS \"4w Rolling Avg Volume (BTC)\",\n\n  -- Settled routing fees minus succeeded rebalance fees, in sats:\n  fee_msat / 1000.0 - cost_sats AS \"Profit (sats)\",\n\n  -- 4-week rolling average of that same net profit:\n  AVG(fee_msat / 1000.0 - cost_sats) OVER (\n    ORDER BY week\n    ROWS BETWEEN 3 PRECEDING AND CURRENT ROW\n  ) AS \"4w Rolling Avg Profit (sats)\",\n\n  -- Succeeded rebalances that week, i.e. the ones whose fees were charged above:\n  rebalance_count AS \"Rebalances\",\n\n  -- Volume-weighted success rate: settled / (settled + locally-failed):\n  settled_msat::float8 / NULLIF(attempted_msat, 0) AS \"Success Rate (volume)\",\n\n  -- HTLC-count success rate over the same population:\n  settled_htlcs::float8 / NULLIF(attempted_htlcs, 0) AS \"Success Rate (HTLC count)\"\n\nFROM weekly\nORDER BY week",
+          "rawSql": "WITH bounds AS (\n  SELECT\n    -- First Monday at or after the range start: a leading partial week is dropped\n    CASE WHEN date_trunc('week', $__timeFrom()::timestamptz) = $__timeFrom()::timestamptz\n         THEN $__timeFrom()::timestamptz\n         ELSE date_trunc('week', $__timeFrom()::timestamptz) + interval '7 days'\n    END AS first_week,\n    -- A week only counts as complete once it has fully elapsed inside the range\n    LEAST($__timeTo()::timestamptz, now()) AS complete_until\n),\nweeks AS (\n  -- Every Monday from the first full week up to the current one, so a week with no traffic\n  -- still gets a (zero) bar and the bars stay one week apart\n  SELECT w AS week\n  FROM bounds b, generate_series(b.first_week, b.complete_until, interval '7 days') AS w\n),\nforwards AS (\n  SELECT\n    date_trunc('week', \"EventTimestamp\") AS week,\n    SUM(CASE WHEN \"Outcome\" = 1 THEN COALESCE(\"OutgoingAmountMsat\", \"IncomingAmountMsat\") ELSE 0 END) AS settled_msat,\n    -- Settled + locally-failed only; downstream failures (EventCase 2) are out of this node's control\n    SUM(CASE WHEN \"Outcome\" = 1 OR (\"Outcome\" = 2 AND \"EventCase\" = 4) THEN COALESCE(\"OutgoingAmountMsat\", \"IncomingAmountMsat\") ELSE 0 END) AS attempted_msat,\n    SUM(CASE WHEN \"Outcome\" = 1 THEN \"FeeMsat\" ELSE 0 END) AS fee_msat,\n    COUNT(*) FILTER (WHERE \"Outcome\" = 1) AS settled_htlcs,\n    COUNT(*) FILTER (WHERE \"Outcome\" = 1 OR (\"Outcome\" = 2 AND \"EventCase\" = 4)) AS attempted_htlcs\n  FROM \"ForwardingHtlcEvents\"\n  WHERE\n    $__timeFilter(\"EventTimestamp\")\n    AND \"ManagedNodePubKey\" IN ($node)\n    -- drop a leading partial week (the range starts mid-week); the trailing week is handled below\n    AND date_trunc('week', \"EventTimestamp\") >= $__timeFrom()::timestamptz\n  GROUP BY 1\n),\nrebalances AS (\n  SELECT\n    date_trunc('week', r.\"CreationDatetime\") AS week,\n    COUNT(*) AS rebalance_count,\n    COALESCE(SUM(r.\"FeePaidSats\"), 0) AS cost_sats\n  FROM \"Rebalances\" r\n  JOIN \"Nodes\" n ON n.\"Id\" = r.\"NodeId\"\n  WHERE\n    r.\"Status\" = 3\n    AND $__timeFilter(r.\"CreationDatetime\")\n    AND n.\"PubKey\" IN ($node)\n    -- same leading-week rule as the forwards above, so the two series line up\n    AND date_trunc('week', r.\"CreationDatetime\") >= $__timeFrom()::timestamptz\n  GROUP BY 1\n),\nweekly AS (\n  -- LEFT JOINs from the week grid, so a week with no forwards or no rebalances still shows up\n  SELECT\n    w.week,\n    COALESCE(f.settled_msat, 0) AS settled_msat,\n    COALESCE(f.attempted_msat, 0) AS attempted_msat,\n    COALESCE(f.fee_msat, 0) AS fee_msat,\n    COALESCE(f.settled_htlcs, 0) AS settled_htlcs,\n    COALESCE(f.attempted_htlcs, 0) AS attempted_htlcs,\n    COALESCE(b.rebalance_count, 0) AS rebalance_count,\n    $applyRebalanceCosts * COALESCE(b.cost_sats, 0) AS cost_sats,\n    w.week + interval '7 days' <= bo.complete_until AS is_complete,\n    -- The week that contains now(): shown, but flagged as in progress\n    now() >= w.week AND now() < w.week + interval '7 days' AS is_current\n  FROM weeks w\n  CROSS JOIN bounds bo\n  LEFT JOIN forwards f ON f.week = w.week\n  LEFT JOIN rebalances b ON b.week = w.week\n),\nmetrics AS (\n  -- Complete weeks plus the in-progress current week. A trailing week cut short because the range\n  -- ends mid-week in the past is neither, and is dropped as before\n  SELECT\n    week,\n    is_complete,\n    is_current,\n    settled_msat / 1e11 AS volume_btc,\n    -- Routing fees minus succeeded rebalance fees, converted from sats to BTC:\n    (fee_msat / 1000.0 - cost_sats) / 1e8 AS profit_btc,\n    rebalance_count,\n    settled_msat::float8 / NULLIF(attempted_msat, 0) AS success_rate_volume,\n    settled_htlcs::float8 / NULLIF(attempted_htlcs, 0) AS success_rate_htlcs\n  FROM weekly\n  WHERE is_complete OR is_current\n),\nshaped AS (\n  SELECT\n    m.*,\n    -- The last complete week also seeds the dashed in-progress lines, so they join the solid ones\n    is_current OR COALESCE(LEAD(is_current) OVER (ORDER BY week), false) AS leads_in\n  FROM metrics m\n)\nSELECT\n  week AS \"time\",\n\n  -- Settled (routed) volume for the week, in BTC. Complete weeks only; the in-progress week\n  -- gets its own muted bar below:\n  CASE WHEN is_complete THEN volume_btc END AS \"Routed Volume (BTC)\",\n  CASE WHEN is_current  THEN volume_btc END AS \"Routed Volume (BTC) [in progress]\",\n\n  -- 4-week rolling average of routed volume over complete weeks, to read the trend. The\n  -- in-progress week is left out so a half-finished week does not drag the average down:\n  CASE WHEN is_complete THEN AVG(volume_btc) OVER w END AS \"4w Rolling Avg Volume (BTC)\",\n\n  -- Settled routing fees minus succeeded rebalance fees, in BTC:\n  CASE WHEN is_complete THEN profit_btc END AS \"Profit (BTC)\",\n  CASE WHEN leads_in    THEN profit_btc END AS \"Profit (BTC) [in progress]\",\n\n  -- 4-week rolling average of that same net profit, complete weeks only:\n  CASE WHEN is_complete THEN AVG(profit_btc) OVER w END AS \"4w Rolling Avg Profit (BTC)\",\n\n  -- Succeeded rebalances that week, i.e. the ones whose fees were charged above:\n  CASE WHEN is_complete THEN rebalance_count END AS \"Rebalances\",\n  CASE WHEN leads_in    THEN rebalance_count END AS \"Rebalances [in progress]\",\n\n  -- Volume-weighted success rate: settled / (settled + locally-failed):\n  CASE WHEN is_complete THEN success_rate_volume END AS \"Success Rate (volume)\",\n  CASE WHEN leads_in    THEN success_rate_volume END AS \"Success Rate (volume) [in progress]\",\n\n  -- HTLC-count success rate over the same population:\n  CASE WHEN is_complete THEN success_rate_htlcs END AS \"Success Rate (HTLC count)\",\n  CASE WHEN leads_in    THEN success_rate_htlcs END AS \"Success Rate (HTLC count) [in progress]\"\n\nFROM shaped\nWINDOW w AS (ORDER BY week ROWS BETWEEN 3 PRECEDING AND CURRENT ROW)\nORDER BY week",
           "refId": "A",
           "sql": {
             "columns": [
