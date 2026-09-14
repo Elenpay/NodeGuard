@@ -51,7 +51,7 @@
     <PackageReference Include="Quartz.AspNetCore" Version="3.15.1" />
     <PackageReference Include="Quartz.Serialization.Json" Version="3.15.1" />
     <PackageReference Include="Blazorise.SpinKit" Version="1.2.4" />
-    <PackageReference Include="RestSharp" Version="108.0.3" />
+    <PackageReference Include="RestSharp" Version="112.0.0" />
     <PackageReference Include="RestSharp.Serializers.NewtonsoftJson" Version="108.0.3" />
     <PackageReference Include="OneSignalApi" Version="2.3.0" />
     <PackageReference Include="Serilog" Version="4.3.0" />
