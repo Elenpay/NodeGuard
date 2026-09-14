@@ -1301,6 +1301,7 @@ public class NodeGuardService : Nodeguard.NodeGuardService.NodeGuardServiceBase,
                 ReferenceId = withdrawalRequest.ReferenceId ?? "",
                 Confirmations = confirmations,
                 TxId = withdrawalRequest.TxId ?? "",
+                RequestMetadata = withdrawalRequest.RequestMetadata ?? "",
             });
         }
 
