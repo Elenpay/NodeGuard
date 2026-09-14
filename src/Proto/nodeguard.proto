@@ -491,6 +491,8 @@ message WithdrawalRequest {
   optional string reference_id = 4;
   uint64 confirmations = 5;
   optional string tx_id = 6;
+    // in JSON format
+  optional string request_metadata = 7;
 }
 
 message GetWithdrawalsRequestStatusResponse {
