@@ -188,8 +188,8 @@ public class TargetRatioReevaluationJob : IJob
         var total = push + pull;
         state.NetFlowRatio = total == 0 ? 0.0 : (double)(push - pull) / total; // >0 = SINK
 
-        // Age gate (job-side); the volume gate lives inside ComputeCategory. Young / alias
-        // channels (AgeBlocks null) stay Uncategorized at target 0.5.
+        // Age gate (job-side); the volume gate lives inside ComputeCategory and yields Idle. Young /
+        // alias channels (AgeBlocks null) stay Uncategorized at target 0.5.
         if (state.AgeBlocks >= Constants.ROUTING_ENGINE_CATEGORIZATION_MIN_AGE_BLOCKS)
         {
             var decision = PeerCategorizationService.ComputeCategory(
@@ -210,7 +210,9 @@ public class TargetRatioReevaluationJob : IJob
                 state.LastCategorizedAt = now;
             }
 
-            var targetGoal = state.PeerFlowCategory == PeerFlowCategory.Uncategorized
+            // Idle has no flow to read; Uncategorized here means the hysteresis streak has not
+            // committed a first verdict yet.
+            var targetGoal = state.PeerFlowCategory == PeerFlowCategory.Uncategorized || state.PeerFlowCategory == PeerFlowCategory.Idle
                 ? 0.5
                 : PeerCategorizationService.ComputeTargetGoal(
                     state.NetFlowRatio,
