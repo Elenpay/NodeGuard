@@ -129,7 +129,12 @@ public class ChannelFeeOptimizerJob : IJob
             return;
         }
 
-        foreach (var oc in owned)
+        // We can't yet optimize channels that are still Uncategorized — they have no time verdict to price off
+        var eligible = owned
+            .Where(oc => oc.RoutingState.PeerFlowCategory != PeerFlowCategory.Uncategorized)
+            .ToList();
+
+        foreach (var oc in eligible)
         {
             try
             {
