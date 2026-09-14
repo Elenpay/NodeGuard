@@ -339,6 +339,9 @@ public class Constants
     public static uint ROUTING_ENGINE_FEE_BASELINE_PPM_SINK = 2500;
     // Outbound ppm baseline for not-yet-categorized channels (safe mid default).
     public static uint ROUTING_ENGINE_FEE_BASELINE_PPM_UNCATEGORIZED = 1500;
+    // Outbound ppm baseline for Idle channels: old enough to judge but no meaningful flow to judge
+    // on. Defaults to the mid tier; lower it to price idle channels down and try to attract flow.
+    public static uint ROUTING_ENGINE_FEE_BASELINE_PPM_IDLE = 1500;
 
     /// <summary>
     /// Fraction of a channel's capacity advertised as its max_htlc_msat. LND itself uses ~0.99 for
@@ -695,6 +698,9 @@ public class Constants
 
         var feeBaselineUncategorized = Environment.GetEnvironmentVariable("ROUTING_ENGINE_FEE_BASELINE_PPM_UNCATEGORIZED");
         if (feeBaselineUncategorized != null) ROUTING_ENGINE_FEE_BASELINE_PPM_UNCATEGORIZED = uint.Parse(feeBaselineUncategorized);
+
+        var feeBaselineIdle = Environment.GetEnvironmentVariable("ROUTING_ENGINE_FEE_BASELINE_PPM_IDLE");
+        if (feeBaselineIdle != null) ROUTING_ENGINE_FEE_BASELINE_PPM_IDLE = uint.Parse(feeBaselineIdle);
 
         // Max HTLC
         var maxHtlcCapacityRatio = Environment.GetEnvironmentVariable("MAX_HTLC_CAPACITY_RATIO");

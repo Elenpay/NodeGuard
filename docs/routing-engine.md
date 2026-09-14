@@ -103,12 +103,13 @@ NetFlowRatio = (push − pull) / (push + pull)       0 when there is no flow at 
 
 ### c. `PeerFlowCategory` — the peer's character
 
-Two gates run before a channel is categorized at all:
+Two gates run before a channel is categorized at all, and each failure has its **own** category —
+"we can't judge this yet" and "there's nothing to judge" are different states:
 
 | Gate | Rule | If it fails |
 |---|---|---|
 | **Age** (job-side) | `AgeBlocks >= ROUTING_ENGINE_CATEGORIZATION_MIN_AGE_BLOCKS` (3024 ≈ 21 days) | Category and target are left untouched — `Uncategorized` at target `0.5`. `AgeBlocks` is null for pending/alias/zero-conf channels, which also fails the gate. |
-| **Volume** (in `ComputeCategory`) | `push + pull >= ROUTING_ENGINE_FLOW_MIN_MSAT` (10 M sats) | Tentative category is `Uncategorized`. |
+| **Volume** (in `ComputeCategory`) | `push + pull >= ROUTING_ENGINE_FLOW_MIN_MSAT` (10 M sats) | Tentative category is `Idle` — old enough to judge, but too little flow to judge on. |
 
 Past both gates, with `θ = ROUTING_ENGINE_CATEGORY_NET_FLOW_THRESHOLD` (0.25):
 
@@ -117,6 +118,32 @@ Past both gates, with `θ = ROUTING_ENGINE_CATEGORY_NET_FLOW_THRESHOLD` (0.25):
 | **Sink** | `NetFlowRatio >= +θ` | The peer *drains* us. Our outbound liquidity here is valuable. |
 | **Source** | `NetFlowRatio <= −θ` | The peer *feeds* us. Cheap outbound keeps the flow coming. |
 | **Bidirectional** | in between | Balanced flow. |
+
+The full landscape is therefore five states:
+
+| Category | What it means | How you get there |
+|---|---|---|
+| **Source** / **Sink** / **Bidirectional** | A flow verdict backed by enough volume to trust. | Both gates passed. |
+| **Uncategorized** | *No verdict yet.* | Age gate failed (young channel, or pending/alias/zero-conf with no derivable `AgeBlocks`), or the channel has never been evaluated — a fresh `ChannelRoutingState` row, or no row at all. |
+| **Idle** | *Nothing to judge.* | Age gate passed, volume gate failed. `ComputeCategory` never returns `Uncategorized`, so this is the only way a mature channel lands outside the flow verdicts. |
+
+`Idle` is a **committed** category, so it goes through the same hysteresis as the rest: a mature
+channel whose flow dries up decays `Sink → Idle` over `ROUTING_ENGINE_CATEGORY_FLIP_HYSTERESIS_CYCLES`
+cycles, and comes back the same way when volume returns.
+
+Because `ComputeCategory` no longer emits `Uncategorized`, it is now effectively **write-once**: a
+channel that leaves it never returns short of the row being reset.
+
+Both `Uncategorized` and `Idle` hold the target ratio at a neutral `0.5`, but for **different reasons** — the shared
+predicate is about the setpoint, not about flow:
+
+- **`Idle`** — sub-gate volume makes `NetFlowRatio` noise, and drifting the setpoint on noise is
+  worse than not moving it.
+- **`Uncategorized`** — the target is only ever computed *inside* the age-gate-passed branch, so a
+  channel seen here is old enough to judge and may be routing heavily; it just has not held a
+  tentative category long enough to commit a first flip. This is a warm-up window of at most
+  `ROUTING_ENGINE_CATEGORY_FLIP_HYSTERESIS_CYCLES − 1` cycles, and holding neutral through it avoids
+  steering off a verdict the hysteresis has not accepted yet.
 
 Because the engine reads millions of existing `ForwardingHtlcEvent` rows, established channels
 categorize on the **first run** — there is no deploy-time wait. The age gate only holds back
@@ -131,8 +158,8 @@ Sink ↔ Source and dragging the fee baseline with it.
 ### d. `TargetLocalRatio` — where we want it to sit
 
 ```
-goal   = Uncategorized ? 0.5
-                       : clamp( 0.5 + clamp(k·NetFlowRatio, ±maxDrift), 0.10, 0.90 )
+goal   = Uncategorized | Idle ? 0.5
+                              : clamp( 0.5 + clamp(k·NetFlowRatio, ±maxDrift), 0.10, 0.90 )
 target ← αT·goal + (1−αT)·target
 ```
 
@@ -224,7 +251,7 @@ process start.
 | `ROUTING_ENGINE_JOB_INTERVAL_SECONDS` | *(unset)* | Overrides all three cadences, in seconds. |
 | `ROUTING_ENGINE_FEE_EMA_ALPHA` | `0.08` | `EmaLocalRatio` smoothing. |
 | `ROUTING_ENGINE_FLOW_WINDOW_DAYS` | `21` | Forwarding-history window for net flow. |
-| `ROUTING_ENGINE_FLOW_MIN_MSAT` | `10_000_000_000` | Volume gate (10 M sats) for categorization. |
+| `ROUTING_ENGINE_FLOW_MIN_MSAT` | `10_000_000_000` | Volume gate (10 M sats) for categorization; below it a mature channel is `Idle`. |
 | `ROUTING_ENGINE_CATEGORIZATION_MIN_AGE_BLOCKS` | `3024` | Age gate (~21 days). |
 | `ROUTING_ENGINE_CATEGORY_NET_FLOW_THRESHOLD` | `0.25` | Sink/Source threshold on `NetFlowRatio`. |
 | `ROUTING_ENGINE_CATEGORY_FLIP_HYSTERESIS_CYCLES` | `3` | Cycles a flip must hold before committing. |

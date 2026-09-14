@@ -92,11 +92,58 @@ public class PeerCategorizationServiceTests
     }
 
     [Fact]
-    public void ComputeCategory_BelowMinVolume_YieldsUncategorized_RegardlessOfRatio()
+    public void ComputeCategory_BelowMinVolume_YieldsIdle_RegardlessOfRatio()
     {
-        // Strong push ratio but not enough volume — stays Uncategorized in steady state.
+        // Strong push ratio but not enough volume — the tentative verdict is Idle, not Sink.
         var decision = Compute(0.90, MinVolume - 1, PeerFlowCategory.Uncategorized, null, 0);
-        decision.Should().Be(new CategoryDecision(PeerFlowCategory.Uncategorized, null, 0, false));
+        decision.Should().Be(new CategoryDecision(PeerFlowCategory.Uncategorized, PeerFlowCategory.Idle, 1, false));
+    }
+
+    [Fact]
+    public void ComputeCategory_BelowMinVolume_CommitsIdle_AfterHysteresis()
+    {
+        var current = PeerFlowCategory.Uncategorized;
+        PeerFlowCategory? pending = null;
+        uint streak = 0;
+        CategoryDecision decision = default!;
+
+        for (var i = 0; i < Hysteresis; i++)
+        {
+            decision = Compute(0.90, MinVolume - 1, current, pending, streak);
+            current = decision.Category;
+            pending = decision.PendingCategory;
+            streak = decision.ConsecutiveCyclesInNewState;
+        }
+
+        decision.Category.Should().Be(PeerFlowCategory.Idle);
+        decision.Flipped.Should().BeTrue();
+    }
+
+    [Fact]
+    public void ComputeCategory_IdleChannelRegainingVolume_CommitsFlowCategory_AfterHysteresis()
+    {
+        var current = PeerFlowCategory.Idle;
+        PeerFlowCategory? pending = null;
+        uint streak = 0;
+        CategoryDecision decision = default!;
+
+        for (var i = 0; i < Hysteresis; i++)
+        {
+            decision = Compute(0.30, AboveMin, current, pending, streak);
+            current = decision.Category;
+            pending = decision.PendingCategory;
+            streak = decision.ConsecutiveCyclesInNewState;
+        }
+
+        decision.Category.Should().Be(PeerFlowCategory.Sink);
+        decision.Flipped.Should().BeTrue();
+    }
+
+    [Fact]
+    public void ComputeCategory_IdleSteadyState_ClearsStreak()
+    {
+        var decision = Compute(0.90, MinVolume - 1, PeerFlowCategory.Idle, null, 0);
+        decision.Should().Be(new CategoryDecision(PeerFlowCategory.Idle, null, 0, false));
     }
 
     [Fact]
@@ -121,7 +168,7 @@ public class PeerCategorizationServiceTests
     }
 
     [Fact]
-    public void ComputeCategory_EstablishedSink_DecaysToUncategorized_AfterHysteresis_WhenVolumeDrops()
+    public void ComputeCategory_EstablishedSink_DecaysToIdle_AfterHysteresis_WhenVolumeDrops()
     {
         var current = PeerFlowCategory.Sink;
         PeerFlowCategory? pending = null;
@@ -136,7 +183,7 @@ public class PeerCategorizationServiceTests
             streak = decision.ConsecutiveCyclesInNewState;
         }
 
-        decision.Category.Should().Be(PeerFlowCategory.Uncategorized);
+        decision.Category.Should().Be(PeerFlowCategory.Idle);
         decision.Flipped.Should().BeTrue();
     }
 
