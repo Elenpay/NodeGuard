@@ -69,7 +69,7 @@ evaluation.
 | **Source** | `50` | Peer feeds *us* liquidity — keep cheap so the flow keeps coming. |
 | **Bidirectional** | `1500` | Balanced peer — mid fee. |
 | **Sink** | `2500` | Peer *drains* us — outbound liquidity here is scarce and valuable, charge a lot. |
-| **Uncategorized** | `1500` | No signal yet (too young / not yet evaluated) — same as bidirectional. |
+| **Uncategorized** | `1500` | **Unreachable from the job** since the eligibility gate (§7) skips uncategorized channels outright; it remains the `switch`'s default arm, so tuning `ROUTING_ENGINE_FEE_BASELINE_PPM_UNCATEGORIZED` has no effect in production. |
 | **Idle** | `1500` | Mature but below the volume gate — no flow to read. Defaults to the mid tier so behaviour matches `Uncategorized`; lower it to price idle channels down and try to attract flow. |
 
 Because steps scale with `p₀`, a Source channel moves in ~1 ppm increments while a Sink moves in
@@ -168,6 +168,7 @@ per node:
 | `SatsAmount >= ROUTING_ENGINE_FEE_MIN_CHANNEL_SIZE_SATS` (10 M) | Fee moves on tiny channels aren't worth the write |
 | **Not** a source of a `Pending`/`InFlight` rebalance | Authority split — see below |
 | Has a `ChannelRoutingState` row for this node | No signal ⇒ no decision |
+| `PeerFlowCategory != Uncategorized` | No committed flow verdict ⇒ nothing to price off, so the operator's fees are left alone. Filtered in `OptimizeNode` after the snapshot rather than on the `GetOpenChannels` query, because the category is per (channel, managed node) rather than per channel. `Idle` is a real verdict and stays eligible. |
 
 **Authority split with the rebalancer.** A channel currently being drained by a rebalance is
 excluded outright (`GetPendingInFlightSourceChannelIds`). Its balance is mid-flight, so the EMA is

@@ -172,17 +172,22 @@ public class AutoRebalanceJob : IJob
             return;
         }
 
-        var signals = owned.Select(oc => new ChannelSignal(
-            oc.DbChannel.Id,
-            oc.Lnd.ChanId,
-            oc.Lnd.RemotePubkey,
-            oc.Lnd.LocalBalance,
-            oc.Lnd.RemoteBalance,
-            oc.RoutingState.EmaLocalRatio,
-            oc.RoutingState.TargetLocalRatio,
-            oc.Lnd.Active,
-            // A channel is a fresh source only if opted in and not already being drained
-            oc.DbChannel.IsAutoRebalanceEnabled && !inFlightSourceChannelIds.Contains(oc.DbChannel.Id)))
+        // The engine acts only on channels it has a verdict for: an Uncategorized channel is never
+        // drained, and never contributes to a destination peer. Note this also hides its balance
+        // from that peer's aggregate — see the mixed-peer limitation in docs/rebalance-algorithm.md.
+        var signals = owned
+            .Where(oc => oc.RoutingState.PeerFlowCategory != PeerFlowCategory.Uncategorized)
+            .Select(oc => new ChannelSignal(
+                oc.DbChannel.Id,
+                oc.Lnd.ChanId,
+                oc.Lnd.RemotePubkey,
+                oc.Lnd.LocalBalance,
+                oc.Lnd.RemoteBalance,
+                oc.RoutingState.EmaLocalRatio,
+                oc.RoutingState.TargetLocalRatio,
+                oc.Lnd.Active,
+                // A channel is a fresh source only if opted in and not already being drained
+                oc.DbChannel.IsAutoRebalanceEnabled && !inFlightSourceChannelIds.Contains(oc.DbChannel.Id)))
             .ToList();
 
         var tunables = RebalanceInitiatorTunables.FromConstants(node);

@@ -299,6 +299,44 @@ public class ChannelFeeOptimizerJobTests
     }
 
     [Fact]
+    public async Task Execute_UncategorizedChannel_SkipsWithoutPersistingFeeState()
+    {
+        var prevEnabled = Constants.ROUTING_ENGINE_ENABLED;
+        Constants.ROUTING_ENGINE_ENABLED = true;
+        try
+        {
+            var node = BuildNode();
+            ArrangeSingleSinkChannel(node, inFlightRebalance: false);
+            // Same deviation the Sink arrangement uses (ema 0.40 vs target 0.50 — well outside the
+            // deadband, so it would otherwise Update), but with no committed flow verdict.
+            _routingStateRepository.Setup(x => x.GetByManagedNodePubKey(NodePubKey)).ReturnsAsync(new List<ChannelRoutingState>
+            {
+                new()
+                {
+                    ChannelId = ChannelDbId,
+                    ManagedNodePubKey = NodePubKey,
+                    ChanIdLnd = ChanId,
+                    EmaLocalRatio = 0.40,
+                    TargetLocalRatio = 0.50,
+                    PeerFlowCategory = PeerFlowCategory.Uncategorized,
+                },
+            });
+
+            await BuildJob().Execute(Mock.Of<IJobExecutionContext>());
+
+            _lightningService.Verify(x => x.GetChannelFeePolicy(It.IsAny<ulong>(), It.IsAny<Node>()), Times.Never);
+            VerifyNoFeeWrite();
+            // No fee-state row either, so LastAppliedOutboundPpm stays null and the first managed
+            // cycle seeds from the category baseline.
+            _feeStateRepository.Verify(x => x.UpsertByChannelAndNode(It.IsAny<ChannelFeeState>()), Times.Never);
+        }
+        finally
+        {
+            Constants.ROUTING_ENGINE_ENABLED = prevEnabled;
+        }
+    }
+
+    [Fact]
     public async Task Execute_InsideDeadband_PersistsStateButDoesNotTouchLnd()
     {
         var prevEnabled = Constants.ROUTING_ENGINE_ENABLED;

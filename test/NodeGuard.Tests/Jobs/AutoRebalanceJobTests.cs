@@ -156,6 +156,122 @@ public class AutoRebalanceJobTests
 
 
     [Fact]
+    public async Task Execute_PeerWithOnlyUncategorizedChannels_IsNeverRefilled()
+    {
+        // peerD's only channel is Uncategorized and deeply depleted (ema 0.10 vs target 0.50),
+        // so without the gate it is a textbook destination with an 8M deficit, funded by the
+        // categorized source 101. The peer is dropped whole instead, leaving nothing to pair.
+        ArrangeRebalancePair(sourceOptedIn: true);
+        _routingStateRepository.Setup(x => x.GetByManagedNodePubKey(NodePubKey)).ReturnsAsync(new List<ChannelRoutingState>
+        {
+            new() { ChannelId = 101, ManagedNodePubKey = NodePubKey, ChanIdLnd = 1001, EmaLocalRatio = 0.75, TargetLocalRatio = 0.50, PeerFlowCategory = PeerFlowCategory.Source },
+            new() { ChannelId = 102, ManagedNodePubKey = NodePubKey, ChanIdLnd = 1002, EmaLocalRatio = 0.10, TargetLocalRatio = 0.50, PeerFlowCategory = PeerFlowCategory.Uncategorized },
+        });
+
+        await RoutingEngineSwitch.WithEngine(enabled: true, async () =>
+        {
+            await BuildJob().Execute(Mock.Of<IJobExecutionContext>());
+        });
+
+        _rebalanceService.Verify(x => x.RebalanceAsync(
+            It.IsAny<RebalanceRequest>(), It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task Execute_MixedPeer_OverRefillsBecauseUncategorizedSiblingIsInvisible()
+    {
+        // ACCEPTED LIMITATION, pinned deliberately — see docs/rebalance-algorithm.md §8.
+        //
+        // Both destination channels face the SAME peer, with equal 20M bases: 1002 is depleted
+        // (ema 0.10) and categorized, 1003 is full (ema 0.90) and Uncategorized. peerD therefore
+        // holds 20M of 40M — exactly on target 0.50 — and needs nothing.
+        //
+        // Because uncategorized channels are filtered out before Classify, 1003's 18M of local is
+        // invisible: peerD reads 0.10 vs 0.50, becomes a real destination with an invented 8M
+        // deficit, and gets refilled with the source's full 7M excess. Counting both channels
+        // would instead cap it at the deadband edge (0.65 x 40M - 20M = 6M).
+        ArrangeRebalancePair(sourceOptedIn: true);
+
+        _channelRepository.Setup(x => x.GetOpenChannels()).ReturnsAsync(new List<Channel>
+        {
+            new()
+            {
+                Id = 101, ChanId = 1001, Status = Channel.ChannelStatus.Open,
+                IsDynamicFeeEnabled = true, IsAutoRebalanceEnabled = true,
+                FundingTx = "txS", FundingTxOutputIndex = 0,
+            },
+            new()
+            {
+                Id = 102, ChanId = 1002, Status = Channel.ChannelStatus.Open,
+                IsDynamicFeeEnabled = true, IsAutoRebalanceEnabled = false,
+                FundingTx = "txD", FundingTxOutputIndex = 0,
+            },
+            new()
+            {
+                Id = 103, ChanId = 1003, Status = Channel.ChannelStatus.Open,
+                IsDynamicFeeEnabled = true, IsAutoRebalanceEnabled = false,
+                FundingTx = "txD2", FundingTxOutputIndex = 0,
+            },
+        });
+
+        _routingStateRepository.Setup(x => x.GetByManagedNodePubKey(NodePubKey)).ReturnsAsync(new List<ChannelRoutingState>
+        {
+            new() { ChannelId = 101, ManagedNodePubKey = NodePubKey, ChanIdLnd = 1001, EmaLocalRatio = 0.85, TargetLocalRatio = 0.50, PeerFlowCategory = PeerFlowCategory.Source },
+            new() { ChannelId = 102, ManagedNodePubKey = NodePubKey, ChanIdLnd = 1002, EmaLocalRatio = 0.10, TargetLocalRatio = 0.50, PeerFlowCategory = PeerFlowCategory.Sink },
+            new() { ChannelId = 103, ManagedNodePubKey = NodePubKey, ChanIdLnd = 1003, EmaLocalRatio = 0.90, TargetLocalRatio = 0.50, PeerFlowCategory = PeerFlowCategory.Uncategorized },
+        });
+
+        _lightningClientService
+            .Setup(x => x.ListChannels(It.IsAny<Node>(), It.IsAny<Lnrpc.Lightning.LightningClient>()))
+            .ReturnsAsync(new Lnrpc.ListChannelsResponse
+            {
+                Channels =
+                {
+                    // Source excess = 17M - round(0.50 x 20M) = 7M, deliberately above the 6M the
+                    // correct aggregate allows, so the destination cap is what binds.
+                    new Lnrpc.Channel { ChanId = 1001, Capacity = 20_000_000, LocalBalance = 17_000_000, RemoteBalance = 3_000_000, Active = true, Initiator = true, RemotePubkey = "peerS" },
+                    new Lnrpc.Channel { ChanId = 1002, Capacity = 20_000_000, LocalBalance = 2_000_000, RemoteBalance = 18_000_000, Active = true, Initiator = true, RemotePubkey = "peerD" },
+                    new Lnrpc.Channel { ChanId = 1003, Capacity = 20_000_000, LocalBalance = 18_000_000, RemoteBalance = 2_000_000, Active = true, Initiator = true, RemotePubkey = "peerD" },
+                },
+            });
+
+        _lightningService.Setup(x => x.GetLocalOutboundFeeRatesPpmAsync(It.IsAny<Node>()))
+            .ReturnsAsync(new Dictionary<ulong, long> { [1001] = 50, [1002] = 2500, [1003] = 2500 });
+
+        await RoutingEngineSwitch.WithEngine(enabled: true, async () =>
+        {
+            await BuildJob().Execute(Mock.Of<IJobExecutionContext>());
+        });
+
+        _rebalanceService.Verify(x => x.RebalanceAsync(
+            It.Is<RebalanceRequest>(r => r.TargetPubkey == "peerD" && r.AmountSats == 7_000_000),
+            It.IsAny<CancellationToken>()), Times.Once,
+            "the uncategorized sibling's 18M is filtered out, so an on-target peer reads as starved");
+    }
+
+    [Fact]
+    public async Task Execute_UncategorizedSource_DispatchesNothing()
+    {
+        ArrangeRebalancePair(sourceOptedIn: true);
+        // Identical to Execute_DispatchesThePlannedRebalance except the too-local source has no
+        // committed verdict, which must take it out of the draining pool. Pins the job -> signal
+        // wiring: hardcoding Categorized:true would leave every other test green.
+        _routingStateRepository.Setup(x => x.GetByManagedNodePubKey(NodePubKey)).ReturnsAsync(new List<ChannelRoutingState>
+        {
+            new() { ChannelId = 101, ManagedNodePubKey = NodePubKey, ChanIdLnd = 1001, EmaLocalRatio = 0.75, TargetLocalRatio = 0.50, PeerFlowCategory = PeerFlowCategory.Uncategorized },
+            new() { ChannelId = 102, ManagedNodePubKey = NodePubKey, ChanIdLnd = 1002, EmaLocalRatio = 0.10, TargetLocalRatio = 0.50, PeerFlowCategory = PeerFlowCategory.Sink },
+        });
+
+        await RoutingEngineSwitch.WithEngine(enabled: true, async () =>
+        {
+            await BuildJob().Execute(Mock.Of<IJobExecutionContext>());
+        });
+
+        _rebalanceService.Verify(x => x.RebalanceAsync(
+            It.IsAny<RebalanceRequest>(), It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    [Fact]
     public async Task Execute_DispatchesThePlannedRebalance()
     {
         ArrangeRebalancePair(sourceOptedIn: true);
