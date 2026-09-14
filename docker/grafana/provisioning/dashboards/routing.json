@@ -81,10 +81,11 @@
             "type": "grafana-postgresql-datasource",
             "uid": "$datasource"
           },
-          "editorMode": "builder",
+          "editorMode": "code",
           "format": "table",
           "hide": true,
-          "rawSql": "SELECT SUM(\"FeeMsat\") FROM \"ForwardingHtlcEvents\" WHERE ($__timeFilter(\"CreationDatetime\") AND \"Outcome\" = 1 AND \"ManagedNodePubKey\" IN ($node)) LIMIT 50 ",
+          "rawQuery": true,
+          "rawSql": "WITH fees AS (SELECT SUM(\"FeeMsat\") AS fee_msat FROM \"ForwardingHtlcEvents\" WHERE ($__timeFilter(\"CreationDatetime\") AND \"Outcome\" = 1 AND \"ManagedNodePubKey\" IN ($node))), rebalance_costs AS (SELECT COALESCE(SUM($applyRebalanceCosts * r.\"FeePaidSats\"), 0) AS cost_sats FROM \"Rebalances\" r JOIN \"Nodes\" n ON n.\"Id\" = r.\"NodeId\" WHERE r.\"Status\" = 3 AND r.\"FeePaidSats\" IS NOT NULL AND $__timeFilter(r.\"CreationDatetime\") AND n.\"PubKey\" IN ($node)) SELECT COALESCE(fees.fee_msat, 0) - (rebalance_costs.cost_sats * 1000) AS \"SUM\" FROM fees, rebalance_costs",
           "refId": "A",
           "sql": {
             "columns": [
@@ -186,7 +187,8 @@
         }
       ],
       "title": "Total P&L (Routing)",
-      "type": "stat"
+      "type": "stat",
+      "description": "Settled routing fees minus succeeded rebalance fees, when Apply Rebalance Costs is enabled."
     },
     {
       "datasource": {
@@ -249,10 +251,11 @@
             "type": "grafana-postgresql-datasource",
             "uid": "$datasource"
           },
-          "editorMode": "builder",
+          "editorMode": "code",
           "format": "table",
           "hide": true,
-          "rawSql": "SELECT SUM(\"FeeMsat\"), \"ManagedNodeName\" FROM \"ForwardingHtlcEvents\" WHERE ($__timeFilter(\"CreationDatetime\") AND \"Outcome\" = 1 AND \"ManagedNodePubKey\" IN ($node)) GROUP BY \"ManagedNodeName\" LIMIT 50 ",
+          "rawQuery": true,
+          "rawSql": "WITH fees AS (SELECT \"ManagedNodePubKey\", MAX(\"ManagedNodeName\") AS \"ManagedNodeName\", SUM(\"FeeMsat\") AS fee_msat FROM \"ForwardingHtlcEvents\" WHERE ($__timeFilter(\"CreationDatetime\") AND \"Outcome\" = 1 AND \"ManagedNodePubKey\" IN ($node)) GROUP BY \"ManagedNodePubKey\"), rebalance_costs AS (SELECT n.\"PubKey\" AS \"ManagedNodePubKey\", COALESCE(SUM($applyRebalanceCosts * r.\"FeePaidSats\"), 0) AS cost_sats FROM \"Rebalances\" r JOIN \"Nodes\" n ON n.\"Id\" = r.\"NodeId\" WHERE r.\"Status\" = 3 AND r.\"FeePaidSats\" IS NOT NULL AND $__timeFilter(r.\"CreationDatetime\") AND n.\"PubKey\" IN ($node) GROUP BY n.\"PubKey\") SELECT fees.\"ManagedNodeName\", COALESCE(fees.fee_msat, 0) - (COALESCE(rebalance_costs.cost_sats, 0) * 1000) AS \"SUM\" FROM fees LEFT JOIN rebalance_costs ON rebalance_costs.\"ManagedNodePubKey\" = fees.\"ManagedNodePubKey\"",
           "refId": "A",
           "sql": {
             "columns": [
@@ -371,7 +374,8 @@
         }
       ],
       "title": "Total P&L per node (Routing)",
-      "type": "stat"
+      "type": "stat",
+      "description": "Settled routing fees minus succeeded rebalance fees, when Apply Rebalance Costs is enabled."
     },
     {
       "datasource": {
@@ -1504,7 +1508,598 @@
         "type": "grafana-postgresql-datasource",
         "uid": "$datasource"
       },
-      "description": "Weekly (calendar-week) routed volume with a 4-week rolling average, settled routing profit in sats, plus success rate per week. Success rate = settled / (settled + locally-failed, EventCase 4). Downstream failures (EventCase 2, ForwardFailEvent) are excluded since they were never within this node's control. Only complete weeks are shown: the in-progress week and any partial week at the window edges are dropped.",
+      "description": "Succeeded rebalances created in the window on the selected nodes. One row per rebalance (retries reuse the row and bump AttemptNumber), so this counts rebalances, not attempts. Matches the last point of Succeeded (cumulative) in Rebalance totals.",
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "thresholds"
+          },
+          "decimals": 0,
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "blue",
+                "value": 0
+              }
+            ]
+          },
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 7,
+        "w": 4,
+        "x": 0,
+        "y": 21
+      },
+      "id": 512,
+      "options": {
+        "colorMode": "value",
+        "graphMode": "none",
+        "justifyMode": "auto",
+        "orientation": "auto",
+        "percentChangeColorMode": "standard",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": true
+        },
+        "showPercentChange": false,
+        "textMode": "auto",
+        "wideLayout": true
+      },
+      "pluginVersion": "12.4.2",
+      "targets": [
+        {
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "$datasource"
+          },
+          "editorMode": "code",
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "SELECT COUNT(*) AS \"Rebalances\"\nFROM \"Rebalances\" r\nJOIN \"Nodes\" n ON n.\"Id\" = r.\"NodeId\"\nWHERE\n  $__timeFilter(r.\"CreationDatetime\")\n  AND r.\"Status\" = 3\n  AND n.\"PubKey\" IN ($node)",
+          "refId": "A"
+        }
+      ],
+      "title": "Rebalances (successful)",
+      "type": "stat"
+    },
+    {
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "$datasource"
+      },
+      "description": "Running totals from the start of the selected time range, so every line only ever climbs. The left (count) axis is log10, so a series plots only from the bucket where it first goes above 0 — read this panel for \"how much have we rebalanced in this window\", and Rebalance activity below it for the per-bucket trend. Succeeded = Status Succeeded; Failed = any terminal non-success status (Failed / No Route / Timeout / Insufficient Balance / Exceeded Fee Limit); In flight = Pending / In Flight (current status, so a rebalance moves between series as it settles). Rebalanced Amount (cumulative BTC) on the right axis is the running total of the amount actually moved by the succeeded rebalances (SatsAmount converted to BTC, not the requested amount).",
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "axisBorderShow": false,
+            "axisCenteredZero": false,
+            "axisColorMode": "text",
+            "axisLabel": "Rebalances (cumulative, log10)",
+            "axisPlacement": "auto",
+            "barAlignment": 0,
+            "barWidthFactor": 0.9,
+            "drawStyle": "line",
+            "fillOpacity": 0,
+            "gradientMode": "none",
+            "hideFrom": {
+              "legend": false,
+              "tooltip": false,
+              "viz": false
+            },
+            "insertNulls": false,
+            "lineInterpolation": "linear",
+            "lineWidth": 2,
+            "pointSize": 5,
+            "scaleDistribution": {
+              "log": 10,
+              "type": "log"
+            },
+            "showPoints": "auto",
+            "showValues": false,
+            "spanNulls": false,
+            "stacking": {
+              "group": "A",
+              "mode": "none"
+            },
+            "thresholdsStyle": {
+              "mode": "off"
+            }
+          },
+          "decimals": 0,
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "blue",
+                "value": 0
+              }
+            ]
+          },
+          "unit": "short"
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Succeeded (cumulative)"
+            },
+            "properties": [
+              {
+                "id": "custom.lineWidth",
+                "value": 3
+              },
+              {
+                "id": "custom.fillOpacity",
+                "value": 20
+              },
+              {
+                "id": "custom.gradientMode",
+                "value": "opacity"
+              },
+              {
+                "id": "custom.pointSize",
+                "value": 6
+              },
+              {
+                "id": "color",
+                "value": {
+                  "fixedColor": "green",
+                  "mode": "fixed"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Failed (cumulative)"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "fixedColor": "red",
+                  "mode": "fixed"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "In flight (cumulative)"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "fixedColor": "yellow",
+                  "mode": "fixed"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Rebalanced Amount (cumulative BTC)"
+            },
+            "properties": [
+              {
+                "id": "custom.scaleDistribution",
+                "value": {
+                  "type": "linear"
+                }
+              },
+              {
+                "id": "custom.lineWidth",
+                "value": 2
+              },
+              {
+                "id": "custom.fillOpacity",
+                "value": 0
+              },
+              {
+                "id": "custom.lineStyle",
+                "value": {
+                  "dash": [
+                    10,
+                    10
+                  ],
+                  "fill": "dash"
+                }
+              },
+              {
+                "id": "custom.axisPlacement",
+                "value": "right"
+              },
+              {
+                "id": "custom.axisLabel",
+                "value": "Rebalanced, cumulative (BTC)"
+              },
+              {
+                "id": "unit",
+                "value": "currencyBTC"
+              },
+              {
+                "id": "min",
+                "value": 0
+              },
+              {
+                "id": "color",
+                "value": {
+                  "fixedColor": "purple",
+                  "mode": "fixed"
+                }
+              },
+              {
+                "id": "decimals",
+                "value": 4
+              }
+            ]
+          }
+        ]
+      },
+      "gridPos": {
+        "h": 7,
+        "w": 20,
+        "x": 4,
+        "y": 21
+      },
+      "id": 513,
+      "interval": "1h",
+      "options": {
+        "legend": {
+          "calcs": [],
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "hideZeros": false,
+          "mode": "multi",
+          "sort": "none"
+        }
+      },
+      "pluginVersion": "12.4.2",
+      "targets": [
+        {
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "$datasource"
+          },
+          "editorMode": "code",
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "WITH buckets AS (\n  SELECT\n    $__timeGroup(r.\"CreationDatetime\", $__interval) AS \"time\",\n    COUNT(*) FILTER (WHERE r.\"Status\" = 3) AS succeeded,\n    -- Everything that is neither settled nor still running, so the three counts always sum to\n    -- every rebalance created up to that point (Status 1 is the removed Probing value, kept as a gap):\n    COUNT(*) FILTER (WHERE r.\"Status\" NOT IN (0, 1, 2, 3)) AS failed,\n    COUNT(*) FILTER (WHERE r.\"Status\" IN (0, 1, 2)) AS in_flight,\n\n    -- Amount actually moved by the succeeded rebalances, not the amount originally requested,\n    -- converted from sats to BTC for the right-hand axis:\n    COALESCE(SUM(r.\"SatsAmount\") FILTER (WHERE r.\"Status\" = 3), 0) / 100000000.0 AS rebalanced_btc\n\n  FROM \"Rebalances\" r\n  JOIN \"Nodes\" n ON n.\"Id\" = r.\"NodeId\"\n  WHERE\n    $__timeFilter(r.\"CreationDatetime\")\n    AND n.\"PubKey\" IN ($node)\n  GROUP BY 1\n)\n-- Running totals across the window, so every line only ever climbs. Succeeded comes last so the\n-- panel draws it on top of the other counts:\nSELECT\n  \"time\",\n  SUM(failed)          OVER w AS \"Failed (cumulative)\",\n  SUM(in_flight)       OVER w AS \"In flight (cumulative)\",\n  SUM(succeeded)       OVER w AS \"Succeeded (cumulative)\",\n  SUM(rebalanced_btc)  OVER w AS \"Rebalanced Amount (cumulative BTC)\"\nFROM buckets\nWINDOW w AS (ORDER BY \"time\" ROWS UNBOUNDED PRECEDING)\nORDER BY \"time\"",
+          "refId": "A"
+        }
+      ],
+      "title": "Rebalance totals (cumulative)",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "$datasource"
+      },
+      "description": "Succeeded rebalances per bucket (green bars, left axis) with a trailing 7-bucket mean so the trend reads through the noise. Failures do not share that axis: Failed and In flight are thin lines on their own right-hand scale, so a large failure count cannot squash the green bars. Failed = any terminal non-success status (Failed / No Route / Timeout / Insufficient Balance / Exceeded Fee Limit); In flight = Pending / In Flight. Success rate is a trailing 7-bucket mean weighted by volume, over settled rebalances only (in-flight excluded from the denominator); it is blank across stretches where nothing settled. Rebalance totals above carries the running totals.",
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "axisBorderShow": false,
+            "axisCenteredZero": false,
+            "axisColorMode": "text",
+            "axisLabel": "Succeeded per bucket",
+            "axisPlacement": "auto",
+            "barAlignment": 0,
+            "barWidthFactor": 0.9,
+            "drawStyle": "bars",
+            "fillOpacity": 80,
+            "gradientMode": "none",
+            "hideFrom": {
+              "legend": false,
+              "tooltip": false,
+              "viz": false
+            },
+            "insertNulls": false,
+            "lineInterpolation": "linear",
+            "lineWidth": 1,
+            "pointSize": 5,
+            "scaleDistribution": {
+              "type": "linear"
+            },
+            "showPoints": "auto",
+            "showValues": false,
+            "spanNulls": false,
+            "stacking": {
+              "group": "A",
+              "mode": "none"
+            },
+            "thresholdsStyle": {
+              "mode": "off"
+            }
+          },
+          "decimals": 0,
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "blue",
+                "value": 0
+              }
+            ]
+          },
+          "unit": "short"
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Succeeded"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "fixedColor": "green",
+                  "mode": "fixed"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Succeeded (7-bucket mean)"
+            },
+            "properties": [
+              {
+                "id": "custom.drawStyle",
+                "value": "line"
+              },
+              {
+                "id": "custom.lineWidth",
+                "value": 3
+              },
+              {
+                "id": "custom.lineInterpolation",
+                "value": "smooth"
+              },
+              {
+                "id": "custom.fillOpacity",
+                "value": 0
+              },
+              {
+                "id": "decimals",
+                "value": 1
+              },
+              {
+                "id": "color",
+                "value": {
+                  "fixedColor": "dark-green",
+                  "mode": "fixed"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Failed"
+            },
+            "properties": [
+              {
+                "id": "custom.drawStyle",
+                "value": "line"
+              },
+              {
+                "id": "custom.fillOpacity",
+                "value": 0
+              },
+              {
+                "id": "custom.axisPlacement",
+                "value": "right"
+              },
+              {
+                "id": "custom.axisLabel",
+                "value": "Failed / In flight per bucket"
+              },
+              {
+                "id": "unit",
+                "value": "short"
+              },
+              {
+                "id": "min",
+                "value": 0
+              },
+              {
+                "id": "custom.lineWidth",
+                "value": 1
+              },
+              {
+                "id": "color",
+                "value": {
+                  "fixedColor": "red",
+                  "mode": "fixed"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "In flight"
+            },
+            "properties": [
+              {
+                "id": "custom.drawStyle",
+                "value": "line"
+              },
+              {
+                "id": "custom.fillOpacity",
+                "value": 0
+              },
+              {
+                "id": "custom.axisPlacement",
+                "value": "right"
+              },
+              {
+                "id": "custom.axisLabel",
+                "value": "Failed / In flight per bucket"
+              },
+              {
+                "id": "unit",
+                "value": "short"
+              },
+              {
+                "id": "min",
+                "value": 0
+              },
+              {
+                "id": "custom.lineWidth",
+                "value": 1
+              },
+              {
+                "id": "custom.lineStyle",
+                "value": {
+                  "dash": [
+                    10,
+                    10
+                  ],
+                  "fill": "dash"
+                }
+              },
+              {
+                "id": "color",
+                "value": {
+                  "fixedColor": "yellow",
+                  "mode": "fixed"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Success rate (7-bucket mean)"
+            },
+            "properties": [
+              {
+                "id": "custom.drawStyle",
+                "value": "line"
+              },
+              {
+                "id": "custom.lineWidth",
+                "value": 2
+              },
+              {
+                "id": "custom.lineInterpolation",
+                "value": "smooth"
+              },
+              {
+                "id": "custom.fillOpacity",
+                "value": 0
+              },
+              {
+                "id": "custom.axisPlacement",
+                "value": "right"
+              },
+              {
+                "id": "custom.axisLabel",
+                "value": "Success rate"
+              },
+              {
+                "id": "custom.spanNulls",
+                "value": true
+              },
+              {
+                "id": "unit",
+                "value": "percent"
+              },
+              {
+                "id": "min",
+                "value": 0
+              },
+              {
+                "id": "max",
+                "value": 100
+              },
+              {
+                "id": "decimals",
+                "value": 1
+              },
+              {
+                "id": "color",
+                "value": {
+                  "fixedColor": "blue",
+                  "mode": "fixed"
+                }
+              }
+            ]
+          }
+        ]
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 24,
+        "x": 0,
+        "y": 28
+      },
+      "id": 514,
+      "interval": "1h",
+      "options": {
+        "legend": {
+          "calcs": [],
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "hideZeros": false,
+          "mode": "multi",
+          "sort": "none"
+        }
+      },
+      "pluginVersion": "12.4.2",
+      "targets": [
+        {
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "$datasource"
+          },
+          "editorMode": "code",
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "WITH buckets AS (\n  SELECT\n    $__timeGroup(r.\"CreationDatetime\", $__interval) AS \"time\",\n    COUNT(*) FILTER (WHERE r.\"Status\" = 3) AS succeeded,\n    -- Everything that is neither settled nor still running, so the three counts always sum to\n    -- every rebalance created in the bucket (Status 1 is the removed Probing value, kept as a gap):\n    COUNT(*) FILTER (WHERE r.\"Status\" NOT IN (0, 1, 2, 3)) AS failed,\n    COUNT(*) FILTER (WHERE r.\"Status\" IN (0, 1, 2)) AS in_flight\n\n  FROM \"Rebalances\" r\n  JOIN \"Nodes\" n ON n.\"Id\" = r.\"NodeId\"\n  WHERE\n    $__timeFilter(r.\"CreationDatetime\")\n    AND n.\"PubKey\" IN ($node)\n  GROUP BY 1\n)\nSELECT\n  \"time\",\n  succeeded AS \"Succeeded\",\n  AVG(succeeded) OVER w AS \"Succeeded (7-bucket mean)\",\n  failed    AS \"Failed\",\n  in_flight AS \"In flight\",\n\n  -- Trailing 7-bucket success rate, weighted by volume rather than averaging per-bucket rates.\n  -- In-flight rebalances are left out of the denominator (not settled yet), and a window with\n  -- nothing settled yields NULL so a quiet stretch does not read as 0%:\n  CASE WHEN SUM(succeeded + failed) OVER w > 0\n       THEN 100.0 * SUM(succeeded) OVER w / SUM(succeeded + failed) OVER w\n  END AS \"Success rate (7-bucket mean)\"\n\nFROM buckets\nWINDOW w AS (ORDER BY \"time\" ROWS BETWEEN 6 PRECEDING AND CURRENT ROW)\nORDER BY \"time\"",
+          "refId": "A"
+        }
+      ],
+      "title": "Rebalance activity (per bucket)",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "$datasource"
+      },
+      "description": "Weekly (calendar-week) routed volume with a 4-week rolling average, routing profit in sats net of succeeded rebalance fees when Apply Rebalance Costs is enabled, the count of succeeded rebalances, plus success rate per week. Success rate = settled / (settled + locally-failed, EventCase 4). Downstream failures (EventCase 2, ForwardFailEvent) are excluded since they were never within this node's control. Only complete weeks are shown: the in-progress week and any partial week at the window edges are dropped.",
       "fieldConfig": {
         "defaults": {
           "color": {
@@ -1742,6 +2337,57 @@
                 }
               }
             ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Rebalances"
+            },
+            "properties": [
+              {
+                "id": "custom.drawStyle",
+                "value": "line"
+              },
+              {
+                "id": "custom.lineWidth",
+                "value": 2
+              },
+              {
+                "id": "custom.fillOpacity",
+                "value": 0
+              },
+              {
+                "id": "custom.showPoints",
+                "value": "always"
+              },
+              {
+                "id": "custom.axisPlacement",
+                "value": "right"
+              },
+              {
+                "id": "custom.axisLabel",
+                "value": "Rebalances"
+              },
+              {
+                "id": "unit",
+                "value": "short"
+              },
+              {
+                "id": "decimals",
+                "value": 0
+              },
+              {
+                "id": "min",
+                "value": 0
+              },
+              {
+                "id": "color",
+                "value": {
+                  "fixedColor": "yellow",
+                  "mode": "fixed"
+                }
+              }
+            ]
           }
         ]
       },
@@ -1749,7 +2395,7 @@
         "h": 8,
         "w": 24,
         "x": 0,
-        "y": 21
+        "y": 36
       },
       "id": 511,
       "options": {
@@ -1775,7 +2421,7 @@
           "editorMode": "code",
           "format": "table",
           "rawQuery": true,
-          "rawSql": "SELECT\n  date_trunc('week', \"EventTimestamp\") AS \"time\",\n\n  -- Settled (routed) volume for the week, in BTC:\n  SUM(CASE WHEN \"Outcome\" = 1 THEN COALESCE(\"OutgoingAmountMsat\", \"IncomingAmountMsat\") ELSE 0 END) / 1e11 AS \"Routed Volume (BTC)\",\n\n  -- 4-week rolling average of routed volume, to read the trend:\n  AVG(SUM(CASE WHEN \"Outcome\" = 1 THEN COALESCE(\"OutgoingAmountMsat\", \"IncomingAmountMsat\") ELSE 0 END) / 1e11) OVER (\n    ORDER BY date_trunc('week', \"EventTimestamp\")\n    ROWS BETWEEN 3 PRECEDING AND CURRENT ROW\n  ) AS \"4w Rolling Avg Volume (BTC)\",\n\n  -- Settled routing profit for the week, in sats:\n  SUM(CASE WHEN \"Outcome\" = 1 THEN \"FeeMsat\" ELSE 0 END) / 1000.0 AS \"Profit (sats)\",\n\n  -- 4-week rolling average of profit, to read the trend:\n  AVG(SUM(CASE WHEN \"Outcome\" = 1 THEN \"FeeMsat\" ELSE 0 END) / 1000.0) OVER (\n    ORDER BY date_trunc('week', \"EventTimestamp\")\n    ROWS BETWEEN 3 PRECEDING AND CURRENT ROW\n  ) AS \"4w Rolling Avg Profit (sats)\",\n\n  -- Volume-weighted success rate: settled / (settled + locally-failed). Downstream failures (EventCase = 2) excluded:\n  SUM(CASE WHEN \"Outcome\" = 1 THEN COALESCE(\"OutgoingAmountMsat\", \"IncomingAmountMsat\") ELSE 0 END)::float8\n    / NULLIF(SUM(CASE WHEN \"Outcome\" = 1 OR (\"Outcome\" = 2 AND \"EventCase\" = 4) THEN COALESCE(\"OutgoingAmountMsat\", \"IncomingAmountMsat\") ELSE 0 END), 0) AS \"Success Rate (volume)\",\n\n  -- HTLC-count success rate over the same population:\n  COUNT(*) FILTER (WHERE \"Outcome\" = 1)::float8\n    / NULLIF(COUNT(*) FILTER (WHERE \"Outcome\" = 1 OR (\"Outcome\" = 2 AND \"EventCase\" = 4)), 0) AS \"Success Rate (HTLC count)\"\n\nFROM \"ForwardingHtlcEvents\"\nWHERE\n  $__timeFilter(\"EventTimestamp\")\n  AND \"ManagedNodePubKey\" IN ($node)\n  -- only complete weeks: drop the trailing in-progress week and a leading partial week\n  AND date_trunc('week', \"EventTimestamp\") + interval '7 days' <= $__timeTo()::timestamptz\n  AND date_trunc('week', \"EventTimestamp\") >= $__timeFrom()::timestamptz\nGROUP BY 1\nORDER BY 1",
+          "rawSql": "WITH forwards AS (\n  SELECT\n    date_trunc('week', \"EventTimestamp\") AS week,\n    SUM(CASE WHEN \"Outcome\" = 1 THEN COALESCE(\"OutgoingAmountMsat\", \"IncomingAmountMsat\") ELSE 0 END) AS settled_msat,\n    -- Settled + locally-failed only; downstream failures (EventCase 2) are out of this node's control\n    SUM(CASE WHEN \"Outcome\" = 1 OR (\"Outcome\" = 2 AND \"EventCase\" = 4) THEN COALESCE(\"OutgoingAmountMsat\", \"IncomingAmountMsat\") ELSE 0 END) AS attempted_msat,\n    SUM(CASE WHEN \"Outcome\" = 1 THEN \"FeeMsat\" ELSE 0 END) AS fee_msat,\n    COUNT(*) FILTER (WHERE \"Outcome\" = 1) AS settled_htlcs,\n    COUNT(*) FILTER (WHERE \"Outcome\" = 1 OR (\"Outcome\" = 2 AND \"EventCase\" = 4)) AS attempted_htlcs\n  FROM \"ForwardingHtlcEvents\"\n  WHERE\n    $__timeFilter(\"EventTimestamp\")\n    AND \"ManagedNodePubKey\" IN ($node)\n    -- only complete weeks: drop the trailing in-progress week and a leading partial week\n    AND date_trunc('week', \"EventTimestamp\") + interval '7 days' <= $__timeTo()::timestamptz\n    AND date_trunc('week', \"EventTimestamp\") >= $__timeFrom()::timestamptz\n  GROUP BY 1\n),\nrebalances AS (\n  SELECT\n    date_trunc('week', r.\"CreationDatetime\") AS week,\n    COUNT(*) AS rebalance_count,\n    COALESCE(SUM(r.\"FeePaidSats\"), 0) AS cost_sats\n  FROM \"Rebalances\" r\n  JOIN \"Nodes\" n ON n.\"Id\" = r.\"NodeId\"\n  WHERE\n    r.\"Status\" = 3\n    AND $__timeFilter(r.\"CreationDatetime\")\n    AND n.\"PubKey\" IN ($node)\n    -- same complete-week window as the forwards above, so the two series line up\n    AND date_trunc('week', r.\"CreationDatetime\") + interval '7 days' <= $__timeTo()::timestamptz\n    AND date_trunc('week', r.\"CreationDatetime\") >= $__timeFrom()::timestamptz\n  GROUP BY 1\n),\nweekly AS (\n  -- FULL OUTER JOIN so a week with rebalances but no forwards (or vice versa) still shows up\n  SELECT\n    COALESCE(f.week, b.week) AS week,\n    COALESCE(f.settled_msat, 0) AS settled_msat,\n    COALESCE(f.attempted_msat, 0) AS attempted_msat,\n    COALESCE(f.fee_msat, 0) AS fee_msat,\n    COALESCE(f.settled_htlcs, 0) AS settled_htlcs,\n    COALESCE(f.attempted_htlcs, 0) AS attempted_htlcs,\n    COALESCE(b.rebalance_count, 0) AS rebalance_count,\n    $applyRebalanceCosts * COALESCE(b.cost_sats, 0) AS cost_sats\n  FROM forwards f\n  FULL OUTER JOIN rebalances b ON b.week = f.week\n)\nSELECT\n  week AS \"time\",\n\n  -- Settled (routed) volume for the week, in BTC:\n  settled_msat / 1e11 AS \"Routed Volume (BTC)\",\n\n  -- 4-week rolling average of routed volume, to read the trend:\n  AVG(settled_msat / 1e11) OVER (\n    ORDER BY week\n    ROWS BETWEEN 3 PRECEDING AND CURRENT ROW\n  ) AS \"4w Rolling Avg Volume (BTC)\",\n\n  -- Settled routing fees minus succeeded rebalance fees, in sats:\n  fee_msat / 1000.0 - cost_sats AS \"Profit (sats)\",\n\n  -- 4-week rolling average of that same net profit:\n  AVG(fee_msat / 1000.0 - cost_sats) OVER (\n    ORDER BY week\n    ROWS BETWEEN 3 PRECEDING AND CURRENT ROW\n  ) AS \"4w Rolling Avg Profit (sats)\",\n\n  -- Succeeded rebalances that week, i.e. the ones whose fees were charged above:\n  rebalance_count AS \"Rebalances\",\n\n  -- Volume-weighted success rate: settled / (settled + locally-failed):\n  settled_msat::float8 / NULLIF(attempted_msat, 0) AS \"Success Rate (volume)\",\n\n  -- HTLC-count success rate over the same population:\n  settled_htlcs::float8 / NULLIF(attempted_htlcs, 0) AS \"Success Rate (HTLC count)\"\n\nFROM weekly\nORDER BY week",
           "refId": "A",
           "sql": {
             "columns": [
@@ -1883,7 +2529,7 @@
         "h": 8,
         "w": 24,
         "x": 0,
-        "y": 29
+        "y": 44
       },
       "id": 18,
       "options": {
@@ -1906,7 +2552,7 @@
           "editorMode": "code",
           "format": "table",
           "rawQuery": true,
-          "rawSql": "SELECT\n  $__timeGroup(\"CreationDatetime\", '1h', 0) AS \"time\",\n  \n  -- The raw profit for that specific hour:\n  SUM(\"FeeMsat\") / 1e11 AS \"Hourly Profit\",\n\n  -- The 24-hour rolling average (averages the last 24 one-hour buckets):\n  AVG(SUM(\"FeeMsat\") / 1e11) OVER (\n    ORDER BY $__timeGroup(\"CreationDatetime\", '1h', 0)\n    ROWS BETWEEN 23 PRECEDING AND CURRENT ROW\n  ) AS \"24h Rolling Avg\"\n\nFROM \"ForwardingHtlcEvents\"\nWHERE\n  $__timeFilter(\"CreationDatetime\")\n  AND \"Outcome\" = 1\n  AND \"ManagedNodePubKey\" IN ($node)\nGROUP BY 1\nORDER BY 1",
+          "rawSql": "WITH forwards AS (\n  SELECT\n    $__timeGroup(\"CreationDatetime\", '1h', 0) AS bucket,\n    SUM(\"FeeMsat\") AS fee_msat\n  FROM \"ForwardingHtlcEvents\"\n  WHERE\n    $__timeFilter(\"CreationDatetime\")\n    AND \"Outcome\" = 1\n    AND \"ManagedNodePubKey\" IN ($node)\n  GROUP BY 1\n),\nrebalances AS (\n  SELECT\n    $__timeGroup(r.\"CreationDatetime\", '1h', 0) AS bucket,\n    COALESCE(SUM(r.\"FeePaidSats\"), 0) AS cost_sats\n  FROM \"Rebalances\" r\n  JOIN \"Nodes\" n ON n.\"Id\" = r.\"NodeId\"\n  WHERE\n    r.\"Status\" = 3\n    AND $__timeFilter(r.\"CreationDatetime\")\n    AND n.\"PubKey\" IN ($node)\n  GROUP BY 1\n),\nhourly AS (\n  -- FULL OUTER JOIN so an hour with rebalance spend but no forwards still shows its loss\n  SELECT\n    COALESCE(f.bucket, b.bucket) AS bucket,\n    COALESCE(f.fee_msat, 0) AS fee_msat,\n    $applyRebalanceCosts * COALESCE(b.cost_sats, 0) AS cost_sats\n  FROM forwards f\n  FULL OUTER JOIN rebalances b ON b.bucket = f.bucket\n)\nSELECT\n  bucket AS \"time\",\n\n  -- Routing fees minus succeeded rebalance fees for that hour, in BTC:\n  (fee_msat / 1000.0 - cost_sats) / 1e8 AS \"Hourly Profit\",\n\n  -- The 24-hour rolling average (averages the last 24 one-hour buckets):\n  AVG((fee_msat / 1000.0 - cost_sats) / 1e8) OVER (\n    ORDER BY bucket\n    ROWS BETWEEN 23 PRECEDING AND CURRENT ROW\n  ) AS \"24h Rolling Avg\"\n\nFROM hourly\nORDER BY bucket",
           "refId": "A",
           "sql": {
             "columns": [
@@ -1928,7 +2574,8 @@
         }
       ],
       "title": "Profit over time",
-      "type": "timeseries"
+      "type": "timeseries",
+      "description": "Hourly routing profit in BTC, net of succeeded rebalance fees when Apply Rebalance Costs is enabled, with a 24-hour rolling average. Rebalance fees are attributed to the hour the rebalance was created."
     },
     {
       "datasource": {
@@ -1996,7 +2643,7 @@
         "h": 8,
         "w": 24,
         "x": 0,
-        "y": 37
+        "y": 52
       },
       "id": 19,
       "options": {
@@ -2070,7 +2717,7 @@
         "h": 8,
         "w": 12,
         "x": 0,
-        "y": 45
+        "y": 60
       },
       "id": 9,
       "options": {
@@ -2286,7 +2933,7 @@
         "h": 8,
         "w": 12,
         "x": 12,
-        "y": 45
+        "y": 60
       },
       "id": 13,
       "options": {
@@ -2502,7 +3149,7 @@
         "h": 8,
         "w": 12,
         "x": 0,
-        "y": 53
+        "y": 68
       },
       "id": 14,
       "options": {
@@ -2744,7 +3391,7 @@
         "h": 8,
         "w": 12,
         "x": 12,
-        "y": 53
+        "y": 68
       },
       "id": 15,
       "options": {
@@ -3007,7 +3654,7 @@
         "h": 8,
         "w": 12,
         "x": 0,
-        "y": 61
+        "y": 76
       },
       "id": 8,
       "options": {
@@ -3266,7 +3913,7 @@
         "h": 8,
         "w": 12,
         "x": 12,
-        "y": 61
+        "y": 76
       },
       "id": 16,
       "options": {
@@ -3520,7 +4167,7 @@
         "h": 8,
         "w": 12,
         "x": 0,
-        "y": 69
+        "y": 84
       },
       "id": 21,
       "options": {
@@ -3712,7 +4359,7 @@
         "h": 8,
         "w": 12,
         "x": 12,
-        "y": 69
+        "y": 84
       },
       "id": 22,
       "options": {
@@ -3926,7 +4573,7 @@
         "h": 8,
         "w": 8,
         "x": 0,
-        "y": 77
+        "y": 92
       },
       "id": 17,
       "options": {
@@ -4102,7 +4749,7 @@
         "h": 8,
         "w": 8,
         "x": 8,
-        "y": 77
+        "y": 92
       },
       "id": 504,
       "options": {
@@ -4205,7 +4852,7 @@
         "h": 8,
         "w": 8,
         "x": 16,
-        "y": 77
+        "y": 92
       },
       "id": 403,
       "options": {
@@ -4322,7 +4969,7 @@
         "h": 10,
         "w": 12,
         "x": 0,
-        "y": 116
+        "y": 131
       },
       "id": 100,
       "options": {
@@ -4420,7 +5067,7 @@
         "h": 10,
         "w": 12,
         "x": 12,
-        "y": 116
+        "y": 131
       },
       "id": 101,
       "options": {
@@ -4514,7 +5161,7 @@
         "h": 8,
         "w": 24,
         "x": 0,
-        "y": 126
+        "y": 141
       },
       "id": 102,
       "options": {
@@ -4658,7 +5305,7 @@
         "h": 10,
         "w": 24,
         "x": 0,
-        "y": 135
+        "y": 150
       },
       "id": 103,
       "options": {
@@ -4802,7 +5449,7 @@
         "h": 10,
         "w": 24,
         "x": 0,
-        "y": 145
+        "y": 160
       },
       "id": 104,
       "options": {
@@ -4878,7 +5525,7 @@
         "h": 7,
         "w": 8,
         "x": 0,
-        "y": 108
+        "y": 123
       },
       "id": 105,
       "options": {
@@ -4949,7 +5596,7 @@
         "h": 7,
         "w": 8,
         "x": 8,
-        "y": 108
+        "y": 123
       },
       "id": 109,
       "options": {
@@ -5028,7 +5675,7 @@
         "h": 7,
         "w": 8,
         "x": 16,
-        "y": 108
+        "y": 123
       },
       "id": 107,
       "options": {
@@ -5174,7 +5821,7 @@
         "h": 10,
         "w": 24,
         "x": 0,
-        "y": 176
+        "y": 191
       },
       "id": 108,
       "options": {
@@ -5353,7 +6000,7 @@
         "h": 10,
         "w": 24,
         "x": 0,
-        "y": 187
+        "y": 202
       },
       "id": 112,
       "options": {
@@ -5497,7 +6144,7 @@
         "h": 10,
         "w": 24,
         "x": 0,
-        "y": 155
+        "y": 170
       },
       "id": 110,
       "options": {
@@ -5641,7 +6288,7 @@
         "h": 10,
         "w": 24,
         "x": 0,
-        "y": 165
+        "y": 180
       },
       "id": 111,
       "options": {
@@ -5681,7 +6328,7 @@
         "h": 1,
         "w": 24,
         "x": 0,
-        "y": 107
+        "y": 122
       },
       "id": 200,
       "panels": [],
@@ -5694,7 +6341,7 @@
         "h": 1,
         "w": 24,
         "x": 0,
-        "y": 115
+        "y": 130
       },
       "id": 201,
       "panels": [],
@@ -5707,7 +6354,7 @@
         "h": 1,
         "w": 24,
         "x": 0,
-        "y": 134
+        "y": 149
       },
       "id": 202,
       "panels": [],
@@ -5720,7 +6367,7 @@
         "h": 1,
         "w": 24,
         "x": 0,
-        "y": 175
+        "y": 190
       },
       "id": 203,
       "panels": [],
@@ -5733,7 +6380,7 @@
         "h": 1,
         "w": 24,
         "x": 0,
-        "y": 197
+        "y": 212
       },
       "id": 204,
       "panels": [],
@@ -5820,7 +6467,7 @@
         "h": 9,
         "w": 24,
         "x": 0,
-        "y": 198
+        "y": 213
       },
       "id": 113,
       "options": {
@@ -5916,7 +6563,7 @@
         "h": 9,
         "w": 24,
         "x": 0,
-        "y": 207
+        "y": 222
       },
       "id": 206,
       "options": {
@@ -5957,7 +6604,7 @@
         "h": 1,
         "w": 24,
         "x": 0,
-        "y": 217
+        "y": 232
       },
       "id": 250,
       "panels": [],
@@ -5994,7 +6641,7 @@
         "h": 7,
         "w": 5,
         "x": 0,
-        "y": 218
+        "y": 233
       },
       "id": 303,
       "options": {
@@ -6061,7 +6708,7 @@
         "h": 7,
         "w": 5,
         "x": 5,
-        "y": 218
+        "y": 233
       },
       "id": 300,
       "options": {
@@ -6128,7 +6775,7 @@
         "h": 7,
         "w": 5,
         "x": 10,
-        "y": 218
+        "y": 233
       },
       "id": 307,
       "options": {
@@ -6207,7 +6854,7 @@
         "h": 7,
         "w": 5,
         "x": 15,
-        "y": 218
+        "y": 233
       },
       "id": 302,
       "options": {
@@ -6278,7 +6925,7 @@
         "h": 7,
         "w": 4,
         "x": 20,
-        "y": 218
+        "y": 233
       },
       "id": 304,
       "options": {
@@ -6395,7 +7042,7 @@
         "h": 9,
         "w": 24,
         "x": 0,
-        "y": 225
+        "y": 240
       },
       "id": 301,
       "options": {
@@ -6491,7 +7138,7 @@
         "h": 9,
         "w": 24,
         "x": 0,
-        "y": 234
+        "y": 249
       },
       "id": 306,
       "options": {
@@ -6532,7 +7179,7 @@
         "h": 1,
         "w": 24,
         "x": 0,
-        "y": 243
+        "y": 258
       },
       "id": 500,
       "panels": [],
@@ -6569,7 +7216,7 @@
         "h": 8,
         "w": 8,
         "x": 0,
-        "y": 244
+        "y": 259
       },
       "id": 501,
       "options": {
@@ -6636,7 +7283,7 @@
         "h": 8,
         "w": 8,
         "x": 8,
-        "y": 244
+        "y": 259
       },
       "id": 502,
       "options": {
@@ -6700,7 +7347,7 @@
         "h": 8,
         "w": 8,
         "x": 16,
-        "y": 244
+        "y": 259
       },
       "id": 503,
       "options": {
@@ -6787,7 +7434,7 @@
         "h": 1,
         "w": 24,
         "x": 0,
-        "y": 252
+        "y": 267
       },
       "id": 400,
       "panels": [],
@@ -6881,7 +7528,7 @@
         "h": 10,
         "w": 12,
         "x": 0,
-        "y": 253
+        "y": 268
       },
       "id": 401,
       "options": {
@@ -7032,7 +7679,7 @@
         "h": 10,
         "w": 12,
         "x": 12,
-        "y": 253
+        "y": 268
       },
       "id": 402,
       "options": {
@@ -7197,7 +7844,7 @@
         "h": 10,
         "w": 12,
         "x": 0,
-        "y": 263
+        "y": 278
       },
       "id": 404,
       "options": {
@@ -7368,7 +8015,7 @@
         "h": 10,
         "w": 12,
         "x": 12,
-        "y": 263
+        "y": 278
       },
       "id": 405,
       "options": {
@@ -7568,7 +8215,7 @@
         "h": 9,
         "w": 24,
         "x": 0,
-        "y": 273
+        "y": 288
       },
       "id": 406,
       "options": {
