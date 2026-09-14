@@ -202,24 +202,9 @@ public class AutoRebalanceJobTests
 
         _channelRepository.Setup(x => x.GetOpenChannels()).ReturnsAsync(new List<Channel>
         {
-            new()
-            {
-                Id = 101, ChanId = 1001, Status = Channel.ChannelStatus.Open,
-                IsDynamicFeeEnabled = true, IsAutoRebalanceEnabled = true,
-                FundingTx = "txS", FundingTxOutputIndex = 0,
-            },
-            new()
-            {
-                Id = 102, ChanId = 1002, Status = Channel.ChannelStatus.Open,
-                IsDynamicFeeEnabled = true, IsAutoRebalanceEnabled = false,
-                FundingTx = "txD", FundingTxOutputIndex = 0,
-            },
-            new()
-            {
-                Id = 103, ChanId = 1003, Status = Channel.ChannelStatus.Open,
-                IsDynamicFeeEnabled = true, IsAutoRebalanceEnabled = false,
-                FundingTx = "txD2", FundingTxOutputIndex = 0,
-            },
+            Db(101, 1001, optIn: true),   // source
+            Db(102, 1002, optIn: false),  // depleted, categorized destination
+            Db(103, 1003, optIn: false),  // full, uncategorized sibling on the same peer
         });
 
         _routingStateRepository.Setup(x => x.GetByManagedNodePubKey(NodePubKey)).ReturnsAsync(new List<ChannelRoutingState>
