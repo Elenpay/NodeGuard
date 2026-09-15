@@ -36,7 +36,10 @@ namespace NodeGuard.Tests.E2E;
 [Collection("E2E")]
 public class AutoRebalanceE2ETests : RoutingEngineE2EBase
 {
-    private const long SourceMinCapacitySats = 10_000_000;
+    // Both constraints at once: enough liquidity for the drain phases, and at least what the job
+    // now requires of a source, so a reused channel can't be one the rebalancer filters out.
+    private static long SourceMinCapacitySats => Math.Max(
+        10_000_000, long.Parse(Env("ROUTING_ENGINE_FEE_MIN_CHANNEL_SIZE_SATS", "15000000")));
 
     // 0.5 - 0.30 clears the deadband with margin and leaves a deficit above the amount cap
     private const double DestinationDrainRatio = 0.30;
