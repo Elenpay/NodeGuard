@@ -82,7 +82,16 @@ namespace NodeGuard.Data.Repositories
         {
             await using var applicationDbContext = await _dbContextFactory.CreateDbContextAsync();
 
-            return await applicationDbContext.WalletWithdrawalRequests.Where(wr => !string.IsNullOrEmpty(wr.ReferenceId) && referenceIds.Contains(wr.ReferenceId)).ToListAsync();
+            // RBF replacements inherit the reference id of the request they replace, so a reference id can match a whole
+            // chain of requests. Only the latest one of each chain reflects the current status of the withdrawal.
+            var requests = await applicationDbContext.WalletWithdrawalRequests
+                .Where(wr => !string.IsNullOrEmpty(wr.ReferenceId) && referenceIds.Contains(wr.ReferenceId))
+                .ToListAsync();
+
+            return requests
+                .GroupBy(wr => wr.ReferenceId!)
+                .Select(g => g.OrderByDescending(wr => wr.Id).First())
+                .ToList();
         }
 
         public async Task<WalletWithdrawalRequest?> GetByTxHash(string txHash)
