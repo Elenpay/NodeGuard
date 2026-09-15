@@ -244,6 +244,8 @@ public class WithdrawalRequestService : IWithdrawalRequestService
             CustomFeeRate = newFeeRate,
             UserRequestorId = original.UserRequestorId,
             RequestMetadata = original.RequestMetadata,
+            // The replacement represents the same external request, so callers can keep tracking it by reference id.
+            ReferenceId = original.ReferenceId,
             BumpingWalletWithdrawalRequestId = original.Id,
             IsRbfCancellation = cancellation,
             WalletId = original.WalletId,
