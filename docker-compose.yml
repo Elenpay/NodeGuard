@@ -3,6 +3,7 @@
 include:
   - ./docker/docker-compose.dev.yml
   - ./docker/bitcoin/docker-compose.polar.yml
+  - ./docker/bitcoin/docker-compose.external.yml
   - ./docker/loop/docker-compose.yml
   - ./docker/mempool/docker-compose.yml
   - ./docker/40swap/docker-compose.yml
