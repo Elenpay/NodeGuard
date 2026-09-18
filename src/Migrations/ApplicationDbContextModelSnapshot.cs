@@ -1370,6 +1370,9 @@ namespace NodeGuard.Migrations
                     b.Property<bool>("Changeless")
                         .HasColumnType("boolean");
 
+                    b.Property<int?>("CoinSelectionStrategy")
+                        .HasColumnType("integer");
+
                     b.Property<DateTimeOffset>("CreationDatetime")
                         .HasColumnType("timestamp with time zone");
 

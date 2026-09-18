@@ -126,6 +126,32 @@ public class WithdrawalRequestServiceTests
             BitcoinRequestType.WalletWithdrawal), Times.Once);
     }
 
+    /// <summary>
+    /// The replacement stands in for the same original request, so it keeps the requested coin selection strategy
+    /// the way it keeps RequestMetadata and ReferenceId. Nothing reads the field yet.
+    /// </summary>
+    [Fact]
+    public async Task CreateBumpRequestAsync_CarriesTheCoinSelectionStrategyOfTheOriginal()
+    {
+        var original = SetupOriginal(HotWallet());
+        original.CoinSelectionStrategy = CoinSelectionStrategy.BiggestFirst;
+
+        var bump = await CreateService().CreateBumpRequestAsync(OriginalId, MempoolRecommendedFeesType.CustomFee, 10m);
+
+        bump.CoinSelectionStrategy.Should().Be(CoinSelectionStrategy.BiggestFirst);
+    }
+
+    [Fact]
+    public async Task CreateCancelRequestAsync_CarriesTheCoinSelectionStrategyOfTheOriginal()
+    {
+        var original = SetupOriginal(HotWallet());
+        original.CoinSelectionStrategy = CoinSelectionStrategy.ClosestToTargetFirst;
+
+        var cancel = await CreateService().CreateCancelRequestAsync(OriginalId, MempoolRecommendedFeesType.CustomFee, 10m);
+
+        cancel.CoinSelectionStrategy.Should().Be(CoinSelectionStrategy.ClosestToTargetFirst);
+    }
+
     [Fact]
     public async Task CreateBumpRequestAsync_ColdWallet_CreatesTheBumpPendingForApprovers()
     {

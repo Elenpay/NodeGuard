@@ -239,6 +239,23 @@ public class NodeGuardService : Nodeguard.NodeGuardService.NodeGuardServiceBase,
         }
     }
 
+    /// <summary>
+    /// Maps the proto coin selection strategy onto the domain one. The two enums are kept in sync by hand, so
+    /// this switches on the members instead of casting the ordinal.
+    /// </summary>
+    private static CoinSelectionStrategy MapCoinSelectionStrategy(COIN_SELECTION_STRATEGY strategy)
+    {
+        return strategy switch
+        {
+            COIN_SELECTION_STRATEGY.SmallestFirst => CoinSelectionStrategy.SmallestFirst,
+            COIN_SELECTION_STRATEGY.BiggestFirst => CoinSelectionStrategy.BiggestFirst,
+            COIN_SELECTION_STRATEGY.ClosestToTargetFirst => CoinSelectionStrategy.ClosestToTargetFirst,
+            COIN_SELECTION_STRATEGY.UpToAmount => CoinSelectionStrategy.UpToAmount,
+            _ => throw new RpcException(new Status(StatusCode.InvalidArgument,
+                $"Unknown coin selection strategy: {strategy}"))
+        };
+    }
+
     public override async Task<RequestWithdrawalResponse> RequestWithdrawal(RequestWithdrawalRequest request,
         ServerCallContext context)
     {
@@ -295,7 +312,10 @@ public class NodeGuardService : Nodeguard.NodeGuardService.NodeGuardServiceBase,
                 Changeless = request.Changeless,
                 MempoolRecommendedFeesType = (MempoolRecommendedFeesType)request.MempoolFeeRate,
                 CustomFeeRate = request.CustomFeeRate,
-                ReferenceId = request.ReferenceId
+                ReferenceId = request.ReferenceId,
+                CoinSelectionStrategy = request.HasCoinSelectionStrategy
+                    ? MapCoinSelectionStrategy(request.CoinSelectionStrategy)
+                    : null
             };
 
             //Save withdrawal request

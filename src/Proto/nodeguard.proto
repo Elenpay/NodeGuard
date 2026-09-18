@@ -200,8 +200,7 @@ message RequestWithdrawalRequest {
   optional string reference_id = 10;
   // Destinations for the withdrawal
   repeated Destination destinations = 11;
-  // Optional coin selection strategy to be used by the withdrawal. If unset, the existing
-  // default applies — check presence before reading it, SMALLEST_FIRST is the zero value.
+  // Optional coin selection strategy to be used by the withdrawal.
   optional COIN_SELECTION_STRATEGY coin_selection_strategy = 12;
 }
 
