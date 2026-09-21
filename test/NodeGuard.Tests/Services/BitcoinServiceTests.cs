@@ -1929,4 +1929,112 @@ public class BitcoinServiceTests
         nbXplorerService.Verify(x => x.GetUTXOsAsync(It.IsAny<DerivationStrategyBase>(), default), Times.Never);
         psbtRepository.Verify(x => x.AddAsync(It.IsAny<WalletWithdrawalRequestPSBT>()), Times.Never);
     }
+
+    /// <summary>
+    /// Builds a request whose only interesting property is the coin selection strategy, runs
+    /// GenerateTemplatePSBT far enough to reach the selection, and hands back the strategy it was called with.
+    /// </summary>
+    private async Task<CoinSelectionStrategy?> CaptureSelectionStrategy(
+        CoinSelectionStrategy? requested, List<UTXO> lockedUTXOs, bool withdrawAllFunds = false)
+    {
+        var wallet = CreateWallet.SingleSig(_internalWallet);
+        var withdrawalRequest = new WalletWithdrawalRequest
+        {
+            Id = 1,
+            Status = WalletWithdrawalRequestStatus.Pending,
+            Wallet = wallet,
+            CoinSelectionStrategy = requested,
+            WithdrawAllFunds = withdrawAllFunds,
+            WalletWithdrawalRequestPSBTs = new List<WalletWithdrawalRequestPSBT>(),
+            WalletWithdrawalRequestDestinations = new List<WalletWithdrawalRequestDestination>
+            {
+                new() { Address = "bcrt1q590shaxaf5u08ml8jwlzghz99dup3z9592vxal", Amount = 0.01m }
+            }
+        };
+
+        var walletWithdrawalRequestRepository = new Mock<IWalletWithdrawalRequestRepository>();
+        walletWithdrawalRequestRepository.Setup(x => x.GetById(It.IsAny<int>())).ReturnsAsync(withdrawalRequest);
+
+        var nbXplorerService = new Mock<INBXplorerService>();
+        nbXplorerService.Setup(x => x.GetStatusAsync(default))
+            .ReturnsAsync(new StatusResult { IsFullySynched = true });
+
+        CoinSelectionStrategy? capturedStrategy = null;
+        var coinSelectionService = new Mock<ICoinSelectionService>();
+        coinSelectionService
+            .Setup(x => x.GetLockedUTXOsForRequest(It.IsAny<IBitcoinRequest>(), BitcoinRequestType.WalletWithdrawal))
+            .ReturnsAsync(lockedUTXOs);
+        coinSelectionService
+            .Setup(x => x.GetAvailableUTXOsAsync(It.IsAny<DerivationStrategyBase>()))
+            .ReturnsAsync(new List<UTXO>());
+        coinSelectionService
+            .Setup(x => x.GetTxInputCoins(It.IsAny<List<UTXO>>(), It.IsAny<IBitcoinRequest>(),
+                It.IsAny<DerivationStrategyBase>(), It.IsAny<CoinSelectionStrategy?>()))
+            .Callback<List<UTXO>, IBitcoinRequest, DerivationStrategyBase, CoinSelectionStrategy?>(
+                (_, _, _, strategy) => capturedStrategy = strategy)
+            // An empty selection stops GenerateTemplatePSBT right after the call we are watching
+            .ReturnsAsync((new List<ICoin>(), new List<UTXO>()));
+
+        var bitcoinService = new BitcoinService(_logger, null, walletWithdrawalRequestRepository.Object,
+            new Mock<IWalletWithdrawalRequestPsbtRepository>().Object, null, null, nbXplorerService.Object,
+            coinSelectionService.Object);
+
+        await bitcoinService.Invoking(x => x.GenerateTemplatePSBT(withdrawalRequest))
+            .Should().ThrowAsync<NoUTXOsAvailableException>();
+
+        return capturedStrategy;
+    }
+
+    [Fact]
+    async Task GenerateTemplatePSBT_PassesTheRequestedCoinSelectionStrategy()
+    {
+        var strategy = await CaptureSelectionStrategy(CoinSelectionStrategy.BiggestFirst, new List<UTXO>());
+
+        strategy.Should().Be(CoinSelectionStrategy.BiggestFirst);
+    }
+
+    /// <summary>
+    /// Locked UTXOs are the inputs a changeless request picked or an RBF replacement has to reuse. Applying a
+    /// strategy there would re-select the inputs, so the replacement would no longer replace anything.
+    /// </summary>
+    [Fact]
+    async Task GenerateTemplatePSBT_WithLockedUTXOs_IgnoresTheCoinSelectionStrategy()
+    {
+        var wallet = CreateWallet.SingleSig(_internalWallet);
+        var lockedUTXO = new UTXO
+        {
+            Outpoint = new OutPoint(new uint256(1), 0),
+            Value = new Money(100_000L),
+            KeyPath = KeyPath.Parse("0/0"),
+            ScriptPubKey = (wallet.GetDerivationStrategy() as StandardDerivationStrategyBase)!
+                .GetDerivation(KeyPath.Parse("0/0")).ScriptPubKey
+        };
+
+        var strategy = await CaptureSelectionStrategy(CoinSelectionStrategy.BiggestFirst,
+            new List<UTXO> { lockedUTXO });
+
+        strategy.Should().BeNull();
+    }
+
+    /// <summary>A request that picked no strategy must reach the selection unchanged.</summary>
+    [Fact]
+    async Task GenerateTemplatePSBT_WithoutACoinSelectionStrategy_PassesNull()
+    {
+        var strategy = await CaptureSelectionStrategy(null, new List<UTXO>());
+
+        strategy.Should().BeNull();
+    }
+
+    /// <summary>
+    /// A full withdrawal has its amount set to the whole available balance before the selection runs, so
+    /// re-selecting against that amount could only come up short.
+    /// </summary>
+    [Fact]
+    async Task GenerateTemplatePSBT_WithdrawAllFunds_IgnoresTheCoinSelectionStrategy()
+    {
+        var strategy = await CaptureSelectionStrategy(CoinSelectionStrategy.BiggestFirst, new List<UTXO>(),
+            withdrawAllFunds: true);
+
+        strategy.Should().BeNull();
+    }
 }

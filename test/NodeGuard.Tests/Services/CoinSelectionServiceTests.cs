@@ -438,4 +438,171 @@ public class CoinSelectionServiceTests
         availableUTXOs.Should().ContainSingle();
         availableUTXOs[0].Outpoint.Should().Be(availableUtxo.Outpoint);
     }
+
+    /// <summary>A UTXO complete enough for LightningHelper.SelectCoins to turn it into a coin.</summary>
+    private static UTXO CreateSpendableUtxo(Wallet wallet, uint index, long satoshis, int confirmations = 1)
+    {
+        var keyPath = KeyPath.Parse($"0/{index}");
+
+        return new UTXO
+        {
+            Outpoint = new OutPoint(new uint256(index), 0),
+            Value = new Money(satoshis),
+            Confirmations = confirmations,
+            KeyPath = keyPath,
+            ScriptPubKey = (wallet.GetDerivationStrategy() as StandardDerivationStrategyBase)!
+                .GetDerivation(keyPath).ScriptPubKey
+        };
+    }
+
+    private static WalletWithdrawalRequest CreateRequest(Wallet wallet, decimal amountBtc)
+    {
+        return new WalletWithdrawalRequest
+        {
+            Id = 1,
+            Wallet = wallet,
+            WalletWithdrawalRequestDestinations = new List<WalletWithdrawalRequestDestination>
+            {
+                new() { Address = "bcrt1q590shaxaf5u08ml8jwlzghz99dup3z9592vxal", Amount = amountBtc }
+            }
+        };
+    }
+
+    [Fact]
+    public async Task GetTxInputCoins_WithStrategy_SelectsInTheOrderNBXplorerReturns()
+    {
+        var previousCustomBackend = Constants.NBXPLORER_ENABLE_CUSTOM_BACKEND;
+        Constants.NBXPLORER_ENABLE_CUSTOM_BACKEND = true;
+        try
+        {
+            // Arrange
+            var wallet = CreateWallet.SingleSig(_internalWallet);
+            var derivationStrategy = wallet.GetDerivationStrategy();
+
+            // SelectUTXOsByOldest pops in ascending confirmations, so it would take the 100k UTXO on its
+            // own. Following NBXplorer's order instead takes the two small ones.
+            var small = CreateSpendableUtxo(wallet, 1, 6_000, confirmations: 2);
+            var smaller = CreateSpendableUtxo(wallet, 2, 5_000, confirmations: 3);
+            var big = CreateSpendableUtxo(wallet, 3, 100_000, confirmations: 1);
+
+            var fmutxoRepository = new Mock<IFMUTXORepository>();
+            fmutxoRepository.Setup(x => x.GetLockedUTXOs(null, null)).ReturnsAsync(new List<FMUTXO>());
+
+            var utxoTagRepository = new Mock<IUTXOTagRepository>();
+            utxoTagRepository.Setup(x => x.GetByKeyValue(It.IsAny<string>(), It.IsAny<string>()))
+                .ReturnsAsync(new List<UTXOTag>());
+
+            var nbXplorerService = new Mock<INBXplorerService>();
+            nbXplorerService
+                .Setup(x => x.GetUTXOsAsync(It.IsAny<DerivationStrategyBase>(), default))
+                .ReturnsAsync(new UTXOChanges
+                {
+                    Confirmed = new UTXOChange { UTXOs = new List<UTXO> { small, smaller, big } }
+                });
+            nbXplorerService
+                .Setup(x => x.GetUTXOsByLimitAsync(It.IsAny<DerivationStrategyBase>(),
+                    It.IsAny<CoinSelectionStrategy>(), It.IsAny<int>(), It.IsAny<long>(), It.IsAny<long>(),
+                    It.IsAny<List<string>>(), default))
+                .ReturnsAsync(new UTXOChanges
+                {
+                    Confirmed = new UTXOChange { UTXOs = new List<UTXO> { small, smaller, big } }
+                });
+
+            var coinSelectionService = new CoinSelectionService(_logger, new Mock<IMapper>().Object,
+                fmutxoRepository.Object, nbXplorerService.Object, null, null, utxoTagRepository.Object);
+
+            var request = CreateRequest(wallet, 0.0001m); // 10_000 sats
+
+            // Act
+            var (coins, selectedUTXOs) = await coinSelectionService.GetTxInputCoins(
+                new List<UTXO>(), request, derivationStrategy, CoinSelectionStrategy.SmallestFirst);
+
+            // Assert
+            nbXplorerService.Verify(x => x.GetUTXOsByLimitAsync(derivationStrategy,
+                CoinSelectionStrategy.SmallestFirst, 0, 10_000, 10_000, It.IsAny<List<string>>(), default),
+                Times.Once);
+            selectedUTXOs.Select(x => x.Outpoint).Should()
+                .Equal(new[] { small.Outpoint, smaller.Outpoint }, "the order NBXplorer returned is kept");
+            coins.Should().HaveCount(2);
+        }
+        finally
+        {
+            Constants.NBXPLORER_ENABLE_CUSTOM_BACKEND = previousCustomBackend;
+        }
+    }
+
+    [Fact]
+    public async Task GetTxInputCoins_WithoutStrategy_KeepsTheOldestFirstSelection()
+    {
+        // Arrange
+        var wallet = CreateWallet.SingleSig(_internalWallet);
+        var derivationStrategy = wallet.GetDerivationStrategy();
+        var utxo = CreateSpendableUtxo(wallet, 1, 100_000);
+
+        var nbXplorerService = new Mock<INBXplorerService>();
+        var coinSelectionService = new CoinSelectionService(_logger, new Mock<IMapper>().Object,
+            new Mock<IFMUTXORepository>().Object, nbXplorerService.Object, null, null,
+            new Mock<IUTXOTagRepository>().Object);
+
+        var request = CreateRequest(wallet, 0.0001m); // 10_000 sats
+
+        // Act
+        var (coins, selectedUTXOs) = await coinSelectionService.GetTxInputCoins(
+            new List<UTXO> { utxo }, request, derivationStrategy);
+
+        // Assert
+        selectedUTXOs.Should().ContainSingle().Which.Outpoint.Should().Be(utxo.Outpoint);
+        coins.Should().ContainSingle();
+        nbXplorerService.Verify(x => x.GetUTXOsByLimitAsync(It.IsAny<DerivationStrategyBase>(),
+            It.IsAny<CoinSelectionStrategy>(), It.IsAny<int>(), It.IsAny<long>(), It.IsAny<long>(),
+            It.IsAny<List<string>>(), default), Times.Never);
+    }
+
+    [Fact]
+    public async Task GetTxInputCoins_WithStrategy_ReturnsNothingWhenTheSetIsShort()
+    {
+        var previousCustomBackend = Constants.NBXPLORER_ENABLE_CUSTOM_BACKEND;
+        Constants.NBXPLORER_ENABLE_CUSTOM_BACKEND = true;
+        try
+        {
+            // Arrange
+            var wallet = CreateWallet.SingleSig(_internalWallet);
+            var derivationStrategy = wallet.GetDerivationStrategy();
+            var utxo = CreateSpendableUtxo(wallet, 1, 1_000);
+
+            var fmutxoRepository = new Mock<IFMUTXORepository>();
+            fmutxoRepository.Setup(x => x.GetLockedUTXOs(null, null)).ReturnsAsync(new List<FMUTXO>());
+
+            var utxoTagRepository = new Mock<IUTXOTagRepository>();
+            utxoTagRepository.Setup(x => x.GetByKeyValue(It.IsAny<string>(), It.IsAny<string>()))
+                .ReturnsAsync(new List<UTXOTag>());
+
+            var nbXplorerService = new Mock<INBXplorerService>();
+            nbXplorerService
+                .Setup(x => x.GetUTXOsAsync(It.IsAny<DerivationStrategyBase>(), default))
+                .ReturnsAsync(new UTXOChanges { Confirmed = new UTXOChange { UTXOs = new List<UTXO> { utxo } } });
+            nbXplorerService
+                .Setup(x => x.GetUTXOsByLimitAsync(It.IsAny<DerivationStrategyBase>(),
+                    It.IsAny<CoinSelectionStrategy>(), It.IsAny<int>(), It.IsAny<long>(), It.IsAny<long>(),
+                    It.IsAny<List<string>>(), default))
+                .ReturnsAsync(new UTXOChanges { Confirmed = new UTXOChange { UTXOs = new List<UTXO> { utxo } } });
+
+            var coinSelectionService = new CoinSelectionService(_logger, new Mock<IMapper>().Object,
+                fmutxoRepository.Object, nbXplorerService.Object, null, null, utxoTagRepository.Object);
+
+            var request = CreateRequest(wallet, 0.0001m); // 10_000 sats, more than the wallet holds
+
+            // Act
+            var (coins, selectedUTXOs) = await coinSelectionService.GetTxInputCoins(
+                new List<UTXO>(), request, derivationStrategy, CoinSelectionStrategy.BiggestFirst);
+
+            // Assert: GenerateTemplatePSBT turns an empty selection into NoUTXOsAvailableException
+            selectedUTXOs.Should().BeEmpty();
+            coins.Should().BeEmpty();
+        }
+        finally
+        {
+            Constants.NBXPLORER_ENABLE_CUSTOM_BACKEND = previousCustomBackend;
+        }
+    }
 }

@@ -241,9 +241,11 @@ public class NodeGuardService : Nodeguard.NodeGuardService.NodeGuardServiceBase,
 
     /// <summary>
     /// Maps the proto coin selection strategy onto the domain one. The two enums are kept in sync by hand, so
-    /// this switches on the members instead of casting the ordinal.
+    /// this switches on the members instead of casting the ordinal. <paramref name="unknownStrategyException"/>
+    /// builds the exception thrown for an unmapped member, so each caller keeps its own error contract.
     /// </summary>
-    private static CoinSelectionStrategy MapCoinSelectionStrategy(COIN_SELECTION_STRATEGY strategy)
+    private static CoinSelectionStrategy MapCoinSelectionStrategy(COIN_SELECTION_STRATEGY strategy,
+        Func<COIN_SELECTION_STRATEGY, Exception> unknownStrategyException)
     {
         return strategy switch
         {
@@ -251,8 +253,7 @@ public class NodeGuardService : Nodeguard.NodeGuardService.NodeGuardServiceBase,
             COIN_SELECTION_STRATEGY.BiggestFirst => CoinSelectionStrategy.BiggestFirst,
             COIN_SELECTION_STRATEGY.ClosestToTargetFirst => CoinSelectionStrategy.ClosestToTargetFirst,
             COIN_SELECTION_STRATEGY.UpToAmount => CoinSelectionStrategy.UpToAmount,
-            _ => throw new RpcException(new Status(StatusCode.InvalidArgument,
-                $"Unknown coin selection strategy: {strategy}"))
+            _ => throw unknownStrategyException(strategy)
         };
     }
 
@@ -314,7 +315,9 @@ public class NodeGuardService : Nodeguard.NodeGuardService.NodeGuardServiceBase,
                 CustomFeeRate = request.CustomFeeRate,
                 ReferenceId = request.ReferenceId,
                 CoinSelectionStrategy = request.HasCoinSelectionStrategy
-                    ? MapCoinSelectionStrategy(request.CoinSelectionStrategy)
+                    ? MapCoinSelectionStrategy(request.CoinSelectionStrategy,
+                        strategy => new RpcException(new Status(StatusCode.InvalidArgument,
+                            $"Unknown coin selection strategy: {strategy}")))
                     : null
             };
 
@@ -1202,14 +1205,8 @@ public class NodeGuardService : Nodeguard.NodeGuardService.NodeGuardServiceBase,
             throw new Exception("Wallet not found");
         }
 
-        var coinSelectionStrategy = request.Strategy switch
-        {
-            COIN_SELECTION_STRATEGY.BiggestFirst => CoinSelectionStrategy.BiggestFirst,
-            COIN_SELECTION_STRATEGY.SmallestFirst => CoinSelectionStrategy.SmallestFirst,
-            COIN_SELECTION_STRATEGY.ClosestToTargetFirst => CoinSelectionStrategy.ClosestToTargetFirst,
-            COIN_SELECTION_STRATEGY.UpToAmount => CoinSelectionStrategy.UpToAmount,
-            _ => throw new ArgumentOutOfRangeException(nameof(request.Strategy), request.Strategy, "Unknown status")
-        };
+        var coinSelectionStrategy = MapCoinSelectionStrategy(request.Strategy,
+            strategy => new ArgumentOutOfRangeException(nameof(request.Strategy), strategy, "Unknown status"));
 
         var derivationStrategy = wallet.GetDerivationStrategy();
         if (derivationStrategy == null)

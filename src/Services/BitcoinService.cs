@@ -190,12 +190,19 @@ namespace NodeGuard.Services
             }
 
 
-            var availableUTXOs = previouslyLockedUTXOs.Count > 0
+            var hasLockedUTXOs = previouslyLockedUTXOs.Count > 0;
+            var availableUTXOs = hasLockedUTXOs
                 ? previouslyLockedUTXOs
                 : await _coinSelectionService.GetAvailableUTXOsAsync(derivationStrategy);
+
+            // The strategy only applies while the selection is still open. Locked UTXOs are the inputs a
+            // changeless request picked or an RBF replacement has to reuse. A full withdrawal has already had
+            // its amount set to the whole balance above, from the plain listing, so re-selecting against that
+            // amount can only come up short.
+            var selectionIsOpen = !hasLockedUTXOs && !walletWithdrawalRequest.WithdrawAllFunds;
             var (scriptCoins, selectedUTXOs) =
                 await _coinSelectionService.GetTxInputCoins(availableUTXOs, walletWithdrawalRequest,
-                    derivationStrategy);
+                    derivationStrategy, selectionIsOpen ? walletWithdrawalRequest.CoinSelectionStrategy : null);
 
             if (scriptCoins == null || !scriptCoins.Any())
             {
