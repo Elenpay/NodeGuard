@@ -1,0 +1,32 @@
+# `external` profile: run NodeGuard against a regtest network that is already up and managed
+# outside of this repo (typically a network started from the Polar app).
+#
+# Nothing here starts a chain — the only job of this profile is to make an existing bitcoind
+# usable by NodeGuard: it checks the container is reachable and makes sure the miner wallet
+# NodeGuard expects (`default`) exists and is the only loaded one.
+#
+# The chain itself is reached over the host: BITCOIND_HOST/BITCOIND_RPC_PORT/BITCOIND_P2P_PORT
+# (resolved from BITCOIND_CONTAINER by `just external-up`) are what nbxplorer uses.
+name: external
+
+services:
+  external-setup:
+    profiles: [external]
+    image: alpine:latest
+    container_name: nodeguard-external-setup
+    environment:
+      # Name of the already-running bitcoind container, e.g. polar-n3-backend1.
+      BITCOIND_CONTAINER: ${BITCOIND_CONTAINER:-}
+      BITCOIND_RPCUSER: ${BITCOIND_RPCUSER:-polaruser}
+      BITCOIND_RPCPASSWORD: ${BITCOIND_RPCPASSWORD:-polarpass}
+      # Mining to the `default` wallet, so NodeGuard's dev wallet funding (4 x 20 BTC) has mature
+      # coins to spend. First batch establishes coinbase maturity, then it tops up in chunks of 50
+      # until the mature balance reaches the target. Set EXTERNAL_MINE_BLOCKS=0 to mine nothing.
+      EXTERNAL_MINE_BLOCKS: ${EXTERNAL_MINE_BLOCKS:-101}
+      EXTERNAL_MINE_TARGET_BTC: ${EXTERNAL_MINE_TARGET_BTC:-100}
+      EXTERNAL_MINE_MAX_BLOCKS: ${EXTERNAL_MINE_MAX_BLOCKS:-1000}
+    volumes:
+      - ./:/docker
+      - /var/run/docker.sock:/var/run/docker.sock
+    command: sh -c "apk add --no-cache docker-cli jq && /docker/setup-external.sh"
+    restart: "no"

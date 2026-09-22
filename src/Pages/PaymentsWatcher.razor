@@ -1,0 +1,123 @@
+@page "/paymentswatcher"
+@attribute [Authorize]
+@using NodeGuard.Data.Models
+@using NodeGuard.Data.Repositories.Interfaces
+@using NodeGuard.Services
+@inject IPaymentRoutesGraphService PaymentRoutesGraphService
+@inject INodeRepository NodeRepository
+@inject IJSRuntime JSRuntime
+@implements IDisposable
+
+<PageTitle>Payments Watcher</PageTitle>
+<h3 class="custom-primary">Payments Watcher</h3>
+
+<Alert Color="Color.Info" Visible="true">
+    <AlertMessage>
+        <Icon Name="IconName.InfoCircle" /> Visualise the routes taken by payments originated from a managed node.
+        Each channel's colour indicates its success ratio (red → yellow → green).
+    </AlertMessage>
+</Alert>
+
+<Row Class="mb-3">
+    <Column ColumnSize="ColumnSize.Is3">
+        <Field>
+            <FieldLabel>Origin node</FieldLabel>
+            <Select TValue="string" @bind-SelectedValue="_originPubKey">
+                <SelectItem Value="@((string?)null)">Select a node…</SelectItem>
+                @foreach (var node in _originNodes)
+                {
+                    <SelectItem Value="@node.PubKey">@node.Name</SelectItem>
+                }
+            </Select>
+        </Field>
+    </Column>
+    <Column ColumnSize="ColumnSize.Is2">
+        <Field>
+            <FieldLabel>Start date &amp; time</FieldLabel>
+            <DatePicker TValue="DateTime?" @bind-Date="_start" InputMode="DateInputMode.DateTime" />
+        </Field>
+    </Column>
+    <Column ColumnSize="ColumnSize.Is2">
+        <Field>
+            <FieldLabel>End date &amp; time</FieldLabel>
+            <DatePicker TValue="DateTime?" @bind-Date="_end" InputMode="DateInputMode.DateTime" />
+        </Field>
+    </Column>
+    <Column ColumnSize="ColumnSize.Is2">
+        <Field>
+            <FieldLabel>Filters</FieldLabel>
+            <Check TValue="bool" @bind-Checked="_showSuccess">Include successful payments</Check>
+            <Check TValue="bool" @bind-Checked="_showFailed">Include failed payments</Check>
+        </Field>
+    </Column>
+    <Column ColumnSize="ColumnSize.Is3" Class="align-self-center">
+        <Button Color="Color.Primary" Clicked="SearchAsync" Disabled="@(_loading || string.IsNullOrWhiteSpace(_originPubKey))">
+            @(_loading ? "Searching…" : "Search")
+        </Button>
+    </Column>
+</Row>
+
+@if (_error is not null)
+{
+    <Alert Color="Color.Danger" Visible="true"><AlertMessage>@_error</AlertMessage></Alert>
+}
+
+@* JS owns everything inside this div. Keep its markup static so Blazor's diff never touches the children. *@
+<div id="pw-graph"></div>
+
+@code {
+    private List<Node> _originNodes = new();
+    private string? _originPubKey;
+    private DateTime? _start = DateTime.UtcNow.AddDays(-1);
+    private DateTime? _end = DateTime.UtcNow.AddDays(1);
+    private bool _showSuccess = true;
+    private bool _showFailed = true;
+    private bool _loading;
+    private string? _error;
+    private DotNetObjectReference<PaymentsWatcher>? _selfRef;
+
+    protected override async Task OnInitializedAsync()
+    {
+        _originNodes = await NodeRepository.GetAllManagedByNodeGuard();
+        _selfRef = DotNetObjectReference.Create(this);
+    }
+
+    private async Task SearchAsync()
+    {
+        if (string.IsNullOrWhiteSpace(_originPubKey)) return;
+        _loading = true;
+        _error = null;
+        try
+        {
+            var start = new DateTimeOffset(_start ?? DateTime.UtcNow.AddDays(-1), TimeSpan.Zero);
+            var end = new DateTimeOffset(_end ?? DateTime.UtcNow.AddDays(1), TimeSpan.Zero);
+            var graph = await PaymentRoutesGraphService.BuildGraphAsync(_originPubKey, start, end);
+
+            // IJSRuntime uses JsonSerializerDefaults.Web → the PaymentGraph record is
+            // serialized camelCase (isOrigin, paymentStatus, hopStatus, attemptIndex,
+            // hopSequence), exactly what payments-watcher-graph.js expects. Do NOT
+            // hand-serialize with default (PascalCase) options or the graph renders blank.
+            await JSRuntime.InvokeVoidAsync("paymentsWatcher.render", "pw-graph", graph,
+                new { showSuccess = _showSuccess, showFailed = _showFailed, dotNetRef = _selfRef });
+        }
+        catch (Exception ex)
+        {
+            _error = "Could not build the payment graph. Check the server connection.";
+            Console.Error.WriteLine(ex);
+        }
+        finally
+        {
+            _loading = false;
+        }
+    }
+
+    // Called from JS when a node is clicked (low-frequency, safe over the circuit).
+    [JSInvokable]
+    public Task OnNodeSelected(string? nodeId)
+    {
+        // Optional: drive a Blazor-rendered detail panel here.
+        return Task.CompletedTask;
+    }
+
+    public void Dispose() => _selfRef?.Dispose();
+}

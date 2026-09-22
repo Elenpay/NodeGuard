@@ -3,6 +3,7 @@ using System;
 using System.Collections.Generic;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using NodeGuard.Data;
 using NodeGuard.Helpers;
@@ -13,9 +14,11 @@ using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 namespace NodeGuard.Migrations
 {
     [DbContext(typeof(ApplicationDbContext))]
-    partial class ApplicationDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260810124619_AddPaymentRouteHopAttemptOutcome")]
+    partial class AddPaymentRouteHopAttemptOutcome
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -409,11 +412,6 @@ namespace NodeGuard.Migrations
                     b.Property<long>("FundingTxOutputIndex")
                         .HasColumnType("bigint");
 
-                    b.Property<bool>("IsAutoRebalanceEnabled")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("boolean")
-                        .HasDefaultValue(false);
-
                     b.Property<bool>("IsAutomatedLiquidityEnabled")
                         .HasColumnType("boolean");
 
@@ -481,16 +479,12 @@ namespace NodeGuard.Migrations
                     b.Property<double?>("LastObservedRatio")
                         .HasColumnType("double precision");
 
-                    b.Property<string>("ManagedNodePubKey")
-                        .IsRequired()
-                        .HasColumnType("text");
-
                     b.Property<DateTimeOffset>("UpdateDatetime")
                         .HasColumnType("timestamp with time zone");
 
                     b.HasKey("Id");
 
-                    b.HasIndex("ChannelId", "ManagedNodePubKey")
+                    b.HasIndex("ChannelId")
                         .IsUnique();
 
                     b.ToTable("ChannelFeeStates");
@@ -621,10 +615,6 @@ namespace NodeGuard.Migrations
 
                     b.HasIndex("UserSignerId");
 
-                    b.HasIndex(new[] { "ChannelOperationRequestId" }, "IX_ChannelOperationRequestPSBTs_Template")
-                        .IsUnique()
-                        .HasFilter("\"IsTemplatePSBT\"");
-
                     b.ToTable("ChannelOperationRequestPSBTs");
                 });
 
@@ -702,7 +692,7 @@ namespace NodeGuard.Migrations
 
                     b.HasKey("Id");
 
-                    b.HasIndex("ChannelId", "ManagedNodePubKey")
+                    b.HasIndex("ChannelId")
                         .IsUnique();
 
                     b.ToTable("ChannelRoutingStates");
@@ -1465,9 +1455,6 @@ namespace NodeGuard.Migrations
                         .IsRequired()
                         .HasColumnType("text");
 
-                    b.Property<bool>("IsRbfCancellation")
-                        .HasColumnType("boolean");
-
                     b.Property<int>("MempoolRecommendedFeesType")
                         .HasColumnType("integer");
 
@@ -1578,10 +1565,6 @@ namespace NodeGuard.Migrations
                     b.HasIndex("SignerId");
 
                     b.HasIndex("WalletWithdrawalRequestId");
-
-                    b.HasIndex(new[] { "WalletWithdrawalRequestId" }, "IX_WalletWithdrawalRequestPSBTs_Template")
-                        .IsUnique()
-                        .HasFilter("\"IsTemplatePSBT\"");
 
                     b.ToTable("WalletWithdrawalRequestPSBTs");
                 });
@@ -1737,8 +1720,8 @@ namespace NodeGuard.Migrations
             modelBuilder.Entity("NodeGuard.Data.Models.ChannelFeeState", b =>
                 {
                     b.HasOne("NodeGuard.Data.Models.Channel", "Channel")
-                        .WithMany()
-                        .HasForeignKey("ChannelId")
+                        .WithOne()
+                        .HasForeignKey("NodeGuard.Data.Models.ChannelFeeState", "ChannelId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
 
@@ -1800,8 +1783,8 @@ namespace NodeGuard.Migrations
             modelBuilder.Entity("NodeGuard.Data.Models.ChannelRoutingState", b =>
                 {
                     b.HasOne("NodeGuard.Data.Models.Channel", "Channel")
-                        .WithMany()
-                        .HasForeignKey("ChannelId")
+                        .WithOne()
+                        .HasForeignKey("NodeGuard.Data.Models.ChannelRoutingState", "ChannelId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
 

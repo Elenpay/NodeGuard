@@ -15,6 +15,13 @@ services:
     ports:
       - "11009:11009"
     image: lightninglabs/loopserver:latest
+    # The loopserver:latest image bundles an embedded PostgreSQL. Its migrations
+    # assert the session timezone is exactly 'Etc/UTC', but the embedded PG
+    # session otherwise reports 'UTC', which fails the check (SQLSTATE P0001).
+    # Forcing PGTZ/TZ makes the client session report 'Etc/UTC'.
+    environment:
+      PGTZ: Etc/UTC
+      TZ: Etc/UTC
     volumes:
       - shared_data:/shared
     command:
