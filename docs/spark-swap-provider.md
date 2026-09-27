@@ -116,3 +116,57 @@ Each challenge above needs a decision before we start building. The list follows
 
 6. What limits to set. Ask Lightspark for the maximum per payment and per withdrawal and for the
    exact fees, then set the node's swap limits from that.
+
+## How the integration of a PoC could look
+
+The scope is a proof of concept: one manual swap-out through Spark, from the Swaps page, on one
+node, with a small amount, completed end to end. Everything that is not needed for that is left out.
+The idea is still to make Spark look like Loop and 40swap from NodeGuard's point of view, with a
+helper program next to the node, so that the Spark keys and wallet stay out of the NodeGuard process
+and the later full integration can build on the same pieces.
+
+### The Spark helper
+
+A small program, built with Spark's JavaScript library, that holds one Spark wallet and has access
+to one node's LND. It exposes two calls over gRPC, the same two NodeGuard already uses with the
+other helpers: start a swap-out and get the status of a swap. It keeps the state of each swap in
+memory. When NodeGuard asks for a swap-out with an amount and an address, the helper:
+
+1. Creates a Lightning invoice for the amount in its Spark wallet.
+
+2. Pays that invoice from the node's LND.
+
+3. Waits until the Spark wallet has received the sats.
+
+4. Asks Spark for a withdrawal price and sends the withdrawal to the address NodeGuard gave.
+
+5. Watches until the withdrawal is confirmed, then marks the swap as completed.
+
+The status call returns pending, completed or failed, plus the current step and any error. If
+something fails after the invoice is paid, the sats stay in the Spark wallet and we finish the
+withdrawal by hand. That is acceptable for a proof of concept with small amounts.
+
+### Changes in NodeGuard
+
+- A new value, Spark, in the list of swap providers.
+
+- A new field on the node with the address of its Spark helper.
+
+- A new service that talks to the helper, added behind SwapsService for start and status.
+
+- The Swaps page offers Spark as a provider for manual swaps.
+
+- The monitor job includes nodes that have a Spark helper, so it picks up the final status.
+
+### Keeping funds safe
+
+Manual swaps only, on one node, with a small amount each time and one swap at a time. The wallet
+seed is given to the helper at start from a secret store, never written in a config file. The helper
+withdraws as soon as the sats arrive and does not keep a balance on purpose.
+
+### Testing
+
+The helper is first tried on its own against Spark's test network to check the wallet side: receive,
+withdraw and status. Then the full flow runs on mainnet, by hand, from the Swaps page, with a small
+amount. The proof of concept is done when one swap-out started from NodeGuard ends with the coins
+confirmed in the node's destination wallet.
