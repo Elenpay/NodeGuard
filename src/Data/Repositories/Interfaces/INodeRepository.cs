@@ -52,6 +52,12 @@ public interface INodeRepository
     /// <returns>A list of nodes with auto liquidity management enabled</returns>
     Task<List<Node>> GetAllWithAutoLiquidityEnabled();
 
+    /// <summary>
+    /// Nodes eligible for demand-driven channel opening: enabled, not disabled, and with a funding
+    /// wallet set. Without a wallet nothing could be promoted anyway.
+    /// </summary>
+    Task<List<Node>> GetAllWithAutoChannelOpenEnabled();
+
     Task<(bool, string?)> AddAsync(Node type);
 
     Task<(bool, string?)> AddRangeAsync(List<Node> type);
