@@ -183,9 +183,36 @@ namespace NodeGuard.Data.Models
         /// </summary>
         public double? MaxRebalanceCostToEarnRatio { get; set; }
 
+        /// <summary>
+        /// Gate for demand-driven channel opening.
+        /// </summary>
+        public bool AutoChannelOpenEnabled { get; set; } = false;
+
+        public AutoChannelOpenMode AutoChannelOpenMode { get; set; } = AutoChannelOpenMode.Recommendation;
+
+        /// <summary>
+        /// Wallet the opened channels are funded from. Without it no plan can be promoted.
+        /// </summary>
+        public int? AutoChannelOpenWalletId { get; set; }
+
+        public Wallet? AutoChannelOpenWallet { get; set; }
+
+        public long? AutoChannelOpenBudgetSats { get; set; }
+
+        public TimeSpan? AutoChannelOpenBudgetRefreshInterval { get; set; }
+
+        public DateTimeOffset? AutoChannelOpenBudgetStartDatetime { get; set; }
+
+        /// <summary>A plan sized below this is rejected outright, not clamped up to it.</summary>
+        public long? AutoChannelOpenMinSizeSats { get; set; }
+
+        public long? AutoChannelOpenMaxSizeSats { get; set; }
+
         #endregion Routing Engine
 
         #region Relationships
+
+        public ICollection<ChannelOpenRecommendation> ChannelOpenRecommendations { get; set; }
 
         public ICollection<ChannelOperationRequest> ChannelOperationRequestsAsSource { get; set; }
         public ICollection<ChannelOperationRequest> ChannelOperationRequestsAsDestination { get; set; }
