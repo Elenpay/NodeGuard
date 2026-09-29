@@ -73,10 +73,21 @@ public interface ICoinSelectionService
     /// </summary>
     public Task<List<string>> GetFrozenUTXOs();
 
+    /// <summary>
+    /// Picks the inputs to fund a request.
+    /// </summary>
+    /// <param name="availableUTXOs">The candidate set, used when no strategy is given.</param>
+    /// <param name="request"></param>
+    /// <param name="derivationStrategy"></param>
+    /// <param name="strategy">
+    /// When set, NBXplorer orders the UTXOs and <paramref name="availableUTXOs"/> is ignored. When null, the
+    /// oldest-first selection is applied to <paramref name="availableUTXOs"/>.
+    /// </param>
     public Task<(List<ICoin> coins, List<UTXO> selectedUTXOs)> GetTxInputCoins(
         List<UTXO> availableUTXOs,
         IBitcoinRequest request,
-        DerivationStrategyBase derivationStrategy);
+        DerivationStrategyBase derivationStrategy,
+        CoinSelectionStrategy? strategy = null);
 }
 
 public class CoinSelectionService: ICoinSelectionService
@@ -283,14 +294,60 @@ public class CoinSelectionService: ICoinSelectionService
     public async Task<(List<ICoin> coins, List<UTXO> selectedUTXOs)> GetTxInputCoins(
         List<UTXO> availableUTXOs,
         IBitcoinRequest request,
-        DerivationStrategyBase derivationStrategy)
+        DerivationStrategyBase derivationStrategy,
+        CoinSelectionStrategy? strategy = null)
     {
         var satsAmount = request.SatsAmount;
 
-        var selectedUTXOs = await LightningHelper.SelectUTXOsByOldest(request.Wallet, satsAmount, availableUTXOs, _logger);
+        List<UTXO> selectedUTXOs;
+        if (strategy.HasValue)
+        {
+            // NBXplorer does the ordering. If the custom backend is off or the call fails,
+            // GetAvailableUTXOsAsync degrades to the plain listing.
+            var orderedUTXOs =
+                await GetAvailableUTXOsAsync(derivationStrategy, strategy.Value, 0, satsAmount, satsAmount);
+            selectedUTXOs = TakeUntilAmountIsCovered(orderedUTXOs, satsAmount, request.Wallet.Id);
+        }
+        else
+        {
+            selectedUTXOs =
+                await LightningHelper.SelectUTXOsByOldest(request.Wallet, satsAmount, availableUTXOs, _logger);
+        }
+
         var coins = await LightningHelper.SelectCoins(request.Wallet, selectedUTXOs);
 
         return (coins, selectedUTXOs);
+    }
+
+    /// <summary>
+    /// Takes UTXOs in the order they were given until the amount is covered, one UTXO past it so there is
+    /// room for the fee. Same accumulation as SelectUTXOsByOldest, only without the reordering, so the
+    /// order the caller asked for survives. An empty list means the set was short, which
+    /// GenerateTemplatePSBT turns into a NoUTXOsAvailableException.
+    /// </summary>
+    private List<UTXO> TakeUntilAmountIsCovered(List<UTXO> orderedUTXOs, long satsAmount, int walletId)
+    {
+        var selectedUTXOs = new List<UTXO>();
+
+        var totalSats = orderedUTXOs.Sum(x => ((Money)x.Value).Satoshi);
+        if (totalSats < satsAmount)
+        {
+            _logger.LogError(
+                "Error, the total UTXOs set balance for walletid: {WalletId} ({AvailableSats} sats) is less than the amount in the request ({RequestedSats} sats)",
+                walletId, totalSats, satsAmount);
+            return selectedUTXOs;
+        }
+
+        var accumulator = 0M;
+        foreach (var utxo in orderedUTXOs)
+        {
+            if (accumulator > satsAmount) break;
+
+            selectedUTXOs.Add(utxo);
+            accumulator += ((Money)utxo.Value).Satoshi;
+        }
+
+        return selectedUTXOs;
     }
 
     public async Task<List<UTXO>> GetUTXOsByOutpointAsync(DerivationStrategyBase derivationStrategy, List<OutPoint> outPoints)

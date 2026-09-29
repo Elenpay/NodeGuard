@@ -669,6 +669,89 @@ namespace NodeGuard.Rpc
             resp.Txid.Should().Be("f103e12f02ac1e5b8826831d4fc8fdb78a707bd00c4e1f191fe5d14458d63d5a");
         }
 
+        [Theory]
+        [InlineData(COIN_SELECTION_STRATEGY.SmallestFirst, CoinSelectionStrategy.SmallestFirst)]
+        [InlineData(COIN_SELECTION_STRATEGY.BiggestFirst, CoinSelectionStrategy.BiggestFirst)]
+        [InlineData(COIN_SELECTION_STRATEGY.ClosestToTargetFirst, CoinSelectionStrategy.ClosestToTargetFirst)]
+        [InlineData(COIN_SELECTION_STRATEGY.UpToAmount, CoinSelectionStrategy.UpToAmount)]
+        public async Task RequestWithdrawal_StoresTheRequestedCoinSelectionStrategy(
+            COIN_SELECTION_STRATEGY requested, CoinSelectionStrategy expected)
+        {
+            //Arrange
+            var wallet = InitMockRequestWithdrawal(out var walletRepository,
+                out var nbxplorerService,
+                out _,
+                out _,
+                out _,
+                out _,
+                out _,
+                out var bitcoinService,
+                out var walletWithdrawalRequestRepository,
+                out var mockScheduler);
+
+            // Cold wallet, so the request stops at the template PSBT instead of scheduling a PerformWithdrawalJob.
+            // Every fixture request has id 0, and the job key is the id, so the hot path collides across cases.
+            wallet.IsHotWallet = false;
+
+            var requestWithdrawalRequest = CreateWithdrawalRequest(wallet.Id, 100);
+            requestWithdrawalRequest.CoinSelectionStrategy = requested;
+
+            var mockNodeGuardService = CreateNodeGuardService(
+                walletRepository: walletRepository.Object,
+                walletWithdrawalRequestRepository: walletWithdrawalRequestRepository.Object,
+                bitcoinService: bitcoinService.Object,
+                nbXplorerService: nbxplorerService.Object,
+                schedulerFactory: mockScheduler);
+
+            //Act
+            await mockNodeGuardService.RequestWithdrawal(requestWithdrawalRequest, TestServerCallContext.Create());
+
+            //Assert
+            walletWithdrawalRequestRepository.Verify(
+                x => x.AddAsync(It.Is<WalletWithdrawalRequest>(r => r.CoinSelectionStrategy == expected)),
+                Times.Once);
+        }
+
+        /// <summary>
+        /// SmallestFirst is the proto zero value, so a request that omits the field must not be read as a request
+        /// for SmallestFirst. Null is what tells the selection to keep behaving as it does today.
+        /// </summary>
+        [Fact]
+        public async Task RequestWithdrawal_WithoutACoinSelectionStrategy_StoresNull()
+        {
+            //Arrange
+            var wallet = InitMockRequestWithdrawal(out var walletRepository,
+                out var nbxplorerService,
+                out _,
+                out _,
+                out _,
+                out _,
+                out _,
+                out var bitcoinService,
+                out var walletWithdrawalRequestRepository,
+                out var mockScheduler);
+
+            wallet.IsHotWallet = false;
+
+            var requestWithdrawalRequest = CreateWithdrawalRequest(wallet.Id, 100);
+
+            var mockNodeGuardService = CreateNodeGuardService(
+                walletRepository: walletRepository.Object,
+                walletWithdrawalRequestRepository: walletWithdrawalRequestRepository.Object,
+                bitcoinService: bitcoinService.Object,
+                nbXplorerService: nbxplorerService.Object,
+                schedulerFactory: mockScheduler);
+
+            //Act
+            await mockNodeGuardService.RequestWithdrawal(requestWithdrawalRequest, TestServerCallContext.Create());
+
+            //Assert
+            requestWithdrawalRequest.HasCoinSelectionStrategy.Should().BeFalse();
+            walletWithdrawalRequestRepository.Verify(
+                x => x.AddAsync(It.Is<WalletWithdrawalRequest>(r => r.CoinSelectionStrategy == null)),
+                Times.Once);
+        }
+
         [Fact]
         public async Task RequestWithdrawal_NoWallet()
         {

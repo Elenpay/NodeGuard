@@ -200,6 +200,8 @@ message RequestWithdrawalRequest {
   optional string reference_id = 10;
   // Destinations for the withdrawal
   repeated Destination destinations = 11;
+  // Optional coin selection strategy to be used by the withdrawal.
+  optional COIN_SELECTION_STRATEGY coin_selection_strategy = 12;
 }
 
 message RequestWithdrawalResponse {
