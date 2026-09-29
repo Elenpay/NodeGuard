@@ -167,4 +167,88 @@ public class ChannelOpenRecommendationRepositoryTests
         persisted!.Status.Should().Be(ChannelOpenRecommendationStatus.Open);
         persisted.PeerPubKey.Should().Be(Peer);
     }
+
+    /// <summary>A stored row for an arbitrary node and peer, for the queries that span several of both.</summary>
+    private static ChannelOpenRecommendation Row(
+        int nodeId, string peer, ChannelOpenRecommendationStatus status,
+        long missedFeeMsat = 0, DateTimeOffset? updatedAt = null)
+        => new()
+        {
+            NodeId = nodeId,
+            PeerPubKey = peer,
+            Status = status,
+            MissedFeeMsat = missedFeeMsat,
+            SuggestedCapacitySats = 1_000_000,
+            UpdateDatetime = updatedAt ?? DateTimeOffset.UtcNow,
+            LastEvidenceAt = DateTimeOffset.UtcNow
+        };
+
+    [Fact]
+    public async Task GetOpenByNode_ReturnsOnlyThatNodesOpenRows_RichestFirst()
+    {
+        var (sut, seed) = SetupDb();
+        seed.ChannelOpenRecommendations.AddRange(
+            Row(NodeId, "03low", ChannelOpenRecommendationStatus.Open, missedFeeMsat: 10),
+            Row(NodeId, "03high", ChannelOpenRecommendationStatus.Open, missedFeeMsat: 900),
+            Row(NodeId, "03mid", ChannelOpenRecommendationStatus.Open, missedFeeMsat: 300),
+            Row(NodeId, "03promoted", ChannelOpenRecommendationStatus.Promoted, missedFeeMsat: 5000),
+            Row(NodeId, "03dismissed", ChannelOpenRecommendationStatus.Dismissed, missedFeeMsat: 5000),
+            Row(NodeId, "03expired", ChannelOpenRecommendationStatus.Expired, missedFeeMsat: 5000),
+            Row(2, "03otherNode", ChannelOpenRecommendationStatus.Open, missedFeeMsat: 5000));
+        await seed.SaveChangesAsync();
+
+        var result = await sut.GetOpenByNode(NodeId);
+
+        // A limited budget is spent down this list, so the ordering decides which peer gets funded.
+        result.Select(x => x.PeerPubKey).Should().Equal("03high", "03mid", "03low");
+    }
+
+    [Fact]
+    public async Task GetOpenByNode_NoOpenRows_ReturnsEmpty()
+    {
+        var (sut, seed) = SetupDb();
+        seed.ChannelOpenRecommendations.Add(Stored(ChannelOpenRecommendationStatus.Promoted));
+        await seed.SaveChangesAsync();
+
+        var result = await sut.GetOpenByNode(NodeId);
+
+        result.Should().BeEmpty();
+    }
+
+    [Fact]
+    public async Task GetLastDecisionByPeer_KeepsTheLatestDecisionPerPeerOfThatNode()
+    {
+        var (sut, seed) = SetupDb();
+        var now = DateTimeOffset.UtcNow;
+        var latest = now.AddDays(-1);
+
+        seed.ChannelOpenRecommendations.AddRange(
+            Row(NodeId, "03a", ChannelOpenRecommendationStatus.Dismissed, updatedAt: now.AddDays(-9)),
+            Row(NodeId, "03a", ChannelOpenRecommendationStatus.Promoted, updatedAt: latest),
+            Row(NodeId, "03b", ChannelOpenRecommendationStatus.Promoted, updatedAt: now.AddDays(-4)),
+            Row(2, "03c", ChannelOpenRecommendationStatus.Promoted, updatedAt: now));
+        await seed.SaveChangesAsync();
+
+        var result = await sut.GetLastDecisionByPeer(NodeId);
+
+        // The cooldown runs from the newest decision; an older one must not shorten it.
+        result.Keys.Should().BeEquivalentTo(new[] { "03a", "03b" });
+        result["03a"].Should().Be(latest);
+    }
+
+    [Fact]
+    public async Task GetLastDecisionByPeer_IgnoresOpenAndExpiredRows()
+    {
+        var (sut, seed) = SetupDb();
+        seed.ChannelOpenRecommendations.AddRange(
+            Row(NodeId, "03open", ChannelOpenRecommendationStatus.Open),
+            Row(NodeId, "03expired", ChannelOpenRecommendationStatus.Expired));
+        await seed.SaveChangesAsync();
+
+        var result = await sut.GetLastDecisionByPeer(NodeId);
+
+        // Neither is an operator decision. An expired row counting here would put its peer in a
+        // cooldown nobody asked for, and the demand would stay unproposed for the whole window.
+        result.Should().BeEmpty();
+    }
 }
