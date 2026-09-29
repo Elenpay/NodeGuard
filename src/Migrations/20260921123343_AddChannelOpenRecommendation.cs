@@ -43,6 +43,12 @@ namespace NodeGuard.Migrations
                 type: "bigint",
                 nullable: true);
 
+            migrationBuilder.AddColumn<double>(
+                name: "MaxChannelOpenCostToEarnRatio",
+                table: "Nodes",
+                type: "double precision",
+                nullable: true);
+
             migrationBuilder.AddColumn<long>(
                 name: "AutoChannelOpenMinSizeSats",
                 table: "Nodes",
@@ -178,6 +184,10 @@ namespace NodeGuard.Migrations
 
             migrationBuilder.DropColumn(
                 name: "AutoChannelOpenMaxSizeSats",
+                table: "Nodes");
+
+            migrationBuilder.DropColumn(
+                name: "MaxChannelOpenCostToEarnRatio",
                 table: "Nodes");
 
             migrationBuilder.DropColumn(

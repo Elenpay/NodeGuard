@@ -426,8 +426,10 @@ public class Constants
     // Draining regime: days of service the new capacity should buy.
     public static int AUTO_CHANNEL_OPEN_TARGET_RUNWAY_DAYS = 2;
 
-    // Capital efficiency floor: under this multiple of chain cost, too much of the channel goes to miners.
-    public static int AUTO_CHANNEL_OPEN_MIN_CHAIN_COST_RATIO = 50;
+    /// Fallback profitability margin when a node leaves MaxChannelOpenCostToEarnRatio unset. The gate
+    /// compares open + expected close against what one full drain earns at the new channel's fee rate.
+    /// 0.5 = draining the channel once must cover twice the on-chain cost.
+    public static double AUTO_CHANNEL_OPEN_DEFAULT_COST_TO_EARN_RATIO = 0.5;
 
     // Per-peer suppression after an open attempt or a dismissal.
     public static int AUTO_CHANNEL_OPEN_PEER_COOLDOWN_HOURS = 24;
@@ -811,8 +813,8 @@ public class Constants
         var acoRunwayDays = Environment.GetEnvironmentVariable("AUTO_CHANNEL_OPEN_TARGET_RUNWAY_DAYS");
         if (acoRunwayDays != null) AUTO_CHANNEL_OPEN_TARGET_RUNWAY_DAYS = int.Parse(acoRunwayDays);
 
-        var acoChainCostRatio = Environment.GetEnvironmentVariable("AUTO_CHANNEL_OPEN_MIN_CHAIN_COST_RATIO");
-        if (acoChainCostRatio != null) AUTO_CHANNEL_OPEN_MIN_CHAIN_COST_RATIO = int.Parse(acoChainCostRatio);
+        var acoCostToEarn = Environment.GetEnvironmentVariable("AUTO_CHANNEL_OPEN_DEFAULT_COST_TO_EARN_RATIO");
+        if (acoCostToEarn != null) AUTO_CHANNEL_OPEN_DEFAULT_COST_TO_EARN_RATIO = double.Parse(acoCostToEarn, NumberStyles.AllowDecimalPoint | NumberStyles.AllowLeadingSign, CultureInfo.InvariantCulture);
 
         var acoCooldown = Environment.GetEnvironmentVariable("AUTO_CHANNEL_OPEN_PEER_COOLDOWN_HOURS");
         if (acoCooldown != null) AUTO_CHANNEL_OPEN_PEER_COOLDOWN_HOURS = int.Parse(acoCooldown);

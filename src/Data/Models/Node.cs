@@ -203,6 +203,11 @@ namespace NodeGuard.Data.Models
 
         public DateTimeOffset? AutoChannelOpenBudgetStartDatetime { get; set; }
 
+        /// <summary>
+        /// Maximum acceptable channel-open cost-to-earn ratio used by the profitability gate.
+        /// </summary>
+        public double? MaxChannelOpenCostToEarnRatio { get; set; }
+
         /// <summary>A plan sized below this is rejected outright, not clamped up to it.</summary>
         public long? AutoChannelOpenMinSizeSats { get; set; }
 

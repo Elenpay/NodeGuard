@@ -1151,6 +1151,9 @@ namespace NodeGuard.Migrations
                     b.Property<string>("LoopdMacaroon")
                         .HasColumnType("text");
 
+                    b.Property<double?>("MaxChannelOpenCostToEarnRatio")
+                        .HasColumnType("double precision");
+
                     b.Property<double?>("MaxRebalanceCostToEarnRatio")
                         .HasColumnType("double precision");
 
