@@ -116,6 +116,13 @@ public class ChannelOpenRecommendation : Entity
     public long SuggestedCapacitySats { get; set; }
 
     public ChannelOpenBindingClamp BindingClamp { get; set; }
+
+    /// The rate the channel opens at, and the rate the profitability gate valued it by. A peer
+    /// whose policy LND cannot report yields no recommendation, so this is null only on rows written
+    /// before it was captured.
+    public long? InheritedFeeRatePpm { get; set; }
+    
+    public long? InheritedBaseFeeMsat { get; set; }
     #endregion Evidence: sizing inputs
 
     #region Lifecycle

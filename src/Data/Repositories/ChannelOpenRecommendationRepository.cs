@@ -127,6 +127,8 @@ public class ChannelOpenRecommendationRepository : IChannelOpenRecommendationRep
         to.Regime = from.Regime;
         to.SuggestedCapacitySats = from.SuggestedCapacitySats;
         to.BindingClamp = from.BindingClamp;
+        to.InheritedFeeRatePpm = from.InheritedFeeRatePpm;
+        to.InheritedBaseFeeMsat = from.InheritedBaseFeeMsat;
         to.LastEvidenceAt = from.LastEvidenceAt;
     }
 
