@@ -78,7 +78,6 @@ public class ForwardingHtlcEvent
 /// <summary>Projection of one refused forward.</summary>
 public record ForwardingHtlcFailure(
     ulong OutgoingChannelId,
-    ulong IncomingChannelId,
     DateTimeOffset EventTimestamp,
     ulong? OutgoingAmountMsat,
     long? RoutingFeePpm,

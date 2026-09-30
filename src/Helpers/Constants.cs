@@ -413,9 +413,6 @@ public class Constants
     // "Many payments, not one" threshold, in bursts.
     public static int AUTO_CHANNEL_OPEN_MIN_BURSTS = 2;
 
-    // Backstop against a single source peer hammering one route.
-    public static int AUTO_CHANNEL_OPEN_MIN_DISTINCT_SOURCES = 1;
-
     // "Worth it" threshold. Tune together with TARGET_RUNWAY_DAYS: their ratio fixes the implied
     // channel size, and therefore the implied return on the capital locked.
     public static long AUTO_CHANNEL_OPEN_MIN_MISSED_FEE_MSAT = 100_000_000;
@@ -801,8 +798,6 @@ public class Constants
         var acoMinBursts = Environment.GetEnvironmentVariable("AUTO_CHANNEL_OPEN_MIN_BURSTS");
         if (acoMinBursts != null) AUTO_CHANNEL_OPEN_MIN_BURSTS = int.Parse(acoMinBursts);
 
-        var acoMinSources = Environment.GetEnvironmentVariable("AUTO_CHANNEL_OPEN_MIN_DISTINCT_SOURCES");
-        if (acoMinSources != null) AUTO_CHANNEL_OPEN_MIN_DISTINCT_SOURCES = int.Parse(acoMinSources);
 
         var acoMinMissedFee = Environment.GetEnvironmentVariable("AUTO_CHANNEL_OPEN_MIN_MISSED_FEE_MSAT");
         if (acoMinMissedFee != null) AUTO_CHANNEL_OPEN_MIN_MISSED_FEE_MSAT = long.Parse(acoMinMissedFee);

@@ -117,7 +117,6 @@ public class ChannelOpenRecommendationRepository : IChannelOpenRecommendationRep
         to.OutgoingChannelId = from.OutgoingChannelId;
         to.ChannelsInvolved = from.ChannelsInvolved;
         to.Bursts = from.Bursts;
-        to.DistinctSourcePeers = from.DistinctSourcePeers;
         to.MissedFeeMsat = from.MissedFeeMsat;
         to.FailedAttempts = from.FailedAttempts;
         to.OutSats = from.OutSats;

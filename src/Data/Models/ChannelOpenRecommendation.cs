@@ -90,8 +90,6 @@ public class ChannelOpenRecommendation : Entity
     #region Evidence: gate inputs
     public int Bursts { get; set; }
 
-    /// Breadth of demand: how many distinct peers the refused payments arrived from.
-    public int DistinctSourcePeers { get; set; }
     public long MissedFeeMsat { get; set; }
 
     /// Raw failure rows before burst collapsing. Displayed, never gated on.

@@ -112,7 +112,6 @@ public class ForwardingHtlcEventRepository : IForwardingHtlcEventRepository
             .OrderBy(x => x.EventTimestamp)
             .Select(x => new ForwardingHtlcFailure(
                 x.OutgoingChannelId,
-                x.IncomingChannelId,
                 x.EventTimestamp,
                 x.OutgoingAmountMsat,
                 x.RoutingFeePpm,
