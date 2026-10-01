@@ -145,6 +145,7 @@ namespace NodeGuard
             builder.Services.AddTransient<ClipboardService>();
             builder.Services.AddTransient<ILocalStorageService, LocalStorageService>();
             builder.Services.AddTransient<ILightningService, LightningService>();
+            builder.Services.AddTransient<IChannelOpenPromotionService, ChannelOpenPromotionService>();
             builder.Services.AddTransient<IBitcoinService, BitcoinService>();
             builder.Services.AddTransient<IWithdrawalRequestService, WithdrawalRequestService>();
             builder.Services.AddTransient<NotificationService, NotificationService>();
@@ -345,6 +346,23 @@ namespace NodeGuard
                     // fee control law always acts on freshly-written routing state.
                     else
                         opts.StartAt(DateBuilder.FutureDate(Constants.ROUTING_ENGINE_ACTUATOR_OFFSET_MINUTES, IntervalUnit.Minute));
+                });
+
+                //Auto Channel Open Job (demand-driven capacity, own cadence)
+                q.AddJob<AutoChannelOpenJob>(opts =>
+                {
+                    opts.DisallowConcurrentExecution();
+                    opts.WithIdentity(nameof(AutoChannelOpenJob));
+                });
+
+                q.AddTrigger(opts =>
+                {
+                    // No offset: unlike the fee and rebalance actuators this job reads HTLC events and
+                    // live LND state, never the routing state TargetRatioReevaluationJob writes.
+                    opts.ForJob(nameof(AutoChannelOpenJob))
+                        .WithIdentity($"{nameof(AutoChannelOpenJob)}Trigger")
+                        .StartNow()
+                        .WithSimpleSchedule(sb => ScheduleRoutingJob(sb, Constants.AUTO_CHANNEL_OPEN_JOB_INTERVAL_MINUTES));
                 });
 
                 //Monitor Withdrawals Job

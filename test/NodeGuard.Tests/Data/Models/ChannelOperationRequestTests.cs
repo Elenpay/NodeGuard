@@ -66,4 +66,31 @@ public class ChannelOperationRequestTests
             .Should().Throw<InvalidOperationException>()
             .WithMessage("*704*more than one template*");
     }
+
+    /// <summary>
+    /// Exhaustive on purpose. The channel-open upsert refuses to re-propose a peer while its request
+    /// is unfinalized, so a status added without a verdict here would silently pick one.
+    /// </summary>
+    [Theory]
+    [InlineData(ChannelOperationRequestStatus.OnChainConfirmed, true)]
+    [InlineData(ChannelOperationRequestStatus.Cancelled, true)]
+    [InlineData(ChannelOperationRequestStatus.Rejected, true)]
+    [InlineData(ChannelOperationRequestStatus.Failed, true)]
+    [InlineData(ChannelOperationRequestStatus.Approved, false)]
+    [InlineData(ChannelOperationRequestStatus.Pending, false)]
+    [InlineData(ChannelOperationRequestStatus.PSBTSignaturesPending, false)]
+    [InlineData(ChannelOperationRequestStatus.OnChainConfirmationPending, false)]
+    [InlineData(ChannelOperationRequestStatus.FinalizingPSBT, false)]
+    public void IsFinalized_IsTrueOnlyWhenTheRequestCanNoLongerBecomeAChannel(
+        ChannelOperationRequestStatus status, bool expected)
+    {
+        new ChannelOperationRequest { Status = status }.IsFinalized.Should().Be(expected);
+    }
+
+    [Fact]
+    public void IsFinalized_CoversEveryDeclaredStatus()
+    {
+        // Guards the theory above: a new status must be given a verdict rather than inherit one.
+        Enum.GetValues<ChannelOperationRequestStatus>().Should().HaveCount(9);
+    }
 }

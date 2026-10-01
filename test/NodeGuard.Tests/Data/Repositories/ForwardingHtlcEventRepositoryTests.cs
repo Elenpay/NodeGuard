@@ -156,7 +156,7 @@ public class ForwardingHtlcEventRepositoryTests
 
         var result = await Sut(factory).GetInsufficientBalanceFailures(Node, since);
 
-        result.Select(x => x.IncomingChannelId).Should().BeEquivalentTo(new ulong[] { 900, 901 });
+        result.Select(x => x.EventTimestamp).Should().BeEquivalentTo(new[] { now.AddHours(-2), since });
     }
 
     [Fact]
@@ -176,8 +176,8 @@ public class ForwardingHtlcEventRepositoryTests
 
         var result = await Sut(factory).GetInsufficientBalanceFailures(Node, now.AddDays(-1));
 
-        result.Select(x => x.EventTimestamp).Should().BeInAscendingOrder();
-        result.Select(x => x.IncomingChannelId).Should().ContainInOrder(901ul, 902ul, 900ul);
+        result.Select(x => x.EventTimestamp).Should()
+            .ContainInOrder(now.AddHours(-5), now.AddHours(-3), now.AddHours(-1));
     }
 
     [Fact]
@@ -193,9 +193,9 @@ public class ForwardingHtlcEventRepositoryTests
 
         var result = await Sut(factory).GetInsufficientBalanceFailures(Node, now.AddDays(-1));
 
-        // Capacity and missed fee are derived from these six fields alone, so a dropped column would
+        // Capacity and missed fee are derived from these five fields alone, so a dropped column would
         // silently size every recommendation wrong rather than fail.
         result.Should().ContainSingle().Which.Should().Be(
-            new ForwardingHtlcFailure(Chan, 900, ts, 1_500_000, 250, "acinq"));
+            new ForwardingHtlcFailure(Chan, ts, 1_500_000, 250, "acinq"));
     }
 }
