@@ -535,11 +535,168 @@
                         </Row>
                     }
 
-                    @if (_selectedNodeForLiquidity.DynamicFeeManagementEnabled || _selectedNodeForLiquidity.AutoRebalanceEnabled)
+                    <Divider Text="Automatic Channel Opening" TextAlignment="TextAlignment.Start" Type="DividerType.Dashed" />
+
+                    <Alert Color="Color.Info" Visible="true">
+                        <AlertDescription>
+                            Demand-driven channel opening watches the forwards this node refused for lack of outbound liquidity and proposes new capacity to the peers that keep running dry. Recommendations are reviewed and promoted on the Routing Management page.
+                        </AlertDescription>
+                    </Alert>
+
+                    @if (!Constants.AUTO_CHANNEL_OPEN_ENABLED)
+                    {
+                        <Alert Color="Color.Warning" Visible="true">
+                            <AlertDescription>
+                                Automatic channel opening is globally <strong>off</strong>. These settings are saved, but nothing is
+                                recommended until <code>AUTO_CHANNEL_OPEN_ENABLED</code> is set on the server.
+                            </AlertDescription>
+                        </Alert>
+                    }
+
+                    <Field>
+                        <FieldLabel>Automatic Channel Opening</FieldLabel>
+                        <FieldHelp>Let the engine propose new channels to the peers this node keeps turning payments away from</FieldHelp>
+                        <Check TValue="bool" Checked="@_selectedNodeForLiquidity.AutoChannelOpenEnabled"
+                               CheckedChanged="@((value) => _selectedNodeForLiquidity.AutoChannelOpenEnabled = value)">
+                            Enable automatic channel opening
+                        </Check>
+                    </Field>
+
+                    @if (_selectedNodeForLiquidity.AutoChannelOpenEnabled)
+                    {
+                        <Row>
+                            <Column>
+                                <Field>
+                                    <FieldLabel>Mode</FieldLabel>
+                                    <FieldHelp>Recommendation stops at the review panel. Auto also creates the channel request.</FieldHelp>
+                                    <Select TValue="AutoChannelOpenMode"
+                                            SelectedValue="@_selectedNodeForLiquidity.AutoChannelOpenMode"
+                                            SelectedValueChanged="@((value) => _selectedNodeForLiquidity.AutoChannelOpenMode = value)">
+                                        <SelectItem TValue="AutoChannelOpenMode" Value="@AutoChannelOpenMode.Recommendation">Recommendation</SelectItem>
+                                        <SelectItem TValue="AutoChannelOpenMode" Value="@AutoChannelOpenMode.Auto">Auto</SelectItem>
+                                    </Select>
+                                </Field>
+                            </Column>
+                            <Column>
+                                <Field>
+                                    <Validation Validator="ValidateChannelOpenWallet">
+                                        <FieldLabel>Channel Open Funding Wallet</FieldLabel>
+                                        <FieldHelp>Wallet the new channels are funded from. Required: the job skips a node without one.</FieldHelp>
+                                        <SelectList TItem="Wallet"
+                                                    TValue="int"
+                                                    Data="@_availableWallets"
+                                                    SelectedValue="_selectedNodeForLiquidity.AutoChannelOpenWalletId ?? 0"
+                                                    TextField="@((item) => item.Name)"
+                                                    ValueField="@((item) => item.Id)"
+                                                    SelectedValueChanged="@OnSelectedAutoChannelOpenWalletChanged"
+                                                    DefaultItemText="Choose the funding wallet">
+                                            <Feedback>
+                                                <ValidationError>A funding wallet must be selected</ValidationError>
+                                            </Feedback>
+                                        </SelectList>
+                                    </Validation>
+                                </Field>
+                            </Column>
+                        </Row>
+
+                        @if (_selectedNodeForLiquidity.AutoChannelOpenMode == AutoChannelOpenMode.Auto)
+                        {
+                            <Alert Color="Color.Warning" Visible="true">
+                                <AlertDescription>
+                                    In <strong>Auto</strong> mode every recommendation is promoted to a pending channel request
+                                    without review. Funding still follows the usual approval and signing flow on the Channel
+                                    Requests page.
+                                </AlertDescription>
+                            </Alert>
+                        }
+
+                        <Row>
+                            <Column>
+                                <Field>
+                                    <Validation Validator="ValidateChannelOpenBudget">
+                                        <FieldLabel>Channel Open Budget (sats)</FieldLabel>
+                                        <FieldHelp>Max sats committable to new channels per refresh period. Required: the job skips a node with no budget. Opens created by hand count against it too.</FieldHelp>
+                                        <NumericPicker TValue="long"
+                                                       @bind-Value="@_channelOpenBudgetSats"
+                                                       Decimals="0"
+                                                       Step="100000"
+                                                       Min="0"
+                                                       MinMaxLimitsOverride="NumericMinMaxLimitsOverride.Floor">
+                                            <Feedback>
+                                                <ValidationError>Set a budget above 0, or no channel will ever be proposed for this node</ValidationError>
+                                            </Feedback>
+                                        </NumericPicker>
+                                    </Validation>
+                                </Field>
+                            </Column>
+                            <Column>
+                                <Field>
+                                    <FieldLabel>Budget Refresh Interval (days)</FieldLabel>
+                                    <FieldHelp>Period after which the channel open budget resets. 0 = default (@(Constants.AUTO_CHANNEL_OPEN_DEFAULT_BUDGET_REFRESH_HOURS / 24) days).</FieldHelp>
+                                    <NumericPicker TValue="int"
+                                                   @bind-Value="@_channelOpenBudgetRefreshDays"
+                                                   Decimals="0"
+                                                   Step="1"
+                                                   Min="0"
+                                                   MinMaxLimitsOverride="NumericMinMaxLimitsOverride.Floor" />
+                                </Field>
+                            </Column>
+                        </Row>
+                        <Row>
+                            <Column>
+                                <Field>
+                                    <Validation Validator="ValidateChannelOpenMinSize">
+                                        <FieldLabel>Min Channel Size (sats)</FieldLabel>
+                                        <FieldHelp>A plan sized below this is dropped, not raised to it. 0 = unset.</FieldHelp>
+                                        <NumericPicker TValue="long"
+                                                       @bind-Value="@_channelOpenMinSizeSats"
+                                                       Decimals="0"
+                                                       Step="10000"
+                                                       Min="0"
+                                                       MinMaxLimitsOverride="NumericMinMaxLimitsOverride.Floor">
+                                            <Feedback>
+                                                <ValidationError />
+                                            </Feedback>
+                                        </NumericPicker>
+                                    </Validation>
+                                </Field>
+                            </Column>
+                            <Column>
+                                <Field>
+                                    <Validation Validator="ValidateChannelOpenMaxSize">
+                                        <FieldLabel>Max Channel Size (sats)</FieldLabel>
+                                        <FieldHelp>Plans above this are clamped down to it. 0 = unset.</FieldHelp>
+                                        <NumericPicker TValue="long"
+                                                       @bind-Value="@_channelOpenMaxSizeSats"
+                                                       Decimals="0"
+                                                       Step="10000"
+                                                       Min="0"
+                                                       MinMaxLimitsOverride="NumericMinMaxLimitsOverride.Floor">
+                                            <Feedback>
+                                                <ValidationError />
+                                            </Feedback>
+                                        </NumericPicker>
+                                    </Validation>
+                                </Field>
+                            </Column>
+                        </Row>
+                        <Field>
+                            <FieldLabel>Max Cost-to-Earn Ratio</FieldLabel>
+                            <FieldHelp>Profitability gate: the on-chain open and close cost must stay under this fraction of what one full drain earns at the rate the channel opens at (e.g. 0.5 = cost at most half the earnings). 0 = default (@Constants.AUTO_CHANNEL_OPEN_DEFAULT_COST_TO_EARN_RATIO).</FieldHelp>
+                            <NumericPicker TValue="double"
+                                           @bind-Value="@_maxChannelOpenCostToEarnRatio"
+                                           Decimals="2"
+                                           Step="0.05m"
+                                           Min="0"
+                                           MinMaxLimitsOverride="NumericMinMaxLimitsOverride.Floor" />
+                        </Field>
+                    }
+
+                    @if (_selectedNodeForLiquidity.DynamicFeeManagementEnabled || _selectedNodeForLiquidity.AutoRebalanceEnabled || _selectedNodeForLiquidity.AutoChannelOpenEnabled)
                     {
                         <Field>
                             <FieldLabel>Dry Run</FieldLabel>
-                            <FieldHelp>When on, the engine logs the fee/rebalance actions it would take for this node without calling LND. Turn off to let this node act for real — flip nodes live one at a time.</FieldHelp>
+                            <FieldHelp>When on, the engine logs the fee, rebalance and channel-open actions it would take for this node without acting on them — open recommendations are still written, they are just never promoted. Turn off to let this node act for real — flip nodes live one at a time.</FieldHelp>
                             <Check TValue="bool" Checked="@_selectedNodeForLiquidity.RoutingEngineDryRun"
                                    CheckedChanged="@((value) => _selectedNodeForLiquidity.RoutingEngineDryRun = value)">
                                 Dry run (log only, no LND writes)
@@ -551,7 +708,7 @@
                             <Alert Color="Color.Warning" Visible="true">
                                 <AlertDescription>
                                     Dry run is <strong>off</strong> for this node — once the engine is live, it will
-                                    perform real fee changes and/or rebalances on LND.
+                                    perform real fee changes, rebalances and channel-open promotions.
                                 </AlertDescription>
                             </Alert>
                         }
@@ -613,6 +770,13 @@
     private int _rebalanceBudgetRefreshDays;
     private int _maxRebalancesInFlight;
     private double _maxRebalanceCostToEarnRatio;
+
+    // Auto-channel-open edit fields (entity properties are nullable; 0 = unset)
+    private long _channelOpenBudgetSats;
+    private int _channelOpenBudgetRefreshDays;
+    private long _channelOpenMinSizeSats;
+    private long _channelOpenMaxSizeSats;
+    private double _maxChannelOpenCostToEarnRatio;
 
     public abstract class NodesColumnName
     {
@@ -963,6 +1127,13 @@
         _maxRebalancesInFlight = node.MaxRebalancesInFlight ?? 0;
         _maxRebalanceCostToEarnRatio = node.MaxRebalanceCostToEarnRatio ?? 0;
 
+        // Auto channel open (nullable → 0 when unset)
+        _channelOpenBudgetSats = node.AutoChannelOpenBudgetSats ?? 0;
+        _channelOpenBudgetRefreshDays = node.AutoChannelOpenBudgetRefreshInterval?.Days ?? 0;
+        _channelOpenMinSizeSats = node.AutoChannelOpenMinSizeSats ?? 0;
+        _channelOpenMaxSizeSats = node.AutoChannelOpenMaxSizeSats ?? 0;
+        _maxChannelOpenCostToEarnRatio = node.MaxChannelOpenCostToEarnRatio ?? 0;
+
         if (_nodeLiquidityModal != null) await _nodeLiquidityModal.Show();
     }
 
@@ -999,6 +1170,13 @@
             _selectedNodeForLiquidity.MaxRebalancesInFlight = _maxRebalancesInFlight > 0 ? _maxRebalancesInFlight : null;
             _selectedNodeForLiquidity.MaxRebalanceCostToEarnRatio = _maxRebalanceCostToEarnRatio > 0 ? _maxRebalanceCostToEarnRatio : null;
 
+            // Auto channel open: 0 maps back to null (unset)
+            _selectedNodeForLiquidity.AutoChannelOpenBudgetSats = _channelOpenBudgetSats > 0 ? _channelOpenBudgetSats : null;
+            _selectedNodeForLiquidity.AutoChannelOpenBudgetRefreshInterval = _channelOpenBudgetRefreshDays > 0 ? TimeSpan.FromDays(_channelOpenBudgetRefreshDays) : null;
+            _selectedNodeForLiquidity.AutoChannelOpenMinSizeSats = _channelOpenMinSizeSats > 0 ? _channelOpenMinSizeSats : null;
+            _selectedNodeForLiquidity.AutoChannelOpenMaxSizeSats = _channelOpenMaxSizeSats > 0 ? _channelOpenMaxSizeSats : null;
+            _selectedNodeForLiquidity.MaxChannelOpenCostToEarnRatio = _maxChannelOpenCostToEarnRatio > 0 ? _maxChannelOpenCostToEarnRatio : null;
+
             _selectedNodeForLiquidity.UpdateDatetime = DateTimeOffset.Now;
             var updateResult = NodeRepository.Update(_selectedNodeForLiquidity);
             
@@ -1032,6 +1210,16 @@
         if (_selectedNodeForLiquidity != null)
         {
             _selectedNodeForLiquidity.FundsDestinationWalletId = walletId;
+        }
+    }
+
+    private void OnSelectedAutoChannelOpenWalletChanged(int walletId)
+    {
+        if (_selectedNodeForLiquidity != null)
+        {
+            // The default item carries 0, which is not a wallet — keep the column null so the job
+            // reports "no wallet set" instead of chasing a missing FK.
+            _selectedNodeForLiquidity.AutoChannelOpenWalletId = walletId > 0 ? walletId : null;
         }
     }
 
@@ -1115,6 +1303,82 @@
         {
             arg.Status = ValidationStatus.Error;
             arg.ErrorText = "Automated rebalancing needs a fee budget above 0; the rebalancer skips nodes without one.";
+        }
+    }
+
+    // AutoChannelOpenJob returns early for a node with no funding wallet and for one with no budget,
+    // both only to the log, so the gate and either omission cannot be saved together.
+    private void ValidateChannelOpenWallet(ValidatorEventArgs arg)
+    {
+        arg.Status = ValidationStatus.Success;
+
+        if (_selectedNodeForLiquidity?.AutoChannelOpenEnabled != true) return;
+
+        // Prefer the control's own value: validation can run before the bound property is set.
+        var walletId = arg.Value as int? ?? _selectedNodeForLiquidity.AutoChannelOpenWalletId ?? 0;
+        if (walletId <= 0)
+        {
+            arg.Status = ValidationStatus.Error;
+            arg.ErrorText = "Automatic channel opening needs a funding wallet; the job skips nodes without one.";
+        }
+    }
+
+    private void ValidateChannelOpenBudget(ValidatorEventArgs arg)
+    {
+        arg.Status = ValidationStatus.Success;
+
+        if (_selectedNodeForLiquidity?.AutoChannelOpenEnabled != true) return;
+
+        if (arg.Value is not long budget || budget <= 0)
+        {
+            arg.Status = ValidationStatus.Error;
+            arg.ErrorText = "Automatic channel opening needs a budget above 0; the job skips nodes without one.";
+        }
+    }
+
+    private void ValidateChannelOpenMinSize(ValidatorEventArgs arg)
+    {
+        arg.Status = ValidationStatus.Success;
+
+        if (_selectedNodeForLiquidity?.AutoChannelOpenEnabled != true) return;
+
+        var minSize = arg.Value as long? ?? _channelOpenMinSizeSats;
+        if (minSize == 0) return;
+
+        if (minSize < Constants.MINIMUM_CHANNEL_CAPACITY_SATS)
+        {
+            arg.Status = ValidationStatus.Error;
+            arg.ErrorText = $"Min channel size must be at least {Constants.MINIMUM_CHANNEL_CAPACITY_SATS} sats";
+            return;
+        }
+
+        if (_channelOpenMaxSizeSats > 0 && minSize > _channelOpenMaxSizeSats)
+        {
+            arg.Status = ValidationStatus.Error;
+            arg.ErrorText = "Min channel size must be less than or equal to max channel size";
+        }
+    }
+
+    private void ValidateChannelOpenMaxSize(ValidatorEventArgs arg)
+    {
+        arg.Status = ValidationStatus.Success;
+
+        if (_selectedNodeForLiquidity?.AutoChannelOpenEnabled != true) return;
+
+        var maxSize = arg.Value as long? ?? _channelOpenMaxSizeSats;
+        if (maxSize == 0) return;
+
+        if (maxSize < Constants.MINIMUM_CHANNEL_CAPACITY_SATS)
+        {
+            arg.Status = ValidationStatus.Error;
+            arg.ErrorText = $"Max channel size must be at least {Constants.MINIMUM_CHANNEL_CAPACITY_SATS} sats";
+            return;
+        }
+
+        if (maxSize < _channelOpenMinSizeSats)
+        {
+            arg.Status = ValidationStatus.Error;
+            arg.ErrorText = "Max channel size must be greater than or equal to min channel size";
         }
     }
 }
