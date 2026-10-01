@@ -132,6 +132,15 @@ public class AutoChannelOpenJob : IJob
                 node.Name, expired);
         }
 
+        // Ahead of the cooldown this run derives: a promotion whose channel never opened committed
+        // nothing to the peer, so leaving it Promoted would suppress the peer for a channel it never got.
+        var unrealized = await _recommendationRepository.FailUnrealizedPromotions(node.Id);
+        if (unrealized > 0)
+        {
+            _logger.LogInformation("Node {NodeName}: {Count} promoted recommendation(s) whose channel never opened marked failed, releasing their peers from the cooldown",
+                node.Name, unrealized);
+        }
+
         // Check if a wallet is set to the node, otherwise we cannot proceed with channel opening.
         if (node.AutoChannelOpenWalletId == null)
         {

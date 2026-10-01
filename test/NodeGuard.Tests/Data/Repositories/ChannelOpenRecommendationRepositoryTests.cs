@@ -110,6 +110,24 @@ public class ChannelOpenRecommendationRepositoryTests
     }
 
     [Fact]
+    public async Task Upsert_FailedRow_IsRecycledAndTheLinkCleared()
+    {
+        var (sut, seed) = SetupDb();
+        seed.ChannelOpenRecommendations.Add(
+            Stored(ChannelOpenRecommendationStatus.Failed, requestId: 55));
+        await seed.SaveChangesAsync();
+
+        var (persisted, error) = await sut.Upsert(Plan());
+
+        // The peer never got the channel and carries no cooldown, so the next run that still sees the
+        // demand must be able to propose it again.
+        error.Should().BeNull();
+        persisted!.Status.Should().Be(ChannelOpenRecommendationStatus.Open);
+        persisted.SuggestedCapacitySats.Should().Be(4_000_000);
+        persisted.ChannelOperationRequestId.Should().BeNull();
+    }
+
+    [Fact]
     public async Task Upsert_PromotedRowWhoseOpenIsStillUnresolved_IsLeftUntouched()
     {
         var (sut, seed) = SetupDb();
@@ -250,5 +268,97 @@ public class ChannelOpenRecommendationRepositoryTests
         // Neither is an operator decision. An expired row counting here would put its peer in a
         // cooldown nobody asked for, and the demand would stay unproposed for the whole window.
         result.Should().BeEmpty();
+    }
+
+    [Fact]
+    public async Task GetLastDecisionByPeer_IgnoresFailedRows()
+    {
+        var (sut, seed) = SetupDb();
+        seed.ChannelOpenRecommendations.Add(Row(NodeId, Peer, ChannelOpenRecommendationStatus.Failed));
+        await seed.SaveChangesAsync();
+
+        var result = await sut.GetLastDecisionByPeer(NodeId);
+
+        // The whole point of the status: a promotion that produced no channel must not suppress the
+        // peer, or the demand behind it goes unserved for the length of the cooldown.
+        result.Should().BeEmpty();
+    }
+
+    [Theory]
+    [InlineData(ChannelOperationRequestStatus.Failed)]
+    [InlineData(ChannelOperationRequestStatus.Cancelled)]
+    public async Task FailUnrealizedPromotions_PromotedRowWhoseChannelNeverOpened_IsMarkedFailed(
+        ChannelOperationRequestStatus unrealized)
+    {
+        var (sut, seed) = SetupDb();
+        seed.ChannelOperationRequests.Add(new ChannelOperationRequest
+        {
+            Id = 55,
+            RequestType = OperationRequestType.Open,
+            Status = unrealized
+        });
+        seed.ChannelOpenRecommendations.Add(Stored(ChannelOpenRecommendationStatus.Promoted, requestId: 55));
+        await seed.SaveChangesAsync();
+
+        var count = await sut.FailUnrealizedPromotions(NodeId);
+
+        count.Should().Be(1);
+        var stored = await seed.ChannelOpenRecommendations.AsNoTracking().SingleAsync();
+        stored.Status.Should().Be(ChannelOpenRecommendationStatus.Failed);
+    }
+
+    [Theory]
+    [InlineData(ChannelOperationRequestStatus.Pending)]
+    [InlineData(ChannelOperationRequestStatus.OnChainConfirmationPending)]
+    [InlineData(ChannelOperationRequestStatus.OnChainConfirmed)]
+    [InlineData(ChannelOperationRequestStatus.Rejected)]
+    public async Task FailUnrealizedPromotions_PromotedRowWhoseOpenIsLiveOrDecided_StaysPromoted(
+        ChannelOperationRequestStatus kept)
+    {
+        var (sut, seed) = SetupDb();
+        seed.ChannelOperationRequests.Add(new ChannelOperationRequest
+        {
+            Id = 55,
+            RequestType = OperationRequestType.Open,
+            Status = kept
+        });
+        seed.ChannelOpenRecommendations.Add(Stored(ChannelOpenRecommendationStatus.Promoted, requestId: 55));
+        await seed.SaveChangesAsync();
+
+        var count = await sut.FailUnrealizedPromotions(NodeId);
+
+        // An open still on its way keeps its peer suppressed so the run cannot double the intent, and
+        // a rejection is an operator turning the peer down — a decision, like a dismissal.
+        count.Should().Be(0);
+        var stored = await seed.ChannelOpenRecommendations.AsNoTracking().SingleAsync();
+        stored.Status.Should().Be(ChannelOpenRecommendationStatus.Promoted);
+    }
+
+    [Fact]
+    public async Task FailUnrealizedPromotions_LeavesOtherNodesAndUnpromotedRowsAlone()
+    {
+        var (sut, seed) = SetupDb();
+        seed.ChannelOperationRequests.Add(new ChannelOperationRequest
+        {
+            Id = 55,
+            RequestType = OperationRequestType.Open,
+            Status = ChannelOperationRequestStatus.Failed
+        });
+        var otherNodesRow = Row(2, "03otherNode", ChannelOpenRecommendationStatus.Promoted);
+        otherNodesRow.ChannelOperationRequestId = 55;
+        seed.ChannelOpenRecommendations.AddRange(
+            otherNodesRow,
+            Row(NodeId, "03dismissed", ChannelOpenRecommendationStatus.Dismissed),
+            Row(NodeId, "03open", ChannelOpenRecommendationStatus.Open));
+        await seed.SaveChangesAsync();
+
+        var count = await sut.FailUnrealizedPromotions(NodeId);
+
+        count.Should().Be(0);
+        var statuses = await seed.ChannelOpenRecommendations.AsNoTracking()
+            .ToDictionaryAsync(x => x.PeerPubKey, x => x.Status);
+        statuses["03otherNode"].Should().Be(ChannelOpenRecommendationStatus.Promoted);
+        statuses["03dismissed"].Should().Be(ChannelOpenRecommendationStatus.Dismissed);
+        statuses["03open"].Should().Be(ChannelOpenRecommendationStatus.Open);
     }
 }

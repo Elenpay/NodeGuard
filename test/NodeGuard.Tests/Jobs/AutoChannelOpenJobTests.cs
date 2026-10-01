@@ -124,6 +124,7 @@ public class AutoChannelOpenJobTests
         _nodeRepository.Setup(x => x.GetAllWithAutoChannelOpenEnabled()).ReturnsAsync(new List<Node> { node });
         _nbXplorerService.Setup(x => x.GetFeesByType(MempoolRecommendedFeesType.HourFee, default)).ReturnsAsync(10m);
         _recommendationRepository.Setup(x => x.ExpireOpen(NodeId)).ReturnsAsync(0);
+        _recommendationRepository.Setup(x => x.FailUnrealizedPromotions(NodeId)).ReturnsAsync(0);
         _channelOperationRequestRepository
             .Setup(x => x.GetOpenSatsCommittedSince(NodeId, It.IsAny<DateTimeOffset>()))
             .ReturnsAsync(committedSats);
@@ -270,6 +271,27 @@ public class AutoChannelOpenJobTests
         // run's output rather than an accumulation of earlier ones.
         _recommendationRepository.Verify(x => x.ExpireOpen(NodeId), Times.Once);
         VerifyRecorded(Times.Once());
+    }
+
+    [Fact]
+    public async Task Execute_UnrealizedPromotions_AreReleasedBeforeTheCooldownIsRead()
+    {
+        ArrangeQualifyingDemand();
+        var released = false;
+        var cooldownSawTheRelease = false;
+        _recommendationRepository.Setup(x => x.FailUnrealizedPromotions(NodeId))
+            .ReturnsAsync(1)
+            .Callback(() => released = true);
+        _recommendationRepository.Setup(x => x.GetLastDecisionByPeer(NodeId))
+            .ReturnsAsync(new Dictionary<string, DateTimeOffset>())
+            .Callback(() => cooldownSawTheRelease = released);
+
+        await Run();
+
+        // The cooldown is derived from the stored statuses, so a promotion that came to nothing has to
+        // be cleared first or its peer stays suppressed for a channel it never got.
+        released.Should().BeTrue();
+        cooldownSawTheRelease.Should().BeTrue();
     }
 
     [Fact]

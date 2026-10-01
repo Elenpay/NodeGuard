@@ -42,6 +42,13 @@ public interface IChannelOpenRecommendationRepository
     Task<int> ExpireOpen(int nodeId);
 
     /// <summary>
+    /// Flips a <c>Promoted</c> row whose channel never opened to <c>Failed</c>. The promotion was a
+    /// decision to fund the peer, not a verdict on it, so once it comes to nothing it must stop
+    /// feeding <see cref="GetLastDecisionByPeer"/> — hence this runs ahead of it every cycle.
+    /// </summary>
+    Task<int> FailUnrealizedPromotions(int nodeId);
+
+    /// <summary>
     /// Feeds the per-peer cooldown, which is what stops a drained sink peer being re-proposed every run.
     /// </summary>
     Task<Dictionary<string, DateTimeOffset>> GetLastDecisionByPeer(int nodeId);

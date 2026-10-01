@@ -164,6 +164,36 @@ public class ChannelOpenRecommendationRepository : IChannelOpenRecommendationRep
                 .SetProperty(x => x.UpdateDatetime, DateTimeOffset.UtcNow));
     }
 
+    public async Task<int> FailUnrealizedPromotions(int nodeId)
+    {
+        await using var context = await _dbContextFactory.CreateDbContextAsync();
+
+        // Rejected is an operator turning the peer down and Cancelled is not, so only the latter joins
+        // Failed here — a rejection suppresses the peer exactly as a dismissal does.
+        var unrealized = await context.ChannelOpenRecommendations
+            .Where(x => x.NodeId == nodeId
+                        && x.Status == ChannelOpenRecommendationStatus.Promoted
+                        && x.ChannelOperationRequest != null
+                        && (x.ChannelOperationRequest.Status == ChannelOperationRequestStatus.Failed
+                            || x.ChannelOperationRequest.Status == ChannelOperationRequestStatus.Cancelled))
+            .ToListAsync();
+
+        if (unrealized.Count == 0)
+        {
+            return 0;
+        }
+
+        foreach (var recommendation in unrealized)
+        {
+            recommendation.Status = ChannelOpenRecommendationStatus.Failed;
+            recommendation.SetUpdateDatetime();
+        }
+
+        await context.SaveChangesAsync();
+
+        return unrealized.Count;
+    }
+
     public async Task<Dictionary<string, DateTimeOffset>> GetLastDecisionByPeer(int nodeId)
     {
         await using var context = await _dbContextFactory.CreateDbContextAsync();
