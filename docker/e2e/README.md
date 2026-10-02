@@ -46,6 +46,9 @@ tests (`DustUtxoWithdrawalE2ETests`, `WithdrawalRbfBumpE2ETests`, `GetNewWalletA
 
 - **Clean slate**: `DbInitializer` only funds the dev wallets on an empty DB, so `just test-e2e` and CI
   `down -v` first — a stale postgres volume leaves the wallet unfunded ("no UTXOs" on `OpenChannel`).
+- **Teardown / hangs**: `just test-e2e` tears the stack down even when tests fail (`E2E_KEEP_STACK=1` leaves
+  it up to inspect logs/DB). Nothing in the suite has a deadline, so the runner passes
+  `--blame-hang-timeout 15m`: a stuck test aborts the run and is named, rather than hanging for hours.
 - **Startup order**: `nodeguard` starts only after `setup-e2e` completes (it funds its hot wallet via
   bitcoind RPC, which needs the wallet loaded); `depends_on: service_completed_successfully` enforces it.
 - **App config env**: the published image doesn't read `launchSettings.json`, so `Constants`' required vars
@@ -69,6 +72,13 @@ tests (`DustUtxoWithdrawalE2ETests`, `WithdrawalRbfBumpE2ETests`, `GetNewWalletA
   `ROUTING_ENGINE_REBALANCE_MAX_AMOUNT_SATS` / `ROUTING_ENGINE_REBALANCE_DEADBAND` from its own env — **keep
   those two in sync between the `nodeguard` and `e2e-runner` services**, or the test asserts against numbers
   NodeGuard didn't plan with.
+- **Auto channel open scenario** (`AutoChannelOpenE2ETests`): drains bob's outbound on every Bob→Carol
+  channel, then has alice send bursts of payments over an explicit alice→bob→carol route so bob's link
+  refuses them with `INSUFFICIENT_BALANCE`. Only once those rows are recorded does it switch bob to `Auto`
+  on the hot wallet, so `AutoChannelOpenJob` (1 min in dev) never plans off a partial set. It asserts the
+  recommendation's evidence and sizing, the promoted request, and the new Bob→Carol channel opening at
+  bob's inherited fee. It reads `AUTO_CHANNEL_OPEN_BURST_GAP_SECONDS` / `AUTO_CHANNEL_OPEN_MIN_MISSED_FEE_MSAT`
+  from its own env, so **keep those in sync between the `nodeguard` and `e2e-runner` services**.
 - **RBF bump scenario** (`WithdrawalRbfBumpE2ETests`): `RequestWithdrawal` on the hot wallet, then `BumpWithdrawal`
   over gRPC, asserting bitcoind evicts the original for the higher-fee replacement, NodeGuard marks the original
   `WITHDRAWAL_BUMPED`, and the replacement settles once mined. It relies on `MONITOR_WITHDRAWALS_CRON` being fast on

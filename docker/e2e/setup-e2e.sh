@@ -15,15 +15,18 @@ BOB=polar-n1-bob
 CAROL=polar-n1-carol
 BACKEND=polar-n1-backend
 
+# Retries for up to ~2 min, then fails setup so the stack aborts instead of hanging forever.
 lncli() {
     node=$1; shift; args=$@
-    while true; do
+    for _ in $(seq 1 120); do
         r=$(docker exec $node lncli -n regtest --tlscertpath /root/.lnd/tls.cert --macaroonpath /root/.lnd/data/chain/bitcoin/regtest/admin.macaroon $args)
         e=$?
         [ $e -eq 0 ] && echo $r && return 0
         >&2 echo "Command failed retrying..."
         sleep 1
     done
+    >&2 echo "lncli $node $args failed after 120 attempts"
+    exit 1
 }
 node_pubkey() { lncli $1 getinfo | jq -r .identity_pubkey; }
 new_lnd_address() { lncli $1 newaddress p2wkh | jq -r .address; }
@@ -46,6 +49,10 @@ bitcoin_cli -generate 100 > /dev/null
 ALICE_PUBKEY=$(node_pubkey $ALICE)
 BOB_PUBKEY=$(node_pubkey $BOB)
 CAROL_PUBKEY=$(node_pubkey $CAROL)
+# lncli's exit inside $(...) only leaves the subshell, so check the results here
+for pk in "$ALICE_PUBKEY" "$BOB_PUBKEY" "$CAROL_PUBKEY"; do
+    [ -n "$pk" ] && [ "$pk" != "null" ] || { >&2 echo "could not read a node pubkey"; exit 1; }
+done
 
 # Same fee-policy topology as setup.sh; only the Alice->Bob open is omitted (NodeGuard opens it).
 BOB_TO_CAROL_LOCAL=16000000
@@ -63,7 +70,8 @@ lncli $CAROL openchannel --connect $ALICE:9735 $ALICE_PUBKEY --local_amt $CAROL_
 # to learn Bob's address. Bob's node_announcement (with address) doesn't reach Alice over gossip when
 # they share no channel, so pre-connect them here — NodeGuard's ConnectToPeer then sees them connected.
 echo "Connecting Alice -> Bob as peers"
-lncli $ALICE connect $BOB_PUBKEY@bob:9735 || true
+# One shot, not the retrying lncli(): "already connected" is a non-zero exit we expect and ignore
+docker exec $ALICE lncli -n regtest --tlscertpath /root/.lnd/tls.cert --macaroonpath /root/.lnd/data/chain/bitcoin/regtest/admin.macaroon connect $BOB_PUBKEY@bob:9735 || true
 
 echo "Confirming channels"
 bitcoin_cli -generate 6 > /dev/null
