@@ -6,7 +6,10 @@ WORKDIR /src
 COPY . .
 RUN dotnet restore test/NodeGuard.Tests/NodeGuard.Tests.csproj
 
+# --blame-hang-timeout: a stuck test (nothing in the suite has a deadline) aborts the run and is named
+# in the output, instead of hanging for hours.
 # Forces [E2EFact] on regardless of the reachability probe (the runner targets nodeguard:50051).
 ENV RUN_E2E_TESTS=1
 ENTRYPOINT ["dotnet", "test", "test/NodeGuard.Tests/NodeGuard.Tests.csproj", \
-            "--filter", "Category=E2E", "--logger", "console;verbosity=detailed"]
+            "--filter", "Category=E2E", "--logger", "console;verbosity=detailed", \
+            "--blame-hang-timeout", "15m", "--blame-hang-dump-type", "none"]
