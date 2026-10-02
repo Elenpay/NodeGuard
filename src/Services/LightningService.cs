@@ -59,6 +59,12 @@ namespace NodeGuard.Services
     }
 
     /// <summary>
+    /// Our own side's advertised policy on one channel, as LND's FeeReport states it. A rate without
+    /// its base fee cannot reproduce a policy, so the two travel together.
+    /// </summary>
+    public record LocalOutboundPolicy(long FeeRatePpm, long BaseFeeMsat);
+
+    /// <summary>
     /// Service to interact with LND
     /// </summary>
     public interface ILightningService
@@ -216,6 +222,14 @@ namespace NodeGuard.Services
         /// this cycle" rather than as "every channel earns nothing".
         /// </summary>
         Task<Dictionary<ulong, long>?> GetLocalOutboundFeeRatesPpmAsync(Node node);
+
+        /// <summary>
+        /// Local-outbound policy — base fee and rate together — for every channel on the node, keyed
+        /// by LND chan_id. Same call and same null contract as
+        /// <see cref="GetLocalOutboundFeeRatesPpmAsync"/>; callers wanting to reproduce a policy need
+        /// the pair, because a rate without its base fee is not one.
+        /// </summary>
+        Task<Dictionary<ulong, LocalOutboundPolicy>?> GetLocalOutboundPoliciesAsync(Node node);
 
         /// <summary>
         /// Sets the channel fee policy for a given channel identified by its chanPoint
@@ -1823,6 +1837,21 @@ namespace NodeGuard.Services
             foreach (var fee in report.ChannelFees)
             {
                 byChanId[fee.ChanId] = fee.FeePerMil;
+            }
+
+            return byChanId;
+        }
+
+        public async Task<Dictionary<ulong, LocalOutboundPolicy>?> GetLocalOutboundPoliciesAsync(Node node)
+        {
+            var report = await _lightningClientService.FeeReport(node);
+            if (report == null) return null;
+
+            // Same last-wins indexer rationale as GetLocalOutboundFeeRatesPpmAsync.
+            var byChanId = new Dictionary<ulong, LocalOutboundPolicy>(report.ChannelFees.Count);
+            foreach (var fee in report.ChannelFees)
+            {
+                byChanId[fee.ChanId] = new LocalOutboundPolicy(fee.FeePerMil, fee.BaseFeeMsat);
             }
 
             return byChanId;

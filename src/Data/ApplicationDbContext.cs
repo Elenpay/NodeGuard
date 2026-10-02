@@ -152,6 +152,32 @@ namespace NodeGuard.Data
             modelBuilder.Entity<ChannelFeeState>()
                 .HasIndex(x => new { x.ChannelId, x.ManagedNodePubKey }).IsUnique();
 
+            modelBuilder.Entity<ChannelOpenRecommendation>()
+                .HasOne(x => x.Node)
+                .WithMany(x => x.ChannelOpenRecommendations)
+                .HasForeignKey(x => x.NodeId)
+                .OnDelete(DeleteBehavior.Cascade);
+
+            modelBuilder.Entity<ChannelOpenRecommendation>()
+                .HasOne(x => x.ChannelOperationRequest)
+                .WithMany()
+                .HasForeignKey(x => x.ChannelOperationRequestId)
+                .OnDelete(DeleteBehavior.SetNull);
+
+            // One recommendation per peer per node — the job upserts on this. Keyed by peer rather
+            // than channel because non-strict forwarding splits one signal across a peer's channels.
+            modelBuilder.Entity<ChannelOpenRecommendation>()
+                .HasIndex(x => new { x.NodeId, x.PeerPubKey }).IsUnique();
+
+            // The panel lists by node and status; the per-run expiry sweeps the same way.
+            modelBuilder.Entity<ChannelOpenRecommendation>()
+                .HasIndex(x => new { x.NodeId, x.Status });
+
+            // Serves the windowed failure aggregation in AutoChannelOpenJob, which the composite
+            // primary key cannot.
+            modelBuilder.Entity<ForwardingHtlcEvent>()
+                .HasIndex(x => new { x.ManagedNodePubKey, x.EventTimestamp });
+
             // These default ON: existing rows must be backfilled true (the C# initializer
             // only affects new in-code instances, not the DB column default / migration backfill).
             modelBuilder.Entity<Channel>().Property(x => x.IsDynamicFeeEnabled).HasDefaultValue(false);
@@ -202,5 +228,7 @@ namespace NodeGuard.Data
         public DbSet<ChannelRoutingState> ChannelRoutingStates { get; set; }
 
         public DbSet<ChannelFeeState> ChannelFeeStates { get; set; }
+
+        public DbSet<ChannelOpenRecommendation> ChannelOpenRecommendations { get; set; }
     }
 }

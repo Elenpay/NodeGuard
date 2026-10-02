@@ -63,6 +63,10 @@
                     <div class="val">@_nodeChannels.Count(c => c.IsDynamicFeeEnabled) <span style="font-size:.7rem;color:#7a7789">/ @_nodeChannels.Count</span></div>
                 </div>
                 <div class="panel kpi">
+                    <div class="label">Open recommendations</div>
+                    <div class="val">@_recommendations.Count</div>
+                </div>
+                <div class="panel kpi">
                     <div class="label">Rebalance sources</div>
                     <div class="val">@_nodeChannels.Count(c => c.IsAutoRebalanceEnabled) <span style="font-size:.7rem;color:#7a7789">/ @_nodeChannels.Count</span></div>
                 </div>
@@ -95,7 +99,7 @@
                                 <Check TValue="bool"
                                        Checked="@GateOn(_selectedNode, flag)"
                                        Disabled="@_busy"
-                                       CheckedChanged="@(value => ToggleNodeGate(_selectedNode, flag, value))" />
+                                       CheckedChanged="@(value => ToggleNodeGate(flag, value))" />
                             </div>
                         </div>
                     }
@@ -137,6 +141,158 @@
                     <div class="gate-warn" style="margin-top:10px;">
                         <Icon Name="IconName.ExclamationTriangle" />
                         No rebalance fee budget configured for this node — the rebalancer skips it. Set one on the Nodes page.
+                    </div>
+                }
+            </div>
+
+            <!-- CHANNEL OPEN RECOMMENDATIONS -->
+            @* Node-level only: the channel-open actuator has no per-channel opt-in, so it is not part
+               of AllFlags (which also drives the per-channel toggles in the peers table below). *@
+            <div class="panel" style="margin-bottom:16px">
+                <div class="panel-title">
+                    <h2>Channel open recommendations</h2>
+                    <span class="hint">Peers turning payments away for lack of our outbound</span>
+                </div>
+
+                <div class="gates">
+                    <div class="gate-item">
+                        <div class="who">
+                            <b>Auto channel open</b>
+                            <span class="desc">Watch refused forwards and propose new capacity to the peers that keep running dry.</span>
+                        </div>
+                        <div class="toggle">
+                            <Check TValue="bool"
+                                   Checked="@_selectedNode.AutoChannelOpenEnabled"
+                                   Disabled="@_busy"
+                                   CheckedChanged="@(value => ToggleChannelOpenGate(value))" />
+                        </div>
+                    </div>
+                    <div class="gate-item">
+                        <div class="who">
+                            <b>Mode</b>
+                            <span class="desc">Recommendation stops here for review. Auto also creates the channel request.</span>
+                        </div>
+                        <div class="toggle">
+                            <Select TValue="AutoChannelOpenMode"
+                                    SelectedValue="@_selectedNode.AutoChannelOpenMode"
+                                    SelectedValueChanged="@(value => ChangeChannelOpenMode(value))"
+                                    Disabled="@(_busy || !_selectedNode.AutoChannelOpenEnabled)">
+                                <SelectItem TValue="AutoChannelOpenMode" Value="@AutoChannelOpenMode.Recommendation">Recommendation</SelectItem>
+                                <SelectItem TValue="AutoChannelOpenMode" Value="@AutoChannelOpenMode.Auto">Auto</SelectItem>
+                            </Select>
+                        </div>
+                    </div>
+                </div>
+
+                @if (!Constants.AUTO_CHANNEL_OPEN_ENABLED)
+                {
+                    <div class="gate-warn" style="margin-top:10px;">
+                        <Icon Name="IconName.ExclamationTriangle" /> Automatic channel opening is globally OFF. Settings are saved, but nothing will be recommended until AUTO_CHANNEL_OPEN_ENABLED is set on the server.
+                    </div>
+                }
+                @if (_selectedNode.AutoChannelOpenEnabled && !_selectedNode.AutoChannelOpenWalletId.HasValue)
+                {
+                    <div class="gate-warn" style="margin-top:10px;">
+                        <Icon Name="IconName.ExclamationTriangle" /> No funding wallet is set for channel opens on this node, so it is skipped. Set one on the Nodes page.
+                    </div>
+                }
+
+                @* Budget and size limits are edited on the Nodes page; shown here because a node with no
+                   budget is silently skipped by the job. *@
+                <div class="budget">
+                    <div class="b-item">
+                        <span class="k">Channel open budget</span>
+                        <span class="v">@(_selectedNode.AutoChannelOpenBudgetSats is > 0 ? $"{Sats(_selectedNode.AutoChannelOpenBudgetSats.Value)} sats" : "—")</span>
+                    </div>
+                    <div class="b-item">
+                        <span class="k">Committed this period</span>
+                        <span class="v">@(_channelOpenCommittedSats is { } committed ? $"{Sats(committed)} sats" : "—")</span>
+                    </div>
+                </div>
+
+                @if (_recommendations.Count == 0)
+                {
+                    <div class="empty">No open recommendations for this node.</div>
+                }
+                else
+                {
+                    <div class="table-wrap">
+                        <table class="peers-tbl">
+                            <thead>
+                                <tr>
+                                    <th>Peer</th>
+                                    <th class="r">Payments</th>
+                                    <th class="r">Missed fees</th>
+                                    <th>Drain / refill</th>
+                                    <th>Sizing</th>
+                                    <th class="r">Opens at</th>
+                                    <th class="r">Capacity (sats)</th>
+                                    <th class="c">Actions</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                @foreach (var rec in _recommendations)
+                                {
+                                    <tr>
+                                        <td>
+                                            <div class="peer-name">
+                                                <b>@(string.IsNullOrWhiteSpace(rec.PeerAlias) ? "(no alias)" : rec.PeerAlias)</b>
+                                                <span class="pk mono">@StringHelper.TruncateTail(rec.PeerPubKey, 14)</span>
+                                            </div>
+                                        </td>
+                                        <td class="r">@rec.Bursts <span class="pk">(@rec.FailedAttempts htlcs over @rec.ChannelsInvolved chan)</span></td>
+                                        <td class="r">@Sats(rec.MissedFeeMsat / 1000) sats</td>
+                                        <td>
+                                            <span class="pk">@Sats(rec.OutSats + rec.MissedSats) out / @Sats(rec.InSats) in</span>
+                                        </td>
+                                        <td>
+                                            <span class="cat-badge @(rec.Regime == ChannelOpenSizingRegime.Draining ? "cat-sink" : "cat-bidi")">@rec.Regime</span>
+                                            @if (rec.BindingClamp != ChannelOpenBindingClamp.None)
+                                            {
+                                                <span class="hdr-chip" title="This clamp limited the suggested capacity">@rec.BindingClamp</span>
+                                            }
+                                        </td>
+                                        @* The gate valued the capacity at this rate and the channel
+                                           opens charging it, so it is worth seeing before promoting. *@
+                                        <td class="r">
+                                            @if (rec.InheritedFeeRatePpm is > 0)
+                                            {
+                                                <span class="pk">@rec.InheritedFeeRatePpm ppm / @(rec.InheritedBaseFeeMsat ?? 0) msat</span>
+                                            }
+                                            else
+                                            {
+                                                <span class="pk" title="Written before the opening fee was captured; the next run replaces it">—</span>
+                                            }
+                                        </td>
+                                        <td class="r">
+                                            <NumericPicker TValue="long"
+                                                           Value="@GetEditedCapacity(rec)"
+                                                           ValueChanged="@(v => SetEditedCapacity(rec, v))"
+                                                           Min="@(_selectedNode.AutoChannelOpenMinSizeSats ?? 0)"
+                                                           Max="@(_selectedNode.AutoChannelOpenMaxSizeSats ?? 21_000_000 * 100_000_000L)"
+                                                           Step="100000"
+                                                           Decimals="0"
+                                                           Disabled="@(_busy || _selectedNode.RoutingEngineDryRun)" />
+                                        </td>
+                                        <td class="c">
+                                            <div class="dim-actions">
+                                                <button class="mini"
+                                                        disabled="@(_busy || _selectedNode.RoutingEngineDryRun)"
+                                                        title="@(_selectedNode.RoutingEngineDryRun ? "Node is in dry run" : "Create a pending channel open request")"
+                                                        @onclick="@(() => PromoteRecommendation(rec))">
+                                                    Create request
+                                                </button>
+                                                <button class="mini"
+                                                        disabled="@_busy"
+                                                        @onclick="@(() => DismissRecommendation(rec))">
+                                                    Dismiss
+                                                </button>
+                                            </div>
+                                        </td>
+                                    </tr>
+                                }
+                            </tbody>
+                        </table>
                     </div>
                 }
             </div>
@@ -321,6 +477,9 @@
 @inject IChannelRepository ChannelRepository
 @inject IChannelRoutingStateRepository ChannelRoutingStateRepository
 @inject IRebalanceRepository RebalanceRepository
+@inject IChannelOpenRecommendationRepository ChannelOpenRecommendationRepository
+@inject IChannelOperationRequestRepository ChannelOperationRequestRepository
+@inject IChannelOpenPromotionService ChannelOpenPromotionService
 @inject IFeeEngineStateService FeeEngineStateService
 @inject IAuditService AuditService
 @inject ILightningService LightningService
@@ -352,6 +511,10 @@
     // Rebalance budget stats — null when not loaded yet or unavailable.
     private long? _rebalanceConsumedSats;
     private int? _rebalanceInFlight;
+
+    private List<ChannelOpenRecommendation> _recommendations = new();
+    private readonly Dictionary<int, long> _editedCapacities = new();
+    private long? _channelOpenCommittedSats;
 
     protected override async Task OnInitializedAsync()
     {
@@ -388,6 +551,7 @@
 
             Rebuild();
             await LoadRebalanceStatsAsync();
+            await LoadChannelOpenStatsAsync();
         }
         catch (Exception ex)
         {
@@ -473,6 +637,7 @@
         _channels = allChannels.Where(c => c.Status == Channel.ChannelStatus.Open).ToList();
         Rebuild();
         await LoadRebalanceStatsAsync();
+        await LoadChannelOpenStatsAsync();
     }
 
     // Budget spend and in-flight count for the rebalance read-out. Best-effort: the page still works without them.
@@ -501,6 +666,7 @@
         _search = string.Empty;
         await LoadRoutingStatesAsync();
         await LoadRebalanceStatsAsync();
+        await LoadChannelOpenStatsAsync();
         Rebuild();
     }
 
@@ -602,44 +768,185 @@
 
     #endregion Dimension accessors
 
-    private async Task ToggleNodeGate(Node node, RoutingFlag flag, bool enabled)
+    // Recommendations and budget read-out for the channel-open panel. Best-effort: the rest of the
+    // page still works when these cannot be loaded.
+    private async Task LoadChannelOpenStatsAsync()
     {
-        if (_busy || GateOn(node, flag) == enabled) return;
+        _recommendations = new List<ChannelOpenRecommendation>();
+        _editedCapacities.Clear();
+        _channelOpenCommittedSats = null;
+        if (_selectedNode is null) return;
+        try
+        {
+            // Mirror AutoChannelOpenJob: consumption is measured from the current budget period's start.
+            var periodStart = _selectedNode.AutoChannelOpenBudgetStartDatetime ?? DateTimeOffset.UtcNow;
+
+            // Independent reads, each on its own DbContext from the factory — one round-trip instead of two.
+            var recommendations = ChannelOpenRecommendationRepository.GetOpenByNode(_selectedNode.Id);
+            var committed = ChannelOperationRequestRepository.GetOpenSatsCommittedSince(_selectedNode.Id, periodStart);
+            await Task.WhenAll(recommendations, committed);
+
+            _recommendations = recommendations.Result;
+            _channelOpenCommittedSats = committed.Result;
+        }
+        catch (Exception ex)
+        {
+            Logger.LogWarning(ex, "Could not load channel open recommendations for node {NodeId}", _selectedNode.Id);
+        }
+    }
+
+    // The suggested capacity is a starting point: an operator edits it here before promoting.
+    private long GetEditedCapacity(ChannelOpenRecommendation rec)
+        => _editedCapacities.TryGetValue(rec.Id, out var edited) ? edited : rec.SuggestedCapacitySats;
+
+    private void SetEditedCapacity(ChannelOpenRecommendation rec, long value) => _editedCapacities[rec.Id] = value;
+
+    /// <summary>
+    /// Optimistically applies a node change, rolling it back and reporting if the write fails.
+    /// Shared by every node-level gate so they cannot drift apart in their error handling.
+    /// </summary>
+    private async Task<bool> PersistNodeChange(Action apply, Action rollback, string what)
+    {
+        if (_selectedNode is null) return false;
+
+        apply();
+        var (ok, _) = NodeRepository.Update(_selectedNode);
+        if (ok)
+        {
+            await AuditService.LogAsync(AuditActionType.Update, AuditEventType.Success, AuditObjectType.Node,
+                _selectedNode.Id.ToString(), $"{what} via Routing Management page.");
+            return true;
+        }
+
+        rollback();
+        // Repository.Update swallows the exception and returns a null reason, so log it and
+        // record the attempt in the audit trail like every other routing mutation does.
+        Logger.LogError("Failed to persist change for node {Node} ({PubKey}): {What}", _selectedNode.Name, _selectedNode.PubKey, what);
+        await AuditService.LogAsync(AuditActionType.Update, AuditEventType.Failure, AuditObjectType.Node,
+            _selectedNode.Id.ToString(), $"Failed: {what} via Routing Management page.");
+        ToastService.ShowError($"Could not update {_selectedNode.Name}. Check the logs for details.");
+        return false;
+    }
+
+    private async Task ToggleChannelOpenGate(bool enabled)
+    {
+        if (_busy || _selectedNode is null || _selectedNode.AutoChannelOpenEnabled == enabled) return;
         _busy = true;
         try
         {
-            SetGate(node, flag, enabled);
-            var (ok, _) = NodeRepository.Update(node);
+            var node = _selectedNode;
+            if (await PersistNodeChange(
+                    () => node.AutoChannelOpenEnabled = enabled,
+                    () => node.AutoChannelOpenEnabled = !enabled,
+                    $"Auto channel open {(enabled ? "enabled" : "disabled")}"))
+            {
+                ToastService.ShowSuccess($"Auto channel open {(enabled ? "enabled" : "disabled")} for {node.Name}.");
+                await ReloadEntitiesAsync();
+            }
+        }
+        finally
+        {
+            _busy = false;
+        }
+    }
+
+    private async Task ChangeChannelOpenMode(AutoChannelOpenMode mode)
+    {
+        if (_busy || _selectedNode is null || _selectedNode.AutoChannelOpenMode == mode) return;
+        _busy = true;
+        try
+        {
+            var node = _selectedNode;
+            var previous = node.AutoChannelOpenMode;
+            if (await PersistNodeChange(
+                    () => node.AutoChannelOpenMode = mode,
+                    () => node.AutoChannelOpenMode = previous,
+                    $"Auto channel open mode set to {mode}"))
+            {
+                ToastService.ShowSuccess($"Auto channel open mode set to {mode} for {node.Name}.");
+                await ReloadEntitiesAsync();
+            }
+        }
+        finally
+        {
+            _busy = false;
+        }
+    }
+
+    private async Task PromoteRecommendation(ChannelOpenRecommendation rec)
+    {
+        if (_busy || LoggedUser is null) return;
+        _busy = true;
+        try
+        {
+            var capacity = GetEditedCapacity(rec);
+            var (ok, error) = await ChannelOpenPromotionService.Promote(rec.Id, capacity, LoggedUser.Id);
             if (!ok)
             {
-                SetGate(node, flag, !enabled);
-                // Repository.Update swallows the exception and returns a null reason, so log it and
-                // record the attempt in the audit trail like every other routing mutation does.
-                Logger.LogError("Failed to persist {Gate} gate for node {Node} ({PubKey})", GateName(flag), node.Name, node.PubKey);
-                await AuditService.LogAsync(AuditActionType.Update, AuditEventType.Failure, AuditObjectType.Node,
-                    node.Id.ToString(), $"Failed to {(enabled ? "enable" : "disable")} {GateName(flag).ToLowerInvariant()} via Routing Management page.");
-                ToastService.ShowError($"Could not update {node.Name}. Check the logs for details.");
+                ToastService.ShowError(error ?? "Could not create the channel open request.");
                 return;
             }
 
-            // Disabling the node's fee gate purges its channels' fee-engine state (mirrors Nodes page).
-            // The rebalancer keeps no per-channel state, so there is nothing to purge for that gate.
-            if (flag == RoutingFlag.Fee)
+            ToastService.ShowSuccess($"Channel open request created for {capacity} sats. Approve it on the Channel Requests page.");
+            await LoadChannelOpenStatsAsync();
+        }
+        finally
+        {
+            _busy = false;
+        }
+    }
+
+    private async Task DismissRecommendation(ChannelOpenRecommendation rec)
+    {
+        if (_busy || LoggedUser is null) return;
+        _busy = true;
+        try
+        {
+            var (ok, error) = await ChannelOpenPromotionService.Dismiss(rec.Id, "Dismissed from the Routing Management page", LoggedUser.Id);
+            if (!ok)
             {
-                await FeeEngineStateService.PurgeNodeStateIfDisabled(node);
+                ToastService.ShowError(error ?? "Could not dismiss the recommendation.");
+                return;
             }
 
-            await AuditService.LogAsync(AuditActionType.Update, AuditEventType.Success, AuditObjectType.Node,
-                node.Id.ToString(), $"{GateName(flag)} {(enabled ? "enabled" : "disabled")} via Routing Management page.");
-            ToastService.ShowSuccess($"{GateName(flag)} {(enabled ? "enabled" : "disabled")} for {node.Name}.");
+            ToastService.ShowSuccess("Recommendation dismissed.");
+            await LoadChannelOpenStatsAsync();
+        }
+        finally
+        {
+            _busy = false;
+        }
+    }
 
-            // A node with no budget is skipped outright by AutoRebalanceJob, so say so on the way in.
-            if (flag == RoutingFlag.Rebalance && enabled && (node.RebalanceBudgetSats ?? 0) <= 0)
+    private async Task ToggleNodeGate(RoutingFlag flag, bool enabled)
+    {
+        if (_busy || _selectedNode is null || GateOn(_selectedNode, flag) == enabled) return;
+        _busy = true;
+        try
+        {
+            var node = _selectedNode;
+            if (await PersistNodeChange(
+                    () => SetGate(node, flag, enabled),
+                    () => SetGate(node, flag, !enabled),
+                    $"{GateName(flag)} {(enabled ? "enabled" : "disabled")}"))
             {
-                ToastService.ShowWarning("Heads up: this node has no rebalance fee budget, so the rebalancer will skip it. Set one on the Nodes page.");
-            }
+                // Disabling the node's fee gate purges its channels' fee-engine state (mirrors Nodes page).
+                // The rebalancer keeps no per-channel state, so there is nothing to purge for that gate.
+                if (flag == RoutingFlag.Fee)
+                {
+                    await FeeEngineStateService.PurgeNodeStateIfDisabled(node);
+                }
 
-            await ReloadEntitiesAsync();
+                ToastService.ShowSuccess($"{GateName(flag)} {(enabled ? "enabled" : "disabled")} for {node.Name}.");
+
+                // A node with no budget is skipped outright by AutoRebalanceJob, so say so on the way in.
+                if (flag == RoutingFlag.Rebalance && enabled && (node.RebalanceBudgetSats ?? 0) <= 0)
+                {
+                    ToastService.ShowWarning("Heads up: this node has no rebalance fee budget, so the rebalancer will skip it. Set one on the Nodes page.");
+                }
+
+                await ReloadEntitiesAsync();
+            }
         }
         finally
         {
