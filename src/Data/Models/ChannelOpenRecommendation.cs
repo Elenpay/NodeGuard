@@ -42,7 +42,11 @@ public enum ChannelOpenRecommendationStatus
     Dismissed = 2,
 
     /// Not reproduced by the latest run. Re-opened in place if the demand returns.
-    Expired = 3
+    Expired = 3,
+
+    /// Promoted, but the channel never opened — the request failed or was cancelled. Unlike a
+    /// dismissal this says nothing about the peer, so it leaves no cooldown behind.
+    Failed = 4
 }
 
     /// How a recommendation's channel size was derived.
