@@ -1,4 +1,7 @@
+using AutoMapper;
 using FluentAssertions;
+using Microsoft.Extensions.Logging.Abstractions;
+using NodeGuard.Automapper;
 using NodeGuard.Data.Models;
 using NodeGuard.Data.Repositories.Interfaces;
 using NodeGuard.Services;
@@ -110,5 +113,40 @@ public class NodeRepositoryTests
         var node = result.Should().ContainSingle().Subject;
         node.AutoChannelOpenWallet.Should().NotBeNull();
         node.AutoChannelOpenWallet!.Keys.Should().ContainSingle();
+    }
+
+    [Fact]
+    public async Task Update_NodeLoadedWithItsAutoChannelOpenWallet_PersistsWithoutTouchingTheWallet()
+    {
+        // Arrange
+        var dbContextFactory = SetupDbContextFactory();
+        await using (var context = await dbContextFactory.Object.CreateDbContextAsync())
+        {
+            context.Wallets.Add(new Wallet
+            {
+                Id = 10,
+                Name = "funding",
+                MofN = 1,
+                Keys = new List<Key> { new() { Name = "key", XPUB = "xpub" } }
+            });
+            context.Nodes.Add(AutoOpenNode("eligible"));
+            await context.SaveChangesAsync();
+        }
+
+        var mapper = new MapperConfiguration(config => config.AddProfile<MapperProfile>()).CreateMapper();
+        var sut = new NodeRepository(new Repository<Node>(NullLogger<Node>.Instance), null, dbContextFactory.Object, mapper);
+        var node = (await sut.GetAllWithAutoChannelOpenEnabled()).Single();
+        var budgetStart = DateTimeOffset.UtcNow;
+        node.AutoChannelOpenBudgetStartDatetime = budgetStart;
+
+        // Act
+        var (updated, _) = sut.Update(node);
+
+        // Assert
+        // Attaching the eagerly loaded wallet re-inserts its KeyWallet join rows, so the save fails
+        updated.Should().BeTrue();
+        await using var verify = await dbContextFactory.Object.CreateDbContextAsync();
+        var persisted = await verify.Nodes.AsNoTracking().SingleAsync(x => x.PubKey == "eligible");
+        persisted.AutoChannelOpenBudgetStartDatetime.Should().Be(budgetStart);
     }
 }
