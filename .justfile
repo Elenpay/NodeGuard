@@ -85,6 +85,9 @@ add-migration name:
    cd {{PROJECT_DIR}} && dotnet ef migrations add --context ApplicationDbContext {{name}}
 remove-migration:
     cd {{PROJECT_DIR}} && dotnet ef migrations remove --context ApplicationDbContext
+# Fails when the model has changes without a migration (CI runs it too); after a restack, regenerate the migration
+check-migrations:
+    cd {{PROJECT_DIR}} && dotnet ef migrations has-pending-model-changes --context ApplicationDbContext
 mine:
     while true; do docker exec polar-n1-backend1 bitcoin-cli -regtest -rpcuser=polaruser -rpcpassword=polarpass -generate 1; sleep 60; done
 

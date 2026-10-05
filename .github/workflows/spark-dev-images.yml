@@ -1,0 +1,134 @@
+name: Spark dev images
+
+# Builds the images of the local Spark regtest network (docker/spark, `spark` compose profile) from a
+# pinned commit of benthecarman/open-ssp: the Spark operator (Lightspark's spark, open-ssp fork), the
+# ldk-server Lightning node and the open-ssp SSP. Each is built natively for linux/amd64 and
+# linux/arm64, pushed by digest, merged into one multi-arch manifest and attested. Development and
+# CI only: none of these images is deployed. Run it by hand after changing OPEN_SSP_SHA, then pin the
+# printed digests in docker/spark/docker-compose.yml.
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  packages: write
+  id-token: write       # build provenance attestations
+  attestations: write
+
+env:
+  OPEN_SSP_REPOSITORY: benthecarman/open-ssp
+  OPEN_SSP_SHA: 89525792d65d7e0f7092e9f6d66b5082c00e48ca
+  IMAGE_PREFIX: ghcr.io/elenpay/nodeguard-spark-dev
+
+jobs:
+  build:
+    name: Build ${{ matrix.image }} (${{ matrix.arch }})
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 90
+    strategy:
+      fail-fast: false
+      matrix:
+        image: [ operator, ldk-server, ssp ]
+        arch: [ amd64, arm64 ]
+        include:
+          - arch: amd64
+            runner: ubuntu-24.04
+          - arch: arm64
+            runner: ubuntu-24.04-arm
+          - image: operator
+            context: vendor/spark
+            file: vendor/spark/Dockerfile
+            license: Apache-2.0
+          - image: ldk-server
+            context: vendor/ldk-server
+            file: vendor/ldk-server/Dockerfile
+            license: MIT OR Apache-2.0
+          - image: ssp
+            context: .
+            file: ssp.Dockerfile
+            license: MIT
+    steps:
+      - name: Check out open-ssp at the pinned commit
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ env.OPEN_SSP_REPOSITORY }}
+          ref: ${{ env.OPEN_SSP_SHA }}
+          submodules: recursive
+          persist-credentials: false
+
+      - uses: docker/setup-buildx-action@v3
+
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and push by digest
+        id: build
+        uses: docker/build-push-action@v6
+        with:
+          context: ${{ matrix.context }}
+          file: ${{ matrix.file }}
+          platforms: linux/${{ matrix.arch }}
+          labels: |
+            org.opencontainers.image.title=nodeguard-spark-dev-${{ matrix.image }}
+            org.opencontainers.image.description=NodeGuard local Spark regtest network (development and CI only)
+            org.opencontainers.image.source=https://github.com/${{ env.OPEN_SSP_REPOSITORY }}
+            org.opencontainers.image.revision=${{ env.OPEN_SSP_SHA }}
+            org.opencontainers.image.licenses=${{ matrix.license }}
+          outputs: type=image,name=${{ env.IMAGE_PREFIX }}-${{ matrix.image }},push-by-digest=true,name-canonical=true,push=true
+
+      - name: Record the digest
+        run: |
+          mkdir -p digests
+          touch "digests/${DIGEST#sha256:}"
+        env:
+          DIGEST: ${{ steps.build.outputs.digest }}
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: digests-${{ matrix.image }}-${{ matrix.arch }}
+          path: digests/*
+          if-no-files-found: error
+          retention-days: 1
+
+  merge:
+    name: Publish ${{ matrix.image }}
+    needs: build
+    runs-on: ubuntu-24.04
+    strategy:
+      matrix:
+        image: [ operator, ldk-server, ssp ]
+    env:
+      IMAGE: ghcr.io/elenpay/nodeguard-spark-dev-${{ matrix.image }}
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: digests-${{ matrix.image }}-*
+          path: digests
+          merge-multiple: true
+
+      - uses: docker/setup-buildx-action@v3
+
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Create the multi-arch manifest
+        id: manifest
+        working-directory: digests
+        run: |
+          TAG="open-ssp-${OPEN_SSP_SHA:0:12}"
+          docker buildx imagetools create -t "$IMAGE:$TAG" $(printf "$IMAGE@sha256:%s " *)
+          DIGEST=$(docker buildx imagetools inspect "$IMAGE:$TAG" --format '{{json .Manifest}}' | jq -r .digest)
+          echo "digest=$DIGEST" >> "$GITHUB_OUTPUT"
+          echo "Pin in docker/spark/docker-compose.yml: \`$IMAGE@$DIGEST\` (tag $TAG)" >> "$GITHUB_STEP_SUMMARY"
+
+      - uses: actions/attest-build-provenance@v2
+        with:
+          subject-name: ${{ env.IMAGE }}
+          subject-digest: ${{ steps.manifest.outputs.digest }}
+          push-to-registry: true
