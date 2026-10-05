@@ -2,6 +2,7 @@ using NodeGuard.Data.Models;
 using NodeGuard.Data.Repositories.Interfaces;
 using NodeGuard.Helpers;
 using NodeGuard.Services;
+using NodeGuard.Services.Spark;
 using Quartz;
 
 namespace NodeGuard.Jobs;
@@ -14,9 +15,11 @@ public class MonitorSwapsJob : IJob
     private readonly ISwapOutRepository _swapOutRepository;
     private readonly ISwapsService _swapsService;
     private readonly IAuditService _auditService;
+    private readonly SparkSettings _sparkSettings;
 
-    public MonitorSwapsJob(ILogger<MonitorSwapsJob> logger, ISchedulerFactory schedulerFactory, INodeRepository nodeRepository, ISwapOutRepository swapOutRepository, ISwapsService swapsService, IAuditService auditService)
+    public MonitorSwapsJob(ILogger<MonitorSwapsJob> logger, ISchedulerFactory schedulerFactory, INodeRepository nodeRepository, ISwapOutRepository swapOutRepository, ISwapsService swapsService, IAuditService auditService, SparkSettings sparkSettings)
     {
+        _sparkSettings = sparkSettings;
         _logger = logger;
         _schedulerFactory = schedulerFactory;
         _nodeRepository = nodeRepository;
@@ -51,7 +54,10 @@ public class MonitorSwapsJob : IJob
         {
             var loopNodes = await _nodeRepository.GetAllConfiguredByProvider(SwapProvider.Loop, null);
             var fortySwapNodes = await _nodeRepository.GetAllConfiguredByProvider(SwapProvider.FortySwap, null);
-            var managedNodes = loopNodes.Concat(fortySwapNodes).Distinct().ToList();
+            var sparkNodes = _sparkSettings.Enabled
+                ? await _nodeRepository.GetAllConfiguredByProvider(SwapProvider.Spark, null)
+                : new List<Node>();
+            var managedNodes = loopNodes.Concat(fortySwapNodes).Concat(sparkNodes).Where(n => n != null).DistinctBy(n => n.Id).ToList();
 
             var swaps = await _swapOutRepository.GetAllPending();
             foreach (var swap in swaps)
@@ -74,7 +80,10 @@ public class MonitorSwapsJob : IJob
                     SwapResponse? response;
                     try
                     {
-                        response = await _swapsService.GetSwapAsync(node, swap.Provider, swap.ProviderId);
+                        // Spark swaps have a second leg, the exit, that NodeGuard drives
+                        response = swap.Provider == SwapProvider.Spark
+                            ? await _swapsService.AdvanceSwapAsync(node, swap)
+                            : await _swapsService.GetSwapAsync(node, swap.Provider, swap.ProviderId);
                     }
                     catch (Exception ex)
                     {
@@ -107,6 +116,7 @@ public class MonitorSwapsJob : IJob
                         }
 
                         swap.Status = response.Status;
+                        swap.TxId = response.TxId ?? swap.TxId;
                         swap.ServiceFeeSats = response.ServerFee;
                         swap.LightningFeeSats = response.OffchainFee;
                         swap.OnChainFeeSats = response.OnchainFee;

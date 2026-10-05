@@ -32,6 +32,11 @@ public enum SwapProvider
    Loop,
    [Display(Name = "40swap")]
    FortySwap,
+   /// <summary>
+   /// NodeGuard's own Spark wallet: the node pays it over Lightning and it exits on-chain. Its value is
+   /// fixed: the index that allows one Spark swap in flight filters on it
+   /// </summary>
+   Spark = 2,
 }
 
 public enum SwapOutStatus
@@ -159,5 +164,11 @@ public class SwapOut : Entity
    /// (Loop's swap hash). Lets the payment be looked up on the node.
    /// </summary>
    public string? PaymentHash { get; set; }
+
+   /// <summary>
+   /// Spark swaps only: the identity public key of the Spark wallet that received the payment, which is the
+   /// only wallet that can complete the swap
+   /// </summary>
+   public string? SparkIdentity { get; set; }
 
 }

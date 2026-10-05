@@ -20,6 +20,7 @@
 using FluentAssertions;
 using NodeGuard.Data.Models;
 using NodeGuard.Data.Repositories.Interfaces;
+using NodeGuard.Services.Spark;
 using NSubstitute;
 
 namespace NodeGuard.Services;
@@ -29,9 +30,10 @@ public class SwapsServiceTests
     private readonly ILoopService _loop = Substitute.For<ILoopService>();
     private readonly IFortySwapService _fortySwap = Substitute.For<IFortySwapService>();
     private readonly ISwapOutRepository _swapOuts = Substitute.For<ISwapOutRepository>();
+    private readonly ISparkSwapService _spark = Substitute.For<ISparkSwapService>();
     private readonly Node _node = new() { Id = 7, Name = "alice", PubKey = "02aa", Endpoint = "alice:10009" };
 
-    private SwapsService Service() => new(_loop, _fortySwap, Substitute.For<ILightningService>(), _swapOuts);
+    private SwapsService Service() => new(_loop, _fortySwap, Substitute.For<ILightningService>(), _swapOuts, _spark);
 
     private static SwapOutRequest Request() => new() { Amount = 1_000_000, Address = "bcrt1qdestination" };
 
@@ -83,5 +85,17 @@ public class SwapsServiceTests
         response.Id.Should().Be("forty-1");
         saved.Should().BeFalse();
         error.Should().Be("database is down");
+    }
+
+    [Fact]
+    public async Task CreateSwapOut_LeavesSparkSwapsToTheSparkProvider_WhichRecordsThemBeforePaying()
+    {
+        var swapOut = new SwapOut { Provider = SwapProvider.Spark, NodeId = 7 };
+        var creation = new SwapOutCreation(new SwapResponse { Id = "req-1", HtlcAddress = string.Empty }, true, null);
+        _spark.CreateSwapOutAsync(_node, swapOut, Arg.Any<SwapOutRequest>(), Arg.Any<CancellationToken>()).Returns(creation);
+
+        (await Service().CreateSwapOutAsync(_node, swapOut, Request())).Should().BeSameAs(creation);
+
+        await _swapOuts.DidNotReceiveWithAnyArgs().AddAsync(default!);
     }
 }

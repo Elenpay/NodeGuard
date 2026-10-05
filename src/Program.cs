@@ -165,6 +165,7 @@ namespace NodeGuard
                 () => new ImmutableCredentials(Constants.AWS_ACCESS_KEY_ID, Constants.AWS_SECRET_ACCESS_KEY, null),
                 Constants.AWS_REGION));
             builder.Services.AddSingleton<ISparkWalletService, SparkWalletService>();
+            builder.Services.AddTransient<ISparkSwapService, SparkSwapService>();
             builder.Services.AddHostedService<SparkStartupService>();
             builder.Services.AddTransient<IRebalanceService, RebalanceService>();
             builder.Services.AddTransient<IRoutingEngineSnapshotService, RoutingEngineSnapshotService>();

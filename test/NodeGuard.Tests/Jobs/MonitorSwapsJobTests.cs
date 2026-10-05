@@ -22,6 +22,7 @@ using Grpc.Core;
 using NodeGuard.Data.Models;
 using NodeGuard.Data.Repositories.Interfaces;
 using NodeGuard.Services;
+using NodeGuard.Services.Spark;
 using Quartz;
 
 namespace NodeGuard.Jobs;
@@ -60,7 +61,8 @@ public class MonitorSwapsJobTests
             _nodeRepositoryMock.Object,
             _swapOutRepositoryMock.Object,
             _swapsServiceMock.Object,
-            _auditServiceMock.Object);
+            _auditServiceMock.Object,
+            SparkSettings.Disabled);
     }
 
     [Fact]
@@ -397,5 +399,67 @@ public class MonitorSwapsJobTests
                 pendingSwap.ProviderId,
                 It.IsAny<object?>()),
             Times.Once);
+    }
+
+    [Fact]
+    public async Task Execute_WithSparkEnabled_AdvancesSparkSwapsAndRecordsTheirPayout()
+    {
+        // Arrange: any LND node can pay into Spark, so the Spark node list is every node
+        var node = new Node { Id = 31, Endpoint = "localhost:10031", ChannelAdminMacaroon = "mac" };
+        var sparkSwap = new SwapOut
+        {
+            Id = 601,
+            NodeId = node.Id,
+            Provider = SwapProvider.Spark,
+            ProviderId = "req-601",
+            Status = SwapOutStatus.Pending,
+            SatsAmount = 500_000,
+            TxId = "exit-tx"
+        };
+        _nodeRepositoryMock.Setup(x => x.GetAllConfiguredByProvider(SwapProvider.Loop, null)).ReturnsAsync(new List<Node>());
+        _nodeRepositoryMock.Setup(x => x.GetAllConfiguredByProvider(SwapProvider.FortySwap, null)).ReturnsAsync(new List<Node>());
+        _nodeRepositoryMock.Setup(x => x.GetAllConfiguredByProvider(SwapProvider.Spark, null)).ReturnsAsync(new List<Node> { node });
+        _swapOutRepositoryMock.Setup(x => x.GetAllPending()).ReturnsAsync(new List<SwapOut> { sparkSwap });
+        _swapsServiceMock.Setup(x => x.AdvanceSwapAsync(node, sparkSwap, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new SwapResponse
+            {
+                Id = "req-601",
+                HtlcAddress = string.Empty,
+                Status = SwapOutStatus.Completed,
+                TxId = "bumped-exit-tx",
+                ServerFee = 2_500,
+                OffchainFee = 12
+            });
+        _swapOutRepositoryMock.Setup(x => x.Update(It.IsAny<SwapOut>())).Returns((true, null));
+
+        var job = new MonitorSwapsJob(_loggerMock.Object, _schedulerFactoryMock.Object, _nodeRepositoryMock.Object,
+            _swapOutRepositoryMock.Object, _swapsServiceMock.Object, _auditServiceMock.Object, new SparkSettings { Enabled = true });
+
+        // Act
+        await job.Execute(_jobExecutionContextMock.Object);
+
+        // Assert
+        _swapsServiceMock.Verify(x => x.GetSwapAsync(It.IsAny<Node>(), SwapProvider.Spark, It.IsAny<string>(), It.IsAny<CancellationToken>()),
+            Times.Never);
+        _swapOutRepositoryMock.Verify(x => x.Update(It.Is<SwapOut>(s =>
+            s.Id == 601 &&
+            s.Status == SwapOutStatus.Completed &&
+            s.TxId == "bumped-exit-tx" &&
+            s.ServiceFeeSats == 2_500 &&
+            s.LightningFeeSats == 12)), Times.Once);
+    }
+
+    [Fact]
+    public async Task Execute_WithSparkDisabled_LeavesSparkSwapsAlone()
+    {
+        var sparkSwap = new SwapOut { Id = 602, NodeId = 31, Provider = SwapProvider.Spark, ProviderId = "req-602", Status = SwapOutStatus.Pending };
+        _nodeRepositoryMock.Setup(x => x.GetAllConfiguredByProvider(SwapProvider.Loop, null)).ReturnsAsync(new List<Node>());
+        _nodeRepositoryMock.Setup(x => x.GetAllConfiguredByProvider(SwapProvider.FortySwap, null)).ReturnsAsync(new List<Node>());
+        _swapOutRepositoryMock.Setup(x => x.GetAllPending()).ReturnsAsync(new List<SwapOut> { sparkSwap });
+
+        await _job.Execute(_jobExecutionContextMock.Object);
+
+        _nodeRepositoryMock.Verify(x => x.GetAllConfiguredByProvider(SwapProvider.Spark, It.IsAny<string?>()), Times.Never);
+        _swapsServiceMock.Verify(x => x.AdvanceSwapAsync(It.IsAny<Node>(), It.IsAny<SwapOut>(), It.IsAny<CancellationToken>()), Times.Never);
     }
 }
