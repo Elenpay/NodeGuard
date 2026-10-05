@@ -3,6 +3,7 @@ using System;
 using System.Collections.Generic;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using NodeGuard.Data;
 using NodeGuard.Helpers;
@@ -13,9 +14,11 @@ using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 namespace NodeGuard.Migrations
 {
     [DbContext(typeof(ApplicationDbContext))]
-    partial class ApplicationDbContextModelSnapshot : ModelSnapshot
+    [Migration("20261005114118_AddNodeSparkSwapWeight")]
+    partial class AddNodeSparkSwapWeight
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -1223,9 +1226,6 @@ namespace NodeGuard.Migrations
                     b.Property<string>("PaymentHash")
                         .HasColumnType("text");
 
-                    b.Property<long?>("PayoutSats")
-                        .HasColumnType("bigint");
-
                     b.Property<int>("Provider")
                         .HasColumnType("integer");
 
@@ -1239,15 +1239,6 @@ namespace NodeGuard.Migrations
                         .HasColumnType("bigint");
 
                     b.Property<string>("SparkIdentity")
-                        .HasColumnType("text");
-
-                    b.Property<string>("SparkLeafIds")
-                        .HasColumnType("text");
-
-                    b.Property<long?>("SparkReceivedSats")
-                        .HasColumnType("bigint");
-
-                    b.Property<string>("SparkTransferId")
                         .HasColumnType("text");
 
                     b.Property<int>("Status")
@@ -1269,6 +1260,10 @@ namespace NodeGuard.Migrations
                     b.HasIndex("NodeId");
 
                     b.HasIndex("UserRequestorId");
+
+                    b.HasIndex(new[] { "Provider" }, "IX_SwapOuts_SingleSparkSwapInFlight")
+                        .IsUnique()
+                        .HasFilter("\"Provider\" = 2 AND \"Status\" = 0");
 
                     b.ToTable("SwapOuts");
                 });
