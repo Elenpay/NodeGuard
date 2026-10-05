@@ -24,7 +24,7 @@ Current features of NodeGuard are the following:
 - Minimalistic in-browser wallet with [NodeGuard Companion](https://github.com/Elenpay/Nodeguards-Companion) to ease signing of transactions and wallet creation
 - In-browser notification systems for channel approvals
 - Two-factor authentication
-- Manual and automated Swap Outs
+- Manual and automated Swap Outs (Loop, 40swap and [Spark](docs/spark-swaps.md))
 
 # Contributing
 Check [Contributing.md](CONTRIBUTING.md)
@@ -81,7 +81,7 @@ dotnet tool install -g dotnet-ef
 
 ### Using docker compose
 
-1. If you want to run a lightweight version of the project use `docker compose --profile polar up -d` on your terminal. Add `--profile loop` and `--profile mempool` if you need to run them too
+1. If you want to run a lightweight version of the project use `docker compose --profile polar up -d` on your terminal. Add `--profile loop` and `--profile mempool` if you need to run them too, and `just spark-up` for the local Spark network ([docker/spark](docker/spark/README.md))
 
 ### Using polar
 
