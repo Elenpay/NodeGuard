@@ -293,7 +293,7 @@
 
             var response = await SwapsService.CreateSwapOutAsync(_selectedNode, _selectedProvider, swapRequest, ComponentCancellationToken);
 
-            var saved = SwapOutRepository.AddAsync(new SwapOut
+            var (saved, saveError) = await SwapOutRepository.AddAsync(new SwapOut
             {
                 Provider = _selectedProvider,
                 ProviderId = response.Id,
@@ -307,6 +307,34 @@
                 OnChainFeeSats = response.OnchainFee,
                 UserRequestorId = LoggedUser.Id,
             });
+
+            if (!saved)
+            {
+                // The provider already has the swap but NodeGuard will not track it: report its id so it
+                // can be reconciled by hand, and close the dialog so it is not created twice
+                Logger.LogError("Swap {ProviderId} was created with {Provider} but could not be saved: {Error}",
+                    response.Id, _selectedProvider, saveError);
+                await AuditService.LogAsync(
+                    AuditActionType.SwapOutInitiated,
+                    AuditEventType.Failure,
+                    AuditObjectType.SwapOut,
+                    response.Id,
+                    new
+                    {
+                        NodeId = _selectedNode.Id,
+                        Provider = _selectedProvider.ToString(),
+                        AmountSats = response.Amount,
+                        DestinationWalletId = _selectedWallet.Id,
+                        ProviderId = response.Id,
+                        IsManual = true,
+                        Error = saveError
+                    });
+                ToastService.ShowError($"Swap {response.Id} was created with the provider but could not be saved: {saveError}");
+
+                await _confirmationModal.CloseModal();
+                await _modalRef.Hide();
+                return;
+            }
 
             // Audit successful manual swap out creation
             await AuditService.LogAsync(
