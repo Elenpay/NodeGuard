@@ -81,6 +81,7 @@ public record ForwardingHtlcFailure(
     DateTimeOffset EventTimestamp,
     ulong? OutgoingAmountMsat,
     long? RoutingFeePpm,
+    long? FeeMsat,
     string? OutgoingPeerAlias);
 
 public enum HtlcEventType

@@ -112,7 +112,7 @@ public class ForwardingHtlcEventRepositoryTests
         int failureDetail = (int)Routerrpc.FailureDetail.InsufficientBalance,
         HtlcEventType eventType = HtlcEventType.Forward,
         HtlcEventCase eventCase = HtlcEventCase.LinkFailEvent,
-        ulong outgoingAmt = 0, long routingFeePpm = 0, string? outgoingAlias = null,
+        ulong outgoingAmt = 0, long routingFeePpm = 0, long? feeMsat = null, string? outgoingAlias = null,
         ulong inHtlc = 0, ulong outHtlc = 0)
         => new()
         {
@@ -128,6 +128,7 @@ public class ForwardingHtlcEventRepositoryTests
             FailureDetail = failureDetail,
             OutgoingAmountMsat = outgoingAmt,
             RoutingFeePpm = routingFeePpm,
+            FeeMsat = feeMsat,
             OutgoingPeerAlias = outgoingAlias,
         };
 
@@ -188,14 +189,14 @@ public class ForwardingHtlcEventRepositoryTests
         var ts = now.AddHours(-2);
 
         seed.ForwardingHtlcEvents.Add(Failure(Node, 900, Chan, ts,
-            outgoingAmt: 1_500_000, routingFeePpm: 250, outgoingAlias: "acinq", inHtlc: 1, outHtlc: 1));
+            outgoingAmt: 1_500_000, routingFeePpm: 250, feeMsat: 1_375, outgoingAlias: "acinq", inHtlc: 1, outHtlc: 1));
         await seed.SaveChangesAsync();
 
         var result = await Sut(factory).GetInsufficientBalanceFailures(Node, now.AddDays(-1));
 
-        // Capacity and missed fee are derived from these five fields alone, so a dropped column would
+        // Capacity and missed fee are derived from these six fields alone, so a dropped column would
         // silently size every recommendation wrong rather than fail.
         result.Should().ContainSingle().Which.Should().Be(
-            new ForwardingHtlcFailure(Chan, ts, 1_500_000, 250, "acinq"));
+            new ForwardingHtlcFailure(Chan, ts, 1_500_000, 250, 1_375, "acinq"));
     }
 }

@@ -46,7 +46,7 @@ public class AutoChannelOpenJobTests
 
     /// <summary>
     /// The fee gate wants ~1.1 BTC of refused volume at 900 ppm, so the arranged demand is large on
-    /// purpose. Three bursts of this clear it with margin.
+    /// purpose. MIN_BURSTS bursts of this clear it with margin.
     /// </summary>
     private const long BurstSats = 50_000_000;
 
@@ -129,21 +129,15 @@ public class AutoChannelOpenJobTests
             .ReturnsAsync(committedSats);
 
         var now = DateTimeOffset.UtcNow;
-        var failures = new List<ForwardingHtlcFailure>
-        {
-            new(ChanId, now.AddMinutes(-30), BurstMsat, 900, "peerAlias"),
-            new(ChanId, now.AddMinutes(-20), BurstMsat, 900, "peerAlias"),
-            new(ChanId, now.AddMinutes(-10), BurstMsat, 900, "peerAlias"),
-        };
+        // Exactly MIN_BURSTS bursts per peer, 10 minutes apart so none merge.
+        var failures = Enumerable.Range(1, Constants.AUTO_CHANNEL_OPEN_MIN_BURSTS)
+            .Select(i => new ForwardingHtlcFailure(ChanId, now.AddMinutes(-10 * i), BurstMsat, 900, null, "peerAlias"))
+            .ToList();
 
         if (secondPeer)
         {
-            failures.AddRange(new ForwardingHtlcFailure[]
-            {
-                new(SecondChanId, now.AddMinutes(-31), BurstMsat, 900, "peer2Alias"),
-                new(SecondChanId, now.AddMinutes(-21), BurstMsat, 900, "peer2Alias"),
-                new(SecondChanId, now.AddMinutes(-11), BurstMsat, 900, "peer2Alias"),
-            });
+            failures.AddRange(Enumerable.Range(1, Constants.AUTO_CHANNEL_OPEN_MIN_BURSTS)
+                .Select(i => new ForwardingHtlcFailure(SecondChanId, now.AddMinutes(-10 * i - 1), BurstMsat, 900, null, "peer2Alias")));
         }
         _forwardingHtlcEventRepository
             .Setup(x => x.GetInsufficientBalanceFailures(NodePubKey, It.IsAny<DateTimeOffset>()))

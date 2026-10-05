@@ -32,7 +32,8 @@ public record PeerDemandFailure(
     ulong OutgoingChannelId,
     DateTimeOffset EventTimestamp,
     ulong? OutgoingAmountMsat,
-    long? RoutingFeePpm);
+    long? RoutingFeePpm,
+    long? FeeMsat);
 
 public record PeerDemandContext(
     string PeerPubKey,
@@ -239,14 +240,19 @@ public static class ChannelOpenInitiatorService
         return groups.Select(g =>
         {
             // Distinct amounts only: identical retries collapse, genuine MPP shards survive.
-            var sizeMsat = g.Select(x => x.OutgoingAmountMsat ?? 0)
-                .Distinct()
-                .Aggregate(0UL, (acc, x) => acc + x);
+            var byAmount = g.GroupBy(x => x.OutgoingAmountMsat ?? 0).ToList();
+            var sizeMsat = byAmount.Aggregate(0UL, (acc, x) => acc + x.Key);
 
             var ppm = (ulong)Math.Max(0, g.Max(x => x.RoutingFeePpm ?? fallbackPpm ?? 0));
 
+            // Prefer the fee the sender actually offered (base + rate + inbound); estimate from ppm only when it's missing.
             // Multiply before dividing: dividing msat by 1e6 first truncates small payments to zero fee.
-            return new DemandBurst((long)(sizeMsat / 1000), (long)(sizeMsat * ppm / 1_000_000));
+            var missedFeeMsat = byAmount.Sum(a =>
+                a.Max(x => x.FeeMsat) is { } offered
+                    ? Math.Max(0, offered)
+                    : (long)(a.Key * ppm / 1_000_000));
+
+            return new DemandBurst((long)(sizeMsat / 1000), missedFeeMsat);
         }).ToList();
     }
 

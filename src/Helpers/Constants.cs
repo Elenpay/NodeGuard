@@ -410,8 +410,9 @@ public class Constants
     // tell two payments apart.
     public static int AUTO_CHANNEL_OPEN_BURST_GAP_SECONDS = 120;
 
-    // "Many payments, not one" threshold, in bursts.
-    public static int AUTO_CHANNEL_OPEN_MIN_BURSTS = 2;
+    // "Many payments, not one" threshold, in bursts. Prod peers past the fee gate sit at 78-249; 10
+    // drops the few-giant-payments cases (3-5 bursts) a channel couldn't serve anyway.
+    public static int AUTO_CHANNEL_OPEN_MIN_BURSTS = 10;
 
     // "Worth it" threshold. Tune together with TARGET_RUNWAY_DAYS: their ratio fixes the implied
     // channel size, and therefore the implied return on the capital locked.

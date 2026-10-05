@@ -115,6 +115,7 @@ public class ForwardingHtlcEventRepository : IForwardingHtlcEventRepository
                 x.EventTimestamp,
                 x.OutgoingAmountMsat,
                 x.RoutingFeePpm,
+                x.FeeMsat,
                 x.OutgoingPeerAlias))
             .ToListAsync();
     }

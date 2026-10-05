@@ -241,7 +241,8 @@ public class AutoChannelOpenJob : IJob
                 OutgoingChannelId: x.OutgoingChannelId,
                 EventTimestamp: x.EventTimestamp,
                 OutgoingAmountMsat: x.OutgoingAmountMsat,
-                RoutingFeePpm: x.RoutingFeePpm))
+                RoutingFeePpm: x.RoutingFeePpm,
+                FeeMsat: x.FeeMsat))
             .ToLookup(x => x.PeerPubKey);
 
         foreach (var group in failuresByPeer)

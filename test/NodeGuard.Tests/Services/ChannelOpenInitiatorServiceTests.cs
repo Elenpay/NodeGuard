@@ -59,8 +59,8 @@ public class ChannelOpenInitiatorServiceTests
     private const string PEER = "03ab";
 
     private static PeerDemandFailure Fail(
-        ulong outChan, int secondsFromStart, long amountSats, long ppm = 900, string peer = PEER)
-        => new(peer, outChan, T0.AddSeconds(secondsFromStart), (ulong)(amountSats * 1000), ppm);
+        ulong outChan, int secondsFromStart, long amountSats, long ppm = 900, string peer = PEER, long? feeMsat = null)
+        => new(peer, outChan, T0.AddSeconds(secondsFromStart), (ulong)(amountSats * 1000), ppm, feeMsat);
 
     private static PeerDemandContext Context(
         string peer = PEER,
@@ -146,11 +146,53 @@ public class ChannelOpenInitiatorServiceTests
     [Fact]
     public void CollapseBursts_NoPpmOnEvent_FallsBackToChannelPolicy()
     {
-        var rows = new[] { new PeerDemandFailure(PEER, 1, T0, 1_000_000_000, null) };
+        var rows = new[] { new PeerDemandFailure(PEER, 1, T0, 1_000_000_000, null, null) };
 
         var bursts = ChannelOpenInitiatorService.CollapseBursts(rows, 120, fallbackPpm: 500);
 
         bursts[0].MissedFeeMsat.Should().Be(500_000);
+    }
+
+    [Fact]
+    public void CollapseBursts_OfferedFeeOnEvent_WinsOverPpmEstimate()
+    {
+        // 1M sats at 900 ppm would estimate 900,000 msat; the sender actually offered base fee on top.
+        var rows = new[] { Fail(1, 0, 1_000_000, ppm: 900, feeMsat: 901_000) };
+
+        var bursts = ChannelOpenInitiatorService.CollapseBursts(rows, 120, null);
+
+        bursts[0].MissedFeeMsat.Should().Be(901_000);
+    }
+
+    [Fact]
+    public void CollapseBursts_OfferedFee_CountedOncePerDistinctAmount()
+    {
+        // Identical retries carry the same fee and must not multiply it; a distinct shard adds its own.
+        var rows = new[]
+        {
+            Fail(1, 0, 500_000, feeMsat: 451_000),
+            Fail(1, 2, 500_000, feeMsat: 451_000),
+            Fail(1, 4, 300_000, feeMsat: 271_000)
+        };
+
+        var bursts = ChannelOpenInitiatorService.CollapseBursts(rows, 120, null);
+
+        bursts.Should().ContainSingle();
+        bursts[0].MissedFeeMsat.Should().Be(722_000);
+    }
+
+    [Fact]
+    public void CollapseBursts_MixedOfferedAndMissingFee_FallsBackPerAmount()
+    {
+        var rows = new[]
+        {
+            Fail(1, 0, 500_000, ppm: 900, feeMsat: 451_000),
+            Fail(1, 1, 200_000, ppm: 900)
+        };
+
+        var bursts = ChannelOpenInitiatorService.CollapseBursts(rows, 120, null);
+
+        bursts[0].MissedFeeMsat.Should().Be(451_000 + 180_000);
     }
 
     // ── Gate ───────────────────────────────────────────────────────────────────────────
