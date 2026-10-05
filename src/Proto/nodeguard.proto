@@ -130,6 +130,18 @@ service NodeGuardService {
   Sets the fee policy for a channel
    */
   rpc SetChannelFeePolicy(SetChannelFeePolicyRequest) returns (SetChannelFeePolicyResponse);
+
+  /*
+  Requests a manual swap-out of a node's Lightning liquidity to a NodeGuard wallet, as the New Swap dialog does.
+  An unused deposit address of the wallet is reserved for the payout. With reference_id, a repeated request
+  returns the swap already created for it instead of creating another one.
+  */
+  rpc RequestSwapOut(RequestSwapOutRequest) returns (RequestSwapOutResponse);
+
+  /*
+  Returns a swap-out by its id or by the reference_id it was requested with
+  */
+  rpc GetSwapOut(GetSwapOutRequest) returns (GetSwapOutResponse);
 }
 
 message GetLiquidityRulesRequest {
@@ -662,4 +674,60 @@ message GetRebalancesRequest {
 message GetRebalancesResponse {
   repeated GetRebalanceResponse rebalances = 1;
   int32 total_count = 2;
+}
+
+enum SWAP_PROVIDER {
+  SWAP_PROVIDER_LOOP = 0;
+  SWAP_PROVIDER_FORTY_SWAP = 1;
+  SWAP_PROVIDER_SPARK = 2;
+}
+
+enum SWAP_OUT_STATUS {
+  SWAP_OUT_PENDING = 0;
+  SWAP_OUT_COMPLETED = 1;
+  SWAP_OUT_FAILED = 2;
+}
+
+message RequestSwapOutRequest {
+  int32 node_id = 1;
+  SWAP_PROVIDER provider = 2;
+  int64 amount_sats = 3;
+  // Destination wallet: an unused deposit address is reserved from it
+  int32 wallet_id = 4;
+  // Defaults to the node's max swap routing fee ratio
+  optional double max_routing_fees_percent = 5;
+  // The caller's own id for the swap, unique
+  optional string reference_id = 6;
+}
+
+message RequestSwapOutResponse {
+  int32 swap_id = 1;
+  string provider_id = 2;
+  SWAP_OUT_STATUS status = 3;
+  string destination_address = 4;
+  optional string error = 5;
+}
+
+message GetSwapOutRequest {
+  oneof swap {
+    int32 swap_id = 1;
+    string reference_id = 2;
+  }
+}
+
+message GetSwapOutResponse {
+  int32 swap_id = 1;
+  SWAP_PROVIDER provider = 2;
+  string provider_id = 3;
+  SWAP_OUT_STATUS status = 4;
+  int64 amount_sats = 5;
+  int64 service_fee_sats = 6;
+  int64 lightning_fee_sats = 7;
+  int64 onchain_fee_sats = 8;
+  optional string tx_id = 9;
+  optional string error = 10;
+  optional int32 destination_wallet_id = 11;
+  optional string destination_address = 12;
+  optional string payment_hash = 13;
+  optional string reference_id = 14;
 }

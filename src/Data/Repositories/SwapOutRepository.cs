@@ -47,6 +47,16 @@ namespace NodeGuard.Data.Repositories
          return swap;
       }
 
+      public async Task<SwapOut?> GetByReferenceId(string referenceId)
+      {
+         await using var context = await _dbContextFactory.CreateDbContextAsync();
+
+         return await context.SwapOuts
+            .Include(s => s.DestinationWallet)
+            .Include(s => s.UserRequestor)
+            .SingleOrDefaultAsync(s => s.ReferenceId == referenceId);
+      }
+
       public async Task<List<SwapOut>> GetByIds(List<int> ids)
       {
          await using var context = await _dbContextFactory.CreateDbContextAsync();

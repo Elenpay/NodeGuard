@@ -195,4 +195,10 @@ public class SwapOut : Entity
    /// </summary>
    public long? PayoutSats { get; set; }
 
+   /// <summary>
+   /// The caller's own id for a swap requested through the API, unique: a repeated request with it returns
+   /// this swap instead of creating another
+   /// </summary>
+   public string? ReferenceId { get; set; }
+
 }

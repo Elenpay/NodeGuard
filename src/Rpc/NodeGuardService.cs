@@ -5,6 +5,7 @@ using NodeGuard.Data.Repositories.Interfaces;
 using NodeGuard.Helpers;
 using NodeGuard.Jobs;
 using NodeGuard.Services;
+using NodeGuard.Services.Spark;
 using Grpc.Core;
 using NBitcoin;
 using NBXplorer.DerivationStrategy;
@@ -68,6 +69,10 @@ public interface INodeGuardService
     Task<GetRebalancesResponse> GetRebalances(GetRebalancesRequest request, ServerCallContext context);
 
     Task<SetChannelFeePolicyResponse> SetChannelFeePolicy(SetChannelFeePolicyRequest request, ServerCallContext context);
+
+    Task<RequestSwapOutResponse> RequestSwapOut(RequestSwapOutRequest request, ServerCallContext context);
+
+    Task<GetSwapOutResponse> GetSwapOut(GetSwapOutRequest request, ServerCallContext context);
 }
 
 /// <summary>
@@ -95,6 +100,9 @@ public class NodeGuardService : Nodeguard.NodeGuardService.NodeGuardServiceBase,
     private readonly IRebalanceService _rebalanceService;
     private readonly IRebalanceRepository _rebalanceRepository;
     private readonly IWithdrawalRequestService _withdrawalRequestService;
+    private readonly ISwapsService _swapsService;
+    private readonly ISwapOutRepository _swapOutRepository;
+    private readonly IAuditService _auditService;
 
     public NodeGuardService(ILogger<NodeGuardService> logger,
         ILiquidityRuleRepository liquidityRuleRepository,
@@ -114,9 +122,15 @@ public class NodeGuardService : Nodeguard.NodeGuardService.NodeGuardServiceBase,
         IHtlcMonitoringScheduler htlcMonitoringScheduler,
         IRebalanceService rebalanceService,
         IRebalanceRepository rebalanceRepository,
-        IWithdrawalRequestService withdrawalRequestService
+        IWithdrawalRequestService withdrawalRequestService,
+        ISwapsService swapsService,
+        ISwapOutRepository swapOutRepository,
+        IAuditService auditService
     )
     {
+        _swapsService = swapsService;
+        _swapOutRepository = swapOutRepository;
+        _auditService = auditService;
         _logger = logger;
         _liquidityRuleRepository = liquidityRuleRepository;
         _walletRepository = walletRepository;
@@ -1605,5 +1619,172 @@ public class NodeGuardService : Nodeguard.NodeGuardService.NodeGuardServiceBase,
         }
 
         return new SetChannelFeePolicyResponse();
+    }
+
+    public override async Task<RequestSwapOutResponse> RequestSwapOut(RequestSwapOutRequest request, ServerCallContext context)
+    {
+        var provider = (SwapProvider)(int)request.Provider;
+        if (!Enum.IsDefined(provider))
+            throw new RpcException(new Status(StatusCode.InvalidArgument, $"Unknown swap provider {(int)request.Provider}"));
+
+        if (request.AmountSats <= 0)
+            throw new RpcException(new Status(StatusCode.InvalidArgument, "amount_sats must be > 0"));
+
+        if (request.HasMaxRoutingFeesPercent && request.MaxRoutingFeesPercent is <= 0 or > 100)
+            throw new RpcException(new Status(StatusCode.InvalidArgument, "max_routing_fees_percent must be > 0 and <= 100"));
+
+        string? referenceId = null;
+        if (request.HasReferenceId)
+        {
+            if (string.IsNullOrWhiteSpace(request.ReferenceId))
+                throw new RpcException(new Status(StatusCode.InvalidArgument, "reference_id must not be empty"));
+
+            referenceId = request.ReferenceId;
+            var existing = await _swapOutRepository.GetByReferenceId(referenceId);
+            if (existing != null)
+            {
+                if (existing.NodeId != request.NodeId || existing.Provider != provider || existing.SatsAmount != request.AmountSats ||
+                    existing.DestinationWalletId != request.WalletId)
+                {
+                    throw new RpcException(new Status(StatusCode.AlreadyExists,
+                        $"reference_id {referenceId} was already used for swap {existing.Id}, with other parameters"));
+                }
+
+                return ToRequestSwapOutResponse(existing);
+            }
+        }
+
+        var node = (await _nodeRepository.GetAllConfiguredByProvider(provider)).FirstOrDefault(n => n.Id == request.NodeId);
+        if (node == null)
+            throw new RpcException(new Status(StatusCode.FailedPrecondition,
+                $"Node {request.NodeId} is not a managed node configured for {provider.GetDisplayName()}"));
+
+        var wallet = await _walletRepository.GetById(request.WalletId);
+        if (wallet == null)
+            throw new RpcException(new Status(StatusCode.NotFound, $"Wallet {request.WalletId} not found"));
+
+        var derivationStrategy = wallet.GetDerivationStrategy();
+        if (derivationStrategy == null)
+            throw new RpcException(new Status(StatusCode.FailedPrecondition, $"Wallet {wallet.Id} has no derivation strategy"));
+
+        var address = await _nbXplorerService.GetUnusedAsync(derivationStrategy, DerivationFeature.Deposit, 0, true,
+            context.CancellationToken);
+        if (address == null)
+            throw new RpcException(new Status(StatusCode.Internal, $"Could not reserve a deposit address of wallet {wallet.Id}"));
+
+        var swapRequest = new SwapOutRequest
+        {
+            Amount = request.AmountSats,
+            Address = address.Address.ToString(),
+            MaxRoutingFeesPercent = request.HasMaxRoutingFeesPercent
+                ? (decimal)request.MaxRoutingFeesPercent
+                : node.MaxSwapRoutingFeeRatio * 100,
+            MaxServiceFeesPercent = Constants.SWAP_MAX_SERVICE_FEES_PERCENT,
+            MaxMinerFees = Constants.SWAP_MAX_MINER_FEES_SATS,
+            SweepConfTarget = Constants.SWEEP_CONF_TARGET,
+            PrepayAmtSat = Constants.SWAP_PREPAY_AMOUNT_SATS,
+        };
+
+        var swapOut = new SwapOut
+        {
+            Provider = provider,
+            NodeId = node.Id,
+            DestinationWalletId = wallet.Id,
+            SatsAmount = request.AmountSats,
+            IsManual = true,
+            ReferenceId = referenceId,
+        };
+
+        SwapOutCreation creation;
+        try
+        {
+            creation = await _swapsService.CreateSwapOutAsync(node, swapOut, swapRequest, context.CancellationToken);
+        }
+        catch (Exception e) when (e is not RpcException and not OperationCanceledException)
+        {
+            _logger.LogError(e, "Swap-out of {Amount} sats from node {NodeId} with {Provider} failed", request.AmountSats, node.Id, provider);
+            var code = e switch
+            {
+                SparkUnavailableException => StatusCode.Unavailable,
+                ArgumentException => StatusCode.InvalidArgument,
+                InvalidOperationException => StatusCode.FailedPrecondition,
+                _ => StatusCode.Internal
+            };
+            throw new RpcException(new Status(code, e.Message));
+        }
+
+        var auditDetails = new
+        {
+            NodeId = node.Id,
+            NodeName = node.Name,
+            Provider = provider.ToString(),
+            AmountSats = request.AmountSats,
+            DestinationWalletId = wallet.Id,
+            DestinationAddress = swapRequest.Address,
+            ProviderId = creation.Response.Id,
+            ReferenceId = referenceId,
+            IsManual = true,
+            Source = "gRPC",
+            Error = creation.SaveError
+        };
+
+        if (!creation.Saved)
+        {
+            await _auditService.LogAsync(AuditActionType.SwapOutInitiated, AuditEventType.Failure, AuditObjectType.SwapOut,
+                creation.Response.Id, auditDetails);
+            throw new RpcException(new Status(StatusCode.Internal,
+                $"Swap {creation.Response.Id} was created with {provider.GetDisplayName()} but could not be saved: {creation.SaveError}"));
+        }
+
+        await _auditService.LogAsync(AuditActionType.SwapOutInitiated, AuditEventType.Success, AuditObjectType.SwapOut,
+            creation.Response.Id, auditDetails);
+
+        return ToRequestSwapOutResponse(swapOut);
+    }
+
+    public override async Task<GetSwapOutResponse> GetSwapOut(GetSwapOutRequest request, ServerCallContext context)
+    {
+        var swap = request.SwapCase switch
+        {
+            GetSwapOutRequest.SwapOneofCase.SwapId => await _swapOutRepository.GetById(request.SwapId),
+            GetSwapOutRequest.SwapOneofCase.ReferenceId when !string.IsNullOrWhiteSpace(request.ReferenceId) =>
+                await _swapOutRepository.GetByReferenceId(request.ReferenceId),
+            _ => throw new RpcException(new Status(StatusCode.InvalidArgument, "swap_id or reference_id is required"))
+        };
+
+        if (swap == null)
+            throw new RpcException(new Status(StatusCode.NotFound, "Swap not found"));
+
+        var response = new GetSwapOutResponse
+        {
+            SwapId = swap.Id,
+            Provider = (SWAP_PROVIDER)(int)swap.Provider,
+            ProviderId = swap.ProviderId ?? string.Empty,
+            Status = (SWAP_OUT_STATUS)(int)swap.Status,
+            AmountSats = swap.SatsAmount,
+            ServiceFeeSats = swap.ServiceFeeSats ?? 0,
+            LightningFeeSats = swap.LightningFeeSats ?? 0,
+            OnchainFeeSats = swap.OnChainFeeSats ?? 0,
+        };
+        if (swap.TxId != null) response.TxId = swap.TxId;
+        if (swap.ErrorDetails != null) response.Error = swap.ErrorDetails;
+        if (swap.DestinationWalletId != null) response.DestinationWalletId = swap.DestinationWalletId.Value;
+        if (swap.DestinationAddress != null) response.DestinationAddress = swap.DestinationAddress;
+        if (swap.PaymentHash != null) response.PaymentHash = swap.PaymentHash;
+        if (swap.ReferenceId != null) response.ReferenceId = swap.ReferenceId;
+        return response;
+    }
+
+    private static RequestSwapOutResponse ToRequestSwapOutResponse(SwapOut swap)
+    {
+        var response = new RequestSwapOutResponse
+        {
+            SwapId = swap.Id,
+            ProviderId = swap.ProviderId ?? string.Empty,
+            Status = (SWAP_OUT_STATUS)(int)swap.Status,
+            DestinationAddress = swap.DestinationAddress ?? string.Empty,
+        };
+        if (swap.ErrorDetails != null) response.Error = swap.ErrorDetails;
+        return response;
     }
 }

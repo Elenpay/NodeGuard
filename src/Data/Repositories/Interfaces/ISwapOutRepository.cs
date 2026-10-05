@@ -25,6 +25,7 @@ namespace NodeGuard.Data.Repositories.Interfaces;
 public interface ISwapOutRepository
 {
    Task<SwapOut?> GetById(int id);
+   Task<SwapOut?> GetByReferenceId(string referenceId);
    Task<List<SwapOut>> GetByIds(List<int> ids);
    Task<(List<SwapOut> swaps, int totalCount)> GetPaginatedAsync(
       int pageNumber,
