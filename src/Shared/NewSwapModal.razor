@@ -2,6 +2,7 @@
 @using NBXplorer.DerivationStrategy
 @using NBitcoin
 @using Blazorise
+@using NodeGuard.Services.Spark
 <Modal @ref="_modalRef">
     <ModalContent Centered>
         <ModalHeader>
@@ -14,7 +15,7 @@
                     <FieldLabel>Swap provider</FieldLabel>
                     <div class="d-flex">
                         <Select TValue="SwapProvider" @bind-Value="_selectedProvider" SelectedValueChanged="OnProviderChanged">
-                            @foreach (var provider in Enum.GetValues<SwapProvider>().Where(p => p != SwapProvider.Spark))
+                            @foreach (var provider in AvailableProviders)
                             {
                                 <SelectItem Value="@provider">@provider.GetDisplayName()</SelectItem>
                             }
@@ -207,6 +208,8 @@
 @inject IPriceConversionService PriceConversionService
 @inject ILogger<NewSwapModal> Logger
 @inject IAuditService AuditService
+@inject ISparkWalletService SparkWallet
+@inject SparkSettings SparkSettings
 @inherits CancellableComponent
 @code {
     [CascadingParameter] public required ApplicationUser LoggedUser { get; set; }
@@ -351,7 +354,15 @@
                     IsManual = true
                 });
 
-            ToastService.ShowSuccess("Swap created successfully");
+            if (response.Status == SwapOutStatus.Failed)
+            {
+                // Spark pays while creating the swap: a failed payment fails the swap right away
+                ToastService.ShowError($"The swap failed: {response.ErrorMessage}");
+            }
+            else
+            {
+                ToastService.ShowSuccess("Swap created successfully");
+            }
 
             await _confirmationModal.CloseModal();
             await _modalRef.Hide();
@@ -371,6 +382,12 @@
         {
             Logger.LogError(ex, "Error creating swap");
             ToastService.ShowError(ex.Status.Detail);
+        }
+        catch (Exception ex) when (ex is SparkUnavailableException or InvalidOperationException)
+        {
+            // Spark refusing the swap (unavailable, or another Spark swap in flight): nothing was paid
+            Logger.LogWarning(ex, "Swap refused");
+            ToastService.ShowError(ex.Message);
         }
         catch (Exception ex)
         {
@@ -399,6 +416,12 @@
         
         ArgumentNullException.ThrowIfNull(_selectedWallet, nameof(_selectedWallet));
         ArgumentNullException.ThrowIfNull(_selectedNode, nameof(_selectedNode));
+
+        if (_selectedProvider == SwapProvider.Spark)
+        {
+            await ShowSparkConfirmationModal(middleChunkMessage);
+            return;
+        }
 
         var showErrorModal = async (string errorMessage) => {
             _confirmationModalBody = "Quote was not successful because of the following error: <br><br>" +
@@ -479,6 +502,33 @@
         }
     }
 
+    /// <summary>
+    /// Spark has no up-front quote: the SSP quotes its exit fee for the leaves the payment brings in, so the
+    /// confirmation shows the caps the swap runs under instead
+    /// </summary>
+    private async Task ShowSparkConfirmationModal(string middleChunkMessage)
+    {
+        var maxRoutingFee = _maxRoutingFeesPercent * _amountBtc / 100;
+        var maxExitFee = new Money(SparkSettings.MaxExitFeeSats).ToUnit(MoneyUnit.BTC);
+
+        _confirmationModalBody = "You are about to create a new swap with the following details:<br><br>" +
+            middleChunkMessage +
+            "<strong>- Maximum fees:</strong><br>" +
+            "<ul>" +
+            $"<li><strong>Off-Chain Fee:</strong> up to {FormatBtcWithUsd(maxRoutingFee)}</li>" +
+            $"<li><strong>Exit fee</strong> (the SSP's, including the miner fee): up to {FormatBtcWithUsd(maxExitFee)}</li>" +
+            "</ul><br>" +
+            $"The node pays NodeGuard's Spark wallet ({SparkWallet.Status.IdentityPublicKey}) now; the wallet then exits " +
+            "on-chain to the destination wallet. Only one Spark swap runs at a time.<br><br>" +
+            "Please confirm that you want to proceed.";
+
+        await _confirmationModal.ShowModal(new Dictionary<string, object>
+        {
+            { "HtlcSweepFeeSat", 0L },
+            { "PrepayAmtSat", 0L }
+        });
+    }
+
     private async Task CloseConfirmationModal()
     {
         await _confirmationModal.CloseModal();
@@ -498,8 +548,8 @@
         _selectedNode = null; // Reset selected node when provider changes
         _amountInNodeBtc = null;
         
-        // Close advanced options and reset advanced parameters when switching to 40swap
-        if (provider == SwapProvider.FortySwap)
+        // Close advanced options and reset advanced parameters when switching away from Loop (they are Loop's)
+        if (provider != SwapProvider.Loop)
         {
             _showAdvancedOptions = false;
         }
@@ -514,9 +564,16 @@
         {
             SwapProvider.Loop => await ToastOnException.ExecuteAsync(() => NodeRepository.GetAllConfiguredByProvider(SwapProvider.Loop, LoggedUser.Id), Logger, ToastService, "Unexpected error loading Loop nodes, please try again later", new()),
             SwapProvider.FortySwap => await ToastOnException.ExecuteAsync(() => NodeRepository.GetAllConfiguredByProvider(SwapProvider.FortySwap, LoggedUser.Id), Logger, ToastService, "Unexpected error loading 40swap nodes, please try again later", new()),
+            SwapProvider.Spark => await ToastOnException.ExecuteAsync(() => NodeRepository.GetAllConfiguredByProvider(SwapProvider.Spark, LoggedUser.Id), Logger, ToastService, "Unexpected error loading nodes, please try again later", new()),
             _ => new List<Node>()
         };
     }
+
+    /// <summary>
+    /// Spark is offered only while NodeGuard's Spark wallet is ready (its signer checked out)
+    /// </summary>
+    private IEnumerable<SwapProvider> AvailableProviders =>
+        Enum.GetValues<SwapProvider>().Where(p => p != SwapProvider.Spark || SparkWallet.Status.IsReady);
     
     private async Task OnWalletChanged(int walletId)
     {
