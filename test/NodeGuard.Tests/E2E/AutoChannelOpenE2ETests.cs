@@ -40,8 +40,9 @@ public class AutoChannelOpenE2ETests : RoutingEngineE2EBase
 {
     // Every refused payment is this size, so MaxBurstPaymentSats and MissedSats are exact
     private const long RefusedPaymentSats = 1_000_000;
-    // AUTO_CHANNEL_OPEN_MIN_BURSTS: the fewest that still reads as repeated demand
-    private const int Bursts = 2;
+    // The fewest that still reads as repeated demand; Constants reads AUTO_CHANNEL_OPEN_MIN_BURSTS from the
+    // e2e-runner env, so this tracks docker/e2e/docker-compose.yml
+    private static readonly int Bursts = Constants.AUTO_CHANNEL_OPEN_MIN_BURSTS;
 
     // Identical retries inside a burst: the planner must collapse them, so FailedAttempts != Bursts
     private const int AttemptsPerBurst = 2;

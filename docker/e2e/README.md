@@ -77,8 +77,8 @@ tests (`DustUtxoWithdrawalE2ETests`, `WithdrawalRbfBumpE2ETests`, `GetNewWalletA
   refuses them with `INSUFFICIENT_BALANCE`. Only once those rows are recorded does it switch bob to `Auto`
   on the hot wallet, so `AutoChannelOpenJob` (1 min in dev) never plans off a partial set. It asserts the
   recommendation's evidence and sizing, the promoted request, and the new Bob→Carol channel opening at
-  bob's inherited fee. It reads `AUTO_CHANNEL_OPEN_BURST_GAP_SECONDS` / `AUTO_CHANNEL_OPEN_MIN_MISSED_FEE_MSAT`
-  from its own env, so **keep those in sync between the `nodeguard` and `e2e-runner` services**.
+  bob's inherited fee. It reads `AUTO_CHANNEL_OPEN_BURST_GAP_SECONDS` / `AUTO_CHANNEL_OPEN_MIN_BURSTS` /
+  `AUTO_CHANNEL_OPEN_MIN_MISSED_FEE_MSAT` from its own env, so **keep those in sync between the `nodeguard` and `e2e-runner` services**.
 - **RBF bump scenario** (`WithdrawalRbfBumpE2ETests`): `RequestWithdrawal` on the hot wallet, then `BumpWithdrawal`
   over gRPC, asserting bitcoind evicts the original for the higher-fee replacement, NodeGuard marks the original
   `WITHDRAWAL_BUMPED`, and the replacement settles once mined. It relies on `MONITOR_WITHDRAWALS_CRON` being fast on
