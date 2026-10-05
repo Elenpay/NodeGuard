@@ -260,30 +260,22 @@ public class AutoLiquidityManagementJob : IJob
                 SwapPublicationDeadlineMinutes = 30,
             };
 
-            var swapResponse = await _swapsService.CreateSwapOutAsync(
-                        node,
-                        selectedProvider,
-                        swapRequest,
-                        cancellationToken);
-
-            // Create SwapOut record
             var swapOut = new SwapOut
             {
                 NodeId = node.Id,
                 DestinationWalletId = node.FundsDestinationWalletId!.Value,
                 Provider = selectedProvider,
-                ProviderId = swapResponse.Id,
                 SatsAmount = swapAmount,
-                ServiceFeeSats = swapResponse.ServerFee,
-                OnChainFeeSats = swapResponse.OnchainFee,
-                LightningFeeSats = swapResponse.OffchainFee,
-                Status = swapResponse.Status,
                 IsManual = false, // Automatic swap
                 CreationDatetime = DateTimeOffset.UtcNow,
                 UpdateDatetime = DateTimeOffset.UtcNow,
             };
 
-            var (success, error) = await _swapOutRepository.AddAsync(swapOut);
+            var (swapResponse, success, error) = await _swapsService.CreateSwapOutAsync(
+                        node,
+                        swapOut,
+                        swapRequest,
+                        cancellationToken);
             if (!success)
             {
                 _logger.LogError("Failed to save swap out record for node {NodeName}: {Error}",

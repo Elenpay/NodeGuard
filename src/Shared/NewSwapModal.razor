@@ -201,7 +201,6 @@
 @inject IToastService ToastService
 @inject IWalletRepository WalletRepository
 @inject INodeRepository NodeRepository
-@inject ISwapOutRepository SwapOutRepository
 @inject INBXplorerService NBXplorerService
 @inject ILightningService LightningService
 @inject IBitcoinService BitcoinService
@@ -295,22 +294,15 @@
                 swapRequest.MaxMinerFees = _maxMinerFeesPercent * amount.Satoshi / 100;
             }
 
-            var response = await SwapsService.CreateSwapOutAsync(_selectedNode, _selectedProvider, swapRequest, ComponentCancellationToken);
-
-            var (saved, saveError) = await SwapOutRepository.AddAsync(new SwapOut
+            var (response, saved, saveError) = await SwapsService.CreateSwapOutAsync(_selectedNode, new SwapOut
             {
                 Provider = _selectedProvider,
-                ProviderId = response.Id,
-                Status = response.Status,
                 IsManual = true,
-                SatsAmount = response.Amount,
+                SatsAmount = amount.Satoshi,
                 DestinationWalletId = _selectedWallet.Id,
                 NodeId = _selectedNode.Id,
-                ServiceFeeSats = response.ServerFee,
-                LightningFeeSats = response.OffchainFee,
-                OnChainFeeSats = response.OnchainFee,
                 UserRequestorId = LoggedUser.Id,
-            });
+            }, swapRequest, ComponentCancellationToken);
 
             if (!saved)
             {

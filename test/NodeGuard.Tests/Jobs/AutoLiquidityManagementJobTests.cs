@@ -341,11 +341,8 @@ public class AutoLiquidityManagementJobTests
             Status = SwapOutStatus.Pending
         };
         _swapsServiceMock.Setup(x => x.CreateSwapOutAsync(
-            node, SwapProvider.Loop, It.IsAny<SwapOutRequest>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync(swapResponse);
-
-        _swapOutRepositoryMock.Setup(x => x.AddAsync(It.IsAny<SwapOut>()))
-            .ReturnsAsync((true, null));
+            node, It.Is<SwapOut>(s => s.Provider == SwapProvider.Loop), It.IsAny<SwapOutRequest>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new SwapOutCreation(swapResponse, true, null));
 
         // Act
         var result = await _autoLiquidityManagementJob.ManageNodeLiquidity(node, CancellationToken.None);
@@ -353,14 +350,81 @@ public class AutoLiquidityManagementJobTests
         // Assert
         result.Should().Be(ManageNodeLiquidityResult.Success);
 
-        // Verify swap was created with correct parameters
-        _swapOutRepositoryMock.Verify(x => x.AddAsync(It.Is<SwapOut>(s =>
+        // Verify swap was created and recorded with correct parameters
+        _swapsServiceMock.Verify(x => x.CreateSwapOutAsync(node, It.Is<SwapOut>(s =>
             s.NodeId == node.Id &&
             s.DestinationWalletId == wallet.Id &&
             s.Provider == SwapProvider.Loop &&
             s.SatsAmount == 25_000_000 &&
-            s.IsManual == false &&
-            s.Status == SwapOutStatus.Pending)), Times.Once);
+            s.IsManual == false),
+            It.Is<SwapOutRequest>(r => r.Address == keyPathInfo.Address.ToString() && r.Amount == 25_000_000),
+            It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    [Fact]
+    public async Task ManageNodeLiquidity_WhenTheSwapCannotBeRecorded_ReturnsError()
+    {
+        // Arrange - Perfect conditions for a swap
+        var node = CreateTestNode(
+            minSwapSats: 1_000_000,
+            maxSwapSats: 25_000_000,
+            maxSwapsInFlight: 5,
+            maxSwapFeeRatio: 0.01m,
+            minBalanceThresholdSats: 100_000_000,
+            swapBudgetSats: 50_000_000,
+            swapBudgetStartDatetime: DateTimeOffset.UtcNow.AddHours(-1));
+        var wallet = CreateTestWallet();
+
+        // Balance above threshold with 50M excess
+        var channelBalance = new ChannelBalanceResponse
+        {
+            LocalBalance = new Amount { Sat = 150_000_000 }
+        };
+        _lightningServiceMock.Setup(x => x.ChannelBalanceAsync(node))
+            .ReturnsAsync(channelBalance);
+
+        // No in-flight swaps
+        _swapOutRepositoryMock.Setup(x => x.GetInFlightSwapsByNode(node.Id))
+            .ReturnsAsync(new List<SwapOut>());
+
+        // No consumed budget yet
+        _swapOutRepositoryMock.Setup(x => x.GetConsumedFeesSince(node.Id, It.IsAny<DateTimeOffset>()))
+            .ReturnsAsync(new Money(0, MoneyUnit.Satoshi));
+
+        _walletRepositoryMock.Setup(x => x.GetById(node.FundsDestinationWalletId!.Value))
+            .ReturnsAsync(wallet);
+
+        var keyPathInfo = new KeyPathInformation
+        {
+            Address = new NBitcoin.Key().PubKey.GetAddress(ScriptPubKeyType.Segwit, NBitcoin.Network.RegTest)
+        };
+        _nbXplorerServiceMock.Setup(x => x.GetUnusedAsync(
+            It.IsAny<DerivationStrategyBase>(),
+            It.IsAny<DerivationFeature>(),
+            It.IsAny<int>(),
+            It.IsAny<bool>(),
+            It.IsAny<CancellationToken>()))
+            .ReturnsAsync(keyPathInfo);
+
+        var swapResponse = new SwapResponse
+        {
+            Id = "0102030405",
+            HtlcAddress = "bcrt1qtest",
+            Amount = 25_000_000,
+            ServerFee = 30_000,
+            OnchainFee = 15_000,
+            OffchainFee = 5_000,
+            Status = SwapOutStatus.Pending
+        };
+        _swapsServiceMock.Setup(x => x.CreateSwapOutAsync(
+            node, It.Is<SwapOut>(s => s.Provider == SwapProvider.Loop), It.IsAny<SwapOutRequest>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new SwapOutCreation(swapResponse, false, "database is down"));
+
+        // Act
+        var result = await _autoLiquidityManagementJob.ManageNodeLiquidity(node, CancellationToken.None);
+
+        // Assert: the provider has the swap but NodeGuard could not record it
+        result.Should().Be(ManageNodeLiquidityResult.Error);
     }
 
     [Fact]
@@ -421,11 +485,8 @@ public class AutoLiquidityManagementJobTests
             Status = SwapOutStatus.Pending
         };
         _swapsServiceMock.Setup(x => x.CreateSwapOutAsync(
-            node, SwapProvider.FortySwap, It.IsAny<SwapOutRequest>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync(swapResponse);
-
-        _swapOutRepositoryMock.Setup(x => x.AddAsync(It.IsAny<SwapOut>()))
-            .ReturnsAsync((true, null));
+            node, It.Is<SwapOut>(s => s.Provider == SwapProvider.FortySwap), It.IsAny<SwapOutRequest>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new SwapOutCreation(swapResponse, true, null));
 
         // Act
         var result = await _autoLiquidityManagementJob.ManageNodeLiquidity(node, CancellationToken.None);
@@ -434,13 +495,14 @@ public class AutoLiquidityManagementJobTests
         result.Should().Be(ManageNodeLiquidityResult.Success);
 
         // Verify swap was created with FortySwap provider (not Loop)
-        _swapOutRepositoryMock.Verify(x => x.AddAsync(It.Is<SwapOut>(s =>
+        _swapsServiceMock.Verify(x => x.CreateSwapOutAsync(node, It.Is<SwapOut>(s =>
             s.NodeId == node.Id &&
             s.DestinationWalletId == wallet.Id &&
             s.Provider == SwapProvider.FortySwap &&
             s.SatsAmount == 25_000_000 &&
-            s.IsManual == false &&
-            s.Status == SwapOutStatus.Pending)), Times.Once);
+            s.IsManual == false),
+            It.Is<SwapOutRequest>(r => r.Address == keyPathInfo.Address.ToString()),
+            It.IsAny<CancellationToken>()), Times.Once);
     }
 
     #endregion

@@ -1,5 +1,6 @@
 
 using NodeGuard.Data.Models;
+using NodeGuard.Data.Repositories.Interfaces;
 
 namespace NodeGuard.Services
 {
@@ -20,6 +21,10 @@ namespace NodeGuard.Services
    {
       public required string Id { get; set; }
       public required string HtlcAddress { get; set; }
+      /// <summary>
+      /// Hex payment hash of the Lightning payment that funds the swap, when the provider exposes it
+      /// </summary>
+      public string? PaymentHash { get; set; }
       public long Amount { get; set; }
       public long OffchainFee { get; set; }
       public long OnchainFee { get; set; }
@@ -27,6 +32,11 @@ namespace NodeGuard.Services
       public SwapOutStatus Status { get; set; }
       public string? ErrorMessage { get; set; }
    }
+
+   /// <summary>
+   /// A swap-out created with its provider, and whether its record could be saved
+   /// </summary>
+   public sealed record SwapOutCreation(SwapResponse Response, bool Saved, string? SaveError);
 
    public class SwapOutQuoteRequest
    {
@@ -46,7 +56,12 @@ namespace NodeGuard.Services
 
    public interface ISwapsService
    {
-      Task<SwapResponse> CreateSwapOutAsync(Node node, SwapProvider provider, SwapOutRequest request, CancellationToken cancellationToken = default);
+      /// <summary>
+      /// Creates the swap with <paramref name="swapOut"/>'s provider and records <paramref name="swapOut"/>, filled with
+      /// the provider's id, status, fees and payment hash and the request's destination address. Check
+      /// <see cref="SwapOutCreation.Saved"/>: the provider may have the swap even when the record could not be saved.
+      /// </summary>
+      Task<SwapOutCreation> CreateSwapOutAsync(Node node, SwapOut swapOut, SwapOutRequest request, CancellationToken cancellationToken = default);
       Task<SwapResponse> GetSwapAsync(Node node, SwapProvider provider, string swapId, CancellationToken cancellationToken = default);
       Task<SwapOutQuoteResponse> GetSwapOutQuoteAsync(Node node, SwapProvider provider, SwapOutQuoteRequest request, CancellationToken cancellationToken = default);
    }
@@ -56,21 +71,35 @@ namespace NodeGuard.Services
       private readonly ILoopService _loopService;
       private readonly IFortySwapService _fortySwapService;
       private readonly ILightningService _lightningService;
-      public SwapsService(ILoopService loopService, IFortySwapService fortySwapService, ILightningService lightningService)
+      private readonly ISwapOutRepository _swapOutRepository;
+      public SwapsService(ILoopService loopService, IFortySwapService fortySwapService, ILightningService lightningService,
+         ISwapOutRepository swapOutRepository)
       {
          _loopService = loopService;
          _fortySwapService = fortySwapService;
          _lightningService = lightningService;
+         _swapOutRepository = swapOutRepository;
       }
 
-      public async Task<SwapResponse> CreateSwapOutAsync(Node node, SwapProvider provider, SwapOutRequest request, CancellationToken cancellationToken = default)
+      public async Task<SwapOutCreation> CreateSwapOutAsync(Node node, SwapOut swapOut, SwapOutRequest request, CancellationToken cancellationToken = default)
       {
-         return provider switch
+         var response = swapOut.Provider switch
          {
             SwapProvider.Loop => await _loopService.CreateSwapOutAsync(node, request, cancellationToken),
             SwapProvider.FortySwap => await _fortySwapService.CreateSwapOutAsync(node, request, cancellationToken),
-            _ => throw new NotSupportedException($"Swap provider {provider} is not supported.")
+            _ => throw new NotSupportedException($"Swap provider {swapOut.Provider} is not supported.")
          };
+
+         swapOut.ProviderId = response.Id;
+         swapOut.Status = response.Status;
+         swapOut.ServiceFeeSats = response.ServerFee;
+         swapOut.OnChainFeeSats = response.OnchainFee;
+         swapOut.LightningFeeSats = response.OffchainFee;
+         swapOut.DestinationAddress = request.Address;
+         swapOut.PaymentHash = response.PaymentHash;
+
+         var (saved, error) = await _swapOutRepository.AddAsync(swapOut);
+         return new SwapOutCreation(response, saved, error);
       }
 
       public async Task<SwapResponse> GetSwapAsync(Node node, SwapProvider provider, string swapId, CancellationToken cancellationToken = default)
