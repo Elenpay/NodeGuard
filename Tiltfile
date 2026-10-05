@@ -2,7 +2,7 @@ ci_settings(readiness_timeout = '10m')
 
 docker_compose([
   "./docker-compose.yml",
-], profiles = ["polar", "loop", "mempool", "40swap", "e2e"])
+], profiles = ["polar", "loop", "mempool", "40swap", "e2e", "spark"])
 
 # Labels are used to group containers on the UI.
 labels = {
@@ -54,6 +54,19 @@ labels = {
     'nodeguard',
     'e2e-runner',
   ],
+
+  # Local Spark network (operators, SSP and its Lightning node) for the Spark swap provider.
+  # Disabled by default; see docker/spark/README.md.
+  'spark': [
+    'spark-cert-init',
+    'spark-postgres',
+    'spark-operator-0',
+    'spark-operator-1',
+    'spark-operator-2',
+    'spark-ldk-server',
+    'spark-ssp',
+    'spark-setup',
+  ],
 }
 
 for (label, services) in labels.items():
@@ -66,6 +79,8 @@ for (label, services) in labels.items():
     elif label == 'grafana':
       dc_resource(s, auto_init=False, labels = [label])
     elif label == 'e2e':
+      dc_resource(s, auto_init=False, labels = [label])
+    elif label == 'spark':
       dc_resource(s, auto_init=False, labels = [label])
     else:
       dc_resource(s, labels = [label])

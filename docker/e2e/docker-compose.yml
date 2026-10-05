@@ -61,6 +61,8 @@ services:
       nbxplorer: { condition: service_healthy }
       setup-e2e: { condition: service_completed_successfully }
       extract-env: { condition: service_completed_successfully }
+      # With the spark profile up: the Spark network must be funded and connected to alice first
+      spark-setup: { condition: service_completed_successfully, required: false }
     ports:
       - "38080:8080" # NodeGuard gRPC + REST API
     # The published image doesn't read launchSettings.json, so every dev-profile env var is set here
@@ -108,10 +110,19 @@ services:
       ROUTING_ENGINE_CATEGORIZATION_MIN_AGE_BLOCKS: 0
       ROUTING_ENGINE_FLOW_MIN_MSAT: 1000000
       ROUTING_ENGINE_CATEGORY_FLIP_HYSTERESIS_CYCLES: 0
+      # Spark swap provider against the local Spark network (docker/spark). Off unless the run sets
+      # SPARK_ENABLED=true with the spark profile up. Embedded signer: the Spark keys of the current
+      # internal wallet (ENABLE_REMOTE_SIGNER is false and this is a dev environment).
+      SPARK_ENABLED: ${SPARK_ENABLED:-false}
+      SPARK_ACCOUNT: "0"
+      SPARK_OPERATORS: "https://spark-operator-0:8535|0000000000000000000000000000000000000000000000000000000000000001|0322ca18fc489ae25418a0e768273c2c61cabb823edfb14feb891e9bec62016510;https://spark-operator-1:8535|0000000000000000000000000000000000000000000000000000000000000002|0341727a6c41b168f07eb50865ab8c397a53c7eef628ac1020956b705e43b6cb27;https://spark-operator-2:8535|0000000000000000000000000000000000000000000000000000000000000003|0305ab8d485cc752394de4981f8a5ae004f2becfea6f432c9a59d5022d8764f0a6"
+      SPARK_OPERATOR_CERTS_DIR: /spark-tls
+      SPARK_SSP_URL: http://spark-ssp:5000/graphql/spark/2025-03-19
     entrypoint: ["/bin/sh", "/scripts/nodeguard-entrypoint.sh"]
     volumes:
       - ./nodeguard-entrypoint.sh:/scripts/nodeguard-entrypoint.sh:ro
       - e2e_env:/shared:ro
+      - spark_tls:/spark-tls:ro
     restart: "no"
 
   # Runs the whole E2E suite (Category=E2E) against one live NodeGuard in a single pass.
