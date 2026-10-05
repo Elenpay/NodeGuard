@@ -69,6 +69,8 @@ public class SparkSwapServiceTests
         _swapOuts.AddAsync(Arg.Any<SwapOut>()).Returns((true, null));
         _swapOuts.Update(Arg.Any<SwapOut>()).Returns((true, null));
 
+        Balance(available: 0);
+
         _wallet = CreateWallet.SingleSig(CreateWallet.CreateInternalWallet());
         _wallet.Id = 3;
         _wallets.GetById(3).Returns(_wallet);
@@ -101,6 +103,10 @@ public class SparkSwapServiceTests
     private void NodeReports(Payment? payment) =>
         _lightning.TrackPaymentV2Async(_node, Arg.Is<byte[]>(h => Convert.ToHexString(h).ToLowerInvariant() == Hash),
             Arg.Any<CancellationToken>()).Returns(payment);
+
+    private void Balance(long available, long incoming = 0) =>
+        _spark.GetBalanceAsync(Arg.Any<CancellationToken>()).Returns(
+            new WalletBalance(new SatsBalance(available, available + incoming, incoming), [], []));
 
     /// <summary>Transactions of the destination wallet: (txid seed, value paid to <see cref="Address"/>, confirmations).</summary>
     private void Payouts(params (byte Seed, long Sats, long Confirmations)[] payouts)
@@ -280,6 +286,19 @@ public class SparkSwapServiceTests
         var (_, saved, _) = await Service().CreateSwapOutAsync(_node, Template(), Request());
 
         saved.Should().BeTrue();
+    }
+
+    [Fact]
+    public async Task Create_OverTheTransitBalanceCap_IsRefused()
+    {
+        // 9.6M sats already held (a leftover and an incoming transfer) + 0.5M > the 10M default cap
+        _spark.GetBalanceAsync(Arg.Any<CancellationToken>())
+            .Returns(new WalletBalance(new SatsBalance(9_000_000, 9_000_000, 600_000), [], []));
+
+        var act = () => Service().CreateSwapOutAsync(_node, Template(), Request());
+
+        await act.Should().ThrowAsync<InvalidOperationException>().WithMessage("*10100000 sats*SPARK_MAX_BALANCE_SATS (10000000)*");
+        await _spark.DidNotReceiveWithAnyArgs().CreateInvoiceAsync(default, default!, default, default);
     }
 
     [Fact]

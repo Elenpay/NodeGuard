@@ -40,6 +40,7 @@ public enum SparkSignerMode
 public sealed class SparkSettings
 {
     public const long DefaultMaxExitFeeSats = 20_000;
+    public const long DefaultMaxBalanceSats = 10_000_000;
 
     public static readonly SparkSettings Disabled = new();
 
@@ -92,6 +93,12 @@ public sealed class SparkSettings
 
     /// <summary>How often paid Spark swaps exit on-chain, in minutes: <see cref="ExitIntervalMinutes"/> or its default.</summary>
     public int ExitIntervalOrDefault(bool isDevEnvironment) => ExitIntervalMinutes ?? (isDevEnvironment ? 1 : 10);
+
+    /// <summary>
+    /// Most sats the transit wallet may hold, counting a new swap (SPARK_MAX_BALANCE_SATS): Spark balances
+    /// are only meant to pass through.
+    /// </summary>
+    public long MaxBalanceSats { get; init; } = DefaultMaxBalanceSats;
 
     /// <summary>The remote signer's Function URL (REMOTE_SIGNER_ENDPOINT), signed with SigV4.</summary>
     public Uri? SignerEndpoint { get; init; }
@@ -212,6 +219,13 @@ public sealed class SparkSettings
             else errors.Add("SPARK_EXIT_INTERVAL_MINUTES must be a positive number of minutes");
         }
 
+        var maxBalance = DefaultMaxBalanceSats;
+        if (env("SPARK_MAX_BALANCE_SATS") is { Length: > 0 } maxBalanceValue &&
+            (!long.TryParse(maxBalanceValue, out maxBalance) || maxBalance <= 0))
+        {
+            errors.Add("SPARK_MAX_BALANCE_SATS must be a positive number of sats");
+        }
+
         Uri? endpoint = null;
         Uri? rieUrl = null;
         if (mode == SparkSignerMode.Remote)
@@ -249,6 +263,7 @@ public sealed class SparkSettings
             IdentityPublicKey = identity?.Trim().ToLowerInvariant(),
             MaxExitFeeSats = maxExitFee,
             ExitIntervalMinutes = exitInterval,
+            MaxBalanceSats = maxBalance,
             SignerEndpoint = endpoint,
             SignerRieUrl = rieUrl
         };

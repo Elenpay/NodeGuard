@@ -16,10 +16,12 @@ public class MonitorSwapsJob : IJob
     private readonly ISwapsService _swapsService;
     private readonly IAuditService _auditService;
     private readonly SparkSettings _sparkSettings;
+    private readonly ISparkGuardrails _sparkGuardrails;
 
-    public MonitorSwapsJob(ILogger<MonitorSwapsJob> logger, ISchedulerFactory schedulerFactory, INodeRepository nodeRepository, ISwapOutRepository swapOutRepository, ISwapsService swapsService, IAuditService auditService, SparkSettings sparkSettings)
+    public MonitorSwapsJob(ILogger<MonitorSwapsJob> logger, ISchedulerFactory schedulerFactory, INodeRepository nodeRepository, ISwapOutRepository swapOutRepository, ISwapsService swapsService, IAuditService auditService, SparkSettings sparkSettings, ISparkGuardrails sparkGuardrails)
     {
         _sparkSettings = sparkSettings;
+        _sparkGuardrails = sparkGuardrails;
         _logger = logger;
         _schedulerFactory = schedulerFactory;
         _nodeRepository = nodeRepository;
@@ -47,6 +49,26 @@ public class MonitorSwapsJob : IJob
             });
     }
 
+    /// <summary>
+    /// Spark balances only pass through: refreshes the transit balance and audits lingering sats and overdue
+    /// exits. Never fails the job.
+    /// </summary>
+    private async Task CheckSparkGuardrailsAsync(IReadOnlyCollection<SwapOut> pendingSwaps)
+    {
+        try
+        {
+            foreach (var alert in await _sparkGuardrails.CheckAsync(pendingSwaps))
+            {
+                await _auditService.LogSystemAsync(alert.Action, AuditEventType.Failure, alert.ObjectType, alert.ObjectId,
+                    new { alert.Message, alert.Details });
+            }
+        }
+        catch (Exception e)
+        {
+            _logger.LogError(e, "Error checking the Spark transit wallet");
+        }
+    }
+
     public async Task Execute(IJobExecutionContext context)
     {
         _logger.LogInformation("Starting {JobName}... ", nameof(MonitorSwapsJob));
@@ -60,8 +82,8 @@ public class MonitorSwapsJob : IJob
             var managedNodes = loopNodes.Concat(fortySwapNodes).Concat(sparkNodes).Where(n => n != null).DistinctBy(n => n.Id).ToList();
 
             // A paid Spark swap is SparkSwapExitJob's: it exits it on-chain
-            var swaps = (await _swapOutRepository.GetAllPending())
-                .Where(s => s.Provider != SwapProvider.Spark || s.LightningFeeSats is null);
+            var pending = await _swapOutRepository.GetAllPending();
+            var swaps = pending.Where(s => s.Provider != SwapProvider.Spark || s.LightningFeeSats is null);
             foreach (var swap in swaps)
             {
                 try
@@ -203,6 +225,11 @@ public class MonitorSwapsJob : IJob
                         swap.Id,
                         swap.Provider);
                 }
+            }
+
+            if (_sparkSettings.Enabled)
+            {
+                await CheckSparkGuardrailsAsync(pending);
             }
         }
         catch (Exception e)

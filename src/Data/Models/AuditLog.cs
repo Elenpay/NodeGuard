@@ -161,7 +161,11 @@ public enum AuditActionType
     RebalanceInitiated,
     RebalanceProbing,
     RebalanceCompleted,
-    RebalanceRetryScheduled
+    RebalanceRetryScheduled,
+
+    // Spark transit wallet alerts
+    SparkBalanceLingering,
+    SparkExitOverdue
 }
 
 /// <summary>
