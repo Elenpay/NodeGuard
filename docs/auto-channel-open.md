@@ -216,8 +216,15 @@ Applied in this order. `BindingClamp` records the last one that reduced the size
 | Reserve | `target / 0.99`. LND keeps ~1% as channel reserve, which can't be used for routing. Without this the usable outbound falls short of the target. Not reported as a clamp. |
 | Wumbo ceiling | 16,777,215 sats. **Regtest only.** On other networks wumbo is assumed. |
 | Node max | `AutoChannelOpenMaxSizeSats` |
-| Wallet | confirmed balance of the funding wallet |
+| Wallet | the biggest channel the funding wallet can fund, after the funding fee and a dust change output (below) |
 | Budget | remaining budget for the period (§7) |
+
+The wallet limit (`LightningHelper.MaxFundableChannelSats`) matches the open that actually runs. That
+open isn't changeless: it pays the fee on top of the channel amount and keeps a change output. So the
+limit is the coins coin selection would use (no locked, frozen or dust UTXOs), minus the fee for
+spending all of them into the funding output plus a change output, minus `MINIMUM_UTXO_VALUE_SATS`
+(546) so the change stays above dust. NBitcoin sizes the transaction from the wallet's real scripts,
+at `HourFee`, which is at or above the `EconomyFee` the funding transaction uses.
 
 Then two checks on the final size. Failing either one means no recommendation, and the reason is
 logged:
@@ -467,9 +474,6 @@ finished yet blocks a second one. A pending open to the same peer created by han
 **Peer reachability isn't checked.** If the peer is offline, `ChannelOpenJob` fails, the
 recommendation becomes `Failed`, and the next run can propose it again.
 
-**The wallet clamp leaves no room for fees.** A plan can be sized to the wallet's full confirmed
-balance, which doesn't leave enough to pay for the funding transaction.
-
 **No coordination with the other tools.** The rebalancer may be refilling the same peer while this
 proposes buying capacity for it. The only thing shared is the price: the new channel opens at what
 we already charge that peer.
@@ -488,8 +492,7 @@ cost. Cost of capital and how long the channel stays open aren't considered.
 2. **Payback model.** Replace the flat fee threshold with amortized cost (open + close + cost of
    capital over the expected lifetime), and use the same model for sizing.
 3. **Escalation ladder.** Only propose an open after rebalancing has clearly failed.
-4. **Fee headroom in the wallet clamp**, and a reachability check (`ListPeers` / `ConnectPeer`)
-   before promoting.
+4. **Reachability check** (`ListPeers` / `ConnectPeer`) before promoting.
 5. **Group bursts by timelock.** Treat (burst, `OutgoingTimelock`) as one payment and take its
    largest amount. First check prod data: count distinct timelocks per burst, and whether amounts
    under one timelock look like halving chains or unrelated payments.
