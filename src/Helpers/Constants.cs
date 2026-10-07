@@ -319,7 +319,7 @@ public class Constants
     public static uint ROUTING_ENGINE_FEE_MAX_OUTBOUND_PPM = 3000;
 
     // Most-negative inbound ppm allowed — a discount to attract inbound routing.
-    public static int ROUTING_ENGINE_FEE_MIN_INBOUND_PPM = -2000;
+    public static int ROUTING_ENGINE_FEE_MIN_INBOUND_PPM = -1000;
 
     // Most-positive inbound ppm allowed — a surcharge to repel inbound routing.
     public static int ROUTING_ENGINE_FEE_MAX_INBOUND_PPM = 1000;
