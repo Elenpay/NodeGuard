@@ -6,7 +6,7 @@ Spark is a swap-out provider next to Loop and 40swap. A node moves Lightning liq
 
 NodeGuard is not a Spark wallet product. The Spark wallet is transit only: each swap's exit drains it, and the guardrails below alert when sats stay behind.
 
-The Spark client is the [NSpark](https://github.com/orklabs/nspark) .NET SDK (orklabs), in `vendor/nspark` (a git submodule). By default, on mainnet, the operators are Lightspark, Breez and Flashnet (2-of-3) and the SSP is Lightspark's.
+The Spark client is the [NSpark](https://github.com/orklabs/nspark) .NET SDK, from the [Elenpay fork](https://github.com/Elenpay/nspark) in `vendor/nspark` (a git submodule). By default, on mainnet, the operators are Lightspark, Breez and Flashnet (2-of-3) and the SSP is Lightspark's.
 
 ## How a swap runs
 
