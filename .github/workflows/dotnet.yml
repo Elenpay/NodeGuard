@@ -67,7 +67,7 @@ jobs:
               - 'global.json'
               - 'nuget.config'
               - 'NuGet.config'
-              # NSpark (orklabs/nspark, git submodule), which the Spark client is built from
+              # NSpark (the Elenpay/nspark fork, git submodule), which the Spark client is built from
               - 'vendor/**'
               - '.gitmodules'
               # build/e2e harness that exercises the above
