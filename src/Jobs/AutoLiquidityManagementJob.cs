@@ -58,6 +58,7 @@ public class AutoLiquidityManagementJob : IJob
     private readonly INBXplorerService _nbXplorerService;
     private readonly IAuditService _auditService;
     private readonly ISparkWalletService _sparkWallet;
+    private readonly SparkSettings _sparkSettings;
 
     public AutoLiquidityManagementJob(
         ILogger<AutoLiquidityManagementJob> logger,
@@ -69,9 +70,11 @@ public class AutoLiquidityManagementJob : IJob
         IWalletRepository walletRepository,
         INBXplorerService nbXplorerService,
         IAuditService auditService,
-        ISparkWalletService sparkWallet)
+        ISparkWalletService sparkWallet,
+        SparkSettings sparkSettings)
     {
         _sparkWallet = sparkWallet;
+        _sparkSettings = sparkSettings;
         _logger = logger;
         _nodeRepository = nodeRepository;
         _swapOutRepository = swapOutRepository;
@@ -118,16 +121,14 @@ public class AutoLiquidityManagementJob : IJob
     }
 
     /// <summary>
-    /// Selects a swap provider based on configured weights.
-    /// Uses weighted random selection - higher weight = higher probability.
-    /// </summary>
-    /// <summary>
     /// Weighted random choice among the providers with a weight that can take a swap now. Spark is left
-    /// out while it is unavailable (the node's Max swaps in flight already limits its swaps); null when no
-    /// weighted provider is left. All weights at 0 means Loop, as before.
+    /// out while it is unavailable or its wallet has less room under SPARK_MAX_BALANCE_SATS than the node's
+    /// minimum swap (the node's Max swaps in flight already limits its swaps); null when no weighted provider
+    /// is left. All weights at 0 means Loop, as before. Also returns the Spark wallet's room, to clamp a Spark swap.
     /// </summary>
-    private SwapProvider? SelectSwapProvider(Node node)
+    private async Task<(SwapProvider? Provider, long SparkRoomSats)> SelectSwapProviderAsync(Node node)
     {
+        var sparkRoom = 0L;
         var weights = new List<(SwapProvider Provider, int Weight)>
         {
             (SwapProvider.Loop, node.LoopSwapWeight),
@@ -138,21 +139,26 @@ public class AutoLiquidityManagementJob : IJob
         if (weights.All(w => w.Weight <= 0))
         {
             _logger.LogWarning("Node {NodeName} has total weight of 0, defaulting to Loop", node.Name);
-            return SwapProvider.Loop;
+            return (SwapProvider.Loop, sparkRoom);
         }
 
-        if (node.SparkSwapWeight > 0 && SparkUnavailableReason() is { } reason)
+        if (node.SparkSwapWeight > 0)
         {
-            _logger.LogInformation("Node {NodeName}: Spark cannot take a swap now ({Reason}), choosing among the other providers",
-                node.Name, reason);
-            weights.RemoveAll(w => w.Provider == SwapProvider.Spark);
+            var (reason, room) = await SparkAvailabilityAsync(node);
+            sparkRoom = room;
+            if (reason is not null)
+            {
+                _logger.LogInformation("Node {NodeName}: Spark cannot take a swap now ({Reason}), choosing among the other providers",
+                    node.Name, reason);
+                weights.RemoveAll(w => w.Provider == SwapProvider.Spark);
+            }
         }
 
         var candidates = weights.Where(w => w.Weight > 0).ToList();
         var totalWeight = candidates.Sum(w => w.Weight);
         if (totalWeight == 0)
         {
-            return null;
+            return (null, sparkRoom);
         }
 
         // Weighted random selection
@@ -172,13 +178,23 @@ public class AutoLiquidityManagementJob : IJob
         _logger.LogDebug("Selected {Provider} for node {NodeName} (Loop weight: {LoopWeight}, 40swap weight: {FortySwapWeight}, Spark weight: {SparkWeight}, random: {Random})",
             selectedProvider, node.Name, node.LoopSwapWeight, node.FortySwapWeight, node.SparkSwapWeight, randomValue);
 
-        return selectedProvider;
+        return (selectedProvider, sparkRoom);
     }
 
-    private string? SparkUnavailableReason()
+    /// <summary>
+    /// Why Spark can't take this node's swap now (null when it can), and how many sats its wallet can still
+    /// take under SPARK_MAX_BALANCE_SATS
+    /// </summary>
+    private async Task<(string? Reason, long RoomSats)> SparkAvailabilityAsync(Node node)
     {
         var status = _sparkWallet.Status;
-        return status.IsReady ? null : status.Reason ?? status.State.ToString();
+        if (!status.IsReady) return (status.Reason ?? status.State.ToString(), 0);
+
+        var balance = (await _sparkWallet.GetBalanceAsync()).SatsBalance;
+        var room = _sparkSettings.MaxBalanceSats - balance.Owned - balance.Incoming;
+        return room < node.SwapMinAmountSats
+            ? ($"the Spark wallet has {Math.Max(0, room)} sats of room under SPARK_MAX_BALANCE_SATS, below the node's minimum swap", room)
+            : (null, room);
     }
 
     public async Task<ManageNodeLiquidityResult> ManageNodeLiquidity(Node node, CancellationToken cancellationToken)
@@ -268,17 +284,25 @@ public class AutoLiquidityManagementJob : IJob
 
         // Swap the maximum we can, ensuring it meets the minimum
         var swapAmount = Math.Max(node.SwapMinAmountSats, maxPossibleSwap);
-        var swapAmountBtc = new Money(swapAmount, MoneyUnit.Satoshi).ToDecimal(MoneyUnit.BTC);
-
-        _logger.LogDebug("Node {NodeName} - Initiating swap for {Amount} BTC", node.Name, swapAmountBtc);
 
         // Select swap provider based on weights, before reserving an address for a swap that may not happen
-        var provider = SelectSwapProvider(node);
+        var (provider, sparkRoom) = await SelectSwapProviderAsync(node);
         if (provider is not { } selectedProvider)
         {
             _logger.LogInformation("Node {NodeName}: no weighted swap provider can take a swap now, skipping", node.Name);
             return ManageNodeLiquidityResult.NoProviderAvailable;
         }
+
+        // A Spark swap only takes what its wallet can still hold under SPARK_MAX_BALANCE_SATS
+        if (selectedProvider == SwapProvider.Spark && swapAmount > sparkRoom)
+        {
+            _logger.LogInformation("Node {NodeName}: Spark swap clamped from {Amount} to {Room} sats by SPARK_MAX_BALANCE_SATS",
+                node.Name, swapAmount, sparkRoom);
+            swapAmount = sparkRoom;
+        }
+
+        var swapAmountBtc = new Money(swapAmount, MoneyUnit.Satoshi).ToDecimal(MoneyUnit.BTC);
+        _logger.LogDebug("Node {NodeName} - Initiating swap for {Amount} BTC", node.Name, swapAmountBtc);
 
         _logger.LogInformation("Using {Provider} for swap out on node {NodeName}", selectedProvider, node.Name);
 
