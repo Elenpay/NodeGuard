@@ -62,7 +62,7 @@
   </ItemGroup>
 
   <ItemGroup>
-    <!-- Spark client: the Elenpay NSpark fork (git submodule), with Lightspark's spark-frost native library -->
+    <!-- Spark client: NSpark from orklabs/nspark (git submodule), with Lightspark's spark-frost native library -->
     <ProjectReference Include="..\vendor\nspark\src\NSpark.RemoteSigner\NSpark.RemoteSigner.csproj" />
   </ItemGroup>
 

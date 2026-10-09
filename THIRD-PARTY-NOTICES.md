@@ -6,8 +6,7 @@ its license in its package metadata.
 
 ## NSpark
 
-- Path: [vendor/nspark](vendor/nspark/), a git submodule of the Elenpay fork
-  <https://github.com/Elenpay/nspark> of <https://github.com/orklabs/nspark>.
+- Path: [vendor/nspark](vendor/nspark/), a git submodule of <https://github.com/orklabs/nspark>.
 - License: MIT, Copyright (c) 2026 OrkLabs S.A.S. and NSpark contributors. The full text is in
   `vendor/nspark/LICENSE`.
 - NSpark's own dependencies are listed in `vendor/nspark/THIRD_PARTY_NOTICES.md`.
