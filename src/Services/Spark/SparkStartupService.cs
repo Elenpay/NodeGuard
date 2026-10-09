@@ -20,13 +20,36 @@
 namespace NodeGuard.Services.Spark;
 
 /// <summary>
-/// Connects the Spark wallet in the background at startup, so a mismatched or unreachable signer is
-/// reported (and Spark hidden) before anyone tries a swap.
+/// Connects every Spark wallet in the background at startup, so a mismatched or unreachable signer, or a seed
+/// that no longer decrypts, is reported (and Spark hidden for its nodes) before anyone tries a swap.
 /// </summary>
-public sealed class SparkStartupService(ISparkWalletService sparkWallet) : BackgroundService
+public sealed class SparkStartupService(SparkSettings settings, ISparkWalletService sparkWallet, ILogger<SparkStartupService> logger)
+    : BackgroundService
 {
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
-        await sparkWallet.EnsureReadyAsync(stoppingToken);
+        IReadOnlyList<SparkWalletEntry> wallets;
+        try
+        {
+            wallets = await sparkWallet.GetWalletsAsync(stoppingToken);
+        }
+        catch (Exception e) when (e is not OperationCanceledException)
+        {
+            // Not fatal: each wallet still connects on first use
+            logger.LogError(e, "Could not list the Spark wallets to connect them at startup");
+            return;
+        }
+
+        if (settings is { IsMainnet: true, SignerMode: SparkSignerMode.Wallet } && wallets.Count > 0)
+        {
+            logger.LogWarning(
+                "SPARK_SIGNER=wallet on mainnet: the keys of {Count} Spark wallets are hot, their seeds encrypted in NodeGuard's " +
+                "database. Keep their balances transit-only, and move to the remote signer (SPARK_SIGNER=remote)", wallets.Count);
+        }
+
+        foreach (var wallet in wallets)
+        {
+            await sparkWallet.EnsureReadyAsync(wallet.Ref, stoppingToken);
+        }
     }
 }

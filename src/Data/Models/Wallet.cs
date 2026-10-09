@@ -32,12 +32,39 @@ namespace NodeGuard.Data.Models
         Taproot
     }
 
+    public enum WalletKind
+    {
+        OnChain = 0,
+
+        /// <summary>A Spark wallet that swap-outs pass through (SPARK_SIGNER=wallet): no on-chain keys</summary>
+        Spark = 1
+    }
+
     /// <summary>
     /// Multisig wallet
     /// </summary>
     public class Wallet : Entity
     {
         public string Name { get; set; }
+
+        /// <summary>
+        /// On-chain wallets are the default. Spark wallets have no keys and are kept out of every on-chain flow
+        /// </summary>
+        public WalletKind Kind { get; set; }
+
+        /// <summary>The Spark wallet's mnemonic, encrypted with ASP.NET Data Protection (Spark wallets only)</summary>
+        public string? SparkEncryptedMnemonic { get; set; }
+
+        /// <summary>The Spark account the keys are derived at (Spark wallets only)</summary>
+        public int? SparkAccount { get; set; }
+
+        /// <summary>The Spark identity public key (hex), derived when the wallet was created (Spark wallets only)</summary>
+        public string? SparkIdentityPublicKey { get; set; }
+
+        /// <summary>
+        /// Most sats the Spark wallet may hold, counting a new swap; null means SPARK_MAX_BALANCE_SATS (Spark wallets only)
+        /// </summary>
+        public long? SparkMaxBalanceSats { get; set; }
 
         /// <summary>
         /// M-of-N Multisig threshold

@@ -18,6 +18,7 @@
  */
 
 using Amazon.Runtime;
+using NodeGuard.Data.Models;
 using NodeGuard.Data.Repositories.Interfaces;
 using NSpark;
 using NSpark.RemoteSigner;
@@ -28,39 +29,47 @@ namespace NodeGuard.Services.Spark;
 /// <summary>Spark cannot be used: misconfigured, refused by the signer or unreachable. The message says why.</summary>
 public sealed class SparkUnavailableException(string message) : Exception(message);
 
-/// <summary>Provides the Spark signer once it is known to be the one NodeGuard expects.</summary>
+/// <summary>Provides a Spark wallet's signer once it is known to be the one NodeGuard expects.</summary>
 public interface ISparkSignerProvider
 {
     /// <exception cref="SparkUnavailableException">The signer is not the expected one, or cannot be reached.</exception>
-    Task<ISparkSigner> GetSignerAsync(SparkOptions options, CancellationToken ct);
+    Task<ISparkSigner> GetSignerAsync(SparkWalletRef wallet, SparkOptions options, CancellationToken ct);
 }
 
 /// <summary>
-/// Remote mode: NSpark's RemoteSparkSigner over the signer's Function URL (or a local emulator),
-/// accepted only after its /spark/info handshake. Embedded mode: the Spark keys derived from the
-/// internal wallet with SPARK_SEED_FINGERPRINT (the current one in a dev environment), checked
-/// against SPARK_IDENTITY_PUBKEY when set.
+/// SPARK_SIGNER=wallet: the keys of a Spark wallet row, derived from its decrypted mnemonic and checked against
+/// the identity recorded when it was created. SPARK_SIGNER=remote: NSpark's RemoteSparkSigner over the signer's
+/// Function URL (or a local emulator), accepted only after its /spark/info handshake.
 /// </summary>
 public sealed class SparkSignerProvider : ISparkSignerProvider
 {
     private readonly SparkSettings _settings;
     private readonly IServiceScopeFactory _scopes;
+    private readonly ISparkSeedProtector _protector;
     private readonly HttpClient _http;
     private readonly Func<ImmutableCredentials> _awsCredentials;
     private readonly string? _awsRegion;
 
-    public SparkSignerProvider(SparkSettings settings, IServiceScopeFactory scopes, HttpClient http,
+    public SparkSignerProvider(SparkSettings settings, IServiceScopeFactory scopes, ISparkSeedProtector protector, HttpClient http,
         Func<ImmutableCredentials> awsCredentials, string? awsRegion)
     {
         _settings = settings;
         _scopes = scopes;
+        _protector = protector;
         _http = http;
         _awsCredentials = awsCredentials;
         _awsRegion = awsRegion;
     }
 
-    public Task<ISparkSigner> GetSignerAsync(SparkOptions options, CancellationToken ct) =>
-        _settings.SignerMode == SparkSignerMode.Remote ? RemoteAsync(options, ct) : EmbeddedAsync();
+    public Task<ISparkSigner> GetSignerAsync(SparkWalletRef wallet, SparkOptions options, CancellationToken ct) =>
+        (_settings.SignerMode, wallet.WalletId) switch
+        {
+            (SparkSignerMode.Remote, null) => RemoteAsync(options, ct),
+            (SparkSignerMode.Wallet, { } id) => WalletAsync(id),
+            (SparkSignerMode.Remote, _) => throw new SparkUnavailableException(
+                "SPARK_SIGNER=remote: Spark swaps go through the remote signer's wallet, not Spark wallets in NodeGuard"),
+            _ => throw new SparkUnavailableException("SPARK_SIGNER=wallet: Spark swaps go through a Spark wallet, and none was given")
+        };
 
     private async Task<ISparkSigner> RemoteAsync(SparkOptions options, CancellationToken ct)
     {
@@ -88,34 +97,21 @@ public sealed class SparkSignerProvider : ISparkSignerProvider
         return signer;
     }
 
-    private async Task<ISparkSigner> EmbeddedAsync()
+    private async Task<ISparkSigner> WalletAsync(int walletId)
     {
         using var scope = _scopes.CreateScope();
-        var wallets = scope.ServiceProvider.GetRequiredService<IInternalWalletRepository>();
-        var wallet = _settings.SeedFingerprint is null
-            ? await wallets.GetCurrentInternalWallet()
-            : (await wallets.GetAll()).FirstOrDefault(w =>
-                !string.IsNullOrWhiteSpace(w.MnemonicString) && w.MasterFingerprint == _settings.SeedFingerprint);
-
-        if (string.IsNullOrWhiteSpace(wallet?.MnemonicString))
+        var wallet = await scope.ServiceProvider.GetRequiredService<IWalletRepository>().GetById(walletId);
+        if (wallet is not { Kind: WalletKind.Spark, SparkEncryptedMnemonic.Length: > 0 })
         {
-            throw new SparkUnavailableException(_settings.SeedFingerprint is null
-                ? "the current internal wallet has no mnemonic to derive the Spark keys from"
-                : $"no internal wallet with a mnemonic has the master fingerprint {_settings.SeedFingerprint} (SPARK_SEED_FINGERPRINT)");
+            throw new SparkUnavailableException($"wallet {walletId} is not a Spark wallet");
         }
 
-        // A stray double space would fail BIP-39 validation rather than derive another wallet, but be precise
-        var mnemonic = string.Join(' ', wallet.MnemonicString.Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries));
-        var signer = SparkSigner.FromMnemonic(mnemonic, _settings.Account);
+        var signer = SparkSigner.FromMnemonic(_protector.Unprotect(wallet.SparkEncryptedMnemonic), wallet.SparkAccount ?? 0);
 
-        if (_settings.IdentityPublicKey is { } expected)
+        var identity = Convert.ToHexString(await signer.GetIdentityPublicKeyAsync()).ToLowerInvariant();
+        if (wallet.SparkIdentityPublicKey is { } expected && !string.Equals(identity, expected, StringComparison.OrdinalIgnoreCase))
         {
-            var identity = Convert.ToHexString(await signer.GetIdentityPublicKeyAsync()).ToLowerInvariant();
-            if (identity != expected)
-            {
-                throw new SparkUnavailableException(
-                    $"the internal wallet's Spark identity is {identity}, SPARK_IDENTITY_PUBKEY is {expected}");
-            }
+            throw new SparkUnavailableException($"its seed derives Spark identity {identity}, not the {expected} recorded at creation");
         }
 
         return signer;

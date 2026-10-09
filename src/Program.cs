@@ -153,19 +153,20 @@ namespace NodeGuard
             builder.Services.AddTransient<INBXplorerService, NBXplorerService>();
             builder.Services.AddTransient<ISwapsService, SwapsService>();
 
-            // Spark (swap-out provider). Invalid SPARK_* settings with SPARK_ENABLED fail the startup here
+            // Spark (swap-out provider). Invalid SPARK_* settings fail the startup here while Spark is enabled
             var sparkSettings = SparkSettings.FromEnvironment(Environment.GetEnvironmentVariable,
-                CurrentNetworkHelper.GetCurrentNetwork(), Constants.IS_DEV_ENVIRONMENT, Constants.ENABLE_REMOTE_SIGNER,
-                Constants.REMOTE_SIGNER_ENDPOINT);
+                CurrentNetworkHelper.GetCurrentNetwork(), Constants.REMOTE_SIGNER_ENDPOINT);
             builder.Services.AddSingleton(sparkSettings);
             builder.Services.TryAddSingleton(TimeProvider.System);
+            builder.Services.AddSingleton<ISparkSeedProtector, SparkSeedProtector>();
             builder.Services.AddTransient<ISparkSignerProvider>(sp => new SparkSignerProvider(sparkSettings,
-                sp.GetRequiredService<IServiceScopeFactory>(),
+                sp.GetRequiredService<IServiceScopeFactory>(), sp.GetRequiredService<ISparkSeedProtector>(),
                 sp.GetRequiredService<IHttpClientFactory>().CreateClient(nameof(SparkSignerProvider)),
                 () => new ImmutableCredentials(Constants.AWS_ACCESS_KEY_ID, Constants.AWS_SECRET_ACCESS_KEY, null),
                 Constants.AWS_REGION));
             builder.Services.AddSingleton<ISparkWalletService, SparkWalletService>();
             builder.Services.AddTransient<ISparkSwapService, SparkSwapService>();
+            builder.Services.AddTransient<ISparkWalletsService, SparkWalletsService>();
             builder.Services.AddSingleton<ISparkGuardrails, SparkGuardrails>();
             builder.Services.AddHostedService<SparkStartupService>();
             builder.Services.AddTransient<IRebalanceService, RebalanceService>();

@@ -317,7 +317,7 @@
                                     <Field>
                                         <Validation Validator="ValidateProviderWeights">
                                             <FieldLabel>Spark Weight</FieldLabel>
-                                            <FieldHelp>Weight for NodeGuard's Spark wallet (0-100). Skipped while Spark is unavailable or another Spark swap is in flight</FieldHelp>
+                                            <FieldHelp>Weight for the node's Spark wallet (0-100). Skipped while it is unavailable or has another Spark swap in flight</FieldHelp>
                                             <NumericEdit TValue="int"
                                                          @bind-Value="@_selectedNodeForLiquidity.SparkSwapWeight"
                                                          Min="0"
@@ -326,15 +326,39 @@
                                                     <ValidationError />
                                                 </Feedback>
                                             </NumericEdit>
-                                            @if (_selectedNodeForLiquidity.SparkSwapWeight > 0 && !SparkWallet.Status.IsReady)
+                                            @if (_selectedNodeForLiquidity.SparkSwapWeight > 0 && SparkSettings.WalletFor(_selectedNodeForLiquidity) is { } sparkWallet &&
+                                                 SparkWallet.GetStatus(sparkWallet) is { IsReady: false } sparkStatus)
                                             {
                                                 <FieldHelp>
-                                                    <Badge Color="Color.Warning">⚠️ Spark is not available: @(SparkWallet.Status.Reason ?? SparkWallet.Status.State.ToString())</Badge>
+                                                    <Badge Color="Color.Warning">⚠️ Spark is not available: @(sparkStatus.Reason ?? sparkStatus.State.ToString())</Badge>
                                                 </FieldHelp>
                                             }
                                         </Validation>
                                     </Field>
                                 </Column>
+                                @if (SparkSettings.SignerMode == SparkSignerMode.Wallet)
+                                {
+                                    <Column>
+                                        <Field>
+                                            <Validation Validator="ValidateProviderWeights">
+                                                <FieldLabel>Spark Wallet</FieldLabel>
+                                                <FieldHelp>The Spark wallet this node's Spark swaps pass through (Wallets page)</FieldHelp>
+                                                <SelectList TItem="SparkWalletEntry"
+                                                            TValue="int"
+                                                            Data="@_sparkWallets"
+                                                            SelectedValue="@(_selectedNodeForLiquidity.SparkWalletId ?? 0)"
+                                                            TextField="@(item => item.Name)"
+                                                            ValueField="@(item => item.Ref.WalletId ?? 0)"
+                                                            SelectedValueChanged="@((int id) => _selectedNodeForLiquidity.SparkWalletId = id == 0 ? null : id)"
+                                                            DefaultItemText="None">
+                                                    <Feedback>
+                                                        <ValidationError />
+                                                    </Feedback>
+                                                </SelectList>
+                                            </Validation>
+                                        </Field>
+                                    </Column>
+                                }
                             }
                         </Row>
                         
@@ -602,6 +626,7 @@
 @inject ILocalStorageService LocalStorageService
 @inject SparkSettings SparkSettings
 @inject ISparkWalletService SparkWallet
+@inject ISwapOutRepository SwapOutRepository
 @implements IDisposable
 @code {
     private List<Node>? _nodes;
@@ -610,6 +635,8 @@
     private bool _hideDelete = true;
     private bool _editable;
     private List<Wallet> _availableWallets = new();
+    private IReadOnlyList<SparkWalletEntry> _sparkWallets = [];
+    private int? _sparkWalletIdBeforeEdit;
 
     CancellationTokenSource cts = new();
 
@@ -975,6 +1002,19 @@
     private async Task ShowLiquidityManagementModal(Node node)
     {
         _selectedNodeForLiquidity = node;
+        _sparkWalletIdBeforeEdit = node.SparkWalletId;
+        _sparkWallets = [];
+        if (SparkSettings is { Enabled: true, SignerMode: SparkSignerMode.Wallet })
+        {
+            try
+            {
+                _sparkWallets = await SparkWallet.GetWalletsAsync();
+            }
+            catch (Exception)
+            {
+                ToastService.ShowError("Unexpected error loading the Spark wallets");
+            }
+        }
         
         // Convert sats to BTC for display
         _minSwapSizeBtc = (decimal)new NBitcoin.Money(node.SwapMinAmountSats).ToUnit(NBitcoin.MoneyUnit.BTC);
@@ -1011,6 +1051,13 @@
 
         if (_nodeLiquidityValidationsRef != null && _selectedNodeForLiquidity != null)
         {
+            // A Spark swap of the node in flight finishes on the wallet it was paid into: keep it until then
+            if (_selectedNodeForLiquidity.SparkWalletId != _sparkWalletIdBeforeEdit &&
+                (await SwapOutRepository.GetInFlightSwapsByNode(_selectedNodeForLiquidity.Id)).Any(s => s.Provider == SwapProvider.Spark))
+            {
+                ToastService.ShowError("The node has a Spark swap in flight: change its Spark wallet once the swap finishes");
+                return;
+            }
 
             // Convert BTC back to sats and percent back to ratio (0-1)
             _selectedNodeForLiquidity.SwapMinAmountSats = (long)new NBitcoin.Money(_minSwapSizeBtc, NBitcoin.MoneyUnit.BTC).Satoshi;
@@ -1135,6 +1182,13 @@
         {
             arg.Status = ValidationStatus.Error;
             arg.ErrorText = "Spark must be enabled (SPARK_ENABLED) when Spark weight > 0";
+            return;
+        }
+
+        if (_selectedNodeForLiquidity.SparkSwapWeight > 0 && SparkSettings.WalletFor(_selectedNodeForLiquidity) is null)
+        {
+            arg.Status = ValidationStatus.Error;
+            arg.ErrorText = "Choose a Spark wallet when Spark weight > 0";
             return;
         }
     }

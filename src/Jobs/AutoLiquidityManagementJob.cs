@@ -122,9 +122,10 @@ public class AutoLiquidityManagementJob : IJob
 
     /// <summary>
     /// Weighted random choice among the providers with a weight that can take a swap now. Spark is left
-    /// out while it is unavailable or its wallet has less room under SPARK_MAX_BALANCE_SATS than the node's
-    /// minimum swap (the node's Max swaps in flight already limits its swaps); null when no weighted provider
-    /// is left. All weights at 0 means Loop, as before. Also returns the Spark wallet's room, to clamp a Spark swap.
+    /// out while the node has no Spark wallet, or its wallet is unavailable or has less room under its max
+    /// balance than the node's minimum swap (the node's Max swaps in flight already limits its swaps); null when
+    /// no weighted provider is left. All weights at 0 means Loop, as before. Also returns the Spark wallet's room,
+    /// to clamp a Spark swap.
     /// </summary>
     private async Task<(SwapProvider? Provider, long SparkRoomSats)> SelectSwapProviderAsync(Node node)
     {
@@ -182,19 +183,25 @@ public class AutoLiquidityManagementJob : IJob
     }
 
     /// <summary>
-    /// Why Spark can't take this node's swap now (null when it can), and how many sats its wallet can still
-    /// take under SPARK_MAX_BALANCE_SATS, counting what the swaps not paid yet will still bring in
+    /// Why Spark can't take this node's swap now (null when it can), and how many sats the node's Spark wallet
+    /// can still take under its max balance, counting what its swaps not paid yet will still bring in
     /// </summary>
     private async Task<(string? Reason, long RoomSats)> SparkAvailabilityAsync(Node node)
     {
-        var status = _sparkWallet.Status;
+        if (_sparkSettings.WalletFor(node) is not { } sparkWallet) return ("the node has no Spark wallet", 0);
+
+        var wallet = await _sparkWallet.GetWalletAsync(sparkWallet);
+        if (wallet is null || wallet.IsArchived) return ($"its {sparkWallet} is archived or not a Spark wallet", 0);
+
+        var status = await _sparkWallet.EnsureReadyAsync(sparkWallet);
         if (!status.IsReady) return (status.Reason ?? status.State.ToString(), 0);
 
-        var balance = (await _sparkWallet.GetBalanceAsync()).SatsBalance;
-        var unpaid = SparkGuardrails.UnpaidSats(await _swapOutRepository.GetAllPending());
-        var room = _sparkSettings.MaxBalanceSats - balance.Owned - balance.Incoming - unpaid;
+        var balance = (await _sparkWallet.GetBalanceAsync(sparkWallet)).SatsBalance;
+        var unpaid = SparkGuardrails.UnpaidSats((await _swapOutRepository.GetAllPending())
+            .Where(s => string.Equals(s.SparkIdentity, status.IdentityPublicKey, StringComparison.OrdinalIgnoreCase)));
+        var room = wallet.MaxBalanceSats - balance.Owned - balance.Incoming - unpaid;
         return room < node.SwapMinAmountSats
-            ? ($"the Spark wallet has {Math.Max(0, room)} sats of room under SPARK_MAX_BALANCE_SATS, below the node's minimum swap", room)
+            ? ($"{wallet.Name} has {Math.Max(0, room)} sats of room under its max balance, below the node's minimum swap", room)
             : (null, room);
     }
 
@@ -294,10 +301,10 @@ public class AutoLiquidityManagementJob : IJob
             return ManageNodeLiquidityResult.NoProviderAvailable;
         }
 
-        // A Spark swap only takes what its wallet can still hold under SPARK_MAX_BALANCE_SATS
+        // A Spark swap only takes what the node's Spark wallet can still hold under its max balance
         if (selectedProvider == SwapProvider.Spark && swapAmount > sparkRoom)
         {
-            _logger.LogInformation("Node {NodeName}: Spark swap clamped from {Amount} to {Room} sats by SPARK_MAX_BALANCE_SATS",
+            _logger.LogInformation("Node {NodeName}: Spark swap clamped from {Amount} to {Room} sats by its Spark wallet's max balance",
                 node.Name, swapAmount, sparkRoom);
             swapAmount = sparkRoom;
         }

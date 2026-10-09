@@ -17,29 +17,32 @@
  *
  */
 
+using System.Collections.Concurrent;
 using System.Diagnostics.Metrics;
 using NodeGuard.Data.Models;
+using NSpark.Models;
 
 namespace NodeGuard.Services.Spark;
 
-/// <summary>The Spark transit wallet's balance when the swap monitor last looked.</summary>
+/// <summary>A Spark wallet's balance when the swap monitor last looked.</summary>
 public sealed record SparkBalanceSnapshot(long OwnedSats, long AvailableSats, long IncomingSats, DateTimeOffset At);
 
 /// <summary>An alert raised once, to be audited by the caller.</summary>
 public sealed record SparkAlert(AuditActionType Action, AuditObjectType ObjectType, string ObjectId, string Message, object Details);
 
 /// <summary>
-/// Watches that Spark balances only pass through: sats stuck in the transit wallet that no swap in flight
-/// accounts for, and swaps whose exit is overdue. Run by the swap monitor, which audits the alerts; each
-/// alert is raised once. The balance is exported as the <c>nodeguard.spark.balance</c> gauge (meter
-/// <see cref="MeterName"/>).
+/// Watches that Spark balances only pass through: sats stuck in a Spark wallet that none of its swaps in
+/// flight accounts for, and swaps whose exit is overdue. Run by the swap monitor, which audits the alerts; each
+/// alert is raised once. Each wallet's balance is exported as the <c>nodeguard.spark.balance</c> gauge (meter
+/// <see cref="MeterName"/>), tagged <c>spark.wallet</c>.
 /// </summary>
 public interface ISparkGuardrails
 {
-    SparkBalanceSnapshot? LastBalance { get; }
+    /// <summary>The wallet's balance when the swap monitor last looked, if it did.</summary>
+    SparkBalanceSnapshot? LastBalance(SparkWalletRef wallet);
 
-    /// <summary>When the wallet started holding sats that no Spark swap in flight accounts for, if it does.</summary>
-    DateTimeOffset? StuckSince { get; }
+    /// <summary>When the wallet started holding sats that none of its Spark swaps in flight accounts for, if it does.</summary>
+    DateTimeOffset? StuckSince(SparkWalletRef wallet);
 
     Task<IReadOnlyList<SparkAlert>> CheckAsync(IReadOnlyCollection<SwapOut> pendingSwaps, CancellationToken ct = default);
 }
@@ -56,7 +59,14 @@ public sealed class SparkGuardrails : ISparkGuardrails, IDisposable
     private readonly TimeProvider _time;
     private readonly Meter _meter;
     private readonly HashSet<int> _overdueAlerted = [];
-    private bool _stuckAlerted;
+    private readonly ConcurrentDictionary<SparkWalletRef, Watch> _watches = new();
+
+    private sealed class Watch
+    {
+        public SparkBalanceSnapshot? LastBalance;
+        public DateTimeOffset? StuckSince;
+        public bool StuckAlerted;
+    }
 
     public SparkGuardrails(SparkSettings settings, ISparkWalletService spark, ILogger<SparkGuardrails> logger, TimeProvider time)
     {
@@ -65,13 +75,17 @@ public sealed class SparkGuardrails : ISparkGuardrails, IDisposable
         _logger = logger;
         _time = time;
         _meter = new Meter(MeterName);
-        _meter.CreateObservableGauge("nodeguard.spark.balance", () => LastBalance?.OwnedSats ?? 0, "sats",
-            "Sats held by NodeGuard's Spark transit wallet");
+        _meter.CreateObservableGauge("nodeguard.spark.balance",
+            () => _watches.Select(w => new Measurement<long>(w.Value.LastBalance?.OwnedSats ?? 0,
+                new KeyValuePair<string, object?>("spark.wallet", w.Key.WalletId?.ToString() ?? "remote-signer"))),
+            "sats", "Sats held by each of NodeGuard's Spark wallets");
     }
 
-    public SparkBalanceSnapshot? LastBalance { get; private set; }
+    public SparkBalanceSnapshot? LastBalance(SparkWalletRef wallet) =>
+        _watches.TryGetValue(wallet, out var watch) ? watch.LastBalance : null;
 
-    public DateTimeOffset? StuckSince { get; private set; }
+    public DateTimeOffset? StuckSince(SparkWalletRef wallet) =>
+        _watches.TryGetValue(wallet, out var watch) ? watch.StuckSince : null;
 
     /// <summary>What the pending Spark swaps not paid yet will still bring into the wallet.</summary>
     public static long UnpaidSats(IEnumerable<SwapOut> pendingSwaps) =>
@@ -90,44 +104,72 @@ public sealed class SparkGuardrails : ISparkGuardrails, IDisposable
     public async Task<IReadOnlyList<SparkAlert>> CheckAsync(IReadOnlyCollection<SwapOut> pendingSwaps, CancellationToken ct = default)
     {
         var alerts = new List<SparkAlert>();
-        if (!_settings.Enabled || !_spark.Status.IsReady) return alerts;
+        if (!_settings.Enabled) return alerts;
 
         var now = _time.GetUtcNow();
-        var balance = (await _spark.GetBalanceAsync(ct)).SatsBalance;
-        LastBalance = new SparkBalanceSnapshot(balance.Owned, balance.Available, balance.Incoming, now);
-
         var sparkSwaps = pendingSwaps.Where(s => s.Provider == SwapProvider.Spark && s.Status == SwapOutStatus.Pending).ToList();
-        var held = balance.Owned + balance.Incoming;
 
-        if (held > _settings.MaxBalanceSats)
+        var wallets = await _spark.GetWalletsAsync(ct);
+        foreach (var gone in _watches.Keys.Except(wallets.Select(w => w.Ref)))
         {
-            _logger.LogError("The Spark wallet holds {HeldSats} sats, over SPARK_MAX_BALANCE_SATS ({MaxBalanceSats})",
-                held, _settings.MaxBalanceSats);
+            _watches.TryRemove(gone, out _);
         }
 
-        // Each swap's sats are its own until it exits: only what no swap in flight accounts for is stuck
-        var due = DueSats(sparkSwaps);
-        var stuck = held - due;
-        if (stuck > 0)
+        foreach (var wallet in wallets)
         {
-            StuckSince ??= now;
-            var stuckFor = now - StuckSince.Value;
-            _logger.LogWarning("The Spark wallet holds {StuckSats} sats that no Spark swap in flight accounts for, for {StuckMinutes} minutes",
-                stuck, (int)stuckFor.TotalMinutes);
+            if (!(await _spark.EnsureReadyAsync(wallet.Ref, ct)).IsReady) continue;
 
-            if (stuckFor >= StuckAlertAfter && !_stuckAlerted)
+            SatsBalance balance;
+            try
             {
-                _stuckAlerted = true;
-                alerts.Add(new SparkAlert(AuditActionType.SparkBalanceStuck, AuditObjectType.Wallet,
-                    _spark.Status.IdentityPublicKey ?? "spark",
-                    $"The Spark wallet has held {stuck} sats that no swap in flight accounts for since {StuckSince:u}",
-                    new { StuckSats = stuck, HeldSats = held, DueSats = due, balance.Available, balance.Incoming, balance.Frozen, StuckSince }));
+                balance = (await _spark.GetBalanceAsync(wallet.Ref, ct)).SatsBalance;
             }
-        }
-        else
-        {
-            StuckSince = null;
-            _stuckAlerted = false;
+            catch (Exception e) when (e is not OperationCanceledException)
+            {
+                _logger.LogWarning(e, "Could not check the balance of {SparkWallet} ({Name})", wallet.Ref, wallet.Name);
+                continue;
+            }
+
+            var watch = _watches.GetOrAdd(wallet.Ref, _ => new Watch());
+            watch.LastBalance = new SparkBalanceSnapshot(balance.Owned, balance.Available, balance.Incoming, now);
+
+            var held = balance.Owned + balance.Incoming;
+            if (held > wallet.MaxBalanceSats)
+            {
+                _logger.LogError("{SparkWallet} ({Name}) holds {HeldSats} sats, over its max balance ({MaxBalanceSats})",
+                    wallet.Ref, wallet.Name, held, wallet.MaxBalanceSats);
+            }
+
+            // Each swap's sats are its own until it exits: only what none of the wallet's swaps in flight accounts for
+            // is stuck
+            var due = DueSats(sparkSwaps.Where(s =>
+                string.Equals(s.SparkIdentity, wallet.IdentityPublicKey, StringComparison.OrdinalIgnoreCase)));
+            var stuck = held - due;
+            if (stuck > 0)
+            {
+                watch.StuckSince ??= now;
+                var stuckFor = now - watch.StuckSince.Value;
+                _logger.LogWarning("{SparkWallet} ({Name}) holds {StuckSats} sats that no Spark swap in flight accounts for, for {StuckMinutes} minutes",
+                    wallet.Ref, wallet.Name, stuck, (int)stuckFor.TotalMinutes);
+
+                if (stuckFor >= StuckAlertAfter && !watch.StuckAlerted)
+                {
+                    watch.StuckAlerted = true;
+                    alerts.Add(new SparkAlert(AuditActionType.SparkBalanceStuck, AuditObjectType.Wallet,
+                        wallet.Ref.WalletId?.ToString() ?? wallet.IdentityPublicKey ?? "spark",
+                        $"{wallet.Name} has held {stuck} sats that no swap in flight accounts for since {watch.StuckSince:u}",
+                        new
+                        {
+                            SparkWallet = wallet.Name, StuckSats = stuck, HeldSats = held, DueSats = due, balance.Available,
+                            balance.Incoming, balance.Frozen, watch.StuckSince
+                        }));
+                }
+            }
+            else
+            {
+                watch.StuckSince = null;
+                watch.StuckAlerted = false;
+            }
         }
 
         foreach (var swap in sparkSwaps.Where(s => s.LightningFeeSats is not null))
