@@ -126,8 +126,8 @@ public class SparkSettingsTests
     [InlineData("SPARK_SSP_IDENTITY_PUBKEY", "04abcd", "SPARK_SSP_IDENTITY_PUBKEY must be")]
     [InlineData("SPARK_IDENTITY_PUBKEY", "zz", "SPARK_IDENTITY_PUBKEY must be")]
     [InlineData("SPARK_SEED_FINGERPRINT", "not-a-fingerprint", "SPARK_SEED_FINGERPRINT must be")]
-    [InlineData("SPARK_ACCOUNT", "-1", "SPARK_ACCOUNT is required")]
-    [InlineData("SPARK_ACCOUNT", null, "SPARK_ACCOUNT is required")]
+    [InlineData("SPARK_ACCOUNT", "-1", "SPARK_ACCOUNT must be")]
+    [InlineData("SPARK_ACCOUNT", "one", "SPARK_ACCOUNT must be")]
     [InlineData("SPARK_MAX_EXIT_FEE_SATS", "0", "SPARK_MAX_EXIT_FEE_SATS")]
     public void InvalidSettings_FailTheStartup(string variable, string? value, string expected)
     {
@@ -135,6 +135,17 @@ public class SparkSettingsTests
         env[variable] = value;
 
         Error(env).Should().Contain(expected);
+    }
+
+    [Theory]
+    [InlineData(null)]
+    [InlineData("")]
+    public void WithoutASparkAccount_AccountZeroIsUsed(string? account)
+    {
+        var env = Remote();
+        env["SPARK_ACCOUNT"] = account;
+
+        Read(env).Account.Should().Be(0);
     }
 
     [Fact]

@@ -75,7 +75,7 @@ public sealed class SparkSettings
     /// </summary>
     public string? SeedFingerprint { get; init; }
 
-    /// <summary>Spark account index (SPARK_ACCOUNT); must match the signer's.</summary>
+    /// <summary>Spark account index (SPARK_ACCOUNT, 0 by default); must match the signer's.</summary>
     public int Account { get; init; }
 
     /// <summary>The Spark identity NodeGuard expects (SPARK_IDENTITY_PUBKEY); required with the remote signer.</summary>
@@ -169,9 +169,10 @@ public sealed class SparkSettings
         }
 
         var account = 0;
-        if (!int.TryParse(env("SPARK_ACCOUNT"), out account) || account < 0)
+        if (env("SPARK_ACCOUNT") is { Length: > 0 } accountValue &&
+            (!int.TryParse(accountValue, out account) || account < 0))
         {
-            errors.Add("SPARK_ACCOUNT is required: the Spark account index (0 or more), the same as the signer's");
+            errors.Add("SPARK_ACCOUNT must be the Spark account index (0 or more), the same as the signer's");
         }
 
         var identity = env("SPARK_IDENTITY_PUBKEY");
