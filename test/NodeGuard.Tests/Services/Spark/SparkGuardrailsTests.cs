@@ -59,46 +59,46 @@ public class SparkGuardrailsTests
     }
 
     [Fact]
-    public async Task SatsLingeringWithNoSwapInFlight_AreAlertedOnceAfterAnHour()
+    public async Task SatsStuckWithNoSwapInFlight_AreAlertedOnceAfterAnHour()
     {
         Holds(42_000);
 
         (await _guardrails.CheckAsync([])).Should().BeEmpty();
-        _guardrails.LingeringSince.Should().Be(_time.GetUtcNow());
+        _guardrails.StuckSince.Should().Be(_time.GetUtcNow());
 
-        _time.Advance(SparkGuardrails.LingerAlertAfter);
+        _time.Advance(SparkGuardrails.StuckAlertAfter);
         var alerts = await _guardrails.CheckAsync([]);
-        alerts.Should().ContainSingle().Which.Action.Should().Be(AuditActionType.SparkBalanceLingering);
+        alerts.Should().ContainSingle().Which.Action.Should().Be(AuditActionType.SparkBalanceStuck);
 
         _time.Advance(TimeSpan.FromHours(1));
         (await _guardrails.CheckAsync([])).Should().BeEmpty();
     }
 
     [Fact]
-    public async Task SatsOfASwapInFlight_DoNotLinger()
+    public async Task SatsOfASwapInFlight_AreNotStuck()
     {
         Holds(500_000);
 
         await _guardrails.CheckAsync([PaidSparkSwap(_time.GetUtcNow())]);
 
-        _guardrails.LingeringSince.Should().BeNull();
+        _guardrails.StuckSince.Should().BeNull();
     }
 
     [Fact]
-    public async Task AnEmptiedWallet_StopsLingering_AndCanBeAlertedAgain()
+    public async Task AnEmptiedWallet_IsNoLongerStuck_AndCanBeAlertedAgain()
     {
         Holds(42_000);
         await _guardrails.CheckAsync([]);
-        _time.Advance(SparkGuardrails.LingerAlertAfter);
+        _time.Advance(SparkGuardrails.StuckAlertAfter);
         await _guardrails.CheckAsync([]);
 
         Holds(0);
         await _guardrails.CheckAsync([]);
-        _guardrails.LingeringSince.Should().BeNull();
+        _guardrails.StuckSince.Should().BeNull();
 
         Holds(7_000);
         await _guardrails.CheckAsync([]);
-        _time.Advance(SparkGuardrails.LingerAlertAfter);
+        _time.Advance(SparkGuardrails.StuckAlertAfter);
         (await _guardrails.CheckAsync([])).Should().ContainSingle();
     }
 

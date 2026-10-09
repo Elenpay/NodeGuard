@@ -437,7 +437,7 @@ public class MonitorSwapsJobTests
         _sparkGuardrailsMock.Setup(x => x.CheckAsync(It.IsAny<IReadOnlyCollection<SwapOut>>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(new List<SparkAlert>
             {
-                new(AuditActionType.SparkBalanceLingering, AuditObjectType.Wallet, "02spark", "lingering", new { HeldSats = 1 })
+                new(AuditActionType.SparkBalanceStuck, AuditObjectType.Wallet, "02spark", "stuck", new { HeldSats = 1 })
             });
 
         var job = new MonitorSwapsJob(_loggerMock.Object, _schedulerFactoryMock.Object, _nodeRepositoryMock.Object,
@@ -455,7 +455,7 @@ public class MonitorSwapsJobTests
             Times.Never);
         _swapOutRepositoryMock.Verify(x => x.Update(It.IsAny<SwapOut>()), Times.Never);
         Assert.Null(unpaid.LightningFeeSats);
-        _auditServiceMock.Verify(x => x.LogSystemAsync(AuditActionType.SparkBalanceLingering, AuditEventType.Failure,
+        _auditServiceMock.Verify(x => x.LogSystemAsync(AuditActionType.SparkBalanceStuck, AuditEventType.Failure,
             AuditObjectType.Wallet, "02spark", It.IsAny<object?>()), Times.Once);
     }
 

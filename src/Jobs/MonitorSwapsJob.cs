@@ -50,7 +50,7 @@ public class MonitorSwapsJob : IJob
     }
 
     /// <summary>
-    /// Spark balances only pass through: refreshes the transit balance and audits lingering sats and overdue
+    /// Spark balances only pass through: refreshes the transit balance and audits stuck sats and overdue
     /// exits. Never fails the job.
     /// </summary>
     private async Task CheckSparkGuardrailsAsync(IReadOnlyCollection<SwapOut> pendingSwaps)

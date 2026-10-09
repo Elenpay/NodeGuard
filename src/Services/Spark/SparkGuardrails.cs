@@ -29,7 +29,7 @@ public sealed record SparkBalanceSnapshot(long OwnedSats, long AvailableSats, lo
 public sealed record SparkAlert(AuditActionType Action, AuditObjectType ObjectType, string ObjectId, string Message, object Details);
 
 /// <summary>
-/// Watches that Spark balances only pass through: sats that linger in the transit wallet with no swap
+/// Watches that Spark balances only pass through: sats stuck in the transit wallet with no swap
 /// in flight, and swaps whose exit is overdue. Run by the swap monitor, which audits the alerts; each
 /// alert is raised once. The balance is cached for the Swaps page and exported as the
 /// <c>nodeguard.spark.balance</c> gauge (meter <see cref="MeterName"/>).
@@ -39,7 +39,7 @@ public interface ISparkGuardrails
     SparkBalanceSnapshot? LastBalance { get; }
 
     /// <summary>When the wallet started holding sats with no Spark swap in flight, if it does.</summary>
-    DateTimeOffset? LingeringSince { get; }
+    DateTimeOffset? StuckSince { get; }
 
     Task<IReadOnlyList<SparkAlert>> CheckAsync(IReadOnlyCollection<SwapOut> pendingSwaps, CancellationToken ct = default);
 }
@@ -47,7 +47,7 @@ public interface ISparkGuardrails
 public sealed class SparkGuardrails : ISparkGuardrails, IDisposable
 {
     public const string MeterName = "NodeGuard.Spark";
-    public static readonly TimeSpan LingerAlertAfter = TimeSpan.FromHours(1);
+    public static readonly TimeSpan StuckAlertAfter = TimeSpan.FromHours(1);
     public static readonly TimeSpan ExitOverdueAfter = TimeSpan.FromHours(6);
 
     private readonly SparkSettings _settings;
@@ -56,7 +56,7 @@ public sealed class SparkGuardrails : ISparkGuardrails, IDisposable
     private readonly TimeProvider _time;
     private readonly Meter _meter;
     private readonly HashSet<int> _overdueAlerted = [];
-    private bool _lingerAlerted;
+    private bool _stuckAlerted;
 
     public SparkGuardrails(SparkSettings settings, ISparkWalletService spark, ILogger<SparkGuardrails> logger, TimeProvider time)
     {
@@ -71,7 +71,7 @@ public sealed class SparkGuardrails : ISparkGuardrails, IDisposable
 
     public SparkBalanceSnapshot? LastBalance { get; private set; }
 
-    public DateTimeOffset? LingeringSince { get; private set; }
+    public DateTimeOffset? StuckSince { get; private set; }
 
     public async Task<IReadOnlyList<SparkAlert>> CheckAsync(IReadOnlyCollection<SwapOut> pendingSwaps, CancellationToken ct = default)
     {
@@ -93,24 +93,24 @@ public sealed class SparkGuardrails : ISparkGuardrails, IDisposable
 
         if (held > 0 && sparkSwaps.Count == 0)
         {
-            LingeringSince ??= now;
-            var lingering = now - LingeringSince.Value;
-            _logger.LogWarning("The Spark wallet holds {HeldSats} sats with no Spark swap in flight, for {LingeringMinutes} minutes",
-                held, (int)lingering.TotalMinutes);
+            StuckSince ??= now;
+            var stuckFor = now - StuckSince.Value;
+            _logger.LogWarning("The Spark wallet holds {HeldSats} sats with no Spark swap in flight, for {StuckMinutes} minutes",
+                held, (int)stuckFor.TotalMinutes);
 
-            if (lingering >= LingerAlertAfter && !_lingerAlerted)
+            if (stuckFor >= StuckAlertAfter && !_stuckAlerted)
             {
-                _lingerAlerted = true;
-                alerts.Add(new SparkAlert(AuditActionType.SparkBalanceLingering, AuditObjectType.Wallet,
+                _stuckAlerted = true;
+                alerts.Add(new SparkAlert(AuditActionType.SparkBalanceStuck, AuditObjectType.Wallet,
                     _spark.Status.IdentityPublicKey ?? "spark",
-                    $"The Spark wallet has held {held} sats with no swap in flight since {LingeringSince:u}",
-                    new { HeldSats = held, balance.Available, balance.Incoming, balance.Frozen, LingeringSince }));
+                    $"The Spark wallet has held {held} sats with no swap in flight since {StuckSince:u}",
+                    new { HeldSats = held, balance.Available, balance.Incoming, balance.Frozen, StuckSince }));
             }
         }
         else
         {
-            LingeringSince = null;
-            _lingerAlerted = false;
+            StuckSince = null;
+            _stuckAlerted = false;
         }
 
         foreach (var swap in sparkSwaps.Where(s => s.LightningFeeSats is not null))

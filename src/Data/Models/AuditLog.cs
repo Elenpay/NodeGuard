@@ -164,7 +164,7 @@ public enum AuditActionType
     RebalanceRetryScheduled,
 
     // Spark transit wallet alerts
-    SparkBalanceLingering,
+    SparkBalanceStuck,
     SparkExitOverdue
 }
 
