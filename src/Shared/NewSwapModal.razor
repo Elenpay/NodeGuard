@@ -587,13 +587,18 @@
     /// </summary>
     private async Task<List<Node>> SparkReadyNodesAsync()
     {
-        var nodes = (await NodeRepository.GetAllConfiguredByProvider(SwapProvider.Spark, LoggedUser.Id))
-            .Where(n => SparkSettings.WalletFor(n) is not null)
-            .ToList();
+        var managed = await NodeRepository.GetAllConfiguredByProvider(SwapProvider.Spark, LoggedUser.Id);
+        if (managed.Count == 0)
+        {
+            _noSparkNodesReason = "You manage no node: nodes are assigned to users on the Users page (Managed nodes).";
+            return managed;
+        }
+
+        var nodes = managed.Where(n => SparkSettings.WalletFor(n) is not null).ToList();
         if (nodes.Count == 0)
         {
-            _noSparkNodesReason = "No node has a Spark wallet configured: create one on the Wallets page (New ▸ New Spark wallet) " +
-                                  "and choose it in the node's liquidity settings.";
+            _noSparkNodesReason = "None of the nodes you manage has a Spark wallet: create one on the Wallets page " +
+                                  "(New ▸ New Spark wallet) and choose it in the node's liquidity settings.";
             return nodes;
         }
 
