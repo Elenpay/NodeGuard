@@ -158,7 +158,7 @@ namespace NodeGuard
                 CurrentNetworkHelper.GetCurrentNetwork(), Constants.REMOTE_SIGNER_ENDPOINT);
             builder.Services.AddSingleton(sparkSettings);
             builder.Services.TryAddSingleton(TimeProvider.System);
-            builder.Services.AddSingleton<ISparkSeedProtector, SparkSeedProtector>();
+            builder.Services.AddTransient<ISparkSeedProtector, SparkSeedProtector>();
             builder.Services.AddTransient<ISparkSignerProvider>(sp => new SparkSignerProvider(sparkSettings,
                 sp.GetRequiredService<IServiceScopeFactory>(), sp.GetRequiredService<ISparkSeedProtector>(),
                 sp.GetRequiredService<IHttpClientFactory>().CreateClient(nameof(SparkSignerProvider)),
