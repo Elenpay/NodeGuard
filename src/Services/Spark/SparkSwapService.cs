@@ -88,6 +88,13 @@ public interface ISparkSwapService
 public sealed class SparkSwapService : ISparkSwapService
 {
     public const int InvoiceExpirySeconds = 1800;
+
+    /// <summary>
+    /// Spark's fixed fee for a Lightning payment into Spark, in basis points: 15 (0.15%), charged to the sender on the
+    /// Lightning route through the invoice's route hints (https://docs.spark.money/wallets/estimate-fees). It is part of
+    /// the swap's routing fee, so it is shown but never added to the swap's fees.
+    /// </summary>
+    public const int ServiceFeeBps = 15;
     private const int PaymentTimeoutSeconds = 120;
     private const decimal DefaultMaxRoutingFeePercent = 0.5m;
     private const string LightningTransferType = "PreimageSwap";
@@ -325,8 +332,7 @@ public sealed class SparkSwapService : ISparkSwapService
         }
 
         swap.TxId = exit.Txid;
-        // Provisional until the payout confirms: everything the swap does not deliver is the SSP's
-        swap.ServiceFeeSats = swap.SatsAmount - exit.PayoutSats;
+        SetFees(swap, exit.PayoutSats); // provisional until the payout confirms
         Save(swap);
 
         _logger.LogInformation("Spark swap {SwapId}: cooperative exit {TxId} pays {Payout} of its {Received} sats to {Address} (exit fee {Fee} sats)",
@@ -492,14 +498,24 @@ public sealed class SparkSwapService : ISparkSwapService
         swap.Status = SwapOutStatus.Completed;
         swap.TxId = payout.TransactionId.ToString();
         swap.PayoutSats = payout.Value;
-        // What the swap delivered is what landed on-chain: the SSP kept the rest (any receive fee, the exit fee
-        // and its miner fee)
-        swap.ServiceFeeSats = Math.Max(0, swap.SatsAmount - payout.Value);
-        swap.OnChainFeeSats = 0;
+        SetFees(swap, payout.Value);
         Save(swap);
 
-        _logger.LogInformation("Spark swap {SwapId}: completed, {Payout} sats confirmed at {Address} in {TxId} (service fee {Fee} sats)",
-            swap.Id, payout.Value, swap.DestinationAddress, swap.TxId, swap.ServiceFeeSats);
+        _logger.LogInformation("Spark swap {SwapId}: completed, {Payout} sats confirmed at {Address} in {TxId} (on-chain fee {OnChainFee} sats)",
+            swap.Id, payout.Value, swap.DestinationAddress, swap.TxId, swap.OnChainFeeSats);
+    }
+
+    /// <summary>
+    /// A Spark swap's fees from what it delivered on-chain. Spark's own fee is charged on the Lightning route, so it is
+    /// part of the routing fee (<see cref="SwapOut.LightningFeeSats"/>). The on-chain fee is the move from Spark to L1:
+    /// the SSP's exit fee and the L1 broadcast, what the swap's leaves held minus the payout. The service fee is only
+    /// what the payment brought in short of the amount, which receiving into Spark normally leaves at 0.
+    /// </summary>
+    private static void SetFees(SwapOut swap, long deliveredSats)
+    {
+        var received = swap.SparkReceivedSats ?? swap.SatsAmount;
+        swap.ServiceFeeSats = Math.Max(0, swap.SatsAmount - received);
+        swap.OnChainFeeSats = Math.Max(0, received - deliveredSats);
     }
 
     private sealed record Payout(uint256 TransactionId, long Value, long Confirmations);
@@ -572,10 +588,10 @@ public sealed class SparkSwapService : ISparkSwapService
         HtlcAddress = string.Empty,
         PaymentHash = swap.PaymentHash,
         Amount = swap.SatsAmount,
+        // Spark's fee is charged on the Lightning route; the on-chain fee is the exit from Spark to L1
         OffchainFee = swap.LightningFeeSats ?? 0,
-        // The SSP's fee covers the exit's miner fee
         ServerFee = swap.ServiceFeeSats ?? 0,
-        OnchainFee = 0,
+        OnchainFee = swap.OnChainFeeSats ?? 0,
         Status = status ?? swap.Status,
         TxId = swap.TxId,
         ErrorMessage = error ?? swap.ErrorDetails

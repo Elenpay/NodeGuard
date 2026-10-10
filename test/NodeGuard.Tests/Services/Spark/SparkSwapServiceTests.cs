@@ -445,7 +445,8 @@ public class SparkSwapServiceTests
 
         step.Should().Be(SparkExitStep.ExitSent);
         swap.TxId.Should().Be("exit-tx");
-        swap.ServiceFeeSats.Should().Be(3_000, "everything the swap does not deliver is the SSP's");
+        swap.OnChainFeeSats.Should().Be(2_000, "the exit from Spark to L1 cost what the leaves held minus the payout");
+        swap.ServiceFeeSats.Should().Be(1_000, "the payment brought in 1,000 sats short of the amount");
         swap.Status.Should().Be(SwapOutStatus.Pending);
         await _spark.Received(1).WithdrawLeavesAsync(
             Arg.Is<IReadOnlyCollection<string>>(ids => ids.SequenceEqual(new[] { "l1", "l2" })), Address, 20_000, Arg.Any<CancellationToken>());
@@ -532,15 +533,17 @@ public class SparkSwapServiceTests
     {
         Payouts((Seed: 0xbb, Sats: 497_500, Confirmations: 1));
         var swap = Pending(txId: "exit-tx", leafIds: "l1");
+        swap.SparkReceivedSats = 500_000; // receiving into Spark is free: Spark's fee was on the Lightning route
 
         (await Service().ExitAsync(swap)).Should().Be(SparkExitStep.Completed);
 
         swap.Status.Should().Be(SwapOutStatus.Completed);
         swap.TxId.Should().Be(new uint256(Enumerable.Repeat((byte)0xbb, 32).ToArray()).ToString(), "the SSP may fee-bump the exit");
         swap.PayoutSats.Should().Be(497_500);
-        swap.ServiceFeeSats.Should().Be(2_500);
-        swap.OnChainFeeSats.Should().Be(0);
+        swap.OnChainFeeSats.Should().Be(2_500, "the move from Spark to L1 is the on-chain fee");
+        swap.ServiceFeeSats.Should().Be(0, "Spark's fee is part of the routing fee");
         swap.LightningFeeSats.Should().Be(12);
+        swap.TotalFeesSats.Should().Be(2_512);
         _swapOuts.Received(1).Update(swap);
     }
 
