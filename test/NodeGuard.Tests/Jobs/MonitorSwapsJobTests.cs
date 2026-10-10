@@ -290,6 +290,46 @@ public class MonitorSwapsJobTests
             Times.Once);
     }
 
+    [Theory]
+    [InlineData(null, false)]
+    [InlineData(10L, true)]
+    public async Task Execute_WhileASwapIsPending_KeepsItsFeesUpToDate(long? savedServiceFee, bool upToDate)
+    {
+        var loopNode = new Node { Id = 23, Endpoint = "localhost:10023", ChannelAdminMacaroon = "mac", LoopdEndpoint = "localhost:11023", LoopdMacaroon = "loopmac" };
+        var pendingSwap = new SwapOut
+        {
+            Id = 503,
+            NodeId = loopNode.Id,
+            Provider = SwapProvider.Loop,
+            ProviderId = "loop-pending-503",
+            Status = SwapOutStatus.Pending,
+            SatsAmount = 250_000,
+            ServiceFeeSats = savedServiceFee,
+            LightningFeeSats = upToDate ? 20 : null,
+            OnChainFeeSats = upToDate ? 0 : null
+        };
+        _nodeRepositoryMock.Setup(x => x.GetAllConfiguredByProvider(SwapProvider.Loop, null)).ReturnsAsync(new List<Node> { loopNode });
+        _nodeRepositoryMock.Setup(x => x.GetAllConfiguredByProvider(SwapProvider.FortySwap, null)).ReturnsAsync(new List<Node>());
+        _swapOutRepositoryMock.Setup(x => x.GetAllPending()).ReturnsAsync(new List<SwapOut> { pendingSwap });
+        _swapsServiceMock
+            .Setup(x => x.GetSwapAsync(loopNode, SwapProvider.Loop, "loop-pending-503", It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new SwapResponse
+            {
+                Id = "loop-pending-503", HtlcAddress = "bc1qpending", Status = SwapOutStatus.Pending,
+                ServerFee = 10, OffchainFee = 20, OnchainFee = 0
+            });
+        _swapOutRepositoryMock.Setup(x => x.Update(It.IsAny<SwapOut>())).Returns((true, null));
+
+        await _job.Execute(_jobExecutionContextMock.Object);
+
+        _swapOutRepositoryMock.Verify(x => x.Update(It.Is<SwapOut>(s =>
+                s.Id == pendingSwap.Id && s.Status == SwapOutStatus.Pending &&
+                s.ServiceFeeSats == 10 && s.LightningFeeSats == 20 && s.OnChainFeeSats == 0)),
+            upToDate ? Times.Never() : Times.Once());
+        _auditServiceMock.Verify(x => x.LogSystemAsync(It.IsAny<AuditActionType>(), It.IsAny<AuditEventType>(),
+            It.IsAny<AuditObjectType>(), It.IsAny<string?>(), It.IsAny<object?>()), Times.Never);
+    }
+
     [Fact]
     public async Task Execute_WhenProviderMarksSwapFailed_UpdatesSwapAndAuditsFailure()
     {
