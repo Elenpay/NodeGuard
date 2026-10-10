@@ -78,7 +78,13 @@ public class SparkSwapServiceTests
     private SparkSwapService Service() => new(NullLogger<SparkSwapService>.Instance, Settings, _spark, _lightning, _swapOuts,
         _wallets, _nbXplorer, _time);
 
-    private static SwapOutRequest Request(string address = Address) => new() { Amount = 500_000, Address = address, MaxRoutingFeesPercent = 1m };
+    // No address: a Spark swap reserves its own when it exits
+    private static SwapOutRequest Request() => new() { Amount = 500_000, MaxRoutingFeesPercent = 1m };
+
+    private void AddressReserved(string address) =>
+        _nbXplorer.GetUnusedAsync(Arg.Any<NBXplorer.DerivationStrategy.DerivationStrategyBase>(),
+                NBXplorer.DerivationStrategy.DerivationFeature.Deposit, 0, true, Arg.Any<CancellationToken>())
+            .Returns(new KeyPathInformation { Address = BitcoinAddress.Create(address, Network.RegTest) });
 
     private static SwapOut Template() => new() { NodeId = 1, DestinationWalletId = 3, IsManual = true, Provider = SwapProvider.Spark };
 
@@ -134,14 +140,14 @@ public class SparkSwapServiceTests
             .Returns(transfers.ToList());
 
     private static SwapOut Pending(long? lightningFee = 12, string? txId = null, string? identity = Identity, int id = 7,
-        string? leafIds = null) => new()
+        string? leafIds = null, string? address = Address) => new()
     {
         Id = id,
         NodeId = 1,
         Provider = SwapProvider.Spark,
         ProviderId = "req-1",
         PaymentHash = Hash,
-        DestinationAddress = Address,
+        DestinationAddress = address,
         DestinationWalletId = 3,
         SparkIdentity = identity,
         SatsAmount = 500_000,
@@ -180,7 +186,8 @@ public class SparkSwapServiceTests
         });
         swapOut.ProviderId.Should().Be("req-1");
         swapOut.PaymentHash.Should().Be(Hash);
-        swapOut.DestinationAddress.Should().Be(Address);
+        swapOut.DestinationAddress.Should().BeNull("a Spark swap reserves its address when it exits");
+        await _nbXplorer.DidNotReceiveWithAnyArgs().GetUnusedAsync(default!, default, default, default, default);
         swapOut.SparkIdentity.Should().Be(Identity);
         swapOut.SatsAmount.Should().Be(500_000);
         swapOut.Status.Should().Be(SwapOutStatus.Pending);
@@ -287,12 +294,19 @@ public class SparkSwapServiceTests
         await _swapOuts.DidNotReceiveWithAnyArgs().AddAsync(default!);
     }
 
-    [Fact]
-    public async Task Create_ToAnAddressOfAnotherNetwork_IsRefused()
+    [Theory]
+    [InlineData(null)]
+    [InlineData(99)]
+    public async Task Create_WithoutADestinationWallet_IsRefused(int? destinationWalletId)
     {
-        var act = () => Service().CreateSwapOutAsync(_node, Template(), Request("bc1qar0srrr7xfkvy5l643lydnw9re59gtzzwf5mdq"));
+        var swapOut = Template();
+        swapOut.DestinationWalletId = destinationWalletId;
 
-        await act.Should().ThrowAsync<ArgumentException>().WithMessage("*RegTest address*");
+        var act = () => Service().CreateSwapOutAsync(_node, swapOut, Request());
+
+        await act.Should().ThrowAsync<ArgumentException>().WithMessage("*destination wallet*");
+        await _swapOuts.DidNotReceiveWithAnyArgs().AddAsync(default!);
+        await _spark.DidNotReceiveWithAnyArgs().CreateInvoiceAsync(default, default!, default, default);
     }
 
     // ── Payment ──────────────────────────────────────────────────────────────────────────
@@ -502,12 +516,59 @@ public class SparkSwapServiceTests
         await _spark.Received(1).WithdrawLeavesAsync(
             Arg.Is<IReadOnlyCollection<string>>(ids => ids.SequenceEqual(new[] { "l1", "l2" })), Address, 20_000, Arg.Any<CancellationToken>());
         await _spark.DidNotReceiveWithAnyArgs().WithdrawAllAsync(default!, default, default);
+        await _nbXplorer.DidNotReceiveWithAnyArgs().GetUnusedAsync(default!, default, default, default, default);
+    }
+
+    [Fact]
+    public async Task Exit_ReservesItsAddressOnceAttributed_AndSavesItBeforeExiting()
+    {
+        var swap = Pending(leafIds: "l1,l2", address: null);
+        AddressReserved(Address);
+        _spark.WithdrawLeavesAsync(Arg.Any<IReadOnlyCollection<string>>(), Address, 20_000, Arg.Any<CancellationToken>())
+            .Returns(new WithdrawLeavesResult("exit-tx", 499_000, 497_000));
+
+        (await Service().ExitAsync(swap)).Should().Be(SparkExitStep.ExitSent);
+
+        swap.DestinationAddress.Should().Be(Address);
+        NSubstitute.Received.InOrder(() =>
+        {
+            _nbXplorer.GetUnusedAsync(Arg.Any<NBXplorer.DerivationStrategy.DerivationStrategyBase>(),
+                NBXplorer.DerivationStrategy.DerivationFeature.Deposit, 0, true, Arg.Any<CancellationToken>());
+            _swapOuts.Update(swap);
+            _spark.WithdrawLeavesAsync(Arg.Any<IReadOnlyCollection<string>>(), Address, 20_000, Arg.Any<CancellationToken>());
+            _swapOuts.Update(swap);
+        });
+    }
+
+    [Fact]
+    public async Task Exit_BeforeAttribution_ReservesNoAddress()
+    {
+        SspReports(null);
+
+        (await Service().ExitAsync(Pending(address: null))).Should().Be(SparkExitStep.Waiting);
+
+        await _nbXplorer.DidNotReceiveWithAnyArgs().GetUnusedAsync(default!, default, default, default, default);
+        await _nbXplorer.DidNotReceiveWithAnyArgs().GetTransactionsAsync(default!);
+    }
+
+    [Fact]
+    public async Task Exit_WhenItsAddressCannotBeSaved_DoesNotExit()
+    {
+        var swap = Pending(leafIds: "l1,l2", address: null);
+        AddressReserved(Address);
+        _swapOuts.Update(swap).Returns((false, "the database is down"));
+
+        (await Service().ExitAsync(swap)).Should().Be(SparkExitStep.Waiting);
+
+        swap.DestinationAddress.Should().BeNull();
+        await _spark.DidNotReceiveWithAnyArgs().WithdrawLeavesAsync(default!, default!, default, default);
     }
 
     [Fact]
     public async Task Exit_AnUnattributedSwap_IsAttributedFirst()
     {
-        var swap = Pending();
+        var swap = Pending(address: null);
+        AddressReserved(Address);
         SspReports("transfer-1");
         _spark.GetTransferAsync("transfer-1", Arg.Any<CancellationToken>()).Returns(Transfer("transfer-1", 499_000));
         _spark.WithdrawLeavesAsync(Arg.Any<IReadOnlyCollection<string>>(), Address, 20_000, Arg.Any<CancellationToken>())

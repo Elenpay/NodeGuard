@@ -153,8 +153,9 @@ public class SwapOut : Entity
    public string? TxId { get; set; }
 
    /// <summary>
-   /// The on-chain address of the destination wallet the swap pays out to, reserved when the swap was
-   /// created. Null for swaps created before it was recorded.
+   /// The on-chain address of the destination wallet the swap pays out to. Loop and 40swap swaps reserve it
+   /// when they are created, as their request carries it; a Spark swap reserves it only when it exits, and it
+   /// is null until then. Null too for swaps created before it was recorded.
    /// </summary>
    public string? DestinationAddress { get; set; }
 

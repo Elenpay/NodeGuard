@@ -19,6 +19,7 @@
 
 using Lnrpc;
 using NBitcoin;
+using NBXplorer.DerivationStrategy;
 using NBXplorer.Models;
 using NodeGuard.Data.Models;
 using NodeGuard.Data.Repositories.Interfaces;
@@ -145,9 +146,11 @@ public sealed class SparkSwapService : ISparkSwapService
         CancellationToken ct = default)
     {
         if (request.Amount <= 0) throw new ArgumentException("The swap amount must be greater than zero.", nameof(request));
-        if (string.IsNullOrWhiteSpace(request.Address) || !IsAddressOn(request.Address, Network))
+
+        // The payout address is reserved only when the swap exits, but the wallet it comes from must be usable now
+        if (await DestinationStrategyAsync(swapOut) is null)
         {
-            throw new ArgumentException($"The destination must be a {Network} address.", nameof(request));
+            throw new ArgumentException("A Spark swap needs a destination wallet to exit to.", nameof(swapOut));
         }
 
         var status = await _spark.EnsureReadyAsync(ct);
@@ -175,7 +178,6 @@ public sealed class SparkSwapService : ISparkSwapService
             swapOut.ProviderId = invoice.RequestId ?? invoice.PaymentHash;
             swapOut.Status = SwapOutStatus.Pending;
             swapOut.SatsAmount = request.Amount;
-            swapOut.DestinationAddress = request.Address;
             swapOut.PaymentHash = invoice.PaymentHash;
             swapOut.SparkIdentity = status.IdentityPublicKey;
 
@@ -224,9 +226,9 @@ public sealed class SparkSwapService : ISparkSwapService
 
     public async Task<SwapResponse> AdvanceSwapAsync(Node node, SwapOut swap, CancellationToken ct = default)
     {
-        if (string.IsNullOrEmpty(swap.PaymentHash) || string.IsNullOrEmpty(swap.DestinationAddress))
+        if (string.IsNullOrEmpty(swap.PaymentHash))
         {
-            throw new InvalidOperationException($"Spark swap {swap.Id} has no payment hash or destination address.");
+            throw new InvalidOperationException($"Spark swap {swap.Id} has no payment hash.");
         }
 
         // Paid: the exit is SparkSwapExitJob's
@@ -290,8 +292,8 @@ public sealed class SparkSwapService : ISparkSwapService
         await EnsureSwapWalletAsync(swap, ct);
 
         // Done once the destination address has a confirmed payout. Checked before exiting too: an exit whose
-        // txid was not saved (a crash) must not be followed by a second one
-        var payout = await FindPayoutAsync(swap, ct);
+        // txid was not saved (a crash) must not be followed by a second one. No address yet means no exit yet
+        var payout = swap.DestinationAddress is null ? null : await FindPayoutAsync(swap, ct);
         if (payout is not null)
         {
             if (payout.Confirmations > 0)
@@ -311,6 +313,19 @@ public sealed class SparkSwapService : ISparkSwapService
 
         if (swap.TxId is not null) return SparkExitStep.ExitSent;
         if (!await AttributeAsync(swap, ct)) return SparkExitStep.Waiting;
+
+        // The address is reserved only now, and saved before the exit: the payout is found by it after a crash
+        if (swap.DestinationAddress is null)
+        {
+            swap.DestinationAddress = await ReserveAddressAsync(swap, ct);
+            if (!Save(swap))
+            {
+                swap.DestinationAddress = null;
+                return SparkExitStep.Waiting;
+            }
+
+            _logger.LogInformation("Spark swap {SwapId}: exits to {Address}", swap.Id, swap.DestinationAddress);
+        }
 
         var leafIds = LeafIds(swap);
         WithdrawLeavesResult exit;
@@ -535,12 +550,8 @@ public sealed class SparkSwapService : ISparkSwapService
     /// <summary>The destination wallet's transaction paying the swap's destination address, if any.</summary>
     private async Task<Payout?> FindPayoutAsync(SwapOut swap, CancellationToken ct)
     {
-        var wallet = swap.DestinationWalletId is { } walletId ? await _walletRepository.GetById(walletId) : null;
-        var strategy = wallet?.GetDerivationStrategy();
-        if (strategy is null)
-        {
-            throw new InvalidOperationException($"Spark swap {swap.Id} has no destination wallet to find its payout in.");
-        }
+        var strategy = await DestinationStrategyAsync(swap) ??
+                       throw new InvalidOperationException($"Spark swap {swap.Id} has no destination wallet to find its payout in.");
 
         ct.ThrowIfCancellationRequested();
         var script = BitcoinAddress.Create(swap.DestinationAddress!, Network).ScriptPubKey;
@@ -553,6 +564,24 @@ public sealed class SparkSwapService : ISparkSwapService
                 .Select(output => new Payout(tx.TransactionId, ((Money)output.Value).Satoshi, tx.Confirmations)))
             .OrderByDescending(p => p.Confirmations)
             .FirstOrDefault();
+    }
+
+    /// <summary>A new address of the destination wallet, reserved so that nothing else is given it.</summary>
+    private async Task<string> ReserveAddressAsync(SwapOut swap, CancellationToken ct)
+    {
+        var strategy = await DestinationStrategyAsync(swap) ??
+                       throw new InvalidOperationException($"Spark swap {swap.Id} has no destination wallet to exit to.");
+        var address = await _nbXplorerService.GetUnusedAsync(strategy, DerivationFeature.Deposit, 0, true, ct);
+
+        return address?.Address?.ToString() ??
+               throw new InvalidOperationException($"Spark swap {swap.Id}: no address of its destination wallet could be reserved.");
+    }
+
+    /// <summary>The swap's destination wallet's derivation strategy, or null if it has none.</summary>
+    private async Task<DerivationStrategyBase?> DestinationStrategyAsync(SwapOut swap)
+    {
+        var wallet = swap.DestinationWalletId is { } walletId ? await _walletRepository.GetById(walletId) : null;
+        return wallet?.GetDerivationStrategy();
     }
 
     /// <summary>Connects the wallet and checks it is the one the swap was paid into; returns its identity.</summary>
@@ -572,9 +601,9 @@ public sealed class SparkSwapService : ISparkSwapService
 
     private static void RequirePaid(SwapOut swap)
     {
-        if (swap.LightningFeeSats is null || string.IsNullOrEmpty(swap.DestinationAddress))
+        if (swap.LightningFeeSats is null)
         {
-            throw new InvalidOperationException($"Spark swap {swap.Id} is not paid yet, or has no destination address.");
+            throw new InvalidOperationException($"Spark swap {swap.Id} is not paid yet.");
         }
     }
 
@@ -611,17 +640,4 @@ public sealed class SparkSwapService : ISparkSwapService
         TxId = swap.TxId,
         ErrorMessage = error ?? swap.ErrorDetails
     };
-
-    private static bool IsAddressOn(string address, Network network)
-    {
-        try
-        {
-            BitcoinAddress.Create(address, network);
-            return true;
-        }
-        catch (FormatException)
-        {
-            return false;
-        }
-    }
 }
