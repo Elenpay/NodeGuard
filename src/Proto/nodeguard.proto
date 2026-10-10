@@ -161,7 +161,7 @@ service NodeGuardService {
 
   /*
   Exits everything a Spark wallet holds to an unused address of an on-chain wallet. Refused while the Spark wallet
-  has a swap in flight.
+  has a swap in flight, whose sats it would take.
   */
   rpc WithdrawAllSparkWallet(WithdrawAllSparkWalletRequest) returns (WithdrawAllSparkWalletResponse);
 
@@ -759,6 +759,9 @@ message GetSwapOutResponse {
   optional string destination_address = 12;
   optional string payment_hash = 13;
   optional string reference_id = 14;
+  // What the swap paid on-chain to destination_address, once confirmed: what it delivered (Spark swaps; their
+  // service fee is amount_sats minus it)
+  optional int64 payout_sats = 15;
 }
 
 message CreateSparkWalletRequest {

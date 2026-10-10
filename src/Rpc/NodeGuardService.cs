@@ -1813,6 +1813,7 @@ public class NodeGuardService : Nodeguard.NodeGuardService.NodeGuardServiceBase,
         if (swap.DestinationAddress != null) response.DestinationAddress = swap.DestinationAddress;
         if (swap.PaymentHash != null) response.PaymentHash = swap.PaymentHash;
         if (swap.ReferenceId != null) response.ReferenceId = swap.ReferenceId;
+        if (swap.PayoutSats != null) response.PayoutSats = swap.PayoutSats.Value;
         return response;
     }
 

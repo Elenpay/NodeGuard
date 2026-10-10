@@ -2549,7 +2549,7 @@ namespace NodeGuard.Rpc
             {
                 Id = 77, Provider = SwapProvider.Spark, ProviderId = "req-1", Status = SwapOutStatus.Completed, SatsAmount = 500_000,
                 ServiceFeeSats = 2_500, LightningFeeSats = 12, TxId = "payout-tx", DestinationAddress = "bcrt1qdest",
-                PaymentHash = "abcd", ReferenceId = "ref-1", DestinationWalletId = 3
+                PaymentHash = "abcd", ReferenceId = "ref-1", DestinationWalletId = 3, PayoutSats = 497_500
             });
 
             var response = await service.GetSwapOut(new GetSwapOutRequest { ReferenceId = "ref-1" }, TestServerCallContext.Create());
@@ -2559,6 +2559,7 @@ namespace NodeGuard.Rpc
             response.Status.Should().Be(SWAP_OUT_STATUS.SwapOutCompleted);
             response.TxId.Should().Be("payout-tx");
             response.ServiceFeeSats.Should().Be(2_500);
+            response.PayoutSats.Should().Be(497_500);
             response.DestinationAddress.Should().Be("bcrt1qdest");
             response.ReferenceId.Should().Be("ref-1");
         }

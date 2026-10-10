@@ -60,9 +60,9 @@ Spark wallets let NodeGuard use Spark without the remote signer, for instance fo
 
 - **Creating one.** Wallets page, New ▸ New Spark wallet (finance managers). Give it a name, a Spark account (0 by default) and optionally a max balance. NodeGuard generates a 24-word mnemonic and shows it **once**: write it down. A wallet created over gRPC never shows it.
 - **Storage.** The mnemonic is encrypted with ASP.NET Data Protection (purpose `NodeGuard.SparkWallet.Mnemonic.v1`). The key ring is NodeGuard's own, in Postgres (`DataProtectionKeys`), so it is shared by every replica and survives restarts and redeploys. This protects against a dump of the `Wallets` table alone, not of the whole database: the key ring itself is stored unencrypted. If the key ring is lost or NodeGuard's application name changes, the mnemonics can't be decrypted, and the words shown at creation are the only way back. A wallet whose seed doesn't decrypt is reported unavailable.
-- **Using one.** Nodes page ▸ liquidity settings ▸ Spark wallet, next to the Spark weight. A Spark weight above 0 needs a Spark wallet. Several nodes may share one. A node's Spark wallet can't change while the node has a Spark swap in flight.
-- **Max balance.** Each Spark wallet has its own max balance (Edit max balance), the most it may hold counting a new swap. Empty means `SPARK_MAX_BALANCE_SATS`. For a mainnet test, keep it small (1-2 M sats).
-- **Withdraw all** exits everything the wallet holds to a new address of an on-chain wallet, the fee capped by `SPARK_MAX_EXIT_FEE_SATS`. It is refused while the wallet has a swap in flight.
+- **Using one.** Nodes page ▸ liquidity settings ▸ Spark wallet, next to the Spark weight. A Spark weight above 0 needs a Spark wallet. Several nodes may share one. A node's Spark wallet can't change while the node has a Spark swap in flight. Until a node has one, the New Swap dialog lists no node for Spark and says so.
+- **Max balance.** Each Spark wallet has its own max balance (Edit max balance), the most it may hold counting a new swap and its swaps not paid yet. Empty means `SPARK_MAX_BALANCE_SATS`. For a mainnet test, keep it small (1-2 M sats).
+- **Withdraw all** exits everything the wallet holds to a new address of an on-chain wallet, the fee capped by `SPARK_MAX_EXIT_FEE_SATS`. It is refused while the wallet has a swap in flight, so a swap's sats never leave with the rest.
 - **Archive** is allowed only for an empty wallet that no node uses.
 - On mainnet, NodeGuard logs a warning at startup while Spark wallets exist.
 
@@ -100,7 +100,7 @@ With the remote signer, `REMOTE_SIGNER_ENDPOINT` must be the Function URL with n
 - **gRPC.**
   - `RequestSwapOut` (`provider: SWAP_PROVIDER_SPARK`) returns no destination address: the swap reserves it when it exits, and `GetSwapOut` reports it from then on.
   - An optional `reference_id` makes the call repeatable: a known `reference_id` returns its swap instead of paying again.
-  - `GetSwapOut` takes a swap id or a `reference_id`.
+  - `GetSwapOut` takes a swap id or a `reference_id`. Once a Spark swap completes, its `payout_sats` is what landed on-chain.
   - `CreateSparkWallet`, `GetSparkWallets`, `GetSparkWalletBalance`, `WithdrawAllSparkWallet` and `ArchiveSparkWallet` manage Spark wallets. A node's Spark wallet and a wallet's max balance are set on the web pages only.
 
 ## Guardrails and alerts
@@ -128,7 +128,7 @@ The remote signer refuses to sign Spark operations with a `Compromised` seed. A 
 
 `just spark-up` starts a regtest Spark network (three operators, the open-source open-ssp SSP and its Lightning node) on the Polar chain; see [docker/spark/README.md](../docker/spark/README.md).
 
-`just test-e2e` and the CI `e2e-test` job run the whole E2E suite with the network up, including `SparkSwapOutE2ETests`. It creates a Spark wallet over gRPC, gives it to alice in the database, restarts NodeGuard (the seed must decrypt after a restart), and follows a swap from alice to a confirmed payout and an empty Spark wallet.
+`just test-e2e` and the CI `e2e-test` job run the whole E2E suite with the network up, including `SparkSwapOutE2ETests`. It creates a Spark wallet over gRPC, gives it to alice in the database with Max swaps in flight 2, restarts NodeGuard (the seed must decrypt after a restart), and starts two swaps at once. Each must exit its own leaves to its own address and record its payout, with its service fee the amount minus the payout, and the Spark wallet must end empty.
 
 ## Before enabling it on mainnet
 

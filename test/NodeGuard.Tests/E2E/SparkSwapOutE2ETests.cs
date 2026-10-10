@@ -53,12 +53,13 @@ public sealed class SparkE2EFactAttribute : FactAttribute
 /// <summary>
 /// A Spark swap-out through NodeGuard's gRPC API against the local Spark network (docker/spark):
 /// <list type="number">
-/// <item>a Spark wallet is created over gRPC and made alice's Spark wallet (node liquidity config, set in the
-/// database as the Nodes page would);</item>
+/// <item>a Spark wallet is created over gRPC and made alice's Spark wallet, with Max swaps in flight 2 (node
+/// liquidity config, set in the database as the Nodes page would);</item>
 /// <item>NodeGuard restarts, so the wallet's seed has to decrypt with the Data Protection key ring in Postgres;</item>
-/// <item>alice's LND pays an invoice of the Spark wallet, MonitorSwapsJob follows the payment until it settles,
-/// SparkSwapExitJob records the transfer that brought it in and exits exactly its leaves on-chain to the address
-/// reserved in a NodeGuard wallet, and the swap completes once that payout confirms;</item>
+/// <item>two swaps of different amounts start at once. For each, alice's LND pays an invoice of the Spark wallet,
+/// MonitorSwapsJob follows the payment until it settles, SparkSwapExitJob records the transfer that brought it in
+/// and exits exactly its leaves on-chain to the swap's own reserved address, and the swap completes once that
+/// payout confirms, recording it;</item>
 /// <item>the Spark wallet is empty again, and can't be archived while alice uses it.</item>
 /// </list>
 ///
@@ -76,83 +77,84 @@ public class SparkSwapOutE2ETests : E2ETestBase
     }
 
     [SparkE2EFact]
-    public async Task SwapOut_ThroughASparkWallet_PaysOutToTheReservedAddressAndCompletes()
+    public async Task SwapOuts_ThroughASparkWallet_EachPayOutToTheirOwnAddressAndComplete()
     {
         var client = CreateClient(out var headers);
         var rpc = CreateBitcoindRpc();
         var alice = (await WaitForNodesAsync(client, headers)).Single(n => n.Name == "alice");
         var payoutWalletId = int.Parse(Env("E2E_SPARK_PAYOUT_WALLET_ID", "2"));
-        var referenceId = $"spark-e2e-{Guid.NewGuid():N}";
-        const long amount = 300_000;
+        long[] amounts = [300_000, 200_000];
 
-        // A Spark wallet for alice's swaps
+        // A Spark wallet for alice's swaps, two of which may run at once
         var sparkWallet = await client.CreateSparkWalletAsync(
             new CreateSparkWalletRequest { Name = $"e2e transit {Guid.NewGuid():N}"[..20], MaxBalanceSats = 2_000_000 }, headers);
         _output.WriteLine($"Spark wallet {sparkWallet.WalletId}: identity {sparkWallet.IdentityPublicKey}");
-        await SetSparkWalletAsync(alice.Id, sparkWallet.WalletId);
+        await SetSparkConfigAsync(alice.Id, sparkWallet.WalletId, maxSwapsInFlight: 2);
 
         // Its seed must still decrypt after a restart, with the key ring NodeGuard keeps in Postgres
         await RestartNodeGuardAsync();
         await WaitForNodesAsync(client, headers);
 
-        var request = new RequestSwapOutRequest
+        var requests = amounts.Select(amount => new RequestSwapOutRequest
         {
             NodeId = alice.Id,
             Provider = SWAP_PROVIDER.Spark,
             AmountSats = amount,
             WalletId = payoutWalletId,
-            ReferenceId = referenceId
-        };
+            ReferenceId = $"spark-e2e-{Guid.NewGuid():N}"
+        }).ToList();
 
-        // Creating a swap pays, so it is never retried blindly. Unavailable (the Spark wallet still
-        // connecting after NodeGuard's start) is refused before anything happens, so only that is waited out
-        RequestSwapOutResponse started = null!;
-        for (var attempt = 1; ; attempt++)
+        // Both at once: alice pays both invoices into the same Spark wallet in parallel
+        var started = await Task.WhenAll(requests.Select(request => StartSwapAsync(client, headers, request)));
+        foreach (var swap in started)
         {
-            try
-            {
-                started = await client.RequestSwapOutAsync(request, headers);
-                break;
-            }
-            catch (RpcException e) when (e.StatusCode == StatusCode.Unavailable && attempt < 12)
-            {
-                _output.WriteLine($"Spark not ready yet ({e.Status.Detail}), attempt {attempt}");
-                await Task.Delay(TimeSpan.FromSeconds(10));
-            }
+            _output.WriteLine($"swap {swap.SwapId}: {swap.Status}, provider id {swap.ProviderId}, payout to {swap.DestinationAddress}");
+            swap.Status.Should().Be(SWAP_OUT_STATUS.SwapOutPending, swap.Error ?? "alice's payment into Spark should have succeeded");
         }
 
-        _output.WriteLine($"swap {started.SwapId}: {started.Status}, provider id {started.ProviderId}");
-        started.Status.Should().Be(SWAP_OUT_STATUS.SwapOutPending, started.Error ?? "alice's payment into Spark should have succeeded");
-        started.DestinationAddress.Should().BeEmpty("a Spark swap reserves its address when it exits");
+        started.Select(s => s.DestinationAddress).Should().OnlyHaveUniqueItems("each swap pays out to its own address");
 
-        // MonitorSwapsJob sees the payment settle and SparkSwapExitJob exits the swap's leaves (each every minute in a
-        // dev environment); mining confirms the exit
+        // MonitorSwapsJob sees the payments settle and SparkSwapExitJob exits each swap's leaves (each every minute in
+        // a dev environment); mining confirms the exits
         var done = await PollAsync(
             async () =>
             {
                 await MineAsync(rpc, 1);
-                return await client.GetSwapOutAsync(new GetSwapOutRequest { ReferenceId = referenceId }, headers);
+                return await Task.WhenAll(requests.Select(request =>
+                    client.GetSwapOutAsync(new GetSwapOutRequest { ReferenceId = request.ReferenceId }, headers).ResponseAsync));
             },
-            s => s.Status != SWAP_OUT_STATUS.SwapOutPending,
-            attempts: 60, delay: TimeSpan.FromSeconds(10), what: $"swap {started.SwapId} completion");
-        _output.WriteLine($"swap {done.SwapId}: {done.Status}, payout tx {done.TxId} to {done.DestinationAddress}, fees ln={done.LightningFeeSats} ssp={done.ServiceFeeSats} {done.Error}");
+            swaps => swaps.All(s => s.Status != SWAP_OUT_STATUS.SwapOutPending),
+            attempts: 60, delay: TimeSpan.FromSeconds(10), what: "both swaps' completion");
 
-        done.Status.Should().Be(SWAP_OUT_STATUS.SwapOutCompleted, done.Error);
-        done.SwapId.Should().Be(started.SwapId);
-        done.DestinationAddress.Should().NotBeNullOrEmpty("the swap reserved its address when it exited");
-        done.HasPaymentHash.Should().BeTrue();
+        for (var i = 0; i < done.Length; i++)
+        {
+            var swap = done[i];
+            _output.WriteLine($"swap {swap.SwapId}: {swap.Status}, payout {swap.PayoutSats} in {swap.TxId}, fees ln={swap.LightningFeeSats} " +
+                              $"service={swap.ServiceFeeSats} onchain={swap.OnchainFeeSats} {swap.Error}");
 
-        var destination = BitcoinAddress.Create(done.DestinationAddress, Network.RegTest);
-        var payoutTx = await rpc.GetRawTransactionAsync(uint256.Parse(done.TxId));
-        var payout = payoutTx.Outputs.Where(o => o.ScriptPubKey == destination.ScriptPubKey).Sum(o => o.Value.Satoshi);
-        payout.Should().Be(amount - done.ServiceFeeSats, "the exit pays the swapped amount minus the SSP's fee");
+            swap.Status.Should().Be(SWAP_OUT_STATUS.SwapOutCompleted, swap.Error);
+            swap.SwapId.Should().Be(started[i].SwapId);
+            swap.DestinationAddress.Should().Be(started[i].DestinationAddress);
+            swap.HasPaymentHash.Should().BeTrue();
+
+            // What landed on-chain is what the swap delivered; the SSP kept the rest
+            var destination = BitcoinAddress.Create(swap.DestinationAddress, Network.RegTest);
+            var payoutTx = await rpc.GetRawTransactionAsync(uint256.Parse(swap.TxId));
+            var payout = payoutTx.Outputs.Where(o => o.ScriptPubKey == destination.ScriptPubKey).Sum(o => o.Value.Satoshi);
+            swap.HasPayoutSats.Should().BeTrue();
+            swap.PayoutSats.Should().Be(payout);
+            swap.ServiceFeeSats.Should().Be(amounts[i] - payout, "the service fee is everything the swap did not deliver");
+            swap.OnchainFeeSats.Should().Be(0, "the exit's miner fee is part of the service fee");
+        }
+
+        done.Select(s => s.TxId).Should().OnlyHaveUniqueItems("each swap exits on its own");
 
         // Asking again with the same reference_id returns the same swap rather than paying again
-        var again = await client.RequestSwapOutAsync(request, headers);
-        again.SwapId.Should().Be(started.SwapId);
+        var again = await client.RequestSwapOutAsync(requests[0], headers);
+        again.SwapId.Should().Be(started[0].SwapId);
         again.Status.Should().Be(SWAP_OUT_STATUS.SwapOutCompleted);
 
-        // The swap went through alice's Spark wallet, which it left empty
+        // The swaps went through alice's Spark wallet, which they left empty
         var balance = await PollAsync(
             async () => await client.GetSparkWalletBalanceAsync(new GetSparkWalletBalanceRequest { WalletId = sparkWallet.WalletId }, headers),
             b => b.OwnedSats + b.IncomingSats == 0,
@@ -169,14 +171,37 @@ public class SparkSwapOutE2ETests : E2ETestBase
         refusal.Status.Detail.Should().Contain("alice");
     }
 
-    /// <summary>A node's Spark wallet is liquidity config, set on the Nodes page; there is no RPC for it</summary>
-    private static async Task SetSparkWalletAsync(int nodeId, int sparkWalletId)
+    /// <summary>
+    /// Creating a swap pays, so it is never retried blindly. Unavailable (the Spark wallet still connecting after
+    /// NodeGuard's start) is refused before anything happens, so only that is waited out
+    /// </summary>
+    private async Task<RequestSwapOutResponse> StartSwapAsync(NodeGuardService.NodeGuardServiceClient client, Metadata headers,
+        RequestSwapOutRequest request)
+    {
+        for (var attempt = 1; ; attempt++)
+        {
+            try
+            {
+                return await client.RequestSwapOutAsync(request, headers);
+            }
+            catch (RpcException e) when (e.StatusCode == StatusCode.Unavailable && attempt < 12)
+            {
+                _output.WriteLine($"Spark not ready yet ({e.Status.Detail}), attempt {attempt}");
+                await Task.Delay(TimeSpan.FromSeconds(10));
+            }
+        }
+    }
+
+    /// <summary>A node's Spark wallet and Max swaps in flight are liquidity config, set on the Nodes page; there is no RPC for them</summary>
+    private static async Task SetSparkConfigAsync(int nodeId, int sparkWalletId, int maxSwapsInFlight)
     {
         await using var connection = new NpgsqlConnection(Env("POSTGRES_CONNECTIONSTRING",
             "Host=localhost;Port=5432;Database=nodeguard;User ID=postgres;"));
         await connection.OpenAsync();
-        await using var command = new NpgsqlCommand("UPDATE \"Nodes\" SET \"SparkWalletId\" = @wallet WHERE \"Id\" = @node", connection);
+        await using var command = new NpgsqlCommand(
+            "UPDATE \"Nodes\" SET \"SparkWalletId\" = @wallet, \"MaxSwapsInFlight\" = @maxSwapsInFlight WHERE \"Id\" = @node", connection);
         command.Parameters.AddWithValue("wallet", sparkWalletId);
+        command.Parameters.AddWithValue("maxSwapsInFlight", maxSwapsInFlight);
         command.Parameters.AddWithValue("node", nodeId);
         (await command.ExecuteNonQueryAsync()).Should().Be(1);
     }
