@@ -159,8 +159,9 @@ namespace NodeGuard
                 Constants.REMOTE_SIGNER_ENDPOINT);
             builder.Services.AddSingleton(sparkSettings);
             builder.Services.TryAddSingleton(TimeProvider.System);
-            builder.Services.AddSingleton<ISparkSignerProvider>(sp => new SparkSignerProvider(sparkSettings,
-                sp.GetRequiredService<IServiceScopeFactory>(), new HttpClient(),
+            builder.Services.AddTransient<ISparkSignerProvider>(sp => new SparkSignerProvider(sparkSettings,
+                sp.GetRequiredService<IServiceScopeFactory>(),
+                sp.GetRequiredService<IHttpClientFactory>().CreateClient(nameof(SparkSignerProvider)),
                 () => new ImmutableCredentials(Constants.AWS_ACCESS_KEY_ID, Constants.AWS_SECRET_ACCESS_KEY, null),
                 Constants.AWS_REGION));
             builder.Services.AddSingleton<ISparkWalletService, SparkWalletService>();
