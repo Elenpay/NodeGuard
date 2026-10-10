@@ -28,10 +28,10 @@ The Spark client is the [NSpark](https://github.com/orklabs/nspark) .NET SDK, fr
 
 All attributions run before any exit, and exits go strictly one at a time, oldest swap first. This is separate from Max swaps in flight: that limit decides how many swaps a node may have open; the job only orders their exits. With Max swaps in flight at 3, three swaps are paid in parallel, and the next run exits the first, then the second, then the third.
 
-**Fees and accounting.** What the swap delivered is what landed on-chain: its payout, shown as "Received on-chain" on the Swaps page.
-- The Lightning routing fee is the swap's off-chain fee.
-- The service fee is the amount minus the payout: everything the SSP kept, including any receive fee, the exit fee and its miner fee. Its tooltip splits it into the receive fee (amount minus what the leaves added up to) and the exit (the rest).
-- The on-chain fee is included in the service fee; the Swaps page says so.
+**Fees and accounting.** What the swap delivered is what landed on-chain: its payout, shown as "Received on-chain" on the Swaps page. The fees add up to the amount minus the payout, plus the routing fee:
+- **Routing fee:** what the node paid on Lightning. It includes Spark's fixed 15 bps (0.15%), which Spark charges to the sender on the Lightning route through the invoice's route hints ([Spark fees](https://docs.spark.money/wallets/estimate-fees)); receiving into Spark is free.
+- **Service fee:** shown as Spark's 15 bps "in routing fee", not added to the total. Only if the payment brought in less than the amount is that shortfall recorded as a service fee.
+- **On-chain fee:** the move from Spark to L1: the SSP's exit fee and the L1 broadcast, what the swap's leaves held minus the payout.
 
 Each fee shows its BTC amount and its percentage of the swap, with ppm and USD in the tooltip.
 
