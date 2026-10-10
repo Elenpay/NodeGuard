@@ -39,6 +39,7 @@ public class MonitorSwapsJobTests
     private readonly Mock<IScheduler> _schedulerMock;
 
     private readonly MonitorSwapsJob _job;
+    private readonly Mock<ISparkGuardrails> _sparkGuardrailsMock = new();
 
     public MonitorSwapsJobTests()
     {
@@ -62,7 +63,8 @@ public class MonitorSwapsJobTests
             _swapOutRepositoryMock.Object,
             _swapsServiceMock.Object,
             _auditServiceMock.Object,
-            SparkSettings.Disabled);
+            SparkSettings.Disabled,
+            _sparkGuardrailsMock.Object);
     }
 
     [Fact]
@@ -432,8 +434,15 @@ public class MonitorSwapsJobTests
         _swapsServiceMock.Setup(x => x.AdvanceSwapAsync(node, unpaid, It.IsAny<CancellationToken>()))
             .ReturnsAsync(new SwapResponse { Id = "req-601", HtlcAddress = string.Empty, Status = SwapOutStatus.Pending });
 
+        _sparkGuardrailsMock.Setup(x => x.CheckAsync(It.IsAny<IReadOnlyCollection<SwapOut>>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new List<SparkAlert>
+            {
+                new(AuditActionType.SparkBalanceStuck, AuditObjectType.Wallet, "02spark", "stuck", new { HeldSats = 1 })
+            });
+
         var job = new MonitorSwapsJob(_loggerMock.Object, _schedulerFactoryMock.Object, _nodeRepositoryMock.Object,
-            _swapOutRepositoryMock.Object, _swapsServiceMock.Object, _auditServiceMock.Object, new SparkSettings { Enabled = true });
+            _swapOutRepositoryMock.Object, _swapsServiceMock.Object, _auditServiceMock.Object, new SparkSettings { Enabled = true },
+            _sparkGuardrailsMock.Object);
 
         // Act
         await job.Execute(_jobExecutionContextMock.Object);
@@ -446,6 +455,8 @@ public class MonitorSwapsJobTests
             Times.Never);
         _swapOutRepositoryMock.Verify(x => x.Update(It.IsAny<SwapOut>()), Times.Never);
         Assert.Null(unpaid.LightningFeeSats);
+        _auditServiceMock.Verify(x => x.LogSystemAsync(AuditActionType.SparkBalanceStuck, AuditEventType.Failure,
+            AuditObjectType.Wallet, "02spark", It.IsAny<object?>()), Times.Once);
     }
 
     [Fact]
@@ -460,5 +471,6 @@ public class MonitorSwapsJobTests
 
         _nodeRepositoryMock.Verify(x => x.GetAllConfiguredByProvider(SwapProvider.Spark, It.IsAny<string?>()), Times.Never);
         _swapsServiceMock.Verify(x => x.AdvanceSwapAsync(It.IsAny<Node>(), It.IsAny<SwapOut>(), It.IsAny<CancellationToken>()), Times.Never);
+        _sparkGuardrailsMock.Verify(x => x.CheckAsync(It.IsAny<IReadOnlyCollection<SwapOut>>(), It.IsAny<CancellationToken>()), Times.Never);
     }
 }

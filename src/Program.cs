@@ -166,6 +166,7 @@ namespace NodeGuard
                 Constants.AWS_REGION));
             builder.Services.AddSingleton<ISparkWalletService, SparkWalletService>();
             builder.Services.AddTransient<ISparkSwapService, SparkSwapService>();
+            builder.Services.AddSingleton<ISparkGuardrails, SparkGuardrails>();
             builder.Services.AddHostedService<SparkStartupService>();
             builder.Services.AddTransient<IRebalanceService, RebalanceService>();
             builder.Services.AddTransient<IRoutingEngineSnapshotService, RoutingEngineSnapshotService>();
@@ -516,6 +517,7 @@ namespace NodeGuard
                         .SetResourceBuilder(ResourceBuilder.CreateEmpty().AddEnvironmentVariableDetector())
                         .AddAspNetCoreInstrumentation()
                         .AddRuntimeInstrumentation()
+                        .AddMeter(SparkGuardrails.MeterName)
                         .AddOtlpExporter(options =>
                         {
                             options.Protocol = OtlpExportProtocol.Grpc;

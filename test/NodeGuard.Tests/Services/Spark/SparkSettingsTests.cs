@@ -81,6 +81,7 @@ public class SparkSettingsTests
         settings.IdentityPublicKey.Should().Be(Identity);
         settings.MaxExitFeeSats.Should().Be(SparkSettings.DefaultMaxExitFeeSats);
         settings.ExitIntervalMinutes.Should().BeNull("the exit job then runs every 10 minutes, 1 in a dev environment");
+        settings.MaxBalanceSats.Should().Be(SparkSettings.DefaultMaxBalanceSats);
         settings.SignerEndpoint.Should().Be(new Uri("https://abc.lambda-url.eu-central-1.on.aws/"));
 
         var options = settings.ToSparkOptions(null);
@@ -105,6 +106,7 @@ public class SparkSettingsTests
         env["SPARK_SIGNER_RIE_URL"] = "http://spark-signer:8080/2015-03-31/functions/function/invocations";
         env["SPARK_MAX_EXIT_FEE_SATS"] = "5000";
         env["SPARK_EXIT_INTERVAL_MINUTES"] = "3";
+        env["SPARK_MAX_BALANCE_SATS"] = "2000000";
 
         var settings = Read(env, Network.RegTest);
 
@@ -116,6 +118,7 @@ public class SparkSettingsTests
         settings.SignerRieUrl!.Port.Should().Be(8080);
         settings.MaxExitFeeSats.Should().Be(5000);
         settings.ExitIntervalMinutes.Should().Be(3);
+        settings.MaxBalanceSats.Should().Be(2_000_000);
         settings.ToSparkOptions(SspIdentity).EffectiveSspIdentityPublicKeyHex.Should().Be(SspIdentity);
     }
 
@@ -134,6 +137,7 @@ public class SparkSettingsTests
     [InlineData("SPARK_MAX_EXIT_FEE_SATS", "0", "SPARK_MAX_EXIT_FEE_SATS")]
     [InlineData("SPARK_EXIT_INTERVAL_MINUTES", "0", "SPARK_EXIT_INTERVAL_MINUTES")]
     [InlineData("SPARK_EXIT_INTERVAL_MINUTES", "ten", "SPARK_EXIT_INTERVAL_MINUTES")]
+    [InlineData("SPARK_MAX_BALANCE_SATS", "-5", "SPARK_MAX_BALANCE_SATS")]
     public void InvalidSettings_FailTheStartup(string variable, string? value, string expected)
     {
         var env = Remote();

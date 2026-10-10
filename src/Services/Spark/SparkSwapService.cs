@@ -160,12 +160,23 @@ public sealed class SparkSwapService : ISparkSwapService
         {
             // Each swap exits its own leaves, so several can be in flight: up to the node's Max swaps in flight
             var limit = Math.Max(node.MaxSwapsInFlight, 1);
-            var inFlight = (await _swapOutRepository.GetAllPending())
-                .Count(s => s.Provider == SwapProvider.Spark && s.NodeId == node.Id);
+            var pending = await _swapOutRepository.GetAllPending();
+            var inFlight = pending.Count(s => s.Provider == SwapProvider.Spark && s.NodeId == node.Id);
             if (inFlight >= limit)
             {
                 throw new InvalidOperationException(
                     $"{node.Name} already has {inFlight} Spark swaps in flight, its limit (Max swaps in flight: {limit}).");
+            }
+
+            // Transit only: refuse a swap that would leave more than SPARK_MAX_BALANCE_SATS in the wallet, counting
+            // what the swaps not paid yet will still bring in
+            var balance = (await _spark.GetBalanceAsync(ct)).SatsBalance;
+            var held = balance.Owned + balance.Incoming + SparkGuardrails.UnpaidSats(pending);
+            if (held + request.Amount > _settings.MaxBalanceSats)
+            {
+                throw new InvalidOperationException(
+                    $"A {request.Amount} sats Spark swap would bring the Spark wallet to {held + request.Amount} sats, " +
+                    $"over SPARK_MAX_BALANCE_SATS ({_settings.MaxBalanceSats}).");
             }
 
             var invoice = await _spark.CreateInvoiceAsync(request.Amount, $"NodeGuard swap-out from {node.Name}",
