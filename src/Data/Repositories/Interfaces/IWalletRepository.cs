@@ -53,11 +53,14 @@ public interface IWalletRepository
     Task TrackAndScanWallet(Wallet wallet);
 
     /// <summary>
-    /// Obtains all wallets that are Finalised and not in a compromised or archived state
+    /// Obtains all on-chain wallets that are Finalised and not in a compromised or archived state (never Spark wallets)
     /// </summary>
     /// // <param name="includeWatchOnlyWallets">If true, watch-only wallets will be included</param>
     /// <returns> List of available wallets</returns>
     Task<List<Wallet>> GetAvailableWallets(bool includeWatchOnlyWallets = false);
+
+    /// <summary>The Spark wallets (SPARK_SIGNER=wallet), oldest first</summary>
+    Task<List<Wallet>> GetSparkWallets(bool includeArchived = false);
 
     Task<(bool, string?)> AddAsync(Wallet type);
 

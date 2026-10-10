@@ -191,6 +191,8 @@ public class NodeGuardService : Nodeguard.NodeGuardService.NodeGuardServiceBase,
             throw new RpcException(new Status(StatusCode.NotFound, "Wallet not found"));
         }
 
+        RefuseSparkWallet(wallet);
+
         var derivationStrategy = wallet.GetDerivationStrategy();
         if (derivationStrategy == null)
         {
@@ -284,6 +286,8 @@ public class NodeGuardService : Nodeguard.NodeGuardService.NodeGuardServiceBase,
                 _logger.LogError("Wallet with id {walletId} not found", request.WalletId);
                 throw new RpcException(new Status(StatusCode.NotFound, "Wallet not found"));
             }
+
+            RefuseSparkWallet(wallet);
 
             // Validate destinations
             ValidateWithdrawalDestinations(request.Destinations, request.Changeless);
@@ -636,6 +640,8 @@ public class NodeGuardService : Nodeguard.NodeGuardService.NodeGuardServiceBase,
                 throw new RpcException(new Status(StatusCode.NotFound, "Wallet not found"));
             }
 
+            RefuseSparkWallet(wallet);
+
             var balance = await _lightningService.GetWalletBalance(wallet);
             if (balance == null)
             {
@@ -647,6 +653,10 @@ public class NodeGuardService : Nodeguard.NodeGuardService.NodeGuardServiceBase,
                 ConfirmedBalance = ((Money)balance.Confirmed).Satoshi,
                 UnconfirmedBalance = ((Money)balance.Unconfirmed).Satoshi
             };
+        }
+        catch (RpcException e) when (e.StatusCode == StatusCode.FailedPrecondition)
+        {
+            throw;
         }
         catch (Exception e)
         {
@@ -668,6 +678,11 @@ public class NodeGuardService : Nodeguard.NodeGuardService.NodeGuardServiceBase,
             AutosweepEnabled = request.AutosweepEnabled,
             FundsDestinationWalletId = request.ReturningFundsWalletId,
         };
+
+        if (request.ReturningFundsWalletId != 0)
+        {
+            RefuseSparkWallet(await _walletRepository.GetById(request.ReturningFundsWalletId));
+        }
 
         try
         {
@@ -738,6 +753,8 @@ public class NodeGuardService : Nodeguard.NodeGuardService.NodeGuardServiceBase,
         {
             throw new RpcException(new Status(StatusCode.NotFound, "Wallet not found"));
         }
+
+        RefuseSparkWallet(wallet);
 
         if (request.MempoolFeeRate == FEES_TYPE.CustomFee && request.CustomFeeRate == 0)
         {
@@ -1038,6 +1055,8 @@ public class NodeGuardService : Nodeguard.NodeGuardService.NodeGuardServiceBase,
             throw new RpcException(new Status(StatusCode.NotFound, "Swap wallet not found"));
         }
 
+        RefuseSparkWallet(swapWallet);
+
         if (request.IsReverseSwapWalletRule)
         {
             if (!request.HasReverseSwapWalletId)
@@ -1047,6 +1066,7 @@ public class NodeGuardService : Nodeguard.NodeGuardService.NodeGuardServiceBase,
             var wallet = await _walletRepository.GetById(request.ReverseSwapWalletId);
             if (wallet == null)
                 throw new RpcException(new Status(StatusCode.NotFound, "Wallet not found"));
+            RefuseSparkWallet(wallet);
         }
         else
         {
@@ -1218,6 +1238,8 @@ public class NodeGuardService : Nodeguard.NodeGuardService.NodeGuardServiceBase,
         {
             throw new Exception("Wallet not found");
         }
+
+        RefuseSparkWallet(wallet);
 
         var coinSelectionStrategy = MapCoinSelectionStrategy(request.Strategy,
             strategy => new ArgumentOutOfRangeException(nameof(request.Strategy), strategy, "Unknown status"));
@@ -1621,6 +1643,15 @@ public class NodeGuardService : Nodeguard.NodeGuardService.NodeGuardServiceBase,
         return new SetChannelFeePolicyResponse();
     }
 
+    /// <summary>
+    /// Spark wallets (SPARK_SIGNER=wallet) have no on-chain keys: the methods that take an on-chain wallet refuse them
+    /// </summary>
+    private static void RefuseSparkWallet(Wallet? wallet)
+    {
+        if (wallet is { Kind: WalletKind.Spark })
+            throw new RpcException(new Status(StatusCode.FailedPrecondition, $"Wallet {wallet.Id} is a Spark wallet, not an on-chain wallet"));
+    }
+
     public override async Task<RequestSwapOutResponse> RequestSwapOut(RequestSwapOutRequest request, ServerCallContext context)
     {
         var provider = (SwapProvider)(int)request.Provider;
@@ -1662,6 +1693,7 @@ public class NodeGuardService : Nodeguard.NodeGuardService.NodeGuardServiceBase,
         var wallet = await _walletRepository.GetById(request.WalletId);
         if (wallet == null)
             throw new RpcException(new Status(StatusCode.NotFound, $"Wallet {request.WalletId} not found"));
+        RefuseSparkWallet(wallet);
 
         var derivationStrategy = wallet.GetDerivationStrategy();
         if (derivationStrategy == null)

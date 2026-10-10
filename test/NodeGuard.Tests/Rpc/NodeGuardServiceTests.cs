@@ -2447,6 +2447,38 @@ namespace NodeGuard.Rpc
         }
 
         [Fact]
+        public async Task RequestSwapOut_ToASparkWallet_IsRefused()
+        {
+            var wallets = new Mock<IWalletRepository>();
+            wallets.Setup(x => x.GetById(3)).ReturnsAsync(new Wallet { Id = 3, Name = "transit", Kind = WalletKind.Spark, IsFinalised = true });
+            var nodes = new Mock<INodeRepository>();
+            nodes.Setup(x => x.GetAllConfiguredByProvider(SwapProvider.Spark, null)).ReturnsAsync([SwapNode]);
+            var swaps = new Mock<ISwapsService>();
+            var service = CreateNodeGuardService(walletRepository: wallets.Object, nodeRepository: nodes.Object, swapsService: swaps.Object);
+
+            var act = () => service.RequestSwapOut(SwapRequest(), TestServerCallContext.Create());
+
+            (await act.Should().ThrowAsync<RpcException>()).Which.StatusCode.Should().Be(StatusCode.FailedPrecondition);
+            swaps.VerifyNoOtherCalls();
+        }
+
+        [Fact]
+        public async Task OnChainWalletMethods_RefuseASparkWallet()
+        {
+            var wallets = new Mock<IWalletRepository>();
+            wallets.Setup(x => x.GetById(3)).ReturnsAsync(new Wallet { Id = 3, Name = "transit", Kind = WalletKind.Spark, IsFinalised = true });
+            var service = CreateNodeGuardService(walletRepository: wallets.Object);
+
+            var address = () => service.GetNewWalletAddress(new GetNewWalletAddressRequest { WalletId = 3 }, TestServerCallContext.Create());
+            var balance = () => service.GetWalletBalance(new GetWalletBalanceRequest { WalletId = 3 }, TestServerCallContext.Create());
+            var withdrawal = () => service.RequestWithdrawal(new RequestWithdrawalRequest { WalletId = 3 }, TestServerCallContext.Create());
+
+            (await address.Should().ThrowAsync<RpcException>()).Which.StatusCode.Should().Be(StatusCode.FailedPrecondition);
+            (await balance.Should().ThrowAsync<RpcException>()).Which.StatusCode.Should().Be(StatusCode.FailedPrecondition);
+            (await withdrawal.Should().ThrowAsync<RpcException>()).Which.StatusCode.Should().Be(StatusCode.FailedPrecondition);
+        }
+
+        [Fact]
         public async Task GetSwapOut_ByReferenceId_ReturnsTheSwap()
         {
             var (service, _, swapOuts, _) = SwapService();

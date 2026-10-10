@@ -19,6 +19,7 @@
 
 using FluentAssertions;
 using NBitcoin;
+using NodeGuard.Data.Models;
 using NSpark;
 
 namespace NodeGuard.Services.Spark;
@@ -36,6 +37,7 @@ public class SparkSettingsTests
     private static Dictionary<string, string?> Remote() => new()
     {
         ["SPARK_ENABLED"] = "true",
+        ["SPARK_SIGNER"] = "remote",
         ["SPARK_SEED_FINGERPRINT"] = "ED0210C8",
         ["SPARK_ACCOUNT"] = "1",
         ["SPARK_IDENTITY_PUBKEY"] = Identity.ToUpperInvariant()
@@ -47,22 +49,66 @@ public class SparkSettingsTests
         ["SPARK_SSP_URL"] = "http://spark-ssp:5000/graphql/spark/2025-03-19"
     };
 
-    private static SparkSettings Read(Dictionary<string, string?> env, Network? network = null, bool dev = false,
-        bool remote = true, string? endpoint = "https://abc.lambda-url.eu-central-1.on.aws/") =>
-        SparkSettings.FromEnvironment(name => env.GetValueOrDefault(name), network ?? Network.Main, dev, remote, endpoint);
+    private static SparkSettings Read(Dictionary<string, string?> env, Network? network = null,
+        string? endpoint = "https://abc.lambda-url.eu-central-1.on.aws/") =>
+        SparkSettings.FromEnvironment(name => env.GetValueOrDefault(name), network ?? Network.Main, endpoint);
 
-    private static string Error(Dictionary<string, string?> env, Network? network = null, bool dev = false, bool remote = true,
+    private static string Error(Dictionary<string, string?> env, Network? network = null,
         string? endpoint = "https://abc.lambda-url.eu-central-1.on.aws/")
     {
-        var act = () => Read(env, network, dev, remote, endpoint);
+        var act = () => Read(env, network, endpoint);
         return act.Should().Throw<InvalidOperationException>().Which.Message;
     }
 
     [Fact]
-    public void WithoutSparkEnabled_SparkIsDisabled()
+    public void SparkEnabledFalse_DisablesSpark()
     {
-        Read(new Dictionary<string, string?>()).Enabled.Should().BeFalse();
         Read(new Dictionary<string, string?> { ["SPARK_ENABLED"] = "false", ["SPARK_ACCOUNT"] = "x" }).Enabled.Should().BeFalse();
+    }
+
+    [Fact]
+    public void WithoutSparkEnabled_SparkIsOnOnMainnetOnly()
+    {
+        Read(new Dictionary<string, string?>(), Network.Main).Enabled.Should().BeTrue();
+        Read(new Dictionary<string, string?>(), Network.RegTest).Enabled.Should().BeFalse();
+        Read(new Dictionary<string, string?>(), Network.TestNet).Enabled.Should().BeFalse();
+    }
+
+    [Fact]
+    public void ByDefault_SparkWalletsSign_WithNothingElseToConfigure()
+    {
+        var settings = Read(new Dictionary<string, string?>(), Network.Main, endpoint: null);
+
+        settings.SignerMode.Should().Be(SparkSignerMode.Wallet);
+        settings.Operators.Should().BeEquivalentTo(SparkOptions.GetDefaultOperators(SparkNetwork.Mainnet));
+        settings.SeedFingerprint.Should().BeNull();
+        settings.IdentityPublicKey.Should().BeNull();
+        settings.MaxBalanceSats.Should().Be(SparkSettings.DefaultMaxBalanceSats);
+    }
+
+    [Fact]
+    public void AnUnknownSigner_FailsTheStartup() =>
+        Error(new Dictionary<string, string?> { ["SPARK_SIGNER"] = "embedded" }).Should().Contain("SPARK_SIGNER");
+
+    [Fact]
+    public void ANode_SwapsThroughItsSparkWallet_OrTheRemoteSignersWallet()
+    {
+        var wallets = Read(new Dictionary<string, string?>(), Network.Main);
+        var remote = Read(Remote());
+
+        wallets.WalletFor(new Node { SparkWalletId = 4 }).Should().Be(new SparkWalletRef(4));
+        wallets.WalletFor(new Node()).Should().BeNull();
+        remote.WalletFor(new Node { SparkWalletId = 4 }).Should().Be(SparkWalletRef.RemoteSigner);
+        SparkSettings.Disabled.WalletFor(new Node { SparkWalletId = 4 }).Should().BeNull();
+    }
+
+    [Fact]
+    public void AWalletsOwnMaxBalance_OverridesTheDefault()
+    {
+        var settings = new SparkSettings { Enabled = true, MaxBalanceSats = 2_000_000 };
+
+        settings.MaxBalanceFor(new Wallet { SparkMaxBalanceSats = 500_000 }).Should().Be(500_000);
+        settings.MaxBalanceFor(new Wallet()).Should().Be(2_000_000);
     }
 
     [Fact]
@@ -180,26 +226,18 @@ public class SparkSettingsTests
         Read(Remote(), endpoint: "https://abc.lambda-url.eu-central-1.on.aws").SignerEndpoint!.AbsolutePath.Should().Be("/");
 
     [Fact]
-    public void TheEmbeddedSigner_InADevEnvironment_DefaultsToTheCurrentInternalWallet()
+    public void SparkWallets_IgnoreTheRemoteSignersSettings()
     {
         var env = Regtest();
-        env.Remove("SPARK_SEED_FINGERPRINT");
-        env.Remove("SPARK_IDENTITY_PUBKEY");
+        env["SPARK_SIGNER"] = "wallet";
+        env["SPARK_SEED_FINGERPRINT"] = "not-a-fingerprint";
 
-        var settings = Read(env, Network.RegTest, dev: true, remote: false, endpoint: null);
+        var settings = Read(env, Network.RegTest, endpoint: null);
 
-        settings.SignerMode.Should().Be(SparkSignerMode.Embedded);
+        settings.SignerMode.Should().Be(SparkSignerMode.Wallet);
         settings.SeedFingerprint.Should().BeNull();
         settings.IdentityPublicKey.Should().BeNull();
-    }
-
-    [Fact]
-    public void TheEmbeddedSigner_OutsideADevEnvironment_NeedsTheSeedFingerprint()
-    {
-        var env = Remote();
-        env.Remove("SPARK_SEED_FINGERPRINT");
-
-        Error(env, remote: false, endpoint: null).Should().Contain("SPARK_SEED_FINGERPRINT is required");
+        settings.SignerEndpoint.Should().BeNull();
     }
 
     [Fact]

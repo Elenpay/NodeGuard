@@ -225,6 +225,9 @@
     private Wallet? _selectedWallet;
     private string? _amountInWalletBtc;
     private List<Node> _availableNodes = [];
+
+    /// <summary>Why Spark lists no node, when it lists none</summary>
+    private string? _noSparkNodesReason;
     private Node? _selectedNode;
     private string? _amountInNodeBtc;
     private string _confirmationModalBody = string.Empty;
@@ -526,7 +529,7 @@
             $"<li><strong>Service Fee:</strong> Spark's fixed {SparkSwapService.ServiceFeeBps} bps ({FeeFormat.Percent(SparkSwapService.ServiceFeeBps * 100L)}), charged on the Lightning route: part of the off-chain fee</li>" +
             $"<li><strong>On-Chain Fee</strong> (from Spark to L1: the SSP's exit fee and the L1 broadcast): up to {FormatBtcWithUsd(maxExitFee.ToUnit(MoneyUnit.BTC))} ({PercentOfAmount(maxExitFee)})</li>" +
             "</ul><br>" +
-            $"The node pays NodeGuard's Spark wallet ({SparkWallet.Status.IdentityPublicKey}) now. Once paid, the swap exits " +
+            $"The node pays its Spark wallet ({SparkIdentityOf(_selectedNode!)}) now. Once paid, the swap exits " +
             $"on-chain to the destination wallet on its own, within about {SparkSettings.ExitIntervalOrDefault(Constants.IS_DEV_ENVIRONMENT)} minutes. " +
             $"Up to {maxSwapsInFlight} Spark swaps of {_selectedNode?.Name} (its Max swaps in flight) run at once.<br><br>" +
             "Please confirm that you want to proceed.";
@@ -573,16 +576,50 @@
         {
             SwapProvider.Loop => await ToastOnException.ExecuteAsync(() => NodeRepository.GetAllConfiguredByProvider(SwapProvider.Loop, LoggedUser.Id), Logger, ToastService, "Unexpected error loading Loop nodes, please try again later", new()),
             SwapProvider.FortySwap => await ToastOnException.ExecuteAsync(() => NodeRepository.GetAllConfiguredByProvider(SwapProvider.FortySwap, LoggedUser.Id), Logger, ToastService, "Unexpected error loading 40swap nodes, please try again later", new()),
-            SwapProvider.Spark => await ToastOnException.ExecuteAsync(() => NodeRepository.GetAllConfiguredByProvider(SwapProvider.Spark, LoggedUser.Id), Logger, ToastService, "Unexpected error loading nodes, please try again later", new()),
+            SwapProvider.Spark => await ToastOnException.ExecuteAsync(SparkReadyNodesAsync, Logger, ToastService, "Unexpected error loading nodes, please try again later", new()),
             _ => new List<Node>()
         };
     }
 
     /// <summary>
-    /// Spark is offered only while NodeGuard's Spark wallet is ready (its signer checked out)
+    /// The user's nodes whose Spark wallet is ready (its signer checked out). When there are none, says why in
+    /// <see cref="_noSparkNodesReason"/>
     /// </summary>
+    private async Task<List<Node>> SparkReadyNodesAsync()
+    {
+        var managed = await NodeRepository.GetAllConfiguredByProvider(SwapProvider.Spark, LoggedUser.Id);
+        if (managed.Count == 0)
+        {
+            _noSparkNodesReason = "You manage no node: nodes are assigned to users on the Users page (Managed nodes).";
+            return managed;
+        }
+
+        var nodes = managed.Where(n => SparkSettings.WalletFor(n) is not null).ToList();
+        if (nodes.Count == 0)
+        {
+            _noSparkNodesReason = "None of the nodes you manage has a Spark wallet: create one on the Wallets page " +
+                                  "(New ▸ New Spark wallet) and choose it in the node's liquidity settings.";
+            return nodes;
+        }
+
+        var ready = new HashSet<SparkWalletRef>();
+        var unavailable = new List<string>();
+        foreach (var wallet in nodes.Select(n => SparkSettings.WalletFor(n)!.Value).Distinct())
+        {
+            var status = await SparkWallet.EnsureReadyAsync(wallet);
+            if (status.IsReady) ready.Add(wallet);
+            else unavailable.Add($"{wallet}: {status.Reason ?? status.State.ToString()}");
+        }
+
+        _noSparkNodesReason = ready.Count == 0 ? $"No node's Spark wallet is available ({string.Join("; ", unavailable)})." : null;
+        return nodes.Where(n => ready.Contains(SparkSettings.WalletFor(n)!.Value)).ToList();
+    }
+
+    private string? SparkIdentityOf(Node node) =>
+        SparkSettings.WalletFor(node) is { } wallet ? SparkWallet.GetStatus(wallet).IdentityPublicKey : null;
+
     private IEnumerable<SwapProvider> AvailableProviders =>
-        Enum.GetValues<SwapProvider>().Where(p => p != SwapProvider.Spark || SparkWallet.Status.IsReady);
+        Enum.GetValues<SwapProvider>().Where(p => p != SwapProvider.Spark || SparkSettings.Enabled);
     
     private async Task OnWalletChanged(int walletId)
     {
@@ -672,6 +709,10 @@
                             @if (_selectedNode != null)
                             {
                                 @(($"Amount in node: {FormatBtcWithUsd(decimal.Parse(_amountInNodeBtc ?? "0"))}"))
+                            }
+                            else if (_selectedProvider == SwapProvider.Spark && _availableNodes.Count == 0 && _noSparkNodesReason is not null)
+                            {
+                                <span class="text-warning">@_noSparkNodesReason</span>
                             }
                             else
                             {

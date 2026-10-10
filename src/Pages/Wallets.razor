@@ -20,6 +20,7 @@
 @inject INBXplorerService NBXplorerService
 @inject IUTXOTagRepository UTXOTagRepository
 @inject IAuditService AuditService
+@inject NodeGuard.Services.Spark.SparkSettings SparkSettings
 
 @attribute [Authorize(Roles = "NodeManager, FinanceManager, Superadmin")]
 
@@ -109,6 +110,10 @@
                                 <DropdownMenu>
                                     <DropdownItem Clicked="context.Clicked">New</DropdownItem>
                                     <DropdownItem Clicked="@(() => ShowImportWalletModal())">Import Wallet</DropdownItem>
+                                    @if (SparkSettings is { Enabled: true, SignerMode: NodeGuard.Services.Spark.SparkSignerMode.Wallet })
+                                    {
+                                        <DropdownItem Clicked="@(() => _sparkWalletModals.ShowCreateAsync())">New Spark wallet</DropdownItem>
+                                    }
                                 </DropdownMenu>
                             </Dropdown>
                         }
@@ -118,7 +123,19 @@
                             <DropdownToggle Color="Color.Primary">
                             </DropdownToggle>
                             <DropdownMenu>
-                                @if (_isFinanceManager)
+                                @if (context.Item.Kind == WalletKind.Spark)
+                                {
+                                    <DropdownItem Clicked="@(() => _sparkWalletModals.ShowDetailsAsync(context.Item))">Details</DropdownItem>
+                                    if (_isFinanceManager && !context.Item.IsArchived)
+                                    {
+                                        <DropdownItem Clicked="@(() => _sparkWalletModals.ShowMaxBalanceAsync(context.Item))">Edit max balance</DropdownItem>
+                                        <DropdownItem Clicked="@(() => _sparkWalletModals.ShowWithdrawAllAsync(context.Item))">Withdraw all</DropdownItem>
+                                        <DropdownItem Clicked="@(() => _sparkWalletModals.ShowArchiveAsync(context.Item))">Archive</DropdownItem>
+                                    }
+                                }
+                                else
+                                {
+                                if (_isFinanceManager)
                                 {
                                     <DropdownItem Clicked="context.Clicked">Edit</DropdownItem>
                                     <DropdownItem Disabled="!context.Item.IsFinalised || context.Item.IsWatchOnly"
@@ -137,6 +154,7 @@
                                               Clicked="@(() => LoadAndOpenExportOutputDescriptor(context.Item))">Export output
                                     descriptor
                                 </DropdownItem>
+                                }
                             </DropdownMenu>
                         </Dropdown>
                     </EditCommandTemplate>
@@ -206,14 +224,15 @@
                         <span>
                             Wallet Properties
                         </span>
-                        <span title="@("🔥 Hot Wallet\n❄️ Cold Wallet\n🏁 Finalised\n📂 Archived\n⛔️ Compromised")">
+                        <span title="@("🔥 Hot Wallet\n❄️ Cold Wallet\n⚡ Spark Wallet\n🏁 Finalised\n📂 Archived\n⛔️ Compromised")">
                             @("\u24D8")
                         </span>
                     </CaptionTemplate>
                     <DisplayTemplate>
                         @{
                             string walletProperties = "";
-                            if (context.IsHotWallet) walletProperties = walletProperties + "🔥 ";
+                            if (context.Kind == WalletKind.Spark) walletProperties = walletProperties + "⚡ ";
+                            else if (context.IsHotWallet) walletProperties = walletProperties + "🔥 ";
                             else walletProperties = walletProperties + "❄️ ";
                             if (context.IsFinalised) walletProperties = walletProperties + "🏁 ";
                             if (context.IsArchived) walletProperties = walletProperties + "📂 ";
@@ -771,6 +790,8 @@
 
 <TransferFundsModal @ref="_transferFundsModal" BTCPrice="@_btcPrice" />
 
+<SparkWalletModals @ref="_sparkWalletModals" OnChanged="@(() => _walletsDataGrid.Reload())" />
+
 @code {
 
     [CascadingParameter]
@@ -780,6 +801,8 @@
     private ClaimsPrincipal ClaimsPrincipal { get; set; }
 
     private TransferFundsModal _transferFundsModal = default!;
+
+    private SparkWalletModals _sparkWalletModals = default!;
 
     private List<ApplicationUser> _financeManagers = new();
 

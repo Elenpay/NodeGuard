@@ -18,24 +18,39 @@
  */
 
 using NBitcoin;
+using NodeGuard.Data.Models;
 using NodeGuard.Helpers;
 using NSpark;
 
 namespace NodeGuard.Services.Spark;
 
-/// <summary>Where NodeGuard's Spark keys live.</summary>
+/// <summary>Where NodeGuard's Spark keys live (SPARK_SIGNER).</summary>
 public enum SparkSignerMode
 {
-    /// <summary>Derived in-process from an internal wallet's mnemonic (no remote signer).</summary>
-    Embedded,
+    /// <summary>
+    /// <c>wallet</c> (default, temporary): Spark wallets created on the Wallets page, their mnemonics encrypted in
+    /// the database and their keys derived in-process. Each node swaps through the Spark wallet it is given.
+    /// </summary>
+    Wallet,
 
-    /// <summary>In the remote signer Lambda, under its /spark/ routes (ENABLE_REMOTE_SIGNER).</summary>
+    /// <summary><c>remote</c>: one Spark wallet in the remote signer Lambda, under its /spark/ routes, for every node.</summary>
     Remote
 }
 
 /// <summary>
-/// NodeGuard's Spark configuration, read once from the environment at startup. Invalid settings with
-/// SPARK_ENABLED set fail the startup, as other NodeGuard settings do.
+/// A Spark wallet: a Spark wallet row by its id (SPARK_SIGNER=wallet), or, with no id, the remote signer's
+/// single wallet (SPARK_SIGNER=remote).
+/// </summary>
+public readonly record struct SparkWalletRef(int? WalletId)
+{
+    public static readonly SparkWalletRef RemoteSigner = new((int?)null);
+
+    public override string ToString() => WalletId is { } id ? $"Spark wallet {id}" : "the remote signer's Spark wallet";
+}
+
+/// <summary>
+/// NodeGuard's Spark configuration, read once from the environment at startup. Invalid settings fail the
+/// startup while Spark is enabled, as other NodeGuard settings do.
 /// </summary>
 public sealed class SparkSettings
 {
@@ -69,17 +84,13 @@ public sealed class SparkSettings
 
     public SparkSignerMode SignerMode { get; init; }
 
-    /// <summary>
-    /// Master fingerprint of the seed that holds the Spark keys: the remote signer's
-    /// SPARK_SEED_FINGERPRINT, or the internal wallet whose mnemonic is used in embedded mode. Null
-    /// only in a dev environment in embedded mode, meaning the current internal wallet.
-    /// </summary>
+    /// <summary>The remote signer's seed that holds the Spark keys (SPARK_SEED_FINGERPRINT; remote signer only).</summary>
     public string? SeedFingerprint { get; init; }
 
-    /// <summary>Spark account index (SPARK_ACCOUNT, 0 by default); must match the signer's.</summary>
+    /// <summary>The remote signer's Spark account index (SPARK_ACCOUNT, 0 by default; remote signer only).</summary>
     public int Account { get; init; }
 
-    /// <summary>The Spark identity NodeGuard expects (SPARK_IDENTITY_PUBKEY); required with the remote signer.</summary>
+    /// <summary>The Spark identity the remote signer must serve (SPARK_IDENTITY_PUBKEY; remote signer only).</summary>
     public string? IdentityPublicKey { get; init; }
 
     /// <summary>Highest fee accepted for the cooperative exit of a swap (SPARK_MAX_EXIT_FEE_SATS).</summary>
@@ -95,8 +106,8 @@ public sealed class SparkSettings
     public int ExitIntervalOrDefault(bool isDevEnvironment) => ExitIntervalMinutes ?? (isDevEnvironment ? 1 : 10);
 
     /// <summary>
-    /// Most sats the transit wallet may hold, counting a new swap (SPARK_MAX_BALANCE_SATS): Spark balances
-    /// are only meant to pass through.
+    /// Most sats a Spark wallet may hold, counting a new swap (SPARK_MAX_BALANCE_SATS), unless the wallet has its
+    /// own: Spark balances are only meant to pass through.
     /// </summary>
     public long MaxBalanceSats { get; init; } = DefaultMaxBalanceSats;
 
@@ -107,21 +118,35 @@ public sealed class SparkSettings
     public Uri? SignerRieUrl { get; init; }
 
     /// <summary>
-    /// Reads the SPARK_* variables. <paramref name="remoteSigner"/> and
-    /// <paramref name="remoteSignerEndpoint"/> are NodeGuard's ENABLE_REMOTE_SIGNER and
-    /// REMOTE_SIGNER_ENDPOINT, shared with PSBT signing.
+    /// The Spark wallet <paramref name="node"/> swaps through: its Spark wallet (SPARK_SIGNER=wallet), or the
+    /// remote signer's (SPARK_SIGNER=remote). Null when the node can't use Spark: Spark is disabled, or the node
+    /// has no Spark wallet.
     /// </summary>
-    /// <exception cref="InvalidOperationException">SPARK_ENABLED is set and the settings are invalid; lists every problem.</exception>
-    public static SparkSettings FromEnvironment(Func<string, string?> env, Network network, bool isDevEnvironment,
-        bool remoteSigner, string? remoteSignerEndpoint)
+    public SparkWalletRef? WalletFor(Node node) => !Enabled
+        ? null
+        : SignerMode == SparkSignerMode.Remote
+            ? SparkWalletRef.RemoteSigner
+            : node.SparkWalletId is { } id ? new SparkWalletRef(id) : null;
+
+    /// <summary>The most a Spark wallet may hold: its own max balance, else SPARK_MAX_BALANCE_SATS.</summary>
+    public long MaxBalanceFor(Wallet? sparkWallet) => sparkWallet?.SparkMaxBalanceSats ?? MaxBalanceSats;
+
+    /// <summary>
+    /// Reads the SPARK_* variables. <paramref name="remoteSignerEndpoint"/> is NodeGuard's REMOTE_SIGNER_ENDPOINT,
+    /// shared with PSBT signing. SPARK_ENABLED defaults to true on mainnet, where Lightspark's operators and SSP
+    /// are the defaults, and to false elsewhere.
+    /// </summary>
+    /// <exception cref="InvalidOperationException">Spark is enabled and the settings are invalid; lists every problem.</exception>
+    public static SparkSettings FromEnvironment(Func<string, string?> env, Network network, string? remoteSignerEndpoint)
     {
-        if (!StringHelper.IsTrue(env("SPARK_ENABLED")))
+        var isMainnet = network == NBitcoin.Network.Main;
+        var enabled = env("SPARK_ENABLED") is { Length: > 0 } enabledValue ? StringHelper.IsTrue(enabledValue) : isMainnet;
+        if (!enabled)
         {
             return Disabled;
         }
 
         var errors = new List<string>();
-        var isMainnet = network == NBitcoin.Network.Main;
         if (!isMainnet && network != NBitcoin.Network.RegTest)
         {
             errors.Add($"Spark runs on mainnet or regtest, not {network}");
@@ -164,43 +189,53 @@ public sealed class SparkSettings
             errors.Add("SPARK_OPERATOR_CERTS_DIR pins self-signed regtest operators and is not allowed on mainnet");
         }
 
-        var mode = remoteSigner ? SparkSignerMode.Remote : SparkSignerMode.Embedded;
-
-        var fingerprint = env("SPARK_SEED_FINGERPRINT");
-        if (string.IsNullOrWhiteSpace(fingerprint))
+        var mode = SparkSignerMode.Wallet;
+        switch (env("SPARK_SIGNER")?.Trim().ToLowerInvariant())
         {
-            fingerprint = null;
-            if (mode == SparkSignerMode.Remote || !isDevEnvironment)
-            {
-                errors.Add("SPARK_SEED_FINGERPRINT is required: the master fingerprint of the seed that holds the Spark keys");
-            }
-        }
-        else if (!HDFingerprint.TryParse(fingerprint.Trim(), out var parsedFingerprint))
-        {
-            errors.Add("SPARK_SEED_FINGERPRINT must be a master fingerprint (8 hex characters)");
-        }
-        else
-        {
-            fingerprint = parsedFingerprint.ToString();
+            case null or "" or "wallet":
+                break;
+            case "remote":
+                mode = SparkSignerMode.Remote;
+                break;
+            default:
+                errors.Add("SPARK_SIGNER must be wallet (Spark wallets created in NodeGuard) or remote (the remote signer)");
+                break;
         }
 
+        // The remote signer serves one Spark wallet, configured here. Spark wallets carry their own keys and account
+        string? fingerprint = null;
+        string? identity = null;
         var account = 0;
-        if (env("SPARK_ACCOUNT") is { Length: > 0 } accountValue &&
-            (!int.TryParse(accountValue, out account) || account < 0))
+        if (mode == SparkSignerMode.Remote)
         {
-            errors.Add("SPARK_ACCOUNT must be the Spark account index (0 or more), the same as the signer's");
-        }
-
-        var identity = env("SPARK_IDENTITY_PUBKEY");
-        if (identity is { Length: > 0 } && !IsCompressedPublicKey(identity))
-        {
-            errors.Add("SPARK_IDENTITY_PUBKEY must be a compressed public key (hex)");
-        }
-        else if (string.IsNullOrWhiteSpace(identity))
-        {
-            identity = null;
-            if (mode == SparkSignerMode.Remote)
+            fingerprint = env("SPARK_SEED_FINGERPRINT");
+            if (string.IsNullOrWhiteSpace(fingerprint))
             {
+                errors.Add("SPARK_SEED_FINGERPRINT is required with the remote signer: the master fingerprint of the seed that holds the Spark keys");
+            }
+            else if (!HDFingerprint.TryParse(fingerprint.Trim(), out var parsedFingerprint))
+            {
+                errors.Add("SPARK_SEED_FINGERPRINT must be a master fingerprint (8 hex characters)");
+            }
+            else
+            {
+                fingerprint = parsedFingerprint.ToString();
+            }
+
+            if (env("SPARK_ACCOUNT") is { Length: > 0 } accountValue &&
+                (!int.TryParse(accountValue, out account) || account < 0))
+            {
+                errors.Add("SPARK_ACCOUNT must be the Spark account index (0 or more), the same as the signer's");
+            }
+
+            identity = env("SPARK_IDENTITY_PUBKEY");
+            if (identity is { Length: > 0 } && !IsCompressedPublicKey(identity))
+            {
+                errors.Add("SPARK_IDENTITY_PUBKEY must be a compressed public key (hex)");
+            }
+            else if (string.IsNullOrWhiteSpace(identity))
+            {
+                identity = null;
                 errors.Add("SPARK_IDENTITY_PUBKEY is required with the remote signer: the identity it must serve (seed-ceremony verify --spark-account)");
             }
         }
@@ -245,7 +280,7 @@ public sealed class SparkSettings
 
         if (errors.Count > 0)
         {
-            throw new InvalidOperationException("Invalid Spark settings (SPARK_ENABLED is set): " + string.Join("; ", errors));
+            throw new InvalidOperationException("Invalid Spark settings (set SPARK_ENABLED=false to turn Spark off): " + string.Join("; ", errors));
         }
 
         return new SparkSettings

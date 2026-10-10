@@ -107,6 +107,13 @@ namespace NodeGuard.Data
                 .HasIndex(u => new { u.Key, u.Outpoint })
                 .IsUnique();
 
+            // A node's Spark wallet, with no navigation: it is only ever read by id
+            modelBuilder.Entity<Node>()
+                .HasOne<Wallet>()
+                .WithMany()
+                .HasForeignKey(n => n.SparkWalletId)
+                .OnDelete(DeleteBehavior.Restrict);
+
             modelBuilder.Entity<SwapOut>()
                 .HasIndex(s => s.ReferenceId)
                 .IsUnique()

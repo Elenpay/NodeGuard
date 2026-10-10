@@ -22,6 +22,7 @@ using System.Text;
 using System.Text.Json;
 using Amazon.Runtime;
 using FluentAssertions;
+using Microsoft.AspNetCore.DataProtection;
 using Microsoft.Extensions.DependencyInjection;
 using NodeGuard.Data.Models;
 using NodeGuard.Data.Repositories.Interfaces;
@@ -66,25 +67,44 @@ public class SparkSignerProviderTests
 
     private static SparkOptions Options(SparkSettings settings) => settings.ToSparkOptions(null);
 
+    private static readonly ISparkSeedProtector Protector = new SparkSeedProtector(new EphemeralDataProtectionProvider());
+
     private static SparkSignerProvider Provider(SparkSettings settings, HttpMessageHandler? signer = null,
-        IInternalWalletRepository? wallets = null)
+        IWalletRepository? wallets = null, ISparkSeedProtector? protector = null)
     {
         var services = new ServiceCollection();
         if (wallets is not null) services.AddSingleton(wallets);
         return new SparkSignerProvider(settings, services.BuildServiceProvider().GetRequiredService<IServiceScopeFactory>(),
-            new HttpClient(signer ?? new SignerUnderEmulator(SparkSignerPolicy.Create([], 0, []))),
+            protector ?? Protector, new HttpClient(signer ?? new SignerUnderEmulator(SparkSignerPolicy.Create([], 0, []))),
             () => new ImmutableCredentials("AKIDEXAMPLE", "not-a-real-secret", null), "eu-central-1");
     }
 
     private static SparkSignerPolicy MatchingPolicy() =>
         SparkSignerPolicy.Create(Operators.Select(o => o.IdentityPublicKeyHex), 2, [SparkSettingsTests.SspIdentity]);
 
+    /// <summary>Wallet 5: a Spark wallet with the dev mnemonic, encrypted by <paramref name="protector"/>.</summary>
+    private static IWalletRepository SparkWalletRow(string? identity = SparkSettingsTests.Identity, ISparkSeedProtector? protector = null,
+        WalletKind kind = WalletKind.Spark)
+    {
+        var wallets = Substitute.For<IWalletRepository>();
+        wallets.GetById(5).Returns(new Wallet
+        {
+            Id = 5,
+            Name = "transit",
+            Kind = kind,
+            SparkEncryptedMnemonic = (protector ?? Protector).Protect(DevMnemonic),
+            SparkAccount = 0,
+            SparkIdentityPublicKey = identity
+        });
+        return wallets;
+    }
+
     [Fact]
     public async Task TheRemoteSigner_IsUsedAfterAMatchingHandshake()
     {
         var provider = Provider(Settings(SparkSignerMode.Remote), new SignerUnderEmulator(MatchingPolicy()));
 
-        var signer = await provider.GetSignerAsync(Options(Settings(SparkSignerMode.Remote)), CancellationToken.None);
+        var signer = await provider.GetSignerAsync(SparkWalletRef.RemoteSigner, Options(Settings(SparkSignerMode.Remote)), CancellationToken.None);
 
         signer.Should().BeOfType<RemoteSparkSigner>();
         Convert.ToHexString(await signer.GetIdentityPublicKeyAsync()).ToLowerInvariant().Should().Be(SparkSettingsTests.Identity);
@@ -96,7 +116,7 @@ public class SparkSignerProviderTests
         var settings = Settings(SparkSignerMode.Remote);
         var provider = Provider(settings, new SignerUnderEmulator(SparkSignerPolicy.Create([], 0, [])));
 
-        var act = () => provider.GetSignerAsync(Options(settings), CancellationToken.None);
+        var act = () => provider.GetSignerAsync(SparkWalletRef.RemoteSigner, Options(settings), CancellationToken.None);
 
         (await act.Should().ThrowAsync<SparkUnavailableException>()).Which.Message.Should()
             .Contain("SPARK_OPERATOR_KEYS").And.Contain("SPARK_THRESHOLD").And.Contain("SPARK_ALLOWED_RECEIVERS");
@@ -108,7 +128,7 @@ public class SparkSignerProviderTests
         var settings = Settings(SparkSignerMode.Remote, identity: SparkSettingsTests.SspIdentity);
         var provider = Provider(settings, new SignerUnderEmulator(MatchingPolicy()));
 
-        var act = () => provider.GetSignerAsync(Options(settings), CancellationToken.None);
+        var act = () => provider.GetSignerAsync(SparkWalletRef.RemoteSigner, Options(settings), CancellationToken.None);
 
         (await act.Should().ThrowAsync<SparkUnavailableException>()).Which.Message.Should().Contain("SPARK_IDENTITY_PUBKEY");
     }
@@ -123,49 +143,68 @@ public class SparkSignerProviderTests
             Content = new StringContent("""{"statusCode":500,"body":"Object reference not set to an instance of an object."}""")
         }));
 
-        var act = () => provider.GetSignerAsync(Options(settings), CancellationToken.None);
+        var act = () => provider.GetSignerAsync(SparkWalletRef.RemoteSigner, Options(settings), CancellationToken.None);
 
         (await act.Should().ThrowAsync<SparkUnavailableException>()).Which.Message.Should().Contain("not a Spark signer envelope");
     }
 
     [Fact]
-    public async Task TheEmbeddedSigner_DerivesFromTheInternalWalletWithTheSeedFingerprint()
+    public async Task ASparkWallet_DerivesItsKeysFromItsDecryptedMnemonic()
     {
-        var wallets = Substitute.For<IInternalWalletRepository>();
-        wallets.GetAll().Returns([
-            new InternalWallet { DerivationPath = "m/48'/1'", XPUB = "read-only" },
-            new InternalWallet { DerivationPath = "m/48'/1'", MnemonicString = DevMnemonic.Replace(" ", "  ") }
-        ]);
-        var settings = Settings(SparkSignerMode.Embedded);
+        var settings = Settings(SparkSignerMode.Wallet);
 
-        var signer = await Provider(settings, wallets: wallets).GetSignerAsync(Options(settings), CancellationToken.None);
+        var signer = await Provider(settings, wallets: SparkWalletRow())
+            .GetSignerAsync(new SparkWalletRef(5), Options(settings), CancellationToken.None);
 
         (await signer.GetIdentityPublicKeyAsync()).Should()
             .Equal(await SparkSigner.FromMnemonic(DevMnemonic, 0).GetIdentityPublicKeyAsync());
     }
 
     [Fact]
-    public async Task TheEmbeddedSigner_WithoutAMatchingInternalWallet_IsUnavailable()
+    public async Task ASparkWallet_WhoseSeedDerivesAnotherIdentity_IsUnavailable()
     {
-        var wallets = Substitute.For<IInternalWalletRepository>();
-        wallets.GetAll().Returns([new InternalWallet { DerivationPath = "m/48'/1'", MnemonicString = DevMnemonic }]);
-        var settings = Settings(SparkSignerMode.Embedded, fingerprint: "aabbccdd");
+        var settings = Settings(SparkSignerMode.Wallet);
 
-        var act = () => Provider(settings, wallets: wallets).GetSignerAsync(Options(settings), CancellationToken.None);
+        var act = () => Provider(settings, wallets: SparkWalletRow(identity: SparkSettingsTests.SspIdentity))
+            .GetSignerAsync(new SparkWalletRef(5), Options(settings), CancellationToken.None);
 
-        (await act.Should().ThrowAsync<SparkUnavailableException>()).Which.Message.Should().Contain("aabbccdd");
+        (await act.Should().ThrowAsync<SparkUnavailableException>()).Which.Message.Should().Contain("recorded at creation");
     }
 
     [Fact]
-    public async Task TheEmbeddedSigner_WithAnotherIdentity_IsUnavailable()
+    public async Task ASparkWallet_ThatNoLongerDecrypts_IsUnavailable()
     {
-        var wallets = Substitute.For<IInternalWalletRepository>();
-        wallets.GetCurrentInternalWallet().Returns(new InternalWallet { DerivationPath = "m/48'/1'", MnemonicString = DevMnemonic });
-        var settings = Settings(SparkSignerMode.Embedded, identity: SparkSettingsTests.SspIdentity, fingerprint: null);
+        // Encrypted under another key ring: a lost DataProtectionKeys table, or another application name
+        var settings = Settings(SparkSignerMode.Wallet);
+        var otherKeyRing = new SparkSeedProtector(new EphemeralDataProtectionProvider());
 
-        var act = () => Provider(settings, wallets: wallets).GetSignerAsync(Options(settings), CancellationToken.None);
+        var act = () => Provider(settings, wallets: SparkWalletRow(protector: otherKeyRing))
+            .GetSignerAsync(new SparkWalletRef(5), Options(settings), CancellationToken.None);
 
-        (await act.Should().ThrowAsync<SparkUnavailableException>()).Which.Message.Should().Contain("SPARK_IDENTITY_PUBKEY");
+        (await act.Should().ThrowAsync<SparkUnavailableException>()).Which.Message.Should().Contain("cannot decrypt its seed");
+    }
+
+    [Fact]
+    public async Task AnOnChainWallet_HasNoSparkSigner()
+    {
+        var settings = Settings(SparkSignerMode.Wallet);
+
+        var act = () => Provider(settings, wallets: SparkWalletRow(kind: WalletKind.OnChain))
+            .GetSignerAsync(new SparkWalletRef(5), Options(settings), CancellationToken.None);
+
+        (await act.Should().ThrowAsync<SparkUnavailableException>()).Which.Message.Should().Contain("not a Spark wallet");
+    }
+
+    [Fact]
+    public async Task AWalletOfTheOtherSignerMode_IsRefused()
+    {
+        var remote = Settings(SparkSignerMode.Remote);
+        var wallet = Settings(SparkSignerMode.Wallet);
+
+        await Provider(remote).Invoking(p => p.GetSignerAsync(new SparkWalletRef(5), Options(remote), CancellationToken.None))
+            .Should().ThrowAsync<SparkUnavailableException>().WithMessage("SPARK_SIGNER=remote*");
+        await Provider(wallet).Invoking(p => p.GetSignerAsync(SparkWalletRef.RemoteSigner, Options(wallet), CancellationToken.None))
+            .Should().ThrowAsync<SparkUnavailableException>().WithMessage("SPARK_SIGNER=wallet*");
     }
 
     /// <summary>
