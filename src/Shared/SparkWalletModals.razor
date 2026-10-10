@@ -94,7 +94,15 @@
                         </TableRow>
                         <TableRow><TableRowHeader>Used by</TableRowHeader><TableRowCell>@(_usedBy.Count > 0 ? string.Join(", ", _usedBy) : "no node")</TableRowCell></TableRow>
                         <TableRow><TableRowHeader>Status</TableRowHeader><TableRowCell>@status.State @status.Reason</TableRowCell></TableRow>
-                        @if (_balance is not null)
+                        @if (_loadingBalance)
+                        {
+                            <TableRow><TableRowHeader>Balance</TableRowHeader><TableRowCell>Reading the balance from the Spark operators…</TableRowCell></TableRow>
+                        }
+                        else if (_balanceError is not null)
+                        {
+                            <TableRow><TableRowHeader>Balance</TableRowHeader><TableRowCell><span class="text-danger">Not available: @_balanceError</span></TableRowCell></TableRow>
+                        }
+                        else if (_balance is not null)
                         {
                             <TableRow><TableRowHeader>Owned</TableRowHeader><TableRowCell>@_balance.Owned.ToString("N0") sats</TableRowCell></TableRow>
                             <TableRow><TableRowHeader>Available</TableRowHeader><TableRowCell>@_balance.Available.ToString("N0") sats</TableRowCell></TableRow>
@@ -106,7 +114,7 @@
             }
         </ModalBody>
         <ModalFooter>
-            <Button Color="Color.Secondary" Disabled="_busy" Clicked="RefreshBalanceAsync">Refresh balance</Button>
+            <Button Color="Color.Secondary" Disabled="_loadingBalance" Clicked="RefreshBalanceAsync">Refresh balance</Button>
             <Button Color="Color.Primary" Clicked="@(() => _detailsModal.Hide())">Close</Button>
         </ModalFooter>
     </ModalContent>
@@ -191,6 +199,8 @@
 
     private Wallet? _wallet;
     private SatsBalance? _balance;
+    private bool _loadingBalance;
+    private string? _balanceError;
     private List<string> _usedBy = new();
     private List<Wallet> _destinations = new();
     private int _destinationWalletId;
@@ -258,10 +268,35 @@
         await OnChanged.InvokeAsync();
     }
 
+    /// <summary>
+    /// Reads the wallet's current balance from the Spark operators. Re-renders itself: when the details open, this runs
+    /// from the Wallets page's handler, which would only re-render the page
+    /// </summary>
     private async Task RefreshBalanceAsync()
     {
         if (_wallet is null) return;
-        await RunAsync(async () => _balance = await SparkWallets.GetBalanceAsync(_wallet.Id));
+
+        _loadingBalance = true;
+        _balanceError = null;
+        StateHasChanged();
+        try
+        {
+            _balance = await SparkWallets.GetBalanceAsync(_wallet.Id);
+        }
+        catch (Exception e) when (e is InvalidOperationException or ArgumentException or SparkUnavailableException)
+        {
+            _balanceError = e.Message;
+        }
+        catch (Exception e)
+        {
+            Logger.LogError(e, "Could not read the balance of Spark wallet {WalletId}", _wallet.Id);
+            _balanceError = "the Spark operators could not be reached";
+        }
+        finally
+        {
+            _loadingBalance = false;
+            StateHasChanged();
+        }
     }
 
     private async Task SaveMaxBalanceAsync()
@@ -314,7 +349,9 @@
         }
         finally
         {
+            // The modals are opened from the Wallets page, whose handlers re-render the page, not this component
             _busy = false;
+            StateHasChanged();
         }
     }
 }
