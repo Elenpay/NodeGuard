@@ -123,10 +123,10 @@ public class AutoLiquidityManagementJob : IJob
     /// </summary>
     /// <summary>
     /// Weighted random choice among the providers with a weight that can take a swap now. Spark is left
-    /// out while it is unavailable or its single swap slot is taken; null when no weighted provider is
-    /// left. All weights at 0 means Loop, as before.
+    /// out while it is unavailable (the node's Max swaps in flight already limits its swaps); null when no
+    /// weighted provider is left. All weights at 0 means Loop, as before.
     /// </summary>
-    private async Task<SwapProvider?> SelectSwapProviderAsync(Node node)
+    private SwapProvider? SelectSwapProvider(Node node)
     {
         var weights = new List<(SwapProvider Provider, int Weight)>
         {
@@ -141,7 +141,7 @@ public class AutoLiquidityManagementJob : IJob
             return SwapProvider.Loop;
         }
 
-        if (node.SparkSwapWeight > 0 && await SparkUnavailableReasonAsync() is { } reason)
+        if (node.SparkSwapWeight > 0 && SparkUnavailableReason() is { } reason)
         {
             _logger.LogInformation("Node {NodeName}: Spark cannot take a swap now ({Reason}), choosing among the other providers",
                 node.Name, reason);
@@ -175,13 +175,10 @@ public class AutoLiquidityManagementJob : IJob
         return selectedProvider;
     }
 
-    private async Task<string?> SparkUnavailableReasonAsync()
+    private string? SparkUnavailableReason()
     {
         var status = _sparkWallet.Status;
-        if (!status.IsReady) return status.Reason ?? status.State.ToString();
-
-        var inFlight = (await _swapOutRepository.GetAllPending()).FirstOrDefault(s => s.Provider == SwapProvider.Spark);
-        return inFlight is null ? null : $"Spark swap {inFlight.Id} is in flight";
+        return status.IsReady ? null : status.Reason ?? status.State.ToString();
     }
 
     public async Task<ManageNodeLiquidityResult> ManageNodeLiquidity(Node node, CancellationToken cancellationToken)
@@ -276,7 +273,7 @@ public class AutoLiquidityManagementJob : IJob
         _logger.LogDebug("Node {NodeName} - Initiating swap for {Amount} BTC", node.Name, swapAmountBtc);
 
         // Select swap provider based on weights, before reserving an address for a swap that may not happen
-        var provider = await SelectSwapProviderAsync(node);
+        var provider = SelectSwapProvider(node);
         if (provider is not { } selectedProvider)
         {
             _logger.LogInformation("Node {NodeName}: no weighted swap provider can take a swap now, skipping", node.Name);
