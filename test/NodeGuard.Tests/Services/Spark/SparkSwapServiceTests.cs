@@ -122,6 +122,9 @@ public class SparkSwapServiceTests
             Leaves = leaves.Length > 0 ? leaves : [Leaf($"{id}-leaf", sats)]
         };
 
+    /// <summary>The transfer as it is before this wallet claimed it: the SSP sent it, its leaves are not ours yet.</summary>
+    private static SparkTransfer Unclaimed(SparkTransfer transfer) => transfer with { Status = "SenderKeyTweaked" };
+
     private void SspReports(string? transferId) =>
         _spark.GetReceiveRequestAsync("req-1", Arg.Any<CancellationToken>())
             .Returns(new LightningReceiveRequest("req-1", "TRANSFER_COMPLETED", transferId, null));
@@ -432,6 +435,54 @@ public class SparkSwapServiceTests
         await _spark.DidNotReceiveWithAnyArgs().ClaimPendingAsync(default);
     }
 
+    [Fact]
+    public async Task Attribute_ATransferTheSspReportsButNotClaimedYet_Waits_WithoutTakingAnotherOfTheSameAmount()
+    {
+        var swap = Pending();
+        SspReports("transfer-1");
+        _spark.GetTransferAsync("transfer-1", Arg.Any<CancellationToken>()).Returns(Unclaimed(Transfer("transfer-1", 499_000)));
+        ReceivedTransfers(Transfer("another-swaps", 499_000));
+
+        var attributed = await Service().AttributeAsync(swap);
+
+        attributed.Should().BeFalse();
+        swap.SparkTransferId.Should().BeNull();
+        _swapOuts.DidNotReceive().Update(swap);
+    }
+
+    [Fact]
+    public async Task Attribute_AClaimThatFailed_IsRetriedOnTheNextRun_AndTheTransferAttributedOnceClaimed()
+    {
+        var swap = Pending();
+        SspReports("transfer-1");
+        _spark.ClaimPendingAsync(Arg.Any<CancellationToken>()).Returns(
+            new PendingTransferClaim([], [new PendingTransferClaimFailure("transfer-1", new InvalidOperationException("operator unavailable"))]),
+            new PendingTransferClaim([Transfer("transfer-1", 499_000)], []));
+        _spark.GetTransferAsync("transfer-1", Arg.Any<CancellationToken>())
+            .Returns(Unclaimed(Transfer("transfer-1", 499_000)), Transfer("transfer-1", 499_000));
+        var service = Service();
+
+        (await service.AttributeAsync(swap)).Should().BeFalse();
+        swap.SparkTransferId.Should().BeNull();
+
+        (await service.AttributeAsync(swap)).Should().BeTrue();
+        swap.SparkTransferId.Should().Be("transfer-1");
+        swap.SparkLeafIds.Should().Be("transfer-1-leaf");
+        await _spark.Received(2).ClaimPendingAsync(Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task Attribute_WhenMatching_SkipsUnclaimedTransfers()
+    {
+        var swap = Pending();
+        SspReports(null);
+        ReceivedTransfers(Unclaimed(Transfer("unclaimed-closest", 500_000)), Transfer("claimed", 499_000));
+
+        (await Service().AttributeAsync(swap)).Should().BeTrue();
+
+        swap.SparkTransferId.Should().Be("claimed");
+    }
+
     // ── Exit ─────────────────────────────────────────────────────────────────────────────
 
     [Fact]
@@ -475,6 +526,19 @@ public class SparkSwapServiceTests
 
         (await Service().ExitAsync(Pending())).Should().Be(SparkExitStep.Waiting);
 
+        await _spark.DidNotReceiveWithAnyArgs().WithdrawLeavesAsync(default!, default!, default, default);
+    }
+
+    [Fact]
+    public async Task Exit_WhileTheTransferIsNotClaimed_Waits()
+    {
+        var swap = Pending();
+        SspReports("transfer-1");
+        _spark.GetTransferAsync("transfer-1", Arg.Any<CancellationToken>()).Returns(Unclaimed(Transfer("transfer-1", 499_000)));
+
+        (await Service().ExitAsync(swap)).Should().Be(SparkExitStep.Waiting);
+
+        swap.SparkLeafIds.Should().BeNull();
         await _spark.DidNotReceiveWithAnyArgs().WithdrawLeavesAsync(default!, default!, default, default);
     }
 

@@ -98,6 +98,8 @@ public sealed class SparkSwapService : ISparkSwapService
     private const int PaymentTimeoutSeconds = 120;
     private const decimal DefaultMaxRoutingFeePercent = 0.5m;
     private const string LightningTransferType = "PreimageSwap";
+    /// <summary>The status of a transfer this wallet has claimed: its leaves are the wallet's.</summary>
+    private const string ClaimedTransferStatus = "Completed";
     private const string ExitTransferType = "CooperativeExit";
     private const int MaxLeafSearchSteps = 100_000;
     private static readonly TimeSpan PaymentLookupTimeout = TimeSpan.FromSeconds(30);
@@ -242,7 +244,8 @@ public sealed class SparkSwapService : ISparkSwapService
         RequirePaid(swap);
         var identity = await EnsureSwapWalletAsync(swap, ct);
 
-        // Claimed first: only a claimed transfer's leaves are the wallet's to exit
+        // Claimed first: only a claimed transfer's leaves are the wallet's to exit. One that could not be claimed
+        // is not attributed, so the next run claims it again
         var claim = await _spark.ClaimPendingAsync(ct);
         foreach (var failure in claim.Failures)
         {
@@ -250,7 +253,16 @@ public sealed class SparkSwapService : ISparkSwapService
         }
 
         var attributed = await _swapOutRepository.GetSparkTransferIdsAsync();
-        var transfer = await ReportedTransferAsync(swap, identity, attributed, ct) ?? await MatchingTransferAsync(swap, attributed, ct);
+        var reported = await ReportedTransferAsync(swap, identity, attributed, ct);
+        if (reported is not null && !IsClaimed(reported))
+        {
+            // The swap's own transfer, known by id: wait for it rather than take another of the same amount
+            _logger.LogWarning("Spark swap {SwapId}: transfer {TransferId} is not claimed yet ({Status})", swap.Id, reported.Id,
+                reported.Status);
+            return false;
+        }
+
+        var transfer = reported ?? await MatchingTransferAsync(swap, attributed, ct);
         if (transfer is null)
         {
             _logger.LogInformation("Spark swap {SwapId}: the transfer of its payment has not been found yet", swap.Id);
@@ -423,8 +435,8 @@ public sealed class SparkSwapService : ISparkSwapService
     }
 
     /// <summary>
-    /// For an SSP that does not report the transfer: the Lightning transfer received since the swap was created,
-    /// given to no swap yet, closest to the swap's amount without exceeding it (any receive fee within 1%).
+    /// For an SSP that does not report the transfer: the claimed Lightning transfer received since the swap was
+    /// created, given to no swap yet, closest to the swap's amount without exceeding it (any receive fee within 1%).
     /// Transfers of equal amounts are interchangeable, as their leaves add up the same.
     /// </summary>
     private async Task<SparkTransfer?> MatchingTransferAsync(SwapOut swap, HashSet<string> attributed, CancellationToken ct)
@@ -434,7 +446,7 @@ public sealed class SparkSwapService : ISparkSwapService
 
         return received
             .Where(t => string.Equals(t.Type, LightningTransferType, StringComparison.OrdinalIgnoreCase))
-            .Where(t => !attributed.Contains(t.Id) && t.Leaves.Count > 0)
+            .Where(t => !attributed.Contains(t.Id) && t.Leaves.Count > 0 && IsClaimed(t))
             .Where(t => t.TotalValueSats <= swap.SatsAmount && t.TotalValueSats >= minimum)
             .OrderBy(t => swap.SatsAmount - t.TotalValueSats)
             .ThenBy(t => t.CreatedAt)
@@ -568,6 +580,9 @@ public sealed class SparkSwapService : ISparkSwapService
 
     private static IReadOnlyList<string> LeafIds(SwapOut swap) =>
         (swap.SparkLeafIds ?? string.Empty).Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+
+    private static bool IsClaimed(SparkTransfer transfer) =>
+        string.Equals(transfer.Status, ClaimedTransferStatus, StringComparison.OrdinalIgnoreCase);
 
     /// <summary>Saves the swap's progress; returns whether it was saved.</summary>
     private bool Save(SwapOut swap)
