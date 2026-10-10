@@ -273,8 +273,14 @@
             var derivationStrategy = _selectedWallet.GetDerivationStrategy();
             ArgumentNullException.ThrowIfNull(derivationStrategy, nameof(derivationStrategy));
 
-            var btcAddress = await NBXplorerService.GetUnusedAsync(derivationStrategy, DerivationFeature.Deposit, 0, true, ComponentCancellationToken);
-            ArgumentNullException.ThrowIfNull(btcAddress, nameof(btcAddress));
+            // Loop and 40swap send to an address given now; a Spark swap reserves its own when it exits
+            string? address = null;
+            if (_selectedProvider != SwapProvider.Spark)
+            {
+                var btcAddress = await NBXplorerService.GetUnusedAsync(derivationStrategy, DerivationFeature.Deposit, 0, true, ComponentCancellationToken);
+                ArgumentNullException.ThrowIfNull(btcAddress, nameof(btcAddress));
+                address = btcAddress.Address.ToString();
+            }
 
             var amount = NBitcoin.Money.FromUnit(_amountBtc, NBitcoin.MoneyUnit.BTC);
             var swapRequest = new SwapOutRequest
@@ -282,7 +288,7 @@
                 Amount = amount,
                 MaxServiceFeesPercent = _maxServiceFeesPercent,
                 PrepayAmtSat = _confirmationModal.GetData<long>("PrepayAmtSat"),
-                Address = btcAddress.Address.ToString(),
+                Address = address,
                 SwapPublicationDeadlineMinutes = _swapPublicationDeadlineOffsetMinutes,
                 SweepConfTarget = _sweepConfirmationTarget,
                 MaxRoutingFeesPercent = _maxRoutingFeesPercent
