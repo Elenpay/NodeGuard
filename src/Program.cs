@@ -473,7 +473,7 @@ namespace NodeGuard
                     opts.ForJob(nameof(SparkSwapExitJob))
                         .WithIdentity($"{nameof(SparkSwapExitJob)}Trigger")
                         .StartNow().WithSimpleSchedule(scheduleBuilder => scheduleBuilder
-                            .WithIntervalInMinutes(sparkSettings.ExitIntervalMinutes ?? (Constants.IS_DEV_ENVIRONMENT ? 1 : 10))
+                            .WithIntervalInMinutes(sparkSettings.ExitIntervalOrDefault(Constants.IS_DEV_ENVIRONMENT))
                             .RepeatForever());
                 });
 

@@ -90,6 +90,9 @@ public sealed class SparkSettings
     /// </summary>
     public int? ExitIntervalMinutes { get; init; }
 
+    /// <summary>How often paid Spark swaps exit on-chain, in minutes: <see cref="ExitIntervalMinutes"/> or its default.</summary>
+    public int ExitIntervalOrDefault(bool isDevEnvironment) => ExitIntervalMinutes ?? (isDevEnvironment ? 1 : 10);
+
     /// <summary>The remote signer's Function URL (REMOTE_SIGNER_ENDPOINT), signed with SigV4.</summary>
     public Uri? SignerEndpoint { get; init; }
 
