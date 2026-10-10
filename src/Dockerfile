@@ -7,8 +7,10 @@ EXPOSE 443
 
 FROM mcr.microsoft.com/dotnet/sdk:10.0 AS build
 WORKDIR /src
-COPY ["src/NodeGuard.csproj", "."]
-RUN dotnet restore "./NodeGuard.csproj"
+COPY ["src/NodeGuard.csproj", "src/"]
+# The Spark client is built from NSpark (git submodule vendor/nspark), so restore needs it
+COPY ["vendor/nspark/", "vendor/nspark/"]
+RUN dotnet restore "src/NodeGuard.csproj"
 COPY . .
 WORKDIR /src/src
 RUN ls -l

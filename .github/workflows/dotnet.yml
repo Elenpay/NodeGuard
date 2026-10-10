@@ -67,8 +67,12 @@ jobs:
               - 'global.json'
               - 'nuget.config'
               - 'NuGet.config'
+              # NSpark (the Elenpay/nspark fork, git submodule), which the Spark client is built from
+              - 'vendor/**'
+              - '.gitmodules'
               # build/e2e harness that exercises the above
               - 'src/Dockerfile'
+              - '.dockerignore'
               - 'docker-compose.yml'
               - 'docker/**'
               - '.github/workflows/dotnet.yml'
@@ -80,6 +84,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      - name: Check out the NSpark submodule
+        run: git submodule update --init vendor/nspark
       - uses: actions/setup-dotnet@v4
         with:
           dotnet-version: '10.0.x'
@@ -87,6 +93,24 @@ jobs:
         run: dotnet restore
       - name: Unit tests (excludes e2e)
         run: dotnet test --filter "Category!=E2E"
+      - name: No model changes without a migration
+        # Out of process on purpose: under a test host ApplicationDbContext builds a test-only model
+        run: |
+          dotnet tool install --global dotnet-ef --version 10.0.2
+          dotnet ef migrations has-pending-model-changes --project src --context ApplicationDbContext
+
+  # On PRs the image is otherwise only built by the opt-in e2e job: build it here so a broken
+  # Dockerfile or build context (e.g. the NSpark submodule) fails the PR, without pushing anything.
+  image-build-check:
+    needs: changes
+    if: ${{ needs.changes.outputs.code == 'true' && github.event_name == 'pull_request' }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Check out the NSpark submodule
+        run: git submodule update --init vendor/nspark
+      - name: Build the image
+        run: docker build -f src/Dockerfile .
 
   e2e-test:
     needs: changes
@@ -102,6 +126,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      - name: Check out the NSpark submodule
+        run: git submodule update --init vendor/nspark
       - name: Run e2e tests (one stack, one ordered pass)
         # Clean slate first (DbInitializer only funds the dev wallets on an empty DB), then run the E2E suite (Category=E2E) in one pass: rebalance, fee-engine smoke, fee-engine flow, plus the wallet/UTXO e2e tests.
         run: |
@@ -129,6 +155,9 @@ jobs:
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
+
+      - name: Check out the NSpark submodule
+        run: git submodule update --init vendor/nspark
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
