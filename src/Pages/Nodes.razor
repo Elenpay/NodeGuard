@@ -4,6 +4,7 @@
 @using NodeGuard.Jobs
 @using Humanizer
 @using Quartz
+@using NodeGuard.Services.Spark
 
 @inject IAuditService AuditService
 @attribute [Authorize(Roles = "FinanceManager, NodeManager, Superadmin")]
@@ -270,7 +271,7 @@
                                 <Field>
                                     <Validation Validator="ValidateProviderWeights">
                                         <FieldLabel>Loop Weight</FieldLabel>
-                                        <FieldHelp>Weight for Loop provider (0-100, must sum to 100 with 40swap)</FieldHelp>
+                                        <FieldHelp>Weight for Loop provider (0-100, all weights must sum to 100)</FieldHelp>
                                         <NumericEdit TValue="int" 
                                                      @bind-Value="@_selectedNodeForLiquidity.LoopSwapWeight" 
                                                      Min="0"
@@ -292,7 +293,7 @@
                                 <Field>
                                     <Validation Validator="ValidateProviderWeights">
                                         <FieldLabel>40swap Weight</FieldLabel>
-                                        <FieldHelp>Weight for 40swap provider (0-100, must sum to 100 with Loop)</FieldHelp>
+                                        <FieldHelp>Weight for 40swap provider (0-100, all weights must sum to 100)</FieldHelp>
                                         <NumericEdit TValue="int" 
                                                      @bind-Value="@_selectedNodeForLiquidity.FortySwapWeight" 
                                                      Min="0"
@@ -310,6 +311,31 @@
                                     </Validation>
                                 </Field>
                             </Column>
+                            @if (SparkSettings.Enabled || _selectedNodeForLiquidity.SparkSwapWeight > 0)
+                            {
+                                <Column>
+                                    <Field>
+                                        <Validation Validator="ValidateProviderWeights">
+                                            <FieldLabel>Spark Weight</FieldLabel>
+                                            <FieldHelp>Weight for NodeGuard's Spark wallet (0-100). Skipped while Spark is unavailable or another Spark swap is in flight</FieldHelp>
+                                            <NumericEdit TValue="int"
+                                                         @bind-Value="@_selectedNodeForLiquidity.SparkSwapWeight"
+                                                         Min="0"
+                                                         Max="100">
+                                                <Feedback>
+                                                    <ValidationError />
+                                                </Feedback>
+                                            </NumericEdit>
+                                            @if (_selectedNodeForLiquidity.SparkSwapWeight > 0 && !SparkWallet.Status.IsReady)
+                                            {
+                                                <FieldHelp>
+                                                    <Badge Color="Color.Warning">⚠️ Spark is not available: @(SparkWallet.Status.Reason ?? SparkWallet.Status.State.ToString())</Badge>
+                                                </FieldHelp>
+                                            }
+                                        </Validation>
+                                    </Field>
+                                </Column>
+                            }
                         </Row>
                         
                         <Divider Text="Swap Configuration" TextAlignment="TextAlignment.Start" Type="DividerType.Dashed" />
@@ -574,6 +600,8 @@
 @inject IWalletRepository WalletRepository
 @inject ISchedulerFactory  SchedulerFactory
 @inject ILocalStorageService LocalStorageService
+@inject SparkSettings SparkSettings
+@inject ISparkWalletService SparkWallet
 @implements IDisposable
 @code {
     private List<Node>? _nodes;
@@ -1078,7 +1106,8 @@
         
         if (_selectedNodeForLiquidity == null) return;
         
-        var totalWeight = _selectedNodeForLiquidity.LoopSwapWeight + _selectedNodeForLiquidity.FortySwapWeight;
+        var totalWeight = _selectedNodeForLiquidity.LoopSwapWeight + _selectedNodeForLiquidity.FortySwapWeight +
+                          _selectedNodeForLiquidity.SparkSwapWeight;
         
         if (totalWeight != 100)
         {
@@ -1099,6 +1128,13 @@
         {
             arg.Status = ValidationStatus.Error;
             arg.ErrorText = "40swap endpoint must be configured when 40swap weight > 0";
+            return;
+        }
+
+        if (_selectedNodeForLiquidity.SparkSwapWeight > 0 && !SparkSettings.Enabled)
+        {
+            arg.Status = ValidationStatus.Error;
+            arg.ErrorText = "Spark must be enabled (SPARK_ENABLED) when Spark weight > 0";
             return;
         }
     }

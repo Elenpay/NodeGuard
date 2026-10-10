@@ -133,6 +133,12 @@ namespace NodeGuard.Data.Models
         /// </summary>
         public int FortySwapWeight { get; set; } = 0;
 
+        /// <summary>
+        /// Weight for the Spark swap provider selection (default 0). Spark is skipped while it is
+        /// unavailable or another Spark swap is in flight
+        /// </summary>
+        public int SparkSwapWeight { get; set; } = 0;
+
         #endregion Automatic Swap Out Configuration
 
         #region Routing Engine

@@ -21,6 +21,7 @@ using NBitcoin;
 using NodeGuard.Data.Models;
 using NodeGuard.Data.Repositories.Interfaces;
 using NodeGuard.Services;
+using NodeGuard.Services.Spark;
 using Quartz;
 
 namespace NodeGuard.Jobs;
@@ -35,6 +36,8 @@ public enum ManageNodeLiquidityResult
     MaxSwapsInFlightReached,
     BudgetExhausted,
     ExcessBalanceBelowMinimum,
+    /// <summary>The only providers with a weight cannot take a swap now (Spark busy or unavailable)</summary>
+    NoProviderAvailable,
     Error
 }
 
@@ -54,6 +57,7 @@ public class AutoLiquidityManagementJob : IJob
     private readonly IWalletRepository _walletRepository;
     private readonly INBXplorerService _nbXplorerService;
     private readonly IAuditService _auditService;
+    private readonly ISparkWalletService _sparkWallet;
 
     public AutoLiquidityManagementJob(
         ILogger<AutoLiquidityManagementJob> logger,
@@ -64,8 +68,10 @@ public class AutoLiquidityManagementJob : IJob
         ILightningService lightningService,
         IWalletRepository walletRepository,
         INBXplorerService nbXplorerService,
-        IAuditService auditService)
+        IAuditService auditService,
+        ISparkWalletService sparkWallet)
     {
+        _sparkWallet = sparkWallet;
         _logger = logger;
         _nodeRepository = nodeRepository;
         _swapOutRepository = swapOutRepository;
@@ -115,28 +121,64 @@ public class AutoLiquidityManagementJob : IJob
     /// Selects a swap provider based on configured weights.
     /// Uses weighted random selection - higher weight = higher probability.
     /// </summary>
-    private SwapProvider SelectSwapProvider(Node node)
+    /// <summary>
+    /// Weighted random choice among the providers with a weight that can take a swap now. Spark is left
+    /// out while it is unavailable (the node's Max swaps in flight already limits its swaps); null when no
+    /// weighted provider is left. All weights at 0 means Loop, as before.
+    /// </summary>
+    private SwapProvider? SelectSwapProvider(Node node)
     {
-        var loopWeight = node.LoopSwapWeight;
-        var fortySwapWeight = node.FortySwapWeight;
-        var totalWeight = loopWeight + fortySwapWeight;
+        var weights = new List<(SwapProvider Provider, int Weight)>
+        {
+            (SwapProvider.Loop, node.LoopSwapWeight),
+            (SwapProvider.FortySwap, node.FortySwapWeight),
+            (SwapProvider.Spark, node.SparkSwapWeight)
+        };
 
-        if (totalWeight == 0)
+        if (weights.All(w => w.Weight <= 0))
         {
             _logger.LogWarning("Node {NodeName} has total weight of 0, defaulting to Loop", node.Name);
             return SwapProvider.Loop;
         }
 
+        if (node.SparkSwapWeight > 0 && SparkUnavailableReason() is { } reason)
+        {
+            _logger.LogInformation("Node {NodeName}: Spark cannot take a swap now ({Reason}), choosing among the other providers",
+                node.Name, reason);
+            weights.RemoveAll(w => w.Provider == SwapProvider.Spark);
+        }
+
+        var candidates = weights.Where(w => w.Weight > 0).ToList();
+        var totalWeight = candidates.Sum(w => w.Weight);
+        if (totalWeight == 0)
+        {
+            return null;
+        }
+
         // Weighted random selection
-        var random = new Random();
-        var randomValue = random.Next(0, totalWeight);
+        var randomValue = Random.Shared.Next(0, totalWeight);
+        var selectedProvider = candidates[^1].Provider;
+        var cumulative = 0;
+        foreach (var (provider, weight) in candidates)
+        {
+            cumulative += weight;
+            if (randomValue < cumulative)
+            {
+                selectedProvider = provider;
+                break;
+            }
+        }
 
-        var selectedProvider = randomValue < loopWeight ? SwapProvider.Loop : SwapProvider.FortySwap;
-
-        _logger.LogDebug("Selected {Provider} for node {NodeName} (Loop weight: {LoopWeight}, 40swap weight: {FortySwapWeight}, random: {Random})",
-            selectedProvider, node.Name, loopWeight, fortySwapWeight, randomValue);
+        _logger.LogDebug("Selected {Provider} for node {NodeName} (Loop weight: {LoopWeight}, 40swap weight: {FortySwapWeight}, Spark weight: {SparkWeight}, random: {Random})",
+            selectedProvider, node.Name, node.LoopSwapWeight, node.FortySwapWeight, node.SparkSwapWeight, randomValue);
 
         return selectedProvider;
+    }
+
+    private string? SparkUnavailableReason()
+    {
+        var status = _sparkWallet.Status;
+        return status.IsReady ? null : status.Reason ?? status.State.ToString();
     }
 
     public async Task<ManageNodeLiquidityResult> ManageNodeLiquidity(Node node, CancellationToken cancellationToken)
@@ -230,21 +272,37 @@ public class AutoLiquidityManagementJob : IJob
 
         _logger.LogDebug("Node {NodeName} - Initiating swap for {Amount} BTC", node.Name, swapAmountBtc);
 
-        // Get destination address from wallet
-        var destinationAddress = await GetDestinationAddressAsync(node, cancellationToken);
-        if (destinationAddress == null)
+        // Select swap provider based on weights, before reserving an address for a swap that may not happen
+        var provider = SelectSwapProvider(node);
+        if (provider is not { } selectedProvider)
         {
-            _logger.LogError("Could not get destination address for node {NodeName}", node.Name);
+            _logger.LogInformation("Node {NodeName}: no weighted swap provider can take a swap now, skipping", node.Name);
+            return ManageNodeLiquidityResult.NoProviderAvailable;
+        }
+
+        _logger.LogInformation("Using {Provider} for swap out on node {NodeName}", selectedProvider, node.Name);
+
+        // Loop and 40swap send to an address of the destination wallet given now; a Spark swap reserves its own
+        // when it exits
+        string? destinationAddress = null;
+        if (selectedProvider != SwapProvider.Spark)
+        {
+            destinationAddress = await GetDestinationAddressAsync(node, cancellationToken);
+            if (destinationAddress == null)
+            {
+                _logger.LogError("Could not get destination address for node {NodeName}", node.Name);
+                return ManageNodeLiquidityResult.Error;
+            }
+        }
+        else if (!node.FundsDestinationWalletId.HasValue)
+        {
+            _logger.LogError("Node {NodeName} has no funds destination wallet configured", node.Name);
             return ManageNodeLiquidityResult.Error;
         }
 
         // Create swap out request
         _logger.LogInformation("Initiating automatic swap out for node {NodeName} - Amount: {Amount} BTC",
             node.Name, swapAmountBtc);
-
-        // Select swap provider based on weights
-        var selectedProvider = SelectSwapProvider(node);
-        _logger.LogInformation("Using {Provider} for swap out on node {NodeName}", selectedProvider, node.Name);
 
         try
         {
