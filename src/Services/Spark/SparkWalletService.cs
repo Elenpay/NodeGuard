@@ -78,9 +78,6 @@ public interface ISparkWalletService
     Task<IReadOnlyList<SparkTransfer>> GetTransfersAsync(TransferDirection direction, DateTimeOffset since,
         CancellationToken ct = default);
 
-    /// <summary>The leaves that can be spent now (renewing those due first).</summary>
-    Task<IReadOnlyList<SparkLeaf>> GetSpendableLeavesAsync(CancellationToken ct = default);
-
     Task<WalletBalance> GetBalanceAsync(CancellationToken ct = default);
 
     /// <summary>Exits every spendable sat to <paramref name="onChainAddress"/> in one cooperative exit.</summary>
@@ -174,9 +171,6 @@ public sealed class SparkWalletService : ISparkWalletService, IAsyncDisposable
 
             return (IReadOnlyList<SparkTransfer>)transfers;
         }, ct);
-
-    public Task<IReadOnlyList<SparkLeaf>> GetSpendableLeavesAsync(CancellationToken ct = default) =>
-        WithWalletAsync(w => w.GetSpendableLeavesAsync(ct), ct);
 
     public Task<WalletBalance> GetBalanceAsync(CancellationToken ct = default) =>
         WithWalletAsync(w => w.GetBalanceAsync(ct), ct);

@@ -101,7 +101,6 @@ public sealed class SparkSwapService : ISparkSwapService
     /// <summary>The status of a transfer this wallet has claimed: its leaves are the wallet's.</summary>
     private const string ClaimedTransferStatus = "Completed";
     private const string ExitTransferType = "CooperativeExit";
-    private const int MaxLeafSearchSteps = 100_000;
     private static readonly TimeSpan PaymentLookupTimeout = TimeSpan.FromSeconds(30);
 
     /// <summary>When nothing has arrived by then, the invoice has expired and the payment never will.</summary>
@@ -340,27 +339,18 @@ public sealed class SparkSwapService : ISparkSwapService
         }
         catch (SparkLeavesNotSpendableException e)
         {
-            // Either they already exited (a crash before the txid was saved) or they were renewed into new leaf ids
+            // Only ever the swap's own leaves. A renewal keeps a leaf's id, so they can't have moved under another one:
+            // either they already exited (a crash before the txid was saved), or they can't move yet (a renewal failed,
+            // or they are frozen), and the next run tries again
             if (await AlreadyExitedAsync(swap, leafIds, ct))
             {
                 _logger.LogWarning("Spark swap {SwapId}: its leaves already exited; waiting for the payout", swap.Id);
                 return SparkExitStep.ExitSent;
             }
 
-            var replacement = await ReplacementLeavesAsync(swap, ct);
-            if (replacement is null)
-            {
-                _logger.LogWarning("Spark swap {SwapId}: {Error} No other leaves add up to its {Received} sats yet",
-                    swap.Id, e.Message, swap.SparkReceivedSats);
-                return SparkExitStep.Waiting;
-            }
-
-            swap.SparkLeafIds = string.Join(',', replacement);
-            if (!Save(swap)) return SparkExitStep.Waiting;
-
-            _logger.LogInformation("Spark swap {SwapId}: its leaves were renewed; exiting {LeafCount} leaves of the same value",
-                swap.Id, replacement.Count);
-            exit = await _spark.WithdrawLeavesAsync(replacement, swap.DestinationAddress!, _settings.MaxExitFeeSats, ct);
+            _logger.LogWarning("Spark swap {SwapId}: its leaves can't move yet ({Error}); trying again on the next run",
+                swap.Id, e.Message);
+            return SparkExitStep.Waiting;
         }
 
         swap.TxId = exit.Txid;
@@ -460,49 +450,6 @@ public sealed class SparkSwapService : ISparkSwapService
         return sent
             .Where(t => string.Equals(t.Type, ExitTransferType, StringComparison.OrdinalIgnoreCase))
             .Any(t => t.Leaves.Any(l => leafIds.Contains(l.Id, StringComparer.OrdinalIgnoreCase)));
-    }
-
-    /// <summary>
-    /// Spendable leaves no other pending swap has, adding up to exactly what the swap received: its own leaves
-    /// under their renewed ids.
-    /// </summary>
-    private async Task<IReadOnlyList<string>?> ReplacementLeavesAsync(SwapOut swap, CancellationToken ct)
-    {
-        var taken = (await _swapOutRepository.GetAllPending())
-            .Where(s => s.Provider == SwapProvider.Spark && s.Id != swap.Id)
-            .SelectMany(LeafIds)
-            .ToHashSet(StringComparer.OrdinalIgnoreCase);
-        var free = (await _spark.GetSpendableLeavesAsync(ct)).Where(l => !taken.Contains(l.Id)).ToList();
-
-        return ExactLeafSet(free, swap.SparkReceivedSats!.Value);
-    }
-
-    /// <summary>Leaves adding up to exactly <paramref name="targetSats"/>, largest first; null if there are none.</summary>
-    internal static IReadOnlyList<string>? ExactLeafSet(IReadOnlyList<SparkLeaf> leaves, long targetSats)
-    {
-        var sorted = leaves.Where(l => l.ValueSats > 0 && l.ValueSats <= targetSats).OrderByDescending(l => l.ValueSats).ToList();
-        var remaining = new long[sorted.Count + 1];
-        for (var i = sorted.Count - 1; i >= 0; i--) remaining[i] = remaining[i + 1] + sorted[i].ValueSats;
-
-        var chosen = new List<string>();
-        var steps = 0;
-
-        bool Search(int index, long left)
-        {
-            if (left == 0) return true;
-            if (index == sorted.Count || remaining[index] < left || ++steps > MaxLeafSearchSteps) return false;
-
-            if (sorted[index].ValueSats <= left)
-            {
-                chosen.Add(sorted[index].Id);
-                if (Search(index + 1, left - sorted[index].ValueSats)) return true;
-                chosen.RemoveAt(chosen.Count - 1);
-            }
-
-            return Search(index + 1, left);
-        }
-
-        return targetSats > 0 && Search(0, targetSats) ? chosen : null;
     }
 
     private void Complete(SwapOut swap, Payout payout)

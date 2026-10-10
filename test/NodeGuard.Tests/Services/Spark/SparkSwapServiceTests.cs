@@ -598,23 +598,21 @@ public class SparkSwapServiceTests
     }
 
     [Fact]
-    public async Task Exit_RenewedLeaves_ExitLeavesOfTheSameValue_ThatNoOtherSwapHas()
+    public async Task Exit_LeavesThatCannotMoveYet_Wait_WithoutTouchingAnyOtherLeaves()
     {
+        // A renewal that failed, or frozen leaves: the swap keeps its own leaves and tries again next run
         var swap = Pending(leafIds: "l1,l2");
-        _swapOuts.GetAllPending().Returns(new List<SwapOut> { swap, Pending(id: 8, leafIds: "other") });
-        _spark.WithdrawLeavesAsync(Arg.Is<IReadOnlyCollection<string>>(ids => ids.Contains("l1")), Address, 20_000, Arg.Any<CancellationToken>())
-            .ThrowsAsync(new SparkLeavesNotSpendableException("withdraw_leaves", ["l1", "l2"]));
-        _spark.GetSpendableLeavesAsync(Arg.Any<CancellationToken>()).Returns(new List<SparkLeaf>
-        {
-            Leaf("other", 499_000), Leaf("n1", 262_144), Leaf("n2", 236_856), Leaf("stray", 1_000)
-        });
-        _spark.WithdrawLeavesAsync(Arg.Is<IReadOnlyCollection<string>>(ids => ids.Contains("n1")), Address, 20_000, Arg.Any<CancellationToken>())
-            .Returns(new WithdrawLeavesResult("exit-tx", 499_000, 497_000));
+        _spark.WithdrawLeavesAsync(Arg.Any<IReadOnlyCollection<string>>(), Address, 20_000, Arg.Any<CancellationToken>())
+            .ThrowsAsync(new SparkLeavesNotSpendableException("withdraw_leaves", ["l1"]));
 
-        (await Service().ExitAsync(swap)).Should().Be(SparkExitStep.ExitSent);
+        (await Service().ExitAsync(swap)).Should().Be(SparkExitStep.Waiting);
 
-        swap.SparkLeafIds.Should().Be("n1,n2");
-        swap.TxId.Should().Be("exit-tx");
+        swap.SparkLeafIds.Should().Be("l1,l2");
+        swap.TxId.Should().BeNull();
+        await _spark.Received(1).WithdrawLeavesAsync(
+            Arg.Is<IReadOnlyCollection<string>>(ids => ids.SequenceEqual(new[] { "l1", "l2" })), Address, 20_000, Arg.Any<CancellationToken>());
+        await _spark.DidNotReceiveWithAnyArgs().WithdrawAllAsync(default!, default, default);
+        _swapOuts.DidNotReceive().Update(swap);
     }
 
     [Fact]
@@ -626,25 +624,11 @@ public class SparkSwapServiceTests
             .ThrowsAsync(new SparkLeavesNotSpendableException("withdraw_leaves", ["l1", "l2"]));
         _spark.GetTransfersAsync(TransferDirection.Sent, Arg.Any<DateTimeOffset>(), Arg.Any<CancellationToken>())
             .Returns(new List<SparkTransfer> { Transfer("exit", 499_000, "CooperativeExit", Leaf("l2", 236_856)) });
-        _spark.GetSpendableLeavesAsync(Arg.Any<CancellationToken>()).Returns(new List<SparkLeaf> { Leaf("n1", 499_000) });
 
         (await Service().ExitAsync(swap)).Should().Be(SparkExitStep.ExitSent);
 
         await _spark.Received(1).WithdrawLeavesAsync(Arg.Any<IReadOnlyCollection<string>>(), Address, 20_000, Arg.Any<CancellationToken>());
         swap.SparkLeafIds.Should().Be("l1,l2");
-    }
-
-    [Fact]
-    public async Task Exit_WithNoLeavesOfTheSameValue_Waits()
-    {
-        var swap = Pending(leafIds: "l1,l2");
-        _spark.WithdrawLeavesAsync(Arg.Any<IReadOnlyCollection<string>>(), Address, 20_000, Arg.Any<CancellationToken>())
-            .ThrowsAsync(new SparkLeavesNotSpendableException("withdraw_leaves", ["l1"]));
-        _spark.GetSpendableLeavesAsync(Arg.Any<CancellationToken>()).Returns(new List<SparkLeaf> { Leaf("n1", 262_144) });
-
-        (await Service().ExitAsync(swap)).Should().Be(SparkExitStep.Waiting);
-
-        swap.TxId.Should().BeNull();
     }
 
     [Fact]
@@ -704,18 +688,6 @@ public class SparkSwapServiceTests
         var act = () => Service().ExitAsync(Pending(lightningFee: null));
 
         await act.Should().ThrowAsync<InvalidOperationException>().WithMessage("*not paid yet*");
-    }
-
-    [Fact]
-    public void ExactLeafSet_FindsLeavesAddingUpToExactlyTheAmount()
-    {
-        var leaves = new[] { Leaf("a", 8), Leaf("b", 4), Leaf("c", 2), Leaf("d", 1), Leaf("e", 5) };
-
-        SparkSwapService.ExactLeafSet(leaves, 11).Should().Equal("a", "c", "d");
-        SparkSwapService.ExactLeafSet(leaves, 9).Should().Equal("a", "d");
-        SparkSwapService.ExactLeafSet(leaves, 20).Should().HaveCount(5);
-        SparkSwapService.ExactLeafSet(leaves, 21).Should().BeNull();
-        SparkSwapService.ExactLeafSet([], 1).Should().BeNull();
     }
 
     private sealed class ManualTime : TimeProvider
