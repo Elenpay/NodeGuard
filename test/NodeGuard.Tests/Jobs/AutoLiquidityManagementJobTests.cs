@@ -544,17 +544,21 @@ public class AutoLiquidityManagementJobTests
     }
 
     [Fact]
-    public async Task ManageNodeLiquidity_WithSparkWeight_CreatesSwapOutWithSparkProvider()
+    public async Task ManageNodeLiquidity_WithSparkWeight_CreatesSwapOutWithSparkProvider_ReservingNoAddress()
     {
-        var (node, address) = ArrangeSwappableNode(loopWeight: 0, fortySwapWeight: 0, sparkWeight: 100);
+        var (node, _) = ArrangeSwappableNode(loopWeight: 0, fortySwapWeight: 0, sparkWeight: 100);
 
         var result = await _autoLiquidityManagementJob.ManageNodeLiquidity(node, CancellationToken.None);
 
         result.Should().Be(ManageNodeLiquidityResult.Success);
         _swapsServiceMock.Verify(x => x.CreateSwapOutAsync(node,
-            It.Is<SwapOut>(s => s.Provider == SwapProvider.Spark && s.SatsAmount == 25_000_000 && !s.IsManual),
-            It.Is<SwapOutRequest>(r => r.Address == address.Address.ToString()),
+            It.Is<SwapOut>(s => s.Provider == SwapProvider.Spark && s.SatsAmount == 25_000_000 && !s.IsManual &&
+                                s.DestinationWalletId == node.FundsDestinationWalletId),
+            It.Is<SwapOutRequest>(r => r.Address == null),
             It.IsAny<CancellationToken>()), Times.Once);
+        // A Spark swap reserves its address when it exits
+        _nbXplorerServiceMock.Verify(x => x.GetUnusedAsync(It.IsAny<DerivationStrategyBase>(), It.IsAny<DerivationFeature>(),
+            It.IsAny<int>(), It.IsAny<bool>(), It.IsAny<CancellationToken>()), Times.Never);
     }
 
     [Fact]

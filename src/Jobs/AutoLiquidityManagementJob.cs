@@ -282,11 +282,21 @@ public class AutoLiquidityManagementJob : IJob
 
         _logger.LogInformation("Using {Provider} for swap out on node {NodeName}", selectedProvider, node.Name);
 
-        // Get destination address from wallet
-        var destinationAddress = await GetDestinationAddressAsync(node, cancellationToken);
-        if (destinationAddress == null)
+        // Loop and 40swap send to an address of the destination wallet given now; a Spark swap reserves its own
+        // when it exits
+        string? destinationAddress = null;
+        if (selectedProvider != SwapProvider.Spark)
         {
-            _logger.LogError("Could not get destination address for node {NodeName}", node.Name);
+            destinationAddress = await GetDestinationAddressAsync(node, cancellationToken);
+            if (destinationAddress == null)
+            {
+                _logger.LogError("Could not get destination address for node {NodeName}", node.Name);
+                return ManageNodeLiquidityResult.Error;
+            }
+        }
+        else if (!node.FundsDestinationWalletId.HasValue)
+        {
+            _logger.LogError("Node {NodeName} has no funds destination wallet configured", node.Name);
             return ManageNodeLiquidityResult.Error;
         }
 
