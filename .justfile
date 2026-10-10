@@ -140,10 +140,11 @@ spark-down:
 # Runs the full ordered e2e suite (E2ESuiteTests, Category=E2E) in one stack, one `dotnet test` pass:
 # rebalance → fee-engine smoke → fee-engine flow. Clean slate first (down -v): DbInitializer only funds the
 # dev wallets on an empty DB, so a stale volume leaves it unfunded ("no UTXOs" on OpenChannel).
+# The Spark swap-out runs too, against the local Spark network (docker/spark), as in CI.
 test-e2e:
-    -docker compose --profile polar --profile e2e -f {{DOCKER_COMPOSE_FILE}} down -v --remove-orphans
-    docker compose --profile polar --profile e2e -f {{DOCKER_COMPOSE_FILE}} run --rm --build e2e-runner
-    docker compose --profile polar --profile e2e -f {{DOCKER_COMPOSE_FILE}} down -v --remove-orphans
+    -docker compose --profile polar --profile e2e --profile spark -f {{DOCKER_COMPOSE_FILE}} down -v --remove-orphans
+    SPARK_ENABLED=true SPARK_E2E=1 docker compose --profile polar --profile e2e --profile spark -f {{DOCKER_COMPOSE_FILE}} run --rm --build e2e-runner
+    docker compose --profile polar --profile e2e --profile spark -f {{DOCKER_COMPOSE_FILE}} down -v --remove-orphans
 
 ##########
 # Dapr #
