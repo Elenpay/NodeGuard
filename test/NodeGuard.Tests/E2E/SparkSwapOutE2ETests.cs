@@ -108,11 +108,10 @@ public class SparkSwapOutE2ETests : E2ETestBase
         var started = await Task.WhenAll(requests.Select(request => StartSwapAsync(client, headers, request)));
         foreach (var swap in started)
         {
-            _output.WriteLine($"swap {swap.SwapId}: {swap.Status}, provider id {swap.ProviderId}, payout to {swap.DestinationAddress}");
+            _output.WriteLine($"swap {swap.SwapId}: {swap.Status}, provider id {swap.ProviderId}");
             swap.Status.Should().Be(SWAP_OUT_STATUS.SwapOutPending, swap.Error ?? "alice's payment into Spark should have succeeded");
+            swap.DestinationAddress.Should().BeEmpty("a Spark swap reserves its address when it exits");
         }
-
-        started.Select(s => s.DestinationAddress).Should().OnlyHaveUniqueItems("each swap pays out to its own address");
 
         // MonitorSwapsJob sees the payments settle and SparkSwapExitJob exits each swap's leaves (each every minute in
         // a dev environment); mining confirms the exits
@@ -129,12 +128,12 @@ public class SparkSwapOutE2ETests : E2ETestBase
         for (var i = 0; i < done.Length; i++)
         {
             var swap = done[i];
-            _output.WriteLine($"swap {swap.SwapId}: {swap.Status}, payout {swap.PayoutSats} in {swap.TxId}, fees ln={swap.LightningFeeSats} " +
-                              $"service={swap.ServiceFeeSats} onchain={swap.OnchainFeeSats} {swap.Error}");
+            _output.WriteLine($"swap {swap.SwapId}: {swap.Status}, payout {swap.PayoutSats} to {swap.DestinationAddress} in {swap.TxId}, " +
+                              $"fees ln={swap.LightningFeeSats} service={swap.ServiceFeeSats} onchain={swap.OnchainFeeSats} {swap.Error}");
 
             swap.Status.Should().Be(SWAP_OUT_STATUS.SwapOutCompleted, swap.Error);
             swap.SwapId.Should().Be(started[i].SwapId);
-            swap.DestinationAddress.Should().Be(started[i].DestinationAddress);
+            swap.DestinationAddress.Should().NotBeNullOrEmpty("the swap reserved its address when it exited");
             swap.HasPaymentHash.Should().BeTrue();
 
             // What landed on-chain is what the swap delivered. The exit from Spark to L1 is the on-chain fee, and any
@@ -148,6 +147,7 @@ public class SparkSwapOutE2ETests : E2ETestBase
                 "the on-chain and service fees are everything the swap did not deliver");
         }
 
+        done.Select(s => s.DestinationAddress).Should().OnlyHaveUniqueItems("each swap pays out to its own address");
         done.Select(s => s.TxId).Should().OnlyHaveUniqueItems("each swap exits on its own");
 
         // Asking again with the same reference_id returns the same swap rather than paying again
