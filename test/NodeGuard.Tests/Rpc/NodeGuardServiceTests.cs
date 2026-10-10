@@ -26,6 +26,7 @@ using NodeGuard.Data.Repositories;
 using NodeGuard.Data.Repositories.Interfaces;
 using NodeGuard.Jobs;
 using NodeGuard.Services;
+using NodeGuard.Services.Spark;
 using Grpc.Core;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
@@ -79,7 +80,10 @@ namespace NodeGuard.Rpc
             IHtlcMonitoringScheduler? htlcMonitoringScheduler = null,
             IRebalanceService? rebalanceService = null,
             IRebalanceRepository? rebalanceRepository = null,
-            IWithdrawalRequestService? withdrawalRequestService = null)
+            IWithdrawalRequestService? withdrawalRequestService = null,
+            ISwapsService? swapsService = null,
+            ISwapOutRepository? swapOutRepository = null,
+            IAuditService? auditService = null)
         {
             return new NodeGuardService(
                 logger ?? _logger.Object,
@@ -100,7 +104,10 @@ namespace NodeGuard.Rpc
                 htlcMonitoringScheduler ?? CreateHtlcMonitoringSchedulerMock().Object,
                 rebalanceService ?? new Mock<IRebalanceService>().Object,
                 rebalanceRepository ?? new Mock<IRebalanceRepository>().Object,
-                withdrawalRequestService ?? new Mock<IWithdrawalRequestService>().Object);
+                withdrawalRequestService ?? new Mock<IWithdrawalRequestService>().Object,
+                swapsService ?? new Mock<ISwapsService>().Object,
+                swapOutRepository ?? new Mock<ISwapOutRepository>().Object,
+                auditService ?? new Mock<IAuditService>().Object);
         }
 
         [Fact]
@@ -2275,6 +2282,202 @@ namespace NodeGuard.Rpc
             // Assert: the RPC keeps its previous contract and returns an empty selection
             response.Confirmed.Should().BeEmpty();
             response.Unconfirmed.Should().BeEmpty();
+        }
+
+        // ── Swap-outs ──────────────────────────────────────────────────────────────────
+
+        private static readonly Node SwapNode = new() { Id = 4, Name = "alice", PubKey = "02aa", MaxSwapRoutingFeeRatio = 0.005m };
+
+        private (NodeGuardService Service, Mock<ISwapsService> Swaps, Mock<ISwapOutRepository> SwapOuts, Mock<IAuditService> Audit)
+            SwapService(SwapProvider provider = SwapProvider.Spark, Mock<INBXplorerService>? nbXplorer = null)
+        {
+            var nodes = new Mock<INodeRepository>();
+            nodes.Setup(x => x.GetAllConfiguredByProvider(It.IsAny<SwapProvider>(), null)).ReturnsAsync(new List<Node>());
+            nodes.Setup(x => x.GetAllConfiguredByProvider(provider, null)).ReturnsAsync(new List<Node> { SwapNode });
+
+            var wallet = CreateWallet.SingleSig(CreateWallet.CreateInternalWallet());
+            wallet.Id = 3;
+            var wallets = new Mock<IWalletRepository>();
+            wallets.Setup(x => x.GetById(3)).ReturnsAsync(wallet);
+
+            nbXplorer ??= new Mock<INBXplorerService>();
+            nbXplorer.Setup(x => x.GetUnusedAsync(It.IsAny<DerivationStrategyBase>(), DerivationFeature.Deposit, 0, true,
+                    It.IsAny<CancellationToken>()))
+                .ReturnsAsync(new KeyPathInformation
+                {
+                    Address = BitcoinAddress.Create("bcrt1qcg6gkhg76snuvxu6l795yw3fx8dg8088r7zq82u60qauh7tr2kjquxfd2m", Network.RegTest)
+                });
+
+            var swaps = new Mock<ISwapsService>();
+            var swapOuts = new Mock<ISwapOutRepository>();
+            var audit = new Mock<IAuditService>();
+            return (CreateNodeGuardService(walletRepository: wallets.Object, nbXplorerService: nbXplorer.Object,
+                nodeRepository: nodes.Object, swapsService: swaps.Object, swapOutRepository: swapOuts.Object,
+                auditService: audit.Object), swaps, swapOuts, audit);
+        }
+
+        private static RequestSwapOutRequest SwapRequest(string? referenceId = "ref-1") => new()
+        {
+            NodeId = 4,
+            Provider = SWAP_PROVIDER.Spark,
+            AmountSats = 500_000,
+            WalletId = 3,
+            ReferenceId = referenceId
+        };
+
+        [Fact]
+        public async Task RequestSwapOut_CreatesAndRecordsTheSwap_ReservingNoAddressForSpark()
+        {
+            var nbXplorer = new Mock<INBXplorerService>();
+            var (service, swaps, _, audit) = SwapService(nbXplorer: nbXplorer);
+            SwapOut? recorded = null;
+            SwapOutRequest? sent = null;
+            swaps.Setup(x => x.CreateSwapOutAsync(SwapNode, It.IsAny<SwapOut>(), It.IsAny<SwapOutRequest>(), It.IsAny<CancellationToken>()))
+                .Callback<Node, SwapOut, SwapOutRequest, CancellationToken>((_, swap, request, _) =>
+                {
+                    recorded = swap;
+                    sent = request;
+                    swap.Id = 77;
+                    swap.ProviderId = "req-1";
+                    swap.Status = SwapOutStatus.Pending;
+                    swap.DestinationAddress = request.Address;
+                })
+                .ReturnsAsync(new SwapOutCreation(new SwapResponse { Id = "req-1", HtlcAddress = string.Empty }, true, null));
+
+            var response = await service.RequestSwapOut(SwapRequest(), TestServerCallContext.Create());
+
+            response.SwapId.Should().Be(77);
+            response.ProviderId.Should().Be("req-1");
+            response.Status.Should().Be(SWAP_OUT_STATUS.SwapOutPending);
+            response.DestinationAddress.Should().BeEmpty("a Spark swap reserves its address when it exits");
+            recorded!.Provider.Should().Be(SwapProvider.Spark);
+            recorded.ReferenceId.Should().Be("ref-1");
+            recorded.IsManual.Should().BeTrue();
+            recorded.DestinationWalletId.Should().Be(3);
+            sent!.MaxRoutingFeesPercent.Should().Be(0.5m);
+            sent.Address.Should().BeNull();
+            nbXplorer.Verify(x => x.GetUnusedAsync(It.IsAny<DerivationStrategyBase>(), It.IsAny<DerivationFeature>(), It.IsAny<int>(),
+                It.IsAny<bool>(), It.IsAny<CancellationToken>()), Times.Never);
+            audit.Verify(x => x.LogAsync(AuditActionType.SwapOutInitiated, AuditEventType.Success, AuditObjectType.SwapOut, "req-1",
+                It.IsAny<object?>()), Times.Once);
+        }
+
+        [Fact]
+        public async Task RequestSwapOut_ForLoop_ReservesTheAddressItsRequestCarries()
+        {
+            var (service, swaps, _, _) = SwapService(SwapProvider.Loop);
+            SwapOutRequest? sent = null;
+            swaps.Setup(x => x.CreateSwapOutAsync(SwapNode, It.IsAny<SwapOut>(), It.IsAny<SwapOutRequest>(), It.IsAny<CancellationToken>()))
+                .Callback<Node, SwapOut, SwapOutRequest, CancellationToken>((_, swap, request, _) =>
+                {
+                    sent = request;
+                    swap.ProviderId = "loop-1";
+                    swap.DestinationAddress = request.Address;
+                })
+                .ReturnsAsync(new SwapOutCreation(new SwapResponse { Id = "loop-1", HtlcAddress = "bcrt1phtlc" }, true, null));
+            var request = SwapRequest();
+            request.Provider = SWAP_PROVIDER.Loop;
+
+            var response = await service.RequestSwapOut(request, TestServerCallContext.Create());
+
+            sent!.Address.Should().Be("bcrt1qcg6gkhg76snuvxu6l795yw3fx8dg8088r7zq82u60qauh7tr2kjquxfd2m");
+            response.DestinationAddress.Should().Be(sent.Address);
+        }
+
+        [Fact]
+        public async Task RequestSwapOut_WithAKnownReferenceId_ReturnsTheExistingSwapWithoutCreatingAnother()
+        {
+            var (service, swaps, swapOuts, _) = SwapService();
+            swapOuts.Setup(x => x.GetByReferenceId("ref-1")).ReturnsAsync(new SwapOut
+            {
+                Id = 77, NodeId = 4, Provider = SwapProvider.Spark, SatsAmount = 500_000, DestinationWalletId = 3,
+                ProviderId = "req-1", Status = SwapOutStatus.Completed, DestinationAddress = "bcrt1qdest"
+            });
+
+            var response = await service.RequestSwapOut(SwapRequest(), TestServerCallContext.Create());
+
+            response.SwapId.Should().Be(77);
+            response.Status.Should().Be(SWAP_OUT_STATUS.SwapOutCompleted);
+            swaps.Verify(x => x.CreateSwapOutAsync(It.IsAny<Node>(), It.IsAny<SwapOut>(), It.IsAny<SwapOutRequest>(),
+                It.IsAny<CancellationToken>()), Times.Never);
+        }
+
+        [Fact]
+        public async Task RequestSwapOut_ReusingAReferenceIdForAnotherSwap_IsRefused()
+        {
+            var (service, _, swapOuts, _) = SwapService();
+            swapOuts.Setup(x => x.GetByReferenceId("ref-1")).ReturnsAsync(new SwapOut
+            {
+                Id = 77, NodeId = 4, Provider = SwapProvider.Spark, SatsAmount = 1_000, DestinationWalletId = 3
+            });
+
+            var act = () => service.RequestSwapOut(SwapRequest(), TestServerCallContext.Create());
+
+            (await act.Should().ThrowAsync<RpcException>()).Which.StatusCode.Should().Be(StatusCode.AlreadyExists);
+        }
+
+        [Theory]
+        [InlineData(99, 500_000, StatusCode.InvalidArgument)]
+        [InlineData((int)SWAP_PROVIDER.Spark, 0, StatusCode.InvalidArgument)]
+        [InlineData((int)SWAP_PROVIDER.Loop, 500_000, StatusCode.FailedPrecondition)] // node not configured for Loop
+        public async Task RequestSwapOut_InvalidRequests_AreRefused(int provider, long amount, StatusCode expected)
+        {
+            var (service, _, _, _) = SwapService();
+            var request = SwapRequest();
+            request.Provider = (SWAP_PROVIDER)provider;
+            request.AmountSats = amount;
+
+            var act = () => service.RequestSwapOut(request, TestServerCallContext.Create());
+
+            (await act.Should().ThrowAsync<RpcException>()).Which.StatusCode.Should().Be(expected);
+        }
+
+        [Fact]
+        public async Task RequestSwapOut_WhenSparkRefuses_MapsTheReasonToAStatus()
+        {
+            var (service, swaps, _, _) = SwapService();
+            swaps.Setup(x => x.CreateSwapOutAsync(SwapNode, It.IsAny<SwapOut>(), It.IsAny<SwapOutRequest>(), It.IsAny<CancellationToken>()))
+                .ThrowsAsync(new SparkUnavailableException("the signer is not the expected one"));
+
+            var act = () => service.RequestSwapOut(SwapRequest(), TestServerCallContext.Create());
+
+            var refusal = (await act.Should().ThrowAsync<RpcException>()).Which;
+            refusal.StatusCode.Should().Be(StatusCode.Unavailable);
+            refusal.Status.Detail.Should().Be("the signer is not the expected one");
+        }
+
+        [Fact]
+        public async Task GetSwapOut_ByReferenceId_ReturnsTheSwap()
+        {
+            var (service, _, swapOuts, _) = SwapService();
+            swapOuts.Setup(x => x.GetByReferenceId("ref-1")).ReturnsAsync(new SwapOut
+            {
+                Id = 77, Provider = SwapProvider.Spark, ProviderId = "req-1", Status = SwapOutStatus.Completed, SatsAmount = 500_000,
+                ServiceFeeSats = 2_500, LightningFeeSats = 12, TxId = "payout-tx", DestinationAddress = "bcrt1qdest",
+                PaymentHash = "abcd", ReferenceId = "ref-1", DestinationWalletId = 3
+            });
+
+            var response = await service.GetSwapOut(new GetSwapOutRequest { ReferenceId = "ref-1" }, TestServerCallContext.Create());
+
+            response.SwapId.Should().Be(77);
+            response.Provider.Should().Be(SWAP_PROVIDER.Spark);
+            response.Status.Should().Be(SWAP_OUT_STATUS.SwapOutCompleted);
+            response.TxId.Should().Be("payout-tx");
+            response.ServiceFeeSats.Should().Be(2_500);
+            response.DestinationAddress.Should().Be("bcrt1qdest");
+            response.ReferenceId.Should().Be("ref-1");
+        }
+
+        [Fact]
+        public async Task GetSwapOut_UnknownOrMissingId_IsRefused()
+        {
+            var (service, _, _, _) = SwapService();
+
+            var unknown = () => service.GetSwapOut(new GetSwapOutRequest { SwapId = 5 }, TestServerCallContext.Create());
+            var missing = () => service.GetSwapOut(new GetSwapOutRequest(), TestServerCallContext.Create());
+
+            (await unknown.Should().ThrowAsync<RpcException>()).Which.StatusCode.Should().Be(StatusCode.NotFound);
+            (await missing.Should().ThrowAsync<RpcException>()).Which.StatusCode.Should().Be(StatusCode.InvalidArgument);
         }
     }
 }

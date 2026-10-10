@@ -107,6 +107,11 @@ namespace NodeGuard.Data
                 .HasIndex(u => new { u.Key, u.Outpoint })
                 .IsUnique();
 
+            modelBuilder.Entity<SwapOut>()
+                .HasIndex(s => s.ReferenceId)
+                .IsUnique()
+                .HasFilter("\"ReferenceId\" IS NOT NULL");
+
             modelBuilder.Entity<ForwardingHtlcEvent>()
                 .HasKey(x => new
                 {
