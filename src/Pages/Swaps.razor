@@ -162,10 +162,32 @@
                         @($"{context.Amount:f8} BTC ({Math.Round(PriceConversionService.BtcToUsdConversion(context.Amount, _btcPrice), 2)} USD)")
                     </DisplayTemplate>
                 </DataGridColumn>
-                <DataGridColumn TItem="SwapOut" Editable="false" Field="@nameof(SwapOut.TotalFees)" Caption="Total Fees" Sortable="false" Displayable="true">
+                <DataGridColumn TItem="SwapOut" Editable="false" Field="@nameof(SwapOut.ServiceFeeSats)" Caption="Service fee" Sortable="false" Displayable="true">
                     <DisplayTemplate>
-                        <Tooltip Text="@GetFeesBreakdown(context)" Placement="TooltipPlacement.Top">
-                            @context.TotalFees.ToUnit(NBitcoin.MoneyUnit.BTC).ToString("f8") BTC
+                        <Tooltip Text="@FeeTooltip(context.ServiceFeeSats, context.ServiceFeePpm)" Placement="TooltipPlacement.Top">
+                            @FeeFormat.Cell(context.ServiceFeeSats, context.ServiceFeePpm)
+                        </Tooltip>
+                    </DisplayTemplate>
+                </DataGridColumn>
+                <DataGridColumn TItem="SwapOut" Editable="false" Field="@nameof(SwapOut.LightningFeeSats)" Caption="Routing fee" Sortable="false" Displayable="true">
+                    <DisplayTemplate>
+                        <Tooltip Text="@FeeTooltip(context.LightningFeeSats, context.LightningFeePpm)" Placement="TooltipPlacement.Top">
+                            @FeeFormat.Cell(context.LightningFeeSats, context.LightningFeePpm)
+                        </Tooltip>
+                    </DisplayTemplate>
+                </DataGridColumn>
+                <DataGridColumn TItem="SwapOut" Editable="false" Field="@nameof(SwapOut.OnChainFeeSats)" Caption="On-chain fee" Sortable="false" Displayable="true">
+                    <DisplayTemplate>
+                        <Tooltip Text="@FeeTooltip(context.OnChainFeeSats, context.OnChainFeePpm)" Placement="TooltipPlacement.Top">
+                            @FeeFormat.Cell(context.OnChainFeeSats, context.OnChainFeePpm)
+                        </Tooltip>
+                    </DisplayTemplate>
+                </DataGridColumn>
+                <DataGridColumn TItem="SwapOut" Editable="false" Field="@nameof(SwapOut.TotalFees)" Caption="Total fees" Sortable="false" Displayable="true">
+                    <DisplayTemplate>
+                        @{ var totalFeesSats = context.TotalFeesPpm is null ? (long?)null : context.TotalFeesSats; }
+                        <Tooltip Text="@FeeTooltip(totalFeesSats, context.TotalFeesPpm)" Placement="TooltipPlacement.Top">
+                            @FeeFormat.Cell(totalFeesSats, context.TotalFeesPpm)
                         </Tooltip>
                     </DisplayTemplate>
                 </DataGridColumn>
@@ -325,14 +347,9 @@
         await _newSwapModal.Show();
     }
 
-    private string GetFeesBreakdown(SwapOut context)
-    {
-        return $"<div>" +
-               $"<span>Service Fees: {context.ServiceFee.ToUnit(NBitcoin.MoneyUnit.BTC).ToString("f8")} BTC</span><br/>" +
-               $"<span>Lightning Network Fees: {context.LightningFee.ToUnit(NBitcoin.MoneyUnit.BTC).ToString("f8")} BTC</span><br/>" +
-               $"<span>On-Chain Fees: {context.OnChainFee.ToUnit(NBitcoin.MoneyUnit.BTC).ToString("f8")} BTC</span>" +
-               $"</div>";
-    }
+    private string FeeTooltip(long? feeSats, long? ppm) =>
+        FeeFormat.Tooltip(feeSats, ppm,
+            feeSats is { } sats && _btcPrice > 0 ? Math.Round(PriceConversionService.SatToUsdConversion(sats, _btcPrice), 2) : null);
 
     private async Task OnSwapCreated()
     {

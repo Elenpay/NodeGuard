@@ -233,6 +233,10 @@
     private decimal _maxRoutingFeesPercent = 0.5m;
     private int _sweepConfirmationTarget = Constants.IS_DEV_ENVIRONMENT ? 250 : 400;
 
+    /// <summary>A fee as a percentage of the swap amount</summary>
+    private string PercentOfAmount(Money fee) =>
+        FeeFormat.Percent(SwapOut.FeePpm(fee.Satoshi, (long)new Money(_amountBtc, MoneyUnit.BTC).Satoshi) ?? 0);
+
     private string FormatBtcWithUsd(decimal btcAmount)
     {
         var usdAmount = Math.Round(PriceConversionService.BtcToUsdConversion(btcAmount, _btcPrice), 2);
@@ -435,13 +439,13 @@
             var totalFees = new Money(quote.ServiceFees + quote.OffChainFees + quote.OnChainFees);
 
             var selectedServiceFee = _maxServiceFeesPercent * _amountBtc / 100;
-            var serviceFeeChunkMessage = $"<li><strong>Service Fee:</strong> {FormatBtcWithUsd(serviceFee.ToUnit(MoneyUnit.BTC))}</li>";
+            var serviceFeeChunkMessage = $"<li><strong>Service Fee:</strong> {FormatBtcWithUsd(serviceFee.ToUnit(MoneyUnit.BTC))} ({PercentOfAmount(serviceFee)})</li>";
             if (serviceFee.ToUnit(MoneyUnit.BTC) > selectedServiceFee) {
                 serviceFeeChunkMessage += $"<li style='list-style-type: none;'><span style='color: orange;'> (You selected: {FormatBtcWithUsd(selectedServiceFee)}, it might not go through)</span></li>";
             }
 
             var selectedRoutingFee = _maxRoutingFeesPercent * _amountBtc / 100;
-            var routingFeeChunkMessage = $"<li><strong>Off-Chain Fee:</strong> {FormatBtcWithUsd(offChainFee.ToUnit(MoneyUnit.BTC))}</li>";
+            var routingFeeChunkMessage = $"<li><strong>Off-Chain Fee:</strong> {FormatBtcWithUsd(offChainFee.ToUnit(MoneyUnit.BTC))} ({PercentOfAmount(offChainFee)})</li>";
             if (offChainFee.ToUnit(MoneyUnit.BTC) > selectedRoutingFee) {
                 routingFeeChunkMessage += $"<li style='list-style-type: none;'><span style='color: orange;'> (You selected: {FormatBtcWithUsd(selectedRoutingFee)}, it might not go through)</span></li>";
             }
@@ -452,8 +456,8 @@
                 "<ul>"+
                 serviceFeeChunkMessage +
                 routingFeeChunkMessage +
-                $"<li><strong>On-Chain Fee:</strong> {FormatBtcWithUsd(onChainFee.ToUnit(MoneyUnit.BTC))}</li>" +
-                $"<li><strong>Total:</strong> {FormatBtcWithUsd(totalFees.ToUnit(MoneyUnit.BTC))}</li>" +
+                $"<li><strong>On-Chain Fee:</strong> {FormatBtcWithUsd(onChainFee.ToUnit(MoneyUnit.BTC))} ({PercentOfAmount(onChainFee)})</li>" +
+                $"<li><strong>Total:</strong> {FormatBtcWithUsd(totalFees.ToUnit(MoneyUnit.BTC))} ({PercentOfAmount(totalFees)})</li>" +
                 "</ul>"+
                 "<br>" +
                 $"<strong>- Estimated total cost:</strong> {FormatBtcWithUsd(totalFees.ToUnit(MoneyUnit.BTC))} (Percentage of total swap: {Math.Round(totalFees.ToUnit(MoneyUnit.BTC) / _amountBtc * 100, 2)}%)<br>";

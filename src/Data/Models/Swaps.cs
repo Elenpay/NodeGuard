@@ -112,6 +112,28 @@ public class SwapOut : Entity
 
    public Money TotalFees => new Money(TotalFeesSats, MoneyUnit.Satoshi);
 
+   /// <summary>The service fee in parts per million of the swap amount; null while it is not known</summary>
+   [NotMapped]
+   public long? ServiceFeePpm => FeePpm(ServiceFeeSats, SatsAmount);
+
+   /// <summary>The Lightning routing fee in parts per million of the swap amount; null while it is not known</summary>
+   [NotMapped]
+   public long? LightningFeePpm => FeePpm(LightningFeeSats, SatsAmount);
+
+   /// <summary>The on-chain fee in parts per million of the swap amount; null while it is not known</summary>
+   [NotMapped]
+   public long? OnChainFeePpm => FeePpm(OnChainFeeSats, SatsAmount);
+
+   /// <summary>All fees in parts per million of the swap amount; null while none is known</summary>
+   [NotMapped]
+   public long? TotalFeesPpm => ServiceFeeSats is null && LightningFeeSats is null && OnChainFeeSats is null
+      ? null
+      : FeePpm(TotalFeesSats, SatsAmount);
+
+   /// <summary><paramref name="feeSats"/> in parts per million of <paramref name="amountSats"/>, rounded down</summary>
+   public static long? FeePpm(long? feeSats, long amountSats) =>
+      feeSats is { } fee && amountSats > 0 ? fee * 1_000_000 / amountSats : null;
+
    /// <summary>
    /// Error details if the swap failed
    /// </summary>

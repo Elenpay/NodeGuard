@@ -167,6 +167,20 @@ public class MonitorSwapsJob : IJob
                                 });
                         }
                     }
+                    else if (swap.ServiceFeeSats != response.ServerFee || swap.LightningFeeSats != response.OffchainFee ||
+                             swap.OnChainFeeSats != response.OnchainFee)
+                    {
+                        // Providers report fees as they accrue: keep a pending swap's up to date too
+                        swap.ServiceFeeSats = response.ServerFee;
+                        swap.LightningFeeSats = response.OffchainFee;
+                        swap.OnChainFeeSats = response.OnchainFee;
+
+                        var (updated, error) = _swapOutRepository.Update(swap);
+                        if (!updated)
+                        {
+                            _logger.LogError("Error updating the fees of swap {SwapId}: {Error}", swap.Id, error);
+                        }
+                    }
                 }
                 catch (Exception ex)
                 {
