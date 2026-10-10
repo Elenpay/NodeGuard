@@ -192,6 +192,19 @@ namespace NodeGuard.Data.Repositories
                 .ToListAsync();
         }
 
+        public async Task<List<Node>> GetAllWithAutoChannelOpenEnabled()
+        {
+            await using var applicationDbContext = await _dbContextFactory.CreateDbContextAsync();
+
+            return await applicationDbContext.Nodes
+                .Include(x => x.AutoChannelOpenWallet)
+                .ThenInclude(x => x!.Keys)
+                .Where(node => !node.IsNodeDisabled &&
+                               node.AutoChannelOpenEnabled &&
+                               node.AutoChannelOpenWalletId.HasValue)
+                .ToListAsync();
+        }
+
         public async Task<(bool, string?)> AddAsync(Node type)
         {
             await using var applicationDbContext = await _dbContextFactory.CreateDbContextAsync();

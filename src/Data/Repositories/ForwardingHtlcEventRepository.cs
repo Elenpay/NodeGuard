@@ -97,6 +97,29 @@ public class ForwardingHtlcEventRepository : IForwardingHtlcEventRepository
         }
     }
 
+    public async Task<List<ForwardingHtlcFailure>> GetInsufficientBalanceFailures(string managedNodePubKey, DateTimeOffset since)
+    {
+        await using var context = await _dbContextFactory.CreateDbContextAsync();
+
+        return await context.ForwardingHtlcEvents
+            .Where(x => x.ManagedNodePubKey == managedNodePubKey
+                        && x.EventTimestamp >= since
+                        && x.EventType == HtlcEventType.Forward
+                        && x.EventCase == HtlcEventCase.LinkFailEvent
+                        // The only failure detail a channel open can fix. HTLC_EXCEEDS_MAX is our own
+                        // ceiling, not a shortage.
+                        && x.FailureDetail == (int)Routerrpc.FailureDetail.InsufficientBalance)
+            .OrderBy(x => x.EventTimestamp)
+            .Select(x => new ForwardingHtlcFailure(
+                x.OutgoingChannelId,
+                x.EventTimestamp,
+                x.OutgoingAmountMsat,
+                x.RoutingFeePpm,
+                x.FeeMsat,
+                x.OutgoingPeerAlias))
+            .ToListAsync();
+    }
+
     public async Task<long> GetOutgoingAmountMsat(string managedNodePubKey, ulong chanIdLnd, DateTimeOffset since)
     {
         await using var context = await _dbContextFactory.CreateDbContextAsync();
@@ -104,6 +127,26 @@ public class ForwardingHtlcEventRepository : IForwardingHtlcEventRepository
         return await Settled(context, managedNodePubKey, since)
             .Where(x => x.OutgoingChannelId == chanIdLnd)
             .SumAsync(x => (long?)x.OutgoingAmountMsat) ?? 0;
+    }
+
+    public async Task<Dictionary<ulong, long>> GetOutgoingAmountsMsatByChannel(string managedNodePubKey, DateTimeOffset since)
+    {
+        await using var context = await _dbContextFactory.CreateDbContextAsync();
+
+        return await Settled(context, managedNodePubKey, since)
+            .GroupBy(x => x.OutgoingChannelId)
+            .Select(g => new { ChanId = g.Key, Amount = g.Sum(x => (long?)x.OutgoingAmountMsat) ?? 0 })
+            .ToDictionaryAsync(x => x.ChanId, x => x.Amount);
+    }
+
+    public async Task<Dictionary<ulong, long>> GetIncomingAmountsMsatByChannel(string managedNodePubKey, DateTimeOffset since)
+    {
+        await using var context = await _dbContextFactory.CreateDbContextAsync();
+
+        return await Settled(context, managedNodePubKey, since)
+            .GroupBy(x => x.IncomingChannelId)
+            .Select(g => new { ChanId = g.Key, Amount = g.Sum(x => (long?)x.IncomingAmountMsat) ?? 0 })
+            .ToDictionaryAsync(x => x.ChanId, x => x.Amount);
     }
 
     public async Task<long> GetIncomingAmountMsat(string managedNodePubKey, ulong chanIdLnd, DateTimeOffset since)

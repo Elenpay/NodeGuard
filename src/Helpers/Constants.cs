@@ -399,6 +399,49 @@ public class Constants
     public static readonly string CAROL_LOOPD_MACAROON = string.Empty;
     public static readonly string CAROL_LOOPD_TLS_CERT = string.Empty;
 
+    #region Auto Channel Open
+
+    // Master switch for demand-driven channel opening. Per-node gates still apply.
+    public static bool AUTO_CHANNEL_OPEN_ENABLED = false;
+
+    public static int AUTO_CHANNEL_OPEN_WINDOW_HOURS = 24;
+
+    // MPP shards and retries carry no payment hash on the forward stream, so only a time gap can
+    // tell two payments apart.
+    public static int AUTO_CHANNEL_OPEN_BURST_GAP_SECONDS = 120;
+
+    // "Many payments, not one" threshold, in bursts. Prod peers past the fee gate sit at 78-249; 10
+    // drops the few-giant-payments cases (3-5 bursts) a channel couldn't serve anyway.
+    public static int AUTO_CHANNEL_OPEN_MIN_BURSTS = 10;
+
+    // "Worth it" threshold. Tune together with TARGET_RUNWAY_DAYS: their ratio fixes the implied
+    // channel size, and therefore the implied return on the capital locked.
+    public static long AUTO_CHANNEL_OPEN_MIN_MISSED_FEE_MSAT = 100_000_000;
+
+    // Buffer regime, and the floor under the draining regime: never size below one turned-away payment.
+    public static double AUTO_CHANNEL_OPEN_BUFFER_MULTIPLIER = 3.0;
+
+    // Draining regime: days of service the new capacity should buy.
+    public static int AUTO_CHANNEL_OPEN_TARGET_RUNWAY_DAYS = 2;
+
+    /// Fallback profitability margin when a node leaves MaxChannelOpenCostToEarnRatio unset. The gate
+    /// compares open + expected close against what one full drain earns at the new channel's fee rate.
+    /// 0.5 = draining the channel once must cover twice the on-chain cost.
+    public static double AUTO_CHANNEL_OPEN_DEFAULT_COST_TO_EARN_RATIO = 0.5;
+
+    // Per-peer suppression after an open attempt or a dismissal.
+    public static int AUTO_CHANNEL_OPEN_PEER_COOLDOWN_HOURS = 24;
+
+    // Plans per node per run. In Auto mode this is also the concurrency bound: nothing else caps opens in flight.
+    public static int AUTO_CHANNEL_OPEN_MAX_PLANS_PER_RUN = 5;
+
+    public static int AUTO_CHANNEL_OPEN_DEFAULT_BUDGET_REFRESH_HOURS = 720;
+
+    // In dev this is 1 minute.
+    public static int AUTO_CHANNEL_OPEN_JOB_INTERVAL_MINUTES = 30;
+
+    #endregion Auto Channel Open
+
 
     private static string? GetEnvironmentalVariableOrThrowIfNotTesting(string envVariableName, string? errorMessage = null)
     {
@@ -711,7 +754,7 @@ public class Constants
             if (parsedRatio > 0 && parsedRatio <= 1) MAX_HTLC_CAPACITY_RATIO = parsedRatio;
             else throw new ArgumentOutOfRangeException(nameof(MAX_HTLC_CAPACITY_RATIO), parsedRatio, "MAX_HTLC_CAPACITY_RATIO must be in (0, 1]");
         }
-        
+
         var reRebalanceMaxAmount = Environment.GetEnvironmentVariable("ROUTING_ENGINE_REBALANCE_MAX_AMOUNT_SATS");
         if (reRebalanceMaxAmount != null) ROUTING_ENGINE_REBALANCE_MAX_AMOUNT_SATS = long.Parse(reRebalanceMaxAmount);
         var reRebalanceMaxInit = Environment.GetEnvironmentVariable("ROUTING_ENGINE_REBALANCE_MAX_INITIATIONS_PER_RUN");
@@ -743,6 +786,44 @@ public class Constants
         CAROL_LOOPD_HOST = Environment.GetEnvironmentVariable("CAROL_LOOPD_HOST") ?? CAROL_LOOPD_HOST;
         CAROL_LOOPD_MACAROON = Environment.GetEnvironmentVariable("CAROL_LOOPD_MACAROON") ?? CAROL_LOOPD_MACAROON;
         CAROL_LOOPD_TLS_CERT = Environment.GetEnvironmentVariable("CAROL_LOOPD_TLS_CERT") ?? CAROL_LOOPD_TLS_CERT;
+
+        // Auto Channel Open
+        AUTO_CHANNEL_OPEN_ENABLED = StringHelper.IsTrue(Environment.GetEnvironmentVariable("AUTO_CHANNEL_OPEN_ENABLED"));
+
+        var acoWindowHours = Environment.GetEnvironmentVariable("AUTO_CHANNEL_OPEN_WINDOW_HOURS");
+        if (acoWindowHours != null) AUTO_CHANNEL_OPEN_WINDOW_HOURS = int.Parse(acoWindowHours);
+
+        var acoBurstGap = Environment.GetEnvironmentVariable("AUTO_CHANNEL_OPEN_BURST_GAP_SECONDS");
+        if (acoBurstGap != null) AUTO_CHANNEL_OPEN_BURST_GAP_SECONDS = int.Parse(acoBurstGap);
+
+        var acoMinBursts = Environment.GetEnvironmentVariable("AUTO_CHANNEL_OPEN_MIN_BURSTS");
+        if (acoMinBursts != null) AUTO_CHANNEL_OPEN_MIN_BURSTS = int.Parse(acoMinBursts);
+
+
+        var acoMinMissedFee = Environment.GetEnvironmentVariable("AUTO_CHANNEL_OPEN_MIN_MISSED_FEE_MSAT");
+        if (acoMinMissedFee != null) AUTO_CHANNEL_OPEN_MIN_MISSED_FEE_MSAT = long.Parse(acoMinMissedFee);
+
+        var acoBufferMultiplier = Environment.GetEnvironmentVariable("AUTO_CHANNEL_OPEN_BUFFER_MULTIPLIER");
+        if (acoBufferMultiplier != null) AUTO_CHANNEL_OPEN_BUFFER_MULTIPLIER = double.Parse(acoBufferMultiplier, NumberStyles.AllowDecimalPoint | NumberStyles.AllowLeadingSign, CultureInfo.InvariantCulture);
+
+        var acoRunwayDays = Environment.GetEnvironmentVariable("AUTO_CHANNEL_OPEN_TARGET_RUNWAY_DAYS");
+        if (acoRunwayDays != null) AUTO_CHANNEL_OPEN_TARGET_RUNWAY_DAYS = int.Parse(acoRunwayDays);
+
+        var acoCostToEarn = Environment.GetEnvironmentVariable("AUTO_CHANNEL_OPEN_DEFAULT_COST_TO_EARN_RATIO");
+        if (acoCostToEarn != null) AUTO_CHANNEL_OPEN_DEFAULT_COST_TO_EARN_RATIO = double.Parse(acoCostToEarn, NumberStyles.AllowDecimalPoint | NumberStyles.AllowLeadingSign, CultureInfo.InvariantCulture);
+
+        var acoCooldown = Environment.GetEnvironmentVariable("AUTO_CHANNEL_OPEN_PEER_COOLDOWN_HOURS");
+        if (acoCooldown != null) AUTO_CHANNEL_OPEN_PEER_COOLDOWN_HOURS = int.Parse(acoCooldown);
+
+        var acoMaxPlans = Environment.GetEnvironmentVariable("AUTO_CHANNEL_OPEN_MAX_PLANS_PER_RUN");
+        if (acoMaxPlans != null) AUTO_CHANNEL_OPEN_MAX_PLANS_PER_RUN = int.Parse(acoMaxPlans);
+
+        var acoDefaultRefreshHours = Environment.GetEnvironmentVariable("AUTO_CHANNEL_OPEN_DEFAULT_BUDGET_REFRESH_HOURS");
+        if (acoDefaultRefreshHours != null) AUTO_CHANNEL_OPEN_DEFAULT_BUDGET_REFRESH_HOURS = int.Parse(acoDefaultRefreshHours);
+
+        var acoInterval = Environment.GetEnvironmentVariable("AUTO_CHANNEL_OPEN_JOB_INTERVAL_MINUTES");
+        if (acoInterval != null) AUTO_CHANNEL_OPEN_JOB_INTERVAL_MINUTES = int.Parse(acoInterval);
+        if (IS_DEV_ENVIRONMENT) AUTO_CHANNEL_OPEN_JOB_INTERVAL_MINUTES = 1;
     }
 
 }

@@ -105,4 +105,98 @@ public class ForwardingHtlcEventRepositoryTests
         (await sut.GetOutgoingAmountMsat(Node, Chan, DateTimeOffset.UtcNow.AddDays(-1))).Should().Be(0);
         (await sut.GetIncomingAmountMsat(Node, Chan, DateTimeOffset.UtcNow.AddDays(-1))).Should().Be(0);
     }
+
+    /// <summary>A refused forward, with every field the insufficient-balance filter looks at explicit.</summary>
+    private static ForwardingHtlcEvent Failure(
+        string node, ulong incomingChan, ulong outgoingChan, DateTimeOffset ts,
+        int failureDetail = (int)Routerrpc.FailureDetail.InsufficientBalance,
+        HtlcEventType eventType = HtlcEventType.Forward,
+        HtlcEventCase eventCase = HtlcEventCase.LinkFailEvent,
+        ulong outgoingAmt = 0, long routingFeePpm = 0, long? feeMsat = null, string? outgoingAlias = null,
+        ulong inHtlc = 0, ulong outHtlc = 0)
+        => new()
+        {
+            ManagedNodePubKey = node,
+            IncomingChannelId = incomingChan,
+            OutgoingChannelId = outgoingChan,
+            IncomingHtlcId = inHtlc,
+            OutgoingHtlcId = outHtlc,
+            EventTimestamp = ts,
+            EventType = eventType,
+            EventCase = eventCase,
+            Outcome = ForwardingOutcome.Failed,
+            FailureDetail = failureDetail,
+            OutgoingAmountMsat = outgoingAmt,
+            RoutingFeePpm = routingFeePpm,
+            FeeMsat = feeMsat,
+            OutgoingPeerAlias = outgoingAlias,
+        };
+
+    [Fact]
+    public async Task GetInsufficientBalanceFailures_ReturnsOnlyOutboundShortagesOfThisNodeInWindow()
+    {
+        var (factory, seed) = SetupDb();
+        var now = DateTimeOffset.UtcNow;
+        var since = now.AddDays(-1);
+
+        seed.ForwardingHtlcEvents.AddRange(
+            Failure(Node, 900, Chan, now.AddHours(-2), inHtlc: 1, outHtlc: 1),
+            // The window is inclusive: a refusal landing exactly on the boundary is still evidence.
+            Failure(Node, 901, Chan, since, inHtlc: 2, outHtlc: 2),
+            Failure(Node, 902, Chan, since.AddSeconds(-1), inHtlc: 3, outHtlc: 3),
+            Failure(OtherNode, 903, Chan, now, inHtlc: 4, outHtlc: 4),
+            // A local send or receive is not routing demand, so no channel would have earned the fee.
+            Failure(Node, 904, Chan, now, eventType: HtlcEventType.Send, inHtlc: 5, outHtlc: 5),
+            // A downstream failure says nothing about our own outgoing balance.
+            Failure(Node, 905, Chan, now, eventCase: HtlcEventCase.ForwardFailEvent, inHtlc: 6, outHtlc: 6),
+            // Our own max-HTLC ceiling, not a shortage — more capacity would not have let this through.
+            Failure(Node, 906, Chan, now, failureDetail: (int)Routerrpc.FailureDetail.HtlcExceedsMax,
+                inHtlc: 7, outHtlc: 7)
+        );
+        await seed.SaveChangesAsync();
+
+        var result = await Sut(factory).GetInsufficientBalanceFailures(Node, since);
+
+        result.Select(x => x.EventTimestamp).Should().BeEquivalentTo(new[] { now.AddHours(-2), since });
+    }
+
+    [Fact]
+    public async Task GetInsufficientBalanceFailures_OrdersByEventTimestampAscending()
+    {
+        var (factory, seed) = SetupDb();
+        var now = DateTimeOffset.UtcNow;
+
+        // Burst collapsing walks the rows in time order, so chronology is part of the contract here
+        // and not an incidental property of how the rows happened to be stored.
+        seed.ForwardingHtlcEvents.AddRange(
+            Failure(Node, 900, Chan, now.AddHours(-1), inHtlc: 1, outHtlc: 1),
+            Failure(Node, 901, Chan, now.AddHours(-5), inHtlc: 2, outHtlc: 2),
+            Failure(Node, 902, Chan, now.AddHours(-3), inHtlc: 3, outHtlc: 3)
+        );
+        await seed.SaveChangesAsync();
+
+        var result = await Sut(factory).GetInsufficientBalanceFailures(Node, now.AddDays(-1));
+
+        result.Select(x => x.EventTimestamp).Should()
+            .ContainInOrder(now.AddHours(-5), now.AddHours(-3), now.AddHours(-1));
+    }
+
+    [Fact]
+    public async Task GetInsufficientBalanceFailures_ProjectsTheEvidenceSizingAndDisplayNeed()
+    {
+        var (factory, seed) = SetupDb();
+        var now = DateTimeOffset.UtcNow;
+        var ts = now.AddHours(-2);
+
+        seed.ForwardingHtlcEvents.Add(Failure(Node, 900, Chan, ts,
+            outgoingAmt: 1_500_000, routingFeePpm: 250, feeMsat: 1_375, outgoingAlias: "acinq", inHtlc: 1, outHtlc: 1));
+        await seed.SaveChangesAsync();
+
+        var result = await Sut(factory).GetInsufficientBalanceFailures(Node, now.AddDays(-1));
+
+        // Capacity and missed fee are derived from these six fields alone, so a dropped column would
+        // silently size every recommendation wrong rather than fail.
+        result.Should().ContainSingle().Which.Should().Be(
+            new ForwardingHtlcFailure(Chan, ts, 1_500_000, 250, 1_375, "acinq"));
+    }
 }

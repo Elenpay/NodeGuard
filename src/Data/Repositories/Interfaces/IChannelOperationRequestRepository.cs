@@ -45,6 +45,12 @@ public interface IChannelOperationRequestRepository : IBitcoinRequestRepository
     /// <returns></returns>
     Task<List<ChannelOperationRequest>> GetPendingRequests();
 
+    /// <summary>
+    /// Sats committed to channel opens for this source node since the given time. Cancelled, rejected
+    /// and failed requests never spent anything, so they are excluded.
+    /// </summary>
+    Task<long> GetOpenSatsCommittedSince(int sourceNodeId, DateTimeOffset since);
+
     Task<(List<ChannelOperationRequest> requests, int totalCount)> GetPaginatedAsync(
         int pageNumber,
         int pageSize,

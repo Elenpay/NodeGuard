@@ -221,6 +221,20 @@ namespace NodeGuard.Data.Repositories
             return result;
         }
 
+        public async Task<long> GetOpenSatsCommittedSince(int sourceNodeId, DateTimeOffset since)
+        {
+            await using var applicationDbContext = await _dbContextFactory.CreateDbContextAsync();
+
+            return await applicationDbContext.ChannelOperationRequests
+                .Where(x => x.SourceNodeId == sourceNodeId
+                            && x.RequestType == OperationRequestType.Open
+                            && x.CreationDatetime >= since
+                            && x.Status != ChannelOperationRequestStatus.Cancelled
+                            && x.Status != ChannelOperationRequestStatus.Rejected
+                            && x.Status != ChannelOperationRequestStatus.Failed)
+                .SumAsync(x => (long?)x.SatsAmount) ?? 0;
+        }
+
         public async Task<List<ChannelOperationRequest>> GetPendingRequests()
         {
             await using var applicationDbContext = await _dbContextFactory.CreateDbContextAsync();
