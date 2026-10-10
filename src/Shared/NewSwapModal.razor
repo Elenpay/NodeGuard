@@ -517,7 +517,8 @@
             "<strong>- Maximum fees:</strong><br>" +
             "<ul>" +
             $"<li><strong>Off-Chain Fee:</strong> up to {FormatBtcWithUsd(maxRoutingFee.ToUnit(MoneyUnit.BTC))} ({PercentOfAmount(maxRoutingFee)})</li>" +
-            $"<li><strong>Exit fee</strong> (the SSP's, including the miner fee): up to {FormatBtcWithUsd(maxExitFee.ToUnit(MoneyUnit.BTC))} ({PercentOfAmount(maxExitFee)})</li>" +
+            $"<li><strong>Service Fee:</strong> Spark's fixed {SparkSwapService.ServiceFeeBps} bps ({FeeFormat.Percent(SparkSwapService.ServiceFeeBps * 100L)}), charged on the Lightning route: part of the off-chain fee</li>" +
+            $"<li><strong>On-Chain Fee</strong> (from Spark to L1: the SSP's exit fee and the L1 broadcast): up to {FormatBtcWithUsd(maxExitFee.ToUnit(MoneyUnit.BTC))} ({PercentOfAmount(maxExitFee)})</li>" +
             "</ul><br>" +
             $"The node pays NodeGuard's Spark wallet ({SparkWallet.Status.IdentityPublicKey}) now. Once paid, the swap exits " +
             $"on-chain to the destination wallet on its own, within about {SparkSettings.ExitIntervalOrDefault(Constants.IS_DEV_ENVIRONMENT)} minutes. " +
