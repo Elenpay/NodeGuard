@@ -225,6 +225,9 @@
     private Wallet? _selectedWallet;
     private string? _amountInWalletBtc;
     private List<Node> _availableNodes = [];
+
+    /// <summary>Why Spark lists no node, when it lists none</summary>
+    private string? _noSparkNodesReason;
     private Node? _selectedNode;
     private string? _amountInNodeBtc;
     private string _confirmationModalBody = string.Empty;
@@ -578,19 +581,32 @@
         };
     }
 
-    /// <summary>The user's nodes whose Spark wallet is ready (its signer checked out)</summary>
+    /// <summary>
+    /// The user's nodes whose Spark wallet is ready (its signer checked out). When there are none, says why in
+    /// <see cref="_noSparkNodesReason"/>
+    /// </summary>
     private async Task<List<Node>> SparkReadyNodesAsync()
     {
         var nodes = (await NodeRepository.GetAllConfiguredByProvider(SwapProvider.Spark, LoggedUser.Id))
             .Where(n => SparkSettings.WalletFor(n) is not null)
             .ToList();
-
-        var ready = new HashSet<SparkWalletRef>();
-        foreach (var wallet in nodes.Select(n => SparkSettings.WalletFor(n)!.Value).Distinct())
+        if (nodes.Count == 0)
         {
-            if ((await SparkWallet.EnsureReadyAsync(wallet)).IsReady) ready.Add(wallet);
+            _noSparkNodesReason = "No node has a Spark wallet configured: create one on the Wallets page (New ▸ New Spark wallet) " +
+                                  "and choose it in the node's liquidity settings.";
+            return nodes;
         }
 
+        var ready = new HashSet<SparkWalletRef>();
+        var unavailable = new List<string>();
+        foreach (var wallet in nodes.Select(n => SparkSettings.WalletFor(n)!.Value).Distinct())
+        {
+            var status = await SparkWallet.EnsureReadyAsync(wallet);
+            if (status.IsReady) ready.Add(wallet);
+            else unavailable.Add($"{wallet}: {status.Reason ?? status.State.ToString()}");
+        }
+
+        _noSparkNodesReason = ready.Count == 0 ? $"No node's Spark wallet is available ({string.Join("; ", unavailable)})." : null;
         return nodes.Where(n => ready.Contains(SparkSettings.WalletFor(n)!.Value)).ToList();
     }
 
@@ -688,6 +704,10 @@
                             @if (_selectedNode != null)
                             {
                                 @(($"Amount in node: {FormatBtcWithUsd(decimal.Parse(_amountInNodeBtc ?? "0"))}"))
+                            }
+                            else if (_selectedProvider == SwapProvider.Spark && _availableNodes.Count == 0 && _noSparkNodesReason is not null)
+                            {
+                                <span class="text-warning">@_noSparkNodesReason</span>
                             }
                             else
                             {

@@ -317,7 +317,7 @@
                                     <Field>
                                         <Validation Validator="ValidateProviderWeights">
                                             <FieldLabel>Spark Weight</FieldLabel>
-                                            <FieldHelp>Weight for the node's Spark wallet (0-100). Skipped while it is unavailable or has another Spark swap in flight</FieldHelp>
+                                            <FieldHelp>Weight for the node's Spark wallet (0-100). Skipped while it is unavailable; Max Swaps In Flight limits Spark swaps too</FieldHelp>
                                             <NumericEdit TValue="int"
                                                          @bind-Value="@_selectedNodeForLiquidity.SparkSwapWeight"
                                                          Min="0"

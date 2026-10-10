@@ -135,13 +135,13 @@ namespace NodeGuard.Data.Models
 
         /// <summary>
         /// Weight for the Spark swap provider selection (default 0). Spark is skipped while the node's
-        /// Spark wallet is unavailable or has another Spark swap in flight
+        /// Spark wallet is unavailable; MaxSwapsInFlight limits Spark swaps like any other
         /// </summary>
         public int SparkSwapWeight { get; set; } = 0;
 
         /// <summary>
         /// The Spark wallet this node's Spark swap-outs pass through (SPARK_SIGNER=wallet). Several nodes may
-        /// share one; they then take turns, as a Spark wallet has one swap in flight at a time
+        /// share one: each swap exits its own leaves, and the wallet's max balance counts all of them
         /// </summary>
         public int? SparkWalletId { get; set; }
 

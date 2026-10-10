@@ -57,7 +57,7 @@ public interface ISparkWalletsService
 
     /// <summary>
     /// Exits everything the wallet holds to an unused address of an on-chain wallet, the exit fee capped by
-    /// SPARK_MAX_EXIT_FEE_SATS. Refused while the wallet has a Spark swap in flight, whose exit it would take.
+    /// SPARK_MAX_EXIT_FEE_SATS. Refused while the wallet has a Spark swap in flight, whose sats it would take.
     /// </summary>
     Task<WithdrawAllResult> WithdrawAllAsync(int walletId, int destinationWalletId, CancellationToken ct = default);
 
@@ -194,7 +194,7 @@ public sealed class SparkWalletsService : ISparkWalletsService
             if (inFlight is not null)
             {
                 throw new InvalidOperationException(
-                    $"Spark swap {inFlight.Id} is in flight on {wallet.Name}: its exit drains the wallet, so wait for it to finish.");
+                    $"Spark swap {inFlight.Id} is in flight on {wallet.Name}: wait until it has exited, so its sats don't leave with the rest.");
             }
 
             await _spark.ClaimPendingAsync(sparkWallet, ct);
