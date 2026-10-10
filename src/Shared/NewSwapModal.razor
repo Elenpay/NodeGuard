@@ -385,7 +385,7 @@
         }
         catch (Exception ex) when (ex is SparkUnavailableException or InvalidOperationException)
         {
-            // Spark refusing the swap (unavailable, or another Spark swap in flight): nothing was paid
+            // Spark refusing the swap (unavailable, or the node at its Max swaps in flight): nothing was paid
             Logger.LogWarning(ex, "Swap refused");
             ToastService.ShowError(ex.Message);
         }
@@ -508,18 +508,20 @@
     /// </summary>
     private async Task ShowSparkConfirmationModal(string middleChunkMessage)
     {
-        var maxRoutingFee = _maxRoutingFeesPercent * _amountBtc / 100;
-        var maxExitFee = new Money(SparkSettings.MaxExitFeeSats).ToUnit(MoneyUnit.BTC);
+        var maxRoutingFee = new Money(_maxRoutingFeesPercent * _amountBtc / 100, MoneyUnit.BTC);
+        var maxExitFee = new Money(SparkSettings.MaxExitFeeSats);
+        var maxSwapsInFlight = Math.Max(_selectedNode?.MaxSwapsInFlight ?? 0, 1);
 
         _confirmationModalBody = "You are about to create a new swap with the following details:<br><br>" +
             middleChunkMessage +
             "<strong>- Maximum fees:</strong><br>" +
             "<ul>" +
-            $"<li><strong>Off-Chain Fee:</strong> up to {FormatBtcWithUsd(maxRoutingFee)}</li>" +
-            $"<li><strong>Exit fee</strong> (the SSP's, including the miner fee): up to {FormatBtcWithUsd(maxExitFee)}</li>" +
+            $"<li><strong>Off-Chain Fee:</strong> up to {FormatBtcWithUsd(maxRoutingFee.ToUnit(MoneyUnit.BTC))} ({PercentOfAmount(maxRoutingFee)})</li>" +
+            $"<li><strong>Exit fee</strong> (the SSP's, including the miner fee): up to {FormatBtcWithUsd(maxExitFee.ToUnit(MoneyUnit.BTC))} ({PercentOfAmount(maxExitFee)})</li>" +
             "</ul><br>" +
-            $"The node pays NodeGuard's Spark wallet ({SparkWallet.Status.IdentityPublicKey}) now; the wallet then exits " +
-            "on-chain to the destination wallet. Only one Spark swap runs at a time.<br><br>" +
+            $"The node pays NodeGuard's Spark wallet ({SparkWallet.Status.IdentityPublicKey}) now. Once paid, the swap exits " +
+            $"on-chain to the destination wallet on its own, within about {SparkSettings.ExitIntervalOrDefault(Constants.IS_DEV_ENVIRONMENT)} minutes. " +
+            $"Up to {maxSwapsInFlight} Spark swaps of {_selectedNode?.Name} (its Max swaps in flight) run at once.<br><br>" +
             "Please confirm that you want to proceed.";
 
         await _confirmationModal.ShowModal(new Dictionary<string, object>
