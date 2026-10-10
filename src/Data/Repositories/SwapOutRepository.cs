@@ -192,5 +192,17 @@ namespace NodeGuard.Data.Repositories
 
          return new Money(consumedBudgetSats, MoneyUnit.Satoshi);
       }
+
+      public async Task<HashSet<string>> GetSparkTransferIdsAsync()
+      {
+         await using var context = await _dbContextFactory.CreateDbContextAsync();
+
+         var transferIds = await context.SwapOuts
+            .Where(s => s.SparkTransferId != null)
+            .Select(s => s.SparkTransferId!)
+            .ToListAsync();
+
+         return transferIds.ToHashSet(StringComparer.OrdinalIgnoreCase);
+      }
    }
 }

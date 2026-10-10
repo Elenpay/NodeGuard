@@ -165,6 +165,7 @@ namespace NodeGuard
                 () => new ImmutableCredentials(Constants.AWS_ACCESS_KEY_ID, Constants.AWS_SECRET_ACCESS_KEY, null),
                 Constants.AWS_REGION));
             builder.Services.AddSingleton<ISparkWalletService, SparkWalletService>();
+            builder.Services.AddTransient<ISparkSwapService, SparkSwapService>();
             builder.Services.AddHostedService<SparkStartupService>();
             builder.Services.AddTransient<IRebalanceService, RebalanceService>();
             builder.Services.AddTransient<IRoutingEngineSnapshotService, RoutingEngineSnapshotService>();
@@ -459,6 +460,23 @@ namespace NodeGuard
                             }
                         });
                 });
+
+                // Spark Swap Exit Job: each paid Spark swap exits on-chain to its own destination, one at a time
+                q.AddJob<SparkSwapExitJob>(opts =>
+                {
+                    opts.DisallowConcurrentExecution();
+                    opts.WithIdentity(nameof(SparkSwapExitJob));
+                });
+
+                q.AddTrigger(opts =>
+                {
+                    opts.ForJob(nameof(SparkSwapExitJob))
+                        .WithIdentity($"{nameof(SparkSwapExitJob)}Trigger")
+                        .StartNow().WithSimpleSchedule(scheduleBuilder => scheduleBuilder
+                            .WithIntervalInMinutes(sparkSettings.ExitIntervalMinutes ?? (Constants.IS_DEV_ENVIRONMENT ? 1 : 10))
+                            .RepeatForever());
+                });
+
                 // Audit Log Cleanup Job
                 q.AddJob<AuditLogCleanupJob>(opts =>
                 {

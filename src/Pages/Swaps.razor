@@ -160,13 +160,28 @@
                 <DataGridColumn TItem="SwapOut" Editable="false" Field="@nameof(SwapOut.Amount)" Caption="Amount (BTC)" Sortable="false" Displayable="true">
                     <DisplayTemplate>
                         @($"{context.Amount:f8} BTC ({Math.Round(PriceConversionService.BtcToUsdConversion(context.Amount, _btcPrice), 2)} USD)")
+                        @if (context.PayoutSats is { } payoutSats)
+                        {
+                            <br/>
+                            <small class="text-muted">Received on-chain: @($"{new NBitcoin.Money(payoutSats, NBitcoin.MoneyUnit.Satoshi).ToUnit(NBitcoin.MoneyUnit.BTC):f8}") BTC</small>
+                        }
                     </DisplayTemplate>
                 </DataGridColumn>
                 <DataGridColumn TItem="SwapOut" Editable="false" Field="@nameof(SwapOut.ServiceFeeSats)" Caption="Service fee" Sortable="false" Displayable="true">
                     <DisplayTemplate>
-                        <Tooltip Text="@FeeTooltip(context.ServiceFeeSats, context.ServiceFeePpm)" Placement="TooltipPlacement.Top">
-                            @FeeFormat.Cell(context.ServiceFeeSats, context.ServiceFeePpm)
-                        </Tooltip>
+                        @if (context.Provider == SwapProvider.Spark && (context.ServiceFeeSats ?? 0) == 0)
+                        {
+                            var sparkFeeSats = context.SatsAmount * NodeGuard.Services.Spark.SparkSwapService.ServiceFeeBps / 10_000;
+                            <Tooltip Text="@($"Spark's fixed {NodeGuard.Services.Spark.SparkSwapService.ServiceFeeBps} bps, charged on the Lightning route: it is part of the routing fee, not added to it")" Placement="TooltipPlacement.Top">
+                                <span class="text-muted">@FeeFormat.Cell(sparkFeeSats, NodeGuard.Services.Spark.SparkSwapService.ServiceFeeBps * 100L) (in routing fee)</span>
+                            </Tooltip>
+                        }
+                        else
+                        {
+                            <Tooltip Text="@FeeTooltip(context.ServiceFeeSats, context.ServiceFeePpm)" Placement="TooltipPlacement.Top">
+                                @FeeFormat.Cell(context.ServiceFeeSats, context.ServiceFeePpm)
+                            </Tooltip>
+                        }
                     </DisplayTemplate>
                 </DataGridColumn>
                 <DataGridColumn TItem="SwapOut" Editable="false" Field="@nameof(SwapOut.LightningFeeSats)" Caption="Routing fee" Sortable="false" Displayable="true">
@@ -178,7 +193,7 @@
                 </DataGridColumn>
                 <DataGridColumn TItem="SwapOut" Editable="false" Field="@nameof(SwapOut.OnChainFeeSats)" Caption="On-chain fee" Sortable="false" Displayable="true">
                     <DisplayTemplate>
-                        <Tooltip Text="@FeeTooltip(context.OnChainFeeSats, context.OnChainFeePpm)" Placement="TooltipPlacement.Top">
+                        <Tooltip Text="@OnChainFeeTooltip(context)" Placement="TooltipPlacement.Top">
                             @FeeFormat.Cell(context.OnChainFeeSats, context.OnChainFeePpm)
                         </Tooltip>
                     </DisplayTemplate>
@@ -350,6 +365,15 @@
     private string FeeTooltip(long? feeSats, long? ppm) =>
         FeeFormat.Tooltip(feeSats, ppm,
             feeSats is { } sats && _btcPrice > 0 ? Math.Round(PriceConversionService.SatToUsdConversion(sats, _btcPrice), 2) : null);
+
+    /// <summary>A Spark swap's on-chain fee is its move from Spark to L1: the SSP's exit fee and the L1 broadcast</summary>
+    private string OnChainFeeTooltip(SwapOut swap)
+    {
+        var tooltip = FeeTooltip(swap.OnChainFeeSats, swap.OnChainFeePpm);
+        return swap.Provider == SwapProvider.Spark && swap.OnChainFeeSats is not null
+            ? $"{tooltip} · Spark to L1: the SSP's exit fee and the L1 broadcast"
+            : tooltip;
+    }
 
     private async Task OnSwapCreated()
     {

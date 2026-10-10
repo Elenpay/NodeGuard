@@ -2,6 +2,7 @@ using NodeGuard.Data.Models;
 using NodeGuard.Data.Repositories.Interfaces;
 using NodeGuard.Helpers;
 using NodeGuard.Services;
+using NodeGuard.Services.Spark;
 using Quartz;
 
 namespace NodeGuard.Jobs;
@@ -14,9 +15,11 @@ public class MonitorSwapsJob : IJob
     private readonly ISwapOutRepository _swapOutRepository;
     private readonly ISwapsService _swapsService;
     private readonly IAuditService _auditService;
+    private readonly SparkSettings _sparkSettings;
 
-    public MonitorSwapsJob(ILogger<MonitorSwapsJob> logger, ISchedulerFactory schedulerFactory, INodeRepository nodeRepository, ISwapOutRepository swapOutRepository, ISwapsService swapsService, IAuditService auditService)
+    public MonitorSwapsJob(ILogger<MonitorSwapsJob> logger, ISchedulerFactory schedulerFactory, INodeRepository nodeRepository, ISwapOutRepository swapOutRepository, ISwapsService swapsService, IAuditService auditService, SparkSettings sparkSettings)
     {
+        _sparkSettings = sparkSettings;
         _logger = logger;
         _schedulerFactory = schedulerFactory;
         _nodeRepository = nodeRepository;
@@ -51,9 +54,14 @@ public class MonitorSwapsJob : IJob
         {
             var loopNodes = await _nodeRepository.GetAllConfiguredByProvider(SwapProvider.Loop, null);
             var fortySwapNodes = await _nodeRepository.GetAllConfiguredByProvider(SwapProvider.FortySwap, null);
-            var managedNodes = loopNodes.Concat(fortySwapNodes).Distinct().ToList();
+            var sparkNodes = _sparkSettings.Enabled
+                ? await _nodeRepository.GetAllConfiguredByProvider(SwapProvider.Spark, null)
+                : new List<Node>();
+            var managedNodes = loopNodes.Concat(fortySwapNodes).Concat(sparkNodes).Where(n => n != null).DistinctBy(n => n.Id).ToList();
 
-            var swaps = await _swapOutRepository.GetAllPending();
+            // A paid Spark swap is SparkSwapExitJob's: it exits it on-chain
+            var swaps = (await _swapOutRepository.GetAllPending())
+                .Where(s => s.Provider != SwapProvider.Spark || s.LightningFeeSats is null);
             foreach (var swap in swaps)
             {
                 try
@@ -74,7 +82,10 @@ public class MonitorSwapsJob : IJob
                     SwapResponse? response;
                     try
                     {
-                        response = await _swapsService.GetSwapAsync(node, swap.Provider, swap.ProviderId);
+                        // A Spark swap is followed here until its Lightning payment settles
+                        response = swap.Provider == SwapProvider.Spark
+                            ? await _swapsService.AdvanceSwapAsync(node, swap)
+                            : await _swapsService.GetSwapAsync(node, swap.Provider, swap.ProviderId);
                     }
                     catch (Exception ex)
                     {
@@ -107,6 +118,7 @@ public class MonitorSwapsJob : IJob
                         }
 
                         swap.Status = response.Status;
+                        swap.TxId = response.TxId ?? swap.TxId;
                         swap.ServiceFeeSats = response.ServerFee;
                         swap.LightningFeeSats = response.OffchainFee;
                         swap.OnChainFeeSats = response.OnchainFee;
@@ -167,10 +179,12 @@ public class MonitorSwapsJob : IJob
                                 });
                         }
                     }
-                    else if (swap.ServiceFeeSats != response.ServerFee || swap.LightningFeeSats != response.OffchainFee ||
-                             swap.OnChainFeeSats != response.OnchainFee)
+                    else if (swap.Provider != SwapProvider.Spark &&
+                             (swap.ServiceFeeSats != response.ServerFee || swap.LightningFeeSats != response.OffchainFee ||
+                              swap.OnChainFeeSats != response.OnchainFee))
                     {
-                        // Providers report fees as they accrue: keep a pending swap's up to date too
+                        // Providers report fees as they accrue: keep a pending swap's up to date too. A Spark swap saves
+                        // its own, and a routing fee recorded here would mark it paid
                         swap.ServiceFeeSats = response.ServerFee;
                         swap.LightningFeeSats = response.OffchainFee;
                         swap.OnChainFeeSats = response.OnchainFee;

@@ -51,4 +51,9 @@ public interface ISwapOutRepository
    /// Calculate the total amount spent on swaps since a specific datetime for budget tracking
    /// </summary>
    Task<Money> GetConsumedFeesSince(int nodeId, DateTimeOffset since);
+
+   /// <summary>
+   /// The Spark transfers already given to a swap, whatever its status: a transfer belongs to one swap only
+   /// </summary>
+   Task<HashSet<string>> GetSparkTransferIdsAsync();
 }

@@ -32,6 +32,10 @@ public enum SwapProvider
    Loop,
    [Display(Name = "40swap")]
    FortySwap,
+   /// <summary>
+   /// NodeGuard's own Spark wallet: the node pays it over Lightning and it exits on-chain
+   /// </summary>
+   Spark = 2,
 }
 
 public enum SwapOutStatus
@@ -149,8 +153,9 @@ public class SwapOut : Entity
    public string? TxId { get; set; }
 
    /// <summary>
-   /// The on-chain address of the destination wallet the swap pays out to, reserved when the swap was
-   /// created. Null for swaps created before it was recorded.
+   /// The on-chain address of the destination wallet the swap pays out to. Loop and 40swap swaps reserve it
+   /// when they are created, as their request carries it; a Spark swap reserves it only when it exits, and it
+   /// is null until then. Null too for swaps created before it was recorded.
    /// </summary>
    public string? DestinationAddress { get; set; }
 
@@ -159,5 +164,35 @@ public class SwapOut : Entity
    /// (Loop's swap hash). Lets the payment be looked up on the node.
    /// </summary>
    public string? PaymentHash { get; set; }
+
+   /// <summary>
+   /// Spark swaps only: the identity public key of the Spark wallet that received the payment, which is the
+   /// only wallet that can complete the swap
+   /// </summary>
+   public string? SparkIdentity { get; set; }
+
+   /// <summary>
+   /// Spark swaps only: the inbound Spark transfer that brought the swap's Lightning payment in. A transfer
+   /// is given to one swap only
+   /// </summary>
+   public string? SparkTransferId { get; set; }
+
+   /// <summary>
+   /// Spark swaps only: the leaves that transfer brought in, comma-separated. They belong to this swap, and
+   /// its exit moves exactly them to <see cref="DestinationAddress"/>
+   /// </summary>
+   public string? SparkLeafIds { get; set; }
+
+   /// <summary>
+   /// Spark swaps only: what those leaves add up to, less than <see cref="SatsAmount"/> when the SSP kept a
+   /// receive fee
+   /// </summary>
+   public long? SparkReceivedSats { get; set; }
+
+   /// <summary>
+   /// What the swap paid on-chain to <see cref="DestinationAddress"/>, once confirmed: what it delivered.
+   /// Recorded for Spark swaps
+   /// </summary>
+   public long? PayoutSats { get; set; }
 
 }

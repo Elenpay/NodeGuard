@@ -14,7 +14,7 @@
                     <FieldLabel>Swap provider</FieldLabel>
                     <div class="d-flex">
                         <Select TValue="SwapProvider" @bind-Value="_selectedProvider" SelectedValueChanged="OnProviderChanged">
-                            @foreach (var provider in Enum.GetValues<SwapProvider>())
+                            @foreach (var provider in Enum.GetValues<SwapProvider>().Where(p => p != SwapProvider.Spark))
                             {
                                 <SelectItem Value="@provider">@provider.GetDisplayName()</SelectItem>
                             }

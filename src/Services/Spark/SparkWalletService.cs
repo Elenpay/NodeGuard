@@ -48,8 +48,7 @@ public sealed record SparkWalletStatus(SparkWalletState State, string? IdentityP
 
 /// <summary>
 /// NodeGuard's transit Spark wallet. Its keys stay with the signer (see <see cref="ISparkSignerProvider"/>);
-/// wallet operations are serialized, as withdrawals have no idempotency key and every exit drains the
-/// wallet.
+/// wallet operations are serialized, as withdrawals have no idempotency key.
 /// </summary>
 public interface ISparkWalletService
 {
@@ -64,17 +63,40 @@ public interface ISparkWalletService
     /// <summary>The SSP's status of a Lightning receive request, if it reports one.</summary>
     Task<string?> GetReceiveStatusAsync(string requestId, CancellationToken ct = default);
 
+    /// <summary>
+    /// The SSP's Lightning receive request, with the transfer that brought its payment in once the SSP reports
+    /// it; null if the SSP does not know the request.
+    /// </summary>
+    Task<LightningReceiveRequest?> GetReceiveRequestAsync(string requestId, CancellationToken ct = default);
+
     Task<PendingTransferClaim> ClaimPendingAsync(CancellationToken ct = default);
+
+    /// <summary>A transfer of any type, with its leaves; null if the operators do not know it.</summary>
+    Task<SparkTransfer?> GetTransferAsync(string transferId, CancellationToken ct = default);
+
+    /// <summary>The wallet's transfers in <paramref name="direction"/> created after <paramref name="since"/>, with their leaves.</summary>
+    Task<IReadOnlyList<SparkTransfer>> GetTransfersAsync(TransferDirection direction, DateTimeOffset since,
+        CancellationToken ct = default);
 
     Task<WalletBalance> GetBalanceAsync(CancellationToken ct = default);
 
     /// <summary>Exits every spendable sat to <paramref name="onChainAddress"/> in one cooperative exit.</summary>
     Task<WithdrawAllResult> WithdrawAllAsync(string onChainAddress, long maxFeeSats, CancellationToken ct = default);
+
+    /// <summary>
+    /// Exits exactly <paramref name="leafIds"/> to <paramref name="onChainAddress"/> in one cooperative exit, with no
+    /// leaf swap (so the remote signer can sign it too). The fee comes out of the leaves' total.
+    /// </summary>
+    /// <exception cref="SparkLeavesNotSpendableException">A leaf is not owned or not spendable; nothing moved.</exception>
+    Task<WithdrawLeavesResult> WithdrawLeavesAsync(IReadOnlyCollection<string> leafIds, string onChainAddress, long maxFeeSats,
+        CancellationToken ct = default);
 }
 
 public sealed class SparkWalletService : ISparkWalletService, IAsyncDisposable
 {
     private static readonly TimeSpan RetryAfter = TimeSpan.FromMinutes(1);
+    private const int TransferPageSize = 100;
+    private const int MaxTransferPages = 20;
 
     private readonly SparkSettings _settings;
     private readonly ISparkSignerProvider _signerProvider;
@@ -124,14 +146,41 @@ public sealed class SparkWalletService : ISparkWalletService, IAsyncDisposable
     public Task<string?> GetReceiveStatusAsync(string requestId, CancellationToken ct = default) =>
         WithWalletAsync(w => w.GetLightningReceiveRequestStatusAsync(requestId, ct), ct);
 
+    public Task<LightningReceiveRequest?> GetReceiveRequestAsync(string requestId, CancellationToken ct = default) =>
+        WithWalletAsync(w => w.GetLightningReceiveRequestAsync(requestId, ct), ct);
+
     public Task<PendingTransferClaim> ClaimPendingAsync(CancellationToken ct = default) =>
         WithWalletAsync(w => w.ClaimPendingTransfersAsync(ct), ct);
+
+    public Task<SparkTransfer?> GetTransferAsync(string transferId, CancellationToken ct = default) =>
+        WithWalletAsync(w => w.GetTransferAsync(transferId, ct), ct);
+
+    public Task<IReadOnlyList<SparkTransfer>> GetTransfersAsync(TransferDirection direction, DateTimeOffset since,
+        CancellationToken ct = default) =>
+        WithWalletAsync(async w =>
+        {
+            var transfers = new List<SparkTransfer>();
+            long offset = 0;
+            for (var page = 0; page < MaxTransferPages; page++)
+            {
+                var result = await w.GetTransfersAsync(TransferPageSize, offset, createdAfter: since, direction: direction, ct: ct);
+                transfers.AddRange(result.Transfers);
+                if (result.Transfers.Count < TransferPageSize || result.Offset <= offset) break;
+                offset = result.Offset;
+            }
+
+            return (IReadOnlyList<SparkTransfer>)transfers;
+        }, ct);
 
     public Task<WalletBalance> GetBalanceAsync(CancellationToken ct = default) =>
         WithWalletAsync(w => w.GetBalanceAsync(ct), ct);
 
     public Task<WithdrawAllResult> WithdrawAllAsync(string onChainAddress, long maxFeeSats, CancellationToken ct = default) =>
         WithWalletAsync(w => w.WithdrawAllAsync(onChainAddress, maxFeeSats, ct), ct);
+
+    public Task<WithdrawLeavesResult> WithdrawLeavesAsync(IReadOnlyCollection<string> leafIds, string onChainAddress,
+        long maxFeeSats, CancellationToken ct = default) =>
+        WithWalletAsync(w => w.WithdrawLeavesAsync(leafIds, onChainAddress, maxFeeSats, ct), ct);
 
     private async Task<T> WithWalletAsync<T>(Func<SparkWallet, Task<T>> operation, CancellationToken ct)
     {
