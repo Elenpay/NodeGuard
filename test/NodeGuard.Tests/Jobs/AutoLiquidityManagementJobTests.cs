@@ -630,6 +630,24 @@ public class AutoLiquidityManagementJobTests
     }
 
     [Fact]
+    public async Task ManageNodeLiquidity_WithSpark_TheRoomLeavesOutWhatUnpaidSwapsWillBringIn()
+    {
+        var (node, _) = ArrangeSwappableNode(loopWeight: 0, fortySwapWeight: 0, sparkWeight: 100);
+        SetSparkBalance(owned: 30_000_000);
+        _swapOutRepositoryMock.Setup(x => x.GetAllPending()).ReturnsAsync(new List<SwapOut>
+        {
+            new() { Id = 9, Provider = SwapProvider.Spark, Status = SwapOutStatus.Pending, SatsAmount = 10_000_000 }
+        });
+
+        var result = await _autoLiquidityManagementJob.ManageNodeLiquidity(node, CancellationToken.None);
+
+        result.Should().Be(ManageNodeLiquidityResult.Success);
+        _swapsServiceMock.Verify(x => x.CreateSwapOutAsync(node,
+            It.Is<SwapOut>(s => s.Provider == SwapProvider.Spark && s.SatsAmount == 10_000_000),
+            It.IsAny<SwapOutRequest>(), It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    [Fact]
     public async Task ManageNodeLiquidity_WithOnlySparkWeight_WhenTheRoomIsBelowTheNodeMinimum_SkipsWithoutReservingAnAddress()
     {
         var (node, _) = ArrangeSwappableNode(loopWeight: 0, fortySwapWeight: 0, sparkWeight: 100);

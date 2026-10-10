@@ -29,8 +29,8 @@ public sealed record SparkBalanceSnapshot(long OwnedSats, long AvailableSats, lo
 public sealed record SparkAlert(AuditActionType Action, AuditObjectType ObjectType, string ObjectId, string Message, object Details);
 
 /// <summary>
-/// Watches that Spark balances only pass through: sats stuck in the transit wallet with no swap
-/// in flight, and swaps whose exit is overdue. Run by the swap monitor, which audits the alerts; each
+/// Watches that Spark balances only pass through: sats stuck in the transit wallet that no swap in flight
+/// accounts for, and swaps whose exit is overdue. Run by the swap monitor, which audits the alerts; each
 /// alert is raised once. The balance is cached for the Swaps page and exported as the
 /// <c>nodeguard.spark.balance</c> gauge (meter <see cref="MeterName"/>).
 /// </summary>
@@ -38,7 +38,7 @@ public interface ISparkGuardrails
 {
     SparkBalanceSnapshot? LastBalance { get; }
 
-    /// <summary>When the wallet started holding sats with no Spark swap in flight, if it does.</summary>
+    /// <summary>When the wallet started holding sats that no Spark swap in flight accounts for, if it does.</summary>
     DateTimeOffset? StuckSince { get; }
 
     Task<IReadOnlyList<SparkAlert>> CheckAsync(IReadOnlyCollection<SwapOut> pendingSwaps, CancellationToken ct = default);
@@ -73,6 +73,20 @@ public sealed class SparkGuardrails : ISparkGuardrails, IDisposable
 
     public DateTimeOffset? StuckSince { get; private set; }
 
+    /// <summary>What the pending Spark swaps not paid yet will still bring into the wallet.</summary>
+    public static long UnpaidSats(IEnumerable<SwapOut> pendingSwaps) =>
+        PendingSpark(pendingSwaps).Where(s => s.LightningFeeSats is null).Sum(s => s.SatsAmount);
+
+    /// <summary>
+    /// What the wallet holds for the pending Spark swaps that have not exited yet: what each one brought in, or its
+    /// amount until it is known.
+    /// </summary>
+    public static long DueSats(IEnumerable<SwapOut> pendingSwaps) =>
+        PendingSpark(pendingSwaps).Where(s => s.TxId is null).Sum(s => s.SparkReceivedSats ?? s.SatsAmount);
+
+    private static IEnumerable<SwapOut> PendingSpark(IEnumerable<SwapOut> swaps) =>
+        swaps.Where(s => s.Provider == SwapProvider.Spark && s.Status == SwapOutStatus.Pending);
+
     public async Task<IReadOnlyList<SparkAlert>> CheckAsync(IReadOnlyCollection<SwapOut> pendingSwaps, CancellationToken ct = default)
     {
         var alerts = new List<SparkAlert>();
@@ -91,20 +105,23 @@ public sealed class SparkGuardrails : ISparkGuardrails, IDisposable
                 held, _settings.MaxBalanceSats);
         }
 
-        if (held > 0 && sparkSwaps.Count == 0)
+        // Each swap's sats are its own until it exits: only what no swap in flight accounts for is stuck
+        var due = DueSats(sparkSwaps);
+        var stuck = held - due;
+        if (stuck > 0)
         {
             StuckSince ??= now;
             var stuckFor = now - StuckSince.Value;
-            _logger.LogWarning("The Spark wallet holds {HeldSats} sats with no Spark swap in flight, for {StuckMinutes} minutes",
-                held, (int)stuckFor.TotalMinutes);
+            _logger.LogWarning("The Spark wallet holds {StuckSats} sats that no Spark swap in flight accounts for, for {StuckMinutes} minutes",
+                stuck, (int)stuckFor.TotalMinutes);
 
             if (stuckFor >= StuckAlertAfter && !_stuckAlerted)
             {
                 _stuckAlerted = true;
                 alerts.Add(new SparkAlert(AuditActionType.SparkBalanceStuck, AuditObjectType.Wallet,
                     _spark.Status.IdentityPublicKey ?? "spark",
-                    $"The Spark wallet has held {held} sats with no swap in flight since {StuckSince:u}",
-                    new { HeldSats = held, balance.Available, balance.Incoming, balance.Frozen, StuckSince }));
+                    $"The Spark wallet has held {stuck} sats that no swap in flight accounts for since {StuckSince:u}",
+                    new { StuckSats = stuck, HeldSats = held, DueSats = due, balance.Available, balance.Incoming, balance.Frozen, StuckSince }));
             }
         }
         else

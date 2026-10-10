@@ -302,6 +302,22 @@ public class SparkSwapServiceTests
     }
 
     [Fact]
+    public async Task Create_CountsWhatUnpaidSwapsWillBringIn_AgainstTheCap()
+    {
+        // 9M held + an unpaid 0.6M swap still to come + 0.5M > the 10M default cap
+        _node.MaxSwapsInFlight = 2;
+        _spark.GetBalanceAsync(Arg.Any<CancellationToken>())
+            .Returns(new WalletBalance(new SatsBalance(9_000_000, 9_000_000, 0), [], []));
+        var unpaid = Pending(lightningFee: null);
+        unpaid.SatsAmount = 600_000;
+        _swapOuts.GetAllPending().Returns(new List<SwapOut> { unpaid });
+
+        var act = () => Service().CreateSwapOutAsync(_node, Template(), Request());
+
+        await act.Should().ThrowAsync<InvalidOperationException>().WithMessage("*10100000 sats*");
+    }
+
+    [Fact]
     public async Task Create_WhenSparkIsUnavailable_IsRefused()
     {
         _spark.EnsureReadyAsync(Arg.Any<CancellationToken>())

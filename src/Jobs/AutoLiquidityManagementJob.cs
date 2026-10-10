@@ -183,7 +183,7 @@ public class AutoLiquidityManagementJob : IJob
 
     /// <summary>
     /// Why Spark can't take this node's swap now (null when it can), and how many sats its wallet can still
-    /// take under SPARK_MAX_BALANCE_SATS
+    /// take under SPARK_MAX_BALANCE_SATS, counting what the swaps not paid yet will still bring in
     /// </summary>
     private async Task<(string? Reason, long RoomSats)> SparkAvailabilityAsync(Node node)
     {
@@ -191,7 +191,8 @@ public class AutoLiquidityManagementJob : IJob
         if (!status.IsReady) return (status.Reason ?? status.State.ToString(), 0);
 
         var balance = (await _sparkWallet.GetBalanceAsync()).SatsBalance;
-        var room = _sparkSettings.MaxBalanceSats - balance.Owned - balance.Incoming;
+        var unpaid = SparkGuardrails.UnpaidSats(await _swapOutRepository.GetAllPending());
+        var room = _sparkSettings.MaxBalanceSats - balance.Owned - balance.Incoming - unpaid;
         return room < node.SwapMinAmountSats
             ? ($"the Spark wallet has {Math.Max(0, room)} sats of room under SPARK_MAX_BALANCE_SATS, below the node's minimum swap", room)
             : (null, room);

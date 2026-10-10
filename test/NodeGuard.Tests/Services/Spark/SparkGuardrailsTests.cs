@@ -42,10 +42,10 @@ public class SparkGuardrailsTests
         _spark.GetBalanceAsync(Arg.Any<CancellationToken>())
             .Returns(new WalletBalance(new SatsBalance(owned, owned, incoming), [], []));
 
-    private static SwapOut PaidSparkSwap(DateTimeOffset created) => new()
+    private static SwapOut PaidSparkSwap(DateTimeOffset created, long? received = null, string? txId = null) => new()
     {
         Id = 5, Provider = SwapProvider.Spark, Status = SwapOutStatus.Pending, ProviderId = "req-5", LightningFeeSats = 3,
-        CreationDatetime = created
+        SatsAmount = 500_000, SparkReceivedSats = received, TxId = txId, CreationDatetime = created
     };
 
     [Fact]
@@ -82,6 +82,43 @@ public class SparkGuardrailsTests
         await _guardrails.CheckAsync([PaidSparkSwap(_time.GetUtcNow())]);
 
         _guardrails.StuckSince.Should().BeNull();
+    }
+
+    [Fact]
+    public async Task SatsBeyondWhatTheSwapsInFlightBroughtIn_AreStuck()
+    {
+        Holds(600_000);
+
+        await _guardrails.CheckAsync([PaidSparkSwap(_time.GetUtcNow(), received: 499_000)]);
+
+        _guardrails.StuckSince.Should().Be(_time.GetUtcNow());
+    }
+
+    [Fact]
+    public async Task AnExitedSwap_NoLongerAccountsForWhatTheWalletHolds()
+    {
+        Holds(10_000);
+
+        await _guardrails.CheckAsync([PaidSparkSwap(_time.GetUtcNow(), received: 499_000, txId: "exit-tx")]);
+
+        _guardrails.StuckSince.Should().NotBeNull();
+    }
+
+    [Fact]
+    public void UnpaidAndDueSats_CountOnlyPendingSparkSwaps()
+    {
+        var now = _time.GetUtcNow();
+        SwapOut[] swaps =
+        [
+            new() { Provider = SwapProvider.Spark, Status = SwapOutStatus.Pending, SatsAmount = 100_000 },
+            PaidSparkSwap(now, received: 499_000),
+            PaidSparkSwap(now, received: 300_000, txId: "exit-tx"),
+            new() { Provider = SwapProvider.Spark, Status = SwapOutStatus.Completed, SatsAmount = 7 },
+            new() { Provider = SwapProvider.Loop, Status = SwapOutStatus.Pending, SatsAmount = 9 }
+        ];
+
+        SparkGuardrails.UnpaidSats(swaps).Should().Be(100_000);
+        SparkGuardrails.DueSats(swaps).Should().Be(599_000);
     }
 
     [Fact]
