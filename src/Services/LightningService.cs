@@ -1260,8 +1260,8 @@ namespace NodeGuard.Services
             {
                 _logger.LogError(
                     "Cannot generate base template PSBT for {Visibility} channel operation request: {RequestId}, no UTXOs found for the wallet: {WalletId}",
-                    channelOperationRequest.Id,
                     channelOperationRequest.IsChannelPrivate ? "private" : "public",
+                    channelOperationRequest.Id,
                     channelOperationRequest.WalletId);
 
                 return (null, true); //true means no UTXOS

@@ -97,22 +97,33 @@ public class HtlcSubscriptionReconnectE2ETests
         _output.WriteLine($"restarting {container} to drop Bob's HTLC subscription");
         await RestartContainerAsync(container);
 
-        // 5. Rebalance again once Bob's lnd is back and its channels reactivate. Retry while that
-        //    happens (and while NodeGuard resubscribes — backoff up to 30s). Route failures while
-        //    Bob is down fail fast (no route), so the loop just spins cheaply until it recovers.
-        await RetryAsync(async () =>
+        // 5. Keep forwarding through Bob until one is persisted. NodeGuard resubscribes on a backoff of up
+        //    to 30s and the stream has no replay, so a forward sent before the resubscribe is lost for good.
+        //    Failed rounds (Bob still down) are cheap; sent ones are capped so Alice→Bob isn't drained.
+        long after = baseline;
+        for (int round = 1, sent = 0; round <= 40 && sent < 8 && after <= baseline; round++)
         {
-            await MineAsync(rpc, 2); // nudge channel reactivation / gossip
-            await RebalanceAsync(client, headers, alice, carol, channelId);
-            return true;
-        }, attempts: 40, delay: TimeSpan.FromSeconds(6), what: "post-restart rebalance");
+            try
+            {
+                await MineAsync(rpc, 2); // nudge channel reactivation / gossip
+                await RebalanceAsync(client, headers, alice, carol, channelId);
+                sent++;
+            }
+            catch (Exception ex)
+            {
+                _output.WriteLine($"post-restart rebalance round {round} failed: {ex.Message}");
+                await Task.Delay(TimeSpan.FromSeconds(6));
+                continue;
+            }
 
-        // 6. The real assertion: Bob's forwarding events increased after the restart. That can only
-        //    happen if Bob's HTLC subscription reconnected and captured the post-restart forward.
-        var after = await PollUntilAsync(
-            () => CountForwardingEventsAsync(bob.PubKey), c => c > baseline,
-            attempts: 30, delay: TimeSpan.FromSeconds(2), what: $"Bob forwarding events > baseline ({baseline})");
-        _output.WriteLine($"post-reconnect Bob forwarding events = {after}");
+            // 6. The real assertion: a post-restart forward only lands if Bob's subscription reconnected.
+            for (var i = 0; i < 5 && after <= baseline; i++)
+            {
+                after = await CountForwardingEventsAsync(bob.PubKey);
+                if (after <= baseline) await Task.Delay(TimeSpan.FromSeconds(2));
+            }
+            _output.WriteLine($"post-restart round {round}: Bob forwarding events = {after}");
+        }
 
         after.Should().BeGreaterThan(baseline,
             "Bob's HTLC subscription must resubscribe after its lnd restarts and keep persisting forwarded HTLCs");

@@ -108,6 +108,14 @@ services:
       ROUTING_ENGINE_CATEGORIZATION_MIN_AGE_BLOCKS: 0
       ROUTING_ENGINE_FLOW_MIN_MSAT: 1000000
       ROUTING_ENGINE_CATEGORY_FLIP_HYSTERESIS_CYCLES: 0
+      # AutoChannelOpenE2ETests: the global switch (each node still opts in), a burst gap short enough to
+      # stage separate bursts in seconds, a burst minimum small enough that the refused volume binds no
+      # clamp, and a fee gate regtest-sized payments can clear. Keep the last three in sync with the
+      # e2e-runner service.
+      AUTO_CHANNEL_OPEN_ENABLED: "true"
+      AUTO_CHANNEL_OPEN_BURST_GAP_SECONDS: "2"
+      AUTO_CHANNEL_OPEN_MIN_BURSTS: "2"
+      AUTO_CHANNEL_OPEN_MIN_MISSED_FEE_MSAT: "100000"
     entrypoint: ["/bin/sh", "/scripts/nodeguard-entrypoint.sh"]
     volumes:
       - ./nodeguard-entrypoint.sh:/scripts/nodeguard-entrypoint.sh:ro
@@ -143,6 +151,9 @@ services:
       ROUTING_ENGINE_FEE_MIN_CHANNEL_SIZE_SATS: "15000000"
       ROUTING_ENGINE_REBALANCE_MAX_AMOUNT_SATS: "3000000"
       ROUTING_ENGINE_REBALANCE_DEADBAND: "0.15"
+      AUTO_CHANNEL_OPEN_BURST_GAP_SECONDS: "2"
+      AUTO_CHANNEL_OPEN_MIN_BURSTS: "2"
+      AUTO_CHANNEL_OPEN_MIN_MISSED_FEE_MSAT: "100000"
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock # Lets the reconnect test restart an LND container via the Docker Engine API socket.
       - e2e_env:/shared:ro   # LND host+macaroon env (extract-env); the flow scenario reads it directly

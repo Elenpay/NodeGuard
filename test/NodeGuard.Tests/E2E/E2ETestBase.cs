@@ -101,7 +101,16 @@ public abstract class E2ETestBase
             attempts: 10, delay: TimeSpan.FromSeconds(6), what: "OpenChannel");
         _output.WriteLine($"OpenChannel → operation {opId}");
 
-        // Mine + poll until the funding tx confirms and NodeGuard records the channel id.
+        return await MineUntilChannelOpenedAsync(client, headers, rpc, opId);
+    }
+
+    /// <summary>
+    /// Mines until the open operation's funding tx confirms and NodeGuard records the channel id, then a
+    /// few more so LND marks the channel active and gossip propagates. Returns NodeGuard's channel id.
+    /// </summary>
+    protected async Task<long> MineUntilChannelOpenedAsync(
+        NodeGuardService.NodeGuardServiceClient client, Metadata headers, RPCClient rpc, int opId)
+    {
         long channelId = 0;
         for (var i = 0; i < 40 && channelId == 0; i++)
         {
