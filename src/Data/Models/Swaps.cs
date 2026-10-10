@@ -148,4 +148,16 @@ public class SwapOut : Entity
    /// </summary>
    public string? TxId { get; set; }
 
+   /// <summary>
+   /// The on-chain address of the destination wallet the swap pays out to, reserved when the swap was
+   /// created. Null for swaps created before it was recorded.
+   /// </summary>
+   public string? DestinationAddress { get; set; }
+
+   /// <summary>
+   /// Hex payment hash of the Lightning payment that funds the swap, when the provider exposes it
+   /// (Loop's swap hash). Lets the payment be looked up on the node.
+   /// </summary>
+   public string? PaymentHash { get; set; }
+
 }
