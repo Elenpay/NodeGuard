@@ -166,7 +166,6 @@ namespace NodeGuard
                 Constants.AWS_REGION));
             builder.Services.AddSingleton<ISparkWalletService, SparkWalletService>();
             builder.Services.AddTransient<ISparkSwapService, SparkSwapService>();
-            builder.Services.AddTransient<ISparkWalletsService, SparkWalletsService>();
             builder.Services.AddSingleton<ISparkGuardrails, SparkGuardrails>();
             builder.Services.AddHostedService<SparkStartupService>();
             builder.Services.AddTransient<IRebalanceService, RebalanceService>();

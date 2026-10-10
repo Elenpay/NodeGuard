@@ -57,8 +57,8 @@ public class SparkWalletServiceTests
     private SparkWalletService Service(SparkSettings settings)
     {
         var services = new ServiceCollection().AddSingleton(_wallets).BuildServiceProvider();
-        return new(settings, _signers, services.GetRequiredService<IServiceScopeFactory>(), NullLogger<SparkWalletService>.Instance,
-            NullLoggerFactory.Instance, _time);
+        return new(settings, _signers, services.GetRequiredService<IServiceScopeFactory>(), Substitute.For<ISparkSeedProtector>(),
+            NullLogger<SparkWalletService>.Instance, NullLoggerFactory.Instance, _time);
     }
 
     [Fact]

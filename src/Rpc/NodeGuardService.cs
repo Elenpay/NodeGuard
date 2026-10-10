@@ -103,7 +103,7 @@ public class NodeGuardService : Nodeguard.NodeGuardService.NodeGuardServiceBase,
     private readonly ISwapsService _swapsService;
     private readonly ISwapOutRepository _swapOutRepository;
     private readonly IAuditService _auditService;
-    private readonly ISparkWalletsService _sparkWallets;
+    private readonly ISparkWalletService _sparkWallet;
 
     public NodeGuardService(ILogger<NodeGuardService> logger,
         ILiquidityRuleRepository liquidityRuleRepository,
@@ -127,10 +127,10 @@ public class NodeGuardService : Nodeguard.NodeGuardService.NodeGuardServiceBase,
         ISwapsService swapsService,
         ISwapOutRepository swapOutRepository,
         IAuditService auditService,
-        ISparkWalletsService sparkWallets
+        ISparkWalletService sparkWallet
     )
     {
-        _sparkWallets = sparkWallets;
+        _sparkWallet = sparkWallet;
         _swapsService = swapsService;
         _swapOutRepository = swapOutRepository;
         _auditService = auditService;
@@ -1836,7 +1836,7 @@ public class NodeGuardService : Nodeguard.NodeGuardService.NodeGuardServiceBase,
         SparkWalletCallAsync("Creating a Spark wallet", async () =>
         {
             // The mnemonic is shown once, on the Wallets page; never over the API
-            var (wallet, _) = await _sparkWallets.CreateAsync(request.Name, request.HasAccount ? request.Account : 0,
+            var (wallet, _) = await _sparkWallet.CreateWalletAsync(request.Name, request.HasAccount ? request.Account : 0,
                 request.HasMaxBalanceSats ? request.MaxBalanceSats : null, context.CancellationToken);
             return new CreateSparkWalletResponse { WalletId = wallet.Id, IdentityPublicKey = wallet.SparkIdentityPublicKey ?? string.Empty };
         });
@@ -1845,7 +1845,7 @@ public class NodeGuardService : Nodeguard.NodeGuardService.NodeGuardServiceBase,
         SparkWalletCallAsync("Listing the Spark wallets", async () =>
         {
             var response = new GetSparkWalletsResponse();
-            foreach (var wallet in await _sparkWallets.ListAsync(request.IncludeArchived, context.CancellationToken))
+            foreach (var wallet in await _sparkWallet.ListWalletsAsync(request.IncludeArchived, context.CancellationToken))
             {
                 var info = new SparkWalletInfo
                 {
@@ -1868,7 +1868,7 @@ public class NodeGuardService : Nodeguard.NodeGuardService.NodeGuardServiceBase,
         ServerCallContext context) =>
         SparkWalletCallAsync("Getting a Spark wallet's balance", async () =>
         {
-            var balance = await _sparkWallets.GetBalanceAsync(request.WalletId, context.CancellationToken);
+            var balance = await _sparkWallet.GetSatsBalanceAsync(request.WalletId, context.CancellationToken);
             return new GetSparkWalletBalanceResponse
             {
                 OwnedSats = balance.Owned,
@@ -1882,14 +1882,14 @@ public class NodeGuardService : Nodeguard.NodeGuardService.NodeGuardServiceBase,
         ServerCallContext context) =>
         SparkWalletCallAsync("Withdrawing a Spark wallet", async () =>
         {
-            var exit = await _sparkWallets.WithdrawAllAsync(request.WalletId, request.DestinationWalletId, context.CancellationToken);
+            var exit = await _sparkWallet.WithdrawAllToWalletAsync(request.WalletId, request.DestinationWalletId, context.CancellationToken);
             return new WithdrawAllSparkWalletResponse { TxId = exit.Txid, PayoutSats = exit.PayoutSats, FeeSats = exit.FeeSats };
         });
 
     public override Task<ArchiveSparkWalletResponse> ArchiveSparkWallet(ArchiveSparkWalletRequest request, ServerCallContext context) =>
         SparkWalletCallAsync("Archiving a Spark wallet", async () =>
         {
-            await _sparkWallets.ArchiveAsync(request.WalletId, context.CancellationToken);
+            await _sparkWallet.ArchiveWalletAsync(request.WalletId, context.CancellationToken);
             return new ArchiveSparkWalletResponse();
         });
 

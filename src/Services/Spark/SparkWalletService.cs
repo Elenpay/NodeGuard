@@ -22,11 +22,14 @@ using System.Net.Security;
 using System.Security.Cryptography.X509Certificates;
 using System.Text.Json;
 using Microsoft.Extensions.Options;
+using NBitcoin;
+using NBXplorer.DerivationStrategy;
 using NodeGuard.Data.Models;
 using NodeGuard.Data.Repositories.Interfaces;
 using NSpark;
 using NSpark.Models;
 using NSpark.Services;
+using NSpark.Signer;
 
 namespace NodeGuard.Services.Spark;
 
@@ -53,11 +56,25 @@ public sealed record SparkWalletStatus(SparkWalletState State, string? IdentityP
 /// <param name="MaxBalanceSats">The most it may hold, counting a new swap: its own max balance, else SPARK_MAX_BALANCE_SATS.</param>
 public sealed record SparkWalletEntry(SparkWalletRef Ref, string Name, string? IdentityPublicKey, long MaxBalanceSats, bool IsArchived = false);
 
+/// <summary>A Spark wallet as the Wallets page and the API show it.</summary>
+/// <param name="MaxBalanceSats">Its own max balance; null means SPARK_MAX_BALANCE_SATS.</param>
+/// <param name="EffectiveMaxBalanceSats">The max balance that applies.</param>
+/// <param name="NodeIds">The nodes whose Spark swaps go through it.</param>
+public sealed record SparkWalletSummary(int Id, string Name, string? IdentityPublicKey, int Account, long? MaxBalanceSats,
+    long EffectiveMaxBalanceSats, IReadOnlyList<int> NodeIds, bool IsArchived, DateTimeOffset CreationDatetime);
+
+/// <summary>A new Spark wallet and its mnemonic, which is shown once and never again.</summary>
+public sealed record SparkWalletCreation(Wallet Wallet, string Mnemonic);
+
 /// <summary>
 /// NodeGuard's Spark wallets: the Spark wallet rows (SPARK_SIGNER=wallet) or the remote signer's single wallet
 /// (SPARK_SIGNER=remote). Their keys stay with their signer (see <see cref="ISparkSignerProvider"/>). Each wallet
 /// connects on first use and its operations are serialized, as withdrawals have no idempotency key; different
 /// wallets run in parallel over one operator connection.
+/// <para>
+/// It also manages the Spark wallet rows for the Wallets page and the API (SPARK_SIGNER=wallet only; temporary, gone
+/// with the hot Spark wallets once the remote signer is the only Spark signer). Every such action is audited.
+/// </para>
 /// </summary>
 public interface ISparkWalletService
 {
@@ -114,9 +131,37 @@ public interface ISparkWalletService
 
     /// <summary>Drops the wallet's connection (an archived wallet); it reconnects if used again.</summary>
     void Forget(SparkWalletRef wallet);
+
+    // ── Spark wallet rows (SPARK_SIGNER=wallet), for the Wallets page and the API ──
+
+    /// <summary>Creates a Spark wallet with a new 24-word mnemonic, stored encrypted.</summary>
+    /// <exception cref="InvalidOperationException">Spark is disabled, or not in SPARK_SIGNER=wallet mode.</exception>
+    /// <exception cref="ArgumentException">An empty name, a negative account or a max balance below 1 sat.</exception>
+    Task<SparkWalletCreation> CreateWalletAsync(string name, int account = 0, long? maxBalanceSats = null, CancellationToken ct = default);
+
+    /// <summary>Sets the most the wallet may hold, counting a new swap; null means SPARK_MAX_BALANCE_SATS.</summary>
+    Task SetMaxBalanceAsync(int walletId, long? maxBalanceSats, CancellationToken ct = default);
+
+    Task<IReadOnlyList<SparkWalletSummary>> ListWalletsAsync(bool includeArchived = false, CancellationToken ct = default);
+
+    /// <exception cref="SparkUnavailableException">The wallet can't be reached.</exception>
+    Task<SatsBalance> GetSatsBalanceAsync(int walletId, CancellationToken ct = default);
+
+    /// <summary>
+    /// Exits everything the wallet holds to an unused address of an on-chain wallet, the exit fee capped by
+    /// SPARK_MAX_EXIT_FEE_SATS. Refused while the wallet has a Spark swap in flight, whose sats it would take.
+    /// </summary>
+    Task<WithdrawAllResult> WithdrawAllToWalletAsync(int walletId, int destinationWalletId, CancellationToken ct = default);
+
+    /// <summary>Archives the wallet; refused unless it is empty and no node uses it.</summary>
+    Task ArchiveWalletAsync(int walletId, CancellationToken ct = default);
 }
 
-public sealed class SparkWalletService : ISparkWalletService, IAsyncDisposable
+/// <remarks>
+/// Not sealed, and the Spark operations the wallet management uses are virtual, so tests can stub them on the same
+/// instance (a partial substitute).
+/// </remarks>
+public class SparkWalletService : ISparkWalletService, IAsyncDisposable
 {
     private static readonly TimeSpan RetryAfter = TimeSpan.FromMinutes(1);
     private const int TransferPageSize = 100;
@@ -125,6 +170,7 @@ public sealed class SparkWalletService : ISparkWalletService, IAsyncDisposable
     private readonly SparkSettings _settings;
     private readonly ISparkSignerProvider _signerProvider;
     private readonly IServiceScopeFactory _scopes;
+    private readonly ISparkSeedProtector _protector;
     private readonly ILogger<SparkWalletService> _logger;
     private readonly ILoggerFactory _loggerFactory;
     private readonly TimeProvider _time;
@@ -145,11 +191,12 @@ public sealed class SparkWalletService : ISparkWalletService, IAsyncDisposable
     }
 
     public SparkWalletService(SparkSettings settings, ISparkSignerProvider signerProvider, IServiceScopeFactory scopes,
-        ILogger<SparkWalletService> logger, ILoggerFactory loggerFactory, TimeProvider time)
+        ISparkSeedProtector protector, ILogger<SparkWalletService> logger, ILoggerFactory loggerFactory, TimeProvider time)
     {
         _settings = settings;
         _signerProvider = signerProvider;
         _scopes = scopes;
+        _protector = protector;
         _logger = logger;
         _loggerFactory = loggerFactory;
         _time = time;
@@ -206,7 +253,7 @@ public sealed class SparkWalletService : ISparkWalletService, IAsyncDisposable
         return await scope.ServiceProvider.GetRequiredService<IWalletRepository>().GetSparkWallets(includeArchived);
     }
 
-    public async Task<SparkWalletStatus> EnsureReadyAsync(SparkWalletRef wallet, CancellationToken ct = default)
+    public virtual async Task<SparkWalletStatus> EnsureReadyAsync(SparkWalletRef wallet, CancellationToken ct = default)
     {
         if (!_settings.Enabled) return GetStatus(wallet);
 
@@ -234,7 +281,7 @@ public sealed class SparkWalletService : ISparkWalletService, IAsyncDisposable
         CancellationToken ct = default) =>
         WithWalletAsync(wallet, w => w.GetLightningReceiveRequestAsync(requestId, ct), ct);
 
-    public Task<PendingTransferClaim> ClaimPendingAsync(SparkWalletRef wallet, CancellationToken ct = default) =>
+    public virtual Task<PendingTransferClaim> ClaimPendingAsync(SparkWalletRef wallet, CancellationToken ct = default) =>
         WithWalletAsync(wallet, w => w.ClaimPendingTransfersAsync(ct), ct);
 
     public Task<SparkTransfer?> GetTransferAsync(SparkWalletRef wallet, string transferId, CancellationToken ct = default) =>
@@ -257,10 +304,10 @@ public sealed class SparkWalletService : ISparkWalletService, IAsyncDisposable
             return (IReadOnlyList<SparkTransfer>)transfers;
         }, ct);
 
-    public Task<WalletBalance> GetBalanceAsync(SparkWalletRef wallet, CancellationToken ct = default) =>
+    public virtual Task<WalletBalance> GetBalanceAsync(SparkWalletRef wallet, CancellationToken ct = default) =>
         WithWalletAsync(wallet, w => w.GetBalanceAsync(ct), ct);
 
-    public Task<WithdrawAllResult> WithdrawAllAsync(SparkWalletRef wallet, string onChainAddress, long maxFeeSats,
+    public virtual Task<WithdrawAllResult> WithdrawAllAsync(SparkWalletRef wallet, string onChainAddress, long maxFeeSats,
         CancellationToken ct = default) =>
         WithWalletAsync(wallet, w => w.WithdrawAllAsync(onChainAddress, maxFeeSats, ct), ct);
 
@@ -268,7 +315,198 @@ public sealed class SparkWalletService : ISparkWalletService, IAsyncDisposable
         string onChainAddress, long maxFeeSats, CancellationToken ct = default) =>
         WithWalletAsync(wallet, w => w.WithdrawLeavesAsync(leafIds, onChainAddress, maxFeeSats, ct), ct);
 
-    public void Forget(SparkWalletRef wallet) => _slots.TryRemove(wallet, out _);
+    public virtual void Forget(SparkWalletRef wallet) => _slots.TryRemove(wallet, out _);
+
+    // ── Spark wallet rows (SPARK_SIGNER=wallet), for the Wallets page and the API ──
+    // A singleton: repositories, NBXplorer and the audit come from a scope per call
+
+    public async Task<SparkWalletCreation> CreateWalletAsync(string name, int account = 0, long? maxBalanceSats = null,
+        CancellationToken ct = default)
+    {
+        if (!_settings.Enabled || _settings.SignerMode != SparkSignerMode.Wallet)
+        {
+            throw new InvalidOperationException("Spark wallets are created with Spark enabled and SPARK_SIGNER=wallet.");
+        }
+
+        if (string.IsNullOrWhiteSpace(name)) throw new ArgumentException("A Spark wallet needs a name.", nameof(name));
+        if (account < 0) throw new ArgumentException("The Spark account must be 0 or more.", nameof(account));
+        ValidateMaxBalance(maxBalanceSats);
+
+        var mnemonic = new Mnemonic(Wordlist.English, WordCount.TwentyFour).ToString();
+        var identity = Convert.ToHexString(await SparkSigner.FromMnemonic(mnemonic, account).GetIdentityPublicKeyAsync())
+            .ToLowerInvariant();
+
+        var wallet = new Wallet
+        {
+            Name = name.Trim(),
+            Kind = WalletKind.Spark,
+            Description = "Spark wallet (swap-outs pass through it)",
+            MofN = 1,
+            IsHotWallet = true,
+            IsFinalised = true,
+            SparkEncryptedMnemonic = _protector.Protect(mnemonic),
+            SparkAccount = account,
+            SparkIdentityPublicKey = identity,
+            SparkMaxBalanceSats = maxBalanceSats,
+            Keys = []
+        };
+
+        using (var scope = _scopes.CreateScope())
+        {
+            var audit = scope.ServiceProvider.GetRequiredService<IAuditService>();
+            var (saved, error) = await scope.ServiceProvider.GetRequiredService<IWalletRepository>().AddAsync(wallet);
+            if (!saved)
+            {
+                await audit.LogAsync(AuditActionType.Create, AuditEventType.Failure, AuditObjectType.Wallet, null,
+                    new { Name = wallet.Name, Kind = WalletKind.Spark, Error = error });
+                throw new InvalidOperationException($"The Spark wallet could not be saved: {error}");
+            }
+
+            await audit.LogAsync(AuditActionType.Create, AuditEventType.Success, AuditObjectType.Wallet, wallet.Id.ToString(),
+                new { wallet.Name, Kind = WalletKind.Spark, Account = account, IdentityPublicKey = identity, MaxBalanceSats = maxBalanceSats });
+        }
+
+        _logger.LogInformation("Created Spark wallet {WalletId} ({Name}), identity {Identity}", wallet.Id, wallet.Name, identity);
+
+        // Connected right away, so a key ring that can't decrypt what it just encrypted shows up now
+        await EnsureReadyAsync(new SparkWalletRef(wallet.Id), ct);
+
+        return new SparkWalletCreation(wallet, mnemonic);
+    }
+
+    public async Task SetMaxBalanceAsync(int walletId, long? maxBalanceSats, CancellationToken ct = default)
+    {
+        ValidateMaxBalance(maxBalanceSats);
+        using var scope = _scopes.CreateScope();
+        var wallets = scope.ServiceProvider.GetRequiredService<IWalletRepository>();
+        var wallet = await SparkWalletRowAsync(wallets, walletId);
+        var previous = wallet.SparkMaxBalanceSats;
+
+        wallet.SparkMaxBalanceSats = maxBalanceSats;
+        var (updated, error) = wallets.Update(wallet);
+        await scope.ServiceProvider.GetRequiredService<IAuditService>().LogAsync(AuditActionType.Update,
+            updated ? AuditEventType.Success : AuditEventType.Failure, AuditObjectType.Wallet, walletId.ToString(),
+            new { wallet.Name, PreviousMaxBalanceSats = previous, MaxBalanceSats = maxBalanceSats, Error = error });
+        if (!updated) throw new InvalidOperationException($"The max balance could not be saved: {error}");
+    }
+
+    public async Task<IReadOnlyList<SparkWalletSummary>> ListWalletsAsync(bool includeArchived = false, CancellationToken ct = default)
+    {
+        using var scope = _scopes.CreateScope();
+        var wallets = await scope.ServiceProvider.GetRequiredService<IWalletRepository>().GetSparkWallets(includeArchived);
+        var nodes = await scope.ServiceProvider.GetRequiredService<INodeRepository>().GetAll();
+
+        return wallets.Select(w => new SparkWalletSummary(w.Id, w.Name, w.SparkIdentityPublicKey, w.SparkAccount ?? 0,
+                w.SparkMaxBalanceSats, _settings.MaxBalanceFor(w), nodes.Where(n => n.SparkWalletId == w.Id).Select(n => n.Id).ToList(),
+                w.IsArchived, w.CreationDatetime))
+            .ToList();
+    }
+
+    public async Task<SatsBalance> GetSatsBalanceAsync(int walletId, CancellationToken ct = default)
+    {
+        using (var scope = _scopes.CreateScope())
+        {
+            await SparkWalletRowAsync(scope.ServiceProvider.GetRequiredService<IWalletRepository>(), walletId);
+        }
+
+        return (await GetBalanceAsync(new SparkWalletRef(walletId), ct)).SatsBalance;
+    }
+
+    public async Task<WithdrawAllResult> WithdrawAllToWalletAsync(int walletId, int destinationWalletId, CancellationToken ct = default)
+    {
+        using var scope = _scopes.CreateScope();
+        var wallets = scope.ServiceProvider.GetRequiredService<IWalletRepository>();
+        var audit = scope.ServiceProvider.GetRequiredService<IAuditService>();
+        var wallet = await SparkWalletRowAsync(wallets, walletId);
+        var destination = await wallets.GetById(destinationWalletId);
+        if (destination is not { Kind: WalletKind.OnChain, IsFinalised: true, IsArchived: false, IsCompromised: false } ||
+            destination.GetDerivationStrategy() is not { } strategy)
+        {
+            throw new InvalidOperationException($"Wallet {destinationWalletId} is not an available on-chain wallet to withdraw to.");
+        }
+
+        var sparkWallet = new SparkWalletRef(walletId);
+        var details = new { SparkWallet = wallet.Name, DestinationWalletId = destinationWalletId, DestinationWallet = destination.Name };
+
+        // Under the swaps' reservation lock: no swap of this wallet can start while its sats leave
+        await SparkSwapService.Reservation.WaitAsync(ct);
+        try
+        {
+            var inFlight = (await scope.ServiceProvider.GetRequiredService<ISwapOutRepository>().GetAllPending()).FirstOrDefault(s =>
+                s.Provider == SwapProvider.Spark &&
+                string.Equals(s.SparkIdentity, wallet.SparkIdentityPublicKey, StringComparison.OrdinalIgnoreCase));
+            if (inFlight is not null)
+            {
+                throw new InvalidOperationException(
+                    $"Spark swap {inFlight.Id} is in flight on {wallet.Name}: wait until it has exited, so its sats don't leave with the rest.");
+            }
+
+            await ClaimPendingAsync(sparkWallet, ct);
+            var address = (await scope.ServiceProvider.GetRequiredService<INBXplorerService>()
+                .GetUnusedAsync(strategy, DerivationFeature.Deposit, 0, true, ct)).Address.ToString();
+            var exit = await WithdrawAllAsync(sparkWallet, address, _settings.MaxExitFeeSats, ct);
+
+            await audit.LogAsync(AuditActionType.Transfer, AuditEventType.Success, AuditObjectType.Wallet, walletId.ToString(),
+                new { details.SparkWallet, details.DestinationWalletId, details.DestinationWallet, Address = address, exit.Txid, exit.PayoutSats, exit.FeeSats });
+            _logger.LogInformation("Spark wallet {WalletId} withdrew {Payout} sats to {Address} in {TxId} (SSP fee {Fee} sats)",
+                walletId, exit.PayoutSats, address, exit.Txid, exit.FeeSats);
+            return exit;
+        }
+        catch (Exception e) when (e is not OperationCanceledException)
+        {
+            await audit.LogAsync(AuditActionType.Transfer, AuditEventType.Failure, AuditObjectType.Wallet, walletId.ToString(),
+                new { details.SparkWallet, details.DestinationWalletId, details.DestinationWallet, Error = e.Message });
+            throw;
+        }
+        finally
+        {
+            SparkSwapService.Reservation.Release();
+        }
+    }
+
+    public async Task ArchiveWalletAsync(int walletId, CancellationToken ct = default)
+    {
+        using var scope = _scopes.CreateScope();
+        var wallets = scope.ServiceProvider.GetRequiredService<IWalletRepository>();
+        var wallet = await SparkWalletRowAsync(wallets, walletId);
+
+        var users = (await scope.ServiceProvider.GetRequiredService<INodeRepository>().GetAll())
+            .Where(n => n.SparkWalletId == walletId).Select(n => n.Name).ToList();
+        if (users.Count > 0)
+        {
+            throw new InvalidOperationException(
+                $"{wallet.Name} is the Spark wallet of {string.Join(", ", users)}: choose another in their liquidity settings first.");
+        }
+
+        var balance = await GetSatsBalanceAsync(walletId, ct);
+        if (balance.Owned + balance.Incoming > 0)
+        {
+            throw new InvalidOperationException(
+                $"{wallet.Name} still holds {balance.Owned + balance.Incoming} sats: withdraw them first.");
+        }
+
+        wallet.IsArchived = true;
+        var (updated, error) = wallets.Update(wallet);
+        await scope.ServiceProvider.GetRequiredService<IAuditService>().LogAsync(AuditActionType.Update,
+            updated ? AuditEventType.Success : AuditEventType.Failure, AuditObjectType.Wallet, walletId.ToString(),
+            new { wallet.Name, Archived = true, Error = error });
+        if (!updated) throw new InvalidOperationException($"{wallet.Name} could not be archived: {error}");
+
+        Forget(new SparkWalletRef(walletId));
+    }
+
+    private static async Task<Wallet> SparkWalletRowAsync(IWalletRepository wallets, int walletId) =>
+        await wallets.GetById(walletId) is { Kind: WalletKind.Spark } wallet
+            ? wallet
+            : throw new ArgumentException($"Wallet {walletId} is not a Spark wallet.", nameof(walletId));
+
+    private static void ValidateMaxBalance(long? maxBalanceSats)
+    {
+        if (maxBalanceSats is <= 0)
+        {
+            throw new ArgumentException("A Spark wallet's max balance must be a positive number of sats.", nameof(maxBalanceSats));
+        }
+    }
 
     private Slot SlotOf(SparkWalletRef wallet) =>
         _slots.GetOrAdd(wallet, _ => new Slot(new SparkWalletStatus(SparkWalletState.NotConnected)));
