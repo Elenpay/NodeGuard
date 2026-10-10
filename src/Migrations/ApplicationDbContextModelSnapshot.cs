@@ -1220,6 +1220,9 @@ namespace NodeGuard.Migrations
                     b.Property<string>("PaymentHash")
                         .HasColumnType("text");
 
+                    b.Property<long?>("PayoutSats")
+                        .HasColumnType("bigint");
+
                     b.Property<int>("Provider")
                         .HasColumnType("integer");
 
@@ -1233,6 +1236,15 @@ namespace NodeGuard.Migrations
                         .HasColumnType("bigint");
 
                     b.Property<string>("SparkIdentity")
+                        .HasColumnType("text");
+
+                    b.Property<string>("SparkLeafIds")
+                        .HasColumnType("text");
+
+                    b.Property<long?>("SparkReceivedSats")
+                        .HasColumnType("bigint");
+
+                    b.Property<string>("SparkTransferId")
                         .HasColumnType("text");
 
                     b.Property<int>("Status")
@@ -1254,10 +1266,6 @@ namespace NodeGuard.Migrations
                     b.HasIndex("NodeId");
 
                     b.HasIndex("UserRequestorId");
-
-                    b.HasIndex(new[] { "Provider" }, "IX_SwapOuts_SingleSparkSwapInFlight")
-                        .IsUnique()
-                        .HasFilter("\"Provider\" = 2 AND \"Status\" = 0");
 
                     b.ToTable("SwapOuts");
                 });

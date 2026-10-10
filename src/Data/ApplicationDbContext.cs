@@ -107,12 +107,6 @@ namespace NodeGuard.Data
                 .HasIndex(u => new { u.Key, u.Outpoint })
                 .IsUnique();
 
-            // At most one Spark swap in flight: each swap's exit drains NodeGuard's Spark transit wallet
-            modelBuilder.Entity<SwapOut>()
-                .HasIndex(s => s.Provider, "IX_SwapOuts_SingleSparkSwapInFlight")
-                .IsUnique()
-                .HasFilter($"\"Provider\" = {(int)SwapProvider.Spark} AND \"Status\" = {(int)SwapOutStatus.Pending}");
-
             modelBuilder.Entity<ForwardingHtlcEvent>()
                 .HasKey(x => new
                 {

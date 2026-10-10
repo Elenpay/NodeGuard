@@ -33,8 +33,7 @@ public enum SwapProvider
    [Display(Name = "40swap")]
    FortySwap,
    /// <summary>
-   /// NodeGuard's own Spark wallet: the node pays it over Lightning and it exits on-chain. Its value is
-   /// fixed: the index that allows one Spark swap in flight filters on it
+   /// NodeGuard's own Spark wallet: the node pays it over Lightning and it exits on-chain
    /// </summary>
    Spark = 2,
 }
@@ -170,5 +169,29 @@ public class SwapOut : Entity
    /// only wallet that can complete the swap
    /// </summary>
    public string? SparkIdentity { get; set; }
+
+   /// <summary>
+   /// Spark swaps only: the inbound Spark transfer that brought the swap's Lightning payment in. A transfer
+   /// is given to one swap only
+   /// </summary>
+   public string? SparkTransferId { get; set; }
+
+   /// <summary>
+   /// Spark swaps only: the leaves that transfer brought in, comma-separated. They belong to this swap, and
+   /// its exit moves exactly them to <see cref="DestinationAddress"/>
+   /// </summary>
+   public string? SparkLeafIds { get; set; }
+
+   /// <summary>
+   /// Spark swaps only: what those leaves add up to, less than <see cref="SatsAmount"/> when the SSP kept a
+   /// receive fee
+   /// </summary>
+   public long? SparkReceivedSats { get; set; }
+
+   /// <summary>
+   /// What the swap paid on-chain to <see cref="DestinationAddress"/>, once confirmed: what it delivered.
+   /// Recorded for Spark swaps
+   /// </summary>
+   public long? PayoutSats { get; set; }
 
 }

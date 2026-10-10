@@ -26,7 +26,9 @@ using NodeGuard.Data.Models;
 using NodeGuard.Data.Repositories.Interfaces;
 using NodeGuard.TestHelpers;
 using NSpark;
+using NSpark.Exceptions;
 using NSpark.Models;
+using NSpark.Services;
 using NSubstitute;
 using NSubstitute.ExceptionExtensions;
 
@@ -38,6 +40,7 @@ public class SparkSwapServiceTests
     private const string Hash = "0101010101010101010101010101010101010101010101010101010101010101";
     private const string Invoice = "lnbcrt5m1invoice";
     private const string Identity = SparkSettingsTests.Identity;
+    private const string Ssp = SparkSettingsTests.SspIdentity;
 
     private static readonly SparkSettings Settings = new()
     {
@@ -58,7 +61,11 @@ public class SparkSwapServiceTests
     public SparkSwapServiceTests()
     {
         _spark.EnsureReadyAsync(Arg.Any<CancellationToken>()).Returns(new SparkWalletStatus(SparkWalletState.Ready, Identity));
+        _spark.ClaimPendingAsync(Arg.Any<CancellationToken>()).Returns(new PendingTransferClaim([], []));
+        _spark.GetTransfersAsync(Arg.Any<TransferDirection>(), Arg.Any<DateTimeOffset>(), Arg.Any<CancellationToken>())
+            .Returns(new List<SparkTransfer>());
         _swapOuts.GetAllPending().Returns(new List<SwapOut>());
+        _swapOuts.GetSparkTransferIdsAsync().Returns(new HashSet<string>());
         _swapOuts.AddAsync(Arg.Any<SwapOut>()).Returns((true, null));
         _swapOuts.Update(Arg.Any<SwapOut>()).Returns((true, null));
 
@@ -89,10 +96,6 @@ public class SparkSwapServiceTests
         _lightning.TrackPaymentV2Async(_node, Arg.Is<byte[]>(h => Convert.ToHexString(h).ToLowerInvariant() == Hash),
             Arg.Any<CancellationToken>()).Returns(payment);
 
-    private void Balance(long available, long incoming = 0) =>
-        _spark.GetBalanceAsync(Arg.Any<CancellationToken>()).Returns(
-            new WalletBalance(new SatsBalance(available, available + incoming, incoming), [], []));
-
     /// <summary>Transactions of the destination wallet: (txid seed, value paid to <see cref="Address"/>, confirmations).</summary>
     private void Payouts(params (byte Seed, long Sats, long Confirmations)[] payouts)
     {
@@ -111,9 +114,27 @@ public class SparkSwapServiceTests
         });
     }
 
-    private static SwapOut Pending(long? lightningFee = 12, string? txId = null, string? identity = Identity) => new()
+    private static SparkLeaf Leaf(string id, long sats) => new(id, "tree", sats, "AVAILABLE");
+
+    private static SparkTransfer Transfer(string id, long sats, string type = "PreimageSwap", params SparkLeaf[] leaves) =>
+        new(id, Ssp, Identity, sats, "Completed", DateTimeOffset.UnixEpoch.AddMinutes(1), type)
+        {
+            Leaves = leaves.Length > 0 ? leaves : [Leaf($"{id}-leaf", sats)]
+        };
+
+    private void SspReports(string? transferId) =>
+        _spark.GetReceiveRequestAsync("req-1", Arg.Any<CancellationToken>())
+            .Returns(new LightningReceiveRequest("req-1", "TRANSFER_COMPLETED", transferId, null));
+
+    private void ReceivedTransfers(params SparkTransfer[] transfers) =>
+        _spark.GetTransfersAsync(TransferDirection.Received, Arg.Any<DateTimeOffset>(), Arg.Any<CancellationToken>())
+            .Returns(transfers.ToList());
+
+    private static SwapOut Pending(long? lightningFee = 12, string? txId = null, string? identity = Identity, int id = 7,
+        string? leafIds = null) => new()
     {
-        Id = 7,
+        Id = id,
+        NodeId = 1,
         Provider = SwapProvider.Spark,
         ProviderId = "req-1",
         PaymentHash = Hash,
@@ -123,6 +144,9 @@ public class SparkSwapServiceTests
         SatsAmount = 500_000,
         LightningFeeSats = lightningFee,
         TxId = txId,
+        SparkTransferId = leafIds is null ? null : $"transfer-{id}",
+        SparkLeafIds = leafIds,
+        SparkReceivedSats = leafIds is null ? null : 499_000,
         Status = SwapOutStatus.Pending,
         CreationDatetime = DateTimeOffset.UnixEpoch
     };
@@ -145,7 +169,7 @@ public class SparkSwapServiceTests
 
         saved.Should().BeTrue();
         recorded.Should().BeEquivalentTo(new { ProviderId = "req-1", PaymentHash = Hash, Status = SwapOutStatus.Pending, LightningFeeSats = (long?)null });
-        Received.InOrder(() =>
+        NSubstitute.Received.InOrder(() =>
         {
             _swapOuts.AddAsync(swapOut);
             _lightning.SendPaymentV2Async(_node, Invoice, 0, 5_000_000, null, null, Arg.Any<int>(), CancellationToken.None);
@@ -208,24 +232,44 @@ public class SparkSwapServiceTests
     public async Task Create_WhenTheSwapCannotBeRecorded_DoesNotPay()
     {
         InvoiceIssued();
-        _swapOuts.AddAsync(Arg.Any<SwapOut>()).Returns((false, "duplicate key value violates unique constraint"));
+        _swapOuts.AddAsync(Arg.Any<SwapOut>()).Returns((false, "the database is unavailable"));
 
         var (_, saved, error) = await Service().CreateSwapOutAsync(_node, Template(), Request());
 
         saved.Should().BeFalse();
-        error.Should().Contain("unique constraint");
+        error.Should().Contain("unavailable");
         await _lightning.DidNotReceiveWithAnyArgs().SendPaymentV2Async(default!, default!, default, default, default, default, default, default);
     }
 
-    [Fact]
-    public async Task Create_WhileAnotherSparkSwapIsInFlight_IsRefused()
+    [Theory]
+    [InlineData(0, 1)]
+    [InlineData(1, 1)]
+    [InlineData(2, 2)]
+    public async Task Create_AtTheNodesMaxSwapsInFlight_IsRefused(int maxSwapsInFlight, int inFlight)
     {
-        _swapOuts.GetAllPending().Returns(new List<SwapOut> { Pending() });
+        _node.MaxSwapsInFlight = maxSwapsInFlight;
+        var pending = Enumerable.Range(10, inFlight).Select(id => Pending(id: id)).ToList();
+        pending.Add(new SwapOut { Id = 30, NodeId = 2, Provider = SwapProvider.Spark, Status = SwapOutStatus.Pending });
+        pending.Add(new SwapOut { Id = 31, NodeId = 1, Provider = SwapProvider.Loop, Status = SwapOutStatus.Pending });
+        _swapOuts.GetAllPending().Returns(pending);
 
         var act = () => Service().CreateSwapOutAsync(_node, Template(), Request());
 
-        await act.Should().ThrowAsync<InvalidOperationException>().WithMessage("*still in flight*");
+        await act.Should().ThrowAsync<InvalidOperationException>().WithMessage($"alice already has {inFlight} Spark swaps in flight*");
         await _spark.DidNotReceiveWithAnyArgs().CreateInvoiceAsync(default, default!, default, default);
+    }
+
+    [Fact]
+    public async Task Create_BelowTheNodesMaxSwapsInFlight_IsAllowed()
+    {
+        _node.MaxSwapsInFlight = 2;
+        _swapOuts.GetAllPending().Returns(new List<SwapOut> { Pending() });
+        InvoiceIssued();
+        NodePays(Payment.Types.PaymentStatus.Succeeded);
+
+        var (_, saved, _) = await Service().CreateSwapOutAsync(_node, Template(), Request());
+
+        saved.Should().BeTrue();
     }
 
     [Fact]
@@ -248,27 +292,31 @@ public class SparkSwapServiceTests
         await act.Should().ThrowAsync<ArgumentException>().WithMessage("*RegTest address*");
     }
 
-    // ── Monitoring ───────────────────────────────────────────────────────────────────────
+    // ── Payment ──────────────────────────────────────────────────────────────────────────
 
     [Fact]
-    public async Task Advance_OnceThePaymentSettled_ClaimsAndExitsEverythingToTheDestination()
+    public async Task Advance_OnceThePaymentSettled_SavesItsFee_AndLeavesTheExitToTheExitJob()
     {
         var swap = Pending(lightningFee: null);
         NodeReports(new Payment { Status = Payment.Types.PaymentStatus.Succeeded, FeeSat = 11 });
-        Balance(available: 500_000);
-        _spark.WithdrawAllAsync(Address, 20_000, Arg.Any<CancellationToken>())
-            .Returns(new WithdrawAllResult("exit-tx", 500_000, 497_000, 0, 0, 0, 0));
 
         var response = await Service().AdvanceSwapAsync(_node, swap);
 
         response.Status.Should().Be(SwapOutStatus.Pending);
-        response.TxId.Should().Be("exit-tx");
         response.OffchainFee.Should().Be(11);
-        response.ServerFee.Should().Be(3_000);
         swap.LightningFeeSats.Should().Be(11);
-        swap.TxId.Should().Be("exit-tx");
-        await _spark.Received(1).ClaimPendingAsync(Arg.Any<CancellationToken>());
-        _swapOuts.Received(2).Update(swap);
+        _swapOuts.Received(1).Update(swap);
+        await _spark.DidNotReceiveWithAnyArgs().ClaimPendingAsync(default);
+        await _spark.DidNotReceiveWithAnyArgs().WithdrawLeavesAsync(default!, default!, default, default);
+    }
+
+    [Fact]
+    public async Task Advance_APaidSwap_IsLeftToTheExitJob()
+    {
+        var response = await Service().AdvanceSwapAsync(_node, Pending());
+
+        response.Status.Should().Be(SwapOutStatus.Pending);
+        await _lightning.DidNotReceiveWithAnyArgs().TrackPaymentV2Async(default!, default!, default);
     }
 
     [Fact]
@@ -280,14 +328,13 @@ public class SparkSwapServiceTests
 
         response.Status.Should().Be(SwapOutStatus.Failed);
         response.ErrorMessage.Should().Contain("FailureReasonTimeout");
-        await _spark.DidNotReceiveWithAnyArgs().WithdrawAllAsync(default!, default, default);
     }
 
     [Fact]
     public async Task Advance_AnUnknownPayment_WaitsUntilTheInvoiceExpired_ThenFails()
     {
         NodeReports(null);
-        _spark.GetReceiveStatusAsync("req-1", Arg.Any<CancellationToken>()).ThrowsAsync(new NotSupportedException("GetUserRequest"));
+        _spark.GetReceiveStatusAsync("req-1", Arg.Any<CancellationToken>()).ThrowsAsync(new NotSupportedException("UserRequest"));
 
         _time.Set(DateTimeOffset.UnixEpoch.AddMinutes(30));
         (await Service().AdvanceSwapAsync(_node, Pending(lightningFee: null))).Status.Should().Be(SwapOutStatus.Pending);
@@ -300,61 +347,253 @@ public class SparkSwapServiceTests
     }
 
     [Fact]
-    public async Task Advance_WithNothingClaimableYet_StaysPending()
-    {
-        Balance(available: 0, incoming: 500_000);
-
-        var response = await Service().AdvanceSwapAsync(_node, Pending());
-
-        response.Status.Should().Be(SwapOutStatus.Pending);
-        await _spark.DidNotReceiveWithAnyArgs().WithdrawAllAsync(default!, default, default);
-    }
-
-    [Fact]
-    public async Task Advance_AConfirmedPayout_CompletesTheSwap_EvenIfTheExitWasFeeBumped()
-    {
-        Payouts((Seed: 0xbb, Sats: 497_500, Confirmations: 1));
-
-        var response = await Service().AdvanceSwapAsync(_node, Pending(txId: "exit-tx"));
-
-        response.Status.Should().Be(SwapOutStatus.Completed);
-        response.TxId.Should().Be(new uint256(Enumerable.Repeat((byte)0xbb, 32).ToArray()).ToString());
-        response.ServerFee.Should().Be(2_500);
-        response.OffchainFee.Should().Be(12);
-        response.OnchainFee.Should().Be(0);
-    }
-
-    [Fact]
-    public async Task Advance_AnUnconfirmedPayout_StaysPending()
-    {
-        Payouts((Seed: 0xbb, Sats: 497_500, Confirmations: 0));
-
-        var response = await Service().AdvanceSwapAsync(_node, Pending(txId: "exit-tx"));
-
-        response.Status.Should().Be(SwapOutStatus.Pending);
-        response.TxId.Should().Be(new uint256(Enumerable.Repeat((byte)0xbb, 32).ToArray()).ToString());
-    }
-
-    [Fact]
-    public async Task Advance_APayoutWhoseExitWasNotSaved_IsNotExitedAgain()
-    {
-        // A crash after the exit, before its txid was saved
-        Payouts((Seed: 0xcc, Sats: 497_000, Confirmations: 0));
-        Balance(available: 0);
-
-        var response = await Service().AdvanceSwapAsync(_node, Pending(txId: null));
-
-        response.Status.Should().Be(SwapOutStatus.Pending);
-        await _spark.DidNotReceiveWithAnyArgs().WithdrawAllAsync(default!, default, default);
-    }
-
-    [Fact]
     public async Task Advance_ASwapPaidIntoAnotherSparkIdentity_IsRefused()
     {
-        var act = () => Service().AdvanceSwapAsync(_node, Pending(identity: SparkSettingsTests.SspIdentity));
+        var act = () => Service().AdvanceSwapAsync(_node, Pending(lightningFee: null, identity: Ssp));
 
         await act.Should().ThrowAsync<InvalidOperationException>().WithMessage("*resolved by hand*");
+    }
+
+    // ── Attribution ──────────────────────────────────────────────────────────────────────
+
+    [Fact]
+    public async Task Attribute_RecordsTheTransferTheSspReports_WithItsLeaves()
+    {
+        var swap = Pending();
+        SspReports("transfer-1");
+        _spark.GetTransferAsync("transfer-1", Arg.Any<CancellationToken>())
+            .Returns(Transfer("transfer-1", 499_000, leaves: [Leaf("l1", 262_144), Leaf("l2", 236_856)]));
+
+        var attributed = await Service().AttributeAsync(swap);
+
+        attributed.Should().BeTrue();
+        swap.SparkTransferId.Should().Be("transfer-1");
+        swap.SparkLeafIds.Should().Be("l1,l2");
+        swap.SparkReceivedSats.Should().Be(499_000);
+        NSubstitute.Received.InOrder(() =>
+        {
+            _spark.ClaimPendingAsync(Arg.Any<CancellationToken>());
+            _spark.GetTransferAsync("transfer-1", Arg.Any<CancellationToken>());
+            _swapOuts.Update(swap);
+        });
+    }
+
+    [Fact]
+    public async Task Attribute_WhenTheSspDoesNotReportIt_TakesTheUnattributedLightningTransferClosestToTheAmount()
+    {
+        var swap = Pending();
+        SspReports(null);
+        _swapOuts.GetSparkTransferIdsAsync().Returns(new HashSet<string> { "taken" });
+        ReceivedTransfers(
+            Transfer("taken", 500_000),
+            Transfer("plain-transfer", 500_000, type: "Transfer"),
+            Transfer("too-much", 500_001),
+            Transfer("too-little", 494_000),
+            Transfer("farther", 497_000),
+            Transfer("closest", 499_500));
+
+        var attributed = await Service().AttributeAsync(swap);
+
+        attributed.Should().BeTrue();
+        swap.SparkTransferId.Should().Be("closest");
+        swap.SparkReceivedSats.Should().Be(499_500);
+    }
+
+    [Fact]
+    public async Task Attribute_ATransferAnotherSwapHas_IsNotGivenAgain()
+    {
+        var swap = Pending();
+        SspReports("transfer-1");
+        _swapOuts.GetSparkTransferIdsAsync().Returns(new HashSet<string> { "transfer-1" });
+        ReceivedTransfers(Transfer("transfer-1", 499_000));
+
+        var attributed = await Service().AttributeAsync(swap);
+
+        attributed.Should().BeFalse();
+        swap.SparkTransferId.Should().BeNull();
+        _swapOuts.DidNotReceive().Update(swap);
+    }
+
+    [Fact]
+    public async Task Attribute_BeforeTheTransferArrived_Waits()
+    {
+        var swap = Pending();
+        SspReports(null);
+
+        (await Service().AttributeAsync(swap)).Should().BeFalse();
+        swap.SparkTransferId.Should().BeNull();
+    }
+
+    [Fact]
+    public async Task Attribute_AnAttributedSwap_IsNotAttributedAgain()
+    {
+        (await Service().AttributeAsync(Pending(leafIds: "l1"))).Should().BeTrue();
+
         await _spark.DidNotReceiveWithAnyArgs().ClaimPendingAsync(default);
+    }
+
+    // ── Exit ─────────────────────────────────────────────────────────────────────────────
+
+    [Fact]
+    public async Task Exit_ExitsExactlyTheSwapsLeaves_ToItsOwnAddress()
+    {
+        var swap = Pending(leafIds: "l1,l2");
+        _spark.WithdrawLeavesAsync(Arg.Any<IReadOnlyCollection<string>>(), Address, 20_000, Arg.Any<CancellationToken>())
+            .Returns(new WithdrawLeavesResult("exit-tx", 499_000, 497_000));
+
+        var step = await Service().ExitAsync(swap);
+
+        step.Should().Be(SparkExitStep.ExitSent);
+        swap.TxId.Should().Be("exit-tx");
+        swap.ServiceFeeSats.Should().Be(3_000, "everything the swap does not deliver is the SSP's");
+        swap.Status.Should().Be(SwapOutStatus.Pending);
+        await _spark.Received(1).WithdrawLeavesAsync(
+            Arg.Is<IReadOnlyCollection<string>>(ids => ids.SequenceEqual(new[] { "l1", "l2" })), Address, 20_000, Arg.Any<CancellationToken>());
+        await _spark.DidNotReceiveWithAnyArgs().WithdrawAllAsync(default!, default, default);
+    }
+
+    [Fact]
+    public async Task Exit_AnUnattributedSwap_IsAttributedFirst()
+    {
+        var swap = Pending();
+        SspReports("transfer-1");
+        _spark.GetTransferAsync("transfer-1", Arg.Any<CancellationToken>()).Returns(Transfer("transfer-1", 499_000));
+        _spark.WithdrawLeavesAsync(Arg.Any<IReadOnlyCollection<string>>(), Address, 20_000, Arg.Any<CancellationToken>())
+            .Returns(new WithdrawLeavesResult("exit-tx", 499_000, 497_000));
+
+        (await Service().ExitAsync(swap)).Should().Be(SparkExitStep.ExitSent);
+
+        swap.SparkLeafIds.Should().Be("transfer-1-leaf");
+        swap.TxId.Should().Be("exit-tx");
+    }
+
+    [Fact]
+    public async Task Exit_BeforeTheTransferArrived_Waits()
+    {
+        SspReports(null);
+
+        (await Service().ExitAsync(Pending())).Should().Be(SparkExitStep.Waiting);
+
+        await _spark.DidNotReceiveWithAnyArgs().WithdrawLeavesAsync(default!, default!, default, default);
+    }
+
+    [Fact]
+    public async Task Exit_RenewedLeaves_ExitLeavesOfTheSameValue_ThatNoOtherSwapHas()
+    {
+        var swap = Pending(leafIds: "l1,l2");
+        _swapOuts.GetAllPending().Returns(new List<SwapOut> { swap, Pending(id: 8, leafIds: "other") });
+        _spark.WithdrawLeavesAsync(Arg.Is<IReadOnlyCollection<string>>(ids => ids.Contains("l1")), Address, 20_000, Arg.Any<CancellationToken>())
+            .ThrowsAsync(new SparkLeavesNotSpendableException("withdraw_leaves", ["l1", "l2"]));
+        _spark.GetSpendableLeavesAsync(Arg.Any<CancellationToken>()).Returns(new List<SparkLeaf>
+        {
+            Leaf("other", 499_000), Leaf("n1", 262_144), Leaf("n2", 236_856), Leaf("stray", 1_000)
+        });
+        _spark.WithdrawLeavesAsync(Arg.Is<IReadOnlyCollection<string>>(ids => ids.Contains("n1")), Address, 20_000, Arg.Any<CancellationToken>())
+            .Returns(new WithdrawLeavesResult("exit-tx", 499_000, 497_000));
+
+        (await Service().ExitAsync(swap)).Should().Be(SparkExitStep.ExitSent);
+
+        swap.SparkLeafIds.Should().Be("n1,n2");
+        swap.TxId.Should().Be("exit-tx");
+    }
+
+    [Fact]
+    public async Task Exit_LeavesThatAlreadyExited_AreNotExitedAgain()
+    {
+        // A crash after the exit, before its txid was saved and before its payout was seen
+        var swap = Pending(leafIds: "l1,l2");
+        _spark.WithdrawLeavesAsync(Arg.Any<IReadOnlyCollection<string>>(), Address, 20_000, Arg.Any<CancellationToken>())
+            .ThrowsAsync(new SparkLeavesNotSpendableException("withdraw_leaves", ["l1", "l2"]));
+        _spark.GetTransfersAsync(TransferDirection.Sent, Arg.Any<DateTimeOffset>(), Arg.Any<CancellationToken>())
+            .Returns(new List<SparkTransfer> { Transfer("exit", 499_000, "CooperativeExit", Leaf("l2", 236_856)) });
+        _spark.GetSpendableLeavesAsync(Arg.Any<CancellationToken>()).Returns(new List<SparkLeaf> { Leaf("n1", 499_000) });
+
+        (await Service().ExitAsync(swap)).Should().Be(SparkExitStep.ExitSent);
+
+        await _spark.Received(1).WithdrawLeavesAsync(Arg.Any<IReadOnlyCollection<string>>(), Address, 20_000, Arg.Any<CancellationToken>());
+        swap.SparkLeafIds.Should().Be("l1,l2");
+    }
+
+    [Fact]
+    public async Task Exit_WithNoLeavesOfTheSameValue_Waits()
+    {
+        var swap = Pending(leafIds: "l1,l2");
+        _spark.WithdrawLeavesAsync(Arg.Any<IReadOnlyCollection<string>>(), Address, 20_000, Arg.Any<CancellationToken>())
+            .ThrowsAsync(new SparkLeavesNotSpendableException("withdraw_leaves", ["l1"]));
+        _spark.GetSpendableLeavesAsync(Arg.Any<CancellationToken>()).Returns(new List<SparkLeaf> { Leaf("n1", 262_144) });
+
+        (await Service().ExitAsync(swap)).Should().Be(SparkExitStep.Waiting);
+
+        swap.TxId.Should().BeNull();
+    }
+
+    [Fact]
+    public async Task Exit_AConfirmedPayout_CompletesTheSwap_WithWhatLandedOnChain()
+    {
+        Payouts((Seed: 0xbb, Sats: 497_500, Confirmations: 1));
+        var swap = Pending(txId: "exit-tx", leafIds: "l1");
+
+        (await Service().ExitAsync(swap)).Should().Be(SparkExitStep.Completed);
+
+        swap.Status.Should().Be(SwapOutStatus.Completed);
+        swap.TxId.Should().Be(new uint256(Enumerable.Repeat((byte)0xbb, 32).ToArray()).ToString(), "the SSP may fee-bump the exit");
+        swap.PayoutSats.Should().Be(497_500);
+        swap.ServiceFeeSats.Should().Be(2_500);
+        swap.OnChainFeeSats.Should().Be(0);
+        swap.LightningFeeSats.Should().Be(12);
+        _swapOuts.Received(1).Update(swap);
+    }
+
+    [Fact]
+    public async Task Exit_AnUnconfirmedPayout_WaitsForItsConfirmation()
+    {
+        Payouts((Seed: 0xbb, Sats: 497_500, Confirmations: 0));
+        var swap = Pending(txId: "exit-tx", leafIds: "l1");
+
+        (await Service().ExitAsync(swap)).Should().Be(SparkExitStep.ExitSent);
+
+        swap.Status.Should().Be(SwapOutStatus.Pending);
+        swap.TxId.Should().Be(new uint256(Enumerable.Repeat((byte)0xbb, 32).ToArray()).ToString());
+        swap.PayoutSats.Should().BeNull();
+    }
+
+    [Fact]
+    public async Task Exit_APayoutWhoseExitWasNotSaved_IsNotExitedAgain()
+    {
+        Payouts((Seed: 0xcc, Sats: 497_000, Confirmations: 0));
+
+        (await Service().ExitAsync(Pending(txId: null, leafIds: "l1"))).Should().Be(SparkExitStep.ExitSent);
+
+        await _spark.DidNotReceiveWithAnyArgs().WithdrawLeavesAsync(default!, default!, default, default);
+    }
+
+    [Fact]
+    public async Task Exit_ASwapPaidIntoAnotherSparkIdentity_IsRefused()
+    {
+        var act = () => Service().ExitAsync(Pending(identity: Ssp, leafIds: "l1"));
+
+        await act.Should().ThrowAsync<InvalidOperationException>().WithMessage("*resolved by hand*");
+        await _spark.DidNotReceiveWithAnyArgs().WithdrawLeavesAsync(default!, default!, default, default);
+    }
+
+    [Fact]
+    public async Task Exit_AnUnpaidSwap_IsRefused()
+    {
+        var act = () => Service().ExitAsync(Pending(lightningFee: null));
+
+        await act.Should().ThrowAsync<InvalidOperationException>().WithMessage("*not paid yet*");
+    }
+
+    [Fact]
+    public void ExactLeafSet_FindsLeavesAddingUpToExactlyTheAmount()
+    {
+        var leaves = new[] { Leaf("a", 8), Leaf("b", 4), Leaf("c", 2), Leaf("d", 1), Leaf("e", 5) };
+
+        SparkSwapService.ExactLeafSet(leaves, 11).Should().Equal("a", "c", "d");
+        SparkSwapService.ExactLeafSet(leaves, 9).Should().Equal("a", "d");
+        SparkSwapService.ExactLeafSet(leaves, 20).Should().HaveCount(5);
+        SparkSwapService.ExactLeafSet(leaves, 21).Should().BeNull();
+        SparkSwapService.ExactLeafSet([], 1).Should().BeNull();
     }
 
     private sealed class ManualTime : TimeProvider

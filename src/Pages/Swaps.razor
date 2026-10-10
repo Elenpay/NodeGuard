@@ -160,11 +160,16 @@
                 <DataGridColumn TItem="SwapOut" Editable="false" Field="@nameof(SwapOut.Amount)" Caption="Amount (BTC)" Sortable="false" Displayable="true">
                     <DisplayTemplate>
                         @($"{context.Amount:f8} BTC ({Math.Round(PriceConversionService.BtcToUsdConversion(context.Amount, _btcPrice), 2)} USD)")
+                        @if (context.PayoutSats is { } payoutSats)
+                        {
+                            <br/>
+                            <small class="text-muted">Received on-chain: @($"{new NBitcoin.Money(payoutSats, NBitcoin.MoneyUnit.Satoshi).ToUnit(NBitcoin.MoneyUnit.BTC):f8}") BTC</small>
+                        }
                     </DisplayTemplate>
                 </DataGridColumn>
                 <DataGridColumn TItem="SwapOut" Editable="false" Field="@nameof(SwapOut.ServiceFeeSats)" Caption="Service fee" Sortable="false" Displayable="true">
                     <DisplayTemplate>
-                        <Tooltip Text="@FeeTooltip(context.ServiceFeeSats, context.ServiceFeePpm)" Placement="TooltipPlacement.Top">
+                        <Tooltip Text="@ServiceFeeTooltip(context)" Placement="TooltipPlacement.Top">
                             @FeeFormat.Cell(context.ServiceFeeSats, context.ServiceFeePpm)
                         </Tooltip>
                     </DisplayTemplate>
@@ -178,9 +183,18 @@
                 </DataGridColumn>
                 <DataGridColumn TItem="SwapOut" Editable="false" Field="@nameof(SwapOut.OnChainFeeSats)" Caption="On-chain fee" Sortable="false" Displayable="true">
                     <DisplayTemplate>
-                        <Tooltip Text="@FeeTooltip(context.OnChainFeeSats, context.OnChainFeePpm)" Placement="TooltipPlacement.Top">
-                            @FeeFormat.Cell(context.OnChainFeeSats, context.OnChainFeePpm)
-                        </Tooltip>
+                        @if (context.Provider == SwapProvider.Spark)
+                        {
+                            <Tooltip Text="The SSP pays the exit's miner fee out of its service fee" Placement="TooltipPlacement.Top">
+                                <span class="text-muted">incl. in service fee</span>
+                            </Tooltip>
+                        }
+                        else
+                        {
+                            <Tooltip Text="@FeeTooltip(context.OnChainFeeSats, context.OnChainFeePpm)" Placement="TooltipPlacement.Top">
+                                @FeeFormat.Cell(context.OnChainFeeSats, context.OnChainFeePpm)
+                            </Tooltip>
+                        }
                     </DisplayTemplate>
                 </DataGridColumn>
                 <DataGridColumn TItem="SwapOut" Editable="false" Field="@nameof(SwapOut.TotalFees)" Caption="Total fees" Sortable="false" Displayable="true">
@@ -350,6 +364,23 @@
     private string FeeTooltip(long? feeSats, long? ppm) =>
         FeeFormat.Tooltip(feeSats, ppm,
             feeSats is { } sats && _btcPrice > 0 ? Math.Round(PriceConversionService.SatToUsdConversion(sats, _btcPrice), 2) : null);
+
+    /// <summary>
+    /// A Spark swap's service fee is everything it did not deliver on-chain: split into what the SSP kept on
+    /// receiving the payment and what the exit cost
+    /// </summary>
+    private string ServiceFeeTooltip(SwapOut swap)
+    {
+        var tooltip = FeeTooltip(swap.ServiceFeeSats, swap.ServiceFeePpm);
+        if (swap.Provider != SwapProvider.Spark || swap.SparkReceivedSats is not { } received || swap.ServiceFeeSats is null)
+        {
+            return tooltip;
+        }
+
+        var receiveFee = swap.SatsAmount - received;
+        var exitFee = swap.ServiceFeeSats.Value - receiveFee;
+        return $"{tooltip} · receive {receiveFee} sats + exit {exitFee} sats";
+    }
 
     private async Task OnSwapCreated()
     {

@@ -402,35 +402,35 @@ public class MonitorSwapsJobTests
     }
 
     [Fact]
-    public async Task Execute_WithSparkEnabled_AdvancesSparkSwapsAndRecordsTheirPayout()
+    public async Task Execute_WithSparkEnabled_FollowsSparkSwapsUntilTheirPaymentSettles()
     {
         // Arrange: any LND node can pay into Spark, so the Spark node list is every node
         var node = new Node { Id = 31, Endpoint = "localhost:10031", ChannelAdminMacaroon = "mac" };
-        var sparkSwap = new SwapOut
+        var unpaid = new SwapOut
         {
             Id = 601,
             NodeId = node.Id,
             Provider = SwapProvider.Spark,
             ProviderId = "req-601",
             Status = SwapOutStatus.Pending,
+            SatsAmount = 500_000
+        };
+        var paid = new SwapOut
+        {
+            Id = 603,
+            NodeId = node.Id,
+            Provider = SwapProvider.Spark,
+            ProviderId = "req-603",
+            Status = SwapOutStatus.Pending,
             SatsAmount = 500_000,
-            TxId = "exit-tx"
+            LightningFeeSats = 12
         };
         _nodeRepositoryMock.Setup(x => x.GetAllConfiguredByProvider(SwapProvider.Loop, null)).ReturnsAsync(new List<Node>());
         _nodeRepositoryMock.Setup(x => x.GetAllConfiguredByProvider(SwapProvider.FortySwap, null)).ReturnsAsync(new List<Node>());
         _nodeRepositoryMock.Setup(x => x.GetAllConfiguredByProvider(SwapProvider.Spark, null)).ReturnsAsync(new List<Node> { node });
-        _swapOutRepositoryMock.Setup(x => x.GetAllPending()).ReturnsAsync(new List<SwapOut> { sparkSwap });
-        _swapsServiceMock.Setup(x => x.AdvanceSwapAsync(node, sparkSwap, It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new SwapResponse
-            {
-                Id = "req-601",
-                HtlcAddress = string.Empty,
-                Status = SwapOutStatus.Completed,
-                TxId = "bumped-exit-tx",
-                ServerFee = 2_500,
-                OffchainFee = 12
-            });
-        _swapOutRepositoryMock.Setup(x => x.Update(It.IsAny<SwapOut>())).Returns((true, null));
+        _swapOutRepositoryMock.Setup(x => x.GetAllPending()).ReturnsAsync(new List<SwapOut> { unpaid, paid });
+        _swapsServiceMock.Setup(x => x.AdvanceSwapAsync(node, unpaid, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new SwapResponse { Id = "req-601", HtlcAddress = string.Empty, Status = SwapOutStatus.Pending });
 
         var job = new MonitorSwapsJob(_loggerMock.Object, _schedulerFactoryMock.Object, _nodeRepositoryMock.Object,
             _swapOutRepositoryMock.Object, _swapsServiceMock.Object, _auditServiceMock.Object, new SparkSettings { Enabled = true });
@@ -438,15 +438,14 @@ public class MonitorSwapsJobTests
         // Act
         await job.Execute(_jobExecutionContextMock.Object);
 
-        // Assert
+        // Assert: a paid Spark swap is SparkSwapExitJob's, and an unpaid one's zero fees are not saved (a routing
+        // fee would mark it paid)
+        _swapsServiceMock.Verify(x => x.AdvanceSwapAsync(node, unpaid, It.IsAny<CancellationToken>()), Times.Once);
+        _swapsServiceMock.Verify(x => x.AdvanceSwapAsync(It.IsAny<Node>(), paid, It.IsAny<CancellationToken>()), Times.Never);
         _swapsServiceMock.Verify(x => x.GetSwapAsync(It.IsAny<Node>(), SwapProvider.Spark, It.IsAny<string>(), It.IsAny<CancellationToken>()),
             Times.Never);
-        _swapOutRepositoryMock.Verify(x => x.Update(It.Is<SwapOut>(s =>
-            s.Id == 601 &&
-            s.Status == SwapOutStatus.Completed &&
-            s.TxId == "bumped-exit-tx" &&
-            s.ServiceFeeSats == 2_500 &&
-            s.LightningFeeSats == 12)), Times.Once);
+        _swapOutRepositoryMock.Verify(x => x.Update(It.IsAny<SwapOut>()), Times.Never);
+        Assert.Null(unpaid.LightningFeeSats);
     }
 
     [Fact]

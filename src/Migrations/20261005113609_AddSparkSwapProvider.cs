@@ -16,19 +16,48 @@ namespace NodeGuard.Migrations
                 type: "text",
                 nullable: true);
 
-            migrationBuilder.CreateIndex(
-                name: "IX_SwapOuts_SingleSparkSwapInFlight",
+            migrationBuilder.AddColumn<string>(
+                name: "SparkTransferId",
                 table: "SwapOuts",
-                column: "Provider",
-                unique: true,
-                filter: "\"Provider\" = 2 AND \"Status\" = 0");
+                type: "text",
+                nullable: true);
+
+            migrationBuilder.AddColumn<string>(
+                name: "SparkLeafIds",
+                table: "SwapOuts",
+                type: "text",
+                nullable: true);
+
+            migrationBuilder.AddColumn<long>(
+                name: "SparkReceivedSats",
+                table: "SwapOuts",
+                type: "bigint",
+                nullable: true);
+
+            migrationBuilder.AddColumn<long>(
+                name: "PayoutSats",
+                table: "SwapOuts",
+                type: "bigint",
+                nullable: true);
         }
 
         /// <inheritdoc />
         protected override void Down(MigrationBuilder migrationBuilder)
         {
-            migrationBuilder.DropIndex(
-                name: "IX_SwapOuts_SingleSparkSwapInFlight",
+            migrationBuilder.DropColumn(
+                name: "PayoutSats",
+                table: "SwapOuts");
+
+            migrationBuilder.DropColumn(
+                name: "SparkReceivedSats",
+                table: "SwapOuts");
+
+            migrationBuilder.DropColumn(
+                name: "SparkLeafIds",
+                table: "SwapOuts");
+
+            migrationBuilder.DropColumn(
+                name: "SparkTransferId",
                 table: "SwapOuts");
 
             migrationBuilder.DropColumn(

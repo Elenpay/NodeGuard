@@ -59,7 +59,9 @@ public class MonitorSwapsJob : IJob
                 : new List<Node>();
             var managedNodes = loopNodes.Concat(fortySwapNodes).Concat(sparkNodes).Where(n => n != null).DistinctBy(n => n.Id).ToList();
 
-            var swaps = await _swapOutRepository.GetAllPending();
+            // A paid Spark swap is SparkSwapExitJob's: it exits it on-chain
+            var swaps = (await _swapOutRepository.GetAllPending())
+                .Where(s => s.Provider != SwapProvider.Spark || s.LightningFeeSats is null);
             foreach (var swap in swaps)
             {
                 try
@@ -80,7 +82,7 @@ public class MonitorSwapsJob : IJob
                     SwapResponse? response;
                     try
                     {
-                        // Spark swaps have a second leg, the exit, that NodeGuard drives
+                        // A Spark swap is followed here until its Lightning payment settles
                         response = swap.Provider == SwapProvider.Spark
                             ? await _swapsService.AdvanceSwapAsync(node, swap)
                             : await _swapsService.GetSwapAsync(node, swap.Provider, swap.ProviderId);
@@ -177,10 +179,12 @@ public class MonitorSwapsJob : IJob
                                 });
                         }
                     }
-                    else if (swap.ServiceFeeSats != response.ServerFee || swap.LightningFeeSats != response.OffchainFee ||
-                             swap.OnChainFeeSats != response.OnchainFee)
+                    else if (swap.Provider != SwapProvider.Spark &&
+                             (swap.ServiceFeeSats != response.ServerFee || swap.LightningFeeSats != response.OffchainFee ||
+                              swap.OnChainFeeSats != response.OnchainFee))
                     {
-                        // Providers report fees as they accrue: keep a pending swap's up to date too
+                        // Providers report fees as they accrue: keep a pending swap's up to date too. A Spark swap saves
+                        // its own, and a routing fee recorded here would mark it paid
                         swap.ServiceFeeSats = response.ServerFee;
                         swap.LightningFeeSats = response.OffchainFee;
                         swap.OnChainFeeSats = response.OnchainFee;

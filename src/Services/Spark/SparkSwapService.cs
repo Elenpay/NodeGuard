@@ -23,34 +23,66 @@ using NBXplorer.Models;
 using NodeGuard.Data.Models;
 using NodeGuard.Data.Repositories.Interfaces;
 using NSpark;
+using NSpark.Exceptions;
+using NSpark.Models;
+using NSpark.Services;
 
 namespace NodeGuard.Services.Spark;
 
+/// <summary>Where a paid Spark swap's exit stands.</summary>
+public enum SparkExitStep
+{
+    /// <summary>Its transfer has not been found yet, or its leaves can't move yet.</summary>
+    Waiting,
+
+    /// <summary>The exit was sent; its payout has not confirmed yet.</summary>
+    ExitSent,
+
+    /// <summary>The payout confirmed: the swap is completed.</summary>
+    Completed
+}
+
 /// <summary>
-/// Spark as a swap-out provider, in two legs:
+/// Spark as a swap-out provider:
 /// <list type="number">
 /// <item>creation: NodeGuard's Spark wallet issues a BOLT11 invoice (through the SSP), the swap is
-/// recorded, and then the node pays the invoice;</item>
-/// <item>monitoring (<see cref="AdvanceSwapAsync"/>): once the payment has settled, the transfer is
-/// claimed and the whole transit wallet exits on-chain to the swap's destination address in one
-/// cooperative exit. The swap completes when that address receives a confirmed payout.</item>
+/// recorded, and then the node pays the invoice. A node has at most its Max swaps in flight (at least 1)
+/// Spark swaps open at once;</item>
+/// <item>payment (<see cref="AdvanceSwapAsync"/>, MonitorSwapsJob): the payment is followed on the node
+/// until it settles, which hands the swap to SparkSwapExitJob;</item>
+/// <item>exit (<see cref="AttributeAsync"/> and <see cref="ExitAsync"/>, SparkSwapExitJob): the inbound
+/// transfer that brought the payment in is found and its leaves are recorded on the swap. Exactly those
+/// leaves exit on-chain to the swap's own destination address, with no leaf swap, so the remote signer can
+/// sign it. The swap completes when that address receives a confirmed payout, which is what it delivered.</item>
 /// </list>
-/// Each step can be retried after a crash: the swap is recorded before the payment, the payment is
-/// looked up by its hash, and the payout by its address (the SSP may fee-bump the exit, changing its
-/// txid). One Spark swap is in flight at a time, as each exit drains the transit wallet.
+/// Each step is saved before the next and can be retried after a crash: the swap is recorded before the
+/// payment, the payment is looked up by its hash, a transfer is given to one swap only, and the payout is
+/// found by its address (the SSP may fee-bump the exit, changing its txid).
 /// </summary>
 public interface ISparkSwapService
 {
     /// <summary>Creates, records and pays a Spark swap; see <see cref="ISwapsService.CreateSwapOutAsync"/>.</summary>
     /// <exception cref="SparkUnavailableException">Spark is disabled or unavailable.</exception>
-    /// <exception cref="InvalidOperationException">Another Spark swap is in flight.</exception>
+    /// <exception cref="InvalidOperationException">The node already has its Max swaps in flight of Spark swaps.</exception>
     Task<SwapOutCreation> CreateSwapOutAsync(Node node, SwapOut swapOut, SwapOutRequest request, CancellationToken ct = default);
 
     /// <summary>
-    /// Moves a pending Spark swap forward and returns its state. Progress (the payment's fee, the exit)
-    /// is saved on <paramref name="swap"/> as it happens.
+    /// Follows a pending Spark swap's Lightning payment and returns its state. Once the payment settled, its fee
+    /// is saved on <paramref name="swap"/> and the swap is SparkSwapExitJob's to exit.
     /// </summary>
     Task<SwapResponse> AdvanceSwapAsync(Node node, SwapOut swap, CancellationToken ct = default);
+
+    /// <summary>
+    /// Finds the inbound transfer that brought a paid swap's sats in and saves it, with its leaves, on the swap.
+    /// Returns whether the swap has its transfer.
+    /// </summary>
+    Task<bool> AttributeAsync(SwapOut swap, CancellationToken ct = default);
+
+    /// <summary>
+    /// Moves a paid swap's exit one step forward: exits its leaves to its destination address, or completes it
+    /// once that address has a confirmed payout. Progress is saved on <paramref name="swap"/>.
+    /// </summary>
+    Task<SparkExitStep> ExitAsync(SwapOut swap, CancellationToken ct = default);
 }
 
 public sealed class SparkSwapService : ISparkSwapService
@@ -58,12 +90,21 @@ public sealed class SparkSwapService : ISparkSwapService
     public const int InvoiceExpirySeconds = 1800;
     private const int PaymentTimeoutSeconds = 120;
     private const decimal DefaultMaxRoutingFeePercent = 0.5m;
+    private const string LightningTransferType = "PreimageSwap";
+    private const string ExitTransferType = "CooperativeExit";
+    private const int MaxLeafSearchSteps = 100_000;
     private static readonly TimeSpan PaymentLookupTimeout = TimeSpan.FromSeconds(30);
 
     /// <summary>When nothing has arrived by then, the invoice has expired and the payment never will.</summary>
     private static readonly TimeSpan PaymentDeadline = TimeSpan.FromSeconds(InvoiceExpirySeconds) + TimeSpan.FromMinutes(10);
 
-    /// <summary>Serializes reservations of the single Spark slot within this process; the database index does across processes.</summary>
+    /// <summary>Transfers are looked for from this long before the swap was created, for clock skew.</summary>
+    private static readonly TimeSpan TransferLookback = TimeSpan.FromMinutes(5);
+
+    /// <summary>
+    /// Serializes the in-flight check and the record of a swap, so concurrent creations can't exceed a node's
+    /// limit (NodeGuard runs as one process).
+    /// </summary>
     private static readonly SemaphoreSlim Reservation = new(1, 1);
 
     private readonly ILogger<SparkSwapService> _logger;
@@ -107,11 +148,14 @@ public sealed class SparkSwapService : ISparkSwapService
         await Reservation.WaitAsync(ct);
         try
         {
-            var inFlight = (await _swapOutRepository.GetAllPending()).FirstOrDefault(s => s.Provider == SwapProvider.Spark);
-            if (inFlight is not null)
+            // Each swap exits its own leaves, so several can be in flight: up to the node's Max swaps in flight
+            var limit = Math.Max(node.MaxSwapsInFlight, 1);
+            var inFlight = (await _swapOutRepository.GetAllPending())
+                .Count(s => s.Provider == SwapProvider.Spark && s.NodeId == node.Id);
+            if (inFlight >= limit)
             {
                 throw new InvalidOperationException(
-                    $"Spark swap {inFlight.Id} is still in flight: Spark swaps run one at a time, as each one drains the transit wallet.");
+                    $"{node.Name} already has {inFlight} Spark swaps in flight, its limit (Max swaps in flight: {limit}).");
             }
 
             var invoice = await _spark.CreateInvoiceAsync(request.Amount, $"NodeGuard swap-out from {node.Name}",
@@ -176,60 +220,118 @@ public sealed class SparkSwapService : ISparkSwapService
             throw new InvalidOperationException($"Spark swap {swap.Id} has no payment hash or destination address.");
         }
 
-        var status = await _spark.EnsureReadyAsync(ct);
-        if (!status.IsReady) throw new SparkUnavailableException(status.Reason ?? "Spark is not available.");
-        if (swap.SparkIdentity is { } identity && !string.Equals(identity, status.IdentityPublicKey, StringComparison.OrdinalIgnoreCase))
+        // Paid: the exit is SparkSwapExitJob's
+        if (swap.LightningFeeSats is not null) return Response(swap);
+
+        await EnsureSwapWalletAsync(swap, ct);
+
+        var failure = await ResolvePaymentAsync(node, swap, ct);
+        return failure is not null ? Response(swap, SwapOutStatus.Failed, failure) : Response(swap);
+    }
+
+    public async Task<bool> AttributeAsync(SwapOut swap, CancellationToken ct = default)
+    {
+        if (swap.SparkTransferId is not null) return true;
+        RequirePaid(swap);
+        var identity = await EnsureSwapWalletAsync(swap, ct);
+
+        // Claimed first: only a claimed transfer's leaves are the wallet's to exit
+        var claim = await _spark.ClaimPendingAsync(ct);
+        foreach (var failure in claim.Failures)
         {
-            throw new InvalidOperationException(
-                $"Spark swap {swap.Id} was paid into Spark identity {identity}, but NodeGuard's Spark wallet is now " +
-                $"{status.IdentityPublicKey}: it must be resolved by hand with the seed of {identity}.");
+            _logger.LogWarning("Spark: transfer {TransferId} could not be claimed: {Error}", failure.TransferId, failure.Error.Message);
         }
 
-        // Leg 1: the node's payment into Spark
-        if (swap.LightningFeeSats is null)
+        var attributed = await _swapOutRepository.GetSparkTransferIdsAsync();
+        var transfer = await ReportedTransferAsync(swap, identity, attributed, ct) ?? await MatchingTransferAsync(swap, attributed, ct);
+        if (transfer is null)
         {
-            var failure = await ResolvePaymentAsync(node, swap, ct);
-            if (failure is not null) return Response(swap, SwapOutStatus.Failed, failure);
-            if (swap.LightningFeeSats is null) return Response(swap);
+            _logger.LogInformation("Spark swap {SwapId}: the transfer of its payment has not been found yet", swap.Id);
+            return false;
         }
+
+        swap.SparkTransferId = transfer.Id;
+        swap.SparkLeafIds = string.Join(',', transfer.Leaves.Select(l => l.Id));
+        swap.SparkReceivedSats = transfer.Leaves.Sum(l => l.ValueSats);
+        if (!Save(swap))
+        {
+            swap.SparkTransferId = swap.SparkLeafIds = null;
+            swap.SparkReceivedSats = null;
+            return false;
+        }
+
+        _logger.LogInformation("Spark swap {SwapId}: transfer {TransferId} brought in {Received} sats in {LeafCount} leaves",
+            swap.Id, transfer.Id, swap.SparkReceivedSats, transfer.Leaves.Count);
+        return true;
+    }
+
+    public async Task<SparkExitStep> ExitAsync(SwapOut swap, CancellationToken ct = default)
+    {
+        RequirePaid(swap);
+        await EnsureSwapWalletAsync(swap, ct);
 
         // Done once the destination address has a confirmed payout. Checked before exiting too: an exit whose
         // txid was not saved (a crash) must not be followed by a second one
         var payout = await FindPayoutAsync(swap, ct);
         if (payout is not null)
         {
-            return payout.Confirmations > 0
-                ? Response(swap, SwapOutStatus.Completed, txId: payout.TransactionId.ToString(),
-                    serviceFee: Math.Max(0, swap.SatsAmount - payout.Value))
-                : Response(swap, txId: payout.TransactionId.ToString());
+            if (payout.Confirmations > 0)
+            {
+                Complete(swap, payout);
+                return SparkExitStep.Completed;
+            }
+
+            if (swap.TxId != payout.TransactionId.ToString())
+            {
+                swap.TxId = payout.TransactionId.ToString();
+                Save(swap);
+            }
+
+            return SparkExitStep.ExitSent;
         }
 
-        if (swap.TxId is not null)
+        if (swap.TxId is not null) return SparkExitStep.ExitSent;
+        if (!await AttributeAsync(swap, ct)) return SparkExitStep.Waiting;
+
+        var leafIds = LeafIds(swap);
+        WithdrawLeavesResult exit;
+        try
         {
-            return Response(swap);
+            exit = await _spark.WithdrawLeavesAsync(leafIds, swap.DestinationAddress!, _settings.MaxExitFeeSats, ct);
         }
-
-        // Leg 2: claim what the payment brought in and exit everything to the destination address
-        await _spark.ClaimPendingAsync(ct);
-        var balance = await _spark.GetBalanceAsync(ct);
-        if (balance.SatsBalance.Available <= 0)
+        catch (SparkLeavesNotSpendableException e)
         {
-            _logger.LogInformation("Spark swap {SwapId}: nothing claimable yet ({Incoming} sats incoming)",
-                swap.Id, balance.SatsBalance.Incoming);
-            return Response(swap);
+            // Either they already exited (a crash before the txid was saved) or they were renewed into new leaf ids
+            if (await AlreadyExitedAsync(swap, leafIds, ct))
+            {
+                _logger.LogWarning("Spark swap {SwapId}: its leaves already exited; waiting for the payout", swap.Id);
+                return SparkExitStep.ExitSent;
+            }
+
+            var replacement = await ReplacementLeavesAsync(swap, ct);
+            if (replacement is null)
+            {
+                _logger.LogWarning("Spark swap {SwapId}: {Error} No other leaves add up to its {Received} sats yet",
+                    swap.Id, e.Message, swap.SparkReceivedSats);
+                return SparkExitStep.Waiting;
+            }
+
+            swap.SparkLeafIds = string.Join(',', replacement);
+            if (!Save(swap)) return SparkExitStep.Waiting;
+
+            _logger.LogInformation("Spark swap {SwapId}: its leaves were renewed; exiting {LeafCount} leaves of the same value",
+                swap.Id, replacement.Count);
+            exit = await _spark.WithdrawLeavesAsync(replacement, swap.DestinationAddress!, _settings.MaxExitFeeSats, ct);
         }
 
-        var exit = await _spark.WithdrawAllAsync(swap.DestinationAddress, _settings.MaxExitFeeSats, ct);
         swap.TxId = exit.Txid;
-        swap.ServiceFeeSats = exit.FeeSats;
+        // Provisional until the payout confirms: everything the swap does not deliver is the SSP's
+        swap.ServiceFeeSats = swap.SatsAmount - exit.PayoutSats;
         Save(swap);
 
-        _logger.LogInformation(
-            "Spark swap {SwapId}: cooperative exit {TxId} pays {Payout} sats to {Address} (SSP fee {Fee} sats; left behind: " +
-            "{Frozen} frozen, {Unrenewed} unrenewed, {Locked} locked, {Unclaimed} unclaimed)",
-            swap.Id, exit.Txid, exit.PayoutSats, swap.DestinationAddress, exit.FeeSats, exit.FrozenSats, exit.UnrenewedSats,
-            exit.LockedSats, exit.UnclaimedSats);
-        return Response(swap);
+        _logger.LogInformation("Spark swap {SwapId}: cooperative exit {TxId} pays {Payout} of its {Received} sats to {Address} (exit fee {Fee} sats)",
+            swap.Id, exit.Txid, exit.PayoutSats, exit.SentSats, swap.DestinationAddress, exit.FeeSats);
+        return SparkExitStep.ExitSent;
     }
 
     /// <summary>
@@ -276,6 +378,130 @@ public sealed class SparkSwapService : ISparkSwapService
         }
     }
 
+    /// <summary>The transfer the SSP reports for the swap's receive request, if it reports one.</summary>
+    private async Task<SparkTransfer?> ReportedTransferAsync(SwapOut swap, string identity, HashSet<string> attributed,
+        CancellationToken ct)
+    {
+        // Without a receive request (an SSP that returned none), the payment hash stands in as the provider id
+        if (string.IsNullOrEmpty(swap.ProviderId) || swap.ProviderId == swap.PaymentHash) return null;
+
+        LightningReceiveRequest? request;
+        try
+        {
+            request = await _spark.GetReceiveRequestAsync(swap.ProviderId, ct);
+        }
+        catch (Exception e) when (e is not OperationCanceledException)
+        {
+            _logger.LogWarning("Spark swap {SwapId}: the SSP did not report its receive request: {Error}", swap.Id, e.Message);
+            return null;
+        }
+
+        if (request?.TransferId is not { } transferId) return null;
+        if (attributed.Contains(transferId))
+        {
+            _logger.LogError("Spark swap {SwapId}: the SSP reports transfer {TransferId}, which another swap already has",
+                swap.Id, transferId);
+            return null;
+        }
+
+        var transfer = await _spark.GetTransferAsync(transferId, ct);
+        if (transfer is null || transfer.Leaves.Count == 0 ||
+            !string.Equals(transfer.ReceiverIdentityPublicKey, identity, StringComparison.OrdinalIgnoreCase))
+        {
+            _logger.LogWarning("Spark swap {SwapId}: transfer {TransferId} is not one this wallet received, with leaves",
+                swap.Id, transferId);
+            return null;
+        }
+
+        return transfer;
+    }
+
+    /// <summary>
+    /// For an SSP that does not report the transfer: the Lightning transfer received since the swap was created,
+    /// given to no swap yet, closest to the swap's amount without exceeding it (any receive fee within 1%).
+    /// Transfers of equal amounts are interchangeable, as their leaves add up the same.
+    /// </summary>
+    private async Task<SparkTransfer?> MatchingTransferAsync(SwapOut swap, HashSet<string> attributed, CancellationToken ct)
+    {
+        var received = await _spark.GetTransfersAsync(TransferDirection.Received, swap.CreationDatetime - TransferLookback, ct);
+        var minimum = swap.SatsAmount - swap.SatsAmount / 100;
+
+        return received
+            .Where(t => string.Equals(t.Type, LightningTransferType, StringComparison.OrdinalIgnoreCase))
+            .Where(t => !attributed.Contains(t.Id) && t.Leaves.Count > 0)
+            .Where(t => t.TotalValueSats <= swap.SatsAmount && t.TotalValueSats >= minimum)
+            .OrderBy(t => swap.SatsAmount - t.TotalValueSats)
+            .ThenBy(t => t.CreatedAt)
+            .FirstOrDefault();
+    }
+
+    /// <summary>Whether a cooperative exit the wallet sent since the swap was created moved any of its leaves.</summary>
+    private async Task<bool> AlreadyExitedAsync(SwapOut swap, IReadOnlyCollection<string> leafIds, CancellationToken ct)
+    {
+        var sent = await _spark.GetTransfersAsync(TransferDirection.Sent, swap.CreationDatetime - TransferLookback, ct);
+        return sent
+            .Where(t => string.Equals(t.Type, ExitTransferType, StringComparison.OrdinalIgnoreCase))
+            .Any(t => t.Leaves.Any(l => leafIds.Contains(l.Id, StringComparer.OrdinalIgnoreCase)));
+    }
+
+    /// <summary>
+    /// Spendable leaves no other pending swap has, adding up to exactly what the swap received: its own leaves
+    /// under their renewed ids.
+    /// </summary>
+    private async Task<IReadOnlyList<string>?> ReplacementLeavesAsync(SwapOut swap, CancellationToken ct)
+    {
+        var taken = (await _swapOutRepository.GetAllPending())
+            .Where(s => s.Provider == SwapProvider.Spark && s.Id != swap.Id)
+            .SelectMany(LeafIds)
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+        var free = (await _spark.GetSpendableLeavesAsync(ct)).Where(l => !taken.Contains(l.Id)).ToList();
+
+        return ExactLeafSet(free, swap.SparkReceivedSats!.Value);
+    }
+
+    /// <summary>Leaves adding up to exactly <paramref name="targetSats"/>, largest first; null if there are none.</summary>
+    internal static IReadOnlyList<string>? ExactLeafSet(IReadOnlyList<SparkLeaf> leaves, long targetSats)
+    {
+        var sorted = leaves.Where(l => l.ValueSats > 0 && l.ValueSats <= targetSats).OrderByDescending(l => l.ValueSats).ToList();
+        var remaining = new long[sorted.Count + 1];
+        for (var i = sorted.Count - 1; i >= 0; i--) remaining[i] = remaining[i + 1] + sorted[i].ValueSats;
+
+        var chosen = new List<string>();
+        var steps = 0;
+
+        bool Search(int index, long left)
+        {
+            if (left == 0) return true;
+            if (index == sorted.Count || remaining[index] < left || ++steps > MaxLeafSearchSteps) return false;
+
+            if (sorted[index].ValueSats <= left)
+            {
+                chosen.Add(sorted[index].Id);
+                if (Search(index + 1, left - sorted[index].ValueSats)) return true;
+                chosen.RemoveAt(chosen.Count - 1);
+            }
+
+            return Search(index + 1, left);
+        }
+
+        return targetSats > 0 && Search(0, targetSats) ? chosen : null;
+    }
+
+    private void Complete(SwapOut swap, Payout payout)
+    {
+        swap.Status = SwapOutStatus.Completed;
+        swap.TxId = payout.TransactionId.ToString();
+        swap.PayoutSats = payout.Value;
+        // What the swap delivered is what landed on-chain: the SSP kept the rest (any receive fee, the exit fee
+        // and its miner fee)
+        swap.ServiceFeeSats = Math.Max(0, swap.SatsAmount - payout.Value);
+        swap.OnChainFeeSats = 0;
+        Save(swap);
+
+        _logger.LogInformation("Spark swap {SwapId}: completed, {Payout} sats confirmed at {Address} in {TxId} (service fee {Fee} sats)",
+            swap.Id, payout.Value, swap.DestinationAddress, swap.TxId, swap.ServiceFeeSats);
+    }
+
     private sealed record Payout(uint256 TransactionId, long Value, long Confirmations);
 
     /// <summary>The destination wallet's transaction paying the swap's destination address, if any.</summary>
@@ -301,18 +527,46 @@ public sealed class SparkSwapService : ISparkSwapService
             .FirstOrDefault();
     }
 
-    private void Save(SwapOut swap)
+    /// <summary>Connects the wallet and checks it is the one the swap was paid into; returns its identity.</summary>
+    private async Task<string> EnsureSwapWalletAsync(SwapOut swap, CancellationToken ct)
+    {
+        var status = await _spark.EnsureReadyAsync(ct);
+        if (!status.IsReady) throw new SparkUnavailableException(status.Reason ?? "Spark is not available.");
+        if (swap.SparkIdentity is { } identity && !string.Equals(identity, status.IdentityPublicKey, StringComparison.OrdinalIgnoreCase))
+        {
+            throw new InvalidOperationException(
+                $"Spark swap {swap.Id} was paid into Spark identity {identity}, but NodeGuard's Spark wallet is now " +
+                $"{status.IdentityPublicKey}: it must be resolved by hand with the seed of {identity}.");
+        }
+
+        return status.IdentityPublicKey!;
+    }
+
+    private static void RequirePaid(SwapOut swap)
+    {
+        if (swap.LightningFeeSats is null || string.IsNullOrEmpty(swap.DestinationAddress))
+        {
+            throw new InvalidOperationException($"Spark swap {swap.Id} is not paid yet, or has no destination address.");
+        }
+    }
+
+    private static IReadOnlyList<string> LeafIds(SwapOut swap) =>
+        (swap.SparkLeafIds ?? string.Empty).Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+
+    /// <summary>Saves the swap's progress; returns whether it was saved.</summary>
+    private bool Save(SwapOut swap)
     {
         var (saved, error) = _swapOutRepository.Update(swap);
         if (!saved)
         {
-            // Not fatal: every step can be found again (the payment by its hash, the payout by its address)
+            // Not fatal: every step can be found again (the payment by its hash, the transfer from the SSP, the payout by its address)
             _logger.LogError("Spark swap {SwapId}: could not save its progress: {Error}", swap.Id, error);
         }
+
+        return saved;
     }
 
-    private static SwapResponse Response(SwapOut swap, SwapOutStatus? status = null, string? error = null,
-        string? txId = null, long? serviceFee = null) => new()
+    private static SwapResponse Response(SwapOut swap, SwapOutStatus? status = null, string? error = null) => new()
     {
         Id = swap.ProviderId!,
         HtlcAddress = string.Empty,
@@ -320,10 +574,10 @@ public sealed class SparkSwapService : ISparkSwapService
         Amount = swap.SatsAmount,
         OffchainFee = swap.LightningFeeSats ?? 0,
         // The SSP's fee covers the exit's miner fee
-        ServerFee = serviceFee ?? swap.ServiceFeeSats ?? 0,
+        ServerFee = swap.ServiceFeeSats ?? 0,
         OnchainFee = 0,
         Status = status ?? swap.Status,
-        TxId = txId ?? swap.TxId,
+        TxId = swap.TxId,
         ErrorMessage = error ?? swap.ErrorDetails
     };
 

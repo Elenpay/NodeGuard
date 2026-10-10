@@ -84,6 +84,12 @@ public sealed class SparkSettings
     /// <summary>Highest fee accepted for the cooperative exit of a swap (SPARK_MAX_EXIT_FEE_SATS).</summary>
     public long MaxExitFeeSats { get; init; } = DefaultMaxExitFeeSats;
 
+    /// <summary>
+    /// How often paid Spark swaps exit on-chain, in minutes (SPARK_EXIT_INTERVAL_MINUTES); null means 10, or 1
+    /// in a dev environment.
+    /// </summary>
+    public int? ExitIntervalMinutes { get; init; }
+
     /// <summary>The remote signer's Function URL (REMOTE_SIGNER_ENDPOINT), signed with SigV4.</summary>
     public Uri? SignerEndpoint { get; init; }
 
@@ -196,6 +202,13 @@ public sealed class SparkSettings
             errors.Add("SPARK_MAX_EXIT_FEE_SATS must be a positive number of sats");
         }
 
+        int? exitInterval = null;
+        if (env("SPARK_EXIT_INTERVAL_MINUTES") is { Length: > 0 } exitIntervalValue)
+        {
+            if (int.TryParse(exitIntervalValue, out var parsed) && parsed > 0) exitInterval = parsed;
+            else errors.Add("SPARK_EXIT_INTERVAL_MINUTES must be a positive number of minutes");
+        }
+
         Uri? endpoint = null;
         Uri? rieUrl = null;
         if (mode == SparkSignerMode.Remote)
@@ -232,6 +245,7 @@ public sealed class SparkSettings
             Account = account,
             IdentityPublicKey = identity?.Trim().ToLowerInvariant(),
             MaxExitFeeSats = maxExitFee,
+            ExitIntervalMinutes = exitInterval,
             SignerEndpoint = endpoint,
             SignerRieUrl = rieUrl
         };
