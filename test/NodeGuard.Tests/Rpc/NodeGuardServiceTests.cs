@@ -84,7 +84,7 @@ namespace NodeGuard.Rpc
             ISwapsService? swapsService = null,
             ISwapOutRepository? swapOutRepository = null,
             IAuditService? auditService = null,
-            ISparkWalletsService? sparkWallets = null)
+            ISparkWalletService? sparkWallet = null)
         {
             return new NodeGuardService(
                 logger ?? _logger.Object,
@@ -109,7 +109,7 @@ namespace NodeGuard.Rpc
                 swapsService ?? new Mock<ISwapsService>().Object,
                 swapOutRepository ?? new Mock<ISwapOutRepository>().Object,
                 auditService ?? new Mock<IAuditService>().Object,
-                sparkWallets ?? new Mock<ISparkWalletsService>().Object);
+                sparkWallet ?? new Mock<ISparkWalletService>().Object);
         }
 
         [Fact]
@@ -2485,10 +2485,10 @@ namespace NodeGuard.Rpc
         [Fact]
         public async Task CreateSparkWallet_ReturnsTheWalletAndItsIdentity_NeverTheMnemonic()
         {
-            var sparkWallets = new Mock<ISparkWalletsService>();
-            sparkWallets.Setup(x => x.CreateAsync("transit", 0, null, It.IsAny<CancellationToken>()))
+            var sparkWallet = new Mock<ISparkWalletService>();
+            sparkWallet.Setup(x => x.CreateWalletAsync("transit", 0, null, It.IsAny<CancellationToken>()))
                 .ReturnsAsync(new SparkWalletCreation(new Wallet { Id = 7, SparkIdentityPublicKey = "02aa" }, "abandon abandon ..."));
-            var service = CreateNodeGuardService(sparkWallets: sparkWallets.Object);
+            var service = CreateNodeGuardService(sparkWallet: sparkWallet.Object);
 
             var response = await service.CreateSparkWallet(new CreateSparkWalletRequest { Name = "transit" }, TestServerCallContext.Create());
 
@@ -2500,12 +2500,12 @@ namespace NodeGuard.Rpc
         [Fact]
         public async Task GetSparkWallets_ListsTheWalletsWithTheirNodes()
         {
-            var sparkWallets = new Mock<ISparkWalletsService>();
-            sparkWallets.Setup(x => x.ListAsync(false, It.IsAny<CancellationToken>())).ReturnsAsync([
+            var sparkWallet = new Mock<ISparkWalletService>();
+            sparkWallet.Setup(x => x.ListWalletsAsync(false, It.IsAny<CancellationToken>())).ReturnsAsync([
                 new SparkWalletSummary(7, "transit", "02aa", 0, null, 10_000_000, [1, 2], false, DateTimeOffset.UnixEpoch),
                 new SparkWalletSummary(8, "small", "02bb", 1, 500_000, 500_000, [], false, DateTimeOffset.UnixEpoch)
             ]);
-            var service = CreateNodeGuardService(sparkWallets: sparkWallets.Object);
+            var service = CreateNodeGuardService(sparkWallet: sparkWallet.Object);
 
             var response = await service.GetSparkWallets(new GetSparkWalletsRequest(), TestServerCallContext.Create());
 
@@ -2520,14 +2520,14 @@ namespace NodeGuard.Rpc
         [Fact]
         public async Task SparkWalletRefusals_AreMappedToStatuses()
         {
-            var sparkWallets = new Mock<ISparkWalletsService>();
-            sparkWallets.Setup(x => x.WithdrawAllAsync(7, 3, It.IsAny<CancellationToken>()))
+            var sparkWallet = new Mock<ISparkWalletService>();
+            sparkWallet.Setup(x => x.WithdrawAllToWalletAsync(7, 3, It.IsAny<CancellationToken>()))
                 .ThrowsAsync(new InvalidOperationException("Spark swap 8 is in flight on transit"));
-            sparkWallets.Setup(x => x.ArchiveAsync(9, It.IsAny<CancellationToken>()))
+            sparkWallet.Setup(x => x.ArchiveWalletAsync(9, It.IsAny<CancellationToken>()))
                 .ThrowsAsync(new ArgumentException("Wallet 9 is not a Spark wallet."));
-            sparkWallets.Setup(x => x.GetBalanceAsync(7, It.IsAny<CancellationToken>()))
+            sparkWallet.Setup(x => x.GetSatsBalanceAsync(7, It.IsAny<CancellationToken>()))
                 .ThrowsAsync(new SparkUnavailableException("cannot decrypt its seed"));
-            var service = CreateNodeGuardService(sparkWallets: sparkWallets.Object);
+            var service = CreateNodeGuardService(sparkWallet: sparkWallet.Object);
 
             var withdraw = () => service.WithdrawAllSparkWallet(new WithdrawAllSparkWalletRequest { WalletId = 7, DestinationWalletId = 3 },
                 TestServerCallContext.Create());

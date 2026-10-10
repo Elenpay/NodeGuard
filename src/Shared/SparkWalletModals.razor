@@ -1,6 +1,5 @@
 @using NodeGuard.Services.Spark
 @using NSpark.Models
-@inject ISparkWalletsService SparkWallets
 @inject ISparkWalletService SparkWallet
 @inject SparkSettings SparkSettings
 @inject IWalletRepository WalletRepository
@@ -257,7 +256,7 @@
     {
         await RunAsync(async () =>
         {
-            _created = await SparkWallets.CreateAsync(_name, _account, _maxBalanceSats);
+            _created = await SparkWallet.CreateWalletAsync(_name, _account, _maxBalanceSats);
             ToastService.ShowSuccess($"Spark wallet {_created.Wallet.Name} created");
         });
     }
@@ -302,7 +301,7 @@
         StateHasChanged();
         try
         {
-            _balance = await SparkWallets.GetBalanceAsync(_wallet.Id);
+            _balance = await SparkWallet.GetSatsBalanceAsync(_wallet.Id);
         }
         catch (Exception e) when (e is InvalidOperationException or ArgumentException or SparkUnavailableException)
         {
@@ -324,7 +323,7 @@
     {
         await RunAsync(async () =>
         {
-            await SparkWallets.SetMaxBalanceAsync(_wallet!.Id, _maxBalanceSats);
+            await SparkWallet.SetMaxBalanceAsync(_wallet!.Id, _maxBalanceSats);
             ToastService.ShowSuccess($"Max balance of {_wallet.Name} saved");
             await _maxBalanceModal.Hide();
             await OnChanged.InvokeAsync();
@@ -335,7 +334,7 @@
     {
         await RunAsync(async () =>
         {
-            var exit = await SparkWallets.WithdrawAllAsync(_wallet!.Id, _destinationWalletId);
+            var exit = await SparkWallet.WithdrawAllToWalletAsync(_wallet!.Id, _destinationWalletId);
             ToastService.ShowSuccess($"{_wallet.Name} withdrew {exit.PayoutSats:N0} sats in {exit.Txid} (SSP fee {exit.FeeSats:N0} sats)");
             await _withdrawModal.Hide();
         });
@@ -345,7 +344,7 @@
     {
         await RunAsync(async () =>
         {
-            await SparkWallets.ArchiveAsync(_wallet!.Id);
+            await SparkWallet.ArchiveWalletAsync(_wallet!.Id);
             ToastService.ShowSuccess($"{_wallet.Name} archived");
             await _archiveModal.Hide();
             await OnChanged.InvokeAsync();

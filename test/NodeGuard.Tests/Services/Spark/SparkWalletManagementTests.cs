@@ -19,6 +19,7 @@
 
 using FluentAssertions;
 using Microsoft.AspNetCore.DataProtection;
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging.Abstractions;
 using NBitcoin;
 using NBXplorer.DerivationStrategy;
@@ -29,6 +30,7 @@ using NodeGuard.TestHelpers;
 using NSpark.Models;
 using NSpark.Signer;
 using NSubstitute;
+using NSubstitute.Extensions;
 
 namespace NodeGuard.Services.Spark;
 
@@ -56,23 +58,33 @@ public class SparkSeedProtectorTests
     }
 }
 
-public class SparkWalletsServiceTests
+/// <summary>
+/// SparkWalletService's management of the Spark wallet rows. The Spark operations it calls on itself (connect,
+/// balance, claim, withdraw all) are stubbed on the same instance, a partial substitute.
+/// </summary>
+public class SparkWalletManagementTests
 {
     private const string Identity = "02aa000000000000000000000000000000000000000000000000000000000000aa";
 
     private static readonly SparkSettings Settings = new() { Enabled = true, SignerMode = SparkSignerMode.Wallet, MaxBalanceSats = 2_000_000 };
 
-    private readonly ISparkWalletService _spark = Substitute.For<ISparkWalletService>();
     private readonly ISparkSeedProtector _protector = new SparkSeedProtector(new EphemeralDataProtectionProvider());
     private readonly IWalletRepository _wallets = Substitute.For<IWalletRepository>();
     private readonly INodeRepository _nodes = Substitute.For<INodeRepository>();
     private readonly ISwapOutRepository _swapOuts = Substitute.For<ISwapOutRepository>();
     private readonly INBXplorerService _nbXplorer = Substitute.For<INBXplorerService>();
     private readonly IAuditService _audit = Substitute.For<IAuditService>();
+    private readonly SparkWalletService _spark;
     private readonly Wallet _destination;
 
-    public SparkWalletsServiceTests()
+    public SparkWalletManagementTests()
     {
+        _spark = Partial(Settings);
+        _spark.Configure().EnsureReadyAsync(Arg.Any<SparkWalletRef>(), Arg.Any<CancellationToken>())
+            .Returns(new SparkWalletStatus(SparkWalletState.Ready, Identity));
+        _spark.Configure().ClaimPendingAsync(Arg.Any<SparkWalletRef>(), Arg.Any<CancellationToken>())
+            .Returns(new PendingTransferClaim([], []));
+
         _wallets.AddAsync(Arg.Any<Wallet>()).Returns((true, null));
         _wallets.Update(Arg.Any<Wallet>()).Returns((true, null));
         _wallets.GetById(5).Returns(_ => SparkWallet());
@@ -88,8 +100,15 @@ public class SparkWalletsServiceTests
             .Returns(new KeyPathInformation { Address = new NBitcoin.Key().PubKey.GetAddress(ScriptPubKeyType.Segwit, Network.RegTest) });
     }
 
-    private SparkWalletsService Service(SparkSettings? settings = null) => new(settings ?? Settings, _spark, _protector, _wallets, _nodes,
-        _swapOuts, _nbXplorer, _audit, NullLogger<SparkWalletsService>.Instance);
+    private SparkWalletService Partial(SparkSettings settings)
+    {
+        var scopes = new ServiceCollection().AddSingleton(_wallets).AddSingleton(_nodes).AddSingleton(_swapOuts)
+            .AddSingleton(_nbXplorer).AddSingleton(_audit).BuildServiceProvider().GetRequiredService<IServiceScopeFactory>();
+        return Substitute.ForPartsOf<SparkWalletService>(settings, Substitute.For<ISparkSignerProvider>(), scopes, _protector,
+            NullLogger<SparkWalletService>.Instance, NullLoggerFactory.Instance, TimeProvider.System);
+    }
+
+    private SparkWalletService Service(SparkSettings? settings = null) => settings is null ? _spark : Partial(settings);
 
     private static Wallet SparkWallet() => new()
     {
@@ -97,7 +116,7 @@ public class SparkWalletsServiceTests
     };
 
     private void Holds(long owned, long incoming = 0) =>
-        _spark.GetBalanceAsync(new SparkWalletRef(5), Arg.Any<CancellationToken>())
+        _spark.Configure().GetBalanceAsync(new SparkWalletRef(5), Arg.Any<CancellationToken>())
             .Returns(new WalletBalance(new SatsBalance(owned, owned, incoming), [], []));
 
     // ── Creation ─────────────────────────────────────────────────────────────────────────
@@ -108,7 +127,7 @@ public class SparkWalletsServiceTests
         Wallet? saved = null;
         _wallets.AddAsync(Arg.Do<Wallet>(w => saved = w)).Returns((true, null));
 
-        var (wallet, mnemonic) = await Service().CreateAsync(" transit ", account: 2, maxBalanceSats: 1_500_000);
+        var (wallet, mnemonic) = await Service().CreateWalletAsync(" transit ", account: 2, maxBalanceSats: 1_500_000);
 
         new Mnemonic(mnemonic).Words.Should().HaveCount(24);
         saved.Should().BeSameAs(wallet);
@@ -129,7 +148,7 @@ public class SparkWalletsServiceTests
     [Fact]
     public async Task Create_WithTheRemoteSigner_IsRefused()
     {
-        var act = () => Service(new SparkSettings { Enabled = true, SignerMode = SparkSignerMode.Remote }).CreateAsync("transit");
+        var act = () => Service(new SparkSettings { Enabled = true, SignerMode = SparkSignerMode.Remote }).CreateWalletAsync("transit");
 
         await act.Should().ThrowAsync<InvalidOperationException>().WithMessage("*SPARK_SIGNER=wallet*");
         await _wallets.DidNotReceiveWithAnyArgs().AddAsync(default!);
@@ -141,7 +160,7 @@ public class SparkWalletsServiceTests
     [InlineData("transit", 0, 0L)]
     public async Task Create_WithInvalidSettings_IsRefused(string name, int account, long? maxBalanceSats)
     {
-        var act = () => Service().CreateAsync(name, account, maxBalanceSats);
+        var act = () => Service().CreateWalletAsync(name, account, maxBalanceSats);
 
         await act.Should().ThrowAsync<ArgumentException>();
     }
@@ -166,7 +185,7 @@ public class SparkWalletsServiceTests
         _wallets.GetSparkWallets(false).Returns([SparkWallet()]);
         _nodes.GetAll().Returns([new Node { Id = 1, SparkWalletId = 5 }, new Node { Id = 2 }, new Node { Id = 3, SparkWalletId = 5 }]);
 
-        var wallet = (await Service().ListAsync()).Should().ContainSingle().Subject;
+        var wallet = (await Service().ListWalletsAsync()).Should().ContainSingle().Subject;
 
         wallet.NodeIds.Should().Equal(1, 3);
         wallet.MaxBalanceSats.Should().BeNull();
@@ -178,10 +197,10 @@ public class SparkWalletsServiceTests
     [Fact]
     public async Task WithdrawAll_ExitsEverythingToANewAddressOfTheOnChainWallet()
     {
-        _spark.WithdrawAllAsync(new SparkWalletRef(5), Arg.Any<string>(), Settings.MaxExitFeeSats, Arg.Any<CancellationToken>())
+        _spark.Configure().WithdrawAllAsync(new SparkWalletRef(5), Arg.Any<string>(), Settings.MaxExitFeeSats, Arg.Any<CancellationToken>())
             .Returns(new WithdrawAllResult("exit-tx", 300_000, 297_000, 0, 0, 0, 0));
 
-        var exit = await Service().WithdrawAllAsync(5, 3);
+        var exit = await Service().WithdrawAllToWalletAsync(5, 3);
 
         exit.Txid.Should().Be("exit-tx");
         Received.InOrder(() =>
@@ -201,7 +220,7 @@ public class SparkWalletsServiceTests
             new() { Id = 8, Provider = SwapProvider.Spark, Status = SwapOutStatus.Pending, SparkIdentity = Identity.ToUpperInvariant() }
         });
 
-        var act = () => Service().WithdrawAllAsync(5, 3);
+        var act = () => Service().WithdrawAllToWalletAsync(5, 3);
 
         await act.Should().ThrowAsync<InvalidOperationException>().WithMessage("*swap 8 is in flight*");
         await _spark.DidNotReceiveWithAnyArgs().WithdrawAllAsync(default, default!, default, default);
@@ -214,10 +233,10 @@ public class SparkWalletsServiceTests
         {
             new() { Id = 8, Provider = SwapProvider.Spark, Status = SwapOutStatus.Pending, SparkIdentity = "02bb" }
         });
-        _spark.WithdrawAllAsync(new SparkWalletRef(5), Arg.Any<string>(), Arg.Any<long>(), Arg.Any<CancellationToken>())
+        _spark.Configure().WithdrawAllAsync(new SparkWalletRef(5), Arg.Any<string>(), Arg.Any<long>(), Arg.Any<CancellationToken>())
             .Returns(new WithdrawAllResult("exit-tx", 300_000, 297_000, 0, 0, 0, 0));
 
-        (await Service().WithdrawAllAsync(5, 3)).Txid.Should().Be("exit-tx");
+        (await Service().WithdrawAllToWalletAsync(5, 3)).Txid.Should().Be("exit-tx");
     }
 
     [Fact]
@@ -225,7 +244,7 @@ public class SparkWalletsServiceTests
     {
         _wallets.GetById(6).Returns(new Wallet { Id = 6, Name = "other transit", Kind = WalletKind.Spark, IsFinalised = true, Keys = [] });
 
-        var act = () => Service().WithdrawAllAsync(5, 6);
+        var act = () => Service().WithdrawAllToWalletAsync(5, 6);
 
         await act.Should().ThrowAsync<InvalidOperationException>().WithMessage("*not an available on-chain wallet*");
     }
@@ -235,7 +254,7 @@ public class SparkWalletsServiceTests
     [Fact]
     public async Task Archive_AnEmptyWalletNoNodeUses_ArchivesItAndDropsItsConnection()
     {
-        await Service().ArchiveAsync(5);
+        await Service().ArchiveWalletAsync(5);
 
         _wallets.Received(1).Update(Arg.Is<Wallet>(w => w.Id == 5 && w.IsArchived));
         _spark.Received(1).Forget(new SparkWalletRef(5));
@@ -246,7 +265,7 @@ public class SparkWalletsServiceTests
     {
         _nodes.GetAll().Returns([new Node { Id = 1, Name = "alice", SparkWalletId = 5 }]);
 
-        var act = () => Service().ArchiveAsync(5);
+        var act = () => Service().ArchiveWalletAsync(5);
 
         await act.Should().ThrowAsync<InvalidOperationException>().WithMessage("*Spark wallet of alice*");
         _wallets.DidNotReceiveWithAnyArgs().Update(default!);
@@ -257,7 +276,7 @@ public class SparkWalletsServiceTests
     {
         Holds(0, incoming: 1_000);
 
-        var act = () => Service().ArchiveAsync(5);
+        var act = () => Service().ArchiveWalletAsync(5);
 
         await act.Should().ThrowAsync<InvalidOperationException>().WithMessage("*still holds 1000 sats*");
         _wallets.DidNotReceiveWithAnyArgs().Update(default!);
@@ -266,6 +285,6 @@ public class SparkWalletsServiceTests
     [Fact]
     public async Task AnOnChainWallet_IsNotManagedHere()
     {
-        await Service().Invoking(s => s.ArchiveAsync(3)).Should().ThrowAsync<ArgumentException>().WithMessage("*not a Spark wallet*");
+        await Service().Invoking(s => s.ArchiveWalletAsync(3)).Should().ThrowAsync<ArgumentException>().WithMessage("*not a Spark wallet*");
     }
 }
