@@ -2289,7 +2289,7 @@ namespace NodeGuard.Rpc
         private static readonly Node SwapNode = new() { Id = 4, Name = "alice", PubKey = "02aa", MaxSwapRoutingFeeRatio = 0.005m };
 
         private (NodeGuardService Service, Mock<ISwapsService> Swaps, Mock<ISwapOutRepository> SwapOuts, Mock<IAuditService> Audit)
-            SwapService(SwapProvider provider = SwapProvider.Spark)
+            SwapService(SwapProvider provider = SwapProvider.Spark, Mock<INBXplorerService>? nbXplorer = null)
         {
             var nodes = new Mock<INodeRepository>();
             nodes.Setup(x => x.GetAllConfiguredByProvider(It.IsAny<SwapProvider>(), null)).ReturnsAsync(new List<Node>());
@@ -2300,7 +2300,7 @@ namespace NodeGuard.Rpc
             var wallets = new Mock<IWalletRepository>();
             wallets.Setup(x => x.GetById(3)).ReturnsAsync(wallet);
 
-            var nbXplorer = new Mock<INBXplorerService>();
+            nbXplorer ??= new Mock<INBXplorerService>();
             nbXplorer.Setup(x => x.GetUnusedAsync(It.IsAny<DerivationStrategyBase>(), DerivationFeature.Deposit, 0, true,
                     It.IsAny<CancellationToken>()))
                 .ReturnsAsync(new KeyPathInformation
@@ -2326,9 +2326,10 @@ namespace NodeGuard.Rpc
         };
 
         [Fact]
-        public async Task RequestSwapOut_CreatesAndRecordsTheSwap_ReturningItsDestinationAddress()
+        public async Task RequestSwapOut_CreatesAndRecordsTheSwap_ReservingNoAddressForSpark()
         {
-            var (service, swaps, _, audit) = SwapService();
+            var nbXplorer = new Mock<INBXplorerService>();
+            var (service, swaps, _, audit) = SwapService(nbXplorer: nbXplorer);
             SwapOut? recorded = null;
             SwapOutRequest? sent = null;
             swaps.Setup(x => x.CreateSwapOutAsync(SwapNode, It.IsAny<SwapOut>(), It.IsAny<SwapOutRequest>(), It.IsAny<CancellationToken>()))
@@ -2348,14 +2349,39 @@ namespace NodeGuard.Rpc
             response.SwapId.Should().Be(77);
             response.ProviderId.Should().Be("req-1");
             response.Status.Should().Be(SWAP_OUT_STATUS.SwapOutPending);
-            response.DestinationAddress.Should().Be("bcrt1qcg6gkhg76snuvxu6l795yw3fx8dg8088r7zq82u60qauh7tr2kjquxfd2m");
+            response.DestinationAddress.Should().BeEmpty("a Spark swap reserves its address when it exits");
             recorded!.Provider.Should().Be(SwapProvider.Spark);
             recorded.ReferenceId.Should().Be("ref-1");
             recorded.IsManual.Should().BeTrue();
             recorded.DestinationWalletId.Should().Be(3);
             sent!.MaxRoutingFeesPercent.Should().Be(0.5m);
+            sent.Address.Should().BeNull();
+            nbXplorer.Verify(x => x.GetUnusedAsync(It.IsAny<DerivationStrategyBase>(), It.IsAny<DerivationFeature>(), It.IsAny<int>(),
+                It.IsAny<bool>(), It.IsAny<CancellationToken>()), Times.Never);
             audit.Verify(x => x.LogAsync(AuditActionType.SwapOutInitiated, AuditEventType.Success, AuditObjectType.SwapOut, "req-1",
                 It.IsAny<object?>()), Times.Once);
+        }
+
+        [Fact]
+        public async Task RequestSwapOut_ForLoop_ReservesTheAddressItsRequestCarries()
+        {
+            var (service, swaps, _, _) = SwapService(SwapProvider.Loop);
+            SwapOutRequest? sent = null;
+            swaps.Setup(x => x.CreateSwapOutAsync(SwapNode, It.IsAny<SwapOut>(), It.IsAny<SwapOutRequest>(), It.IsAny<CancellationToken>()))
+                .Callback<Node, SwapOut, SwapOutRequest, CancellationToken>((_, swap, request, _) =>
+                {
+                    sent = request;
+                    swap.ProviderId = "loop-1";
+                    swap.DestinationAddress = request.Address;
+                })
+                .ReturnsAsync(new SwapOutCreation(new SwapResponse { Id = "loop-1", HtlcAddress = "bcrt1phtlc" }, true, null));
+            var request = SwapRequest();
+            request.Provider = SWAP_PROVIDER.Loop;
+
+            var response = await service.RequestSwapOut(request, TestServerCallContext.Create());
+
+            sent!.Address.Should().Be("bcrt1qcg6gkhg76snuvxu6l795yw3fx8dg8088r7zq82u60qauh7tr2kjquxfd2m");
+            response.DestinationAddress.Should().Be(sent.Address);
         }
 
         [Fact]

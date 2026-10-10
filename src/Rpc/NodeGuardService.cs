@@ -1667,15 +1667,21 @@ public class NodeGuardService : Nodeguard.NodeGuardService.NodeGuardServiceBase,
         if (derivationStrategy == null)
             throw new RpcException(new Status(StatusCode.FailedPrecondition, $"Wallet {wallet.Id} has no derivation strategy"));
 
-        var address = await _nbXplorerService.GetUnusedAsync(derivationStrategy, DerivationFeature.Deposit, 0, true,
-            context.CancellationToken);
-        if (address == null)
-            throw new RpcException(new Status(StatusCode.Internal, $"Could not reserve a deposit address of wallet {wallet.Id}"));
+        // Loop and 40swap send to an address given now; a Spark swap reserves its own when it exits
+        string? address = null;
+        if (provider != SwapProvider.Spark)
+        {
+            var reserved = await _nbXplorerService.GetUnusedAsync(derivationStrategy, DerivationFeature.Deposit, 0, true,
+                context.CancellationToken);
+            if (reserved == null)
+                throw new RpcException(new Status(StatusCode.Internal, $"Could not reserve a deposit address of wallet {wallet.Id}"));
+            address = reserved.Address.ToString();
+        }
 
         var swapRequest = new SwapOutRequest
         {
             Amount = request.AmountSats,
-            Address = address.Address.ToString(),
+            Address = address,
             MaxRoutingFeesPercent = request.HasMaxRoutingFeesPercent
                 ? (decimal)request.MaxRoutingFeesPercent
                 : node.MaxSwapRoutingFeeRatio * 100,

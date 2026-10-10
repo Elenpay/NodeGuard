@@ -704,6 +704,7 @@ message RequestSwapOutResponse {
   int32 swap_id = 1;
   string provider_id = 2;
   SWAP_OUT_STATUS status = 3;
+  // Empty for a Spark swap: it reserves its address when it exits (see GetSwapOut)
   string destination_address = 4;
   optional string error = 5;
 }
@@ -727,6 +728,7 @@ message GetSwapOutResponse {
   optional string tx_id = 9;
   optional string error = 10;
   optional int32 destination_wallet_id = 11;
+  // Unset for a Spark swap until it exits, when it reserves its address in the destination wallet
   optional string destination_address = 12;
   optional string payment_hash = 13;
   optional string reference_id = 14;
