@@ -3,37 +3,8 @@
 @using Humanizer
 @using Blazorise
 @using Blazorise.Components
-@using NodeGuard.Services.Spark
 @attribute [Authorize(Roles = "Superadmin,NodeManager,FinanceManager")]
 <h3 class="custom-primary">Swaps</h3>
-
-@if (SparkSettings.Enabled)
-{
-    var status = SparkWallet.Status;
-    var balance = SparkGuardrails.LastBalance;
-    var stuckSince = SparkGuardrails.StuckSince;
-    <Alert Color="@(status.IsReady && stuckSince is null ? Color.Light : Color.Warning)" Visible="true" Class="mb-3">
-        <AlertDescription>
-            <strong>Spark transit wallet:</strong>
-            @if (!status.IsReady)
-            {
-                <span> not available (@(status.Reason ?? status.State.ToString()))</span>
-            }
-            else if (balance is null)
-            {
-                <span> balance not checked yet</span>
-            }
-            else
-            {
-                <span> @balance.OwnedSats.ToString("N0") sats (@balance.IncomingSats.ToString("N0") incoming), checked @balance.At.Humanize()</span>
-                @if (stuckSince is not null)
-                {
-                    <span>. These sats have been stuck with no Spark swap in flight since @stuckSince.Value.Humanize(): Spark balances should only pass through.</span>
-                }
-            }
-        </AlertDescription>
-    </Alert>
-}
 
 <Row Class="mb-3" @key="_filtersResetKey">
     <Column ColumnSize="ColumnSize.Is1">
@@ -283,9 +254,6 @@
 @inject ISwapOutRepository SwapOutRepository
 @inject IApplicationUserRepository ApplicationUserRepository
 @inject IToastService ToastService
-@inject SparkSettings SparkSettings
-@inject ISparkWalletService SparkWallet
-@inject ISparkGuardrails SparkGuardrails
 @code {
    [CascadingParameter] private ApplicationUser? LoggedUser { get; set; }
 

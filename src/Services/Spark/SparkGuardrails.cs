@@ -31,8 +31,8 @@ public sealed record SparkAlert(AuditActionType Action, AuditObjectType ObjectTy
 /// <summary>
 /// Watches that Spark balances only pass through: sats stuck in the transit wallet that no swap in flight
 /// accounts for, and swaps whose exit is overdue. Run by the swap monitor, which audits the alerts; each
-/// alert is raised once. The balance is cached for the Swaps page and exported as the
-/// <c>nodeguard.spark.balance</c> gauge (meter <see cref="MeterName"/>).
+/// alert is raised once. The balance is exported as the <c>nodeguard.spark.balance</c> gauge (meter
+/// <see cref="MeterName"/>).
 /// </summary>
 public interface ISparkGuardrails
 {
