@@ -52,6 +52,7 @@ public class AutoChannelOpenJob : IJob
     private readonly INBXplorerService _nbXplorerService;
     private readonly IChannelOperationRequestRepository _channelOperationRequestRepository;
     private readonly IAuditService _auditService;
+    private readonly ICoinSelectionService _coinSelectionService;
 
     public AutoChannelOpenJob(
         ILogger<AutoChannelOpenJob> logger,
@@ -62,7 +63,8 @@ public class AutoChannelOpenJob : IJob
         ILightningService lightningService,
         INBXplorerService nbXplorerService,
         IChannelOperationRequestRepository channelOperationRequestRepository,
-        IAuditService auditService)
+        IAuditService auditService,
+        ICoinSelectionService coinSelectionService)
     {
         _logger = logger;
         _nodeRepository = nodeRepository;
@@ -73,6 +75,7 @@ public class AutoChannelOpenJob : IJob
         _nbXplorerService = nbXplorerService;
         _channelOperationRequestRepository = channelOperationRequestRepository;
         _auditService = auditService;
+        _coinSelectionService = coinSelectionService;
     }
 
     public async Task Execute(IJobExecutionContext context)
@@ -170,16 +173,16 @@ public class AutoChannelOpenJob : IJob
             return;
         }
 
-        var walletBalanceSats = await GetWalletBalanceSats(node);
-        if (walletBalanceSats <= 0)
+        var walletSpendableSats = await GetWalletSpendableSats(node, feeRate);
+        if (walletSpendableSats <= 0)
         {
-            _logger.LogInformation("Node {NodeName}: funding wallet has no confirmed balance", node.Name);
+            _logger.LogInformation("Node {NodeName}: funding wallet has nothing spendable once the funding fee is paid", node.Name);
             return;
         }
 
         var tunables = ChannelOpenInitiatorTunables.FromConstants(
             node,
-            walletBalanceSats,
+            walletSpendableSats,
             remainingBudget,
             (long)(feeRate * EstimatedOpenCloseVBytes));
 
@@ -303,16 +306,22 @@ public class AutoChannelOpenJob : IJob
         return failures.FirstOrDefault(x => ids.Contains(x.OutgoingChannelId))?.OutgoingPeerAlias;
     }
 
-    private async Task<long> GetWalletBalanceSats(Node node)
+    /// <summary>
+    /// The biggest channel the wallet can fund from the coins coin selection would hand it, with the
+    /// funding fee already taken out.
+    /// </summary>
+    /// <param name="feeRate">HourFee, at or above the EconomyFee the funding tx is built at.</param>
+    private async Task<long> GetWalletSpendableSats(Node node, decimal feeRate)
     {
-        if (node.AutoChannelOpenWallet == null)
+        var derivationStrategy = node.AutoChannelOpenWallet?.GetDerivationStrategy();
+        if (derivationStrategy == null)
         {
             return 0;
         }
 
-        var balance = await _lightningService.GetWalletBalance(node.AutoChannelOpenWallet);
+        var utxos = await _coinSelectionService.GetAvailableUTXOsAsync(derivationStrategy);
 
-        return balance?.Confirmed is Money confirmed ? confirmed.Satoshi : 0;
+        return LightningHelper.MaxFundableChannelSats(derivationStrategy, utxos, feeRate);
     }
 
     /// <summary>

@@ -21,7 +21,11 @@ using FluentAssertions;
 using Lnrpc;
 using Microsoft.EntityFrameworkCore;
 using NodeGuard.Data.Models;
+using NBitcoin;
+using NBXplorer;
+using NBXplorer.DerivationStrategy;
 using NodeGuard.Helpers;
+using NodeGuard.TestHelpers;
 using Xunit.Abstractions;
 
 namespace NodeGuard.Tests.E2E;
@@ -60,6 +64,12 @@ public class AutoChannelOpenE2ETests : RoutingEngineE2EBase
     private const double CostToEarnRatio = 1_000;
     private const long BudgetSats = 50_000_000;
 
+    // Two coins under the plan's ~4M sats, so the wallet clamp is what binds and the open spends both
+    private static readonly long[] SmallWalletCoinSats = [1_500_000, 1_300_000];
+    private const string SmallWalletName = "E2E auto channel open small wallet";
+    // An internal-wallet account no seeded wallet uses, so its addresses never collide with theirs
+    private const string SmallWalletAccountId = "77";
+
     private const int JobWaitAttempts = 150; // 5 min of 2s polls; the job runs every ROUTING_ENGINE_JOB_INTERVAL_SECONDS
 
     public AutoChannelOpenE2ETests(ITestOutputHelper output) : base(output)
@@ -69,136 +79,21 @@ public class AutoChannelOpenE2ETests : RoutingEngineE2EBase
     [E2EFact, Trait("Speed", "Slow")]
     public async Task AutoChannelOpen_RefusedForwardsToDrainedPeer_OpensSecondChannelAtInheritedFee()
     {
-        var client = CreateClient(out var headers);
-        var rpc = CreateBitcoindRpc();
-
-        var nodes = await WaitForNodesAsync(client, headers);
-        var aliceNode = nodes.Single(n => n.Name == "alice");
-        var bobNode = nodes.Single(n => n.Name == "bob");
-        var carolNode = nodes.Single(n => n.Name == "carol");
-        _output.WriteLine($"alice={aliceNode.PubKey} bob={bobNode.PubKey} carol={carolNode.PubKey}");
-
-        var alice = LndTestClient.FromEnv("alice", aliceNode.PubKey);
-        var bob = LndTestClient.FromEnv("bob", bobNode.PubKey);
-        var carol = LndTestClient.FromEnv("carol", carolNode.PubKey);
+        var scenario = await LoadScenarioAsync();
+        var (client, headers, rpc) = (scenario.Client, scenario.Headers, scenario.Rpc);
+        var (bob, carolNode) = (scenario.Bob, scenario.Carol);
+        var (bobNodeId, carolNodeId) = (scenario.BobNodeId, scenario.CarolNodeId);
         var walletId = int.Parse(Env("E2E_HOT_WALLET_ID", "3"));
-
-        int bobNodeId, carolNodeId;
-        bool bobDynamicFees;
-        await using (var db = CreateDbContext())
-        {
-            var bobRow = await db.Nodes.AsNoTracking().SingleAsync(n => n.PubKey == bobNode.PubKey);
-            bobNodeId = bobRow.Id;
-            bobDynamicFees = bobRow.DynamicFeeManagementEnabled;
-            carolNodeId = await db.Nodes.AsNoTracking().Where(n => n.PubKey == carolNode.PubKey)
-                .Select(n => n.Id).SingleAsync();
-        }
 
         try
         {
-            await ResetAutoChannelOpenAsync(bobNodeId, dynamicFees: false);
-
-            var aliceToBobScid = await ResolveAliceToBobAsync(client, headers, rpc, alice, bobNode.PubKey);
-            _output.WriteLine($"[setup] alice→bob first hop scid {aliceToBobScid}");
-
-            await DrainUsableLocalAsync(bob, carol);
-
-            // After the drain, so bob's own settled sends to carol can't read as settled outbound demand
-            await Task.Delay(TimeSpan.FromSeconds(3));
-            await ResetRoutingEngineStateAsync();
-
-            // The planner prices by the dearest of bob's carol channels, off FeeReport
-            var carolScids = (await bob.ChannelsToAsync(carolNode.PubKey)).Select(c => c.ChanId).ToHashSet();
-            var policies = new List<ChannelFeeReport>();
-            foreach (var scid in carolScids)
-            {
-                var policy = await bob.OutboundPolicyAsync(scid);
-                if (policy != null) policies.Add(policy);
-            }
-            var dearest = policies.MaxBy(p => p.FeePerMil);
-            dearest.Should().NotBeNull("bob must report an outbound policy toward carol, or nothing can be priced");
-            dearest!.FeePerMil.Should().BePositive("a zero-ppm peer earns nothing and is never planned");
-            _output.WriteLine($"[setup] bob's dearest carol policy: {dearest.FeePerMil} ppm / {dearest.BaseFeeMsat} msat on scid {dearest.ChanId}");
-
-            await SendRefusedBurstsAsync(alice, bob, carol, aliceToBobScid);
-
-            var failures = await PollAsync(
-                async () =>
-                {
-                    await using var db = CreateDbContext();
-                    return await db.ForwardingHtlcEvents.AsNoTracking()
-                        .Where(e => e.ManagedNodePubKey == bobNode.PubKey
-                                    && e.EventType == HtlcEventType.Forward
-                                    && e.EventCase == HtlcEventCase.LinkFailEvent
-                                    && e.FailureDetail == (int)Routerrpc.FailureDetail.InsufficientBalance)
-                        .ToListAsync();
-                },
-                rows => rows.Count >= Bursts * AttemptsPerBurst,
-                attempts: 20, delay: TimeSpan.FromSeconds(3),
-                what: "NodeHtlcSubscribeJob recorded bob's refused forwards");
-            failures.Should().HaveCount(Bursts * AttemptsPerBurst, "every refused attempt is one LinkFailEvent row");
-            failures.Should().OnlyContain(e => e.OutgoingAmountMsat == (ulong)RefusedPaymentSats * 1_000);
-            failures.Should().OnlyContain(e => carolScids.Contains(e.OutgoingChannelId),
-                "the refusing link is one of bob's channels to carol");
-
-            var eventPpm = failures.Max(e => e.RoutingFeePpm) ?? dearest.FeePerMil;
-            var expectedMissedFeeMsat = Bursts * (RefusedPaymentSats * 1_000 * eventPpm / 1_000_000);
-            expectedMissedFeeMsat.Should().BeGreaterThanOrEqualTo(Constants.AUTO_CHANNEL_OPEN_MIN_MISSED_FEE_MSAT,
-                "the shaped demand must clear the fee gate, or there is nothing for the job to plan");
+            var (carolScids, dearest, expectedMissedFeeMsat) = await ShapeRefusedDemandAsync(scenario);
 
             // Earlier scenarios leave unconfirmed change in the hot wallet; with no spendable coin the first
             // promotion fails and a later cycle re-promotes the same row onto a new request
             await MineAsync(rpc, 6);
 
-            // Only now, so no run can see a partial burst set and plan off it
-            await using (var db = CreateDbContext())
-            {
-                var updated = await db.Nodes
-                    .Where(n => n.Id == bobNodeId)
-                    .ExecuteUpdateAsync(s => s
-                        .SetProperty(n => n.AutoChannelOpenEnabled, true)
-                        .SetProperty(n => n.AutoChannelOpenMode, AutoChannelOpenMode.Auto)
-                        .SetProperty(n => n.AutoChannelOpenWalletId, (int?)walletId)
-                        .SetProperty(n => n.AutoChannelOpenBudgetSats, (long?)BudgetSats)
-                        // Null start ⇒ a fresh period, so opens from other scenarios don't count against it
-                        .SetProperty(n => n.AutoChannelOpenBudgetStartDatetime, (DateTimeOffset?)null)
-                        .SetProperty(n => n.AutoChannelOpenBudgetRefreshInterval, (TimeSpan?)null)
-                        .SetProperty(n => n.AutoChannelOpenMinSizeSats, (long?)null)
-                        .SetProperty(n => n.AutoChannelOpenMaxSizeSats, (long?)null)
-                        .SetProperty(n => n.MaxChannelOpenCostToEarnRatio, (double?)CostToEarnRatio)
-                        .SetProperty(n => n.RoutingEngineDryRun, false));
-                updated.Should().Be(1, "bob should be seeded and have automatic channel opening switched on");
-            }
-
-            ChannelOpenRecommendation? recommendation = null;
-            ChannelOperationRequestStatus? requestStatus = null;
-            for (var attempt = 0; attempt < JobWaitAttempts; attempt++)
-            {
-                await using (var db = CreateDbContext())
-                {
-                    recommendation = await db.ChannelOpenRecommendations.AsNoTracking()
-                        .FirstOrDefaultAsync(r => r.NodeId == bobNodeId && r.PeerPubKey == carolNode.PubKey);
-                    requestStatus = recommendation?.ChannelOperationRequestId is { } id
-                        ? await db.ChannelOperationRequests.AsNoTracking().Where(r => r.Id == id)
-                            .Select(r => (ChannelOperationRequestStatus?)r.Status).SingleOrDefaultAsync()
-                        : null;
-                }
-
-                if (recommendation != null)
-                    _output.WriteLine(
-                        $"[recommendation] #{recommendation.Id} status={recommendation.Status} bursts={recommendation.Bursts} capacity={recommendation.SuggestedCapacitySats} request={recommendation.ChannelOperationRequestId} requestStatus={requestStatus}");
-
-                // A request that failed before dispatch gets replaced on a later cycle, so wait for a live one
-                if (recommendation is { Status: ChannelOpenRecommendationStatus.Promoted }
-                    && requestStatus is not ChannelOperationRequestStatus.Failed) break;
-
-                await Task.Delay(TimeSpan.FromSeconds(2));
-            }
-
-            recommendation.Should().NotBeNull("AutoChannelOpenJob should have recommended a channel to the drained peer");
-            recommendation!.Status.Should().Be(ChannelOpenRecommendationStatus.Promoted, "Auto mode promotes what it recommends");
-            requestStatus.Should().NotBe(ChannelOperationRequestStatus.Failed,
-                "the promoted request must reach dispatch — check NodeGuard's log for the promotion failure reason");
+            var recommendation = await EnableAutoAndAwaitPromotionAsync(scenario, walletId);
 
             // Evidence: each payment tried twice, all refused
             recommendation.Bursts.Should().Be(Bursts);
@@ -268,8 +163,274 @@ public class AutoChannelOpenE2ETests : RoutingEngineE2EBase
         }
         finally
         {
-            await ResetAutoChannelOpenAsync(bobNodeId, dynamicFees: bobDynamicFees);
+            await ResetAutoChannelOpenAsync(bobNodeId, dynamicFees: scenario.BobDynamicFees);
         }
+    }
+
+    /// <summary>
+    /// The wallet clamp's own case: a funding wallet too small for the plan. The channel must be sized to
+    /// what the wallet can fund and still open, with every coin spent and change left above dust.
+    /// </summary>
+    [E2EFact, Trait("Speed", "Slow")]
+    public async Task AutoChannelOpen_FundingWalletSmallerThanThePlan_OpensTheBiggestChannelItCanFund()
+    {
+        var scenario = await LoadScenarioAsync();
+        var (client, headers, rpc) = (scenario.Client, scenario.Headers, scenario.Rpc);
+
+        try
+        {
+            // Funding mines first, so a channel an earlier scenario left pending confirms before the
+            // drain sees it rather than after, when it would refill bob's outbound and void the demand
+            var (walletId, coins) = await FundSmallWalletAsync(rpc);
+
+            await ShapeRefusedDemandAsync(scenario);
+            var walletSats = coins.Sum(c => c.Value);
+
+            var recommendation = await EnableAutoAndAwaitPromotionAsync(scenario, walletId);
+
+            var (unclampedCapacity, _) = ExpectedSize(recommendation);
+            unclampedCapacity.Should().BeGreaterThan(walletSats, "the plan has to outgrow the wallet for its clamp to bind");
+            recommendation.BindingClamp.Should().Be(ChannelOpenBindingClamp.WalletBalance);
+            recommendation.SuggestedCapacitySats.Should().BeLessThan(walletSats - Constants.MINIMUM_UTXO_VALUE_SATS,
+                "the clamp holds back the funding fee and a change output");
+            _output.WriteLine($"[sizing] wallet {walletSats} sats in {coins.Count} coin(s) → {recommendation.SuggestedCapacitySats} sats (unclamped {unclampedCapacity})");
+
+            var requestId = recommendation.ChannelOperationRequestId!.Value;
+            var channelId = (int)await MineUntilChannelOpenedAsync(client, headers, rpc, requestId);
+
+            string fundingTxId;
+            await using (var db = CreateDbContext())
+            {
+                fundingTxId = await db.Channels.AsNoTracking().Where(c => c.Id == channelId).Select(c => c.FundingTx).SingleAsync();
+            }
+
+            var fundingTx = await rpc.GetRawTransactionAsync(uint256.Parse(fundingTxId));
+            fundingTx.Inputs.Select(i => i.PrevOut).Should().BeEquivalentTo(coins.Select(c => c.Outpoint), "every coin funds the channel");
+            fundingTx.Outputs.Should().HaveCount(2, "a normal open keeps a change output next to the funding one");
+
+            var channelOutput = fundingTx.Outputs.Single(o => o.Value.Satoshi == recommendation.SuggestedCapacitySats);
+            var change = fundingTx.Outputs.Single(o => o != channelOutput).Value.Satoshi;
+            change.Should().BeGreaterThanOrEqualTo(Constants.MINIMUM_UTXO_VALUE_SATS, "a dust change output would not relay");
+            _output.WriteLine($"[result] funding tx {fundingTxId}: channel {channelOutput.Value.Satoshi} sats, change {change} sats");
+        }
+        finally
+        {
+            await ResetAutoChannelOpenAsync(scenario.BobNodeId, dynamicFees: scenario.BobDynamicFees);
+        }
+    }
+
+    private sealed record Scenario(
+        Nodeguard.NodeGuardService.NodeGuardServiceClient Client,
+        Grpc.Core.Metadata Headers,
+        NBitcoin.RPC.RPCClient Rpc,
+        LndTestClient Alice,
+        LndTestClient Bob,
+        LndTestClient Carol,
+        int BobNodeId,
+        int CarolNodeId,
+        bool BobDynamicFees);
+
+    private async Task<Scenario> LoadScenarioAsync()
+    {
+        var client = CreateClient(out var headers);
+
+        var nodes = await WaitForNodesAsync(client, headers);
+        var aliceNode = nodes.Single(n => n.Name == "alice");
+        var bobNode = nodes.Single(n => n.Name == "bob");
+        var carolNode = nodes.Single(n => n.Name == "carol");
+        _output.WriteLine($"alice={aliceNode.PubKey} bob={bobNode.PubKey} carol={carolNode.PubKey}");
+
+        await using var db = CreateDbContext();
+        var bobRow = await db.Nodes.AsNoTracking().SingleAsync(n => n.PubKey == bobNode.PubKey);
+        var carolNodeId = await db.Nodes.AsNoTracking().Where(n => n.PubKey == carolNode.PubKey)
+            .Select(n => n.Id).SingleAsync();
+
+        return new Scenario(
+            client, headers, CreateBitcoindRpc(),
+            LndTestClient.FromEnv("alice", aliceNode.PubKey),
+            LndTestClient.FromEnv("bob", bobNode.PubKey),
+            LndTestClient.FromEnv("carol", carolNode.PubKey),
+            bobRow.Id, carolNodeId, bobRow.DynamicFeeManagementEnabled);
+    }
+
+    /// <summary>
+    /// Drains bob→carol and has alice send <see cref="Bursts"/> refused payments through it, waiting until
+    /// every refusal is recorded. Returns bob's carol channels, his dearest policy toward carol, and the
+    /// missed fee the planner should derive from the refusals.
+    /// </summary>
+    private async Task<(HashSet<ulong> CarolScids, ChannelFeeReport Dearest, long ExpectedMissedFeeMsat)> ShapeRefusedDemandAsync(Scenario scenario)
+    {
+        var (alice, bob, carol) = (scenario.Alice, scenario.Bob, scenario.Carol);
+
+        await ResetAutoChannelOpenAsync(scenario.BobNodeId, dynamicFees: false);
+
+        var aliceToBobScid = await ResolveAliceToBobAsync(scenario.Client, scenario.Headers, scenario.Rpc, alice, bob.PubKey);
+        _output.WriteLine($"[setup] alice→bob first hop scid {aliceToBobScid}");
+
+        await DrainUsableLocalAsync(bob, carol);
+
+        // After the drain, so bob's own settled sends to carol can't read as settled outbound demand
+        await Task.Delay(TimeSpan.FromSeconds(3));
+        await ResetRoutingEngineStateAsync();
+
+        // The planner prices by the dearest of bob's carol channels, off FeeReport
+        var carolScids = (await bob.ChannelsToAsync(carol.PubKey)).Select(c => c.ChanId).ToHashSet();
+        var policies = new List<ChannelFeeReport>();
+        foreach (var scid in carolScids)
+        {
+            var policy = await bob.OutboundPolicyAsync(scid);
+            if (policy != null) policies.Add(policy);
+        }
+        var dearest = policies.MaxBy(p => p.FeePerMil);
+        dearest.Should().NotBeNull("bob must report an outbound policy toward carol, or nothing can be priced");
+        dearest!.FeePerMil.Should().BePositive("a zero-ppm peer earns nothing and is never planned");
+        _output.WriteLine($"[setup] bob's dearest carol policy: {dearest.FeePerMil} ppm / {dearest.BaseFeeMsat} msat on scid {dearest.ChanId}");
+
+        await SendRefusedBurstsAsync(alice, bob, carol, aliceToBobScid);
+
+        var failures = await PollAsync(
+            async () =>
+            {
+                await using var db = CreateDbContext();
+                return await db.ForwardingHtlcEvents.AsNoTracking()
+                    .Where(e => e.ManagedNodePubKey == bob.PubKey
+                                && e.EventType == HtlcEventType.Forward
+                                && e.EventCase == HtlcEventCase.LinkFailEvent
+                                && e.FailureDetail == (int)Routerrpc.FailureDetail.InsufficientBalance)
+                    .ToListAsync();
+            },
+            rows => rows.Count >= Bursts * AttemptsPerBurst,
+            attempts: 20, delay: TimeSpan.FromSeconds(3),
+            what: "NodeHtlcSubscribeJob recorded bob's refused forwards");
+        failures.Should().HaveCount(Bursts * AttemptsPerBurst, "every refused attempt is one LinkFailEvent row");
+        failures.Should().OnlyContain(e => e.OutgoingAmountMsat == (ulong)RefusedPaymentSats * 1_000);
+        failures.Should().OnlyContain(e => carolScids.Contains(e.OutgoingChannelId),
+            "the refusing link is one of bob's channels to carol");
+
+        // The planner prefers the fee alice offered over bob's rate: her gossip view of his policy can lag
+        // the fee engine. Same route every attempt, so one offer; ppm only if no row recorded it.
+        var offeredFeesMsat = failures.Select(e => e.FeeMsat).Distinct().ToList();
+        offeredFeesMsat.Should().ContainSingle("every attempt took the same route at the same price");
+        var eventPpm = failures.Max(e => e.RoutingFeePpm) ?? dearest.FeePerMil;
+        var feePerPaymentMsat = offeredFeesMsat[0] ?? RefusedPaymentSats * 1_000 * eventPpm / 1_000_000;
+        var expectedMissedFeeMsat = Bursts * feePerPaymentMsat;
+        expectedMissedFeeMsat.Should().BeGreaterThanOrEqualTo(Constants.AUTO_CHANNEL_OPEN_MIN_MISSED_FEE_MSAT,
+            "the shaped demand must clear the fee gate, or there is nothing for the job to plan");
+
+        return (carolScids, dearest, expectedMissedFeeMsat);
+    }
+
+    /// <summary>
+    /// Only after the demand is in place, so no run can see a partial burst set and plan off it. Waits for
+    /// the job to record and promote carol's recommendation onto a request that reached dispatch.
+    /// </summary>
+    private async Task<ChannelOpenRecommendation> EnableAutoAndAwaitPromotionAsync(Scenario scenario, int walletId)
+    {
+        await using (var db = CreateDbContext())
+        {
+            var updated = await db.Nodes
+                .Where(n => n.Id == scenario.BobNodeId)
+                .ExecuteUpdateAsync(s => s
+                    .SetProperty(n => n.AutoChannelOpenEnabled, true)
+                    .SetProperty(n => n.AutoChannelOpenMode, AutoChannelOpenMode.Auto)
+                    .SetProperty(n => n.AutoChannelOpenWalletId, (int?)walletId)
+                    .SetProperty(n => n.AutoChannelOpenBudgetSats, (long?)BudgetSats)
+                    // Null start ⇒ a fresh period, so opens from other scenarios don't count against it
+                    .SetProperty(n => n.AutoChannelOpenBudgetStartDatetime, (DateTimeOffset?)null)
+                    .SetProperty(n => n.AutoChannelOpenBudgetRefreshInterval, (TimeSpan?)null)
+                    .SetProperty(n => n.AutoChannelOpenMinSizeSats, (long?)null)
+                    .SetProperty(n => n.AutoChannelOpenMaxSizeSats, (long?)null)
+                    .SetProperty(n => n.MaxChannelOpenCostToEarnRatio, (double?)CostToEarnRatio)
+                    .SetProperty(n => n.RoutingEngineDryRun, false));
+            updated.Should().Be(1, "bob should be seeded and have automatic channel opening switched on");
+        }
+
+        ChannelOpenRecommendation? recommendation = null;
+        ChannelOperationRequestStatus? requestStatus = null;
+        for (var attempt = 0; attempt < JobWaitAttempts; attempt++)
+        {
+            await using (var db = CreateDbContext())
+            {
+                recommendation = await db.ChannelOpenRecommendations.AsNoTracking()
+                    .FirstOrDefaultAsync(r => r.NodeId == scenario.BobNodeId && r.PeerPubKey == scenario.Carol.PubKey);
+                requestStatus = recommendation?.ChannelOperationRequestId is { } id
+                    ? await db.ChannelOperationRequests.AsNoTracking().Where(r => r.Id == id)
+                        .Select(r => (ChannelOperationRequestStatus?)r.Status).SingleOrDefaultAsync()
+                    : null;
+            }
+
+            if (recommendation != null)
+                _output.WriteLine(
+                    $"[recommendation] #{recommendation.Id} status={recommendation.Status} bursts={recommendation.Bursts} capacity={recommendation.SuggestedCapacitySats} clamp={recommendation.BindingClamp} request={recommendation.ChannelOperationRequestId} requestStatus={requestStatus}");
+
+            // A request that failed before dispatch gets replaced on a later cycle, so wait for a live one
+            if (recommendation is { Status: ChannelOpenRecommendationStatus.Promoted }
+                && requestStatus is not ChannelOperationRequestStatus.Failed) break;
+
+            await Task.Delay(TimeSpan.FromSeconds(2));
+        }
+
+        recommendation.Should().NotBeNull("AutoChannelOpenJob should have recommended a channel to the drained peer");
+        recommendation!.Status.Should().Be(ChannelOpenRecommendationStatus.Promoted, "Auto mode promotes what it recommends");
+        requestStatus.Should().NotBe(ChannelOperationRequestStatus.Failed,
+            "the promoted request must reach dispatch — check NodeGuard's log for the promotion failure reason");
+
+        return recommendation;
+    }
+
+    /// <summary>
+    /// A hot wallet of its own, so the dev wallet's 20 BTC stays untouched: reused across runs, topped up
+    /// each time with <see cref="SmallWalletCoinSats"/> coins and confirmed. Returns every confirmed coin
+    /// it holds, leftover change from an earlier run included, since the clamp counts those too.
+    /// </summary>
+    private async Task<(int WalletId, List<(NBitcoin.OutPoint Outpoint, long Value)> Coins)> FundSmallWalletAsync(NBitcoin.RPC.RPCClient rpc)
+    {
+        int walletId;
+        DerivationStrategyBase derivationStrategy;
+        await using (var db = CreateDbContext())
+        {
+            var wallet = await db.Wallets.Include(w => w.Keys).FirstOrDefaultAsync(w => w.Name == SmallWalletName);
+            if (wallet == null)
+            {
+                var internalWallet = await db.InternalWallets.AsNoTracking().FirstAsync();
+                wallet = CreateWallet.SingleSig(internalWallet, SmallWalletAccountId);
+                wallet.Name = SmallWalletName;
+                // Already persisted; the ids are enough and re-attaching would insert it again
+                wallet.InternalWallet = null;
+                db.Wallets.Add(wallet);
+                await db.SaveChangesAsync();
+            }
+
+            walletId = wallet.Id;
+            derivationStrategy = wallet.GetDerivationStrategy()!;
+        }
+
+        var explorer = new ExplorerClient(
+            new NBXplorerNetworkProvider(ChainName.Regtest).GetFromCryptoCode("BTC"),
+            new Uri(Env("NBXPLORER_URI", "http://localhost:32838")));
+        await explorer.TrackAsync(derivationStrategy);
+
+        foreach (var sats in SmallWalletCoinSats)
+        {
+            var address = (await explorer.GetUnusedAsync(derivationStrategy, DerivationFeature.Deposit, reserve: true)).Address;
+            await rpc.SendToAddressAsync(address, Money.Satoshis(sats));
+        }
+        await MineAsync(rpc, 6);
+
+        var minimumSats = SmallWalletCoinSats.Sum();
+        var utxos = await PollAsync(
+            () => explorer.GetUTXOsAsync(derivationStrategy),
+            u => u.Confirmed.UTXOs.Sum(x => ((Money)x.Value).Satoshi) >= minimumSats && u.Unconfirmed.UTXOs.Count == 0,
+            attempts: 30, delay: TimeSpan.FromSeconds(2),
+            what: $"NBXplorer confirmed the small funding wallet's {SmallWalletCoinSats.Length} new coin(s)");
+
+        var coins = utxos.Confirmed.UTXOs
+            .Where(u => ((Money)u.Value).Satoshi > Constants.MINIMUM_UTXO_VALUE_SATS)
+            .Select(u => (u.Outpoint, ((Money)u.Value).Satoshi))
+            .ToList();
+        _output.WriteLine($"[setup] small funding wallet #{walletId}: {coins.Count} coin(s), {coins.Sum(c => c.Item2)} sats");
+
+        return (walletId, coins);
     }
 
     /// <summary>

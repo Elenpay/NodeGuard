@@ -20,11 +20,13 @@
 using FluentAssertions;
 using Microsoft.Extensions.Logging;
 using NBitcoin;
+using NBXplorer.DerivationStrategy;
 using NBXplorer.Models;
 using NodeGuard.Data.Models;
 using NodeGuard.Data.Repositories.Interfaces;
 using NodeGuard.Helpers;
 using NodeGuard.Services;
+using NodeGuard.TestHelpers;
 using NodeGuard.Tests.Jobs;
 using Quartz;
 
@@ -61,6 +63,7 @@ public class AutoChannelOpenJobTests
     private readonly Mock<INBXplorerService> _nbXplorerService = new();
     private readonly Mock<IChannelOperationRequestRepository> _channelOperationRequestRepository = new();
     private readonly Mock<IAuditService> _auditService = new();
+    private readonly Mock<ICoinSelectionService> _coinSelectionService = new();
 
     private AutoChannelOpenJob BuildJob() =>
         new(
@@ -72,7 +75,8 @@ public class AutoChannelOpenJobTests
             _lightningService.Object,
             _nbXplorerService.Object,
             _channelOperationRequestRepository.Object,
-            _auditService.Object);
+            _auditService.Object,
+            _coinSelectionService.Object);
 
     /// <summary>
     /// Both switches are process-wide statics, so they are set and restored around every run to keep
@@ -104,7 +108,7 @@ public class AutoChannelOpenJobTests
         long budgetSats = 1_000_000_000,
         long committedSats = 0,
         bool dryRun = false,
-        long walletBalanceSats = 1_000_000_000,
+        long[]? walletUtxoSats = null,
         bool secondPeer = false)
     {
         var node = new Node
@@ -115,7 +119,7 @@ public class AutoChannelOpenJobTests
             AutoChannelOpenEnabled = true,
             AutoChannelOpenMode = mode,
             AutoChannelOpenWalletId = 3,
-            AutoChannelOpenWallet = new Wallet { Id = 3 },
+            AutoChannelOpenWallet = FundingWallet(),
             AutoChannelOpenBudgetSats = budgetSats,
             AutoChannelOpenBudgetStartDatetime = DateTimeOffset.UtcNow.AddHours(-1),
             RoutingEngineDryRun = dryRun,
@@ -180,8 +184,11 @@ public class AutoChannelOpenJobTests
         _recommendationRepository.Setup(x => x.GetLastDecisionByPeer(NodeId))
             .ReturnsAsync(new Dictionary<string, DateTimeOffset>());
 
-        _lightningService.Setup(x => x.GetWalletBalance(It.IsAny<Wallet>()))
-            .ReturnsAsync(new GetBalanceResponse { Confirmed = Money.Satoshis(walletBalanceSats) });
+        var utxos = (walletUtxoSats ?? [1_000_000_000])
+            .Select((sats, i) => TestUtxos.Spendable(node.AutoChannelOpenWallet, (uint)i, sats))
+            .ToList();
+        _coinSelectionService.Setup(x => x.GetAvailableUTXOsAsync(It.IsAny<DerivationStrategyBase>()))
+            .ReturnsAsync(utxos);
 
         SetupUpsertReturning(ChannelOpenRecommendationStatus.Open);
 
@@ -190,6 +197,13 @@ public class AutoChannelOpenJobTests
             .ReturnsAsync((true, (string?)null));
 
         return node;
+    }
+
+    private static Wallet FundingWallet()
+    {
+        var wallet = CreateWallet.SingleSig(CreateWallet.CreateInternalWallet());
+        wallet.Id = 3;
+        return wallet;
     }
 
     private void SetupUpsertReturning(ChannelOpenRecommendationStatus status) =>
@@ -304,11 +318,35 @@ public class AutoChannelOpenJobTests
     [Fact]
     public async Task Execute_FundingWalletEmpty_RecordsNothing()
     {
-        ArrangeQualifyingDemand(walletBalanceSats: 0);
+        ArrangeQualifyingDemand(walletUtxoSats: []);
 
         await Run();
 
         VerifyRecorded(Times.Never());
+    }
+
+    [Fact]
+    public async Task Execute_FundingWalletCannotCoverTheFundingFee_RecordsNothing()
+    {
+        // 10 sat/vB × 153 vB (one P2WPKH in, funding and change out) + 546 sats of change against a 1,000 sat coin
+        ArrangeQualifyingDemand(walletUtxoSats: [1_000]);
+
+        await Run();
+
+        VerifyRecorded(Times.Never());
+    }
+
+    [Fact]
+    public async Task Execute_WalletBinds_LeavesRoomForTheFeeAndChange()
+    {
+        // 10 sat/vB × 221 vB = 2,210 sats of fee, plus a 546 sat change output so the open still relays
+        ArrangeQualifyingDemand(walletUtxoSats: [6_000_000, 4_000_000]);
+
+        await Run();
+
+        _recommendationRepository.Verify(x => x.Upsert(It.Is<ChannelOpenRecommendation>(r =>
+            r.SuggestedCapacitySats == 10_000_000 - 2_210 - 546
+            && r.BindingClamp == ChannelOpenBindingClamp.WalletBalance)), Times.Once);
     }
 
     // ── Record, audit, promote ─────────────────────────────────────────────────────────

@@ -439,22 +439,6 @@ public class CoinSelectionServiceTests
         availableUTXOs[0].Outpoint.Should().Be(availableUtxo.Outpoint);
     }
 
-    /// <summary>A UTXO complete enough for LightningHelper.SelectCoins to turn it into a coin.</summary>
-    private static UTXO CreateSpendableUtxo(Wallet wallet, uint index, long satoshis, int confirmations = 1)
-    {
-        var keyPath = KeyPath.Parse($"0/{index}");
-
-        return new UTXO
-        {
-            Outpoint = new OutPoint(new uint256(index), 0),
-            Value = new Money(satoshis),
-            Confirmations = confirmations,
-            KeyPath = keyPath,
-            ScriptPubKey = (wallet.GetDerivationStrategy() as StandardDerivationStrategyBase)!
-                .GetDerivation(keyPath).ScriptPubKey
-        };
-    }
-
     private static WalletWithdrawalRequest CreateRequest(Wallet wallet, decimal amountBtc)
     {
         return new WalletWithdrawalRequest
@@ -481,9 +465,9 @@ public class CoinSelectionServiceTests
 
             // SelectUTXOsByOldest pops in ascending confirmations, so it would take the 100k UTXO on its
             // own. Following NBXplorer's order instead takes the two small ones.
-            var small = CreateSpendableUtxo(wallet, 1, 6_000, confirmations: 2);
-            var smaller = CreateSpendableUtxo(wallet, 2, 5_000, confirmations: 3);
-            var big = CreateSpendableUtxo(wallet, 3, 100_000, confirmations: 1);
+            var small = TestUtxos.Spendable(wallet, 1, 6_000, confirmations: 2);
+            var smaller = TestUtxos.Spendable(wallet, 2, 5_000, confirmations: 3);
+            var big = TestUtxos.Spendable(wallet, 3, 100_000, confirmations: 1);
 
             var fmutxoRepository = new Mock<IFMUTXORepository>();
             fmutxoRepository.Setup(x => x.GetLockedUTXOs(null, null)).ReturnsAsync(new List<FMUTXO>());
@@ -537,7 +521,7 @@ public class CoinSelectionServiceTests
         // Arrange
         var wallet = CreateWallet.SingleSig(_internalWallet);
         var derivationStrategy = wallet.GetDerivationStrategy();
-        var utxo = CreateSpendableUtxo(wallet, 1, 100_000);
+        var utxo = TestUtxos.Spendable(wallet, 1, 100_000);
 
         var nbXplorerService = new Mock<INBXplorerService>();
         var coinSelectionService = new CoinSelectionService(_logger, new Mock<IMapper>().Object,
@@ -568,7 +552,7 @@ public class CoinSelectionServiceTests
             // Arrange
             var wallet = CreateWallet.SingleSig(_internalWallet);
             var derivationStrategy = wallet.GetDerivationStrategy();
-            var utxo = CreateSpendableUtxo(wallet, 1, 1_000);
+            var utxo = TestUtxos.Spendable(wallet, 1, 1_000);
 
             var fmutxoRepository = new Mock<IFMUTXORepository>();
             fmutxoRepository.Setup(x => x.GetLockedUTXOs(null, null)).ReturnsAsync(new List<FMUTXO>());

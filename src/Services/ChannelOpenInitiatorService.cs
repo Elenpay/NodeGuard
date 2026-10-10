@@ -56,14 +56,14 @@ public record ChannelOpenInitiatorTunables(
     bool AllowWumbo,
     long NodeMinSizeSats,
     long NodeMaxSizeSats,
-    long WalletBalanceSats,
+    long WalletSpendableSats,
     long RemainingBudgetSats,
     long EstimatedChainCostSats,
     int MaxPlansPerRun)
 {
     public static ChannelOpenInitiatorTunables FromConstants(
         Node node,
-        long walletBalanceSats,
+        long walletSpendableSats,
         long remainingBudgetSats,
         long estimatedChainCostSats) => new(
         WindowHours: Constants.AUTO_CHANNEL_OPEN_WINDOW_HOURS,
@@ -78,7 +78,7 @@ public record ChannelOpenInitiatorTunables(
         AllowWumbo: CurrentNetworkHelper.GetCurrentNetwork() != Network.RegTest, 
         NodeMinSizeSats: node.AutoChannelOpenMinSizeSats ?? 0,
         NodeMaxSizeSats: node.AutoChannelOpenMaxSizeSats ?? long.MaxValue,
-        WalletBalanceSats: walletBalanceSats,
+        WalletSpendableSats: walletSpendableSats,
         RemainingBudgetSats: remainingBudgetSats,
         EstimatedChainCostSats: estimatedChainCostSats,
         MaxPlansPerRun: Constants.AUTO_CHANNEL_OPEN_MAX_PLANS_PER_RUN);
@@ -300,9 +300,9 @@ public static class ChannelOpenInitiatorService
             clamp = ChannelOpenBindingClamp.NodeMax;
         }
 
-        if (target > t.WalletBalanceSats)
+        if (target > t.WalletSpendableSats)
         {
-            target = t.WalletBalanceSats;
+            target = t.WalletSpendableSats;
             clamp = ChannelOpenBindingClamp.WalletBalance;
         }
 

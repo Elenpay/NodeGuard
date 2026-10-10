@@ -51,7 +51,7 @@ public class ChannelOpenInitiatorServiceTests
             AllowWumbo: allowWumbo,
             NodeMinSizeSats: nodeMin,
             NodeMaxSizeSats: nodeMax,
-            WalletBalanceSats: walletBalance,
+            WalletSpendableSats: walletBalance,
             RemainingBudgetSats: remainingBudget,
             EstimatedChainCostSats: chainCost,
             MaxPlansPerRun: maxPlans);
