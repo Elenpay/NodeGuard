@@ -1,0 +1,194 @@
+# Local Spark network (profile: spark), for developing and testing NodeGuard's Spark swap provider.
+#
+# Three Spark operators and an open-source Spark Service Provider (benthecarman/open-ssp) with its
+# ldk-server Lightning node, all on the Polar regtest chain: alice pays Spark invoices over a channel to
+# the SSP's node, and cooperative exits land in NBXplorer-tracked NodeGuard wallets.
+#
+# The images are built from a pinned open-ssp commit by .github/workflows/spark-dev-images.yml (see
+# docker/spark/README.md, also for building them locally). Development and CI only.
+# Operator keys (open-ssp's e2e fixtures), TLS material and the admin token are public regtest fixtures:
+# never reuse them.
+
+x-spark: &spark
+  profiles: [spark]
+  restart: unless-stopped
+
+x-spark-operator: &spark-operator
+  <<: *spark
+  image: ${SPARK_OPERATOR_IMAGE:-ghcr.io/elenpay/nodeguard-spark-dev-operator:open-ssp-89525792d65d}
+  depends_on:
+    bitcoind:
+      condition: service_started
+    spark-postgres:
+      condition: service_healthy
+    spark-cert-init:
+      condition: service_completed_successfully
+  entrypoint: ["/bin/sh", "-c"]
+  volumes:
+    - ./config/entrypoint.sh:/opt/spark/entrypoint.sh:ro
+    - ./config/config.json:/opt/spark/config.json:ro
+    - ./config/operator.config.yaml:/opt/spark/operator.config.yaml:ro
+    - ./config/keys/operator_0.key:/opt/spark/keys/operator_0.key:ro
+    - ./config/keys/operator_1.key:/opt/spark/keys/operator_1.key:ro
+    - ./config/keys/operator_2.key:/opt/spark/keys/operator_2.key:ro
+    - spark_tls:/opt/spark/tls:ro
+
+services:
+  # Self-signed TLS certificates for the operators (NodeGuard pins them: SPARK_OPERATOR_CERTS_DIR)
+  spark-cert-init:
+    <<: *spark
+    image: alpine:3.20
+    restart: "no"
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - |
+        set -e
+        apk add --no-cache openssl > /dev/null
+        for i in 0 1 2; do
+          KEY="/tls/server_$${i}.key"; CERT="/tls/server_$${i}.crt"
+          [ -f "$$KEY" ] && [ -f "$$CERT" ] && continue
+          openssl genrsa -out "$$KEY" 2048 2>/dev/null
+          openssl req -new -x509 -key "$$KEY" -out "$$CERT" -days 3650 \
+            -subj "/CN=spark-operator-$${i}" \
+            -addext "subjectAltName = DNS:spark-operator-$${i},DNS:localhost,DNS:spark-operator-$${i}.minikube.local" \
+            -addext "basicConstraints = critical,CA:FALSE" \
+            -addext "keyUsage = critical,digitalSignature,keyEncipherment" \
+            -addext "extendedKeyUsage = serverAuth"
+        done
+        chmod 0644 /tls/*.crt /tls/*.key
+    volumes:
+      - spark_tls:/tls
+
+  spark-postgres:
+    <<: *spark
+    image: postgres:16-bookworm
+    environment:
+      POSTGRES_HOST_AUTH_METHOD: trust
+    volumes:
+      - spark_postgres_data:/var/lib/postgresql/data
+      - ./config/init-databases.sh:/docker-entrypoint-initdb.d/init-databases.sh:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 2s
+      timeout: 5s
+      retries: 30
+
+  spark-operator-0:
+    <<: *spark-operator
+    command: ["/opt/spark/entrypoint.sh 0"]
+    ports: ["127.0.0.1:8535:8535"]
+    networks:
+      default:
+        aliases: [spark-operator-0.minikube.local]
+
+  spark-operator-1:
+    <<: *spark-operator
+    command: ["/opt/spark/entrypoint.sh 1"]
+    ports: ["127.0.0.1:8536:8535"]
+    networks:
+      default:
+        aliases: [spark-operator-1.minikube.local]
+
+  spark-operator-2:
+    <<: *spark-operator
+    command: ["/opt/spark/entrypoint.sh 2"]
+    ports: ["127.0.0.1:8537:8535"]
+    networks:
+      default:
+        aliases: [spark-operator-2.minikube.local]
+
+  spark-ldk-server:
+    <<: *spark
+    image: ${SPARK_LDK_SERVER_IMAGE:-ghcr.io/elenpay/nodeguard-spark-dev-ldk-server:open-ssp-89525792d65d}
+    depends_on:
+      bitcoind:
+        condition: service_started
+    ports:
+      - "127.0.0.1:3536:3536"
+      - "127.0.0.1:19735:9735"
+    volumes:
+      - spark_ldk_data:/data
+      - ./config/ldk-server-config.toml:/config.toml:ro
+    entrypoint: ["/bin/sh", "-c"]
+    # Makes the API key and certificate readable by the SSP once ldk-server has written them
+    command:
+      - |
+        ldk-server /config.toml &
+        PID=$$!
+        trap 'kill -TERM "$$PID"' TERM INT
+        while kill -0 "$$PID" 2>/dev/null; do
+          if [ -f /data/regtest/api_key ] && [ -f /data/tls.crt ]; then
+            chmod 0755 /data/regtest; chmod 0444 /data/regtest/api_key /data/tls.crt; break
+          fi
+          sleep 1
+        done
+        wait "$$PID"
+    healthcheck:
+      test: ["CMD-SHELL", "test -r /data/regtest/api_key && ldk-server-cli --base-url localhost:3536 --api-key $$(od -A n -t x1 /data/regtest/api_key | tr -d ' \\n') --tls-cert /data/tls.crt get-node-info >/dev/null"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+
+  spark-ssp:
+    <<: *spark
+    image: ${SPARK_SSP_IMAGE:-ghcr.io/elenpay/nodeguard-spark-dev-ssp:open-ssp-89525792d65d}
+    depends_on:
+      spark-operator-0: { condition: service_started }
+      spark-operator-1: { condition: service_started }
+      spark-operator-2: { condition: service_started }
+      spark-ldk-server: { condition: service_healthy }
+    # The SSP exits until bitcoind's default wallet exists and the operators' SSP listeners are up; the
+    # restart policy covers both
+    ports: ["127.0.0.1:5100:5000"]
+    volumes:
+      - spark_ssp_data:/data
+      - spark_ldk_data:/ldk-data:ro
+      - spark_tls:/tls:ro
+    environment:
+      SSP_LISTEN_ADDR: 0.0.0.0:5000
+      SSP_NETWORK: REGTEST
+      SSP_DATA_DIR: /data
+      SSP_PUBLIC_URL: http://spark-ssp:5000
+      SSP_INSTANT_MAX_OUTSTANDING_SATS: 0
+      SSP_INSTANT_MAX_DEPOSIT_SATS: 0
+      # Exits are paid from bitcoind's default wallet (see setup-spark.sh)
+      COOP_BITCOIN_RPC_URL: http://bitcoind:18443/wallet/default
+      COOP_BITCOIN_RPC_USER: polaruser
+      COOP_BITCOIN_RPC_PASSWORD: polarpass
+      SPARK_MNEMONIC_FILE: /data/spark.mnemonic
+      SO_HOSTS: spark-operator-0.minikube.local:8535,spark-operator-1.minikube.local:8535,spark-operator-2.minikube.local:8535
+      SO_IDENTITY_PUBKEYS: 0322ca18fc489ae25418a0e768273c2c61cabb823edfb14feb891e9bec62016510,0341727a6c41b168f07eb50865ab8c397a53c7eef628ac1020956b705e43b6cb27,0305ab8d485cc752394de4981f8a5ae004f2becfea6f432c9a59d5022d8764f0a6
+      SO_CERT_FILES: /tls/server_0.crt,/tls/server_1.crt,/tls/server_2.crt
+      SSP_OPERATOR_HOSTS: spark-operator-0.minikube.local:8536,spark-operator-1.minikube.local:8536,spark-operator-2.minikube.local:8536
+      SSP_OPERATOR_CERT_FILES: /tls/server_0.crt,/tls/server_1.crt,/tls/server_2.crt
+      SSP_MIN_SPLIT_CHILD_SATS: 1
+      SPARK_ADMIN_TOKEN: ${SPARK_ADMIN_TOKEN:-regtest-spark-admin-token}
+      LDK_GRPC_ADDR: spark-ldk-server:3536
+      LDK_API_KEY_FILE: /ldk-data/regtest/api_key
+      LDK_TLS_CERT_FILE: /ldk-data/tls.crt
+      SSP_SWAP_FEE_SATS: 0
+      SSP_FROST_THRESHOLD: 2
+      RUST_LOG: info
+
+  # One-shot: the SSP's Spark liquidity and a channel alice -> SSP node, funded from bitcoind's default
+  # wallet. After setup-e2e when the e2e profile is up, which creates that wallet.
+  spark-setup:
+    profiles: [spark]
+    image: alpine:3.20
+    restart: "no"
+    depends_on:
+      spark-ssp: { condition: service_started }
+      alice: { condition: service_healthy }
+      setup-e2e: { condition: service_completed_successfully, required: false }
+    volumes:
+      - ./setup-spark.sh:/setup-spark.sh:ro
+      - /var/run/docker.sock:/var/run/docker.sock
+    environment:
+      SPARK_ADMIN_TOKEN: ${SPARK_ADMIN_TOKEN:-regtest-spark-admin-token}
+    command: ["sh", "-c", "apk add --no-cache docker-cli jq curl > /dev/null && sh /setup-spark.sh"]
+
+volumes:
+  spark_tls:
+  spark_postgres_data:
+  spark_ldk_data:
+  spark_ssp_data:

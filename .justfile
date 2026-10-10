@@ -125,7 +125,17 @@ docker-down:
 
 # Stops the development docker containers and removes the volumes, add DOCKER_COMPOSE_FILE to override the default file
 docker-rm:
-    docker compose --profile polar --profile loop --profile 40swap --profile e2e --profile mempool -f {{DOCKER_COMPOSE_FILE}} down -v
+    docker compose --profile polar --profile loop --profile 40swap --profile e2e --profile mempool --profile spark -f {{DOCKER_COMPOSE_FILE}} down -v
+
+SPARK_SERVICES := "spark-cert-init spark-postgres spark-operator-0 spark-operator-1 spark-operator-2 spark-ldk-server spark-ssp spark-setup"
+
+# Starts the local Spark network on the Polar chain (and Polar itself if it is not up), see docker/spark/README.md
+spark-up:
+    docker compose --profile polar --profile spark -f {{DOCKER_COMPOSE_FILE}} up -d {{SPARK_SERVICES}}
+
+# Stops and removes the local Spark network, keeping the Polar chain; its volumes stay unless docker-rm
+spark-down:
+    docker compose --profile polar --profile spark -f {{DOCKER_COMPOSE_FILE}} rm -sf {{SPARK_SERVICES}}
 
 # Runs the full ordered e2e suite (E2ESuiteTests, Category=E2E) in one stack, one `dotnet test` pass:
 # rebalance → fee-engine smoke → fee-engine flow. Clean slate first (down -v): DbInitializer only funds the
