@@ -89,7 +89,11 @@
                         <TableRow>
                             <TableRowHeader>Max balance</TableRowHeader>
                             <TableRowCell>
-                                @SparkSettings.MaxBalanceFor(_wallet).ToString("N0") sats@(_wallet.SparkMaxBalanceSats is null ? " (SPARK_MAX_BALANCE_SATS)" : "")
+                                @{ var maxBalanceSats = SparkSettings.MaxBalanceFor(_wallet); }
+                                <Tooltip Text="@($"{maxBalanceSats:N0} sats")" Placement="TooltipPlacement.Right">
+                                    @($"{new NBitcoin.Money(maxBalanceSats, NBitcoin.MoneyUnit.Satoshi).ToUnit(NBitcoin.MoneyUnit.BTC):f8} BTC")
+                                </Tooltip>
+                                @(_wallet.SparkMaxBalanceSats is null ? " (SPARK_MAX_BALANCE_SATS)" : "")
                             </TableRowCell>
                         </TableRow>
                         <TableRow><TableRowHeader>Used by</TableRowHeader><TableRowCell>@(_usedBy.Count > 0 ? string.Join(", ", _usedBy) : "no node")</TableRowCell></TableRow>
@@ -104,10 +108,14 @@
                         }
                         else if (_balance is not null)
                         {
-                            <TableRow><TableRowHeader>Owned</TableRowHeader><TableRowCell>@_balance.Owned.ToString("N0") sats</TableRowCell></TableRow>
-                            <TableRow><TableRowHeader>Available</TableRowHeader><TableRowCell>@_balance.Available.ToString("N0") sats</TableRowCell></TableRow>
-                            <TableRow><TableRowHeader>Incoming</TableRowHeader><TableRowCell>@_balance.Incoming.ToString("N0") sats</TableRowCell></TableRow>
-                            <TableRow><TableRowHeader>Frozen</TableRowHeader><TableRowCell>@_balance.Frozen.ToString("N0") sats</TableRowCell></TableRow>
+                            @BalanceRow("Owned", _balance.Owned,
+                                "Everything the wallet owns: what is available, what is frozen, and what an operation in progress still holds (an exit until it confirms, a transfer not applied yet)")
+                            @BalanceRow("Available", _balance.Available,
+                                "What the wallet can send or exit right now")
+                            @BalanceRow("Incoming", _balance.Incoming,
+                                "Arriving but not spendable yet: inbound transfers waiting to be claimed, such as a swap's payment until the exit job claims it")
+                            @BalanceRow("Frozen", _balance.Frozen,
+                                "Leaves too close to their refund timelock: the Spark operators will neither move nor renew them, and only a unilateral on-chain exit recovers them")
                         }
                     </TableBody>
                 </Table>
@@ -267,6 +275,19 @@
         _created = null;
         await OnChanged.InvokeAsync();
     }
+
+    /// <summary>A balance row in BTC: what the figure means on its label's tooltip, the sats on the amount's</summary>
+    private static RenderFragment BalanceRow(string label, long sats, string meaning) =>
+        @<TableRow>
+            <TableRowHeader>
+                <Tooltip Text="@meaning" Placement="TooltipPlacement.Right" Multiline="true">@label ⓘ</Tooltip>
+            </TableRowHeader>
+            <TableRowCell>
+                <Tooltip Text="@($"{sats:N0} sats")" Placement="TooltipPlacement.Right">
+                    @($"{new NBitcoin.Money(sats, NBitcoin.MoneyUnit.Satoshi).ToUnit(NBitcoin.MoneyUnit.BTC):f8} BTC")
+                </Tooltip>
+            </TableRowCell>
+        </TableRow>;
 
     /// <summary>
     /// Reads the wallet's current balance from the Spark operators. Re-renders itself: when the details open, this runs
