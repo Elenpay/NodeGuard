@@ -24,13 +24,12 @@ just spark-down    # removes the Spark containers, keeps Polar and the volumes
 
 In Tilt, the services are in the `spark` group, which is disabled by default.
 
-The E2E stack uses this network when the `spark` profile is up and `SPARK_ENABLED=true`. That configuration is in [docker/e2e/docker-compose.yml](../e2e/docker-compose.yml). NodeGuard then uses the embedded signer, with the Spark keys of its current internal wallet.
+The E2E stack uses this network when the `spark` profile is up and `SPARK_ENABLED=true`. That configuration is in [docker/e2e/docker-compose.yml](../e2e/docker-compose.yml). NodeGuard then uses Spark wallets (`SPARK_SIGNER=wallet`): the Spark E2E creates one and gives it to alice.
 
 For a NodeGuard running on the host, `docker/extract-macaroons.sh` (run by `just run`; run it yourself before debugging from an IDE) writes these settings to `src/nodeguard-macaroons.env` whenever the Spark network is up, and copies the operators' certificates to `src/.spark-tls/`:
 
 ```
 SPARK_ENABLED=true
-SPARK_ACCOUNT=0
 SPARK_OPERATORS=https://localhost:8535|0000000000000000000000000000000000000000000000000000000000000001|0322ca18fc489ae25418a0e768273c2c61cabb823edfb14feb891e9bec62016510;https://localhost:8536|0000000000000000000000000000000000000000000000000000000000000002|0341727a6c41b168f07eb50865ab8c397a53c7eef628ac1020956b705e43b6cb27;https://localhost:8537|0000000000000000000000000000000000000000000000000000000000000003|0305ab8d485cc752394de4981f8a5ae004f2becfea6f432c9a59d5022d8764f0a6
 SPARK_SSP_URL=http://localhost:5100/graphql/spark/2025-03-19
 SPARK_OPERATOR_CERTS_DIR=<repository>/src/.spark-tls

@@ -213,7 +213,8 @@ public class PsbtApprovalBindingE2ETests
     private static RPCClient CreateBitcoindRpc()
     {
         var credential = new NetworkCredential(Env("BITCOIND_RPC_USER", "polaruser"), Env("BITCOIND_RPC_PASS", "polarpass"));
-        return new RPCClient(credential, new Uri(Env("BITCOIND_RPC_URL", "http://localhost:18443")), Network.RegTest);
+        var rpc = new RPCClient(credential, new Uri(Env("BITCOIND_RPC_URL", "http://localhost:18443")), Network.RegTest);
+        return rpc.SetWalletContext(Env("BITCOIND_RPC_WALLET", "default"));
     }
 
     // ---- database access -----------------------------------------------------------------------------

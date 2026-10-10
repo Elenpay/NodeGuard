@@ -30,6 +30,9 @@ services:
       NBXPLORER_BTCRPCUSER: "polaruser"
       NBXPLORER_BTCRPCPASSWORD: "polarpass"
       NBXPLORER_BTCRPCURL: http://bitcoind:18443
+      # Load bitcoind's "default" wallet, not "": a second loaded wallet breaks every bitcoind client that
+      # does not name its wallet, and NBXplorer would load "" again on every restart
+      NBXPLORER_BTCRPCDEFAULTWALLET: default
       NBXPLORER_BTCNODEENDPOINT: bitcoind:18444
       NBXPLORER_CUSTOMKEYPATHTEMPLATE: "2/*/0"
     command: ["--noauth"]

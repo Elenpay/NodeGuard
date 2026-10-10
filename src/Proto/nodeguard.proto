@@ -142,6 +142,33 @@ service NodeGuardService {
   Returns a swap-out by its id or by the reference_id it was requested with
   */
   rpc GetSwapOut(GetSwapOutRequest) returns (GetSwapOutResponse);
+
+  /*
+  Creates a Spark wallet (SPARK_SIGNER=wallet) with a new mnemonic, stored encrypted. The mnemonic is never returned:
+  create the wallet on the Wallets page to see it. Temporary, like Spark wallets themselves.
+  */
+  rpc CreateSparkWallet(CreateSparkWalletRequest) returns (CreateSparkWalletResponse);
+
+  /*
+  Lists the Spark wallets with the nodes whose Spark swaps pass through each
+  */
+  rpc GetSparkWallets(GetSparkWalletsRequest) returns (GetSparkWalletsResponse);
+
+  /*
+  Returns a Spark wallet's balance, from the Spark operators
+  */
+  rpc GetSparkWalletBalance(GetSparkWalletBalanceRequest) returns (GetSparkWalletBalanceResponse);
+
+  /*
+  Exits everything a Spark wallet holds to an unused address of an on-chain wallet. Refused while the Spark wallet
+  has a swap in flight, whose sats it would take.
+  */
+  rpc WithdrawAllSparkWallet(WithdrawAllSparkWalletRequest) returns (WithdrawAllSparkWalletResponse);
+
+  /*
+  Archives a Spark wallet; refused unless it is empty and no node uses it
+  */
+  rpc ArchiveSparkWallet(ArchiveSparkWalletRequest) returns (ArchiveSparkWalletResponse);
 }
 
 message GetLiquidityRulesRequest {
@@ -732,4 +759,71 @@ message GetSwapOutResponse {
   optional string destination_address = 12;
   optional string payment_hash = 13;
   optional string reference_id = 14;
+  // What the swap paid on-chain to destination_address, once confirmed: what it delivered (Spark swaps; their
+  // on-chain and service fees add up to amount_sats minus it)
+  optional int64 payout_sats = 15;
+}
+
+message CreateSparkWalletRequest {
+  string name = 1;
+  // The Spark account its keys are derived at; 0 by default
+  optional int32 account = 2;
+  // The most it may hold, counting a new swap; SPARK_MAX_BALANCE_SATS by default
+  optional int64 max_balance_sats = 3;
+}
+
+message CreateSparkWalletResponse {
+  int32 wallet_id = 1;
+  string identity_public_key = 2;
+}
+
+message GetSparkWalletsRequest {
+  bool include_archived = 1;
+}
+
+message SparkWalletInfo {
+  int32 id = 1;
+  string name = 2;
+  string identity_public_key = 3;
+  int32 account = 4;
+  // Its own max balance; absent means SPARK_MAX_BALANCE_SATS
+  optional int64 max_balance_sats = 5;
+  int64 effective_max_balance_sats = 6;
+  // The nodes whose Spark swaps pass through it
+  repeated int32 node_ids = 7;
+  bool archived = 8;
+}
+
+message GetSparkWalletsResponse {
+  repeated SparkWalletInfo wallets = 1;
+}
+
+message GetSparkWalletBalanceRequest {
+  int32 wallet_id = 1;
+}
+
+message GetSparkWalletBalanceResponse {
+  int64 owned_sats = 1;
+  int64 available_sats = 2;
+  int64 incoming_sats = 3;
+  int64 frozen_sats = 4;
+}
+
+message WithdrawAllSparkWalletRequest {
+  int32 wallet_id = 1;
+  // The on-chain wallet an unused deposit address is reserved from
+  int32 destination_wallet_id = 2;
+}
+
+message WithdrawAllSparkWalletResponse {
+  string tx_id = 1;
+  int64 payout_sats = 2;
+  int64 fee_sats = 3;
+}
+
+message ArchiveSparkWalletRequest {
+  int32 wallet_id = 1;
+}
+
+message ArchiveSparkWalletResponse {
 }

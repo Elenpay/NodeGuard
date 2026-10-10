@@ -103,6 +103,7 @@ public class NodeGuardService : Nodeguard.NodeGuardService.NodeGuardServiceBase,
     private readonly ISwapsService _swapsService;
     private readonly ISwapOutRepository _swapOutRepository;
     private readonly IAuditService _auditService;
+    private readonly ISparkWalletsService _sparkWallets;
 
     public NodeGuardService(ILogger<NodeGuardService> logger,
         ILiquidityRuleRepository liquidityRuleRepository,
@@ -125,9 +126,11 @@ public class NodeGuardService : Nodeguard.NodeGuardService.NodeGuardServiceBase,
         IWithdrawalRequestService withdrawalRequestService,
         ISwapsService swapsService,
         ISwapOutRepository swapOutRepository,
-        IAuditService auditService
+        IAuditService auditService,
+        ISparkWalletsService sparkWallets
     )
     {
+        _sparkWallets = sparkWallets;
         _swapsService = swapsService;
         _swapOutRepository = swapOutRepository;
         _auditService = auditService;
@@ -1810,6 +1813,7 @@ public class NodeGuardService : Nodeguard.NodeGuardService.NodeGuardServiceBase,
         if (swap.DestinationAddress != null) response.DestinationAddress = swap.DestinationAddress;
         if (swap.PaymentHash != null) response.PaymentHash = swap.PaymentHash;
         if (swap.ReferenceId != null) response.ReferenceId = swap.ReferenceId;
+        if (swap.PayoutSats != null) response.PayoutSats = swap.PayoutSats.Value;
         return response;
     }
 
@@ -1824,5 +1828,89 @@ public class NodeGuardService : Nodeguard.NodeGuardService.NodeGuardServiceBase,
         };
         if (swap.ErrorDetails != null) response.Error = swap.ErrorDetails;
         return response;
+    }
+
+    // ── Spark wallets (SPARK_SIGNER=wallet; temporary) ─────────────────────────────────
+
+    public override Task<CreateSparkWalletResponse> CreateSparkWallet(CreateSparkWalletRequest request, ServerCallContext context) =>
+        SparkWalletCallAsync("Creating a Spark wallet", async () =>
+        {
+            // The mnemonic is shown once, on the Wallets page; never over the API
+            var (wallet, _) = await _sparkWallets.CreateAsync(request.Name, request.HasAccount ? request.Account : 0,
+                request.HasMaxBalanceSats ? request.MaxBalanceSats : null, context.CancellationToken);
+            return new CreateSparkWalletResponse { WalletId = wallet.Id, IdentityPublicKey = wallet.SparkIdentityPublicKey ?? string.Empty };
+        });
+
+    public override Task<GetSparkWalletsResponse> GetSparkWallets(GetSparkWalletsRequest request, ServerCallContext context) =>
+        SparkWalletCallAsync("Listing the Spark wallets", async () =>
+        {
+            var response = new GetSparkWalletsResponse();
+            foreach (var wallet in await _sparkWallets.ListAsync(request.IncludeArchived, context.CancellationToken))
+            {
+                var info = new SparkWalletInfo
+                {
+                    Id = wallet.Id,
+                    Name = wallet.Name,
+                    IdentityPublicKey = wallet.IdentityPublicKey ?? string.Empty,
+                    Account = wallet.Account,
+                    EffectiveMaxBalanceSats = wallet.EffectiveMaxBalanceSats,
+                    Archived = wallet.IsArchived
+                };
+                if (wallet.MaxBalanceSats is { } maxBalance) info.MaxBalanceSats = maxBalance;
+                info.NodeIds.AddRange(wallet.NodeIds);
+                response.Wallets.Add(info);
+            }
+
+            return response;
+        });
+
+    public override Task<GetSparkWalletBalanceResponse> GetSparkWalletBalance(GetSparkWalletBalanceRequest request,
+        ServerCallContext context) =>
+        SparkWalletCallAsync("Getting a Spark wallet's balance", async () =>
+        {
+            var balance = await _sparkWallets.GetBalanceAsync(request.WalletId, context.CancellationToken);
+            return new GetSparkWalletBalanceResponse
+            {
+                OwnedSats = balance.Owned,
+                AvailableSats = balance.Available,
+                IncomingSats = balance.Incoming,
+                FrozenSats = balance.Frozen
+            };
+        });
+
+    public override Task<WithdrawAllSparkWalletResponse> WithdrawAllSparkWallet(WithdrawAllSparkWalletRequest request,
+        ServerCallContext context) =>
+        SparkWalletCallAsync("Withdrawing a Spark wallet", async () =>
+        {
+            var exit = await _sparkWallets.WithdrawAllAsync(request.WalletId, request.DestinationWalletId, context.CancellationToken);
+            return new WithdrawAllSparkWalletResponse { TxId = exit.Txid, PayoutSats = exit.PayoutSats, FeeSats = exit.FeeSats };
+        });
+
+    public override Task<ArchiveSparkWalletResponse> ArchiveSparkWallet(ArchiveSparkWalletRequest request, ServerCallContext context) =>
+        SparkWalletCallAsync("Archiving a Spark wallet", async () =>
+        {
+            await _sparkWallets.ArchiveAsync(request.WalletId, context.CancellationToken);
+            return new ArchiveSparkWalletResponse();
+        });
+
+    /// <summary>Runs a Spark wallet action, its refusals mapped to statuses</summary>
+    private async Task<T> SparkWalletCallAsync<T>(string action, Func<Task<T>> call)
+    {
+        try
+        {
+            return await call();
+        }
+        catch (Exception e) when (e is not RpcException and not OperationCanceledException)
+        {
+            var code = e switch
+            {
+                SparkUnavailableException => StatusCode.Unavailable,
+                ArgumentException => StatusCode.InvalidArgument,
+                InvalidOperationException => StatusCode.FailedPrecondition,
+                _ => StatusCode.Internal
+            };
+            _logger.LogError(e, "{Action} through gRPC failed", action);
+            throw new RpcException(new Status(code, code == StatusCode.Internal ? $"{action} failed" : e.Message));
+        }
     }
 }

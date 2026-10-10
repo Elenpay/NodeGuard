@@ -83,7 +83,8 @@ namespace NodeGuard.Rpc
             IWithdrawalRequestService? withdrawalRequestService = null,
             ISwapsService? swapsService = null,
             ISwapOutRepository? swapOutRepository = null,
-            IAuditService? auditService = null)
+            IAuditService? auditService = null,
+            ISparkWalletsService? sparkWallets = null)
         {
             return new NodeGuardService(
                 logger ?? _logger.Object,
@@ -107,7 +108,8 @@ namespace NodeGuard.Rpc
                 withdrawalRequestService ?? new Mock<IWithdrawalRequestService>().Object,
                 swapsService ?? new Mock<ISwapsService>().Object,
                 swapOutRepository ?? new Mock<ISwapOutRepository>().Object,
-                auditService ?? new Mock<IAuditService>().Object);
+                auditService ?? new Mock<IAuditService>().Object,
+                sparkWallets ?? new Mock<ISparkWalletsService>().Object);
         }
 
         [Fact]
@@ -2478,6 +2480,67 @@ namespace NodeGuard.Rpc
             (await withdrawal.Should().ThrowAsync<RpcException>()).Which.StatusCode.Should().Be(StatusCode.FailedPrecondition);
         }
 
+        // ── Spark wallets ──────────────────────────────────────────────────────────────
+
+        [Fact]
+        public async Task CreateSparkWallet_ReturnsTheWalletAndItsIdentity_NeverTheMnemonic()
+        {
+            var sparkWallets = new Mock<ISparkWalletsService>();
+            sparkWallets.Setup(x => x.CreateAsync("transit", 0, null, It.IsAny<CancellationToken>()))
+                .ReturnsAsync(new SparkWalletCreation(new Wallet { Id = 7, SparkIdentityPublicKey = "02aa" }, "abandon abandon ..."));
+            var service = CreateNodeGuardService(sparkWallets: sparkWallets.Object);
+
+            var response = await service.CreateSparkWallet(new CreateSparkWalletRequest { Name = "transit" }, TestServerCallContext.Create());
+
+            response.WalletId.Should().Be(7);
+            response.IdentityPublicKey.Should().Be("02aa");
+            response.ToString().Should().NotContain("abandon");
+        }
+
+        [Fact]
+        public async Task GetSparkWallets_ListsTheWalletsWithTheirNodes()
+        {
+            var sparkWallets = new Mock<ISparkWalletsService>();
+            sparkWallets.Setup(x => x.ListAsync(false, It.IsAny<CancellationToken>())).ReturnsAsync([
+                new SparkWalletSummary(7, "transit", "02aa", 0, null, 10_000_000, [1, 2], false, DateTimeOffset.UnixEpoch),
+                new SparkWalletSummary(8, "small", "02bb", 1, 500_000, 500_000, [], false, DateTimeOffset.UnixEpoch)
+            ]);
+            var service = CreateNodeGuardService(sparkWallets: sparkWallets.Object);
+
+            var response = await service.GetSparkWallets(new GetSparkWalletsRequest(), TestServerCallContext.Create());
+
+            response.Wallets.Should().HaveCount(2);
+            response.Wallets[0].NodeIds.Should().Equal(1, 2);
+            response.Wallets[0].HasMaxBalanceSats.Should().BeFalse();
+            response.Wallets[0].EffectiveMaxBalanceSats.Should().Be(10_000_000);
+            response.Wallets[1].MaxBalanceSats.Should().Be(500_000);
+            response.Wallets[1].Account.Should().Be(1);
+        }
+
+        [Fact]
+        public async Task SparkWalletRefusals_AreMappedToStatuses()
+        {
+            var sparkWallets = new Mock<ISparkWalletsService>();
+            sparkWallets.Setup(x => x.WithdrawAllAsync(7, 3, It.IsAny<CancellationToken>()))
+                .ThrowsAsync(new InvalidOperationException("Spark swap 8 is in flight on transit"));
+            sparkWallets.Setup(x => x.ArchiveAsync(9, It.IsAny<CancellationToken>()))
+                .ThrowsAsync(new ArgumentException("Wallet 9 is not a Spark wallet."));
+            sparkWallets.Setup(x => x.GetBalanceAsync(7, It.IsAny<CancellationToken>()))
+                .ThrowsAsync(new SparkUnavailableException("cannot decrypt its seed"));
+            var service = CreateNodeGuardService(sparkWallets: sparkWallets.Object);
+
+            var withdraw = () => service.WithdrawAllSparkWallet(new WithdrawAllSparkWalletRequest { WalletId = 7, DestinationWalletId = 3 },
+                TestServerCallContext.Create());
+            var archive = () => service.ArchiveSparkWallet(new ArchiveSparkWalletRequest { WalletId = 9 }, TestServerCallContext.Create());
+            var balance = () => service.GetSparkWalletBalance(new GetSparkWalletBalanceRequest { WalletId = 7 }, TestServerCallContext.Create());
+
+            var refused = (await withdraw.Should().ThrowAsync<RpcException>()).Which;
+            refused.StatusCode.Should().Be(StatusCode.FailedPrecondition);
+            refused.Status.Detail.Should().Contain("in flight");
+            (await archive.Should().ThrowAsync<RpcException>()).Which.StatusCode.Should().Be(StatusCode.InvalidArgument);
+            (await balance.Should().ThrowAsync<RpcException>()).Which.StatusCode.Should().Be(StatusCode.Unavailable);
+        }
+
         [Fact]
         public async Task GetSwapOut_ByReferenceId_ReturnsTheSwap()
         {
@@ -2486,7 +2549,7 @@ namespace NodeGuard.Rpc
             {
                 Id = 77, Provider = SwapProvider.Spark, ProviderId = "req-1", Status = SwapOutStatus.Completed, SatsAmount = 500_000,
                 ServiceFeeSats = 2_500, LightningFeeSats = 12, TxId = "payout-tx", DestinationAddress = "bcrt1qdest",
-                PaymentHash = "abcd", ReferenceId = "ref-1", DestinationWalletId = 3
+                PaymentHash = "abcd", ReferenceId = "ref-1", DestinationWalletId = 3, PayoutSats = 497_500
             });
 
             var response = await service.GetSwapOut(new GetSwapOutRequest { ReferenceId = "ref-1" }, TestServerCallContext.Create());
@@ -2496,6 +2559,7 @@ namespace NodeGuard.Rpc
             response.Status.Should().Be(SWAP_OUT_STATUS.SwapOutCompleted);
             response.TxId.Should().Be("payout-tx");
             response.ServiceFeeSats.Should().Be(2_500);
+            response.PayoutSats.Should().Be(497_500);
             response.DestinationAddress.Should().Be("bcrt1qdest");
             response.ReferenceId.Should().Be("ref-1");
         }
