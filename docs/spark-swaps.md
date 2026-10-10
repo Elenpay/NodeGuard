@@ -2,7 +2,7 @@
 
 Spark is a swap-out provider next to Loop and 40swap. A node moves Lightning liquidity to a NodeGuard on-chain wallet through NodeGuard's own [Spark](https://www.spark.money/) wallet:
 1. The node pays an invoice of the Spark wallet.
-2. What that payment brought in exits on-chain to an address reserved in the destination wallet, in a cooperative exit brokered by the Spark Service Provider (SSP).
+2. What that payment brought in exits on-chain to an address of the destination wallet, reserved when the swap exits, in a cooperative exit brokered by the Spark Service Provider (SSP).
 
 NodeGuard is not a Spark wallet product. The Spark wallet is transit only: each swap's sats leave in that swap's own exit, and the guardrails below alert when sats stay behind.
 
@@ -14,14 +14,14 @@ The Spark client is the [NSpark](https://github.com/orklabs/nspark) .NET SDK, fr
 1. A node may have up to its **Max swaps in flight** Spark swaps open at once (the node setting on the Nodes page; 0 counts as 1). An in-process lock serializes the check and the record, so concurrent requests can't go over it.
 2. A swap that would bring the wallet over `SPARK_MAX_BALANCE_SATS`, counting what the swaps not paid yet will still bring in, is refused.
 3. The Spark wallet issues an invoice through the SSP.
-4. The swap is recorded before anything is paid: its payment hash, destination address and the Spark identity that will receive it.
+4. The swap is recorded before anything is paid: its payment hash, destination wallet and the Spark identity that will receive it. No address is reserved yet: the swap needs one only when it exits.
 5. The node pays the invoice. The payment is not cancellable. A definitive failure fails the swap. An unknown outcome, such as a broken payment stream, is left to the monitor.
 
 **Payment.** `MonitorSwapsJob` runs every 10 minutes, or every minute in a dev environment. It looks the payment up on the node by its hash. The swap fails if the payment failed, or if the node never saw it and the invoice has expired. Once the payment has settled, the swap is `SparkSwapExitJob`'s.
 
 **Exit.** `SparkSwapExitJob` runs every `SPARK_EXIT_INTERVAL_MINUTES` (10 by default, 1 in a dev environment). Each paid swap exits on its own, to its own destination address, in saved steps: paid, then leaves attributed, then exit sent, then payout confirmed.
 1. **Leaves attributed.** A Spark balance is made of leaves of fixed sizes, and the payment arrives as one inbound transfer whose leaves add up to what it brought in. The job claims it and records on the swap the transfer (the one the SSP reports for the swap's receive request), its leaves and their total. A transfer is given to one swap only. For an SSP that doesn't report it, the job takes the unattributed Lightning transfer received since the swap was created that is closest to the swap's amount, within 1% below it; transfers of equal amounts are interchangeable. Only a claimed transfer is attributed: one whose claim failed is claimed again on the next run, and the swap waits for its own transfer rather than taking another of the same amount. A transfer that can never be claimed leaves the swap waiting until the overdue alert.
-2. **Exit sent.** Exactly those leaves exit to the swap's destination address. No leaf is split or swapped with the SSP, so the remote signer can sign the exit too. The exit fee is capped by `SPARK_MAX_EXIT_FEE_SATS`, and the exit's txid is saved right away.
+2. **Exit sent.** The job reserves the swap's address in the destination wallet and saves it on the swap, then exactly those leaves exit to it. No leaf is split or swapped with the SSP, so the remote signer can sign the exit too. The exit fee is capped by `SPARK_MAX_EXIT_FEE_SATS`, and the exit's txid is saved right away.
    - If the leaves were renewed into new leaf ids, the job exits leaves of exactly the same total that no other pending swap has. If there are none yet, the swap waits, and the overdue alert below flags it.
    - If the leaves already exited (a crash before the txid was saved), the job waits for the payout instead of exiting again.
 3. **Payout confirmed.** The swap completes when the destination wallet sees a confirmed payout to the reserved address. Matching on the address, rather than the exit's txid, survives the SSP fee-bumping the exit. The payout is checked before exiting, so an exit whose txid was not saved never runs twice.
@@ -81,7 +81,7 @@ With the remote signer, `REMOTE_SIGNER_ENDPOINT` must be the Function URL with n
 - **Auto-liquidity.** Give the node a Spark weight on the Nodes page; the Loop, 40swap and Spark weights sum to 100. The node's Max swaps in flight limits Spark swaps like any other, and Spark is skipped while it is unavailable. A Spark swap is sized down to the room left under `SPARK_MAX_BALANCE_SATS` (counting the swaps not paid yet), and Spark is skipped when that room is below the node's minimum swap. If no other weighted provider is left, the run is skipped without reserving an address.
 - **New Swap dialog.** Spark is listed while the wallet is ready. There is no up-front quote: the SSP quotes the exit for the leaves the payment brings in. The confirmation shows the caps instead, with their percentage of the swap.
 - **gRPC.**
-  - `RequestSwapOut` (`provider: SWAP_PROVIDER_SPARK`) returns the destination address.
+  - `RequestSwapOut` (`provider: SWAP_PROVIDER_SPARK`) returns no destination address: the swap reserves it when it exits, and `GetSwapOut` reports it from then on.
   - An optional `reference_id` makes the call repeatable: a known `reference_id` returns its swap instead of paying again.
   - `GetSwapOut` takes a swap id or a `reference_id`.
 

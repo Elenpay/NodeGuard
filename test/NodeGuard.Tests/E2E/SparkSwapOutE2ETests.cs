@@ -99,8 +99,9 @@ public class SparkSwapOutE2ETests : E2ETestBase
             }
         }
 
-        _output.WriteLine($"swap {started.SwapId}: {started.Status}, provider id {started.ProviderId}, payout to {started.DestinationAddress}");
+        _output.WriteLine($"swap {started.SwapId}: {started.Status}, provider id {started.ProviderId}");
         started.Status.Should().Be(SWAP_OUT_STATUS.SwapOutPending, started.Error ?? "alice's payment into Spark should have succeeded");
+        started.DestinationAddress.Should().BeEmpty("a Spark swap reserves its address when it exits");
 
         // MonitorSwapsJob sees the payment settle and SparkSwapExitJob exits the swap's leaves (each every minute in a
         // dev environment); mining confirms the exit
@@ -112,11 +113,11 @@ public class SparkSwapOutE2ETests : E2ETestBase
             },
             s => s.Status != SWAP_OUT_STATUS.SwapOutPending,
             attempts: 60, delay: TimeSpan.FromSeconds(10), what: $"swap {started.SwapId} completion");
-        _output.WriteLine($"swap {done.SwapId}: {done.Status}, payout tx {done.TxId}, fees ln={done.LightningFeeSats} ssp={done.ServiceFeeSats} {done.Error}");
+        _output.WriteLine($"swap {done.SwapId}: {done.Status}, payout tx {done.TxId} to {done.DestinationAddress}, fees ln={done.LightningFeeSats} ssp={done.ServiceFeeSats} {done.Error}");
 
         done.Status.Should().Be(SWAP_OUT_STATUS.SwapOutCompleted, done.Error);
         done.SwapId.Should().Be(started.SwapId);
-        done.DestinationAddress.Should().Be(started.DestinationAddress);
+        done.DestinationAddress.Should().NotBeNullOrEmpty("the swap reserved its address when it exited");
         done.HasPaymentHash.Should().BeTrue();
 
         var destination = BitcoinAddress.Create(done.DestinationAddress, Network.RegTest);
