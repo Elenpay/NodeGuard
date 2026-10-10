@@ -137,14 +137,15 @@ public class SparkSwapOutE2ETests : E2ETestBase
             swap.DestinationAddress.Should().Be(started[i].DestinationAddress);
             swap.HasPaymentHash.Should().BeTrue();
 
-            // What landed on-chain is what the swap delivered; the SSP kept the rest
+            // What landed on-chain is what the swap delivered. The exit from Spark to L1 is the on-chain fee, and any
+            // shortfall of the payment the service fee (Spark's own 15 bps is in the routing fee)
             var destination = BitcoinAddress.Create(swap.DestinationAddress, Network.RegTest);
             var payoutTx = await rpc.GetRawTransactionAsync(uint256.Parse(swap.TxId));
             var payout = payoutTx.Outputs.Where(o => o.ScriptPubKey == destination.ScriptPubKey).Sum(o => o.Value.Satoshi);
             swap.HasPayoutSats.Should().BeTrue();
             swap.PayoutSats.Should().Be(payout);
-            swap.ServiceFeeSats.Should().Be(amounts[i] - payout, "the service fee is everything the swap did not deliver");
-            swap.OnchainFeeSats.Should().Be(0, "the exit's miner fee is part of the service fee");
+            (swap.OnchainFeeSats + swap.ServiceFeeSats).Should().Be(amounts[i] - payout,
+                "the on-chain and service fees are everything the swap did not deliver");
         }
 
         done.Select(s => s.TxId).Should().OnlyHaveUniqueItems("each swap exits on its own");

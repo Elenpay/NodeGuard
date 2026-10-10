@@ -760,7 +760,7 @@ message GetSwapOutResponse {
   optional string payment_hash = 13;
   optional string reference_id = 14;
   // What the swap paid on-chain to destination_address, once confirmed: what it delivered (Spark swaps; their
-  // service fee is amount_sats minus it)
+  // on-chain and service fees add up to amount_sats minus it)
   optional int64 payout_sats = 15;
 }
 

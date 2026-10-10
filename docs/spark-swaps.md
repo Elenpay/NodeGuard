@@ -128,7 +128,7 @@ The remote signer refuses to sign Spark operations with a `Compromised` seed. A 
 
 `just spark-up` starts a regtest Spark network (three operators, the open-source open-ssp SSP and its Lightning node) on the Polar chain; see [docker/spark/README.md](../docker/spark/README.md).
 
-`just test-e2e` and the CI `e2e-test` job run the whole E2E suite with the network up, including `SparkSwapOutE2ETests`. It creates a Spark wallet over gRPC, gives it to alice in the database with Max swaps in flight 2, restarts NodeGuard (the seed must decrypt after a restart), and starts two swaps at once. Each must exit its own leaves to its own address and record its payout, with its service fee the amount minus the payout, and the Spark wallet must end empty.
+`just test-e2e` and the CI `e2e-test` job run the whole E2E suite with the network up, including `SparkSwapOutE2ETests`. It creates a Spark wallet over gRPC, gives it to alice in the database with Max swaps in flight 2, restarts NodeGuard (the seed must decrypt after a restart), and starts two swaps at once. Each must exit its own leaves to its own address and record its payout, with its on-chain and service fees adding up to the amount minus the payout, and the Spark wallet must end empty.
 
 ## Before enabling it on mainnet
 
