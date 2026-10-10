@@ -29,6 +29,9 @@ using NodeGuard.Data.Repositories;
 using NodeGuard.Data.Repositories.Interfaces;
 using NodeGuard.Jobs;
 using NodeGuard.Services;
+using NodeGuard.Services.Spark;
+using Amazon.Runtime;
+using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.AspNetCore.Components.Authorization;
 using Microsoft.AspNetCore.DataProtection;
 using Microsoft.AspNetCore.Identity;
@@ -149,6 +152,20 @@ namespace NodeGuard
             builder.Services.AddTransient<NotificationService, NotificationService>();
             builder.Services.AddTransient<INBXplorerService, NBXplorerService>();
             builder.Services.AddTransient<ISwapsService, SwapsService>();
+
+            // Spark (swap-out provider). Invalid SPARK_* settings with SPARK_ENABLED fail the startup here
+            var sparkSettings = SparkSettings.FromEnvironment(Environment.GetEnvironmentVariable,
+                CurrentNetworkHelper.GetCurrentNetwork(), Constants.IS_DEV_ENVIRONMENT, Constants.ENABLE_REMOTE_SIGNER,
+                Constants.REMOTE_SIGNER_ENDPOINT);
+            builder.Services.AddSingleton(sparkSettings);
+            builder.Services.TryAddSingleton(TimeProvider.System);
+            builder.Services.AddTransient<ISparkSignerProvider>(sp => new SparkSignerProvider(sparkSettings,
+                sp.GetRequiredService<IServiceScopeFactory>(),
+                sp.GetRequiredService<IHttpClientFactory>().CreateClient(nameof(SparkSignerProvider)),
+                () => new ImmutableCredentials(Constants.AWS_ACCESS_KEY_ID, Constants.AWS_SECRET_ACCESS_KEY, null),
+                Constants.AWS_REGION));
+            builder.Services.AddSingleton<ISparkWalletService, SparkWalletService>();
+            builder.Services.AddHostedService<SparkStartupService>();
             builder.Services.AddTransient<IRebalanceService, RebalanceService>();
             builder.Services.AddTransient<IRoutingEngineSnapshotService, RoutingEngineSnapshotService>();
             builder.Services.AddScoped<IAuditService, AuditService>();
