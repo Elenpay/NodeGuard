@@ -91,7 +91,7 @@ The swap monitor checks the transit wallet after each pass. Each alert below is 
 - `SparkBalanceStuck`: for an hour, the wallet has held more than its swaps in flight account for. Until a swap exits, what it brought in (or its amount, until that is known) is its own and never counts as stuck.
 - `SparkExitOverdue`: a swap was paid six hours ago and still has no confirmed payout.
 
-The balance is shown on the Swaps page and exported as the `nodeguard.spark.balance` gauge (meter `NodeGuard.Spark`).
+The balance is exported as the `nodeguard.spark.balance` gauge (meter `NodeGuard.Spark`).
 
 **Resolving by hand.**
 - **Stuck sats** (frozen, unrenewed or unclaimed leaves, or leaves no swap was given) need a Spark wallet with the same seed and account to inspect them and withdraw them. Until they are gone they count against `SPARK_MAX_BALANCE_SATS`.
@@ -101,7 +101,7 @@ The balance is shown on the Swaps page and exported as the `nodeguard.spark.bala
 
 Before rotating the internal wallet seed that holds the Spark keys, or marking it `Compromised` in the remote signer:
 1. Wait until no Spark swap is in flight.
-2. Wait until the Swaps page shows a zero Spark balance, withdrawing any stuck sats by hand.
+2. Wait until the Spark balance (the `nodeguard.spark.balance` gauge) is zero, withdrawing any stuck sats by hand.
 3. Only then rotate, and set the new `SPARK_SEED_FINGERPRINT` and `SPARK_IDENTITY_PUBKEY`.
 
 The remote signer refuses to sign Spark operations with a `Compromised` seed.
