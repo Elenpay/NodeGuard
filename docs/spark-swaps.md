@@ -2,30 +2,38 @@
 
 Spark is a swap-out provider next to Loop and 40swap. A node moves Lightning liquidity to a NodeGuard on-chain wallet through NodeGuard's own [Spark](https://www.spark.money/) wallet:
 1. The node pays an invoice of the Spark wallet.
-2. The Spark wallet exits on-chain to an address reserved in the destination wallet, in one cooperative exit brokered by the Spark Service Provider (SSP).
+2. What that payment brought in exits on-chain to an address reserved in the destination wallet, in a cooperative exit brokered by the Spark Service Provider (SSP).
 
-NodeGuard is not a Spark wallet product. The Spark wallet is transit only: each swap's exit drains it, and the guardrails below alert when sats stay behind.
+NodeGuard is not a Spark wallet product. The Spark wallet is transit only: each swap's sats leave in that swap's own exit, and the guardrails below alert when sats stay behind.
 
 The Spark client is the [NSpark](https://github.com/orklabs/nspark) .NET SDK, from the [Elenpay fork](https://github.com/Elenpay/nspark) in `vendor/nspark` (a git submodule). By default, on mainnet, the operators are Lightspark, Breez and Flashnet (2-of-3) and the SSP is Lightspark's.
 
 ## How a swap runs
 
 **Creation.** Swaps are created by auto-liquidity, the New Swap dialog, or the `RequestSwapOut` RPC.
-1. Only one Spark swap can be in flight. An in-process lock and a partial unique index on `SwapOuts(Provider) WHERE Provider = 2 AND Status = Pending` enforce it.
-2. A swap that would bring the wallet over `SPARK_MAX_BALANCE_SATS` is refused.
+1. A node may have up to its **Max swaps in flight** Spark swaps open at once (the node setting on the Nodes page; 0 counts as 1). An in-process lock serializes the check and the record, so concurrent requests can't go over it.
+2. A swap that would bring the wallet over `SPARK_MAX_BALANCE_SATS`, counting what the swaps not paid yet will still bring in, is refused.
 3. The Spark wallet issues an invoice through the SSP.
 4. The swap is recorded before anything is paid: its payment hash, destination address and the Spark identity that will receive it.
 5. The node pays the invoice. The payment is not cancellable. A definitive failure fails the swap. An unknown outcome, such as a broken payment stream, is left to the monitor.
 
-**Monitoring.** `MonitorSwapsJob` runs every 10 minutes, or every minute in a dev environment.
-1. **Payment.** It looks the payment up on the node by its hash. The swap fails if the payment failed, or if the node never saw it and the invoice has expired.
-2. **Exit.** It claims the transfer and exits the whole wallet to the destination address. The exit fee is capped by `SPARK_MAX_EXIT_FEE_SATS`. The exit's txid and fee are saved right away.
-3. **Completion.** The swap completes when the destination wallet sees a confirmed payout to the reserved address. Matching on the address, rather than the exit's txid, survives the SSP fee-bumping the exit. The payout is checked before exiting, so an exit whose txid was not saved before a crash never runs twice.
+**Payment.** `MonitorSwapsJob` runs every 10 minutes, or every minute in a dev environment. It looks the payment up on the node by its hash. The swap fails if the payment failed, or if the node never saw it and the invoice has expired. Once the payment has settled, the swap is `SparkSwapExitJob`'s.
 
-**Fees.**
+**Exit.** `SparkSwapExitJob` runs every `SPARK_EXIT_INTERVAL_MINUTES` (10 by default, 1 in a dev environment). Each paid swap exits on its own, to its own destination address, in saved steps: paid, then leaves attributed, then exit sent, then payout confirmed.
+1. **Leaves attributed.** A Spark balance is made of leaves of fixed sizes, and the payment arrives as one inbound transfer whose leaves add up to what it brought in. The job claims it and records on the swap the transfer (the one the SSP reports for the swap's receive request), its leaves and their total. A transfer is given to one swap only. For an SSP that doesn't report it, the job takes the unattributed Lightning transfer received since the swap was created that is closest to the swap's amount, within 1% below it; transfers of equal amounts are interchangeable.
+2. **Exit sent.** Exactly those leaves exit to the swap's destination address. No leaf is split or swapped with the SSP, so the remote signer can sign the exit too. The exit fee is capped by `SPARK_MAX_EXIT_FEE_SATS`, and the exit's txid is saved right away.
+   - If the leaves were renewed into new leaf ids, the job exits leaves of exactly the same total that no other pending swap has. If there are none yet, the swap waits, and the overdue alert below flags it.
+   - If the leaves already exited (a crash before the txid was saved), the job waits for the payout instead of exiting again.
+3. **Payout confirmed.** The swap completes when the destination wallet sees a confirmed payout to the reserved address. Matching on the address, rather than the exit's txid, survives the SSP fee-bumping the exit. The payout is checked before exiting, so an exit whose txid was not saved never runs twice.
+
+All attributions run before any exit, and exits go strictly one at a time, oldest swap first. This is separate from Max swaps in flight: that limit decides how many swaps a node may have open; the job only orders their exits. With Max swaps in flight at 3, three swaps are paid in parallel, and the next run exits the first, then the second, then the third.
+
+**Fees and accounting.** What the swap delivered is what landed on-chain: its payout, shown as "Received on-chain" on the Swaps page.
 - The Lightning routing fee is the swap's off-chain fee.
-- The SSP's fee is the amount minus the payout, and includes the exit's miner fee. It is the swap's service fee.
-- The on-chain fee is 0.
+- The service fee is the amount minus the payout: everything the SSP kept, including any receive fee, the exit fee and its miner fee. Its tooltip splits it into the receive fee (amount minus what the leaves added up to) and the exit (the rest).
+- The on-chain fee is included in the service fee; the Swaps page says so.
+
+Each fee shows its BTC amount and its percentage of the swap, with ppm and USD in the tooltip.
 
 ## Trust model
 
@@ -61,7 +69,8 @@ With `SPARK_ENABLED=true`, invalid settings stop NodeGuard at startup.
 | `SPARK_SSP_URL` | Lightspark's on mainnet; required on regtest | The SSP's GraphQL endpoint |
 | `SPARK_SSP_IDENTITY_PUBKEY` | Lightspark's on mainnet; fetched from the SSP on regtest | Required with a custom SSP on mainnet |
 | `SPARK_MAX_EXIT_FEE_SATS` | `20000` | Highest SSP exit fee accepted per swap |
-| `SPARK_MAX_BALANCE_SATS` | `10000000` | Most sats the transit wallet may hold, counting a new swap |
+| `SPARK_MAX_BALANCE_SATS` | `10000000` | Most sats the transit wallet may hold, counting a new swap and the swaps not paid yet |
+| `SPARK_EXIT_INTERVAL_MINUTES` | `10`, `1` in a dev environment | How often paid swaps exit on-chain |
 | `SPARK_OPERATOR_CERTS_DIR` | none; refused on mainnet | Self-signed operator certificates to pin (regtest) |
 | `SPARK_SIGNER_RIE_URL` | none; refused on mainnet | Reach a locally run signer image through the Lambda emulator |
 
@@ -69,8 +78,8 @@ With the remote signer, `REMOTE_SIGNER_ENDPOINT` must be the Function URL with n
 
 ## Using it
 
-- **Auto-liquidity.** Give the node a Spark weight on the Nodes page; the Loop, 40swap and Spark weights sum to 100. Spark is skipped while it is unavailable or another Spark swap is in flight. A Spark swap is sized down to the room left under `SPARK_MAX_BALANCE_SATS`, and Spark is skipped when that room is below the node's minimum swap. If no other weighted provider is left, the run is skipped without reserving an address.
-- **New Swap dialog.** Spark is listed while the wallet is ready. There is no up-front quote: the SSP quotes the exit for the leaves the payment brings in. The confirmation shows the caps instead.
+- **Auto-liquidity.** Give the node a Spark weight on the Nodes page; the Loop, 40swap and Spark weights sum to 100. The node's Max swaps in flight limits Spark swaps like any other, and Spark is skipped while it is unavailable. A Spark swap is sized down to the room left under `SPARK_MAX_BALANCE_SATS` (counting the swaps not paid yet), and Spark is skipped when that room is below the node's minimum swap. If no other weighted provider is left, the run is skipped without reserving an address.
+- **New Swap dialog.** Spark is listed while the wallet is ready. There is no up-front quote: the SSP quotes the exit for the leaves the payment brings in. The confirmation shows the caps instead, with their percentage of the swap.
 - **gRPC.**
   - `RequestSwapOut` (`provider: SWAP_PROVIDER_SPARK`) returns the destination address.
   - An optional `reference_id` makes the call repeatable: a known `reference_id` returns its swap instead of paying again.
@@ -79,13 +88,13 @@ With the remote signer, `REMOTE_SIGNER_ENDPOINT` must be the Function URL with n
 ## Guardrails and alerts
 
 The swap monitor checks the transit wallet after each pass. Each alert below is audited once and logged with structured fields:
-- `SparkBalanceStuck`: sats have been stuck in the wallet for an hour with no Spark swap in flight.
+- `SparkBalanceStuck`: for an hour, the wallet has held more than its swaps in flight account for. Until a swap exits, what it brought in (or its amount, until that is known) is its own and never counts as stuck.
 - `SparkExitOverdue`: a swap was paid six hours ago and still has no confirmed payout.
 
 The balance is shown on the Swaps page and exported as the `nodeguard.spark.balance` gauge (meter `NodeGuard.Spark`).
 
 **Resolving by hand.**
-- **Stuck sats** (frozen, unrenewed or unclaimed leaves) need a Spark wallet with the same seed and account to inspect them and withdraw them. Until they are gone they count against `SPARK_MAX_BALANCE_SATS`.
+- **Stuck sats** (frozen, unrenewed or unclaimed leaves, or leaves no swap was given) need a Spark wallet with the same seed and account to inspect them and withdraw them. Until they are gone they count against `SPARK_MAX_BALANCE_SATS`.
 - **A swap paid into another Spark identity** (the seed or account changed while it was in flight) is refused by the monitor, which logs the error on every pass. Exit its sats from a Spark wallet with the old seed and account, then set the swap's status in the database.
 
 ## Rotating or retiring the Spark seed
@@ -106,7 +115,7 @@ The remote signer refuses to sign Spark operations with a `Compromised` seed.
 ## Before enabling it on mainnet
 
 Run small canary swaps and confirm:
-- Lightspark's SSP accepts exits to NodeGuard's (P2WSH multisig) addresses and serves receive-request lookups.
+- Lightspark's SSP accepts exits to NodeGuard's (P2WSH multisig) addresses and serves receive-request lookups, reporting the transfer that paid each one (open-ssp does).
 - The `SPARK_ACCOUNT` matches what the identity was derived with.
 - The real fees and limits fit `SPARK_MAX_EXIT_FEE_SATS` and `SPARK_MAX_BALANCE_SATS`.
 - Renewed leaves exit. A rejection of exits from leaves renewed down to a zero node timelock was seen on a local operator build; it would leave sats stuck and needs an NSpark fix upstream before mainnet.

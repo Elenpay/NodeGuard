@@ -49,9 +49,9 @@ public sealed class SparkE2EFactAttribute : FactAttribute
 
 /// <summary>
 /// A Spark swap-out through NodeGuard's gRPC API against the local Spark network (docker/spark): alice's
-/// LND pays an invoice of NodeGuard's Spark wallet, MonitorSwapsJob claims the transfer and exits the
-/// wallet on-chain to the address reserved in a NodeGuard wallet, and the swap completes once that payout
-/// confirms.
+/// LND pays an invoice of NodeGuard's Spark wallet, MonitorSwapsJob follows the payment until it settles,
+/// SparkSwapExitJob records the transfer that brought it in and exits exactly its leaves on-chain to the
+/// address reserved in a NodeGuard wallet, and the swap completes once that payout confirms.
 ///
 ///   E2E_SPARK_WALLET_ID   NodeGuard wallet the swap pays out to (default 2)
 /// </summary>
@@ -102,7 +102,8 @@ public class SparkSwapOutE2ETests : E2ETestBase
         _output.WriteLine($"swap {started.SwapId}: {started.Status}, provider id {started.ProviderId}, payout to {started.DestinationAddress}");
         started.Status.Should().Be(SWAP_OUT_STATUS.SwapOutPending, started.Error ?? "alice's payment into Spark should have succeeded");
 
-        // MonitorSwapsJob (every minute in a dev environment) claims and exits; mining confirms the exit
+        // MonitorSwapsJob sees the payment settle and SparkSwapExitJob exits the swap's leaves (each every minute in a
+        // dev environment); mining confirms the exit
         var done = await PollAsync(
             async () =>
             {
