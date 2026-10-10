@@ -98,7 +98,6 @@ public sealed class SparkSwapService : ISparkSwapService
     public const int ServiceFeeBps = 15;
     private const int PaymentTimeoutSeconds = 120;
     private const decimal DefaultMaxRoutingFeePercent = 0.5m;
-    private const string LightningTransferType = "PreimageSwap";
     /// <summary>The status of a transfer this wallet has claimed: its leaves are the wallet's.</summary>
     private const string ClaimedTransferStatus = "Completed";
     private const string ExitTransferType = "CooperativeExit";
@@ -174,8 +173,15 @@ public sealed class SparkSwapService : ISparkSwapService
                 InvoiceExpirySeconds, ct);
             paymentRequest = invoice.PaymentRequest;
 
+            // The swap's funds are found only through the transfer the SSP reports for its receive request:
+            // without one, nothing could ever be exited, so nothing is paid
+            if (string.IsNullOrEmpty(invoice.RequestId))
+            {
+                throw new InvalidOperationException("The SSP issued the invoice without a receive request, so its payment could not be followed.");
+            }
+
             swapOut.Provider = SwapProvider.Spark;
-            swapOut.ProviderId = invoice.RequestId ?? invoice.PaymentHash;
+            swapOut.ProviderId = invoice.RequestId;
             swapOut.Status = SwapOutStatus.Pending;
             swapOut.SatsAmount = request.Amount;
             swapOut.PaymentHash = invoice.PaymentHash;
@@ -254,20 +260,19 @@ public sealed class SparkSwapService : ISparkSwapService
             _logger.LogWarning("Spark: transfer {TransferId} could not be claimed: {Error}", failure.TransferId, failure.Error.Message);
         }
 
+        // Only the swap's own transfer, the one the SSP reports for its receive request: never another of the same amount
         var attributed = await _swapOutRepository.GetSparkTransferIdsAsync();
-        var reported = await ReportedTransferAsync(swap, identity, attributed, ct);
-        if (reported is not null && !IsClaimed(reported))
-        {
-            // The swap's own transfer, known by id: wait for it rather than take another of the same amount
-            _logger.LogWarning("Spark swap {SwapId}: transfer {TransferId} is not claimed yet ({Status})", swap.Id, reported.Id,
-                reported.Status);
-            return false;
-        }
-
-        var transfer = reported ?? await MatchingTransferAsync(swap, attributed, ct);
+        var transfer = await ReportedTransferAsync(swap, identity, attributed, ct);
         if (transfer is null)
         {
             _logger.LogInformation("Spark swap {SwapId}: the transfer of its payment has not been found yet", swap.Id);
+            return false;
+        }
+
+        if (!IsClaimed(transfer))
+        {
+            _logger.LogWarning("Spark swap {SwapId}: transfer {TransferId} is not claimed yet ({Status})", swap.Id, transfer.Id,
+                transfer.Status);
             return false;
         }
 
@@ -415,8 +420,7 @@ public sealed class SparkSwapService : ISparkSwapService
     private async Task<SparkTransfer?> ReportedTransferAsync(SwapOut swap, string identity, HashSet<string> attributed,
         CancellationToken ct)
     {
-        // Without a receive request (an SSP that returned none), the payment hash stands in as the provider id
-        if (string.IsNullOrEmpty(swap.ProviderId) || swap.ProviderId == swap.PaymentHash) return null;
+        if (string.IsNullOrEmpty(swap.ProviderId)) return null;
 
         LightningReceiveRequest? request;
         try
@@ -447,25 +451,6 @@ public sealed class SparkSwapService : ISparkSwapService
         }
 
         return transfer;
-    }
-
-    /// <summary>
-    /// For an SSP that does not report the transfer: the claimed Lightning transfer received since the swap was
-    /// created, given to no swap yet, closest to the swap's amount without exceeding it (any receive fee within 1%).
-    /// Transfers of equal amounts are interchangeable, as their leaves add up the same.
-    /// </summary>
-    private async Task<SparkTransfer?> MatchingTransferAsync(SwapOut swap, HashSet<string> attributed, CancellationToken ct)
-    {
-        var received = await _spark.GetTransfersAsync(TransferDirection.Received, swap.CreationDatetime - TransferLookback, ct);
-        var minimum = swap.SatsAmount - swap.SatsAmount / 100;
-
-        return received
-            .Where(t => string.Equals(t.Type, LightningTransferType, StringComparison.OrdinalIgnoreCase))
-            .Where(t => !attributed.Contains(t.Id) && t.Leaves.Count > 0 && IsClaimed(t))
-            .Where(t => t.TotalValueSats <= swap.SatsAmount && t.TotalValueSats >= minimum)
-            .OrderBy(t => swap.SatsAmount - t.TotalValueSats)
-            .ThenBy(t => t.CreatedAt)
-            .FirstOrDefault();
     }
 
     /// <summary>Whether a cooperative exit the wallet sent since the swap was created moved any of its leaves.</summary>

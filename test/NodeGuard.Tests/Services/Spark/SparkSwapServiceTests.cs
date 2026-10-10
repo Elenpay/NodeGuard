@@ -309,6 +309,19 @@ public class SparkSwapServiceTests
         await _spark.DidNotReceiveWithAnyArgs().CreateInvoiceAsync(default, default!, default, default);
     }
 
+    [Fact]
+    public async Task Create_WhenTheInvoiceHasNoReceiveRequest_IsRefusedBeforePaying()
+    {
+        _spark.CreateInvoiceAsync(500_000, Arg.Any<string>(), SparkSwapService.InvoiceExpirySeconds, Arg.Any<CancellationToken>())
+            .Returns(new LightningInvoice(Invoice, Hash, 500_000, DateTimeOffset.UnixEpoch.AddMinutes(30), null));
+
+        var act = () => Service().CreateSwapOutAsync(_node, Template(), Request());
+
+        await act.Should().ThrowAsync<InvalidOperationException>().WithMessage("*receive request*");
+        await _swapOuts.DidNotReceiveWithAnyArgs().AddAsync(default!);
+        await _lightning.DidNotReceiveWithAnyArgs().SendPaymentV2Async(default!, default!, default, default, default, default, default, default);
+    }
+
     // ── Payment ──────────────────────────────────────────────────────────────────────────
 
     [Fact]
@@ -396,33 +409,26 @@ public class SparkSwapServiceTests
     }
 
     [Fact]
-    public async Task Attribute_WhenTheSspDoesNotReportIt_TakesTheUnattributedLightningTransferClosestToTheAmount()
+    public async Task Attribute_WhenTheSspDoesNotReportIt_Waits_WithoutLookingForAnotherTransfer()
     {
         var swap = Pending();
         SspReports(null);
-        _swapOuts.GetSparkTransferIdsAsync().Returns(new HashSet<string> { "taken" });
-        ReceivedTransfers(
-            Transfer("taken", 500_000),
-            Transfer("plain-transfer", 500_000, type: "Transfer"),
-            Transfer("too-much", 500_001),
-            Transfer("too-little", 494_000),
-            Transfer("farther", 497_000),
-            Transfer("closest", 499_500));
+        ReceivedTransfers(Transfer("same-amount", 499_500));
 
         var attributed = await Service().AttributeAsync(swap);
 
-        attributed.Should().BeTrue();
-        swap.SparkTransferId.Should().Be("closest");
-        swap.SparkReceivedSats.Should().Be(499_500);
+        attributed.Should().BeFalse();
+        swap.SparkTransferId.Should().BeNull();
+        await _spark.DidNotReceiveWithAnyArgs().GetTransfersAsync(default, default, default);
     }
 
     [Fact]
-    public async Task Attribute_ATransferAnotherSwapHas_IsNotGivenAgain()
+    public async Task Attribute_ATransferAnotherSwapHas_IsNotGivenAgain_AndTheSwapWaits()
     {
         var swap = Pending();
         SspReports("transfer-1");
         _swapOuts.GetSparkTransferIdsAsync().Returns(new HashSet<string> { "transfer-1" });
-        ReceivedTransfers(Transfer("transfer-1", 499_000));
+        ReceivedTransfers(Transfer("transfer-2", 499_000));
 
         var attributed = await Service().AttributeAsync(swap);
 
@@ -483,18 +489,6 @@ public class SparkSwapServiceTests
         swap.SparkTransferId.Should().Be("transfer-1");
         swap.SparkLeafIds.Should().Be("transfer-1-leaf");
         await _spark.Received(2).ClaimPendingAsync(Arg.Any<CancellationToken>());
-    }
-
-    [Fact]
-    public async Task Attribute_WhenMatching_SkipsUnclaimedTransfers()
-    {
-        var swap = Pending();
-        SspReports(null);
-        ReceivedTransfers(Unclaimed(Transfer("unclaimed-closest", 500_000)), Transfer("claimed", 499_000));
-
-        (await Service().AttributeAsync(swap)).Should().BeTrue();
-
-        swap.SparkTransferId.Should().Be("claimed");
     }
 
     // ── Exit ─────────────────────────────────────────────────────────────────────────────
