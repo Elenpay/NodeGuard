@@ -57,4 +57,7 @@ public interface ISwapOutRepository
    /// The Spark transfers already given to a swap, whatever its status: a transfer belongs to one swap only
    /// </summary>
    Task<HashSet<string>> GetSparkTransferIdsAsync();
+
+   /// <summary>The Spark swaps paid into the Spark wallet with this identity, whatever their status</summary>
+   Task<List<SwapOut>> GetSparkSwapsByIdentityAsync(string identityPublicKey);
 }
