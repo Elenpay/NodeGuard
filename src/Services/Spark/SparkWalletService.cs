@@ -124,13 +124,15 @@ public interface ISparkWalletService
 
     Task<WalletBalance> GetBalanceAsync(SparkWalletRef wallet, CancellationToken ct = default);
 
-    /// <summary>Exits every spendable sat to <paramref name="onChainAddress"/> in one cooperative exit.</summary>
+    /// <summary>
+    /// Exits every spendable sat to <paramref name="onChainAddress"/> in one cooperative exit, at SPARK_EXIT_SPEED.
+    /// </summary>
     Task<WithdrawAllResult> WithdrawAllAsync(SparkWalletRef wallet, string onChainAddress, long maxFeeSats,
         CancellationToken ct = default);
 
     /// <summary>
-    /// Exits exactly <paramref name="leafIds"/> to <paramref name="onChainAddress"/> in one cooperative exit, with no
-    /// leaf swap (so the remote signer can sign it too). The fee comes out of the leaves' total.
+    /// Exits exactly <paramref name="leafIds"/> to <paramref name="onChainAddress"/> in one cooperative exit, at
+    /// SPARK_EXIT_SPEED, with no leaf swap (so the remote signer can sign it too). The fee comes out of the leaves' total.
     /// </summary>
     /// <exception cref="SparkLeavesNotSpendableException">A leaf is not owned or not spendable; nothing moved.</exception>
     Task<WithdrawLeavesResult> WithdrawLeavesAsync(SparkWalletRef wallet, IReadOnlyCollection<string> leafIds, string onChainAddress,
@@ -320,11 +322,11 @@ public class SparkWalletService : ISparkWalletService, IAsyncDisposable
 
     public virtual Task<WithdrawAllResult> WithdrawAllAsync(SparkWalletRef wallet, string onChainAddress, long maxFeeSats,
         CancellationToken ct = default) =>
-        WithWalletAsync(wallet, w => w.WithdrawAllAsync(onChainAddress, maxFeeSats, ct: ct), ct);
+        WithWalletAsync(wallet, w => w.WithdrawAllAsync(onChainAddress, maxFeeSats, _settings.ExitSpeed, ct), ct);
 
     public Task<WithdrawLeavesResult> WithdrawLeavesAsync(SparkWalletRef wallet, IReadOnlyCollection<string> leafIds,
         string onChainAddress, long maxFeeSats, CancellationToken ct = default) =>
-        WithWalletAsync(wallet, w => w.WithdrawLeavesAsync(leafIds, onChainAddress, maxFeeSats, ct: ct), ct);
+        WithWalletAsync(wallet, w => w.WithdrawLeavesAsync(leafIds, onChainAddress, maxFeeSats, _settings.ExitSpeed, ct), ct);
 
     public virtual void Forget(SparkWalletRef wallet) => _slots.TryRemove(wallet, out _);
 

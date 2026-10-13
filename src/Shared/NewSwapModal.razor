@@ -536,7 +536,8 @@
             $"The node starts paying its Spark wallet ({SparkIdentityOf(_selectedNode!)}) as you confirm, and LND keeps " +
             $"trying routes for up to {SparkSettings.PaymentTimeoutFor(_selectedNode!)} minutes (the node's Spark payment timeout); " +
             "the swap shows as pending on the Swaps page meanwhile. Once paid, the swap exits " +
-            $"on-chain to the destination wallet on its own, within about {SparkSettings.ExitIntervalOrDefault(Constants.IS_DEV_ENVIRONMENT)} minutes. " +
+            $"on-chain to the destination wallet on its own, within about {SparkSettings.ExitIntervalOrDefault(Constants.IS_DEV_ENVIRONMENT)} minutes, " +
+            $"at exit speed {SparkSettings.ExitSpeedSummary}. " +
             $"Up to {maxSwapsInFlight} Spark swaps of {_selectedNode?.Name} (its Max swaps in flight) run at once.<br><br>" +
             "Please confirm that you want to proceed.";
 
