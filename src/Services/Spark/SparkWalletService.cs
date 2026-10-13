@@ -320,11 +320,11 @@ public class SparkWalletService : ISparkWalletService, IAsyncDisposable
 
     public virtual Task<WithdrawAllResult> WithdrawAllAsync(SparkWalletRef wallet, string onChainAddress, long maxFeeSats,
         CancellationToken ct = default) =>
-        WithWalletAsync(wallet, w => w.WithdrawAllAsync(onChainAddress, maxFeeSats, ct), ct);
+        WithWalletAsync(wallet, w => w.WithdrawAllAsync(onChainAddress, maxFeeSats, ct: ct), ct);
 
     public Task<WithdrawLeavesResult> WithdrawLeavesAsync(SparkWalletRef wallet, IReadOnlyCollection<string> leafIds,
         string onChainAddress, long maxFeeSats, CancellationToken ct = default) =>
-        WithWalletAsync(wallet, w => w.WithdrawLeavesAsync(leafIds, onChainAddress, maxFeeSats, ct), ct);
+        WithWalletAsync(wallet, w => w.WithdrawLeavesAsync(leafIds, onChainAddress, maxFeeSats, ct: ct), ct);
 
     public virtual void Forget(SparkWalletRef wallet) => _slots.TryRemove(wallet, out _);
 
