@@ -15,7 +15,7 @@ The Spark client is the [NSpark](https://github.com/orklabs/nspark) .NET SDK, fr
 2. A swap that would bring the wallet over its max balance, counting what its swaps not paid yet will still bring in, is refused.
 3. The Spark wallet issues an invoice through the SSP. An invoice without a receive request is refused before anything is paid: the swap's funds are found only through the transfer the SSP reports for it.
 4. The swap is recorded before anything is paid: its payment hash, destination wallet and the Spark identity that will receive it. No address is reserved yet: the swap needs one only when it exits.
-5. The node pays the invoice. The payment is not cancellable. A definitive failure fails the swap. An unknown outcome, such as a broken payment stream, is left to the monitor.
+5. The node pays the invoice in the background: creation returns as soon as the swap is recorded, and the swap shows as pending on the Swaps page meanwhile. LND keeps trying routes for up to the node's Spark payment timeout (its liquidity settings on the Nodes page, else `SPARK_PAYMENT_TIMEOUT_MINUTES`), splitting the payment into up to `SEND_PAYMENT_MAX_PARTS` parts. The payment is not cancellable. Once paid, its routing fee is saved; a definitive failure fails the swap. An unknown outcome, such as a broken payment stream or NodeGuard restarting mid-payment, is left to the monitor, which finds the payment by its hash.
 
 **Payment.** `MonitorSwapsJob` runs every 10 minutes, or every minute in a dev environment. It looks the payment up on the node by its hash. The swap fails if the payment failed, or if the node never saw it and the invoice has expired. Once the payment has settled, the swap is `SparkSwapExitJob`'s.
 
@@ -86,6 +86,7 @@ While Spark is enabled, invalid settings stop NodeGuard at startup.
 | `SPARK_MAX_EXIT_FEE_SATS` | `20000` | Highest SSP exit fee accepted per swap |
 | `SPARK_MAX_BALANCE_SATS` | `10000000` | Most sats a Spark wallet may hold, counting a new swap and its swaps not paid yet, unless it has its own max balance |
 | `SPARK_EXIT_INTERVAL_MINUTES` | `10`, `1` in a dev environment | How often paid swaps exit on-chain |
+| `SPARK_PAYMENT_TIMEOUT_MINUTES` | `10` | How long LND keeps trying routes for a swap's payment, 1 to 25 (the invoice lasts 30 minutes); a node can set its own in its liquidity settings |
 | `SPARK_OPERATOR_CERTS_DIR` | none; refused on mainnet | Self-signed operator certificates to pin (regtest) |
 | `SPARK_SIGNER_RIE_URL` | none; refused on mainnet | Reach a locally run signer image through the Lambda emulator |
 
