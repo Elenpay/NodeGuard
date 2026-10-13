@@ -64,21 +64,14 @@ public enum SparkExitStep
 public interface ISparkSwapService
 {
     /// <summary>
-    /// Creates and records a Spark swap, then starts its payment without waiting for it (see
-    /// <see cref="ISparkPaymentLauncher"/>): the swap is returned pending. See <see cref="ISwapsService.CreateSwapOutAsync"/>.
+    /// Creates and records a Spark swap, then starts its payment in the background without waiting for it: the swap
+    /// is returned pending. See <see cref="ISwapsService.CreateSwapOutAsync"/>.
     /// </summary>
     /// <exception cref="SparkUnavailableException">Spark is disabled or unavailable.</exception>
     /// <exception cref="InvalidOperationException">
     /// The node has no Spark wallet or already has its Max swaps in flight of Spark swaps, or its wallet has no room.
     /// </exception>
     Task<SwapOutCreation> CreateSwapOutAsync(Node node, SwapOut swapOut, SwapOutRequest request, CancellationToken ct = default);
-
-    /// <summary>
-    /// Pays a recorded swap's invoice and saves the outcome: the routing fee once paid, the failure once it
-    /// definitely failed. An unknown outcome is left to MonitorSwapsJob. Not cancellable: once the payment starts
-    /// it is followed to its end.
-    /// </summary>
-    Task PayAsync(SparkPayment payment);
 
     /// <summary>
     /// Follows a pending Spark swap's Lightning payment and returns its state. Once the payment settled, its fee
@@ -134,12 +127,11 @@ public sealed class SparkSwapService : ISparkSwapService
     private readonly ISwapOutRepository _swapOutRepository;
     private readonly IWalletRepository _walletRepository;
     private readonly INBXplorerService _nbXplorerService;
-    private readonly ISparkPaymentLauncher _payments;
     private readonly TimeProvider _time;
 
     public SparkSwapService(ILogger<SparkSwapService> logger, SparkSettings settings, ISparkWalletService spark,
         ILightningService lightningService, ISwapOutRepository swapOutRepository, IWalletRepository walletRepository,
-        INBXplorerService nbXplorerService, ISparkPaymentLauncher payments, TimeProvider time)
+        INBXplorerService nbXplorerService, TimeProvider time)
     {
         _logger = logger;
         _settings = settings;
@@ -148,7 +140,6 @@ public sealed class SparkSwapService : ISparkSwapService
         _swapOutRepository = swapOutRepository;
         _walletRepository = walletRepository;
         _nbXplorerService = nbXplorerService;
-        _payments = payments;
         _time = time;
     }
 
@@ -237,28 +228,46 @@ public sealed class SparkSwapService : ISparkSwapService
             Reservation.Release();
         }
 
-        // Paid in the background, for up to the node's payment timeout: the swap shows as pending meanwhile
+        // Paid in the background, for up to the node's payment timeout: the swap shows as pending meanwhile. Off
+        // the caller's synchronization context, so the payment doesn't depend on the page that created the swap
         var maxFeePercent = request.MaxRoutingFeesPercent ?? DefaultMaxRoutingFeePercent;
         var feeLimitMsat = (long)(request.Amount * 1000m * maxFeePercent / 100m);
-        _payments.Launch(new SparkPayment(node, swapOut.Id, paymentRequest, feeLimitMsat, request.ChannelsOut,
+        _ = Task.Run(() => PayAsync(node, swapOut.Id, paymentRequest, feeLimitMsat, request.ChannelsOut,
             _settings.PaymentTimeoutFor(node) * 60));
         _logger.LogInformation("Spark swap {SwapId}: {Node} is paying {Amount} sats into Spark", swapOut.Id, node.Name, request.Amount);
 
         return new SwapOutCreation(Response(swapOut), true, null);
     }
 
-    public async Task PayAsync(SparkPayment payment)
+    /// <summary>
+    /// Pays a recorded swap's invoice and saves the outcome: the routing fee once paid, the failure once it
+    /// definitely failed. An unknown outcome, or an error here, is left to MonitorSwapsJob, which finds the payment
+    /// by its hash. Not cancellable: once the payment starts it is followed to its end.
+    /// </summary>
+    internal async Task PayAsync(Node node, int swapId, string paymentRequest, long feeLimitMsat, ulong[]? channelsOut,
+        int timeoutSeconds)
     {
-        if (await _swapOutRepository.GetById(payment.SwapId) is not { Status: SwapOutStatus.Pending, LightningFeeSats: null } swap)
+        try
         {
-            _logger.LogWarning("Spark swap {SwapId}: no longer waits for its payment, which is not sent", payment.SwapId);
+            var result = await _lightningService.SendPaymentV2Async(node, paymentRequest, 0, feeLimitMsat, channelsOut, null,
+                timeoutSeconds, CancellationToken.None);
+            await SavePaymentAsync(node, swapId, result);
+        }
+        catch (Exception e)
+        {
+            _logger.LogError(e, "Spark swap {SwapId}: its payment could not be followed; MonitorSwapsJob takes over", swapId);
+        }
+    }
+
+    private async Task SavePaymentAsync(Node node, int swapId, Payment result)
+    {
+        // Read again once the payment ended: the monitor may have resolved the swap meanwhile
+        if (await _swapOutRepository.GetById(swapId) is not { Status: SwapOutStatus.Pending, LightningFeeSats: null } swap)
+        {
+            _logger.LogInformation("Spark swap {SwapId}: its payment ended ({Status}) after the swap was already resolved",
+                swapId, result.Status);
             return;
         }
-
-        // Not cancellable: once the payment starts it must be followed to its end (or left to the monitor)
-        var node = payment.Node;
-        var result = await _lightningService.SendPaymentV2Async(node, payment.PaymentRequest, 0, payment.FeeLimitMsat,
-            payment.ChannelsOut, null, payment.TimeoutSeconds, CancellationToken.None);
 
         if (result.Status == Payment.Types.PaymentStatus.Succeeded)
         {

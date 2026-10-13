@@ -54,7 +54,6 @@ public class SparkSwapServiceTests
     private readonly ISwapOutRepository _swapOuts = Substitute.For<ISwapOutRepository>();
     private readonly IWalletRepository _wallets = Substitute.For<IWalletRepository>();
     private readonly INBXplorerService _nbXplorer = Substitute.For<INBXplorerService>();
-    private readonly ISparkPaymentLauncher _payments = Substitute.For<ISparkPaymentLauncher>();
     private readonly ManualTime _time = new();
     private readonly Node _node = new() { Id = 1, Name = "alice", PubKey = "02aa", Endpoint = "alice:10009", SparkWalletId = 5 };
     private readonly Wallet _wallet;
@@ -83,9 +82,27 @@ public class SparkSwapServiceTests
     }
 
     private SparkSwapService Service() => new(NullLogger<SparkSwapService>.Instance, Settings, _spark, _lightning, _swapOuts,
-        _wallets, _nbXplorer, _payments, _time);
+        _wallets, _nbXplorer, _time);
 
-    private SparkPayment ThePayment(int swapId = 7) => new(_node, swapId, Invoice, 5_000_000, null, 600);
+    private Task Pay(int swapId = 7) => Service().PayAsync(_node, swapId, Invoice, 5_000_000, null, 600);
+
+    /// <summary>
+    /// Completes with the payment's timeout once the node starts paying in the background. The payment itself never
+    /// ends, so a creation that returns did not wait for it.
+    /// </summary>
+    private Task<int> PaymentStarted()
+    {
+        var started = new TaskCompletionSource<int>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var never = new TaskCompletionSource<Payment>();
+        _lightning.SendPaymentV2Async(Arg.Any<Node>(), Arg.Any<string>(), Arg.Any<long>(), Arg.Any<long>(), Arg.Any<ulong[]?>(),
+                Arg.Any<string?>(), Arg.Any<int>(), Arg.Any<CancellationToken>())
+            .Returns(call =>
+            {
+                started.TrySetResult(call.ArgAt<int>(6));
+                return never.Task;
+            });
+        return started.Task.WaitAsync(TimeSpan.FromSeconds(5));
+    }
 
     // No address: a Spark swap reserves its own when it exits
     private static SwapOutRequest Request() => new() { Amount = 500_000, MaxRoutingFeesPercent = 1m };
@@ -193,18 +210,18 @@ public class SparkSwapServiceTests
             ProviderId = s.ProviderId, PaymentHash = s.PaymentHash, Status = s.Status, LightningFeeSats = s.LightningFeeSats
         })).Returns((true, null));
 
+        var started = PaymentStarted();
+
         var (response, saved, _) = await Service().CreateSwapOutAsync(_node, swapOut, Request());
 
         saved.Should().BeTrue();
         recorded.Should().BeEquivalentTo(new { ProviderId = "req-1", PaymentHash = Hash, Status = SwapOutStatus.Pending, LightningFeeSats = (long?)null });
+        (await started).Should().Be(600, "the default payment timeout, 10 minutes");
         NSubstitute.Received.InOrder(() =>
         {
             _swapOuts.AddAsync(swapOut);
-            _payments.Launch(Arg.Is<SparkPayment>(p => p.Node == _node && p.SwapId == swapOut.Id && p.PaymentRequest == Invoice &&
-                                                        p.FeeLimitMsat == 5_000_000 && p.ChannelsOut == null &&
-                                                        p.TimeoutSeconds == 600));
+            _lightning.SendPaymentV2Async(_node, Invoice, 0, 5_000_000, null, null, 600, CancellationToken.None);
         });
-        await _lightning.DidNotReceiveWithAnyArgs().SendPaymentV2Async(default!, default!, default, default, default, default, default, default);
         swapOut.ProviderId.Should().Be("req-1");
         swapOut.PaymentHash.Should().Be(Hash);
         swapOut.DestinationAddress.Should().BeNull("a Spark swap reserves its address when it exits");
@@ -221,10 +238,11 @@ public class SparkSwapServiceTests
     {
         InvoiceIssued();
         _node.SparkPaymentTimeoutMinutes = 3;
+        var started = PaymentStarted();
 
         await Service().CreateSwapOutAsync(_node, Template(), Request());
 
-        _payments.Received(1).Launch(Arg.Is<SparkPayment>(p => p.TimeoutSeconds == 180));
+        (await started).Should().Be(180);
     }
 
     [Fact]
@@ -237,7 +255,7 @@ public class SparkSwapServiceTests
 
         saved.Should().BeFalse();
         error.Should().Contain("unavailable");
-        _payments.DidNotReceiveWithAnyArgs().Launch(default!);
+        await _lightning.DidNotReceiveWithAnyArgs().SendPaymentV2Async(default!, default!, default, default, default, default, default, default);
     }
 
     // ── Paying ───────────────────────────────────────────────────────────────────────────
@@ -249,7 +267,7 @@ public class SparkSwapServiceTests
         _swapOuts.GetById(7).Returns(swap);
         NodePays(Payment.Types.PaymentStatus.Succeeded, feeSat: 9);
 
-        await Service().PayAsync(ThePayment());
+        await Pay();
 
         await _lightning.Received(1).SendPaymentV2Async(_node, Invoice, 0, 5_000_000, null, null, 600, CancellationToken.None);
         swap.LightningFeeSats.Should().Be(9);
@@ -264,7 +282,7 @@ public class SparkSwapServiceTests
         _swapOuts.GetById(7).Returns(swap);
         NodePays(Payment.Types.PaymentStatus.Failed, PaymentFailureReason.FailureReasonNoRoute);
 
-        await Service().PayAsync(ThePayment());
+        await Pay();
 
         swap.Status.Should().Be(SwapOutStatus.Failed);
         swap.ErrorDetails.Should().Contain("FailureReasonNoRoute");
@@ -279,7 +297,7 @@ public class SparkSwapServiceTests
         // SendPaymentV2 reports a broken stream as FailureReasonError: the payment may still succeed
         NodePays(Payment.Types.PaymentStatus.Failed, PaymentFailureReason.FailureReasonError);
 
-        await Service().PayAsync(ThePayment());
+        await Pay();
 
         swap.Status.Should().Be(SwapOutStatus.Pending);
         swap.LightningFeeSats.Should().BeNull();
@@ -287,13 +305,28 @@ public class SparkSwapServiceTests
     }
 
     [Fact]
-    public async Task Pay_ASwapNoLongerWaitingForItsPayment_IsNotPaid()
+    public async Task Pay_ASwapTheMonitorResolvedMeanwhile_IsNotOverwritten()
     {
-        _swapOuts.GetById(7).Returns(Pending(lightningFee: 3));
+        var swap = Pending(lightningFee: 3);
+        _swapOuts.GetById(7).Returns(swap);
+        NodePays(Payment.Types.PaymentStatus.Succeeded, feeSat: 9);
 
-        await Service().PayAsync(ThePayment());
+        await Pay();
 
-        await _lightning.DidNotReceiveWithAnyArgs().SendPaymentV2Async(default!, default!, default, default, default, default, default, default);
+        swap.LightningFeeSats.Should().Be(3);
+        _swapOuts.DidNotReceiveWithAnyArgs().Update(default!);
+    }
+
+    [Fact]
+    public async Task Pay_WhenPayingThrows_LeavesItToTheMonitor()
+    {
+        _lightning.SendPaymentV2Async(_node, Invoice, 0, 5_000_000, null, null, 600, CancellationToken.None)
+            .ThrowsAsync(new InvalidOperationException("LND is down"));
+
+        var act = () => Pay();
+
+        await act.Should().NotThrowAsync("nothing awaits a background payment");
+        _swapOuts.DidNotReceiveWithAnyArgs().Update(default!);
     }
 
     [Theory]
