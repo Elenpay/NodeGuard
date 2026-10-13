@@ -198,7 +198,7 @@ public class SparkSwapServiceTests
         NSubstitute.Received.InOrder(() =>
         {
             _swapOuts.AddAsync(swapOut);
-            _lightning.SendPaymentV2Async(_node, Invoice, 0, 5_000_000, null, null, Arg.Any<int>(), CancellationToken.None);
+            _lightning.SendPaymentV2Async(_node, Invoice, 0, 5_000_000, null, null, 600, CancellationToken.None);
             _swapOuts.Update(swapOut);
         });
         swapOut.ProviderId.Should().Be("req-1");

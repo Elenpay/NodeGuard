@@ -55,6 +55,15 @@ public readonly record struct SparkWalletRef(int? WalletId)
 public sealed class SparkSettings
 {
     public const long DefaultMaxExitFeeSats = 20_000;
+
+    /// <summary>How long LND keeps trying routes for a Spark swap's payment, by default.</summary>
+    public const int DefaultPaymentTimeoutMinutes = 10;
+
+    /// <summary>
+    /// The longest payment timeout: LND must stop trying routes well before the 30-minute invoice
+    /// (<see cref="SparkSwapService.InvoiceExpirySeconds"/>) expires.
+    /// </summary>
+    public const int MaxPaymentTimeoutMinutes = 25;
     public const long DefaultMaxBalanceSats = 10_000_000;
 
     public static readonly SparkSettings Disabled = new();
@@ -104,6 +113,15 @@ public sealed class SparkSettings
 
     /// <summary>How often paid Spark swaps exit on-chain, in minutes: <see cref="ExitIntervalMinutes"/> or its default.</summary>
     public int ExitIntervalOrDefault(bool isDevEnvironment) => ExitIntervalMinutes ?? (isDevEnvironment ? 1 : 10);
+
+    /// <summary>
+    /// How long LND keeps trying routes for a Spark swap's payment, in minutes (SPARK_PAYMENT_TIMEOUT_MINUTES, 1 to
+    /// <see cref="MaxPaymentTimeoutMinutes"/>), unless the node has its own.
+    /// </summary>
+    public int PaymentTimeoutMinutes { get; init; } = DefaultPaymentTimeoutMinutes;
+
+    /// <summary>The payment timeout for <paramref name="node"/>'s Spark swaps: its own, else <see cref="PaymentTimeoutMinutes"/>.</summary>
+    public int PaymentTimeoutFor(Node node) => node.SparkPaymentTimeoutMinutes ?? PaymentTimeoutMinutes;
 
     /// <summary>
     /// Most sats a Spark wallet may hold, counting a new swap (SPARK_MAX_BALANCE_SATS), unless the wallet has its
@@ -254,6 +272,13 @@ public sealed class SparkSettings
             else errors.Add("SPARK_EXIT_INTERVAL_MINUTES must be a positive number of minutes");
         }
 
+        var paymentTimeout = DefaultPaymentTimeoutMinutes;
+        if (env("SPARK_PAYMENT_TIMEOUT_MINUTES") is { Length: > 0 } paymentTimeoutValue &&
+            (!int.TryParse(paymentTimeoutValue, out paymentTimeout) || paymentTimeout is < 1 or > MaxPaymentTimeoutMinutes))
+        {
+            errors.Add($"SPARK_PAYMENT_TIMEOUT_MINUTES must be a whole number of minutes from 1 to {MaxPaymentTimeoutMinutes}");
+        }
+
         var maxBalance = DefaultMaxBalanceSats;
         if (env("SPARK_MAX_BALANCE_SATS") is { Length: > 0 } maxBalanceValue &&
             (!long.TryParse(maxBalanceValue, out maxBalance) || maxBalance <= 0))
@@ -298,6 +323,7 @@ public sealed class SparkSettings
             IdentityPublicKey = identity?.Trim().ToLowerInvariant(),
             MaxExitFeeSats = maxExitFee,
             ExitIntervalMinutes = exitInterval,
+            PaymentTimeoutMinutes = paymentTimeout,
             MaxBalanceSats = maxBalance,
             SignerEndpoint = endpoint,
             SignerRieUrl = rieUrl

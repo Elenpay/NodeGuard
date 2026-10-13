@@ -1713,7 +1713,7 @@ namespace NodeGuard.Services
                 FeeLimitMsat = feeLimitMsat,
                 TimeoutSeconds = timeoutSeconds > 0 ? timeoutSeconds : Constants.DEFAULT_REBALANCE_TIMEOUT_SECONDS,
                 AllowSelfPayment = true,            // mandatory for circular self-pay
-                MaxParts = Constants.REBALANCE_MAX_PARTS, // let LND split (MPP) across routes
+                MaxParts = Constants.SEND_PAYMENT_MAX_PARTS, // let LND split (MPP) across routes
                 NoInflightUpdates = true,           // we only care about the terminal Payment update
             };
 

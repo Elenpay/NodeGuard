@@ -103,6 +103,16 @@ public class SparkSettingsTests
     }
 
     [Fact]
+    public void ANodesOwnPaymentTimeout_OverridesTheDefaultOfTenMinutes()
+    {
+        var settings = Read(Remote());
+
+        settings.PaymentTimeoutMinutes.Should().Be(10);
+        settings.PaymentTimeoutFor(new Node()).Should().Be(10);
+        settings.PaymentTimeoutFor(new Node { SparkPaymentTimeoutMinutes = 4 }).Should().Be(4);
+    }
+
+    [Fact]
     public void AWalletsOwnMaxBalance_OverridesTheDefault()
     {
         var settings = new SparkSettings { Enabled = true, MaxBalanceSats = 2_000_000 };
@@ -152,6 +162,7 @@ public class SparkSettingsTests
         env["SPARK_SIGNER_RIE_URL"] = "http://spark-signer:8080/2015-03-31/functions/function/invocations";
         env["SPARK_MAX_EXIT_FEE_SATS"] = "5000";
         env["SPARK_EXIT_INTERVAL_MINUTES"] = "3";
+        env["SPARK_PAYMENT_TIMEOUT_MINUTES"] = "15";
         env["SPARK_MAX_BALANCE_SATS"] = "2000000";
 
         var settings = Read(env, Network.RegTest);
@@ -164,6 +175,7 @@ public class SparkSettingsTests
         settings.SignerRieUrl!.Port.Should().Be(8080);
         settings.MaxExitFeeSats.Should().Be(5000);
         settings.ExitIntervalMinutes.Should().Be(3);
+        settings.PaymentTimeoutMinutes.Should().Be(15);
         settings.MaxBalanceSats.Should().Be(2_000_000);
         settings.ToSparkOptions(SspIdentity).EffectiveSspIdentityPublicKeyHex.Should().Be(SspIdentity);
     }
@@ -183,6 +195,9 @@ public class SparkSettingsTests
     [InlineData("SPARK_MAX_EXIT_FEE_SATS", "0", "SPARK_MAX_EXIT_FEE_SATS")]
     [InlineData("SPARK_EXIT_INTERVAL_MINUTES", "0", "SPARK_EXIT_INTERVAL_MINUTES")]
     [InlineData("SPARK_EXIT_INTERVAL_MINUTES", "ten", "SPARK_EXIT_INTERVAL_MINUTES")]
+    [InlineData("SPARK_PAYMENT_TIMEOUT_MINUTES", "0", "SPARK_PAYMENT_TIMEOUT_MINUTES must be a whole number of minutes from 1 to 25")]
+    [InlineData("SPARK_PAYMENT_TIMEOUT_MINUTES", "26", "SPARK_PAYMENT_TIMEOUT_MINUTES")]
+    [InlineData("SPARK_PAYMENT_TIMEOUT_MINUTES", "ten", "SPARK_PAYMENT_TIMEOUT_MINUTES")]
     [InlineData("SPARK_MAX_BALANCE_SATS", "-5", "SPARK_MAX_BALANCE_SATS")]
     public void InvalidSettings_FailTheStartup(string variable, string? value, string expected)
     {

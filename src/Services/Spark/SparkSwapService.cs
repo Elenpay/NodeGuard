@@ -99,7 +99,6 @@ public sealed class SparkSwapService : ISparkSwapService
     /// the swap's routing fee, so it is shown but never added to the swap's fees.
     /// </summary>
     public const int ServiceFeeBps = 15;
-    private const int PaymentTimeoutSeconds = 120;
     private const decimal DefaultMaxRoutingFeePercent = 0.5m;
     /// <summary>The status of a transfer this wallet has claimed: its leaves are the wallet's.</summary>
     private const string ClaimedTransferStatus = "Completed";
@@ -230,7 +229,7 @@ public sealed class SparkSwapService : ISparkSwapService
         var maxFeePercent = request.MaxRoutingFeesPercent ?? DefaultMaxRoutingFeePercent;
         var feeLimitMsat = (long)(request.Amount * 1000m * maxFeePercent / 100m);
         var payment = await _lightningService.SendPaymentV2Async(node, paymentRequest, 0, feeLimitMsat,
-            request.ChannelsOut, null, PaymentTimeoutSeconds, CancellationToken.None);
+            request.ChannelsOut, null, _settings.PaymentTimeoutFor(node) * 60, CancellationToken.None);
 
         if (payment.Status == Payment.Types.PaymentStatus.Succeeded)
         {
