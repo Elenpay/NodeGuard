@@ -459,8 +459,10 @@ public class WithdrawalRequestService : IWithdrawalRequestService
         var (replacementUpdated, replacementUpdateError) = _walletWithdrawalRequestRepository.Update(replacement);
         if (!replacementUpdated)
         {
+            // Still pending, so the next monitoring run retries; settling the original again is harmless.
             _logger.LogError("Could not mark replacement withdrawal request {RequestId} as failed: {Error}",
                 replacement.Id, replacementUpdateError);
+            return false;
         }
 
         _logger.LogInformation("Withdrawal request {RequestId} was mined instead of its replacement {ReplacementId}",

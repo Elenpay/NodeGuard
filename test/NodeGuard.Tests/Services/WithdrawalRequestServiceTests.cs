@@ -637,6 +637,27 @@ public class WithdrawalRequestServiceTests
         _requests.Verify(x => x.Update(It.Is<WalletWithdrawalRequest>(r => r.Id == BumpId)), Times.Never);
     }
 
+    [Fact]
+    public async Task SettleMinedOriginalAsync_FailingTheReplacementFails_ReportsItAndTheNextRunCompletesIt()
+    {
+        var original = SetupOriginal(HotWallet(), status: WalletWithdrawalRequestStatus.Bumped, confirmations: SettledDepth);
+        var bump = HotRequest(WalletWithdrawalRequestStatus.OnChainConfirmationPending, bumping: OriginalId);
+        _requests.Setup(x => x.Update(It.Is<WalletWithdrawalRequest>(r => r.Id == BumpId))).Returns((false, "db down"));
+
+        var settled = await CreateService().SettleMinedOriginalAsync(bump);
+
+        settled.Should().BeFalse("the replacement is still pending in the database, so the transition is incomplete");
+        original.Status.Should().Be(WalletWithdrawalRequestStatus.OnChainConfirmed);
+
+        // Next monitoring run: the database is back, and the replacement is reloaded still pending.
+        _requests.Setup(x => x.Update(It.Is<WalletWithdrawalRequest>(r => r.Id == BumpId))).Returns((true, (string?)null));
+        bump.Status = WalletWithdrawalRequestStatus.OnChainConfirmationPending;
+
+        (await CreateService().SettleMinedOriginalAsync(bump)).Should().BeTrue();
+        bump.Status.Should().Be(WalletWithdrawalRequestStatus.Failed);
+        original.Status.Should().Be(WalletWithdrawalRequestStatus.OnChainConfirmed);
+    }
+
     // ---- fixtures ---------------------------------------------------------------------------------------------
 
     /// <summary>Confirmations at which the monitor settles a withdrawal (the constant is 0 when its env var is unset).</summary>
