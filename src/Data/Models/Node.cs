@@ -145,6 +145,12 @@ namespace NodeGuard.Data.Models
         /// </summary>
         public int? SparkWalletId { get; set; }
 
+        /// <summary>
+        /// How long LND keeps trying routes for this node's Spark swap payments, in minutes; null means
+        /// SPARK_PAYMENT_TIMEOUT_MINUTES
+        /// </summary>
+        public int? SparkPaymentTimeoutMinutes { get; set; }
+
         #endregion Automatic Swap Out Configuration
 
         #region Routing Engine

@@ -51,7 +51,6 @@ public sealed class SparkGuardrails : ISparkGuardrails, IDisposable
 {
     public const string MeterName = "NodeGuard.Spark";
     public static readonly TimeSpan StuckAlertAfter = TimeSpan.FromHours(1);
-    public static readonly TimeSpan ExitOverdueAfter = TimeSpan.FromHours(6);
 
     private readonly SparkSettings _settings;
     private readonly ISparkWalletService _spark;
@@ -92,11 +91,12 @@ public sealed class SparkGuardrails : ISparkGuardrails, IDisposable
         PendingSpark(pendingSwaps).Where(s => s.LightningFeeSats is null).Sum(s => s.SatsAmount);
 
     /// <summary>
-    /// What the wallet holds for the pending Spark swaps that have not exited yet: what each one brought in, or its
-    /// amount until it is known.
+    /// What the wallet holds for its pending Spark swaps: what each one brought in, or its amount until it is known.
+    /// A swap whose exit was sent still counts: its leaves stay the wallet's until the exit confirms, which at SLOW
+    /// speed can take hours.
     /// </summary>
     public static long DueSats(IEnumerable<SwapOut> pendingSwaps) =>
-        PendingSpark(pendingSwaps).Where(s => s.TxId is null).Sum(s => s.SparkReceivedSats ?? s.SatsAmount);
+        PendingSpark(pendingSwaps).Sum(s => s.SparkReceivedSats ?? s.SatsAmount);
 
     private static IEnumerable<SwapOut> PendingSpark(IEnumerable<SwapOut> swaps) =>
         swaps.Where(s => s.Provider == SwapProvider.Spark && s.Status == SwapOutStatus.Pending);
@@ -140,8 +140,8 @@ public sealed class SparkGuardrails : ISparkGuardrails, IDisposable
                     wallet.Ref, wallet.Name, held, wallet.MaxBalanceSats);
             }
 
-            // Each swap's sats are its own until it exits: only what none of the wallet's swaps in flight accounts for
-            // is stuck
+            // Each swap's sats are its own until its exit confirms: only what none of the wallet's swaps in flight
+            // accounts for is stuck
             var due = DueSats(sparkSwaps.Where(s =>
                 string.Equals(s.SparkIdentity, wallet.IdentityPublicKey, StringComparison.OrdinalIgnoreCase)));
             var stuck = held - due;
@@ -175,7 +175,8 @@ public sealed class SparkGuardrails : ISparkGuardrails, IDisposable
         foreach (var swap in sparkSwaps.Where(s => s.LightningFeeSats is not null))
         {
             var age = now - swap.CreationDatetime;
-            if (age < ExitOverdueAfter || !_overdueAlerted.Add(swap.Id)) continue;
+            // A slower exit waits longer for a block: the alert waits with it
+            if (age < _settings.ExitOverdueAfter || !_overdueAlerted.Add(swap.Id)) continue;
 
             _logger.LogError("Spark swap {SwapId} was paid {AgeHours} hours ago and its payout is not confirmed yet (exit {TxId})",
                 swap.Id, (int)age.TotalHours, swap.TxId ?? "not started");

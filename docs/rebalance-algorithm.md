@@ -340,7 +340,7 @@ which one gets drained can differ between runs on an otherwise unchanged node.
 | `REBALANCE_INITIAL_RETRY_DELAY_SECONDS` | `60` | First retry delay. |
 | `REBALANCE_RETRY_BACKOFF_MULTIPLIER` | `2.0` | `delay = 60 · 2^(attempt−2)` ⇒ 60 s, 120 s. |
 | `REBALANCE_AMOUNT_BACKOFF_RATIO` | `0.8` | Retries shrink the amount by this factor per attempt. |
-| `REBALANCE_MAX_PARTS` | `32` | Max MPP shards. |
+| `SEND_PAYMENT_MAX_PARTS` | `32` | Max MPP shards of a payment sent with SendPaymentV2: rebalances and Spark swaps. `REBALANCE_MAX_PARTS` is still read as a fallback. |
 | `REBALANCE_DEFAULT_MAX_FEE_PCT` | `0.05` | Fallback cap when none is supplied (0.05 %). |
 | `REBALANCE_DEFAULT_RETRY_MAX_FEE_PCT` | `0.05` | Fallback retry cap. |
 | `REBALANCE_RECONCILE_TERMINAL_WINDOW_HOURS` | `24` | How far back `MonitorRebalancesJob` reconciles. |

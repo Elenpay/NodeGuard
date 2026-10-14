@@ -214,5 +214,16 @@ namespace NodeGuard.Data.Repositories
 
          return transferIds.ToHashSet(StringComparer.OrdinalIgnoreCase);
       }
+
+      public async Task<List<SwapOut>> GetSparkSwapsByIdentityAsync(string identityPublicKey)
+      {
+         await using var context = await _dbContextFactory.CreateDbContextAsync();
+         var identity = identityPublicKey.ToLowerInvariant();
+
+         return await context.SwapOuts
+            .AsNoTracking()
+            .Where(s => s.Provider == SwapProvider.Spark && s.SparkIdentity != null && s.SparkIdentity.ToLower() == identity)
+            .ToListAsync();
+      }
    }
 }

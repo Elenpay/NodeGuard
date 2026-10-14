@@ -359,6 +359,18 @@
                                         </Field>
                                     </Column>
                                 }
+                                <Column>
+                                    <Field>
+                                        <FieldLabel>Spark Payment Timeout</FieldLabel>
+                                        <FieldHelp>
+                                            How long LND keeps trying routes for this node's Spark swap payments, in minutes
+                                            (1-@SparkSettings.MaxPaymentTimeoutMinutes; empty: @SparkSettings.PaymentTimeoutMinutes, SPARK_PAYMENT_TIMEOUT_MINUTES)
+                                        </FieldHelp>
+                                        <NumericEdit TValue="int?" @bind-Value="_selectedNodeForLiquidity.SparkPaymentTimeoutMinutes"
+                                                     Min="1" Max="@SparkSettings.MaxPaymentTimeoutMinutes"
+                                                     Placeholder="@($"{SparkSettings.PaymentTimeoutMinutes} (default)")" />
+                                    </Field>
+                                </Column>
                             }
                         </Row>
                         
@@ -1056,6 +1068,12 @@
                 (await SwapOutRepository.GetInFlightSwapsByNode(_selectedNodeForLiquidity.Id)).Any(s => s.Provider == SwapProvider.Spark))
             {
                 ToastService.ShowError("The node has a Spark swap in flight: change its Spark wallet once the swap finishes");
+                return;
+            }
+
+            if (_selectedNodeForLiquidity.SparkPaymentTimeoutMinutes is < 1 || _selectedNodeForLiquidity.SparkPaymentTimeoutMinutes > SparkSettings.MaxPaymentTimeoutMinutes)
+            {
+                ToastService.ShowError($"The Spark payment timeout must be 1 to {SparkSettings.MaxPaymentTimeoutMinutes} minutes, or empty for the default");
                 return;
             }
 
