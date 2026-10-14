@@ -23,10 +23,12 @@ using NBXplorer.DerivationStrategy;
 using NBXplorer.Models;
 using NodeGuard.Data.Models;
 using NodeGuard.Data.Repositories.Interfaces;
+using NodeGuard.Jobs;
 using NSpark;
 using NSpark.Exceptions;
 using NSpark.Models;
 using NSpark.Services;
+using Quartz;
 
 namespace NodeGuard.Services.Spark;
 
@@ -74,6 +76,14 @@ public interface ISparkSwapService
     Task<SwapOutCreation> CreateSwapOutAsync(Node node, SwapOut swapOut, SwapOutRequest request, CancellationToken ct = default);
 
     /// <summary>
+    /// Pays a retry of a swap's payment, scheduled after its previous attempt failed (SparkSwapPaymentJob): only
+    /// while the swap still waits for that invoice (<paramref name="paymentHash"/>) and the node has no record of
+    /// its payment yet, so a job run again after a restart never pays twice.
+    /// </summary>
+    Task PayScheduledAsync(int swapId, string paymentHash, string paymentRequest, decimal maxFeePercent,
+        ulong[]? channelsOut, int timeoutSeconds, CancellationToken ct = default);
+
+    /// <summary>
     /// Follows a pending Spark swap's Lightning payment and returns its state. Once the payment settled, its fee
     /// is saved on <paramref name="swap"/> and the swap is SparkSwapExitJob's to exit.
     /// </summary>
@@ -108,8 +118,12 @@ public sealed class SparkSwapService : ISparkSwapService
     private const string ExitTransferType = "CooperativeExit";
     private static readonly TimeSpan PaymentLookupTimeout = TimeSpan.FromSeconds(30);
 
-    /// <summary>When nothing has arrived by then, the invoice has expired and the payment never will.</summary>
-    private static readonly TimeSpan PaymentDeadline = TimeSpan.FromSeconds(InvoiceExpirySeconds) + TimeSpan.FromMinutes(10);
+    /// <summary>
+    /// When nothing has arrived by then, the swap's current invoice has expired and its payment never will: 10
+    /// minutes after it expires (30 minutes after creation for swaps recorded without its expiry).
+    /// </summary>
+    private static DateTimeOffset PaymentDeadlineOf(SwapOut swap) =>
+        (swap.SparkInvoiceExpiresAt ?? swap.CreationDatetime + TimeSpan.FromSeconds(InvoiceExpirySeconds)) + TimeSpan.FromMinutes(10);
 
     /// <summary>Transfers are looked for from this long before the swap was created, for clock skew.</summary>
     private static readonly TimeSpan TransferLookback = TimeSpan.FromMinutes(5);
@@ -127,11 +141,15 @@ public sealed class SparkSwapService : ISparkSwapService
     private readonly ISwapOutRepository _swapOutRepository;
     private readonly IWalletRepository _walletRepository;
     private readonly INBXplorerService _nbXplorerService;
+    private readonly INodeRepository _nodeRepository;
+    private readonly ISchedulerFactory _schedulerFactory;
+    private readonly IAuditService _auditService;
     private readonly TimeProvider _time;
 
     public SparkSwapService(ILogger<SparkSwapService> logger, SparkSettings settings, ISparkWalletService spark,
         ILightningService lightningService, ISwapOutRepository swapOutRepository, IWalletRepository walletRepository,
-        INBXplorerService nbXplorerService, TimeProvider time)
+        INBXplorerService nbXplorerService, INodeRepository nodeRepository, ISchedulerFactory schedulerFactory,
+        IAuditService auditService, TimeProvider time)
     {
         _logger = logger;
         _settings = settings;
@@ -140,6 +158,9 @@ public sealed class SparkSwapService : ISparkSwapService
         _swapOutRepository = swapOutRepository;
         _walletRepository = walletRepository;
         _nbXplorerService = nbXplorerService;
+        _nodeRepository = nodeRepository;
+        _schedulerFactory = schedulerFactory;
+        _auditService = auditService;
         _time = time;
     }
 
@@ -214,6 +235,8 @@ public sealed class SparkSwapService : ISparkSwapService
             swapOut.Status = SwapOutStatus.Pending;
             swapOut.SatsAmount = request.Amount;
             swapOut.PaymentHash = invoice.PaymentHash;
+            swapOut.SparkPaymentAttempt = 1;
+            swapOut.SparkInvoiceExpiresAt = invoice.ExpiresAt;
             swapOut.SparkIdentity = status.IdentityPublicKey;
 
             // Recorded before paying: from here on the monitor can resolve the swap whatever happens next
@@ -231,8 +254,7 @@ public sealed class SparkSwapService : ISparkSwapService
         // Paid in the background, for up to the node's payment timeout: the swap shows as pending meanwhile. Off
         // the caller's synchronization context, so the payment doesn't depend on the page that created the swap
         var maxFeePercent = request.MaxRoutingFeesPercent ?? DefaultMaxRoutingFeePercent;
-        var feeLimitMsat = (long)(request.Amount * 1000m * maxFeePercent / 100m);
-        _ = Task.Run(() => PayAsync(node, swapOut.Id, paymentRequest, feeLimitMsat, request.ChannelsOut,
+        _ = Task.Run(() => PayAsync(node, swapOut.Id, paymentRequest, request.Amount, maxFeePercent, request.ChannelsOut,
             _settings.PaymentTimeoutFor(node) * 60));
         _logger.LogInformation("Spark swap {SwapId}: {Node} is paying {Amount} sats into Spark", swapOut.Id, node.Name, request.Amount);
 
@@ -240,18 +262,20 @@ public sealed class SparkSwapService : ISparkSwapService
     }
 
     /// <summary>
-    /// Pays a recorded swap's invoice and saves the outcome: the routing fee once paid, the failure once it
-    /// definitely failed. An unknown outcome, or an error here, is left to MonitorSwapsJob, which finds the payment
-    /// by its hash. Not cancellable: once the payment starts it is followed to its end.
+    /// Pays a recorded swap's invoice of <paramref name="amountSats"/>, with a fee limit of
+    /// <paramref name="maxFeePercent"/> of it, and saves the outcome: the routing fee once paid; once it failed for
+    /// want of a route or liquidity, a smaller retry (<see cref="RetrySmallerAsync"/>), else the failure. An unknown
+    /// outcome, or an error here, is left to MonitorSwapsJob, which finds the payment by its hash. Not cancellable:
+    /// once the payment starts it is followed to its end.
     /// </summary>
-    internal async Task PayAsync(Node node, int swapId, string paymentRequest, long feeLimitMsat, ulong[]? channelsOut,
-        int timeoutSeconds)
+    internal async Task PayAsync(Node node, int swapId, string paymentRequest, long amountSats, decimal maxFeePercent,
+        ulong[]? channelsOut, int timeoutSeconds)
     {
         try
         {
-            var result = await _lightningService.SendPaymentV2Async(node, paymentRequest, 0, feeLimitMsat, channelsOut, null,
-                timeoutSeconds, CancellationToken.None);
-            await SavePaymentAsync(node, swapId, result);
+            var result = await _lightningService.SendPaymentV2Async(node, paymentRequest, 0,
+                FeeLimitMsat(amountSats, maxFeePercent), channelsOut, null, timeoutSeconds, CancellationToken.None);
+            await SavePaymentAsync(node, swapId, result, maxFeePercent, channelsOut, timeoutSeconds);
         }
         catch (Exception e)
         {
@@ -259,7 +283,10 @@ public sealed class SparkSwapService : ISparkSwapService
         }
     }
 
-    private async Task SavePaymentAsync(Node node, int swapId, Payment result)
+    private static long FeeLimitMsat(long amountSats, decimal maxFeePercent) => (long)(amountSats * 1000m * maxFeePercent / 100m);
+
+    private async Task SavePaymentAsync(Node node, int swapId, Payment result, decimal maxFeePercent, ulong[]? channelsOut,
+        int timeoutSeconds)
     {
         // Read again once the payment ended: the monitor may have resolved the swap meanwhile
         if (await _swapOutRepository.GetById(swapId) is not { Status: SwapOutStatus.Pending, LightningFeeSats: null } swap)
@@ -278,10 +305,18 @@ public sealed class SparkSwapService : ISparkSwapService
         else if (result.Status == Payment.Types.PaymentStatus.Failed &&
                  result.FailureReason != PaymentFailureReason.FailureReasonError)
         {
+            if (RetriedFailures.Contains(result.FailureReason) &&
+                await RetrySmallerAsync(node, swap, result.FailureReason, maxFeePercent, channelsOut, timeoutSeconds))
+            {
+                return;
+            }
+
             swap.Status = SwapOutStatus.Failed;
-            swap.ErrorDetails = $"Lightning payment failed: {result.FailureReason}";
-            _logger.LogWarning("Spark swap {SwapId}: the payment from {Node} failed: {Reason}",
-                swap.Id, node.Name, result.FailureReason);
+            swap.ErrorDetails = swap.SparkPaymentAttempt > 1
+                ? $"Lightning payment failed: {result.FailureReason} (attempt {swap.SparkPaymentAttempt}, {swap.SatsAmount} sats)"
+                : $"Lightning payment failed: {result.FailureReason}";
+            _logger.LogWarning("Spark swap {SwapId}: the payment from {Node} failed on attempt {Attempt}: {Reason}",
+                swap.Id, node.Name, swap.SparkPaymentAttempt, result.FailureReason);
         }
         else
         {
@@ -292,6 +327,111 @@ public sealed class SparkSwapService : ISparkSwapService
         }
 
         Save(swap);
+    }
+
+    /// <summary>Failures a smaller amount may get past: no route, a timeout, or too little outbound liquidity.</summary>
+    private static readonly HashSet<PaymentFailureReason> RetriedFailures =
+    [
+        PaymentFailureReason.FailureReasonNoRoute,
+        PaymentFailureReason.FailureReasonTimeout,
+        PaymentFailureReason.FailureReasonInsufficientBalance
+    ];
+
+    /// <summary>
+    /// Retries a failed payment with a smaller amount (SEND_PAYMENT_AMOUNT_BACKOFF_RATIO, down to the node's Spark
+    /// min swap, up to SEND_PAYMENT_MAX_ATTEMPTS attempts): issues a fresh invoice for it right away and saves it on
+    /// the swap, so the swap never points at a failed payment and the monitor leaves it be, then schedules its
+    /// payment after the backoff delay (SparkSwapPaymentJob). False when no retry is left, or the new invoice could
+    /// not be issued or saved.
+    /// </summary>
+    private async Task<bool> RetrySmallerAsync(Node node, SwapOut swap, PaymentFailureReason reason, decimal maxFeePercent,
+        ulong[]? channelsOut, int timeoutSeconds)
+    {
+        var attempt = swap.SparkPaymentAttempt + 1;
+        var amount = (long)Math.Floor(swap.SatsAmount * (decimal)Constants.SEND_PAYMENT_AMOUNT_BACKOFF_RATIO);
+        var minSwap = SwapAmountLimits.For(node, SwapProvider.Spark, _settings).MinSats;
+        if (attempt > Constants.SEND_PAYMENT_MAX_ATTEMPTS || amount < minSwap || amount >= swap.SatsAmount)
+        {
+            _logger.LogInformation("Spark swap {SwapId}: no retry left after attempt {Attempt} ({Amount} sats; next {Next}, min {Min})",
+                swap.Id, swap.SparkPaymentAttempt, swap.SatsAmount, amount, minSwap);
+            return false;
+        }
+
+        LightningInvoice invoice;
+        try
+        {
+            var wallet = await SwapWalletAsync(swap, CancellationToken.None);
+            invoice = await _spark.CreateInvoiceAsync(wallet.Ref, amount, $"NodeGuard swap-out from {node.Name}",
+                InvoiceExpirySeconds, CancellationToken.None);
+        }
+        catch (Exception e)
+        {
+            _logger.LogWarning(e, "Spark swap {SwapId}: could not issue the invoice for its retry", swap.Id);
+            return false;
+        }
+
+        if (string.IsNullOrEmpty(invoice.RequestId))
+        {
+            _logger.LogWarning("Spark swap {SwapId}: the SSP issued the retry's invoice without a receive request", swap.Id);
+            return false;
+        }
+
+        var previous = (swap.ProviderId, swap.PaymentHash, swap.SatsAmount, swap.SparkPaymentAttempt, swap.SparkInvoiceExpiresAt);
+        swap.ProviderId = invoice.RequestId;
+        swap.PaymentHash = invoice.PaymentHash;
+        swap.SatsAmount = amount;
+        swap.SparkPaymentAttempt = attempt;
+        swap.SparkInvoiceExpiresAt = invoice.ExpiresAt;
+        if (!Save(swap))
+        {
+            (swap.ProviderId, swap.PaymentHash, swap.SatsAmount, swap.SparkPaymentAttempt, swap.SparkInvoiceExpiresAt) = previous;
+            return false;
+        }
+
+        var delaySeconds = Constants.SEND_PAYMENT_INITIAL_RETRY_DELAY_SECONDS *
+                           Math.Pow(Constants.SEND_PAYMENT_RETRY_BACKOFF_MULTIPLIER, attempt - 2);
+        var fireAt = _time.GetUtcNow().AddSeconds(delaySeconds);
+        await SparkSwapPaymentJob.ScheduleAsync(_schedulerFactory, fireAt, swap.Id, attempt, invoice.PaymentHash,
+            invoice.PaymentRequest, maxFeePercent, channelsOut, timeoutSeconds);
+
+        _logger.LogInformation("Spark swap {SwapId}: the payment from {Node} failed ({Reason}); attempt {Attempt} pays {Amount} sats at {FireAt:O}",
+            swap.Id, node.Name, reason, attempt, amount, fireAt);
+        await _auditService.LogSystemAsync(AuditActionType.SwapOutPaymentRetryScheduled, AuditEventType.Attempt,
+            AuditObjectType.SwapOut, swap.Id.ToString(),
+            new { Reason = reason.ToString(), Attempt = attempt, AmountSats = amount, previous.SatsAmount, FireAt = fireAt });
+        return true;
+    }
+
+    public async Task PayScheduledAsync(int swapId, string paymentHash, string paymentRequest, decimal maxFeePercent,
+        ulong[]? channelsOut, int timeoutSeconds, CancellationToken ct = default)
+    {
+        if (await _swapOutRepository.GetById(swapId) is not { Status: SwapOutStatus.Pending, LightningFeeSats: null } swap ||
+            swap.PaymentHash != paymentHash)
+        {
+            _logger.LogInformation("Spark swap {SwapId}: no longer waits for the payment of {PaymentHash}, which is not sent",
+                swapId, paymentHash);
+            return;
+        }
+
+        if (swap.NodeId is not { } nodeId || await _nodeRepository.GetById(nodeId) is not { } node)
+        {
+            _logger.LogError("Spark swap {SwapId}: its node {NodeId} is gone, so its retry is not paid", swapId, swap.NodeId);
+            return;
+        }
+
+        // Run again after a restart: what the node already knows of is followed by the monitor instead
+        using (var lookup = CancellationTokenSource.CreateLinkedTokenSource(ct))
+        {
+            lookup.CancelAfter(PaymentLookupTimeout);
+            if (await _lightningService.TrackPaymentV2Async(node, Convert.FromHexString(paymentHash), lookup.Token) is { } known)
+            {
+                _logger.LogInformation("Spark swap {SwapId}: the node already has the payment of attempt {Attempt} ({Status})",
+                    swapId, swap.SparkPaymentAttempt, known.Status);
+                return;
+            }
+        }
+
+        await PayAsync(node, swapId, paymentRequest, swap.SatsAmount, maxFeePercent, channelsOut, timeoutSeconds);
     }
 
     public async Task<SwapResponse> AdvanceSwapAsync(Node node, SwapOut swap, CancellationToken ct = default)
@@ -448,7 +588,7 @@ public sealed class SparkSwapService : ISparkSwapService
             case Payment.Types.PaymentStatus.Failed:
                 return $"Lightning payment failed: {payment.FailureReason}";
 
-            case null when _time.GetUtcNow() - swap.CreationDatetime > PaymentDeadline:
+            case null when _time.GetUtcNow() > PaymentDeadlineOf(swap):
                 // The node has no record of the payment and the invoice expired: no payment will arrive. The SSP's
                 // view is only a hint (not every SSP serves it), so a failed lookup does not block this
                 var receive = await ReceiveStatusAsync(swap, sparkWallet);

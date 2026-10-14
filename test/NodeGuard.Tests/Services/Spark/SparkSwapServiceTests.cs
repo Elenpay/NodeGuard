@@ -31,6 +31,7 @@ using NSpark.Models;
 using NSpark.Services;
 using NSubstitute;
 using NSubstitute.ExceptionExtensions;
+using Quartz;
 
 namespace NodeGuard.Services.Spark;
 
@@ -54,6 +55,10 @@ public class SparkSwapServiceTests
     private readonly ISwapOutRepository _swapOuts = Substitute.For<ISwapOutRepository>();
     private readonly IWalletRepository _wallets = Substitute.For<IWalletRepository>();
     private readonly INBXplorerService _nbXplorer = Substitute.For<INBXplorerService>();
+    private readonly INodeRepository _nodes = Substitute.For<INodeRepository>();
+    private readonly ISchedulerFactory _schedulerFactory = Substitute.For<ISchedulerFactory>();
+    private readonly IScheduler _scheduler = Substitute.For<IScheduler>();
+    private readonly IAuditService _audit = Substitute.For<IAuditService>();
     private readonly ManualTime _time = new();
     private readonly Node _node = new() { Id = 1, Name = "alice", PubKey = "02aa", Endpoint = "alice:10009", SparkWalletId = 5 };
     private readonly Wallet _wallet;
@@ -79,12 +84,23 @@ public class SparkSwapServiceTests
         _wallet.Id = 3;
         _wallets.GetById(3).Returns(_wallet);
         Payouts();
+        _nodes.GetById(1, Arg.Any<bool>()).Returns(_node);
+        _schedulerFactory.GetScheduler(Arg.Any<CancellationToken>()).Returns(_scheduler);
     }
 
     private SparkSwapService Service() => new(NullLogger<SparkSwapService>.Instance, Settings, _spark, _lightning, _swapOuts,
-        _wallets, _nbXplorer, _time);
+        _wallets, _nbXplorer, _nodes, _schedulerFactory, _audit, _time);
 
-    private Task Pay(int swapId = 7) => Service().PayAsync(_node, swapId, Invoice, 5_000_000, null, 600);
+    // 500_000 sats at 1%: a fee limit of 5_000_000 msat
+    private Task Pay(int swapId = 7) => Service().PayAsync(_node, swapId, Invoice, 500_000, 1m, null, 600);
+
+    private const string RetryInvoice = "lnbcrt4m1retry";
+    private const string RetryHash = "0202020202020202020202020202020202020202020202020202020202020202";
+
+    /// <summary>The SSP issues the retry's smaller invoice.</summary>
+    private void RetryInvoiceIssued(long amountSats) =>
+        _spark.CreateInvoiceAsync(W, amountSats, Arg.Any<string>(), SparkSwapService.InvoiceExpirySeconds, Arg.Any<CancellationToken>())
+            .Returns(new LightningInvoice(RetryInvoice, RetryHash, amountSats, DateTimeOffset.UnixEpoch.AddMinutes(90), "req-2"));
 
     /// <summary>
     /// Completes with the payment's timeout once the node starts paying in the background. The payment itself never
@@ -276,8 +292,89 @@ public class SparkSwapServiceTests
     }
 
     [Fact]
-    public async Task Pay_WhenThePaymentFails_FailsTheSwap()
+    public async Task Pay_WhenThePaymentFailsForAReasonASmallerAmountWontFix_FailsTheSwap()
     {
+        var swap = Pending(lightningFee: null);
+        _swapOuts.GetById(7).Returns(swap);
+        NodePays(Payment.Types.PaymentStatus.Failed, PaymentFailureReason.FailureReasonIncorrectPaymentDetails);
+
+        await Pay();
+
+        swap.Status.Should().Be(SwapOutStatus.Failed);
+        swap.ErrorDetails.Should().Contain("FailureReasonIncorrectPaymentDetails");
+        _swapOuts.Received(1).Update(swap);
+        await _spark.DidNotReceiveWithAnyArgs().CreateInvoiceAsync(default, default, default, default, default);
+    }
+
+    [Theory]
+    [InlineData(PaymentFailureReason.FailureReasonNoRoute)]
+    [InlineData(PaymentFailureReason.FailureReasonTimeout)]
+    [InlineData(PaymentFailureReason.FailureReasonInsufficientBalance)]
+    public async Task Pay_WhenAFailureASmallerAmountMayFix_SavesASmallerInvoice_ThenSchedulesItsPayment(PaymentFailureReason reason)
+    {
+        var swap = Pending(lightningFee: null);
+        _swapOuts.GetById(7).Returns(swap);
+        NodePays(Payment.Types.PaymentStatus.Failed, reason);
+        RetryInvoiceIssued(400_000);
+
+        await Pay();
+
+        swap.Status.Should().Be(SwapOutStatus.Pending);
+        swap.Should().BeEquivalentTo(new
+        {
+            SatsAmount = 400_000L, PaymentHash = RetryHash, ProviderId = "req-2", SparkPaymentAttempt = 2,
+            SparkInvoiceExpiresAt = (DateTimeOffset?)DateTimeOffset.UnixEpoch.AddMinutes(90)
+        }, "the swap never points at the failed payment, so the monitor leaves it be");
+        NSubstitute.Received.InOrder(() =>
+        {
+            _swapOuts.Update(swap);
+            _scheduler.ScheduleJob(
+                Arg.Is<IJobDetail>(j => j.Key.Name == "SparkSwapPaymentJob-7-a2" && j.RequestsRecovery &&
+                                        j.JobDataMap.GetString("paymentHash") == RetryHash &&
+                                        j.JobDataMap.GetString("paymentRequest") == RetryInvoice),
+                Arg.Is<ITrigger>(t => t.StartTimeUtc == _time.GetUtcNow().AddSeconds(60)), Arg.Any<CancellationToken>());
+        });
+        await _audit.Received(1).LogSystemAsync(AuditActionType.SwapOutPaymentRetryScheduled, AuditEventType.Attempt,
+            AuditObjectType.SwapOut, "7", Arg.Any<object>());
+    }
+
+    [Fact]
+    public async Task Pay_EachRetryWaitsLonger()
+    {
+        var swap = Pending(lightningFee: null);
+        swap.SparkPaymentAttempt = 2;
+        swap.SatsAmount = 400_000;
+        _swapOuts.GetById(7).Returns(swap);
+        NodePays(Payment.Types.PaymentStatus.Failed, PaymentFailureReason.FailureReasonNoRoute);
+        RetryInvoiceIssued(320_000);
+
+        await Pay();
+
+        swap.SparkPaymentAttempt.Should().Be(3);
+        await _scheduler.Received(1).ScheduleJob(Arg.Is<IJobDetail>(j => j.Key.Name == "SparkSwapPaymentJob-7-a3"),
+            Arg.Is<ITrigger>(t => t.StartTimeUtc == _time.GetUtcNow().AddSeconds(120)), Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task Pay_OnTheLastAttempt_FailsTheSwap()
+    {
+        var swap = Pending(lightningFee: null);
+        swap.SparkPaymentAttempt = Constants.SEND_PAYMENT_MAX_ATTEMPTS;
+        _swapOuts.GetById(7).Returns(swap);
+        NodePays(Payment.Types.PaymentStatus.Failed, PaymentFailureReason.FailureReasonNoRoute);
+
+        await Pay();
+
+        swap.Status.Should().Be(SwapOutStatus.Failed);
+        swap.ErrorDetails.Should().Contain("FailureReasonNoRoute").And.Contain($"attempt {Constants.SEND_PAYMENT_MAX_ATTEMPTS}");
+        await _spark.DidNotReceiveWithAnyArgs().CreateInvoiceAsync(default, default, default, default, default);
+        await _scheduler.DidNotReceiveWithAnyArgs().ScheduleJob(default!, default!, default);
+    }
+
+    [Fact]
+    public async Task Pay_WhenTheSmallerAmountIsBelowTheNodesSparkMinSwap_FailsTheSwap()
+    {
+        _node.SparkSwapMinAmountSats = 450_000;
         var swap = Pending(lightningFee: null);
         _swapOuts.GetById(7).Returns(swap);
         NodePays(Payment.Types.PaymentStatus.Failed, PaymentFailureReason.FailureReasonNoRoute);
@@ -285,8 +382,71 @@ public class SparkSwapServiceTests
         await Pay();
 
         swap.Status.Should().Be(SwapOutStatus.Failed);
-        swap.ErrorDetails.Should().Contain("FailureReasonNoRoute");
-        _swapOuts.Received(1).Update(swap);
+        await _spark.DidNotReceiveWithAnyArgs().CreateInvoiceAsync(default, default, default, default, default);
+    }
+
+    [Fact]
+    public async Task Pay_WhenTheRetrysInvoiceCannotBeIssued_FailsTheSwap()
+    {
+        var swap = Pending(lightningFee: null);
+        _swapOuts.GetById(7).Returns(swap);
+        NodePays(Payment.Types.PaymentStatus.Failed, PaymentFailureReason.FailureReasonNoRoute);
+        _spark.CreateInvoiceAsync(W, 400_000, Arg.Any<string>(), Arg.Any<int>(), Arg.Any<CancellationToken>())
+            .ThrowsAsync(new SparkConnectionException("request_lightning_receive", "the SSP is down"));
+
+        await Pay();
+
+        swap.Status.Should().Be(SwapOutStatus.Failed);
+        swap.SatsAmount.Should().Be(500_000);
+        await _scheduler.DidNotReceiveWithAnyArgs().ScheduleJob(default!, default!, default);
+    }
+
+    // ── Paying a scheduled retry ──────────────────────────────────────────────────────────
+
+    private Task PayScheduled(string paymentHash = RetryHash) =>
+        Service().PayScheduledAsync(7, paymentHash, RetryInvoice, 1m, null, 600);
+
+    private SwapOut RetryPending()
+    {
+        var swap = Pending(lightningFee: null);
+        swap.SatsAmount = 400_000;
+        swap.PaymentHash = RetryHash;
+        swap.SparkPaymentAttempt = 2;
+        _swapOuts.GetById(7).Returns(swap);
+        return swap;
+    }
+
+    [Fact]
+    public async Task PayScheduled_PaysTheRetrysInvoice_WithItsFeeLimit()
+    {
+        RetryPending();
+        _lightning.TrackPaymentV2Async(_node, Arg.Any<byte[]>(), Arg.Any<CancellationToken>()).Returns((Payment?)null);
+
+        await PayScheduled();
+
+        await _lightning.Received(1).SendPaymentV2Async(_node, RetryInvoice, 0, 4_000_000, null, null, 600, CancellationToken.None);
+    }
+
+    [Fact]
+    public async Task PayScheduled_ASwapNoLongerWaitingForThatInvoice_IsNotPaid()
+    {
+        RetryPending();
+
+        await PayScheduled(paymentHash: Hash);
+
+        await _lightning.DidNotReceiveWithAnyArgs().SendPaymentV2Async(default!, default!, default, default, default, default, default, default);
+    }
+
+    [Fact]
+    public async Task PayScheduled_WhenTheNodeAlreadyHasItsPayment_LeavesItToTheMonitor()
+    {
+        RetryPending();
+        _lightning.TrackPaymentV2Async(_node, Arg.Any<byte[]>(), Arg.Any<CancellationToken>())
+            .Returns(new Payment { Status = Payment.Types.PaymentStatus.InFlight });
+
+        await PayScheduled();
+
+        await _lightning.DidNotReceiveWithAnyArgs().SendPaymentV2Async(default!, default!, default, default, default, default, default, default);
     }
 
     [Fact]
@@ -501,6 +661,21 @@ public class SparkSwapServiceTests
 
         response.Status.Should().Be(SwapOutStatus.Failed);
         response.ErrorMessage.Should().Contain("never reached the node").And.Contain("unknown");
+    }
+
+    [Fact]
+    public async Task Advance_AnUnknownPayment_WaitsForTheCurrentInvoice_NotTheFirstOne()
+    {
+        NodeReports(null);
+        var swap = Pending(lightningFee: null);
+        swap.SparkPaymentAttempt = 2;
+        swap.SparkInvoiceExpiresAt = DateTimeOffset.UnixEpoch.AddMinutes(90);
+
+        _time.Set(DateTimeOffset.UnixEpoch.AddMinutes(95));
+        (await Service().AdvanceSwapAsync(_node, swap)).Status.Should().Be(SwapOutStatus.Pending);
+
+        _time.Set(DateTimeOffset.UnixEpoch.AddMinutes(101));
+        (await Service().AdvanceSwapAsync(_node, swap)).Status.Should().Be(SwapOutStatus.Failed);
     }
 
     [Fact]

@@ -535,7 +535,9 @@
             "</ul><br>" +
             $"The node starts paying its Spark wallet ({SparkIdentityOf(_selectedNode!)}) as you confirm, and LND keeps " +
             $"trying routes for up to {SparkSettings.PaymentTimeoutFor(_selectedNode!)} minutes (the node's Spark payment timeout); " +
-            "the swap shows as pending on the Swaps page meanwhile. Once paid, the swap exits " +
+            "the swap shows as pending on the Swaps page meanwhile. " +
+            SparkRetrySummary(_selectedNode!) +
+            "Once paid, the swap exits " +
             $"on-chain to the destination wallet on its own, within about {SparkSettings.ExitIntervalOrDefault(Constants.IS_DEV_ENVIRONMENT)} minutes, " +
             $"at exit speed {SparkSettings.ExitSpeedSummary}. " +
             $"Up to {maxSwapsInFlight} Spark swaps of {_selectedNode?.Name} (its Max swaps in flight) run at once.<br><br>" +
@@ -624,6 +626,18 @@
 
     private string? SparkIdentityOf(Node node) =>
         SparkSettings.WalletFor(node) is { } wallet ? SparkWallet.GetStatus(wallet).IdentityPublicKey : null;
+
+    /// <summary>How a Spark swap's failed payment is retried, as the confirmation says it</summary>
+    private string SparkRetrySummary(Node node)
+    {
+        var retries = Constants.SEND_PAYMENT_MAX_ATTEMPTS - 1;
+        if (retries < 1) return "";
+
+        var smallerPercent = Math.Round((1 - (decimal)Constants.SEND_PAYMENT_AMOUNT_BACKOFF_RATIO) * 100);
+        var minSwap = new Money(SwapAmountLimits.For(node, SwapProvider.Spark, SparkSettings).MinSats);
+        return $"If no route or liquidity can carry it, the payment is retried up to {retries} times, each {smallerPercent}% " +
+               $"smaller, down to the node's Spark min swap ({minSwap.ToUnit(MoneyUnit.BTC)} BTC). ";
+    }
 
     private IEnumerable<SwapProvider> AvailableProviders =>
         Enum.GetValues<SwapProvider>().Where(p => p != SwapProvider.Spark || SparkSettings.Enabled);

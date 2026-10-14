@@ -172,6 +172,17 @@ public class SwapOut : Entity
    public string? SparkIdentity { get; set; }
 
    /// <summary>
+   /// Spark swaps only: which attempt the Lightning payment is on. A retry pays a fresh, smaller invoice
+   /// (<see cref="SatsAmount"/>, <see cref="PaymentHash"/> and <see cref="ProviderId"/> are the current one's)
+   /// </summary>
+   public int SparkPaymentAttempt { get; set; } = 1;
+
+   /// <summary>
+   /// Spark swaps only: when the current invoice expires. Its payment can't arrive after that
+   /// </summary>
+   public DateTimeOffset? SparkInvoiceExpiresAt { get; set; }
+
+   /// <summary>
    /// Spark swaps only: the inbound Spark transfer that brought the swap's Lightning payment in. A transfer
    /// is given to one swap only
    /// </summary>
