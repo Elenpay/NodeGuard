@@ -34,15 +34,18 @@ public class MonitorWithdrawalsJob : IJob
     private readonly ILogger<MonitorWithdrawalsJob> _logger;
     private readonly IWalletWithdrawalRequestRepository _walletWithdrawalRequestRepository;
     private readonly INBXplorerService _nbXplorerService;
+    private readonly IWithdrawalRequestService _withdrawalRequestService;
 
     public MonitorWithdrawalsJob(ILogger<MonitorWithdrawalsJob> logger,
         IWalletWithdrawalRequestRepository walletWithdrawalRequestRepository,
-        INBXplorerService nbXplorerService
+        INBXplorerService nbXplorerService,
+        IWithdrawalRequestService withdrawalRequestService
     )
     {
         _logger = logger;
         _walletWithdrawalRequestRepository = walletWithdrawalRequestRepository;
         _nbXplorerService = nbXplorerService;
+        _withdrawalRequestService = withdrawalRequestService;
     }
 
     public async Task Execute(IJobExecutionContext context)
@@ -78,6 +81,11 @@ public class MonitorWithdrawalsJob : IJob
                             _logger.LogInformation("Updating wallet withdrawal: {RequestId} to status: {RequestStatus}",
                                 walletWithdrawalRequest.Id, walletWithdrawalRequest.Status);
                         }
+                    }
+                    else if (walletWithdrawalRequest.BumpingWalletWithdrawalRequestId != null && getTxResult.Confirmations == 0)
+                    {
+                        // An RBF replacement can lose the race: the transaction it replaced may be mined instead.
+                        await _withdrawalRequestService.SettleMinedOriginalAsync(walletWithdrawalRequest);
                     }
                 }
                 catch (Exception e)

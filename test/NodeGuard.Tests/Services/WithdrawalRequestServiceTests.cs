@@ -528,7 +528,119 @@ public class WithdrawalRequestServiceTests
         _requests.Verify(x => x.Update(It.IsAny<WalletWithdrawalRequest>()), Times.Never);
     }
 
+    [Fact]
+    public async Task MarkOriginalAsReplacedAsync_OriginalAlreadySettled_IsLeftAlone()
+    {
+        var original = SetupOriginal(ColdWallet(), status: WalletWithdrawalRequestStatus.OnChainConfirmed, confirmations: SettledDepth);
+        var bump = HotRequest(WalletWithdrawalRequestStatus.PSBTSignaturesPending, bumping: OriginalId);
+
+        await CreateService().MarkOriginalAsReplacedAsync(bump);
+
+        original.Status.Should().Be(WalletWithdrawalRequestStatus.OnChainConfirmed,
+            "it was mined while the cold-wallet replacement was collecting signatures");
+        _requests.Verify(x => x.Update(It.IsAny<WalletWithdrawalRequest>()), Times.Never);
+    }
+
+    // ---- SettleMinedOriginalAsync -----------------------------------------------------------------------------
+
+    [Fact]
+    public async Task SettleMinedOriginalAsync_OriginalMined_SettlesItAndFailsTheReplacement()
+    {
+        var original = SetupOriginal(HotWallet(), status: WalletWithdrawalRequestStatus.Bumped, confirmations: SettledDepth);
+        var bump = HotRequest(WalletWithdrawalRequestStatus.OnChainConfirmationPending, bumping: OriginalId);
+
+        var settled = await CreateService().SettleMinedOriginalAsync(bump);
+
+        settled.Should().BeTrue();
+        original.Status.Should().Be(WalletWithdrawalRequestStatus.OnChainConfirmed, "its transaction is the one that confirmed");
+        bump.Status.Should().Be(WalletWithdrawalRequestStatus.Failed, "it double-spends a confirmed transaction");
+        bump.RejectCancelDescription.Should().Contain(OriginalId.ToString()).And.Contain(_originalTxId.ToString());
+    }
+
+    [Fact]
+    public async Task SettleMinedOriginalAsync_CancelledOriginalMined_ClearsTheCancellationReason()
+    {
+        var original = SetupOriginal(HotWallet(), status: WalletWithdrawalRequestStatus.Cancelled, confirmations: SettledDepth);
+        original.RejectCancelDescription = $"Cancelled by RBF replacement request {BumpId}";
+        var cancel = HotRequest(WalletWithdrawalRequestStatus.OnChainConfirmationPending, bumping: OriginalId, cancellation: true);
+
+        await CreateService().SettleMinedOriginalAsync(cancel);
+
+        original.Status.Should().Be(WalletWithdrawalRequestStatus.OnChainConfirmed);
+        original.RejectCancelDescription.Should().BeNull("the cancellation never took effect: the destination was paid");
+        cancel.Status.Should().Be(WalletWithdrawalRequestStatus.Failed);
+    }
+
+    [Fact]
+    public async Task SettleMinedOriginalAsync_OriginalUnconfirmed_LeavesBothAlone()
+    {
+        var original = SetupOriginal(HotWallet(), status: WalletWithdrawalRequestStatus.Bumped, confirmations: 0);
+        var bump = HotRequest(WalletWithdrawalRequestStatus.OnChainConfirmationPending, bumping: OriginalId);
+
+        var settled = await CreateService().SettleMinedOriginalAsync(bump);
+
+        settled.Should().BeFalse();
+        original.Status.Should().Be(WalletWithdrawalRequestStatus.Bumped);
+        bump.Status.Should().Be(WalletWithdrawalRequestStatus.OnChainConfirmationPending);
+        _requests.Verify(x => x.Update(It.IsAny<WalletWithdrawalRequest>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task SettleMinedOriginalAsync_BumpOfABump_SettlesTheMinedRequestAndLeavesTheMiddleOneBumped()
+    {
+        const int middleId = 12;
+        var middleTxId = new uint256(2);
+        var first = SetupOriginal(HotWallet(), status: WalletWithdrawalRequestStatus.Bumped, confirmations: SettledDepth);
+        var middle = new WalletWithdrawalRequest
+        {
+            Id = middleId,
+            Status = WalletWithdrawalRequestStatus.Bumped,
+            TxId = middleTxId.ToString(),
+            BumpingWalletWithdrawalRequestId = OriginalId,
+        };
+        _requests.Setup(x => x.GetById(middleId)).ReturnsAsync(middle);
+        _nbXplorer.Setup(x => x.GetTransactionAsync(middleTxId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new TransactionResult { Confirmations = 0 });
+        var last = HotRequest(WalletWithdrawalRequestStatus.OnChainConfirmationPending, bumping: middleId);
+
+        var settled = await CreateService().SettleMinedOriginalAsync(last);
+
+        settled.Should().BeTrue();
+        first.Status.Should().Be(WalletWithdrawalRequestStatus.OnChainConfirmed);
+        middle.Status.Should().Be(WalletWithdrawalRequestStatus.Bumped, "it was replaced and never confirmed");
+        last.Status.Should().Be(WalletWithdrawalRequestStatus.Failed);
+    }
+
+    [Fact]
+    public async Task SettleMinedOriginalAsync_NotAReplacement_IsANoOp()
+    {
+        var request = HotRequest(WalletWithdrawalRequestStatus.OnChainConfirmationPending);
+
+        var settled = await CreateService().SettleMinedOriginalAsync(request);
+
+        settled.Should().BeFalse();
+        _requests.Verify(x => x.Update(It.IsAny<WalletWithdrawalRequest>()), Times.Never);
+        _nbXplorer.Verify(x => x.GetTransactionAsync(It.IsAny<uint256>(), It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task SettleMinedOriginalAsync_SettlingTheOriginalFails_LeavesTheReplacementPending()
+    {
+        SetupOriginal(HotWallet(), status: WalletWithdrawalRequestStatus.Bumped, confirmations: SettledDepth);
+        var bump = HotRequest(WalletWithdrawalRequestStatus.OnChainConfirmationPending, bumping: OriginalId);
+        _requests.Setup(x => x.Update(It.Is<WalletWithdrawalRequest>(r => r.Id == OriginalId))).Returns((false, "db down"));
+
+        var settled = await CreateService().SettleMinedOriginalAsync(bump);
+
+        settled.Should().BeFalse();
+        bump.Status.Should().Be(WalletWithdrawalRequestStatus.OnChainConfirmationPending, "the next monitoring run retries both");
+        _requests.Verify(x => x.Update(It.Is<WalletWithdrawalRequest>(r => r.Id == BumpId)), Times.Never);
+    }
+
     // ---- fixtures ---------------------------------------------------------------------------------------------
+
+    /// <summary>Confirmations at which the monitor settles a withdrawal (the constant is 0 when its env var is unset).</summary>
+    private static int SettledDepth => Math.Max(1, Constants.TRANSACTION_CONFIRMATION_MINIMUM_BLOCKS);
 
     private async Task AssertRefusedAsync(BumpingErrorReason reason, MempoolRecommendedFeesType feeType, decimal? customFeeRate,
         bool cancellation = false)

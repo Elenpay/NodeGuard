@@ -1072,10 +1072,13 @@
                             _selectedRequest = await WalletWithdrawalRequestRepository.GetById(_selectedRequest.Id);
                             if (_selectedRequest != null)
                             {
+                                // Mark the replaced request before the job runs, so a failed broadcast's revert has the last word.
+                                await WithdrawalRequestService.MarkOriginalAsReplacedAsync(_selectedRequest);
                                 await CreateJob();
-                                if (_selectedRequest?.BumpingWalletWithdrawalRequestId != null)
+                                // CreateJob reports a scheduling failure by failing the request.
+                                if (_selectedRequest?.Status == WalletWithdrawalRequestStatus.Failed)
                                 {
-                                    await WithdrawalRequestService.MarkOriginalAsReplacedAsync(_selectedRequest);
+                                    await WithdrawalRequestService.RevertOriginalAsync(_selectedRequest);
                                 }
                             }
                         }
