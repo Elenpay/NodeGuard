@@ -133,8 +133,10 @@ service NodeGuardService {
 
   /*
   Requests a manual swap-out of a node's Lightning liquidity to a NodeGuard wallet, as the New Swap dialog does.
-  An unused deposit address of the wallet is reserved for the payout. With reference_id, a repeated request
-  returns the swap already created for it instead of creating another one.
+  For Loop and 40swap, an unused deposit address of the wallet is reserved for the payout; a Spark swap reserves
+  its own when it exits, and returns pending as soon as it is recorded: its Lightning payment runs in the
+  background (follow it with GetSwapOut). With reference_id, a repeated request returns the swap already created
+  for it instead of creating another one.
   */
   rpc RequestSwapOut(RequestSwapOutRequest) returns (RequestSwapOutResponse);
 

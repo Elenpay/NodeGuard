@@ -21,6 +21,7 @@ using NBitcoin;
 using NodeGuard.Data.Models;
 using NodeGuard.Helpers;
 using NSpark;
+using NSpark.Models;
 
 namespace NodeGuard.Services.Spark;
 
@@ -55,6 +56,15 @@ public readonly record struct SparkWalletRef(int? WalletId)
 public sealed class SparkSettings
 {
     public const long DefaultMaxExitFeeSats = 20_000;
+
+    /// <summary>How long LND keeps trying routes for a Spark swap's payment, by default.</summary>
+    public const int DefaultPaymentTimeoutMinutes = 10;
+
+    /// <summary>
+    /// The longest payment timeout: LND must stop trying routes well before the 30-minute invoice
+    /// (<see cref="SparkSwapService.InvoiceExpirySeconds"/>) expires.
+    /// </summary>
+    public const int MaxPaymentTimeoutMinutes = 25;
     public const long DefaultMaxBalanceSats = 10_000_000;
 
     public static readonly SparkSettings Disabled = new();
@@ -104,6 +114,40 @@ public sealed class SparkSettings
 
     /// <summary>How often paid Spark swaps exit on-chain, in minutes: <see cref="ExitIntervalMinutes"/> or its default.</summary>
     public int ExitIntervalOrDefault(bool isDevEnvironment) => ExitIntervalMinutes ?? (isDevEnvironment ? 1 : 10);
+
+    /// <summary>
+    /// How long LND keeps trying routes for a Spark swap's payment, in minutes (SPARK_PAYMENT_TIMEOUT_MINUTES, 1 to
+    /// <see cref="MaxPaymentTimeoutMinutes"/>), unless the node has its own.
+    /// </summary>
+    public int PaymentTimeoutMinutes { get; init; } = DefaultPaymentTimeoutMinutes;
+
+    /// <summary>The payment timeout for <paramref name="node"/>'s Spark swaps: its own, else <see cref="PaymentTimeoutMinutes"/>.</summary>
+    public int PaymentTimeoutFor(Node node) => node.SparkPaymentTimeoutMinutes ?? PaymentTimeoutMinutes;
+
+    /// <summary>
+    /// How fast exits confirm on-chain (SPARK_EXIT_SPEED: FAST, MEDIUM or SLOW): swap exits and Withdraw all. SLOW,
+    /// the default, is the cheapest: the SSP's L1 broadcast fee is set by the speed's fee rate.
+    /// </summary>
+    public ExitSpeed ExitSpeed { get; init; } = ExitSpeed.Slow;
+
+    /// <summary>
+    /// How long a paid swap may go without a confirmed payout before it is alerted as overdue: longer the slower
+    /// its exit confirms.
+    /// </summary>
+    public TimeSpan ExitOverdueAfter => ExitSpeed switch
+    {
+        ExitSpeed.Fast => TimeSpan.FromHours(6),
+        ExitSpeed.Medium => TimeSpan.FromHours(12),
+        _ => TimeSpan.FromHours(24)
+    };
+
+    /// <summary>The exit speed and its trade-off, as the UI shows it.</summary>
+    public string ExitSpeedSummary => ExitSpeed switch
+    {
+        ExitSpeed.Fast => "FAST (SPARK_EXIT_SPEED): the dearest, confirming soonest",
+        ExitSpeed.Medium => "MEDIUM (SPARK_EXIT_SPEED): between FAST and SLOW in fee and in time to confirm",
+        _ => "SLOW (SPARK_EXIT_SPEED): the cheapest, though the payout can take hours to confirm when fees run high"
+    };
 
     /// <summary>
     /// Most sats a Spark wallet may hold, counting a new swap (SPARK_MAX_BALANCE_SATS), unless the wallet has its
@@ -254,6 +298,25 @@ public sealed class SparkSettings
             else errors.Add("SPARK_EXIT_INTERVAL_MINUTES must be a positive number of minutes");
         }
 
+        var paymentTimeout = DefaultPaymentTimeoutMinutes;
+        if (env("SPARK_PAYMENT_TIMEOUT_MINUTES") is { Length: > 0 } paymentTimeoutValue &&
+            (!int.TryParse(paymentTimeoutValue, out paymentTimeout) || paymentTimeout is < 1 or > MaxPaymentTimeoutMinutes))
+        {
+            errors.Add($"SPARK_PAYMENT_TIMEOUT_MINUTES must be a whole number of minutes from 1 to {MaxPaymentTimeoutMinutes}");
+        }
+
+        var exitSpeed = ExitSpeed.Slow;
+        if (env("SPARK_EXIT_SPEED") is { Length: > 0 } exitSpeedValue)
+        {
+            switch (exitSpeedValue.Trim().ToUpperInvariant())
+            {
+                case "FAST": exitSpeed = ExitSpeed.Fast; break;
+                case "MEDIUM": exitSpeed = ExitSpeed.Medium; break;
+                case "SLOW": exitSpeed = ExitSpeed.Slow; break;
+                default: errors.Add("SPARK_EXIT_SPEED must be FAST, MEDIUM or SLOW"); break;
+            }
+        }
+
         var maxBalance = DefaultMaxBalanceSats;
         if (env("SPARK_MAX_BALANCE_SATS") is { Length: > 0 } maxBalanceValue &&
             (!long.TryParse(maxBalanceValue, out maxBalance) || maxBalance <= 0))
@@ -298,6 +361,8 @@ public sealed class SparkSettings
             IdentityPublicKey = identity?.Trim().ToLowerInvariant(),
             MaxExitFeeSats = maxExitFee,
             ExitIntervalMinutes = exitInterval,
+            PaymentTimeoutMinutes = paymentTimeout,
+            ExitSpeed = exitSpeed,
             MaxBalanceSats = maxBalance,
             SignerEndpoint = endpoint,
             SignerRieUrl = rieUrl

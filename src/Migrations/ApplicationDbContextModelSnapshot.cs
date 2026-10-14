@@ -1069,6 +1069,9 @@ namespace NodeGuard.Migrations
                         .HasColumnType("boolean")
                         .HasDefaultValue(false);
 
+                    b.Property<int?>("SparkPaymentTimeoutMinutes")
+                        .HasColumnType("integer");
+
                     b.Property<int>("SparkSwapWeight")
                         .HasColumnType("integer");
 

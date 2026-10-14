@@ -365,8 +365,12 @@
 
             if (response.Status == SwapOutStatus.Failed)
             {
-                // Spark pays while creating the swap: a failed payment fails the swap right away
                 ToastService.ShowError($"The swap failed: {response.ErrorMessage}");
+            }
+            else if (_selectedProvider == SwapProvider.Spark)
+            {
+                // A Spark swap is paid in the background: its progress shows on the Swaps page
+                ToastService.ShowSuccess("Swap created: its payment is on its way. Follow it on the Swaps page");
             }
             else
             {
@@ -529,8 +533,11 @@
             $"<li><strong>Service Fee:</strong> Spark's fixed {SparkSwapService.ServiceFeeBps} bps ({FeeFormat.Percent(SparkSwapService.ServiceFeeBps * 100L)}), charged on the Lightning route: part of the off-chain fee</li>" +
             $"<li><strong>On-Chain Fee</strong> (from Spark to L1: the SSP's exit fee and the L1 broadcast): up to {FormatBtcWithUsd(maxExitFee.ToUnit(MoneyUnit.BTC))} ({PercentOfAmount(maxExitFee)})</li>" +
             "</ul><br>" +
-            $"The node pays its Spark wallet ({SparkIdentityOf(_selectedNode!)}) now. Once paid, the swap exits " +
-            $"on-chain to the destination wallet on its own, within about {SparkSettings.ExitIntervalOrDefault(Constants.IS_DEV_ENVIRONMENT)} minutes. " +
+            $"The node starts paying its Spark wallet ({SparkIdentityOf(_selectedNode!)}) as you confirm, and LND keeps " +
+            $"trying routes for up to {SparkSettings.PaymentTimeoutFor(_selectedNode!)} minutes (the node's Spark payment timeout); " +
+            "the swap shows as pending on the Swaps page meanwhile. Once paid, the swap exits " +
+            $"on-chain to the destination wallet on its own, within about {SparkSettings.ExitIntervalOrDefault(Constants.IS_DEV_ENVIRONMENT)} minutes, " +
+            $"at exit speed {SparkSettings.ExitSpeedSummary}. " +
             $"Up to {maxSwapsInFlight} Spark swaps of {_selectedNode?.Name} (its Max swaps in flight) run at once.<br><br>" +
             "Please confirm that you want to proceed.";
 
