@@ -91,6 +91,13 @@ public sealed class SparkGuardrails : ISparkGuardrails, IDisposable
         PendingSpark(pendingSwaps).Where(s => s.LightningFeeSats is null).Sum(s => s.SatsAmount);
 
     /// <summary>
+    /// How many more sats a Spark wallet can take under its max balance: what it holds and what its pending swaps
+    /// not paid yet (<paramref name="walletPendingSwaps"/>, the wallet's own) will still bring in count against it.
+    /// </summary>
+    public static long RoomSats(long maxBalanceSats, SatsBalance balance, IEnumerable<SwapOut> walletPendingSwaps) =>
+        maxBalanceSats - balance.Owned - balance.Incoming - UnpaidSats(walletPendingSwaps);
+
+    /// <summary>
     /// What the wallet holds for its pending Spark swaps: what each one brought in, or its amount until it is known.
     /// A swap whose exit was sent still counts: its leaves stay the wallet's until the exit confirms, which at SLOW
     /// speed can take hours.
@@ -174,15 +181,25 @@ public sealed class SparkGuardrails : ISparkGuardrails, IDisposable
 
         foreach (var swap in sparkSwaps.Where(s => s.LightningFeeSats is not null))
         {
-            var age = now - swap.CreationDatetime;
+            // Counted from when the swap should have moved on: its transfer is found within minutes of the payment,
+            // and its exit, once attempted, confirms at the exit speed. A swap waiting for its wallet to fill isn't late
+            var (since, what) = swap.SparkTransferId is null
+                ? (swap.CreationDatetime, "it was paid")
+                // A swap that exited before batching has an address but no exit time: counted from its creation
+                : (swap.SparkExitDatetime ?? (swap.DestinationAddress is null ? null : swap.CreationDatetime)) is { } exitAttempted
+                    ? (exitAttempted, "its exit was first attempted")
+                    : (default(DateTimeOffset?), "");
+            if (since is null) continue;
+
+            var age = now - since.Value;
             // A slower exit waits longer for a block: the alert waits with it
             if (age < _settings.ExitOverdueAfter || !_overdueAlerted.Add(swap.Id)) continue;
 
-            _logger.LogError("Spark swap {SwapId} was paid {AgeHours} hours ago and its payout is not confirmed yet (exit {TxId})",
-                swap.Id, (int)age.TotalHours, swap.TxId ?? "not started");
+            _logger.LogError("Spark swap {SwapId} has no confirmed payout {AgeHours} hours after {What} (exit {TxId})",
+                swap.Id, (int)age.TotalHours, what, swap.TxId ?? "not started");
             alerts.Add(new SparkAlert(AuditActionType.SparkExitOverdue, AuditObjectType.SwapOut, swap.ProviderId ?? swap.Id.ToString(),
-                $"Spark swap {swap.Id} has no confirmed payout {(int)age.TotalHours} hours after it was paid",
-                new { SwapId = swap.Id, swap.NodeId, swap.SatsAmount, swap.TxId, swap.DestinationAddress, swap.CreationDatetime }));
+                $"Spark swap {swap.Id} has no confirmed payout {(int)age.TotalHours} hours after {what}",
+                new { SwapId = swap.Id, swap.NodeId, swap.SatsAmount, swap.TxId, swap.DestinationAddress, swap.CreationDatetime, swap.SparkExitDatetime }));
         }
 
         return alerts;

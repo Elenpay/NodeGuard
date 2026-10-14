@@ -171,7 +171,7 @@
                                             </Tooltip>
                                         </TableRowCell>
                                         <TableRowCell>@transfer.Status</TableRowCell>
-                                        <TableRowCell>@(transfer.SwapId is { } swapId ? $"#{swapId}" : "")</TableRowCell>
+                                        <TableRowCell>@string.Join(", ", transfer.SwapIds.Select(id => $"#{id}"))</TableRowCell>
                                         <TableRowCell>
                                             <Tooltip Text="@transfer.Id" Placement="TooltipPlacement.Left">
                                                 <code>@(transfer.Id.Length > 8 ? transfer.Id[..8] + "…" : transfer.Id)</code>

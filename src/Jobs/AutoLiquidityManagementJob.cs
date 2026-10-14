@@ -222,9 +222,8 @@ public class AutoLiquidityManagementJob : IJob
         if (!status.IsReady) return (status.Reason ?? status.State.ToString(), 0);
 
         var balance = (await _sparkWallet.GetBalanceAsync(sparkWallet)).SatsBalance;
-        var unpaid = SparkGuardrails.UnpaidSats((await _swapOutRepository.GetAllPending())
+        var room = SparkGuardrails.RoomSats(wallet.MaxBalanceSats, balance, (await _swapOutRepository.GetAllPending())
             .Where(s => string.Equals(s.SparkIdentity, status.IdentityPublicKey, StringComparison.OrdinalIgnoreCase)));
-        var room = wallet.MaxBalanceSats - balance.Owned - balance.Incoming - unpaid;
         return room < minSwapSats
             ? ($"{wallet.Name} has {Math.Max(0, room)} sats of room under its max balance, below the node's Spark min swap", room)
             : (null, room);

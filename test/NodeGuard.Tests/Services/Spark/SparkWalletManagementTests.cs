@@ -313,11 +313,28 @@ public class SparkWalletManagementTests
         transfers.Select(t => t.Id).Should().Equal("exit-1", "stray", "odd", "receive-1");
         transfers.Should().BeEquivalentTo(new[]
         {
-            new { Id = "exit-1", IsSent = true, Type = "Exit to on-chain", SwapId = (int?)41, Date = DateTimeOffset.UnixEpoch.AddMinutes(5) },
-            new { Id = "stray", IsSent = false, Type = "Spark transfer", SwapId = (int?)null, Date = DateTimeOffset.UnixEpoch.AddMinutes(3) },
-            new { Id = "odd", IsSent = false, Type = "UtxoSwap", SwapId = (int?)null, Date = DateTimeOffset.UnixEpoch.AddMinutes(2) },
-            new { Id = "receive-1", IsSent = false, Type = "Lightning payment in", SwapId = (int?)41, Date = DateTimeOffset.UnixEpoch.AddMinutes(1) }
+            new { Id = "exit-1", IsSent = true, Type = "Exit to on-chain", SwapIds = new[] { 41 }, Date = DateTimeOffset.UnixEpoch.AddMinutes(5) },
+            new { Id = "stray", IsSent = false, Type = "Spark transfer", SwapIds = Array.Empty<int>(), Date = DateTimeOffset.UnixEpoch.AddMinutes(3) },
+            new { Id = "odd", IsSent = false, Type = "UtxoSwap", SwapIds = Array.Empty<int>(), Date = DateTimeOffset.UnixEpoch.AddMinutes(2) },
+            new { Id = "receive-1", IsSent = false, Type = "Lightning payment in", SwapIds = new[] { 41 }, Date = DateTimeOffset.UnixEpoch.AddMinutes(1) }
         }, o => o.WithStrictOrdering());
+    }
+
+    [Fact]
+    public async Task TheTransactions_ABatchsExit_ListsEverySwapItPaid()
+    {
+        _spark.Configure().GetTransfersAsync(new SparkWalletRef(5), TransferDirection.Both, DateTimeOffset.UnixEpoch, Arg.Any<CancellationToken>())
+            .Returns(new List<SparkTransfer> { Transfer("exit-1", Identity, "CooperativeExit", minutes: 5, "l1", "l3") });
+        _swapOuts.GetSparkSwapsByIdentityAsync(Identity).Returns(new List<SwapOut>
+        {
+            new() { Id = 41, Provider = SwapProvider.Spark, SparkTransferId = "receive-1", SparkLeafIds = "l1,l2" },
+            new() { Id = 42, Provider = SwapProvider.Spark, SparkTransferId = "receive-2", SparkLeafIds = "l3" },
+            new() { Id = 43, Provider = SwapProvider.Spark, SparkTransferId = "receive-3", SparkLeafIds = "l4" }
+        });
+
+        var transfers = await Service().ListTransfersAsync(5);
+
+        transfers.Should().ContainSingle().Which.SwapIds.Should().Equal(41, 42);
     }
 
     [Fact]

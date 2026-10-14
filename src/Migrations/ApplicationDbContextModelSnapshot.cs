@@ -1261,6 +1261,9 @@ namespace NodeGuard.Migrations
                     b.Property<long?>("ServiceFeeSats")
                         .HasColumnType("bigint");
 
+                    b.Property<DateTimeOffset?>("SparkExitDatetime")
+                        .HasColumnType("timestamp with time zone");
+
                     b.Property<string>("SparkIdentity")
                         .HasColumnType("text");
 

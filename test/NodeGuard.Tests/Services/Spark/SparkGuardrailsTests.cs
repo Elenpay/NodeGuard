@@ -207,6 +207,34 @@ public class SparkGuardrailsTests
     }
 
     [Fact]
+    public async Task ASwapWaitingForItsWalletToFill_IsNotOverdue()
+    {
+        var swap = PaidSparkSwap(_time.GetUtcNow(), received: 499_000);
+        swap.SparkTransferId = "transfer-5";
+        Holds(A, 499_000);
+
+        _time.Advance(TimeSpan.FromDays(3));
+
+        (await _guardrails.CheckAsync([swap])).Should().BeEmpty();
+    }
+
+    [Fact]
+    public async Task AnAttemptedExit_IsOverdueCountingFromItsFirstAttempt()
+    {
+        var swap = PaidSparkSwap(_time.GetUtcNow(), received: 499_000);
+        swap.SparkTransferId = "transfer-5";
+        swap.SparkExitDatetime = _time.GetUtcNow().AddDays(2);
+        Holds(A, 499_000);
+
+        _time.Advance(TimeSpan.FromDays(2) + TimeSpan.FromHours(24) - TimeSpan.FromMinutes(1));
+        (await _guardrails.CheckAsync([swap])).Should().BeEmpty();
+
+        _time.Advance(TimeSpan.FromMinutes(1));
+        (await _guardrails.CheckAsync([swap])).Should().ContainSingle()
+            .Which.Message.Should().Contain("after its exit was first attempted");
+    }
+
+    [Fact]
     public async Task AnUnpaidSwap_IsNotAnOverdueExit()
     {
         var swap = PaidSparkSwap(_time.GetUtcNow());

@@ -112,7 +112,7 @@ public sealed class SparkSettings
     /// <summary>The Spark identity the remote signer must serve (SPARK_IDENTITY_PUBKEY; remote signer only).</summary>
     public string? IdentityPublicKey { get; init; }
 
-    /// <summary>Highest fee accepted for the cooperative exit of a swap (SPARK_MAX_EXIT_FEE_SATS).</summary>
+    /// <summary>Highest fee accepted for a cooperative exit, of a batch of swaps (SPARK_MAX_EXIT_FEE_SATS).</summary>
     public long MaxExitFeeSats { get; init; } = DefaultMaxExitFeeSats;
 
     /// <summary>
