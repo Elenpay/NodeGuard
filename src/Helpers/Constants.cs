@@ -167,21 +167,24 @@ public class Constants
     public static decimal REBALANCE_DEFAULT_RETRY_MAX_FEE_PCT = 0.05m;
 
     /// <summary>
-    /// Maximum number of attempts for a rebalance, including the first try.
+    /// Maximum number of attempts for a payment sent with SendPaymentV2, including the first try: rebalances and
+    /// Spark swap payments (SEND_PAYMENT_MAX_ATTEMPTS; REBALANCE_MAX_ATTEMPTS still read as a fallback).
     /// </summary>
-    public static int REBALANCE_MAX_ATTEMPTS = 3;
+    public static int SEND_PAYMENT_MAX_ATTEMPTS = 3;
 
     /// <summary>
-    /// Delay before the first retry attempt, in seconds. Subsequent attempts use
-    /// REBALANCE_RETRY_BACKOFF_MULTIPLIER for exponential backoff.
+    /// Delay before the first retry attempt, in seconds (SEND_PAYMENT_INITIAL_RETRY_DELAY_SECONDS;
+    /// REBALANCE_INITIAL_RETRY_DELAY_SECONDS still read as a fallback). Subsequent attempts use
+    /// SEND_PAYMENT_RETRY_BACKOFF_MULTIPLIER for exponential backoff.
     /// </summary>
-    public static int REBALANCE_INITIAL_RETRY_DELAY_SECONDS = 60;
+    public static int SEND_PAYMENT_INITIAL_RETRY_DELAY_SECONDS = 60;
 
     /// <summary>
-    /// Multiplier applied to the retry delay for each subsequent retry. With the default
-    /// 2.0 and an initial delay of 60s, retries fire at 60s, 120s, 240s, ...
+    /// Multiplier applied to the retry delay for each subsequent retry (SEND_PAYMENT_RETRY_BACKOFF_MULTIPLIER;
+    /// REBALANCE_RETRY_BACKOFF_MULTIPLIER still read as a fallback). With the default 2.0 and an initial delay of
+    /// 60s, retries fire at 60s, 120s, 240s, ...
     /// </summary>
-    public static double REBALANCE_RETRY_BACKOFF_MULTIPLIER = 2.0;
+    public static double SEND_PAYMENT_RETRY_BACKOFF_MULTIPLIER = 2.0;
 
     /// <summary>
     /// Smallest amount a rebalance attempt will shrink down to before giving up (the floor
@@ -190,13 +193,14 @@ public class Constants
     public static long REBALANCE_MIN_AMOUNT_SATS = 10_000;
 
     /// <summary>
-    /// Multiplier applied to the rebalanced amount on each retry attempt. Range: (0, 1].
+    /// Multiplier applied to the paid amount on each retry attempt, for rebalances and Spark swap payments
+    /// (SEND_PAYMENT_AMOUNT_BACKOFF_RATIO; REBALANCE_AMOUNT_BACKOFF_RATIO still read as a fallback). Range: (0, 1].
     /// 1 = never shrink (every attempt retries the full requested amount); 0.8 = each retry
-    /// is 20% smaller than the previous attempt (partial rebalancing); 0.5 = halve each time.
-    /// The amount for attempt n is RequestedAmountSats × ratio^(n-1), floored at
-    /// REBALANCE_MIN_AMOUNT_SATS.
+    /// is 20% smaller than the previous attempt; 0.5 = halve each time.
+    /// A rebalance's amount for attempt n is RequestedAmountSats × ratio^(n-1), floored at
+    /// REBALANCE_MIN_AMOUNT_SATS; a Spark swap's is floored at the node's Spark min swap.
     /// </summary>
-    public static double REBALANCE_AMOUNT_BACKOFF_RATIO = 0.8;
+    public static double SEND_PAYMENT_AMOUNT_BACKOFF_RATIO = 0.8;
 
     /// <summary>
     /// Maximum number of partial payments (MPP shards) LND may split a payment sent with SendPaymentV2 into:
@@ -594,20 +598,24 @@ public class Constants
         var rebRetryPct = Environment.GetEnvironmentVariable("REBALANCE_DEFAULT_RETRY_MAX_FEE_PCT");
         if (rebRetryPct != null) REBALANCE_DEFAULT_RETRY_MAX_FEE_PCT = decimal.Parse(rebRetryPct, NumberStyles.AllowDecimalPoint, CultureInfo.InvariantCulture);
 
-        var rebMaxAttempts = Environment.GetEnvironmentVariable("REBALANCE_MAX_ATTEMPTS");
-        if (rebMaxAttempts != null) REBALANCE_MAX_ATTEMPTS = int.Parse(rebMaxAttempts);
+        var sendPaymentMaxAttempts = Environment.GetEnvironmentVariable("SEND_PAYMENT_MAX_ATTEMPTS")
+                                     ?? Environment.GetEnvironmentVariable("REBALANCE_MAX_ATTEMPTS");
+        if (sendPaymentMaxAttempts != null) SEND_PAYMENT_MAX_ATTEMPTS = int.Parse(sendPaymentMaxAttempts);
 
-        var rebInitialDelay = Environment.GetEnvironmentVariable("REBALANCE_INITIAL_RETRY_DELAY_SECONDS");
-        if (rebInitialDelay != null) REBALANCE_INITIAL_RETRY_DELAY_SECONDS = int.Parse(rebInitialDelay);
+        var sendPaymentInitialDelay = Environment.GetEnvironmentVariable("SEND_PAYMENT_INITIAL_RETRY_DELAY_SECONDS")
+                                      ?? Environment.GetEnvironmentVariable("REBALANCE_INITIAL_RETRY_DELAY_SECONDS");
+        if (sendPaymentInitialDelay != null) SEND_PAYMENT_INITIAL_RETRY_DELAY_SECONDS = int.Parse(sendPaymentInitialDelay);
 
-        var rebBackoff = Environment.GetEnvironmentVariable("REBALANCE_RETRY_BACKOFF_MULTIPLIER");
-        if (rebBackoff != null) REBALANCE_RETRY_BACKOFF_MULTIPLIER = double.Parse(rebBackoff, NumberStyles.AllowDecimalPoint, CultureInfo.InvariantCulture);
+        var sendPaymentBackoff = Environment.GetEnvironmentVariable("SEND_PAYMENT_RETRY_BACKOFF_MULTIPLIER")
+                                 ?? Environment.GetEnvironmentVariable("REBALANCE_RETRY_BACKOFF_MULTIPLIER");
+        if (sendPaymentBackoff != null) SEND_PAYMENT_RETRY_BACKOFF_MULTIPLIER = double.Parse(sendPaymentBackoff, NumberStyles.AllowDecimalPoint, CultureInfo.InvariantCulture);
 
         var rebMinAmount = Environment.GetEnvironmentVariable("REBALANCE_MIN_AMOUNT_SATS");
         if (rebMinAmount != null) REBALANCE_MIN_AMOUNT_SATS = long.Parse(rebMinAmount);
 
-        var rebProbeBackoff = Environment.GetEnvironmentVariable("REBALANCE_AMOUNT_BACKOFF_RATIO");
-        if (rebProbeBackoff != null) REBALANCE_AMOUNT_BACKOFF_RATIO = double.Parse(rebProbeBackoff, NumberStyles.AllowDecimalPoint, CultureInfo.InvariantCulture);
+        var sendPaymentAmountBackoff = Environment.GetEnvironmentVariable("SEND_PAYMENT_AMOUNT_BACKOFF_RATIO")
+                                       ?? Environment.GetEnvironmentVariable("REBALANCE_AMOUNT_BACKOFF_RATIO");
+        if (sendPaymentAmountBackoff != null) SEND_PAYMENT_AMOUNT_BACKOFF_RATIO = double.Parse(sendPaymentAmountBackoff, NumberStyles.AllowDecimalPoint, CultureInfo.InvariantCulture);
 
         var sendPaymentMaxParts = Environment.GetEnvironmentVariable("SEND_PAYMENT_MAX_PARTS")
                                   ?? Environment.GetEnvironmentVariable("REBALANCE_MAX_PARTS");

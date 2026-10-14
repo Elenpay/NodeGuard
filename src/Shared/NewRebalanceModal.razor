@@ -197,7 +197,7 @@
                                                Min="0.01m"
                                                Max="1m"/>
                                 <FieldHelp>
-                                    @($"Server default: {Constants.REBALANCE_AMOUNT_BACKOFF_RATIO:0.00}. 1 = always retry the full amount; lower = shrink the amount on each retry.")
+                                    @($"Server default: {Constants.SEND_PAYMENT_AMOUNT_BACKOFF_RATIO:0.00}. 1 = always retry the full amount; lower = shrink the amount on each retry.")
                                 </FieldHelp>
                             </Field>
                             <Field>
@@ -213,7 +213,7 @@
                                                Min="1"
                                                Max="10"/>
                                 <FieldHelp>
-                                    @($"Server default: {Constants.REBALANCE_MAX_ATTEMPTS} attempts.")
+                                    @($"Server default: {Constants.SEND_PAYMENT_MAX_ATTEMPTS} attempts.")
                                 </FieldHelp>
                             </Field>
                             <Field>
@@ -293,8 +293,8 @@
     private decimal _maxFeePct = Constants.REBALANCE_DEFAULT_MAX_FEE_PCT;
     private decimal _retryMaxFeePct = Constants.REBALANCE_DEFAULT_RETRY_MAX_FEE_PCT;
     private int _timeoutSeconds = Constants.DEFAULT_REBALANCE_TIMEOUT_SECONDS;
-    private decimal _amountBackoffRatio = (decimal)Constants.REBALANCE_AMOUNT_BACKOFF_RATIO;
-    private int _maxAttempts = Constants.REBALANCE_MAX_ATTEMPTS;
+    private decimal _amountBackoffRatio = (decimal)Constants.SEND_PAYMENT_AMOUNT_BACKOFF_RATIO;
+    private int _maxAttempts = Constants.SEND_PAYMENT_MAX_ATTEMPTS;
     private bool _showAdvanced;
     private bool _submitting;
 
@@ -414,8 +414,8 @@
         _maxFeePct = Constants.REBALANCE_DEFAULT_MAX_FEE_PCT;
         _retryMaxFeePct = Constants.REBALANCE_DEFAULT_RETRY_MAX_FEE_PCT;
         _timeoutSeconds = Constants.DEFAULT_REBALANCE_TIMEOUT_SECONDS;
-        _amountBackoffRatio = (decimal)Constants.REBALANCE_AMOUNT_BACKOFF_RATIO;
-        _maxAttempts = Constants.REBALANCE_MAX_ATTEMPTS;
+        _amountBackoffRatio = (decimal)Constants.SEND_PAYMENT_AMOUNT_BACKOFF_RATIO;
+        _maxAttempts = Constants.SEND_PAYMENT_MAX_ATTEMPTS;
         _showAdvanced = false;
         _submitting = false;
     }
