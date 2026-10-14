@@ -164,6 +164,26 @@
                         <Button Color="Color.Primary" Clicked="@(() => ShowLiquidityManagementModal(context))" Block>Manage</Button>
                     </DisplayTemplate>
                 </DataGridColumn>
+
+                @* Each provider's swap sizes (liquidity config) *@
+                <DataGridColumn TItem="Node" Filterable="false" Caption="Loop Min Swap" Sortable="false" Displayable="@IsColumnVisible(NodesColumnName.LoopSwapMinAmount)">
+                    <DisplayTemplate>@SwapSizeText(context.LoopSwapMinAmountSats)</DisplayTemplate>
+                </DataGridColumn>
+                <DataGridColumn TItem="Node" Filterable="false" Caption="Loop Max Swap" Sortable="false" Displayable="@IsColumnVisible(NodesColumnName.LoopSwapMaxAmount)">
+                    <DisplayTemplate>@SwapSizeText(context.LoopSwapMaxAmountSats)</DisplayTemplate>
+                </DataGridColumn>
+                <DataGridColumn TItem="Node" Filterable="false" Caption="40swap Min Swap" Sortable="false" Displayable="@IsColumnVisible(NodesColumnName.FortySwapMinAmount)">
+                    <DisplayTemplate>@SwapSizeText(context.FortySwapMinAmountSats)</DisplayTemplate>
+                </DataGridColumn>
+                <DataGridColumn TItem="Node" Filterable="false" Caption="40swap Max Swap" Sortable="false" Displayable="@IsColumnVisible(NodesColumnName.FortySwapMaxAmount)">
+                    <DisplayTemplate>@SwapSizeText(context.FortySwapMaxAmountSats)</DisplayTemplate>
+                </DataGridColumn>
+                <DataGridColumn TItem="Node" Filterable="false" Caption="Spark Min Swap" Sortable="false" Displayable="@IsColumnVisible(NodesColumnName.SparkSwapMinAmount)">
+                    <DisplayTemplate>@SparkSwapSizeText(context.SparkSwapMinAmountSats, SparkSettings.SwapMinSats)</DisplayTemplate>
+                </DataGridColumn>
+                <DataGridColumn TItem="Node" Filterable="false" Caption="Spark Max Swap" Sortable="false" Displayable="@IsColumnVisible(NodesColumnName.SparkSwapMaxAmount)">
+                    <DisplayTemplate>@SparkSwapSizeText(context.SparkSwapMaxAmountSats, SparkSettings.SwapMaxSats)</DisplayTemplate>
+                </DataGridColumn>
                 
                 <DataGridColumn TItem="Node" Filterable="false" Field="@nameof(Node.CreationDatetime)" Caption="Creation Date" Sortable="true" SortDirection="SortDirection.Descending" Displayable="@IsColumnVisible(NodesColumnName.CreationDate)">
                     <DisplayTemplate>
@@ -769,6 +789,12 @@
     private static decimal SparkLowestMinSwapBtc => SatsToBtc(SparkSettings.LowestSwapMinSats);
 
     private static decimal SatsToBtc(long sats) => (decimal)new NBitcoin.Money(sats).ToUnit(NBitcoin.MoneyUnit.BTC);
+
+    private static string SwapSizeText(long sats) => $"{SatsToBtc(sats)} BTC";
+
+    /// <summary>A node's Spark swap size: its own, else the setting's, marked as the default</summary>
+    private static string SparkSwapSizeText(long? sats, long defaultSats) =>
+        sats is { } own ? SwapSizeText(own) : $"{SwapSizeText(defaultSats)} (default)";
     private static long BtcToSats(decimal btc) => (long)new NBitcoin.Money(btc, NBitcoin.MoneyUnit.BTC).Satoshi;
     private decimal _balanceThresholdBtc;
     private decimal _swapBudgetBtc;
@@ -792,8 +818,12 @@
         public static readonly ColumnDefault Disabled = new("Disabled");
         public static readonly ColumnDefault Autosweep = new("Autosweep");
         public static readonly ColumnDefault AutoLiquidityManagement = new("Auto Liquidity Management");
-        public static readonly ColumnDefault SwapMinAmount = new("Min Swap Amount",false);
-        public static readonly ColumnDefault SwapMaxAmount = new("Max Swap Amount",false);
+        public static readonly ColumnDefault LoopSwapMinAmount = new("Loop Min Swap Amount",false);
+        public static readonly ColumnDefault LoopSwapMaxAmount = new("Loop Max Swap Amount",false);
+        public static readonly ColumnDefault FortySwapMinAmount = new("40swap Min Swap Amount",false);
+        public static readonly ColumnDefault FortySwapMaxAmount = new("40swap Max Swap Amount",false);
+        public static readonly ColumnDefault SparkSwapMinAmount = new("Spark Min Swap Amount",false);
+        public static readonly ColumnDefault SparkSwapMaxAmount = new("Spark Max Swap Amount",false);
         public static readonly ColumnDefault MaxSwapsInFlight = new("Max Swaps In Flight",false);
         public static readonly ColumnDefault MaxSwapFeeRatio = new("Max Swap Fee Ratio",false);
         public static readonly ColumnDefault MinimumBalanceThreshold = new("Minimum Balance Threshold",false);
@@ -882,7 +912,10 @@
 
     private async Task LoadColumnLayout()
     {
-        NodesColumns = await LocalStorageService.LoadStorage(nameof(NodesColumnName), ColumnHelpers.GetColumnsDictionary<NodesColumnName>());
+        // A layout saved before columns were added or renamed: new ones take their default, gone ones are dropped
+        var defaults = ColumnHelpers.GetColumnsDictionary<NodesColumnName>();
+        var saved = await LocalStorageService.LoadStorage(nameof(NodesColumnName), defaults);
+        NodesColumns = defaults.ToDictionary(c => c.Key, c => saved.TryGetValue(c.Key, out var visible) ? visible : c.Value);
         columnsLoaded = true;
         StateHasChanged();
     }
