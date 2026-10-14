@@ -19,6 +19,7 @@
 
 using FluentAssertions;
 using Lnrpc;
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging.Abstractions;
 using NBitcoin;
 using NBXplorer.Models;
@@ -59,6 +60,8 @@ public class SparkSwapServiceTests
     private readonly ISchedulerFactory _schedulerFactory = Substitute.For<ISchedulerFactory>();
     private readonly IScheduler _scheduler = Substitute.For<IScheduler>();
     private readonly IAuditService _audit = Substitute.For<IAuditService>();
+    private readonly IServiceScopeFactory _scopes = Substitute.For<IServiceScopeFactory>();
+    private readonly IServiceScope _paymentScope = Substitute.For<IServiceScope>();
     private readonly ManualTime _time = new();
     private readonly Node _node = new() { Id = 1, Name = "alice", PubKey = "02aa", Endpoint = "alice:10009", SparkWalletId = 5 };
     private readonly Wallet _wallet;
@@ -86,10 +89,16 @@ public class SparkSwapServiceTests
         Payouts();
         _nodes.GetById(1, Arg.Any<bool>()).Returns(_node);
         _schedulerFactory.GetScheduler(Arg.Any<CancellationToken>()).Returns(_scheduler);
+
+        // The background payment runs in a scope of its own, with a SparkSwapService of that scope
+        var provider = Substitute.For<IServiceProvider>();
+        provider.GetService(typeof(ISparkSwapService)).Returns(_ => Service());
+        _paymentScope.ServiceProvider.Returns(provider);
+        _scopes.CreateScope().Returns(_paymentScope);
     }
 
     private SparkSwapService Service() => new(NullLogger<SparkSwapService>.Instance, Settings, _spark, _lightning, _swapOuts,
-        _wallets, _nbXplorer, _nodes, _schedulerFactory, _audit, _time);
+        _wallets, _nbXplorer, _nodes, _schedulerFactory, _audit, _scopes, _time);
 
     // 500_000 sats at 1%: a fee limit of 5_000_000 msat
     private Task Pay(int swapId = 7) => Service().PayAsync(_node, swapId, Invoice, 500_000, 1m, null, 600);
@@ -260,6 +269,20 @@ public class SparkSwapServiceTests
         var (_, saved, _) = await Service().CreateSwapOutAsync(_node, Template(), Request());
 
         saved.Should().BeTrue();
+    }
+
+    [Fact]
+    public async Task Create_PaysInAScopeOfItsOwn_WhichOutlivesTheCaller()
+    {
+        InvoiceIssued();
+        var started = PaymentStarted();
+
+        await Service().CreateSwapOutAsync(_node, Template(), Request());
+        await started;
+
+        // The caller's scope may end as soon as the swap is created: the payment saves its outcome through its own
+        _scopes.Received(1).CreateScope();
+        _paymentScope.DidNotReceive().Dispose();
     }
 
     [Fact]

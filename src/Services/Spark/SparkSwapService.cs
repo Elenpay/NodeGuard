@@ -161,12 +161,13 @@ public sealed class SparkSwapService : ISparkSwapService
     private readonly INodeRepository _nodeRepository;
     private readonly ISchedulerFactory _schedulerFactory;
     private readonly IAuditService _auditService;
+    private readonly IServiceScopeFactory _scopes;
     private readonly TimeProvider _time;
 
     public SparkSwapService(ILogger<SparkSwapService> logger, SparkSettings settings, ISparkWalletService spark,
         ILightningService lightningService, ISwapOutRepository swapOutRepository, IWalletRepository walletRepository,
         INBXplorerService nbXplorerService, INodeRepository nodeRepository, ISchedulerFactory schedulerFactory,
-        IAuditService auditService, TimeProvider time)
+        IAuditService auditService, IServiceScopeFactory scopes, TimeProvider time)
     {
         _logger = logger;
         _settings = settings;
@@ -178,6 +179,7 @@ public sealed class SparkSwapService : ISparkSwapService
         _nodeRepository = nodeRepository;
         _schedulerFactory = schedulerFactory;
         _auditService = auditService;
+        _scopes = scopes;
         _time = time;
     }
 
@@ -269,11 +271,25 @@ public sealed class SparkSwapService : ISparkSwapService
             Reservation.Release();
         }
 
-        // Paid in the background, for up to the node's payment timeout: the swap shows as pending meanwhile. Off
-        // the caller's synchronization context, so the payment doesn't depend on the page that created the swap
+        // Paid in the background, for up to the node's payment timeout: the swap shows as pending meanwhile. Off the
+        // caller's synchronization context, and in a scope of its own: the request that created the swap ends long
+        // before the payment does, and its scope (the database's context factory with it) ends with it
         var maxFeePercent = request.MaxRoutingFeesPercent ?? DefaultMaxRoutingFeePercent;
-        _ = Task.Run(() => PayAsync(node, swapOut.Id, paymentRequest, request.Amount, maxFeePercent, request.ChannelsOut,
-            _settings.PaymentTimeoutFor(node) * 60));
+        var (swapId, amount, channelsOut, timeoutSeconds) =
+            (swapOut.Id, request.Amount, request.ChannelsOut, _settings.PaymentTimeoutFor(node) * 60);
+        _ = Task.Run(async () =>
+        {
+            try
+            {
+                using var scope = _scopes.CreateScope();
+                var service = (SparkSwapService)scope.ServiceProvider.GetRequiredService<ISparkSwapService>();
+                await service.PayAsync(node, swapId, paymentRequest, amount, maxFeePercent, channelsOut, timeoutSeconds);
+            }
+            catch (Exception e)
+            {
+                _logger.LogError(e, "Spark swap {SwapId}: its payment could not be started; MonitorSwapsJob takes over", swapId);
+            }
+        });
         _logger.LogInformation("Spark swap {SwapId}: {Node} is paying {Amount} sats into Spark", swapOut.Id, node.Name, request.Amount);
 
         return new SwapOutCreation(Response(swapOut), true, null);
