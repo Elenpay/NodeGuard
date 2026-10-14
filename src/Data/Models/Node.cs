@@ -80,14 +80,34 @@ namespace NodeGuard.Data.Models
         public bool AutoLiquidityManagementEnabled { get; set; }
 
         /// <summary>
-        /// Minimum swap amount in satoshis
+        /// Minimum Loop swap amount in satoshis
         /// </summary>
-        public long SwapMinAmountSats { get; set; }
+        public long LoopSwapMinAmountSats { get; set; }
 
         /// <summary>
-        /// Maximum swap amount in satoshis
+        /// Maximum Loop swap amount in satoshis
         /// </summary>
-        public long SwapMaxAmountSats { get; set; }
+        public long LoopSwapMaxAmountSats { get; set; }
+
+        /// <summary>
+        /// Minimum 40swap swap amount in satoshis
+        /// </summary>
+        public long FortySwapMinAmountSats { get; set; }
+
+        /// <summary>
+        /// Maximum 40swap swap amount in satoshis
+        /// </summary>
+        public long FortySwapMaxAmountSats { get; set; }
+
+        /// <summary>
+        /// Minimum Spark swap amount in satoshis; null means SPARK_SWAP_MIN_SATS
+        /// </summary>
+        public long? SparkSwapMinAmountSats { get; set; }
+
+        /// <summary>
+        /// Maximum Spark swap amount in satoshis; null means SPARK_SWAP_MAX_SATS
+        /// </summary>
+        public long? SparkSwapMaxAmountSats { get; set; }
 
         /// <summary>
         /// Maximum number of concurrent swaps to limit HTLC locking

@@ -376,22 +376,23 @@
                         
                         <Divider Text="Swap Configuration" TextAlignment="TextAlignment.Start" Type="DividerType.Dashed" />
                         
+                        @* Each provider has its own swap sizes: auto-liquidity picks the provider first, then swaps the most it takes *@
                         <Row>
                             <Column>
                                 <Field>
-                                    <Validation Validator="ValidateMinSwapSize">
-                                        <FieldLabel>Min Swap Size</FieldLabel>
-                                        <FieldHelp>Minimum amount for each swap (must be ≥ @Constants.MINIMUM_SWAP_OUT_SIZE_BTC BTC)</FieldHelp>
-                                        <NumericPicker TValue="decimal" 
-                                                       @bind-Value="@_minSwapSizeBtc" 
+                                    <Validation Validator="@(e => ValidateSwapSize(e, _loopMinSwapBtc, _loopMaxSwapBtc, Constants.MINIMUM_SWAP_OUT_SIZE_BTC, isMin: true))">
+                                        <FieldLabel>Loop Min Swap Size</FieldLabel>
+                                        <FieldHelp>Minimum amount for each Loop swap (≥ @Constants.MINIMUM_SWAP_OUT_SIZE_BTC BTC)</FieldHelp>
+                                        <NumericPicker TValue="decimal"
+                                                       @bind-Value="@_loopMinSwapBtc"
                                                        CurrencySymbolPlacement="CurrencySymbolPlacement.Suffix"
                                                        CurrencySymbol=" BTC"
                                                        Decimals="8"
                                                        Step="0.01m"
-                                                       Min="@Constants.MINIMUM_SWAP_OUT_SIZE_BTC"
+                                                       Min="0m"
                                                        Max="@Constants.MAXIMUM_SWAP_OUT_SIZE_BTC">
                                             <Feedback>
-                                                <ValidationError>Min swap size must be ≥ @Constants.MINIMUM_SWAP_OUT_SIZE_BTC BTC and ≤ max swap size</ValidationError>
+                                                <ValidationError />
                                             </Feedback>
                                         </NumericPicker>
                                     </Validation>
@@ -399,25 +400,112 @@
                             </Column>
                             <Column>
                                 <Field>
-                                    <Validation Validator="ValidateMaxSwapSize">
-                                        <FieldLabel>Max Swap Size</FieldLabel>
-                                        <FieldHelp>Maximum amount for each swap (must be ≤ @Constants.MAXIMUM_SWAP_OUT_SIZE_BTC BTC)</FieldHelp>
-                                        <NumericPicker TValue="decimal" 
-                                                       @bind-Value="@_maxSwapSizeBtc" 
+                                    <Validation Validator="@(e => ValidateSwapSize(e, _loopMinSwapBtc, _loopMaxSwapBtc, Constants.MINIMUM_SWAP_OUT_SIZE_BTC, isMin: false))">
+                                        <FieldLabel>Loop Max Swap Size</FieldLabel>
+                                        <FieldHelp>Maximum amount for each Loop swap (≤ @Constants.MAXIMUM_SWAP_OUT_SIZE_BTC BTC)</FieldHelp>
+                                        <NumericPicker TValue="decimal"
+                                                       @bind-Value="@_loopMaxSwapBtc"
                                                        CurrencySymbolPlacement="CurrencySymbolPlacement.Suffix"
                                                        CurrencySymbol=" BTC"
                                                        Decimals="8"
                                                        Step="0.01m"
-                                                       Min="@Constants.MINIMUM_SWAP_OUT_SIZE_BTC"
+                                                       Min="0m"
                                                        Max="@Constants.MAXIMUM_SWAP_OUT_SIZE_BTC">
                                             <Feedback>
-                                                <ValidationError>Max swap size must be ≤ @Constants.MAXIMUM_SWAP_OUT_SIZE_BTC BTC and ≥ min swap size</ValidationError>
+                                                <ValidationError />
                                             </Feedback>
                                         </NumericPicker>
                                     </Validation>
                                 </Field>
                             </Column>
                         </Row>
+                        <Row>
+                            <Column>
+                                <Field>
+                                    <Validation Validator="@(e => ValidateSwapSize(e, _fortySwapMinSwapBtc, _fortySwapMaxSwapBtc, Constants.MINIMUM_SWAP_OUT_SIZE_BTC, isMin: true))">
+                                        <FieldLabel>40swap Min Swap Size</FieldLabel>
+                                        <FieldHelp>Minimum amount for each 40swap swap (≥ @Constants.MINIMUM_SWAP_OUT_SIZE_BTC BTC)</FieldHelp>
+                                        <NumericPicker TValue="decimal"
+                                                       @bind-Value="@_fortySwapMinSwapBtc"
+                                                       CurrencySymbolPlacement="CurrencySymbolPlacement.Suffix"
+                                                       CurrencySymbol=" BTC"
+                                                       Decimals="8"
+                                                       Step="0.01m"
+                                                       Min="0m"
+                                                       Max="@Constants.MAXIMUM_SWAP_OUT_SIZE_BTC">
+                                            <Feedback>
+                                                <ValidationError />
+                                            </Feedback>
+                                        </NumericPicker>
+                                    </Validation>
+                                </Field>
+                            </Column>
+                            <Column>
+                                <Field>
+                                    <Validation Validator="@(e => ValidateSwapSize(e, _fortySwapMinSwapBtc, _fortySwapMaxSwapBtc, Constants.MINIMUM_SWAP_OUT_SIZE_BTC, isMin: false))">
+                                        <FieldLabel>40swap Max Swap Size</FieldLabel>
+                                        <FieldHelp>Maximum amount for each 40swap swap (≤ @Constants.MAXIMUM_SWAP_OUT_SIZE_BTC BTC)</FieldHelp>
+                                        <NumericPicker TValue="decimal"
+                                                       @bind-Value="@_fortySwapMaxSwapBtc"
+                                                       CurrencySymbolPlacement="CurrencySymbolPlacement.Suffix"
+                                                       CurrencySymbol=" BTC"
+                                                       Decimals="8"
+                                                       Step="0.01m"
+                                                       Min="0m"
+                                                       Max="@Constants.MAXIMUM_SWAP_OUT_SIZE_BTC">
+                                            <Feedback>
+                                                <ValidationError />
+                                            </Feedback>
+                                        </NumericPicker>
+                                    </Validation>
+                                </Field>
+                            </Column>
+                        </Row>
+                        @if (SparkSettings.Enabled || _selectedNodeForLiquidity.SparkSwapWeight > 0)
+                        {
+                            <Row>
+                            <Column>
+                                <Field>
+                                    <Validation Validator="@(e => ValidateSwapSize(e, SparkMinSwapBtc, SparkMaxSwapBtc, SparkLowestMinSwapBtc, isMin: true))">
+                                        <FieldLabel>Spark Min Swap Size</FieldLabel>
+                                        <FieldHelp>Minimum amount for each Spark swap (≥ @SparkLowestMinSwapBtc BTC; empty: @SatsToBtc(SparkSettings.SwapMinSats) BTC, SPARK_SWAP_MIN_SATS)</FieldHelp>
+                                        <NumericPicker TValue="decimal?"
+                                                       @bind-Value="@_sparkMinSwapBtc"
+                                                       CurrencySymbolPlacement="CurrencySymbolPlacement.Suffix"
+                                                       CurrencySymbol=" BTC"
+                                                       Decimals="8"
+                                                       Step="0.01m"
+                                                       Min="0m"
+                                                       Max="@Constants.MAXIMUM_SWAP_OUT_SIZE_BTC">
+                                            <Feedback>
+                                                <ValidationError />
+                                            </Feedback>
+                                        </NumericPicker>
+                                    </Validation>
+                                </Field>
+                            </Column>
+                            <Column>
+                                <Field>
+                                    <Validation Validator="@(e => ValidateSwapSize(e, SparkMinSwapBtc, SparkMaxSwapBtc, SparkLowestMinSwapBtc, isMin: false))">
+                                        <FieldLabel>Spark Max Swap Size</FieldLabel>
+                                        <FieldHelp>Maximum amount for each Spark swap (≤ @Constants.MAXIMUM_SWAP_OUT_SIZE_BTC BTC; empty: @SatsToBtc(SparkSettings.SwapMaxSats) BTC, SPARK_SWAP_MAX_SATS). A Spark swap also fits its wallet's max balance</FieldHelp>
+                                        <NumericPicker TValue="decimal?"
+                                                       @bind-Value="@_sparkMaxSwapBtc"
+                                                       CurrencySymbolPlacement="CurrencySymbolPlacement.Suffix"
+                                                       CurrencySymbol=" BTC"
+                                                       Decimals="8"
+                                                       Step="0.01m"
+                                                       Min="0m"
+                                                       Max="@Constants.MAXIMUM_SWAP_OUT_SIZE_BTC">
+                                            <Feedback>
+                                                <ValidationError />
+                                            </Feedback>
+                                        </NumericPicker>
+                                    </Validation>
+                                </Field>
+                            </Column>
+                            </Row>
+                        }
                         <Row>
                             <Column>
                                 <Field>
@@ -668,8 +756,20 @@
     private Validations? _nodeLiquidityValidationsRef;
     
     // BTC conversion fields for easier editing
-    private decimal _minSwapSizeBtc;
-    private decimal _maxSwapSizeBtc;
+    private decimal _loopMinSwapBtc;
+    private decimal _loopMaxSwapBtc;
+    private decimal _fortySwapMinSwapBtc;
+    private decimal _fortySwapMaxSwapBtc;
+    // Empty: SPARK_SWAP_MIN_SATS / SPARK_SWAP_MAX_SATS
+    private decimal? _sparkMinSwapBtc;
+    private decimal? _sparkMaxSwapBtc;
+
+    private decimal SparkMinSwapBtc => _sparkMinSwapBtc ?? SatsToBtc(SparkSettings.SwapMinSats);
+    private decimal SparkMaxSwapBtc => _sparkMaxSwapBtc ?? SatsToBtc(SparkSettings.SwapMaxSats);
+    private static decimal SparkLowestMinSwapBtc => SatsToBtc(SparkSettings.LowestSwapMinSats);
+
+    private static decimal SatsToBtc(long sats) => (decimal)new NBitcoin.Money(sats).ToUnit(NBitcoin.MoneyUnit.BTC);
+    private static long BtcToSats(decimal btc) => (long)new NBitcoin.Money(btc, NBitcoin.MoneyUnit.BTC).Satoshi;
     private decimal _balanceThresholdBtc;
     private decimal _swapBudgetBtc;
     private int _budgetRefreshDays;
@@ -1029,8 +1129,12 @@
         }
         
         // Convert sats to BTC for display
-        _minSwapSizeBtc = (decimal)new NBitcoin.Money(node.SwapMinAmountSats).ToUnit(NBitcoin.MoneyUnit.BTC);
-        _maxSwapSizeBtc = (decimal)new NBitcoin.Money(node.SwapMaxAmountSats).ToUnit(NBitcoin.MoneyUnit.BTC);
+        _loopMinSwapBtc = SatsToBtc(node.LoopSwapMinAmountSats);
+        _loopMaxSwapBtc = SatsToBtc(node.LoopSwapMaxAmountSats);
+        _fortySwapMinSwapBtc = SatsToBtc(node.FortySwapMinAmountSats);
+        _fortySwapMaxSwapBtc = SatsToBtc(node.FortySwapMaxAmountSats);
+        _sparkMinSwapBtc = node.SparkSwapMinAmountSats is { } sparkMin ? SatsToBtc(sparkMin) : null;
+        _sparkMaxSwapBtc = node.SparkSwapMaxAmountSats is { } sparkMax ? SatsToBtc(sparkMax) : null;
         _balanceThresholdBtc = (decimal)new NBitcoin.Money(node.MinimumBalanceThresholdSats).ToUnit(NBitcoin.MoneyUnit.BTC);
         _swapBudgetBtc = (decimal)new NBitcoin.Money(node.SwapBudgetSats).ToUnit(NBitcoin.MoneyUnit.BTC);
         _budgetRefreshDays = node.SwapBudgetRefreshInterval.Days;
@@ -1078,8 +1182,12 @@
             }
 
             // Convert BTC back to sats and percent back to ratio (0-1)
-            _selectedNodeForLiquidity.SwapMinAmountSats = (long)new NBitcoin.Money(_minSwapSizeBtc, NBitcoin.MoneyUnit.BTC).Satoshi;
-            _selectedNodeForLiquidity.SwapMaxAmountSats = (long)new NBitcoin.Money(_maxSwapSizeBtc, NBitcoin.MoneyUnit.BTC).Satoshi;
+            _selectedNodeForLiquidity.LoopSwapMinAmountSats = BtcToSats(_loopMinSwapBtc);
+            _selectedNodeForLiquidity.LoopSwapMaxAmountSats = BtcToSats(_loopMaxSwapBtc);
+            _selectedNodeForLiquidity.FortySwapMinAmountSats = BtcToSats(_fortySwapMinSwapBtc);
+            _selectedNodeForLiquidity.FortySwapMaxAmountSats = BtcToSats(_fortySwapMaxSwapBtc);
+            _selectedNodeForLiquidity.SparkSwapMinAmountSats = _sparkMinSwapBtc is { } sparkMin ? BtcToSats(sparkMin) : null;
+            _selectedNodeForLiquidity.SparkSwapMaxAmountSats = _sparkMaxSwapBtc is { } sparkMax ? BtcToSats(sparkMax) : null;
             _selectedNodeForLiquidity.MinimumBalanceThresholdSats = (long)new NBitcoin.Money(_balanceThresholdBtc, NBitcoin.MoneyUnit.BTC).Satoshi;
             _selectedNodeForLiquidity.SwapBudgetSats = (long)new NBitcoin.Money(_swapBudgetBtc, NBitcoin.MoneyUnit.BTC).Satoshi;
             _selectedNodeForLiquidity.SwapBudgetRefreshInterval = TimeSpan.FromDays(_budgetRefreshDays);
@@ -1129,39 +1237,34 @@
     }
 
     // Validation methods
-    private void ValidateMinSwapSize(ValidatorEventArgs arg)
+    /// <summary>
+    /// One end of a provider's swap sizes: the min at least <paramref name="lowestMin"/>, the max at most
+    /// MAXIMUM_SWAP_OUT_SIZE_BTC, and the min no more than the max
+    /// </summary>
+    private static void ValidateSwapSize(ValidatorEventArgs arg, decimal min, decimal max, decimal lowestMin, bool isMin)
     {
         arg.Status = ValidationStatus.Success;
-        
-        if (_minSwapSizeBtc < Constants.MINIMUM_SWAP_OUT_SIZE_BTC)
+
+        if (isMin && min < lowestMin)
         {
             arg.Status = ValidationStatus.Error;
-            arg.ErrorText = $"Min swap size must be at least {Constants.MINIMUM_SWAP_OUT_SIZE_BTC} BTC";
+            arg.ErrorText = $"Min swap size must be at least {lowestMin} BTC";
             return;
         }
-        
-        if (_minSwapSizeBtc > _maxSwapSizeBtc)
-        {
-            arg.Status = ValidationStatus.Error;
-            arg.ErrorText = "Min swap size must be less than or equal to max swap size";
-        }
-    }
 
-    private void ValidateMaxSwapSize(ValidatorEventArgs arg)
-    {
-        arg.Status = ValidationStatus.Success;
-        
-        if (_maxSwapSizeBtc > Constants.MAXIMUM_SWAP_OUT_SIZE_BTC)
+        if (!isMin && max > Constants.MAXIMUM_SWAP_OUT_SIZE_BTC)
         {
             arg.Status = ValidationStatus.Error;
             arg.ErrorText = $"Max swap size must be at most {Constants.MAXIMUM_SWAP_OUT_SIZE_BTC} BTC";
             return;
         }
-        
-        if (_maxSwapSizeBtc < _minSwapSizeBtc)
+
+        if (min > max)
         {
             arg.Status = ValidationStatus.Error;
-            arg.ErrorText = "Max swap size must be greater than or equal to min swap size";
+            arg.ErrorText = isMin
+                ? "Min swap size must be less than or equal to max swap size"
+                : "Max swap size must be greater than or equal to min swap size";
         }
     }
 

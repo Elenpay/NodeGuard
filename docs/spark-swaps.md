@@ -86,6 +86,8 @@ While Spark is enabled, invalid settings stop NodeGuard at startup.
 | `SPARK_SSP_IDENTITY_PUBKEY` | Lightspark's on mainnet; fetched from the SSP on regtest | Required with a custom SSP on mainnet |
 | `SPARK_MAX_EXIT_FEE_SATS` | `20000` | Highest SSP exit fee accepted per swap |
 | `SPARK_MAX_BALANCE_SATS` | `10000000` | Most sats a Spark wallet may hold, counting a new swap and its swaps not paid yet, unless it has its own max balance |
+| `SPARK_SWAP_MIN_SATS` | `50000` | A node's smallest Spark swap, at least 10000, unless the node sets its own |
+| `SPARK_SWAP_MAX_SATS` | `2000000` | A node's largest Spark swap, up to `MAXIMUM_SWAP_OUT_SIZE_BTC`, unless the node sets its own |
 | `SPARK_EXIT_INTERVAL_MINUTES` | `10`, `1` in a dev environment | How often paid swaps exit on-chain |
 | `SPARK_EXIT_SPEED` | `SLOW` | `FAST`, `MEDIUM` or `SLOW`: the fee rate swap exits and Withdraw all aim for. `SLOW` is the cheapest and confirms last; the overdue alert waits 6, 12 or 24 hours accordingly |
 | `SPARK_PAYMENT_TIMEOUT_MINUTES` | `10` | How long LND keeps trying routes for a swap's payment, 1 to 25 (the invoice lasts 30 minutes); a node can set its own in its liquidity settings |
@@ -98,7 +100,9 @@ With the remote signer, `REMOTE_SIGNER_ENDPOINT` must be the Function URL with n
 
 ## Using it
 
-- **Auto-liquidity.** Give the node a Spark weight and a Spark wallet on the Nodes page; the Loop, 40swap and Spark weights sum to 100. The node's Max swaps in flight limits Spark swaps like any other, and Spark is skipped while the node's Spark wallet is unavailable. A Spark swap is sized down to the room left under the wallet's max balance (counting its swaps not paid yet), and Spark is skipped when that room is below the node's minimum swap. If no other weighted provider is left, the run is skipped without reserving an address.
+- **Auto-liquidity.** Give the node a Spark weight and a Spark wallet on the Nodes page; the Loop, 40swap and Spark weights sum to 100. The node's Max swaps in flight limits Spark swaps like any other, and Spark is skipped while the node's Spark wallet is unavailable.
+  - Each provider has its own min and max swap size on the node (Loop, 40swap and Spark; Spark's default to `SPARK_SWAP_MIN_SATS` / `SPARK_SWAP_MAX_SATS`). Auto-liquidity picks the provider first, among those whose min fits what is above the balance threshold, then swaps the most that provider takes.
+  - A Spark swap is also sized down to the room left under the wallet's max balance (counting its swaps not paid yet), and Spark is skipped when that room is below the node's Spark min swap. If no other weighted provider is left, the run is skipped without reserving an address.
 - **New Swap dialog.** Spark lists the nodes whose Spark wallet is ready. There is no up-front quote: the SSP quotes the exit for the leaves the payment brings in. The confirmation shows the caps instead, with their percentage of the swap.
 - **gRPC.**
   - `RequestSwapOut` (`provider: SWAP_PROVIDER_SPARK`) returns no destination address: the swap reserves it when it exits, and `GetSwapOut` reports it from then on.
