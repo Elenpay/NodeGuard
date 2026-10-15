@@ -70,13 +70,13 @@ public class WalletWithdrawalRequestRepositoryTests
 
     private static WalletWithdrawalRequest Request(int id, WalletWithdrawalRequestStatus status, int? replaces = null,
         string reference = Reference) => new()
-    {
-        Id = id,
-        Description = "reference id test",
-        ReferenceId = reference,
-        Status = status,
-        BumpingWalletWithdrawalRequestId = replaces,
-    };
+        {
+            Id = id,
+            Description = "reference id test",
+            ReferenceId = reference,
+            Status = status,
+            BumpingWalletWithdrawalRequestId = replaces,
+        };
 
     [Fact]
     public async Task GetByReferenceIds_ReplacementInFlight_ReturnsTheLatestRequest()
@@ -120,7 +120,7 @@ public class WalletWithdrawalRequestRepositoryTests
     {
         var repository = await SeedAsync(SetupDbContextFactory(),
             Request(1, WalletWithdrawalRequestStatus.OnChainConfirmed),
-            Request(2, WalletWithdrawalRequestStatus.Bumped, replaces: 1),
+            Request(2, WalletWithdrawalRequestStatus.Failed, replaces: 1),
             Request(3, WalletWithdrawalRequestStatus.Failed, replaces: 2));
 
         var result = await repository.GetByReferenceIds(new List<string> { Reference });

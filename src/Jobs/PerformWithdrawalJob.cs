@@ -61,16 +61,28 @@ public class PerformWithdrawalJob : IJob
         catch (Exception e)
         {
             var request = await _walletWithdrawalRequestRepository.GetById(withdrawalRequestId);
-            if (request != null)
+            if (request?.Status == WalletWithdrawalRequestStatus.OnChainConfirmationPending)
             {
-                // A failed replacement gives the request it replaced back its pending-confirmation status.
-                await _withdrawalRequestService.RevertOriginalAsync(request);
-
-                request.Status = WalletWithdrawalRequestStatus.Failed;
-                var (updated, _) = _walletWithdrawalRequestRepository.Update(request);
-                if (!updated)
+                // Already broadcast (the txid is persisted before the destination is tracked): nothing to undo.
+                _logger.LogWarning("Withdrawal request {RequestId} failed after its transaction {TxId} was broadcast, leaving it pending confirmation",
+                    request.Id, request.TxId);
+            }
+            else if (request != null)
+            {
+                // Only fail the request once what it replaced is pending again; otherwise nothing would monitor either.
+                if (await _withdrawalRequestService.RevertOriginalAsync(request))
                 {
-                    _logger.LogError("Failed to update withdrawal request status to failed");
+                    request.Status = WalletWithdrawalRequestStatus.Failed;
+                    var (updated, _) = _walletWithdrawalRequestRepository.Update(request);
+                    if (!updated)
+                    {
+                        _logger.LogError("Failed to update withdrawal request {RequestId} status to failed", request.Id);
+                    }
+                }
+                else
+                {
+                    _logger.LogError("Leaving withdrawal request {RequestId} as {Status}: the request it replaced could not be reverted",
+                        request.Id, request.Status);
                 }
             }
 

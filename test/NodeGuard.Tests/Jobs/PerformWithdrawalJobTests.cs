@@ -30,7 +30,9 @@ namespace NodeGuard.Jobs;
 /// When PerformWithdrawalJob cannot sign or broadcast, the request fails and, if it was an RBF replacement, the request
 /// it replaced gets back its pending-confirmation status. That revert goes through WithdrawalRequestService, so it only
 /// undoes what the replacement did: an original that settled meanwhile (the cold-wallet case, where approvals take
-/// hours) is left settled, and a reverted cancellation loses its "Cancelled by RBF" reason.
+/// hours) is left settled, and a reverted cancellation loses its "Cancelled by RBF" reason. The request is only failed
+/// once that revert is persisted: failed with the original still Bumped, neither would be monitored again. A failure
+/// after the broadcast changes nothing: the transaction is out, and the request already carries its txid.
 /// </summary>
 public class PerformWithdrawalJobTests
 {
@@ -117,6 +119,36 @@ public class PerformWithdrawalJobTests
         original.Status.Should().Be(WalletWithdrawalRequestStatus.OnChainConfirmed,
             "it was mined while the replacement waited for its signatures; that is why the broadcast failed");
         _requests.Verify(x => x.Update(original), Times.Never);
+    }
+
+    [Fact]
+    public async Task Execute_RevertCannotBePersisted_LeavesTheReplacementAsItIs()
+    {
+        var original = Stored(OriginalId, WalletWithdrawalRequestStatus.Bumped);
+        var bump = Stored(ReplacementId, WalletWithdrawalRequestStatus.FinalizingPSBT, replaces: OriginalId);
+        _requests.Setup(x => x.Update(original)).Returns((false, "db down"));
+
+        await ExecuteAsync(ReplacementId);
+
+        bump.Status.Should().Be(WalletWithdrawalRequestStatus.FinalizingPSBT,
+            "failing it while the original stays Bumped would leave neither request monitored");
+        _requests.Verify(x => x.Update(bump), Times.Never);
+    }
+
+    [Fact]
+    public async Task Execute_FailureAfterTheBroadcast_LeavesTheRequestAndWhatItReplacedAlone()
+    {
+        // PerformWithdrawal persists the txid and OnChainConfirmationPending right after broadcasting, before it tracks the destination.
+        var original = Stored(OriginalId, WalletWithdrawalRequestStatus.Bumped);
+        var bump = Stored(ReplacementId, WalletWithdrawalRequestStatus.OnChainConfirmationPending, replaces: OriginalId);
+        bump.TxId = "6f2c0b5a8d4e1f3a9c7b2d5e8f1a4c7b0d3e6f9a2c5b8e1d4f7a0c3b6e9d2f5a";
+
+        await ExecuteAsync(ReplacementId);
+
+        bump.Status.Should().Be(WalletWithdrawalRequestStatus.OnChainConfirmationPending,
+            "its transaction is in the mempool: failing it would hide a payment that can still confirm");
+        original.Status.Should().Be(WalletWithdrawalRequestStatus.Bumped, "the broadcast replacement evicted its transaction");
+        _requests.Verify(x => x.Update(It.IsAny<WalletWithdrawalRequest>()), Times.Never);
     }
 
     [Fact]

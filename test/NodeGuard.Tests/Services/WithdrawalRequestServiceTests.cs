@@ -498,8 +498,9 @@ public class WithdrawalRequestServiceTests
         var original = SetupOriginal(HotWallet(), status: WalletWithdrawalRequestStatus.OnChainConfirmed);
         var bump = HotRequest(WalletWithdrawalRequestStatus.Cancelled, bumping: OriginalId);
 
-        await CreateService().RevertOriginalAsync(bump);
+        var reverted = await CreateService().RevertOriginalAsync(bump);
 
+        reverted.Should().BeTrue("there is nothing to revert, so the replacement can be abandoned");
         original.Status.Should().Be(WalletWithdrawalRequestStatus.OnChainConfirmed,
             "a request that was never marked Bumped (or already confirmed) must not be pushed back to pending");
         _requests.Verify(x => x.Update(It.IsAny<WalletWithdrawalRequest>()), Times.Never);
@@ -512,10 +513,37 @@ public class WithdrawalRequestServiceTests
         original.RejectCancelDescription = "Cancelled by RBF replacement request 99";
         var cancel = HotRequest(WalletWithdrawalRequestStatus.Failed, bumping: OriginalId, cancellation: true);
 
-        await CreateService().RevertOriginalAsync(cancel);
+        var reverted = await CreateService().RevertOriginalAsync(cancel);
 
+        reverted.Should().BeTrue();
         original.Status.Should().Be(WalletWithdrawalRequestStatus.Cancelled);
         _requests.Verify(x => x.Update(It.IsAny<WalletWithdrawalRequest>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task RevertOriginalAsync_BumpedOriginal_ReturnsTrueOncePersisted()
+    {
+        var original = SetupOriginal(HotWallet(), status: WalletWithdrawalRequestStatus.Bumped);
+        var bump = HotRequest(WalletWithdrawalRequestStatus.Failed, bumping: OriginalId);
+
+        var reverted = await CreateService().RevertOriginalAsync(bump);
+
+        reverted.Should().BeTrue();
+        original.Status.Should().Be(WalletWithdrawalRequestStatus.OnChainConfirmationPending);
+        _requests.Verify(x => x.Update(It.Is<WalletWithdrawalRequest>(r => r.Id == OriginalId
+            && r.Status == WalletWithdrawalRequestStatus.OnChainConfirmationPending)), Times.Once);
+    }
+
+    [Fact]
+    public async Task RevertOriginalAsync_UpdateFails_ReturnsFalse()
+    {
+        SetupOriginal(HotWallet(), status: WalletWithdrawalRequestStatus.Bumped);
+        var bump = HotRequest(WalletWithdrawalRequestStatus.Failed, bumping: OriginalId);
+        _requests.Setup(x => x.Update(It.Is<WalletWithdrawalRequest>(r => r.Id == OriginalId))).Returns((false, "db down"));
+
+        var reverted = await CreateService().RevertOriginalAsync(bump);
+
+        reverted.Should().BeFalse("the caller must not give the replacement a terminal status while the original stays Bumped");
     }
 
     [Fact]
@@ -586,29 +614,33 @@ public class WithdrawalRequestServiceTests
     }
 
     [Fact]
-    public async Task SettleMinedOriginalAsync_BumpOfABump_SettlesTheMinedRequestAndLeavesTheMiddleOneBumped()
+    public async Task SettleMinedOriginalAsync_BumpOfABump_SettlesTheMinedRequestAndFailsEveryReplacement()
     {
-        const int middleId = 12;
-        var middleTxId = new uint256(2);
-        var first = SetupOriginal(HotWallet(), status: WalletWithdrawalRequestStatus.Bumped, confirmations: SettledDepth);
-        var middle = new WalletWithdrawalRequest
-        {
-            Id = middleId,
-            Status = WalletWithdrawalRequestStatus.Bumped,
-            TxId = middleTxId.ToString(),
-            BumpingWalletWithdrawalRequestId = OriginalId,
-        };
-        _requests.Setup(x => x.GetById(middleId)).ReturnsAsync(middle);
-        _nbXplorer.Setup(x => x.GetTransactionAsync(middleTxId, It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new TransactionResult { Confirmations = 0 });
-        var last = HotRequest(WalletWithdrawalRequestStatus.OnChainConfirmationPending, bumping: middleId);
+        var (first, middle, last) = BumpOfABumpWithTheFirstMined();
 
         var settled = await CreateService().SettleMinedOriginalAsync(last);
 
         settled.Should().BeTrue();
         first.Status.Should().Be(WalletWithdrawalRequestStatus.OnChainConfirmed);
-        middle.Status.Should().Be(WalletWithdrawalRequestStatus.Bumped, "it was replaced and never confirmed");
+        middle.Status.Should().Be(WalletWithdrawalRequestStatus.Failed, "it double-spends the mined transaction and can never confirm");
+        middle.RejectCancelDescription.Should().Contain(OriginalId.ToString());
         last.Status.Should().Be(WalletWithdrawalRequestStatus.Failed);
+        last.RejectCancelDescription.Should().Contain(OriginalId.ToString());
+    }
+
+    [Fact]
+    public async Task SettleMinedOriginalAsync_FailingTheMiddleReplacementFails_LeavesTheLastOnePendingForTheNextRun()
+    {
+        var (first, middle, last) = BumpOfABumpWithTheFirstMined();
+        _requests.Setup(x => x.Update(It.Is<WalletWithdrawalRequest>(r => r.Id == middle.Id))).Returns((false, "db down"));
+
+        var settled = await CreateService().SettleMinedOriginalAsync(last);
+
+        settled.Should().BeFalse();
+        first.Status.Should().Be(WalletWithdrawalRequestStatus.OnChainConfirmed);
+        last.Status.Should().Be(WalletWithdrawalRequestStatus.OnChainConfirmationPending,
+            "it is failed last, so the monitor retries the whole chain while it is pending");
+        _requests.Verify(x => x.Update(It.Is<WalletWithdrawalRequest>(r => r.Id == BumpId)), Times.Never);
     }
 
     [Fact]
@@ -737,6 +769,26 @@ public class WithdrawalRequestServiceTests
             .ReturnsAsync(new TransactionResult { Confirmations = confirmations, Transaction = tx });
 
         return original;
+    }
+
+    /// <summary>A bumped to B, B bumped to C, A mined: (A, B, C), with C the pending request under test.</summary>
+    private (WalletWithdrawalRequest First, WalletWithdrawalRequest Middle, WalletWithdrawalRequest Last) BumpOfABumpWithTheFirstMined()
+    {
+        const int middleId = 12;
+        var middleTxId = new uint256(2);
+        var first = SetupOriginal(HotWallet(), status: WalletWithdrawalRequestStatus.Bumped, confirmations: SettledDepth);
+        var middle = new WalletWithdrawalRequest
+        {
+            Id = middleId,
+            Status = WalletWithdrawalRequestStatus.Bumped,
+            TxId = middleTxId.ToString(),
+            BumpingWalletWithdrawalRequestId = OriginalId,
+        };
+        _requests.Setup(x => x.GetById(middleId)).ReturnsAsync(middle);
+        _nbXplorer.Setup(x => x.GetTransactionAsync(middleTxId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new TransactionResult { Confirmations = 0 });
+        var last = HotRequest(WalletWithdrawalRequestStatus.OnChainConfirmationPending, bumping: middleId);
+        return (first, middle, last);
     }
 
     /// <summary>The hot-wallet request to execute (a bump when <paramref name="bumping"/> is set).</summary>

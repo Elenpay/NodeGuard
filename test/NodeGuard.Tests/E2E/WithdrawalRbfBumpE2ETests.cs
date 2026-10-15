@@ -32,8 +32,8 @@ namespace NodeGuard.Tests.E2E;
 /// higher-fee version of the same payment, bitcoind evicts the original, NodeGuard marks it WITHDRAWAL_BUMPED and, once
 /// mined, settles the replacement. Cancellation: CancelWithdrawal replaces it with a transaction that returns the funds to
 /// the wallet, the destination is never paid and the original ends up WITHDRAWAL_CANCELLED. Mined original: either
-/// replacement loses the race to the original, which NodeGuard must then settle while failing the replacement, also when
-/// the original was bumped twice. The UI and the RPCs share WithdrawalRequestService, so these scenarios exercise the
+/// replacement loses the race to the original, which NodeGuard must then settle while failing every replacement, also
+/// when the original was bumped twice. The UI and the RPCs share WithdrawalRequestService, so these scenarios exercise the
 /// same orchestration the Withdrawals page runs.
 ///
 /// Shared plumbing in <see cref="E2ETestBase"/>; gated by <see cref="E2EFactAttribute"/>. Env: see
@@ -313,10 +313,10 @@ public class WithdrawalRbfBumpE2ETests : E2ETestBase
 
     /// <summary>
     /// The same race one bump deeper: A is bumped to B, B is bumped to C, and A is mined. NodeGuard must settle A and fail
-    /// C; B was replaced and never confirmed, so it stays bumped.
+    /// both B and C: each of them double-spends the mined transaction and can never confirm.
     /// </summary>
     [E2EFact]
-    public async Task BumpOfABump_WhenTheFirstTransactionIsMined_SettlesItAndFailsTheLastReplacement()
+    public async Task BumpOfABump_WhenTheFirstTransactionIsMined_SettlesItAndFailsBothReplacements()
     {
         var client = CreateClient(out var headers);
         var rpc = CreateBitcoindRpc();
@@ -367,21 +367,24 @@ public class WithdrawalRbfBumpE2ETests : E2ETestBase
         (await rpc.GetRawTransactionAsync(secondTxId, throwIfNotFound: false)).Should().BeNull("B can never confirm");
         (await rpc.GetRawTransactionAsync(thirdTxId, throwIfNotFound: false)).Should().BeNull("C can never confirm");
 
-        // 5. NodeGuard's view must follow the chain: A settled, C failed, B still bumped.
+        // 5. NodeGuard's view must follow the chain: A settled, B and C failed.
         var settled = await PollAsync(() => GetStatusesAsync(client, headers, first.RequestId, secondId, thirdId),
             s =>
             {
                 _output.WriteLine($"A {s[first.RequestId].Status}, B {s[secondId].Status}, C {s[thirdId].Status}");
                 return s[first.RequestId].Status == WITHDRAWAL_REQUEST_STATUS.WithdrawalSettled
+                       && s[secondId].Status == WITHDRAWAL_REQUEST_STATUS.WithdrawalFailed
                        && s[thirdId].Status == WITHDRAWAL_REQUEST_STATUS.WithdrawalFailed;
             },
-            attempts: 40, delay: TimeSpan.FromSeconds(5), what: "first settled, second bump failed");
+            attempts: 40, delay: TimeSpan.FromSeconds(5), what: "first settled, both bumps failed");
 
         settled[first.RequestId].TxId.Should().Be(first.Txid, "A's own transaction is the one that confirmed");
         settled[first.RequestId].Confirmations.Should().BeGreaterThan(0UL);
-        settled[secondId].Status.Should().Be(WITHDRAWAL_REQUEST_STATUS.WithdrawalBumped, "B was replaced by C and never confirmed");
-        settled[thirdId].RejectOrCancelReason.Should().Contain(first.RequestId.ToString(),
-            "the failure names the request that was mined instead");
+        foreach (var replacementId in new[] { secondId, thirdId })
+        {
+            settled[replacementId].RejectOrCancelReason.Should().Contain(first.RequestId.ToString(),
+                "the failure names the request that was mined instead");
+        }
 
         await AssertReferenceResolvesToSettledAsync(client, headers, referenceId, first.RequestId);
     }

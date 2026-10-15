@@ -1075,11 +1075,6 @@
                                 // Mark the replaced request before the job runs, so a failed broadcast's revert has the last word.
                                 await WithdrawalRequestService.MarkOriginalAsReplacedAsync(_selectedRequest);
                                 await CreateJob();
-                                // CreateJob reports a scheduling failure by failing the request.
-                                if (_selectedRequest?.Status == WalletWithdrawalRequestStatus.Failed)
-                                {
-                                    await WithdrawalRequestService.RevertOriginalAsync(_selectedRequest);
-                                }
                             }
                         }
                         catch (Exception ex)
@@ -1391,8 +1386,12 @@
         catch (Exception ex)
         {
             ToastService.ShowError("Error while requesting a withdrawal, please contact a superadmin for troubleshooting");
-            _selectedRequest.Status = WalletWithdrawalRequestStatus.Failed;
-            WalletWithdrawalRequestRepository.Update(_selectedRequest);
+            // Revert before failing: a replacement must not end terminal while the request it replaced stays Bumped / Cancelled.
+            if (await WithdrawalRequestService.RevertOriginalAsync(_selectedRequest))
+            {
+                _selectedRequest.Status = WalletWithdrawalRequestStatus.Failed;
+                WalletWithdrawalRequestRepository.Update(_selectedRequest);
+            }
             var message = string.IsNullOrWhiteSpace(ex.Message) ? "Failed to schedule withdrawal job." : ex.Message;
             await LogWithdrawalAuditAsync(AuditActionType.Approve, AuditEventType.Failure, _selectedRequest, message);
             await _confirmationModal.CloseModal();
