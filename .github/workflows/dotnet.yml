@@ -45,10 +45,10 @@ jobs:
     outputs:
       code: ${{ steps.filter.outputs.code }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v4.4.0
         with:
           fetch-depth: 0   # full history so the filter can diff push events too
-      - uses: dorny/paths-filter@d1c1ffe0248fe513906c8e24db8ea791d46f8590 # v3.0.3
+      - uses: dorny/paths-filter@v3.0.3
         id: filter
         with:
           filters: |
@@ -83,10 +83,10 @@ jobs:
     if: ${{ needs.changes.outputs.code == 'true' || github.event_name == 'workflow_dispatch' || startsWith(github.ref, 'refs/tags/') }}
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v4.4.0
       - name: Check out the NSpark submodule
         run: git submodule update --init vendor/nspark
-      - uses: actions/setup-dotnet@v4
+      - uses: actions/setup-dotnet@v4.3.1
         with:
           dotnet-version: '10.0.x'
       - name: Restore
@@ -106,7 +106,7 @@ jobs:
     if: ${{ needs.changes.outputs.code == 'true' && github.event_name == 'pull_request' }}
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v4.4.0
       - name: Check out the NSpark submodule
         run: git submodule update --init vendor/nspark
       - name: Build the image
@@ -131,11 +131,11 @@ jobs:
       SPARK_ENABLED: "true"
       SPARK_E2E: "1"
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v4.4.0
       - name: Check out the NSpark submodule
         run: git submodule update --init vendor/nspark
       - name: Log in to GHCR (Spark network images)
-        uses: docker/login-action@v3
+        uses: docker/login-action@v3.7.0
         with:
           registry: ${{ env.REGISTRY }}
           username: ${{ github.actor }}
@@ -166,16 +166,16 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v4.4.0
 
       - name: Check out the NSpark submodule
         run: git submodule update --init vendor/nspark
 
       - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
+        uses: docker/setup-buildx-action@v3.12.0
 
       - name: Log into the Container registry
-        uses: docker/login-action@v3
+        uses: docker/login-action@v3.7.0
         with:
           registry: ${{ env.REGISTRY }}
           username: ${{ github.actor }}
@@ -183,7 +183,7 @@ jobs:
 
       - name: Docker meta
         id: meta
-        uses: docker/metadata-action@v5
+        uses: docker/metadata-action@v5.10.0
         with:
           images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
           # Branch pushes → branch name (+ `latest` on the default branch). Semver tag pushes →
@@ -199,7 +199,7 @@ jobs:
             actions_run=${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
 
       - name: Build and push the Docker image
-        uses: docker/build-push-action@v6
+        uses: docker/build-push-action@v6.19.2
         with:
           context: .
           file: src/Dockerfile
@@ -210,7 +210,7 @@ jobs:
           labels: ${{ steps.meta.outputs.labels }}
 
       - name: Scan SBOM
-        uses: anchore/scan-action@3343887d815d7b07465f6fdcd395bd66508d486a # v3.6.4
+        uses: anchore/scan-action@v3.6.4
         with:
           image: ${{ steps.meta.outputs.tags }}
           add-cpes-if-none: true
