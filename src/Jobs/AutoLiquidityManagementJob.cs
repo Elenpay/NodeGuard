@@ -120,16 +120,8 @@ public class AutoLiquidityManagementJob : IJob
         _logger.LogInformation("{JobName} ended", nameof(AutoLiquidityManagementJob));
     }
 
-    /// <summary>
-    /// Weighted random choice among the providers with a weight that can take a swap now, and the swap it takes:
-    /// the most it may, within its max swap, the excess balance and, for Spark, the room left in the node's Spark
-    /// wallet under its max balance. A provider is left out when that is below its min swap, and Spark also while
-    /// the node has no Spark wallet or its wallet is unavailable (the node's Max swaps in flight already limits its
-    /// swaps). All weights at 0 means Loop, as before. Null when no weighted provider is left, with whether the
-    /// excess balance was below every one's min swap.
-    /// </summary>
-    private async Task<(SwapProvider? Provider, long AmountSats, bool BelowMinimum)> SelectSwapProviderAsync(Node node,
-        long excessBalance)
+    /// <summary>The providers with a weight; all weights at 0 means Loop, as before.</summary>
+    private List<(SwapProvider Provider, int Weight)> WeightedProviders(Node node)
     {
         var weights = new List<(SwapProvider Provider, int Weight)>
         {
@@ -141,14 +133,27 @@ public class AutoLiquidityManagementJob : IJob
         if (weights.All(w => w.Weight <= 0))
         {
             _logger.LogWarning("Node {NodeName} has total weight of 0, defaulting to Loop", node.Name);
-            weights = [(SwapProvider.Loop, 1)];
+            return [(SwapProvider.Loop, 1)];
         }
 
+        return weights.Where(w => w.Weight > 0).ToList();
+    }
+
+    /// <summary>
+    /// Weighted random choice among <paramref name="weights"/> (the weighted providers below their max swaps in
+    /// flight) that can take a swap now, and the swap it takes: the most it may, within its max swap, the excess
+    /// balance and, for Spark, the room left in the node's Spark wallet under its max balance. A provider is left out
+    /// when that is below its min swap, and Spark also while the node has no Spark wallet or its wallet is
+    /// unavailable. Null when no provider is left, with whether the excess balance was below every one's min swap.
+    /// </summary>
+    private async Task<(SwapProvider? Provider, long AmountSats, bool BelowMinimum)> SelectSwapProviderAsync(Node node,
+        IReadOnlyList<(SwapProvider Provider, int Weight)> weights, long excessBalance)
+    {
         var candidates = new List<(SwapProvider Provider, int Weight, long AmountSats)>();
         var belowMinimum = true;
-        foreach (var (provider, weight) in weights.Where(w => w.Weight > 0))
+        foreach (var (provider, weight) in weights)
         {
-            var limits = SwapAmountLimits.For(node, provider, _sparkSettings);
+            var limits = SwapProviderLimits.For(node, provider, _sparkSettings);
             var amount = Math.Min(excessBalance, limits.MaxSats);
             if (amount < limits.MinSats)
             {
@@ -265,17 +270,21 @@ public class AutoLiquidityManagementJob : IJob
             return ManageNodeLiquidityResult.BalanceBelowThreshold;
         }
 
-        // Get in-flight swaps for this node (optimistic locking)
+        // Swaps in flight count per provider (optimistic locking): one may run serialized while another runs in
+        // parallel. A provider at its max is left out; with every weighted one at its max, nothing is swapped
         var inFlightSwaps = await _swapOutRepository.GetInFlightSwapsByNode(node.Id);
-        var inFlightCount = inFlightSwaps.Count;
+        var weighted = WeightedProviders(node);
+        var available = weighted
+            .Where(w => inFlightSwaps.Count(s => s.Provider == w.Provider) < SwapProviderLimits.For(node, w.Provider, _sparkSettings).MaxInFlight)
+            .ToList();
 
-        _logger.LogDebug("Node {NodeName} has {InFlightCount} swaps in flight, max: {MaxSwapsInFlight}",
-            node.Name, inFlightCount, node.MaxSwapsInFlight);
+        _logger.LogDebug("Node {NodeName} has {InFlightCount} swaps in flight; providers below their max: {Providers}",
+            node.Name, inFlightSwaps.Count, string.Join(", ", available.Select(w => w.Provider)));
 
-        if (inFlightCount >= node.MaxSwapsInFlight)
+        if (available.Count == 0)
         {
-            _logger.LogInformation("Node {NodeName} has reached max swaps in flight ({MaxSwapsInFlight})",
-                node.Name, node.MaxSwapsInFlight);
+            _logger.LogInformation("Node {NodeName} has reached max swaps in flight of every weighted provider ({Providers})",
+                node.Name, string.Join(", ", weighted.Select(w => w.Provider)));
             return ManageNodeLiquidityResult.MaxSwapsInFlightReached;
         }
 
@@ -302,7 +311,7 @@ public class AutoLiquidityManagementJob : IJob
 
         // Pick the provider among those whose own min and max swap fit what's above the threshold (the excess
         // balance), before reserving an address for a swap that may not happen: the swap is the most it takes
-        var (provider, swapAmount, belowMinimum) = await SelectSwapProviderAsync(node, excessBalance);
+        var (provider, swapAmount, belowMinimum) = await SelectSwapProviderAsync(node, available, excessBalance);
         if (provider is not { } selectedProvider)
         {
             if (belowMinimum)

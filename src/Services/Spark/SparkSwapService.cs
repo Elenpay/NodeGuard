@@ -196,15 +196,15 @@ public sealed class SparkSwapService : ISparkSwapService
         await Reservation.WaitAsync(ct);
         try
         {
-            // Each swap exits its own leaves, so several can be in flight: up to the node's Max swaps in flight
-            var limit = Math.Max(node.MaxSwapsInFlight, 1);
+            // Each swap exits its own leaves, so several can be in flight: up to the node's Spark max swaps in flight
+            var limit = Math.Max(node.SparkMaxSwapsInFlight, 1);
             var pending = await _swapOutRepository.GetAllPending();
             // Once paid, a swap waits in the wallet, whose max balance limits it: only swaps being paid are in flight
             var inFlight = pending.Count(s => s.Provider == SwapProvider.Spark && s.NodeId == node.Id && s.LightningFeeSats is null);
             if (inFlight >= limit)
             {
                 throw new InvalidOperationException(
-                    $"{node.Name} already has {inFlight} Spark swaps in flight, its limit (Max swaps in flight: {limit}).");
+                    $"{node.Name} already has {inFlight} Spark swaps in flight, its limit (Spark max swaps in flight: {limit}).");
             }
 
             // Transit only: refuse a swap that would leave more than the wallet's max balance in it, counting what
@@ -424,7 +424,7 @@ public sealed class SparkSwapService : ISparkSwapService
             var room = SparkGuardrails.RoomSats(entry.MaxBalanceSats, balance, ofWallet);
             var smallestSwap = nodes
                 .Where(n => _settings.WalletFor(n) == entry.Ref)
-                .Select(n => (long?)SwapAmountLimits.For(n, SwapProvider.Spark, _settings).MinSats)
+                .Select(n => (long?)SwapProviderLimits.For(n, SwapProvider.Spark, _settings).MinSats)
                 .Min();
             if (smallestSwap is { } min && room >= min)
             {

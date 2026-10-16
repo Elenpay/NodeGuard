@@ -110,9 +110,20 @@ namespace NodeGuard.Data.Models
         public long? SparkSwapMaxAmountSats { get; set; }
 
         /// <summary>
-        /// Maximum number of concurrent swaps to limit HTLC locking
+        /// Maximum number of concurrent Loop swaps, to limit HTLC locking
         /// </summary>
-        public int MaxSwapsInFlight { get; set; }
+        public int LoopMaxSwapsInFlight { get; set; }
+
+        /// <summary>
+        /// Maximum number of concurrent 40swap swaps, to limit HTLC locking
+        /// </summary>
+        public int FortySwapMaxSwapsInFlight { get; set; }
+
+        /// <summary>
+        /// Maximum number of Spark swaps being paid at once, to limit HTLC locking. Once paid, a Spark swap waits in
+        /// its Spark wallet, whose max balance limits it
+        /// </summary>
+        public int SparkMaxSwapsInFlight { get; set; }
 
         /// <summary>
         /// Maximum swap routing fee ratio acceptable for swaps as a decimal between 0 and 1
@@ -155,7 +166,7 @@ namespace NodeGuard.Data.Models
 
         /// <summary>
         /// Weight for the Spark swap provider selection (default 0). Spark is skipped while the node's
-        /// Spark wallet is unavailable; MaxSwapsInFlight limits Spark swaps like any other
+        /// Spark wallet is unavailable; SparkMaxSwapsInFlight limits its swaps
         /// </summary>
         public int SparkSwapWeight { get; set; } = 0;
 

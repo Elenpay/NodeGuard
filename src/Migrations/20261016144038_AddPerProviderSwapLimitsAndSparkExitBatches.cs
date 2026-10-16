@@ -6,7 +6,7 @@ using Microsoft.EntityFrameworkCore.Migrations;
 namespace NodeGuard.Migrations
 {
     /// <inheritdoc />
-    public partial class AddPerProviderSwapAmountsAndSparkExitBatches : Migration
+    public partial class AddPerProviderSwapLimitsAndSparkExitBatches : Migration
     {
         /// <inheritdoc />
         protected override void Up(MigrationBuilder migrationBuilder)
@@ -21,6 +21,11 @@ namespace NodeGuard.Migrations
                 table: "Nodes",
                 newName: "LoopSwapMaxAmountSats");
 
+            migrationBuilder.RenameColumn(
+                name: "MaxSwapsInFlight",
+                table: "Nodes",
+                newName: "LoopMaxSwapsInFlight");
+
             migrationBuilder.AddColumn<DateTimeOffset>(
                 name: "SparkExitDatetime",
                 table: "SwapOuts",
@@ -34,6 +39,13 @@ namespace NodeGuard.Migrations
                 nullable: false,
                 defaultValue: 0L);
 
+            migrationBuilder.AddColumn<int>(
+                name: "FortySwapMaxSwapsInFlight",
+                table: "Nodes",
+                type: "integer",
+                nullable: false,
+                defaultValue: 0);
+
             migrationBuilder.AddColumn<long>(
                 name: "FortySwapMinAmountSats",
                 table: "Nodes",
@@ -41,9 +53,12 @@ namespace NodeGuard.Migrations
                 nullable: false,
                 defaultValue: 0L);
 
-            // The node's shared swap sizes become Loop's (the rename above) and 40swap's too
-            migrationBuilder.Sql(
-                "UPDATE \"Nodes\" SET \"FortySwapMinAmountSats\" = \"LoopSwapMinAmountSats\", \"FortySwapMaxAmountSats\" = \"LoopSwapMaxAmountSats\";");
+            migrationBuilder.AddColumn<int>(
+                name: "SparkMaxSwapsInFlight",
+                table: "Nodes",
+                type: "integer",
+                nullable: false,
+                defaultValue: 0);
 
             migrationBuilder.AddColumn<long>(
                 name: "SparkSwapMaxAmountSats",
@@ -56,6 +71,12 @@ namespace NodeGuard.Migrations
                 table: "Nodes",
                 type: "bigint",
                 nullable: true);
+
+            // The node's shared swap sizes and max swaps in flight become Loop's (the renames above), and 40swap's
+            // and Spark's max swaps in flight too; Spark's sizes default to SPARK_SWAP_MIN_SATS / SPARK_SWAP_MAX_SATS
+            migrationBuilder.Sql(
+                "UPDATE \"Nodes\" SET \"FortySwapMinAmountSats\" = \"LoopSwapMinAmountSats\", \"FortySwapMaxAmountSats\" = \"LoopSwapMaxAmountSats\", " +
+                "\"FortySwapMaxSwapsInFlight\" = \"LoopMaxSwapsInFlight\", \"SparkMaxSwapsInFlight\" = \"LoopMaxSwapsInFlight\";");
         }
 
         /// <inheritdoc />
@@ -70,7 +91,15 @@ namespace NodeGuard.Migrations
                 table: "Nodes");
 
             migrationBuilder.DropColumn(
+                name: "FortySwapMaxSwapsInFlight",
+                table: "Nodes");
+
+            migrationBuilder.DropColumn(
                 name: "FortySwapMinAmountSats",
+                table: "Nodes");
+
+            migrationBuilder.DropColumn(
+                name: "SparkMaxSwapsInFlight",
                 table: "Nodes");
 
             migrationBuilder.DropColumn(
@@ -80,6 +109,11 @@ namespace NodeGuard.Migrations
             migrationBuilder.DropColumn(
                 name: "SparkSwapMinAmountSats",
                 table: "Nodes");
+
+            migrationBuilder.RenameColumn(
+                name: "LoopMaxSwapsInFlight",
+                table: "Nodes",
+                newName: "MaxSwapsInFlight");
 
             migrationBuilder.RenameColumn(
                 name: "LoopSwapMinAmountSats",

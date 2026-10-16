@@ -184,6 +184,9 @@
                 <DataGridColumn TItem="Node" Filterable="false" Caption="Spark Max Swap" Sortable="false" Displayable="@IsColumnVisible(NodesColumnName.SparkSwapMaxAmount)">
                     <DisplayTemplate>@SparkSwapSizeText(context.SparkSwapMaxAmountSats, SparkSettings.SwapMaxSats)</DisplayTemplate>
                 </DataGridColumn>
+                <DataGridColumn TItem="Node" Filterable="false" Field="@nameof(Node.LoopMaxSwapsInFlight)" Caption="Loop Max Swaps In Flight" Sortable="false" Displayable="@IsColumnVisible(NodesColumnName.LoopMaxSwapsInFlight)"/>
+                <DataGridColumn TItem="Node" Filterable="false" Field="@nameof(Node.FortySwapMaxSwapsInFlight)" Caption="40swap Max Swaps In Flight" Sortable="false" Displayable="@IsColumnVisible(NodesColumnName.FortySwapMaxSwapsInFlight)"/>
+                <DataGridColumn TItem="Node" Filterable="false" Field="@nameof(Node.SparkMaxSwapsInFlight)" Caption="Spark Max Swaps In Flight" Sortable="false" Displayable="@IsColumnVisible(NodesColumnName.SparkMaxSwapsInFlight)"/>
                 
                 <DataGridColumn TItem="Node" Filterable="false" Field="@nameof(Node.CreationDatetime)" Caption="Creation Date" Sortable="true" SortDirection="SortDirection.Descending" Displayable="@IsColumnVisible(NodesColumnName.CreationDate)">
                     <DisplayTemplate>
@@ -337,7 +340,7 @@
                                     <Field>
                                         <Validation Validator="ValidateProviderWeights">
                                             <FieldLabel>Spark Weight</FieldLabel>
-                                            <FieldHelp>Weight for the node's Spark wallet (0-100). Skipped while it is unavailable; Max Swaps In Flight limits Spark swaps too</FieldHelp>
+                                            <FieldHelp>Weight for the node's Spark wallet (0-100). Skipped while it is unavailable; Spark Max Swaps in Flight limits its swaps</FieldHelp>
                                             <NumericEdit TValue="int"
                                                          @bind-Value="@_selectedNodeForLiquidity.SparkSwapWeight"
                                                          Min="0"
@@ -396,7 +399,7 @@
                         
                         <Divider Text="Swap Configuration" TextAlignment="TextAlignment.Start" Type="DividerType.Dashed" />
                         
-                        @* Each provider has its own swap sizes: auto-liquidity picks the provider first, then swaps the most it takes *@
+                        @* Each provider has its own swap sizes and max swaps in flight: auto-liquidity picks a provider below its max, then swaps the most it takes *@
                         <Row>
                             <Column>
                                 <Field>
@@ -436,6 +439,17 @@
                                             </Feedback>
                                         </NumericPicker>
                                     </Validation>
+                                </Field>
+                            </Column>
+                            <Column>
+                                <Field>
+                                        <FieldLabel>Loop Max Swaps in Flight</FieldLabel>
+                                        <FieldHelp>Concurrent Loop swaps (0-100), to limit HTLC locking</FieldHelp>
+                                        <NumericEdit TValue="int" @bind-Value="_selectedNodeForLiquidity.LoopMaxSwapsInFlight" Min="0" Max="100">
+                                            <Feedback>
+                                                <ValidationError>Must be between 0 and 100</ValidationError>
+                                            </Feedback>
+                                        </NumericEdit>
                                 </Field>
                             </Column>
                         </Row>
@@ -478,6 +492,17 @@
                                             </Feedback>
                                         </NumericPicker>
                                     </Validation>
+                                </Field>
+                            </Column>
+                            <Column>
+                                <Field>
+                                        <FieldLabel>40swap Max Swaps in Flight</FieldLabel>
+                                        <FieldHelp>Concurrent 40swap swaps (0-100), to limit HTLC locking</FieldHelp>
+                                        <NumericEdit TValue="int" @bind-Value="_selectedNodeForLiquidity.FortySwapMaxSwapsInFlight" Min="0" Max="100">
+                                            <Feedback>
+                                                <ValidationError>Must be between 0 and 100</ValidationError>
+                                            </Feedback>
+                                        </NumericEdit>
                                 </Field>
                             </Column>
                         </Row>
@@ -524,20 +549,20 @@
                                     </Validation>
                                 </Field>
                             </Column>
-                            </Row>
-                        }
-                        <Row>
                             <Column>
                                 <Field>
-                                        <FieldLabel>Max Swaps in Flight</FieldLabel>
-                                        <FieldHelp>Maximum concurrent swaps (0-100) to limit HTLC locking</FieldHelp>
-                                        <NumericEdit TValue="int" @bind-Value="_selectedNodeForLiquidity.MaxSwapsInFlight" Min="0" Max="100">
+                                        <FieldLabel>Spark Max Swaps in Flight</FieldLabel>
+                                        <FieldHelp>Spark swaps being paid at once (0-100; 0 still lets one manual swap through). Once paid, a swap waits in the Spark wallet and no longer counts</FieldHelp>
+                                        <NumericEdit TValue="int" @bind-Value="_selectedNodeForLiquidity.SparkMaxSwapsInFlight" Min="0" Max="100">
                                             <Feedback>
                                                 <ValidationError>Must be between 0 and 100</ValidationError>
                                             </Feedback>
                                         </NumericEdit>
                                 </Field>
                             </Column>
+                            </Row>
+                        }
+                        <Row>
                             <Column>
                                 <Field>
                                         <FieldLabel>Max Swap Routing Fee</FieldLabel>
@@ -824,7 +849,9 @@
         public static readonly ColumnDefault FortySwapMaxAmount = new("40swap Max Swap Amount",false);
         public static readonly ColumnDefault SparkSwapMinAmount = new("Spark Min Swap Amount",false);
         public static readonly ColumnDefault SparkSwapMaxAmount = new("Spark Max Swap Amount",false);
-        public static readonly ColumnDefault MaxSwapsInFlight = new("Max Swaps In Flight",false);
+        public static readonly ColumnDefault LoopMaxSwapsInFlight = new("Loop Max Swaps In Flight",false);
+        public static readonly ColumnDefault FortySwapMaxSwapsInFlight = new("40swap Max Swaps In Flight",false);
+        public static readonly ColumnDefault SparkMaxSwapsInFlight = new("Spark Max Swaps In Flight",false);
         public static readonly ColumnDefault MaxSwapFeeRatio = new("Max Swap Fee Ratio",false);
         public static readonly ColumnDefault MinimumBalanceThreshold = new("Minimum Balance Threshold",false);
         public static readonly ColumnDefault SwapBudget = new("Swap Budget",false);

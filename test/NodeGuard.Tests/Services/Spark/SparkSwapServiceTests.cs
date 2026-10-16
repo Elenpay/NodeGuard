@@ -249,7 +249,7 @@ public class SparkSwapServiceTests
     public async Task Create_APaidSwapWaitingInTheWallet_IsNotInFlight()
     {
         InvoiceIssued();
-        _node.MaxSwapsInFlight = 1;
+        _node.SparkMaxSwapsInFlight = 1;
         _swapOuts.GetAllPending().Returns(new List<SwapOut> { Pending(lightningFee: 12, leafIds: "l1", address: null) });
         Balance(available: 0);
 
@@ -374,7 +374,7 @@ public class SparkSwapServiceTests
     [InlineData(2, 2)]
     public async Task Create_AtTheNodesMaxSwapsInFlight_IsRefused(int maxSwapsInFlight, int inFlight)
     {
-        _node.MaxSwapsInFlight = maxSwapsInFlight;
+        _node.SparkMaxSwapsInFlight = maxSwapsInFlight;
         // Swaps being paid: a paid one waits in the wallet and is no longer in flight
         var pending = Enumerable.Range(10, inFlight).Select(id => Pending(id: id, lightningFee: null)).ToList();
         pending.Add(new SwapOut { Id = 30, NodeId = 2, Provider = SwapProvider.Spark, Status = SwapOutStatus.Pending });
@@ -390,7 +390,7 @@ public class SparkSwapServiceTests
     [Fact]
     public async Task Create_BelowTheNodesMaxSwapsInFlight_IsAllowed()
     {
-        _node.MaxSwapsInFlight = 2;
+        _node.SparkMaxSwapsInFlight = 2;
         _swapOuts.GetAllPending().Returns(new List<SwapOut> { Pending() });
         InvoiceIssued();
         NodePays(Payment.Types.PaymentStatus.Succeeded);
@@ -437,7 +437,7 @@ public class SparkSwapServiceTests
     public async Task Create_CountsWhatUnpaidSwapsWillBringIn_AgainstTheCap()
     {
         // 9M held + an unpaid 0.6M swap of the wallet still to come + 0.5M > the wallet's 10M max balance
-        _node.MaxSwapsInFlight = 2;
+        _node.SparkMaxSwapsInFlight = 2;
         _spark.GetBalanceAsync(W, Arg.Any<CancellationToken>())
             .Returns(new WalletBalance(new SatsBalance(9_000_000, 9_000_000, 0), [], []));
         var unpaid = Pending(lightningFee: null);

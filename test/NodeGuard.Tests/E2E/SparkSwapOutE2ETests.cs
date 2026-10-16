@@ -56,7 +56,7 @@ public sealed class SparkE2EFactAttribute : FactAttribute
 /// A Spark swap-out through NodeGuard's gRPC API against the local Spark network (docker/spark):
 /// <list type="number">
 /// <item>a Spark wallet is created over gRPC, with a max balance two swaps fill, and made alice's Spark wallet, with
-/// Max swaps in flight 2 and a Spark min swap no third swap fits (node liquidity config, set in the database as the
+/// Spark max swaps in flight 2 and a Spark min swap no third swap fits (node liquidity config, set in the database as the
 /// Nodes page would);</item>
 /// <item>NodeGuard restarts, so the wallet's seed has to decrypt with the Data Protection key ring in Postgres;</item>
 /// <item>two swaps of different amounts start at once. For each, alice's LND pays an invoice of the Spark wallet,
@@ -314,7 +314,7 @@ public class SparkSwapOutE2ETests : E2ETestBase
     }
 
     /// <summary>
-    /// A node's Spark wallet, Max swaps in flight and Spark min swap are liquidity config, set on the Nodes page; there is
+    /// A node's Spark wallet, Spark max swaps in flight and Spark min swap are liquidity config, set on the Nodes page; there is
     /// no RPC for them
     /// </summary>
     private static async Task SetSparkConfigAsync(int nodeId, int sparkWalletId, int maxSwapsInFlight, long sparkMinSwapSats)
@@ -323,7 +323,7 @@ public class SparkSwapOutE2ETests : E2ETestBase
             "Host=localhost;Port=5432;Database=nodeguard;User ID=postgres;"));
         await connection.OpenAsync();
         await using var command = new NpgsqlCommand(
-            "UPDATE \"Nodes\" SET \"SparkWalletId\" = @wallet, \"MaxSwapsInFlight\" = @maxSwapsInFlight, " +
+            "UPDATE \"Nodes\" SET \"SparkWalletId\" = @wallet, \"SparkMaxSwapsInFlight\" = @maxSwapsInFlight, " +
             "\"SparkSwapMinAmountSats\" = @sparkMinSwap WHERE \"Id\" = @node", connection);
         command.Parameters.AddWithValue("wallet", sparkWalletId);
         command.Parameters.AddWithValue("maxSwapsInFlight", maxSwapsInFlight);

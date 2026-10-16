@@ -22,18 +22,22 @@ using NodeGuard.Services.Spark;
 
 namespace NodeGuard.Services;
 
-/// <summary>The smallest and largest swap-out a node makes through a provider.</summary>
-public readonly record struct SwapAmountLimits(long MinSats, long MaxSats)
+/// <summary>
+/// The smallest and largest swap-out a node makes through a provider, and how many of them it runs at once: one
+/// provider may run serialized while another runs in parallel.
+/// </summary>
+public readonly record struct SwapProviderLimits(long MinSats, long MaxSats, int MaxInFlight)
 {
     /// <summary>
     /// <paramref name="node"/>'s limits for <paramref name="provider"/>: Loop's and 40swap's are the node's own;
-    /// Spark's are the node's own, else SPARK_SWAP_MIN_SATS / SPARK_SWAP_MAX_SATS.
+    /// Spark's are the node's own, its sizes else SPARK_SWAP_MIN_SATS / SPARK_SWAP_MAX_SATS.
     /// </summary>
-    public static SwapAmountLimits For(Node node, SwapProvider provider, SparkSettings spark) => provider switch
+    public static SwapProviderLimits For(Node node, SwapProvider provider, SparkSettings spark) => provider switch
     {
-        SwapProvider.Loop => new(node.LoopSwapMinAmountSats, node.LoopSwapMaxAmountSats),
-        SwapProvider.FortySwap => new(node.FortySwapMinAmountSats, node.FortySwapMaxAmountSats),
-        SwapProvider.Spark => new(node.SparkSwapMinAmountSats ?? spark.SwapMinSats, node.SparkSwapMaxAmountSats ?? spark.SwapMaxSats),
+        SwapProvider.Loop => new(node.LoopSwapMinAmountSats, node.LoopSwapMaxAmountSats, node.LoopMaxSwapsInFlight),
+        SwapProvider.FortySwap => new(node.FortySwapMinAmountSats, node.FortySwapMaxAmountSats, node.FortySwapMaxSwapsInFlight),
+        SwapProvider.Spark => new(node.SparkSwapMinAmountSats ?? spark.SwapMinSats, node.SparkSwapMaxAmountSats ?? spark.SwapMaxSats,
+            node.SparkMaxSwapsInFlight),
         _ => throw new ArgumentOutOfRangeException(nameof(provider), provider, "Unknown swap provider")
     };
 }

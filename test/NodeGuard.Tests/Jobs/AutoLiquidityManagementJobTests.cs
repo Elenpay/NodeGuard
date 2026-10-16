@@ -116,7 +116,9 @@ public class AutoLiquidityManagementJobTests
             FortySwapMaxAmountSats = maxSwapSats,
             SparkSwapMinAmountSats = minSwapSats,
             SparkSwapMaxAmountSats = maxSwapSats,
-            MaxSwapsInFlight = maxSwapsInFlight,
+            LoopMaxSwapsInFlight = maxSwapsInFlight,
+            FortySwapMaxSwapsInFlight = maxSwapsInFlight,
+            SparkMaxSwapsInFlight = maxSwapsInFlight,
             MaxSwapRoutingFeeRatio = maxSwapFeeRatio,
             MinimumBalanceThresholdSats = minBalanceThresholdSats,
             SwapBudgetSats = swapBudgetSats,
@@ -773,6 +775,46 @@ public class AutoLiquidityManagementJobTests
 
         result.Should().Be(ManageNodeLiquidityResult.ExcessBalanceBelowMinimum);
         _sparkWalletMock.Verify(x => x.GetBalanceAsync(It.IsAny<SparkWalletRef>(), It.IsAny<CancellationToken>()), Times.Never);
+        _swapsServiceMock.Verify(x => x.CreateSwapOutAsync(It.IsAny<Node>(), It.IsAny<SwapOut>(), It.IsAny<SwapOutRequest>(),
+            It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task ManageNodeLiquidity_AProviderAtItsMaxSwapsInFlight_IsLeftOut_AndAnotherSwaps()
+    {
+        // Loop runs one swap at a time and has one in flight; Spark runs up to five and has two
+        var (node, _) = ArrangeSwappableNode(loopWeight: 50, fortySwapWeight: 0, sparkWeight: 50);
+        node.LoopMaxSwapsInFlight = 1;
+        node.SparkMaxSwapsInFlight = 5;
+        _swapOutRepositoryMock.Setup(x => x.GetInFlightSwapsByNode(node.Id)).ReturnsAsync(new List<SwapOut>
+        {
+            new() { Id = 1, Provider = SwapProvider.Loop, Status = SwapOutStatus.Pending },
+            new() { Id = 2, Provider = SwapProvider.Spark, Status = SwapOutStatus.Pending },
+            new() { Id = 3, Provider = SwapProvider.Spark, Status = SwapOutStatus.Pending }
+        });
+
+        var result = await _autoLiquidityManagementJob.ManageNodeLiquidity(node, CancellationToken.None);
+
+        result.Should().Be(ManageNodeLiquidityResult.Success);
+        _swapsServiceMock.Verify(x => x.CreateSwapOutAsync(node, It.Is<SwapOut>(s => s.Provider == SwapProvider.Spark),
+            It.IsAny<SwapOutRequest>(), It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    [Fact]
+    public async Task ManageNodeLiquidity_WithEveryWeightedProviderAtItsMaxSwapsInFlight_SwapsNothing()
+    {
+        var (node, _) = ArrangeSwappableNode(loopWeight: 50, fortySwapWeight: 0, sparkWeight: 50);
+        node.LoopMaxSwapsInFlight = 1;
+        node.SparkMaxSwapsInFlight = 1;
+        _swapOutRepositoryMock.Setup(x => x.GetInFlightSwapsByNode(node.Id)).ReturnsAsync(new List<SwapOut>
+        {
+            new() { Id = 1, Provider = SwapProvider.Loop, Status = SwapOutStatus.Pending },
+            new() { Id = 2, Provider = SwapProvider.Spark, Status = SwapOutStatus.Pending }
+        });
+
+        var result = await _autoLiquidityManagementJob.ManageNodeLiquidity(node, CancellationToken.None);
+
+        result.Should().Be(ManageNodeLiquidityResult.MaxSwapsInFlightReached);
         _swapsServiceMock.Verify(x => x.CreateSwapOutAsync(It.IsAny<Node>(), It.IsAny<SwapOut>(), It.IsAny<SwapOutRequest>(),
             It.IsAny<CancellationToken>()), Times.Never);
     }
