@@ -59,25 +59,35 @@ public interface IWithdrawalRequestService
     /// <summary>
     /// Executes a hot-wallet request (fresh or bump): moves it to PSBTSignaturesPending, generates and persists the
     /// template PSBT, marks the request it replaces (if any) as Bumped and schedules <see cref="PerformWithdrawalJob"/>,
-    /// which signs and broadcasts. On failure the replaced request is put back to OnChainConfirmationPending and the
-    /// exception is rethrown; the caller decides what happens to the request itself.
+    /// which signs and broadcasts. On failure the request is failed and the request it replaced put back to
+    /// OnChainConfirmationPending in one transaction, then the exception is rethrown.
     /// </summary>
     /// <returns>The template PSBT; its global transaction hash is the txid that will be broadcast.</returns>
     Task<PSBT> ScheduleHotWalletWithdrawalAsync(int requestId);
 
     /// <summary>
     /// Marks the request replaced by <paramref name="replacement"/> as Bumped (fee bump) or Cancelled (RBF cancellation).
-    /// Cold-wallet flow: called when the last human signature lands and the withdrawal job is scheduled. No-op when the
-    /// request is not a replacement.
+    /// Cold-wallet flow: called when the last human signature lands, before the withdrawal job is scheduled. No-op when
+    /// the request is not a replacement or the replaced request is no longer pending confirmation.
     /// </summary>
     Task MarkOriginalAsReplacedAsync(WalletWithdrawalRequest replacement);
 
     /// <summary>
-    /// Puts the request replaced by <paramref name="replacement"/> back to OnChainConfirmationPending when the replacement
-    /// is abandoned (cancelled, rejected or failed) and the original had already been marked Bumped / Cancelled by it.
-    /// No-op otherwise.
+    /// Abandons <paramref name="request"/> with Failed, Cancelled or Rejected and, when it is a replacement that marked the
+    /// request it replaced Bumped / Cancelled, puts that one back to OnChainConfirmationPending in the same transaction:
+    /// a replacement is never left terminal next to an original nothing monitors. Refuses a request whose transaction
+    /// may be out: pending confirmation, settled, or carrying a txid. Returns whether the change was persisted; nothing
+    /// changes otherwise.
     /// </summary>
-    Task RevertOriginalAsync(WalletWithdrawalRequest replacement);
+    Task<bool> AbandonRequestAsync(WalletWithdrawalRequest request, WalletWithdrawalRequestStatus status, string? reason = null);
+
+    /// <summary>
+    /// RBF does not guarantee the replacement wins: a miner can still mine a transaction it replaced. When a request
+    /// <paramref name="replacement"/> replaced, directly or through earlier replacements, has a transaction with the
+    /// settlement confirmations, that request is settled and the replacement fails, together with every request between
+    /// them: all of them double-spend the mined transaction. Returns whether that happened.
+    /// </summary>
+    Task<bool> SettleMinedOriginalAsync(WalletWithdrawalRequest replacement);
 }
 
 public class WithdrawalRequestService : IWithdrawalRequestService
@@ -344,7 +354,7 @@ public class WithdrawalRequestService : IWithdrawalRequestService
         catch (Exception e)
         {
             _logger.LogError(e, "Error executing withdrawal request {RequestId}", request.Id);
-            await RevertOriginalAsync(request);
+            await AbandonRequestAsync(request, WalletWithdrawalRequestStatus.Failed);
             throw;
         }
     }
@@ -362,6 +372,14 @@ public class WithdrawalRequestService : IWithdrawalRequestService
             : WalletWithdrawalRequestStatus.Bumped;
         if (original.Status == targetStatus) return;
 
+        if (original.Status != WalletWithdrawalRequestStatus.OnChainConfirmationPending)
+        {
+            // E.g. the original was mined and settled while a cold-wallet replacement was collecting signatures.
+            _logger.LogWarning("Not marking withdrawal request {RequestId} as {TargetStatus}: it is {Status}",
+                originalId, targetStatus, original.Status);
+            return;
+        }
+
         original.Status = targetStatus;
         if (replacement.IsRbfCancellation)
         {
@@ -376,27 +394,126 @@ public class WithdrawalRequestService : IWithdrawalRequestService
         }
     }
 
-    public async Task RevertOriginalAsync(WalletWithdrawalRequest replacement)
+    public async Task<bool> AbandonRequestAsync(WalletWithdrawalRequest request, WalletWithdrawalRequestStatus status,
+        string? reason = null)
     {
-        if (replacement.BumpingWalletWithdrawalRequestId is not { } originalId) return;
+        if (status is not (WalletWithdrawalRequestStatus.Failed or WalletWithdrawalRequestStatus.Cancelled
+            or WalletWithdrawalRequestStatus.Rejected))
+        {
+            throw new ArgumentOutOfRangeException(nameof(status), status, "Only a terminal status abandons a request");
+        }
+
+        // The caller's copy may be stale (a page, a request created moments ago): the row decides whether a transaction is out.
+        var fresh = await _walletWithdrawalRequestRepository.GetById(request.Id);
+        if (fresh == null) return false;
+        if (fresh.Status is WalletWithdrawalRequestStatus.OnChainConfirmationPending or WalletWithdrawalRequestStatus.OnChainConfirmed
+            || !string.IsNullOrEmpty(fresh.TxId))
+        {
+            _logger.LogWarning("Not abandoning withdrawal request {RequestId} as {Status}: it is {CurrentStatus} with tx {TxId}",
+                request.Id, status, fresh.Status, fresh.TxId);
+            return false;
+        }
+
+        request.Status = status;
+        if (reason != null) request.RejectCancelDescription = reason;
+
+        var rows = new List<WalletWithdrawalRequest> { request };
+        var original = await OriginalMarkedByAsync(request);
+        if (original != null)
+        {
+            original.Status = WalletWithdrawalRequestStatus.OnChainConfirmationPending;
+            original.RejectCancelDescription = null;
+            rows.Add(original);
+        }
+
+        var (updated, error) = _walletWithdrawalRequestRepository.UpdateRange(rows);
+        if (!updated)
+        {
+            _logger.LogError("Could not abandon withdrawal request {RequestId} as {Status}{Revert}: {Error}",
+                request.Id, status, original == null ? "" : $" and revert request {original.Id}", error);
+        }
+
+        return updated;
+    }
+
+    /// <summary>The request <paramref name="replacement"/> replaced, if it is marked Bumped / Cancelled by that replacement.</summary>
+    private async Task<WalletWithdrawalRequest?> OriginalMarkedByAsync(WalletWithdrawalRequest replacement)
+    {
+        if (replacement.BumpingWalletWithdrawalRequestId is not { } originalId) return null;
 
         var original = await _walletWithdrawalRequestRepository.GetById(originalId);
-        if (original == null) return;
+        if (original == null) return null;
 
         var markedByThisReplacement = original.Status == WalletWithdrawalRequestStatus.Bumped
                                       || (replacement.IsRbfCancellation
                                           && original.Status == WalletWithdrawalRequestStatus.Cancelled
                                           && original.RejectCancelDescription == CancellationReason(replacement.Id));
-        if (!markedByThisReplacement) return;
+        return markedByThisReplacement ? original : null;
+    }
 
-        original.Status = WalletWithdrawalRequestStatus.OnChainConfirmationPending;
-        original.RejectCancelDescription = null;
-        var (updated, error) = _walletWithdrawalRequestRepository.Update(original);
-        if (!updated)
+    public async Task<bool> SettleMinedOriginalAsync(WalletWithdrawalRequest replacement)
+    {
+        // An unset TRANSACTION_CONFIRMATION_MINIMUM_BLOCKS is 0, and an unconfirmed original was never mined.
+        var minimumConfirmations = Math.Max(1, Constants.TRANSACTION_CONFIRMATION_MINIMUM_BLOCKS);
+        var visited = new HashSet<int> { replacement.Id };
+        // Requests between the mined one and the replacement double-spend it too, so they fail with it.
+        var replaced = new List<WalletWithdrawalRequest>();
+        var originalId = replacement.BumpingWalletWithdrawalRequestId;
+
+        while (originalId is { } id && visited.Add(id))
         {
-            _logger.LogError("Could not put withdrawal request {RequestId} back to OnChainConfirmationPending: {Error}",
-                originalId, error);
+            var original = await _walletWithdrawalRequestRepository.GetById(id);
+            if (original == null) return false;
+
+            if (!string.IsNullOrEmpty(original.TxId))
+            {
+                var originalTx = await _nbXplorerService.GetTransactionAsync(uint256.Parse(original.TxId));
+                if (originalTx != null && originalTx.Confirmations >= minimumConfirmations)
+                {
+                    return SettleOriginalAndFailReplacements(original, replaced, replacement);
+                }
+            }
+
+            replaced.Add(original);
+            originalId = original.BumpingWalletWithdrawalRequestId;
         }
+
+        return false;
+    }
+
+    /// <summary>
+    /// The replacement is failed last: while it is still pending, the monitor retries the whole chain on its next run.
+    /// </summary>
+    private bool SettleOriginalAndFailReplacements(WalletWithdrawalRequest original,
+        List<WalletWithdrawalRequest> replaced, WalletWithdrawalRequest replacement)
+    {
+        original.Status = WalletWithdrawalRequestStatus.OnChainConfirmed;
+        original.RejectCancelDescription = null;
+        var (originalUpdated, originalUpdateError) = _walletWithdrawalRequestRepository.Update(original);
+        if (!originalUpdated)
+        {
+            _logger.LogError("Could not settle withdrawal request {RequestId}, mined instead of its replacement {ReplacementId}: {Error}",
+                original.Id, replacement.Id, originalUpdateError);
+            return false;
+        }
+
+        foreach (var loser in replaced.Append(replacement))
+        {
+            loser.Status = WalletWithdrawalRequestStatus.Failed;
+            loser.RejectCancelDescription = $"Withdrawal request {original.Id} was mined instead (tx {original.TxId})";
+            var (updated, error) = _walletWithdrawalRequestRepository.Update(loser);
+            if (!updated)
+            {
+                // Settling the original again on the retry is harmless.
+                _logger.LogError("Could not mark withdrawal request {RequestId} as failed after {OriginalId} was mined instead: {Error}",
+                    loser.Id, original.Id, error);
+                return false;
+            }
+        }
+
+        _logger.LogInformation("Withdrawal request {RequestId} was mined instead of its replacement {ReplacementId}",
+            original.Id, replacement.Id);
+        return true;
     }
 
     private async Task<decimal> ResolveFeeRateAsync(MempoolRecommendedFeesType feeType, decimal? customFeeRate)

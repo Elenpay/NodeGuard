@@ -36,13 +36,16 @@ public class PerformWithdrawalJob : IJob
     private readonly ILogger<PerformWithdrawalJob> _logger;
     private readonly IBitcoinService _bitcoinService;
     private readonly IWalletWithdrawalRequestRepository _walletWithdrawalRequestRepository;
+    private readonly IWithdrawalRequestService _withdrawalRequestService;
 
 
-    public PerformWithdrawalJob(ILogger<PerformWithdrawalJob> logger, IBitcoinService bitcoinService, IWalletWithdrawalRequestRepository walletWithdrawalRequestRepository)
+    public PerformWithdrawalJob(ILogger<PerformWithdrawalJob> logger, IBitcoinService bitcoinService,
+        IWalletWithdrawalRequestRepository walletWithdrawalRequestRepository, IWithdrawalRequestService withdrawalRequestService)
     {
         _logger = logger;
         _bitcoinService = bitcoinService;
         _walletWithdrawalRequestRepository = walletWithdrawalRequestRepository;
+        _withdrawalRequestService = withdrawalRequestService;
     }
 
     public async Task Execute(IJobExecutionContext context)
@@ -58,34 +61,19 @@ public class PerformWithdrawalJob : IJob
         catch (Exception e)
         {
             var request = await _walletWithdrawalRequestRepository.GetById(withdrawalRequestId);
-
-            // If an error occurs and the wd was bumping another one, we need to update the status of the withdrawal request to previous status
-            if (request != null && request!.BumpingWalletWithdrawalRequestId.HasValue)
+            if (request != null && !string.IsNullOrEmpty(request.TxId))
             {
-                var bumped = await _walletWithdrawalRequestRepository.GetById(request.BumpingWalletWithdrawalRequestId.Value);
-                if (bumped == null)
-                {
-                    _logger.LogError("Failed to find withdrawal request with ID {WithdrawalRequestId}", withdrawalRequestId);
-                    return;
-                }
-
-                bumped.Status = WalletWithdrawalRequestStatus.OnChainConfirmationPending;
-                var (ok, _) = _walletWithdrawalRequestRepository.Update(bumped);
-                if (!ok)
-                {
-                    _logger.LogError("Failed to update withdrawal request status to OnChainConfirmationPending for ID {WithdrawalRequestId}", withdrawalRequestId);
-                }
-                else
-                {
-                    _logger.LogInformation("Updated withdrawal request status to OnChainConfirmationPending for ID {WithdrawalRequestId}", withdrawalRequestId);
-                }
+                // The txid is recorded before the broadcast, so the transaction may be out: nothing to undo here.
+                _logger.LogCritical("Withdrawal request {RequestId} failed with its transaction {TxId} possibly broadcast: check the node and set it pending confirmation by hand",
+                    request.Id, request.TxId);
             }
-
-            request!.Status = WalletWithdrawalRequestStatus.Failed;
-            var (updated, _) = _walletWithdrawalRequestRepository.Update(request);
-            if (!updated)
+            else if (request != null)
             {
-                _logger.LogError("Failed to update withdrawal request status to failed");
+                // Failing the request and reverting what it replaced is one write: it lands whole or leaves the request as it is.
+                if (!await _withdrawalRequestService.AbandonRequestAsync(request, WalletWithdrawalRequestStatus.Failed))
+                {
+                    _logger.LogError("Could not fail withdrawal request {RequestId}", request.Id);
+                }
             }
 
             _logger.LogError(e, "Error on {JobName}", nameof(PerformWithdrawalJob));

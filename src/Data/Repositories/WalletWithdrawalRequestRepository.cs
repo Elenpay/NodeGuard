@@ -83,15 +83,39 @@ namespace NodeGuard.Data.Repositories
             await using var applicationDbContext = await _dbContextFactory.CreateDbContextAsync();
 
             // RBF replacements inherit the reference id of the request they replace, so a reference id can match a whole
-            // chain of requests. Only the latest one of each chain reflects the current status of the withdrawal.
+            // chain of requests. The latest one reflects the current status of the withdrawal, unless a request it
+            // replaced was mined instead: that one is the payment that happened.
             var requests = await applicationDbContext.WalletWithdrawalRequests
                 .Where(wr => !string.IsNullOrEmpty(wr.ReferenceId) && referenceIds.Contains(wr.ReferenceId))
                 .ToListAsync();
 
             return requests
                 .GroupBy(wr => wr.ReferenceId!)
-                .Select(g => g.OrderByDescending(wr => wr.Id).First())
+                .Select(g => SettledInChainOrLatest(g.ToList()))
                 .ToList();
+        }
+
+        /// <summary>
+        /// Walks back from the latest request through the requests it replaced, and returns the settled one if any.
+        /// Only that chain: reference ids are not unique, so an unrelated earlier withdrawal must not stand in for it.
+        /// </summary>
+        private static WalletWithdrawalRequest SettledInChainOrLatest(List<WalletWithdrawalRequest> sameReference)
+        {
+            var byId = sameReference.ToDictionary(wr => wr.Id);
+            var latest = sameReference.MaxBy(wr => wr.Id)!;
+
+            var request = latest;
+            while (request != null)
+            {
+                if (request.Status == WalletWithdrawalRequestStatus.OnChainConfirmed) return request;
+
+                // A replacement is always newer than what it replaces, so ids only go down and the walk ends.
+                request = request.BumpingWalletWithdrawalRequestId is { } replacedId && replacedId < request.Id
+                    ? byId.GetValueOrDefault(replacedId)
+                    : null;
+            }
+
+            return latest;
         }
 
         public async Task<WalletWithdrawalRequest?> GetByTxHash(string txHash)
@@ -304,6 +328,19 @@ namespace NodeGuard.Data.Repositories
             var strippedType = _mapper.Map<WalletWithdrawalRequest, WalletWithdrawalRequest>(type);
 
             return _repository.Update(strippedType, applicationDbContext);
+        }
+
+        public (bool, string?) UpdateRange(List<WalletWithdrawalRequest> requests)
+        {
+            using var applicationDbContext = _dbContextFactory.CreateDbContext();
+
+            var strippedRequests = requests.Select(request =>
+            {
+                request.SetUpdateDatetime();
+                return _mapper.Map<WalletWithdrawalRequest, WalletWithdrawalRequest>(request);
+            }).ToList();
+
+            return _repository.UpdateRange(strippedRequests, applicationDbContext);
         }
 
         public async Task<(bool, string?)> AddUTXOs(IBitcoinRequest type, List<FMUTXO> utxos)

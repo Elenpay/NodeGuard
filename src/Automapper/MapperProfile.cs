@@ -58,6 +58,7 @@ namespace NodeGuard.Automapper
 
             CreateMap<WalletWithdrawalRequest, WalletWithdrawalRequest>()
                 .ForMember(x => x.Wallet, opt => opt.Ignore())
+                .ForMember(x => x.BumpingWalletWithdrawalRequest, opt => opt.Ignore())
                 .ForMember(x => x.WalletWithdrawalRequestPSBTs, opt => opt.Ignore())
                 .ForMember(x => x.UserRequestor, opt => opt.Ignore())
                 .ForMember(x => x.UTXOs, opt => opt.Ignore());

@@ -1072,11 +1072,9 @@
                             _selectedRequest = await WalletWithdrawalRequestRepository.GetById(_selectedRequest.Id);
                             if (_selectedRequest != null)
                             {
+                                // Mark the replaced request before the job runs, so a failed broadcast's revert has the last word.
+                                await WithdrawalRequestService.MarkOriginalAsReplacedAsync(_selectedRequest);
                                 await CreateJob();
-                                if (_selectedRequest?.BumpingWalletWithdrawalRequestId != null)
-                                {
-                                    await WithdrawalRequestService.MarkOriginalAsReplacedAsync(_selectedRequest);
-                                }
                             }
                         }
                         catch (Exception ex)
@@ -1170,14 +1168,13 @@
         if ((_rejectCancelStatus == WalletWithdrawalRequestStatus.Cancelled || _rejectCancelStatus == WalletWithdrawalRequestStatus.Rejected)
             && _selectedRequest != null)
         {
-            _selectedRequest.RejectCancelDescription = _rejectCancelModalRef.Reason;
-            _selectedRequest.Status = (WalletWithdrawalRequestStatus) _rejectCancelStatus;
-
-            var updateResult = WalletWithdrawalRequestRepository.Update(_selectedRequest);
-            if (!updateResult.Item1)
+            // Abandoning a replacement also gives the request it replaced its pending status back, in the same write.
+            var abandoned = await WithdrawalRequestService.AbandonRequestAsync(_selectedRequest,
+                (WalletWithdrawalRequestStatus) _rejectCancelStatus, _rejectCancelModalRef.Reason);
+            if (!abandoned)
             {
-                Logger.LogError("Error while updating the withdrawal request status to cancelled/rejected: {Error}", updateResult.Item2);
-                var message = updateResult.Item2 ?? "Something went wrong";
+                Logger.LogError("Error while updating the withdrawal request status to cancelled/rejected");
+                const string message = "Something went wrong";
                 ToastService.ShowError(message);
                 var failureAction = _rejectCancelStatus == WalletWithdrawalRequestStatus.Cancelled ? AuditActionType.Cancel : AuditActionType.Reject;
                 await LogWithdrawalAuditAsync(failureAction, AuditEventType.Failure, _selectedRequest, message);
@@ -1188,9 +1185,6 @@
                 var successMessage = successAction == AuditActionType.Cancel ? "Withdrawal request cancelled." : "Withdrawal request rejected.";
                 await LogWithdrawalAuditAsync(successAction, AuditEventType.Success, _selectedRequest, successMessage);
             }
-
-            // In case that is a bump, we return the old request status to pending confirmation.
-            await WithdrawalRequestService.RevertOriginalAsync(_selectedRequest);
 
             await HideRejectCancelModal();
         }
@@ -1297,8 +1291,7 @@
         async Task CleanUp(string errorMessage)
         {
             ToastService.ShowError(errorMessage);
-            _selectedRequest.Status = WalletWithdrawalRequestStatus.Failed;
-            WalletWithdrawalRequestRepository.Update(_selectedRequest);
+            await WithdrawalRequestService.AbandonRequestAsync(_selectedRequest, WalletWithdrawalRequestStatus.Failed);
             await LogWithdrawalAuditAsync(AuditActionType.Create, AuditEventType.Failure, _selectedRequest, errorMessage);
             await _confirmationModal.CloseModal();
             await GetData();
@@ -1379,17 +1372,13 @@
             var job = SimpleJob.Create<PerformWithdrawalJob>(map, _selectedRequest.Id.ToString());
             await scheduler.ScheduleJob(job.Job, job.Trigger);
 
-            if (_selectedRequest != null)
-            {
-                WalletWithdrawalRequestRepository.Update(_selectedRequest);
-            }
             await LogWithdrawalAuditAsync(AuditActionType.Approve, AuditEventType.Success, _selectedRequest, "Withdrawal job scheduled.");
         }
         catch (Exception ex)
         {
             ToastService.ShowError("Error while requesting a withdrawal, please contact a superadmin for troubleshooting");
-            _selectedRequest.Status = WalletWithdrawalRequestStatus.Failed;
-            WalletWithdrawalRequestRepository.Update(_selectedRequest);
+            // Failing a replacement also gives the request it replaced its pending status back, in the same write.
+            await WithdrawalRequestService.AbandonRequestAsync(_selectedRequest, WalletWithdrawalRequestStatus.Failed);
             var message = string.IsNullOrWhiteSpace(ex.Message) ? "Failed to schedule withdrawal job." : ex.Message;
             await LogWithdrawalAuditAsync(AuditActionType.Approve, AuditEventType.Failure, _selectedRequest, message);
             await _confirmationModal.CloseModal();

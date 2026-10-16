@@ -55,6 +55,9 @@ public interface IWalletWithdrawalRequestRepository : IBitcoinRequestRepository
 
     (bool, string?) Update(WalletWithdrawalRequest type);
 
+    /// <summary>Updates several requests in one transaction: all of them change or none does.</summary>
+    (bool, string?) UpdateRange(List<WalletWithdrawalRequest> requests);
+
     Task<List<WalletWithdrawalRequest>> GetPendingRequests();
 
     Task<List<WalletWithdrawalRequest>> GetOnChainPendingWithdrawals();

@@ -34,15 +34,18 @@ public class MonitorWithdrawalsJob : IJob
     private readonly ILogger<MonitorWithdrawalsJob> _logger;
     private readonly IWalletWithdrawalRequestRepository _walletWithdrawalRequestRepository;
     private readonly INBXplorerService _nbXplorerService;
+    private readonly IWithdrawalRequestService _withdrawalRequestService;
 
     public MonitorWithdrawalsJob(ILogger<MonitorWithdrawalsJob> logger,
         IWalletWithdrawalRequestRepository walletWithdrawalRequestRepository,
-        INBXplorerService nbXplorerService
+        INBXplorerService nbXplorerService,
+        IWithdrawalRequestService withdrawalRequestService
     )
     {
         _logger = logger;
         _walletWithdrawalRequestRepository = walletWithdrawalRequestRepository;
         _nbXplorerService = nbXplorerService;
+        _withdrawalRequestService = withdrawalRequestService;
     }
 
     public async Task Execute(IJobExecutionContext context)
@@ -57,10 +60,10 @@ public class MonitorWithdrawalsJob : IJob
                 try
                 {
                     //Let's check if the minimum amount of confirmations are established
-                
+
                     var getTxResult = await _nbXplorerService.GetTransactionAsync(uint256.Parse(walletWithdrawalRequest.TxId), default);
 
-                    if (getTxResult.Confirmations >= Constants.TRANSACTION_CONFIRMATION_MINIMUM_BLOCKS)
+                    if (getTxResult != null && getTxResult.Confirmations >= Constants.TRANSACTION_CONFIRMATION_MINIMUM_BLOCKS)
                     {
                         walletWithdrawalRequest.Status = WalletWithdrawalRequestStatus.OnChainConfirmed;
 
@@ -79,12 +82,16 @@ public class MonitorWithdrawalsJob : IJob
                                 walletWithdrawalRequest.Id, walletWithdrawalRequest.Status);
                         }
                     }
+                    else if (walletWithdrawalRequest.BumpingWalletWithdrawalRequestId != null && (getTxResult?.Confirmations ?? 0) == 0)
+                    {
+                        // An RBF replacement can lose the race, even vanish: the transaction it replaced may be mined instead.
+                        await _withdrawalRequestService.SettleMinedOriginalAsync(walletWithdrawalRequest);
+                    }
                 }
                 catch (Exception e)
                 {
+                    // One request must not stop the rest of the batch.
                     _logger.LogError(e, "Error while monitoring TxId: {TxId}", walletWithdrawalRequest.TxId);
-
-                    throw new JobExecutionException(e, false);
                 }
             }
         }

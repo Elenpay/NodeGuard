@@ -751,10 +751,13 @@ public class BitcoinServiceTests
         return PSBT.FromTransaction(transaction, network).ToBase64();
     }
 
-    [Fact]
-    async Task PerformWithdrawal_SingleSigSucceeds()
+    /// <summary>
+    /// A hot single-sig request whose template is a real spendable transaction, with the mocks PerformWithdrawal needs
+    /// to sign and broadcast it. Tests adjust the mocks for their scenario.
+    /// </summary>
+    private (BitcoinService Service, Mock<IWalletWithdrawalRequestRepository> Requests, Mock<INBXplorerService> NbXplorer,
+        WalletWithdrawalRequest Request, uint256 ApprovedTxId) SingleSigWithdrawalReadyToBroadcast()
     {
-        // Arrange
         var wallet = CreateWallet.SingleSig(_internalWallet);
 
         // Built rather than hardcoded. The previous literal spent a NULL outpoint (32 zero bytes with index
@@ -843,6 +846,29 @@ public class BitcoinServiceTests
             .Returns(Task.FromResult(new List<Node>() { node }));
         var bitcoinService = new BitcoinService(_logger, null, walletWithdrawalRequestRepository.Object, null, nodeRepository.Object, null, nbXplorerService.Object, null);
 
+        return (bitcoinService, walletWithdrawalRequestRepository, nbXplorerService, withdrawalRequest, approvedTxId);
+    }
+
+    /// <summary>Every status and txid written, in order, plus the broadcast; the request instance is reused across writes.</summary>
+    private static List<string> RecordWrites(Mock<IWalletWithdrawalRequestRepository> requests, Mock<INBXplorerService> nbXplorer,
+        bool broadcastSucceeds = true)
+    {
+        var events = new List<string>();
+        requests.Setup(w => w.Update(It.IsAny<WalletWithdrawalRequest>()))
+            .Callback<WalletWithdrawalRequest>(r => events.Add($"update:{r.Status}:{r.TxId ?? "-"}"))
+            .Returns((true, null));
+        nbXplorer.Setup(x => x.BroadcastAsync(It.IsAny<Transaction>(), default, default))
+            .Callback(() => events.Add("broadcast"))
+            .ReturnsAsync(new BroadcastResult { Success = broadcastSucceeds });
+        return events;
+    }
+
+    [Fact]
+    async Task PerformWithdrawal_SingleSigSucceeds()
+    {
+        // Arrange
+        var (bitcoinService, _, nbXplorerService, withdrawalRequest, approvedTxId) = SingleSigWithdrawalReadyToBroadcast();
+
         // Act
         var act = () => bitcoinService.PerformWithdrawal(withdrawalRequest);
 
@@ -852,6 +878,77 @@ public class BitcoinServiceTests
         // The transaction reaching the network must be the one that was approved.
         nbXplorerService.Verify(x => x.BroadcastAsync(
             It.Is<Transaction>(tx => tx.GetHash() == approvedTxId), default, default), Times.Once);
+    }
+
+    /// <summary>
+    /// The txid is durable before the irreversible step. A failure after it, or a crash, leaves a row that says the
+    /// transaction may be out; nothing can mistake it for a failed withdrawal.
+    /// </summary>
+    [Fact]
+    public async Task PerformWithdrawal_RecordsTheTxIdBeforeBroadcasting()
+    {
+        var (bitcoinService, requests, nbXplorerService, withdrawalRequest, approvedTxId) = SingleSigWithdrawalReadyToBroadcast();
+        var events = RecordWrites(requests, nbXplorerService);
+
+        await bitcoinService.PerformWithdrawal(withdrawalRequest);
+
+        events.Should().Equal(
+            $"update:{WalletWithdrawalRequestStatus.FinalizingPSBT}:-",
+            $"update:{WalletWithdrawalRequestStatus.FinalizingPSBT}:{approvedTxId}",
+            "broadcast",
+            $"update:{WalletWithdrawalRequestStatus.OnChainConfirmationPending}:{approvedTxId}");
+    }
+
+    [Fact]
+    public async Task PerformWithdrawal_TxIdCannotBeRecorded_DoesNotBroadcast()
+    {
+        var (bitcoinService, requests, nbXplorerService, withdrawalRequest, _) = SingleSigWithdrawalReadyToBroadcast();
+        requests.Setup(w => w.Update(It.Is<WalletWithdrawalRequest>(r => r.TxId != null))).Returns((false, "db down"));
+
+        var act = () => bitcoinService.PerformWithdrawal(withdrawalRequest);
+
+        await act.Should().ThrowAsync<Exception>();
+        nbXplorerService.Verify(x => x.BroadcastAsync(It.IsAny<Transaction>(), default, default), Times.Never,
+            "nothing may go out before its txid is durable");
+    }
+
+    [Fact]
+    public async Task PerformWithdrawal_BroadcastRejected_TakesTheTxIdBack()
+    {
+        var (bitcoinService, requests, nbXplorerService, withdrawalRequest, _) = SingleSigWithdrawalReadyToBroadcast();
+        var events = RecordWrites(requests, nbXplorerService, broadcastSucceeds: false);
+
+        var act = () => bitcoinService.PerformWithdrawal(withdrawalRequest);
+
+        await act.Should().ThrowAsync<Exception>();
+        events.Should().EndWith(new[] { "broadcast", $"update:{WalletWithdrawalRequestStatus.FinalizingPSBT}:-" },
+            "a rejected transaction is not out, so the job can fail the request right away");
+    }
+
+    [Fact]
+    public async Task PerformWithdrawal_PendingStateNotRecorded_IsNotAFailedWithdrawal()
+    {
+        var (bitcoinService, requests, _, withdrawalRequest, _) = SingleSigWithdrawalReadyToBroadcast();
+        requests.Setup(w => w.Update(It.Is<WalletWithdrawalRequest>(r => r.Status == WalletWithdrawalRequestStatus.OnChainConfirmationPending)))
+            .Returns((false, "db down"));
+
+        var act = () => bitcoinService.PerformWithdrawal(withdrawalRequest);
+
+        await act.Should().NotThrowAsync("the row already carries the txid for an operator to act on");
+    }
+
+    [Fact]
+    public async Task PerformWithdrawal_TrackingTheDestinationFails_IsNotAFailedWithdrawal()
+    {
+        var (bitcoinService, requests, nbXplorerService, withdrawalRequest, approvedTxId) = SingleSigWithdrawalReadyToBroadcast();
+        var events = RecordWrites(requests, nbXplorerService);
+        nbXplorerService.Setup(x => x.TrackAsync(It.IsAny<TrackedSource>(), It.IsAny<TrackWalletRequest>(), It.IsAny<CancellationToken>()))
+            .ThrowsAsync(new HttpRequestException("nbxplorer down"));
+
+        var act = () => bitcoinService.PerformWithdrawal(withdrawalRequest);
+
+        await act.Should().NotThrowAsync();
+        events.Should().EndWith($"update:{WalletWithdrawalRequestStatus.OnChainConfirmationPending}:{approvedTxId}");
     }
 
     /// <summary>
