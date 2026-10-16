@@ -1372,10 +1372,6 @@
             var job = SimpleJob.Create<PerformWithdrawalJob>(map, _selectedRequest.Id.ToString());
             await scheduler.ScheduleJob(job.Job, job.Trigger);
 
-            if (_selectedRequest != null)
-            {
-                WalletWithdrawalRequestRepository.Update(_selectedRequest);
-            }
             await LogWithdrawalAuditAsync(AuditActionType.Approve, AuditEventType.Success, _selectedRequest, "Withdrawal job scheduled.");
         }
         catch (Exception ex)
