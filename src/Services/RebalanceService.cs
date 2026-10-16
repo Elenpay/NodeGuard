@@ -211,7 +211,7 @@ public class RebalanceService : IRebalanceService
 
         _logger.LogInformation(
             "Executing rebalance {RebalanceId} attempt {Attempt}/{MaxAttempts} (node={NodeId} '{NodeName}', amount={AmountSats} sats, maxFeePct={MaxFeePct}, timeoutSeconds={TimeoutSeconds})",
-            rebalance.Id, rebalance.AttemptNumber, rebalance.MaxAttempts ?? Constants.SEND_PAYMENT_MAX_ATTEMPTS,
+            rebalance.Id, rebalance.AttemptNumber, rebalance.MaxAttempts ?? Constants.REBALANCE_MAX_ATTEMPTS,
             node.Id, node.Name, rebalance.SatsAmount, rebalance.MaxFeePct, rebalance.TimeoutSeconds);
 
         try
@@ -407,7 +407,7 @@ public class RebalanceService : IRebalanceService
     /// </summary>
     private static long ComputeAttemptAmountSats(Rebalance rebalance)
     {
-        var ratio = rebalance.AmountBackoffRatio ?? Constants.SEND_PAYMENT_AMOUNT_BACKOFF_RATIO;
+        var ratio = rebalance.AmountBackoffRatio ?? Constants.REBALANCE_AMOUNT_BACKOFF_RATIO;
         var scaled = (long)Math.Round(
             rebalance.RequestedAmountSats * Math.Pow(ratio, rebalance.AttemptNumber - 1),
             MidpointRounding.AwayFromZero);
@@ -424,9 +424,9 @@ public class RebalanceService : IRebalanceService
     /// </summary>
     private static long ComputeInvoiceExpirySeconds(Rebalance rebalance)
     {
-        var maxAttempts = Math.Max(1, rebalance.MaxAttempts ?? Constants.SEND_PAYMENT_MAX_ATTEMPTS);
-        var initialDelay = Constants.SEND_PAYMENT_INITIAL_RETRY_DELAY_SECONDS;
-        var multiplier = Constants.SEND_PAYMENT_RETRY_BACKOFF_MULTIPLIER;
+        var maxAttempts = Math.Max(1, rebalance.MaxAttempts ?? Constants.REBALANCE_MAX_ATTEMPTS);
+        var initialDelay = Constants.REBALANCE_INITIAL_RETRY_DELAY_SECONDS;
+        var multiplier = Constants.REBALANCE_RETRY_BACKOFF_MULTIPLIER;
 
         // Mirrors ScheduleRetryIfEligibleAsync: delay between attempt N and N+1 is
         // initialDelay * multiplier^(N-1). Sum across all retries we might schedule.
@@ -477,7 +477,7 @@ public class RebalanceService : IRebalanceService
             return;
         }
 
-        var maxAttempts = rebalance.MaxAttempts ?? Constants.SEND_PAYMENT_MAX_ATTEMPTS;
+        var maxAttempts = rebalance.MaxAttempts ?? Constants.REBALANCE_MAX_ATTEMPTS;
         if (rebalance.AttemptNumber >= maxAttempts)
         {
             _logger.LogInformation(
@@ -497,8 +497,8 @@ public class RebalanceService : IRebalanceService
         rebalance.Status = RebalanceStatus.Pending;
         _rebalanceRepository.Update(rebalance);
 
-        var delaySeconds = Constants.SEND_PAYMENT_INITIAL_RETRY_DELAY_SECONDS
-            * Math.Pow(Constants.SEND_PAYMENT_RETRY_BACKOFF_MULTIPLIER, nextAttempt - 2);
+        var delaySeconds = Constants.REBALANCE_INITIAL_RETRY_DELAY_SECONDS
+            * Math.Pow(Constants.REBALANCE_RETRY_BACKOFF_MULTIPLIER, nextAttempt - 2);
         var fireAt = DateTimeOffset.UtcNow.AddSeconds(delaySeconds);
 
         var scheduler = await _schedulerFactory.GetScheduler();

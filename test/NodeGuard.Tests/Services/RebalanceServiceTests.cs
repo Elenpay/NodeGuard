@@ -450,8 +450,8 @@ public class RebalanceServiceTests
         await service.RebalanceAsync(request);
 
         long expected = 60
-            + Constants.SEND_PAYMENT_INITIAL_RETRY_DELAY_SECONDS
-            + (long)(Constants.SEND_PAYMENT_INITIAL_RETRY_DELAY_SECONDS * Constants.SEND_PAYMENT_RETRY_BACKOFF_MULTIPLIER)
+            + Constants.REBALANCE_INITIAL_RETRY_DELAY_SECONDS
+            + (long)(Constants.REBALANCE_INITIAL_RETRY_DELAY_SECONDS * Constants.REBALANCE_RETRY_BACKOFF_MULTIPLIER)
             + 60;
         capturedExpiry.Should().Be(expected);
         capturedExpiry.Should().BeGreaterThan(60 + 60, "old TimeoutSeconds+60 expiry was demonstrably too short");
@@ -686,7 +686,7 @@ public class RebalanceServiceTests
             NodeId = node.Id,
             Node = node,
             Status = RebalanceStatus.Pending,
-            AttemptNumber = Constants.SEND_PAYMENT_MAX_ATTEMPTS,
+            AttemptNumber = Constants.REBALANCE_MAX_ATTEMPTS,
             RequestedAmountSats = 100_000,
             SatsAmount = 100_000,
             MaxFeePct = 0.05,
@@ -705,7 +705,7 @@ public class RebalanceServiceTests
         var result = await service.ExecuteAsync(existing.Id);
 
         result.Status.Should().Be(RebalanceStatus.NoRoute); // terminal, no escalation
-        result.AttemptNumber.Should().Be(Constants.SEND_PAYMENT_MAX_ATTEMPTS);
+        result.AttemptNumber.Should().Be(Constants.REBALANCE_MAX_ATTEMPTS);
         _scheduler.Verify(s => s.ScheduleJob(It.IsAny<IJobDetail>(), It.IsAny<ITrigger>(), It.IsAny<CancellationToken>()),
             Times.Never);
     }

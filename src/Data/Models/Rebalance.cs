@@ -143,13 +143,13 @@ public class Rebalance : Entity
     /// 1 = never shrink (every attempt retries the full requested amount); 0.8 = each retry is
     /// 20% smaller; 0.5 = halve each time. The amount for attempt n is
     /// RequestedAmountSats × ratio^(n-1), floored at <c>Constants.REBALANCE_MIN_AMOUNT_SATS</c>.
-    /// When null, the runtime falls back to <c>Constants.SEND_PAYMENT_AMOUNT_BACKOFF_RATIO</c>.
+    /// When null, the runtime falls back to <c>Constants.REBALANCE_AMOUNT_BACKOFF_RATIO</c>.
     /// </summary>
     public double? AmountBackoffRatio { get; set; }
 
     /// <summary>
     /// Maximum number of attempts (including the first try). When null, falls back to
-    /// <c>Constants.SEND_PAYMENT_MAX_ATTEMPTS</c>
+    /// <c>Constants.REBALANCE_MAX_ATTEMPTS</c>
     /// </summary>
     public int? MaxAttempts { get; set; }
 

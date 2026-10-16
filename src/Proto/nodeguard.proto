@@ -643,10 +643,10 @@ message RequestRebalanceRequest {
   // 1 = never shrink (every attempt retries the full amount); 0.8 = each retry is 20%
   // smaller; 0.5 = halve each time. The amount for attempt n is amount_sats * ratio^(n-1),
   // floored at REBALANCE_MIN_AMOUNT_SATS. If unset, falls back to
-  // Constants.SEND_PAYMENT_AMOUNT_BACKOFF_RATIO.
+  // Constants.REBALANCE_AMOUNT_BACKOFF_RATIO.
   optional double amount_backoff_ratio = 8;
   // Maximum number of attempts (including the first try). Must be >= 1.
-  // If unset, falls back to Constants.SEND_PAYMENT_MAX_ATTEMPTS
+  // If unset, falls back to Constants.REBALANCE_MAX_ATTEMPTS
   optional int32 max_attempts = 9;
 }
 
