@@ -55,14 +55,15 @@ public sealed class SparkE2EFactAttribute : FactAttribute
 /// <summary>
 /// A Spark swap-out through NodeGuard's gRPC API against the local Spark network (docker/spark):
 /// <list type="number">
-/// <item>a Spark wallet is created over gRPC, with a max balance two swaps fill, and made alice's Spark wallet, with
-/// Spark max swaps in flight 2 and a Spark min swap no third swap fits (node liquidity config, set in the database as the
+/// <item>a Spark wallet is created over gRPC, with a max balance five swaps fill, and made alice's Spark wallet, with
+/// Spark max swaps in flight 5 and a Spark min swap no sixth swap fits (node liquidity config, set in the database as the
 /// Nodes page would);</item>
 /// <item>NodeGuard restarts, so the wallet's seed has to decrypt with the Data Protection key ring in Postgres;</item>
-/// <item>two swaps of different amounts start at once. For each, alice's LND pays an invoice of the Spark wallet,
-/// MonitorSwapsJob follows the payment until it settles, and SparkSwapExitJob records the transfer that brought it
-/// in. With both paid the wallet is full: their leaves exit together, in one cooperative exit to one reserved
-/// address, and both complete once that payout confirms, each recording its share;</item>
+/// <item>five swaps of different amounts start at once, as many as alice's Spark max swaps in flight: all are
+/// accepted, and alice's LND pays their five invoices of the Spark wallet in parallel. MonitorSwapsJob follows each
+/// payment until it settles, and SparkSwapExitJob records the transfer that brought it in. With all paid the wallet
+/// is full: their leaves exit together, in one cooperative exit to one reserved address, and all complete once that
+/// payout confirms, each recording its share;</item>
 /// <item>the Spark wallet is empty again, and can't be archived while alice uses it.</item>
 /// </list>
 /// A second test ages a swap's leaves to their timelock floor before its exit, with the local operators' test RPC,
@@ -91,14 +92,14 @@ public class SparkSwapOutE2ETests : E2ETestBase
         var rpc = CreateBitcoindRpc();
         var alice = (await WaitForNodesAsync(client, headers)).Single(n => n.Name == "alice");
         var payoutWalletId = int.Parse(Env("E2E_SPARK_PAYOUT_WALLET_ID", "2"));
-        long[] amounts = [300_000, 200_000];
+        long[] amounts = [100_000, 120_000, 140_000, 160_000, 180_000];
 
-        // A Spark wallet for alice's swaps, two of which may run at once. The two fill it: 50,000 sats of room are left
-        // under its max balance, below alice's Spark min swap, so once both are paid they exit together
+        // A Spark wallet for alice's swaps, five of which may be paid at once. The five fill it: 50,000 sats of room
+        // are left under its max balance, below alice's Spark min swap, so once all are paid they exit together
         var sparkWallet = await client.CreateSparkWalletAsync(
-            new CreateSparkWalletRequest { Name = $"e2e transit {Guid.NewGuid():N}"[..20], MaxBalanceSats = 550_000 }, headers);
+            new CreateSparkWalletRequest { Name = $"e2e transit {Guid.NewGuid():N}"[..20], MaxBalanceSats = 750_000 }, headers);
         _output.WriteLine($"Spark wallet {sparkWallet.WalletId}: identity {sparkWallet.IdentityPublicKey}");
-        await SetSparkConfigAsync(alice.Id, sparkWallet.WalletId, maxSwapsInFlight: 2, sparkMinSwapSats: 100_000);
+        await SetSparkConfigAsync(alice.Id, sparkWallet.WalletId, maxSwapsInFlight: amounts.Length, sparkMinSwapSats: 100_000);
 
         // Its seed must still decrypt after a restart, with the key ring NodeGuard keeps in Postgres
         await RestartNodeGuardAsync();
@@ -113,12 +114,13 @@ public class SparkSwapOutE2ETests : E2ETestBase
             ReferenceId = $"spark-e2e-{Guid.NewGuid():N}"
         }).ToList();
 
-        // Both at once: alice pays both invoices into the same Spark wallet in parallel
+        // All at once, as many as alice's Spark max swaps in flight: each is accepted, and alice pays all five
+        // invoices into the same Spark wallet in parallel
         var started = await Task.WhenAll(requests.Select(request => StartSwapAsync(client, headers, request)));
         foreach (var swap in started)
         {
             _output.WriteLine($"swap {swap.SwapId}: {swap.Status}, provider id {swap.ProviderId}");
-            swap.Status.Should().Be(SWAP_OUT_STATUS.SwapOutPending, swap.Error ?? "alice's payment into Spark should have succeeded");
+            swap.Status.Should().Be(SWAP_OUT_STATUS.SwapOutPending, swap.Error ?? "each swap is within alice's Spark max swaps in flight");
             swap.DestinationAddress.Should().BeEmpty("a Spark swap reserves its address when it exits");
         }
 
@@ -132,7 +134,7 @@ public class SparkSwapOutE2ETests : E2ETestBase
                     client.GetSwapOutAsync(new GetSwapOutRequest { ReferenceId = request.ReferenceId }, headers).ResponseAsync));
             },
             swaps => swaps.All(s => s.Status != SWAP_OUT_STATUS.SwapOutPending),
-            attempts: 60, delay: TimeSpan.FromSeconds(10), what: "both swaps' completion");
+            attempts: 60, delay: TimeSpan.FromSeconds(10), what: "the swaps' completion");
 
         for (var i = 0; i < done.Length; i++)
         {
@@ -152,7 +154,7 @@ public class SparkSwapOutE2ETests : E2ETestBase
                 "the on-chain and service fees are everything the swap did not deliver");
         }
 
-        // One exit for both, to one address: together they delivered what landed there
+        // One exit for all five, to one address: together they delivered what landed there
         done.Select(s => s.TxId).Distinct().Should().ContainSingle("the full wallet's swaps exit together");
         done.Select(s => s.DestinationAddress).Distinct().Should().ContainSingle("a batch pays out to one address");
         var destination = BitcoinAddress.Create(done[0].DestinationAddress, Network.RegTest);
