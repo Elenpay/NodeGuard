@@ -172,6 +172,27 @@ namespace NodeGuard.Data.Repositories
          return _repository.Update(swap, context);
       }
 
+      public (bool, string?) UpdateRange(IReadOnlyCollection<SwapOut> swaps)
+      {
+         using var context = _dbContextFactory.CreateDbContext();
+
+         foreach (var swap in swaps)
+         {
+            swap.SetUpdateDatetime();
+         }
+
+         try
+         {
+            // One SaveChanges: one transaction
+            context.UpdateRange(swaps);
+            return (context.SaveChanges() > 0, null);
+         }
+         catch (Exception e)
+         {
+            return (false, e.Message);
+         }
+      }
+
       public async Task<List<SwapOut>> GetInFlightSwapsByNode(int nodeId)
       {
          await using var context = await _dbContextFactory.CreateDbContextAsync();
@@ -182,7 +203,8 @@ namespace NodeGuard.Data.Repositories
          var swaps = await context.SwapOuts
             .Where(s => s.NodeId == nodeId && 
                        s.Status == SwapOutStatus.Pending &&
-                       s.CreationDatetime >= twentyFourHoursAgo)
+                       s.CreationDatetime >= twentyFourHoursAgo &&
+                       !(s.Provider == SwapProvider.Spark && s.LightningFeeSats != null))
             .ToListAsync();
 
          return swaps;

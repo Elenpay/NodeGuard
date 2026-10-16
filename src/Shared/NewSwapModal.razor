@@ -523,7 +523,7 @@
     {
         var maxRoutingFee = new Money(_maxRoutingFeesPercent * _amountBtc / 100, MoneyUnit.BTC);
         var maxExitFee = new Money(SparkSettings.MaxExitFeeSats);
-        var maxSwapsInFlight = Math.Max(_selectedNode?.MaxSwapsInFlight ?? 0, 1);
+        var maxSwapsInFlight = Math.Max(_selectedNode?.SparkMaxSwapsInFlight ?? 0, 1);
 
         _confirmationModalBody = "You are about to create a new swap with the following details:<br><br>" +
             middleChunkMessage +
@@ -535,10 +535,11 @@
             "</ul><br>" +
             $"The node starts paying its Spark wallet ({SparkIdentityOf(_selectedNode!)}) as you confirm, and LND keeps " +
             $"trying routes for up to {SparkSettings.PaymentTimeoutFor(_selectedNode!)} minutes (the node's Spark payment timeout); " +
-            "the swap shows as pending on the Swaps page meanwhile. Once paid, the swap exits " +
-            $"on-chain to the destination wallet on its own, within about {SparkSettings.ExitIntervalOrDefault(Constants.IS_DEV_ENVIRONMENT)} minutes, " +
+            "the swap shows as pending on the Swaps page meanwhile. " +
+            "Once paid, the swap waits in the Spark wallet until the wallet is full (no room left for another swap under its max balance), " +
+            "then exits with the wallet's other paid swaps in one on-chain transaction to the destination wallet, sharing its fee, " +
             $"at exit speed {SparkSettings.ExitSpeedSummary}. " +
-            $"Up to {maxSwapsInFlight} Spark swaps of {_selectedNode?.Name} (its Max swaps in flight) run at once.<br><br>" +
+            $"Up to {maxSwapsInFlight} Spark swaps of {_selectedNode?.Name} (its Spark max swaps in flight) are paid at once.<br><br>" +
             "Please confirm that you want to proceed.";
 
         await _confirmationModal.ShowModal(new Dictionary<string, object>

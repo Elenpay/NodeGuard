@@ -69,9 +69,11 @@ public sealed record SparkWalletCreation(Wallet Wallet, string Mnemonic);
 /// <summary>A transfer into or out of a Spark wallet, as its Transactions tab shows it.</summary>
 /// <param name="IsSent">The wallet sent it (an exit, a withdrawal), rather than received it.</param>
 /// <param name="Type">What it was: "Lightning payment in", "Exit to on-chain", "Spark transfer", or the operators' type.</param>
-/// <param name="SwapId">The Spark swap it belongs to, if any: the one it paid in, or whose leaves it exited.</param>
+/// <param name="SwapIds">
+/// The Spark swaps it belongs to: the one it paid in, or those whose leaves it exited (a batch exits several at once).
+/// </param>
 public sealed record SparkWalletTransfer(string Id, DateTimeOffset Date, bool IsSent, string Type, long AmountSats, string Status,
-    int? SwapId);
+    IReadOnlyList<int> SwapIds);
 
 /// <summary>
 /// NodeGuard's Spark wallets: the Spark wallet rows (SPARK_SIGNER=wallet) or the remote signer's single wallet
@@ -524,7 +526,7 @@ public class SparkWalletService : ISparkWalletService, IAsyncDisposable
             {
                 var sent = string.Equals(t.SenderIdentityPublicKey, wallet.SparkIdentityPublicKey, StringComparison.OrdinalIgnoreCase);
                 return new SparkWalletTransfer(t.Id, t.CreatedAt, sent, TransferTypeLabel(t.Type), t.TotalValueSats, t.Status,
-                    SwapOf(t, sent, swaps)?.Id);
+                    SwapsOf(t, sent, swaps).Select(s => s.Id).ToList());
             })
             .ToList();
     }
@@ -539,17 +541,17 @@ public class SparkWalletService : ISparkWalletService, IAsyncDisposable
     };
 
     /// <summary>The swap a transfer belongs to: the one it paid in, or the one whose leaves it exited.</summary>
-    private static SwapOut? SwapOf(SparkTransfer transfer, bool sent, IReadOnlyList<SwapOut> swaps)
+    private static IEnumerable<SwapOut> SwapsOf(SparkTransfer transfer, bool sent, IReadOnlyList<SwapOut> swaps)
     {
         if (!sent)
         {
-            return swaps.FirstOrDefault(s => string.Equals(s.SparkTransferId, transfer.Id, StringComparison.OrdinalIgnoreCase));
+            return swaps.Where(s => string.Equals(s.SparkTransferId, transfer.Id, StringComparison.OrdinalIgnoreCase)).Take(1);
         }
 
         var leaves = transfer.Leaves.Select(l => l.Id).ToHashSet(StringComparer.OrdinalIgnoreCase);
         return leaves.Count == 0
-            ? null
-            : swaps.FirstOrDefault(s => (s.SparkLeafIds ?? string.Empty)
+            ? []
+            : swaps.Where(s => (s.SparkLeafIds ?? string.Empty)
                 .Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
                 .Any(leaves.Contains));
     }

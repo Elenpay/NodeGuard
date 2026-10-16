@@ -67,6 +67,15 @@ public sealed class SparkSettings
     public const int MaxPaymentTimeoutMinutes = 25;
     public const long DefaultMaxBalanceSats = 10_000_000;
 
+    /// <summary>A node's smallest Spark swap by default (SPARK_SWAP_MIN_SATS).</summary>
+    public const long DefaultSwapMinSats = 50_000;
+
+    /// <summary>A node's largest Spark swap by default (SPARK_SWAP_MAX_SATS).</summary>
+    public const long DefaultSwapMaxSats = 2_000_000;
+
+    /// <summary>The smallest Spark min swap a node may set: smaller swaps aren't worth their routing and exit fees.</summary>
+    public const long LowestSwapMinSats = 10_000;
+
     public static readonly SparkSettings Disabled = new();
 
     public bool Enabled { get; init; }
@@ -103,7 +112,7 @@ public sealed class SparkSettings
     /// <summary>The Spark identity the remote signer must serve (SPARK_IDENTITY_PUBKEY; remote signer only).</summary>
     public string? IdentityPublicKey { get; init; }
 
-    /// <summary>Highest fee accepted for the cooperative exit of a swap (SPARK_MAX_EXIT_FEE_SATS).</summary>
+    /// <summary>Highest fee accepted for a cooperative exit, of a batch of swaps (SPARK_MAX_EXIT_FEE_SATS).</summary>
     public long MaxExitFeeSats { get; init; } = DefaultMaxExitFeeSats;
 
     /// <summary>
@@ -154,6 +163,12 @@ public sealed class SparkSettings
     /// own: Spark balances are only meant to pass through.
     /// </summary>
     public long MaxBalanceSats { get; init; } = DefaultMaxBalanceSats;
+
+    /// <summary>A node's smallest Spark swap (SPARK_SWAP_MIN_SATS), unless the node has its own.</summary>
+    public long SwapMinSats { get; init; } = DefaultSwapMinSats;
+
+    /// <summary>A node's largest Spark swap (SPARK_SWAP_MAX_SATS), unless the node has its own.</summary>
+    public long SwapMaxSats { get; init; } = DefaultSwapMaxSats;
 
     /// <summary>The remote signer's Function URL (REMOTE_SIGNER_ENDPOINT), signed with SigV4.</summary>
     public Uri? SignerEndpoint { get; init; }
@@ -324,6 +339,21 @@ public sealed class SparkSettings
             errors.Add("SPARK_MAX_BALANCE_SATS must be a positive number of sats");
         }
 
+        var largestSwap = (long)(Constants.MAXIMUM_SWAP_OUT_SIZE_BTC * 100_000_000m);
+        var swapMin = DefaultSwapMinSats;
+        if (env("SPARK_SWAP_MIN_SATS") is { Length: > 0 } swapMinValue &&
+            (!long.TryParse(swapMinValue, out swapMin) || swapMin < LowestSwapMinSats))
+        {
+            errors.Add($"SPARK_SWAP_MIN_SATS must be a number of sats of at least {LowestSwapMinSats}");
+        }
+
+        var swapMax = DefaultSwapMaxSats;
+        if (env("SPARK_SWAP_MAX_SATS") is { Length: > 0 } swapMaxValue &&
+            (!long.TryParse(swapMaxValue, out swapMax) || swapMax < swapMin || swapMax > largestSwap))
+        {
+            errors.Add($"SPARK_SWAP_MAX_SATS must be a number of sats from SPARK_SWAP_MIN_SATS to {largestSwap} (MAXIMUM_SWAP_OUT_SIZE_BTC)");
+        }
+
         Uri? endpoint = null;
         Uri? rieUrl = null;
         if (mode == SparkSignerMode.Remote)
@@ -364,6 +394,8 @@ public sealed class SparkSettings
             PaymentTimeoutMinutes = paymentTimeout,
             ExitSpeed = exitSpeed,
             MaxBalanceSats = maxBalance,
+            SwapMinSats = swapMin,
+            SwapMaxSats = swapMax,
             SignerEndpoint = endpoint,
             SignerRieUrl = rieUrl
         };
