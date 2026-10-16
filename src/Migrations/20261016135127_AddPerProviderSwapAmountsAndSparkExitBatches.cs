@@ -27,20 +27,6 @@ namespace NodeGuard.Migrations
                 type: "timestamp with time zone",
                 nullable: true);
 
-            migrationBuilder.AddColumn<DateTimeOffset>(
-                name: "SparkInvoiceExpiresAt",
-                table: "SwapOuts",
-                type: "timestamp with time zone",
-                nullable: true);
-
-            migrationBuilder.AddColumn<int>(
-                name: "SparkPaymentAttempt",
-                table: "SwapOuts",
-                type: "integer",
-                nullable: false,
-                // Every swap recorded so far is on its first attempt
-                defaultValue: 1);
-
             migrationBuilder.AddColumn<long>(
                 name: "FortySwapMaxAmountSats",
                 table: "Nodes",
@@ -77,14 +63,6 @@ namespace NodeGuard.Migrations
         {
             migrationBuilder.DropColumn(
                 name: "SparkExitDatetime",
-                table: "SwapOuts");
-
-            migrationBuilder.DropColumn(
-                name: "SparkInvoiceExpiresAt",
-                table: "SwapOuts");
-
-            migrationBuilder.DropColumn(
-                name: "SparkPaymentAttempt",
                 table: "SwapOuts");
 
             migrationBuilder.DropColumn(

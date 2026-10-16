@@ -165,10 +165,7 @@ public enum AuditActionType
 
     // Spark transit wallet alerts
     SparkBalanceStuck,
-    SparkExitOverdue,
-
-    // A Spark swap's failed payment, retried with a smaller amount
-    SwapOutPaymentRetryScheduled
+    SparkExitOverdue
 }
 
 /// <summary>

@@ -14,7 +14,7 @@ using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 namespace NodeGuard.Migrations
 {
     [DbContext(typeof(ApplicationDbContext))]
-    [Migration("20261014131911_AddPerProviderSwapAmountsAndSparkExitBatches")]
+    [Migration("20261016135127_AddPerProviderSwapAmountsAndSparkExitBatches")]
     partial class AddPerProviderSwapAmountsAndSparkExitBatches
     {
         /// <inheritdoc />
@@ -1270,14 +1270,8 @@ namespace NodeGuard.Migrations
                     b.Property<string>("SparkIdentity")
                         .HasColumnType("text");
 
-                    b.Property<DateTimeOffset?>("SparkInvoiceExpiresAt")
-                        .HasColumnType("timestamp with time zone");
-
                     b.Property<string>("SparkLeafIds")
                         .HasColumnType("text");
-
-                    b.Property<int>("SparkPaymentAttempt")
-                        .HasColumnType("integer");
 
                     b.Property<long?>("SparkReceivedSats")
                         .HasColumnType("bigint");
