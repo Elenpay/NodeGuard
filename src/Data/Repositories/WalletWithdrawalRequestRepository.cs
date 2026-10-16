@@ -330,6 +330,19 @@ namespace NodeGuard.Data.Repositories
             return _repository.Update(strippedType, applicationDbContext);
         }
 
+        public (bool, string?) UpdateRange(List<WalletWithdrawalRequest> requests)
+        {
+            using var applicationDbContext = _dbContextFactory.CreateDbContext();
+
+            var strippedRequests = requests.Select(request =>
+            {
+                request.SetUpdateDatetime();
+                return _mapper.Map<WalletWithdrawalRequest, WalletWithdrawalRequest>(request);
+            }).ToList();
+
+            return _repository.UpdateRange(strippedRequests, applicationDbContext);
+        }
+
         public async Task<(bool, string?)> AddUTXOs(IBitcoinRequest type, List<FMUTXO> utxos)
         {
             if (type == null) throw new ArgumentNullException(nameof(type));

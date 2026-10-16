@@ -1017,9 +1017,9 @@ namespace NodeGuard.Rpc
 
             //Assert
             (await act.Should().ThrowAsync<RpcException>()).Which.StatusCode.Should().Be(StatusCode.Internal);
-            walletWithdrawalRequestRepository.Verify(x => x.Update(It.Is<WalletWithdrawalRequest>(r => r.Id == 11
-                && r.Status == WalletWithdrawalRequestStatus.Cancelled)), Times.Once,
-                "a bump that could not be executed must not stay pending");
+            withdrawalRequestService.Verify(x => x.AbandonRequestAsync(It.Is<WalletWithdrawalRequest>(r => r.Id == 11),
+                WalletWithdrawalRequestStatus.Cancelled, null), Times.Once,
+                "a bump that could not be executed must not stay pending, and abandoning it reverts what it replaced");
         }
 
         [Fact]
@@ -2392,8 +2392,14 @@ namespace NodeGuard.Rpc
             var (service, swaps, swapOuts, _) = SwapService();
             swapOuts.Setup(x => x.GetByReferenceId("ref-1")).ReturnsAsync(new SwapOut
             {
-                Id = 77, NodeId = 4, Provider = SwapProvider.Spark, SatsAmount = 500_000, DestinationWalletId = 3,
-                ProviderId = "req-1", Status = SwapOutStatus.Completed, DestinationAddress = "bcrt1qdest"
+                Id = 77,
+                NodeId = 4,
+                Provider = SwapProvider.Spark,
+                SatsAmount = 500_000,
+                DestinationWalletId = 3,
+                ProviderId = "req-1",
+                Status = SwapOutStatus.Completed,
+                DestinationAddress = "bcrt1qdest"
             });
 
             var response = await service.RequestSwapOut(SwapRequest(), TestServerCallContext.Create());
@@ -2410,7 +2416,11 @@ namespace NodeGuard.Rpc
             var (service, _, swapOuts, _) = SwapService();
             swapOuts.Setup(x => x.GetByReferenceId("ref-1")).ReturnsAsync(new SwapOut
             {
-                Id = 77, NodeId = 4, Provider = SwapProvider.Spark, SatsAmount = 1_000, DestinationWalletId = 3
+                Id = 77,
+                NodeId = 4,
+                Provider = SwapProvider.Spark,
+                SatsAmount = 1_000,
+                DestinationWalletId = 3
             });
 
             var act = () => service.RequestSwapOut(SwapRequest(), TestServerCallContext.Create());
@@ -2547,9 +2557,19 @@ namespace NodeGuard.Rpc
             var (service, _, swapOuts, _) = SwapService();
             swapOuts.Setup(x => x.GetByReferenceId("ref-1")).ReturnsAsync(new SwapOut
             {
-                Id = 77, Provider = SwapProvider.Spark, ProviderId = "req-1", Status = SwapOutStatus.Completed, SatsAmount = 500_000,
-                ServiceFeeSats = 2_500, LightningFeeSats = 12, TxId = "payout-tx", DestinationAddress = "bcrt1qdest",
-                PaymentHash = "abcd", ReferenceId = "ref-1", DestinationWalletId = 3, PayoutSats = 497_500
+                Id = 77,
+                Provider = SwapProvider.Spark,
+                ProviderId = "req-1",
+                Status = SwapOutStatus.Completed,
+                SatsAmount = 500_000,
+                ServiceFeeSats = 2_500,
+                LightningFeeSats = 12,
+                TxId = "payout-tx",
+                DestinationAddress = "bcrt1qdest",
+                PaymentHash = "abcd",
+                ReferenceId = "ref-1",
+                DestinationWalletId = 3,
+                PayoutSats = 497_500
             });
 
             var response = await service.GetSwapOut(new GetSwapOutRequest { ReferenceId = "ref-1" }, TestServerCallContext.Create());

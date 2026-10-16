@@ -542,6 +542,16 @@ namespace NodeGuard.Services
                     node.Name,
                     tx.GetHash().ToString());
 
+                // Write-ahead: the txid is durable before the irreversible step, so a failure after it is never mistaken
+                // for a withdrawal that did not go out.
+                walletWithdrawalRequest.TxId = tx.GetHash().ToString();
+                var (txIdRecorded, txIdError) = _walletWithdrawalRequestRepository.Update(walletWithdrawalRequest);
+                if (!txIdRecorded)
+                {
+                    throw new Exception(
+                        $"Could not record the txid of withdrawal request {walletWithdrawalRequest.Id} before broadcasting it: {txIdError}");
+                }
+
                 //TODO Review why LND gives EOF, nbxplorer works flawlessly
                 var broadcastAsyncResult = await _nbXplorerService.BroadcastAsync(tx, default);
 
@@ -553,40 +563,55 @@ namespace NodeGuard.Services
                         broadcastAsyncResult.RPCCode,
                         broadcastAsyncResult.RPCCodeMessage,
                         broadcastAsyncResult.RPCMessage);
+                    // Never accepted: without the txid the job fails the request right away instead of leaving it to the monitor.
+                    walletWithdrawalRequest.TxId = null;
+                    _walletWithdrawalRequestRepository.Update(walletWithdrawalRequest);
                     throw new Exception("Failed tx broadcast");
                 }
 
-                walletWithdrawalRequest.TxId = tx.GetHash().ToString();
                 walletWithdrawalRequest.Status = WalletWithdrawalRequestStatus.OnChainConfirmationPending;
-
-                var updateTxIdResult = _walletWithdrawalRequestRepository.Update(walletWithdrawalRequest);
-
-                if (updateTxIdResult.Item1 != true)
+                var (pendingRecorded, pendingError) = _walletWithdrawalRequestRepository.Update(walletWithdrawalRequest);
+                if (!pendingRecorded)
                 {
-                    _logger.LogError("Error while updating the txId of withdrawal request: {RequestId}",
-                        walletWithdrawalRequest.Id);
+                    // The row keeps the txid: an operator can set the request pending confirmation by hand.
+                    _logger.LogError("Could not record withdrawal request {RequestId} as pending confirmation of tx {TxId}: {Error}",
+                        walletWithdrawalRequest.Id, walletWithdrawalRequest.TxId, pendingError);
                 }
 
-                //We track the destination address
-                var destination = walletWithdrawalRequest.WalletWithdrawalRequestDestinations?.FirstOrDefault();
-
-                if (destination?.Address != null)
-                {
-                    var trackedSourceAddress = TrackedSource.Create(
-                        BitcoinAddress.Create(destination.Address, CurrentNetworkHelper.GetCurrentNetwork()));
-
-                    await _nbXplorerService.TrackAsync(trackedSourceAddress, new TrackWalletRequest { }, default);
-                }
-                else
-                {
-                    _logger.LogWarning("No valid destination address found to track for withdrawal request id: {RequestId}", walletWithdrawalRequest.Id);
-                }
+                await TrackDestinationAsync(walletWithdrawalRequest);
             }
             catch (Exception e)
             {
                 _logger.LogError(e, "Error while publishing withdrawal request id: {RequestId}",
                     walletWithdrawalRequest.Id);
                 throw;
+            }
+        }
+
+        /// <summary>
+        /// Lets NBXplorer watch the destination. Failing to is not a failed withdrawal: the transaction is already out,
+        /// and NBXplorer knows it through the wallet it spends from.
+        /// </summary>
+        private async Task TrackDestinationAsync(WalletWithdrawalRequest walletWithdrawalRequest)
+        {
+            var destination = walletWithdrawalRequest.WalletWithdrawalRequestDestinations?.FirstOrDefault();
+            if (destination?.Address == null)
+            {
+                _logger.LogWarning("No valid destination address found to track for withdrawal request id: {RequestId}", walletWithdrawalRequest.Id);
+                return;
+            }
+
+            try
+            {
+                var trackedSourceAddress = TrackedSource.Create(
+                    BitcoinAddress.Create(destination.Address, CurrentNetworkHelper.GetCurrentNetwork()));
+
+                await _nbXplorerService.TrackAsync(trackedSourceAddress, new TrackWalletRequest { }, default);
+            }
+            catch (Exception e)
+            {
+                _logger.LogWarning(e, "Could not track the destination of withdrawal request {RequestId} (tx {TxId})",
+                    walletWithdrawalRequest.Id, walletWithdrawalRequest.TxId);
             }
         }
 
@@ -736,7 +761,9 @@ namespace NodeGuard.Services
         Task<PSBT> GenerateTemplatePSBT(WalletWithdrawalRequest walletWithdrawalRequest);
 
         /// <summary>
-        /// Broadcast a withdrawal request tx through nbxplorer
+        /// Broadcast a withdrawal request tx through nbxplorer. The txid is recorded on the request before the broadcast:
+        /// when this throws and the request carries a txid, the transaction may be out; without one, nothing was
+        /// broadcast.
         /// </summary>
         /// <param name="walletWithdrawalRequest"></param>
         /// <returns></returns>

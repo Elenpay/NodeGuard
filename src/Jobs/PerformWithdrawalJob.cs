@@ -61,28 +61,18 @@ public class PerformWithdrawalJob : IJob
         catch (Exception e)
         {
             var request = await _walletWithdrawalRequestRepository.GetById(withdrawalRequestId);
-            if (request?.Status == WalletWithdrawalRequestStatus.OnChainConfirmationPending)
+            if (request != null && !string.IsNullOrEmpty(request.TxId))
             {
-                // Already broadcast (the txid is persisted before the destination is tracked): nothing to undo.
-                _logger.LogWarning("Withdrawal request {RequestId} failed after its transaction {TxId} was broadcast, leaving it pending confirmation",
+                // The txid is recorded before the broadcast, so the transaction may be out: nothing to undo here.
+                _logger.LogCritical("Withdrawal request {RequestId} failed with its transaction {TxId} possibly broadcast: check the node and set it pending confirmation by hand",
                     request.Id, request.TxId);
             }
             else if (request != null)
             {
-                // Only fail the request once what it replaced is pending again; otherwise nothing would monitor either.
-                if (await _withdrawalRequestService.RevertOriginalAsync(request))
+                // Failing the request and reverting what it replaced is one write: it lands whole or leaves the request as it is.
+                if (!await _withdrawalRequestService.AbandonRequestAsync(request, WalletWithdrawalRequestStatus.Failed))
                 {
-                    request.Status = WalletWithdrawalRequestStatus.Failed;
-                    var (updated, _) = _walletWithdrawalRequestRepository.Update(request);
-                    if (!updated)
-                    {
-                        _logger.LogError("Failed to update withdrawal request {RequestId} status to failed", request.Id);
-                    }
-                }
-                else
-                {
-                    _logger.LogError("Leaving withdrawal request {RequestId} as {Status}: the request it replaced could not be reverted",
-                        request.Id, request.Status);
+                    _logger.LogError("Could not fail withdrawal request {RequestId}", request.Id);
                 }
             }
 

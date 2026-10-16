@@ -57,6 +57,7 @@ public class WithdrawalRequestServiceTests
 
     private readonly uint256 _fundingTxId = uint256.Parse("3a9907ab1b965e1ad0024e7fe4466ddab0d3b1bf3bd15ab6416bf8f0c9032f84");
     private readonly uint256 _originalTxId = uint256.Parse("f103e12f02ac1e5b8826831d4fc8fdb78a707bd00c4e1f191fe5d14458d63d5a");
+    private readonly uint256 _interruptedTxId = uint256.Parse("6f2c0b5a8d4e1f3a9c7b2d5e8f1a4c7b0d3e6f9a2c5b8e1d4f7a0c3b6e9d2f5a");
 
     private WalletWithdrawalRequest? _storedBump;
 
@@ -71,6 +72,7 @@ public class WithdrawalRequestServiceTests
             .ReturnsAsync((true, (string?)null));
         _requests.Setup(x => x.GetById(BumpId)).ReturnsAsync(() => _storedBump);
         _requests.Setup(x => x.Update(It.IsAny<WalletWithdrawalRequest>())).Returns((true, (string?)null));
+        _requests.Setup(x => x.UpdateRange(It.IsAny<List<WalletWithdrawalRequest>>())).Returns((true, (string?)null));
 
         _coinSelection.Setup(x => x.GetUTXOsByOutpointAsync(It.IsAny<DerivationStrategyBase>(), It.IsAny<List<OutPoint>>()))
             .ReturnsAsync((DerivationStrategyBase _, List<OutPoint> outpoints) =>
@@ -433,6 +435,7 @@ public class WithdrawalRequestServiceTests
         await act.Should().ThrowAsync<InvalidOperationException>();
         original.Status.Should().Be(WalletWithdrawalRequestStatus.OnChainConfirmationPending);
         original.RejectCancelDescription.Should().BeNull();
+        _storedBump!.Status.Should().Be(WalletWithdrawalRequestStatus.Failed, "it is failed in the same write that reverts the original");
     }
 
     [Fact]
@@ -448,6 +451,8 @@ public class WithdrawalRequestServiceTests
         await act.Should().ThrowAsync<InvalidOperationException>().WithMessage("quartz down");
         original.Status.Should().Be(WalletWithdrawalRequestStatus.OnChainConfirmationPending,
             "an abandoned bump must give the replaced request back its pending-confirmation status");
+        _requests.Verify(x => x.UpdateRange(It.Is<List<WalletWithdrawalRequest>>(l => l.Count == 2)), Times.Once,
+            "the bump is failed and the original reverted in one transaction");
     }
 
     [Fact]
@@ -462,6 +467,7 @@ public class WithdrawalRequestServiceTests
 
         await act.Should().ThrowAsync<NoUTXOsAvailableException>();
         original.Status.Should().Be(WalletWithdrawalRequestStatus.OnChainConfirmationPending);
+        _storedBump!.Status.Should().Be(WalletWithdrawalRequestStatus.Failed);
         _scheduler.Verify(x => x.ScheduleJob(It.IsAny<IJobDetail>(), It.IsAny<ITrigger>(), It.IsAny<CancellationToken>()), Times.Never);
     }
 
@@ -490,60 +496,114 @@ public class WithdrawalRequestServiceTests
         await act.Should().ThrowAsync<InvalidOperationException>();
     }
 
-    // ---- MarkOriginalAsBumpedAsync / RevertOriginalAsync -------------------------------------------------------
+    // ---- MarkOriginalAsReplacedAsync / AbandonRequestAsync ------------------------------------------------------
 
     [Fact]
-    public async Task RevertOriginalAsync_OnlyRevertsARequestThatIsBumped()
+    public async Task AbandonRequestAsync_FailedBump_RevertsTheBumpedOriginalInTheSameWrite()
     {
-        var original = SetupOriginal(HotWallet(), status: WalletWithdrawalRequestStatus.OnChainConfirmed);
-        var bump = HotRequest(WalletWithdrawalRequestStatus.Cancelled, bumping: OriginalId);
+        var original = SetupOriginal(HotWallet(), status: WalletWithdrawalRequestStatus.Bumped);
+        var bump = HotRequest(WalletWithdrawalRequestStatus.FinalizingPSBT, bumping: OriginalId);
 
-        var reverted = await CreateService().RevertOriginalAsync(bump);
+        var abandoned = await CreateService().AbandonRequestAsync(bump, WalletWithdrawalRequestStatus.Failed);
 
-        reverted.Should().BeTrue("there is nothing to revert, so the replacement can be abandoned");
-        original.Status.Should().Be(WalletWithdrawalRequestStatus.OnChainConfirmed,
-            "a request that was never marked Bumped (or already confirmed) must not be pushed back to pending");
+        abandoned.Should().BeTrue();
+        bump.Status.Should().Be(WalletWithdrawalRequestStatus.Failed);
+        original.Status.Should().Be(WalletWithdrawalRequestStatus.OnChainConfirmationPending);
+        _requests.Verify(x => x.UpdateRange(It.Is<List<WalletWithdrawalRequest>>(l => l.Count == 2 && l.Contains(bump) && l.Contains(original))),
+            Times.Once, "both rows land in one transaction, or neither does");
         _requests.Verify(x => x.Update(It.IsAny<WalletWithdrawalRequest>()), Times.Never);
     }
 
     [Fact]
-    public async Task RevertOriginalAsync_CancellationByAnotherReplacement_IsLeftAlone()
+    public async Task AbandonRequestAsync_RejectedCancellation_RestoresTheOriginalAndClearsItsReason()
+    {
+        var original = SetupOriginal(HotWallet(), status: WalletWithdrawalRequestStatus.Cancelled);
+        original.RejectCancelDescription = $"Cancelled by RBF replacement request {BumpId}";
+        var cancel = HotRequest(WalletWithdrawalRequestStatus.PSBTSignaturesPending, bumping: OriginalId, cancellation: true);
+
+        await CreateService().AbandonRequestAsync(cancel, WalletWithdrawalRequestStatus.Rejected, "not now");
+
+        cancel.Status.Should().Be(WalletWithdrawalRequestStatus.Rejected);
+        cancel.RejectCancelDescription.Should().Be("not now");
+        original.Status.Should().Be(WalletWithdrawalRequestStatus.OnChainConfirmationPending);
+        original.RejectCancelDescription.Should().BeNull("the cancellation never went out");
+    }
+
+    [Fact]
+    public async Task AbandonRequestAsync_OriginalSettledMeanwhile_OnlyWritesTheRequest()
+    {
+        var original = SetupOriginal(HotWallet(), status: WalletWithdrawalRequestStatus.OnChainConfirmed);
+        var bump = HotRequest(WalletWithdrawalRequestStatus.FinalizingPSBT, bumping: OriginalId);
+
+        await CreateService().AbandonRequestAsync(bump, WalletWithdrawalRequestStatus.Failed);
+
+        original.Status.Should().Be(WalletWithdrawalRequestStatus.OnChainConfirmed,
+            "a request that was never marked Bumped (or already confirmed) must not be pushed back to pending");
+        _requests.Verify(x => x.UpdateRange(It.Is<List<WalletWithdrawalRequest>>(l => l.Count == 1 && l[0] == bump)), Times.Once);
+    }
+
+    [Fact]
+    public async Task AbandonRequestAsync_CancellationByAnotherReplacement_IsLeftAlone()
     {
         var original = SetupOriginal(HotWallet(), status: WalletWithdrawalRequestStatus.Cancelled);
         original.RejectCancelDescription = "Cancelled by RBF replacement request 99";
-        var cancel = HotRequest(WalletWithdrawalRequestStatus.Failed, bumping: OriginalId, cancellation: true);
+        var cancel = HotRequest(WalletWithdrawalRequestStatus.PSBTSignaturesPending, bumping: OriginalId, cancellation: true);
 
-        var reverted = await CreateService().RevertOriginalAsync(cancel);
+        await CreateService().AbandonRequestAsync(cancel, WalletWithdrawalRequestStatus.Failed);
 
-        reverted.Should().BeTrue();
         original.Status.Should().Be(WalletWithdrawalRequestStatus.Cancelled);
-        _requests.Verify(x => x.Update(It.IsAny<WalletWithdrawalRequest>()), Times.Never);
+        _requests.Verify(x => x.UpdateRange(It.Is<List<WalletWithdrawalRequest>>(l => l.Count == 1)), Times.Once);
     }
 
     [Fact]
-    public async Task RevertOriginalAsync_BumpedOriginal_ReturnsTrueOncePersisted()
+    public async Task AbandonRequestAsync_NotAReplacement_WritesJustTheRequest()
     {
-        var original = SetupOriginal(HotWallet(), status: WalletWithdrawalRequestStatus.Bumped);
-        var bump = HotRequest(WalletWithdrawalRequestStatus.Failed, bumping: OriginalId);
+        var request = HotRequest(WalletWithdrawalRequestStatus.PSBTSignaturesPending);
 
-        var reverted = await CreateService().RevertOriginalAsync(bump);
+        var abandoned = await CreateService().AbandonRequestAsync(request, WalletWithdrawalRequestStatus.Cancelled, "changed my mind");
 
-        reverted.Should().BeTrue();
-        original.Status.Should().Be(WalletWithdrawalRequestStatus.OnChainConfirmationPending);
-        _requests.Verify(x => x.Update(It.Is<WalletWithdrawalRequest>(r => r.Id == OriginalId
-            && r.Status == WalletWithdrawalRequestStatus.OnChainConfirmationPending)), Times.Once);
+        abandoned.Should().BeTrue();
+        request.Status.Should().Be(WalletWithdrawalRequestStatus.Cancelled);
+        request.RejectCancelDescription.Should().Be("changed my mind");
+        _requests.Verify(x => x.GetById(BumpId), Times.Once, "only the request's own row is read, to check it has no transaction");
     }
 
     [Fact]
-    public async Task RevertOriginalAsync_UpdateFails_ReturnsFalse()
+    public async Task AbandonRequestAsync_RowAlreadyCarriesATransaction_IsRefused()
     {
-        SetupOriginal(HotWallet(), status: WalletWithdrawalRequestStatus.Bumped);
-        var bump = HotRequest(WalletWithdrawalRequestStatus.Failed, bumping: OriginalId);
-        _requests.Setup(x => x.Update(It.Is<WalletWithdrawalRequest>(r => r.Id == OriginalId))).Returns((false, "db down"));
+        // The page still shows the request waiting for signatures; its job has recorded the txid and may have broadcast.
+        var fresh = HotRequest(WalletWithdrawalRequestStatus.FinalizingPSBT);
+        fresh.TxId = _interruptedTxId.ToString();
+        var stale = new WalletWithdrawalRequest { Id = BumpId, Status = WalletWithdrawalRequestStatus.PSBTSignaturesPending };
 
-        var reverted = await CreateService().RevertOriginalAsync(bump);
+        (await CreateService().AbandonRequestAsync(stale, WalletWithdrawalRequestStatus.Cancelled, "too slow")).Should().BeFalse();
+        _requests.Verify(x => x.UpdateRange(It.IsAny<List<WalletWithdrawalRequest>>()), Times.Never,
+            "cancelling it would hide a transaction that is, or is about to be, out");
+    }
 
-        reverted.Should().BeFalse("the caller must not give the replacement a terminal status while the original stays Bumped");
+    [Fact]
+    public async Task AbandonRequestAsync_RowPendingConfirmation_IsRefused()
+    {
+        var fresh = HotRequest(WalletWithdrawalRequestStatus.OnChainConfirmationPending);
+        fresh.TxId = _interruptedTxId.ToString();
+        var stale = new WalletWithdrawalRequest { Id = BumpId, Status = WalletWithdrawalRequestStatus.PSBTSignaturesPending };
+
+        (await CreateService().AbandonRequestAsync(stale, WalletWithdrawalRequestStatus.Failed)).Should().BeFalse(
+            "once the transaction is out, the request is no longer anyone's to abandon");
+        _requests.Verify(x => x.UpdateRange(It.IsAny<List<WalletWithdrawalRequest>>()), Times.Never);
+    }
+
+    [Theory]
+    [InlineData(WalletWithdrawalRequestStatus.Pending)]
+    [InlineData(WalletWithdrawalRequestStatus.OnChainConfirmationPending)]
+    public async Task AbandonRequestAsync_NonTerminalStatus_IsRefused(WalletWithdrawalRequestStatus status)
+    {
+        var request = HotRequest(WalletWithdrawalRequestStatus.PSBTSignaturesPending);
+
+        var act = () => CreateService().AbandonRequestAsync(request, status);
+
+        await act.Should().ThrowAsync<ArgumentOutOfRangeException>();
+        _requests.Verify(x => x.UpdateRange(It.IsAny<List<WalletWithdrawalRequest>>()), Times.Never);
     }
 
     [Fact]

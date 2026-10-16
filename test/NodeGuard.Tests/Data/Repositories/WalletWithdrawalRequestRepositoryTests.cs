@@ -24,6 +24,7 @@ using Microsoft.Extensions.Logging.Abstractions;
 using NodeGuard.Data.Models;
 using NodeGuard.Data.Repositories.Interfaces;
 using NodeGuard.Services;
+using NodeGuard.Automapper;
 
 namespace NodeGuard.Data.Repositories;
 
@@ -152,5 +153,52 @@ public class WalletWithdrawalRequestRepositoryTests
         var result = await repository.GetByReferenceIds(new List<string> { "a", "b" });
 
         result.Select(r => r.Id).Should().BeEquivalentTo(new[] { 1, 3 });
+    }
+
+    // ---- UpdateRange: the real repository and mapper, since it is the write itself that is under test ------------
+
+    private static WalletWithdrawalRequestRepository CreateRepositoryWithRealWrites(Mock<IDbContextFactory<ApplicationDbContext>> factory)
+        => new(new Repository<WalletWithdrawalRequest>(NullLogger<WalletWithdrawalRequest>.Instance),
+            NullLogger<WalletWithdrawalRequestRepository>.Instance,
+            factory.Object,
+            new MapperConfiguration(config => config.AddProfile<MapperProfile>()).CreateMapper(),
+            null!,
+            new Mock<INBXplorerService>().Object);
+
+    [Fact]
+    public async Task UpdateRange_PersistsEveryRequestInOneSave()
+    {
+        var factory = SetupDbContextFactory();
+        await SeedAsync(factory,
+            Request(1, WalletWithdrawalRequestStatus.Bumped),
+            Request(2, WalletWithdrawalRequestStatus.FinalizingPSBT, replaces: 1));
+        var repository = CreateRepositoryWithRealWrites(factory);
+
+        var (updated, error) = repository.UpdateRange(new List<WalletWithdrawalRequest>
+        {
+            Request(2, WalletWithdrawalRequestStatus.Failed, replaces: 1),
+            Request(1, WalletWithdrawalRequestStatus.OnChainConfirmationPending),
+        });
+
+        updated.Should().BeTrue(error);
+        await using var context = await factory.Object.CreateDbContextAsync();
+        (await context.WalletWithdrawalRequests.FindAsync(1))!.Status.Should().Be(WalletWithdrawalRequestStatus.OnChainConfirmationPending);
+        (await context.WalletWithdrawalRequests.FindAsync(2))!.Status.Should().Be(WalletWithdrawalRequestStatus.Failed);
+    }
+
+    [Fact]
+    public async Task UpdateRange_OneRequestMissing_ReportsFailure()
+    {
+        var factory = SetupDbContextFactory();
+        await SeedAsync(factory, Request(1, WalletWithdrawalRequestStatus.Bumped));
+        var repository = CreateRepositoryWithRealWrites(factory);
+
+        var (updated, _) = repository.UpdateRange(new List<WalletWithdrawalRequest>
+        {
+            Request(2, WalletWithdrawalRequestStatus.Failed, replaces: 1),
+            Request(1, WalletWithdrawalRequestStatus.OnChainConfirmationPending),
+        });
+
+        updated.Should().BeFalse("a row that does not exist fails the whole save");
     }
 }

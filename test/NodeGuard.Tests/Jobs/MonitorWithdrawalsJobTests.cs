@@ -131,6 +131,33 @@ public class MonitorWithdrawalsJobTests
     }
 
     [Fact]
+    public async Task Execute_ReplacementTransactionGoneFromNbxplorer_StillChecksWhetherWhatItReplacedWasMined()
+    {
+        var replacement = Pending(2, confirmations: 0, replaces: 1);
+        _nbXplorer.Setup(x => x.GetTransactionAsync(uint256.Parse(replacement.TxId!), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((TransactionResult?)null);
+
+        await ExecuteAsync(replacement);
+
+        _withdrawalRequestService.Verify(x => x.SettleMinedOriginalAsync(replacement), Times.Once);
+        replacement.Status.Should().Be(WalletWithdrawalRequestStatus.OnChainConfirmationPending);
+    }
+
+    [Fact]
+    public async Task Execute_OneRequestFails_TheRestOfTheBatchIsStillProcessed()
+    {
+        var broken = Pending(1, confirmations: 0);
+        _nbXplorer.Setup(x => x.GetTransactionAsync(uint256.Parse(broken.TxId!), It.IsAny<CancellationToken>()))
+            .ThrowsAsync(new HttpRequestException("nbxplorer down"));
+        var settling = Pending(2, Constants.TRANSACTION_CONFIRMATION_MINIMUM_BLOCKS);
+
+        var act = () => ExecuteAsync(broken, settling);
+
+        await act.Should().NotThrowAsync();
+        settling.Status.Should().Be(WalletWithdrawalRequestStatus.OnChainConfirmed);
+    }
+
+    [Fact]
     public async Task Execute_MixedBatch_HandlesEachRequestOnItsOwn()
     {
         var settling = Pending(1, Constants.TRANSACTION_CONFIRMATION_MINIMUM_BLOCKS);

@@ -17,7 +17,7 @@
  *
  */
 
-﻿namespace NodeGuard.Data.Repositories.Interfaces
+namespace NodeGuard.Data.Repositories.Interfaces
 {
     /// <summary>
     /// Interface of a base Repository implementation
@@ -72,5 +72,10 @@
         /// <param name="applicationDbContext"></param>
         /// <returns>A tuple (bool, string). The bool represents the call success and the string any possible message.</returns>
         public (bool, string) Update(T type, ApplicationDbContext applicationDbContext);
+
+        /// <summary>
+        /// Updates several entities in one SaveChanges, which is one transaction: all of them change or none does.
+        /// </summary>
+        public (bool, string?) UpdateRange(List<T> entities, ApplicationDbContext applicationDbContext);
     }
 }

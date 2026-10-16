@@ -59,8 +59,8 @@ public interface IWithdrawalRequestService
     /// <summary>
     /// Executes a hot-wallet request (fresh or bump): moves it to PSBTSignaturesPending, generates and persists the
     /// template PSBT, marks the request it replaces (if any) as Bumped and schedules <see cref="PerformWithdrawalJob"/>,
-    /// which signs and broadcasts. On failure the replaced request is put back to OnChainConfirmationPending and the
-    /// exception is rethrown; the caller decides what happens to the request itself.
+    /// which signs and broadcasts. On failure the request is failed and the request it replaced put back to
+    /// OnChainConfirmationPending in one transaction, then the exception is rethrown.
     /// </summary>
     /// <returns>The template PSBT; its global transaction hash is the txid that will be broadcast.</returns>
     Task<PSBT> ScheduleHotWalletWithdrawalAsync(int requestId);
@@ -73,12 +73,13 @@ public interface IWithdrawalRequestService
     Task MarkOriginalAsReplacedAsync(WalletWithdrawalRequest replacement);
 
     /// <summary>
-    /// Puts the request replaced by <paramref name="replacement"/> back to OnChainConfirmationPending when the replacement
-    /// is abandoned (cancelled, rejected or failed) and the original had already been marked Bumped / Cancelled by it.
-    /// No-op otherwise. Returns false when the revert could not be persisted: the replacement must not be given a terminal
-    /// status then, or neither request would be monitored again.
+    /// Abandons <paramref name="request"/> with Failed, Cancelled or Rejected and, when it is a replacement that marked the
+    /// request it replaced Bumped / Cancelled, puts that one back to OnChainConfirmationPending in the same transaction:
+    /// a replacement is never left terminal next to an original nothing monitors. Refuses a request whose transaction
+    /// may be out: pending confirmation, settled, or carrying a txid. Returns whether the change was persisted; nothing
+    /// changes otherwise.
     /// </summary>
-    Task<bool> RevertOriginalAsync(WalletWithdrawalRequest replacement);
+    Task<bool> AbandonRequestAsync(WalletWithdrawalRequest request, WalletWithdrawalRequestStatus status, string? reason = null);
 
     /// <summary>
     /// RBF does not guarantee the replacement wins: a miner can still mine a transaction it replaced. When a request
@@ -353,7 +354,7 @@ public class WithdrawalRequestService : IWithdrawalRequestService
         catch (Exception e)
         {
             _logger.LogError(e, "Error executing withdrawal request {RequestId}", request.Id);
-            await RevertOriginalAsync(request);
+            await AbandonRequestAsync(request, WalletWithdrawalRequestStatus.Failed);
             throw;
         }
     }
@@ -393,29 +394,61 @@ public class WithdrawalRequestService : IWithdrawalRequestService
         }
     }
 
-    public async Task<bool> RevertOriginalAsync(WalletWithdrawalRequest replacement)
+    public async Task<bool> AbandonRequestAsync(WalletWithdrawalRequest request, WalletWithdrawalRequestStatus status,
+        string? reason = null)
     {
-        if (replacement.BumpingWalletWithdrawalRequestId is not { } originalId) return true;
+        if (status is not (WalletWithdrawalRequestStatus.Failed or WalletWithdrawalRequestStatus.Cancelled
+            or WalletWithdrawalRequestStatus.Rejected))
+        {
+            throw new ArgumentOutOfRangeException(nameof(status), status, "Only a terminal status abandons a request");
+        }
+
+        // The caller's copy may be stale (a page, a request created moments ago): the row decides whether a transaction is out.
+        var fresh = await _walletWithdrawalRequestRepository.GetById(request.Id);
+        if (fresh == null) return false;
+        if (fresh.Status is WalletWithdrawalRequestStatus.OnChainConfirmationPending or WalletWithdrawalRequestStatus.OnChainConfirmed
+            || !string.IsNullOrEmpty(fresh.TxId))
+        {
+            _logger.LogWarning("Not abandoning withdrawal request {RequestId} as {Status}: it is {CurrentStatus} with tx {TxId}",
+                request.Id, status, fresh.Status, fresh.TxId);
+            return false;
+        }
+
+        request.Status = status;
+        if (reason != null) request.RejectCancelDescription = reason;
+
+        var rows = new List<WalletWithdrawalRequest> { request };
+        var original = await OriginalMarkedByAsync(request);
+        if (original != null)
+        {
+            original.Status = WalletWithdrawalRequestStatus.OnChainConfirmationPending;
+            original.RejectCancelDescription = null;
+            rows.Add(original);
+        }
+
+        var (updated, error) = _walletWithdrawalRequestRepository.UpdateRange(rows);
+        if (!updated)
+        {
+            _logger.LogError("Could not abandon withdrawal request {RequestId} as {Status}{Revert}: {Error}",
+                request.Id, status, original == null ? "" : $" and revert request {original.Id}", error);
+        }
+
+        return updated;
+    }
+
+    /// <summary>The request <paramref name="replacement"/> replaced, if it is marked Bumped / Cancelled by that replacement.</summary>
+    private async Task<WalletWithdrawalRequest?> OriginalMarkedByAsync(WalletWithdrawalRequest replacement)
+    {
+        if (replacement.BumpingWalletWithdrawalRequestId is not { } originalId) return null;
 
         var original = await _walletWithdrawalRequestRepository.GetById(originalId);
-        if (original == null) return true;
+        if (original == null) return null;
 
         var markedByThisReplacement = original.Status == WalletWithdrawalRequestStatus.Bumped
                                       || (replacement.IsRbfCancellation
                                           && original.Status == WalletWithdrawalRequestStatus.Cancelled
                                           && original.RejectCancelDescription == CancellationReason(replacement.Id));
-        if (!markedByThisReplacement) return true;
-
-        original.Status = WalletWithdrawalRequestStatus.OnChainConfirmationPending;
-        original.RejectCancelDescription = null;
-        var (updated, error) = _walletWithdrawalRequestRepository.Update(original);
-        if (!updated)
-        {
-            _logger.LogError("Could not put withdrawal request {RequestId} back to OnChainConfirmationPending: {Error}",
-                originalId, error);
-        }
-
-        return updated;
+        return markedByThisReplacement ? original : null;
     }
 
     public async Task<bool> SettleMinedOriginalAsync(WalletWithdrawalRequest replacement)

@@ -32,7 +32,8 @@ namespace NodeGuard.Jobs;
 /// undoes what the replacement did: an original that settled meanwhile (the cold-wallet case, where approvals take
 /// hours) is left settled, and a reverted cancellation loses its "Cancelled by RBF" reason. The request is only failed
 /// once that revert is persisted: failed with the original still Bumped, neither would be monitored again. A failure
-/// after the broadcast changes nothing: the transaction is out, and the request already carries its txid.
+/// once the request carries a txid changes nothing: the txid is recorded before the broadcast, so the transaction may
+/// be out, and only an operator can tell.
 /// </summary>
 public class PerformWithdrawalJobTests
 {
@@ -45,13 +46,14 @@ public class PerformWithdrawalJobTests
     public PerformWithdrawalJobTests()
     {
         _requests.Setup(x => x.Update(It.IsAny<WalletWithdrawalRequest>())).Returns((true, (string?)null));
+        _requests.Setup(x => x.UpdateRange(It.IsAny<List<WalletWithdrawalRequest>>())).Returns((true, (string?)null));
         _bitcoin.Setup(x => x.PerformWithdrawal(It.IsAny<WalletWithdrawalRequest>()))
             .ThrowsAsync(new InvalidOperationException("Failed tx broadcast"));
     }
 
     private Task ExecuteAsync(int requestId)
     {
-        // The real service: what happens to the replaced request is RevertOriginalAsync's behaviour.
+        // The real service: what happens to the replaced request is AbandonRequestAsync's behaviour.
         var withdrawalRequestService = new WithdrawalRequestService(NullLogger<WithdrawalRequestService>.Instance,
             _requests.Object, Mock.Of<IFMUTXORepository>(), Mock.Of<ICoinSelectionService>(), Mock.Of<INBXplorerService>(),
             _bitcoin.Object, Mock.Of<ISchedulerFactory>());
@@ -91,6 +93,9 @@ public class PerformWithdrawalJobTests
         bump.Status.Should().Be(WalletWithdrawalRequestStatus.Failed);
         original.Status.Should().Be(WalletWithdrawalRequestStatus.OnChainConfirmationPending,
             "the bump never went out, so the original transaction is still the one waiting to confirm");
+        _requests.Verify(x => x.UpdateRange(It.Is<List<WalletWithdrawalRequest>>(l => l.Count == 2)), Times.Once,
+            "both rows change in one transaction, or neither does");
+        _requests.Verify(x => x.Update(It.IsAny<WalletWithdrawalRequest>()), Times.Never);
     }
 
     [Fact]
@@ -118,37 +123,39 @@ public class PerformWithdrawalJobTests
         bump.Status.Should().Be(WalletWithdrawalRequestStatus.Failed);
         original.Status.Should().Be(WalletWithdrawalRequestStatus.OnChainConfirmed,
             "it was mined while the replacement waited for its signatures; that is why the broadcast failed");
-        _requests.Verify(x => x.Update(original), Times.Never);
+        _requests.Verify(x => x.UpdateRange(It.Is<List<WalletWithdrawalRequest>>(l => l.Count == 1 && l[0] == bump)), Times.Once);
     }
 
     [Fact]
-    public async Task Execute_RevertCannotBePersisted_LeavesTheReplacementAsItIs()
+    public async Task Execute_AbandonWriteFails_NothingIsWrittenSeparately()
     {
-        var original = Stored(OriginalId, WalletWithdrawalRequestStatus.Bumped);
-        var bump = Stored(ReplacementId, WalletWithdrawalRequestStatus.FinalizingPSBT, replaces: OriginalId);
-        _requests.Setup(x => x.Update(original)).Returns((false, "db down"));
+        Stored(OriginalId, WalletWithdrawalRequestStatus.Bumped);
+        Stored(ReplacementId, WalletWithdrawalRequestStatus.FinalizingPSBT, replaces: OriginalId);
+        _requests.Setup(x => x.UpdateRange(It.IsAny<List<WalletWithdrawalRequest>>())).Returns((false, "db down"));
 
-        await ExecuteAsync(ReplacementId);
+        var act = () => ExecuteAsync(ReplacementId);
 
-        bump.Status.Should().Be(WalletWithdrawalRequestStatus.FinalizingPSBT,
-            "failing it while the original stays Bumped would leave neither request monitored");
-        _requests.Verify(x => x.Update(bump), Times.Never);
+        await act.Should().NotThrowAsync();
+        _requests.Verify(x => x.Update(It.IsAny<WalletWithdrawalRequest>()), Times.Never,
+            "a failed bump next to an original still Bumped would leave neither request monitored");
     }
 
-    [Fact]
-    public async Task Execute_FailureAfterTheBroadcast_LeavesTheRequestAndWhatItReplacedAlone()
+    [Theory]
+    [InlineData(WalletWithdrawalRequestStatus.FinalizingPSBT)]
+    [InlineData(WalletWithdrawalRequestStatus.OnChainConfirmationPending)]
+    public async Task Execute_FailureWithTheTxIdRecorded_LeavesTheRequestAndWhatItReplacedAlone(WalletWithdrawalRequestStatus status)
     {
-        // PerformWithdrawal persists the txid and OnChainConfirmationPending right after broadcasting, before it tracks the destination.
+        // PerformWithdrawal records the txid before broadcasting, so a request carrying one may have its transaction out.
         var original = Stored(OriginalId, WalletWithdrawalRequestStatus.Bumped);
-        var bump = Stored(ReplacementId, WalletWithdrawalRequestStatus.OnChainConfirmationPending, replaces: OriginalId);
+        var bump = Stored(ReplacementId, status, replaces: OriginalId);
         bump.TxId = "6f2c0b5a8d4e1f3a9c7b2d5e8f1a4c7b0d3e6f9a2c5b8e1d4f7a0c3b6e9d2f5a";
 
         await ExecuteAsync(ReplacementId);
 
-        bump.Status.Should().Be(WalletWithdrawalRequestStatus.OnChainConfirmationPending,
-            "its transaction is in the mempool: failing it would hide a payment that can still confirm");
-        original.Status.Should().Be(WalletWithdrawalRequestStatus.Bumped, "the broadcast replacement evicted its transaction");
+        bump.Status.Should().Be(status, "whether its transaction is out is for an operator to find out");
+        original.Status.Should().Be(WalletWithdrawalRequestStatus.Bumped, "a broadcast replacement would have evicted its transaction");
         _requests.Verify(x => x.Update(It.IsAny<WalletWithdrawalRequest>()), Times.Never);
+        _requests.Verify(x => x.UpdateRange(It.IsAny<List<WalletWithdrawalRequest>>()), Times.Never);
     }
 
     [Fact]
@@ -159,7 +166,8 @@ public class PerformWithdrawalJobTests
         await ExecuteAsync(OriginalId);
 
         request.Status.Should().Be(WalletWithdrawalRequestStatus.Failed);
-        _requests.Verify(x => x.Update(It.IsAny<WalletWithdrawalRequest>()), Times.Once);
+        _requests.Verify(x => x.UpdateRange(It.Is<List<WalletWithdrawalRequest>>(l => l.Count == 1)), Times.Once);
+        _requests.Verify(x => x.Update(It.IsAny<WalletWithdrawalRequest>()), Times.Never);
     }
 
     [Fact]

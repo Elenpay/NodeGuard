@@ -17,7 +17,7 @@
  *
  */
 
-﻿using NodeGuard.Data.Repositories.Interfaces;
+using NodeGuard.Data.Repositories.Interfaces;
 
 namespace NodeGuard.Data.Repositories
 {
@@ -26,7 +26,7 @@ namespace NodeGuard.Data.Repositories
     /// </summary>
     /// <typeparam name="T"></typeparam>
     /// 
-    
+
     public class Repository<T> : IRepository<T>
     {
         private readonly ILogger<T> _logger;
@@ -101,6 +101,23 @@ namespace NodeGuard.Data.Repositories
             }
 
             return (rowsChanged, null);
+        }
+
+        public (bool, string?) UpdateRange(List<T> entities, ApplicationDbContext applicationDbContext)
+        {
+            if (entities == null) throw new ArgumentNullException(nameof(entities));
+
+            try
+            {
+                // Cast: with an unconstrained T, List<T> binds to the params object[] overload as a single entity.
+                applicationDbContext.UpdateRange(entities.Cast<object>());
+                return (applicationDbContext.SaveChanges() > 0, null);
+            }
+            catch (Exception e)
+            {
+                _logger.LogError(e, "Error on repository");
+                return (false, e.Message);
+            }
         }
 
         public (bool, string?) Remove(T type, ApplicationDbContext applicationDbContext)

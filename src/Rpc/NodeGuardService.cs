@@ -396,7 +396,7 @@ public class NodeGuardService : Nodeguard.NodeGuardService.NodeGuardServiceBase,
         }
         catch (NoUTXOsAvailableException)
         {
-            MarkWithdrawalRequestCancelled(withdrawalRequest);
+            await MarkWithdrawalRequestCancelled(withdrawalRequest);
             _logger.LogError("No available UTXOs for wallet with id {walletId}", request.WalletId);
             throw new RpcException(new Status(StatusCode.ResourceExhausted, "No available UTXOs for wallet"));
         }
@@ -407,29 +407,27 @@ public class NodeGuardService : Nodeguard.NodeGuardService.NodeGuardServiceBase,
         }
         catch (RpcException e)
         {
-            MarkWithdrawalRequestCancelled(withdrawalRequest);
+            await MarkWithdrawalRequestCancelled(withdrawalRequest);
             _logger.LogError(e.Message);
             throw new RpcException(new Status(e.Status.StatusCode, e.Status.Detail));
         }
         catch (Exception e)
         {
-            MarkWithdrawalRequestCancelled(withdrawalRequest);
+            await MarkWithdrawalRequestCancelled(withdrawalRequest);
             _logger.LogError(e, "Error requesting withdrawal for wallet with id {walletId}", request.WalletId);
             throw new RpcException(new Status(StatusCode.Internal, "Error requesting withdrawal for wallet"));
         }
     }
 
-    private void MarkWithdrawalRequestCancelled(WalletWithdrawalRequest? withdrawalRequest)
+    private async Task MarkWithdrawalRequestCancelled(WalletWithdrawalRequest? withdrawalRequest)
     {
-        if (withdrawalRequest != null)
+        if (withdrawalRequest == null) return;
+
+        // Cancelling a replacement also gives the request it replaced its pending status back, in the same write.
+        if (!await _withdrawalRequestService.AbandonRequestAsync(withdrawalRequest, WalletWithdrawalRequestStatus.Cancelled))
         {
-            withdrawalRequest.Status = WalletWithdrawalRequestStatus.Cancelled;
-            var (success, error) = _walletWithdrawalRequestRepository.Update(withdrawalRequest);
-            if (!success)
-            {
-                _logger.LogError(error, "Error updating status of withdrawal request {RequestId} for wallet {WalletId}",
-                    withdrawalRequest.Id, withdrawalRequest.WalletId);
-            }
+            _logger.LogError("Error updating status of withdrawal request {RequestId} for wallet {WalletId}",
+                withdrawalRequest.Id, withdrawalRequest.WalletId);
         }
     }
 
@@ -505,29 +503,29 @@ public class NodeGuardService : Nodeguard.NodeGuardService.NodeGuardServiceBase,
         {
             _logger.LogWarning("RBF {Action} of withdrawal request {Target} refused ({Reason}): {Message}",
                 action, target, e.Reason, e.Message);
-            MarkWithdrawalRequestCancelled(replacement);
+            await MarkWithdrawalRequestCancelled(replacement);
             throw new RpcException(new Status(ToStatusCode(e.Reason), e.Message));
         }
         catch (NoUTXOsAvailableException)
         {
-            MarkWithdrawalRequestCancelled(replacement);
+            await MarkWithdrawalRequestCancelled(replacement);
             _logger.LogError("No available UTXOs for the RBF {Action} of withdrawal request {Target}", action, target);
             throw new RpcException(new Status(StatusCode.ResourceExhausted, "No available UTXOs for wallet"));
         }
         catch (ShowToUserException e)
         {
-            MarkWithdrawalRequestCancelled(replacement);
+            await MarkWithdrawalRequestCancelled(replacement);
             _logger.LogError(e, "Error in the RBF {Action} of withdrawal request {Target}", action, target);
             throw new RpcException(new Status(StatusCode.FailedPrecondition, e.Message));
         }
         catch (RpcException)
         {
-            MarkWithdrawalRequestCancelled(replacement);
+            await MarkWithdrawalRequestCancelled(replacement);
             throw;
         }
         catch (Exception e)
         {
-            MarkWithdrawalRequestCancelled(replacement);
+            await MarkWithdrawalRequestCancelled(replacement);
             _logger.LogError(e, "Error in the RBF {Action} of withdrawal request {Target}", action, target);
             throw new RpcException(new Status(StatusCode.Internal, $"Error in the RBF {action} of the withdrawal request"));
         }
