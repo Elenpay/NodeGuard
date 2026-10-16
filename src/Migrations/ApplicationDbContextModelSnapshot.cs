@@ -1014,6 +1014,9 @@ namespace NodeGuard.Migrations
                     b.Property<long>("FortySwapMaxAmountSats")
                         .HasColumnType("bigint");
 
+                    b.Property<decimal>("FortySwapMaxSwapRoutingFeeRatio")
+                        .HasColumnType("numeric");
+
                     b.Property<int>("FortySwapMaxSwapsInFlight")
                         .HasColumnType("integer");
 
@@ -1028,6 +1031,9 @@ namespace NodeGuard.Migrations
 
                     b.Property<bool>("IsNodeDisabled")
                         .HasColumnType("boolean");
+
+                    b.Property<decimal>("LoopMaxSwapRoutingFeeRatio")
+                        .HasColumnType("numeric");
 
                     b.Property<int>("LoopMaxSwapsInFlight")
                         .HasColumnType("integer");
@@ -1056,9 +1062,6 @@ namespace NodeGuard.Migrations
                     b.Property<int?>("MaxRebalancesInFlight")
                         .HasColumnType("integer");
 
-                    b.Property<decimal>("MaxSwapRoutingFeeRatio")
-                        .HasColumnType("numeric");
-
                     b.Property<long>("MinimumBalanceThresholdSats")
                         .HasColumnType("bigint");
 
@@ -1083,6 +1086,9 @@ namespace NodeGuard.Migrations
                         .ValueGeneratedOnAdd()
                         .HasColumnType("boolean")
                         .HasDefaultValue(false);
+
+                    b.Property<decimal>("SparkMaxSwapRoutingFeeRatio")
+                        .HasColumnType("numeric");
 
                     b.Property<int>("SparkMaxSwapsInFlight")
                         .HasColumnType("integer");

@@ -23,10 +23,10 @@ using NodeGuard.Services.Spark;
 namespace NodeGuard.Services;
 
 /// <summary>
-/// The smallest and largest swap-out a node makes through a provider, and how many of them it runs at once: one
-/// provider may run serialized while another runs in parallel.
+/// The smallest and largest swap-out a node makes through a provider, how many of them it runs at once (one provider
+/// may run serialized while another runs in parallel), and the most each may pay in routing fees, as a ratio.
 /// </summary>
-public readonly record struct SwapProviderLimits(long MinSats, long MaxSats, int MaxInFlight)
+public readonly record struct SwapProviderLimits(long MinSats, long MaxSats, int MaxInFlight, decimal MaxRoutingFeeRatio)
 {
     /// <summary>
     /// <paramref name="node"/>'s limits for <paramref name="provider"/>: Loop's and 40swap's are the node's own;
@@ -34,10 +34,21 @@ public readonly record struct SwapProviderLimits(long MinSats, long MaxSats, int
     /// </summary>
     public static SwapProviderLimits For(Node node, SwapProvider provider, SparkSettings spark) => provider switch
     {
-        SwapProvider.Loop => new(node.LoopSwapMinAmountSats, node.LoopSwapMaxAmountSats, node.LoopMaxSwapsInFlight),
-        SwapProvider.FortySwap => new(node.FortySwapMinAmountSats, node.FortySwapMaxAmountSats, node.FortySwapMaxSwapsInFlight),
+        SwapProvider.Loop => new(node.LoopSwapMinAmountSats, node.LoopSwapMaxAmountSats, node.LoopMaxSwapsInFlight,
+            node.LoopMaxSwapRoutingFeeRatio),
+        SwapProvider.FortySwap => new(node.FortySwapMinAmountSats, node.FortySwapMaxAmountSats, node.FortySwapMaxSwapsInFlight,
+            node.FortySwapMaxSwapRoutingFeeRatio),
         SwapProvider.Spark => new(node.SparkSwapMinAmountSats ?? spark.SwapMinSats, node.SparkSwapMaxAmountSats ?? spark.SwapMaxSats,
-            node.SparkMaxSwapsInFlight),
+            node.SparkMaxSwapsInFlight, node.SparkMaxSwapRoutingFeeRatio),
+        _ => throw new ArgumentOutOfRangeException(nameof(provider), provider, "Unknown swap provider")
+    };
+
+    /// <summary><paramref name="node"/>'s max routing fee ratio for <paramref name="provider"/>'s swaps.</summary>
+    public static decimal MaxRoutingFeeRatioFor(Node node, SwapProvider provider) => provider switch
+    {
+        SwapProvider.Loop => node.LoopMaxSwapRoutingFeeRatio,
+        SwapProvider.FortySwap => node.FortySwapMaxSwapRoutingFeeRatio,
+        SwapProvider.Spark => node.SparkMaxSwapRoutingFeeRatio,
         _ => throw new ArgumentOutOfRangeException(nameof(provider), provider, "Unknown swap provider")
     };
 }

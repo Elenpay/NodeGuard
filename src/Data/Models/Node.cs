@@ -126,10 +126,20 @@ namespace NodeGuard.Data.Models
         public int SparkMaxSwapsInFlight { get; set; }
 
         /// <summary>
-        /// Maximum swap routing fee ratio acceptable for swaps as a decimal between 0 and 1
-        /// Example: 0.005 = 0.5%
+        /// Maximum routing fee ratio acceptable for Loop swaps, as a decimal between 0 and 1. Example: 0.005 = 0.5%
         /// </summary>
-        public decimal MaxSwapRoutingFeeRatio { get; set; }
+        public decimal LoopMaxSwapRoutingFeeRatio { get; set; }
+
+        /// <summary>
+        /// Maximum routing fee ratio acceptable for 40swap swaps, as a decimal between 0 and 1
+        /// </summary>
+        public decimal FortySwapMaxSwapRoutingFeeRatio { get; set; }
+
+        /// <summary>
+        /// Maximum routing fee ratio acceptable for Spark swaps, as a decimal between 0 and 1. It includes Spark's own
+        /// 15 bps, which Spark charges on the Lightning route
+        /// </summary>
+        public decimal SparkMaxSwapRoutingFeeRatio { get; set; }
 
         /// <summary>
         /// Balance threshold in satoshis - when node balance exceeds this, trigger automatic swap out
