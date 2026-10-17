@@ -49,16 +49,16 @@ jobs:
             license: MIT
     steps:
       - name: Check out open-ssp at the pinned commit
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7.0.1
         with:
           repository: ${{ env.OPEN_SSP_REPOSITORY }}
           ref: ${{ env.OPEN_SSP_SHA }}
           submodules: recursive
           persist-credentials: false
 
-      - uses: docker/setup-buildx-action@v3
+      - uses: docker/setup-buildx-action@v3.12.0
 
-      - uses: docker/login-action@v3
+      - uses: docker/login-action@v3.7.0
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
@@ -66,7 +66,7 @@ jobs:
 
       - name: Build and push by digest
         id: build
-        uses: docker/build-push-action@v6
+        uses: docker/build-push-action@v6.19.2
         with:
           context: ${{ matrix.context }}
           file: ${{ matrix.file }}
@@ -86,7 +86,7 @@ jobs:
         env:
           DIGEST: ${{ steps.build.outputs.digest }}
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v4.6.2
         with:
           name: digests-${{ matrix.image }}-${{ matrix.arch }}
           path: digests/*
@@ -103,15 +103,15 @@ jobs:
     env:
       IMAGE: ghcr.io/elenpay/nodeguard-spark-dev-${{ matrix.image }}
     steps:
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v4.3.0
         with:
           pattern: digests-${{ matrix.image }}-*
           path: digests
           merge-multiple: true
 
-      - uses: docker/setup-buildx-action@v3
+      - uses: docker/setup-buildx-action@v3.12.0
 
-      - uses: docker/login-action@v3
+      - uses: docker/login-action@v3.7.0
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
@@ -127,7 +127,7 @@ jobs:
           echo "digest=$DIGEST" >> "$GITHUB_OUTPUT"
           echo "Pin in docker/spark/docker-compose.yml: \`$IMAGE@$DIGEST\` (tag $TAG)" >> "$GITHUB_STEP_SUMMARY"
 
-      - uses: actions/attest-build-provenance@v2
+      - uses: actions/attest-build-provenance@v2.4.0
         with:
           subject-name: ${{ env.IMAGE }}
           subject-digest: ${{ steps.manifest.outputs.digest }}
