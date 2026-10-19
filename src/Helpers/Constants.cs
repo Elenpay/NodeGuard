@@ -525,8 +525,9 @@ public class Constants
         var environmentVariableMax = Environment.GetEnvironmentVariable("MAXIMUM_WITHDRAWAL_BTC_AMOUNT");
         if (environmentVariableMax != null) MAXIMUM_WITHDRAWAL_BTC_AMOUNT = decimal.Parse(environmentVariableMax, NumberStyles.AllowDecimalPoint, CultureInfo.InvariantCulture);
 
+        // At least one: a transaction evicted from the mempool sits at 0 confirmations and must never count as mined.
         var transactionConfBlocks = GetEnvironmentalVariableOrThrowIfNotTesting("TRANSACTION_CONFIRMATION_MINIMUM_BLOCKS");
-        if (transactionConfBlocks != null) TRANSACTION_CONFIRMATION_MINIMUM_BLOCKS = int.Parse(transactionConfBlocks);
+        TRANSACTION_CONFIRMATION_MINIMUM_BLOCKS = Math.Max(1, transactionConfBlocks != null ? int.Parse(transactionConfBlocks) : 1);
 
         var defaultChannelFeePolicyTimelockDeltaBlocks = Environment.GetEnvironmentVariable("DEFAULT_CHANNEL_FEE_POLICY_TIMELOCK_DELTA_BLOCKS");
         if (defaultChannelFeePolicyTimelockDeltaBlocks != null) DEFAULT_CHANNEL_FEE_POLICY_TIMELOCK_DELTA_BLOCKS = int.Parse(defaultChannelFeePolicyTimelockDeltaBlocks);

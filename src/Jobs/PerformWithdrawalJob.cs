@@ -37,8 +37,8 @@ public class PerformWithdrawalJob : IJob
     private readonly IBitcoinService _bitcoinService;
     private readonly IWalletWithdrawalRequestRepository _walletWithdrawalRequestRepository;
 
-
-    public PerformWithdrawalJob(ILogger<PerformWithdrawalJob> logger, IBitcoinService bitcoinService, IWalletWithdrawalRequestRepository walletWithdrawalRequestRepository)
+    public PerformWithdrawalJob(ILogger<PerformWithdrawalJob> logger, IBitcoinService bitcoinService,
+        IWalletWithdrawalRequestRepository walletWithdrawalRequestRepository)
     {
         _logger = logger;
         _bitcoinService = bitcoinService;
@@ -58,34 +58,15 @@ public class PerformWithdrawalJob : IJob
         catch (Exception e)
         {
             var request = await _walletWithdrawalRequestRepository.GetById(withdrawalRequestId);
-
-            // If an error occurs and the wd was bumping another one, we need to update the status of the withdrawal request to previous status
-            if (request != null && request!.BumpingWalletWithdrawalRequestId.HasValue)
+            if (request != null)
             {
-                var bumped = await _walletWithdrawalRequestRepository.GetById(request.BumpingWalletWithdrawalRequestId.Value);
-                if (bumped == null)
+                // A failed RBF replacement needs nothing else: the request it replaced never left its own status.
+                request.Status = WalletWithdrawalRequestStatus.Failed;
+                var (updated, _) = _walletWithdrawalRequestRepository.Update(request);
+                if (!updated)
                 {
-                    _logger.LogError("Failed to find withdrawal request with ID {WithdrawalRequestId}", withdrawalRequestId);
-                    return;
+                    _logger.LogError("Failed to update withdrawal request status to failed");
                 }
-
-                bumped.Status = WalletWithdrawalRequestStatus.OnChainConfirmationPending;
-                var (ok, _) = _walletWithdrawalRequestRepository.Update(bumped);
-                if (!ok)
-                {
-                    _logger.LogError("Failed to update withdrawal request status to OnChainConfirmationPending for ID {WithdrawalRequestId}", withdrawalRequestId);
-                }
-                else
-                {
-                    _logger.LogInformation("Updated withdrawal request status to OnChainConfirmationPending for ID {WithdrawalRequestId}", withdrawalRequestId);
-                }
-            }
-
-            request!.Status = WalletWithdrawalRequestStatus.Failed;
-            var (updated, _) = _walletWithdrawalRequestRepository.Update(request);
-            if (!updated)
-            {
-                _logger.LogError("Failed to update withdrawal request status to failed");
             }
 
             _logger.LogError(e, "Error on {JobName}", nameof(PerformWithdrawalJob));

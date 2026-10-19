@@ -992,6 +992,166 @@ namespace NodeGuard.Rpc
             exception.Status.Detail.Should().Be("refused", "the user-facing reason travels to the API caller");
         }
 
+        // ---- GetWithdrawalsRequestStatus: a replaced request keeps its own status; the API derives what it reports ----
+
+        private const string OriginalTxId = "5f59c45bc3fa8362d5c38bce5c633bb901a57f268ec75e55548c00d2baec0d65";
+        private const string ReplacementTxId = "3a9907ab1b965e1ad0024e7fe4466ddab0d3b1bf3bd15ab6416bf8f0c9032f84";
+
+        private static WalletWithdrawalRequest Original() => new()
+        {
+            Id = 10,
+            Status = WalletWithdrawalRequestStatus.OnChainConfirmationPending,
+            TxId = OriginalTxId,
+            ReferenceId = "store-1",
+            Description = "pay rent",
+        };
+
+        private static WalletWithdrawalRequest Replacement(WalletWithdrawalRequestStatus status, bool cancellation = false) => new()
+        {
+            Id = 11,
+            Status = status,
+            TxId = ReplacementTxId,
+            ReferenceId = "store-1",
+            Description = "bump",
+            BumpingWalletWithdrawalRequestId = 10,
+            IsRbfCancellation = cancellation,
+        };
+
+        /// <summary>A repository holding exactly <paramref name="requests"/>, answering the status lookups from them.</summary>
+        private static Mock<IWalletWithdrawalRequestRepository> Repository(params WalletWithdrawalRequest[] requests)
+        {
+            var repository = new Mock<IWalletWithdrawalRequestRepository>();
+            repository.Setup(x => x.GetByIds(It.IsAny<List<int>>()))
+                .ReturnsAsync((List<int> ids) => requests.Where(r => ids.Contains(r.Id)).ToList());
+            repository.Setup(x => x.GetByReferenceIds(It.IsAny<List<string>>()))
+                .ReturnsAsync((List<string> references) => requests.Where(r => references.Contains(r.ReferenceId!)).OrderBy(r => r.Id).ToList());
+            repository.Setup(x => x.GetReplacementsAsync(It.IsAny<IEnumerable<int>>()))
+                .ReturnsAsync((IEnumerable<int> ids) => requests
+                    .Where(r => r.BumpingWalletWithdrawalRequestId is { } replacedId && ids.Contains(replacedId))
+                    .ToLookup(r => r.BumpingWalletWithdrawalRequestId!.Value));
+            return repository;
+        }
+
+        private NodeGuardService StatusService(Mock<IWalletWithdrawalRequestRepository> walletWithdrawalRequestRepository, int confirmations)
+        {
+            var nbxplorerService = new Mock<INBXplorerService>();
+            nbxplorerService.Setup(x => x.GetTransactionAsync(It.IsAny<uint256>(), It.IsAny<CancellationToken>()))
+                .ReturnsAsync(new TransactionResult { Confirmations = confirmations });
+
+            return CreateNodeGuardService(
+                walletWithdrawalRequestRepository: walletWithdrawalRequestRepository.Object,
+                nbXplorerService: nbxplorerService.Object);
+        }
+
+        /// <summary>The status of the original (id 10) as reported by id, with <paramref name="requests"/> in the repository.</summary>
+        private async Task<WithdrawalRequest> GetStatusAsync(int confirmations, params WalletWithdrawalRequest[] requests)
+        {
+            var response = await StatusService(Repository(requests), confirmations).GetWithdrawalsRequestStatus(
+                new GetWithdrawalsRequestStatusRequest { RequestIds = { 10 } }, TestServerCallContext.Create());
+            return response.WithdrawalRequests.Single();
+        }
+
+        [Fact]
+        public async Task GetWithdrawalsRequestStatus_OriginalWithABroadcastReplacement_ReportsBumpedAndTheReplacementId()
+        {
+            var status = await GetStatusAsync(0, Original(), Replacement(WalletWithdrawalRequestStatus.OnChainConfirmationPending));
+
+            status.Status.Should().Be(WITHDRAWAL_REQUEST_STATUS.WithdrawalBumped,
+                "the replacement's transaction competes with its own in the mempool");
+            status.ReplacedByRequestId.Should().Be(11);
+            status.RejectOrCancelReason.Should().Be($"Replaced by request 11 (tx {ReplacementTxId})",
+                "the same text it will be stored with once the replacement settles");
+        }
+
+        [Fact]
+        public async Task GetWithdrawalsRequestStatus_OriginalWithABroadcastCancellation_ReportsCancelledWithTheReason()
+        {
+            var status = await GetStatusAsync(0, Original(), Replacement(WalletWithdrawalRequestStatus.OnChainConfirmationPending, cancellation: true));
+
+            status.Status.Should().Be(WITHDRAWAL_REQUEST_STATUS.WithdrawalCancelled);
+            status.RejectOrCancelReason.Should().Be($"Cancelled by RBF replacement request 11 (tx {ReplacementTxId})");
+            status.ReplacedByRequestId.Should().Be(11);
+        }
+
+        [Theory]
+        [InlineData(WalletWithdrawalRequestStatus.Pending)]
+        [InlineData(WalletWithdrawalRequestStatus.PSBTSignaturesPending)]
+        public async Task GetWithdrawalsRequestStatus_OriginalWithAReplacementAwaitingApproval_ReportsPendingConfirmation(
+            WalletWithdrawalRequestStatus replacementStatus)
+        {
+            var status = await GetStatusAsync(0, Original(), Replacement(replacementStatus));
+
+            status.Status.Should().Be(WITHDRAWAL_REQUEST_STATUS.WithdrawalPendingConfirmation,
+                "its own transaction is still the only candidate in the mempool and may well confirm");
+            status.ReplacedByRequestId.Should().Be(11, "clients can already see the replacement being prepared");
+        }
+
+        [Theory]
+        [InlineData(WalletWithdrawalRequestStatus.Failed)]
+        [InlineData(WalletWithdrawalRequestStatus.Cancelled)]
+        [InlineData(WalletWithdrawalRequestStatus.Rejected)]
+        public async Task GetWithdrawalsRequestStatus_OriginalWithAnAbandonedReplacement_ReportsPendingConfirmation(
+            WalletWithdrawalRequestStatus replacementStatus)
+        {
+            var status = await GetStatusAsync(0, Original(), Replacement(replacementStatus));
+
+            status.Status.Should().Be(WITHDRAWAL_REQUEST_STATUS.WithdrawalPendingConfirmation);
+            status.HasReplacedByRequestId.Should().BeFalse();
+        }
+
+        [Fact]
+        public async Task GetWithdrawalsRequestStatus_OriginalWithOwnConfirmations_IsNotReportedAsBumped()
+        {
+            var status = await GetStatusAsync(1, Original(), Replacement(WalletWithdrawalRequestStatus.OnChainConfirmationPending));
+
+            status.Status.Should().Be(WITHDRAWAL_REQUEST_STATUS.WithdrawalPendingConfirmation,
+                "it was mined: the replacement is the one that can never confirm");
+            status.Confirmations.Should().Be(1UL);
+        }
+
+        [Fact]
+        public async Task GetWithdrawalsRequestStatus_StoredBumpedRow_ReportsBumped()
+        {
+            var original = Original();
+            original.Status = WalletWithdrawalRequestStatus.Bumped;
+            original.RejectCancelDescription = WalletWithdrawalRequest.ReplacedReason(11, ReplacementTxId);
+
+            var status = await GetStatusAsync(0, original, Replacement(WalletWithdrawalRequestStatus.OnChainConfirmed));
+
+            status.Status.Should().Be(WITHDRAWAL_REQUEST_STATUS.WithdrawalBumped);
+            status.RejectOrCancelReason.Should().Be($"Replaced by request 11 (tx {ReplacementTxId})");
+            status.ReplacedByRequestId.Should().Be(11);
+        }
+
+        [Fact]
+        public async Task GetWithdrawalsRequestStatusByReferenceIds_ReturnsEveryRequestOfTheChain()
+        {
+            var repository = Repository(Original(), Replacement(WalletWithdrawalRequestStatus.OnChainConfirmationPending));
+
+            var response = await StatusService(repository, confirmations: 0).GetWithdrawalsRequestStatusByReferenceIds(
+                new GetWithdrawalsRequestStatusByReferenceIdsRequest { ReferenceIds = { "store-1" } }, TestServerCallContext.Create());
+
+            response.WithdrawalRequests.Select(r => (r.RequestId, r.Status)).Should().Equal(
+                (10, WITHDRAWAL_REQUEST_STATUS.WithdrawalBumped),
+                (11, WITHDRAWAL_REQUEST_STATUS.WithdrawalPendingConfirmation));
+            response.WithdrawalRequests[0].ReplacedByRequestId.Should().Be(11, "the caller can follow the chain");
+            response.WithdrawalRequests[1].HasReplacedByRequestId.Should().BeFalse();
+        }
+
+        [Fact]
+        public void WalletWithdrawalRequestSelfMap_DropsTheReplacedRequestNavigation()
+        {
+            var original = Original();
+            original.BumpingWalletWithdrawalRequestId = 9;
+            original.BumpingWalletWithdrawalRequest = new WalletWithdrawalRequest { Id = 9, Description = "older" };
+
+            var copy = _mockMapper.Map<WalletWithdrawalRequest>(original);
+
+            copy.BumpingWalletWithdrawalRequest.Should().BeNull("Repository.Update attaches the mapped graph; the replaced request must never ride along");
+            copy.BumpingWalletWithdrawalRequestId.Should().Be(9);
+            copy.Status.Should().Be(original.Status);
+        }
+
         [Fact]
         public async Task BumpWithdrawal_SchedulingFails_CancelsTheBumpRequest()
         {
