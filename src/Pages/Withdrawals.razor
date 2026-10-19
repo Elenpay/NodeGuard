@@ -416,8 +416,12 @@
             </DataGridColumn>
             <DataGridColumn TItem="WalletWithdrawalRequest" Field="@nameof(WalletWithdrawalRequest.Status)" Caption="Status" Sortable="false" Displayable="true">
                 <DisplayTemplate>
-                    <Tooltip Text=@context.RejectCancelDescription Placement="TooltipPlacement.Top">
-                        <span>@context?.Status.Humanize()</span>
+                    @{
+                        // A replaced request keeps its own stored status; the UI shows what the API reports.
+                        var (effectiveStatus, effectiveReason, replacedById) = context.EffectiveStatus();
+                    }
+                    <Tooltip Text=@effectiveReason Placement="TooltipPlacement.Top">
+                        <span>@effectiveStatus.Humanize()@(replacedById is { } replacedBy ? $" · replaced by #{replacedBy}" : "")</span>
                     </Tooltip>
                 </DisplayTemplate>
             </DataGridColumn>
@@ -441,7 +445,7 @@
             </DataGridColumn>
             <DataGridColumn TItem="WalletWithdrawalRequest" Caption="Actions" Displayable="true">
                 <DisplayTemplate>
-                    @if (_isFinanceManager && context.Status == WalletWithdrawalRequestStatus.OnChainConfirmationPending)
+                    @if (_isFinanceManager && context.Status == WalletWithdrawalRequestStatus.OnChainConfirmationPending && context.LiveReplacement == null)
                     {
                             <Dropdown>
                                 <DropdownToggle Color="Color.Primary">
@@ -985,7 +989,14 @@
             await LogWithdrawalAuditAsync(AuditActionType.BumpFee, AuditEventType.Failure, request, "Bump requested for withdrawal not pending on-chain confirmation.");
             return;
         }
-        
+
+        if (request.LiveReplacement is { } liveReplacement)
+        {
+            ToastService.ShowError($"This withdrawal is already being replaced by request {liveReplacement.Id}. Bump or cancel that request instead.");
+            await LogWithdrawalAuditAsync(AuditActionType.BumpFee, AuditEventType.Failure, request, $"Bump requested for withdrawal already replaced by request {liveReplacement.Id}.");
+            return;
+        }
+
         ulong confirmations = 0;
         if (!string.IsNullOrEmpty(request.TxId))
         {
@@ -1072,14 +1083,7 @@
                             _selectedRequest = await WalletWithdrawalRequestRepository.GetById(_selectedRequest.Id);
                             if (_selectedRequest != null)
                             {
-                                // Mark the replaced request before the job runs, so a failed broadcast's revert has the last word.
-                                await WithdrawalRequestService.MarkOriginalAsReplacedAsync(_selectedRequest);
                                 await CreateJob();
-                                // CreateJob reports a scheduling failure by failing the request.
-                                if (_selectedRequest?.Status == WalletWithdrawalRequestStatus.Failed)
-                                {
-                                    await WithdrawalRequestService.RevertOriginalAsync(_selectedRequest);
-                                }
                             }
                         }
                         catch (Exception ex)
@@ -1191,9 +1195,6 @@
                 var successMessage = successAction == AuditActionType.Cancel ? "Withdrawal request cancelled." : "Withdrawal request rejected.";
                 await LogWithdrawalAuditAsync(successAction, AuditEventType.Success, _selectedRequest, successMessage);
             }
-
-            // In case that is a bump, we return the old request status to pending confirmation.
-            await WithdrawalRequestService.RevertOriginalAsync(_selectedRequest);
 
             await HideRejectCancelModal();
         }
@@ -1340,7 +1341,7 @@
                 await LogWithdrawalAuditAsync(AuditActionType.Create, AuditEventType.Success, _selectedRequest, "Withdrawal request created.");
 
                 // Moves the request to PSBTSignaturesPending (the status PerformWithdrawal requires), generates the template
-                // PSBT, marks a replaced request as Bumped and schedules PerformWithdrawalJob to sign and broadcast.
+                // PSBT and schedules PerformWithdrawalJob to sign and broadcast.
                 await WithdrawalRequestService.ScheduleHotWalletWithdrawalAsync(_selectedRequest.Id);
 
                 ToastService.ShowSuccess("Withdrawal scheduled for signing and broadcast");

@@ -1475,6 +1475,10 @@ namespace NodeGuard.Migrations
 
                     b.HasIndex("WalletId");
 
+                    b.HasIndex(new[] { "BumpingWalletWithdrawalRequestId" }, "IX_WalletWithdrawalRequests_LiveReplacement")
+                        .IsUnique()
+                        .HasFilter("\"BumpingWalletWithdrawalRequestId\" IS NOT NULL AND \"Status\" IN (0, 3, 4, 7)");
+
                     b.ToTable("WalletWithdrawalRequests");
                 });
 
@@ -1896,7 +1900,7 @@ namespace NodeGuard.Migrations
             modelBuilder.Entity("NodeGuard.Data.Models.WalletWithdrawalRequest", b =>
                 {
                     b.HasOne("NodeGuard.Data.Models.WalletWithdrawalRequest", "BumpingWalletWithdrawalRequest")
-                        .WithMany()
+                        .WithMany("Replacements")
                         .HasForeignKey("BumpingWalletWithdrawalRequestId");
 
                     b.HasOne("NodeGuard.Data.Models.ApplicationUser", "UserRequestor")
@@ -1978,6 +1982,8 @@ namespace NodeGuard.Migrations
 
             modelBuilder.Entity("NodeGuard.Data.Models.WalletWithdrawalRequest", b =>
                 {
+                    b.Navigation("Replacements");
+
                     b.Navigation("WalletWithdrawalRequestDestinations");
 
                     b.Navigation("WalletWithdrawalRequestPSBTs");

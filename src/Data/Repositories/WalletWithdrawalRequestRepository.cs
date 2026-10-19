@@ -66,6 +66,7 @@ namespace NodeGuard.Data.Repositories
                 .Include(x => x.WalletWithdrawalRequestPSBTs)
                 .Include(x => x.WalletWithdrawalRequestDestinations)
                 .Include(x => x.UTXOs)
+                .Include(x => x.Replacements)
                 .SingleOrDefaultAsync(x => x.Id == id);
 
             return request;
@@ -75,47 +76,23 @@ namespace NodeGuard.Data.Repositories
         {
             await using var applicationDbContext = await _dbContextFactory.CreateDbContextAsync();
 
-            return await applicationDbContext.WalletWithdrawalRequests.Where(wr => ids.Contains(wr.Id)).ToListAsync();
+            return await applicationDbContext.WalletWithdrawalRequests
+                .Include(x => x.Replacements)
+                .Where(wr => ids.Contains(wr.Id))
+                .ToListAsync();
         }
 
         public async Task<List<WalletWithdrawalRequest>> GetByReferenceIds(List<string> referenceIds)
         {
             await using var applicationDbContext = await _dbContextFactory.CreateDbContextAsync();
 
-            // RBF replacements inherit the reference id of the request they replace, so a reference id can match a whole
-            // chain of requests. The latest one reflects the current status of the withdrawal, unless a request it
-            // replaced was mined instead: that one is the payment that happened.
-            var requests = await applicationDbContext.WalletWithdrawalRequests
+            // RBF replacements inherit the reference id of the request they replace, so a reference id matches a whole
+            // chain. Every request of it is returned, oldest first, each reporting its own (derived) status.
+            return await applicationDbContext.WalletWithdrawalRequests
+                .Include(x => x.Replacements)
                 .Where(wr => !string.IsNullOrEmpty(wr.ReferenceId) && referenceIds.Contains(wr.ReferenceId))
+                .OrderBy(wr => wr.Id)
                 .ToListAsync();
-
-            return requests
-                .GroupBy(wr => wr.ReferenceId!)
-                .Select(g => SettledInChainOrLatest(g.ToList()))
-                .ToList();
-        }
-
-        /// <summary>
-        /// Walks back from the latest request through the requests it replaced, and returns the settled one if any.
-        /// Only that chain: reference ids are not unique, so an unrelated earlier withdrawal must not stand in for it.
-        /// </summary>
-        private static WalletWithdrawalRequest SettledInChainOrLatest(List<WalletWithdrawalRequest> sameReference)
-        {
-            var byId = sameReference.ToDictionary(wr => wr.Id);
-            var latest = sameReference.MaxBy(wr => wr.Id)!;
-
-            var request = latest;
-            while (request != null)
-            {
-                if (request.Status == WalletWithdrawalRequestStatus.OnChainConfirmed) return request;
-
-                // A replacement is always newer than what it replaces, so ids only go down and the walk ends.
-                request = request.BumpingWalletWithdrawalRequestId is { } replacedId && replacedId < request.Id
-                    ? byId.GetValueOrDefault(replacedId)
-                    : null;
-            }
-
-            return latest;
         }
 
         public async Task<WalletWithdrawalRequest?> GetByTxHash(string txHash)
@@ -123,6 +100,7 @@ namespace NodeGuard.Data.Repositories
             await using var applicationDbContext = await _dbContextFactory.CreateDbContextAsync();
 
             return await applicationDbContext.WalletWithdrawalRequests
+                .Include(x => x.Replacements)
                 .FirstOrDefaultAsync(wr => wr.TxId == txHash);
         }
 
@@ -169,6 +147,7 @@ namespace NodeGuard.Data.Repositories
                 .Include(x => x.WalletWithdrawalRequestPSBTs)
                 .Include(x => x.WalletWithdrawalRequestDestinations)
                 .Include(x => x.UTXOs)
+                .Include(x => x.Replacements)
                 .AsSplitQuery()
                 .AsQueryable();
 
@@ -404,6 +383,65 @@ namespace NodeGuard.Data.Repositories
                 .ToListAsync();
 
             return walletWithdrawalRequests;
+        }
+
+        public async Task<bool> HasLiveReplacementAsync(int requestId)
+        {
+            await using var applicationDbContext = await _dbContextFactory.CreateDbContextAsync();
+
+            var live = WalletWithdrawalRequest.LiveStatuses;
+            return await applicationDbContext.WalletWithdrawalRequests
+                .AnyAsync(x => x.BumpingWalletWithdrawalRequestId == requestId && live.Contains(x.Status));
+        }
+
+        public async Task<List<WalletWithdrawalRequest>> GetRbfChainAsync(int requestId)
+        {
+            await using var applicationDbContext = await _dbContextFactory.CreateDbContextAsync();
+
+            // Breadth-first over the link in both directions, one query per hop. Chains are a handful of rows.
+            var chain = new Dictionary<int, WalletWithdrawalRequest>();
+            var frontier = new List<int> { requestId };
+            while (frontier.Count > 0)
+            {
+                var ids = frontier;
+                var hop = await applicationDbContext.WalletWithdrawalRequests
+                    .AsNoTracking()
+                    .Where(x => ids.Contains(x.Id)
+                                || (x.BumpingWalletWithdrawalRequestId != null && ids.Contains(x.BumpingWalletWithdrawalRequestId.Value)))
+                    .ToListAsync();
+
+                frontier = new List<int>();
+                foreach (var request in hop)
+                {
+                    if (!chain.TryAdd(request.Id, request)) continue;
+
+                    frontier.Add(request.Id);
+                    if (request.BumpingWalletWithdrawalRequestId is { } replacedId && !chain.ContainsKey(replacedId))
+                    {
+                        frontier.Add(replacedId);
+                    }
+                }
+            }
+
+            return chain.Values.OrderBy(x => x.Id).ToList();
+        }
+
+        public async Task<List<WalletWithdrawalRequest>> GetLiveRbfLinkedRequestsAsync()
+        {
+            await using var applicationDbContext = await _dbContextFactory.CreateDbContextAsync();
+
+            var statuses = new[]
+            {
+                WalletWithdrawalRequestStatus.Pending,
+                WalletWithdrawalRequestStatus.PSBTSignaturesPending,
+                WalletWithdrawalRequestStatus.OnChainConfirmationPending,
+            };
+
+            return await applicationDbContext.WalletWithdrawalRequests
+                .AsNoTracking()
+                .Where(x => statuses.Contains(x.Status)
+                            && (x.BumpingWalletWithdrawalRequestId != null || x.Replacements.Any()))
+                .ToListAsync();
         }
 
         public async Task<List<WalletWithdrawalRequest>> GetOnChainPendingWithdrawals()

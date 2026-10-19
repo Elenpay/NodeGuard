@@ -27,10 +27,10 @@ using Quartz;
 namespace NodeGuard.Jobs;
 
 /// <summary>
-/// When PerformWithdrawalJob cannot sign or broadcast, the request fails and, if it was an RBF replacement, the request
-/// it replaced gets back its pending-confirmation status. That revert goes through WithdrawalRequestService, so it only
-/// undoes what the replacement did: an original that settled meanwhile (the cold-wallet case, where approvals take
-/// hours) is left settled, and a reverted cancellation loses its "Cancelled by RBF" reason.
+/// When PerformWithdrawalJob cannot sign or broadcast, the request fails and nothing else happens: a request's status
+/// only describes its own transaction, so the request an RBF replacement replaced never left pending confirmation and
+/// needs no revert. Its inputs are still locked by it, and it is reported as pending again as soon as the replacement
+/// is no longer live.
 /// </summary>
 public class PerformWithdrawalJobTests
 {
@@ -49,12 +49,7 @@ public class PerformWithdrawalJobTests
 
     private Task ExecuteAsync(int requestId)
     {
-        // The real service: what happens to the replaced request is RevertOriginalAsync's behaviour.
-        var withdrawalRequestService = new WithdrawalRequestService(NullLogger<WithdrawalRequestService>.Instance,
-            _requests.Object, Mock.Of<IFMUTXORepository>(), Mock.Of<ICoinSelectionService>(), Mock.Of<INBXplorerService>(),
-            _bitcoin.Object, Mock.Of<ISchedulerFactory>());
-        var job = new PerformWithdrawalJob(NullLogger<PerformWithdrawalJob>.Instance, _bitcoin.Object, _requests.Object,
-            withdrawalRequestService);
+        var job = new PerformWithdrawalJob(NullLogger<PerformWithdrawalJob>.Instance, _bitcoin.Object, _requests.Object);
 
         var context = new Mock<IJobExecutionContext>();
         context.Setup(x => x.JobDetail).Returns(JobBuilder.Create<PerformWithdrawalJob>()
@@ -78,31 +73,21 @@ public class PerformWithdrawalJobTests
         return request;
     }
 
-    [Fact]
-    public async Task Execute_FailedBump_RevertsTheBumpedOriginalAndFailsTheBump()
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task Execute_FailedReplacement_FailsOnlyTheReplacement(bool cancellation)
     {
-        var original = Stored(OriginalId, WalletWithdrawalRequestStatus.Bumped);
-        var bump = Stored(ReplacementId, WalletWithdrawalRequestStatus.FinalizingPSBT, replaces: OriginalId);
+        var original = Stored(OriginalId, WalletWithdrawalRequestStatus.OnChainConfirmationPending);
+        var replacement = Stored(ReplacementId, WalletWithdrawalRequestStatus.FinalizingPSBT, replaces: OriginalId, cancellation);
 
         await ExecuteAsync(ReplacementId);
 
-        bump.Status.Should().Be(WalletWithdrawalRequestStatus.Failed);
+        replacement.Status.Should().Be(WalletWithdrawalRequestStatus.Failed);
         original.Status.Should().Be(WalletWithdrawalRequestStatus.OnChainConfirmationPending,
-            "the bump never went out, so the original transaction is still the one waiting to confirm");
-    }
-
-    [Fact]
-    public async Task Execute_FailedCancellation_RestoresTheOriginalAndClearsTheCancellationReason()
-    {
-        var original = Stored(OriginalId, WalletWithdrawalRequestStatus.Cancelled);
-        original.RejectCancelDescription = $"Cancelled by RBF replacement request {ReplacementId}";
-        var cancel = Stored(ReplacementId, WalletWithdrawalRequestStatus.FinalizingPSBT, replaces: OriginalId, cancellation: true);
-
-        await ExecuteAsync(ReplacementId);
-
-        cancel.Status.Should().Be(WalletWithdrawalRequestStatus.Failed);
-        original.Status.Should().Be(WalletWithdrawalRequestStatus.OnChainConfirmationPending);
-        original.RejectCancelDescription.Should().BeNull("the cancellation never went out");
+            "the replacement never went out, so the original transaction is still the one waiting to confirm");
+        _requests.Verify(x => x.Update(original), Times.Never, "a replacement never writes the request it replaces");
+        _requests.Verify(x => x.Update(It.IsAny<WalletWithdrawalRequest>()), Times.Once);
     }
 
     [Fact]
@@ -143,12 +128,13 @@ public class PerformWithdrawalJobTests
     public async Task Execute_SuccessfulBroadcast_LeavesTheReplacedRequestAsItWas()
     {
         _bitcoin.Setup(x => x.PerformWithdrawal(It.IsAny<WalletWithdrawalRequest>())).Returns(Task.CompletedTask);
-        var original = Stored(OriginalId, WalletWithdrawalRequestStatus.Bumped);
+        var original = Stored(OriginalId, WalletWithdrawalRequestStatus.OnChainConfirmationPending);
         Stored(ReplacementId, WalletWithdrawalRequestStatus.FinalizingPSBT, replaces: OriginalId);
 
         await ExecuteAsync(ReplacementId);
 
-        original.Status.Should().Be(WalletWithdrawalRequestStatus.Bumped);
+        original.Status.Should().Be(WalletWithdrawalRequestStatus.OnChainConfirmationPending,
+            "whether it ends up Bumped or settled is for the monitor to decide once a transaction confirms");
         _requests.Verify(x => x.Update(It.IsAny<WalletWithdrawalRequest>()), Times.Never);
     }
 }

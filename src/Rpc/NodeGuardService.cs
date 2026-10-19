@@ -1349,16 +1349,21 @@ public class NodeGuardService : Nodeguard.NodeGuardService.NodeGuardServiceBase,
                 confirmations = (ulong)(nbxplorerStatus?.Confirmations ?? 0);
             }
 
-            withdrawalsResponses.Add(new WithdrawalRequest
+            // A replaced request keeps its own stored status; what the client sees is derived from its replacements.
+            var (status, reason, replacedById) = withdrawalRequest.EffectiveStatus(confirmations);
+            var response = new WithdrawalRequest
             {
                 RequestId = withdrawalRequest.Id,
-                Status = GetStatus(withdrawalRequest.Status),
-                RejectOrCancelReason = withdrawalRequest.RejectCancelDescription ?? "",
+                Status = GetStatus(status),
+                RejectOrCancelReason = reason ?? "",
                 ReferenceId = withdrawalRequest.ReferenceId ?? "",
                 Confirmations = confirmations,
                 TxId = withdrawalRequest.TxId ?? "",
                 RequestMetadata = withdrawalRequest.RequestMetadata ?? "",
-            });
+            };
+            if (replacedById is { } id) response.ReplacedByRequestId = id;
+
+            withdrawalsResponses.Add(response);
         }
 
         return new GetWithdrawalsRequestStatusResponse()

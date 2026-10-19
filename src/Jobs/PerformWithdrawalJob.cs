@@ -36,16 +36,13 @@ public class PerformWithdrawalJob : IJob
     private readonly ILogger<PerformWithdrawalJob> _logger;
     private readonly IBitcoinService _bitcoinService;
     private readonly IWalletWithdrawalRequestRepository _walletWithdrawalRequestRepository;
-    private readonly IWithdrawalRequestService _withdrawalRequestService;
-
 
     public PerformWithdrawalJob(ILogger<PerformWithdrawalJob> logger, IBitcoinService bitcoinService,
-        IWalletWithdrawalRequestRepository walletWithdrawalRequestRepository, IWithdrawalRequestService withdrawalRequestService)
+        IWalletWithdrawalRequestRepository walletWithdrawalRequestRepository)
     {
         _logger = logger;
         _bitcoinService = bitcoinService;
         _walletWithdrawalRequestRepository = walletWithdrawalRequestRepository;
-        _withdrawalRequestService = withdrawalRequestService;
     }
 
     public async Task Execute(IJobExecutionContext context)
@@ -63,9 +60,7 @@ public class PerformWithdrawalJob : IJob
             var request = await _walletWithdrawalRequestRepository.GetById(withdrawalRequestId);
             if (request != null)
             {
-                // A failed replacement gives the request it replaced back its pending-confirmation status.
-                await _withdrawalRequestService.RevertOriginalAsync(request);
-
+                // A failed RBF replacement needs nothing else: the request it replaced never left its own status.
                 request.Status = WalletWithdrawalRequestStatus.Failed;
                 var (updated, _) = _walletWithdrawalRequestRepository.Update(request);
                 if (!updated)

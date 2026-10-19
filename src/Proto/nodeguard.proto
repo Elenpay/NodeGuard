@@ -24,8 +24,12 @@ service NodeGuardService {
   /*
     Replaces a withdrawal that is still waiting for on-chain confirmation with a higher-fee version of the same
     transaction (RBF): same inputs, same destinations, the extra fee is taken from the change. Cold wallets get a new
-    request that waits for approvals like RequestWithdrawal; hot wallets sign and broadcast it asynchronously and the
-    replaced request moves to WITHDRAWAL_BUMPED.
+    request that waits for approvals like RequestWithdrawal; hot wallets sign and broadcast it asynchronously.
+    The replaced request keeps its own status. While the replacement's transaction is in the mempool it is reported as
+    WITHDRAWAL_BUMPED with replaced_by_request_id set, and that becomes its stored status once the replacement settles.
+    If the replaced transaction is mined instead, it settles and the replacement fails. If the replacement is abandoned
+    (cancelled, rejected, failed) the replaced request reports WITHDRAWAL_PENDING_CONFIRMATION again.
+    Fails with FAILED_PRECONDITION when the request is not pending confirmation or already has a live replacement.
     */
   rpc BumpWithdrawal(BumpWithdrawalRequest) returns (BumpWithdrawalResponse);
 
@@ -33,7 +37,8 @@ service NodeGuardService {
     Cancels a withdrawal that is still waiting for on-chain confirmation by replacing its transaction (RBF) with one
     that spends the same inputs and returns the funds, minus a higher fee, to a fresh address of the wallet, so the
     original payment never confirms. Cold wallets get a new request that waits for approvals like RequestWithdrawal;
-    hot wallets sign and broadcast it asynchronously and the replaced request moves to WITHDRAWAL_CANCELLED.
+    hot wallets sign and broadcast it asynchronously. Same status rules as BumpWithdrawal, with the replaced request
+    reported and then stored as WITHDRAWAL_CANCELLED instead of WITHDRAWAL_BUMPED.
     */
   rpc CancelWithdrawal(CancelWithdrawalRequest) returns (CancelWithdrawalResponse);
   /*
@@ -92,7 +97,9 @@ service NodeGuardService {
   rpc GetWithdrawalsRequestStatus(GetWithdrawalsRequestStatusRequest) returns (GetWithdrawalsRequestStatusResponse);
 
   /*
-  Gets the status for the provided withdrawals request reference ids
+  Gets the status of every withdrawal request carrying one of the provided reference ids, oldest first. RBF
+  replacements inherit the reference id of the request they replace, so a reference id returns the whole chain: the
+  original and each of its bumps or cancellations, each with its own status and replaced_by_request_id.
    */
   rpc GetWithdrawalsRequestStatusByReferenceIds(GetWithdrawalsRequestStatusByReferenceIdsRequest) returns (GetWithdrawalsRequestStatusResponse);
 
@@ -518,6 +525,8 @@ enum WITHDRAWAL_REQUEST_STATUS {
     WITHDRAWAL_REJECTED = 3;
     WITHDRAWAL_PENDING_CONFIRMATION = 4;
     WITHDRAWAL_FAILED = 5;
+    // Superseded by an RBF replacement (see BumpWithdrawal): reported while the replacement's transaction is in the
+    // mempool, stored once it settles. The payment happened through the request in replaced_by_request_id.
     WITHDRAWAL_BUMPED = 6;
 }
 
@@ -534,6 +543,9 @@ message WithdrawalRequest {
   optional string tx_id = 6;
     // in JSON format
   optional string request_metadata = 7;
+  // Newest RBF replacement of this request that was not abandoned, set as soon as it exists, even while it is still
+  // awaiting approval. Follow it to find the transaction that superseded (or will supersede) this one.
+  optional int32 replaced_by_request_id = 8;
 }
 
 message GetWithdrawalsRequestStatusResponse {

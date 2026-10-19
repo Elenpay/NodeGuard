@@ -86,6 +86,20 @@ namespace NodeGuard.Data
                 .IsUnique()
                 .HasFilter("\"IsTemplatePSBT\"");
 
+            // RBF: a withdrawal may be replaced several times over its life (each replacement abandoned before the
+            // next), but at most one replacement may be live, or two NodeGuard transactions would compete for the
+            // same inputs. Partial unique index over the live statuses: Pending, PSBTSignaturesPending,
+            // OnChainConfirmationPending, FinalizingPSBT. Same named-overload and plain-FK-index rules as above.
+            modelBuilder.Entity<WalletWithdrawalRequest>()
+                .HasOne(x => x.BumpingWalletWithdrawalRequest)
+                .WithMany(x => x.Replacements)
+                .HasForeignKey(x => x.BumpingWalletWithdrawalRequestId);
+            modelBuilder.Entity<WalletWithdrawalRequest>().HasIndex(x => x.BumpingWalletWithdrawalRequestId);
+            modelBuilder.Entity<WalletWithdrawalRequest>()
+                .HasIndex(x => x.BumpingWalletWithdrawalRequestId, "IX_WalletWithdrawalRequests_LiveReplacement")
+                .IsUnique()
+                .HasFilter("\"BumpingWalletWithdrawalRequestId\" IS NOT NULL AND \"Status\" IN (0, 3, 4, 7)");
+
             modelBuilder.Entity<ApplicationUser>().HasIndex(x => x.NormalizedUserName).IsUnique();
 
 

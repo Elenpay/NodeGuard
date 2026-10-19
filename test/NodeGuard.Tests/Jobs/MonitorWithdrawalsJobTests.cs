@@ -30,19 +30,26 @@ using Quartz;
 namespace NodeGuard.Jobs;
 
 /// <summary>
-/// MonitorWithdrawalsJob settles withdrawals whose transaction reached the settlement depth, and asks
-/// WithdrawalRequestService whether an RBF replacement lost the race to a transaction it replaced. That question only
-/// makes sense while the replacement itself is unconfirmed: once it is mined, nothing it replaced can be.
+/// MonitorWithdrawalsJob settles withdrawals whose transaction reached the settlement depth, one row at a time so a
+/// bad row never stops the batch, and then hands over to WithdrawalRequestService.ReconcileReplacementChainsAsync,
+/// which gives RBF-linked requests their final status from the database. The order matters: a request settled in this
+/// run must drive its chain in this run.
 /// </summary>
 public class MonitorWithdrawalsJobTests
 {
     private readonly Mock<IWalletWithdrawalRequestRepository> _requests = new();
     private readonly Mock<INBXplorerService> _nbXplorer = new();
     private readonly Mock<IWithdrawalRequestService> _withdrawalRequestService = new();
+    private readonly List<string> _events = new();
 
     public MonitorWithdrawalsJobTests()
     {
-        _requests.Setup(x => x.Update(It.IsAny<WalletWithdrawalRequest>())).Returns((true, (string?)null));
+        _requests.Setup(x => x.Update(It.IsAny<WalletWithdrawalRequest>()))
+            .Callback<WalletWithdrawalRequest>(r => _events.Add($"settle:{r.Id}"))
+            .Returns((true, (string?)null));
+        _withdrawalRequestService.Setup(x => x.ReconcileReplacementChainsAsync())
+            .Callback(() => _events.Add("reconcile"))
+            .Returns(Task.CompletedTask);
     }
 
     private Task ExecuteAsync(params WalletWithdrawalRequest[] pending)
@@ -57,18 +64,19 @@ public class MonitorWithdrawalsJobTests
     /// <summary>A broadcast request waiting for confirmation whose transaction has <paramref name="confirmations"/>.</summary>
     private WalletWithdrawalRequest Pending(int id, int confirmations, int? replaces = null)
     {
-        var txId = new uint256((ulong)id);
-        _nbXplorer.Setup(x => x.GetTransactionAsync(txId, It.IsAny<CancellationToken>()))
+        var request = PendingWithoutTransaction(id, replaces);
+        _nbXplorer.Setup(x => x.GetTransactionAsync(uint256.Parse(request.TxId!), It.IsAny<CancellationToken>()))
             .ReturnsAsync(new TransactionResult { Confirmations = confirmations });
-
-        return new WalletWithdrawalRequest
-        {
-            Id = id,
-            Status = WalletWithdrawalRequestStatus.OnChainConfirmationPending,
-            TxId = txId.ToString(),
-            BumpingWalletWithdrawalRequestId = replaces,
-        };
+        return request;
     }
+
+    private static WalletWithdrawalRequest PendingWithoutTransaction(int id, int? replaces = null) => new()
+    {
+        Id = id,
+        Status = WalletWithdrawalRequestStatus.OnChainConfirmationPending,
+        TxId = new uint256((ulong)id).ToString(),
+        BumpingWalletWithdrawalRequestId = replaces,
+    };
 
     [Fact]
     public async Task Execute_WithdrawalAtTheSettlementDepth_IsSettled()
@@ -79,69 +87,104 @@ public class MonitorWithdrawalsJobTests
 
         request.Status.Should().Be(WalletWithdrawalRequestStatus.OnChainConfirmed);
         _requests.Verify(x => x.Update(request), Times.Once);
-        _withdrawalRequestService.Verify(x => x.SettleMinedOriginalAsync(It.IsAny<WalletWithdrawalRequest>()), Times.Never);
     }
 
     [Fact]
-    public async Task Execute_ReplacementAtTheSettlementDepth_IsSettledWithoutLookingAtWhatItReplaced()
+    public async Task Execute_ReplacementAtTheSettlementDepth_IsSettled()
     {
         var replacement = Pending(2, Constants.TRANSACTION_CONFIRMATION_MINIMUM_BLOCKS, replaces: 1);
 
         await ExecuteAsync(replacement);
 
-        replacement.Status.Should().Be(WalletWithdrawalRequestStatus.OnChainConfirmed);
-        _withdrawalRequestService.Verify(x => x.SettleMinedOriginalAsync(It.IsAny<WalletWithdrawalRequest>()), Times.Never);
+        replacement.Status.Should().Be(WalletWithdrawalRequestStatus.OnChainConfirmed,
+            "what that means for the request it replaced is the reconciliation's job");
     }
 
-    [Fact]
-    public async Task Execute_UnconfirmedReplacement_ChecksWhetherWhatItReplacedWasMined()
+    [Theory]
+    [InlineData(0)]
+    [InlineData(1)]
+    public async Task Execute_WithdrawalBelowTheSettlementDepth_IsLeftPending(int confirmations)
     {
-        var replacement = Pending(2, confirmations: 0, replaces: 1);
-
-        await ExecuteAsync(replacement);
-
-        _withdrawalRequestService.Verify(x => x.SettleMinedOriginalAsync(replacement), Times.Once);
-        replacement.Status.Should().Be(WalletWithdrawalRequestStatus.OnChainConfirmationPending,
-            "settling the original and failing the replacement is the service's decision, not the job's");
-    }
-
-    [Fact]
-    public async Task Execute_ReplacementMinedButNotYetSettled_LeavesWhatItReplacedAlone()
-    {
-        var replacement = Pending(2, confirmations: 1, replaces: 1);
-
-        await ExecuteAsync(replacement);
-
-        replacement.Status.Should().Be(WalletWithdrawalRequestStatus.OnChainConfirmationPending, "it is not deep enough yet");
-        _withdrawalRequestService.Verify(x => x.SettleMinedOriginalAsync(It.IsAny<WalletWithdrawalRequest>()), Times.Never,
-            "the replacement is mined, so nothing it replaced can be");
-        _requests.Verify(x => x.Update(It.IsAny<WalletWithdrawalRequest>()), Times.Never);
-    }
-
-    [Fact]
-    public async Task Execute_UnconfirmedWithdrawalThatReplacesNothing_IsLeftPending()
-    {
-        var request = Pending(1, confirmations: 0);
+        var request = Pending(1, confirmations, replaces: 1);
 
         await ExecuteAsync(request);
 
         request.Status.Should().Be(WalletWithdrawalRequestStatus.OnChainConfirmationPending);
-        _withdrawalRequestService.Verify(x => x.SettleMinedOriginalAsync(It.IsAny<WalletWithdrawalRequest>()), Times.Never);
         _requests.Verify(x => x.Update(It.IsAny<WalletWithdrawalRequest>()), Times.Never);
     }
 
     [Fact]
-    public async Task Execute_MixedBatch_HandlesEachRequestOnItsOwn()
+    public async Task Execute_TransactionUnknownToNbxplorer_LeavesTheRequestPendingAndContinues()
+    {
+        var unknown = PendingWithoutTransaction(1);
+        _nbXplorer.Setup(x => x.GetTransactionAsync(uint256.Parse(unknown.TxId!), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((TransactionResult?)null);
+        var settling = Pending(2, Constants.TRANSACTION_CONFIRMATION_MINIMUM_BLOCKS);
+
+        await ExecuteAsync(unknown, settling);
+
+        unknown.Status.Should().Be(WalletWithdrawalRequestStatus.OnChainConfirmationPending);
+        settling.Status.Should().Be(WalletWithdrawalRequestStatus.OnChainConfirmed);
+    }
+
+    [Fact]
+    public async Task Execute_NbxplorerFailureOnOneRequest_DoesNotAbortTheBatch()
+    {
+        var failing = PendingWithoutTransaction(1);
+        _nbXplorer.Setup(x => x.GetTransactionAsync(uint256.Parse(failing.TxId!), It.IsAny<CancellationToken>()))
+            .ThrowsAsync(new HttpRequestException("nbxplorer down"));
+        var settling = Pending(2, Constants.TRANSACTION_CONFIRMATION_MINIMUM_BLOCKS);
+
+        var act = () => ExecuteAsync(failing, settling);
+
+        await act.Should().NotThrowAsync();
+        settling.Status.Should().Be(WalletWithdrawalRequestStatus.OnChainConfirmed);
+        _events.Should().Contain("reconcile");
+    }
+
+    [Fact]
+    public async Task Execute_RequestWithoutTransaction_IsSkipped()
+    {
+        var request = PendingWithoutTransaction(1);
+        request.TxId = null;
+
+        await ExecuteAsync(request);
+
+        _nbXplorer.Verify(x => x.GetTransactionAsync(It.IsAny<uint256>(), It.IsAny<CancellationToken>()), Times.Never);
+        _requests.Verify(x => x.Update(It.IsAny<WalletWithdrawalRequest>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task Execute_ReconcilesTheRbfChainsAfterSettling()
     {
         var settling = Pending(1, Constants.TRANSACTION_CONFIRMATION_MINIMUM_BLOCKS);
-        var lostRace = Pending(3, confirmations: 0, replaces: 2);
-        var inFlight = Pending(4, confirmations: 0);
+        var inFlight = Pending(2, confirmations: 0, replaces: 1);
 
-        await ExecuteAsync(settling, lostRace, inFlight);
+        await ExecuteAsync(settling, inFlight);
 
-        settling.Status.Should().Be(WalletWithdrawalRequestStatus.OnChainConfirmed);
-        _withdrawalRequestService.Verify(x => x.SettleMinedOriginalAsync(lostRace), Times.Once);
-        _withdrawalRequestService.Verify(x => x.SettleMinedOriginalAsync(It.IsAny<WalletWithdrawalRequest>()), Times.Once);
-        inFlight.Status.Should().Be(WalletWithdrawalRequestStatus.OnChainConfirmationPending);
+        _events.Should().Equal(new[] { "settle:1", "reconcile" },
+            "a request settled in this run must drive its RBF chain in this run");
+        inFlight.Status.Should().Be(WalletWithdrawalRequestStatus.OnChainConfirmationPending,
+            "failing it is the reconciliation's decision, not the job's");
+    }
+
+    [Fact]
+    public async Task Execute_NothingPending_StillReconciles()
+    {
+        await ExecuteAsync();
+
+        _withdrawalRequestService.Verify(x => x.ReconcileReplacementChainsAsync(), Times.Once,
+            "a cold replacement awaiting approval is not pending confirmation, yet its original may have confirmed");
+    }
+
+    [Fact]
+    public async Task Execute_ReconciliationThrowing_IsLoggedNotRethrown()
+    {
+        _withdrawalRequestService.Setup(x => x.ReconcileReplacementChainsAsync())
+            .ThrowsAsync(new InvalidOperationException("db down"));
+
+        var act = () => ExecuteAsync();
+
+        await act.Should().NotThrowAsync();
     }
 }
