@@ -27,10 +27,11 @@ using Quartz;
 namespace NodeGuard.Jobs;
 
 /// <summary>
-/// Exits paid Spark swaps on-chain, every SPARK_EXIT_INTERVAL_MINUTES: each swap exits the leaves its own payment
-/// brought in, to its own destination address. Swaps go strictly one at a time, oldest first, each step saved
-/// before the next (paid, then leaves attributed, then exit sent, then payout confirmed).
-/// MonitorSwapsJob follows a Spark swap until its payment settles; from then on the swap is this job's.
+/// Exits paid Spark swaps on-chain, every SPARK_EXIT_INTERVAL_MINUTES. Paid swaps wait in their Spark wallet until
+/// it is full, then exit together: one cooperative exit per destination wallet, of exactly the leaves their own
+/// payments brought in, to one new address. Exits go strictly one at a time, oldest first, each step saved before the
+/// next (paid, then leaves attributed, then exit sent, then payout confirmed). MonitorSwapsJob follows a Spark swap
+/// until its payment settles; from then on the swap is this job's.
 /// </summary>
 [DisallowConcurrentExecution]
 public class SparkSwapExitJob : IJob
@@ -58,7 +59,8 @@ public class SparkSwapExitJob : IJob
         var ct = context.CancellationToken;
         try
         {
-            var swaps = (await _swapOutRepository.GetAllPending())
+            var pending = await _swapOutRepository.GetAllPending();
+            var swaps = pending
                 .Where(s => s.Provider == SwapProvider.Spark && s.LightningFeeSats is not null)
                 .OrderBy(s => s.CreationDatetime)
                 .ThenBy(s => s.Id)
@@ -70,16 +72,26 @@ public class SparkSwapExitJob : IJob
             // Every swap gets its own transfer's leaves before any exit, so no exit takes leaves another swap is due
             foreach (var swap in swaps.Where(s => s.SparkTransferId is null && s.TxId is null))
             {
-                await RunAsync(swap, "attributing its transfer", () => _sparkSwapService.AttributeAsync(swap, ct));
+                await RunAsync($"Spark swap {swap.Id}", "attributing its transfer", () => _sparkSwapService.AttributeAsync(swap, ct));
             }
 
-            foreach (var swap in swaps)
+            // Batches already exiting, the swaps sharing a reserved address: their payout is followed, or their exit
+            // retried with exactly them
+            var exiting = swaps
+                .Where(s => s.DestinationAddress is not null)
+                .GroupBy(s => (s.SparkIdentity, s.DestinationWalletId, s.DestinationAddress))
+                .Select(g => (IReadOnlyList<SwapOut>)g.ToList())
+                .ToList();
+            foreach (var batch in exiting)
             {
-                var step = await RunAsync(swap, "exiting", () => _sparkSwapService.ExitAsync(swap, ct));
-                if (step == SparkExitStep.Completed)
-                {
-                    await AuditCompletionAsync(swap);
-                }
+                await ExitAsync(batch, ct);
+            }
+
+            // New batches: the paid swaps of each Spark wallet that is full
+            var planned = await RunAsync("Spark swaps", "planning their exits", () => _sparkSwapService.PlanExitsAsync(pending, ct));
+            foreach (var batch in planned ?? [])
+            {
+                await ExitAsync(batch, ct);
             }
         }
         catch (Exception e) when (e is not OperationCanceledException)
@@ -91,8 +103,20 @@ public class SparkSwapExitJob : IJob
         _logger.LogInformation("{JobName} ended", nameof(SparkSwapExitJob));
     }
 
-    /// <summary>Runs one swap's step; a failure is logged and leaves the swap for the next run.</summary>
-    private async Task<T?> RunAsync<T>(SwapOut swap, string what, Func<Task<T>> step)
+    private async Task ExitAsync(IReadOnlyList<SwapOut> batch, CancellationToken ct)
+    {
+        var label = batch.Count == 1 ? $"Spark swap {batch[0].Id}" : $"Spark swaps {string.Join(", ", batch.Select(s => s.Id))}";
+        var step = await RunAsync(label, "exiting", () => _sparkSwapService.ExitBatchAsync(batch, ct));
+        if (step != SparkExitStep.Completed) return;
+
+        foreach (var swap in batch)
+        {
+            await AuditCompletionAsync(swap);
+        }
+    }
+
+    /// <summary>Runs one step; a failure is logged and leaves its swaps for the next run.</summary>
+    private async Task<T?> RunAsync<T>(string swaps, string what, Func<Task<T>> step)
     {
         try
         {
@@ -100,7 +124,7 @@ public class SparkSwapExitJob : IJob
         }
         catch (Exception e) when (e is not OperationCanceledException)
         {
-            _logger.LogError(e, "Spark swap {SwapId}: error {What}; retried on the next run", swap.Id, what);
+            _logger.LogError(e, "{Swaps}: error {What}; retried on the next run", swaps, what);
             return default;
         }
     }
