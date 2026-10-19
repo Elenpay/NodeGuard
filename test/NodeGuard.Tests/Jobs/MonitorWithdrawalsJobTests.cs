@@ -61,22 +61,22 @@ public class MonitorWithdrawalsJobTests
         return job.Execute(new Mock<IJobExecutionContext>().Object);
     }
 
-    /// <summary>A broadcast request waiting for confirmation whose transaction has <paramref name="confirmations"/>.</summary>
-    private WalletWithdrawalRequest Pending(int id, int confirmations, int? replaces = null)
+    /// <summary>A broadcast request waiting for confirmation; NBXplorer answers <paramref name="transaction"/> for it.</summary>
+    private WalletWithdrawalRequest Pending(int id, Func<TransactionResult?> transaction)
     {
-        var request = PendingWithoutTransaction(id, replaces);
-        _nbXplorer.Setup(x => x.GetTransactionAsync(uint256.Parse(request.TxId!), It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new TransactionResult { Confirmations = confirmations });
+        var request = new WalletWithdrawalRequest
+        {
+            Id = id,
+            Status = WalletWithdrawalRequestStatus.OnChainConfirmationPending,
+            TxId = new uint256((ulong)id).ToString(),
+        };
+        _nbXplorer.Setup(x => x.GetTransactionAsync(uint256.Parse(request.TxId), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(transaction);
         return request;
     }
 
-    private static WalletWithdrawalRequest PendingWithoutTransaction(int id, int? replaces = null) => new()
-    {
-        Id = id,
-        Status = WalletWithdrawalRequestStatus.OnChainConfirmationPending,
-        TxId = new uint256((ulong)id).ToString(),
-        BumpingWalletWithdrawalRequestId = replaces,
-    };
+    private WalletWithdrawalRequest Pending(int id, int confirmations)
+        => Pending(id, () => new TransactionResult { Confirmations = confirmations });
 
     [Fact]
     public async Task Execute_WithdrawalAtTheSettlementDepth_IsSettled()
@@ -92,7 +92,8 @@ public class MonitorWithdrawalsJobTests
     [Fact]
     public async Task Execute_ReplacementAtTheSettlementDepth_IsSettled()
     {
-        var replacement = Pending(2, Constants.TRANSACTION_CONFIRMATION_MINIMUM_BLOCKS, replaces: 1);
+        var replacement = Pending(2, Constants.TRANSACTION_CONFIRMATION_MINIMUM_BLOCKS);
+        replacement.BumpingWalletWithdrawalRequestId = 1;
 
         await ExecuteAsync(replacement);
 
@@ -105,7 +106,7 @@ public class MonitorWithdrawalsJobTests
     [InlineData(1)]
     public async Task Execute_WithdrawalBelowTheSettlementDepth_IsLeftPending(int confirmations)
     {
-        var request = Pending(1, confirmations, replaces: 1);
+        var request = Pending(1, confirmations);
 
         await ExecuteAsync(request);
 
@@ -116,9 +117,7 @@ public class MonitorWithdrawalsJobTests
     [Fact]
     public async Task Execute_TransactionUnknownToNbxplorer_LeavesTheRequestPendingAndContinues()
     {
-        var unknown = PendingWithoutTransaction(1);
-        _nbXplorer.Setup(x => x.GetTransactionAsync(uint256.Parse(unknown.TxId!), It.IsAny<CancellationToken>()))
-            .ReturnsAsync((TransactionResult?)null);
+        var unknown = Pending(1, () => null);
         var settling = Pending(2, Constants.TRANSACTION_CONFIRMATION_MINIMUM_BLOCKS);
 
         await ExecuteAsync(unknown, settling);
@@ -130,9 +129,7 @@ public class MonitorWithdrawalsJobTests
     [Fact]
     public async Task Execute_NbxplorerFailureOnOneRequest_DoesNotAbortTheBatch()
     {
-        var failing = PendingWithoutTransaction(1);
-        _nbXplorer.Setup(x => x.GetTransactionAsync(uint256.Parse(failing.TxId!), It.IsAny<CancellationToken>()))
-            .ThrowsAsync(new HttpRequestException("nbxplorer down"));
+        var failing = Pending(1, () => throw new HttpRequestException("nbxplorer down"));
         var settling = Pending(2, Constants.TRANSACTION_CONFIRMATION_MINIMUM_BLOCKS);
 
         var act = () => ExecuteAsync(failing, settling);
@@ -145,7 +142,7 @@ public class MonitorWithdrawalsJobTests
     [Fact]
     public async Task Execute_RequestWithoutTransaction_IsSkipped()
     {
-        var request = PendingWithoutTransaction(1);
+        var request = Pending(1, confirmations: 0);
         request.TxId = null;
 
         await ExecuteAsync(request);
@@ -158,7 +155,8 @@ public class MonitorWithdrawalsJobTests
     public async Task Execute_ReconcilesTheRbfChainsAfterSettling()
     {
         var settling = Pending(1, Constants.TRANSACTION_CONFIRMATION_MINIMUM_BLOCKS);
-        var inFlight = Pending(2, confirmations: 0, replaces: 1);
+        var inFlight = Pending(2, confirmations: 0);
+        inFlight.BumpingWalletWithdrawalRequestId = 1;
 
         await ExecuteAsync(settling, inFlight);
 

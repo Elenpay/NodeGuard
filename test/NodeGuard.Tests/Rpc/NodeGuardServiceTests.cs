@@ -1023,8 +1023,8 @@ namespace NodeGuard.Rpc
         private NodeGuardService StatusService(Mock<IWalletWithdrawalRequestRepository> walletWithdrawalRequestRepository, int confirmations)
         {
             var nbxplorerService = new Mock<INBXplorerService>();
-            nbxplorerService.Setup(x => x.GetTransactionAsync(It.IsAny<NBitcoin.uint256>(), It.IsAny<CancellationToken>()))
-                .ReturnsAsync(new NBXplorer.Models.TransactionResult { Confirmations = confirmations });
+            nbxplorerService.Setup(x => x.GetTransactionAsync(It.IsAny<uint256>(), It.IsAny<CancellationToken>()))
+                .ReturnsAsync(new TransactionResult { Confirmations = confirmations });
 
             return CreateNodeGuardService(
                 walletWithdrawalRequestRepository: walletWithdrawalRequestRepository.Object,
@@ -1050,7 +1050,8 @@ namespace NodeGuard.Rpc
             status.Status.Should().Be(WITHDRAWAL_REQUEST_STATUS.WithdrawalBumped,
                 "the replacement's transaction competes with its own in the mempool");
             status.ReplacedByRequestId.Should().Be(11);
-            status.RejectOrCancelReason.Should().BeEmpty();
+            status.RejectOrCancelReason.Should().Be($"Replaced by request 11 (tx {ReplacementTxId})",
+                "the same text it will be stored with once the replacement settles");
         }
 
         [Fact]

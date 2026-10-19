@@ -1339,37 +1339,40 @@ public class NodeGuardService : Nodeguard.NodeGuardService.NodeGuardServiceBase,
 
     private async Task<GetWithdrawalsRequestStatusResponse> GetWithdrawalsRequestStatusResponse(List<WalletWithdrawalRequest> withdrawalRequests)
     {
-        var withdrawalsResponses = new List<WithdrawalRequest>();
-        foreach (var withdrawalRequest in withdrawalRequests)
-        {
-            ulong confirmations = 0;
-            if (withdrawalRequest.TxId != null)
-            {
-                var nbxplorerStatus = await _nbXplorerService.GetTransactionAsync(uint256.Parse(withdrawalRequest.TxId));
-                confirmations = (ulong)(nbxplorerStatus?.Confirmations ?? 0);
-            }
+        // A reference id resolves to its whole RBF chain: one NBXplorer round trip for all of them, not one each.
+        var confirmations = await Task.WhenAll(withdrawalRequests.Select(GetConfirmationsAsync));
 
+        var withdrawalsResponses = withdrawalRequests.Zip(confirmations, (withdrawalRequest, confirmed) =>
+        {
             // A replaced request keeps its own stored status; what the client sees is derived from its replacements.
-            var (status, reason, replacedById) = withdrawalRequest.EffectiveStatus(confirmations);
+            var (status, reason, replacedById) = withdrawalRequest.EffectiveStatus(confirmed);
             var response = new WithdrawalRequest
             {
                 RequestId = withdrawalRequest.Id,
                 Status = GetStatus(status),
                 RejectOrCancelReason = reason ?? "",
                 ReferenceId = withdrawalRequest.ReferenceId ?? "",
-                Confirmations = confirmations,
+                Confirmations = confirmed,
                 TxId = withdrawalRequest.TxId ?? "",
                 RequestMetadata = withdrawalRequest.RequestMetadata ?? "",
             };
             if (replacedById is { } id) response.ReplacedByRequestId = id;
 
-            withdrawalsResponses.Add(response);
-        }
+            return response;
+        });
 
         return new GetWithdrawalsRequestStatusResponse()
         {
             WithdrawalRequests = { withdrawalsResponses }
         };
+    }
+
+    private async Task<ulong> GetConfirmationsAsync(WalletWithdrawalRequest withdrawalRequest)
+    {
+        if (withdrawalRequest.TxId == null) return 0;
+
+        var nbxplorerStatus = await _nbXplorerService.GetTransactionAsync(uint256.Parse(withdrawalRequest.TxId));
+        return (ulong)(nbxplorerStatus?.Confirmations ?? 0);
     }
 
     public override async Task<GetWithdrawalsRequestStatusResponse> GetWithdrawalsRequestStatus(GetWithdrawalsRequestStatusRequest request, ServerCallContext context)

@@ -55,10 +55,6 @@ public class MonitorWithdrawalsJob : IJob
         _logger.LogInformation($"Job {nameof(MonitorWithdrawalsJob)} started");
         var withdrawalsPending = await _walletWithdrawalRequestRepository.GetOnChainPendingWithdrawals();
 
-        // An unset TRANSACTION_CONFIRMATION_MINIMUM_BLOCKS is 0. Replaced requests are polled too, and one whose
-        // transaction was evicted sits at 0 confirmations: that is not mined.
-        var minimumConfirmations = Math.Max(1, Constants.TRANSACTION_CONFIRMATION_MINIMUM_BLOCKS);
-
         foreach (var walletWithdrawalRequest in withdrawalsPending)
         {
             if (string.IsNullOrEmpty(walletWithdrawalRequest.TxId)) continue;
@@ -73,7 +69,7 @@ public class MonitorWithdrawalsJob : IJob
                     continue;
                 }
 
-                if (getTxResult.Confirmations < minimumConfirmations) continue;
+                if (getTxResult.Confirmations < Constants.TRANSACTION_CONFIRMATION_MINIMUM_BLOCKS) continue;
 
                 walletWithdrawalRequest.Status = WalletWithdrawalRequestStatus.OnChainConfirmed;
                 var (updated, _) = _walletWithdrawalRequestRepository.Update(walletWithdrawalRequest);

@@ -416,12 +416,9 @@
             </DataGridColumn>
             <DataGridColumn TItem="WalletWithdrawalRequest" Field="@nameof(WalletWithdrawalRequest.Status)" Caption="Status" Sortable="false" Displayable="true">
                 <DisplayTemplate>
-                    @{
-                        // A replaced request keeps its own stored status; the UI shows what the API reports.
-                        var (effectiveStatus, effectiveReason, replacedById) = context.EffectiveStatus();
-                    }
-                    <Tooltip Text=@effectiveReason Placement="TooltipPlacement.Top">
-                        <span>@effectiveStatus.Humanize()@(replacedById is { } replacedBy ? $" · replaced by #{replacedBy}" : "")</span>
+                    @* The stored status is the row's own transaction; the replacement, if any, is named next to it. *@
+                    <Tooltip Text=@context.RejectCancelDescription Placement="TooltipPlacement.Top">
+                        <span>@context.Status.Humanize()@(context.NewestReplacement is { } replacement ? $" · replaced by #{replacement.Id}" : "")</span>
                     </Tooltip>
                 </DisplayTemplate>
             </DataGridColumn>

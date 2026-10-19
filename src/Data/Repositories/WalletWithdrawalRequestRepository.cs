@@ -385,62 +385,55 @@ namespace NodeGuard.Data.Repositories
             return walletWithdrawalRequests;
         }
 
-        public async Task<bool> HasLiveReplacementAsync(int requestId)
-        {
-            await using var applicationDbContext = await _dbContextFactory.CreateDbContextAsync();
-
-            var live = WalletWithdrawalRequest.LiveStatuses;
-            return await applicationDbContext.WalletWithdrawalRequests
-                .AnyAsync(x => x.BumpingWalletWithdrawalRequestId == requestId && live.Contains(x.Status));
-        }
-
         public async Task<List<WalletWithdrawalRequest>> GetRbfChainAsync(int requestId)
         {
             await using var applicationDbContext = await _dbContextFactory.CreateDbContextAsync();
+            var requests = applicationDbContext.WalletWithdrawalRequests.AsNoTracking();
 
-            // Breadth-first over the link in both directions, one query per hop. Chains are a handful of rows.
-            var chain = new Dictionary<int, WalletWithdrawalRequest>();
-            var frontier = new List<int> { requestId };
+            // Up to the first request of the chain, then down through every replacement, level by level. One query
+            // per hop; chains are a handful of rows.
+            var root = await requests.SingleOrDefaultAsync(x => x.Id == requestId);
+            if (root == null) return new List<WalletWithdrawalRequest>();
+
+            var chain = new Dictionary<int, WalletWithdrawalRequest> { [root.Id] = root };
+            while (root.BumpingWalletWithdrawalRequestId is { } replacedId && !chain.ContainsKey(replacedId))
+            {
+                var replaced = await requests.SingleOrDefaultAsync(x => x.Id == replacedId);
+                if (replaced == null) break;
+
+                chain[replaced.Id] = replaced;
+                root = replaced;
+            }
+
+            var expanded = new HashSet<int> { root.Id };
+            var frontier = new List<int> { root.Id };
             while (frontier.Count > 0)
             {
-                var ids = frontier;
-                var hop = await applicationDbContext.WalletWithdrawalRequests
-                    .AsNoTracking()
-                    .Where(x => ids.Contains(x.Id)
-                                || (x.BumpingWalletWithdrawalRequestId != null && ids.Contains(x.BumpingWalletWithdrawalRequestId.Value)))
+                var parents = frontier;
+                var children = await requests
+                    .Where(x => x.BumpingWalletWithdrawalRequestId != null && parents.Contains(x.BumpingWalletWithdrawalRequestId.Value))
                     .ToListAsync();
 
                 frontier = new List<int>();
-                foreach (var request in hop)
+                foreach (var child in children)
                 {
-                    if (!chain.TryAdd(request.Id, request)) continue;
-
-                    frontier.Add(request.Id);
-                    if (request.BumpingWalletWithdrawalRequestId is { } replacedId && !chain.ContainsKey(replacedId))
-                    {
-                        frontier.Add(replacedId);
-                    }
+                    chain.TryAdd(child.Id, child);
+                    if (expanded.Add(child.Id)) frontier.Add(child.Id);
                 }
             }
 
             return chain.Values.OrderBy(x => x.Id).ToList();
         }
 
-        public async Task<List<WalletWithdrawalRequest>> GetLiveRbfLinkedRequestsAsync()
+        public async Task<List<int>> GetLiveRbfLinkedRequestIdsAsync()
         {
             await using var applicationDbContext = await _dbContextFactory.CreateDbContextAsync();
 
-            var statuses = new[]
-            {
-                WalletWithdrawalRequestStatus.Pending,
-                WalletWithdrawalRequestStatus.PSBTSignaturesPending,
-                WalletWithdrawalRequestStatus.OnChainConfirmationPending,
-            };
-
+            var live = WalletWithdrawalRequest.LiveStatuses;
             return await applicationDbContext.WalletWithdrawalRequests
-                .AsNoTracking()
-                .Where(x => statuses.Contains(x.Status)
+                .Where(x => live.Contains(x.Status)
                             && (x.BumpingWalletWithdrawalRequestId != null || x.Replacements.Any()))
+                .Select(x => x.Id)
                 .ToListAsync();
         }
 

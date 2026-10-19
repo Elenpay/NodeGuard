@@ -95,10 +95,11 @@ namespace NodeGuard.Data
                 .WithMany(x => x.Replacements)
                 .HasForeignKey(x => x.BumpingWalletWithdrawalRequestId);
             modelBuilder.Entity<WalletWithdrawalRequest>().HasIndex(x => x.BumpingWalletWithdrawalRequestId);
+            var liveStatuses = string.Join(", ", WalletWithdrawalRequest.LiveStatuses.Cast<int>().OrderBy(s => s));
             modelBuilder.Entity<WalletWithdrawalRequest>()
-                .HasIndex(x => x.BumpingWalletWithdrawalRequestId, "IX_WalletWithdrawalRequests_LiveReplacement")
+                .HasIndex(x => x.BumpingWalletWithdrawalRequestId, WalletWithdrawalRequest.LiveReplacementIndex)
                 .IsUnique()
-                .HasFilter("\"BumpingWalletWithdrawalRequestId\" IS NOT NULL AND \"Status\" IN (0, 3, 4, 7)");
+                .HasFilter($"\"BumpingWalletWithdrawalRequestId\" IS NOT NULL AND \"Status\" IN ({liveStatuses})");
 
             modelBuilder.Entity<ApplicationUser>().HasIndex(x => x.NormalizedUserName).IsUnique();
 

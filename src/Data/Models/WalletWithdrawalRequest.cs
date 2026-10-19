@@ -236,9 +236,12 @@ namespace NodeGuard.Data.Models
         /// </summary>
         public List<WalletWithdrawalRequest> Replacements { get; set; } = new();
 
+        /// <summary>Partial unique index: at most one replacement of a request in a live status.</summary>
+        public const string LiveReplacementIndex = "IX_WalletWithdrawalRequests_LiveReplacement";
+
         /// <summary>
         /// Statuses in which a request can still put (or has put) a transaction in the mempool. A replacement in any of
-        /// them blocks a second replacement of the same request (IX_WalletWithdrawalRequests_LiveReplacement).
+        /// them blocks a second replacement of the same request (<see cref="LiveReplacementIndex"/>).
         /// </summary>
         public static readonly WalletWithdrawalRequestStatus[] LiveStatuses =
         {
@@ -258,40 +261,53 @@ namespace NodeGuard.Data.Models
 
         /// <summary>The replacement still in flight, if any. Needs <see cref="Replacements"/> loaded.</summary>
         [NotMapped]
-        public WalletWithdrawalRequest? LiveReplacement => Replacements?.FirstOrDefault(r => r.IsLive);
+        public WalletWithdrawalRequest? LiveReplacement => Replacements.FirstOrDefault(r => r.IsLive);
 
         /// <summary>The replacement whose transaction competes with this one's in the mempool, if any.</summary>
         [NotMapped]
         public WalletWithdrawalRequest? BroadcastReplacement =>
-            Replacements?.FirstOrDefault(r => r.Status == WalletWithdrawalRequestStatus.OnChainConfirmationPending);
+            Replacements.FirstOrDefault(r => r.Status == WalletWithdrawalRequestStatus.OnChainConfirmationPending);
 
-        public const string RbfCancellationReasonPrefix = "Cancelled by RBF replacement request";
+        /// <summary>The newest replacement that was not abandoned: the next hop when following a chain by id.</summary>
+        [NotMapped]
+        public WalletWithdrawalRequest? NewestReplacement => Replacements.Where(r => !r.IsAbandoned).MaxBy(r => r.Id);
 
         public static string RbfCancellationReason(int replacementId, string? txId) =>
-            $"{RbfCancellationReasonPrefix} {replacementId}" + (string.IsNullOrEmpty(txId) ? "" : $" (tx {txId})");
+            WithTx($"Cancelled by RBF replacement request {replacementId}", txId);
 
         public static string ReplacedReason(int replacementId, string? txId) =>
-            $"Replaced by request {replacementId}" + (string.IsNullOrEmpty(txId) ? "" : $" (tx {txId})");
+            WithTx($"Replaced by request {replacementId}", txId);
+
+        public static string MinedInsteadReason(int originalId, string? txId) =>
+            WithTx($"Withdrawal request {originalId} was mined instead", txId);
+
+        private static string WithTx(string reason, string? txId) =>
+            string.IsNullOrEmpty(txId) ? reason : $"{reason} (tx {txId})";
 
         /// <summary>
-        /// The status to report for this request. The stored one describes its own transaction only: while a
-        /// replacement's transaction is in the mempool and this one has no confirmations, it is reported as Bumped
-        /// (Cancelled for an RBF cancellation), the status it will be stored with once that replacement settles.
-        /// ReplacedById is the newest replacement that was not abandoned, so a chain can be followed by id.
+        /// What a request superseded by <paramref name="replacement"/> becomes: Cancelled when a cancellation sits
+        /// on the way to it, otherwise Bumped.
         /// </summary>
-        public (WalletWithdrawalRequestStatus Status, string? Reason, int? ReplacedById) EffectiveStatus(ulong ownConfirmations = 0)
-        {
-            var replacedBy = Replacements?.Where(r => !r.IsAbandoned).MaxBy(r => r.Id);
+        public static (WalletWithdrawalRequestStatus Status, string Reason) SupersededBy(WalletWithdrawalRequest replacement, bool cancellation) =>
+            cancellation
+                ? (WalletWithdrawalRequestStatus.Cancelled, RbfCancellationReason(replacement.Id, replacement.TxId))
+                : (WalletWithdrawalRequestStatus.Bumped, ReplacedReason(replacement.Id, replacement.TxId));
 
+        /// <summary>
+        /// The status the API reports. The stored one describes this request's own transaction only: while a
+        /// replacement's transaction is in the mempool and this one has no confirmations, the request is reported
+        /// with the status it will be stored with once that replacement settles.
+        /// </summary>
+        public (WalletWithdrawalRequestStatus Status, string? Reason, int? ReplacedById) EffectiveStatus(ulong ownConfirmations)
+        {
             if (Status == WalletWithdrawalRequestStatus.OnChainConfirmationPending && ownConfirmations == 0
                 && BroadcastReplacement is { } broadcast)
             {
-                return broadcast.IsRbfCancellation
-                    ? (WalletWithdrawalRequestStatus.Cancelled, RbfCancellationReason(broadcast.Id, broadcast.TxId), broadcast.Id)
-                    : (WalletWithdrawalRequestStatus.Bumped, null, broadcast.Id);
+                var (status, reason) = SupersededBy(broadcast, broadcast.IsRbfCancellation);
+                return (status, reason, broadcast.Id);
             }
 
-            return (Status, RejectCancelDescription, replacedBy?.Id);
+            return (Status, RejectCancelDescription, NewestReplacement?.Id);
         }
 
         public List<WalletWithdrawalRequestPSBT> WalletWithdrawalRequestPSBTs { get; set; }

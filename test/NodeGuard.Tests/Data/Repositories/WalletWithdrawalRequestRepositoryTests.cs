@@ -30,8 +30,8 @@ namespace NodeGuard.Data.Repositories;
 /// <summary>
 /// RBF replacements point at the request they replace through BumpingWalletWithdrawalRequestId, and a request's status
 /// only describes its own transaction. These reads answer the questions built on that link: every request a reference
-/// id maps to (the whole chain, each reporting its own status), whether a request already has a live replacement, and
-/// which rows the monitor's reconciliation has to look at.
+/// id maps to (the whole chain, each reporting its own status), the chain a request belongs to, and which rows the
+/// monitor's reconciliation has to look at.
 /// </summary>
 public class WalletWithdrawalRequestRepositoryTests
 {
@@ -147,35 +147,6 @@ public class WalletWithdrawalRequestRepositoryTests
         result.Single().Replacements.Select(r => r.Id).Should().Equal(new[] { 2 });
     }
 
-    [Theory]
-    [InlineData(WalletWithdrawalRequestStatus.Pending, true)]
-    [InlineData(WalletWithdrawalRequestStatus.PSBTSignaturesPending, true)]
-    [InlineData(WalletWithdrawalRequestStatus.FinalizingPSBT, true)]
-    [InlineData(WalletWithdrawalRequestStatus.OnChainConfirmationPending, true)]
-    [InlineData(WalletWithdrawalRequestStatus.OnChainConfirmed, false)]
-    [InlineData(WalletWithdrawalRequestStatus.Failed, false)]
-    [InlineData(WalletWithdrawalRequestStatus.Cancelled, false)]
-    [InlineData(WalletWithdrawalRequestStatus.Rejected, false)]
-    [InlineData(WalletWithdrawalRequestStatus.Bumped, false)]
-    public async Task HasLiveReplacementAsync_CountsOnlyLiveStatuses(WalletWithdrawalRequestStatus replacementStatus, bool expected)
-    {
-        var repository = await SeedAsync(
-            Request(1, WalletWithdrawalRequestStatus.OnChainConfirmationPending),
-            Request(2, replacementStatus, replaces: 1));
-
-        (await repository.HasLiveReplacementAsync(1)).Should().Be(expected);
-    }
-
-    [Fact]
-    public async Task HasLiveReplacementAsync_UnrelatedLiveRequest_DoesNotCount()
-    {
-        var repository = await SeedAsync(
-            Request(1, WalletWithdrawalRequestStatus.OnChainConfirmationPending),
-            Request(2, WalletWithdrawalRequestStatus.OnChainConfirmationPending));
-
-        (await repository.HasLiveReplacementAsync(1)).Should().BeFalse();
-    }
-
     [Fact]
     public async Task GetRbfChainAsync_ReturnsTheWholeChainFromAnyMember()
     {
@@ -205,7 +176,7 @@ public class WalletWithdrawalRequestRepositoryTests
     }
 
     [Fact]
-    public async Task GetLiveRbfLinkedRequestsAsync_ReturnsLiveRowsWithALinkOrReplacements_NotFinalizing()
+    public async Task GetLiveRbfLinkedRequestIdsAsync_ReturnsTheLiveRowsWithALinkOrReplacements()
     {
         var repository = await SeedAsync(
             Request(1, WalletWithdrawalRequestStatus.OnChainConfirmationPending),
@@ -215,9 +186,9 @@ public class WalletWithdrawalRequestRepositoryTests
             Request(5, WalletWithdrawalRequestStatus.OnChainConfirmed),
             Request(6, WalletWithdrawalRequestStatus.PSBTSignaturesPending, replaces: 5));
 
-        var rows = await repository.GetLiveRbfLinkedRequestsAsync();
+        var ids = await repository.GetLiveRbfLinkedRequestIdsAsync();
 
-        rows.Select(r => r.Id).Should().BeEquivalentTo(new[] { 1, 6 },
-            "1 is replaced, 6 replaces; 2 is being broadcast, 3 is unlinked, 4 and 5 are not live");
+        ids.Should().BeEquivalentTo(new[] { 1, 2, 6 },
+            "1 is replaced, 2 and 6 replace; 3 is unlinked, 4 and 5 are not live");
     }
 }

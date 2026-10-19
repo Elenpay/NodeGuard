@@ -59,18 +59,12 @@ public interface IWalletWithdrawalRequestRepository : IBitcoinRequestRepository
 
     Task<List<WalletWithdrawalRequest>> GetOnChainPendingWithdrawals();
 
-    /// <summary>Whether a request that replaces this one (RBF) is in a live status.</summary>
-    Task<bool> HasLiveReplacementAsync(int requestId);
-
     /// <summary>
     /// Every request connected to this one through RBF links, in both directions, the request itself included.
     /// Untracked, no navigations loaded.
     /// </summary>
     Task<List<WalletWithdrawalRequest>> GetRbfChainAsync(int requestId);
 
-    /// <summary>
-    /// Requests in Pending, PSBTSignaturesPending or OnChainConfirmationPending that replace another request or are
-    /// replaced by one. Not FinalizingPSBT: PerformWithdrawal writes that row whole when it broadcasts.
-    /// </summary>
-    Task<List<WalletWithdrawalRequest>> GetLiveRbfLinkedRequestsAsync();
+    /// <summary>Ids of the live requests that replace another request or are replaced by one.</summary>
+    Task<List<int>> GetLiveRbfLinkedRequestIdsAsync();
 }

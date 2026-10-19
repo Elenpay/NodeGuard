@@ -28,11 +28,15 @@ namespace NodeGuard.Migrations
     {
         // WalletWithdrawalRequestStatus: Pending = 0, Cancelled = 1, PSBTSignaturesPending = 3,
         // OnChainConfirmationPending = 4, OnChainConfirmed = 5, FinalizingPSBT = 7, Bumped = 8
+        // A Cancelled request with an RBF-cancellation replacement was cancelled by it: humans can only cancel a
+        // request that was never broadcast, and only a broadcast one gets replacements.
         private const string Repair = @"
 WITH RECURSIVE roots AS (
-    SELECT ""Id"" FROM ""WalletWithdrawalRequests""
-    WHERE ""Status"" = 8
-       OR (""Status"" = 1 AND ""RejectCancelDescription"" LIKE 'Cancelled by RBF replacement request%')
+    SELECT w.""Id"" FROM ""WalletWithdrawalRequests"" w
+    WHERE w.""Status"" = 8
+       OR (w.""Status"" = 1 AND EXISTS (
+             SELECT 1 FROM ""WalletWithdrawalRequests"" r
+             WHERE r.""BumpingWalletWithdrawalRequestId"" = w.""Id"" AND r.""IsRbfCancellation""))
 ), descendants AS (
     SELECT r.""Id"" AS root_id, r.""Id"" AS node_id FROM roots r
   UNION

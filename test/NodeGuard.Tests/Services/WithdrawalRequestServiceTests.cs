@@ -478,7 +478,7 @@ public class WithdrawalRequestServiceTests
     public async Task CreateBumpRequestAsync_OriginalWithALiveReplacement_IsRefused(WalletWithdrawalRequestStatus replacementStatus)
     {
         var original = SetupOriginal(HotWallet());
-        original.Replacements.Add(Replacement(12, replacementStatus));
+        original.Replacements.Add(Row(12, replacementStatus, replaces: OriginalId));
 
         await AssertRefusedAsync(BumpingErrorReason.InvalidState, MempoolRecommendedFeesType.CustomFee, 10m);
     }
@@ -487,7 +487,7 @@ public class WithdrawalRequestServiceTests
     public async Task CreateCancelRequestAsync_OriginalWithALiveReplacement_IsRefused()
     {
         var original = SetupOriginal(HotWallet());
-        original.Replacements.Add(Replacement(12, WalletWithdrawalRequestStatus.OnChainConfirmationPending));
+        original.Replacements.Add(Row(12, WalletWithdrawalRequestStatus.OnChainConfirmationPending, replaces: OriginalId));
 
         await AssertRefusedAsync(BumpingErrorReason.InvalidState, MempoolRecommendedFeesType.CustomFee, 10m, cancellation: true);
     }
@@ -499,7 +499,7 @@ public class WithdrawalRequestServiceTests
     public async Task CreateBumpRequestAsync_OriginalWithOnlyAbandonedReplacements_IsAllowed(WalletWithdrawalRequestStatus replacementStatus)
     {
         var original = SetupOriginal(HotWallet());
-        original.Replacements.Add(Replacement(12, replacementStatus));
+        original.Replacements.Add(Row(12, replacementStatus, replaces: OriginalId));
 
         var bump = await CreateService().CreateBumpRequestAsync(OriginalId, MempoolRecommendedFeesType.CustomFee, 10m);
 
@@ -512,8 +512,7 @@ public class WithdrawalRequestServiceTests
     {
         SetupOriginal(HotWallet());
         _requests.Setup(x => x.AddAsync(It.IsAny<WalletWithdrawalRequest>()))
-            .ReturnsAsync((false, "duplicate key value violates unique constraint"));
-        _requests.Setup(x => x.HasLiveReplacementAsync(OriginalId)).ReturnsAsync(true);
+            .ReturnsAsync((false, $"23505: duplicate key value violates unique constraint \"{WalletWithdrawalRequest.LiveReplacementIndex}\""));
 
         var act = () => CreateService().CreateBumpRequestAsync(OriginalId, MempoolRecommendedFeesType.CustomFee, 10m);
 
@@ -527,7 +526,6 @@ public class WithdrawalRequestServiceTests
     {
         SetupOriginal(HotWallet());
         _requests.Setup(x => x.AddAsync(It.IsAny<WalletWithdrawalRequest>())).ReturnsAsync((false, "db down"));
-        _requests.Setup(x => x.HasLiveReplacementAsync(OriginalId)).ReturnsAsync(false);
 
         var act = () => CreateService().CreateBumpRequestAsync(OriginalId, MempoolRecommendedFeesType.CustomFee, 10m);
 
@@ -689,7 +687,7 @@ public class WithdrawalRequestServiceTests
     public async Task ReconcileReplacementChainsAsync_OneChainThrowing_DoesNotStopTheOthers()
     {
         var broken = Row(10, WalletWithdrawalRequestStatus.OnChainConfirmationPending, replaces: 9);
-        Live(broken);
+        Live(broken.Id);
         _requests.Setup(x => x.GetRbfChainAsync(10)).ThrowsAsync(new InvalidOperationException("db down"));
         var original = Row(20, WalletWithdrawalRequestStatus.OnChainConfirmationPending);
         var bump = Row(21, WalletWithdrawalRequestStatus.OnChainConfirmed, replaces: 20);
@@ -716,17 +714,9 @@ public class WithdrawalRequestServiceTests
 
     // ---- fixtures ---------------------------------------------------------------------------------------------
 
-    private readonly List<WalletWithdrawalRequest> _liveLinked = new();
+    private readonly List<int> _liveIds = new();
 
-    private static WalletWithdrawalRequest Replacement(int id, WalletWithdrawalRequestStatus status) => new()
-    {
-        Id = id,
-        Status = status,
-        Description = "replacement",
-        BumpingWalletWithdrawalRequestId = OriginalId,
-    };
-
-    /// <summary>A broadcast-or-later request of an RBF chain; its txid is derived from its id.</summary>
+    /// <summary>A request of an RBF chain; its txid is derived from its id.</summary>
     private static WalletWithdrawalRequest Row(int id, WalletWithdrawalRequestStatus status, int? replaces = null,
         bool cancellation = false) => new()
     {
@@ -739,8 +729,8 @@ public class WithdrawalRequestServiceTests
     };
 
     /// <summary>
-    /// Wires a chain the way the repository returns it: every member resolves to the whole chain, and the live ones
-    /// are what the reconciliation iterates (FinalizingPSBT included, to exercise the service's own guard).
+    /// Wires a chain the way the repository returns it: every member resolves to the whole chain, and the ids of
+    /// the live ones are what the reconciliation iterates.
     /// </summary>
     private void Chain(params WalletWithdrawalRequest[] members)
     {
@@ -750,13 +740,13 @@ public class WithdrawalRequestServiceTests
             _requests.Setup(x => x.GetRbfChainAsync(member.Id)).ReturnsAsync(chain);
         }
 
-        Live(members.Where(m => m.IsLive).ToArray());
+        Live(members.Where(m => m.IsLive).Select(m => m.Id).ToArray());
     }
 
-    private void Live(params WalletWithdrawalRequest[] rows)
+    private void Live(params int[] ids)
     {
-        _liveLinked.AddRange(rows);
-        _requests.Setup(x => x.GetLiveRbfLinkedRequestsAsync()).ReturnsAsync(_liveLinked.ToList());
+        _liveIds.AddRange(ids);
+        _requests.Setup(x => x.GetLiveRbfLinkedRequestIdsAsync()).ReturnsAsync(_liveIds.ToList());
     }
 
     private async Task AssertRefusedAsync(BumpingErrorReason reason, MempoolRecommendedFeesType feeType, decimal? customFeeRate,

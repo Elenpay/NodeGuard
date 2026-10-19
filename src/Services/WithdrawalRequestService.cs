@@ -269,7 +269,7 @@ public class WithdrawalRequestService : IWithdrawalRequestService
         if (!added)
         {
             // The database lets one live replacement per request through; a concurrent one lands here.
-            if (await _walletWithdrawalRequestRepository.HasLiveReplacementAsync(original.Id))
+            if (addError?.Contains(WalletWithdrawalRequest.LiveReplacementIndex) == true)
             {
                 throw new BumpingException(
                     $"Withdrawal request {original.Id} is already being replaced by another request.",
@@ -360,22 +360,23 @@ public class WithdrawalRequestService : IWithdrawalRequestService
 
     public async Task ReconcileReplacementChainsAsync()
     {
-        var liveRequests = await _walletWithdrawalRequestRepository.GetLiveRbfLinkedRequestsAsync();
-        var chains = new Dictionary<int, List<WalletWithdrawalRequest>>();
+        var liveIds = await _walletWithdrawalRequestRepository.GetLiveRbfLinkedRequestIdsAsync();
+        var chains = new Dictionary<int, Dictionary<int, WalletWithdrawalRequest>>();
 
-        foreach (var liveRequest in liveRequests)
+        foreach (var id in liveIds)
         {
             try
             {
-                if (!chains.TryGetValue(liveRequest.Id, out var chain))
+                if (!chains.TryGetValue(id, out var chain))
                 {
-                    chain = await _walletWithdrawalRequestRepository.GetRbfChainAsync(liveRequest.Id);
-                    foreach (var member in chain) chains[member.Id] = chain;
+                    chain = (await _walletWithdrawalRequestRepository.GetRbfChainAsync(id)).ToDictionary(member => member.Id);
+                    foreach (var memberId in chain.Keys) chains[memberId] = chain;
                 }
 
-                // The chain is the fresher read; a row that moved on in between is left to the next run.
-                var request = chain.FirstOrDefault(member => member.Id == liveRequest.Id);
-                if (request == null || !request.IsLive || request.Status == WalletWithdrawalRequestStatus.FinalizingPSBT) continue;
+                // The chain is the fresher read; a row that moved on in between is left to the next run. So is a
+                // FinalizingPSBT one: PerformWithdrawal writes that row whole when it broadcasts.
+                if (!chain.TryGetValue(id, out var request) || !request.IsLive
+                    || request.Status == WalletWithdrawalRequestStatus.FinalizingPSBT) continue;
 
                 if (FinalStatusFromChain(request, chain) is not var (status, reason)) continue;
 
@@ -393,7 +394,7 @@ public class WithdrawalRequestService : IWithdrawalRequestService
             }
             catch (Exception e)
             {
-                _logger.LogError(e, "Error reconciling withdrawal request {RequestId} against its RBF chain", liveRequest.Id);
+                _logger.LogError(e, "Error reconciling withdrawal request {RequestId} against its RBF chain", id);
             }
         }
     }
@@ -403,54 +404,38 @@ public class WithdrawalRequestService : IWithdrawalRequestService
     /// confirmed ancestor wins over a confirmed descendant: the payment happened, so the request is spent anyway.
     /// </summary>
     private static (WalletWithdrawalRequestStatus Status, string Reason)? FinalStatusFromChain(
-        WalletWithdrawalRequest request, List<WalletWithdrawalRequest> chain)
+        WalletWithdrawalRequest request, Dictionary<int, WalletWithdrawalRequest> chain)
     {
-        var byId = chain.ToDictionary(member => member.Id);
-
-        var visited = new HashSet<int> { request.Id };
-        var ancestorId = request.BumpingWalletWithdrawalRequestId;
-        while (ancestorId is { } id && visited.Add(id) && byId.TryGetValue(id, out var ancestor))
+        if (Ancestors(request, chain).FirstOrDefault(a => a.Status == WalletWithdrawalRequestStatus.OnChainConfirmed) is { } mined)
         {
-            if (ancestor.Status == WalletWithdrawalRequestStatus.OnChainConfirmed)
-            {
-                return (WalletWithdrawalRequestStatus.Failed,
-                    $"Withdrawal request {ancestor.Id} was mined instead (tx {ancestor.TxId})");
-            }
-
-            ancestorId = ancestor.BumpingWalletWithdrawalRequestId;
+            return (WalletWithdrawalRequestStatus.Failed, WalletWithdrawalRequest.MinedInsteadReason(mined.Id, mined.TxId));
         }
 
-        foreach (var confirmed in chain.Where(member => member.Status == WalletWithdrawalRequestStatus.OnChainConfirmed))
+        foreach (var confirmed in chain.Values.Where(member => member.Status == WalletWithdrawalRequestStatus.OnChainConfirmed))
         {
-            var path = PathUpTo(confirmed, request.Id, byId);
-            if (path == null) continue;
+            var lineage = Ancestors(confirmed, chain).ToList();
+            var index = lineage.FindIndex(a => a.Id == request.Id);
+            if (index < 0) continue;
 
             // Cancelled iff a cancellation sits on the way: a bump of a cancellation still returns the funds, while a
             // cancellation of a bump still means this request's destinations were never paid.
-            return path.Any(member => member.IsRbfCancellation)
-                ? (WalletWithdrawalRequestStatus.Cancelled, WalletWithdrawalRequest.RbfCancellationReason(confirmed.Id, confirmed.TxId))
-                : (WalletWithdrawalRequestStatus.Bumped, WalletWithdrawalRequest.ReplacedReason(confirmed.Id, confirmed.TxId));
+            var cancellation = confirmed.IsRbfCancellation || lineage.Take(index).Any(a => a.IsRbfCancellation);
+            return WalletWithdrawalRequest.SupersededBy(confirmed, cancellation);
         }
 
         return null;
     }
 
-    /// <summary>The requests from <paramref name="from"/> up to, excluding, <paramref name="targetId"/>; null if it is not an ancestor.</summary>
-    private static List<WalletWithdrawalRequest>? PathUpTo(WalletWithdrawalRequest from, int targetId,
-        Dictionary<int, WalletWithdrawalRequest> byId)
+    /// <summary>What <paramref name="request"/> replaces, nearest first, following the link while it stays in the chain.</summary>
+    private static IEnumerable<WalletWithdrawalRequest> Ancestors(WalletWithdrawalRequest request,
+        Dictionary<int, WalletWithdrawalRequest> chain)
     {
-        var path = new List<WalletWithdrawalRequest>();
-        var visited = new HashSet<int>();
-        var current = from;
-        while (current != null && visited.Add(current.Id))
+        var visited = new HashSet<int> { request.Id };
+        var current = request;
+        while (current.BumpingWalletWithdrawalRequestId is { } id && visited.Add(id) && chain.TryGetValue(id, out current))
         {
-            path.Add(current);
-            if (current.BumpingWalletWithdrawalRequestId == targetId) return path;
-
-            current = current.BumpingWalletWithdrawalRequestId is { } id ? byId.GetValueOrDefault(id) : null;
+            yield return current;
         }
-
-        return null;
     }
 
     private async Task<decimal> ResolveFeeRateAsync(MempoolRecommendedFeesType feeType, decimal? customFeeRate)
