@@ -245,10 +245,13 @@ namespace NodeGuard.Data.Models
         [NotMapped]
         public bool IsLive => LiveStatuses.Contains(Status);
 
+        /// <summary>
+        /// Never put a transaction in the mempool, or lost to another one. A request cancelled by its own RBF
+        /// replacement (Cancelled with a txid) was superseded, not abandoned: it is a hop of the chain.
+        /// </summary>
         [NotMapped]
-        public bool IsAbandoned => Status is WalletWithdrawalRequestStatus.Failed
-            or WalletWithdrawalRequestStatus.Cancelled
-            or WalletWithdrawalRequestStatus.Rejected;
+        public bool IsAbandoned => Status is WalletWithdrawalRequestStatus.Failed or WalletWithdrawalRequestStatus.Rejected
+            || (Status == WalletWithdrawalRequestStatus.Cancelled && string.IsNullOrEmpty(TxId));
 
         public static string RbfCancellationReason(int replacementId, string? txId) =>
             WithTx($"Cancelled by RBF replacement request {replacementId}", txId);
@@ -337,12 +340,15 @@ namespace NodeGuard.Data.Models
             _requests = requests.ToList();
         }
 
-        /// <summary>The one still in flight, if any; creating a replacement is refused while one exists.</summary>
-        public WalletWithdrawalRequest? Live => _requests.FirstOrDefault(r => r.IsLive);
+        /// <summary>
+        /// The one still in flight, if any. Creating a replacement is refused while one exists; should a race let two
+        /// through, the newest is the one that had to outbid the other to get into the mempool.
+        /// </summary>
+        public WalletWithdrawalRequest? Live => _requests.Where(r => r.IsLive).MaxBy(r => r.Id);
 
-        /// <summary>The one whose transaction competes in the mempool, if any.</summary>
+        /// <summary>The one whose transaction competes in the mempool, if any; the newest when a race left two.</summary>
         public WalletWithdrawalRequest? Broadcast =>
-            _requests.FirstOrDefault(r => r.Status == WalletWithdrawalRequestStatus.OnChainConfirmationPending);
+            _requests.Where(r => r.Status == WalletWithdrawalRequestStatus.OnChainConfirmationPending).MaxBy(r => r.Id);
 
         /// <summary>The newest one that was not abandoned: the next hop when following a chain by id.</summary>
         public WalletWithdrawalRequest? Newest => _requests.Where(r => !r.IsAbandoned).MaxBy(r => r.Id);
