@@ -42,9 +42,13 @@ public interface ISwapOutRepository
    Task<(bool, string?)> AddAsync(SwapOut swap);
    Task<(bool, string?)> AddRangeAsync(List<SwapOut> swaps);
    (bool, string?) Update(SwapOut swap);
+
+   /// <summary>Saves several swaps in one transaction: all of them, or none</summary>
+   (bool, string?) UpdateRange(IReadOnlyCollection<SwapOut> swaps);
    
    /// <summary>
-   /// Get all swaps that are currently in flight (not completed, failed, or timed out) for a specific node, swaps older than 24 hours are ignored to avoid swaps deadlocks if many are stuck
+   /// Get all swaps that are currently in flight (not completed, failed, or timed out) for a specific node, swaps older than 24 hours are ignored to avoid swaps deadlocks if many are stuck.
+   /// A paid Spark swap is not in flight any more: it waits in its Spark wallet, whose max balance limits it
    /// </summary>
    Task<List<SwapOut>> GetInFlightSwapsByNode(int nodeId);
    
@@ -57,4 +61,7 @@ public interface ISwapOutRepository
    /// The Spark transfers already given to a swap, whatever its status: a transfer belongs to one swap only
    /// </summary>
    Task<HashSet<string>> GetSparkTransferIdsAsync();
+
+   /// <summary>The Spark swaps paid into the Spark wallet with this identity, whatever their status</summary>
+   Task<List<SwapOut>> GetSparkSwapsByIdentityAsync(string identityPublicKey);
 }

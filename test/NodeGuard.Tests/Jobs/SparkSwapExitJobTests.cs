@@ -39,14 +39,15 @@ public class SparkSwapExitJobTests
     {
         _context.CancellationToken.Returns(CancellationToken.None);
         _sparkSwaps.AttributeAsync(Arg.Any<SwapOut>(), Arg.Any<CancellationToken>()).Returns(true);
-        _sparkSwaps.ExitAsync(Arg.Any<SwapOut>(), Arg.Any<CancellationToken>()).Returns(SparkExitStep.ExitSent);
+        _sparkSwaps.ExitBatchAsync(Arg.Any<IReadOnlyList<SwapOut>>(), Arg.Any<CancellationToken>()).Returns(SparkExitStep.ExitSent);
+        Plans();
     }
 
     private SparkSwapExitJob Job(bool sparkEnabled = true) => new(NullLogger<SparkSwapExitJob>.Instance, _swapOuts, _sparkSwaps,
         _audit, sparkEnabled ? new SparkSettings { Enabled = true } : SparkSettings.Disabled);
 
     private static SwapOut Swap(int id, int minutes, long? lightningFee = 10, string? transferId = null,
-        SwapProvider provider = SwapProvider.Spark) => new()
+        SwapProvider provider = SwapProvider.Spark, string? address = null) => new()
     {
         Id = id,
         Provider = provider,
@@ -55,59 +56,86 @@ public class SparkSwapExitJobTests
         SatsAmount = 100_000,
         LightningFeeSats = lightningFee,
         SparkTransferId = transferId,
+        SparkIdentity = "02aa",
+        DestinationWalletId = 3,
+        DestinationAddress = address,
         CreationDatetime = DateTimeOffset.UnixEpoch.AddMinutes(minutes)
     };
 
+    /// <summary>The batches the service plans to exit now.</summary>
+    private void Plans(params IReadOnlyList<SwapOut>[] batches) =>
+        _sparkSwaps.PlanExitsAsync(Arg.Any<IReadOnlyCollection<SwapOut>>(), Arg.Any<CancellationToken>())
+            .Returns(batches.ToList());
+
+    private static IReadOnlyList<SwapOut> Batch(params SwapOut[] swaps) =>
+        Arg.Is<IReadOnlyList<SwapOut>>(b => b.SequenceEqual(swaps));
+
     [Fact]
-    public async Task Execute_AttributesEveryPaidSwap_ThenExitsThemOneAtATime_OldestFirst()
+    public async Task Execute_AttributesEveryPaidSwap_FollowsTheBatchesExiting_ThenExitsThePlannedOnes()
     {
-        var newer = Swap(2, minutes: 5);
-        var older = Swap(1, minutes: 1);
-        var attributed = Swap(3, minutes: 3, transferId: "transfer-3");
+        var exitingOlder = Swap(1, minutes: 1, transferId: "transfer-1", address: "bcrt1-batch");
+        var exitingNewer = Swap(3, minutes: 3, transferId: "transfer-3", address: "bcrt1-batch");
+        var waiting = Swap(2, minutes: 5);
         var unpaid = Swap(4, minutes: 0, lightningFee: null);
         var loop = Swap(5, minutes: 0, provider: SwapProvider.Loop);
-        _swapOuts.GetAllPending().Returns(new List<SwapOut> { newer, unpaid, attributed, loop, older });
+        var pending = new List<SwapOut> { waiting, unpaid, exitingNewer, loop, exitingOlder };
+        _swapOuts.GetAllPending().Returns(pending);
+        Plans(new List<SwapOut> { waiting });
 
         await Job().Execute(_context);
 
         Received.InOrder(() =>
         {
-            _sparkSwaps.AttributeAsync(older, Arg.Any<CancellationToken>());
-            _sparkSwaps.AttributeAsync(newer, Arg.Any<CancellationToken>());
-            _sparkSwaps.ExitAsync(older, Arg.Any<CancellationToken>());
-            _sparkSwaps.ExitAsync(attributed, Arg.Any<CancellationToken>());
-            _sparkSwaps.ExitAsync(newer, Arg.Any<CancellationToken>());
+            _sparkSwaps.AttributeAsync(waiting, Arg.Any<CancellationToken>());
+            _sparkSwaps.ExitBatchAsync(Batch(exitingOlder, exitingNewer), Arg.Any<CancellationToken>());
+            _sparkSwaps.PlanExitsAsync(pending, Arg.Any<CancellationToken>());
+            _sparkSwaps.ExitBatchAsync(Batch(waiting), Arg.Any<CancellationToken>());
         });
-        await _sparkSwaps.DidNotReceive().AttributeAsync(attributed, Arg.Any<CancellationToken>());
-        await _sparkSwaps.DidNotReceive().ExitAsync(unpaid, Arg.Any<CancellationToken>());
-        await _sparkSwaps.DidNotReceive().ExitAsync(loop, Arg.Any<CancellationToken>());
+        await _sparkSwaps.DidNotReceive().AttributeAsync(exitingOlder, Arg.Any<CancellationToken>());
+        await _sparkSwaps.Received(2).ExitBatchAsync(Arg.Any<IReadOnlyList<SwapOut>>(), Arg.Any<CancellationToken>());
     }
 
     [Fact]
-    public async Task Execute_AuditsACompletedSwap()
+    public async Task Execute_AuditsEverySwapOfACompletedBatch()
     {
-        var swap = Swap(1, minutes: 1, transferId: "transfer-1");
-        _swapOuts.GetAllPending().Returns(new List<SwapOut> { swap });
-        _sparkSwaps.ExitAsync(swap, Arg.Any<CancellationToken>()).Returns(SparkExitStep.Completed);
+        var first = Swap(1, minutes: 1, transferId: "transfer-1", address: "bcrt1-batch");
+        var second = Swap(2, minutes: 2, transferId: "transfer-2", address: "bcrt1-batch");
+        _swapOuts.GetAllPending().Returns(new List<SwapOut> { first, second });
+        _sparkSwaps.ExitBatchAsync(Batch(first, second), Arg.Any<CancellationToken>()).Returns(SparkExitStep.Completed);
 
         await Job().Execute(_context);
 
         await _audit.Received(1).LogSystemAsync(AuditActionType.SwapOutCompleted, AuditEventType.Success, AuditObjectType.SwapOut,
             "req-1", Arg.Any<object?>());
+        await _audit.Received(1).LogSystemAsync(AuditActionType.SwapOutCompleted, AuditEventType.Success, AuditObjectType.SwapOut,
+            "req-2", Arg.Any<object?>());
     }
 
     [Fact]
-    public async Task Execute_ASwapThatFails_DoesNotStopTheOthers()
+    public async Task Execute_ABatchThatFails_DoesNotStopTheOthers()
     {
-        var failing = Swap(1, minutes: 1, transferId: "transfer-1");
-        var next = Swap(2, minutes: 2, transferId: "transfer-2");
+        var failing = Swap(1, minutes: 1, transferId: "transfer-1", address: "bcrt1-one");
+        var next = Swap(2, minutes: 2, transferId: "transfer-2", address: "bcrt1-two");
         _swapOuts.GetAllPending().Returns(new List<SwapOut> { failing, next });
-        _sparkSwaps.ExitAsync(failing, Arg.Any<CancellationToken>()).ThrowsAsync(new InvalidOperationException("the SSP is down"));
+        _sparkSwaps.ExitBatchAsync(Batch(failing), Arg.Any<CancellationToken>()).ThrowsAsync(new InvalidOperationException("the SSP is down"));
 
         await Job().Execute(_context);
 
-        await _sparkSwaps.Received(1).ExitAsync(next, Arg.Any<CancellationToken>());
+        await _sparkSwaps.Received(1).ExitBatchAsync(Batch(next), Arg.Any<CancellationToken>());
         await _audit.DidNotReceiveWithAnyArgs().LogSystemAsync(default, default, default, default, default);
+    }
+
+    [Fact]
+    public async Task Execute_WhenPlanningFails_StillFollowsTheBatchesExiting()
+    {
+        var exiting = Swap(1, minutes: 1, transferId: "transfer-1", address: "bcrt1-batch");
+        _swapOuts.GetAllPending().Returns(new List<SwapOut> { exiting });
+        _sparkSwaps.PlanExitsAsync(Arg.Any<IReadOnlyCollection<SwapOut>>(), Arg.Any<CancellationToken>())
+            .ThrowsAsync(new InvalidOperationException("the wallet is down"));
+
+        await Job().Execute(_context);
+
+        await _sparkSwaps.Received(1).ExitBatchAsync(Batch(exiting), Arg.Any<CancellationToken>());
     }
 
     [Fact]

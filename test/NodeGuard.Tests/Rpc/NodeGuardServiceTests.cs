@@ -2477,7 +2477,7 @@ namespace NodeGuard.Rpc
 
         // ── Swap-outs ──────────────────────────────────────────────────────────────────
 
-        private static readonly Node SwapNode = new() { Id = 4, Name = "alice", PubKey = "02aa", MaxSwapRoutingFeeRatio = 0.005m };
+        private static readonly Node SwapNode = new() { Id = 4, Name = "alice", PubKey = "02aa", LoopMaxSwapRoutingFeeRatio = 0.005m, FortySwapMaxSwapRoutingFeeRatio = 0.005m, SparkMaxSwapRoutingFeeRatio = 0.005m };
 
         private (NodeGuardService Service, Mock<ISwapsService> Swaps, Mock<ISwapOutRepository> SwapOuts, Mock<IAuditService> Audit)
             SwapService(SwapProvider provider = SwapProvider.Spark, Mock<INBXplorerService>? nbXplorer = null)

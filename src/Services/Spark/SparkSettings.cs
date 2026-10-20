@@ -21,6 +21,7 @@ using NBitcoin;
 using NodeGuard.Data.Models;
 using NodeGuard.Helpers;
 using NSpark;
+using NSpark.Models;
 
 namespace NodeGuard.Services.Spark;
 
@@ -55,7 +56,25 @@ public readonly record struct SparkWalletRef(int? WalletId)
 public sealed class SparkSettings
 {
     public const long DefaultMaxExitFeeSats = 20_000;
+
+    /// <summary>How long LND keeps trying routes for a Spark swap's payment, by default.</summary>
+    public const int DefaultPaymentTimeoutMinutes = 10;
+
+    /// <summary>
+    /// The longest payment timeout: LND must stop trying routes well before the 30-minute invoice
+    /// (<see cref="SparkSwapService.InvoiceExpirySeconds"/>) expires.
+    /// </summary>
+    public const int MaxPaymentTimeoutMinutes = 25;
     public const long DefaultMaxBalanceSats = 10_000_000;
+
+    /// <summary>A node's smallest Spark swap by default (SPARK_SWAP_MIN_SATS).</summary>
+    public const long DefaultSwapMinSats = 50_000;
+
+    /// <summary>A node's largest Spark swap by default (SPARK_SWAP_MAX_SATS).</summary>
+    public const long DefaultSwapMaxSats = 2_000_000;
+
+    /// <summary>The smallest Spark min swap a node may set: smaller swaps aren't worth their routing and exit fees.</summary>
+    public const long LowestSwapMinSats = 10_000;
 
     public static readonly SparkSettings Disabled = new();
 
@@ -93,7 +112,7 @@ public sealed class SparkSettings
     /// <summary>The Spark identity the remote signer must serve (SPARK_IDENTITY_PUBKEY; remote signer only).</summary>
     public string? IdentityPublicKey { get; init; }
 
-    /// <summary>Highest fee accepted for the cooperative exit of a swap (SPARK_MAX_EXIT_FEE_SATS).</summary>
+    /// <summary>Highest fee accepted for a cooperative exit, of a batch of swaps (SPARK_MAX_EXIT_FEE_SATS).</summary>
     public long MaxExitFeeSats { get; init; } = DefaultMaxExitFeeSats;
 
     /// <summary>
@@ -106,10 +125,50 @@ public sealed class SparkSettings
     public int ExitIntervalOrDefault(bool isDevEnvironment) => ExitIntervalMinutes ?? (isDevEnvironment ? 1 : 10);
 
     /// <summary>
+    /// How long LND keeps trying routes for a Spark swap's payment, in minutes (SPARK_PAYMENT_TIMEOUT_MINUTES, 1 to
+    /// <see cref="MaxPaymentTimeoutMinutes"/>), unless the node has its own.
+    /// </summary>
+    public int PaymentTimeoutMinutes { get; init; } = DefaultPaymentTimeoutMinutes;
+
+    /// <summary>The payment timeout for <paramref name="node"/>'s Spark swaps: its own, else <see cref="PaymentTimeoutMinutes"/>.</summary>
+    public int PaymentTimeoutFor(Node node) => node.SparkPaymentTimeoutMinutes ?? PaymentTimeoutMinutes;
+
+    /// <summary>
+    /// How fast exits confirm on-chain (SPARK_EXIT_SPEED: FAST, MEDIUM or SLOW): swap exits and Withdraw all. SLOW,
+    /// the default, is the cheapest: the SSP's L1 broadcast fee is set by the speed's fee rate.
+    /// </summary>
+    public ExitSpeed ExitSpeed { get; init; } = ExitSpeed.Slow;
+
+    /// <summary>
+    /// How long a paid swap may go without a confirmed payout before it is alerted as overdue: longer the slower
+    /// its exit confirms.
+    /// </summary>
+    public TimeSpan ExitOverdueAfter => ExitSpeed switch
+    {
+        ExitSpeed.Fast => TimeSpan.FromHours(6),
+        ExitSpeed.Medium => TimeSpan.FromHours(12),
+        _ => TimeSpan.FromHours(24)
+    };
+
+    /// <summary>The exit speed and its trade-off, as the UI shows it.</summary>
+    public string ExitSpeedSummary => ExitSpeed switch
+    {
+        ExitSpeed.Fast => "FAST (SPARK_EXIT_SPEED): the dearest, confirming soonest",
+        ExitSpeed.Medium => "MEDIUM (SPARK_EXIT_SPEED): between FAST and SLOW in fee and in time to confirm",
+        _ => "SLOW (SPARK_EXIT_SPEED): the cheapest, though the payout can take hours to confirm when fees run high"
+    };
+
+    /// <summary>
     /// Most sats a Spark wallet may hold, counting a new swap (SPARK_MAX_BALANCE_SATS), unless the wallet has its
     /// own: Spark balances are only meant to pass through.
     /// </summary>
     public long MaxBalanceSats { get; init; } = DefaultMaxBalanceSats;
+
+    /// <summary>A node's smallest Spark swap (SPARK_SWAP_MIN_SATS), unless the node has its own.</summary>
+    public long SwapMinSats { get; init; } = DefaultSwapMinSats;
+
+    /// <summary>A node's largest Spark swap (SPARK_SWAP_MAX_SATS), unless the node has its own.</summary>
+    public long SwapMaxSats { get; init; } = DefaultSwapMaxSats;
 
     /// <summary>The remote signer's Function URL (REMOTE_SIGNER_ENDPOINT), signed with SigV4.</summary>
     public Uri? SignerEndpoint { get; init; }
@@ -254,11 +313,45 @@ public sealed class SparkSettings
             else errors.Add("SPARK_EXIT_INTERVAL_MINUTES must be a positive number of minutes");
         }
 
+        var paymentTimeout = DefaultPaymentTimeoutMinutes;
+        if (env("SPARK_PAYMENT_TIMEOUT_MINUTES") is { Length: > 0 } paymentTimeoutValue &&
+            (!int.TryParse(paymentTimeoutValue, out paymentTimeout) || paymentTimeout is < 1 or > MaxPaymentTimeoutMinutes))
+        {
+            errors.Add($"SPARK_PAYMENT_TIMEOUT_MINUTES must be a whole number of minutes from 1 to {MaxPaymentTimeoutMinutes}");
+        }
+
+        var exitSpeed = ExitSpeed.Slow;
+        if (env("SPARK_EXIT_SPEED") is { Length: > 0 } exitSpeedValue)
+        {
+            switch (exitSpeedValue.Trim().ToUpperInvariant())
+            {
+                case "FAST": exitSpeed = ExitSpeed.Fast; break;
+                case "MEDIUM": exitSpeed = ExitSpeed.Medium; break;
+                case "SLOW": exitSpeed = ExitSpeed.Slow; break;
+                default: errors.Add("SPARK_EXIT_SPEED must be FAST, MEDIUM or SLOW"); break;
+            }
+        }
+
         var maxBalance = DefaultMaxBalanceSats;
         if (env("SPARK_MAX_BALANCE_SATS") is { Length: > 0 } maxBalanceValue &&
             (!long.TryParse(maxBalanceValue, out maxBalance) || maxBalance <= 0))
         {
             errors.Add("SPARK_MAX_BALANCE_SATS must be a positive number of sats");
+        }
+
+        var largestSwap = (long)(Constants.MAXIMUM_SWAP_OUT_SIZE_BTC * 100_000_000m);
+        var swapMin = DefaultSwapMinSats;
+        if (env("SPARK_SWAP_MIN_SATS") is { Length: > 0 } swapMinValue &&
+            (!long.TryParse(swapMinValue, out swapMin) || swapMin < LowestSwapMinSats))
+        {
+            errors.Add($"SPARK_SWAP_MIN_SATS must be a number of sats of at least {LowestSwapMinSats}");
+        }
+
+        var swapMax = DefaultSwapMaxSats;
+        if (env("SPARK_SWAP_MAX_SATS") is { Length: > 0 } swapMaxValue &&
+            (!long.TryParse(swapMaxValue, out swapMax) || swapMax < swapMin || swapMax > largestSwap))
+        {
+            errors.Add($"SPARK_SWAP_MAX_SATS must be a number of sats from SPARK_SWAP_MIN_SATS to {largestSwap} (MAXIMUM_SWAP_OUT_SIZE_BTC)");
         }
 
         Uri? endpoint = null;
@@ -298,7 +391,11 @@ public sealed class SparkSettings
             IdentityPublicKey = identity?.Trim().ToLowerInvariant(),
             MaxExitFeeSats = maxExitFee,
             ExitIntervalMinutes = exitInterval,
+            PaymentTimeoutMinutes = paymentTimeout,
+            ExitSpeed = exitSpeed,
             MaxBalanceSats = maxBalance,
+            SwapMinSats = swapMin,
+            SwapMaxSats = swapMax,
             SignerEndpoint = endpoint,
             SignerRieUrl = rieUrl
         };

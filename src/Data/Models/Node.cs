@@ -80,25 +80,66 @@ namespace NodeGuard.Data.Models
         public bool AutoLiquidityManagementEnabled { get; set; }
 
         /// <summary>
-        /// Minimum swap amount in satoshis
+        /// Minimum Loop swap amount in satoshis
         /// </summary>
-        public long SwapMinAmountSats { get; set; }
+        public long LoopSwapMinAmountSats { get; set; }
 
         /// <summary>
-        /// Maximum swap amount in satoshis
+        /// Maximum Loop swap amount in satoshis
         /// </summary>
-        public long SwapMaxAmountSats { get; set; }
+        public long LoopSwapMaxAmountSats { get; set; }
 
         /// <summary>
-        /// Maximum number of concurrent swaps to limit HTLC locking
+        /// Minimum 40swap swap amount in satoshis
         /// </summary>
-        public int MaxSwapsInFlight { get; set; }
+        public long FortySwapMinAmountSats { get; set; }
 
         /// <summary>
-        /// Maximum swap routing fee ratio acceptable for swaps as a decimal between 0 and 1
-        /// Example: 0.005 = 0.5%
+        /// Maximum 40swap swap amount in satoshis
         /// </summary>
-        public decimal MaxSwapRoutingFeeRatio { get; set; }
+        public long FortySwapMaxAmountSats { get; set; }
+
+        /// <summary>
+        /// Minimum Spark swap amount in satoshis; null means SPARK_SWAP_MIN_SATS
+        /// </summary>
+        public long? SparkSwapMinAmountSats { get; set; }
+
+        /// <summary>
+        /// Maximum Spark swap amount in satoshis; null means SPARK_SWAP_MAX_SATS
+        /// </summary>
+        public long? SparkSwapMaxAmountSats { get; set; }
+
+        /// <summary>
+        /// Maximum number of concurrent Loop swaps, to limit HTLC locking
+        /// </summary>
+        public int LoopMaxSwapsInFlight { get; set; }
+
+        /// <summary>
+        /// Maximum number of concurrent 40swap swaps, to limit HTLC locking
+        /// </summary>
+        public int FortySwapMaxSwapsInFlight { get; set; }
+
+        /// <summary>
+        /// Maximum number of Spark swaps being paid at once, to limit HTLC locking. Once paid, a Spark swap waits in
+        /// its Spark wallet, whose max balance limits it
+        /// </summary>
+        public int SparkMaxSwapsInFlight { get; set; }
+
+        /// <summary>
+        /// Maximum routing fee ratio acceptable for Loop swaps, as a decimal between 0 and 1. Example: 0.005 = 0.5%
+        /// </summary>
+        public decimal LoopMaxSwapRoutingFeeRatio { get; set; }
+
+        /// <summary>
+        /// Maximum routing fee ratio acceptable for 40swap swaps, as a decimal between 0 and 1
+        /// </summary>
+        public decimal FortySwapMaxSwapRoutingFeeRatio { get; set; }
+
+        /// <summary>
+        /// Maximum routing fee ratio acceptable for Spark swaps, as a decimal between 0 and 1. It includes Spark's own
+        /// 15 bps, which Spark charges on the Lightning route
+        /// </summary>
+        public decimal SparkMaxSwapRoutingFeeRatio { get; set; }
 
         /// <summary>
         /// Balance threshold in satoshis - when node balance exceeds this, trigger automatic swap out
@@ -135,7 +176,7 @@ namespace NodeGuard.Data.Models
 
         /// <summary>
         /// Weight for the Spark swap provider selection (default 0). Spark is skipped while the node's
-        /// Spark wallet is unavailable; MaxSwapsInFlight limits Spark swaps like any other
+        /// Spark wallet is unavailable; SparkMaxSwapsInFlight limits its swaps
         /// </summary>
         public int SparkSwapWeight { get; set; } = 0;
 
@@ -144,6 +185,12 @@ namespace NodeGuard.Data.Models
         /// share one: each swap exits its own leaves, and the wallet's max balance counts all of them
         /// </summary>
         public int? SparkWalletId { get; set; }
+
+        /// <summary>
+        /// How long LND keeps trying routes for this node's Spark swap payments, in minutes; null means
+        /// SPARK_PAYMENT_TIMEOUT_MINUTES
+        /// </summary>
+        public int? SparkPaymentTimeoutMinutes { get; set; }
 
         #endregion Automatic Swap Out Configuration
 

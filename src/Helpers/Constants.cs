@@ -199,10 +199,11 @@ public class Constants
     public static double REBALANCE_AMOUNT_BACKOFF_RATIO = 0.8;
 
     /// <summary>
-    /// Maximum number of partial payments (MPP shards) LND may split a rebalance into. 1
-    /// disables splitting; higher values let LND complete an amount across several routes.
+    /// Maximum number of partial payments (MPP shards) LND may split a payment sent with SendPaymentV2 into:
+    /// rebalances and Spark swap payments (SEND_PAYMENT_MAX_PARTS; REBALANCE_MAX_PARTS still read as a
+    /// fallback). 1 disables splitting; higher values let LND complete an amount across several routes.
     /// </summary>
-    public static uint REBALANCE_MAX_PARTS = 32;
+    public static uint SEND_PAYMENT_MAX_PARTS = 32;
 
     /// <summary>
     /// How far back the MonitorRebalancesJob sweeps for already-terminal-but-possibly-wrong
@@ -609,8 +610,9 @@ public class Constants
         var rebProbeBackoff = Environment.GetEnvironmentVariable("REBALANCE_AMOUNT_BACKOFF_RATIO");
         if (rebProbeBackoff != null) REBALANCE_AMOUNT_BACKOFF_RATIO = double.Parse(rebProbeBackoff, NumberStyles.AllowDecimalPoint, CultureInfo.InvariantCulture);
 
-        var rebMaxParts = Environment.GetEnvironmentVariable("REBALANCE_MAX_PARTS");
-        if (rebMaxParts != null) REBALANCE_MAX_PARTS = uint.Parse(rebMaxParts);
+        var sendPaymentMaxParts = Environment.GetEnvironmentVariable("SEND_PAYMENT_MAX_PARTS")
+                                  ?? Environment.GetEnvironmentVariable("REBALANCE_MAX_PARTS");
+        if (sendPaymentMaxParts != null) SEND_PAYMENT_MAX_PARTS = uint.Parse(sendPaymentMaxParts);
 
         var rebReconcileWindow = Environment.GetEnvironmentVariable("REBALANCE_RECONCILE_TERMINAL_WINDOW_HOURS");
         if (rebReconcileWindow != null) REBALANCE_RECONCILE_TERMINAL_WINDOW_HOURS = int.Parse(rebReconcileWindow);

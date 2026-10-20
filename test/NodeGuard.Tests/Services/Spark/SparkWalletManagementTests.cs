@@ -28,6 +28,7 @@ using NodeGuard.Data.Models;
 using NodeGuard.Data.Repositories.Interfaces;
 using NodeGuard.TestHelpers;
 using NSpark.Models;
+using NSpark.Services;
 using NSpark.Signer;
 using NSubstitute;
 using NSubstitute.Extensions;
@@ -90,6 +91,7 @@ public class SparkWalletManagementTests
         _wallets.GetById(5).Returns(_ => SparkWallet());
         _nodes.GetAll().Returns(new List<Node>());
         _swapOuts.GetAllPending().Returns(new List<SwapOut>());
+        _swapOuts.GetSparkSwapsByIdentityAsync(Arg.Any<string>()).Returns(new List<SwapOut>());
         Holds(0);
 
         _destination = CreateWallet.SingleSig(CreateWallet.CreateInternalWallet());
@@ -280,6 +282,76 @@ public class SparkWalletManagementTests
 
         await act.Should().ThrowAsync<InvalidOperationException>().WithMessage("*still holds 1000 sats*");
         _wallets.DidNotReceiveWithAnyArgs().Update(default!);
+    }
+
+    // ── Transactions ─────────────────────────────────────────────────────────────────────
+
+    private static SparkTransfer Transfer(string id, string sender, string type, int minutes, params string[] leafIds) =>
+        new(id, sender, sender == Identity ? "03ss" : Identity, 100_000, "Completed", DateTimeOffset.UnixEpoch.AddMinutes(minutes), type)
+        {
+            Leaves = leafIds.Select(l => new SparkLeaf(l, "tree", 50_000, "AVAILABLE")).ToList()
+        };
+
+    [Fact]
+    public async Task TheTransactions_AreNewestFirst_WithTheirDirectionTypeAndSwap()
+    {
+        _spark.Configure().GetTransfersAsync(new SparkWalletRef(5), TransferDirection.Both, DateTimeOffset.UnixEpoch, Arg.Any<CancellationToken>())
+            .Returns(new List<SparkTransfer>
+            {
+                Transfer("receive-1", "03ss", "PreimageSwap", minutes: 1, "l1", "l2"),
+                Transfer("exit-1", Identity, "CooperativeExit", minutes: 5, "l2"),
+                Transfer("stray", "03ss", "Transfer", minutes: 3, "x1"),
+                Transfer("odd", "03ss", "UtxoSwap", minutes: 2)
+            });
+        _swapOuts.GetSparkSwapsByIdentityAsync(Identity).Returns(new List<SwapOut>
+        {
+            new() { Id = 41, Provider = SwapProvider.Spark, SparkTransferId = "receive-1", SparkLeafIds = "l1,l2" }
+        });
+
+        var transfers = await Service().ListTransfersAsync(5);
+
+        transfers.Select(t => t.Id).Should().Equal("exit-1", "stray", "odd", "receive-1");
+        transfers.Should().BeEquivalentTo(new[]
+        {
+            new { Id = "exit-1", IsSent = true, Type = "Exit to on-chain", SwapIds = new[] { 41 }, Date = DateTimeOffset.UnixEpoch.AddMinutes(5) },
+            new { Id = "stray", IsSent = false, Type = "Spark transfer", SwapIds = Array.Empty<int>(), Date = DateTimeOffset.UnixEpoch.AddMinutes(3) },
+            new { Id = "odd", IsSent = false, Type = "UtxoSwap", SwapIds = Array.Empty<int>(), Date = DateTimeOffset.UnixEpoch.AddMinutes(2) },
+            new { Id = "receive-1", IsSent = false, Type = "Lightning payment in", SwapIds = new[] { 41 }, Date = DateTimeOffset.UnixEpoch.AddMinutes(1) }
+        }, o => o.WithStrictOrdering());
+    }
+
+    [Fact]
+    public async Task TheTransactions_ABatchsExit_ListsEverySwapItPaid()
+    {
+        _spark.Configure().GetTransfersAsync(new SparkWalletRef(5), TransferDirection.Both, DateTimeOffset.UnixEpoch, Arg.Any<CancellationToken>())
+            .Returns(new List<SparkTransfer> { Transfer("exit-1", Identity, "CooperativeExit", minutes: 5, "l1", "l3") });
+        _swapOuts.GetSparkSwapsByIdentityAsync(Identity).Returns(new List<SwapOut>
+        {
+            new() { Id = 41, Provider = SwapProvider.Spark, SparkTransferId = "receive-1", SparkLeafIds = "l1,l2" },
+            new() { Id = 42, Provider = SwapProvider.Spark, SparkTransferId = "receive-2", SparkLeafIds = "l3" },
+            new() { Id = 43, Provider = SwapProvider.Spark, SparkTransferId = "receive-3", SparkLeafIds = "l4" }
+        });
+
+        var transfers = await Service().ListTransfersAsync(5);
+
+        transfers.Should().ContainSingle().Which.SwapIds.Should().Equal(41, 42);
+    }
+
+    [Fact]
+    public async Task TheTransactions_KeepOnlyTheLatest()
+    {
+        _spark.Configure().GetTransfersAsync(new SparkWalletRef(5), TransferDirection.Both, DateTimeOffset.UnixEpoch, Arg.Any<CancellationToken>())
+            .Returns(Enumerable.Range(1, 5).Select(i => Transfer($"t{i}", "03ss", "Transfer", minutes: i)).ToList());
+
+        var transfers = await Service().ListTransfersAsync(5, limit: 2);
+
+        transfers.Select(t => t.Id).Should().Equal("t5", "t4");
+    }
+
+    [Fact]
+    public async Task TheTransactions_OfAnOnChainWallet_AreRefused()
+    {
+        await Service().Invoking(s => s.ListTransfersAsync(3)).Should().ThrowAsync<ArgumentException>().WithMessage("*not a Spark wallet*");
     }
 
     [Fact]

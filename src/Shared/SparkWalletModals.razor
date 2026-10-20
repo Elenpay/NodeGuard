@@ -1,3 +1,4 @@
+@using Humanizer
 @using NodeGuard.Services.Spark
 @using NSpark.Models
 @inject ISparkWalletService SparkWallet
@@ -81,6 +82,13 @@
             @if (_wallet is not null)
             {
                 var status = SparkWallet.GetStatus(new SparkWalletRef(_wallet.Id));
+                <Tabs FullWidth="true" Justified="true" SelectedTab="@_detailsTab" SelectedTabChanged="@OnDetailsTabChanged">
+                <Items>
+                    <Tab Name="Details">Details</Tab>
+                    <Tab Name="Transactions">Transactions</Tab>
+                </Items>
+                <Content>
+                <TabPanel Name="Details">
                 <Table>
                     <TableBody>
                         <TableRow><TableRowHeader>Identity</TableRowHeader><TableRowCell><code>@_wallet.SparkIdentityPublicKey</code></TableRowCell></TableRow>
@@ -118,10 +126,76 @@
                         }
                     </TableBody>
                 </Table>
+                </TabPanel>
+                <TabPanel Name="Transactions">
+                    @if (_loadingTransfers)
+                    {
+                        <Paragraph Margin="Margin.Is3.FromTop">Reading the wallet's transfers from the Spark operators…</Paragraph>
+                    }
+                    else if (_transfersError is not null)
+                    {
+                        <Paragraph Margin="Margin.Is3.FromTop"><span class="text-danger">Not available: @_transfersError</span></Paragraph>
+                    }
+                    else if (_transfers is { Count: 0 })
+                    {
+                        <Paragraph Margin="Margin.Is3.FromTop">No transfers yet.</Paragraph>
+                    }
+                    else if (_transfers is not null)
+                    {
+                        <Table Striped Narrow Margin="Margin.Is3.FromTop">
+                            <TableHeader>
+                                <TableRow>
+                                    <TableHeaderCell>Date (UTC)</TableHeaderCell>
+                                    <TableHeaderCell>Direction</TableHeaderCell>
+                                    <TableHeaderCell>Type</TableHeaderCell>
+                                    <TableHeaderCell>Amount</TableHeaderCell>
+                                    <TableHeaderCell>Status</TableHeaderCell>
+                                    <TableHeaderCell>Swap</TableHeaderCell>
+                                    <TableHeaderCell>Transfer</TableHeaderCell>
+                                </TableRow>
+                            </TableHeader>
+                            <TableBody>
+                                @foreach (var transfer in _transfers)
+                                {
+                                    <TableRow>
+                                        <TableRowCell>
+                                            <Tooltip Text="@transfer.Date.Humanize()" Placement="TooltipPlacement.Right">
+                                                @transfer.Date.UtcDateTime.ToString("yyyy-MM-dd HH:mm:ss")
+                                            </Tooltip>
+                                        </TableRowCell>
+                                        <TableRowCell>@(transfer.IsSent ? "Sent" : "Received")</TableRowCell>
+                                        <TableRowCell>@transfer.Type</TableRowCell>
+                                        <TableRowCell>
+                                            <Tooltip Text="@($"{transfer.AmountSats:N0} sats")" Placement="TooltipPlacement.Right">
+                                                @($"{new NBitcoin.Money(transfer.AmountSats, NBitcoin.MoneyUnit.Satoshi).ToUnit(NBitcoin.MoneyUnit.BTC):f8} BTC")
+                                            </Tooltip>
+                                        </TableRowCell>
+                                        <TableRowCell>@transfer.Status</TableRowCell>
+                                        <TableRowCell>@string.Join(", ", transfer.SwapIds.Select(id => $"#{id}"))</TableRowCell>
+                                        <TableRowCell>
+                                            <Tooltip Text="@transfer.Id" Placement="TooltipPlacement.Left">
+                                                <code>@(transfer.Id.Length > 8 ? transfer.Id[..8] + "…" : transfer.Id)</code>
+                                            </Tooltip>
+                                        </TableRowCell>
+                                    </TableRow>
+                                }
+                            </TableBody>
+                        </Table>
+                    }
+                </TabPanel>
+                </Content>
+                </Tabs>
             }
         </ModalBody>
         <ModalFooter>
-            <Button Color="Color.Secondary" Disabled="_loadingBalance" Clicked="RefreshBalanceAsync">Refresh balance</Button>
+            @if (_detailsTab == "Transactions")
+            {
+                <Button Color="Color.Secondary" Disabled="_loadingTransfers" Clicked="RefreshTransfersAsync">Refresh transactions</Button>
+            }
+            else
+            {
+                <Button Color="Color.Secondary" Disabled="_loadingBalance" Clicked="RefreshBalanceAsync">Refresh balance</Button>
+            }
             <Button Color="Color.Primary" Clicked="@(() => _detailsModal.Hide())">Close</Button>
         </ModalFooter>
     </ModalContent>
@@ -157,6 +231,7 @@
             <p>
                 Everything the Spark wallet holds exits on-chain, in one cooperative exit, to a new address of the wallet below.
                 The SSP's fee is capped at @SparkSettings.MaxExitFeeSats.ToString("N0") sats (SPARK_MAX_EXIT_FEE_SATS).
+                It exits at speed @SparkSettings.ExitSpeedSummary; the wallet keeps showing the sats as owned until it confirms.
             </p>
             <Field>
                 <FieldLabel>Destination wallet</FieldLabel>
@@ -209,6 +284,10 @@
     private bool _loadingBalance;
     private string? _balanceError;
     private List<string> _usedBy = new();
+    private string _detailsTab = "Details";
+    private IReadOnlyList<SparkWalletTransfer>? _transfers;
+    private bool _loadingTransfers;
+    private string? _transfersError;
     private List<Wallet> _destinations = new();
     private int _destinationWalletId;
 
@@ -226,9 +305,46 @@
     {
         _wallet = wallet;
         _balance = null;
+        _detailsTab = "Details";
+        _transfers = null;
+        _transfersError = null;
         _usedBy = (await NodeRepository.GetAll()).Where(n => n.SparkWalletId == wallet.Id).Select(n => n.Name).ToList();
         await _detailsModal.Show();
         await RefreshBalanceAsync();
+    }
+
+    /// <summary>The transfers are read the first time their tab opens</summary>
+    private async Task OnDetailsTabChanged(string name)
+    {
+        _detailsTab = name;
+        if (name == "Transactions" && _transfers is null && !_loadingTransfers) await RefreshTransfersAsync();
+    }
+
+    private async Task RefreshTransfersAsync()
+    {
+        if (_wallet is null) return;
+
+        _loadingTransfers = true;
+        _transfersError = null;
+        StateHasChanged();
+        try
+        {
+            _transfers = await SparkWallet.ListTransfersAsync(_wallet.Id);
+        }
+        catch (Exception e) when (e is InvalidOperationException or ArgumentException or SparkUnavailableException)
+        {
+            _transfersError = e.Message;
+        }
+        catch (Exception e)
+        {
+            Logger.LogError(e, "Could not read the transfers of Spark wallet {WalletId}", _wallet.Id);
+            _transfersError = "the Spark operators could not be reached";
+        }
+        finally
+        {
+            _loadingTransfers = false;
+            StateHasChanged();
+        }
     }
 
     public async Task ShowMaxBalanceAsync(Wallet wallet)

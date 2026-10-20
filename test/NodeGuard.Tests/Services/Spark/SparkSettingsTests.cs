@@ -21,6 +21,7 @@ using FluentAssertions;
 using NBitcoin;
 using NodeGuard.Data.Models;
 using NSpark;
+using NSpark.Models;
 
 namespace NodeGuard.Services.Spark;
 
@@ -103,6 +104,16 @@ public class SparkSettingsTests
     }
 
     [Fact]
+    public void ANodesOwnPaymentTimeout_OverridesTheDefaultOfTenMinutes()
+    {
+        var settings = Read(Remote());
+
+        settings.PaymentTimeoutMinutes.Should().Be(10);
+        settings.PaymentTimeoutFor(new Node()).Should().Be(10);
+        settings.PaymentTimeoutFor(new Node { SparkPaymentTimeoutMinutes = 4 }).Should().Be(4);
+    }
+
+    [Fact]
     public void AWalletsOwnMaxBalance_OverridesTheDefault()
     {
         var settings = new SparkSettings { Enabled = true, MaxBalanceSats = 2_000_000 };
@@ -127,7 +138,11 @@ public class SparkSettingsTests
         settings.IdentityPublicKey.Should().Be(Identity);
         settings.MaxExitFeeSats.Should().Be(SparkSettings.DefaultMaxExitFeeSats);
         settings.ExitIntervalMinutes.Should().BeNull("the exit job then runs every 10 minutes, 1 in a dev environment");
+        settings.ExitSpeed.Should().Be(ExitSpeed.Slow, "the cheapest exit");
+        settings.ExitOverdueAfter.Should().Be(TimeSpan.FromHours(24));
         settings.MaxBalanceSats.Should().Be(SparkSettings.DefaultMaxBalanceSats);
+        settings.SwapMinSats.Should().Be(SparkSettings.DefaultSwapMinSats);
+        settings.SwapMaxSats.Should().Be(SparkSettings.DefaultSwapMaxSats);
         settings.SignerEndpoint.Should().Be(new Uri("https://abc.lambda-url.eu-central-1.on.aws/"));
 
         var options = settings.ToSparkOptions(null);
@@ -152,7 +167,11 @@ public class SparkSettingsTests
         env["SPARK_SIGNER_RIE_URL"] = "http://spark-signer:8080/2015-03-31/functions/function/invocations";
         env["SPARK_MAX_EXIT_FEE_SATS"] = "5000";
         env["SPARK_EXIT_INTERVAL_MINUTES"] = "3";
+        env["SPARK_PAYMENT_TIMEOUT_MINUTES"] = "15";
+        env["SPARK_EXIT_SPEED"] = "fast";
         env["SPARK_MAX_BALANCE_SATS"] = "2000000";
+        env["SPARK_SWAP_MIN_SATS"] = "20000";
+        env["SPARK_SWAP_MAX_SATS"] = "1500000";
 
         var settings = Read(env, Network.RegTest);
 
@@ -164,7 +183,12 @@ public class SparkSettingsTests
         settings.SignerRieUrl!.Port.Should().Be(8080);
         settings.MaxExitFeeSats.Should().Be(5000);
         settings.ExitIntervalMinutes.Should().Be(3);
+        settings.PaymentTimeoutMinutes.Should().Be(15);
+        settings.ExitSpeed.Should().Be(ExitSpeed.Fast);
+        settings.ExitOverdueAfter.Should().Be(TimeSpan.FromHours(6));
         settings.MaxBalanceSats.Should().Be(2_000_000);
+        settings.SwapMinSats.Should().Be(20_000);
+        settings.SwapMaxSats.Should().Be(1_500_000);
         settings.ToSparkOptions(SspIdentity).EffectiveSspIdentityPublicKeyHex.Should().Be(SspIdentity);
     }
 
@@ -183,13 +207,36 @@ public class SparkSettingsTests
     [InlineData("SPARK_MAX_EXIT_FEE_SATS", "0", "SPARK_MAX_EXIT_FEE_SATS")]
     [InlineData("SPARK_EXIT_INTERVAL_MINUTES", "0", "SPARK_EXIT_INTERVAL_MINUTES")]
     [InlineData("SPARK_EXIT_INTERVAL_MINUTES", "ten", "SPARK_EXIT_INTERVAL_MINUTES")]
+    [InlineData("SPARK_PAYMENT_TIMEOUT_MINUTES", "0", "SPARK_PAYMENT_TIMEOUT_MINUTES must be a whole number of minutes from 1 to 25")]
+    [InlineData("SPARK_PAYMENT_TIMEOUT_MINUTES", "26", "SPARK_PAYMENT_TIMEOUT_MINUTES")]
+    [InlineData("SPARK_PAYMENT_TIMEOUT_MINUTES", "ten", "SPARK_PAYMENT_TIMEOUT_MINUTES")]
+    [InlineData("SPARK_EXIT_SPEED", "SLOWEST", "SPARK_EXIT_SPEED must be FAST, MEDIUM or SLOW")]
     [InlineData("SPARK_MAX_BALANCE_SATS", "-5", "SPARK_MAX_BALANCE_SATS")]
+    [InlineData("SPARK_SWAP_MIN_SATS", "9999", "SPARK_SWAP_MIN_SATS must be a number of sats of at least 10000")]
+    [InlineData("SPARK_SWAP_MIN_SATS", "lots", "SPARK_SWAP_MIN_SATS")]
+    [InlineData("SPARK_SWAP_MAX_SATS", "40000", "SPARK_SWAP_MAX_SATS must be a number of sats from SPARK_SWAP_MIN_SATS")]
+    [InlineData("SPARK_SWAP_MAX_SATS", "50000001", "SPARK_SWAP_MAX_SATS")]
     public void InvalidSettings_FailTheStartup(string variable, string? value, string expected)
     {
         var env = Remote();
         env[variable] = value;
 
         Error(env).Should().Contain(expected);
+    }
+
+    [Theory]
+    [InlineData("MEDIUM", ExitSpeed.Medium, 12)]
+    [InlineData(" Slow ", ExitSpeed.Slow, 24)]
+    [InlineData("", ExitSpeed.Slow, 24)]
+    public void TheExitSpeed_SetsHowLongAnExitMayTakeBeforeItIsOverdue(string value, ExitSpeed expected, int overdueHours)
+    {
+        var env = Remote();
+        env["SPARK_EXIT_SPEED"] = value;
+
+        var settings = Read(env);
+
+        settings.ExitSpeed.Should().Be(expected);
+        settings.ExitOverdueAfter.Should().Be(TimeSpan.FromHours(overdueHours));
     }
 
     [Theory]

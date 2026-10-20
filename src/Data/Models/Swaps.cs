@@ -190,6 +190,12 @@ public class SwapOut : Entity
    public long? SparkReceivedSats { get; set; }
 
    /// <summary>
+   /// Spark swaps only: when the swap's exit was first attempted, in a batch with the other paid swaps of its Spark
+   /// wallet once the wallet was full. Until then the swap waits in the wallet
+   /// </summary>
+   public DateTimeOffset? SparkExitDatetime { get; set; }
+
+   /// <summary>
    /// What the swap paid on-chain to <see cref="DestinationAddress"/>, once confirmed: what it delivered.
    /// Recorded for Spark swaps
    /// </summary>

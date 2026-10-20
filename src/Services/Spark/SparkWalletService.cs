@@ -66,6 +66,15 @@ public sealed record SparkWalletSummary(int Id, string Name, string? IdentityPub
 /// <summary>A new Spark wallet and its mnemonic, which is shown once and never again.</summary>
 public sealed record SparkWalletCreation(Wallet Wallet, string Mnemonic);
 
+/// <summary>A transfer into or out of a Spark wallet, as its Transactions tab shows it.</summary>
+/// <param name="IsSent">The wallet sent it (an exit, a withdrawal), rather than received it.</param>
+/// <param name="Type">What it was: "Lightning payment in", "Exit to on-chain", "Spark transfer", or the operators' type.</param>
+/// <param name="SwapIds">
+/// The Spark swaps it belongs to: the one it paid in, or those whose leaves it exited (a batch exits several at once).
+/// </param>
+public sealed record SparkWalletTransfer(string Id, DateTimeOffset Date, bool IsSent, string Type, long AmountSats, string Status,
+    IReadOnlyList<int> SwapIds);
+
 /// <summary>
 /// NodeGuard's Spark wallets: the Spark wallet rows (SPARK_SIGNER=wallet) or the remote signer's single wallet
 /// (SPARK_SIGNER=remote). Their keys stay with their signer (see <see cref="ISparkSignerProvider"/>). Each wallet
@@ -117,13 +126,15 @@ public interface ISparkWalletService
 
     Task<WalletBalance> GetBalanceAsync(SparkWalletRef wallet, CancellationToken ct = default);
 
-    /// <summary>Exits every spendable sat to <paramref name="onChainAddress"/> in one cooperative exit.</summary>
+    /// <summary>
+    /// Exits every spendable sat to <paramref name="onChainAddress"/> in one cooperative exit, at SPARK_EXIT_SPEED.
+    /// </summary>
     Task<WithdrawAllResult> WithdrawAllAsync(SparkWalletRef wallet, string onChainAddress, long maxFeeSats,
         CancellationToken ct = default);
 
     /// <summary>
-    /// Exits exactly <paramref name="leafIds"/> to <paramref name="onChainAddress"/> in one cooperative exit, with no
-    /// leaf swap (so the remote signer can sign it too). The fee comes out of the leaves' total.
+    /// Exits exactly <paramref name="leafIds"/> to <paramref name="onChainAddress"/> in one cooperative exit, at
+    /// SPARK_EXIT_SPEED, with no leaf swap (so the remote signer can sign it too). The fee comes out of the leaves' total.
     /// </summary>
     /// <exception cref="SparkLeavesNotSpendableException">A leaf is not owned or not spendable; nothing moved.</exception>
     Task<WithdrawLeavesResult> WithdrawLeavesAsync(SparkWalletRef wallet, IReadOnlyCollection<string> leafIds, string onChainAddress,
@@ -155,6 +166,10 @@ public interface ISparkWalletService
 
     /// <summary>Archives the wallet; refused unless it is empty and no node uses it.</summary>
     Task ArchiveWalletAsync(int walletId, CancellationToken ct = default);
+
+    /// <summary>The wallet's latest <paramref name="limit"/> transfers, newest first, each with the swap it belongs to.</summary>
+    /// <exception cref="SparkUnavailableException">The wallet can't be reached.</exception>
+    Task<IReadOnlyList<SparkWalletTransfer>> ListTransfersAsync(int walletId, int limit = 100, CancellationToken ct = default);
 }
 
 /// <remarks>
@@ -287,7 +302,7 @@ public class SparkWalletService : ISparkWalletService, IAsyncDisposable
     public Task<SparkTransfer?> GetTransferAsync(SparkWalletRef wallet, string transferId, CancellationToken ct = default) =>
         WithWalletAsync(wallet, w => w.GetTransferAsync(transferId, ct), ct);
 
-    public Task<IReadOnlyList<SparkTransfer>> GetTransfersAsync(SparkWalletRef wallet, TransferDirection direction,
+    public virtual Task<IReadOnlyList<SparkTransfer>> GetTransfersAsync(SparkWalletRef wallet, TransferDirection direction,
         DateTimeOffset since, CancellationToken ct = default) =>
         WithWalletAsync(wallet, async w =>
         {
@@ -309,11 +324,11 @@ public class SparkWalletService : ISparkWalletService, IAsyncDisposable
 
     public virtual Task<WithdrawAllResult> WithdrawAllAsync(SparkWalletRef wallet, string onChainAddress, long maxFeeSats,
         CancellationToken ct = default) =>
-        WithWalletAsync(wallet, w => w.WithdrawAllAsync(onChainAddress, maxFeeSats, ct), ct);
+        WithWalletAsync(wallet, w => w.WithdrawAllAsync(onChainAddress, maxFeeSats, _settings.ExitSpeed, ct), ct);
 
     public Task<WithdrawLeavesResult> WithdrawLeavesAsync(SparkWalletRef wallet, IReadOnlyCollection<string> leafIds,
         string onChainAddress, long maxFeeSats, CancellationToken ct = default) =>
-        WithWalletAsync(wallet, w => w.WithdrawLeavesAsync(leafIds, onChainAddress, maxFeeSats, ct), ct);
+        WithWalletAsync(wallet, w => w.WithdrawLeavesAsync(leafIds, onChainAddress, maxFeeSats, _settings.ExitSpeed, ct), ct);
 
     public virtual void Forget(SparkWalletRef wallet) => _slots.TryRemove(wallet, out _);
 
@@ -493,6 +508,52 @@ public class SparkWalletService : ISparkWalletService, IAsyncDisposable
         if (!updated) throw new InvalidOperationException($"{wallet.Name} could not be archived: {error}");
 
         Forget(new SparkWalletRef(walletId));
+    }
+
+    public async Task<IReadOnlyList<SparkWalletTransfer>> ListTransfersAsync(int walletId, int limit = 100, CancellationToken ct = default)
+    {
+        using var scope = _scopes.CreateScope();
+        var wallet = await SparkWalletRowAsync(scope.ServiceProvider.GetRequiredService<IWalletRepository>(), walletId);
+        var swaps = wallet.SparkIdentityPublicKey is { } identity
+            ? await scope.ServiceProvider.GetRequiredService<ISwapOutRepository>().GetSparkSwapsByIdentityAsync(identity)
+            : [];
+
+        var transfers = await GetTransfersAsync(new SparkWalletRef(walletId), TransferDirection.Both, DateTimeOffset.UnixEpoch, ct);
+        return transfers
+            .OrderByDescending(t => t.CreatedAt)
+            .Take(limit)
+            .Select(t =>
+            {
+                var sent = string.Equals(t.SenderIdentityPublicKey, wallet.SparkIdentityPublicKey, StringComparison.OrdinalIgnoreCase);
+                return new SparkWalletTransfer(t.Id, t.CreatedAt, sent, TransferTypeLabel(t.Type), t.TotalValueSats, t.Status,
+                    SwapsOf(t, sent, swaps).Select(s => s.Id).ToList());
+            })
+            .ToList();
+    }
+
+    private static string TransferTypeLabel(string? type) => type switch
+    {
+        "PreimageSwap" => "Lightning payment in",
+        "CooperativeExit" => "Exit to on-chain",
+        "Transfer" => "Spark transfer",
+        null or "" => "Unknown",
+        _ => type
+    };
+
+    /// <summary>The swap a transfer belongs to: the one it paid in, or the one whose leaves it exited.</summary>
+    private static IEnumerable<SwapOut> SwapsOf(SparkTransfer transfer, bool sent, IReadOnlyList<SwapOut> swaps)
+    {
+        if (!sent)
+        {
+            return swaps.Where(s => string.Equals(s.SparkTransferId, transfer.Id, StringComparison.OrdinalIgnoreCase)).Take(1);
+        }
+
+        var leaves = transfer.Leaves.Select(l => l.Id).ToHashSet(StringComparer.OrdinalIgnoreCase);
+        return leaves.Count == 0
+            ? []
+            : swaps.Where(s => (s.SparkLeafIds ?? string.Empty)
+                .Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+                .Any(leaves.Contains));
     }
 
     private static async Task<Wallet> SparkWalletRowAsync(IWalletRepository wallets, int walletId) =>

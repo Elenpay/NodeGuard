@@ -1730,7 +1730,7 @@ public class NodeGuardService : Nodeguard.NodeGuardService.NodeGuardServiceBase,
             Address = address,
             MaxRoutingFeesPercent = request.HasMaxRoutingFeesPercent
                 ? (decimal)request.MaxRoutingFeesPercent
-                : node.MaxSwapRoutingFeeRatio * 100,
+                : SwapProviderLimits.MaxRoutingFeeRatioFor(node, provider) * 100,
             MaxServiceFeesPercent = Constants.SWAP_MAX_SERVICE_FEES_PERCENT,
             MaxMinerFees = Constants.SWAP_MAX_MINER_FEES_SATS,
             SweepConfTarget = Constants.SWEEP_CONF_TARGET,

@@ -32,7 +32,7 @@ public class SparkGuardrailsTests
 
     private readonly ISparkWalletService _spark = Substitute.For<ISparkWalletService>();
     private readonly ManualTime _time = new();
-    private readonly SparkGuardrails _guardrails;
+    private SparkGuardrails _guardrails;
 
     public SparkGuardrailsTests()
     {
@@ -41,8 +41,11 @@ public class SparkGuardrailsTests
             .Returns(new SparkWalletStatus(SparkWalletState.Ready, "02aa"));
         Holds(A, 0);
         Holds(B, 0);
-        _guardrails = new SparkGuardrails(new SparkSettings { Enabled = true }, _spark, NullLogger<SparkGuardrails>.Instance, _time);
+        _guardrails = Guardrails(ExitSpeed.Slow);
     }
+
+    private SparkGuardrails Guardrails(ExitSpeed exitSpeed) =>
+        new(new SparkSettings { Enabled = true, ExitSpeed = exitSpeed }, _spark, NullLogger<SparkGuardrails>.Instance, _time);
 
     private void Wallets(params SparkWalletEntry[] wallets) =>
         _spark.GetWalletsAsync(Arg.Any<CancellationToken>()).Returns(wallets);
@@ -120,12 +123,17 @@ public class SparkGuardrailsTests
     }
 
     [Fact]
-    public async Task AnExitedSwap_NoLongerAccountsForWhatTheWalletHolds()
+    public async Task AnExitedSwap_StillAccountsForItsLeaves_UntilItCompletes()
     {
-        Holds(A, 10_000);
+        // A sent exit's leaves stay the wallet's until the exit confirms
+        Holds(A, 499_000);
+        var swap = PaidSparkSwap(_time.GetUtcNow(), received: 499_000, txId: "exit-tx");
 
-        await _guardrails.CheckAsync([PaidSparkSwap(_time.GetUtcNow(), received: 499_000, txId: "exit-tx")]);
+        await _guardrails.CheckAsync([swap]);
+        _guardrails.StuckSince(A).Should().BeNull();
 
+        swap.Status = SwapOutStatus.Completed;
+        await _guardrails.CheckAsync([swap]);
         _guardrails.StuckSince(A).Should().NotBeNull();
     }
 
@@ -143,7 +151,7 @@ public class SparkGuardrailsTests
         ];
 
         SparkGuardrails.UnpaidSats(swaps).Should().Be(100_000);
-        SparkGuardrails.DueSats(swaps).Should().Be(599_000);
+        SparkGuardrails.DueSats(swaps).Should().Be(899_000);
     }
 
     [Fact]
@@ -177,15 +185,20 @@ public class SparkGuardrailsTests
         _guardrails.StuckSince(A).Should().BeNull();
     }
 
-    [Fact]
-    public async Task APaidSwapWithoutAConfirmedPayout_IsAlertedOnceWhenOverdue()
+    [Theory]
+    [InlineData(ExitSpeed.Fast, 6)]
+    [InlineData(ExitSpeed.Medium, 12)]
+    [InlineData(ExitSpeed.Slow, 24)]
+    public async Task APaidSwapWithoutAConfirmedPayout_IsAlertedOnceWhenOverdueForItsExitSpeed(ExitSpeed exitSpeed, int hours)
     {
+        _guardrails = Guardrails(exitSpeed);
         var swap = PaidSparkSwap(_time.GetUtcNow());
         Holds(A, 500_000);
 
+        _time.Advance(TimeSpan.FromHours(hours) - TimeSpan.FromMinutes(1));
         (await _guardrails.CheckAsync([swap])).Should().BeEmpty();
 
-        _time.Advance(SparkGuardrails.ExitOverdueAfter);
+        _time.Advance(TimeSpan.FromMinutes(1));
         var alerts = await _guardrails.CheckAsync([swap]);
         alerts.Should().ContainSingle().Which.Should().Match<SparkAlert>(a =>
             a.Action == AuditActionType.SparkExitOverdue && a.ObjectType == AuditObjectType.SwapOut && a.ObjectId == "req-5");
@@ -194,11 +207,39 @@ public class SparkGuardrailsTests
     }
 
     [Fact]
+    public async Task ASwapWaitingForItsWalletToFill_IsNotOverdue()
+    {
+        var swap = PaidSparkSwap(_time.GetUtcNow(), received: 499_000);
+        swap.SparkTransferId = "transfer-5";
+        Holds(A, 499_000);
+
+        _time.Advance(TimeSpan.FromDays(3));
+
+        (await _guardrails.CheckAsync([swap])).Should().BeEmpty();
+    }
+
+    [Fact]
+    public async Task AnAttemptedExit_IsOverdueCountingFromItsFirstAttempt()
+    {
+        var swap = PaidSparkSwap(_time.GetUtcNow(), received: 499_000);
+        swap.SparkTransferId = "transfer-5";
+        swap.SparkExitDatetime = _time.GetUtcNow().AddDays(2);
+        Holds(A, 499_000);
+
+        _time.Advance(TimeSpan.FromDays(2) + TimeSpan.FromHours(24) - TimeSpan.FromMinutes(1));
+        (await _guardrails.CheckAsync([swap])).Should().BeEmpty();
+
+        _time.Advance(TimeSpan.FromMinutes(1));
+        (await _guardrails.CheckAsync([swap])).Should().ContainSingle()
+            .Which.Message.Should().Contain("after its exit was first attempted");
+    }
+
+    [Fact]
     public async Task AnUnpaidSwap_IsNotAnOverdueExit()
     {
         var swap = PaidSparkSwap(_time.GetUtcNow());
         swap.LightningFeeSats = null;
-        _time.Advance(SparkGuardrails.ExitOverdueAfter * 2);
+        _time.Advance(TimeSpan.FromDays(2));
 
         (await _guardrails.CheckAsync([swap])).Should().BeEmpty();
     }
