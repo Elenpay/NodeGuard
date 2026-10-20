@@ -1090,13 +1090,42 @@ namespace NodeGuard.Rpc
         [InlineData(WalletWithdrawalRequestStatus.Failed)]
         [InlineData(WalletWithdrawalRequestStatus.Cancelled)]
         [InlineData(WalletWithdrawalRequestStatus.Rejected)]
-        public async Task GetWithdrawalsRequestStatus_OriginalWithAnAbandonedReplacement_ReportsPendingConfirmation(
+        public async Task GetWithdrawalsRequestStatus_OriginalWithAReplacementAbandonedBeforeBroadcast_ReportsPendingConfirmation(
             WalletWithdrawalRequestStatus replacementStatus)
         {
-            var status = await GetStatusAsync(0, Original(), Replacement(replacementStatus));
+            var abandoned = Replacement(replacementStatus);
+            abandoned.TxId = null;
+
+            var status = await GetStatusAsync(0, Original(), abandoned);
 
             status.Status.Should().Be(WITHDRAWAL_REQUEST_STATUS.WithdrawalPendingConfirmation);
-            status.HasReplacedByRequestId.Should().BeFalse();
+            status.HasReplacedByRequestId.Should().BeFalse("a replacement that never went out is not a hop of the chain");
+        }
+
+        [Fact]
+        public async Task GetWithdrawalsRequestStatus_OriginalWithAReplacementThatLostTheRace_HasNoNextHop()
+        {
+            var original = Original();
+            original.Status = WalletWithdrawalRequestStatus.OnChainConfirmed;
+
+            var status = await GetStatusAsync(6, original, Replacement(WalletWithdrawalRequestStatus.Failed));
+
+            status.Status.Should().Be(WITHDRAWAL_REQUEST_STATUS.WithdrawalSettled);
+            status.HasReplacedByRequestId.Should().BeFalse("nothing superseded a request that was mined");
+        }
+
+        [Fact]
+        public async Task GetWithdrawalsRequestStatus_ReplacementCancelledByItsOwnReplacement_IsStillTheNextHop()
+        {
+            // A bumped by B, B cancelled by C, C confirmed: B is Cancelled with its txid, A is Cancelled too.
+            var original = Original();
+            original.Status = WalletWithdrawalRequestStatus.Cancelled;
+            original.RejectCancelDescription = WalletWithdrawalRequest.RbfCancellationReason(12, "c0ffee");
+
+            var status = await GetStatusAsync(0, original, Replacement(WalletWithdrawalRequestStatus.Cancelled));
+
+            status.Status.Should().Be(WITHDRAWAL_REQUEST_STATUS.WithdrawalCancelled);
+            status.ReplacedByRequestId.Should().Be(11, "a replacement that was broadcast is a hop of the chain, whatever it ended up as");
         }
 
         [Fact]
