@@ -14,7 +14,7 @@ using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 namespace NodeGuard.Migrations
 {
     [DbContext(typeof(ApplicationDbContext))]
-    [Migration("20261019172941_BumpedIsTerminalOnly")]
+    [Migration("20261020143744_BumpedIsTerminalOnly")]
     partial class BumpedIsTerminalOnly
     {
         /// <inheritdoc />
@@ -1014,6 +1014,18 @@ namespace NodeGuard.Migrations
                     b.Property<string>("FortySwapEndpoint")
                         .HasColumnType("text");
 
+                    b.Property<long>("FortySwapMaxAmountSats")
+                        .HasColumnType("bigint");
+
+                    b.Property<decimal>("FortySwapMaxSwapRoutingFeeRatio")
+                        .HasColumnType("numeric");
+
+                    b.Property<int>("FortySwapMaxSwapsInFlight")
+                        .HasColumnType("integer");
+
+                    b.Property<long>("FortySwapMinAmountSats")
+                        .HasColumnType("bigint");
+
                     b.Property<int>("FortySwapWeight")
                         .HasColumnType("integer");
 
@@ -1022,6 +1034,18 @@ namespace NodeGuard.Migrations
 
                     b.Property<bool>("IsNodeDisabled")
                         .HasColumnType("boolean");
+
+                    b.Property<decimal>("LoopMaxSwapRoutingFeeRatio")
+                        .HasColumnType("numeric");
+
+                    b.Property<int>("LoopMaxSwapsInFlight")
+                        .HasColumnType("integer");
+
+                    b.Property<long>("LoopSwapMaxAmountSats")
+                        .HasColumnType("bigint");
+
+                    b.Property<long>("LoopSwapMinAmountSats")
+                        .HasColumnType("bigint");
 
                     b.Property<int>("LoopSwapWeight")
                         .HasColumnType("integer");
@@ -1039,12 +1063,6 @@ namespace NodeGuard.Migrations
                         .HasColumnType("double precision");
 
                     b.Property<int?>("MaxRebalancesInFlight")
-                        .HasColumnType("integer");
-
-                    b.Property<decimal>("MaxSwapRoutingFeeRatio")
-                        .HasColumnType("numeric");
-
-                    b.Property<int>("MaxSwapsInFlight")
                         .HasColumnType("integer");
 
                     b.Property<long>("MinimumBalanceThresholdSats")
@@ -1072,6 +1090,21 @@ namespace NodeGuard.Migrations
                         .HasColumnType("boolean")
                         .HasDefaultValue(false);
 
+                    b.Property<decimal>("SparkMaxSwapRoutingFeeRatio")
+                        .HasColumnType("numeric");
+
+                    b.Property<int>("SparkMaxSwapsInFlight")
+                        .HasColumnType("integer");
+
+                    b.Property<int?>("SparkPaymentTimeoutMinutes")
+                        .HasColumnType("integer");
+
+                    b.Property<long?>("SparkSwapMaxAmountSats")
+                        .HasColumnType("bigint");
+
+                    b.Property<long?>("SparkSwapMinAmountSats")
+                        .HasColumnType("bigint");
+
                     b.Property<int>("SparkSwapWeight")
                         .HasColumnType("integer");
 
@@ -1086,12 +1119,6 @@ namespace NodeGuard.Migrations
 
                     b.Property<DateTimeOffset?>("SwapBudgetStartDatetime")
                         .HasColumnType("timestamp with time zone");
-
-                    b.Property<long>("SwapMaxAmountSats")
-                        .HasColumnType("bigint");
-
-                    b.Property<long>("SwapMinAmountSats")
-                        .HasColumnType("bigint");
 
                     b.Property<DateTimeOffset>("UpdateDatetime")
                         .HasColumnType("timestamp with time zone");
@@ -1248,6 +1275,9 @@ namespace NodeGuard.Migrations
 
                     b.Property<long?>("ServiceFeeSats")
                         .HasColumnType("bigint");
+
+                    b.Property<DateTimeOffset?>("SparkExitDatetime")
+                        .HasColumnType("timestamp with time zone");
 
                     b.Property<string>("SparkIdentity")
                         .HasColumnType("text");

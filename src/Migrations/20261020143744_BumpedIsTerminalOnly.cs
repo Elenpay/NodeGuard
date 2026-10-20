@@ -25,7 +25,8 @@ namespace NodeGuard.Migrations
         // WalletWithdrawalRequestStatus: Cancelled = 1, OnChainConfirmationPending = 4, OnChainConfirmed = 5, Bumped = 8
         // A Cancelled request with an RBF-cancellation replacement was cancelled by it: humans can only cancel a
         // request that was never broadcast, and only a broadcast one gets replacements.
-        private const string Repair = @"
+        // Internal so BumpedIsTerminalOnlyMigrationE2ETests can run it against the stack's Postgres.
+        internal const string Repair = @"
 WITH RECURSIVE roots AS (
     SELECT w.""Id"" FROM ""WalletWithdrawalRequests"" w
     WHERE w.""Status"" = 8
