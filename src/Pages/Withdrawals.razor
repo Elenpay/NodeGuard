@@ -1280,6 +1280,8 @@
             {
                 await LogWithdrawalAuditAsync(AuditActionType.Cancel, AuditEventType.Success, _selectedRequest, "Withdrawal request cancelled by user.");
             }
+            // Reload the grid and the replacement cache: a cancelled replacement must give its original its actions back.
+            await GetData();
             StateHasChanged();
         }
         await _confirmationModal.CloseModal();
