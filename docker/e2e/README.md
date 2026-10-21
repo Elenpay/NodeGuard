@@ -70,9 +70,10 @@ tests (`DustUtxoWithdrawalE2ETests`, `WithdrawalRbfBumpE2ETests`, `GetNewWalletA
   those two in sync between the `nodeguard` and `e2e-runner` services**, or the test asserts against numbers
   NodeGuard didn't plan with.
 - **RBF bump scenario** (`WithdrawalRbfBumpE2ETests`): `RequestWithdrawal` on the hot wallet, then `BumpWithdrawal`
-  over gRPC, asserting bitcoind evicts the original for the higher-fee replacement, NodeGuard reports the original
-  `WITHDRAWAL_BUMPED` while the replacement is in the mempool (its stored status stays pending confirmation), and once
-  the replacement is mined it settles and the original is stored as `WITHDRAWAL_BUMPED`. It relies on
+  over gRPC, asserting bitcoind evicts the original for the higher-fee replacement, NodeGuard keeps reporting the
+  original `WITHDRAWAL_PENDING_CONFIRMATION` with `replaced_by_request_id` set while the replacement is in the mempool
+  (only a confirmation changes an RBF chain), and once the replacement is mined it settles and the original is stored
+  as `WITHDRAWAL_BUMPED`. It relies on
   `MONITOR_WITHDRAWALS_CRON` being fast on the `nodeguard` service (10s here; prod keeps the every-5-minutes default)
   and never mines between the two calls. The mined-original theory mines the ORIGINAL with `generateblock` (raw tx,
   bypassing the mempool) after a bump or cancel, and asserts NodeGuard settles the original and fails the replacement.
