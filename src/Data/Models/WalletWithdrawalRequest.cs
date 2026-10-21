@@ -82,7 +82,7 @@ namespace NodeGuard.Data.Models
         /// <summary>
         /// Description by the requestor
         /// </summary>
-        public string? Description { get; set; }
+        public string Description { get; set; }
 
         /// <summary>
         /// Bool used to mark if the output of the request should the maximum as possible to the destination address.
