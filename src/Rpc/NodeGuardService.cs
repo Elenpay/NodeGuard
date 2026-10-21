@@ -1346,14 +1346,14 @@ public class NodeGuardService : Nodeguard.NodeGuardService.NodeGuardServiceBase,
 
         var withdrawalsResponses = withdrawalRequests.Zip(confirmations, (withdrawalRequest, confirmed) =>
         {
-            // A replaced request keeps its own stored status; what the client sees is derived from its replacements.
-            var (status, reason, replacedById) =
-                withdrawalRequest.EffectiveStatus(confirmed, new RbfReplacements(replacements[withdrawalRequest.Id]));
+            // The stored status, nothing derived: a replaced request reads pending confirmation, with its replacement
+            // as the next hop, until a confirmation makes it Bumped, Cancelled or Settled. Final statuses never flip.
+            var replacedById = new RbfReplacements(replacements[withdrawalRequest.Id]).Newest?.Id;
             var response = new WithdrawalRequest
             {
                 RequestId = withdrawalRequest.Id,
-                Status = GetStatus(status),
-                RejectOrCancelReason = reason ?? "",
+                Status = GetStatus(withdrawalRequest.Status),
+                RejectOrCancelReason = withdrawalRequest.RejectCancelDescription ?? "",
                 ReferenceId = withdrawalRequest.ReferenceId ?? "",
                 Confirmations = confirmed,
                 TxId = withdrawalRequest.TxId ?? "",

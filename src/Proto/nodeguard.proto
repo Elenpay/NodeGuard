@@ -25,10 +25,11 @@ service NodeGuardService {
     Replaces a withdrawal that is still waiting for on-chain confirmation with a higher-fee version of the same
     transaction (RBF): same inputs, same destinations, the extra fee is taken from the change. Cold wallets get a new
     request that waits for approvals like RequestWithdrawal; hot wallets sign and broadcast it asynchronously.
-    The replaced request keeps its own status. While the replacement's transaction is in the mempool it is reported as
-    WITHDRAWAL_BUMPED with replaced_by_request_id set, and that becomes its stored status once the replacement settles.
-    If the replaced transaction is mined instead, it settles and the replacement fails. If the replacement is abandoned
-    (cancelled, rejected, failed) the replaced request reports WITHDRAWAL_PENDING_CONFIRMATION again.
+    The replaced request keeps its own status: it stays WITHDRAWAL_PENDING_CONFIRMATION, with replaced_by_request_id
+    pointing at the replacement, until a transaction of the chain confirms. Only confirmations change an RBF chain:
+    once the replacement settles the replaced request becomes WITHDRAWAL_BUMPED; if the replaced transaction is mined
+    instead, it settles and the replacement fails. No status is reported before it is stored, so SETTLED, BUMPED,
+    CANCELLED and FAILED are final. Follow replaced_by_request_id to find the transaction expected to pay.
     Fails with FAILED_PRECONDITION when the request is not pending confirmation or already has a live replacement.
     */
   rpc BumpWithdrawal(BumpWithdrawalRequest) returns (BumpWithdrawalResponse);
@@ -38,7 +39,8 @@ service NodeGuardService {
     that spends the same inputs and returns the funds, minus a higher fee, to a fresh address of the wallet, so the
     original payment never confirms. Cold wallets get a new request that waits for approvals like RequestWithdrawal;
     hot wallets sign and broadcast it asynchronously. Same status rules as BumpWithdrawal, with the replaced request
-    reported and then stored as WITHDRAWAL_CANCELLED instead of WITHDRAWAL_BUMPED.
+    stored as WITHDRAWAL_CANCELLED instead of WITHDRAWAL_BUMPED once the cancellation confirms. Until then it still
+    reads WITHDRAWAL_PENDING_CONFIRMATION: its own transaction could still be mined instead and pay the destination.
     */
   rpc CancelWithdrawal(CancelWithdrawalRequest) returns (CancelWithdrawalResponse);
   /*
@@ -527,8 +529,9 @@ enum WITHDRAWAL_REQUEST_STATUS {
     WITHDRAWAL_REJECTED = 3;
     WITHDRAWAL_PENDING_CONFIRMATION = 4;
     WITHDRAWAL_FAILED = 5;
-    // Superseded by an RBF replacement (see BumpWithdrawal): reported while the replacement's transaction is in the
-    // mempool, stored once it settles. The payment happened through the request in replaced_by_request_id.
+    // Superseded by an RBF replacement (see BumpWithdrawal) that confirmed. Final: the payment happened through the
+    // chain starting at replaced_by_request_id. While the replacement is only in the mempool the request still reads
+    // WITHDRAWAL_PENDING_CONFIRMATION.
     WITHDRAWAL_BUMPED = 6;
 }
 

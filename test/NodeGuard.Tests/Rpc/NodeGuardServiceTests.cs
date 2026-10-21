@@ -1051,26 +1051,18 @@ namespace NodeGuard.Rpc
             return response.WithdrawalRequests.Single();
         }
 
-        [Fact]
-        public async Task GetWithdrawalsRequestStatus_OriginalWithABroadcastReplacement_ReportsBumpedAndTheReplacementId()
+        [Theory]
+        [InlineData(false)]
+        [InlineData(true)]
+        public async Task GetWithdrawalsRequestStatus_OriginalWithABroadcastReplacement_StaysPendingConfirmationWithTheNextHop(
+            bool cancellation)
         {
-            var status = await GetStatusAsync(0, Original(), Replacement(WalletWithdrawalRequestStatus.OnChainConfirmationPending));
+            var status = await GetStatusAsync(0, Original(), Replacement(WalletWithdrawalRequestStatus.OnChainConfirmationPending, cancellation));
 
-            status.Status.Should().Be(WITHDRAWAL_REQUEST_STATUS.WithdrawalBumped,
-                "the replacement's transaction competes with its own in the mempool");
-            status.ReplacedByRequestId.Should().Be(11);
-            status.RejectOrCancelReason.Should().Be($"Replaced by request 11 (tx {ReplacementTxId})",
-                "the same text it will be stored with once the replacement settles");
-        }
-
-        [Fact]
-        public async Task GetWithdrawalsRequestStatus_OriginalWithABroadcastCancellation_ReportsCancelledWithTheReason()
-        {
-            var status = await GetStatusAsync(0, Original(), Replacement(WalletWithdrawalRequestStatus.OnChainConfirmationPending, cancellation: true));
-
-            status.Status.Should().Be(WITHDRAWAL_REQUEST_STATUS.WithdrawalCancelled);
-            status.RejectOrCancelReason.Should().Be($"Cancelled by RBF replacement request 11 (tx {ReplacementTxId})");
-            status.ReplacedByRequestId.Should().Be(11);
+            status.Status.Should().Be(WITHDRAWAL_REQUEST_STATUS.WithdrawalPendingConfirmation,
+                "nothing final is reported before a confirmation: its own transaction could still be mined instead");
+            status.RejectOrCancelReason.Should().BeEmpty("the reason is stored, and reported, once the replacement confirms");
+            status.ReplacedByRequestId.Should().Be(11, "clients follow the chain by id");
         }
 
         [Theory]
@@ -1129,12 +1121,12 @@ namespace NodeGuard.Rpc
         }
 
         [Fact]
-        public async Task GetWithdrawalsRequestStatus_OriginalWithOwnConfirmations_IsNotReportedAsBumped()
+        public async Task GetWithdrawalsRequestStatus_ReportsTheConfirmationsOfItsOwnTransaction()
         {
             var status = await GetStatusAsync(1, Original(), Replacement(WalletWithdrawalRequestStatus.OnChainConfirmationPending));
 
             status.Status.Should().Be(WITHDRAWAL_REQUEST_STATUS.WithdrawalPendingConfirmation,
-                "it was mined: the replacement is the one that can never confirm");
+                "the stored status is reported until the monitor settles it");
             status.Confirmations.Should().Be(1UL);
         }
 
@@ -1161,9 +1153,10 @@ namespace NodeGuard.Rpc
                 new GetWithdrawalsRequestStatusByReferenceIdsRequest { ReferenceIds = { "store-1" } }, TestServerCallContext.Create());
 
             response.WithdrawalRequests.Select(r => (r.RequestId, r.Status)).Should().Equal(
-                (10, WITHDRAWAL_REQUEST_STATUS.WithdrawalBumped),
+                (10, WITHDRAWAL_REQUEST_STATUS.WithdrawalPendingConfirmation),
                 (11, WITHDRAWAL_REQUEST_STATUS.WithdrawalPendingConfirmation));
-            response.WithdrawalRequests[0].ReplacedByRequestId.Should().Be(11, "the caller can follow the chain");
+            response.WithdrawalRequests[0].ReplacedByRequestId.Should().Be(11,
+                "both transactions are still candidates; the caller follows the chain to the one expected to pay");
             response.WithdrawalRequests[1].HasReplacedByRequestId.Should().BeFalse();
         }
 
@@ -2581,8 +2574,14 @@ namespace NodeGuard.Rpc
             var (service, swaps, swapOuts, _) = SwapService();
             swapOuts.Setup(x => x.GetByReferenceId("ref-1")).ReturnsAsync(new SwapOut
             {
-                Id = 77, NodeId = 4, Provider = SwapProvider.Spark, SatsAmount = 500_000, DestinationWalletId = 3,
-                ProviderId = "req-1", Status = SwapOutStatus.Completed, DestinationAddress = "bcrt1qdest"
+                Id = 77,
+                NodeId = 4,
+                Provider = SwapProvider.Spark,
+                SatsAmount = 500_000,
+                DestinationWalletId = 3,
+                ProviderId = "req-1",
+                Status = SwapOutStatus.Completed,
+                DestinationAddress = "bcrt1qdest"
             });
 
             var response = await service.RequestSwapOut(SwapRequest(), TestServerCallContext.Create());
@@ -2599,7 +2598,11 @@ namespace NodeGuard.Rpc
             var (service, _, swapOuts, _) = SwapService();
             swapOuts.Setup(x => x.GetByReferenceId("ref-1")).ReturnsAsync(new SwapOut
             {
-                Id = 77, NodeId = 4, Provider = SwapProvider.Spark, SatsAmount = 1_000, DestinationWalletId = 3
+                Id = 77,
+                NodeId = 4,
+                Provider = SwapProvider.Spark,
+                SatsAmount = 1_000,
+                DestinationWalletId = 3
             });
 
             var act = () => service.RequestSwapOut(SwapRequest(), TestServerCallContext.Create());
@@ -2736,9 +2739,19 @@ namespace NodeGuard.Rpc
             var (service, _, swapOuts, _) = SwapService();
             swapOuts.Setup(x => x.GetByReferenceId("ref-1")).ReturnsAsync(new SwapOut
             {
-                Id = 77, Provider = SwapProvider.Spark, ProviderId = "req-1", Status = SwapOutStatus.Completed, SatsAmount = 500_000,
-                ServiceFeeSats = 2_500, LightningFeeSats = 12, TxId = "payout-tx", DestinationAddress = "bcrt1qdest",
-                PaymentHash = "abcd", ReferenceId = "ref-1", DestinationWalletId = 3, PayoutSats = 497_500
+                Id = 77,
+                Provider = SwapProvider.Spark,
+                ProviderId = "req-1",
+                Status = SwapOutStatus.Completed,
+                SatsAmount = 500_000,
+                ServiceFeeSats = 2_500,
+                LightningFeeSats = 12,
+                TxId = "payout-tx",
+                DestinationAddress = "bcrt1qdest",
+                PaymentHash = "abcd",
+                ReferenceId = "ref-1",
+                DestinationWalletId = 3,
+                PayoutSats = 497_500
             });
 
             var response = await service.GetSwapOut(new GetSwapOutRequest { ReferenceId = "ref-1" }, TestServerCallContext.Create());

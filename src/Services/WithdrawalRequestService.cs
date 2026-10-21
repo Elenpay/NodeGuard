@@ -35,9 +35,9 @@ namespace NodeGuard.Services;
 /// E2E suite exercise the same code the pages run. Hot-wallet requests are moved to PSBTSignaturesPending explicitly: it is
 /// the status PerformWithdrawal requires, and a hot wallet has no approvers whose signatures would get it there.
 ///
-/// RBF rule: a request's status only ever describes its own transaction. Creating, executing or abandoning a
-/// replacement never writes the request it replaces; "replaced" is derived from the replacement
-/// (<see cref="WalletWithdrawalRequest.EffectiveStatus"/>), and the replaced request gets its final status
+/// RBF rule: a request's status only ever describes its own transaction, and only a confirmation changes it. Creating,
+/// executing or abandoning a replacement never writes the request it replaces, which stays pending confirmation with
+/// the replacement as its next hop (<see cref="RbfReplacements.Newest"/>); the replaced request gets its final status
 /// (Bumped, Cancelled, or OnChainConfirmed when it won the race) from <see cref="ReconcileReplacementChainsAsync"/>.
 /// </summary>
 public interface IWithdrawalRequestService

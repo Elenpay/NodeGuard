@@ -82,7 +82,7 @@ namespace NodeGuard.Data.Models
         /// <summary>
         /// Description by the requestor
         /// </summary>
-        public string Description { get; set; }
+        public string? Description { get; set; }
 
         /// <summary>
         /// Bool used to mark if the output of the request should the maximum as possible to the destination address.
@@ -214,10 +214,10 @@ namespace NodeGuard.Data.Models
         /// </summary>
         public string? UserRequestorId { get; set; }
 
-        public ApplicationUser UserRequestor { get; set; }
+        public ApplicationUser? UserRequestor { get; set; }
         public int WalletId { get; set; }
 
-        public Wallet Wallet { get; set; }
+        public Wallet? Wallet { get; set; }
 
         public int? BumpingWalletWithdrawalRequestId { get; set; }
 
@@ -274,27 +274,9 @@ namespace NodeGuard.Data.Models
                 ? (WalletWithdrawalRequestStatus.Cancelled, RbfCancellationReason(replacement.Id, replacement.TxId))
                 : (WalletWithdrawalRequestStatus.Bumped, ReplacedReason(replacement.Id, replacement.TxId));
 
-        /// <summary>
-        /// The status the API reports, given the requests that replace this one. The stored one describes this
-        /// request's own transaction only: while a replacement's transaction is in the mempool and this one has no
-        /// confirmations, the request is reported with the status it will be stored with once that replacement settles.
-        /// </summary>
-        public (WalletWithdrawalRequestStatus Status, string? Reason, int? ReplacedById) EffectiveStatus(ulong ownConfirmations,
-            RbfReplacements replacements)
-        {
-            if (Status == WalletWithdrawalRequestStatus.OnChainConfirmationPending && ownConfirmations == 0
-                && replacements.Broadcast is { } broadcast)
-            {
-                var (status, reason) = SupersededBy(broadcast, broadcast.IsRbfCancellation);
-                return (status, reason, broadcast.Id);
-            }
+        public List<WalletWithdrawalRequestPSBT>? WalletWithdrawalRequestPSBTs { get; set; }
 
-            return (Status, RejectCancelDescription, replacements.Newest?.Id);
-        }
-
-        public List<WalletWithdrawalRequestPSBT> WalletWithdrawalRequestPSBTs { get; set; }
-
-        public List<FMUTXO> UTXOs { get; set; }
+        public List<FMUTXO>? UTXOs { get; set; }
 
         /// <summary>
         /// This is a optional field that you can used to link withdrawals with externally-generated IDs (e.g. a withdrawal/settlement that belongs to an elenpay store)
@@ -326,8 +308,9 @@ namespace NodeGuard.Data.Models
 
     /// <summary>
     /// The requests that replace one request through RBF (fee bumps and cancellations), as the repository's
-    /// GetReplacementsAsync returns them. Which of them is live or confirmed is what makes a request "replaced": its
-    /// own status only ever describes its own transaction.
+    /// GetReplacementsAsync returns them. A request's status only ever describes its own transaction and only a
+    /// confirmation changes it: a live replacement blocks another one, and the newest not abandoned is the next hop
+    /// the API and the UI point at while the chain is in flight.
     /// </summary>
     public sealed class RbfReplacements
     {
@@ -345,10 +328,6 @@ namespace NodeGuard.Data.Models
         /// through, the newest is the one that had to outbid the other to get into the mempool.
         /// </summary>
         public WalletWithdrawalRequest? Live => _requests.Where(r => r.IsLive).MaxBy(r => r.Id);
-
-        /// <summary>The one whose transaction competes in the mempool, if any; the newest when a race left two.</summary>
-        public WalletWithdrawalRequest? Broadcast =>
-            _requests.Where(r => r.Status == WalletWithdrawalRequestStatus.OnChainConfirmationPending).MaxBy(r => r.Id);
 
         /// <summary>The newest one that was not abandoned: the next hop when following a chain by id.</summary>
         public WalletWithdrawalRequest? Newest => _requests.Where(r => !r.IsAbandoned).MaxBy(r => r.Id);
