@@ -33,7 +33,7 @@
               UseInternalEditing="true"
               RowInserted="OnRowInserted"
               RowRemoving="OnRowRemoving"
-              RowUpdated="OnRowUpdated"
+              RowUpdating="OnRowUpdating"
               NewItemDefaultSetter="NewItemDefaultSetter"
               ShowPager="true"
               ShowPageSizes="true"
@@ -57,6 +57,9 @@
                 <DeleteCommandTemplate>
                     @*<Button Color="Color.Danger" Clicked="@context.Clicked">Delete</Button>*@
                 </DeleteCommandTemplate>
+                <SaveCommandTemplate>
+                    <Button Type="ButtonType.Submit" PreventDefaultOnSubmit Color="Color.Link" Disabled="@_createInFlight" Clicked="@(() => SaveNewWithdrawal(context.Clicked))">Save</Button>
+                </SaveCommandTemplate>
 
             </DataGridCommandColumn>
             <DataGridColumn TItem="WalletWithdrawalRequest" Filterable="false" Field="@nameof(WalletWithdrawalRequest.Id)" Caption="#" Sortable="false" Displayable="true"/>
@@ -549,7 +552,7 @@
     // Guards ShowApprovalModal against re-entry (double click, repeated render dispatch) while the template
     // PSBT is being generated. Cross-user/cross-circuit races are handled by the database unique index.
     private bool _approvalInFlight;
-    // Same guard for the New-withdrawal confirmation, which creates the request (and schedules it on hot wallets).
+    // Same guard for creating a withdrawal: the popup's Save and the hot wallet confirmation (which also schedules it).
     private bool _createInFlight;
     private int? _selectedWalletId;
     private static readonly decimal _minimumWithdrawalAmount = Constants.MINIMUM_WITHDRAWAL_BTC_AMOUNT;
@@ -827,47 +830,27 @@
         }
     }
 
-    private async Task OnRowUpdated(SavedRowItem<WalletWithdrawalRequest, Dictionary<string, object>> arg)
+    // The popup stays open while OnRowInserted runs, so a second Save there would insert the request twice.
+    private async Task SaveNewWithdrawal(EventCallback save)
     {
-        if (arg.Item == null) return;
-        // Validate balance
+        if (_createInFlight) return;
+        _createInFlight = true;
 
-        if (await ValidateBalance(arg)) return;
-
-        var (updated, errorMessage) = WalletWithdrawalRequestRepository.Update(arg.Item);
-        if (updated)
+        try
         {
-            await LogWithdrawalAuditAsync(AuditActionType.Update, AuditEventType.Success, arg.Item, "Withdrawal request updated.");
-            ToastService.ShowSuccess("Success");
+            await save.InvokeAsync();
         }
-        else
+        finally
         {
-            var message = errorMessage ?? "Something went wrong";
-            await LogWithdrawalAuditAsync(AuditActionType.Update, AuditEventType.Failure, arg.Item, message);
-            ToastService.ShowError(message);
+            _createInFlight = false;
         }
-
-        await GetData();
     }
 
-    private async Task<bool> ValidateBalance(SavedRowItem<WalletWithdrawalRequest, Dictionary<string, object>> arg)
+    // Requests aren't editable here: a Save clicked again after an insert reaches Blazorise as an update carrying the
+    // stale form values (a 0 BTC destination), which internal editing would write onto the request.
+    private void OnRowUpdating(CancellableRowChange<WalletWithdrawalRequest, Dictionary<string, object>> arg)
     {
-        var wallet = await WalletRepository.GetById(arg.Item.WalletId);
-
-        if (wallet != null)
-        {
-            var balance = await BitcoinService.GetWalletConfirmedBalance(wallet);
-
-            if (arg.Item.TotalAmount > balance.Item1)
-            {
-                ToastService.ShowError(
-                    $"The confirmed balance({balance.Item1:f8} BTC) for the selected wallet is less than the amount requested to withdraw ({arg.Item.TotalAmount:f8} BTC)");
-                await GetData();
-                return true;
-            }
-        }
-
-        return false;
+        arg.Cancel = true;
     }
 
     private void DestinationAddressValidator(ValidatorEventArgs obj)
