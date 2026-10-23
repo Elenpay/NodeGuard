@@ -36,6 +36,8 @@ internal static class TestEnvironment
     internal static void Initialize()
     {
         SetIfMissing("NBXPLORER_URI", "http://localhost:32838");
+        // The dev / e2e depth: an unset value is 0, which would settle unconfirmed withdrawals.
+        SetIfMissing("TRANSACTION_CONFIRMATION_MINIMUM_BLOCKS", "6");
     }
 
     private static void SetIfMissing(string name, string value)

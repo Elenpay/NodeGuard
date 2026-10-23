@@ -60,7 +60,9 @@ namespace NodeGuard.Automapper
                 .ForMember(x => x.Wallet, opt => opt.Ignore())
                 .ForMember(x => x.WalletWithdrawalRequestPSBTs, opt => opt.Ignore())
                 .ForMember(x => x.UserRequestor, opt => opt.Ignore())
-                .ForMember(x => x.UTXOs, opt => opt.Ignore());
+                .ForMember(x => x.UTXOs, opt => opt.Ignore())
+                // Update attaches the whole mapped graph as Modified: the replaced request must never ride along.
+                .ForMember(x => x.BumpingWalletWithdrawalRequest, opt => opt.Ignore());
 
             CreateMap<UTXO, FMUTXO>()
                 .ForMember(x => x.TxId, opt => opt.MapFrom(x => x.Outpoint.Hash.ToString()))

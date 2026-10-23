@@ -82,16 +82,12 @@ namespace NodeGuard.Data.Repositories
         {
             await using var applicationDbContext = await _dbContextFactory.CreateDbContextAsync();
 
-            // RBF replacements inherit the reference id of the request they replace, so a reference id can match a whole
-            // chain of requests. Only the latest one of each chain reflects the current status of the withdrawal.
-            var requests = await applicationDbContext.WalletWithdrawalRequests
+            // RBF replacements inherit the reference id of the request they replace, so a reference id matches a whole
+            // chain. Every request of it is returned, oldest first, each reporting its own (derived) status.
+            return await applicationDbContext.WalletWithdrawalRequests
                 .Where(wr => !string.IsNullOrEmpty(wr.ReferenceId) && referenceIds.Contains(wr.ReferenceId))
+                .OrderBy(wr => wr.Id)
                 .ToListAsync();
-
-            return requests
-                .GroupBy(wr => wr.ReferenceId!)
-                .Select(g => g.OrderByDescending(wr => wr.Id).First())
-                .ToList();
         }
 
         public async Task<WalletWithdrawalRequest?> GetByTxHash(string txHash)
@@ -380,6 +376,73 @@ namespace NodeGuard.Data.Repositories
                 .ToListAsync();
 
             return walletWithdrawalRequests;
+        }
+
+        public async Task<List<WalletWithdrawalRequest>> GetRbfChainAsync(int requestId)
+        {
+            await using var applicationDbContext = await _dbContextFactory.CreateDbContextAsync();
+            var requests = applicationDbContext.WalletWithdrawalRequests.AsNoTracking();
+
+            // Up to the first request of the chain, then down through every replacement, level by level. One query
+            // per hop; chains are a handful of rows.
+            var root = await requests.SingleOrDefaultAsync(x => x.Id == requestId);
+            if (root == null) return new List<WalletWithdrawalRequest>();
+
+            var chain = new Dictionary<int, WalletWithdrawalRequest> { [root.Id] = root };
+            while (root.BumpingWalletWithdrawalRequestId is { } replacedId && !chain.ContainsKey(replacedId))
+            {
+                var replaced = await requests.SingleOrDefaultAsync(x => x.Id == replacedId);
+                if (replaced == null) break;
+
+                chain[replaced.Id] = replaced;
+                root = replaced;
+            }
+
+            var expanded = new HashSet<int> { root.Id };
+            var frontier = new List<int> { root.Id };
+            while (frontier.Count > 0)
+            {
+                var parents = frontier;
+                var children = await requests
+                    .Where(x => x.BumpingWalletWithdrawalRequestId != null && parents.Contains(x.BumpingWalletWithdrawalRequestId.Value))
+                    .ToListAsync();
+
+                frontier = new List<int>();
+                foreach (var child in children)
+                {
+                    chain.TryAdd(child.Id, child);
+                    if (expanded.Add(child.Id)) frontier.Add(child.Id);
+                }
+            }
+
+            return chain.Values.OrderBy(x => x.Id).ToList();
+        }
+
+        public async Task<List<int>> GetLiveRbfLinkedRequestIdsAsync()
+        {
+            await using var applicationDbContext = await _dbContextFactory.CreateDbContextAsync();
+
+            var live = WalletWithdrawalRequest.LiveStatuses;
+            var requests = applicationDbContext.WalletWithdrawalRequests;
+            return await requests
+                .Where(x => live.Contains(x.Status)
+                            && (x.BumpingWalletWithdrawalRequestId != null
+                                || requests.Any(r => r.BumpingWalletWithdrawalRequestId == x.Id)))
+                .Select(x => x.Id)
+                .ToListAsync();
+        }
+
+        public async Task<ILookup<int, WalletWithdrawalRequest>> GetReplacementsAsync(IEnumerable<int> requestIds)
+        {
+            await using var applicationDbContext = await _dbContextFactory.CreateDbContextAsync();
+
+            var ids = requestIds.Distinct().ToList();
+            var replacements = await applicationDbContext.WalletWithdrawalRequests
+                .AsNoTracking()
+                .Where(x => x.BumpingWalletWithdrawalRequestId != null && ids.Contains(x.BumpingWalletWithdrawalRequestId.Value))
+                .ToListAsync();
+
+            return replacements.ToLookup(x => x.BumpingWalletWithdrawalRequestId!.Value);
         }
 
         public async Task<List<WalletWithdrawalRequest>> GetOnChainPendingWithdrawals()
