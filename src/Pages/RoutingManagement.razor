@@ -373,18 +373,7 @@
             _channels = allChannels.Where(c => c.Status == Channel.ChannelStatus.Open).ToList();
 
             await LoadRoutingStatesAsync();
-
-            // Live balances are best-effort — structural stats and the toggles still work without LND.
-            _live = null;
-            try
-            {
-                var state = await LightningService.GetChannelsState();
-                if (state.Count > 0) _live = state;
-            }
-            catch (Exception ex)
-            {
-                Logger.LogWarning(ex, "Could not fetch live channel balances for the Routing Management page");
-            }
+            await LoadLiveBalancesAsync();
 
             Rebuild();
             await LoadRebalanceStatsAsync();
@@ -475,6 +464,24 @@
         await LoadRebalanceStatsAsync();
     }
 
+    // Balances are point-of-view dependent, so they're read from the selected node itself: a channel
+    // between two managed nodes reports mirrored local/remote on each side. Best-effort — the structural
+    // stats and the toggles still work without LND.
+    private async Task LoadLiveBalancesAsync()
+    {
+        _live = null;
+        if (_selectedNode is null) return;
+        try
+        {
+            var state = await LightningService.GetChannelsState(_selectedNode);
+            if (state.Count > 0) _live = state;
+        }
+        catch (Exception ex)
+        {
+            Logger.LogWarning(ex, "Could not fetch live channel balances for node {NodeId}", _selectedNode.Id);
+        }
+    }
+
     // Budget spend and in-flight count for the rebalance read-out. Best-effort: the page still works without them.
     private async Task LoadRebalanceStatsAsync()
     {
@@ -500,6 +507,7 @@
         _expanded.Clear();
         _search = string.Empty;
         await LoadRoutingStatesAsync();
+        await LoadLiveBalancesAsync();
         await LoadRebalanceStatsAsync();
         Rebuild();
     }
