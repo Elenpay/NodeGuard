@@ -13,7 +13,7 @@ workflows:
         - 'docker/login-action@v3.7.0'
         - 'docker/metadata-action@v5.10.0'
         - 'docker/setup-buildx-action@v3.12.0'
-        - 'dorny/paths-filter@v3.0.3'
+        - 'dorny/paths-filter@v4.0.3'
     '.github/workflows/spark-dev-images.yml':
         - 'actions/attest-build-provenance@v2.4.0'
         - 'actions/checkout@v7.0.1'
@@ -86,9 +86,9 @@ dependencies:
         commit: 'sha1-8d2750c68a42422c14e847fe6c8ac0403b4cbd6f'
         owner_id: 5429470
         repo_id: 288485773
-    'dorny/paths-filter@v3.0.3':
-        ref: 'v3.0.3'
-        commit: 'sha1-d1c1ffe0248fe513906c8e24db8ea791d46f8590'
+    'dorny/paths-filter@v4.0.3':
+        ref: 'v4.0.3'
+        commit: 'sha1-ceb8a2b8f2d89434be7ff52d3de7ec3738c5cc9d'
         owner_id: 1588572
         repo_id: 265601040
     'vlaurin/action-ghcr-prune@v0.5.0':
