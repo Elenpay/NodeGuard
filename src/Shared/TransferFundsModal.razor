@@ -456,8 +456,21 @@ _amountToTransfer;
             else
             {
                 var amount = _selectedUTXOs.Count > 0 ? SelectedUTXOsValue() : _amountToTransfer;
-                await CreateWithdrawalRequestForFunds(_sourceTransferWallet, _targetTransferWallet, amount,
+                var withdrawalRequest = await CreateWithdrawalRequestForFunds(_sourceTransferWallet, _targetTransferWallet, amount,
     _transferAllFunds);
+                await AuditService.LogAsync(
+                    AuditActionType.Transfer,
+                    AuditEventType.Success,
+                    AuditObjectType.Wallet,
+                    _sourceTransferWallet?.Id.ToString(),
+                    new
+                    {
+                        SourceWallet = _sourceWalletName,
+                        TargetWallet = _targetWalletName,
+                        Amount = _amountToTransfer,
+                        AllFunds = _transferAllFunds,
+                        WithdrawalRequestId = withdrawalRequest.Id
+                    });
                 await _multisigTransferModal.ShowModal();
                 await CloseAndCleanTransferFundsModal();
             }
