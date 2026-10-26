@@ -25,6 +25,8 @@ FROM base AS final
 RUN groupadd --gid 65532 nonroot && \
     useradd --uid 65532 --gid 65532 --no-create-home --shell /usr/sbin/nologin nonroot
 
+RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates && rm -rf /var/lib/apt/lists/*
+
 WORKDIR /app
 COPY --from=publish --chown=65532:65532 /app/publish .
 COPY --chown=65532:65532 src/Migrations/*.sql Migrations/
