@@ -103,7 +103,7 @@ jobs:
     env:
       IMAGE: ghcr.io/elenpay/nodeguard-spark-dev-${{ matrix.image }}
     steps:
-      - uses: actions/download-artifact@v4.3.0
+      - uses: actions/download-artifact@v8.0.2
         with:
           pattern: digests-${{ matrix.image }}-*
           path: digests
