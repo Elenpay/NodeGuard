@@ -26,7 +26,9 @@ using Quartz;
 namespace NodeGuard.Jobs;
 
 /// <summary>
-/// Monitors that withdrawals on-chain txs are confirmed
+/// Settles withdrawals whose transaction reached the confirmation depth, then gives every request linked by RBF its
+/// final status from what its chain holds (a replaced request that was mined instead, a replacement that confirmed).
+/// Each row is written on its own, so a failing one is retried on the next run without touching the rest.
 /// </summary>
 [DisallowConcurrentExecution]
 public class MonitorWithdrawalsJob : IJob
@@ -34,15 +36,18 @@ public class MonitorWithdrawalsJob : IJob
     private readonly ILogger<MonitorWithdrawalsJob> _logger;
     private readonly IWalletWithdrawalRequestRepository _walletWithdrawalRequestRepository;
     private readonly INBXplorerService _nbXplorerService;
+    private readonly IWithdrawalRequestService _withdrawalRequestService;
 
     public MonitorWithdrawalsJob(ILogger<MonitorWithdrawalsJob> logger,
         IWalletWithdrawalRequestRepository walletWithdrawalRequestRepository,
-        INBXplorerService nbXplorerService
+        INBXplorerService nbXplorerService,
+        IWithdrawalRequestService withdrawalRequestService
     )
     {
         _logger = logger;
         _walletWithdrawalRequestRepository = walletWithdrawalRequestRepository;
         _nbXplorerService = nbXplorerService;
+        _withdrawalRequestService = withdrawalRequestService;
     }
 
     public async Task Execute(IJobExecutionContext context)
@@ -52,41 +57,48 @@ public class MonitorWithdrawalsJob : IJob
 
         foreach (var walletWithdrawalRequest in withdrawalsPending)
         {
-            if (!string.IsNullOrEmpty(walletWithdrawalRequest.TxId))
+            if (string.IsNullOrEmpty(walletWithdrawalRequest.TxId)) continue;
+
+            try
             {
-                try
+                var getTxResult = await _nbXplorerService.GetTransactionAsync(uint256.Parse(walletWithdrawalRequest.TxId), default);
+                if (getTxResult == null)
                 {
-                    //Let's check if the minimum amount of confirmations are established
-                
-                    var getTxResult = await _nbXplorerService.GetTransactionAsync(uint256.Parse(walletWithdrawalRequest.TxId), default);
-
-                    if (getTxResult.Confirmations >= Constants.TRANSACTION_CONFIRMATION_MINIMUM_BLOCKS)
-                    {
-                        walletWithdrawalRequest.Status = WalletWithdrawalRequestStatus.OnChainConfirmed;
-
-                        var updateResult = _walletWithdrawalRequestRepository.Update(walletWithdrawalRequest);
-
-                        if (!updateResult.Item1)
-                        {
-                            _logger.LogError(
-                                "Error while updating wallet withdrawal: {RequestId}, status: {RequestStatus}",
-                                walletWithdrawalRequest.Id,
-                                walletWithdrawalRequest.Status);
-                        }
-                        else
-                        {
-                            _logger.LogInformation("Updating wallet withdrawal: {RequestId} to status: {RequestStatus}",
-                                walletWithdrawalRequest.Id, walletWithdrawalRequest.Status);
-                        }
-                    }
+                    _logger.LogWarning("Transaction {TxId} of withdrawal request {RequestId} is unknown to NBXplorer",
+                        walletWithdrawalRequest.TxId, walletWithdrawalRequest.Id);
+                    continue;
                 }
-                catch (Exception e)
-                {
-                    _logger.LogError(e, "Error while monitoring TxId: {TxId}", walletWithdrawalRequest.TxId);
 
-                    throw new JobExecutionException(e, false);
+                if (getTxResult.Confirmations < Constants.TRANSACTION_CONFIRMATION_MINIMUM_BLOCKS) continue;
+
+                walletWithdrawalRequest.Status = WalletWithdrawalRequestStatus.OnChainConfirmed;
+                var (updated, _) = _walletWithdrawalRequestRepository.Update(walletWithdrawalRequest);
+                if (updated)
+                {
+                    _logger.LogInformation("Updating wallet withdrawal: {RequestId} to status: {RequestStatus}",
+                        walletWithdrawalRequest.Id, walletWithdrawalRequest.Status);
+                }
+                else
+                {
+                    _logger.LogError("Error while updating wallet withdrawal: {RequestId}, status: {RequestStatus}",
+                        walletWithdrawalRequest.Id, walletWithdrawalRequest.Status);
                 }
             }
+            catch (Exception e)
+            {
+                // One request must not stop the rest of the batch.
+                _logger.LogError(e, "Error while monitoring TxId: {TxId}", walletWithdrawalRequest.TxId);
+            }
+        }
+
+        try
+        {
+            // After settling, so a request confirmed in this run already drives its RBF chain in this run.
+            await _withdrawalRequestService.ReconcileReplacementChainsAsync();
+        }
+        catch (Exception e)
+        {
+            _logger.LogError(e, "Error while reconciling RBF replacement chains");
         }
 
         _logger.LogInformation($"Job {nameof(MonitorWithdrawalsJob)} ended");

@@ -60,6 +60,8 @@ namespace NodeGuard.Data.Repositories
             catch (Exception e)
             {
                 _logger.LogError(e, "Error on repository");
+                // The innermost message is the database's own (e.g. the constraint a unique index rejected).
+                return (false, e.GetBaseException().Message);
             }
 
             return (rowsChanged, null);

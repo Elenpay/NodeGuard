@@ -70,9 +70,15 @@ tests (`DustUtxoWithdrawalE2ETests`, `WithdrawalRbfBumpE2ETests`, `GetNewWalletA
   those two in sync between the `nodeguard` and `e2e-runner` services**, or the test asserts against numbers
   NodeGuard didn't plan with.
 - **RBF bump scenario** (`WithdrawalRbfBumpE2ETests`): `RequestWithdrawal` on the hot wallet, then `BumpWithdrawal`
-  over gRPC, asserting bitcoind evicts the original for the higher-fee replacement, NodeGuard marks the original
-  `WITHDRAWAL_BUMPED`, and the replacement settles once mined. It relies on `MONITOR_WITHDRAWALS_CRON` being fast on
-  the `nodeguard` service (10s here; prod keeps the every-5-minutes default) and never mines between the two calls.
+  over gRPC, asserting bitcoind evicts the original for the higher-fee replacement, NodeGuard keeps reporting the
+  original `WITHDRAWAL_PENDING_CONFIRMATION` with `replaced_by_request_id` set while the replacement is in the mempool
+  (only a confirmation changes an RBF chain), and once the replacement is mined it settles and the original is stored
+  as `WITHDRAWAL_BUMPED`. It relies on
+  `MONITOR_WITHDRAWALS_CRON` being fast on the `nodeguard` service (10s here; prod keeps the every-5-minutes default)
+  and never mines between the two calls. The mined-original theory mines the ORIGINAL with `generateblock` (raw tx,
+  bypassing the mempool) after a bump or cancel, and asserts NodeGuard settles the original and fails the replacement.
+  The bump-of-a-bump test does the same with three transactions (A bumped to B, B to C, A mined): A settles, B and C
+  fail. The by-reference lookup returns the whole chain, each request with its own status.
 - **Adding an e2e test**: put it in `[Collection("E2E")]` (so it serialises with the others on the one
   regtest chain — without it the class runs in parallel and they interfere), have it provision the
   resources it needs and reset its own state, and gate it with `[E2EFact]`.

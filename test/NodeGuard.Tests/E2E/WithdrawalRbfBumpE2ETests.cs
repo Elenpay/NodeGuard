@@ -29,10 +29,13 @@ namespace NodeGuard.Tests.E2E;
 /// <summary>
 /// End-to-end coverage for the RBF replacements of a hot-wallet withdrawal against a LIVE NodeGuard + bitcoind, driven
 /// over gRPC. Fee bump: RequestWithdrawal broadcasts an RBF-signalling transaction, BumpWithdrawal replaces it with a
-/// higher-fee version of the same payment, bitcoind evicts the original, NodeGuard marks it WITHDRAWAL_BUMPED and, once
-/// mined, settles the replacement. Cancellation: CancelWithdrawal replaces it with a transaction that returns the funds to
-/// the wallet, the destination is never paid and the original ends up WITHDRAWAL_CANCELLED. The UI and the RPCs share
-/// WithdrawalRequestService, so these scenarios exercise the same orchestration the Withdrawals page runs.
+/// higher-fee version of the same payment, bitcoind evicts the original, NodeGuard keeps reporting the original
+/// pending confirmation (pointing at the bump) and stores WITHDRAWAL_BUMPED once the replacement is mined and settled.
+/// Cancellation: CancelWithdrawal replaces it with a transaction that returns the funds to the wallet, the destination
+/// is never paid and the original ends up WITHDRAWAL_CANCELLED. Mined original: either replacement loses the race to
+/// the original, which NodeGuard must then settle while failing every replacement, also when the original was bumped
+/// twice. Only confirmations change an RBF chain, so no status reported here ever flips once it is final. The UI and
+/// the RPCs share WithdrawalRequestService, so these scenarios exercise the same orchestration the Withdrawals page runs.
 ///
 /// Shared plumbing in <see cref="E2ETestBase"/>; gated by <see cref="E2EFactAttribute"/>. Env: see
 /// <see cref="DustUtxoWithdrawalE2ETests"/>. Never mine between the withdrawal and its replacement — the original must
@@ -46,6 +49,7 @@ public class WithdrawalRbfBumpE2ETests : E2ETestBase
     private const long WithdrawalAmountSats = 1_000_000;
     private const int OriginalFeeRateSatPerVb = 2;
     private const int BumpedFeeRateSatPerVb = 10;
+    private const int SecondBumpFeeRateSatPerVb = 20;
     private const long ProbeAmountSats = 2_000_000;
 
     public WithdrawalRbfBumpE2ETests(ITestOutputHelper output) : base(output)
@@ -105,12 +109,15 @@ public class WithdrawalRbfBumpE2ETests : E2ETestBase
             .BeGreaterThanOrEqualTo(BumpedFeeRateSatPerVb * 0.8m,
                 "the replacement targets the requested rate (the fee is estimated on the unsigned size)");
 
-        // NodeGuard's view: the bump is pending confirmation with the replacement txid, the original is bumped.
+        // NodeGuard's view: the bump is pending confirmation with the replacement txid; the original stays pending
+        // confirmation too, pointing at the bump, since nothing final is reported before a confirmation.
         var statuses = await PollAsync(() => GetStatusesAsync(client, headers, withdrawal.RequestId, bump.RequestId),
             s => s[bump.RequestId].Status == WITHDRAWAL_REQUEST_STATUS.WithdrawalPendingConfirmation
-                 && s[withdrawal.RequestId].Status == WITHDRAWAL_REQUEST_STATUS.WithdrawalBumped,
-            attempts: 30, delay: TimeSpan.FromSeconds(2), what: "bump pending confirmation, original bumped");
+                 && s[withdrawal.RequestId].ReplacedByRequestId == bump.RequestId,
+            attempts: 30, delay: TimeSpan.FromSeconds(2), what: "bump pending confirmation, original pointing at it");
         statuses[bump.RequestId].TxId.Should().Be(bump.Txid);
+        statuses[withdrawal.RequestId].Status.Should().Be(WITHDRAWAL_REQUEST_STATUS.WithdrawalPendingConfirmation,
+            "only a confirmation changes an RBF chain: the original could still be mined instead");
 
         // 4. Guards: a bumped request cannot be bumped again, a bump must raise the fee rate, and an unknown txid is not found.
         var bumpAgain = () => client.BumpWithdrawalAsync(new BumpWithdrawalRequest
@@ -120,7 +127,7 @@ public class WithdrawalRbfBumpE2ETests : E2ETestBase
             CustomFeeRate = BumpedFeeRateSatPerVb + 5,
         }, headers).ResponseAsync;
         (await bumpAgain.Should().ThrowAsync<RpcException>()).Which.StatusCode.Should().Be(StatusCode.FailedPrecondition,
-            "the original is WITHDRAWAL_BUMPED, not pending confirmation");
+            "the original already has a live replacement");
 
         var bumpLower = () => client.BumpWithdrawalAsync(new BumpWithdrawalRequest
         {
@@ -152,7 +159,8 @@ public class WithdrawalRbfBumpE2ETests : E2ETestBase
             s => s[bump.RequestId].Status == WITHDRAWAL_REQUEST_STATUS.WithdrawalSettled,
             attempts: 40, delay: TimeSpan.FromSeconds(5), what: "bump settled by MonitorWithdrawalsJob");
         settled[withdrawal.RequestId].Status.Should().Be(WITHDRAWAL_REQUEST_STATUS.WithdrawalBumped,
-            "the replaced request stays bumped");
+            "once the replacement settled, Bumped is the replaced request's stored, terminal status");
+        settled[withdrawal.RequestId].RejectOrCancelReason.Should().Contain(bump.RequestId.ToString());
     }
 
     [E2EFact]
@@ -202,13 +210,16 @@ public class WithdrawalRbfBumpE2ETests : E2ETestBase
         (cancelTx.TotalOut + cancelEntry.BaseFee).Should().Be(originalTx.TotalOut + originalEntry.BaseFee,
             "both transactions spend the same inputs: whatever is not fee comes back to the wallet");
 
-        // NodeGuard's view: the cancellation is pending confirmation, the original is cancelled with a reason.
+        // NodeGuard's view: the cancellation is pending confirmation; the original stays pending confirmation too,
+        // pointing at it and with no reason yet. A cancellation is only reported once it can no longer be outrun.
         var statuses = await PollAsync(() => GetStatusesAsync(client, headers, withdrawal.RequestId, cancel.RequestId),
             s => s[cancel.RequestId].Status == WITHDRAWAL_REQUEST_STATUS.WithdrawalPendingConfirmation
-                 && s[withdrawal.RequestId].Status == WITHDRAWAL_REQUEST_STATUS.WithdrawalCancelled,
-            attempts: 30, delay: TimeSpan.FromSeconds(2), what: "cancellation pending confirmation, original cancelled");
+                 && s[withdrawal.RequestId].ReplacedByRequestId == cancel.RequestId,
+            attempts: 30, delay: TimeSpan.FromSeconds(2), what: "cancellation pending confirmation, original pointing at it");
         statuses[cancel.RequestId].TxId.Should().Be(cancel.Txid);
-        statuses[withdrawal.RequestId].RejectOrCancelReason.Should().Contain("RBF");
+        statuses[withdrawal.RequestId].Status.Should().Be(WITHDRAWAL_REQUEST_STATUS.WithdrawalPendingConfirmation,
+            "an integrator that refunds on WITHDRAWAL_CANCELLED must never see it before the cancellation confirmed");
+        statuses[withdrawal.RequestId].RejectOrCancelReason.Should().BeEmpty();
 
         // 4. Guard: a cancelled request cannot be replaced again.
         var cancelAgain = () => client.CancelWithdrawalAsync(new CancelWithdrawalRequest
@@ -227,7 +238,9 @@ public class WithdrawalRbfBumpE2ETests : E2ETestBase
         var settled = await PollAsync(() => GetStatusesAsync(client, headers, withdrawal.RequestId, cancel.RequestId),
             s => s[cancel.RequestId].Status == WITHDRAWAL_REQUEST_STATUS.WithdrawalSettled,
             attempts: 40, delay: TimeSpan.FromSeconds(5), what: "cancellation settled by MonitorWithdrawalsJob");
-        settled[withdrawal.RequestId].Status.Should().Be(WITHDRAWAL_REQUEST_STATUS.WithdrawalCancelled);
+        settled[withdrawal.RequestId].Status.Should().Be(WITHDRAWAL_REQUEST_STATUS.WithdrawalCancelled,
+            "once the cancellation settled, Cancelled is the replaced request's stored, terminal status");
+        settled[withdrawal.RequestId].RejectOrCancelReason.Should().Contain($"request {cancel.RequestId}");
 
         var returnedOutpoint = new OutPoint(cancelTxId, 0).ToString();
         await RetryAsync(async () =>
@@ -239,7 +252,190 @@ public class WithdrawalRbfBumpE2ETests : E2ETestBase
         }, attempts: 30, delay: TimeSpan.FromSeconds(4), what: "returned funds spendable again");
     }
 
+    /// <summary>
+    /// A replacement is not guaranteed to win: a miner that never saw it can still mine the original. The original's
+    /// payment is then the one that happened, so NodeGuard must settle the original and fail the replacement, instead of
+    /// leaving the original Bumped / Cancelled while its transaction is confirmed on-chain.
+    /// </summary>
+    [E2ETheory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task Replacement_WhenTheOriginalIsMinedInstead_SettlesTheOriginalAndFailsTheReplacement(bool cancellation)
+    {
+        var client = CreateClient(out var headers);
+        var rpc = CreateBitcoindRpc();
+        var walletId = await EnsureHotWalletReadyAsync(client, headers);
+
+        // 1. A hot-wallet withdrawal at a low fee rate. Its signed transaction is kept: it is what the other miner mines.
+        var destination = await rpc.GetNewAddressAsync();
+        var referenceId = $"e2e-rbf-mined-original-{Guid.NewGuid():N}";
+        var withdrawal = await RequestHotWithdrawalAsync(client, headers, walletId, destination,
+            $"E2E RBF {(cancellation ? "cancel" : "bump")} mined-original test", referenceId);
+        var originalTxId = uint256.Parse(withdrawal.Txid);
+        var originalTx = await WaitForBroadcastAsync(rpc, originalTxId, "original withdrawal broadcast");
+
+        await PollAsync(() => GetStatusesAsync(client, headers, withdrawal.RequestId),
+            s => s[withdrawal.RequestId].Status == WITHDRAWAL_REQUEST_STATUS.WithdrawalPendingConfirmation,
+            attempts: 30, delay: TimeSpan.FromSeconds(2), what: "original pending confirmation");
+
+        // 2. Replace it: bitcoind evicts the original; NodeGuard keeps it pending confirmation, pointing at the replacement.
+        var (replacementId, replacementTxId) = await ReplaceAsync(client, headers, withdrawal.Txid, cancellation);
+
+        await WaitForBroadcastAsync(rpc, replacementTxId, "replacement broadcast");
+        await WaitUntilEvictedAsync(rpc, originalTxId);
+        var inFlight = await PollAsync(() => GetStatusesAsync(client, headers, withdrawal.RequestId, replacementId),
+            s => s[replacementId].Status == WITHDRAWAL_REQUEST_STATUS.WithdrawalPendingConfirmation
+                 && s[withdrawal.RequestId].ReplacedByRequestId == replacementId,
+            attempts: 30, delay: TimeSpan.FromSeconds(2), what: "replacement pending confirmation, original pointing at it");
+        inFlight[withdrawal.RequestId].Status.Should().Be(WITHDRAWAL_REQUEST_STATUS.WithdrawalPendingConfirmation,
+            "nothing final is reported while the original could still be mined, which is exactly what happens next");
+
+        // 3. The original is mined instead, which evicts the replacement as a double spend.
+        await MineBypassingTheMempoolAsync(rpc, originalTx);
+        await MineAsync(rpc, 5);
+
+        var originalInfo = await rpc.GetRawTransactionInfoAsync(originalTxId);
+        ((uint?)originalInfo.Confirmations ?? 0).Should().BeGreaterThan(0u, "the original was mined");
+        (await rpc.GetRawTransactionAsync(replacementTxId, throwIfNotFound: false)).Should().BeNull(
+            "the replacement double-spends a confirmed transaction and can never confirm");
+
+        // 4. NodeGuard's view must follow the chain: the original settled, the replacement failed.
+        var settled = await PollAsync(() => GetStatusesAsync(client, headers, withdrawal.RequestId, replacementId),
+            s =>
+            {
+                _output.WriteLine($"original {s[withdrawal.RequestId].Status}, replacement {s[replacementId].Status}");
+                return s[withdrawal.RequestId].Status == WITHDRAWAL_REQUEST_STATUS.WithdrawalSettled
+                       && s[replacementId].Status == WITHDRAWAL_REQUEST_STATUS.WithdrawalFailed;
+            },
+            attempts: 40, delay: TimeSpan.FromSeconds(5), what: "original settled, replacement failed");
+
+        settled[withdrawal.RequestId].TxId.Should().Be(withdrawal.Txid, "the original's own transaction is the one that confirmed");
+        settled[withdrawal.RequestId].Confirmations.Should().BeGreaterThan(0UL);
+        if (cancellation)
+        {
+            settled[withdrawal.RequestId].RejectOrCancelReason.Should().BeEmpty(
+                "the cancellation never took effect: the destination was paid");
+        }
+
+        await AssertReferenceReturnsTheChainAsync(client, headers, referenceId, withdrawal.RequestId, withdrawal.RequestId, replacementId);
+    }
+
+    /// <summary>
+    /// The same race one bump deeper: A is bumped to B, B is bumped to C, and A is mined. NodeGuard must settle A and fail
+    /// both B and C: each double-spends the confirmed transaction and can never confirm.
+    /// </summary>
+    [E2EFact]
+    public async Task BumpOfABump_WhenTheFirstTransactionIsMined_SettlesItAndFailsBothReplacements()
+    {
+        var client = CreateClient(out var headers);
+        var rpc = CreateBitcoindRpc();
+        var walletId = await EnsureHotWalletReadyAsync(client, headers);
+
+        // 1. A: a hot-wallet withdrawal at a low fee rate. Its signed transaction is kept: it is what gets mined.
+        var destination = await rpc.GetNewAddressAsync();
+        var referenceId = $"e2e-rbf-bump-of-a-bump-{Guid.NewGuid():N}";
+        var first = await RequestHotWithdrawalAsync(client, headers, walletId, destination,
+            "E2E RBF bump-of-a-bump mined-first test", referenceId);
+        var firstTxId = uint256.Parse(first.Txid);
+        var firstTx = await WaitForBroadcastAsync(rpc, firstTxId, "first withdrawal broadcast");
+
+        await PollAsync(() => GetStatusesAsync(client, headers, first.RequestId),
+            s => s[first.RequestId].Status == WITHDRAWAL_REQUEST_STATUS.WithdrawalPendingConfirmation,
+            attempts: 30, delay: TimeSpan.FromSeconds(2), what: "first pending confirmation");
+
+        // 2. B bumps A.
+        var (secondId, secondTxId) = await ReplaceAsync(client, headers, first.Txid, cancellation: false);
+        await WaitForBroadcastAsync(rpc, secondTxId, "first bump broadcast");
+        await WaitUntilEvictedAsync(rpc, firstTxId);
+
+        await PollAsync(() => GetStatusesAsync(client, headers, first.RequestId, secondId),
+            s => s[secondId].Status == WITHDRAWAL_REQUEST_STATUS.WithdrawalPendingConfirmation
+                 && s[first.RequestId].ReplacedByRequestId == secondId,
+            attempts: 30, delay: TimeSpan.FromSeconds(2), what: "first bump pending confirmation, first pointing at it");
+
+        // 3. C bumps B at a higher fee rate again: three transactions over the same inputs, only C in the mempool.
+        var (thirdId, thirdTxId) = await ReplaceAsync(client, headers, secondTxId.ToString(), cancellation: false,
+            SecondBumpFeeRateSatPerVb);
+        var thirdTx = await WaitForBroadcastAsync(rpc, thirdTxId, "second bump broadcast");
+        await WaitUntilEvictedAsync(rpc, secondTxId);
+
+        thirdTx.Inputs.Select(i => i.PrevOut).Should().BeEquivalentTo(firstTx.Inputs.Select(i => i.PrevOut),
+            "every replacement spends the inputs of the first transaction");
+        var inFlight = await PollAsync(() => GetStatusesAsync(client, headers, first.RequestId, secondId, thirdId),
+            s => s[thirdId].Status == WITHDRAWAL_REQUEST_STATUS.WithdrawalPendingConfirmation
+                 && s[secondId].ReplacedByRequestId == thirdId,
+            attempts: 30, delay: TimeSpan.FromSeconds(2), what: "second bump pending confirmation, first bump pointing at it");
+        inFlight.Values.Select(r => r.Status).Should().OnlyContain(s => s == WITHDRAWAL_REQUEST_STATUS.WithdrawalPendingConfirmation,
+            "every transaction of the chain is still a candidate until one confirms");
+
+        // 4. The oldest transaction, A, is mined, which evicts C as a double spend.
+        await MineBypassingTheMempoolAsync(rpc, firstTx);
+        await MineAsync(rpc, 5);
+
+        var firstInfo = await rpc.GetRawTransactionInfoAsync(firstTxId);
+        ((uint?)firstInfo.Confirmations ?? 0).Should().BeGreaterThan(0u, "the first transaction was mined");
+        (await rpc.GetRawTransactionAsync(secondTxId, throwIfNotFound: false)).Should().BeNull("B can never confirm");
+        (await rpc.GetRawTransactionAsync(thirdTxId, throwIfNotFound: false)).Should().BeNull("C can never confirm");
+
+        // 5. NodeGuard's view must follow the chain: A settled, B and C failed.
+        var settled = await PollAsync(() => GetStatusesAsync(client, headers, first.RequestId, secondId, thirdId),
+            s =>
+            {
+                _output.WriteLine($"A {s[first.RequestId].Status}, B {s[secondId].Status}, C {s[thirdId].Status}");
+                return s[first.RequestId].Status == WITHDRAWAL_REQUEST_STATUS.WithdrawalSettled
+                       && s[secondId].Status == WITHDRAWAL_REQUEST_STATUS.WithdrawalFailed
+                       && s[thirdId].Status == WITHDRAWAL_REQUEST_STATUS.WithdrawalFailed;
+            },
+            attempts: 40, delay: TimeSpan.FromSeconds(5), what: "first settled, both bumps failed");
+
+        settled[first.RequestId].TxId.Should().Be(first.Txid, "A's own transaction is the one that confirmed");
+        settled[first.RequestId].Confirmations.Should().BeGreaterThan(0UL);
+        settled[secondId].RejectOrCancelReason.Should().Contain(first.RequestId.ToString(),
+            "B double-spends the confirmed transaction; the failure names the request that was mined instead");
+        settled[thirdId].RejectOrCancelReason.Should().Contain(first.RequestId.ToString(),
+            "the failure names the request that was mined instead");
+
+        await AssertReferenceReturnsTheChainAsync(client, headers, referenceId, first.RequestId, first.RequestId, secondId, thirdId);
+    }
+
     // ---- plumbing ------------------------------------------------------------------------------------------------
+
+    /// <summary>Bumps or cancels <paramref name="txId"/> at <paramref name="feeRate"/> sat/vB.</summary>
+    private async Task<(int RequestId, uint256 TxId)> ReplaceAsync(NodeGuardService.NodeGuardServiceClient client,
+        Metadata headers, string txId, bool cancellation, int feeRate = BumpedFeeRateSatPerVb)
+    {
+        if (cancellation)
+        {
+            var cancel = await client.CancelWithdrawalAsync(new CancelWithdrawalRequest
+            {
+                TxId = txId,
+                MempoolFeeRate = FEES_TYPE.CustomFee,
+                CustomFeeRate = feeRate,
+            }, headers);
+            _output.WriteLine($"cancel request {cancel.RequestId} → txid {cancel.Txid}");
+            return (cancel.RequestId, uint256.Parse(cancel.Txid));
+        }
+
+        var bump = await client.BumpWithdrawalAsync(new BumpWithdrawalRequest
+        {
+            TxId = txId,
+            MempoolFeeRate = FEES_TYPE.CustomFee,
+            CustomFeeRate = feeRate,
+        }, headers);
+        _output.WriteLine($"bump request {bump.RequestId} → txid {bump.Txid}");
+        return (bump.RequestId, uint256.Parse(bump.Txid));
+    }
+
+    /// <summary>
+    /// Mines <paramref name="tx"/> as a miner that never saw its replacements would: generateblock takes the raw
+    /// transaction, bypassing the mempool the replacement sits in.
+    /// </summary>
+    private async Task MineBypassingTheMempoolAsync(RPCClient rpc, Transaction tx)
+    {
+        var minerAddress = await rpc.GetNewAddressAsync();
+        var block = await rpc.SendCommandAsync("generateblock", minerAddress.ToString(), new[] { tx.ToHex() });
+        _output.WriteLine($"{tx.GetHash()} mined in block {block.Result["hash"]}");
+    }
 
     /// <summary>NodeGuard up and the dev hot wallet spendable (DbInitializer funds it; another e2e may hold it briefly).</summary>
     private async Task<int> EnsureHotWalletReadyAsync(NodeGuardService.NodeGuardServiceClient client, Metadata headers)
@@ -266,16 +462,19 @@ public class WithdrawalRbfBumpE2ETests : E2ETestBase
     }
 
     private async Task<RequestWithdrawalResponse> RequestHotWithdrawalAsync(NodeGuardService.NodeGuardServiceClient client,
-        Metadata headers, int walletId, BitcoinAddress destination, string description)
+        Metadata headers, int walletId, BitcoinAddress destination, string description, string? referenceId = null)
     {
-        var withdrawal = await client.RequestWithdrawalAsync(new RequestWithdrawalRequest
+        var request = new RequestWithdrawalRequest
         {
             WalletId = walletId,
             Description = description,
             Destinations = { new Destination { Address = destination.ToString(), AmountSats = WithdrawalAmountSats } },
             MempoolFeeRate = FEES_TYPE.CustomFee,
             CustomFeeRate = OriginalFeeRateSatPerVb,
-        }, headers);
+        };
+        if (referenceId != null) request.ReferenceId = referenceId;
+
+        var withdrawal = await client.RequestWithdrawalAsync(request, headers);
         _output.WriteLine($"withdrawal request {withdrawal.RequestId} → txid {withdrawal.Txid}");
         withdrawal.IsHotWallet.Should().BeTrue();
         return withdrawal;
@@ -297,6 +496,26 @@ public class WithdrawalRbfBumpE2ETests : E2ETestBase
             var entry = await rpc.GetMempoolEntryAsync(txId, throwIfNotFound: false);
             return entry == null ? true : throw new InvalidOperationException("original still in the mempool");
         }, attempts: 15, delay: TimeSpan.FromSeconds(2), what: "original evicted by the replacement");
+    }
+
+    /// <summary>
+    /// What a caller tracking the withdrawal by reference id sees: every request of the chain, oldest first, each with
+    /// its own status. The one whose transaction confirmed reads as settled, and every replacement of it reads as
+    /// failed, so a paid withdrawal never reads as failed and the caller can tell which transaction paid it.
+    /// </summary>
+    private static async Task AssertReferenceReturnsTheChainAsync(NodeGuardService.NodeGuardServiceClient client,
+        Metadata headers, string referenceId, int settledRequestId, params int[] chainRequestIds)
+    {
+        var response = await client.GetWithdrawalsRequestStatusByReferenceIdsAsync(
+            new GetWithdrawalsRequestStatusByReferenceIdsRequest { ReferenceIds = { referenceId } }, headers);
+
+        response.WithdrawalRequests.Select(r => r.RequestId).Should().Equal(chainRequestIds,
+            "every request carrying the reference id is returned, oldest first");
+        response.WithdrawalRequests.Single(r => r.RequestId == settledRequestId).Status
+            .Should().Be(WITHDRAWAL_REQUEST_STATUS.WithdrawalSettled, "the request whose transaction confirmed is the payment that happened");
+        response.WithdrawalRequests.Where(r => r.RequestId != settledRequestId)
+            .Should().OnlyContain(r => r.Status == WITHDRAWAL_REQUEST_STATUS.WithdrawalFailed,
+                "every replacement double-spends the confirmed transaction");
     }
 
     private static async Task<Dictionary<int, WithdrawalRequest>> GetStatusesAsync(

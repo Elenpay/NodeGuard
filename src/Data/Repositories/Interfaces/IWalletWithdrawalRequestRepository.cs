@@ -58,4 +58,19 @@ public interface IWalletWithdrawalRequestRepository : IBitcoinRequestRepository
     Task<List<WalletWithdrawalRequest>> GetPendingRequests();
 
     Task<List<WalletWithdrawalRequest>> GetOnChainPendingWithdrawals();
+
+    /// <summary>
+    /// Every request connected to this one through RBF links, in both directions, the request itself included.
+    /// Untracked, no navigations loaded.
+    /// </summary>
+    Task<List<WalletWithdrawalRequest>> GetRbfChainAsync(int requestId);
+
+    /// <summary>Ids of the live requests that replace another request or are replaced by one.</summary>
+    Task<List<int>> GetLiveRbfLinkedRequestIdsAsync();
+
+    /// <summary>
+    /// The RBF replacements of each of <paramref name="requestIds"/>, keyed by the request they replace. A request
+    /// with none is absent from the lookup. Untracked.
+    /// </summary>
+    Task<ILookup<int, WalletWithdrawalRequest>> GetReplacementsAsync(IEnumerable<int> requestIds);
 }

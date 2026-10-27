@@ -419,8 +419,9 @@
             </DataGridColumn>
             <DataGridColumn TItem="WalletWithdrawalRequest" Field="@nameof(WalletWithdrawalRequest.Status)" Caption="Status" Sortable="false" Displayable="true">
                 <DisplayTemplate>
+                    @* The stored status is the row's own transaction; the replacement, if any, is named next to it. *@
                     <Tooltip Text=@context.RejectCancelDescription Placement="TooltipPlacement.Top">
-                        <span>@context?.Status.Humanize()</span>
+                        <span>@context.Status.Humanize()@(ReplacementsOf(context.Id).Newest is { } replacement ? $" · replaced by #{replacement.Id}" : "")</span>
                     </Tooltip>
                 </DisplayTemplate>
             </DataGridColumn>
@@ -444,7 +445,7 @@
             </DataGridColumn>
             <DataGridColumn TItem="WalletWithdrawalRequest" Caption="Actions" Displayable="true">
                 <DisplayTemplate>
-                    @if (_isFinanceManager && context.Status == WalletWithdrawalRequestStatus.OnChainConfirmationPending)
+                    @if (_isFinanceManager && context.Status == WalletWithdrawalRequestStatus.OnChainConfirmationPending && ReplacementsOf(context.Id).Live == null)
                     {
                             <Dropdown>
                                 <DropdownToggle Color="Color.Primary">
@@ -537,6 +538,7 @@
     private List<Wallet> _availableWallets = new();
     private List<ApplicationUser> _availableUsers = new();
     private List<WalletWithdrawalRequest> _withdrawalRequests = new();
+    private Dictionary<int, RbfReplacements> _replacements = new();
     private int _totalWithdrawalRequests;
     private int _currentPage = 1;
     private int _pageSize = 25;
@@ -655,6 +657,7 @@
             userId: _userFilter,
             fromDate: _fromDate.HasValue ? new DateTimeOffset(_fromDate.Value, TimeSpan.Zero) : null,
             toDate: _toDate.HasValue ? new DateTimeOffset(_toDate.Value.AddDays(1).AddTicks(-1), TimeSpan.Zero) : null);
+        var replacements = await WalletWithdrawalRequestRepository.GetReplacementsAsync(requests.Select(r => r.Id));
 
         if (cancellationToken.IsCancellationRequested)
         {
@@ -662,10 +665,14 @@
         }
 
         _withdrawalRequests = requests;
+        _replacements = replacements.ToDictionary(group => group.Key, group => new RbfReplacements(group));
         _totalWithdrawalRequests = totalCount;
         _currentPage = pageNumber;
         _pageSize = pageSize;
     }
+
+    /// <summary>The RBF replacements of a request on the current page.</summary>
+    private RbfReplacements ReplacementsOf(int requestId) => _replacements.GetValueOrDefault(requestId, RbfReplacements.None);
 
     private async Task OnAllWithdrawalsReadData(DataGridReadDataEventArgs<WalletWithdrawalRequest> e)
     {
@@ -968,7 +975,15 @@
             await LogWithdrawalAuditAsync(AuditActionType.BumpFee, AuditEventType.Failure, request, "Bump requested for withdrawal not pending on-chain confirmation.");
             return;
         }
-        
+
+        var replacements = await WalletWithdrawalRequestRepository.GetReplacementsAsync(new[] { request.Id });
+        if (new RbfReplacements(replacements[request.Id]).Live is { } liveReplacement)
+        {
+            ToastService.ShowError($"This withdrawal is already being replaced by request {liveReplacement.Id}. Bump or cancel that request instead.");
+            await LogWithdrawalAuditAsync(AuditActionType.BumpFee, AuditEventType.Failure, request, $"Bump requested for withdrawal already replaced by request {liveReplacement.Id}.");
+            return;
+        }
+
         ulong confirmations = 0;
         if (!string.IsNullOrEmpty(request.TxId))
         {
@@ -1056,10 +1071,6 @@
                             if (_selectedRequest != null)
                             {
                                 await CreateJob();
-                                if (_selectedRequest?.BumpingWalletWithdrawalRequestId != null)
-                                {
-                                    await WithdrawalRequestService.MarkOriginalAsReplacedAsync(_selectedRequest);
-                                }
                             }
                         }
                         catch (Exception ex)
@@ -1172,9 +1183,6 @@
                 await LogWithdrawalAuditAsync(successAction, AuditEventType.Success, _selectedRequest, successMessage);
             }
 
-            // In case that is a bump, we return the old request status to pending confirmation.
-            await WithdrawalRequestService.RevertOriginalAsync(_selectedRequest);
-
             await HideRejectCancelModal();
         }
     }
@@ -1255,6 +1263,8 @@
             {
                 await LogWithdrawalAuditAsync(AuditActionType.Cancel, AuditEventType.Success, _selectedRequest, "Withdrawal request cancelled by user.");
             }
+            // Reload the grid and the replacement cache: a cancelled replacement must give its original its actions back.
+            await GetData();
             StateHasChanged();
         }
         await _confirmationModal.CloseModal();
@@ -1320,7 +1330,7 @@
                 await LogWithdrawalAuditAsync(AuditActionType.Create, AuditEventType.Success, _selectedRequest, "Withdrawal request created.");
 
                 // Moves the request to PSBTSignaturesPending (the status PerformWithdrawal requires), generates the template
-                // PSBT, marks a replaced request as Bumped and schedules PerformWithdrawalJob to sign and broadcast.
+                // PSBT and schedules PerformWithdrawalJob to sign and broadcast.
                 await WithdrawalRequestService.ScheduleHotWalletWithdrawalAsync(_selectedRequest.Id);
 
                 ToastService.ShowSuccess("Withdrawal scheduled for signing and broadcast");

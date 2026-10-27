@@ -66,7 +66,8 @@ namespace NodeGuard.Data.Models
         FinalizingPSBT = 7,
 
         /// <summary>
-        /// The tx was bumped by Replace by Fee (RBF) method
+        /// Superseded: an RBF replacement of this request (or of one of its replacements) confirmed. Terminal, written
+        /// only by the monitor. While a replacement is merely in flight the request keeps its own status.
         /// </summary>
         Bumped = 8
     }
@@ -213,10 +214,10 @@ namespace NodeGuard.Data.Models
         /// </summary>
         public string? UserRequestorId { get; set; }
 
-        public ApplicationUser UserRequestor { get; set; }
+        public ApplicationUser? UserRequestor { get; set; }
         public int WalletId { get; set; }
 
-        public Wallet Wallet { get; set; }
+        public Wallet? Wallet { get; set; }
 
         public int? BumpingWalletWithdrawalRequestId { get; set; }
 
@@ -224,13 +225,58 @@ namespace NodeGuard.Data.Models
 
         /// <summary>
         /// True when this request replaces <see cref="BumpingWalletWithdrawalRequest"/> to CANCEL it (RBF): same inputs,
-        /// a single output back to the wallet, and the replaced request ends up Cancelled instead of Bumped.
+        /// a single output back to the wallet, and once this one confirms the replaced request ends up Cancelled
+        /// instead of Bumped.
         /// </summary>
         public bool IsRbfCancellation { get; set; }
 
-        public List<WalletWithdrawalRequestPSBT> WalletWithdrawalRequestPSBTs { get; set; }
+        /// <summary>
+        /// Statuses in which a request can still put (or has put) a transaction in the mempool. A replacement in any of
+        /// them blocks a second replacement of the same request.
+        /// </summary>
+        public static readonly WalletWithdrawalRequestStatus[] LiveStatuses =
+        {
+            WalletWithdrawalRequestStatus.Pending,
+            WalletWithdrawalRequestStatus.PSBTSignaturesPending,
+            WalletWithdrawalRequestStatus.FinalizingPSBT,
+            WalletWithdrawalRequestStatus.OnChainConfirmationPending,
+        };
 
-        public List<FMUTXO> UTXOs { get; set; }
+        [NotMapped]
+        public bool IsLive => LiveStatuses.Contains(Status);
+
+        /// <summary>
+        /// Never put a transaction in the mempool, or lost to another one. A request cancelled by its own RBF
+        /// replacement (Cancelled with a txid) was superseded, not abandoned: it is a hop of the chain.
+        /// </summary>
+        [NotMapped]
+        public bool IsAbandoned => Status is WalletWithdrawalRequestStatus.Failed or WalletWithdrawalRequestStatus.Rejected
+            || (Status == WalletWithdrawalRequestStatus.Cancelled && string.IsNullOrEmpty(TxId));
+
+        public static string RbfCancellationReason(int replacementId, string? txId) =>
+            WithTx($"Cancelled by RBF replacement request {replacementId}", txId);
+
+        public static string ReplacedReason(int replacementId, string? txId) =>
+            WithTx($"Replaced by request {replacementId}", txId);
+
+        public static string MinedInsteadReason(int originalId, string? txId) =>
+            WithTx($"Withdrawal request {originalId} was mined instead", txId);
+
+        private static string WithTx(string reason, string? txId) =>
+            string.IsNullOrEmpty(txId) ? reason : $"{reason} (tx {txId})";
+
+        /// <summary>
+        /// What a request superseded by <paramref name="replacement"/> becomes: Cancelled when a cancellation sits
+        /// on the way to it, otherwise Bumped.
+        /// </summary>
+        public static (WalletWithdrawalRequestStatus Status, string Reason) SupersededBy(WalletWithdrawalRequest replacement, bool cancellation) =>
+            cancellation
+                ? (WalletWithdrawalRequestStatus.Cancelled, RbfCancellationReason(replacement.Id, replacement.TxId))
+                : (WalletWithdrawalRequestStatus.Bumped, ReplacedReason(replacement.Id, replacement.TxId));
+
+        public List<WalletWithdrawalRequestPSBT>? WalletWithdrawalRequestPSBTs { get; set; }
+
+        public List<FMUTXO>? UTXOs { get; set; }
 
         /// <summary>
         /// This is a optional field that you can used to link withdrawals with externally-generated IDs (e.g. a withdrawal/settlement that belongs to an elenpay store)
@@ -258,5 +304,32 @@ namespace NodeGuard.Data.Models
         {
             return !Equals(left, right);
         }
+    }
+
+    /// <summary>
+    /// The requests that replace one request through RBF (fee bumps and cancellations), as the repository's
+    /// GetReplacementsAsync returns them. A request's status only ever describes its own transaction and only a
+    /// confirmation changes it: a live replacement blocks another one, and the newest not abandoned is the next hop
+    /// the API and the UI point at while the chain is in flight.
+    /// </summary>
+    public sealed class RbfReplacements
+    {
+        public static readonly RbfReplacements None = new(Enumerable.Empty<WalletWithdrawalRequest>());
+
+        private readonly List<WalletWithdrawalRequest> _requests;
+
+        public RbfReplacements(IEnumerable<WalletWithdrawalRequest> requests)
+        {
+            _requests = requests.ToList();
+        }
+
+        /// <summary>
+        /// The one still in flight, if any. Creating a replacement is refused while one exists; should a race let two
+        /// through, the newest is the one that had to outbid the other to get into the mempool.
+        /// </summary>
+        public WalletWithdrawalRequest? Live => _requests.Where(r => r.IsLive).MaxBy(r => r.Id);
+
+        /// <summary>The newest one that was not abandoned: the next hop when following a chain by id.</summary>
+        public WalletWithdrawalRequest? Newest => _requests.Where(r => !r.IsAbandoned).MaxBy(r => r.Id);
     }
 }
