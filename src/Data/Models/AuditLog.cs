@@ -196,5 +196,6 @@ public enum AuditObjectType
     UTXO,
     InternalWallet,
     Session,
-    Rebalance
+    Rebalance,
+    ChannelOpenRecommendation
 }

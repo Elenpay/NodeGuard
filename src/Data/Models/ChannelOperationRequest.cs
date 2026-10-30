@@ -94,6 +94,12 @@ namespace NodeGuard.Data.Models
 
         public ChannelOperationRequestStatus Status { get; set; }
 
+        [NotMapped]
+        public bool IsFinalized => Status is ChannelOperationRequestStatus.OnChainConfirmed
+            or ChannelOperationRequestStatus.Cancelled
+            or ChannelOperationRequestStatus.Rejected
+            or ChannelOperationRequestStatus.Failed;
+
         public OperationRequestType RequestType { get; set; }
 
         /// <summary>

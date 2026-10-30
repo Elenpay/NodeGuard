@@ -32,6 +32,22 @@ public interface IForwardingHtlcEventRepository
     Task<long> GetOutgoingAmountMsat(string managedNodePubKey, ulong chanIdLnd, DateTimeOffset since);
 
     /// <summary>
+    /// Same as <see cref="GetOutgoingAmountMsat"/> but for every channel at once, keyed by scid.
+    /// </summary>
+    Task<Dictionary<ulong, long>> GetOutgoingAmountsMsatByChannel(string managedNodePubKey, DateTimeOffset since);
+
+    /// <summary>
+    /// Σ FeeMsat of succeeded forwards, keyed by outgoing scid: what each channel earned us.
+    /// </summary>
+    Task<Dictionary<ulong, long>> GetEarnedFeesMsatByChannel(string managedNodePubKey, DateTimeOffset since);
+
+    /// <summary>
+    /// Forwards refused for lack of local outbound (LinkFail / INSUFFICIENT_BALANCE), counted per
+    /// outgoing scid. Raw rows, so sender retries are counted too.
+    /// </summary>
+    Task<Dictionary<ulong, int>> GetInsufficientBalanceCountsByChannel(string managedNodePubKey, DateTimeOffset since);
+
+    /// <summary>
     /// Σ IncomingAmountMsat of succeeded forwards where IncomingChannelId == chanIdLnd, for the
     /// given managed node, since the window start (fills our local balance — "pull").
     /// </summary>
