@@ -400,6 +400,37 @@ public class Constants
     public static readonly string CAROL_LOOPD_MACAROON = string.Empty;
     public static readonly string CAROL_LOOPD_TLS_CERT = string.Empty;
 
+    #region Auto Channel Open
+
+    // Master switch for automatic channel opening. Per-node gates still apply.
+    public static bool AUTO_CHANNEL_OPEN_ENABLED = false;
+
+    // "The route worked": fees earned to the peer over this many days must reach the minimum below.
+    public static int AUTO_CHANNEL_OPEN_LOOKBACK_DAYS = 7;
+
+    public static long AUTO_CHANNEL_OPEN_MIN_EARNED_FEE_SATS = 50_000;
+
+    // "We're short": forwards refused for lack of outbound to the peer over this many hours.
+    public static int AUTO_CHANNEL_OPEN_SHORTAGE_HOURS = 6;
+
+    public static int AUTO_CHANNEL_OPEN_MIN_REFUSALS = 5;
+
+    // "Still short now": usable outbound to the peer below this % of our capacity to it.
+    public static int AUTO_CHANNEL_OPEN_LOW_OUTBOUND_PCT = 20;
+
+    // Per-peer suppression after an open attempt or a dismissal.
+    public static int AUTO_CHANNEL_OPEN_PEER_COOLDOWN_HOURS = 12;
+
+    // Plans per node per run. In Auto mode this is also the concurrency bound: nothing else caps opens in flight.
+    public static int AUTO_CHANNEL_OPEN_MAX_PLANS_PER_RUN = 5;
+
+    public static int AUTO_CHANNEL_OPEN_DEFAULT_BUDGET_REFRESH_HOURS = 720;
+
+    // In dev this is 1 minute.
+    public static int AUTO_CHANNEL_OPEN_JOB_INTERVAL_MINUTES = 30;
+
+    #endregion Auto Channel Open
+
 
     private static string? GetEnvironmentalVariableOrThrowIfNotTesting(string envVariableName, string? errorMessage = null)
     {
@@ -745,6 +776,37 @@ public class Constants
         CAROL_LOOPD_HOST = Environment.GetEnvironmentVariable("CAROL_LOOPD_HOST") ?? CAROL_LOOPD_HOST;
         CAROL_LOOPD_MACAROON = Environment.GetEnvironmentVariable("CAROL_LOOPD_MACAROON") ?? CAROL_LOOPD_MACAROON;
         CAROL_LOOPD_TLS_CERT = Environment.GetEnvironmentVariable("CAROL_LOOPD_TLS_CERT") ?? CAROL_LOOPD_TLS_CERT;
+
+        // Auto Channel Open
+        AUTO_CHANNEL_OPEN_ENABLED = StringHelper.IsTrue(Environment.GetEnvironmentVariable("AUTO_CHANNEL_OPEN_ENABLED"));
+
+        var acoLookbackDays = Environment.GetEnvironmentVariable("AUTO_CHANNEL_OPEN_LOOKBACK_DAYS");
+        if (acoLookbackDays != null) AUTO_CHANNEL_OPEN_LOOKBACK_DAYS = int.Parse(acoLookbackDays);
+
+        var acoMinEarnedFee = Environment.GetEnvironmentVariable("AUTO_CHANNEL_OPEN_MIN_EARNED_FEE_SATS");
+        if (acoMinEarnedFee != null) AUTO_CHANNEL_OPEN_MIN_EARNED_FEE_SATS = long.Parse(acoMinEarnedFee);
+
+        var acoShortageHours = Environment.GetEnvironmentVariable("AUTO_CHANNEL_OPEN_SHORTAGE_HOURS");
+        if (acoShortageHours != null) AUTO_CHANNEL_OPEN_SHORTAGE_HOURS = int.Parse(acoShortageHours);
+
+        var acoMinRefusals = Environment.GetEnvironmentVariable("AUTO_CHANNEL_OPEN_MIN_REFUSALS");
+        if (acoMinRefusals != null) AUTO_CHANNEL_OPEN_MIN_REFUSALS = int.Parse(acoMinRefusals);
+
+        var acoLowOutboundPct = Environment.GetEnvironmentVariable("AUTO_CHANNEL_OPEN_LOW_OUTBOUND_PCT");
+        if (acoLowOutboundPct != null) AUTO_CHANNEL_OPEN_LOW_OUTBOUND_PCT = int.Parse(acoLowOutboundPct);
+
+        var acoCooldown = Environment.GetEnvironmentVariable("AUTO_CHANNEL_OPEN_PEER_COOLDOWN_HOURS");
+        if (acoCooldown != null) AUTO_CHANNEL_OPEN_PEER_COOLDOWN_HOURS = int.Parse(acoCooldown);
+
+        var acoMaxPlans = Environment.GetEnvironmentVariable("AUTO_CHANNEL_OPEN_MAX_PLANS_PER_RUN");
+        if (acoMaxPlans != null) AUTO_CHANNEL_OPEN_MAX_PLANS_PER_RUN = int.Parse(acoMaxPlans);
+
+        var acoDefaultRefreshHours = Environment.GetEnvironmentVariable("AUTO_CHANNEL_OPEN_DEFAULT_BUDGET_REFRESH_HOURS");
+        if (acoDefaultRefreshHours != null) AUTO_CHANNEL_OPEN_DEFAULT_BUDGET_REFRESH_HOURS = int.Parse(acoDefaultRefreshHours);
+
+        var acoInterval = Environment.GetEnvironmentVariable("AUTO_CHANNEL_OPEN_JOB_INTERVAL_MINUTES");
+        if (acoInterval != null) AUTO_CHANNEL_OPEN_JOB_INTERVAL_MINUTES = int.Parse(acoInterval);
+        if (IS_DEV_ENVIRONMENT) AUTO_CHANNEL_OPEN_JOB_INTERVAL_MINUTES = 1;
     }
 
 }
