@@ -105,4 +105,95 @@ public class ForwardingHtlcEventRepositoryTests
         (await sut.GetOutgoingAmountMsat(Node, Chan, DateTimeOffset.UtcNow.AddDays(-1))).Should().Be(0);
         (await sut.GetIncomingAmountMsat(Node, Chan, DateTimeOffset.UtcNow.AddDays(-1))).Should().Be(0);
     }
+
+    [Fact]
+    public async Task ByChannelGetters_GroupSettledOutgoingVolumeAndFeesPerChannel()
+    {
+        var (factory, seed) = SetupDb();
+        var now = DateTimeOffset.UtcNow;
+        var since = now.AddDays(-7);
+
+        seed.ForwardingHtlcEvents.AddRange(
+            Event(Node, 900, Chan, ForwardingOutcome.Settled, now, outgoingAmt: 1000, fee: 10, inHtlc: 1, outHtlc: 1),
+            Event(Node, 901, Chan, ForwardingOutcome.Settled, since, outgoingAmt: 500, fee: 5, inHtlc: 2, outHtlc: 2),
+            Event(Node, 902, OtherChan, ForwardingOutcome.Settled, now, outgoingAmt: 3000, fee: 30, inHtlc: 3, outHtlc: 3),
+            // Refused or still unresolved forwards earned nothing.
+            Event(Node, 903, Chan, ForwardingOutcome.Failed, now, outgoingAmt: 7777, fee: 77, inHtlc: 4, outHtlc: 4),
+            Event(Node, 904, Chan, ForwardingOutcome.Settled, since.AddSeconds(-1), outgoingAmt: 9999, fee: 99, inHtlc: 5, outHtlc: 5),
+            Event(OtherNode, 905, Chan, ForwardingOutcome.Settled, now, outgoingAmt: 6666, fee: 66, inHtlc: 6, outHtlc: 6)
+        );
+        await seed.SaveChangesAsync();
+
+        var sut = Sut(factory);
+
+        (await sut.GetOutgoingAmountsMsatByChannel(Node, since)).Should().BeEquivalentTo(
+            new Dictionary<ulong, long> { [Chan] = 1500, [OtherChan] = 3000 });
+        (await sut.GetEarnedFeesMsatByChannel(Node, since)).Should().BeEquivalentTo(
+            new Dictionary<ulong, long> { [Chan] = 15, [OtherChan] = 30 });
+    }
+
+    [Fact]
+    public async Task GetEarnedFeesMsatByChannel_SettledRowWithoutFee_CountsAsZero()
+    {
+        var (factory, seed) = SetupDb();
+        var now = DateTimeOffset.UtcNow;
+        var row = Event(Node, 900, Chan, ForwardingOutcome.Settled, now, outgoingAmt: 1000, inHtlc: 1, outHtlc: 1);
+        row.FeeMsat = null;
+        seed.ForwardingHtlcEvents.Add(row);
+        await seed.SaveChangesAsync();
+
+        var result = await Sut(factory).GetEarnedFeesMsatByChannel(Node, now.AddDays(-1));
+
+        result.Should().BeEquivalentTo(new Dictionary<ulong, long> { [Chan] = 0 });
+    }
+
+    /// <summary>A refused forward, with every field the insufficient-balance filter looks at explicit.</summary>
+    private static ForwardingHtlcEvent Failure(
+        string node, ulong incomingChan, ulong outgoingChan, DateTimeOffset ts,
+        int failureDetail = (int)Routerrpc.FailureDetail.InsufficientBalance,
+        HtlcEventType eventType = HtlcEventType.Forward,
+        HtlcEventCase eventCase = HtlcEventCase.LinkFailEvent,
+        ulong inHtlc = 0, ulong outHtlc = 0)
+        => new()
+        {
+            ManagedNodePubKey = node,
+            IncomingChannelId = incomingChan,
+            OutgoingChannelId = outgoingChan,
+            IncomingHtlcId = inHtlc,
+            OutgoingHtlcId = outHtlc,
+            EventTimestamp = ts,
+            EventType = eventType,
+            EventCase = eventCase,
+            Outcome = ForwardingOutcome.Failed,
+            FailureDetail = failureDetail,
+        };
+
+    [Fact]
+    public async Task GetInsufficientBalanceCountsByChannel_CountsOnlyOutboundShortagesOfThisNodeInWindow()
+    {
+        var (factory, seed) = SetupDb();
+        var now = DateTimeOffset.UtcNow;
+        var since = now.AddHours(-6);
+
+        seed.ForwardingHtlcEvents.AddRange(
+            Failure(Node, 900, Chan, now.AddHours(-2), inHtlc: 1, outHtlc: 1),
+            // The window is inclusive: a refusal landing exactly on the boundary still counts.
+            Failure(Node, 901, Chan, since, inHtlc: 2, outHtlc: 2),
+            Failure(Node, 902, OtherChan, now, inHtlc: 3, outHtlc: 3),
+            Failure(Node, 903, Chan, since.AddSeconds(-1), inHtlc: 4, outHtlc: 4),
+            Failure(OtherNode, 904, Chan, now, inHtlc: 5, outHtlc: 5),
+            // A local send is not routing demand.
+            Failure(Node, 905, Chan, now, eventType: HtlcEventType.Send, inHtlc: 6, outHtlc: 6),
+            // A downstream failure says nothing about our own outgoing balance.
+            Failure(Node, 906, Chan, now, eventCase: HtlcEventCase.ForwardFailEvent, inHtlc: 7, outHtlc: 7),
+            // Our own max-HTLC ceiling, not a shortage.
+            Failure(Node, 907, Chan, now, failureDetail: (int)Routerrpc.FailureDetail.HtlcExceedsMax,
+                inHtlc: 8, outHtlc: 8)
+        );
+        await seed.SaveChangesAsync();
+
+        var result = await Sut(factory).GetInsufficientBalanceCountsByChannel(Node, since);
+
+        result.Should().BeEquivalentTo(new Dictionary<ulong, int> { [Chan] = 2, [OtherChan] = 1 });
+    }
 }
