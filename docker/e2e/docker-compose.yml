@@ -110,6 +110,11 @@ services:
       ROUTING_ENGINE_CATEGORIZATION_MIN_AGE_BLOCKS: 0
       ROUTING_ENGINE_FLOW_MIN_MSAT: 1000000
       ROUTING_ENGINE_CATEGORY_FLIP_HYSTERESIS_CYCLES: 0
+      # AutoChannelOpenE2ETests: the global switch (each node still opts in), and thresholds a single
+      # regtest forward and a handful of refusals can clear. Keep the last two in sync with e2e-runner.
+      AUTO_CHANNEL_OPEN_ENABLED: "true"
+      AUTO_CHANNEL_OPEN_MIN_EARNED_FEE_SATS: "1"
+      AUTO_CHANNEL_OPEN_MIN_REFUSALS: "3"
       # Spark swap provider against the local Spark network (docker/spark). Off unless the run sets
       # SPARK_ENABLED=true with the spark profile up. Spark wallets (SPARK_SIGNER=wallet): the Spark E2E
       # creates one over gRPC and gives it to alice.
@@ -154,6 +159,8 @@ services:
       ROUTING_ENGINE_FEE_MIN_CHANNEL_SIZE_SATS: "15000000"
       ROUTING_ENGINE_REBALANCE_MAX_AMOUNT_SATS: "3000000"
       ROUTING_ENGINE_REBALANCE_DEADBAND: "0.15"
+      AUTO_CHANNEL_OPEN_MIN_EARNED_FEE_SATS: "1"
+      AUTO_CHANNEL_OPEN_MIN_REFUSALS: "3"
       # SparkSwapOutE2ETests runs with SPARK_E2E=1 (spark profile up, SPARK_ENABLED=true on nodeguard). It
       # restarts nodeguard through the Docker socket below
       SPARK_E2E: ${SPARK_E2E:-0}
