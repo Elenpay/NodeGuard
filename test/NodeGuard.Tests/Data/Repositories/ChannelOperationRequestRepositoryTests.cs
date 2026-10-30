@@ -125,4 +125,67 @@ public class ChannelOperationRequestRepositoryTests
         result.Item1.Should().BeTrue();
         result.Item2.Should().BeNull();
     }
+
+    private static ChannelOperationRequest Committed(
+        int sourceNodeId, long satsAmount, ChannelOperationRequestStatus status,
+        DateTimeOffset createdAt, OperationRequestType type = OperationRequestType.Open)
+        => new()
+        {
+            SourceNodeId = sourceNodeId,
+            DestNodeId = 99,
+            SatsAmount = satsAmount,
+            Status = status,
+            RequestType = type,
+            CreationDatetime = createdAt,
+        };
+
+    private static ChannelOperationRequestRepository BudgetSut(
+        Mock<IDbContextFactory<ApplicationDbContext>> dbContextFactory)
+        => new(Mock.Of<IRepository<ChannelOperationRequest>>(), null, dbContextFactory.Object, null, null);
+
+    [Fact]
+    public async Task GetOpenSatsCommittedSince_SumsOnlyLiveOpensOfThatSourceNodeInThePeriod()
+    {
+        // Arrange
+        var dbContextFactory = SetupDbContextFactory();
+        await using var context = await dbContextFactory.Object.CreateDbContextAsync();
+        var now = DateTimeOffset.UtcNow;
+        var since = now.AddDays(-1);
+
+        await context.ChannelOperationRequests.AddRangeAsync(
+            Committed(1, 100, ChannelOperationRequestStatus.Pending, now.AddHours(-2)),
+            // The period start is inclusive, otherwise the first open of a budget period escapes it.
+            Committed(1, 200, ChannelOperationRequestStatus.OnChainConfirmed, since),
+            Committed(1, 400, ChannelOperationRequestStatus.Approved, now),
+            // Sats that will never leave the wallet must not keep eating the budget.
+            Committed(1, 800, ChannelOperationRequestStatus.Cancelled, now),
+            Committed(1, 1600, ChannelOperationRequestStatus.Rejected, now),
+            Committed(1, 3200, ChannelOperationRequestStatus.Failed, now),
+            Committed(1, 6400, ChannelOperationRequestStatus.Pending, since.AddSeconds(-1)),
+            Committed(2, 12800, ChannelOperationRequestStatus.Pending, now),
+            // A close returns funds rather than committing them.
+            Committed(1, 25600, ChannelOperationRequestStatus.Pending, now, OperationRequestType.Close));
+        await context.SaveChangesAsync();
+
+        // Act
+        var result = await BudgetSut(dbContextFactory).GetOpenSatsCommittedSince(1, since);
+
+        // Assert
+        result.Should().Be(700);
+    }
+
+    [Fact]
+    public async Task GetOpenSatsCommittedSince_ReturnsZero_WhenNothingMatches()
+    {
+        // Arrange
+        var dbContextFactory = SetupDbContextFactory();
+
+        // Act
+        // A node in its first budget period has no rows at all, and the job would divide by a null
+        // budget rather than skip the node if this threw.
+        var result = await BudgetSut(dbContextFactory).GetOpenSatsCommittedSince(1, DateTimeOffset.UtcNow.AddDays(-1));
+
+        // Assert
+        result.Should().Be(0);
+    }
 }
