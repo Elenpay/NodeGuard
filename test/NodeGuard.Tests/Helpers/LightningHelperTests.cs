@@ -166,5 +166,64 @@ namespace NodeGuard.Tests
             var psbt = PSBT.Parse(  "cHNidP8BAIkBAAAAAQAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA/////wD/////AhAnAAAAAAAAIgAgPHfzrZk7L68p0NnijKzJFlfQcBGipD0uqora6TGiimLwvAtUAgAAACIAID2j1mgUIE8RzjFXzH6V9tW5a6FHvCgHesNoC0XpRbogAAAAAE8BBDWHzwN9uUaNAAAAAYPR/OiA1LbTzxbLPvbXvtAwckIG3g+0T1zblR/ZodaiA5zBFsigPpL8htN/KJ/Ph8SPvQA/K+mSNXTSA0hgvPNuEO0CEMgwAACAAQAAgAEAAAAAAQEfAOQLVAIAAAAWABTpOvUBMqNMfl7P81etji6x4fXrMyIGA3uD9HVjgF5E+eQhHp+Na6femVYpc4bCA4DmimehAdWcGO0CEMgwAACAAQAAgAEAAAAAAAAAAAAAAAAAAA==", network);
             result.Should().BeEquivalentTo(psbt);
         }
+    
+        // ── MaxFundableChannelSats ────────────────────────────────────────────────────
+
+        private static long MaxChannel(Wallet wallet, params long[] coinSats) =>
+            LightningHelper.MaxFundableChannelSats(
+                wallet.GetDerivationStrategy()!,
+                coinSats.Select((sats, i) => TestUtxos.Spendable(wallet, (uint)i, sats)).ToList(),
+                10m);
+
+        [Fact]
+        public void MaxFundableChannelSats_SingleSig_LeavesTheFeeAndADustChange()
+        {
+            // (11 vB header + 2 × 68 vB P2WPKH in + 43 vB funding + 31 vB P2WPKH change) × 10 sat/vB = 2,210
+            MaxChannel(CreateWallet.SingleSig(CreateWallet.CreateInternalWallet()), 6_000_000, 4_000_000)
+                .Should().Be(10_000_000 - 2_210 - 546);
+        }
+
+        [Fact]
+        public void MaxFundableChannelSats_Multisig_LeavesTheFeeAndADustChange()
+        {
+            // (11 vB header + 2 × 105 vB 2-of-3 P2WSH in + 43 vB funding + 43 vB P2WSH change) × 10 sat/vB = 3,070
+            MaxChannel(CreateWallet.MultiSig(CreateWallet.CreateInternalWallet()), 6_000_000, 4_000_000)
+                .Should().Be(10_000_000 - 3_070 - 546);
+        }
+
+        [Theory]
+        // Same rate as the clamp, and the usual case of the open's EconomyFee coming in under HourFee
+        [InlineData(10, 546)]
+        [InlineData(4, 546 + 221 * 6)]
+        public void MaxFundableChannelSats_OpenedAtTheLimit_LeavesChangeAboveDust(int openFeeRate, long expectedChange)
+        {
+            var wallet = CreateWallet.SingleSig(CreateWallet.CreateInternalWallet());
+            var derivationStrategy = wallet.GetDerivationStrategy()!;
+            var utxos = new List<UTXO> { TestUtxos.Spendable(wallet, 0, 6_000_000), TestUtxos.Spendable(wallet, 1, 4_000_000) };
+            var capacity = LightningHelper.MaxFundableChannelSats(derivationStrategy, utxos, 10m);
+
+            // The funded PSBT ChannelOpenJob gets back from LND: every coin in, the funding output and change out
+            var psbt = Network.RegTest.CreateTransactionBuilder()
+                .AddCoins(utxos.Select(u => u.AsCoin(derivationStrategy)))
+                .Send(new WitScriptId(uint256.Zero).ScriptPubKey, Money.Satoshis(capacity))
+                .SetChange(utxos[0].ScriptPubKey)
+                .SendFees(Money.Zero)
+                .BuildPSBT(false);
+
+            // LightningService.OpenChannel's change fix: totalIn − amount − vsize × feeRate, throwing below zero
+            psbt.TryGetVirtualSize(out var vsize).Should().BeTrue();
+            var change = 10_000_000 - capacity - vsize * openFeeRate;
+
+            psbt.Inputs.Should().HaveCount(2, "every coin funds the channel");
+            change.Should().Be(expectedChange);
+            change.Should().BeGreaterThanOrEqualTo(Constants.MINIMUM_UTXO_VALUE_SATS, "a dust change output would not relay");
+        }
+
+        [Fact]
+        public void MaxFundableChannelSats_CoinsCannotCoverFeeAndChange_IsZero()
+        {
+            // 153 vB × 10 sat/vB + 546 sats of change = 2,076 against a 2,000 sat coin
+            MaxChannel(CreateWallet.SingleSig(CreateWallet.CreateInternalWallet()), 2_000).Should().Be(0);
+        }
     }
 }
