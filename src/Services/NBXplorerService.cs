@@ -266,21 +266,19 @@ public class NBXplorerService : INBXplorerService
     {
         var recommendedFees = await GetMempoolRecommendedFeesAsync(cancellation);
 
-        switch (mempoolRecommendedFeesType)
+        decimal? fee = mempoolRecommendedFeesType switch
         {
-            case MempoolRecommendedFeesType.EconomyFee:
-                return recommendedFees.EconomyFee;
-            case MempoolRecommendedFeesType.FastestFee:
-                return recommendedFees.FastestFee;
-            case MempoolRecommendedFeesType.HourFee:
-                return recommendedFees.HourFee;
-            case MempoolRecommendedFeesType.HalfHourFee:
-                return recommendedFees.HalfHourFee;
-            case MempoolRecommendedFeesType.CustomFee:
-                return null;
-        }
+            MempoolRecommendedFeesType.EconomyFee => recommendedFees.EconomyFee,
+            MempoolRecommendedFeesType.FastestFee => recommendedFees.FastestFee,
+            MempoolRecommendedFeesType.HourFee => recommendedFees.HourFee,
+            MempoolRecommendedFeesType.HalfHourFee => recommendedFees.HalfHourFee,
+            MempoolRecommendedFeesType.CustomFee => null,
+            _ => throw new Exception("Invalid mempoolRecommendedFeesTypes")
+        };
 
-        throw new Exception("Invalid mempoolRecommendedFeesTypes");
+        // A failed mempool fetch yields all-zero fees; null sends callers to their fallback instead
+        // of funding a 0 sat/vB transaction.
+        return fee > 0 ? fee : null;
     }
 
     public async Task<BroadcastResult> BroadcastAsync(Transaction tx, bool testMempoolAccept,
