@@ -42,6 +42,7 @@ Anything else must page someone.
 | Request row inserted/edited directly in the DB | §5 audit cross-check, §6 signatures |
 | Request `TxId` edited to point at a rogue tx | §4 output check, §6 TxId signature |
 | Request row *and* audit row forged directly in the DB | §6 signatures only |
+| Request's tx fee-bumped outside NodeGuard (unsolicited RBF) | §4.4 replacement detection |
 | Request backdated to fall under an exemption | No date-based exemptions exist (§5, §6.5) |
 | Withdrawal template PSBT outputs edited before anyone signs | §6 template signature; blocked before signing by §11 |
 | Change shrunk to inflate the fee | Withdrawals: §6 template signature, §11. Channel opens: §11 fee rate limit |
@@ -104,10 +105,24 @@ during the wait, the startup scan picks it up again.
 Note: if the post-broadcast `Update` fails, the error is only logged and the tx stays without a
 `TxId`. The monitor will report it as `UnmatchedOutflow`, which is the desired behaviour.
 
+### 4.4 Unsolicited fee bumps
+
+RBF done through NodeGuard (UI or gRPC `BumpWithdrawal` / `CancelWithdrawal`) creates a new
+`WalletWithdrawalRequest` linked through `BumpingWalletWithdrawalRequestId` (`IsRbfCancellation` for
+cancellations), with its own `TxId`, and the original request moves to `Bumped` / `Cancelled`. Those
+replacements match like any other request (§4.2).
+
+What the monitor watches for is an RBF done **without NodeGuard's intervention**: a transaction that
+spends an input of a known request's transaction, but has a `TxId` no request knows about. The
+original request keeps pointing at a tx that will never confirm, so NodeGuard loses track of it. The
+monitor reports it as `UnsolicitedReplacement`, referencing the original request, instead of a plain
+`UnmatchedOutflow`. It alerts like any other anomaly; the request is not updated with the new
+`TxId`.
+
 ## 5. Justification via AuditLog (PR 1 + PR 2)
 
 For a matched request, require an `AuditLog` entry with `ObjectId = request.Id` and an action of
-`Create`, `Transfer` or `BumpFee`:
+`Create`, `Transfer`, `BumpFee`, or `Cancel` for RBF cancellations (`IsRbfCancellation`):
 
 - **User path.** The entry's `UserId` equals the request's `UserRequestorId` / `UserId`, and the
   user exists. The user had the right role (`FinanceManager` for withdrawals, `NodeManager` for
@@ -275,6 +290,7 @@ user/token and the user's roles.
 - audit user differs from requestor → `UnjustifiedOutflow`
 - API path with a token audit entry → justified
 - fee-bump replacement and wallet-to-wallet transfer → justified
+- request's tx replaced by a fee bump made outside NodeGuard → `UnsolicitedReplacement`
 - unmatched after the grace period → alert; matched within it → no alert
 - tx before the cutoff → skipped
 - user lost their role after creating the request → still justified
@@ -356,3 +372,10 @@ signature here: a bad actor could shrink it and inflate the fee. Rejecting a fee
 request's fee rate closes that gap.
 
 This turns detection into prevention for these attacks and fits naturally in PR 3.
+
+## 12. Next steps
+
+- **Scan every transaction in mined blocks.** Detection (§4.1) trusts NBXplorer to report each
+  wallet's outgoing transactions via `GetTransactionsAsync`. Instead of trusting it, scan every
+  transaction in each new block from bitcoind and check whether it spends an input of a NodeGuard
+  wallet. Not required for the initial release.
