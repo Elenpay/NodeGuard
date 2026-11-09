@@ -461,15 +461,15 @@ _amountToTransfer;
                 await AuditService.LogAsync(
                     AuditActionType.Transfer,
                     AuditEventType.Success,
-                    AuditObjectType.Wallet,
-                    _sourceTransferWallet?.Id.ToString(),
+                    AuditObjectType.WalletWithdrawalRequest,
+                    withdrawalRequest.Id.ToString(),
                     new
                     {
+                        SourceWalletId = _sourceTransferWallet?.Id,
                         SourceWallet = _sourceWalletName,
                         TargetWallet = _targetWalletName,
                         Amount = _amountToTransfer,
-                        AllFunds = _transferAllFunds,
-                        WithdrawalRequestId = withdrawalRequest.Id
+                        AllFunds = _transferAllFunds
                     });
                 await _multisigTransferModal.ShowModal();
                 await CloseAndCleanTransferFundsModal();
@@ -523,15 +523,15 @@ _amountToTransfer;
                 await AuditService.LogAsync(
                     AuditActionType.Transfer,
                     AuditEventType.Success,
-                    AuditObjectType.Wallet,
-                    _sourceTransferWallet?.Id.ToString(),
+                    AuditObjectType.WalletWithdrawalRequest,
+                    withdrawalRequest.Id.ToString(),
                     new
                     {
+                        SourceWalletId = _sourceTransferWallet?.Id,
                         SourceWallet = _sourceWalletName,
                         TargetWallet = _targetWalletName,
                         Amount = _amountToTransfer,
-                        AllFunds = _transferAllFunds,
-                        WithdrawalRequestId = withdrawalRequest.Id
+                        AllFunds = _transferAllFunds
                     });
             }
             else
@@ -539,14 +539,14 @@ _amountToTransfer;
                 await AuditService.LogAsync(
                     AuditActionType.Transfer,
                     AuditEventType.Failure,
-                    AuditObjectType.Wallet,
-                    _sourceTransferWallet?.Id.ToString(),
+                    AuditObjectType.WalletWithdrawalRequest,
+                    withdrawalRequest.Id.ToString(),
                     new
                     {
+                        SourceWalletId = _sourceTransferWallet?.Id,
                         SourceWallet = _sourceWalletName,
                         TargetWallet = _targetWalletName,
-                        Amount = _amountToTransfer,
-                        WithdrawalRequestId = withdrawalRequest.Id
+                        Amount = _amountToTransfer
                     });
                 ToastService.ShowError("Error while transferring funds, please contact a superadmin for troubleshooting");
             }

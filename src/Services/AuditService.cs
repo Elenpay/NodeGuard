@@ -19,6 +19,7 @@
 
 using System.Security.Claims;
 using System.Text.Json;
+using System.Text.Json.Nodes;
 using NodeGuard.Data.Models;
 using NodeGuard.Data.Repositories.Interfaces;
 using NodeGuard.Helpers;
@@ -27,6 +28,8 @@ namespace NodeGuard.Services;
 
 public class AuditService : IAuditService
 {
+    private const string ApiTokenIdKey = "ApiTokenId";
+
     private readonly IAuditLogRepository _auditLogRepository;
     private readonly IHttpContextAccessor _httpContextAccessor;
     private readonly ILogger<AuditService> _logger;
@@ -48,8 +51,9 @@ public class AuditService : IAuditService
         string? objectId = null,
         object? details = null)
     {
-        var (userId, username, ipAddress) = ExtractContextInfo();
-        await LogInternalAsync(actionType, eventType, objectAffected, objectId, userId, username, ipAddress, details);
+        var (userId, username, ipAddress, contextDetails) = ExtractContextInfo();
+        await LogInternalAsync(actionType, eventType, objectAffected, objectId, userId, username, ipAddress, details,
+            contextDetails);
     }
 
     public async Task LogSystemAsync(
@@ -70,11 +74,12 @@ public class AuditService : IAuditService
         string? userId,
         string? username,
         string? ipAddress,
-        object? details)
+        object? details,
+        IReadOnlyDictionary<string, JsonNode?>? contextDetails = null)
     {
         try
         {
-            var detailsJson = details != null ? JsonSerializer.Serialize(details) : null;
+            var detailsJson = SerializeDetails(details, contextDetails);
             
             // Log to system logger
             _logger.LogInformation(
@@ -113,11 +118,46 @@ public class AuditService : IAuditService
         }
     }
 
-    private (string? UserId, string? Username, string? IpAddress) ExtractContextInfo()
+    /// <summary>
+    /// Serializes the details, adding the request context (the user's roles at the time of the action, or the API
+    /// token that authenticated a gRPC call) so it can be checked later even if roles or tokens change. Details that
+    /// are not a JSON object are wrapped under <c>Details</c> and keys supplied by the caller are never overwritten.
+    /// User audits without details are stored without them, but an API token is always recorded because token names
+    /// are not unique and its id is the only reliable identity of the caller.
+    /// </summary>
+    private static string? SerializeDetails(object? details, IReadOnlyDictionary<string, JsonNode?>? contextDetails)
+    {
+        if (details == null && contextDetails?.ContainsKey(ApiTokenIdKey) != true)
+        {
+            return null;
+        }
+
+        if (contextDetails == null || contextDetails.Count == 0)
+        {
+            return JsonSerializer.Serialize(details);
+        }
+
+        var node = details != null ? JsonSerializer.SerializeToNode(details) : new JsonObject();
+        var detailsObject = node as JsonObject ?? new JsonObject { ["Details"] = node };
+
+        foreach (var (key, value) in contextDetails)
+        {
+            if (!detailsObject.ContainsKey(key))
+            {
+                detailsObject[key] = value?.DeepClone();
+            }
+        }
+
+        return detailsObject.ToJsonString();
+    }
+
+    private (string? UserId, string? Username, string? IpAddress, IReadOnlyDictionary<string, JsonNode?> ContextDetails)
+        ExtractContextInfo()
     {
         string? userId = null;
         string? username = null;
         string? ipAddress = null;
+        var contextDetails = new Dictionary<string, JsonNode?>();
 
         try
         {
@@ -133,6 +173,18 @@ public class AuditService : IAuditService
                     username = user.FindFirst(ClaimTypes.Name)?.Value 
                                ?? user.FindFirst(ClaimTypes.Email)?.Value
                                ?? user.Identity.Name;
+                    contextDetails["UserRoles"] = new JsonArray(user.FindAll(ClaimTypes.Role)
+                        .Select(c => (JsonNode?)JsonValue.Create(c.Value)).ToArray());
+                }
+
+                // gRPC calls are authenticated by an API token instead of a user (see GRPCAuthInterceptor)
+                if (httpContext.Items.TryGetValue(AuthenticatedApiToken.HttpContextItemKey, out var item)
+                    && item is AuthenticatedApiToken apiToken)
+                {
+                    // The id keeps tokens sharing a name apart, and the spaces keep it from passing for a username
+                    username ??= $"API token {apiToken.Id} ({apiToken.Name})";
+                    contextDetails[ApiTokenIdKey] = apiToken.Id;
+                    contextDetails["ApiTokenName"] = apiToken.Name;
                 }
 
                 // Extract IP address (considering proxies)
@@ -144,6 +196,6 @@ public class AuditService : IAuditService
             _logger.LogWarning(ex, "Error extracting context info for audit log");
         }
 
-        return (userId, username, ipAddress);
+        return (userId, username, ipAddress, contextDetails);
     }
 }

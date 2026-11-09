@@ -292,6 +292,12 @@ public class NodeGuardService : Nodeguard.NodeGuardService.NodeGuardServiceBase,
         ServerCallContext context)
     {
         WalletWithdrawalRequest? withdrawalRequest = null;
+        var auditDetails = new
+        {
+            request.WalletId,
+            Destinations = request.Destinations.Select(d => new { d.Address, d.AmountSats }),
+            request.ReferenceId
+        };
         try
         {
             //We get the wallet
@@ -375,18 +381,26 @@ public class NodeGuardService : Nodeguard.NodeGuardService.NodeGuardServiceBase,
                     BitcoinRequestType.WalletWithdrawal);
             }
 
-            // Update to refresh from db
-            withdrawalRequest = await _walletWithdrawalRequestRepository.GetById(withdrawalRequest.Id);
-
-            if (!withdrawalSaved.Item1)
-            {
-                _logger.LogError("Error saving withdrawal request for wallet with id {walletId}", request.WalletId);
-                throw new RpcException(new Status(StatusCode.Internal, "Error saving withdrawal request for wallet"));
-            }
+            // Update to refresh from db. A missing row keeps the saved instance so the failure handling can still
+            // cancel and audit it
+            withdrawalRequest = await _walletWithdrawalRequestRepository.GetById(withdrawalRequest.Id)
+                                ?? throw new InvalidOperationException(
+                                    $"Withdrawal request {withdrawalRequest.Id} not found after saving it");
 
             // Template PSBT generation with SIGHASH_ALL
-            var psbt = await _bitcoinService.GenerateTemplatePSBT(withdrawalRequest ??
-            throw new ArgumentException(nameof(withdrawalRequest)));
+            var psbt = await _bitcoinService.GenerateTemplatePSBT(withdrawalRequest);
+
+            // Built before the job is scheduled: once it is, nothing may fail and cancel a request the job will execute
+            var response = new RequestWithdrawalResponse
+            {
+                IsHotWallet = wallet.IsHotWallet,
+                Txid = psbt.GetGlobalTransaction().GetHash().ToString(),
+                RequestId = withdrawalRequest.Id
+            };
+
+            // Audited before the hot wallet job is scheduled, so the creation precedes the job's own audits
+            await _auditService.LogAsync(AuditActionType.Create, AuditEventType.Success,
+                AuditObjectType.WalletWithdrawalRequest, withdrawalRequest.Id.ToString(), auditDetails);
 
             // If the wallet is hot, we send the withdrawal request to the embedded or remote signer
             if (wallet.IsHotWallet)
@@ -397,37 +411,77 @@ public class NodeGuardService : Nodeguard.NodeGuardService.NodeGuardServiceBase,
                 await _scheduler.ScheduleJob(job.Job, job.Trigger);
             }
 
-            var response = new RequestWithdrawalResponse
-            {
-                IsHotWallet = wallet.IsHotWallet,
-                Txid = psbt.GetGlobalTransaction().GetHash().ToString(),
-                RequestId = withdrawalRequest.Id
-            };
-
             return response;
         }
         catch (NoUTXOsAvailableException)
         {
-            MarkWithdrawalRequestCancelled(withdrawalRequest);
+            await CancelFailedWithdrawalRequestAsync(withdrawalRequest, AuditActionType.Create, auditDetails,
+                "No available UTXOs for wallet");
             _logger.LogError("No available UTXOs for wallet with id {walletId}", request.WalletId);
             throw new RpcException(new Status(StatusCode.ResourceExhausted, "No available UTXOs for wallet"));
         }
         catch (NotEnoughBalanceInWalletException e)
         {
+            await CancelFailedWithdrawalRequestAsync(withdrawalRequest, AuditActionType.Create, auditDetails, e.Message);
             _logger.LogError(e.Message);
             throw new RpcException(new Status(StatusCode.ResourceExhausted, e.Message));
         }
         catch (RpcException e)
         {
-            MarkWithdrawalRequestCancelled(withdrawalRequest);
+            await CancelFailedWithdrawalRequestAsync(withdrawalRequest, AuditActionType.Create, auditDetails,
+                e.Status.Detail);
             _logger.LogError(e.Message);
             throw new RpcException(new Status(e.Status.StatusCode, e.Status.Detail));
         }
         catch (Exception e)
         {
-            MarkWithdrawalRequestCancelled(withdrawalRequest);
+            await CancelFailedWithdrawalRequestAsync(withdrawalRequest, AuditActionType.Create, auditDetails,
+                e.Message);
             _logger.LogError(e, "Error requesting withdrawal for wallet with id {walletId}", request.WalletId);
             throw new RpcException(new Status(StatusCode.Internal, "Error requesting withdrawal for wallet"));
+        }
+    }
+
+    private Task CancelFailedWithdrawalRequestAsync(WalletWithdrawalRequest? withdrawalRequest,
+        AuditActionType actionType, object details, string? error)
+    {
+        int? persistedRequestId = withdrawalRequest is { Id: > 0 } ? withdrawalRequest.Id : null;
+
+        return FailRequestAndAuditAsync(persistedRequestId, () => MarkWithdrawalRequestCancelled(withdrawalRequest),
+            actionType, AuditObjectType.WalletWithdrawalRequest, details, error);
+    }
+
+    /// <summary>
+    /// Audits a failed request and, if it was already persisted, takes it out of the active states with
+    /// <paramref name="markFailed"/> (which also releases its locked UTXOs, held only by active requests), so the
+    /// request id has a record of why it never went out. Requests refused before being persisted are audited
+    /// without an id.
+    /// </summary>
+    /// <remarks>Runs inside catch blocks, so it never throws: that would replace the error being reported.</remarks>
+    private async Task FailRequestAndAuditAsync(int? persistedRequestId, Action markFailed,
+        AuditActionType actionType, AuditObjectType objectType, object details, string? error)
+    {
+        // Separate tries so the failure is audited even if marking the request fails
+        if (persistedRequestId != null)
+        {
+            try
+            {
+                markFailed();
+            }
+            catch (Exception e)
+            {
+                _logger.LogError(e, "Error marking {ObjectType} {RequestId} as failed", objectType, persistedRequestId);
+            }
+        }
+
+        try
+        {
+            await _auditService.LogAsync(actionType, AuditEventType.Failure, objectType,
+                persistedRequestId?.ToString(), new { Request = details, Error = error });
+        }
+        catch (Exception e)
+        {
+            _logger.LogError(e, "Error auditing the failure of {ObjectType} {RequestId}", objectType, persistedRequestId);
         }
     }
 
@@ -496,7 +550,10 @@ public class NodeGuardService : Nodeguard.NodeGuardService.NodeGuardServiceBase,
         MempoolRecommendedFeesType feeType, decimal? customFeeRate, bool cancellation)
     {
         var action = cancellation ? "cancellation" : "fee bump";
+        var auditAction = cancellation ? AuditActionType.RbfCancel : AuditActionType.BumpFee;
         WalletWithdrawalRequest? replacement = null;
+        // Until the replacement exists, failures can only be tied to the requested target
+        object auditDetails = new { Target = target.ToString() };
         try
         {
             var originalRequestId = await ResolveReplacementTargetAsync(target);
@@ -505,11 +562,27 @@ public class NodeGuardService : Nodeguard.NodeGuardService.NodeGuardServiceBase,
                 ? await _withdrawalRequestService.CreateCancelRequestAsync(originalRequestId, feeType, customFeeRate)
                 : await _withdrawalRequestService.CreateBumpRequestAsync(originalRequestId, feeType, customFeeRate);
 
-            var isHotWallet = replacement.Wallet?.IsHotWallet ?? false;
+            auditDetails = new { replacement.WalletId, ReplacedRequestId = originalRequestId, replacement.ReferenceId };
 
-            var psbt = isHotWallet
-                ? await _withdrawalRequestService.ScheduleHotWalletWithdrawalAsync(replacement.Id)
-                : await _bitcoinService.GenerateTemplatePSBT(replacement);
+            var isHotWallet = replacement.Wallet?.IsHotWallet ?? false;
+            Task AuditSuccessAsync()
+            {
+                return _auditService.LogAsync(auditAction, AuditEventType.Success,
+                    AuditObjectType.WalletWithdrawalRequest, replacement.Id.ToString(), auditDetails);
+            }
+
+            PSBT psbt;
+            if (isHotWallet)
+            {
+                // Audited before the job is scheduled, so the replacement precedes the job's own audits
+                await AuditSuccessAsync();
+                psbt = await _withdrawalRequestService.ScheduleHotWalletWithdrawalAsync(replacement.Id);
+            }
+            else
+            {
+                psbt = await _bitcoinService.GenerateTemplatePSBT(replacement);
+                await AuditSuccessAsync();
+            }
 
             return (replacement.Id, psbt.GetGlobalTransaction().GetHash().ToString(), isHotWallet);
         }
@@ -517,29 +590,30 @@ public class NodeGuardService : Nodeguard.NodeGuardService.NodeGuardServiceBase,
         {
             _logger.LogWarning("RBF {Action} of withdrawal request {Target} refused ({Reason}): {Message}",
                 action, target, e.Reason, e.Message);
-            MarkWithdrawalRequestCancelled(replacement);
+            await CancelFailedWithdrawalRequestAsync(replacement, auditAction, auditDetails, e.Message);
             throw new RpcException(new Status(ToStatusCode(e.Reason), e.Message));
         }
         catch (NoUTXOsAvailableException)
         {
-            MarkWithdrawalRequestCancelled(replacement);
+            await CancelFailedWithdrawalRequestAsync(replacement, auditAction, auditDetails,
+                "No available UTXOs for wallet");
             _logger.LogError("No available UTXOs for the RBF {Action} of withdrawal request {Target}", action, target);
             throw new RpcException(new Status(StatusCode.ResourceExhausted, "No available UTXOs for wallet"));
         }
         catch (ShowToUserException e)
         {
-            MarkWithdrawalRequestCancelled(replacement);
+            await CancelFailedWithdrawalRequestAsync(replacement, auditAction, auditDetails, e.Message);
             _logger.LogError(e, "Error in the RBF {Action} of withdrawal request {Target}", action, target);
             throw new RpcException(new Status(StatusCode.FailedPrecondition, e.Message));
         }
-        catch (RpcException)
+        catch (RpcException e)
         {
-            MarkWithdrawalRequestCancelled(replacement);
+            await CancelFailedWithdrawalRequestAsync(replacement, auditAction, auditDetails, e.Status.Detail);
             throw;
         }
         catch (Exception e)
         {
-            MarkWithdrawalRequestCancelled(replacement);
+            await CancelFailedWithdrawalRequestAsync(replacement, auditAction, auditDetails, e.Message);
             _logger.LogError(e, "Error in the RBF {Action} of withdrawal request {Target}", action, target);
             throw new RpcException(new Status(StatusCode.Internal, $"Error in the RBF {action} of the withdrawal request"));
         }
@@ -751,38 +825,69 @@ public class NodeGuardService : Nodeguard.NodeGuardService.NodeGuardServiceBase,
 
     public override async Task<OpenChannelResponse> OpenChannel(OpenChannelRequest request, ServerCallContext context)
     {
-        var sourceNode = await _nodeRepository.GetByPubkey(request.SourcePubKey);
-        if (sourceNode == null)
+        var auditDetails = new
         {
-            throw new RpcException(new Status(StatusCode.NotFound, "Source node not found"));
+            request.WalletId,
+            request.SatsAmount,
+            request.SourcePubKey,
+            request.DestinationPubKey
+        };
+
+        NodeGuard.Data.Models.Node? sourceNode;
+        NodeGuard.Data.Models.Node? destNode;
+        Wallet? wallet;
+        try
+        {
+            sourceNode = await _nodeRepository.GetByPubkey(request.SourcePubKey);
+            if (sourceNode == null)
+            {
+                throw new RpcException(new Status(StatusCode.NotFound, "Source node not found"));
+            }
+
+            destNode = await _nodeRepository.GetByPubkey(request.DestinationPubKey);
+            if (destNode == null)
+            {
+                throw new RpcException(new Status(StatusCode.NotFound, "Destination node not found"));
+            }
+
+            wallet = await _walletRepository.GetById(request.WalletId);
+            if (wallet == null)
+            {
+                throw new RpcException(new Status(StatusCode.NotFound, "Wallet not found"));
+            }
+
+            RefuseSparkWallet(wallet);
+
+            if (request.MempoolFeeRate == FEES_TYPE.CustomFee && request.CustomFeeRate == 0)
+            {
+                throw new RpcException(
+                    new Status(StatusCode.InvalidArgument, "Mempool fee rate configuration is not valid"));
+            }
+
+            if (request.Changeless && request.UtxosOutpoints.Count == 0)
+            {
+                throw new RpcException(new Status(StatusCode.InvalidArgument, "Changeless channel open requires utxos"));
+            }
         }
-
-        var destNode = await _nodeRepository.GetByPubkey(request.DestinationPubKey);
-        if (destNode == null)
+        catch (Exception e)
         {
-            throw new RpcException(new Status(StatusCode.NotFound, "Destination node not found"));
-        }
+            // Nothing is persisted yet, so the refusal is only audited
+            var error = e is RpcException rpcException ? rpcException.Status.Detail : e.Message;
+            await _auditService.LogAsync(AuditActionType.Create, AuditEventType.Failure,
+                AuditObjectType.ChannelOperationRequest, null, new { Request = auditDetails, Error = error });
 
-        var wallet = await _walletRepository.GetById(request.WalletId);
-        if (wallet == null)
-        {
-            throw new RpcException(new Status(StatusCode.NotFound, "Wallet not found"));
-        }
+            if (e is RpcException)
+            {
+                throw;
+            }
 
-        RefuseSparkWallet(wallet);
-
-        if (request.MempoolFeeRate == FEES_TYPE.CustomFee && request.CustomFeeRate == 0)
-        {
-            throw new RpcException(
-                new Status(StatusCode.InvalidArgument, "Mempool fee rate configuration is not valid"));
-        }
-
-        if (request.Changeless && request.UtxosOutpoints.Count == 0)
-        {
-            throw new RpcException(new Status(StatusCode.InvalidArgument, "Changeless channel open requires utxos"));
+            _logger?.LogError(e, "Error validating channel open request through gRPC");
+            throw new RpcException(new Status(StatusCode.Internal, "Error validating the channel open request"));
         }
 
         int requestId;
+        ChannelOperationRequest? channelOperationRequest = null;
+        var jobScheduled = false;
 
         try
         {
@@ -823,7 +928,7 @@ public class NodeGuardService : Nodeguard.NodeGuardService.NodeGuardServiceBase,
                 throw new RpcException(new Status(StatusCode.NotFound, "Custom fee rate is required"));
             }
 
-            var channelOperationRequest = new ChannelOperationRequest
+            channelOperationRequest = new ChannelOperationRequest
             {
                 SatsAmount = request.SatsAmount,
                 Description = $"Channel open from {sourceNode.PubKey} to {destNode.PubKey} (API)",
@@ -860,8 +965,7 @@ public class NodeGuardService : Nodeguard.NodeGuardService.NodeGuardServiceBase,
                 (await _lightningService.GenerateTemplatePSBT(channelOperationRequest));
             if (templatePsbt == null)
             {
-                channelOperationRequest.Status = ChannelOperationRequestStatus.Failed;
-                _channelOperationRequestRepository.Update(channelOperationRequest);
+                // The catch below marks the request as failed
                 if (noUtxosAvailable)
                 {
                     _logger?.LogError("No UTXOs available for opening the channel");
@@ -883,20 +987,38 @@ public class NodeGuardService : Nodeguard.NodeGuardService.NodeGuardServiceBase,
 
             var retryList = RetriableJob.ParseRetryListFromString(Constants.JOB_RETRY_INTERVAL_LIST_IN_MINUTES);
             var job = RetriableJob.Create<ChannelOpenJob>(map, channelOperationRequest.Id.ToString(), retryList);
+
+            // Audited before the job is scheduled, so the creation precedes the job's own audits
+            await _auditService.LogAsync(AuditActionType.Create, AuditEventType.Success,
+                AuditObjectType.ChannelOperationRequest, channelOperationRequest.Id.ToString(), auditDetails);
+
             await scheduler.ScheduleJob(job.Job, job.Trigger);
+            jobScheduled = true;
 
             var jobUpdateResult = _channelOperationRequestRepository.Update(channelOperationRequest);
 
+            // The job is scheduled and will open the channel, so failing the call here would only make the client
+            // retry and open a second one
             if (!jobUpdateResult.Item1)
             {
-                _logger?.LogError("Error updating channel operation request, error: {error}", jobUpdateResult.Item2);
-                throw new RpcException(new Status(StatusCode.Internal, "Error updating channel operation request"));
+                _logger?.LogError("Error updating channel operation request {RequestId} after scheduling its job: {error}",
+                    channelOperationRequest.Id, jobUpdateResult.Item2);
             }
 
             requestId = channelOperationRequest.Id;
         }
+        catch (Exception e) when (jobScheduled)
+        {
+            // The job is scheduled and will open the channel, so the request stays active and audited as created.
+            // Failing the call would only make the client retry and open a second one
+            _logger?.LogError(e, "Error opening channel through gRPC after scheduling the job of request {RequestId}",
+                channelOperationRequest!.Id);
+            requestId = channelOperationRequest.Id;
+        }
         catch (Exception e)
         {
+            await FailChannelOpenRequestAsync(channelOperationRequest, auditDetails, e.Message);
+
             _logger?.LogError(e, "Error opening channel through gRPC");
             throw new RpcException(new Status(StatusCode.Internal, e.Message));
         }
@@ -906,6 +1028,26 @@ public class NodeGuardService : Nodeguard.NodeGuardService.NodeGuardServiceBase,
         {
             ChannelOperationRequestId = requestId
         };
+    }
+
+    private Task FailChannelOpenRequestAsync(ChannelOperationRequest? channelOperationRequest, object details,
+        string error)
+    {
+        int? persistedRequestId = channelOperationRequest is { Id: > 0 } ? channelOperationRequest.Id : null;
+
+        return FailRequestAndAuditAsync(persistedRequestId, () => MarkChannelOperationRequestFailed(channelOperationRequest!),
+            AuditActionType.Create, AuditObjectType.ChannelOperationRequest, details, error);
+    }
+
+    private void MarkChannelOperationRequestFailed(ChannelOperationRequest channelOperationRequest)
+    {
+        channelOperationRequest.Status = ChannelOperationRequestStatus.Failed;
+        var (updated, error) = _channelOperationRequestRepository.Update(channelOperationRequest);
+        if (!updated)
+        {
+            _logger?.LogError("Error marking channel operation request {RequestId} as failed: {Error}",
+                channelOperationRequest.Id, error);
+        }
     }
 
     public override async Task<CloseChannelResponse> CloseChannel(CloseChannelRequest request,

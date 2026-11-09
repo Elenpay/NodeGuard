@@ -237,6 +237,144 @@ public class AuditServiceTests
     
     #endregion
 
+    [Fact]
+    public async Task LogAsync_AutoContext_WithUserRoles_AddsRolesToDetails()
+    {
+        // Arrange
+        var httpContext = CreateHttpContextWithUser("user-123", "johndoe");
+        var identity = (ClaimsIdentity)httpContext.User.Identity!;
+        identity.AddClaim(new Claim(ClaimTypes.Role, ApplicationUserRole.FinanceManager.ToString()));
+        identity.AddClaim(new Claim(ClaimTypes.Role, ApplicationUserRole.NodeManager.ToString()));
+        _httpContextAccessorMock.Setup(x => x.HttpContext).Returns(httpContext);
+        var service = CreateAuditService();
+        var captured = CaptureAuditLog();
+
+        // Act
+        await service.LogAsync(
+            AuditActionType.Create,
+            AuditEventType.Success,
+            AuditObjectType.WalletWithdrawalRequest,
+            "1",
+            new { Amount = 50000 });
+
+        // Assert
+        using var details = JsonDocument.Parse(captured().Details!);
+        details.RootElement.GetProperty("Amount").GetInt32().Should().Be(50000);
+        details.RootElement.GetProperty("UserRoles").EnumerateArray().Select(e => e.GetString())
+            .Should().BeEquivalentTo("FinanceManager", "NodeManager");
+    }
+
+    [Fact]
+    public async Task LogAsync_AutoContext_WithUserAndNoDetails_KeepsDetailsNull()
+    {
+        // Arrange
+        var httpContext = CreateHttpContextWithUser("user-123", "johndoe");
+        _httpContextAccessorMock.Setup(x => x.HttpContext).Returns(httpContext);
+        var service = CreateAuditService();
+        var captured = CaptureAuditLog();
+
+        // Act
+        await service.LogAsync(AuditActionType.Login, AuditEventType.Success, AuditObjectType.User);
+
+        // Assert
+        captured().Details.Should().BeNull();
+    }
+
+    [Fact]
+    public async Task LogAsync_AutoContext_WithNonObjectDetails_WrapsThemAndKeepsRoles()
+    {
+        // Arrange
+        var httpContext = CreateHttpContextWithUser("user-123", "johndoe");
+        ((ClaimsIdentity)httpContext.User.Identity!).AddClaim(new Claim(ClaimTypes.Role, "FinanceManager"));
+        _httpContextAccessorMock.Setup(x => x.HttpContext).Returns(httpContext);
+        var service = CreateAuditService();
+        var captured = CaptureAuditLog();
+
+        // Act
+        await service.LogAsync(AuditActionType.Approve, AuditEventType.Success, AuditObjectType.WalletWithdrawalRequest,
+            "1", "Withdrawal approved");
+
+        // Assert
+        using var details = JsonDocument.Parse(captured().Details!);
+        details.RootElement.GetProperty("Details").GetString().Should().Be("Withdrawal approved");
+        details.RootElement.GetProperty("UserRoles").EnumerateArray().Select(e => e.GetString())
+            .Should().BeEquivalentTo("FinanceManager");
+    }
+
+    [Fact]
+    public async Task LogAsync_AutoContext_DoesNotOverwriteCallerSuppliedKeys()
+    {
+        // Arrange
+        var httpContext = CreateHttpContextWithUser("user-123", "johndoe");
+        ((ClaimsIdentity)httpContext.User.Identity!).AddClaim(new Claim(ClaimTypes.Role, "FinanceManager"));
+        _httpContextAccessorMock.Setup(x => x.HttpContext).Returns(httpContext);
+        var service = CreateAuditService();
+        var captured = CaptureAuditLog();
+
+        // Act
+        await service.LogAsync(AuditActionType.Update, AuditEventType.Success, AuditObjectType.User, "2",
+            new { UserRoles = new[] { "NodeManager" } });
+
+        // Assert
+        using var details = JsonDocument.Parse(captured().Details!);
+        details.RootElement.GetProperty("UserRoles").EnumerateArray().Select(e => e.GetString())
+            .Should().BeEquivalentTo("NodeManager");
+    }
+
+    [Fact]
+    public async Task LogAsync_AutoContext_WithApiToken_RecordsTokenAndIpAddress()
+    {
+        // Arrange
+        var httpContext = new DefaultHttpContext();
+        httpContext.Connection.RemoteIpAddress = System.Net.IPAddress.Parse("10.0.0.5");
+        httpContext.Items[AuthenticatedApiToken.HttpContextItemKey] = new AuthenticatedApiToken(7, "backend");
+        _httpContextAccessorMock.Setup(x => x.HttpContext).Returns(httpContext);
+        var service = CreateAuditService();
+        var captured = CaptureAuditLog();
+
+        // Act
+        await service.LogAsync(AuditActionType.Create, AuditEventType.Success, AuditObjectType.WalletWithdrawalRequest,
+            "1", new { WalletId = 3 });
+
+        // Assert
+        var log = captured();
+        log.Username.Should().Be("API token 7 (backend)");
+        log.UserId.Should().BeNull();
+        log.IpAddress.Should().Be("10.0.0.5");
+        using var details = JsonDocument.Parse(log.Details!);
+        details.RootElement.GetProperty("WalletId").GetInt32().Should().Be(3);
+        details.RootElement.GetProperty("ApiTokenId").GetInt32().Should().Be(7);
+        details.RootElement.GetProperty("ApiTokenName").GetString().Should().Be("backend");
+    }
+
+    [Fact]
+    public async Task LogAsync_AutoContext_WithApiTokenAndNoDetails_StillRecordsTheTokenId()
+    {
+        // Arrange
+        var httpContext = new DefaultHttpContext();
+        httpContext.Items[AuthenticatedApiToken.HttpContextItemKey] = new AuthenticatedApiToken(7, "backend");
+        _httpContextAccessorMock.Setup(x => x.HttpContext).Returns(httpContext);
+        var service = CreateAuditService();
+        var captured = CaptureAuditLog();
+
+        // Act
+        await service.LogAsync(AuditActionType.Create, AuditEventType.Failure, AuditObjectType.WalletWithdrawalRequest);
+
+        // Assert
+        using var details = JsonDocument.Parse(captured().Details!);
+        details.RootElement.GetProperty("ApiTokenId").GetInt32().Should().Be(7);
+    }
+
+    private Func<AuditLog> CaptureAuditLog()
+    {
+        AuditLog? captured = null;
+        _auditLogRepositoryMock
+            .Setup(x => x.AddAsync(It.IsAny<AuditLog>()))
+            .Callback<AuditLog>(log => captured = log)
+            .ReturnsAsync((true, (string?)null));
+        return () => captured ?? throw new InvalidOperationException("No audit log was persisted");
+    }
+
     #region LogSystemAsync
 
     [Fact]

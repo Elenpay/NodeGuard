@@ -134,11 +134,13 @@ namespace NodeGuard.Rpc
             nodeRepositoryMock.Setup(repo => repo.GetByPubkey(sourcePubKey)).ReturnsAsync((Node?)null);
             nodeRepositoryMock.Setup(repo => repo.GetByPubkey(destPubKey))
                 .ReturnsAsync(new Node { Id = 2, PubKey = destPubKey });
+            var auditService = new Mock<IAuditService>();
 
             var service = CreateNodeGuardService(
                 schedulerFactory: schedulerFactoryMock,
                 nodeRepository: nodeRepositoryMock.Object,
-                channelOperationRequestRepository: channelOperationRequestRepositoryMock.Object);
+                channelOperationRequestRepository: channelOperationRequestRepositoryMock.Object,
+                auditService: auditService.Object);
 
             var request = new OpenChannelRequest
             {
@@ -155,6 +157,206 @@ namespace NodeGuard.Rpc
 
             // Assert
             (await act.Should().ThrowAsync<RpcException>()).Which.Status.StatusCode.Should().Be(StatusCode.NotFound);
+            auditService.Verify(x => x.LogAsync(AuditActionType.Create, AuditEventType.Failure,
+                AuditObjectType.ChannelOperationRequest, null, It.IsAny<object?>()), Times.Once,
+                "a refused request is audited even though it was never persisted");
+        }
+
+        [Fact]
+        public async Task OpenChannel_SchedulingFails_MarksTheRequestFailedAndAuditsTheFailure()
+        {
+            // Arrange
+            var nodeRepositoryMock = new Mock<INodeRepository>();
+            var channelOperationRequestRepositoryMock = new Mock<IChannelOperationRequestRepository>();
+            var walletRepositoryMock = new Mock<IWalletRepository>();
+            var lightningServiceMock = new Mock<ILightningService>();
+            var auditService = new Mock<IAuditService>();
+            var calls = new List<string>();
+
+            nodeRepositoryMock.Setup(repo => repo.GetByPubkey("sourcePubKey"))
+                .ReturnsAsync(new Node { Id = 1, PubKey = "sourcePubKey" });
+            nodeRepositoryMock.Setup(repo => repo.GetByPubkey("destPubKey"))
+                .ReturnsAsync(new Node { Id = 2, PubKey = "destPubKey" });
+            walletRepositoryMock.Setup(repo => repo.GetById(1)).ReturnsAsync(new Wallet { Id = 1 });
+            channelOperationRequestRepositoryMock.Setup(repo => repo.AddAsync(It.IsAny<ChannelOperationRequest>()))
+                .Callback<ChannelOperationRequest>(r => r.Id = 5)
+                .ReturnsAsync((true, null));
+            channelOperationRequestRepositoryMock.Setup(repo => repo.Update(It.IsAny<ChannelOperationRequest>()))
+                .Returns((true, null));
+            lightningServiceMock.Setup(service => service.GenerateTemplatePSBT(It.IsAny<ChannelOperationRequest>()))
+                .ReturnsAsync((PSBT.Parse(PSBTHex, Network.RegTest), false));
+            auditService.Setup(x => x.LogAsync(It.IsAny<AuditActionType>(), It.IsAny<AuditEventType>(),
+                    It.IsAny<AuditObjectType>(), It.IsAny<string?>(), It.IsAny<object?>()))
+                .Callback<AuditActionType, AuditEventType, AuditObjectType, string?, object?>((_, e, _, id, _) =>
+                    calls.Add($"audit {e} {id}"))
+                .Returns(Task.CompletedTask);
+
+            var scheduler = new Mock<IScheduler>();
+            scheduler.Setup(x => x.ScheduleJob(It.IsAny<IJobDetail>(), It.IsAny<ITrigger>(), It.IsAny<CancellationToken>()))
+                .Callback(() => calls.Add("schedule"))
+                .ThrowsAsync(new SchedulerException("boom"));
+            var schedulerFactory = new Mock<ISchedulerFactory>();
+            schedulerFactory.Setup(x => x.GetScheduler(It.IsAny<CancellationToken>())).ReturnsAsync(scheduler.Object);
+
+            var service = CreateNodeGuardService(
+                walletRepository: walletRepositoryMock.Object,
+                schedulerFactory: schedulerFactory.Object,
+                nodeRepository: nodeRepositoryMock.Object,
+                channelOperationRequestRepository: channelOperationRequestRepositoryMock.Object,
+                lightningService: lightningServiceMock.Object,
+                auditService: auditService.Object);
+
+            var request = new OpenChannelRequest
+            {
+                SourcePubKey = "sourcePubKey",
+                DestinationPubKey = "destPubKey",
+                SatsAmount = 10000,
+                WalletId = 1,
+                MempoolFeeRate = FEES_TYPE.HourFee
+            };
+
+            // Act
+            var act = () => service.OpenChannel(request, TestServerCallContext.Create());
+
+            // Assert
+            await act.Should().ThrowAsync<RpcException>();
+            channelOperationRequestRepositoryMock.Verify(repo => repo.Update(It.Is<ChannelOperationRequest>(r =>
+                r.Id == 5 && r.Status == ChannelOperationRequestStatus.Failed)), Times.Once,
+                "a request that could not be scheduled must not stay pending holding its UTXOs");
+            calls.Should().Equal(new[] { "audit Success 5", "schedule", "audit Failure 5" },
+                "the creation is audited before the job can run, and the failure after it");
+        }
+
+        [Fact]
+        public async Task OpenChannel_UpdateFailsAfterScheduling_KeepsTheRequestActiveAndReturnsIt()
+        {
+            // Arrange
+            var nodeRepositoryMock = new Mock<INodeRepository>();
+            var channelOperationRequestRepositoryMock = new Mock<IChannelOperationRequestRepository>();
+            var walletRepositoryMock = new Mock<IWalletRepository>();
+            var lightningServiceMock = new Mock<ILightningService>();
+            var auditService = new Mock<IAuditService>();
+
+            nodeRepositoryMock.Setup(repo => repo.GetByPubkey("sourcePubKey"))
+                .ReturnsAsync(new Node { Id = 1, PubKey = "sourcePubKey" });
+            nodeRepositoryMock.Setup(repo => repo.GetByPubkey("destPubKey"))
+                .ReturnsAsync(new Node { Id = 2, PubKey = "destPubKey" });
+            walletRepositoryMock.Setup(repo => repo.GetById(1)).ReturnsAsync(new Wallet { Id = 1 });
+            channelOperationRequestRepositoryMock.Setup(repo => repo.AddAsync(It.IsAny<ChannelOperationRequest>()))
+                .Callback<ChannelOperationRequest>(r => r.Id = 5)
+                .ReturnsAsync((true, null));
+            channelOperationRequestRepositoryMock.Setup(repo => repo.Update(It.IsAny<ChannelOperationRequest>()))
+                .Returns((false, "db down"));
+            lightningServiceMock.Setup(service => service.GenerateTemplatePSBT(It.IsAny<ChannelOperationRequest>()))
+                .ReturnsAsync((PSBT.Parse(PSBTHex, Network.RegTest), false));
+
+            var scheduler = new Mock<IScheduler>();
+            var schedulerFactory = new Mock<ISchedulerFactory>();
+            schedulerFactory.Setup(x => x.GetScheduler(It.IsAny<CancellationToken>())).ReturnsAsync(scheduler.Object);
+
+            var service = CreateNodeGuardService(
+                walletRepository: walletRepositoryMock.Object,
+                schedulerFactory: schedulerFactory.Object,
+                nodeRepository: nodeRepositoryMock.Object,
+                channelOperationRequestRepository: channelOperationRequestRepositoryMock.Object,
+                lightningService: lightningServiceMock.Object,
+                auditService: auditService.Object);
+
+            var request = new OpenChannelRequest
+            {
+                SourcePubKey = "sourcePubKey",
+                DestinationPubKey = "destPubKey",
+                SatsAmount = 10000,
+                WalletId = 1,
+                MempoolFeeRate = FEES_TYPE.HourFee
+            };
+
+            // Act
+            var response = await service.OpenChannel(request, TestServerCallContext.Create());
+
+            // Assert
+            response.ChannelOperationRequestId.Should().Be(5,
+                "an error would make the client retry and open a second channel");
+            channelOperationRequestRepositoryMock.Verify(repo => repo.Update(It.Is<ChannelOperationRequest>(r =>
+                r.Status == ChannelOperationRequestStatus.Failed)), Times.Never,
+                "the scheduled job will still open the channel, so its request must stay active");
+            auditService.Verify(x => x.LogAsync(It.IsAny<AuditActionType>(), AuditEventType.Failure,
+                It.IsAny<AuditObjectType>(), It.IsAny<string?>(), It.IsAny<object?>()), Times.Never);
+        }
+
+        [Fact]
+        public async Task OpenChannel_LookupThrows_AuditsTheFailureAndReturnsInternal()
+        {
+            // Arrange
+            var nodeRepositoryMock = new Mock<INodeRepository>();
+            nodeRepositoryMock.Setup(repo => repo.GetByPubkey(It.IsAny<string>()))
+                .ThrowsAsync(new InvalidOperationException("db down"));
+            var auditService = new Mock<IAuditService>();
+
+            var service = CreateNodeGuardService(nodeRepository: nodeRepositoryMock.Object,
+                auditService: auditService.Object);
+
+            // Act
+            var act = () => service.OpenChannel(new OpenChannelRequest
+            {
+                SourcePubKey = "sourcePubKey",
+                DestinationPubKey = "destPubKey",
+                SatsAmount = 10000,
+                WalletId = 1
+            }, TestServerCallContext.Create());
+
+            // Assert
+            (await act.Should().ThrowAsync<RpcException>()).Which.StatusCode.Should().Be(StatusCode.Internal);
+            auditService.Verify(x => x.LogAsync(AuditActionType.Create, AuditEventType.Failure,
+                AuditObjectType.ChannelOperationRequest, null, It.IsAny<object?>()), Times.Once);
+        }
+
+        [Fact]
+        public async Task OpenChannel_UpdateThrowsAfterScheduling_ReturnsTheRequest()
+        {
+            // Arrange
+            var nodeRepositoryMock = new Mock<INodeRepository>();
+            var channelOperationRequestRepositoryMock = new Mock<IChannelOperationRequestRepository>();
+            var walletRepositoryMock = new Mock<IWalletRepository>();
+            var lightningServiceMock = new Mock<ILightningService>();
+
+            nodeRepositoryMock.Setup(repo => repo.GetByPubkey("sourcePubKey"))
+                .ReturnsAsync(new Node { Id = 1, PubKey = "sourcePubKey" });
+            nodeRepositoryMock.Setup(repo => repo.GetByPubkey("destPubKey"))
+                .ReturnsAsync(new Node { Id = 2, PubKey = "destPubKey" });
+            walletRepositoryMock.Setup(repo => repo.GetById(1)).ReturnsAsync(new Wallet { Id = 1 });
+            channelOperationRequestRepositoryMock.Setup(repo => repo.AddAsync(It.IsAny<ChannelOperationRequest>()))
+                .Callback<ChannelOperationRequest>(r => r.Id = 5)
+                .ReturnsAsync((true, null));
+            channelOperationRequestRepositoryMock.Setup(repo => repo.Update(It.IsAny<ChannelOperationRequest>()))
+                .Throws(new InvalidOperationException("db down"));
+            lightningServiceMock.Setup(service => service.GenerateTemplatePSBT(It.IsAny<ChannelOperationRequest>()))
+                .ReturnsAsync((PSBT.Parse(PSBTHex, Network.RegTest), false));
+
+            var scheduler = new Mock<IScheduler>();
+            var schedulerFactory = new Mock<ISchedulerFactory>();
+            schedulerFactory.Setup(x => x.GetScheduler(It.IsAny<CancellationToken>())).ReturnsAsync(scheduler.Object);
+
+            var service = CreateNodeGuardService(
+                walletRepository: walletRepositoryMock.Object,
+                schedulerFactory: schedulerFactory.Object,
+                nodeRepository: nodeRepositoryMock.Object,
+                channelOperationRequestRepository: channelOperationRequestRepositoryMock.Object,
+                lightningService: lightningServiceMock.Object);
+
+            // Act
+            var response = await service.OpenChannel(new OpenChannelRequest
+            {
+                SourcePubKey = "sourcePubKey",
+                DestinationPubKey = "destPubKey",
+                SatsAmount = 10000,
+                WalletId = 1,
+                MempoolFeeRate = FEES_TYPE.HourFee
+            }, TestServerCallContext.Create());
+
+            // Assert
+            response.ChannelOperationRequestId.Should().Be(5,
+                "an error would make the client retry and open a second channel");
         }
 
         [Fact]
@@ -242,7 +444,7 @@ namespace NodeGuard.Rpc
                 WalletId = walletId,
                 MempoolFeeRate = FEES_TYPE.HourFee
             };
-            var context = new Mock<ServerCallContext>().Object;
+            var context = TestServerCallContext.Create();
 
             // Act
             Func<Task> act = async () => await service.OpenChannel(request, context);
@@ -334,7 +536,7 @@ namespace NodeGuard.Rpc
                 },
                 MempoolFeeRate = FEES_TYPE.HourFee
             };
-            var context = new Mock<ServerCallContext>().Object;
+            var context = TestServerCallContext.Create();
 
             // Act
             Func<Task> act = async () => await service.OpenChannel(request, context);
@@ -769,6 +971,91 @@ namespace NodeGuard.Rpc
         }
 
         [Fact]
+        public async Task RequestWithdrawal_Success_AuditsTheCreatedRequest()
+        {
+            //Arrange
+            var wallet = InitMockRequestWithdrawal(out var walletRepository,
+                out var nbxplorerService,
+                out _,
+                out _,
+                out _,
+                out _,
+                out _,
+                out var bitcoinService,
+                out var walletWithdrawalRequestRepository, out var mockScheduler);
+
+            wallet.IsHotWallet = false;
+            var auditService = new Mock<IAuditService>();
+
+            var mockNodeGuardService = CreateNodeGuardService(
+                walletRepository: walletRepository.Object,
+                walletWithdrawalRequestRepository: walletWithdrawalRequestRepository.Object,
+                bitcoinService: bitcoinService.Object,
+                nbXplorerService: nbxplorerService.Object,
+                schedulerFactory: mockScheduler,
+                auditService: auditService.Object);
+
+            var requestWithdrawalRequest = new RequestWithdrawalRequest
+            {
+                WalletId = wallet.Id,
+                Description = "Request Withdrawal Audit Test",
+                Destinations = { new Destination
+                {
+                    Address = "bcrt1q590shaxaf5u08ml8jwlzghz99dup3z9592vxal",
+                    AmountSats = new Money(1, MoneyUnit.BTC).Satoshi
+                }
+                }
+            };
+            //Act
+            var resp = await mockNodeGuardService.RequestWithdrawal(requestWithdrawalRequest, TestServerCallContext.Create());
+
+            //Assert
+            auditService.Verify(x => x.LogAsync(AuditActionType.Create, AuditEventType.Success,
+                AuditObjectType.WalletWithdrawalRequest, resp.RequestId.ToString(), It.IsAny<object?>()), Times.Once);
+        }
+
+        [Fact]
+        public async Task RequestWithdrawal_RefreshReturnsNull_CancelsAndAuditsTheSavedRequest()
+        {
+            //Arrange
+            var wallet = InitMockRequestWithdrawal(out var walletRepository,
+                out var nbxplorerService,
+                out _,
+                out _,
+                out _,
+                out _,
+                out _,
+                out var bitcoinService,
+                out var walletWithdrawalRequestRepository, out var mockScheduler);
+            walletWithdrawalRequestRepository.Setup(x => x.AddAsync(It.IsAny<WalletWithdrawalRequest>()))
+                .Callback<WalletWithdrawalRequest>(r => r.Id = 9)
+                .ReturnsAsync((true, null));
+            walletWithdrawalRequestRepository.Setup(x => x.GetById(9)).ReturnsAsync((WalletWithdrawalRequest?)null);
+            walletWithdrawalRequestRepository.Setup(x => x.Update(It.IsAny<WalletWithdrawalRequest>()))
+                .Returns((true, (string?)null));
+            var auditService = new Mock<IAuditService>();
+
+            var mockNodeGuardService = CreateNodeGuardService(
+                walletRepository: walletRepository.Object,
+                walletWithdrawalRequestRepository: walletWithdrawalRequestRepository.Object,
+                bitcoinService: bitcoinService.Object,
+                nbXplorerService: nbxplorerService.Object,
+                schedulerFactory: mockScheduler,
+                auditService: auditService.Object);
+
+            //Act
+            var act = () => mockNodeGuardService.RequestWithdrawal(CreateWithdrawalRequest(wallet.Id, 100),
+                TestServerCallContext.Create());
+
+            //Assert
+            await act.Should().ThrowAsync<RpcException>();
+            walletWithdrawalRequestRepository.Verify(x => x.Update(It.Is<WalletWithdrawalRequest>(r =>
+                r.Id == 9 && r.Status == WalletWithdrawalRequestStatus.Cancelled)), Times.Once);
+            auditService.Verify(x => x.LogAsync(AuditActionType.Create, AuditEventType.Failure,
+                AuditObjectType.WalletWithdrawalRequest, "9", It.IsAny<object?>()), Times.Once);
+        }
+
+        [Fact]
         public async Task RequestWithdrawal_NoWallet()
         {
             //Arrange
@@ -1009,10 +1296,12 @@ namespace NodeGuard.Rpc
             withdrawalRequestService.Setup(x => x.ScheduleHotWalletWithdrawalAsync(11)).ThrowsAsync(new Exception("boom"));
             var walletWithdrawalRequestRepository = new Mock<IWalletWithdrawalRequestRepository>();
             walletWithdrawalRequestRepository.Setup(x => x.Update(It.IsAny<WalletWithdrawalRequest>())).Returns((true, (string?)null));
+            var auditService = new Mock<IAuditService>();
 
             var mockNodeGuardService = CreateNodeGuardService(
                 walletWithdrawalRequestRepository: walletWithdrawalRequestRepository.Object,
-                withdrawalRequestService: withdrawalRequestService.Object);
+                withdrawalRequestService: withdrawalRequestService.Object,
+                auditService: auditService.Object);
 
             //Act
             var act = () => mockNodeGuardService.BumpWithdrawal(new BumpWithdrawalRequest
@@ -1027,6 +1316,71 @@ namespace NodeGuard.Rpc
             walletWithdrawalRequestRepository.Verify(x => x.Update(It.Is<WalletWithdrawalRequest>(r => r.Id == 11
                 && r.Status == WalletWithdrawalRequestStatus.Cancelled)), Times.Once,
                 "a bump that could not be executed must not stay pending");
+            auditService.Verify(x => x.LogAsync(AuditActionType.BumpFee, AuditEventType.Success,
+                AuditObjectType.WalletWithdrawalRequest, "11", It.IsAny<object?>()), Times.Once,
+                "a hot wallet replacement is audited before its job is scheduled");
+            auditService.Verify(x => x.LogAsync(AuditActionType.BumpFee, AuditEventType.Failure,
+                AuditObjectType.WalletWithdrawalRequest, "11", It.IsAny<object?>()), Times.Once);
+        }
+
+        [Fact]
+        public async Task BumpWithdrawal_CancellingTheFailedBumpThrows_KeepsTheOriginalError()
+        {
+            //Arrange
+            var bump = new WalletWithdrawalRequest { Id = 11, Wallet = new Wallet { IsHotWallet = true }, BumpingWalletWithdrawalRequestId = 10 };
+            var withdrawalRequestService = new Mock<IWithdrawalRequestService>();
+            withdrawalRequestService.Setup(x => x.CreateBumpRequestAsync(10, MempoolRecommendedFeesType.CustomFee, 10m)).ReturnsAsync(bump);
+            withdrawalRequestService.Setup(x => x.ScheduleHotWalletWithdrawalAsync(11)).ThrowsAsync(new NoUTXOsAvailableException());
+            var walletWithdrawalRequestRepository = new Mock<IWalletWithdrawalRequestRepository>();
+            walletWithdrawalRequestRepository.Setup(x => x.Update(It.IsAny<WalletWithdrawalRequest>()))
+                .Throws(new InvalidOperationException("context disposed"));
+
+            var mockNodeGuardService = CreateNodeGuardService(
+                walletWithdrawalRequestRepository: walletWithdrawalRequestRepository.Object,
+                withdrawalRequestService: withdrawalRequestService.Object);
+
+            //Act
+            var act = () => mockNodeGuardService.BumpWithdrawal(new BumpWithdrawalRequest
+            {
+                RequestId = 10,
+                MempoolFeeRate = FEES_TYPE.CustomFee,
+                CustomFeeRate = 10,
+            }, TestServerCallContext.Create());
+
+            //Assert
+            (await act.Should().ThrowAsync<RpcException>()).Which.StatusCode.Should().Be(StatusCode.ResourceExhausted);
+        }
+
+        [Fact]
+        public async Task BumpWithdrawal_CancellingTheFailedBumpThrows_StillAuditsTheFailure()
+        {
+            //Arrange
+            var bump = new WalletWithdrawalRequest { Id = 11, Wallet = new Wallet { IsHotWallet = true }, BumpingWalletWithdrawalRequestId = 10 };
+            var withdrawalRequestService = new Mock<IWithdrawalRequestService>();
+            withdrawalRequestService.Setup(x => x.CreateBumpRequestAsync(10, MempoolRecommendedFeesType.CustomFee, 10m)).ReturnsAsync(bump);
+            withdrawalRequestService.Setup(x => x.ScheduleHotWalletWithdrawalAsync(11)).ThrowsAsync(new Exception("boom"));
+            var walletWithdrawalRequestRepository = new Mock<IWalletWithdrawalRequestRepository>();
+            walletWithdrawalRequestRepository.Setup(x => x.Update(It.IsAny<WalletWithdrawalRequest>()))
+                .Throws(new InvalidOperationException("context disposed"));
+            var auditService = new Mock<IAuditService>();
+
+            var mockNodeGuardService = CreateNodeGuardService(
+                walletWithdrawalRequestRepository: walletWithdrawalRequestRepository.Object,
+                withdrawalRequestService: withdrawalRequestService.Object,
+                auditService: auditService.Object);
+
+            //Act
+            var act = () => mockNodeGuardService.BumpWithdrawal(new BumpWithdrawalRequest
+            {
+                RequestId = 10,
+                MempoolFeeRate = FEES_TYPE.CustomFee,
+                CustomFeeRate = 10,
+            }, TestServerCallContext.Create());
+
+            //Assert
+            await act.Should().ThrowAsync<RpcException>();
+            auditService.Verify(x => x.LogAsync(AuditActionType.BumpFee, AuditEventType.Failure,
+                AuditObjectType.WalletWithdrawalRequest, "11", It.IsAny<object?>()), Times.Once);
         }
 
         [Fact]
@@ -1134,8 +1488,10 @@ namespace NodeGuard.Rpc
             var withdrawalRequestService = new Mock<IWithdrawalRequestService>();
             withdrawalRequestService.Setup(x => x.CreateCancelRequestAsync(10, MempoolRecommendedFeesType.CustomFee, 10m)).ReturnsAsync(cancel);
             withdrawalRequestService.Setup(x => x.ScheduleHotWalletWithdrawalAsync(11)).ReturnsAsync(psbt);
+            var auditService = new Mock<IAuditService>();
 
-            var mockNodeGuardService = CreateNodeGuardService(withdrawalRequestService: withdrawalRequestService.Object);
+            var mockNodeGuardService = CreateNodeGuardService(withdrawalRequestService: withdrawalRequestService.Object,
+                auditService: auditService.Object);
 
             //Act
             var resp = await mockNodeGuardService.CancelWithdrawal(new CancelWithdrawalRequest
@@ -1151,6 +1507,8 @@ namespace NodeGuard.Rpc
             resp.Txid.Should().Be(psbt.GetGlobalTransaction().GetHash().ToString());
             withdrawalRequestService.Verify(x => x.CreateBumpRequestAsync(It.IsAny<int>(), It.IsAny<MempoolRecommendedFeesType>(), It.IsAny<decimal?>()), Times.Never,
                 "a cancellation must not be turned into a fee bump");
+            auditService.Verify(x => x.LogAsync(AuditActionType.RbfCancel, AuditEventType.Success,
+                AuditObjectType.WalletWithdrawalRequest, "11", It.IsAny<object?>()), Times.Once);
         }
 
         [Fact]
