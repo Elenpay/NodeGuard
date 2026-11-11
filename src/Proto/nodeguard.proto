@@ -179,6 +179,15 @@ service NodeGuardService {
   failed, and an RBF replacement reverted. Events are live only: nothing is stored or replayed, so a client that
   reconnects should reconcile with GetWithdrawalsRequestStatus after WALLET_EVENT_SUBSCRIBED. Events come from the
   NodeGuard instance the call is connected to. A client that cannot keep up is disconnected with RESOURCE_EXHAUSTED.
+
+  With intercept_withdrawals, the client also decides on the wallet's withdrawals: before NodeGuard signs and
+  broadcasts one (RBF bumps and cancellations included), it sends WALLET_EVENT_WITHDRAWAL_DECISION_REQUESTED with a
+  decision_id and a deadline, and the client answers with a WithdrawalDecision on this call. The withdrawal goes ahead
+  only when every connected interceptor allows it; a block, no answer before the deadline
+  (WITHDRAWAL_INTERCEPTOR_TIMEOUT_SECONDS, 60s by default) or an interceptor leaving before it answers rejects it,
+  and an RBF replacement that is rejected puts the original back to pending confirmation. With no interceptor
+  connected the check is skipped. Interceptors are only seen by the NodeGuard instance they are connected to, so
+  this holds for a single NodeGuard instance. Half-closing the request stream ends an interceptor's call.
   */
   rpc SubscribeWalletEvents(stream WalletEventsClientMessage) returns (stream WalletEvent);
 }
@@ -844,13 +853,26 @@ message WalletEventsClientMessage {
   oneof message {
     // Must be the first message of the call
     SubscribeWalletEventsRequest subscribe = 1;
+    // Answers a WALLET_EVENT_WITHDRAWAL_DECISION_REQUESTED; only from a subscription with intercept_withdrawals
+    WithdrawalDecision decision = 2;
   }
+}
+
+message WithdrawalDecision {
+  // The decision_id of the WALLET_EVENT_WITHDRAWAL_DECISION_REQUESTED being answered
+  string decision_id = 1;
+  bool allow = 2;
+  // Why it was blocked; stored as the withdrawal's rejection reason
+  optional string reason = 3;
 }
 
 message SubscribeWalletEventsRequest {
   int32 wallet_id = 1;
-  // Only these event types are sent; empty sends all. WALLET_EVENT_SUBSCRIBED is always sent.
+  // Only these event types are sent; empty sends all. WALLET_EVENT_SUBSCRIBED and, for interceptors,
+  // WALLET_EVENT_WITHDRAWAL_DECISION_REQUESTED are always sent.
   repeated WALLET_EVENT_TYPE event_types = 2;
+  // Decide on the wallet's withdrawals before they are signed and broadcast
+  bool intercept_withdrawals = 3;
 }
 
 enum WALLET_EVENT_TYPE {
@@ -877,6 +899,8 @@ enum WALLET_EVENT_TYPE {
   WALLET_EVENT_WITHDRAWAL_REPLACEMENT_REVERTED = 19;
   // Any other status change, e.g. a hot wallet withdrawal moving to signatures pending
   WALLET_EVENT_WITHDRAWAL_STATUS_CHANGED = 20;
+  // Sent to interceptors only: answer with a WithdrawalDecision for decision_id before decision_deadline_unix_ms
+  WALLET_EVENT_WITHDRAWAL_DECISION_REQUESTED = 21;
 }
 
 message WalletEvent {
@@ -916,4 +940,7 @@ message WithdrawalEvent {
   optional string request_metadata = 14;
   // Requested fee rate when one was set explicitly
   optional double fee_rate_sat_vb = 15;
+  // Set on WALLET_EVENT_WITHDRAWAL_DECISION_REQUESTED
+  optional string decision_id = 16;
+  optional int64 decision_deadline_unix_ms = 17;
 }

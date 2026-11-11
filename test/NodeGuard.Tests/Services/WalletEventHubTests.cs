@@ -128,4 +128,43 @@ public class WalletEventHubTests
         hub.HasSubscribers(1).Should().BeFalse();
         hub.HasSubscribers(2).Should().BeFalse();
     }
+
+    [Fact]
+    public void GetInterceptors_ListsOnlyInterceptingSubscriptionsOfTheWallet()
+    {
+        var hub = CreateHub();
+        using var observer = hub.Subscribe(1, "observer");
+        using var interceptor = hub.Subscribe(1, "integrator", interceptWithdrawals: true);
+        using var elsewhere = hub.Subscribe(2, "other", interceptWithdrawals: true);
+
+        hub.GetInterceptors(1).Should().ContainSingle().Which.Should().BeSameAs(interceptor);
+        hub.GetInterceptors(3).Should().BeEmpty();
+    }
+
+    [Fact]
+    public void Send_ReachesOnlyThatSubscription()
+    {
+        var hub = CreateHub();
+        using var target = hub.Subscribe(1, interceptWithdrawals: true);
+        using var other = hub.Subscribe(1);
+
+        hub.Send(target, Event(1)).Should().BeTrue();
+
+        target.Reader.TryRead(out _).Should().BeTrue();
+        other.Reader.TryRead(out _).Should().BeFalse();
+    }
+
+    [Fact]
+    public void Closed_FiresWhenTheSubscriptionEnds_AndSendThenFails()
+    {
+        var hub = CreateHub();
+        var subscription = hub.Subscribe(1, interceptWithdrawals: true);
+        subscription.Closed.IsCancellationRequested.Should().BeFalse();
+
+        subscription.Dispose();
+
+        subscription.Closed.IsCancellationRequested.Should().BeTrue();
+        hub.Send(subscription, Event(1)).Should().BeFalse();
+    }
 }
+

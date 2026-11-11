@@ -101,6 +101,8 @@ services:
       # WithdrawalRbfBumpE2ETests waits for the bumped withdrawal to settle once mined; poll confirmations every 10s
       # instead of the default every-5-minutes cron.
       MONITOR_WITHDRAWALS_CRON: "0/10 * * * * ?"
+      # WalletEventsE2ETests leaves one withdrawal unanswered and waits for it to be blocked; 10s instead of 60s.
+      WITHDRAWAL_INTERCEPTOR_TIMEOUT_SECONDS: "10"
       ROUTING_ENGINE_ENABLED: "true"
       ROUTING_ENGINE_DRY_RUN: "false"
       ROUTING_ENGINE_FEE_MIN_CHANNEL_SIZE_SATS: "15000000"
