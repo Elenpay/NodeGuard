@@ -642,11 +642,9 @@ _amountToTransfer;
             var job = SimpleJob.Create<PerformWithdrawalJob>(map, withdrawalRequest.Id.ToString());
             await scheduler.ScheduleJob(job.Job, job.Trigger);
 
-            if (withdrawalRequest != null)
-            {
-                WalletWithdrawalRequestRepository.Update(withdrawalRequest);
-                result = true;
-            }
+            // No write after scheduling: the job may already have moved the request to FinalizingPSBT or broadcast
+            // it, and persisting this copy (loaded before scheduling) would revert its status and wipe its TxId.
+            result = true;
         }
         catch (Exception e)
         {

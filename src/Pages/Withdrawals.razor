@@ -1362,10 +1362,8 @@
             var job = SimpleJob.Create<PerformWithdrawalJob>(map, _selectedRequest.Id.ToString());
             await scheduler.ScheduleJob(job.Job, job.Trigger);
 
-            if (_selectedRequest != null)
-            {
-                WalletWithdrawalRequestRepository.Update(_selectedRequest);
-            }
+            // No write after scheduling: the job may already have moved the request to FinalizingPSBT or broadcast
+            // it, and persisting this copy (loaded before scheduling) would revert its status and wipe its TxId.
             await LogWithdrawalAuditAsync(AuditActionType.Approve, AuditEventType.Success, _selectedRequest, "Withdrawal job scheduled.");
         }
         catch (Exception ex)
