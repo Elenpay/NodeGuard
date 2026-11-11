@@ -199,4 +199,88 @@ public class WithdrawalEventPublisherTests
         act.Should().NotThrow();
         _hub.DidNotReceive().Publish(Arg.Any<WalletEvent>());
     }
+
+    [Fact]
+    public void ReadBeforeUpdate_UnwatchedWallet_DoesNotReadTheDatabase()
+    {
+        _hub.HasSubscribers(WalletId).Returns(false);
+        var id = Seed(new WalletWithdrawalRequest { Status = WalletWithdrawalRequestStatus.FinalizingPSBT });
+        _factory.ClearReceivedCalls();
+
+        var before = _publisher.ReadBeforeUpdate(new WalletWithdrawalRequest { Id = id, WalletId = WalletId });
+
+        before.Should().BeNull();
+        _factory.DidNotReceive().CreateDbContext();
+    }
+
+    [Fact]
+    public void ReadBeforeUpdate_WatchedWallet_ReturnsTheStoredState()
+    {
+        var id = Seed(new WalletWithdrawalRequest { Status = WalletWithdrawalRequestStatus.OnChainConfirmationPending, TxId = TxId });
+
+        // The request in hand already carries the new values; the stored ones are what the update changes
+        var before = _publisher.ReadBeforeUpdate(new WalletWithdrawalRequest
+        {
+            Id = id,
+            WalletId = WalletId,
+            Status = WalletWithdrawalRequestStatus.OnChainConfirmed,
+            TxId = TxId
+        });
+
+        before.Should().Be(new WithdrawalStateBeforeUpdate(WalletId, id,
+            WalletWithdrawalRequestStatus.OnChainConfirmationPending, TxId));
+    }
+
+    [Fact]
+    public void ReadBeforeUpdate_UnsavedRequest_ReturnsNull()
+    {
+        _publisher.ReadBeforeUpdate(new WalletWithdrawalRequest { WalletId = WalletId }).Should().BeNull();
+
+        _factory.DidNotReceive().CreateDbContext();
+    }
+
+    [Fact]
+    public void ReadBeforeUpdate_DatabaseFailure_ReturnsNull()
+    {
+        _factory.CreateDbContext().Returns(_ => throw new InvalidOperationException("database down"));
+
+        var act = () => _publisher.ReadBeforeUpdate(new WalletWithdrawalRequest { Id = 1, WalletId = WalletId });
+
+        act.Should().NotThrow().Which.Should().BeNull();
+    }
+
+    [Fact]
+    public void PublishUpdated_PublishesTheTransitionFromTheStateBefore()
+    {
+        var id = Seed(new WalletWithdrawalRequest { Status = WalletWithdrawalRequestStatus.OnChainConfirmationPending, TxId = TxId });
+
+        _publisher.PublishUpdated(
+            new WithdrawalStateBeforeUpdate(WalletId, id, WalletWithdrawalRequestStatus.FinalizingPSBT, null),
+            new WalletWithdrawalRequest
+            {
+                Id = id,
+                WalletId = WalletId,
+                Status = WalletWithdrawalRequestStatus.OnChainConfirmationPending,
+                TxId = TxId
+            });
+
+        var e = SinglePublishedEvent();
+        e.Type.Should().Be(WALLET_EVENT_TYPE.WalletEventWithdrawalBroadcast);
+        e.Withdrawal.PreviousStatus.Should().Be(WITHDRAWAL_REQUEST_STATUS.WithdrawalPendingApproval);
+    }
+
+    [Fact]
+    public void PublishUpdated_NothingReadBefore_PublishesNothing()
+    {
+        _publisher.PublishUpdated(null, new WalletWithdrawalRequest
+        {
+            Id = 1,
+            WalletId = WalletId,
+            Status = WalletWithdrawalRequestStatus.OnChainConfirmed,
+            TxId = TxId
+        });
+
+        _factory.DidNotReceive().CreateDbContext();
+        _hub.DidNotReceive().Publish(Arg.Any<WalletEvent>());
+    }
 }

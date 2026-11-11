@@ -32,9 +32,17 @@ namespace NodeGuard.Services;
 public interface IWithdrawalEventPublisher
 {
     /// <summary>
-    /// Whether anyone listens to the wallet, so callers can skip reading the previous state
+    /// Reads the stored status and TxId of a request that is about to be updated, for
+    /// <see cref="PublishUpdated"/>. Null, without touching the database, when nobody listens to its wallet or the
+    /// request was never saved; also null if the read fails.
     /// </summary>
-    bool IsWatched(int walletId);
+    WithdrawalStateBeforeUpdate? ReadBeforeUpdate(WalletWithdrawalRequest request);
+
+    /// <summary>
+    /// Publishes the event a saved update stands for, comparing <paramref name="request"/> with the state read by
+    /// <see cref="ReadBeforeUpdate"/>. Does nothing when <paramref name="before"/> is null.
+    /// </summary>
+    void PublishUpdated(WithdrawalStateBeforeUpdate? before, WalletWithdrawalRequest request);
 
     /// <summary>
     /// A request was created. <paramref name="request"/> must carry its destinations and its wallet with keys.
@@ -47,6 +55,12 @@ public interface IWithdrawalEventPublisher
         WalletWithdrawalRequestStatus previousStatus, string? previousTxId,
         WalletWithdrawalRequestStatus status, string? txId);
 }
+
+/// <summary>
+/// What a withdrawal request looked like in the database right before an update
+/// </summary>
+public readonly record struct WithdrawalStateBeforeUpdate(int WalletId, int RequestId,
+    WalletWithdrawalRequestStatus Status, string? TxId);
 
 public class WithdrawalEventPublisher : IWithdrawalEventPublisher
 {
@@ -66,7 +80,43 @@ public class WithdrawalEventPublisher : IWithdrawalEventPublisher
         _logger = logger;
     }
 
-    public bool IsWatched(int walletId) => _hub.HasSubscribers(walletId);
+    private bool IsWatched(int walletId) => _hub.HasSubscribers(walletId);
+
+    public WithdrawalStateBeforeUpdate? ReadBeforeUpdate(WalletWithdrawalRequest request)
+    {
+        if (request.Id <= 0 || !IsWatched(request.WalletId))
+            return null;
+
+        try
+        {
+            using var applicationDbContext = _dbContextFactory.CreateDbContext();
+
+            var stored = applicationDbContext.WalletWithdrawalRequests
+                .AsNoTracking()
+                .Where(x => x.Id == request.Id)
+                .Select(x => new { x.Status, x.TxId })
+                .SingleOrDefault();
+
+            return stored == null
+                ? null
+                : new WithdrawalStateBeforeUpdate(request.WalletId, request.Id, stored.Status, stored.TxId);
+        }
+        catch (Exception e)
+        {
+            _logger.LogError(e, "Wallet events: could not read withdrawal request {RequestId} before its update",
+                request.Id);
+            return null;
+        }
+    }
+
+    public void PublishUpdated(WithdrawalStateBeforeUpdate? before, WalletWithdrawalRequest request)
+    {
+        if (before is not { } previous)
+            return;
+
+        PublishTransition(previous.WalletId, previous.RequestId, previous.Status, previous.TxId,
+            request.Status, request.TxId);
+    }
 
     public void PublishCreated(WalletWithdrawalRequest request)
     {

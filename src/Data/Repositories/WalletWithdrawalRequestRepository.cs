@@ -306,29 +306,17 @@ namespace NodeGuard.Data.Repositories
             // Stamp before mapping, otherwise the stripped copy that is persisted keeps the old UpdateDatetime.
             type.SetUpdateDatetime();
 
-            // The stored status and TxId tell which wallet event this update stands for; only read when someone listens.
-            (WalletWithdrawalRequestStatus Status, string? TxId)? previous = null;
-            if (type.Id > 0 && _withdrawalEventPublisher.IsWatched(type.WalletId))
-            {
-                var stored = applicationDbContext.WalletWithdrawalRequests
-                    .AsNoTracking()
-                    .Where(x => x.Id == type.Id)
-                    .Select(x => new { x.Status, x.TxId })
-                    .SingleOrDefault();
-                if (stored != null)
-                    previous = (stored.Status, stored.TxId);
-            }
+            // The stored status and TxId tell which wallet event this update stands for, so they are read before the
+            // write. The publisher skips the read when nobody listens to the wallet.
+            var before = _withdrawalEventPublisher.ReadBeforeUpdate(type);
 
             //Automapper to remove collections
             var strippedType = _mapper.Map<WalletWithdrawalRequest, WalletWithdrawalRequest>(type);
 
             var result = _repository.Update(strippedType, applicationDbContext);
 
-            if (result.Item1 && previous != null)
-            {
-                _withdrawalEventPublisher.PublishTransition(type.WalletId, type.Id,
-                    previous.Value.Status, previous.Value.TxId, type.Status, type.TxId);
-            }
+            if (result.Item1)
+                _withdrawalEventPublisher.PublishUpdated(before, type);
 
             return result;
         }

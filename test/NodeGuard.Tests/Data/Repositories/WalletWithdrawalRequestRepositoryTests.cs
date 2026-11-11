@@ -73,44 +73,55 @@ public class WalletWithdrawalRequestRepositoryTests
     }
 
     [Fact]
-    public void Update_WatchedWallet_PublishesTheTransitionFromTheStoredState()
+    public void Update_ReadsTheStateBeforeTheWriteAndPublishesItAfter()
     {
-        _publisher.IsWatched(WalletId).Returns(true);
         var request = Seed(WalletWithdrawalRequestStatus.FinalizingPSBT);
+        var before = new WithdrawalStateBeforeUpdate(WalletId, request.Id, WalletWithdrawalRequestStatus.FinalizingPSBT, null);
+        WalletWithdrawalRequestStatus? storedWhenRead = null;
+        _publisher.ReadBeforeUpdate(request).Returns(_ =>
+        {
+            using var context = new ApplicationDbContext(_options);
+            storedWhenRead = context.WalletWithdrawalRequests.AsNoTracking().Single(x => x.Id == request.Id).Status;
+            return before;
+        });
 
         request.Status = WalletWithdrawalRequestStatus.OnChainConfirmationPending;
         request.TxId = TxId;
         var (ok, _) = _repository.Update(request);
 
         ok.Should().BeTrue();
-        _publisher.Received(1).PublishTransition(WalletId, request.Id,
-            WalletWithdrawalRequestStatus.FinalizingPSBT, null,
-            WalletWithdrawalRequestStatus.OnChainConfirmationPending, TxId);
+        storedWhenRead.Should().Be(WalletWithdrawalRequestStatus.FinalizingPSBT, "the state is read before the write");
+        _publisher.Received(1).PublishUpdated(before, request);
     }
 
     [Fact]
-    public void Update_UnwatchedWallet_DoesNotReadOrPublish()
+    public void Update_LeavesTheSubscriberCheckToThePublisher()
     {
-        _publisher.IsWatched(WalletId).Returns(false);
         var request = Seed(WalletWithdrawalRequestStatus.OnChainConfirmationPending, TxId);
+        _publisher.ReadBeforeUpdate(request).Returns((WithdrawalStateBeforeUpdate?)null);
 
         request.Status = WalletWithdrawalRequestStatus.OnChainConfirmed;
         _repository.Update(request).Item1.Should().BeTrue();
 
-        _publisher.DidNotReceiveWithAnyArgs().PublishTransition(default, default, default, default, default, default);
+        _publisher.Received(1).ReadBeforeUpdate(request);
+        _publisher.Received(1).PublishUpdated(null, request);
     }
 
     [Fact]
-    public void Update_UnsavedRequest_PublishesNothing()
+    public void Update_FailedWrite_PublishesNothing()
     {
-        _publisher.IsWatched(WalletId).Returns(true);
-
-        _repository.Update(new WalletWithdrawalRequest
+        var missing = new WalletWithdrawalRequest
         {
+            Id = 9999,
+            Description = "never saved",
             WalletId = WalletId,
             Status = WalletWithdrawalRequestStatus.Cancelled
-        });
+        };
+        _publisher.ReadBeforeUpdate(missing)
+            .Returns(new WithdrawalStateBeforeUpdate(WalletId, missing.Id, WalletWithdrawalRequestStatus.Pending, null));
 
-        _publisher.DidNotReceiveWithAnyArgs().PublishTransition(default, default, default, default, default, default);
+        _repository.Update(missing).Item1.Should().BeFalse();
+
+        _publisher.DidNotReceiveWithAnyArgs().PublishUpdated(default, default!);
     }
 }
