@@ -3,6 +3,7 @@ using FluentAssertions;
 using Grpc.Core;
 using NodeGuard.Data.Models;
 using NodeGuard.Data.Repositories.Interfaces;
+using NodeGuard.Helpers;
 
 namespace NodeGuard.Rpc;
 
@@ -140,10 +141,10 @@ public class AuthInterceptorTests
     [Fact]
     public async Task AuthInterceptor_DuplexStreaming_ValidToken_RunsTheHandlerWithTheToken()
     {
-        var token = new APIToken { Name = "integrator" };
+        var token = new APIToken { Id = 7, Name = "integrator" };
         var context = TestServerCallContext.Create(new Metadata { { "auth-token", "valid" } });
         var interceptor = new GRPCAuthInterceptor(TokenRepository(token).Object);
-        APIToken? seen = null;
+        AuthenticatedApiToken? seen = null;
         DuplexStreamingServerMethod<string, string> continuation = (_, _, ctx) =>
         {
             seen = GRPCAuthInterceptor.GetApiToken(ctx);
@@ -153,7 +154,22 @@ public class AuthInterceptorTests
         await interceptor.DuplexStreamingServerHandler(new TestAsyncStreamReader<string>(),
             new TestServerStreamWriter<string>(), context, continuation);
 
-        seen.Should().BeSameAs(token);
+        seen.Should().Be(new AuthenticatedApiToken(7, "integrator"));
+    }
+
+    [Fact]
+    public async Task AuthInterceptor_ValidToken_KeepsOnlyTheTokenIdAndName()
+    {
+        const string secret = "the-token-value";
+        var token = new APIToken { Id = 7, Name = "integrator", TokenHash = secret };
+        var context = TestServerCallContext.Create(new Metadata { { "auth-token", secret } });
+        var interceptor = new GRPCAuthInterceptor(TokenRepository(token).Object);
+
+        await interceptor.UnaryServerHandler(string.Empty, context, (_, _) => Task.FromResult("response"));
+
+        context.UserState[AuthenticatedApiToken.HttpContextItemKey].Should().Be(new AuthenticatedApiToken(7, "integrator"));
+        context.UserState.Values.Should().NotContain(v => v is APIToken || (v is string && (string)v == secret),
+            "the token row and its value must not travel down the call");
     }
 
     [Fact]

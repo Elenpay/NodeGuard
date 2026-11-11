@@ -1,7 +1,7 @@
 using Grpc.Core;
 using Grpc.Core.Interceptors;
-using NodeGuard.Data.Models;
 using NodeGuard.Data.Repositories.Interfaces;
+using NodeGuard.Helpers;
 
 namespace NodeGuard.Rpc;
 
@@ -10,11 +10,6 @@ namespace NodeGuard.Rpc;
 /// </summary>
 public class GRPCAuthInterceptor : Interceptor
 {
-    /// <summary>
-    /// <see cref="ServerCallContext.UserState"/> key holding the caller's validated <see cref="APIToken"/>
-    /// </summary>
-    public const string ApiTokenUserStateKey = "NodeGuard.ApiToken";
-
     private readonly IAPITokenRepository _apiTokenRepository;
 
     public GRPCAuthInterceptor(IAPITokenRepository apiTokenRepository)
@@ -61,10 +56,12 @@ public class GRPCAuthInterceptor : Interceptor
     }
 
     /// <summary>
-    /// The API token that authenticated the call, or null outside an authenticated call
+    /// The id and name of the API token that authenticated the call, or null outside an authenticated call
     /// </summary>
-    public static APIToken? GetApiToken(ServerCallContext context) =>
-        context.UserState.TryGetValue(ApiTokenUserStateKey, out var token) ? token as APIToken : null;
+    public static AuthenticatedApiToken? GetApiToken(ServerCallContext context) =>
+        context.UserState.TryGetValue(AuthenticatedApiToken.HttpContextItemKey, out var token)
+            ? token as AuthenticatedApiToken
+            : null;
 
     private async Task AuthenticateAsync(ServerCallContext context)
     {
@@ -81,6 +78,8 @@ public class GRPCAuthInterceptor : Interceptor
             throw new RpcException(new Status(StatusCode.Unauthenticated, "Invalid token"));
         }
 
-        context.UserState[ApiTokenUserStateKey] = apiToken;
+        // Only the id and name go down the call, never the token row. Under ASP.NET Core, UserState is
+        // HttpContext.Items, so AuditService finds the token under the same key
+        context.UserState[AuthenticatedApiToken.HttpContextItemKey] = new AuthenticatedApiToken(apiToken.Id, apiToken.Name);
     }
 }
