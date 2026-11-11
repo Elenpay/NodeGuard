@@ -73,6 +73,9 @@ tests (`DustUtxoWithdrawalE2ETests`, `WithdrawalRbfBumpE2ETests`, `GetNewWalletA
   over gRPC, asserting bitcoind evicts the original for the higher-fee replacement, NodeGuard marks the original
   `WITHDRAWAL_BUMPED`, and the replacement settles once mined. It relies on `MONITOR_WITHDRAWALS_CRON` being fast on
   the `nodeguard` service (10s here; prod keeps the every-5-minutes default) and never mines between the two calls.
+- **Wallet event scenarios** (`WalletEventsE2ETests`): a hot-wallet withdrawal, an RBF bump and a bitcoind deposit
+  followed on `SubscribeWalletEvents`; withdrawal confirmation relies on the fast `MONITOR_WITHDRAWALS_CRON` above,
+  deposit confirmation on NBXplorer's block events.
 - **Withdrawal interceptor scenarios** (`WalletEventsE2ETests`): an integrator subscribes with
   `intercept_withdrawals` and allows, blocks or ignores a hot-wallet withdrawal (and blocks an RBF bump). The
   unanswered case relies on `WITHDRAWAL_INTERCEPTOR_TIMEOUT_SECONDS` being short on the `nodeguard` service (10s

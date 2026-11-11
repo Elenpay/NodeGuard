@@ -173,10 +173,11 @@ service NodeGuardService {
   rpc ArchiveSparkWallet(ArchiveSparkWalletRequest) returns (ArchiveSparkWalletResponse);
 
   /*
-  Streams what happens to an on-chain wallet's withdrawals while the call is open. The first client message must be
-  a subscribe with the wallet id; the server answers with WALLET_EVENT_SUBSCRIBED once the subscription is live, then
-  one WalletEvent per change: created, signature added, signing, broadcast, confirmed, bumped, cancelled, rejected,
-  failed, and an RBF replacement reverted. Events are live only: nothing is stored or replayed, so a client that
+  Streams what happens to an on-chain wallet's withdrawals and deposits while the call is open. The first client
+  message must be a subscribe with the wallet id; the server answers with WALLET_EVENT_SUBSCRIBED once the
+  subscription is live, then one WalletEvent per change: a withdrawal created, signature added, signing, broadcast,
+  confirmed, bumped, cancelled, rejected, failed, or its RBF replacement reverted; a deposit (a transaction paying
+  the wallet without spending from it) detected, confirmed or replaced. Events are live only: nothing is stored or replayed, so a client that
   reconnects should reconcile with GetWithdrawalsRequestStatus after WALLET_EVENT_SUBSCRIBED. Events come from the
   NodeGuard instance the call is connected to. A client that cannot keep up is disconnected with RESOURCE_EXHAUSTED.
 
@@ -901,6 +902,12 @@ enum WALLET_EVENT_TYPE {
   WALLET_EVENT_WITHDRAWAL_STATUS_CHANGED = 20;
   // Sent to interceptors only: answer with a WithdrawalDecision for decision_id before decision_deadline_unix_ms
   WALLET_EVENT_WITHDRAWAL_DECISION_REQUESTED = 21;
+  // A transaction paying the wallet (and spending none of its coins) was first seen, in the mempool or in a block
+  WALLET_EVENT_DEPOSIT_DETECTED = 30;
+  // The deposit reached the confirmations withdrawals need (TRANSACTION_CONFIRMATION_MINIMUM_BLOCKS)
+  WALLET_EVENT_DEPOSIT_CONFIRMED = 31;
+  // The deposit was replaced (RBF) before confirming; replaced_by_tx_id is set
+  WALLET_EVENT_DEPOSIT_REPLACED = 32;
 }
 
 message WalletEvent {
@@ -909,7 +916,23 @@ message WalletEvent {
   int64 occurred_at_unix_ms = 3;
   oneof payload {
     WithdrawalEvent withdrawal = 10;
+    DepositEvent deposit = 11;
   }
+}
+
+message DepositOutput {
+  string address = 1;
+  uint32 vout = 2;
+  int64 amount_sats = 3;
+}
+
+message DepositEvent {
+  string tx_id = 1;
+  // Sum of the outputs paying the wallet
+  int64 amount_sats = 2;
+  repeated DepositOutput outputs = 3;
+  uint32 confirmations = 4;
+  optional string replaced_by_tx_id = 5;
 }
 
 message WithdrawalDestination {
