@@ -21,9 +21,11 @@ using FluentAssertions;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging.Abstractions;
 using NBitcoin;
+using Key = NBitcoin.Key;
 using NodeGuard.Data.Models;
 using NodeGuard.Data.Repositories.Interfaces;
 using NodeGuard.Helpers;
+using NodeGuard.Services;
 
 namespace NodeGuard.Data.Repositories;
 
@@ -50,9 +52,11 @@ public class WalletWithdrawalRequestPsbtRepositoryTests
     }
 
     private static WalletWithdrawalRequestPsbtRepository CreateRepository(
-        Mock<IDbContextFactory<ApplicationDbContext>> factory, Mock<IRepository<WalletWithdrawalRequestPSBT>>? generic = null)
+        Mock<IDbContextFactory<ApplicationDbContext>> factory, Mock<IRepository<WalletWithdrawalRequestPSBT>>? generic = null,
+        IWithdrawalEventPublisher? publisher = null)
         => new((generic ?? new Mock<IRepository<WalletWithdrawalRequestPSBT>>()).Object,
-            NullLogger<WalletWithdrawalRequestPsbtRepository>.Instance, factory.Object);
+            NullLogger<WalletWithdrawalRequestPsbtRepository>.Instance, factory.Object,
+            publisher ?? Mock.Of<IWithdrawalEventPublisher>());
 
     private static string UnsignedPsbt(int seed)
     {
@@ -182,5 +186,74 @@ public class WalletWithdrawalRequestPsbtRepositoryTests
         await using var verify = await factory.Object.CreateDbContextAsync();
         (await verify.WalletWithdrawalRequests.SingleAsync(x => x.Id == requestId)).Status
             .Should().Be(WalletWithdrawalRequestStatus.Pending, "a rejected approval must not advance the request");
+    }
+
+    [Fact]
+    public async Task AddAsync_HumanApproval_PublishesSignatureAdded()
+    {
+        var network = CurrentNetworkHelper.GetCurrentNetwork();
+        var keyA = new Key();
+        var keyB = new Key();
+        var redeem = PayToMultiSigTemplate.Instance.GenerateScriptPubKey(2, keyA.PubKey, keyB.PubKey);
+        var funding = network.CreateTransaction();
+        funding.Outputs.Add(new TxOut(Money.Coins(1m), redeem.WitHash.ScriptPubKey));
+        var coin = new Coin(funding, 0U).ToScriptCoin(redeem);
+        var spend = network.CreateTransaction();
+        spend.Inputs.Add(new TxIn(coin.Outpoint));
+        spend.Outputs.Add(new TxOut(Money.Coins(0.5m), new Key().PubKey.GetAddress(ScriptPubKeyType.Segwit, network)));
+        var template = PSBT.FromTransaction(spend, network).AddCoins(coin);
+        var approval = template.Clone();
+        approval.SignWithKeys(keyA);
+
+        var factory = SetupDbContextFactory();
+        var generic = new Mock<IRepository<WalletWithdrawalRequestPSBT>>();
+        generic.Setup(x => x.AddAsync(It.IsAny<WalletWithdrawalRequestPSBT>(), It.IsAny<ApplicationDbContext>()))
+            .ReturnsAsync((true, null));
+        var publisher = new Mock<IWithdrawalEventPublisher>();
+        int requestId;
+        await using (var context = await factory.Object.CreateDbContextAsync())
+        {
+            var request = new WalletWithdrawalRequest
+            {
+                Description = "approval publishes",
+                Status = WalletWithdrawalRequestStatus.Pending,
+                WalletId = 7,
+                WalletWithdrawalRequestPSBTs = [new() { IsTemplatePSBT = true, PSBT = template.ToBase64() }],
+            };
+            await context.WalletWithdrawalRequests.AddAsync(request);
+            await context.SaveChangesAsync();
+            requestId = request.Id;
+        }
+
+        var result = await CreateRepository(factory, generic, publisher.Object).AddAsync(new WalletWithdrawalRequestPSBT
+        {
+            WalletWithdrawalRequestId = requestId,
+            PSBT = approval.ToBase64(),
+            SignerId = "approver",
+        });
+
+        result.Item1.Should().BeTrue(result.Item2);
+        publisher.Verify(x => x.PublishSignatureAdded(7, requestId), Times.Once);
+    }
+
+    [Fact]
+    public async Task AddAsync_Template_DoesNotPublishASignature()
+    {
+        var factory = SetupDbContextFactory();
+        var publisher = new Mock<IWithdrawalEventPublisher>();
+        int requestId;
+        await using (var context = await factory.Object.CreateDbContextAsync())
+        {
+            requestId = await SeedRequestAsync(context);
+        }
+
+        await CreateRepository(factory, publisher: publisher.Object).AddAsync(new WalletWithdrawalRequestPSBT
+        {
+            WalletWithdrawalRequestId = requestId,
+            IsTemplatePSBT = true,
+            PSBT = UnsignedPsbt(1),
+        });
+
+        publisher.Verify(x => x.PublishSignatureAdded(It.IsAny<int>(), It.IsAny<int>()), Times.Never);
     }
 }

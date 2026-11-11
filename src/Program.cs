@@ -168,6 +168,8 @@ namespace NodeGuard
             builder.Services.AddTransient<ISparkSwapService, SparkSwapService>();
             builder.Services.AddSingleton<ISparkGuardrails, SparkGuardrails>();
             builder.Services.AddHostedService<SparkStartupService>();
+            builder.Services.AddSingleton<IWalletEventHub, WalletEventHub>();
+            builder.Services.AddTransient<IWithdrawalEventPublisher, WithdrawalEventPublisher>();
             builder.Services.AddTransient<IRebalanceService, RebalanceService>();
             builder.Services.AddTransient<IRoutingEngineSnapshotService, RoutingEngineSnapshotService>();
             builder.Services.AddScoped<IAuditService, AuditService>();
@@ -210,6 +212,11 @@ namespace NodeGuard
             });
             builder.WebHost.ConfigureKestrel(options =>
             {
+                // SubscribeWalletEvents keeps a call open with nothing to send for long stretches: ping the client so
+                // proxies and load balancers do not drop the idle connection, and dead clients are noticed.
+                options.Limits.Http2.KeepAlivePingDelay = TimeSpan.FromSeconds(30);
+                options.Limits.Http2.KeepAlivePingTimeout = TimeSpan.FromSeconds(20);
+
                 // Setup a HTTP/2 endpoint without TLS.
                 options.ListenAnyIP(50051, o => o.Protocols =
                     HttpProtocols.Http2);
