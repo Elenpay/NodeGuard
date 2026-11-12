@@ -73,6 +73,9 @@ public interface INodeGuardService
     Task<RequestSwapOutResponse> RequestSwapOut(RequestSwapOutRequest request, ServerCallContext context);
 
     Task<GetSwapOutResponse> GetSwapOut(GetSwapOutRequest request, ServerCallContext context);
+
+    Task SubscribeWalletEvents(IAsyncStreamReader<WalletEventsClientMessage> requestStream,
+        IServerStreamWriter<WalletEvent> responseStream, ServerCallContext context);
 }
 
 /// <summary>
@@ -104,6 +107,8 @@ public class NodeGuardService : Nodeguard.NodeGuardService.NodeGuardServiceBase,
     private readonly ISwapOutRepository _swapOutRepository;
     private readonly IAuditService _auditService;
     private readonly ISparkWalletService _sparkWallet;
+    private readonly IWalletEventHub _walletEventHub;
+    private readonly TimeProvider _timeProvider;
 
     public NodeGuardService(ILogger<NodeGuardService> logger,
         ILiquidityRuleRepository liquidityRuleRepository,
@@ -127,9 +132,13 @@ public class NodeGuardService : Nodeguard.NodeGuardService.NodeGuardServiceBase,
         ISwapsService swapsService,
         ISwapOutRepository swapOutRepository,
         IAuditService auditService,
-        ISparkWalletService sparkWallet
+        ISparkWalletService sparkWallet,
+        IWalletEventHub walletEventHub,
+        TimeProvider timeProvider
     )
     {
+        _walletEventHub = walletEventHub;
+        _timeProvider = timeProvider;
         _sparkWallet = sparkWallet;
         _swapsService = swapsService;
         _swapOutRepository = swapOutRepository;
@@ -1320,23 +1329,6 @@ public class NodeGuardService : Nodeguard.NodeGuardService.NodeGuardServiceBase,
         };
     }
 
-    private WITHDRAWAL_REQUEST_STATUS GetStatus(WalletWithdrawalRequestStatus status)
-    {
-        return status switch
-        {
-            WalletWithdrawalRequestStatus.Cancelled => WITHDRAWAL_REQUEST_STATUS.WithdrawalCancelled,
-            WalletWithdrawalRequestStatus.Failed => WITHDRAWAL_REQUEST_STATUS.WithdrawalFailed,
-            WalletWithdrawalRequestStatus.FinalizingPSBT => WITHDRAWAL_REQUEST_STATUS.WithdrawalPendingApproval,
-            WalletWithdrawalRequestStatus.OnChainConfirmationPending => WITHDRAWAL_REQUEST_STATUS.WithdrawalPendingConfirmation,
-            WalletWithdrawalRequestStatus.OnChainConfirmed => WITHDRAWAL_REQUEST_STATUS.WithdrawalSettled,
-            WalletWithdrawalRequestStatus.Pending => WITHDRAWAL_REQUEST_STATUS.WithdrawalPendingApproval,
-            WalletWithdrawalRequestStatus.PSBTSignaturesPending => WITHDRAWAL_REQUEST_STATUS.WithdrawalPendingApproval,
-            WalletWithdrawalRequestStatus.Rejected => WITHDRAWAL_REQUEST_STATUS.WithdrawalRejected,
-            WalletWithdrawalRequestStatus.Bumped => WITHDRAWAL_REQUEST_STATUS.WithdrawalBumped,
-            _ => throw new ArgumentOutOfRangeException(nameof(status), status, "Unknown status")
-        };
-    }
-
     private async Task<GetWithdrawalsRequestStatusResponse> GetWithdrawalsRequestStatusResponse(List<WalletWithdrawalRequest> withdrawalRequests)
     {
         var withdrawalsResponses = new List<WithdrawalRequest>();
@@ -1352,7 +1344,7 @@ public class NodeGuardService : Nodeguard.NodeGuardService.NodeGuardServiceBase,
             withdrawalsResponses.Add(new WithdrawalRequest
             {
                 RequestId = withdrawalRequest.Id,
-                Status = GetStatus(withdrawalRequest.Status),
+                Status = WithdrawalEventMapper.ToProtoStatus(withdrawalRequest.Status),
                 RejectOrCancelReason = withdrawalRequest.RejectCancelDescription ?? "",
                 ReferenceId = withdrawalRequest.ReferenceId ?? "",
                 Confirmations = confirmations,
@@ -1644,6 +1636,59 @@ public class NodeGuardService : Nodeguard.NodeGuardService.NodeGuardServiceBase,
         }
 
         return new SetChannelFeePolicyResponse();
+    }
+
+    public override async Task SubscribeWalletEvents(IAsyncStreamReader<WalletEventsClientMessage> requestStream,
+        IServerStreamWriter<WalletEvent> responseStream, ServerCallContext context)
+    {
+        var cancellationToken = context.CancellationToken;
+
+        if (!await requestStream.MoveNext(cancellationToken)
+            || requestStream.Current.MessageCase != WalletEventsClientMessage.MessageOneofCase.Subscribe)
+        {
+            throw new RpcException(new Status(StatusCode.InvalidArgument, "The first message must be a subscribe request"));
+        }
+
+        var subscribe = requestStream.Current.Subscribe;
+        var wallet = await _walletRepository.GetById(subscribe.WalletId);
+        if (wallet == null)
+            throw new RpcException(new Status(StatusCode.NotFound, $"Wallet {subscribe.WalletId} not found"));
+        RefuseSparkWallet(wallet);
+
+        var types = subscribe.EventTypes.ToHashSet();
+        var subscriber = GRPCAuthInterceptor.GetApiToken(context)?.Name ?? context.Peer;
+
+        using var subscription = _walletEventHub.Subscribe(wallet.Id, subscriber);
+
+        await responseStream.WriteAsync(new WalletEvent
+        {
+            Type = WALLET_EVENT_TYPE.WalletEventSubscribed,
+            WalletId = wallet.Id,
+            OccurredAtUnixMs = _timeProvider.GetUtcNow().ToUnixTimeMilliseconds()
+        });
+
+        try
+        {
+            await foreach (var walletEvent in subscription.Reader.ReadAllAsync(cancellationToken))
+            {
+                if (types.Count > 0 && !types.Contains(walletEvent.Type))
+                    continue;
+
+                await responseStream.WriteAsync(walletEvent);
+            }
+        }
+        catch (WalletEventSubscriberTooSlowException e)
+        {
+            throw new RpcException(new Status(StatusCode.ResourceExhausted, e.Message));
+        }
+        catch (WalletEventHubStoppingException e)
+        {
+            throw new RpcException(new Status(StatusCode.Unavailable, e.Message));
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            // The client went away
+        }
     }
 
     /// <summary>

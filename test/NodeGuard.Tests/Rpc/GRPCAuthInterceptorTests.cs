@@ -3,6 +3,7 @@ using FluentAssertions;
 using Grpc.Core;
 using NodeGuard.Data.Models;
 using NodeGuard.Data.Repositories.Interfaces;
+using NodeGuard.Helpers;
 
 namespace NodeGuard.Rpc;
 
@@ -105,4 +106,84 @@ public class AuthInterceptorTests
             .ThrowAsync<RpcException>()
             .WithMessage("Status(StatusCode=\"Unauthenticated\", Detail=\"Invalid token\")");
     }
+
+    private static Mock<IAPITokenRepository> TokenRepository(APIToken? token)
+    {
+        var repository = new Mock<IAPITokenRepository>();
+        repository.Setup(x => x.GetByToken(It.IsAny<string>())).ReturnsAsync(token);
+        return repository;
+    }
+
+    [Theory]
+    [InlineData(null, "No token provided")]
+    [InlineData("unknown", "Invalid token")]
+    [InlineData("blocked", "Invalid token")]
+    public async Task AuthInterceptor_DuplexStreaming_RejectsBeforeTheHandlerRuns(string? header, string detail)
+    {
+        var token = header == "blocked" ? new APIToken { Name = "blocked", IsBlocked = true } : null;
+        var context = TestServerCallContext.Create(header == null ? null : new Metadata { { "auth-token", header } });
+        var interceptor = new GRPCAuthInterceptor(TokenRepository(token).Object);
+        var called = false;
+        DuplexStreamingServerMethod<string, string> continuation = (_, _, _) =>
+        {
+            called = true;
+            return Task.CompletedTask;
+        };
+
+        var act = () => interceptor.DuplexStreamingServerHandler(new TestAsyncStreamReader<string>(),
+            new TestServerStreamWriter<string>(), context, continuation);
+
+        await act.Should().ThrowAsync<RpcException>()
+            .WithMessage($"Status(StatusCode=\"Unauthenticated\", Detail=\"{detail}\")");
+        called.Should().BeFalse();
+    }
+
+    [Fact]
+    public async Task AuthInterceptor_DuplexStreaming_ValidToken_RunsTheHandlerWithTheToken()
+    {
+        var token = new APIToken { Id = 7, Name = "integrator" };
+        var context = TestServerCallContext.Create(new Metadata { { "auth-token", "valid" } });
+        var interceptor = new GRPCAuthInterceptor(TokenRepository(token).Object);
+        AuthenticatedApiToken? seen = null;
+        DuplexStreamingServerMethod<string, string> continuation = (_, _, ctx) =>
+        {
+            seen = GRPCAuthInterceptor.GetApiToken(ctx);
+            return Task.CompletedTask;
+        };
+
+        await interceptor.DuplexStreamingServerHandler(new TestAsyncStreamReader<string>(),
+            new TestServerStreamWriter<string>(), context, continuation);
+
+        seen.Should().Be(new AuthenticatedApiToken(7, "integrator"));
+    }
+
+    [Fact]
+    public async Task AuthInterceptor_ValidToken_KeepsOnlyTheTokenIdAndName()
+    {
+        const string secret = "the-token-value";
+        var token = new APIToken { Id = 7, Name = "integrator", TokenHash = secret };
+        var context = TestServerCallContext.Create(new Metadata { { "auth-token", secret } });
+        var interceptor = new GRPCAuthInterceptor(TokenRepository(token).Object);
+
+        await interceptor.UnaryServerHandler(string.Empty, context, (_, _) => Task.FromResult("response"));
+
+        context.UserState[AuthenticatedApiToken.HttpContextItemKey].Should().Be(new AuthenticatedApiToken(7, "integrator"));
+        context.UserState.Values.Should().NotContain(v => v is APIToken || (v is string && (string)v == secret),
+            "the token row and its value must not travel down the call");
+    }
+
+    [Fact]
+    public async Task AuthInterceptor_ServerAndClientStreaming_WithoutToken_AreRejected()
+    {
+        var interceptor = new GRPCAuthInterceptor(TokenRepository(null).Object);
+
+        var serverStreaming = () => interceptor.ServerStreamingServerHandler(string.Empty,
+            new TestServerStreamWriter<string>(), TestServerCallContext.Create(), (_, _, _) => Task.CompletedTask);
+        var clientStreaming = () => interceptor.ClientStreamingServerHandler(new TestAsyncStreamReader<string>(),
+            TestServerCallContext.Create(), (_, _) => Task.FromResult("response"));
+
+        (await serverStreaming.Should().ThrowAsync<RpcException>()).Which.StatusCode.Should().Be(StatusCode.Unauthenticated);
+        (await clientStreaming.Should().ThrowAsync<RpcException>()).Which.StatusCode.Should().Be(StatusCode.Unauthenticated);
+    }
 }
+
