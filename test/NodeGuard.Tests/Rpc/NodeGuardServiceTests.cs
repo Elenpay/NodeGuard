@@ -29,7 +29,9 @@ using NodeGuard.Services;
 using NodeGuard.Services.Spark;
 using Grpc.Core;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging.Abstractions;
 using NBitcoin;
 using NBXplorer.DerivationStrategy;
 using NBXplorer.Models;
@@ -84,7 +86,9 @@ namespace NodeGuard.Rpc
             ISwapsService? swapsService = null,
             ISwapOutRepository? swapOutRepository = null,
             IAuditService? auditService = null,
-            ISparkWalletService? sparkWallet = null)
+            ISparkWalletService? sparkWallet = null,
+            IWalletEventHub? walletEventHub = null,
+            IWithdrawalInterceptorGate? withdrawalInterceptorGate = null)
         {
             return new NodeGuardService(
                 logger ?? _logger.Object,
@@ -109,7 +113,10 @@ namespace NodeGuard.Rpc
                 swapsService ?? new Mock<ISwapsService>().Object,
                 swapOutRepository ?? new Mock<ISwapOutRepository>().Object,
                 auditService ?? new Mock<IAuditService>().Object,
-                sparkWallet ?? new Mock<ISparkWalletService>().Object);
+                sparkWallet ?? new Mock<ISparkWalletService>().Object,
+                walletEventHub ?? new Mock<IWalletEventHub>().Object,
+                withdrawalInterceptorGate ?? new Mock<IWithdrawalInterceptorGate>().Object,
+                TimeProvider.System);
         }
 
         [Fact]
@@ -2574,6 +2581,234 @@ namespace NodeGuard.Rpc
 
             (await unknown.Should().ThrowAsync<RpcException>()).Which.StatusCode.Should().Be(StatusCode.NotFound);
             (await missing.Should().ThrowAsync<RpcException>()).Which.StatusCode.Should().Be(StatusCode.InvalidArgument);
+        }
+    
+        // ---- SubscribeWalletEvents ----------------------------------------------------------------------
+
+        private sealed class WalletEventsCall
+        {
+            public required NodeGuardService Service { get; init; }
+            public required WalletEventHub Hub { get; init; }
+            public required CancellationTokenSource Stopping { get; init; }
+            public TestAsyncStreamReader<WalletEventsClientMessage> Requests { get; } = new();
+            public TestServerStreamWriter<WalletEvent> Responses { get; } = new();
+            public CancellationTokenSource ClientCancellation { get; } = new();
+
+            public Task Start() => Service.SubscribeWalletEvents(Requests, Responses,
+                TestServerCallContext.Create(cancellationToken: ClientCancellation.Token));
+        }
+
+        private WalletEventsCall WalletEventsCallFor(params Wallet[] wallets) => WalletEventsCallFor(null, null, wallets);
+
+        private WalletEventsCall WalletEventsCallFor(IWithdrawalInterceptorGate? gate, IAuditService? auditService,
+            params Wallet[] wallets)
+        {
+            var walletRepository = new Mock<IWalletRepository>();
+            foreach (var wallet in wallets)
+                walletRepository.Setup(x => x.GetById(wallet.Id)).ReturnsAsync(wallet);
+
+            var stopping = new CancellationTokenSource();
+            var lifetime = new Mock<IHostApplicationLifetime>();
+            lifetime.Setup(x => x.ApplicationStopping).Returns(stopping.Token);
+            var hub = new WalletEventHub(NullLogger<WalletEventHub>.Instance, lifetime.Object);
+
+            return new WalletEventsCall
+            {
+                Service = CreateNodeGuardService(walletRepository: walletRepository.Object, walletEventHub: hub,
+                    withdrawalInterceptorGate: gate, auditService: auditService),
+                Hub = hub,
+                Stopping = stopping
+            };
+        }
+
+        private static WalletEventsClientMessage Subscribe(int walletId, params WALLET_EVENT_TYPE[] types) => new()
+        {
+            Subscribe = new SubscribeWalletEventsRequest { WalletId = walletId, EventTypes = { types } }
+        };
+
+        private static WalletEventsClientMessage Intercept(int walletId, params WALLET_EVENT_TYPE[] types) => new()
+        {
+            Subscribe = new SubscribeWalletEventsRequest
+            {
+                WalletId = walletId, EventTypes = { types }, InterceptWithdrawals = true
+            }
+        };
+
+        private static WalletEventsClientMessage Decision(string decisionId, bool allow, string? reason = null)
+        {
+            var decision = new WithdrawalDecision { DecisionId = decisionId, Allow = allow };
+            if (reason != null) decision.Reason = reason;
+            return new WalletEventsClientMessage { Decision = decision };
+        }
+
+        private static WalletEvent WithdrawalEvent(int walletId, WALLET_EVENT_TYPE type, int requestId) => new()
+        {
+            Type = type,
+            WalletId = walletId,
+            Withdrawal = new WithdrawalEvent { RequestId = requestId }
+        };
+
+        [Fact]
+        public async Task SubscribeWalletEvents_FirstMessageMustBeSubscribe()
+        {
+            var call = WalletEventsCallFor();
+            call.Requests.Complete();
+
+            var act = () => call.Start();
+
+            (await act.Should().ThrowAsync<RpcException>()).Which.StatusCode.Should().Be(StatusCode.InvalidArgument);
+        }
+
+        [Fact]
+        public async Task SubscribeWalletEvents_UnknownWallet_IsNotFound()
+        {
+            var call = WalletEventsCallFor();
+            call.Requests.Add(Subscribe(404));
+
+            var act = () => call.Start();
+
+            (await act.Should().ThrowAsync<RpcException>()).Which.StatusCode.Should().Be(StatusCode.NotFound);
+            call.Hub.HasSubscribers(404).Should().BeFalse();
+        }
+
+        [Fact]
+        public async Task SubscribeWalletEvents_SparkWallet_IsRefused()
+        {
+            var call = WalletEventsCallFor(new Wallet { Id = 3, Kind = WalletKind.Spark });
+            call.Requests.Add(Subscribe(3));
+
+            var act = () => call.Start();
+
+            (await act.Should().ThrowAsync<RpcException>()).Which.StatusCode.Should().Be(StatusCode.FailedPrecondition);
+        }
+
+        [Fact]
+        public async Task SubscribeWalletEvents_StreamsTheWalletsEventsUntilTheClientLeaves()
+        {
+            var call = WalletEventsCallFor(new Wallet { Id = 1 }, new Wallet { Id = 2 });
+            call.Requests.Add(Subscribe(1));
+            var running = call.Start();
+
+            var first = await call.Responses.ReadNextAsync();
+            first.Type.Should().Be(WALLET_EVENT_TYPE.WalletEventSubscribed);
+            first.WalletId.Should().Be(1);
+            call.Hub.HasSubscribers(1).Should().BeTrue();
+
+            call.Hub.Publish(WithdrawalEvent(2, WALLET_EVENT_TYPE.WalletEventWithdrawalCreated, 20));
+            call.Hub.Publish(WithdrawalEvent(1, WALLET_EVENT_TYPE.WalletEventWithdrawalCreated, 10));
+            call.Hub.Publish(WithdrawalEvent(1, WALLET_EVENT_TYPE.WalletEventWithdrawalBroadcast, 10));
+
+            (await call.Responses.ReadNextAsync()).Type.Should().Be(WALLET_EVENT_TYPE.WalletEventWithdrawalCreated);
+            var broadcast = await call.Responses.ReadNextAsync();
+            broadcast.Type.Should().Be(WALLET_EVENT_TYPE.WalletEventWithdrawalBroadcast);
+            broadcast.Withdrawal.RequestId.Should().Be(10);
+            (await call.Responses.NothingMoreWrittenAsync()).Should().BeTrue("wallet 2's event is not for this call");
+
+            await call.ClientCancellation.CancelAsync();
+            await running.WaitAsync(TimeSpan.FromSeconds(5));
+            call.Hub.HasSubscribers(1).Should().BeFalse("the subscription ends with the call");
+        }
+
+        [Fact]
+        public async Task SubscribeWalletEvents_EventTypeFilter_SkipsOtherTypes()
+        {
+            var call = WalletEventsCallFor(new Wallet { Id = 1 });
+            call.Requests.Add(Subscribe(1, WALLET_EVENT_TYPE.WalletEventWithdrawalConfirmed));
+            var running = call.Start();
+            (await call.Responses.ReadNextAsync()).Type.Should().Be(WALLET_EVENT_TYPE.WalletEventSubscribed);
+
+            call.Hub.Publish(WithdrawalEvent(1, WALLET_EVENT_TYPE.WalletEventWithdrawalBroadcast, 10));
+            call.Hub.Publish(WithdrawalEvent(1, WALLET_EVENT_TYPE.WalletEventWithdrawalConfirmed, 10));
+
+            (await call.Responses.ReadNextAsync()).Type.Should().Be(WALLET_EVENT_TYPE.WalletEventWithdrawalConfirmed);
+            (await call.Responses.NothingMoreWrittenAsync()).Should().BeTrue();
+
+            await call.ClientCancellation.CancelAsync();
+            await running.WaitAsync(TimeSpan.FromSeconds(5));
+        }
+
+        [Fact]
+        public async Task SubscribeWalletEvents_Shutdown_EndsTheCallAsUnavailable()
+        {
+            var call = WalletEventsCallFor(new Wallet { Id = 1 });
+            call.Requests.Add(Subscribe(1));
+            var running = call.Start();
+            (await call.Responses.ReadNextAsync()).Type.Should().Be(WALLET_EVENT_TYPE.WalletEventSubscribed);
+
+            await call.Stopping.CancelAsync();
+
+            (await running.Invoking(t => t.WaitAsync(TimeSpan.FromSeconds(5))).Should().ThrowAsync<RpcException>())
+                .Which.StatusCode.Should().Be(StatusCode.Unavailable);
+        }
+    
+        [Fact]
+        public async Task SubscribeWalletEvents_Interceptor_RoutesDecisionsToTheGateAndAuditsTheConnection()
+        {
+            var gate = new Mock<IWithdrawalInterceptorGate>();
+            var decided = new TaskCompletionSource<(Guid, string, bool, string?)>();
+            gate.Setup(x => x.Decide(It.IsAny<Guid>(), It.IsAny<string>(), It.IsAny<bool>(), It.IsAny<string?>()))
+                .Callback<Guid, string, bool, string?>((id, decisionId, allow, reason) => decided.TrySetResult((id, decisionId, allow, reason)))
+                .Returns(true);
+            var audit = new Mock<IAuditService>();
+            var call = WalletEventsCallFor(gate.Object, audit.Object, new Wallet { Id = 1 });
+            call.Requests.Add(Intercept(1));
+            var running = call.Start();
+            (await call.Responses.ReadNextAsync()).Type.Should().Be(WALLET_EVENT_TYPE.WalletEventSubscribed);
+            var interceptor = call.Hub.GetInterceptors(1).Should().ContainSingle().Subject;
+
+            call.Requests.Add(Decision("d-1", allow: false, reason: "sanctioned"));
+
+            var (subscriptionId, decisionId, allowed, why) = await decided.Task.WaitAsync(TimeSpan.FromSeconds(5));
+            subscriptionId.Should().Be(interceptor.Id);
+            decisionId.Should().Be("d-1");
+            allowed.Should().BeFalse();
+            why.Should().Be("sanctioned");
+
+            // Half-closing ends an interceptor's call: it can no longer answer
+            call.Requests.Complete();
+            await running.WaitAsync(TimeSpan.FromSeconds(5));
+            call.Hub.GetInterceptors(1).Should().BeEmpty();
+            audit.Verify(x => x.LogAsync(AuditActionType.WithdrawalInterceptorConnected, AuditEventType.Success,
+                AuditObjectType.Wallet, "1", It.IsAny<object?>()), Times.Once);
+            audit.Verify(x => x.LogAsync(AuditActionType.WithdrawalInterceptorDisconnected, AuditEventType.Success,
+                AuditObjectType.Wallet, "1", It.IsAny<object?>()), Times.Once);
+        }
+
+        [Fact]
+        public async Task SubscribeWalletEvents_Observer_CannotDecideAndIsNotAnInterceptor()
+        {
+            var gate = new Mock<IWithdrawalInterceptorGate>();
+            var call = WalletEventsCallFor(gate.Object, null, new Wallet { Id = 1 });
+            call.Requests.Add(Subscribe(1));
+            var running = call.Start();
+            (await call.Responses.ReadNextAsync()).Type.Should().Be(WALLET_EVENT_TYPE.WalletEventSubscribed);
+
+            call.Hub.GetInterceptors(1).Should().BeEmpty();
+            call.Requests.Add(Decision("d-1", allow: true));
+            call.Requests.Complete();
+
+            (await call.Responses.NothingMoreWrittenAsync()).Should().BeTrue();
+            running.IsCompleted.Should().BeFalse("an observer that half-closes keeps receiving events");
+            gate.Verify(x => x.Decide(It.IsAny<Guid>(), It.IsAny<string>(), It.IsAny<bool>(), It.IsAny<string?>()), Times.Never);
+
+            await call.ClientCancellation.CancelAsync();
+            await running.WaitAsync(TimeSpan.FromSeconds(5));
+        }
+
+        [Fact]
+        public async Task SubscribeWalletEvents_Interceptor_GetsDecisionRequestsWhateverItsFilter()
+        {
+            var call = WalletEventsCallFor(new Mock<IWithdrawalInterceptorGate>().Object, null, new Wallet { Id = 1 });
+            call.Requests.Add(Intercept(1, WALLET_EVENT_TYPE.WalletEventWithdrawalConfirmed));
+            var running = call.Start();
+            (await call.Responses.ReadNextAsync()).Type.Should().Be(WALLET_EVENT_TYPE.WalletEventSubscribed);
+
+            call.Hub.Publish(WithdrawalEvent(1, WALLET_EVENT_TYPE.WalletEventWithdrawalDecisionRequested, 10));
+
+            (await call.Responses.ReadNextAsync()).Type.Should().Be(WALLET_EVENT_TYPE.WalletEventWithdrawalDecisionRequested);
+
+            await call.ClientCancellation.CancelAsync();
+            await running.WaitAsync(TimeSpan.FromSeconds(5));
         }
     }
 }

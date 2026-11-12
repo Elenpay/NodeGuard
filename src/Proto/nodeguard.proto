@@ -171,6 +171,25 @@ service NodeGuardService {
   Archives a Spark wallet; refused unless it is empty and no node uses it
   */
   rpc ArchiveSparkWallet(ArchiveSparkWalletRequest) returns (ArchiveSparkWalletResponse);
+
+  /*
+  Streams what happens to an on-chain wallet's withdrawals while the call is open. The first client message must be
+  a subscribe with the wallet id; the server answers with WALLET_EVENT_SUBSCRIBED once the subscription is live, then
+  one WalletEvent per change: created, signature added, signing, broadcast, confirmed, bumped, cancelled, rejected,
+  failed, and an RBF replacement reverted. Events are live only: nothing is stored or replayed, so a client that
+  reconnects should reconcile with GetWithdrawalsRequestStatus after WALLET_EVENT_SUBSCRIBED. Events come from the
+  NodeGuard instance the call is connected to. A client that cannot keep up is disconnected with RESOURCE_EXHAUSTED.
+
+  With intercept_withdrawals, the client also decides on the wallet's withdrawals: before NodeGuard signs and
+  broadcasts one (RBF bumps and cancellations included), it sends WALLET_EVENT_WITHDRAWAL_DECISION_REQUESTED with a
+  decision_id and a deadline, and the client answers with a WithdrawalDecision on this call. The withdrawal goes ahead
+  only when every connected interceptor allows it; a block, no answer before the deadline
+  (WITHDRAWAL_INTERCEPTOR_TIMEOUT_SECONDS, 60s by default) or an interceptor leaving before it answers rejects it,
+  and an RBF replacement that is rejected puts the original back to pending confirmation. With no interceptor
+  connected the check is skipped. Interceptors are only seen by the NodeGuard instance they are connected to, so
+  this holds for a single NodeGuard instance. Half-closing the request stream ends an interceptor's call.
+  */
+  rpc SubscribeWalletEvents(stream WalletEventsClientMessage) returns (stream WalletEvent);
 }
 
 message GetLiquidityRulesRequest {
@@ -828,4 +847,100 @@ message ArchiveSparkWalletRequest {
 }
 
 message ArchiveSparkWalletResponse {
+}
+
+message WalletEventsClientMessage {
+  oneof message {
+    // Must be the first message of the call
+    SubscribeWalletEventsRequest subscribe = 1;
+    // Answers a WALLET_EVENT_WITHDRAWAL_DECISION_REQUESTED; only from a subscription with intercept_withdrawals
+    WithdrawalDecision decision = 2;
+  }
+}
+
+message WithdrawalDecision {
+  // The decision_id of the WALLET_EVENT_WITHDRAWAL_DECISION_REQUESTED being answered
+  string decision_id = 1;
+  bool allow = 2;
+  // Why it was blocked; stored as the withdrawal's rejection reason
+  optional string reason = 3;
+}
+
+message SubscribeWalletEventsRequest {
+  int32 wallet_id = 1;
+  // Only these event types are sent; empty sends all. WALLET_EVENT_SUBSCRIBED and, for interceptors,
+  // WALLET_EVENT_WITHDRAWAL_DECISION_REQUESTED are always sent.
+  repeated WALLET_EVENT_TYPE event_types = 2;
+  // Decide on the wallet's withdrawals before they are signed and broadcast
+  bool intercept_withdrawals = 3;
+}
+
+enum WALLET_EVENT_TYPE {
+  WALLET_EVENT_UNSPECIFIED = 0;
+  // First message of every call: the subscription is live
+  WALLET_EVENT_SUBSCRIBED = 1;
+  // A withdrawal request was created, including an RBF replacement (bumping_request_id is set)
+  WALLET_EVENT_WITHDRAWAL_CREATED = 10;
+  // An approver's signed PSBT was stored
+  WALLET_EVENT_WITHDRAWAL_SIGNATURE_ADDED = 11;
+  // Every human signature is in: NodeGuard is signing and broadcasting
+  WALLET_EVENT_WITHDRAWAL_SIGNING = 12;
+  // The transaction was broadcast (tx_id is set) and waits for confirmation
+  WALLET_EVENT_WITHDRAWAL_BROADCAST = 13;
+  // The transaction reached the required confirmations
+  WALLET_EVENT_WITHDRAWAL_CONFIRMED = 14;
+  // Replaced by a fee bump (replaced_by_request_id is set when known)
+  WALLET_EVENT_WITHDRAWAL_BUMPED = 15;
+  // Cancelled by its requestor, or replaced by an RBF cancellation
+  WALLET_EVENT_WITHDRAWAL_CANCELLED = 16;
+  WALLET_EVENT_WITHDRAWAL_REJECTED = 17;
+  WALLET_EVENT_WITHDRAWAL_FAILED = 18;
+  // Its RBF replacement failed or was turned down: the original waits for confirmation again
+  WALLET_EVENT_WITHDRAWAL_REPLACEMENT_REVERTED = 19;
+  // Any other status change, e.g. a hot wallet withdrawal moving to signatures pending
+  WALLET_EVENT_WITHDRAWAL_STATUS_CHANGED = 20;
+  // Sent to interceptors only: answer with a WithdrawalDecision for decision_id before decision_deadline_unix_ms
+  WALLET_EVENT_WITHDRAWAL_DECISION_REQUESTED = 21;
+}
+
+message WalletEvent {
+  WALLET_EVENT_TYPE type = 1;
+  int32 wallet_id = 2;
+  int64 occurred_at_unix_ms = 3;
+  oneof payload {
+    WithdrawalEvent withdrawal = 10;
+  }
+}
+
+message WithdrawalDestination {
+  string address = 1;
+  int64 amount_sats = 2;
+}
+
+message WithdrawalEvent {
+  int32 request_id = 1;
+  WITHDRAWAL_REQUEST_STATUS status = 2;
+  // Unset on WALLET_EVENT_WITHDRAWAL_CREATED and WALLET_EVENT_WITHDRAWAL_SIGNATURE_ADDED
+  optional WITHDRAWAL_REQUEST_STATUS previous_status = 3;
+  optional string tx_id = 4;
+  optional string reference_id = 5;
+  optional string reject_or_cancel_reason = 6;
+  // Set on an RBF replacement: the request whose transaction it replaces
+  optional int32 bumping_request_id = 7;
+  // Set on a bumped or RBF-cancelled original: the request that replaces it
+  optional int32 replaced_by_request_id = 8;
+  // The replacement returns the funds to the wallet instead of paying the destinations
+  bool is_rbf_cancellation = 9;
+  int64 amount_sats = 10;
+  repeated WithdrawalDestination destinations = 11;
+  // Human signatures collected and required; unset for hot wallets
+  optional int32 signatures_collected = 12;
+  optional int32 signatures_required = 13;
+  // in JSON format
+  optional string request_metadata = 14;
+  // Requested fee rate when one was set explicitly
+  optional double fee_rate_sat_vb = 15;
+  // Set on WALLET_EVENT_WITHDRAWAL_DECISION_REQUESTED
+  optional string decision_id = 16;
+  optional int64 decision_deadline_unix_ms = 17;
 }

@@ -29,6 +29,7 @@ using Nodeguard;
 using NodeGuard.Data;
 using NodeGuard.Data.Models;
 using NodeGuard.Data.Repositories;
+using NodeGuard.Services;
 using Npgsql;
 using Xunit.Abstractions;
 
@@ -248,7 +249,8 @@ public class PsbtApprovalBindingE2ETests
         => new(
             new Repository<WalletWithdrawalRequestPSBT>(NullLogger<WalletWithdrawalRequestPSBT>.Instance),
             NullLogger<WalletWithdrawalRequestPsbtRepository>.Instance,
-            DbContextFactory());
+            DbContextFactory(),
+            Mock.Of<IWithdrawalEventPublisher>());
 
     private static async Task<string> GetTemplatePsbtAsync(int requestId)
     {

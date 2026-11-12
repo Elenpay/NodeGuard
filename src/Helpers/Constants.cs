@@ -375,6 +375,10 @@ public class Constants
     /// Default timeout (seconds) for a rebalance payment to search for a route before giving up.
     public static int DEFAULT_REBALANCE_TIMEOUT_SECONDS = 180;
 
+    /// How long (seconds) a withdrawal waits for the integrators intercepting its wallet (SubscribeWalletEvents with
+    /// intercept_withdrawals) to allow it before it is blocked
+    public static int WITHDRAWAL_INTERCEPTOR_TIMEOUT_SECONDS = 60;
+
     public const string IsFrozenTag = "frozen";
     public const string IsManuallyFrozenTag = "manually_frozen";
 
@@ -726,6 +730,9 @@ public class Constants
         if (reRebalanceDefaultRefreshHours != null) ROUTING_ENGINE_REBALANCE_DEFAULT_BUDGET_REFRESH_HOURS = int.Parse(reRebalanceDefaultRefreshHours);
         var rebalanceTimeoutSeconds = Environment.GetEnvironmentVariable("DEFAULT_REBALANCE_TIMEOUT_SECONDS");
         if (rebalanceTimeoutSeconds != null) DEFAULT_REBALANCE_TIMEOUT_SECONDS = int.Parse(rebalanceTimeoutSeconds);
+
+        var withdrawalInterceptorTimeoutSeconds = Environment.GetEnvironmentVariable("WITHDRAWAL_INTERCEPTOR_TIMEOUT_SECONDS");
+        if (withdrawalInterceptorTimeoutSeconds != null) WITHDRAWAL_INTERCEPTOR_TIMEOUT_SECONDS = int.Parse(withdrawalInterceptorTimeoutSeconds);
 
         // DB Initialization
         ALICE_PUBKEY = Environment.GetEnvironmentVariable("ALICE_PUBKEY") ?? ALICE_PUBKEY;
