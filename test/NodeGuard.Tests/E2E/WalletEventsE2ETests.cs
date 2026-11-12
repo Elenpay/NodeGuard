@@ -154,6 +154,121 @@ public class WalletEventsE2ETests : E2ETestBase
         (await act.Should().ThrowAsync<RpcException>()).Which.StatusCode.Should().Be(StatusCode.NotFound);
     }
 
+    // ---- withdrawal interceptor -----------------------------------------------------------------------------------
+
+    [E2EFact]
+    public async Task Interceptor_AllowsAWithdrawal_ThatIsThenBroadcast()
+    {
+        var client = CreateClient(out var headers);
+        var rpc = CreateBitcoindRpc();
+        var walletId = await EnsureHotWalletReadyAsync(client, headers);
+        await using var integrator = await WalletEventStream.OpenAsync(client, headers, walletId, _output, interceptWithdrawals: true);
+
+        var destination = await rpc.GetNewAddressAsync();
+        var withdrawal = await RequestHotWithdrawalAsync(client, headers, walletId, destination, "E2E interceptor allows");
+
+        var asked = await integrator.NextAsync(withdrawal.RequestId, WALLET_EVENT_TYPE.WalletEventWithdrawalDecisionRequested);
+        asked.Withdrawal.Destinations.Should().ContainSingle(d =>
+            d.Address == destination.ToString() && d.AmountSats == WithdrawalAmountSats);
+        asked.Withdrawal.DecisionDeadlineUnixMs.Should().BeGreaterThan(asked.OccurredAtUnixMs);
+        await integrator.DecideAsync(asked, allow: true);
+
+        var broadcast = await integrator.NextAsync(withdrawal.RequestId, WALLET_EVENT_TYPE.WalletEventWithdrawalBroadcast);
+        (await rpc.GetRawTransactionAsync(uint256.Parse(broadcast.Withdrawal.TxId), throwIfNotFound: false))
+            .Should().NotBeNull();
+
+        await MineAsync(rpc, 6);
+        await integrator.NextAsync(withdrawal.RequestId, WALLET_EVENT_TYPE.WalletEventWithdrawalConfirmed, TimeSpan.FromMinutes(3));
+    }
+
+    [E2EFact]
+    public async Task Interceptor_BlocksAWithdrawal_ThatIsRejectedAndNeverBroadcast()
+    {
+        var client = CreateClient(out var headers);
+        var rpc = CreateBitcoindRpc();
+        var walletId = await EnsureHotWalletReadyAsync(client, headers);
+        await using var integrator = await WalletEventStream.OpenAsync(client, headers, walletId, _output, interceptWithdrawals: true);
+
+        var withdrawal = await RequestHotWithdrawalAsync(client, headers, walletId, await rpc.GetNewAddressAsync(),
+            "E2E interceptor blocks");
+        var asked = await integrator.NextAsync(withdrawal.RequestId, WALLET_EVENT_TYPE.WalletEventWithdrawalDecisionRequested);
+        await integrator.DecideAsync(asked, allow: false, reason: "destination failed screening");
+
+        var rejected = await integrator.NextAsync(withdrawal.RequestId, WALLET_EVENT_TYPE.WalletEventWithdrawalRejected);
+        rejected.Withdrawal.RejectOrCancelReason.Should().Contain("destination failed screening");
+        await AssertNeverBroadcastAsync(client, headers, rpc, withdrawal);
+        integrator.Seen(withdrawal.RequestId).Should().NotContain(WALLET_EVENT_TYPE.WalletEventWithdrawalSigning,
+            "a blocked withdrawal is never signed");
+    }
+
+    [E2EFact]
+    public async Task Interceptor_ThatDoesNotAnswer_BlocksTheWithdrawalAtTheDeadline()
+    {
+        var client = CreateClient(out var headers);
+        var rpc = CreateBitcoindRpc();
+        var walletId = await EnsureHotWalletReadyAsync(client, headers);
+        await using var integrator = await WalletEventStream.OpenAsync(client, headers, walletId, _output, interceptWithdrawals: true);
+
+        var withdrawal = await RequestHotWithdrawalAsync(client, headers, walletId, await rpc.GetNewAddressAsync(),
+            "E2E interceptor silent");
+        await integrator.NextAsync(withdrawal.RequestId, WALLET_EVENT_TYPE.WalletEventWithdrawalDecisionRequested);
+
+        // No answer: WITHDRAWAL_INTERCEPTOR_TIMEOUT_SECONDS is 10s in the e2e stack
+        var rejected = await integrator.NextAsync(withdrawal.RequestId, WALLET_EVENT_TYPE.WalletEventWithdrawalRejected,
+            TimeSpan.FromSeconds(60));
+        rejected.Withdrawal.RejectOrCancelReason.Should().Contain("no decision");
+        await AssertNeverBroadcastAsync(client, headers, rpc, withdrawal);
+    }
+
+    [E2EFact]
+    public async Task Interceptor_BlocksAFeeBump_AndTheOriginalWaitsForConfirmationAgain()
+    {
+        var client = CreateClient(out var headers);
+        var rpc = CreateBitcoindRpc();
+        var walletId = await EnsureHotWalletReadyAsync(client, headers);
+        await using var integrator = await WalletEventStream.OpenAsync(client, headers, walletId, _output, interceptWithdrawals: true);
+
+        var withdrawal = await RequestHotWithdrawalAsync(client, headers, walletId, await rpc.GetNewAddressAsync(),
+            "E2E interceptor blocks bump");
+        await integrator.DecideAsync(
+            await integrator.NextAsync(withdrawal.RequestId, WALLET_EVENT_TYPE.WalletEventWithdrawalDecisionRequested),
+            allow: true);
+        await integrator.NextAsync(withdrawal.RequestId, WALLET_EVENT_TYPE.WalletEventWithdrawalBroadcast);
+
+        var bump = await client.BumpWithdrawalAsync(new BumpWithdrawalRequest
+        {
+            RequestId = withdrawal.RequestId,
+            MempoolFeeRate = FEES_TYPE.CustomFee,
+            CustomFeeRate = BumpedFeeRateSatPerVb,
+        }, headers);
+        var askedBump = await integrator.NextAsync(bump.RequestId, WALLET_EVENT_TYPE.WalletEventWithdrawalDecisionRequested);
+        askedBump.Withdrawal.BumpingRequestId.Should().Be(withdrawal.RequestId);
+        await integrator.DecideAsync(askedBump, allow: false, reason: "no fee bumps today");
+
+        await integrator.NextAsync(bump.RequestId, WALLET_EVENT_TYPE.WalletEventWithdrawalRejected);
+        var reverted = await integrator.NextAsync(withdrawal.RequestId, WALLET_EVENT_TYPE.WalletEventWithdrawalReplacementReverted);
+        reverted.Withdrawal.Status.Should().Be(WITHDRAWAL_REQUEST_STATUS.WithdrawalPendingConfirmation);
+        (await rpc.GetMempoolEntryAsync(uint256.Parse(withdrawal.Txid), throwIfNotFound: false))
+            .Should().NotBeNull("the original stays in the mempool when its replacement is blocked");
+
+        await MineAsync(rpc, 6);
+        await integrator.NextAsync(withdrawal.RequestId, WALLET_EVENT_TYPE.WalletEventWithdrawalConfirmed, TimeSpan.FromMinutes(3));
+    }
+
+    private async Task AssertNeverBroadcastAsync(NodeGuardService.NodeGuardServiceClient client, Metadata headers,
+        RPCClient rpc, RequestWithdrawalResponse withdrawal)
+    {
+        var status = await client.GetWithdrawalsRequestStatusAsync(
+            new GetWithdrawalsRequestStatusRequest { RequestIds = { withdrawal.RequestId } }, headers);
+        status.WithdrawalRequests.Should().ContainSingle().Which.Status.Should().Be(WITHDRAWAL_REQUEST_STATUS.WithdrawalRejected);
+
+        if (!string.IsNullOrEmpty(withdrawal.Txid))
+        {
+            (await rpc.GetRawTransactionAsync(uint256.Parse(withdrawal.Txid), throwIfNotFound: false))
+                .Should().BeNull("a blocked withdrawal is never broadcast");
+        }
+    }
+
     // ---- plumbing ------------------------------------------------------------------------------------------------
 
     /// <summary>
@@ -192,12 +307,16 @@ public class WalletEventsE2ETests : E2ETestBase
         }
 
         public static async Task<WalletEventStream> OpenAsync(NodeGuardService.NodeGuardServiceClient client,
-            Metadata headers, int walletId, ITestOutputHelper output)
+            Metadata headers, int walletId, ITestOutputHelper output, bool interceptWithdrawals = false)
         {
             var stream = new WalletEventStream(client.SubscribeWalletEvents(headers), output);
             await stream._call.RequestStream.WriteAsync(new WalletEventsClientMessage
             {
-                Subscribe = new SubscribeWalletEventsRequest { WalletId = walletId }
+                Subscribe = new SubscribeWalletEventsRequest
+                {
+                    WalletId = walletId,
+                    InterceptWithdrawals = interceptWithdrawals
+                }
             });
             var subscribed = await stream.NextAsync(e => e.Type == WALLET_EVENT_TYPE.WalletEventSubscribed,
                 TimeSpan.FromSeconds(30), "subscribed");
@@ -208,6 +327,14 @@ public class WalletEventsE2ETests : E2ETestBase
         public Task<WalletEvent> NextAsync(int requestId, WALLET_EVENT_TYPE type, TimeSpan? timeout = null) =>
             NextAsync(e => e.Type == type && e.Withdrawal?.RequestId == requestId,
                 timeout ?? TimeSpan.FromMinutes(2), $"{type} for request {requestId}");
+
+        /// <summary>Answers a WALLET_EVENT_WITHDRAWAL_DECISION_REQUESTED</summary>
+        public Task DecideAsync(WalletEvent decisionRequested, bool allow, string? reason = null)
+        {
+            var decision = new WithdrawalDecision { DecisionId = decisionRequested.Withdrawal.DecisionId, Allow = allow };
+            if (reason != null) decision.Reason = reason;
+            return _call.RequestStream.WriteAsync(new WalletEventsClientMessage { Decision = decision });
+        }
 
         public List<WALLET_EVENT_TYPE> Seen(int requestId)
         {

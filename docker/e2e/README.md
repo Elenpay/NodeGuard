@@ -73,6 +73,10 @@ tests (`DustUtxoWithdrawalE2ETests`, `WithdrawalRbfBumpE2ETests`, `GetNewWalletA
   over gRPC, asserting bitcoind evicts the original for the higher-fee replacement, NodeGuard marks the original
   `WITHDRAWAL_BUMPED`, and the replacement settles once mined. It relies on `MONITOR_WITHDRAWALS_CRON` being fast on
   the `nodeguard` service (10s here; prod keeps the every-5-minutes default) and never mines between the two calls.
+- **Withdrawal interceptor scenarios** (`WalletEventsE2ETests`): an integrator subscribes with
+  `intercept_withdrawals` and allows, blocks or ignores a hot-wallet withdrawal (and blocks an RBF bump). The
+  unanswered case relies on `WITHDRAWAL_INTERCEPTOR_TIMEOUT_SECONDS` being short on the `nodeguard` service (10s
+  here; prod default 60s).
 - **Adding an e2e test**: put it in `[Collection("E2E")]` (so it serialises with the others on the one
   regtest chain — without it the class runs in parallel and they interfere), have it provision the
   resources it needs and reset its own state, and gate it with `[E2EFact]`.

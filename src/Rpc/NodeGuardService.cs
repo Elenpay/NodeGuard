@@ -108,6 +108,7 @@ public class NodeGuardService : Nodeguard.NodeGuardService.NodeGuardServiceBase,
     private readonly IAuditService _auditService;
     private readonly ISparkWalletService _sparkWallet;
     private readonly IWalletEventHub _walletEventHub;
+    private readonly IWithdrawalInterceptorGate _withdrawalInterceptorGate;
     private readonly TimeProvider _timeProvider;
 
     public NodeGuardService(ILogger<NodeGuardService> logger,
@@ -134,10 +135,12 @@ public class NodeGuardService : Nodeguard.NodeGuardService.NodeGuardServiceBase,
         IAuditService auditService,
         ISparkWalletService sparkWallet,
         IWalletEventHub walletEventHub,
+        IWithdrawalInterceptorGate withdrawalInterceptorGate,
         TimeProvider timeProvider
     )
     {
         _walletEventHub = walletEventHub;
+        _withdrawalInterceptorGate = withdrawalInterceptorGate;
         _timeProvider = timeProvider;
         _sparkWallet = sparkWallet;
         _swapsService = swapsService;
@@ -1657,21 +1660,31 @@ public class NodeGuardService : Nodeguard.NodeGuardService.NodeGuardServiceBase,
 
         var types = subscribe.EventTypes.ToHashSet();
         var subscriber = GRPCAuthInterceptor.GetApiToken(context)?.Name ?? context.Peer;
+        var intercept = subscribe.InterceptWithdrawals;
 
-        using var subscription = _walletEventHub.Subscribe(wallet.Id, subscriber);
+        using var subscription = _walletEventHub.Subscribe(wallet.Id, subscriber, intercept);
+        using var callEnded = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        var reading = ReadWalletEventsClientMessagesAsync(requestStream, subscription, callEnded.Token);
 
-        await responseStream.WriteAsync(new WalletEvent
+        if (intercept)
         {
-            Type = WALLET_EVENT_TYPE.WalletEventSubscribed,
-            WalletId = wallet.Id,
-            OccurredAtUnixMs = _timeProvider.GetUtcNow().ToUnixTimeMilliseconds()
-        });
+            await _auditService.LogAsync(AuditActionType.WithdrawalInterceptorConnected, AuditEventType.Success,
+                AuditObjectType.Wallet, wallet.Id.ToString(), new { Subscriber = subscriber, SubscriptionId = subscription.Id });
+        }
 
         try
         {
+            await responseStream.WriteAsync(new WalletEvent
+            {
+                Type = WALLET_EVENT_TYPE.WalletEventSubscribed,
+                WalletId = wallet.Id,
+                OccurredAtUnixMs = _timeProvider.GetUtcNow().ToUnixTimeMilliseconds()
+            });
+
             await foreach (var walletEvent in subscription.Reader.ReadAllAsync(cancellationToken))
             {
-                if (types.Count > 0 && !types.Contains(walletEvent.Type))
+                var alwaysSent = walletEvent.Type == WALLET_EVENT_TYPE.WalletEventWithdrawalDecisionRequested;
+                if (types.Count > 0 && !alwaysSent && !types.Contains(walletEvent.Type))
                     continue;
 
                 await responseStream.WriteAsync(walletEvent);
@@ -1688,6 +1701,63 @@ public class NodeGuardService : Nodeguard.NodeGuardService.NodeGuardServiceBase,
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
         {
             // The client went away
+        }
+        finally
+        {
+            await callEnded.CancelAsync();
+            await reading;
+
+            if (intercept)
+            {
+                await _auditService.LogAsync(AuditActionType.WithdrawalInterceptorDisconnected, AuditEventType.Success,
+                    AuditObjectType.Wallet, wallet.Id.ToString(), new { Subscriber = subscriber, SubscriptionId = subscription.Id });
+            }
+        }
+    }
+
+    /// <summary>
+    /// Reads what the client sends after subscribing: an interceptor's decisions. An interceptor that half-closes can
+    /// no longer answer, so its subscription ends (the gate then treats any pending decision as blocked).
+    /// </summary>
+    private async Task ReadWalletEventsClientMessagesAsync(IAsyncStreamReader<WalletEventsClientMessage> requestStream,
+        WalletEventSubscription subscription, CancellationToken cancellationToken)
+    {
+        try
+        {
+            while (await requestStream.MoveNext(cancellationToken))
+            {
+                var message = requestStream.Current;
+                if (message.MessageCase != WalletEventsClientMessage.MessageOneofCase.Decision
+                    || !subscription.InterceptWithdrawals)
+                {
+                    _logger.LogWarning("Wallet events: ignored a {Message} message from {Subscriber} on wallet {WalletId}",
+                        message.MessageCase, subscription.Subscriber, subscription.WalletId);
+                    continue;
+                }
+
+                var decision = message.Decision;
+                var reason = decision.HasReason ? decision.Reason : null;
+                if (!_withdrawalInterceptorGate.Decide(subscription.Id, decision.DecisionId, decision.Allow, reason))
+                {
+                    _logger.LogWarning(
+                        "Wallet events: decision {DecisionId} from {Subscriber} on wallet {WalletId} matches no pending withdrawal (unknown, expired or already answered)",
+                        decision.DecisionId, subscription.Subscriber, subscription.WalletId);
+                }
+            }
+
+            if (subscription.InterceptWithdrawals)
+                subscription.Dispose();
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            // The call ended
+        }
+        catch (Exception e)
+        {
+            _logger.LogWarning(e, "Wallet events: reading from {Subscriber} on wallet {WalletId} failed",
+                subscription.Subscriber, subscription.WalletId);
+            if (subscription.InterceptWithdrawals)
+                subscription.Dispose();
         }
     }
 

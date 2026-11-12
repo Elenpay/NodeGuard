@@ -165,7 +165,13 @@ public enum AuditActionType
 
     // Spark transit wallet alerts
     SparkBalanceStuck,
-    SparkExitOverdue
+    SparkExitOverdue,
+
+    // Withdrawal interceptors (SubscribeWalletEvents with intercept_withdrawals)
+    WithdrawalInterceptorConnected,
+    WithdrawalInterceptorDisconnected,
+    WithdrawalAllowedByIntegrator,
+    WithdrawalBlockedByIntegrator
 }
 
 /// <summary>
