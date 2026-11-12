@@ -62,8 +62,11 @@ public interface IWithdrawalRequestService
     /// which signs and broadcasts. On failure the replaced request is put back to OnChainConfirmationPending and the
     /// exception is rethrown; the caller decides what happens to the request itself.
     /// </summary>
+    /// <param name="requestId">The hot-wallet request to execute.</param>
+    /// <param name="beforeScheduling">Runs once the template PSBT exists and the replaced request is marked, right
+    /// before the job is scheduled, so callers can audit the request ahead of the job's own audits.</param>
     /// <returns>The template PSBT; its global transaction hash is the txid that will be broadcast.</returns>
-    Task<PSBT> ScheduleHotWalletWithdrawalAsync(int requestId);
+    Task<PSBT> ScheduleHotWalletWithdrawalAsync(int requestId, Func<Task>? beforeScheduling = null);
 
     /// <summary>
     /// Marks the request replaced by <paramref name="replacement"/> as Bumped (fee bump) or Cancelled (RBF cancellation).
@@ -291,7 +294,7 @@ public class WithdrawalRequestService : IWithdrawalRequestService
         return await _walletWithdrawalRequestRepository.GetById(replacement.Id) ?? replacement;
     }
 
-    public async Task<PSBT> ScheduleHotWalletWithdrawalAsync(int requestId)
+    public async Task<PSBT> ScheduleHotWalletWithdrawalAsync(int requestId, Func<Task>? beforeScheduling = null)
     {
         var request = await _walletWithdrawalRequestRepository.GetById(requestId)
                       ?? throw new InvalidOperationException($"Withdrawal request {requestId} not found");
@@ -331,6 +334,11 @@ public class WithdrawalRequestService : IWithdrawalRequestService
             if (request.BumpingWalletWithdrawalRequestId != null)
             {
                 await MarkOriginalAsReplacedAsync(request);
+            }
+
+            if (beforeScheduling != null)
+            {
+                await beforeScheduling();
             }
 
             var scheduler = await _schedulerFactory.GetScheduler();

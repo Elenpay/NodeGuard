@@ -574,9 +574,9 @@ public class NodeGuardService : Nodeguard.NodeGuardService.NodeGuardServiceBase,
             PSBT psbt;
             if (isHotWallet)
             {
-                // Audited before the job is scheduled, so the replacement precedes the job's own audits
-                await AuditSuccessAsync();
-                psbt = await _withdrawalRequestService.ScheduleHotWalletWithdrawalAsync(replacement.Id);
+                // Audited once the PSBT exists but before the job is scheduled, so the replacement precedes the job's
+                // own audits
+                psbt = await _withdrawalRequestService.ScheduleHotWalletWithdrawalAsync(replacement.Id, AuditSuccessAsync);
             }
             else
             {

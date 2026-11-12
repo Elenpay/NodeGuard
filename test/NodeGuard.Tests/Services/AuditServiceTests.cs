@@ -265,10 +265,11 @@ public class AuditServiceTests
     }
 
     [Fact]
-    public async Task LogAsync_AutoContext_WithUserAndNoDetails_KeepsDetailsNull()
+    public async Task LogAsync_AutoContext_WithUserAndNoDetails_StillRecordsRoles()
     {
         // Arrange
         var httpContext = CreateHttpContextWithUser("user-123", "johndoe");
+        ((ClaimsIdentity)httpContext.User.Identity!).AddClaim(new Claim(ClaimTypes.Role, "FinanceManager"));
         _httpContextAccessorMock.Setup(x => x.HttpContext).Returns(httpContext);
         var service = CreateAuditService();
         var captured = CaptureAuditLog();
@@ -277,7 +278,45 @@ public class AuditServiceTests
         await service.LogAsync(AuditActionType.Login, AuditEventType.Success, AuditObjectType.User);
 
         // Assert
+        using var details = JsonDocument.Parse(captured().Details!);
+        details.RootElement.GetProperty("UserRoles").EnumerateArray().Select(e => e.GetString())
+            .Should().BeEquivalentTo("FinanceManager");
+    }
+
+    [Fact]
+    public async Task LogAsync_AutoContext_WithoutContextAndNoDetails_KeepsDetailsNull()
+    {
+        // Arrange
+        _httpContextAccessorMock.Setup(x => x.HttpContext).Returns(new DefaultHttpContext());
+        var service = CreateAuditService();
+        var captured = CaptureAuditLog();
+
+        // Act
+        await service.LogAsync(AuditActionType.Login, AuditEventType.Failure, AuditObjectType.User);
+
+        // Assert
         captured().Details.Should().BeNull();
+    }
+
+    [Fact]
+    public async Task LogAsync_AutoContext_WithLongApiTokenName_TruncatesUsernameToColumnLength()
+    {
+        // Arrange
+        var httpContext = new DefaultHttpContext();
+        var longName = new string('x', 500);
+        httpContext.Items[AuthenticatedApiToken.HttpContextItemKey] = new AuthenticatedApiToken(7, longName);
+        _httpContextAccessorMock.Setup(x => x.HttpContext).Returns(httpContext);
+        var service = CreateAuditService();
+        var captured = CaptureAuditLog();
+
+        // Act
+        await service.LogAsync(AuditActionType.Create, AuditEventType.Success, AuditObjectType.WalletWithdrawalRequest);
+
+        // Assert
+        var log = captured();
+        log.Username.Should().HaveLength(256).And.StartWith("API token 7 (xxx").And.EndWith("x)");
+        using var details = JsonDocument.Parse(log.Details!);
+        details.RootElement.GetProperty("ApiTokenName").GetString().Should().Be(longName);
     }
 
     [Fact]

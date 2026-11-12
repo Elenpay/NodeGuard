@@ -1198,7 +1198,7 @@ namespace NodeGuard.Rpc
             var psbt = SamplePsbt();
             var withdrawalRequestService = new Mock<IWithdrawalRequestService>();
             withdrawalRequestService.Setup(x => x.CreateBumpRequestAsync(10, MempoolRecommendedFeesType.CustomFee, 10m)).ReturnsAsync(bump);
-            withdrawalRequestService.Setup(x => x.ScheduleHotWalletWithdrawalAsync(11)).ReturnsAsync(psbt);
+            withdrawalRequestService.Setup(x => x.ScheduleHotWalletWithdrawalAsync(11, It.IsAny<Func<Task>?>())).Returns(RunBeforeScheduling(psbt));
             var bitcoinService = new Mock<IBitcoinService>();
 
             var mockNodeGuardService = CreateNodeGuardService(
@@ -1217,7 +1217,7 @@ namespace NodeGuard.Rpc
             resp.RequestId.Should().Be(11);
             resp.IsHotWallet.Should().BeTrue();
             resp.Txid.Should().Be(psbt.GetGlobalTransaction().GetHash().ToString());
-            withdrawalRequestService.Verify(x => x.ScheduleHotWalletWithdrawalAsync(11), Times.Once);
+            withdrawalRequestService.Verify(x => x.ScheduleHotWalletWithdrawalAsync(11, It.IsAny<Func<Task>?>()), Times.Once);
             bitcoinService.Verify(x => x.GenerateTemplatePSBT(It.IsAny<WalletWithdrawalRequest>()), Times.Never,
                 "the hot-wallet execution (template + job) is the service's job");
         }
@@ -1248,7 +1248,7 @@ namespace NodeGuard.Rpc
             resp.RequestId.Should().Be(11);
             resp.IsHotWallet.Should().BeFalse();
             resp.Txid.Should().Be(psbt.GetGlobalTransaction().GetHash().ToString());
-            withdrawalRequestService.Verify(x => x.ScheduleHotWalletWithdrawalAsync(It.IsAny<int>()), Times.Never,
+            withdrawalRequestService.Verify(x => x.ScheduleHotWalletWithdrawalAsync(It.IsAny<int>(), It.IsAny<Func<Task>?>()), Times.Never,
                 "a cold-wallet bump waits for the approvers' signatures");
         }
 
@@ -1293,7 +1293,7 @@ namespace NodeGuard.Rpc
             var bump = new WalletWithdrawalRequest { Id = 11, Wallet = new Wallet { IsHotWallet = true }, BumpingWalletWithdrawalRequestId = 10 };
             var withdrawalRequestService = new Mock<IWithdrawalRequestService>();
             withdrawalRequestService.Setup(x => x.CreateBumpRequestAsync(10, MempoolRecommendedFeesType.CustomFee, 10m)).ReturnsAsync(bump);
-            withdrawalRequestService.Setup(x => x.ScheduleHotWalletWithdrawalAsync(11)).ThrowsAsync(new Exception("boom"));
+            withdrawalRequestService.Setup(x => x.ScheduleHotWalletWithdrawalAsync(11, It.IsAny<Func<Task>?>())).ThrowsAsync(new Exception("boom"));
             var walletWithdrawalRequestRepository = new Mock<IWalletWithdrawalRequestRepository>();
             walletWithdrawalRequestRepository.Setup(x => x.Update(It.IsAny<WalletWithdrawalRequest>())).Returns((true, (string?)null));
             var auditService = new Mock<IAuditService>();
@@ -1317,8 +1317,8 @@ namespace NodeGuard.Rpc
                 && r.Status == WalletWithdrawalRequestStatus.Cancelled)), Times.Once,
                 "a bump that could not be executed must not stay pending");
             auditService.Verify(x => x.LogAsync(AuditActionType.BumpFee, AuditEventType.Success,
-                AuditObjectType.WalletWithdrawalRequest, "11", It.IsAny<object?>()), Times.Once,
-                "a hot wallet replacement is audited before its job is scheduled");
+                AuditObjectType.WalletWithdrawalRequest, "11", It.IsAny<object?>()), Times.Never,
+                "a replacement is only audited as a success once its PSBT exists");
             auditService.Verify(x => x.LogAsync(AuditActionType.BumpFee, AuditEventType.Failure,
                 AuditObjectType.WalletWithdrawalRequest, "11", It.IsAny<object?>()), Times.Once);
         }
@@ -1330,7 +1330,7 @@ namespace NodeGuard.Rpc
             var bump = new WalletWithdrawalRequest { Id = 11, Wallet = new Wallet { IsHotWallet = true }, BumpingWalletWithdrawalRequestId = 10 };
             var withdrawalRequestService = new Mock<IWithdrawalRequestService>();
             withdrawalRequestService.Setup(x => x.CreateBumpRequestAsync(10, MempoolRecommendedFeesType.CustomFee, 10m)).ReturnsAsync(bump);
-            withdrawalRequestService.Setup(x => x.ScheduleHotWalletWithdrawalAsync(11)).ThrowsAsync(new NoUTXOsAvailableException());
+            withdrawalRequestService.Setup(x => x.ScheduleHotWalletWithdrawalAsync(11, It.IsAny<Func<Task>?>())).ThrowsAsync(new NoUTXOsAvailableException());
             var walletWithdrawalRequestRepository = new Mock<IWalletWithdrawalRequestRepository>();
             walletWithdrawalRequestRepository.Setup(x => x.Update(It.IsAny<WalletWithdrawalRequest>()))
                 .Throws(new InvalidOperationException("context disposed"));
@@ -1358,7 +1358,7 @@ namespace NodeGuard.Rpc
             var bump = new WalletWithdrawalRequest { Id = 11, Wallet = new Wallet { IsHotWallet = true }, BumpingWalletWithdrawalRequestId = 10 };
             var withdrawalRequestService = new Mock<IWithdrawalRequestService>();
             withdrawalRequestService.Setup(x => x.CreateBumpRequestAsync(10, MempoolRecommendedFeesType.CustomFee, 10m)).ReturnsAsync(bump);
-            withdrawalRequestService.Setup(x => x.ScheduleHotWalletWithdrawalAsync(11)).ThrowsAsync(new Exception("boom"));
+            withdrawalRequestService.Setup(x => x.ScheduleHotWalletWithdrawalAsync(11, It.IsAny<Func<Task>?>())).ThrowsAsync(new Exception("boom"));
             var walletWithdrawalRequestRepository = new Mock<IWalletWithdrawalRequestRepository>();
             walletWithdrawalRequestRepository.Setup(x => x.Update(It.IsAny<WalletWithdrawalRequest>()))
                 .Throws(new InvalidOperationException("context disposed"));
@@ -1394,7 +1394,7 @@ namespace NodeGuard.Rpc
             walletWithdrawalRequestRepository.Setup(x => x.GetByTxHash(txId)).ReturnsAsync(original);
             var withdrawalRequestService = new Mock<IWithdrawalRequestService>();
             withdrawalRequestService.Setup(x => x.CreateBumpRequestAsync(10, MempoolRecommendedFeesType.CustomFee, 10m)).ReturnsAsync(bump);
-            withdrawalRequestService.Setup(x => x.ScheduleHotWalletWithdrawalAsync(11)).ReturnsAsync(SamplePsbt());
+            withdrawalRequestService.Setup(x => x.ScheduleHotWalletWithdrawalAsync(11, It.IsAny<Func<Task>?>())).Returns(RunBeforeScheduling(SamplePsbt()));
 
             var mockNodeGuardService = CreateNodeGuardService(
                 walletWithdrawalRequestRepository: walletWithdrawalRequestRepository.Object,
@@ -1487,7 +1487,7 @@ namespace NodeGuard.Rpc
             var psbt = SamplePsbt();
             var withdrawalRequestService = new Mock<IWithdrawalRequestService>();
             withdrawalRequestService.Setup(x => x.CreateCancelRequestAsync(10, MempoolRecommendedFeesType.CustomFee, 10m)).ReturnsAsync(cancel);
-            withdrawalRequestService.Setup(x => x.ScheduleHotWalletWithdrawalAsync(11)).ReturnsAsync(psbt);
+            withdrawalRequestService.Setup(x => x.ScheduleHotWalletWithdrawalAsync(11, It.IsAny<Func<Task>?>())).Returns(RunBeforeScheduling(psbt));
             var auditService = new Mock<IAuditService>();
 
             var mockNodeGuardService = CreateNodeGuardService(withdrawalRequestService: withdrawalRequestService.Object,
@@ -1539,7 +1539,7 @@ namespace NodeGuard.Rpc
             //Assert
             resp.RequestId.Should().Be(11);
             resp.IsHotWallet.Should().BeFalse();
-            withdrawalRequestService.Verify(x => x.ScheduleHotWalletWithdrawalAsync(It.IsAny<int>()), Times.Never,
+            withdrawalRequestService.Verify(x => x.ScheduleHotWalletWithdrawalAsync(It.IsAny<int>(), It.IsAny<Func<Task>?>()), Times.Never,
                 "a cold-wallet cancellation waits for the approvers' signatures");
         }
 
@@ -1566,6 +1566,20 @@ namespace NodeGuard.Rpc
             var exception = (await act.Should().ThrowAsync<RpcException>()).Which;
             exception.StatusCode.Should().Be(StatusCode.FailedPrecondition);
             exception.Status.Detail.Should().Be("already mined");
+        }
+
+        /// <summary>Stands in for ScheduleHotWalletWithdrawalAsync succeeding: runs the caller's pre-scheduling hook.</summary>
+        private static Func<int, Func<Task>?, Task<PSBT>> RunBeforeScheduling(PSBT psbt)
+        {
+            return async (_, beforeScheduling) =>
+            {
+                if (beforeScheduling != null)
+                {
+                    await beforeScheduling();
+                }
+
+                return psbt;
+            };
         }
 
         /// <summary>A parseable one-in/one-out PSBT; PSBT.FromTransaction refuses a transaction without inputs.</summary>

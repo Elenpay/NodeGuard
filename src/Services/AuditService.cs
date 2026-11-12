@@ -122,19 +122,13 @@ public class AuditService : IAuditService
     /// Serializes the details, adding the request context (the user's roles at the time of the action, or the API
     /// token that authenticated a gRPC call) so it can be checked later even if roles or tokens change. Details that
     /// are not a JSON object are wrapped under <c>Details</c> and keys supplied by the caller are never overwritten.
-    /// User audits without details are stored without them, but an API token is always recorded because token names
-    /// are not unique and its id is the only reliable identity of the caller.
+    /// The context is recorded even when the caller passes no details, so every user audit keeps its roles.
     /// </summary>
     private static string? SerializeDetails(object? details, IReadOnlyDictionary<string, JsonNode?>? contextDetails)
     {
-        if (details == null && contextDetails?.ContainsKey(ApiTokenIdKey) != true)
-        {
-            return null;
-        }
-
         if (contextDetails == null || contextDetails.Count == 0)
         {
-            return JsonSerializer.Serialize(details);
+            return details == null ? null : JsonSerializer.Serialize(details);
         }
 
         var node = details != null ? JsonSerializer.SerializeToNode(details) : new JsonObject();
@@ -149,6 +143,19 @@ public class AuditService : IAuditService
         }
 
         return detailsObject.ToJsonString();
+    }
+
+    /// <summary>
+    /// Token names have no length limit, so the name is cut to keep the username within <see cref="AuditLog.Username"/>'s
+    /// 256 characters; otherwise the insert fails and the audit is lost.
+    /// </summary>
+    private static string FormatApiTokenUsername(AuthenticatedApiToken apiToken)
+    {
+        const int usernameMaxLength = 256;
+        var prefix = $"API token {apiToken.Id} (";
+        var maxNameLength = usernameMaxLength - prefix.Length - 1;
+        var name = apiToken.Name.Length > maxNameLength ? apiToken.Name[..maxNameLength] : apiToken.Name;
+        return $"{prefix}{name})";
     }
 
     private (string? UserId, string? Username, string? IpAddress, IReadOnlyDictionary<string, JsonNode?> ContextDetails)
@@ -182,7 +189,7 @@ public class AuditService : IAuditService
                     && item is AuthenticatedApiToken apiToken)
                 {
                     // The id keeps tokens sharing a name apart, and the spaces keep it from passing for a username
-                    username ??= $"API token {apiToken.Id} ({apiToken.Name})";
+                    username ??= FormatApiTokenUsername(apiToken);
                     contextDetails[ApiTokenIdKey] = apiToken.Id;
                     contextDetails["ApiTokenName"] = apiToken.Name;
                 }
