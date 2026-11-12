@@ -12,7 +12,7 @@ services:
     # when it is missing. TODO before merging the POST transport: repin to the IMMUTABLE tag of the
     # build that carries the route — compose does not re-pull a tag it already has locally, so a
     # floating one lets a stale copy keep serving the GET-only route.
-    image: ghcr.io/lunar-rails/ep-nbxplorer:elenpay-develop
+    image: ghcr.io/elenpay/nbxplorer:elenpay-develop
     platform: linux/amd64
     hostname: nbxplorer
     ports:
