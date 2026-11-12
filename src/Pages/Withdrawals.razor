@@ -943,13 +943,16 @@
         }
     }
 
+    /// <summary>The audit action of the bump modal's current operation: an RBF cancellation or a fee bump.</summary>
+    private AuditActionType BumpAuditAction => _bumpIsCancellation ? AuditActionType.RbfCancel : AuditActionType.BumpFee;
+
     private async Task ShowBumpfeeModal(WalletWithdrawalRequest walletWithdrawalRequest, bool cancellation = false)
     {   
         _bumpIsCancellation = cancellation;
         if (walletWithdrawalRequest == null)
         {
             ToastService.ShowError("Invalid request");
-            await LogWithdrawalAuditAsync(AuditActionType.BumpFee, AuditEventType.Failure, null, "Invalid bump fee request.");
+            await LogWithdrawalAuditAsync(BumpAuditAction, AuditEventType.Failure, null, "Invalid RBF replacement request.");
             return;
         }
             
@@ -957,7 +960,7 @@
         if (request == null)
         {
             ToastService.ShowError("Request not found");
-            await LogWithdrawalAuditAsync(AuditActionType.BumpFee, AuditEventType.Failure, walletWithdrawalRequest, "Withdrawal request not found for bumping.");
+            await LogWithdrawalAuditAsync(BumpAuditAction, AuditEventType.Failure, walletWithdrawalRequest, "Withdrawal request to replace not found.");
             return;
         }
         
@@ -965,7 +968,7 @@
         if (request.Status != WalletWithdrawalRequestStatus.OnChainConfirmationPending)
         {
             ToastService.ShowError("Bumpfee can only be used for transactions that are pending on-chain confirmation.");
-            await LogWithdrawalAuditAsync(AuditActionType.BumpFee, AuditEventType.Failure, request, "Bump requested for withdrawal not pending on-chain confirmation.");
+            await LogWithdrawalAuditAsync(BumpAuditAction, AuditEventType.Failure, request, "RBF replacement requested for withdrawal not pending on-chain confirmation.");
             return;
         }
         
@@ -980,7 +983,7 @@
             catch (Exception)
             {
                 ToastService.ShowError("Error getting confirmations");
-                await LogWithdrawalAuditAsync(AuditActionType.BumpFee, AuditEventType.Failure, request, "Failed to retrieve transaction confirmations for bumping.");
+                await LogWithdrawalAuditAsync(BumpAuditAction, AuditEventType.Failure, request, "Failed to retrieve transaction confirmations for the RBF replacement.");
                 return;
             }
         }
@@ -989,7 +992,7 @@
         {
             ToastService.ShowError("Bumpfee can only be used for transactions with no confirmations. " +
                                    "This transaction has already been mined.");
-            await LogWithdrawalAuditAsync(AuditActionType.BumpFee, AuditEventType.Failure, request, "Bump requested for transaction that already has confirmations.");
+            await LogWithdrawalAuditAsync(BumpAuditAction, AuditEventType.Failure, request, "RBF replacement requested for transaction that already has confirmations.");
             return;
         }
         
@@ -997,7 +1000,7 @@
         if (!cancellation && request.Changeless && request.WalletWithdrawalRequestDestinations!.Count > 1)
         {
             ToastService.ShowError("Fee bumping is not supported for changeless transactions. Please create a new withdrawal with higher fees instead.");
-            await LogWithdrawalAuditAsync(AuditActionType.BumpFee, AuditEventType.Failure, request, "Bump requested for changeless transaction with multiple outputs.");
+            await LogWithdrawalAuditAsync(BumpAuditAction, AuditEventType.Failure, request, "Bump requested for changeless transaction with multiple outputs.");
             return;
         }
         
@@ -1010,8 +1013,8 @@
         catch (Exception ex)
         {
             ToastService.ShowError("Error while creating bumpfee modal");
-            var message = string.IsNullOrWhiteSpace(ex.Message) ? "Error while creating bump fee modal." : ex.Message;
-            await LogWithdrawalAuditAsync(AuditActionType.BumpFee, AuditEventType.Failure, request, message);
+            var message = string.IsNullOrWhiteSpace(ex.Message) ? "Error while creating the RBF replacement modal." : ex.Message;
+            await LogWithdrawalAuditAsync(BumpAuditAction, AuditEventType.Failure, request, message);
         }
     }
 
@@ -1106,14 +1109,14 @@
             if (newRequest == null || _bumpfeeRef == null)
             {
                 ToastService.ShowError("Something went wrong");
-                await LogWithdrawalAuditAsync(AuditActionType.BumpFee, AuditEventType.Failure, newRequest, "Invalid bump fee request parameters.");
+                await LogWithdrawalAuditAsync(BumpAuditAction, AuditEventType.Failure, newRequest, "Invalid RBF replacement request parameters.");
                 return;
             }
 
             // The replacement was validated, created and its UTXOs locked by WithdrawalRequestService (see BumpfeeModal).
             _selectedRequest = newRequest;
             await _bumpfeeRef.HideModal();
-            await LogWithdrawalAuditAsync(newRequest.IsRbfCancellation ? AuditActionType.Cancel : AuditActionType.BumpFee,
+            await LogWithdrawalAuditAsync(newRequest.IsRbfCancellation ? AuditActionType.RbfCancel : AuditActionType.BumpFee,
                 AuditEventType.Success, newRequest,
                 newRequest.IsRbfCancellation ? "RBF cancellation request created." : "Bump withdrawal request created.");
             await GetData();
@@ -1134,7 +1137,7 @@
         {
             Logger.LogError(e, "Error while bumping withdrawal request {RequestId}", newRequest?.Id);
             ToastService.ShowError("Something went wrong");
-            await LogWithdrawalAuditAsync(AuditActionType.BumpFee, AuditEventType.Failure, newRequest, "Unexpected error while bumping withdrawal.");
+            await LogWithdrawalAuditAsync(BumpAuditAction, AuditEventType.Failure, newRequest, "Unexpected error while replacing withdrawal.");
             if (_bumpfeeRef != null) await _bumpfeeRef.HideModal();
         }
     }

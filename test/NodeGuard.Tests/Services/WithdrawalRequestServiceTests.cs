@@ -466,6 +466,45 @@ public class WithdrawalRequestServiceTests
     }
 
     [Fact]
+    public async Task ScheduleHotWalletWithdrawalAsync_BeforeScheduling_RunsAfterTheTemplateAndBeforeTheJob()
+    {
+        HotRequest(WalletWithdrawalRequestStatus.PSBTSignaturesPending);
+        var events = new List<string>();
+        _bitcoin.Setup(x => x.GenerateTemplatePSBT(It.IsAny<WalletWithdrawalRequest>()))
+            .Callback(() => events.Add("template"))
+            .ReturnsAsync(EmptyPsbt());
+        _scheduler.Setup(x => x.ScheduleJob(It.IsAny<IJobDetail>(), It.IsAny<ITrigger>(), It.IsAny<CancellationToken>()))
+            .Callback(() => events.Add("schedule"))
+            .ReturnsAsync(DateTimeOffset.UtcNow);
+
+        await CreateService().ScheduleHotWalletWithdrawalAsync(BumpId, () =>
+        {
+            events.Add("hook");
+            return Task.CompletedTask;
+        });
+
+        events.Should().Equal("template", "hook", "schedule");
+    }
+
+    [Fact]
+    public async Task ScheduleHotWalletWithdrawalAsync_TemplateGenerationFails_DoesNotRunBeforeScheduling()
+    {
+        HotRequest(WalletWithdrawalRequestStatus.PSBTSignaturesPending);
+        _bitcoin.Setup(x => x.GenerateTemplatePSBT(It.IsAny<WalletWithdrawalRequest>()))
+            .ThrowsAsync(new NoUTXOsAvailableException());
+        var hookRan = false;
+
+        var act = () => CreateService().ScheduleHotWalletWithdrawalAsync(BumpId, () =>
+        {
+            hookRan = true;
+            return Task.CompletedTask;
+        });
+
+        await act.Should().ThrowAsync<NoUTXOsAvailableException>();
+        hookRan.Should().BeFalse("a request whose PSBT could not be built must not be audited as a success");
+    }
+
+    [Fact]
     public async Task ScheduleHotWalletWithdrawalAsync_ColdWallet_IsRefused()
     {
         var request = HotRequest(WalletWithdrawalRequestStatus.Pending);

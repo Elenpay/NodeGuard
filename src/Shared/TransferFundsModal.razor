@@ -461,15 +461,15 @@ _amountToTransfer;
                 await AuditService.LogAsync(
                     AuditActionType.Transfer,
                     AuditEventType.Success,
-                    AuditObjectType.Wallet,
-                    _sourceTransferWallet?.Id.ToString(),
+                    AuditObjectType.WalletWithdrawalRequest,
+                    withdrawalRequest.Id.ToString(),
                     new
                     {
+                        SourceWalletId = _sourceTransferWallet?.Id,
                         SourceWallet = _sourceWalletName,
                         TargetWallet = _targetWalletName,
                         Amount = _amountToTransfer,
-                        AllFunds = _transferAllFunds,
-                        WithdrawalRequestId = withdrawalRequest.Id
+                        AllFunds = _transferAllFunds
                     });
                 await _multisigTransferModal.ShowModal();
                 await CloseAndCleanTransferFundsModal();
@@ -515,39 +515,43 @@ _amountToTransfer;
             var amount = _selectedUTXOs.Count > 0 ? SelectedUTXOsValue() : _amountToTransfer;
             var withdrawalRequest = await CreateWithdrawalRequestForFunds(_sourceTransferWallet, _targetTransferWallet, amount,
     _transferAllFunds);
-            var transferSuccess = await TransferInnerWithdrawalProcess(withdrawalRequest);
+            bool transferSuccess;
+            try
+            {
+                transferSuccess = await TransferInnerWithdrawalProcess(withdrawalRequest);
+            }
+            catch (Exception e)
+            {
+                // The request is already saved: fail it so its UTXOs are released and audit why, then let the outer catch toast
+                withdrawalRequest.Status = WalletWithdrawalRequestStatus.Failed;
+                var (updated, updateError) = WalletWithdrawalRequestRepository.Update(withdrawalRequest);
+                if (!updated)
+                {
+                    Logger.LogError("Error while updating the withdrawal request {RequestId} status to failed: {Error}", withdrawalRequest.Id, updateError);
+                }
 
+                await AuditService.LogAsync(
+                    AuditActionType.Transfer,
+                    AuditEventType.Failure,
+                    AuditObjectType.WalletWithdrawalRequest,
+                    withdrawalRequest.Id.ToString(),
+                    new { Request = HotWalletTransferAuditDetails(), Error = e.Message });
+                throw;
+            }
+
+            // The Success entry is written in CreateJobForFunds, before the job is scheduled
             if (transferSuccess)
             {
                 ToastService.ShowSuccess("Funds transferred successfully");
-                await AuditService.LogAsync(
-                    AuditActionType.Transfer,
-                    AuditEventType.Success,
-                    AuditObjectType.Wallet,
-                    _sourceTransferWallet?.Id.ToString(),
-                    new
-                    {
-                        SourceWallet = _sourceWalletName,
-                        TargetWallet = _targetWalletName,
-                        Amount = _amountToTransfer,
-                        AllFunds = _transferAllFunds,
-                        WithdrawalRequestId = withdrawalRequest.Id
-                    });
             }
             else
             {
                 await AuditService.LogAsync(
                     AuditActionType.Transfer,
                     AuditEventType.Failure,
-                    AuditObjectType.Wallet,
-                    _sourceTransferWallet?.Id.ToString(),
-                    new
-                    {
-                        SourceWallet = _sourceWalletName,
-                        TargetWallet = _targetWalletName,
-                        Amount = _amountToTransfer,
-                        WithdrawalRequestId = withdrawalRequest.Id
-                    });
+                    AuditObjectType.WalletWithdrawalRequest,
+                    withdrawalRequest.Id.ToString(),
+                    HotWalletTransferAuditDetails());
                 ToastService.ShowError("Error while transferring funds, please contact a superadmin for troubleshooting");
             }
 
@@ -628,6 +632,18 @@ _amountToTransfer;
         return result;
     }
 
+    private object HotWalletTransferAuditDetails()
+    {
+        return new
+        {
+            SourceWalletId = _sourceTransferWallet?.Id,
+            SourceWallet = _sourceWalletName,
+            TargetWallet = _targetWalletName,
+            Amount = _amountToTransfer,
+            AllFunds = _transferAllFunds
+        };
+    }
+
     private async Task<bool> CreateJobForFunds(WalletWithdrawalRequest withdrawalRequest)
     {
         var result = false;
@@ -640,6 +656,14 @@ _amountToTransfer;
             map.Put("withdrawalRequestId", withdrawalRequest.Id);
 
             var job = SimpleJob.Create<PerformWithdrawalJob>(map, withdrawalRequest.Id.ToString());
+
+            // Audit before scheduling so the transfer comes before the job's own audits
+            await AuditService.LogAsync(
+                AuditActionType.Transfer,
+                AuditEventType.Success,
+                AuditObjectType.WalletWithdrawalRequest,
+                withdrawalRequest.Id.ToString(),
+                HotWalletTransferAuditDetails());
             await scheduler.ScheduleJob(job.Job, job.Trigger);
 
             // No write after scheduling: the job may already have moved the request to FinalizingPSBT or broadcast

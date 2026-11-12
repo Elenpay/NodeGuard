@@ -171,7 +171,10 @@ public enum AuditActionType
     WithdrawalInterceptorConnected,
     WithdrawalInterceptorDisconnected,
     WithdrawalAllowedByIntegrator,
-    WithdrawalBlockedByIntegrator
+    WithdrawalBlockedByIntegrator,
+
+    // RBF cancellation: a replacement request that sends the funds back to the wallet
+    RbfCancel
 }
 
 /// <summary>
