@@ -118,6 +118,14 @@ namespace NodeGuard.Services
         public Task<Dictionary<ulong, ChannelState>> GetChannelsState();
 
         /// <summary>
+        /// Gets a dictionary of the local and remote balance of the channels of a single node, from that
+        /// node's own point of view. Use this whenever balances are shown for a specific node.
+        /// </summary>
+        /// <param name="node"></param>
+        /// <returns></returns>
+        public Task<Dictionary<ulong, ChannelState>> GetChannelsState(Node node);
+
+        /// <summary>
         /// Cancels a pending channel from LND PSBT-based funding of channels
         /// </summary>
         /// <param name="source"></param>
@@ -1592,22 +1600,50 @@ namespace NodeGuard.Services
                     // We skip and wait for the other node to report the channel
                     if (!ChannelOwnershipHelper.IsOwnedByManagedNode(channel, nodes)) continue;
 
-                    var htlcsLocal = channel.PendingHtlcs.Where(x => x.Incoming == true).Sum(x => x.Amount);
-                    var htlcsRemote = channel.PendingHtlcs.Where(x => x.Incoming == false).Sum(x => x.Amount);
-
-                    var localBalance = channel.LocalBalance + htlcsLocal;
-                    var remoteBalance = channel.RemoteBalance + htlcsRemote;
-
-                    result.TryAdd(channel.ChanId, new ChannelState()
-                    {
-                        LocalBalance = localBalance,
-                        RemoteBalance = remoteBalance,
-                        Active = channel.Active
-                    });
+                    result.TryAdd(channel.ChanId, ToChannelState(channel));
                 }
             }
 
             return result;
+        }
+
+        public async Task<Dictionary<ulong, ChannelState>> GetChannelsState(Node node)
+        {
+            if (node == null) throw new ArgumentNullException(nameof(node));
+
+            var result = new Dictionary<ulong, ChannelState>();
+
+            var listChannelsResponse = await _lightningClientService.ListChannels(node);
+            if (listChannelsResponse == null)
+            {
+                _logger.LogError("Error while getting channels for node: {NodeId}", node.Id);
+                return result;
+            }
+
+            // No ownership de-dup here: the caller asked for this node's own point of view, and a
+            // channel between two managed nodes reports mirrored local/remote on each side.
+            foreach (var channel in listChannelsResponse.Channels)
+            {
+                if (channel == null) continue;
+
+                result.TryAdd(channel.ChanId, ToChannelState(channel));
+            }
+
+            return result;
+        }
+
+        // Pending HTLCs are credited back to the side that will keep the funds if they settle.
+        private static ChannelState ToChannelState(Lnrpc.Channel channel)
+        {
+            var htlcsLocal = channel.PendingHtlcs.Where(x => x.Incoming == true).Sum(x => x.Amount);
+            var htlcsRemote = channel.PendingHtlcs.Where(x => x.Incoming == false).Sum(x => x.Amount);
+
+            return new ChannelState()
+            {
+                LocalBalance = channel.LocalBalance + htlcsLocal,
+                RemoteBalance = channel.RemoteBalance + htlcsRemote,
+                Active = channel.Active
+            };
         }
 
         public async Task<uint?> GetBlockHeight(Node node)

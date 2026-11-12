@@ -2190,6 +2190,120 @@ namespace NodeGuard.Services
         }
 
         [Fact]
+        public async Task GetChannelsStateForNode_BothNodesAreManaged_ReturnsEachNodesOwnPointOfView()
+        {
+            // Arrange
+            var lightningClientService = new Mock<ILightningClientService>();
+
+            var node1 = new Node { Id = 1, Endpoint = "abc", PubKey = "managedPubKey1" };
+            var node2 = new Node { Id = 2, Endpoint = "abc", PubKey = "managedPubKey2" };
+
+            var listChannelsResponse1 = new ListChannelsResponse
+            {
+                Channels =
+                {
+                    new Lnrpc.Channel
+                    {
+                        ChanId = 1,
+                        LocalBalance = 500,
+                        RemoteBalance = 100,
+                        Initiator = true,
+                        Active = true,
+                        RemotePubkey = "managedPubKey2"
+                    }
+                }
+            };
+
+            var listChannelsResponse2 = new ListChannelsResponse
+            {
+                Channels =
+                {
+                    new Lnrpc.Channel
+                    {
+                        ChanId = 1,
+                        LocalBalance = 100,
+                        RemoteBalance = 500,
+                        Initiator = false,
+                        Active = true,
+                        RemotePubkey = "managedPubKey1"
+                    }
+                }
+            };
+
+            lightningClientService.Setup(x => x.ListChannels(node1, null)).ReturnsAsync(listChannelsResponse1);
+            lightningClientService.Setup(x => x.ListChannels(node2, null)).ReturnsAsync(listChannelsResponse2);
+            var lightningService = new LightningService(null, null, null, null, null, null, null, null, null, lightningClientService.Object, null, null);
+
+            // Act
+            var node1State = await lightningService.GetChannelsState(node1);
+            var node2State = await lightningService.GetChannelsState(node2);
+
+            // Assert
+            node1State[1].LocalBalance.Should().Be(500);
+            node1State[1].RemoteBalance.Should().Be(100);
+            node2State[1].LocalBalance.Should().Be(100);
+            node2State[1].RemoteBalance.Should().Be(500);
+        }
+
+        [Fact]
+        public async Task GetChannelsStateForNode_PendingHtlcs_AreCreditedToTheirSide()
+        {
+            // Arrange
+            var lightningClientService = new Mock<ILightningClientService>();
+            var node = new Node { Id = 1, Endpoint = "abc", PubKey = "managedPubKey1" };
+
+            var listChannelsResponse = new ListChannelsResponse
+            {
+                Channels =
+                {
+                    new Lnrpc.Channel
+                    {
+                        ChanId = 1,
+                        LocalBalance = 500,
+                        RemoteBalance = 100,
+                        Initiator = true,
+                        Active = true,
+                        RemotePubkey = "externalPubKey",
+                        PendingHtlcs =
+                        {
+                            new HTLC { Incoming = true, Amount = 30 },
+                            new HTLC { Incoming = false, Amount = 20 }
+                        }
+                    }
+                }
+            };
+
+            lightningClientService.Setup(x => x.ListChannels(node, null)).ReturnsAsync(listChannelsResponse);
+            var lightningService = new LightningService(null, null, null, null, null, null, null, null, null, lightningClientService.Object, null, null);
+
+            // Act
+            var state = await lightningService.GetChannelsState(node);
+
+            // Assert
+            state[1].LocalBalance.Should().Be(530);
+            state[1].RemoteBalance.Should().Be(120);
+            state[1].Active.Should().BeTrue();
+        }
+
+        [Fact]
+        public async Task GetChannelsStateForNode_ListChannelsFails_ReturnsEmpty()
+        {
+            // Arrange
+            var lightningClientService = new Mock<ILightningClientService>();
+            var node = new Node { Id = 1, Endpoint = "abc", PubKey = "managedPubKey1" };
+
+            lightningClientService.Setup(x => x.ListChannels(node, null)).ReturnsAsync((ListChannelsResponse?)null);
+            var logger = new Mock<ILogger<LightningService>>();
+            var lightningService = new LightningService(logger.Object, null, null, null, null, null, null, null, null, lightningClientService.Object, null, null);
+
+            // Act
+            var state = await lightningService.GetChannelsState(node);
+
+            // Assert
+            state.Should().BeEmpty();
+        }
+
+        [Fact]
         public async Task SetChannelFeePolicy_ValidRequest_UpdatesPolicyAndStoresAuditLog()
         {
             // Arrange
