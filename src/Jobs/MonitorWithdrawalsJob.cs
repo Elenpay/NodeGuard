@@ -50,6 +50,8 @@ public class MonitorWithdrawalsJob : IJob
         _logger.LogInformation($"Job {nameof(MonitorWithdrawalsJob)} started");
         var withdrawalsPending = await _walletWithdrawalRequestRepository.GetOnChainPendingWithdrawals();
 
+        // One withdrawal that cannot be checked (evicted or unknown tx, NBXplorer hiccup) must not stop the others
+        // from being confirmed, so failures are logged per request and the loop carries on.
         foreach (var walletWithdrawalRequest in withdrawalsPending)
         {
             if (!string.IsNullOrEmpty(walletWithdrawalRequest.TxId))
@@ -57,8 +59,15 @@ public class MonitorWithdrawalsJob : IJob
                 try
                 {
                     //Let's check if the minimum amount of confirmations are established
-                
                     var getTxResult = await _nbXplorerService.GetTransactionAsync(uint256.Parse(walletWithdrawalRequest.TxId), default);
+
+                    if (getTxResult == null)
+                    {
+                        _logger.LogWarning(
+                            "NBXplorer does not know the transaction {TxId} of withdrawal request {RequestId}; it may have been evicted or replaced",
+                            walletWithdrawalRequest.TxId, walletWithdrawalRequest.Id);
+                        continue;
+                    }
 
                     if (getTxResult.Confirmations >= Constants.TRANSACTION_CONFIRMATION_MINIMUM_BLOCKS)
                     {
@@ -82,9 +91,8 @@ public class MonitorWithdrawalsJob : IJob
                 }
                 catch (Exception e)
                 {
-                    _logger.LogError(e, "Error while monitoring TxId: {TxId}", walletWithdrawalRequest.TxId);
-
-                    throw new JobExecutionException(e, false);
+                    _logger.LogError(e, "Error while monitoring TxId: {TxId} of withdrawal request {RequestId}",
+                        walletWithdrawalRequest.TxId, walletWithdrawalRequest.Id);
                 }
             }
         }
