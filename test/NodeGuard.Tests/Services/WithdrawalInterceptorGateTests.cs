@@ -115,6 +115,24 @@ public class WithdrawalInterceptorGateTests
     }
 
     [Fact]
+    public async Task RequestDecision_OneBlocksWhileAnotherIsSilent_BlocksWithoutWaitingForTheTimeout()
+    {
+        using var silent = _hub.Subscribe(WalletId, "sleepy", interceptWithdrawals: true);
+        using var blocking = _hub.Subscribe(WalletId, "compliance", interceptWithdrawals: true);
+        var gate = Gate(TimeSpan.FromMinutes(5));
+
+        var pending = gate.RequestDecisionAsync(Request());
+        var asked = await DecisionRequestedAsync(blocking);
+        gate.Decide(blocking.Id, asked.Withdrawal.DecisionId, false, "sanctioned address");
+
+        var outcome = await pending.WaitAsync(TimeSpan.FromSeconds(5));
+        outcome.Kind.Should().Be(WithdrawalInterceptOutcomeKind.Blocked);
+        outcome.DecidedBy.Should().Be("compliance");
+        outcome.Interceptors.Should().BeEquivalentTo("sleepy", "compliance");
+        gate.Decide(silent.Id, asked.Withdrawal.DecisionId, true, null).Should().BeFalse("the decision is closed");
+    }
+
+    [Fact]
     public async Task RequestDecision_NoAnswerInTime_IsBlocked()
     {
         using var interceptor = _hub.Subscribe(WalletId, "sleepy", interceptWithdrawals: true);

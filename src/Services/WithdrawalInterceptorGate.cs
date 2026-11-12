@@ -61,12 +61,15 @@ public interface IWithdrawalInterceptorGate
     bool Decide(Guid subscriptionId, string decisionId, bool allow, string? reason);
 }
 
+/// <summary>
+/// Coordinates one withdrawal decision: asks every interceptor through its own <see cref="InterceptorDecision"/> and
+/// applies the policy. The first block wins; the withdrawal is allowed only when every interceptor allows it.
+/// </summary>
 public class WithdrawalInterceptorGate : IWithdrawalInterceptorGate
 {
-    private sealed record Answer(bool Allow, string? Reason, string? Subscriber);
+    private sealed record Answer(bool Allow, string? Reason, string Subscriber);
 
-    private readonly ConcurrentDictionary<(string DecisionId, Guid SubscriptionId), (TaskCompletionSource<Answer> Answer, string? Subscriber)>
-        _pending = new();
+    private readonly ConcurrentDictionary<(string DecisionId, Guid SubscriptionId), InterceptorDecision> _pending = new();
 
     private readonly IWalletEventHub _hub;
     private readonly TimeProvider _timeProvider;
@@ -96,7 +99,6 @@ public class WithdrawalInterceptorGate : IWithdrawalInterceptorGate
         if (interceptors.Count == 0)
             return WithdrawalInterceptOutcome.Skipped;
 
-        var names = interceptors.Select(x => x.Subscriber ?? x.Id.ToString()).ToList();
         var decisionId = Guid.NewGuid().ToString("N");
         var timeout = Timeout;
         var now = _timeProvider.GetUtcNow();
@@ -112,53 +114,30 @@ public class WithdrawalInterceptorGate : IWithdrawalInterceptorGate
             Withdrawal = payload
         };
 
-        var registrations = new List<CancellationTokenRegistration>();
-        var answers = new List<Task<Answer>>();
-        using var deadlineCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        var decisions = interceptors
+            .Select(x => new InterceptorDecision(this, decisionId, x, timeout, cancellationToken))
+            .ToList();
+        var names = decisions.Select(x => x.Subscriber).ToList();
         try
         {
-            foreach (var interceptor in interceptors)
-            {
-                var answer = new TaskCompletionSource<Answer>(TaskCreationOptions.RunContinuationsAsynchronously);
-                _pending[(decisionId, interceptor.Id)] = (answer, interceptor.Subscriber);
-                answers.Add(answer.Task);
-
-                var name = interceptor.Subscriber;
-                registrations.Add(interceptor.Closed.Register(() =>
-                    answer.TrySetResult(new Answer(false, "the integrator disconnected before deciding", name))));
-
-                if (!_hub.Send(interceptor, decisionRequested))
-                    answer.TrySetResult(new Answer(false, "the integrator could not be reached", name));
-            }
+            foreach (var decision in decisions)
+                decision.Ask(decisionRequested);
 
             _logger.LogInformation(
                 "Withdrawal request {RequestId} on wallet {WalletId} waits up to {Timeout} for {Interceptors} (decision {DecisionId})",
                 request.Id, request.WalletId, timeout, names, decisionId);
 
-            var deadline = Task.Delay(timeout, _timeProvider, deadlineCts.Token);
-            var remaining = new List<Task<Answer>>(answers);
+            var remaining = decisions.Select(x => x.Result).ToList();
             while (remaining.Count > 0)
             {
-                var finished = await Task.WhenAny(remaining.Cast<Task>().Append(deadline));
-                if (finished == deadline)
-                {
-                    var silent = interceptors.Where((_, i) => !answers[i].IsCompleted)
-                        .Select(x => x.Subscriber ?? x.Id.ToString()).ToList();
-                    var why = cancellationToken.IsCancellationRequested
-                        ? "NodeGuard stopped waiting before the integrator decided"
-                        : $"no decision from the integrator within {timeout.TotalSeconds:0}s";
-                    return new WithdrawalInterceptOutcome(WithdrawalInterceptOutcomeKind.Blocked, decisionId, names,
-                        why, string.Join(", ", silent));
-                }
-
-                var answerTask = (Task<Answer>)finished;
-                remaining.Remove(answerTask);
-                var result = await answerTask;
-                if (!result.Allow)
+                var finished = await Task.WhenAny(remaining);
+                remaining.Remove(finished);
+                var answer = await finished;
+                if (!answer.Allow)
                 {
                     return new WithdrawalInterceptOutcome(WithdrawalInterceptOutcomeKind.Blocked, decisionId, names,
-                        string.IsNullOrWhiteSpace(result.Reason) ? "blocked by the integrator" : result.Reason,
-                        result.Subscriber);
+                        string.IsNullOrWhiteSpace(answer.Reason) ? "blocked by the integrator" : answer.Reason,
+                        answer.Subscriber);
                 }
             }
 
@@ -166,19 +145,70 @@ public class WithdrawalInterceptorGate : IWithdrawalInterceptorGate
         }
         finally
         {
-            await deadlineCts.CancelAsync();
-            foreach (var registration in registrations)
-                await registration.DisposeAsync();
-            foreach (var interceptor in interceptors)
-                _pending.TryRemove((decisionId, interceptor.Id), out _);
+            foreach (var decision in decisions)
+                await decision.DisposeAsync();
         }
     }
 
-    public bool Decide(Guid subscriptionId, string decisionId, bool allow, string? reason)
-    {
-        if (!_pending.TryGetValue((decisionId, subscriptionId), out var pending))
-            return false;
+    public bool Decide(Guid subscriptionId, string decisionId, bool allow, string? reason) =>
+        _pending.TryGetValue((decisionId, subscriptionId), out var decision) && decision.Settle(allow, reason);
 
-        return pending.Answer.TrySetResult(new Answer(allow, reason, pending.Subscriber));
+    /// <summary>
+    /// Asks one interceptor and always ends in an answer: its own, or a block when it cannot be reached, disconnects,
+    /// does not answer within the timeout, or NodeGuard stops waiting
+    /// </summary>
+    private sealed class InterceptorDecision : IAsyncDisposable
+    {
+        private readonly TaskCompletionSource<Answer> _answer = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        private readonly WithdrawalInterceptorGate _gate;
+        private readonly (string DecisionId, Guid SubscriptionId) _key;
+        private readonly WalletEventSubscription _interceptor;
+        private readonly TimeSpan _timeout;
+        private readonly CancellationToken _cancellationToken;
+        private readonly List<CancellationTokenRegistration> _registrations = [];
+        private CancellationTokenSource? _deadline;
+
+        public InterceptorDecision(WithdrawalInterceptorGate gate, string decisionId,
+            WalletEventSubscription interceptor, TimeSpan timeout, CancellationToken cancellationToken)
+        {
+            _gate = gate;
+            _key = (decisionId, interceptor.Id);
+            _interceptor = interceptor;
+            _timeout = timeout;
+            _cancellationToken = cancellationToken;
+            Subscriber = interceptor.Subscriber ?? interceptor.Id.ToString();
+        }
+
+        public string Subscriber { get; }
+
+        public Task<Answer> Result => _answer.Task;
+
+        public void Ask(WalletEvent decisionRequested)
+        {
+            // Registered before sending, so an answer that comes back at once finds its decision
+            _gate._pending[_key] = this;
+
+            _deadline = new CancellationTokenSource(_timeout, _gate._timeProvider);
+            _registrations.Add(_deadline.Token.Register(() =>
+                Settle(false, $"no decision from the integrator within {_timeout.TotalSeconds:0}s")));
+            _registrations.Add(_cancellationToken.Register(() =>
+                Settle(false, "NodeGuard stopped waiting before the integrator decided")));
+            _registrations.Add(_interceptor.Closed.Register(() =>
+                Settle(false, "the integrator disconnected before deciding")));
+
+            if (!_gate._hub.Send(_interceptor, decisionRequested))
+                Settle(false, "the integrator could not be reached");
+        }
+
+        /// <summary>Settles the decision; false when it was already settled</summary>
+        public bool Settle(bool allow, string? reason) => _answer.TrySetResult(new Answer(allow, reason, Subscriber));
+
+        public async ValueTask DisposeAsync()
+        {
+            _gate._pending.TryRemove(_key, out _);
+            foreach (var registration in _registrations)
+                await registration.DisposeAsync();
+            _deadline?.Dispose();
+        }
     }
 }
