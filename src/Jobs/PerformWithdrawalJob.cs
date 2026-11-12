@@ -64,11 +64,22 @@ public class PerformWithdrawalJob : IJob
         try
         {
             var withdrawalRequest = await _walletWithdrawalRequestRepository.GetById(withdrawalRequestId);
-            if (withdrawalRequest != null && await IsBlockedByIntegratorAsync(withdrawalRequest, context.CancellationToken))
+            if (withdrawalRequest != null)
             {
-                _logger.LogInformation("{JobName} ended: withdrawal request {RequestId} blocked by an integrator",
-                    nameof(PerformWithdrawalJob), withdrawalRequestId);
-                return;
+                var outcome = await AskIntegratorsAsync(withdrawalRequest, context.CancellationToken);
+                switch (outcome.Kind)
+                {
+                    case WithdrawalInterceptOutcomeKind.Allowed:
+                        await _auditService.LogSystemAsync(AuditActionType.WithdrawalAllowedByIntegrator,
+                            AuditEventType.Success, AuditObjectType.WalletWithdrawalRequest,
+                            withdrawalRequest.Id.ToString(), AuditDetails(withdrawalRequest, outcome));
+                        break;
+                    case WithdrawalInterceptOutcomeKind.Blocked:
+                        await RejectBlockedAsync(withdrawalRequest, outcome);
+                        _logger.LogInformation("{JobName} ended: withdrawal request {RequestId} blocked by an integrator",
+                            nameof(PerformWithdrawalJob), withdrawalRequestId);
+                        return;
+                }
             }
 
             await _bitcoinService.PerformWithdrawal(withdrawalRequest!);
@@ -100,41 +111,27 @@ public class PerformWithdrawalJob : IJob
     }
 
     /// <summary>
-    /// Puts the request to the integrators intercepting its wallet. A block rejects it (and reverts the request it
-    /// was replacing, for an RBF replacement); with nobody intercepting, the check is skipped.
+    /// Puts the request to the integrators intercepting its wallet and returns their outcome, without acting on it.
+    /// Skipped with nobody intercepting, or when the request is not about to be signed.
     /// </summary>
-    private async Task<bool> IsBlockedByIntegratorAsync(WalletWithdrawalRequest request, CancellationToken cancellationToken)
+    private Task<WithdrawalInterceptOutcome> AskIntegratorsAsync(WalletWithdrawalRequest request,
+        CancellationToken cancellationToken)
     {
         // Only a request about to be signed is put to the integrators; anything else fails in PerformWithdrawal as before
         if (request.Status is not (WalletWithdrawalRequestStatus.PSBTSignaturesPending
             or WalletWithdrawalRequestStatus.FinalizingPSBT))
         {
-            return false;
+            return Task.FromResult(WithdrawalInterceptOutcome.Skipped);
         }
 
-        var outcome = await _interceptorGate.RequestDecisionAsync(request, cancellationToken);
-        if (outcome.Kind == WithdrawalInterceptOutcomeKind.Skipped)
-            return false;
+        return _interceptorGate.RequestDecisionAsync(request, cancellationToken);
+    }
 
-        var auditDetails = new
-        {
-            RequestId = request.Id,
-            request.WalletId,
-            outcome.DecisionId,
-            outcome.Interceptors,
-            outcome.DecidedBy,
-            outcome.Reason,
-            request.BumpingWalletWithdrawalRequestId,
-            request.IsRbfCancellation
-        };
-
-        if (outcome.Kind == WithdrawalInterceptOutcomeKind.Allowed)
-        {
-            await _auditService.LogSystemAsync(AuditActionType.WithdrawalAllowedByIntegrator, AuditEventType.Success,
-                AuditObjectType.WalletWithdrawalRequest, request.Id.ToString(), auditDetails);
-            return false;
-        }
-
+    /// <summary>
+    /// Rejects a request an integrator blocked, and reverts the request it was replacing, for an RBF replacement
+    /// </summary>
+    private async Task RejectBlockedAsync(WalletWithdrawalRequest request, WithdrawalInterceptOutcome outcome)
+    {
         _logger.LogWarning("Withdrawal request {RequestId} blocked by integrator {Integrator}: {Reason}",
             request.Id, outcome.DecidedBy, outcome.Reason);
 
@@ -151,8 +148,18 @@ public class PerformWithdrawalJob : IJob
         await _withdrawalRequestService.RevertOriginalAsync(request);
 
         await _auditService.LogSystemAsync(AuditActionType.WithdrawalBlockedByIntegrator, AuditEventType.Success,
-            AuditObjectType.WalletWithdrawalRequest, request.Id.ToString(), auditDetails);
-
-        return true;
+            AuditObjectType.WalletWithdrawalRequest, request.Id.ToString(), AuditDetails(request, outcome));
     }
+
+    private static object AuditDetails(WalletWithdrawalRequest request, WithdrawalInterceptOutcome outcome) => new
+    {
+        RequestId = request.Id,
+        request.WalletId,
+        outcome.DecisionId,
+        outcome.Interceptors,
+        outcome.DecidedBy,
+        outcome.Reason,
+        request.BumpingWalletWithdrawalRequestId,
+        request.IsRbfCancellation
+    };
 }
