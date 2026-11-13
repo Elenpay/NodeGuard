@@ -47,6 +47,18 @@ public interface INBXplorerService
 
     public Task<ScanUTXOInformation> GetScanUTXOSetInformationAsync(DerivationStrategyBase derivationStrategy,
         CancellationToken cancellation = default(CancellationToken));
+
+    /// <summary>
+    /// The id of NBXplorer's latest event (0 when it has none): where to start following its event feed
+    /// </summary>
+    public Task<long> GetLatestEventIdAsync(CancellationToken cancellation = default);
+
+    /// <summary>
+    /// NBXplorer's events after <paramref name="lastEventId"/>; with <paramref name="longPolling"/>, waits for the
+    /// next one when there are none yet
+    /// </summary>
+    public Task<NewEventBase[]> GetEventsAsync(long lastEventId, int limit, bool longPolling,
+        CancellationToken cancellation = default);
 }
 
 public enum MempoolRecommendedFeesType
@@ -104,6 +116,23 @@ public class NBXplorerService : INBXplorerService
     {
         var client = await LightningHelper.CreateNBExplorerClient();
         await client.TrackAsync(trackedSource, trackWalletRequest, cancellation);
+    }
+
+    public async Task<long> GetLatestEventIdAsync(CancellationToken cancellation = default)
+    {
+        var client = await LightningHelper.CreateNBExplorerClient();
+        var latest = await client.CreateLongPollingNotificationSession().GetLatestEventsAsync(1, cancellation);
+
+        return latest.Length == 0 ? 0 : latest.Max(x => x.EventId);
+    }
+
+    public async Task<NewEventBase[]> GetEventsAsync(long lastEventId, int limit, bool longPolling,
+        CancellationToken cancellation = default)
+    {
+        var client = await LightningHelper.CreateNBExplorerClient();
+
+        return await client.CreateLongPollingNotificationSession(lastEventId)
+            .GetEventsAsync(lastEventId, limit, longPolling, cancellation);
     }
 
     public async Task<TransactionResult?> GetTransactionAsync(uint256 txId, CancellationToken cancellation = default)

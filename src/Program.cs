@@ -171,6 +171,7 @@ namespace NodeGuard
             builder.Services.AddSingleton<IWalletEventHub, WalletEventHub>();
             builder.Services.AddTransient<IWithdrawalEventPublisher, WithdrawalEventPublisher>();
             builder.Services.AddSingleton<IWithdrawalInterceptorGate, WithdrawalInterceptorGate>();
+            builder.Services.AddHostedService<WalletDepositListener>();
             builder.Services.AddTransient<IRebalanceService, RebalanceService>();
             builder.Services.AddTransient<IRoutingEngineSnapshotService, RoutingEngineSnapshotService>();
             builder.Services.AddScoped<IAuditService, AuditService>();
