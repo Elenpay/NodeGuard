@@ -22,6 +22,7 @@ using NodeGuard.Services;
 using Google.Protobuf;
 using NBitcoin;
 using NBXplorer;
+using NBXplorer.DerivationStrategy;
 using NBXplorer.Models;
 
 namespace NodeGuard.Helpers
@@ -218,6 +219,30 @@ namespace NodeGuard.Helpers
                     return coin.ToScriptCoin(x.ScriptPubKey);
                 })
                 .ToList();
+        }
+
+        /// <summary>
+        /// Biggest channel the coins can fund through a normal open: every coin in, the funding output
+        /// and a change output out, with the change kept at dust so the tx still relays.
+        /// </summary>
+        public static long MaxFundableChannelSats(DerivationStrategyBase derivationStrategy, List<UTXO> utxos, decimal feeRateSatPerVb)
+        {
+            if (utxos.Count == 0)
+            {
+                return 0;
+            }
+
+            // Output values don't change the size, so the amounts here are placeholders
+            var builder = CurrentNetworkHelper.GetCurrentNetwork().CreateTransactionBuilder();
+            var tx = builder.AddCoins(utxos.Select(u => u.AsCoin(derivationStrategy)))
+                .SendAll(new WitScriptId(uint256.Zero).ScriptPubKey)
+                .BuildTransaction(false);
+            tx.Outputs.Add(Money.Zero, utxos[0].ScriptPubKey);
+
+            var totalSats = utxos.Sum(u => ((Money)u.Value).Satoshi);
+            var feeSats = builder.EstimateFees(tx, new FeeRate(feeRateSatPerVb)).Satoshi;
+
+            return Math.Max(0, totalSats - feeSats - Constants.MINIMUM_UTXO_VALUE_SATS);
         }
 
         /// <summary>
