@@ -242,9 +242,36 @@ namespace NodeGuard.Data.Models
         /// </summary>
         public double? MaxRebalanceCostToEarnRatio { get; set; }
 
+        /// <summary>
+        /// Gate for automatic channel opening.
+        /// </summary>
+        public bool AutoChannelOpenEnabled { get; set; } = false;
+
+        public AutoChannelOpenMode AutoChannelOpenMode { get; set; } = AutoChannelOpenMode.Recommendation;
+
+        /// <summary>
+        /// Wallet the opened channels are funded from. Without it no plan can be promoted.
+        /// </summary>
+        public int? AutoChannelOpenWalletId { get; set; }
+
+        public Wallet? AutoChannelOpenWallet { get; set; }
+
+        /// <summary>
+        /// Every automatic open uses this size; a wallet or budget that can't cover it skips the peer.
+        /// </summary>
+        public long? AutoChannelOpenSizeSats { get; set; }
+
+        public long? AutoChannelOpenBudgetSats { get; set; }
+
+        public TimeSpan? AutoChannelOpenBudgetRefreshInterval { get; set; }
+
+        public DateTimeOffset? AutoChannelOpenBudgetStartDatetime { get; set; }
+
         #endregion Routing Engine
 
         #region Relationships
+
+        public ICollection<ChannelOpenRecommendation> ChannelOpenRecommendations { get; set; }
 
         public ICollection<ChannelOperationRequest> ChannelOperationRequestsAsSource { get; set; }
         public ICollection<ChannelOperationRequest> ChannelOperationRequestsAsDestination { get; set; }
