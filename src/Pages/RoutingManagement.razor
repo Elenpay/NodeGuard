@@ -957,12 +957,15 @@
             if (!ok)
             {
                 ToastService.ShowError(error ?? "Could not create the channel open request.");
-                return;
+            }
+            else
+            {
+                ToastService.ShowSuccess(isHotWallet
+                    ? $"Channel open request created for {capacity} sats. It is funded from the hot wallet and opens without further approval."
+                    : $"Channel open request created for {capacity} sats. Approve it on the Channel Requests page.");
             }
 
-            ToastService.ShowSuccess(isHotWallet
-                ? $"Channel open request created for {capacity} sats. It is funded from the hot wallet and opens without further approval."
-                : $"Channel open request created for {capacity} sats. Approve it on the Channel Requests page.");
+            // A failed promotion can still have written a Failed request and marked the recommendation Promoted.
             await LoadChannelOpenStatsAsync();
         }
         finally
@@ -981,10 +984,13 @@
             if (!ok)
             {
                 ToastService.ShowError(error ?? "Could not dismiss the recommendation.");
-                return;
+            }
+            else
+            {
+                ToastService.ShowSuccess("Recommendation dismissed.");
             }
 
-            ToastService.ShowSuccess("Recommendation dismissed.");
+            // On failure too: it may no longer be Open, e.g. promoted or expired since the panel loaded.
             await LoadChannelOpenStatsAsync();
         }
         finally
