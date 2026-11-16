@@ -505,6 +505,7 @@
     private int? _rebalanceInFlight;
 
     private List<ChannelOpenRecommendation> _recommendations = new();
+    private Dictionary<string, string> _recommendationPeerNames = new();
     private readonly Dictionary<int, long> _editedCapacities = new();
     private long? _channelOpenCommittedSats;
 
@@ -788,10 +789,14 @@
             var committed = ChannelOperationRequestRepository.GetOpenSatsCommittedSince(nodeId, periodStart);
             await Task.WhenAll(recommendations, committed);
 
+            // A recommended peer may have no channel NodeGuard tracks, so names come from the Nodes table.
+            var peerNames = await NodeRepository.GetNamesByPubKeys(recommendations.Result.Select(r => r.PeerPubKey).ToList());
+
             // The selection changed while loading: these results belong to another node.
             if (_selectedNode?.Id != nodeId) return;
 
             _recommendations = recommendations.Result;
+            _recommendationPeerNames = peerNames;
             _channelOpenCommittedSats = committed.Result;
         }
         catch (Exception ex)
@@ -803,15 +808,16 @@
     private void ClearChannelOpenStats()
     {
         _recommendations = new List<ChannelOpenRecommendation>();
+        _recommendationPeerNames = new Dictionary<string, string>();
         _editedCapacities.Clear();
         _channelOpenCommittedSats = null;
     }
 
-    // Named like the peers table: the peer's node row, which the loaded channels already carry.
+    // Falls back to the truncated pubkey, like the peers table.
     private string RecommendationPeerName(ChannelOpenRecommendation rec)
-        => _channels.SelectMany(c => new[] { c.SourceNode, c.DestinationNode })
-               .FirstOrDefault(n => n?.PubKey == rec.PeerPubKey && !string.IsNullOrWhiteSpace(n.Name))?.Name
-           ?? "(no alias)";
+        => _recommendationPeerNames.TryGetValue(rec.PeerPubKey, out var name) && !string.IsNullOrWhiteSpace(name)
+            ? name
+            : StringHelper.TruncateTail(rec.PeerPubKey, 12);
 
     // The suggested capacity is a starting point: an operator edits it here before promoting.
     private long GetEditedCapacity(ChannelOpenRecommendation rec)
