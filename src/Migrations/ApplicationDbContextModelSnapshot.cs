@@ -496,6 +496,75 @@ namespace NodeGuard.Migrations
                     b.ToTable("ChannelFeeStates");
                 });
 
+            modelBuilder.Entity("NodeGuard.Data.Models.ChannelOpenRecommendation", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
+
+                    b.Property<int?>("ChannelOperationRequestId")
+                        .HasColumnType("integer");
+
+                    b.Property<DateTimeOffset>("CreationDatetime")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("DismissReason")
+                        .HasMaxLength(512)
+                        .HasColumnType("character varying(512)");
+
+                    b.Property<long>("EarnedFeeSats")
+                        .HasColumnType("bigint");
+
+                    b.Property<long?>("InheritedBaseFeeMsat")
+                        .HasColumnType("bigint");
+
+                    b.Property<long?>("InheritedFeeRatePpm")
+                        .HasColumnType("bigint");
+
+                    b.Property<DateTimeOffset>("LastEvidenceAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<int>("NodeId")
+                        .HasColumnType("integer");
+
+                    b.Property<long>("PeerCapacitySats")
+                        .HasColumnType("bigint");
+
+                    b.Property<string>("PeerPubKey")
+                        .IsRequired()
+                        .HasMaxLength(66)
+                        .HasColumnType("character varying(66)");
+
+                    b.Property<int>("Refusals")
+                        .HasColumnType("integer");
+
+                    b.Property<long>("SettledOutSats")
+                        .HasColumnType("bigint");
+
+                    b.Property<int>("Status")
+                        .HasColumnType("integer");
+
+                    b.Property<long>("SuggestedCapacitySats")
+                        .HasColumnType("bigint");
+
+                    b.Property<DateTimeOffset>("UpdateDatetime")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<long>("UsableLocalSats")
+                        .HasColumnType("bigint");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("ChannelOperationRequestId");
+
+                    b.HasIndex("NodeId", "PeerPubKey")
+                        .IsUnique();
+
+                    b.ToTable("ChannelOpenRecommendations");
+                });
+
             modelBuilder.Entity("NodeGuard.Data.Models.ChannelOperationRequest", b =>
                 {
                     b.Property<int>("Id")
@@ -984,6 +1053,27 @@ namespace NodeGuard.Migrations
                     b.Property<bool>("AllowPositiveInboundFees")
                         .HasColumnType("boolean");
 
+                    b.Property<TimeSpan?>("AutoChannelOpenBudgetRefreshInterval")
+                        .HasColumnType("interval");
+
+                    b.Property<long?>("AutoChannelOpenBudgetSats")
+                        .HasColumnType("bigint");
+
+                    b.Property<DateTimeOffset?>("AutoChannelOpenBudgetStartDatetime")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<bool>("AutoChannelOpenEnabled")
+                        .HasColumnType("boolean");
+
+                    b.Property<int>("AutoChannelOpenMode")
+                        .HasColumnType("integer");
+
+                    b.Property<long?>("AutoChannelOpenSizeSats")
+                        .HasColumnType("bigint");
+
+                    b.Property<int?>("AutoChannelOpenWalletId")
+                        .HasColumnType("integer");
+
                     b.Property<bool>("AutoLiquidityManagementEnabled")
                         .HasColumnType("boolean");
 
@@ -1121,6 +1211,8 @@ namespace NodeGuard.Migrations
                         .HasColumnType("timestamp with time zone");
 
                     b.HasKey("Id");
+
+                    b.HasIndex("AutoChannelOpenWalletId");
 
                     b.HasIndex("FundsDestinationWalletId");
 
@@ -1744,6 +1836,24 @@ namespace NodeGuard.Migrations
                     b.Navigation("Channel");
                 });
 
+            modelBuilder.Entity("NodeGuard.Data.Models.ChannelOpenRecommendation", b =>
+                {
+                    b.HasOne("NodeGuard.Data.Models.ChannelOperationRequest", "ChannelOperationRequest")
+                        .WithMany()
+                        .HasForeignKey("ChannelOperationRequestId")
+                        .OnDelete(DeleteBehavior.SetNull);
+
+                    b.HasOne("NodeGuard.Data.Models.Node", "Node")
+                        .WithMany("ChannelOpenRecommendations")
+                        .HasForeignKey("NodeId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("ChannelOperationRequest");
+
+                    b.Navigation("Node");
+                });
+
             modelBuilder.Entity("NodeGuard.Data.Models.ChannelOperationRequest", b =>
                 {
                     b.HasOne("NodeGuard.Data.Models.Channel", "Channel")
@@ -1857,6 +1967,10 @@ namespace NodeGuard.Migrations
 
             modelBuilder.Entity("NodeGuard.Data.Models.Node", b =>
                 {
+                    b.HasOne("NodeGuard.Data.Models.Wallet", "AutoChannelOpenWallet")
+                        .WithMany()
+                        .HasForeignKey("AutoChannelOpenWalletId");
+
                     b.HasOne("NodeGuard.Data.Models.Wallet", "FundsDestinationWallet")
                         .WithMany()
                         .HasForeignKey("FundsDestinationWalletId");
@@ -1865,6 +1979,8 @@ namespace NodeGuard.Migrations
                         .WithMany()
                         .HasForeignKey("SparkWalletId")
                         .OnDelete(DeleteBehavior.Restrict);
+
+                    b.Navigation("AutoChannelOpenWallet");
 
                     b.Navigation("FundsDestinationWallet");
                 });
@@ -1988,6 +2104,8 @@ namespace NodeGuard.Migrations
 
             modelBuilder.Entity("NodeGuard.Data.Models.Node", b =>
                 {
+                    b.Navigation("ChannelOpenRecommendations");
+
                     b.Navigation("ChannelOperationRequestsAsDestination");
 
                     b.Navigation("ChannelOperationRequestsAsSource");

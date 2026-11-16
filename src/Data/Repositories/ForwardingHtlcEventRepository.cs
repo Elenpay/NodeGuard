@@ -106,6 +106,42 @@ public class ForwardingHtlcEventRepository : IForwardingHtlcEventRepository
             .SumAsync(x => (long?)x.OutgoingAmountMsat) ?? 0;
     }
 
+    public async Task<Dictionary<ulong, long>> GetOutgoingAmountsMsatByChannel(string managedNodePubKey, DateTimeOffset since)
+    {
+        await using var context = await _dbContextFactory.CreateDbContextAsync();
+
+        return await Settled(context, managedNodePubKey, since)
+            .GroupBy(x => x.OutgoingChannelId)
+            .Select(g => new { ChanId = g.Key, Amount = g.Sum(x => (long?)x.OutgoingAmountMsat) ?? 0 })
+            .ToDictionaryAsync(x => x.ChanId, x => x.Amount);
+    }
+
+    public async Task<Dictionary<ulong, long>> GetEarnedFeesMsatByChannel(string managedNodePubKey, DateTimeOffset since)
+    {
+        await using var context = await _dbContextFactory.CreateDbContextAsync();
+
+        return await Settled(context, managedNodePubKey, since)
+            .GroupBy(x => x.OutgoingChannelId)
+            .Select(g => new { ChanId = g.Key, Fee = g.Sum(x => x.FeeMsat) ?? 0 })
+            .ToDictionaryAsync(x => x.ChanId, x => x.Fee);
+    }
+
+    public async Task<Dictionary<ulong, int>> GetInsufficientBalanceCountsByChannel(string managedNodePubKey, DateTimeOffset since)
+    {
+        await using var context = await _dbContextFactory.CreateDbContextAsync();
+
+        return await context.ForwardingHtlcEvents
+            .Where(x => x.ManagedNodePubKey == managedNodePubKey
+                        && x.EventTimestamp >= since
+                        && x.EventType == HtlcEventType.Forward
+                        && x.EventCase == HtlcEventCase.LinkFailEvent
+                        // The only failure a channel open can fix. HTLC_EXCEEDS_MAX is our own ceiling.
+                        && x.FailureDetail == (int)Routerrpc.FailureDetail.InsufficientBalance)
+            .GroupBy(x => x.OutgoingChannelId)
+            .Select(g => new { ChanId = g.Key, Count = g.Count() })
+            .ToDictionaryAsync(x => x.ChanId, x => x.Count);
+    }
+
     public async Task<long> GetIncomingAmountMsat(string managedNodePubKey, ulong chanIdLnd, DateTimeOffset since)
     {
         await using var context = await _dbContextFactory.CreateDbContextAsync();
