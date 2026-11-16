@@ -1,5 +1,6 @@
 @page "/routing-management"
 @page "/dynamic-fee-management"
+@using System.Security.Claims
 @using Blazorise
 @using Blazorise.Components
 @using NodeGuard.Data.Models
@@ -269,8 +270,8 @@
                                         <td class="c">
                                             <div class="dim-actions">
                                                 <button class="mini"
-                                                        disabled="@(_busy || _selectedNode.RoutingEngineDryRun)"
-                                                        title="@(_selectedNode.RoutingEngineDryRun ? "Node is in dry run" : "Create a pending channel open request")"
+                                                        disabled="@(_busy || _selectedNode.RoutingEngineDryRun || !_isFinanceManager)"
+                                                        title="@(!_isFinanceManager ? "Only a Finance Manager can open channels" : _selectedNode.RoutingEngineDryRun ? "Node is in dry run" : "Create a channel open request. Hot-wallet requests open without further approval")"
                                                         @onclick="@(() => PromoteRecommendation(rec))">
                                                     Create request
                                                 </button>
@@ -465,6 +466,15 @@
     }
 </div>
 
+<ConfirmationModal
+    @ref="_hotWalletPromotionConfirmationModal"
+    Title="Are you sure?"
+    Body="This node funds channel opens from a hot wallet. This means that the system will automatically use the funds in it without the need of manual approval. Are you sure you want to perform this operation?"
+    OkLabel="Yes, I am sure"
+    OkDisabled="@_busy"
+    OnCancel="@HotWalletPromotionCloseConfirmationModal"
+    OnSubmit="@HotWalletPromotionSubmitConfirmationModal"/>
+
 @inject INodeRepository NodeRepository
 @inject IChannelRepository ChannelRepository
 @inject IChannelRoutingStateRepository ChannelRoutingStateRepository
@@ -472,6 +482,7 @@
 @inject IChannelOpenRecommendationRepository ChannelOpenRecommendationRepository
 @inject IChannelOperationRequestRepository ChannelOperationRequestRepository
 @inject IChannelOpenPromotionService ChannelOpenPromotionService
+@inject IWalletRepository WalletRepository
 @inject IFeeEngineStateService FeeEngineStateService
 @inject IAuditService AuditService
 @inject ILightningService LightningService
@@ -500,18 +511,27 @@
     private bool _loading = true;
     // Busy flag to prevent overlapping mutations (node gates or channel toggles) and keep the UI in sync.
     private bool _busy;
+
+    [CascadingParameter]
+    private ClaimsPrincipal? ClaimsPrincipal { get; set; }
+
+    // Opening channels is a Finance Manager action, as on the Channel Requests page.
+    private bool _isFinanceManager;
     // Rebalance budget stats — null when not loaded yet or unavailable.
     private long? _rebalanceConsumedSats;
     private int? _rebalanceInFlight;
 
     private List<ChannelOpenRecommendation> _recommendations = new();
     private Dictionary<string, string> _recommendationPeerNames = new();
+    private ConfirmationModal _hotWalletPromotionConfirmationModal = null!;
+    private ChannelOpenRecommendation? _pendingHotWalletPromotion;
     private readonly Dictionary<int, long> _editedCapacities = new();
     private long? _channelOpenCommittedSats;
 
     protected override async Task OnInitializedAsync()
     {
         if (LoggedUser is null) return;
+        _isFinanceManager = ClaimsPrincipal != null && ClaimsPrincipal.IsInRole(ApplicationUserRole.FinanceManager.ToString());
         await LoadAsync();
     }
 
@@ -891,7 +911,36 @@
 
     private async Task PromoteRecommendation(ChannelOpenRecommendation rec)
     {
-        if (_busy || LoggedUser is null || rec.NodeId != _selectedNode?.Id) return;
+        if (_busy || LoggedUser is null || !_isFinanceManager || rec.NodeId != _selectedNode?.Id) return;
+
+        // A hot wallet skips the approval step and opens straight away, so confirm it like Channel Requests does.
+        var wallet = _selectedNode.AutoChannelOpenWalletId is { } walletId ? await WalletRepository.GetById(walletId) : null;
+        if (wallet is { IsHotWallet: true })
+        {
+            _pendingHotWalletPromotion = rec;
+            await _hotWalletPromotionConfirmationModal.ShowModal();
+            return;
+        }
+
+        await PromoteRecommendationCore(rec, isHotWallet: false);
+    }
+
+    private async Task HotWalletPromotionCloseConfirmationModal()
+    {
+        _pendingHotWalletPromotion = null;
+        await _hotWalletPromotionConfirmationModal.CloseModal();
+    }
+
+    private async Task HotWalletPromotionSubmitConfirmationModal()
+    {
+        var rec = _pendingHotWalletPromotion;
+        await HotWalletPromotionCloseConfirmationModal();
+        if (rec is not null) await PromoteRecommendationCore(rec, isHotWallet: true);
+    }
+
+    private async Task PromoteRecommendationCore(ChannelOpenRecommendation rec, bool isHotWallet)
+    {
+        if (_busy || LoggedUser is null || !_isFinanceManager || rec.NodeId != _selectedNode?.Id) return;
         _busy = true;
         try
         {
@@ -903,7 +952,9 @@
                 return;
             }
 
-            ToastService.ShowSuccess($"Channel open request created for {capacity} sats. Approve it on the Channel Requests page.");
+            ToastService.ShowSuccess(isHotWallet
+                ? $"Channel open request created for {capacity} sats. It is funded from the hot wallet and opens without further approval."
+                : $"Channel open request created for {capacity} sats. Approve it on the Channel Requests page.");
             await LoadChannelOpenStatsAsync();
         }
         finally
