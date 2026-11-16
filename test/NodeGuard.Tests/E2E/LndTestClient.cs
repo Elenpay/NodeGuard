@@ -122,6 +122,40 @@ internal sealed class LndTestClient
         }, _auth);
     }
 
+    // FeeReport is our own side, immediately — unlike GetChanInfo, which reads the lagging gossip graph.
+    public async Task<ChannelFeeReport?> OutboundPolicyAsync(ulong chanId)
+    {
+        var report = await Lightning.FeeReportAsync(new FeeReportRequest(), _auth);
+        return report.ChannelFees.FirstOrDefault(f => f.ChanId == chanId);
+    }
+
+    /// <summary>
+    /// One HTLC over an explicit route — no pathfinding, no retries, so each call is exactly one attempt
+    /// at the hop that refuses it. Pays a fresh invoice from the last hop.
+    /// </summary>
+    public async Task<HTLCAttempt> SendToRouteAsync(
+        LndTestClient receiver, ulong firstHopScid, IEnumerable<string> hopPubKeys, long amtSats)
+    {
+        var invoice = await receiver.Lightning.AddInvoiceAsync(new Invoice { Value = amtSats }, receiver._auth);
+        var decoded = await Lightning.DecodePayReqAsync(new PayReqString { PayReq = invoice.PaymentRequest }, _auth);
+
+        var buildRequest = new BuildRouteRequest
+        {
+            AmtMsat = amtSats * 1_000,
+            FinalCltvDelta = (int)decoded.CltvExpiry,
+            OutgoingChanId = firstHopScid,
+            PaymentAddr = invoice.PaymentAddr,
+        };
+        buildRequest.HopPubkeys.AddRange(hopPubKeys.Select(k => ByteString.CopyFrom(Convert.FromHexString(k))));
+        var built = await RouterClient.BuildRouteAsync(buildRequest, _auth);
+
+        return await RouterClient.SendToRouteV2Async(new Routerrpc.SendToRouteRequest
+        {
+            PaymentHash = invoice.RHash,
+            Route = built.Route,
+        }, _auth);
+    }
+
     // Idempotent — an "already connected" RpcException is expected and swallowed.
     public async Task ConnectAsync(string peerPubKey, string hostPort)
     {
