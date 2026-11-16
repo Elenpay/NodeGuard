@@ -656,6 +656,8 @@
         _selectedNode = _managedNodes.FirstOrDefault(n => n.Id == _selectedNodeId);
         _expanded.Clear();
         _search = string.Empty;
+        // Drop the previous node's recommendations before the first await so they can't be acted on.
+        ClearChannelOpenStats();
         await LoadRoutingStatesAsync();
         await LoadRebalanceStatsAsync();
         await LoadChannelOpenStatsAsync();
@@ -764,19 +766,22 @@
     // page still works when these cannot be loaded.
     private async Task LoadChannelOpenStatsAsync()
     {
-        _recommendations = new List<ChannelOpenRecommendation>();
-        _editedCapacities.Clear();
-        _channelOpenCommittedSats = null;
+        ClearChannelOpenStats();
         if (_selectedNode is null) return;
         try
         {
+            var nodeId = _selectedNode.Id;
+
             // Mirror AutoChannelOpenJob: consumption is measured from the current budget period's start.
             var periodStart = _selectedNode.AutoChannelOpenBudgetStartDatetime ?? DateTimeOffset.UtcNow;
 
             // Independent reads, each on its own DbContext from the factory — one round-trip instead of two.
-            var recommendations = ChannelOpenRecommendationRepository.GetOpenByNode(_selectedNode.Id);
-            var committed = ChannelOperationRequestRepository.GetOpenSatsCommittedSince(_selectedNode.Id, periodStart);
+            var recommendations = ChannelOpenRecommendationRepository.GetOpenByNode(nodeId);
+            var committed = ChannelOperationRequestRepository.GetOpenSatsCommittedSince(nodeId, periodStart);
             await Task.WhenAll(recommendations, committed);
+
+            // The selection changed while loading: these results belong to another node.
+            if (_selectedNode?.Id != nodeId) return;
 
             _recommendations = recommendations.Result;
             _channelOpenCommittedSats = committed.Result;
@@ -785,6 +790,13 @@
         {
             Logger.LogWarning(ex, "Could not load channel open recommendations for node {NodeId}", _selectedNode.Id);
         }
+    }
+
+    private void ClearChannelOpenStats()
+    {
+        _recommendations = new List<ChannelOpenRecommendation>();
+        _editedCapacities.Clear();
+        _channelOpenCommittedSats = null;
     }
 
     // Named like the peers table: the peer's node row, which the loaded channels already carry.
@@ -873,7 +885,7 @@
 
     private async Task PromoteRecommendation(ChannelOpenRecommendation rec)
     {
-        if (_busy || LoggedUser is null) return;
+        if (_busy || LoggedUser is null || rec.NodeId != _selectedNode?.Id) return;
         _busy = true;
         try
         {
@@ -896,7 +908,7 @@
 
     private async Task DismissRecommendation(ChannelOpenRecommendation rec)
     {
-        if (_busy || LoggedUser is null) return;
+        if (_busy || LoggedUser is null || rec.NodeId != _selectedNode?.Id) return;
         _busy = true;
         try
         {
