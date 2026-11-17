@@ -164,6 +164,10 @@ namespace NodeGuard.Data
             modelBuilder.Entity<ChannelFeeState>()
                 .HasIndex(x => new { x.ChannelId, x.ManagedNodePubKey }).IsUnique();
 
+            // One saved Spark identity per remote signer seed and Spark account.
+            modelBuilder.Entity<SparkSignerIdentity>()
+                .HasIndex(x => new { x.SeedFingerprint, x.Account }).IsUnique();
+
             // These default ON: existing rows must be backfilled true (the C# initializer
             // only affects new in-code instances, not the DB column default / migration backfill).
             modelBuilder.Entity<Channel>().Property(x => x.IsDynamicFeeEnabled).HasDefaultValue(false);
@@ -214,5 +218,7 @@ namespace NodeGuard.Data
         public DbSet<ChannelRoutingState> ChannelRoutingStates { get; set; }
 
         public DbSet<ChannelFeeState> ChannelFeeStates { get; set; }
+
+        public DbSet<SparkSignerIdentity> SparkSignerIdentities { get; set; }
     }
 }
