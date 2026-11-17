@@ -24,6 +24,7 @@ using Amazon.Runtime;
 using FluentAssertions;
 using Microsoft.AspNetCore.DataProtection;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging.Abstractions;
 using NodeGuard.Data.Models;
 using NodeGuard.Data.Repositories.Interfaces;
 using NSpark;
@@ -70,12 +71,16 @@ public class SparkSignerProviderTests
     private static readonly ISparkSeedProtector Protector = new SparkSeedProtector(new EphemeralDataProtectionProvider());
 
     private static SparkSignerProvider Provider(SparkSettings settings, HttpMessageHandler? signer = null,
-        IWalletRepository? wallets = null, ISparkSeedProtector? protector = null)
+        IWalletRepository? wallets = null, ISparkSeedProtector? protector = null, InMemorySparkSignerIdentities? identities = null)
     {
-        var services = new ServiceCollection();
+        var services = new ServiceCollection()
+            .AddSingleton<ISparkSignerIdentityRepository>(identities ?? new InMemorySparkSignerIdentities())
+            .AddSingleton(Substitute.For<IAuditService>());
         if (wallets is not null) services.AddSingleton(wallets);
-        return new SparkSignerProvider(settings, services.BuildServiceProvider().GetRequiredService<IServiceScopeFactory>(),
-            protector ?? Protector, new HttpClient(signer ?? new SignerUnderEmulator(SparkSignerPolicy.Create([], 0, []))),
+        var scopes = services.BuildServiceProvider().GetRequiredService<IServiceScopeFactory>();
+        return new SparkSignerProvider(settings, scopes, protector ?? Protector,
+            new SparkSignerIdentityPin(settings, scopes, NullLogger<SparkSignerIdentityPin>.Instance),
+            new HttpClient(signer ?? new SignerUnderEmulator(SparkSignerPolicy.Create([], 0, []))),
             () => new ImmutableCredentials("AKIDEXAMPLE", "not-a-real-secret", null), "eu-central-1");
     }
 
@@ -131,6 +136,47 @@ public class SparkSignerProviderTests
         var act = () => provider.GetSignerAsync(SparkWalletRef.RemoteSigner, Options(settings), CancellationToken.None);
 
         (await act.Should().ThrowAsync<SparkUnavailableException>()).Which.Message.Should().Contain("SPARK_IDENTITY_PUBKEY");
+    }
+
+    [Fact]
+    public async Task WithoutAConfiguredIdentity_TheFirstHandshakeSavesTheOneTheSignerServes()
+    {
+        var settings = Settings(SparkSignerMode.Remote, identity: null);
+        var identities = new InMemorySparkSignerIdentities();
+        var provider = Provider(settings, new SignerUnderEmulator(MatchingPolicy()), identities: identities);
+
+        (await provider.GetRemoteIdentityAsync(CancellationToken.None)).Should().BeNull();
+        await provider.GetSignerAsync(SparkWalletRef.RemoteSigner, Options(settings), CancellationToken.None);
+
+        identities.Rows.Should().ContainSingle().Which.Should().BeEquivalentTo(
+            new { SeedFingerprint = "ed0210c8", Account = 0, IdentityPublicKey = SparkSettingsTests.Identity });
+        (await provider.GetRemoteIdentityAsync(CancellationToken.None)).Should().Be(SparkSettingsTests.Identity);
+    }
+
+    [Fact]
+    public async Task WithoutAConfiguredIdentity_ASignerServingAnotherThanTheSavedOne_IsRefused()
+    {
+        var settings = Settings(SparkSignerMode.Remote, identity: null);
+        var identities = new InMemorySparkSignerIdentities().Saved("ed0210c8", 0, SparkSettingsTests.SspIdentity);
+        var provider = Provider(settings, new SignerUnderEmulator(MatchingPolicy()), identities: identities);
+
+        var act = () => provider.GetSignerAsync(SparkWalletRef.RemoteSigner, Options(settings), CancellationToken.None);
+
+        (await act.Should().ThrowAsync<SparkUnavailableException>()).Which.Message.Should()
+            .Contain("NodeGuard saved " + SparkSettingsTests.SspIdentity);
+    }
+
+    [Fact]
+    public async Task ARemoteSignerWithAnotherPolicy_IsNeverSaved()
+    {
+        var settings = Settings(SparkSignerMode.Remote, identity: null);
+        var identities = new InMemorySparkSignerIdentities();
+        var provider = Provider(settings, new SignerUnderEmulator(SparkSignerPolicy.Create([], 0, [])), identities: identities);
+
+        var act = () => provider.GetSignerAsync(SparkWalletRef.RemoteSigner, Options(settings), CancellationToken.None);
+
+        await act.Should().ThrowAsync<SparkUnavailableException>();
+        identities.Rows.Should().BeEmpty();
     }
 
     [Fact]

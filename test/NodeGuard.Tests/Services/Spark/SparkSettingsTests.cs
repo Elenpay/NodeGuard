@@ -251,13 +251,24 @@ public class SparkSettingsTests
     }
 
     [Fact]
-    public void TheRemoteSigner_NeedsTheSeedFingerprintAndTheIdentity()
+    public void TheRemoteSigner_NeedsTheSeedFingerprint()
     {
         var env = Remote();
         env.Remove("SPARK_SEED_FINGERPRINT");
+
+        Error(env).Should().Contain("SPARK_SEED_FINGERPRINT is required").And.NotContain("SPARK_IDENTITY_PUBKEY");
+    }
+
+    [Fact]
+    public void TheRemoteSigner_WithoutAnIdentity_ExpectsTheOneSavedOnTheFirstHandshake()
+    {
+        var env = Remote();
         env.Remove("SPARK_IDENTITY_PUBKEY");
 
-        Error(env).Should().Contain("SPARK_SEED_FINGERPRINT is required").And.Contain("SPARK_IDENTITY_PUBKEY is required");
+        var settings = Read(env);
+
+        settings.SignerMode.Should().Be(SparkSignerMode.Remote);
+        settings.IdentityPublicKey.Should().BeNull();
     }
 
     [Theory]

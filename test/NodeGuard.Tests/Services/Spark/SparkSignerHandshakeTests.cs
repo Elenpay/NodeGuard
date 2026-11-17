@@ -41,31 +41,37 @@ public class SparkSignerHandshakeTests
 
     [Fact]
     public void ASignerConfiguredLikeNodeGuard_Passes() =>
-        SparkSignerHandshake.Verify(Info(), SparkSettingsTests.Identity, Options).Should().BeEmpty();
+        SparkSignerHandshake.Verify(Info(), Options).Should().BeEmpty();
 
     [Fact]
     public void AnotherContractVersion_IsReported() =>
-        SparkSignerHandshake.Verify(Info(version: SparkSignerContract.Version + 1), SparkSettingsTests.Identity, Options)
+        SparkSignerHandshake.Verify(Info(version: SparkSignerContract.Version + 1), Options)
             .Should().ContainSingle().Which.Should().Contain("contract version");
 
     [Fact]
-    public void AnotherIdentity_IsReported() =>
-        SparkSignerHandshake.Verify(Info(identity: Ssp), SparkSettingsTests.Identity, Options)
-            .Should().ContainSingle().Which.Should().Contain("SPARK_IDENTITY_PUBKEY");
+    public void AnyIdentity_PassesTheHandshake_TheIdentityPinHoldsItToTheExpectedOne() =>
+        SparkSignerHandshake.Verify(Info(identity: Ssp), Options).Should().BeEmpty();
+
+    [Theory]
+    [InlineData("")]
+    [InlineData("04aa")]
+    [InlineData("zz2bf283544b16c0622daecb79422007d167eca6ce9f0c98c0c49833b1f7170bfe")]
+    public void AnIdentityThatIsNotACompressedPublicKey_IsReported(string identity) =>
+        SparkSignerHandshake.Verify(Info(identity: identity), Options)
+            .Should().ContainSingle().Which.Should().Contain("not a compressed public key");
 
     [Fact]
     public void AnotherOperatorSet_IsReported() =>
-        SparkSignerHandshake.Verify(Info(operators: Options.SigningOperators.Take(2).Select(o => o.IdentityPublicKeyHex).ToList()),
-                SparkSettingsTests.Identity, Options)
+        SparkSignerHandshake.Verify(Info(operators: Options.SigningOperators.Take(2).Select(o => o.IdentityPublicKeyHex).ToList()), Options)
             .Should().ContainSingle().Which.Should().Contain("SPARK_OPERATOR_KEYS");
 
     [Fact]
     public void AnotherThreshold_IsReported() =>
-        SparkSignerHandshake.Verify(Info(threshold: 3), SparkSettingsTests.Identity, Options)
+        SparkSignerHandshake.Verify(Info(threshold: 3), Options)
             .Should().ContainSingle().Which.Should().Contain("SPARK_THRESHOLD");
 
     [Fact]
     public void AReceiverListWithoutTheSsp_IsReported() =>
-        SparkSignerHandshake.Verify(Info(receivers: []), SparkSettingsTests.Identity, Options)
+        SparkSignerHandshake.Verify(Info(receivers: []), Options)
             .Should().ContainSingle().Which.Should().Contain("SPARK_ALLOWED_RECEIVERS");
 }

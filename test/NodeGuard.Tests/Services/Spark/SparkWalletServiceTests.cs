@@ -155,12 +155,70 @@ public class SparkWalletServiceTests
     [Fact]
     public async Task WithTheRemoteSigner_ItsWalletIsTheOnlyOne()
     {
+        _signers.GetRemoteIdentityAsync(Arg.Any<CancellationToken>()).Returns(SparkSettingsTests.Identity);
         var service = Service(Mainnet);
 
         (await service.GetWalletsAsync()).Should().ContainSingle().Which.Ref.Should().Be(SparkWalletRef.RemoteSigner);
-        (await service.FindByIdentityAsync(SparkSettingsTests.Identity))!.Ref.Should().Be(SparkWalletRef.RemoteSigner);
+        (await service.FindByIdentityAsync(SparkSettingsTests.Identity.ToUpperInvariant()))!.Ref.Should().Be(SparkWalletRef.RemoteSigner);
+        (await service.FindByIdentityAsync(SparkSettingsTests.SspIdentity)).Should().BeNull();
         (await service.GetWalletAsync(new SparkWalletRef(1))).Should().BeNull();
         await _wallets.DidNotReceiveWithAnyArgs().GetSparkWallets(default);
+    }
+
+    [Fact]
+    public async Task BeforeTheRemoteSignersIdentityIsKnown_ItsEntryHasNone_AndNoSwapIsItsYet()
+    {
+        var service = Service(new SparkSettings
+        {
+            Enabled = true,
+            Network = SparkNetwork.Mainnet,
+            Operators = SparkOptions.GetDefaultOperators(SparkNetwork.Mainnet),
+            SignerMode = SparkSignerMode.Remote,
+            SeedFingerprint = "ed0210c8"
+        });
+        _signers.GetRemoteIdentityAsync(Arg.Any<CancellationToken>()).Returns((string?)null);
+
+        (await service.GetWalletsAsync()).Should().ContainSingle().Which.IdentityPublicKey.Should().BeNull();
+        (await service.FindByIdentityAsync(SparkSettingsTests.Identity)).Should().BeNull();
+    }
+
+    [Fact]
+    public async Task TheRemoteSignersWallet_IsReadyWithTheExpectedIdentity()
+    {
+        var signer = Signer(SparkSettingsTests.Identity);
+        _signers.GetSignerAsync(SparkWalletRef.RemoteSigner, Arg.Any<SparkOptions>(), Arg.Any<CancellationToken>())
+            .Returns(signer);
+        _signers.GetRemoteIdentityAsync(Arg.Any<CancellationToken>()).Returns(SparkSettingsTests.Identity);
+        var service = Service(Mainnet);
+
+        var status = await service.EnsureReadyAsync(SparkWalletRef.RemoteSigner);
+
+        status.State.Should().Be(SparkWalletState.Ready);
+        status.IdentityPublicKey.Should().Be(SparkSettingsTests.Identity);
+    }
+
+    [Fact]
+    public async Task ARemoteSignerWalletWithAnotherIdentityThanItsHandshake_IsUnavailable()
+    {
+        // /spark/info and identity-public-key are separate calls: the wallet's identity must be the expected one too
+        var signer = Signer(SparkSettingsTests.SspIdentity);
+        _signers.GetSignerAsync(SparkWalletRef.RemoteSigner, Arg.Any<SparkOptions>(), Arg.Any<CancellationToken>())
+            .Returns(signer);
+        _signers.GetRemoteIdentityAsync(Arg.Any<CancellationToken>()).Returns(SparkSettingsTests.Identity);
+        var service = Service(Mainnet);
+
+        var status = await service.EnsureReadyAsync(SparkWalletRef.RemoteSigner);
+
+        status.State.Should().Be(SparkWalletState.Unavailable);
+        status.Reason.Should().Contain(SparkSettingsTests.SspIdentity).And.Contain("not the expected " + SparkSettingsTests.Identity);
+    }
+
+    private static ISparkSigner Signer(string identity)
+    {
+        var signer = Substitute.For<ISparkSigner>();
+        signer.GetIdentityPublicKeyAsync(Arg.Any<CancellationToken>()).Returns(Convert.FromHexString(identity));
+        signer.GetDepositPublicKeyAsync(Arg.Any<CancellationToken>()).Returns(Convert.FromHexString(identity));
+        return signer;
     }
 
     private sealed class ManualTime : TimeProvider
