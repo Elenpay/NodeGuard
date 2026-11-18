@@ -2,6 +2,7 @@
 @using NodeGuard.Services.Spark
 @using NSpark.Models
 @inject ISparkWalletService SparkWallet
+@inject ISparkSwapService SparkSwaps
 @inject SparkSettings SparkSettings
 @inject IWalletRepository WalletRepository
 @inject INodeRepository NodeRepository
@@ -229,9 +230,15 @@
         </ModalHeader>
         <ModalBody>
             <p>
-                Everything the Spark wallet holds exits on-chain, in one cooperative exit, to a new address of the wallet below.
-                The SSP's fee is capped at @SparkSettings.MaxExitFeeSats.ToString("N0") sats (SPARK_MAX_EXIT_FEE_SATS).
-                It exits at speed @SparkSettings.ExitSpeedSummary; the wallet keeps showing the sats as owned until it confirms.
+                Everything the Spark wallet holds exits on-chain, to new addresses, even while its swaps run.
+                Its paid swaps exit now, each to its own destination wallet, and complete as usual.
+                What no swap owns exits in one cooperative exit to the wallet below.
+                Swaps still being paid stay, with whatever arrived since the oldest pending swap was created: they exit with
+                the wallet's next exit.
+            </p>
+            <p>
+                The SSP's fee is capped at @SparkSettings.MaxExitFeeSats.ToString("N0") sats per exit (SPARK_MAX_EXIT_FEE_SATS).
+                Exits go at speed @SparkSettings.ExitSpeedSummary; the wallet keeps showing the sats as owned until they confirm.
             </p>
             <Field>
                 <FieldLabel>Destination wallet</FieldLabel>
@@ -450,8 +457,25 @@
     {
         await RunAsync(async () =>
         {
-            var exit = await SparkWallet.WithdrawAllToWalletAsync(_wallet!.Id, _destinationWalletId);
-            ToastService.ShowSuccess($"{_wallet.Name} withdrew {exit.PayoutSats:N0} sats in {exit.Txid} (SSP fee {exit.FeeSats:N0} sats)");
+            var withdrawal = await SparkSwaps.WithdrawAllAsync(_wallet!.Id, _destinationWalletId);
+            var done = new List<string>();
+            foreach (var exit in withdrawal.SwapExits)
+            {
+                var swaps = $"Spark swap{(exit.SwapIds.Count == 1 ? "" : "s")} {string.Join(", ", exit.SwapIds)}";
+                done.Add(exit.Error is not null ? $"{swaps}: {exit.Error}"
+                    : exit.TxId is not null ? $"{swaps} exited in {exit.TxId}"
+                    : $"{swaps} wait: their leaves can't move yet");
+            }
+
+            if (withdrawal.Leftover is { } leftover)
+            {
+                done.Add($"{leftover.PayoutSats:N0} sats no swap owns withdrew in {leftover.TxId} (SSP fee {leftover.FeeSats:N0} sats)");
+            }
+
+            if (withdrawal.HeldBackSats > 0) done.Add($"{withdrawal.HeldBackSats:N0} sats stay for its pending swaps");
+
+            ToastService.ShowSuccess(done.Count > 0 ? $"{_wallet.Name}: {string.Join("; ", done)}" : $"{_wallet.Name} had nothing to withdraw");
+            if (withdrawal.Note is not null) ToastService.ShowWarning(withdrawal.Note);
             await _withdrawModal.Hide();
         });
     }
