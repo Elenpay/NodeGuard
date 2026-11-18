@@ -1004,6 +1004,30 @@ public class SparkSwapServiceTests
     }
 
     [Fact]
+    public async Task Exit_ASentExitsConfirmedPayout_CompletesTheSwap_WithoutItsSparkWallet()
+    {
+        // In remote mode the hot wallet the swap was paid into is gone: only the destination wallet is needed now
+        _spark.FindByIdentityAsync(Identity, Arg.Any<CancellationToken>()).Returns((SparkWalletEntry?)null);
+        Payouts((Seed: 0xbb, Sats: 497_500, Confirmations: 1));
+        var swap = Pending(txId: "exit-tx", leafIds: "l1");
+
+        (await Exit(swap)).Should().Be(SparkExitStep.Completed);
+
+        swap.Status.Should().Be(SwapOutStatus.Completed);
+        swap.PayoutSats.Should().Be(497_500);
+    }
+
+    [Fact]
+    public async Task Exit_ASentExitWaitingForItsPayout_IsFollowedWithoutItsSparkWallet()
+    {
+        _spark.FindByIdentityAsync(Identity, Arg.Any<CancellationToken>()).Returns((SparkWalletEntry?)null);
+
+        (await Exit(Pending(txId: "exit-tx", leafIds: "l1"))).Should().Be(SparkExitStep.ExitSent);
+
+        await _spark.DidNotReceiveWithAnyArgs().EnsureReadyAsync(default, default);
+    }
+
+    [Fact]
     public async Task Exit_APayoutWhoseExitWasNotSaved_IsNotExitedAgain()
     {
         Payouts((Seed: 0xcc, Sats: 497_000, Confirmations: 0));

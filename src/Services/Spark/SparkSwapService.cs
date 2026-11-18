@@ -485,10 +485,10 @@ public sealed class SparkSwapService : ISparkSwapService
                 $"Spark swaps {Ids(batch)} can't exit together: their Spark wallet, destination wallet or address differ.");
         }
 
-        var wallet = await SwapWalletAsync(first, ct);
-
         // Done once the batch's address has a confirmed payout. Checked before exiting too: an exit whose txid was
-        // not saved (a crash) must not be followed by a second one. No address yet means no exit yet
+        // not saved (a crash) must not be followed by a second one. No address yet means no exit yet. Following an
+        // exit already sent needs only the destination wallet, not the Spark wallet: the swaps of a hot Spark wallet
+        // complete even once NodeGuard signs Spark with the remote signer
         var payout = first.DestinationAddress is null ? null : await FindPayoutAsync(first, ct);
         if (payout is not null)
         {
@@ -509,6 +509,8 @@ public sealed class SparkSwapService : ISparkSwapService
         }
 
         if (batch.Any(s => s.TxId is not null)) return SparkExitStep.ExitSent;
+
+        var wallet = await SwapWalletAsync(first, ct);
         foreach (var swap in batch)
         {
             if (!await AttributeAsync(swap, ct)) return SparkExitStep.Waiting;
