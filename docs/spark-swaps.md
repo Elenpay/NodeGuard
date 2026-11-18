@@ -52,7 +52,14 @@ So the exposure is the sats in transit, while they are on Spark. That is why a S
 `SPARK_SIGNER` sets where the Spark keys live:
 
 - **`wallet`** (the default; temporary). Spark wallets are created on the Wallets page (or with `CreateSparkWallet`), and each node is given the Spark wallet its swaps pass through. Their keys are hot: see [Spark wallets](#spark-wallets-temporary).
-- **`remote`**. One Spark wallet, whose keys stay in the remote signer Lambda under its `/spark/` routes, serves every node; see the [remote signer README](https://github.com/Elenpay/Nodeguard-Remote-Signer#spark-signing). Its keys come from the seed with master fingerprint `SPARK_SEED_FINGERPRINT`, at Spark account `SPARK_ACCOUNT` (`m/8797555'/account'/…`). NodeGuard calls `/spark/info` at startup. It uses the signer only if the signer reports the same contract version, the pinned identity (`SPARK_IDENTITY_PUBKEY`), and a policy for exactly NodeGuard's operators, threshold and SSP.
+- **`remote`**. One Spark wallet, whose keys stay in the remote signer Lambda under its `/spark/` routes, serves every node; see the [remote signer README](https://github.com/Elenpay/Nodeguard-Remote-Signer#spark-signing). Its keys come from the seed with master fingerprint `SPARK_SEED_FINGERPRINT`, at Spark account `SPARK_ACCOUNT` (`m/8797555'/account'/…`). NodeGuard calls `/spark/info` at startup. It uses the signer only if the signer reports the same contract version and a policy for exactly NodeGuard's operators, threshold and SSP, and serves the expected Spark identity:
+  - On the first successful handshake, NodeGuard saves the identity the signer serves (table `SparkSignerIdentities`, one row per `SPARK_SEED_FINGERPRINT` and `SPARK_ACCOUNT`), logs a warning with it and audits it. Every later handshake must serve the same identity: swaps record the identity that received them, and a signer serving another would leave them unable to exit. Watch the logs on the first start in remote mode, and compare the saved identity with the seed ceremony's `verify --spark-account` when convenient.
+  - `SPARK_IDENTITY_PUBKEY` is optional. When set, the signer must serve it from the first handshake on, and it must agree with the saved identity.
+  - To accept another identity for the same seed and account on purpose, first move the Spark balance out (see [Rotating or retiring the Spark seed](#rotating-or-retiring-the-spark-seed)), then delete the saved row and restart NodeGuard:
+
+    ```sql
+    DELETE FROM "SparkSignerIdentities" WHERE "SeedFingerprint" = '<fingerprint>' AND "Account" = <account>;
+    ```
 
 If a Spark wallet's signer is refused or unreachable, or its seed no longer decrypts, that wallet is unavailable and the reason is logged. Its nodes then don't get Spark in the New Swap dialog, auto-liquidity skips Spark for them and the RPC refuses their Spark swaps. NodeGuard retries at most once a minute per wallet.
 
@@ -92,7 +99,7 @@ While Spark is enabled, invalid settings stop NodeGuard at startup.
 | `SPARK_SIGNER` | `wallet` | `wallet` (Spark wallets in NodeGuard) or `remote` (the remote signer) |
 | `SPARK_SEED_FINGERPRINT` | required with the remote signer | Master fingerprint of the seed holding the remote signer's Spark keys |
 | `SPARK_ACCOUNT` | `0` | The remote signer's Spark account index; the same as the signer's |
-| `SPARK_IDENTITY_PUBKEY` | required with the remote signer | The Spark identity the signer must serve (seed ceremony: `verify --spark-account`) |
+| `SPARK_IDENTITY_PUBKEY` | the identity saved on the first handshake | The Spark identity the remote signer must serve (seed ceremony: `verify --spark-account`); optional |
 | `SPARK_OPERATORS` | Lightspark's on mainnet; required on regtest | `address\|64-hex identifier\|identity key`, separated by `;` |
 | `SPARK_THRESHOLD` | derived from the operator count | Operators' signing threshold |
 | `SPARK_SSP_URL` | Lightspark's on mainnet; required on regtest | The SSP's GraphQL endpoint |
@@ -141,7 +148,7 @@ Each wallet's balance is shown in its details on the Wallets page and exported a
 Before rotating the seed that holds the remote signer's Spark keys, or marking it `Compromised` in the remote signer:
 1. Wait until no Spark swap is in flight.
 2. Wait until the Spark balance (the `nodeguard.spark.balance` gauge) is zero, withdrawing any stuck sats by hand.
-3. Only then rotate, and set the new `SPARK_SEED_FINGERPRINT` and `SPARK_IDENTITY_PUBKEY`.
+3. Only then rotate, and set the new `SPARK_SEED_FINGERPRINT` (and `SPARK_IDENTITY_PUBKEY`, if set). The new seed's identity is saved on its first handshake.
 
 The remote signer refuses to sign Spark operations with a `Compromised` seed. A Spark wallet is retired by withdrawing everything and archiving it.
 

@@ -23,14 +23,14 @@ using NSpark.RemoteSigner;
 namespace NodeGuard.Services.Spark;
 
 /// <summary>
-/// The checks NodeGuard makes on the remote signer's /spark/info before using it: the same contract,
-/// the Spark identity NodeGuard pins (SPARK_IDENTITY_PUBKEY), and a policy for exactly the operators
-/// and SSP NodeGuard talks to.
+/// The checks NodeGuard makes on the remote signer's /spark/info before using it: the same contract, and a
+/// policy for exactly the operators and SSP NodeGuard talks to. The identity it serves is checked afterwards,
+/// against SPARK_IDENTITY_PUBKEY or the identity saved on the first handshake (<see cref="SparkSignerIdentityPin"/>).
 /// </summary>
 public static class SparkSignerHandshake
 {
     /// <summary>Every mismatch between the signer and NodeGuard's configuration; empty when they agree.</summary>
-    public static IReadOnlyList<string> Verify(SparkSignerInfo info, string expectedIdentity, SparkOptions options)
+    public static IReadOnlyList<string> Verify(SparkSignerInfo info, SparkOptions options)
     {
         var problems = new List<string>();
 
@@ -39,9 +39,9 @@ public static class SparkSignerHandshake
             problems.Add($"the signer speaks contract version {info.ContractVersion}, NodeGuard {SparkSignerContract.Version}");
         }
 
-        if (!string.Equals(info.IdentityPublicKey, expectedIdentity, StringComparison.OrdinalIgnoreCase))
+        if (!IsCompressedPublicKeyHex(info.IdentityPublicKey))
         {
-            problems.Add($"the signer's Spark identity is {info.IdentityPublicKey}, SPARK_IDENTITY_PUBKEY is {expectedIdentity}");
+            problems.Add($"the signer's Spark identity ({info.IdentityPublicKey}) is not a compressed public key");
         }
 
         var operators = options.SigningOperators.Select(o => o.IdentityPublicKeyHex.ToLowerInvariant()).ToHashSet();
@@ -63,4 +63,12 @@ public static class SparkSignerHandshake
 
         return problems;
     }
+
+    /// <summary>
+    /// 66 hex characters starting 02 or 03: what NodeGuard may save as the signer's identity. Not checked on the
+    /// curve; the operators do that.
+    /// </summary>
+    private static bool IsCompressedPublicKeyHex(string? value) =>
+        value is { Length: 66 } && (value.StartsWith("02", StringComparison.Ordinal) || value.StartsWith("03", StringComparison.Ordinal)) &&
+        value.All(Uri.IsHexDigit);
 }

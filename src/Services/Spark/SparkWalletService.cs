@@ -221,7 +221,7 @@ public class SparkWalletService : ISparkWalletService, IAsyncDisposable
     public async Task<IReadOnlyList<SparkWalletEntry>> GetWalletsAsync(CancellationToken ct = default)
     {
         if (!_settings.Enabled) return [];
-        if (_settings.SignerMode == SparkSignerMode.Remote) return [RemoteSignerEntry()];
+        if (_settings.SignerMode == SparkSignerMode.Remote) return [await RemoteSignerEntryAsync(ct)];
 
         return (await SparkWalletRowsAsync(includeArchived: false)).Select(Entry).ToList();
     }
@@ -229,7 +229,7 @@ public class SparkWalletService : ISparkWalletService, IAsyncDisposable
     public async Task<SparkWalletEntry?> GetWalletAsync(SparkWalletRef wallet, CancellationToken ct = default)
     {
         if (!_settings.Enabled) return null;
-        if (_settings.SignerMode == SparkSignerMode.Remote) return wallet.WalletId is null ? RemoteSignerEntry() : null;
+        if (_settings.SignerMode == SparkSignerMode.Remote) return wallet.WalletId is null ? await RemoteSignerEntryAsync(ct) : null;
         if (wallet.WalletId is not { } id) return null;
 
         using var scope = _scopes.CreateScope();
@@ -242,8 +242,10 @@ public class SparkWalletService : ISparkWalletService, IAsyncDisposable
         if (!_settings.Enabled) return null;
         if (_settings.SignerMode == SparkSignerMode.Remote)
         {
-            return string.Equals(_settings.IdentityPublicKey, identityPublicKey, StringComparison.OrdinalIgnoreCase)
-                ? RemoteSignerEntry()
+            var entry = await RemoteSignerEntryAsync(ct);
+            return entry.IdentityPublicKey is { Length: > 0 } identity &&
+                   string.Equals(identity, identityPublicKey, StringComparison.OrdinalIgnoreCase)
+                ? entry
                 : null;
         }
 
@@ -252,8 +254,12 @@ public class SparkWalletService : ISparkWalletService, IAsyncDisposable
         return row is null ? null : Entry(row);
     }
 
-    private SparkWalletEntry RemoteSignerEntry() =>
-        new(SparkWalletRef.RemoteSigner, "Remote signer", _settings.IdentityPublicKey, _settings.MaxBalanceSats);
+    /// <summary>
+    /// The remote signer's wallet, with the identity it must serve: SPARK_IDENTITY_PUBKEY or the one saved on the first
+    /// handshake (null until then)
+    /// </summary>
+    private async Task<SparkWalletEntry> RemoteSignerEntryAsync(CancellationToken ct) =>
+        new(SparkWalletRef.RemoteSigner, "Remote signer", await _signerProvider.GetRemoteIdentityAsync(ct), _settings.MaxBalanceSats);
 
     private SparkWalletEntry Entry(Wallet row) =>
         new(new SparkWalletRef(row.Id), row.Name, row.SparkIdentityPublicKey, _settings.MaxBalanceFor(row), row.IsArchived);
@@ -548,7 +554,18 @@ public class SparkWalletService : ISparkWalletService, IAsyncDisposable
         {
             var (connection, options) = await ConnectionAsync(ct);
             var signer = await _signerProvider.GetSignerAsync(wallet, options, ct);
-            slot.Wallet = await connection.CreateWalletAsync(signer, ct);
+            var connected = await connection.CreateWalletAsync(signer, ct);
+
+            // The remote signer's wallet must use the identity its handshake served (now the expected one): swaps
+            // record it, and only that identity finds them again
+            if (wallet.WalletId is null && await _signerProvider.GetRemoteIdentityAsync(ct) is { Length: > 0 } expected &&
+                !string.Equals(connected.IdentityPublicKeyHex, expected, StringComparison.OrdinalIgnoreCase))
+            {
+                throw new SparkUnavailableException(
+                    $"the remote signer's wallet has Spark identity {connected.IdentityPublicKeyHex}, not the expected {expected}");
+            }
+
+            slot.Wallet = connected;
             slot.Status = new SparkWalletStatus(SparkWalletState.Ready, slot.Wallet.IdentityPublicKeyHex);
 
             _logger.LogInformation(
