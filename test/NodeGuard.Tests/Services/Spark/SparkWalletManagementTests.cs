@@ -194,63 +194,6 @@ public class SparkWalletManagementTests
         wallet.EffectiveMaxBalanceSats.Should().Be(2_000_000);
     }
 
-    // ── Withdraw all ─────────────────────────────────────────────────────────────────────
-
-    [Fact]
-    public async Task WithdrawAll_ExitsEverythingToANewAddressOfTheOnChainWallet()
-    {
-        _spark.Configure().WithdrawAllAsync(new SparkWalletRef(5), Arg.Any<string>(), Settings.MaxExitFeeSats, Arg.Any<CancellationToken>())
-            .Returns(new WithdrawAllResult("exit-tx", 300_000, 297_000, 0, 0, 0, 0));
-
-        var exit = await Service().WithdrawAllToWalletAsync(5, 3);
-
-        exit.Txid.Should().Be("exit-tx");
-        Received.InOrder(() =>
-        {
-            _spark.ClaimPendingAsync(new SparkWalletRef(5), Arg.Any<CancellationToken>());
-            _nbXplorer.GetUnusedAsync(Arg.Any<DerivationStrategyBase>(), DerivationFeature.Deposit, 0, true, Arg.Any<CancellationToken>());
-            _spark.WithdrawAllAsync(new SparkWalletRef(5), Arg.Any<string>(), Settings.MaxExitFeeSats, Arg.Any<CancellationToken>());
-        });
-        await _audit.Received(1).LogAsync(AuditActionType.Transfer, AuditEventType.Success, AuditObjectType.Wallet, "5", Arg.Any<object?>());
-    }
-
-    [Fact]
-    public async Task WithdrawAll_WhileTheWalletHasASwapInFlight_IsRefused()
-    {
-        _swapOuts.GetAllPending().Returns(new List<SwapOut>
-        {
-            new() { Id = 8, Provider = SwapProvider.Spark, Status = SwapOutStatus.Pending, SparkIdentity = Identity.ToUpperInvariant() }
-        });
-
-        var act = () => Service().WithdrawAllToWalletAsync(5, 3);
-
-        await act.Should().ThrowAsync<InvalidOperationException>().WithMessage("*swap 8 is in flight*");
-        await _spark.DidNotReceiveWithAnyArgs().WithdrawAllAsync(default, default!, default, default);
-    }
-
-    [Fact]
-    public async Task WithdrawAll_WhileAnotherWalletHasASwapInFlight_GoesAhead()
-    {
-        _swapOuts.GetAllPending().Returns(new List<SwapOut>
-        {
-            new() { Id = 8, Provider = SwapProvider.Spark, Status = SwapOutStatus.Pending, SparkIdentity = "02bb" }
-        });
-        _spark.Configure().WithdrawAllAsync(new SparkWalletRef(5), Arg.Any<string>(), Arg.Any<long>(), Arg.Any<CancellationToken>())
-            .Returns(new WithdrawAllResult("exit-tx", 300_000, 297_000, 0, 0, 0, 0));
-
-        (await Service().WithdrawAllToWalletAsync(5, 3)).Txid.Should().Be("exit-tx");
-    }
-
-    [Fact]
-    public async Task WithdrawAll_ToAnotherSparkWallet_IsRefused()
-    {
-        _wallets.GetById(6).Returns(new Wallet { Id = 6, Name = "other transit", Kind = WalletKind.Spark, IsFinalised = true, Keys = [] });
-
-        var act = () => Service().WithdrawAllToWalletAsync(5, 6);
-
-        await act.Should().ThrowAsync<InvalidOperationException>().WithMessage("*not an available on-chain wallet*");
-    }
-
     // ── Archive ──────────────────────────────────────────────────────────────────────────
 
     [Fact]

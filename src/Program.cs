@@ -131,6 +131,7 @@ namespace NodeGuard
             builder.Services.AddTransient<IForwardingHtlcEventRepository, ForwardingHtlcEventRepository>();
             builder.Services.AddTransient<IChannelRoutingStateRepository, ChannelRoutingStateRepository>();
             builder.Services.AddTransient<IChannelFeeStateRepository, ChannelFeeStateRepository>();
+            builder.Services.AddTransient<ISparkSignerIdentityRepository, SparkSignerIdentityRepository>();
             builder.Services.AddTransient<ICoinSelectionService, CoinSelectionService>();
             builder.Services.AddTransient<IPriceConversionService, PriceConversionService>();
             builder.Services.AddTransient<IHtlcMonitoringScheduler, HtlcMonitoringScheduler>();
@@ -159,8 +160,10 @@ namespace NodeGuard
             builder.Services.AddSingleton(sparkSettings);
             builder.Services.TryAddSingleton(TimeProvider.System);
             builder.Services.AddTransient<ISparkSeedProtector, SparkSeedProtector>();
+            builder.Services.AddSingleton<ISparkSignerIdentityPin, SparkSignerIdentityPin>();
             builder.Services.AddTransient<ISparkSignerProvider>(sp => new SparkSignerProvider(sparkSettings,
                 sp.GetRequiredService<IServiceScopeFactory>(), sp.GetRequiredService<ISparkSeedProtector>(),
+                sp.GetRequiredService<ISparkSignerIdentityPin>(),
                 sp.GetRequiredService<IHttpClientFactory>().CreateClient(nameof(SparkSignerProvider)),
                 () => new ImmutableCredentials(Constants.AWS_ACCESS_KEY_ID, Constants.AWS_SECRET_ACCESS_KEY, null),
                 Constants.AWS_REGION));

@@ -100,6 +100,23 @@ public class SparkGuardrailsTests
     }
 
     [Fact]
+    public async Task TheRemoteSignersSwapsInFlight_CoverItsSats_BeforeItsIdentityIsSaved()
+    {
+        // The remote signer's entry has no identity until its first handshake saves one: the connected wallet's counts
+        Wallets(new SparkWalletEntry(SparkWalletRef.RemoteSigner, "Remote signer", null, 10_000_000));
+        _spark.EnsureReadyAsync(SparkWalletRef.RemoteSigner, Arg.Any<CancellationToken>())
+            .Returns(new SparkWalletStatus(SparkWalletState.Ready, "02aa"));
+        Holds(SparkWalletRef.RemoteSigner, 500_000);
+
+        var alerts = await _guardrails.CheckAsync([PaidSparkSwap(_time.GetUtcNow())]);
+        _time.Advance(SparkGuardrails.StuckAlertAfter);
+        alerts = alerts.Concat(await _guardrails.CheckAsync([PaidSparkSwap(_time.GetUtcNow())])).ToList();
+
+        _guardrails.StuckSince(SparkWalletRef.RemoteSigner).Should().BeNull();
+        alerts.Should().NotContain(a => a.Action == AuditActionType.SparkBalanceStuck);
+    }
+
+    [Fact]
     public async Task AnotherWalletsSwapInFlight_DoesNotCoverAWalletsSats()
     {
         Wallets(new SparkWalletEntry(A, "transit-a", "02aa", 10_000_000), new SparkWalletEntry(B, "transit-b", "02bb", 10_000_000));

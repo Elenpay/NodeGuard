@@ -124,7 +124,11 @@ public sealed class SparkGuardrails : ISparkGuardrails, IDisposable
 
         foreach (var wallet in wallets)
         {
-            if (!(await _spark.EnsureReadyAsync(wallet.Ref, ct)).IsReady) continue;
+            var status = await _spark.EnsureReadyAsync(wallet.Ref, ct);
+            if (!status.IsReady) continue;
+
+            // The remote signer's identity is only known once its first handshake saved it: the connected wallet's
+            var identity = wallet.IdentityPublicKey ?? status.IdentityPublicKey;
 
             SatsBalance balance;
             try
@@ -150,7 +154,7 @@ public sealed class SparkGuardrails : ISparkGuardrails, IDisposable
             // Each swap's sats are its own until its exit confirms: only what none of the wallet's swaps in flight
             // accounts for is stuck
             var due = DueSats(sparkSwaps.Where(s =>
-                string.Equals(s.SparkIdentity, wallet.IdentityPublicKey, StringComparison.OrdinalIgnoreCase)));
+                string.Equals(s.SparkIdentity, identity, StringComparison.OrdinalIgnoreCase)));
             var stuck = held - due;
             if (stuck > 0)
             {
@@ -163,7 +167,7 @@ public sealed class SparkGuardrails : ISparkGuardrails, IDisposable
                 {
                     watch.StuckAlerted = true;
                     alerts.Add(new SparkAlert(AuditActionType.SparkBalanceStuck, AuditObjectType.Wallet,
-                        wallet.Ref.WalletId?.ToString() ?? wallet.IdentityPublicKey ?? "spark",
+                        wallet.Ref.WalletId?.ToString() ?? identity ?? "spark",
                         $"{wallet.Name} has held {stuck} sats that no swap in flight accounts for since {watch.StuckSince:u}",
                         new
                         {

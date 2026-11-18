@@ -107,6 +107,7 @@ public class NodeGuardService : Nodeguard.NodeGuardService.NodeGuardServiceBase,
     private readonly ISwapOutRepository _swapOutRepository;
     private readonly IAuditService _auditService;
     private readonly ISparkWalletService _sparkWallet;
+    private readonly ISparkSwapService _sparkSwaps;
     private readonly IWalletEventHub _walletEventHub;
     private readonly IWithdrawalInterceptorGate _withdrawalInterceptorGate;
     private readonly TimeProvider _timeProvider;
@@ -134,6 +135,7 @@ public class NodeGuardService : Nodeguard.NodeGuardService.NodeGuardServiceBase,
         ISwapOutRepository swapOutRepository,
         IAuditService auditService,
         ISparkWalletService sparkWallet,
+        ISparkSwapService sparkSwaps,
         IWalletEventHub walletEventHub,
         IWithdrawalInterceptorGate withdrawalInterceptorGate,
         TimeProvider timeProvider
@@ -143,6 +145,7 @@ public class NodeGuardService : Nodeguard.NodeGuardService.NodeGuardServiceBase,
         _withdrawalInterceptorGate = withdrawalInterceptorGate;
         _timeProvider = timeProvider;
         _sparkWallet = sparkWallet;
+        _sparkSwaps = sparkSwaps;
         _swapsService = swapsService;
         _swapOutRepository = swapOutRepository;
         _auditService = auditService;
@@ -2139,8 +2142,28 @@ public class NodeGuardService : Nodeguard.NodeGuardService.NodeGuardServiceBase,
         ServerCallContext context) =>
         SparkWalletCallAsync("Withdrawing a Spark wallet", async () =>
         {
-            var exit = await _sparkWallet.WithdrawAllToWalletAsync(request.WalletId, request.DestinationWalletId, context.CancellationToken);
-            return new WithdrawAllSparkWalletResponse { TxId = exit.Txid, PayoutSats = exit.PayoutSats, FeeSats = exit.FeeSats };
+            var withdrawal = await _sparkSwaps.WithdrawAllAsync(request.WalletId, request.DestinationWalletId, context.CancellationToken);
+            var response = new WithdrawAllSparkWalletResponse
+            {
+                TxId = withdrawal.Leftover?.TxId ?? string.Empty,
+                PayoutSats = withdrawal.Leftover?.PayoutSats ?? 0,
+                FeeSats = withdrawal.Leftover?.FeeSats ?? 0,
+                HeldBackSats = withdrawal.HeldBackSats,
+                Note = withdrawal.Note ?? string.Empty
+            };
+            response.SwapExits.AddRange(withdrawal.SwapExits.Select(exit => new Nodeguard.SparkSwapExit
+            {
+                SwapIds = { exit.SwapIds },
+                Step = exit.Step switch
+                {
+                    SparkExitStep.ExitSent => SPARK_EXIT_STEP.SparkExitSent,
+                    SparkExitStep.Completed => SPARK_EXIT_STEP.SparkExitCompleted,
+                    _ => SPARK_EXIT_STEP.SparkExitWaiting
+                },
+                TxId = exit.TxId ?? string.Empty,
+                Error = exit.Error ?? string.Empty
+            }));
+            return response;
         });
 
     public override Task<ArchiveSparkWalletResponse> ArchiveSparkWallet(ArchiveSparkWalletRequest request, ServerCallContext context) =>

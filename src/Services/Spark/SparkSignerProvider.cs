@@ -34,32 +34,43 @@ public interface ISparkSignerProvider
 {
     /// <exception cref="SparkUnavailableException">The signer is not the expected one, or cannot be reached.</exception>
     Task<ISparkSigner> GetSignerAsync(SparkWalletRef wallet, SparkOptions options, CancellationToken ct);
+
+    /// <summary>
+    /// SPARK_SIGNER=remote: the Spark identity the remote signer must serve (SPARK_IDENTITY_PUBKEY, else the one saved
+    /// on the first handshake); null until it is known, and in wallet mode.
+    /// </summary>
+    Task<string?> GetRemoteIdentityAsync(CancellationToken ct);
 }
 
 /// <summary>
 /// SPARK_SIGNER=wallet: the keys of a Spark wallet row, derived from its decrypted mnemonic and checked against
 /// the identity recorded when it was created. SPARK_SIGNER=remote: NSpark's RemoteSparkSigner over the signer's
-/// Function URL (or a local emulator), accepted only after its /spark/info handshake.
+/// Function URL (or a local emulator), accepted only after its /spark/info handshake and once the identity it serves
+/// is the expected one, or saved as such on the first handshake (<see cref="ISparkSignerIdentityPin"/>).
 /// </summary>
 public sealed class SparkSignerProvider : ISparkSignerProvider
 {
     private readonly SparkSettings _settings;
     private readonly IServiceScopeFactory _scopes;
     private readonly ISparkSeedProtector _protector;
+    private readonly ISparkSignerIdentityPin _identityPin;
     private readonly HttpClient _http;
     private readonly Func<ImmutableCredentials> _awsCredentials;
     private readonly string? _awsRegion;
 
-    public SparkSignerProvider(SparkSettings settings, IServiceScopeFactory scopes, ISparkSeedProtector protector, HttpClient http,
-        Func<ImmutableCredentials> awsCredentials, string? awsRegion)
+    public SparkSignerProvider(SparkSettings settings, IServiceScopeFactory scopes, ISparkSeedProtector protector,
+        ISparkSignerIdentityPin identityPin, HttpClient http, Func<ImmutableCredentials> awsCredentials, string? awsRegion)
     {
         _settings = settings;
         _scopes = scopes;
         _protector = protector;
+        _identityPin = identityPin;
         _http = http;
         _awsCredentials = awsCredentials;
         _awsRegion = awsRegion;
     }
+
+    public Task<string?> GetRemoteIdentityAsync(CancellationToken ct) => _identityPin.ExpectedAsync(ct);
 
     public Task<ISparkSigner> GetSignerAsync(SparkWalletRef wallet, SparkOptions options, CancellationToken ct) =>
         (_settings.SignerMode, wallet.WalletId) switch
@@ -88,11 +99,14 @@ public sealed class SparkSignerProvider : ISparkSignerProvider
             throw new SparkUnavailableException($"the remote signer did not serve /spark/info: {e.Message}");
         }
 
-        var problems = SparkSignerHandshake.Verify(info, _settings.IdentityPublicKey!, options);
+        // The policy first: a signer configured for other operators or another SSP is never saved as the expected one
+        var problems = SparkSignerHandshake.Verify(info, options);
         if (problems.Count > 0)
         {
             throw new SparkUnavailableException("the remote signer is not the one NodeGuard expects: " + string.Join("; ", problems));
         }
+
+        await _identityPin.PinOrVerifyAsync(info.IdentityPublicKey, ct);
 
         return signer;
     }
