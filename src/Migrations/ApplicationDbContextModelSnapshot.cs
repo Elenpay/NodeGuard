@@ -1220,6 +1220,39 @@ namespace NodeGuard.Migrations
                     b.ToTable("Rebalances");
                 });
 
+            modelBuilder.Entity("NodeGuard.Data.Models.SparkSignerIdentity", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
+
+                    b.Property<int>("Account")
+                        .HasColumnType("integer");
+
+                    b.Property<DateTimeOffset>("CreationDatetime")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("IdentityPublicKey")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<string>("SeedFingerprint")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<DateTimeOffset>("UpdateDatetime")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("SeedFingerprint", "Account")
+                        .IsUnique();
+
+                    b.ToTable("SparkSignerIdentities");
+                });
+
             modelBuilder.Entity("NodeGuard.Data.Models.SwapOut", b =>
                 {
                     b.Property<int>("Id")

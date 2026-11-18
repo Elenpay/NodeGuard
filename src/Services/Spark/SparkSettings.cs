@@ -109,7 +109,10 @@ public sealed class SparkSettings
     /// <summary>The remote signer's Spark account index (SPARK_ACCOUNT, 0 by default; remote signer only).</summary>
     public int Account { get; init; }
 
-    /// <summary>The Spark identity the remote signer must serve (SPARK_IDENTITY_PUBKEY; remote signer only).</summary>
+    /// <summary>
+    /// The Spark identity the remote signer must serve (SPARK_IDENTITY_PUBKEY; remote signer only, optional). Null means
+    /// the identity saved on the first handshake (<see cref="SparkSignerIdentityPin"/>).
+    /// </summary>
     public string? IdentityPublicKey { get; init; }
 
     /// <summary>Highest fee accepted for a cooperative exit, of a batch of swaps (SPARK_MAX_EXIT_FEE_SATS).</summary>
@@ -287,6 +290,8 @@ public sealed class SparkSettings
                 errors.Add("SPARK_ACCOUNT must be the Spark account index (0 or more), the same as the signer's");
             }
 
+            // Optional: without it, NodeGuard saves the identity the signer serves on the first handshake
+            // (SparkSignerIdentityPin) and holds every later handshake to it
             identity = env("SPARK_IDENTITY_PUBKEY");
             if (identity is { Length: > 0 } && !IsCompressedPublicKey(identity))
             {
@@ -295,7 +300,6 @@ public sealed class SparkSettings
             else if (string.IsNullOrWhiteSpace(identity))
             {
                 identity = null;
-                errors.Add("SPARK_IDENTITY_PUBKEY is required with the remote signer: the identity it must serve (seed-ceremony verify --spark-account)");
             }
         }
 
