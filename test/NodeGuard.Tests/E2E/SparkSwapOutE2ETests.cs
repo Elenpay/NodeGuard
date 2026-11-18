@@ -185,6 +185,74 @@ public class SparkSwapOutE2ETests : E2ETestBase
     }
 
     [SparkE2EFact]
+    public async Task WithdrawAll_WhileASwapWaitsInTheWallet_ExitsItNow_ToItsOwnWallet_AndEmptiesTheSparkWallet()
+    {
+        var client = CreateClient(out var headers);
+        var rpc = CreateBitcoindRpc();
+        var alice = (await WaitForNodesAsync(client, headers)).Single(n => n.Name == "alice");
+        var payoutWalletId = int.Parse(Env("E2E_SPARK_PAYOUT_WALLET_ID", "2"));
+        const long amount = 150_000;
+
+        // A Spark wallet with room for many more swaps: once paid, alice's swap waits in it for others to fill it
+        var sparkWallet = await client.CreateSparkWalletAsync(
+            new CreateSparkWalletRequest { Name = $"e2e drain {Guid.NewGuid():N}"[..20], MaxBalanceSats = 10_000_000 }, headers);
+        await SetSparkConfigAsync(alice.Id, sparkWallet.WalletId, maxSwapsInFlight: 1, sparkMinSwapSats: 100_000);
+
+        var request = new RequestSwapOutRequest
+        {
+            NodeId = alice.Id,
+            Provider = SWAP_PROVIDER.Spark,
+            AmountSats = amount,
+            WalletId = payoutWalletId,
+            ReferenceId = $"spark-e2e-drain-{Guid.NewGuid():N}"
+        };
+        var started = await StartSwapAsync(client, headers, request);
+        started.Status.Should().Be(SWAP_OUT_STATUS.SwapOutPending, started.Error);
+
+        // Paid, and its transfer attributed by SparkSwapExitJob: it now waits in the wallet, which is far from full
+        var (leafIds, _) = await PollAsync(() => SwapLeavesAsync(request.ReferenceId), swap => swap.LeafIds.Length > 0,
+            attempts: 30, delay: TimeSpan.FromSeconds(10), what: "the swap's transfer attributed");
+        _output.WriteLine($"swap {started.SwapId}: {leafIds.Length} leaves, waiting in Spark wallet {sparkWallet.WalletId}");
+        var waiting = await client.GetSwapOutAsync(new GetSwapOutRequest { ReferenceId = request.ReferenceId }, headers);
+        waiting.Status.Should().Be(SWAP_OUT_STATUS.SwapOutPending);
+        waiting.TxId.Should().BeEmpty("the wallet has room for more swaps, so the exit job lets it wait");
+
+        // Withdraw all while the swap is pending: it exits now, to its own destination wallet, and nothing else is there
+        var withdrawal = await client.WithdrawAllSparkWalletAsync(
+            new WithdrawAllSparkWalletRequest { WalletId = sparkWallet.WalletId, DestinationWalletId = payoutWalletId }, headers);
+        _output.WriteLine($"withdraw all: {withdrawal.SwapExits.Count} swap exits, leftover '{withdrawal.TxId}', " +
+                          $"held back {withdrawal.HeldBackSats}, note '{withdrawal.Note}'");
+        var exit = withdrawal.SwapExits.Should().ContainSingle().Which;
+        exit.SwapIds.Should().Equal(started.SwapId);
+        exit.Step.Should().Be(SPARK_EXIT_STEP.SparkExitSent, exit.Error);
+        exit.TxId.Should().NotBeEmpty();
+        withdrawal.TxId.Should().BeEmpty("every sat in the wallet was the swap's");
+        withdrawal.Note.Should().BeEmpty();
+
+        // Mining confirms the exit: the swap completes as any other, its payout at the address its exit reserved
+        var done = await PollAsync(
+            async () =>
+            {
+                await MineAsync(rpc, 1);
+                return await client.GetSwapOutAsync(new GetSwapOutRequest { ReferenceId = request.ReferenceId }, headers);
+            },
+            swap => swap.Status != SWAP_OUT_STATUS.SwapOutPending,
+            attempts: 30, delay: TimeSpan.FromSeconds(10), what: "the swap's completion");
+        _output.WriteLine($"swap {done.SwapId}: {done.Status}, payout {done.PayoutSats} to {done.DestinationAddress} in {done.TxId}");
+        done.Status.Should().Be(SWAP_OUT_STATUS.SwapOutCompleted, done.Error);
+        var destination = BitcoinAddress.Create(done.DestinationAddress, Network.RegTest);
+        var payoutTx = await rpc.GetRawTransactionAsync(uint256.Parse(done.TxId));
+        done.PayoutSats.Should().Be(payoutTx.Outputs.Where(o => o.ScriptPubKey == destination.ScriptPubKey).Sum(o => o.Value.Satoshi));
+        (done.OnchainFeeSats + done.ServiceFeeSats).Should().Be(amount - done.PayoutSats);
+
+        // The Spark wallet is empty
+        await PollAsync(
+            async () => await client.GetSparkWalletBalanceAsync(new GetSparkWalletBalanceRequest { WalletId = sparkWallet.WalletId }, headers),
+            b => b.OwnedSats + b.IncomingSats == 0,
+            attempts: 12, delay: TimeSpan.FromSeconds(5), what: $"Spark wallet {sparkWallet.WalletId} drained");
+    }
+
+    [SparkE2EFact]
     public async Task SwapOut_LeavesAtTheirTimelockFloor_AreRenewedAndExitedUnderTheirOwnIds()
     {
         var client = CreateClient(out var headers);
