@@ -56,7 +56,22 @@ public class SparkSwapExitJob : IJob
     {
         if (!_sparkSettings.Enabled) return;
 
+        // One at a time with a Spark wallet's Withdraw all, which exits swaps too: two runs could otherwise reserve and
+        // save different addresses on the same swaps. Pending swaps are read once it is this run's turn
         var ct = context.CancellationToken;
+        await SparkSwapService.Exits.WaitAsync(ct);
+        try
+        {
+            await ExitPaidSwapsAsync(ct);
+        }
+        finally
+        {
+            SparkSwapService.Exits.Release();
+        }
+    }
+
+    private async Task ExitPaidSwapsAsync(CancellationToken ct)
+    {
         try
         {
             var pending = await _swapOutRepository.GetAllPending();

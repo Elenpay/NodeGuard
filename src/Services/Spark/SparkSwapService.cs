@@ -101,6 +101,39 @@ public interface ISparkSwapService
     /// already sharing a destination address. Progress is saved on its swaps.
     /// </summary>
     Task<SparkExitStep> ExitBatchAsync(IReadOnlyList<SwapOut> batch, CancellationToken ct = default);
+
+    /// <summary>
+    /// Empties a Spark wallet, even while its swaps run. Its paid swaps exit now, each batch to an address of its own
+    /// destination wallet, as if the wallet were full. Then what no pending swap of it owns exits to an unused address
+    /// of <paramref name="destinationWalletId"/>, an on-chain wallet, the exit fee capped by SPARK_MAX_EXIT_FEE_SATS.
+    /// Swaps still being paid, and the leaves of every transfer received since the oldest pending swap was created,
+    /// stay: they exit with their swaps. Waits for SparkSwapExitJob, and no swap can start meanwhile.
+    /// </summary>
+    /// <exception cref="ArgumentException">The wallet is not a Spark wallet.</exception>
+    /// <exception cref="InvalidOperationException">
+    /// The destination is not an available on-chain wallet, or SparkSwapExitJob kept running too long.
+    /// </exception>
+    /// <exception cref="SparkUnavailableException">The Spark wallet can't be reached.</exception>
+    Task<SparkWithdrawal> WithdrawAllAsync(int walletId, int destinationWalletId, CancellationToken ct = default);
+}
+
+/// <summary>What a Spark wallet's Withdraw all did.</summary>
+/// <param name="SwapExits">The batches of the wallet's paid swaps it sent out, oldest first.</param>
+/// <param name="Leftover">The exit of what no pending swap owns; null if there was nothing to exit, or it failed.</param>
+/// <param name="HeldBackSats">Spendable sats kept for the wallet's pending swaps.</param>
+/// <param name="Note">Anything that stayed behind, and why; null if nothing did.</param>
+public sealed record SparkWithdrawal(IReadOnlyList<SparkSwapExit> SwapExits, SparkLeftoverExit? Leftover, long HeldBackSats, string? Note);
+
+/// <summary>One batch of paid swaps a Withdraw all moved forward.</summary>
+/// <param name="TxId">Its exit's txid, once sent.</param>
+/// <param name="Error">Why it could not move, if it failed; SparkSwapExitJob retries it.</param>
+public sealed record SparkSwapExit(IReadOnlyList<int> SwapIds, SparkExitStep Step, string? TxId, string? Error);
+
+/// <summary>The exit of what no pending swap owns.</summary>
+public sealed record SparkLeftoverExit(string TxId, string Address, long SentSats, long PayoutSats)
+{
+    /// <summary>The SSP's fee, the exit's miner fee included.</summary>
+    public long FeeSats => SentSats - PayoutSats;
 }
 
 public sealed class SparkSwapService : ISparkSwapService
@@ -136,6 +169,15 @@ public sealed class SparkSwapService : ISparkSwapService
     /// limit (NodeGuard runs as one process), and the Spark wallets' withdraw-all against them.
     /// </summary>
     internal static readonly SemaphoreSlim Reservation = new(1, 1);
+
+    /// <summary>
+    /// Held by SparkSwapExitJob for its whole run and by Withdraw all, which takes it before <see cref="Reservation"/>:
+    /// one at a time reserves addresses and exits swaps, so two can't save different addresses on the same swaps.
+    /// </summary>
+    internal static readonly SemaphoreSlim Exits = new(1, 1);
+
+    /// <summary>How long Withdraw all waits for a run of SparkSwapExitJob to end.</summary>
+    internal TimeSpan ExitsTimeout { get; init; } = TimeSpan.FromMinutes(2);
 
     private readonly ILogger<SparkSwapService> _logger;
     private readonly SparkSettings _settings;
@@ -435,14 +477,22 @@ public sealed class SparkSwapService : ISparkSwapService
 
             _logger.LogInformation("{SparkWallet} ({Name}) is full ({Room} sats of room under its max balance): its {Count} paid swaps exit",
                 entry.Ref, entry.Name, room, walletSwaps.Count());
-            foreach (var destinationSwaps in walletSwaps.GroupBy(s => s.DestinationWalletId))
-            {
-                batches.AddRange(Pack(destinationSwaps));
-            }
+            batches.AddRange(BatchesOf(walletSwaps));
         }
 
         return batches.OrderBy(b => b[0].CreationDatetime).ThenBy(b => b[0].Id).ToList();
     }
+
+    /// <summary>
+    /// A wallet's attributed swaps not exiting yet, in order, in batches: one per destination wallet (an exit pays one
+    /// address), of at most <see cref="MaxLeavesPerExit"/> leaves, oldest first.
+    /// </summary>
+    private static IReadOnlyList<IReadOnlyList<SwapOut>> BatchesOf(IEnumerable<SwapOut> swaps) =>
+        swaps.GroupBy(s => s.DestinationWalletId)
+            .SelectMany(Pack)
+            .OrderBy(b => b[0].CreationDatetime)
+            .ThenBy(b => b[0].Id)
+            .ToList();
 
     /// <summary>
     /// Whole swaps, in order, in batches of at most <see cref="MaxLeavesPerExit"/> leaves: a swap's leaves never split
@@ -575,6 +625,207 @@ public sealed class SparkSwapService : ISparkSwapService
             Ids(batch), exit.Txid, exit.PayoutSats, exit.SentSats, first.DestinationAddress, exit.FeeSats);
         return SparkExitStep.ExitSent;
     }
+
+    public async Task<SparkWithdrawal> WithdrawAllAsync(int walletId, int destinationWalletId, CancellationToken ct = default)
+    {
+        var wallet = await SparkWalletService.SparkWalletRowAsync(_walletRepository, walletId);
+        var destination = await _walletRepository.GetById(destinationWalletId);
+        if (destination is not { Kind: WalletKind.OnChain, IsFinalised: true, IsArchived: false, IsCompromised: false } ||
+            destination.GetDerivationStrategy() is not { } strategy)
+        {
+            throw new InvalidOperationException($"Wallet {destinationWalletId} is not an available on-chain wallet to withdraw to.");
+        }
+
+        var sparkWallet = new SparkWalletRef(walletId);
+        var status = await _spark.EnsureReadyAsync(sparkWallet, ct);
+        if (!status.IsReady) throw new SparkUnavailableException(status.Reason ?? $"{wallet.Name} is not available.");
+
+        // SparkSwapExitJob's run first, then the reservation: no swap exits or starts behind this one's back
+        if (!await Exits.WaitAsync(ExitsTimeout, ct))
+        {
+            throw new InvalidOperationException("SparkSwapExitJob is exiting Spark swaps right now: try again in a minute.");
+        }
+
+        try
+        {
+            await Reservation.WaitAsync(ct);
+            try
+            {
+                return await WithdrawAllHeldAsync(wallet, wallet.SparkIdentityPublicKey ?? status.IdentityPublicKey, destination,
+                    strategy, ct);
+            }
+            finally
+            {
+                Reservation.Release();
+            }
+        }
+        finally
+        {
+            Exits.Release();
+        }
+    }
+
+    /// <summary><see cref="WithdrawAllAsync"/> under <see cref="Exits"/> and <see cref="Reservation"/>.</summary>
+    private async Task<SparkWithdrawal> WithdrawAllHeldAsync(Wallet wallet, string? identity, Wallet destination,
+        DerivationStrategyBase strategy, CancellationToken ct)
+    {
+        using var scope = _scopes.CreateScope();
+        var audit = scope.ServiceProvider.GetRequiredService<IAuditService>();
+        var sparkWallet = new SparkWalletRef(wallet.Id);
+        var details = new { SparkWallet = wallet.Name, DestinationWalletId = destination.Id, DestinationWallet = destination.Name };
+
+        var pending = (await _swapOutRepository.GetAllPending())
+            .Where(s => s.Provider == SwapProvider.Spark && s.Status == SwapOutStatus.Pending &&
+                        string.Equals(s.SparkIdentity, identity, StringComparison.OrdinalIgnoreCase))
+            .OrderBy(s => s.CreationDatetime)
+            .ThenBy(s => s.Id)
+            .ToList();
+
+        if (pending.Count == 0)
+        {
+            // No swap's sats are in the wallet: everything it holds exits, its pending transfers claimed first
+            try
+            {
+                await _spark.ClaimPendingAsync(sparkWallet, ct);
+                var address = await UnusedAddressAsync(strategy, destination, ct);
+                var exit = await _spark.WithdrawAllAsync(sparkWallet, address, _settings.MaxExitFeeSats, ct);
+
+                await audit.LogAsync(AuditActionType.Transfer, AuditEventType.Success, AuditObjectType.Wallet, wallet.Id.ToString(),
+                    new { details.SparkWallet, details.DestinationWalletId, details.DestinationWallet, Address = address, exit.Txid, exit.PayoutSats, exit.FeeSats });
+                _logger.LogInformation("Spark wallet {WalletId} withdrew {Payout} sats to {Address} in {TxId} (SSP fee {Fee} sats)",
+                    wallet.Id, exit.PayoutSats, address, exit.Txid, exit.FeeSats);
+                return new SparkWithdrawal([], new SparkLeftoverExit(exit.Txid, address, exit.SentSats, exit.PayoutSats), 0, null);
+            }
+            catch (Exception e) when (e is not OperationCanceledException)
+            {
+                await audit.LogAsync(AuditActionType.Transfer, AuditEventType.Failure, AuditObjectType.Wallet, wallet.Id.ToString(),
+                    new { details.SparkWallet, details.DestinationWalletId, details.DestinationWallet, Error = e.Message });
+                throw;
+            }
+        }
+
+        var swapExits = await ExitPaidSwapsNowAsync(pending, ct);
+        var notes = new List<string>();
+
+        // Then what no pending swap owns: the leaves the wallet held before its oldest pending swap was created. Any
+        // leaf received since may be a swap's, even one whose transfer is not attributed yet (another swap's
+        // attribution claims every pending transfer), so it stays, with the leaves of the swaps' own transfers
+        SparkLeftoverExit? leftover = null;
+        long heldBackSats = 0;
+        string? error = null;
+        try
+        {
+            var held = pending.SelectMany(LeafIds).ToHashSet(StringComparer.OrdinalIgnoreCase);
+            var since = pending[0].CreationDatetime - TransferLookback;
+            foreach (var transfer in await _spark.GetTransfersAsync(sparkWallet, TransferDirection.Received, since, ct))
+            {
+                held.UnionWith(transfer.Leaves.Select(l => l.Id));
+            }
+
+            var spendable = await _spark.GetSpendableLeavesAsync(sparkWallet, ct);
+            heldBackSats = spendable.Where(l => held.Contains(l.Id)).Sum(l => l.ValueSats);
+            var free = spendable
+                .Where(l => !held.Contains(l.Id))
+                .OrderByDescending(l => l.ValueSats)
+                .ThenBy(l => l.Id, StringComparer.Ordinal)
+                .ToList();
+            if (free.Count > 0)
+            {
+                var leaves = free.Take(MaxLeavesPerExit).ToList();
+                var address = await UnusedAddressAsync(strategy, destination, ct);
+                var exit = await _spark.WithdrawLeavesAsync(sparkWallet, leaves.Select(l => l.Id).ToList(), address,
+                    _settings.MaxExitFeeSats, ct);
+                leftover = new SparkLeftoverExit(exit.Txid, address, exit.SentSats, exit.PayoutSats);
+                _logger.LogInformation("Spark wallet {WalletId} withdrew {Payout} sats no swap owns to {Address} in {TxId} (SSP fee {Fee} sats)",
+                    wallet.Id, exit.PayoutSats, address, exit.Txid, exit.FeeSats);
+
+                if (free.Count > leaves.Count)
+                {
+                    notes.Add($"{free.Skip(leaves.Count).Sum(l => l.ValueSats)} more sats in {free.Count - leaves.Count} leaves stay: " +
+                              $"one exit carries at most {MaxLeavesPerExit} leaves, so withdraw again.");
+                }
+            }
+        }
+        catch (Exception e) when (e is not OperationCanceledException)
+        {
+            error = e.Message;
+            notes.Add($"What no swap owns was not withdrawn: {e.Message}");
+            _logger.LogError(e, "Spark wallet {WalletId}: what no swap owns was not withdrawn", wallet.Id);
+        }
+
+        var beingPaid = pending.Where(s => s.LightningFeeSats is null).ToList();
+        if (beingPaid.Count > 0)
+        {
+            notes.Add($"Spark swaps {Ids(beingPaid)} are still being paid: they exit once paid, with the wallet's next exit.");
+        }
+
+        var unattributed = pending.Where(s => s.LightningFeeSats is not null && s.SparkTransferId is null && s.TxId is null).ToList();
+        if (unattributed.Count > 0)
+        {
+            notes.Add($"Spark swaps {Ids(unattributed)} wait for their transfer to be found: SparkSwapExitJob exits them once it is.");
+        }
+
+        var note = notes.Count > 0 ? string.Join(" ", notes) : null;
+        await audit.LogAsync(AuditActionType.Transfer, error is null ? AuditEventType.Success : AuditEventType.Failure,
+            AuditObjectType.Wallet, wallet.Id.ToString(), new
+            {
+                details.SparkWallet,
+                details.DestinationWalletId,
+                details.DestinationWallet,
+                SwapExits = swapExits.Select(x => new { x.SwapIds, Step = x.Step.ToString(), x.TxId, x.Error }).ToList(),
+                leftover?.Address,
+                Txid = leftover?.TxId,
+                leftover?.PayoutSats,
+                leftover?.FeeSats,
+                HeldBackSats = heldBackSats,
+                Error = error
+            });
+
+        return new SparkWithdrawal(swapExits, leftover, heldBackSats, note);
+    }
+
+    /// <summary>
+    /// Exits a wallet's paid swaps now, as if the wallet were full: their transfers attributed first, then the
+    /// attributed ones not exiting yet in batches, oldest first. Batches already exiting are SparkSwapExitJob's to
+    /// follow. A batch that fails is reported, and the job retries it.
+    /// </summary>
+    private async Task<List<SparkSwapExit>> ExitPaidSwapsNowAsync(IReadOnlyList<SwapOut> pending, CancellationToken ct)
+    {
+        var paid = pending.Where(s => s.LightningFeeSats is not null).ToList();
+        foreach (var swap in paid.Where(s => s.SparkTransferId is null && s.TxId is null))
+        {
+            try
+            {
+                await AttributeAsync(swap, ct);
+            }
+            catch (Exception e) when (e is not OperationCanceledException)
+            {
+                _logger.LogWarning("Spark swap {SwapId}: its transfer could not be attributed: {Error}", swap.Id, e.Message);
+            }
+        }
+
+        var exits = new List<SparkSwapExit>();
+        foreach (var batch in BatchesOf(paid.Where(s => s.SparkTransferId is not null && s.DestinationAddress is null && s.TxId is null)))
+        {
+            var swapIds = batch.Select(s => s.Id).ToList();
+            try
+            {
+                var step = await ExitBatchAsync(batch, ct);
+                exits.Add(new SparkSwapExit(swapIds, step, batch.Select(s => s.TxId).FirstOrDefault(t => t is not null), null));
+            }
+            catch (Exception e) when (e is not OperationCanceledException)
+            {
+                _logger.LogError(e, "Spark swaps {SwapIds}: error exiting them now; SparkSwapExitJob retries", Ids(batch));
+                exits.Add(new SparkSwapExit(swapIds, SparkExitStep.Waiting, null, e.Message));
+            }
+        }
+
+        return exits;
+    }
+
+    private async Task<string> UnusedAddressAsync(DerivationStrategyBase strategy, Wallet destination, CancellationToken ct) =>
+        (await _nbXplorerService.GetUnusedAsync(strategy, DerivationFeature.Deposit, 0, true, ct))?.Address?.ToString() ??
+        throw new InvalidOperationException($"No address of {destination.Name} could be reserved.");
 
     /// <summary>
     /// Looks the payment up on the node. Saves its fee once it succeeded; returns why the swap failed,

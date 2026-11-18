@@ -17,6 +17,7 @@
  *
  */
 
+using FluentAssertions;
 using Microsoft.Extensions.Logging.Abstractions;
 using NodeGuard.Data.Models;
 using NodeGuard.Data.Repositories.Interfaces;
@@ -69,6 +70,29 @@ public class SparkSwapExitJobTests
 
     private static IReadOnlyList<SwapOut> Batch(params SwapOut[] swaps) =>
         Arg.Is<IReadOnlyList<SwapOut>>(b => b.SequenceEqual(swaps));
+
+    [Fact]
+    public async Task Execute_WaitsWhileAWithdrawAllHoldsTheExits()
+    {
+        _swapOuts.GetAllPending().Returns(new List<SwapOut>());
+        var run = Task.CompletedTask;
+        await SparkSwapService.Exits.WaitAsync();
+        try
+        {
+            run = Job().Execute(_context);
+            await Task.Delay(200);
+
+            run.IsCompleted.Should().BeFalse();
+            await _swapOuts.DidNotReceive().GetAllPending();
+        }
+        finally
+        {
+            SparkSwapService.Exits.Release();
+        }
+
+        await run.WaitAsync(TimeSpan.FromSeconds(5));
+        await _swapOuts.Received(1).GetAllPending();
+    }
 
     [Fact]
     public async Task Execute_AttributesEveryPaidSwap_FollowsTheBatchesExiting_ThenExitsThePlannedOnes()

@@ -88,6 +88,7 @@ namespace NodeGuard.Rpc
             IAuditService? auditService = null,
             ISparkWalletService? sparkWallet = null,
             IWalletEventHub? walletEventHub = null,
+            ISparkSwapService? sparkSwaps = null,
             IWithdrawalInterceptorGate? withdrawalInterceptorGate = null)
         {
             return new NodeGuardService(
@@ -114,6 +115,7 @@ namespace NodeGuard.Rpc
                 swapOutRepository ?? new Mock<ISwapOutRepository>().Object,
                 auditService ?? new Mock<IAuditService>().Object,
                 sparkWallet ?? new Mock<ISparkWalletService>().Object,
+                sparkSwaps ?? new Mock<ISparkSwapService>().Object,
                 walletEventHub ?? new Mock<IWalletEventHub>().Object,
                 withdrawalInterceptorGate ?? new Mock<IWithdrawalInterceptorGate>().Object,
                 TimeProvider.System);
@@ -2897,16 +2899,62 @@ namespace NodeGuard.Rpc
         }
 
         [Fact]
+        public async Task WithdrawAllSparkWallet_ReturnsTheSwapsExitedNow_AndTheLeftoversExit()
+        {
+            var sparkSwaps = new Mock<ISparkSwapService>();
+            sparkSwaps.Setup(x => x.WithdrawAllAsync(7, 3, It.IsAny<CancellationToken>())).ReturnsAsync(new SparkWithdrawal(
+                [
+                    new NodeGuard.Services.Spark.SparkSwapExit([1, 2], SparkExitStep.ExitSent, "exit-tx", null),
+                    new NodeGuard.Services.Spark.SparkSwapExit([3], SparkExitStep.Waiting, null, "leaves frozen")
+                ],
+                new SparkLeftoverExit("leftover-tx", "bcrt1qaddress", 120_000, 118_000), 500_000, "Spark swaps 9 are still being paid"));
+            var service = CreateNodeGuardService(sparkSwaps: sparkSwaps.Object);
+
+            var response = await service.WithdrawAllSparkWallet(new WithdrawAllSparkWalletRequest { WalletId = 7, DestinationWalletId = 3 },
+                TestServerCallContext.Create());
+
+            response.TxId.Should().Be("leftover-tx");
+            response.PayoutSats.Should().Be(118_000);
+            response.FeeSats.Should().Be(2_000);
+            response.HeldBackSats.Should().Be(500_000);
+            response.Note.Should().Be("Spark swaps 9 are still being paid");
+            response.SwapExits.Should().HaveCount(2);
+            response.SwapExits[0].SwapIds.Should().Equal(1, 2);
+            response.SwapExits[0].Step.Should().Be(SPARK_EXIT_STEP.SparkExitSent);
+            response.SwapExits[0].TxId.Should().Be("exit-tx");
+            response.SwapExits[1].Step.Should().Be(SPARK_EXIT_STEP.SparkExitWaiting);
+            response.SwapExits[1].Error.Should().Be("leaves frozen");
+        }
+
+        [Fact]
+        public async Task WithdrawAllSparkWallet_WithNothingLeftOver_HasNoTxId()
+        {
+            var sparkSwaps = new Mock<ISparkSwapService>();
+            sparkSwaps.Setup(x => x.WithdrawAllAsync(7, 3, It.IsAny<CancellationToken>()))
+                .ReturnsAsync(new SparkWithdrawal([], null, 0, null));
+            var service = CreateNodeGuardService(sparkSwaps: sparkSwaps.Object);
+
+            var response = await service.WithdrawAllSparkWallet(new WithdrawAllSparkWalletRequest { WalletId = 7, DestinationWalletId = 3 },
+                TestServerCallContext.Create());
+
+            response.TxId.Should().BeEmpty();
+            response.PayoutSats.Should().Be(0);
+            response.Note.Should().BeEmpty();
+            response.SwapExits.Should().BeEmpty();
+        }
+
+        [Fact]
         public async Task SparkWalletRefusals_AreMappedToStatuses()
         {
             var sparkWallet = new Mock<ISparkWalletService>();
-            sparkWallet.Setup(x => x.WithdrawAllToWalletAsync(7, 3, It.IsAny<CancellationToken>()))
-                .ThrowsAsync(new InvalidOperationException("Spark swap 8 is in flight on transit"));
+            var sparkSwaps = new Mock<ISparkSwapService>();
+            sparkSwaps.Setup(x => x.WithdrawAllAsync(7, 3, It.IsAny<CancellationToken>()))
+                .ThrowsAsync(new InvalidOperationException("Wallet 3 is not an available on-chain wallet to withdraw to."));
             sparkWallet.Setup(x => x.ArchiveWalletAsync(9, It.IsAny<CancellationToken>()))
                 .ThrowsAsync(new ArgumentException("Wallet 9 is not a Spark wallet."));
             sparkWallet.Setup(x => x.GetSatsBalanceAsync(7, It.IsAny<CancellationToken>()))
                 .ThrowsAsync(new SparkUnavailableException("cannot decrypt its seed"));
-            var service = CreateNodeGuardService(sparkWallet: sparkWallet.Object);
+            var service = CreateNodeGuardService(sparkWallet: sparkWallet.Object, sparkSwaps: sparkSwaps.Object);
 
             var withdraw = () => service.WithdrawAllSparkWallet(new WithdrawAllSparkWalletRequest { WalletId = 7, DestinationWalletId = 3 },
                 TestServerCallContext.Create());
@@ -2915,7 +2963,7 @@ namespace NodeGuard.Rpc
 
             var refused = (await withdraw.Should().ThrowAsync<RpcException>()).Which;
             refused.StatusCode.Should().Be(StatusCode.FailedPrecondition);
-            refused.Status.Detail.Should().Contain("in flight");
+            refused.Status.Detail.Should().Contain("not an available on-chain wallet");
             (await archive.Should().ThrowAsync<RpcException>()).Which.StatusCode.Should().Be(StatusCode.InvalidArgument);
             (await balance.Should().ThrowAsync<RpcException>()).Which.StatusCode.Should().Be(StatusCode.Unavailable);
         }

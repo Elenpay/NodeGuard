@@ -162,8 +162,10 @@ service NodeGuardService {
   rpc GetSparkWalletBalance(GetSparkWalletBalanceRequest) returns (GetSparkWalletBalanceResponse);
 
   /*
-  Exits everything a Spark wallet holds to an unused address of an on-chain wallet. Refused while the Spark wallet
-  has a swap in flight, whose sats it would take.
+  Empties a Spark wallet, even while its swaps run. Its paid swaps exit now, each batch to an address of its own
+  destination wallet, as if the wallet were full. Then what no pending swap of it owns exits to an unused address of
+  an on-chain wallet. Swaps still being paid, and the leaves of every transfer received since the oldest pending swap
+  was created, stay: they exit with their swaps.
   */
   rpc WithdrawAllSparkWallet(WithdrawAllSparkWalletRequest) returns (WithdrawAllSparkWalletResponse);
 
@@ -837,9 +839,34 @@ message WithdrawAllSparkWalletRequest {
 }
 
 message WithdrawAllSparkWalletResponse {
+  // The exit of what no pending swap owns: empty and 0 when there was nothing to exit, or it failed (see note)
   string tx_id = 1;
   int64 payout_sats = 2;
   int64 fee_sats = 3;
+  // The batches of the Spark wallet's paid swaps sent out now, oldest first
+  repeated SparkSwapExit swap_exits = 4;
+  // Spendable sats kept for the Spark wallet's pending swaps
+  int64 held_back_sats = 5;
+  // Anything that stayed behind, and why; empty if nothing did
+  string note = 6;
+}
+
+enum SPARK_EXIT_STEP {
+  // Its transfer has not been found yet, or its leaves can't move yet
+  SPARK_EXIT_WAITING = 0;
+  // The exit was sent; its payout has not confirmed yet
+  SPARK_EXIT_SENT = 1;
+  // The payout confirmed
+  SPARK_EXIT_COMPLETED = 2;
+}
+
+message SparkSwapExit {
+  repeated int32 swap_ids = 1;
+  SPARK_EXIT_STEP step = 2;
+  // The exit's txid, once sent
+  string tx_id = 3;
+  // Why the batch could not move, if it failed; it is retried by the exit job
+  string error = 4;
 }
 
 message ArchiveSparkWalletRequest {
