@@ -109,12 +109,14 @@ public interface ISparkSwapService
     /// Swaps still being paid, and the leaves of every transfer received since the oldest pending swap was created,
     /// stay: they exit with their swaps. Waits for SparkSwapExitJob, and no swap can start meanwhile.
     /// </summary>
-    /// <exception cref="ArgumentException">The wallet is not a Spark wallet.</exception>
+    /// <exception cref="ArgumentException">
+    /// The wallet is neither a Spark wallet row nor, with SPARK_SIGNER=remote, the remote signer's.
+    /// </exception>
     /// <exception cref="InvalidOperationException">
     /// The destination is not an available on-chain wallet, or SparkSwapExitJob kept running too long.
     /// </exception>
     /// <exception cref="SparkUnavailableException">The Spark wallet can't be reached.</exception>
-    Task<SparkWithdrawal> WithdrawAllAsync(int walletId, int destinationWalletId, CancellationToken ct = default);
+    Task<SparkWithdrawal> WithdrawAllAsync(SparkWalletRef wallet, int destinationWalletId, CancellationToken ct = default);
 }
 
 /// <summary>What a Spark wallet's Withdraw all did.</summary>
@@ -626,9 +628,12 @@ public sealed class SparkSwapService : ISparkSwapService
         return SparkExitStep.ExitSent;
     }
 
-    public async Task<SparkWithdrawal> WithdrawAllAsync(int walletId, int destinationWalletId, CancellationToken ct = default)
+    public async Task<SparkWithdrawal> WithdrawAllAsync(SparkWalletRef sparkWallet, int destinationWalletId, CancellationToken ct = default)
     {
-        var wallet = await SparkWalletService.SparkWalletRowAsync(_walletRepository, walletId);
+        var wallet = sparkWallet.WalletId is { } walletId
+            ? SparkWalletService.EntryOf(await SparkWalletService.SparkWalletRowAsync(_walletRepository, walletId), _settings)
+            : await _spark.GetWalletAsync(sparkWallet, ct) ?? throw new ArgumentException(
+                "The remote signer's Spark wallet is used only with SPARK_SIGNER=remote.", nameof(sparkWallet));
         var destination = await _walletRepository.GetById(destinationWalletId);
         if (destination is not { Kind: WalletKind.OnChain, IsFinalised: true, IsArchived: false, IsCompromised: false } ||
             destination.GetDerivationStrategy() is not { } strategy)
@@ -636,7 +641,6 @@ public sealed class SparkSwapService : ISparkSwapService
             throw new InvalidOperationException($"Wallet {destinationWalletId} is not an available on-chain wallet to withdraw to.");
         }
 
-        var sparkWallet = new SparkWalletRef(walletId);
         var status = await _spark.EnsureReadyAsync(sparkWallet, ct);
         if (!status.IsReady) throw new SparkUnavailableException(status.Reason ?? $"{wallet.Name} is not available.");
 
@@ -651,7 +655,7 @@ public sealed class SparkSwapService : ISparkSwapService
             await Reservation.WaitAsync(ct);
             try
             {
-                return await WithdrawAllHeldAsync(wallet, wallet.SparkIdentityPublicKey ?? status.IdentityPublicKey, destination,
+                return await WithdrawAllHeldAsync(wallet, wallet.IdentityPublicKey ?? status.IdentityPublicKey, destination,
                     strategy, ct);
             }
             finally
@@ -666,12 +670,13 @@ public sealed class SparkSwapService : ISparkSwapService
     }
 
     /// <summary><see cref="WithdrawAllAsync"/> under <see cref="Exits"/> and <see cref="Reservation"/>.</summary>
-    private async Task<SparkWithdrawal> WithdrawAllHeldAsync(Wallet wallet, string? identity, Wallet destination,
+    private async Task<SparkWithdrawal> WithdrawAllHeldAsync(SparkWalletEntry wallet, string? identity, Wallet destination,
         DerivationStrategyBase strategy, CancellationToken ct)
     {
         using var scope = _scopes.CreateScope();
         var audit = scope.ServiceProvider.GetRequiredService<IAuditService>();
-        var sparkWallet = new SparkWalletRef(wallet.Id);
+        var sparkWallet = wallet.Ref;
+        var auditId = wallet.Ref.WalletId?.ToString() ?? SparkWalletService.RemoteSignerAuditId;
         var details = new { SparkWallet = wallet.Name, DestinationWalletId = destination.Id, DestinationWallet = destination.Name };
 
         var pending = (await _swapOutRepository.GetAllPending())
@@ -690,15 +695,15 @@ public sealed class SparkSwapService : ISparkSwapService
                 var address = await UnusedAddressAsync(strategy, destination, ct);
                 var exit = await _spark.WithdrawAllAsync(sparkWallet, address, _settings.MaxExitFeeSats, ct);
 
-                await audit.LogAsync(AuditActionType.Transfer, AuditEventType.Success, AuditObjectType.Wallet, wallet.Id.ToString(),
+                await audit.LogAsync(AuditActionType.Transfer, AuditEventType.Success, AuditObjectType.Wallet, auditId,
                     new { details.SparkWallet, details.DestinationWalletId, details.DestinationWallet, Address = address, exit.Txid, exit.PayoutSats, exit.FeeSats });
-                _logger.LogInformation("Spark wallet {WalletId} withdrew {Payout} sats to {Address} in {TxId} (SSP fee {Fee} sats)",
-                    wallet.Id, exit.PayoutSats, address, exit.Txid, exit.FeeSats);
+                _logger.LogInformation("{Wallet} withdrew {Payout} sats to {Address} in {TxId} (SSP fee {Fee} sats)",
+                    sparkWallet, exit.PayoutSats, address, exit.Txid, exit.FeeSats);
                 return new SparkWithdrawal([], new SparkLeftoverExit(exit.Txid, address, exit.SentSats, exit.PayoutSats), 0, null);
             }
             catch (Exception e) when (e is not OperationCanceledException)
             {
-                await audit.LogAsync(AuditActionType.Transfer, AuditEventType.Failure, AuditObjectType.Wallet, wallet.Id.ToString(),
+                await audit.LogAsync(AuditActionType.Transfer, AuditEventType.Failure, AuditObjectType.Wallet, auditId,
                     new { details.SparkWallet, details.DestinationWalletId, details.DestinationWallet, Error = e.Message });
                 throw;
             }
@@ -736,8 +741,8 @@ public sealed class SparkSwapService : ISparkSwapService
                 var exit = await _spark.WithdrawLeavesAsync(sparkWallet, leaves.Select(l => l.Id).ToList(), address,
                     _settings.MaxExitFeeSats, ct);
                 leftover = new SparkLeftoverExit(exit.Txid, address, exit.SentSats, exit.PayoutSats);
-                _logger.LogInformation("Spark wallet {WalletId} withdrew {Payout} sats no swap owns to {Address} in {TxId} (SSP fee {Fee} sats)",
-                    wallet.Id, exit.PayoutSats, address, exit.Txid, exit.FeeSats);
+                _logger.LogInformation("{Wallet} withdrew {Payout} sats no swap owns to {Address} in {TxId} (SSP fee {Fee} sats)",
+                    sparkWallet, exit.PayoutSats, address, exit.Txid, exit.FeeSats);
 
                 if (free.Count > leaves.Count)
                 {
@@ -750,7 +755,7 @@ public sealed class SparkSwapService : ISparkSwapService
         {
             error = e.Message;
             notes.Add($"What no swap owns was not withdrawn: {e.Message}");
-            _logger.LogError(e, "Spark wallet {WalletId}: what no swap owns was not withdrawn", wallet.Id);
+            _logger.LogError(e, "{Wallet}: what no swap owns was not withdrawn", sparkWallet);
         }
 
         var beingPaid = pending.Where(s => s.LightningFeeSats is null).ToList();
@@ -767,7 +772,7 @@ public sealed class SparkSwapService : ISparkSwapService
 
         var note = notes.Count > 0 ? string.Join(" ", notes) : null;
         await audit.LogAsync(AuditActionType.Transfer, error is null ? AuditEventType.Success : AuditEventType.Failure,
-            AuditObjectType.Wallet, wallet.Id.ToString(), new
+            AuditObjectType.Wallet, auditId, new
             {
                 details.SparkWallet,
                 details.DestinationWalletId,

@@ -81,7 +81,8 @@ namespace NodeGuard.Data.Repositories
             bool coldWalletFilter = false,
             bool finalisedFilter = false,
             DateTimeOffset? fromDate = null,
-            DateTimeOffset? toDate = null)
+            DateTimeOffset? toDate = null,
+            WalletKind? kind = null)
         {
             await using var applicationDbContext = await _dbContextFactory.CreateDbContextAsync();
 
@@ -93,6 +94,11 @@ namespace NodeGuard.Data.Repositories
             if (!string.IsNullOrWhiteSpace(nameFilter))
             {
                 query = query.Where(w => w.Name.Contains(nameFilter));
+            }
+
+            if (kind.HasValue)
+            {
+                query = query.Where(w => w.Kind == kind.Value);
             }
 
             switch (statusFilter)

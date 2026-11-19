@@ -39,7 +39,8 @@ public interface IWalletRepository
         bool coldWalletFilter = false,
         bool finalisedFilter = false,
         DateTimeOffset? fromDate = null,
-        DateTimeOffset? toDate = null);
+        DateTimeOffset? toDate = null,
+        NodeGuard.Data.Models.WalletKind? kind = null);
     
     Task<List<Wallet>> GetAvailableByType(WALLET_TYPE type);
     
