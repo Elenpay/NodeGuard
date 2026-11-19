@@ -1097,7 +1097,7 @@ public class SparkSwapServiceTests
 
     private void PendingSwaps(params SwapOut[] swaps) => _swapOuts.GetAllPending().Returns(swaps.ToList());
 
-    private Task<SparkWithdrawal> WithdrawAll(int destinationWalletId = 3) => Service().WithdrawAllAsync(5, destinationWalletId);
+    private Task<SparkWithdrawal> WithdrawAll(int destinationWalletId = 3) => Service().WithdrawAllAsync(new SparkWalletRef(5), destinationWalletId);
 
     [Fact]
     public async Task WithdrawAll_WithNoPendingSwap_ExitsEverythingToANewAddressOfTheOnChainWallet()
@@ -1123,6 +1123,37 @@ public class SparkSwapServiceTests
             _spark.WithdrawAllAsync(W, Address, 20_000, Arg.Any<CancellationToken>());
         });
         await _audit.Received(1).LogAsync(AuditActionType.Transfer, AuditEventType.Success, AuditObjectType.Wallet, "5", Arg.Any<object?>());
+    }
+
+    [Fact]
+    public async Task WithdrawAll_OfTheRemoteSignersWallet_ExitsEverything_AndIsAuditedAsTheRemoteSigner()
+    {
+        WithdrawFixture();
+        var remote = SparkWalletRef.RemoteSigner;
+        _spark.GetWalletAsync(remote, Arg.Any<CancellationToken>()).Returns(new SparkWalletEntry(remote, "Remote signer", Identity, 10_000_000));
+        _spark.EnsureReadyAsync(remote, Arg.Any<CancellationToken>()).Returns(new SparkWalletStatus(SparkWalletState.Ready, Identity));
+        _spark.ClaimPendingAsync(remote, Arg.Any<CancellationToken>()).Returns(new PendingTransferClaim([], []));
+        _spark.WithdrawAllAsync(remote, Address, 20_000, Arg.Any<CancellationToken>())
+            .Returns(new WithdrawAllResult("exit-tx", 300_000, 297_000, 0, 0, 0, 0));
+
+        var withdrawal = await Service().WithdrawAllAsync(remote, 3);
+
+        withdrawal.Leftover.Should().Be(new SparkLeftoverExit("exit-tx", Address, 300_000, 297_000));
+        await _spark.DidNotReceive().WithdrawAllAsync(W, Arg.Any<string>(), Arg.Any<long>(), Arg.Any<CancellationToken>());
+        await _audit.Received(1).LogAsync(AuditActionType.Transfer, AuditEventType.Success, AuditObjectType.Wallet, "remote-signer",
+            Arg.Any<object?>());
+    }
+
+    [Fact]
+    public async Task WithdrawAll_OfTheRemoteSigner_WhenNodeGuardDoesNotUseIt_IsRefusedBeforeAnythingMoves()
+    {
+        WithdrawFixture();
+
+        var act = () => Service().WithdrawAllAsync(SparkWalletRef.RemoteSigner, 3);
+
+        await act.Should().ThrowAsync<ArgumentException>().WithMessage("*SPARK_SIGNER=remote*");
+        await _spark.DidNotReceiveWithAnyArgs().WithdrawAllAsync(default, default!, default, default);
+        await _spark.DidNotReceiveWithAnyArgs().EnsureReadyAsync(default, default);
     }
 
     [Fact]
@@ -1279,7 +1310,7 @@ public class SparkSwapServiceTests
             var service = new SparkSwapService(NullLogger<SparkSwapService>.Instance, Settings, _spark, _lightning, _swapOuts, _wallets,
                 _nbXplorer, _nodes, _scopes, _time) { ExitsTimeout = TimeSpan.FromMilliseconds(100) };
 
-            var act = () => service.WithdrawAllAsync(5, 3);
+            var act = () => service.WithdrawAllAsync(new SparkWalletRef(5), 3);
 
             await act.Should().ThrowAsync<InvalidOperationException>().WithMessage("*SparkSwapExitJob*try again*");
             await _swapOuts.DidNotReceive().GetAllPending();

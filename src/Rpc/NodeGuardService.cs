@@ -2128,7 +2128,7 @@ public class NodeGuardService : Nodeguard.NodeGuardService.NodeGuardServiceBase,
         ServerCallContext context) =>
         SparkWalletCallAsync("Getting a Spark wallet's balance", async () =>
         {
-            var balance = await _sparkWallet.GetSatsBalanceAsync(request.WalletId, context.CancellationToken);
+            var balance = await _sparkWallet.GetSatsBalanceAsync(new SparkWalletRef(request.WalletId), context.CancellationToken);
             return new GetSparkWalletBalanceResponse
             {
                 OwnedSats = balance.Owned,
@@ -2142,7 +2142,7 @@ public class NodeGuardService : Nodeguard.NodeGuardService.NodeGuardServiceBase,
         ServerCallContext context) =>
         SparkWalletCallAsync("Withdrawing a Spark wallet", async () =>
         {
-            var withdrawal = await _sparkSwaps.WithdrawAllAsync(request.WalletId, request.DestinationWalletId, context.CancellationToken);
+            var withdrawal = await _sparkSwaps.WithdrawAllAsync(new SparkWalletRef(request.WalletId), request.DestinationWalletId, context.CancellationToken);
             var response = new WithdrawAllSparkWalletResponse
             {
                 TxId = withdrawal.Leftover?.TxId ?? string.Empty,

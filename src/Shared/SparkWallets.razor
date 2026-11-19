@@ -1,0 +1,220 @@
+@using System.Security.Claims
+@using Humanizer
+@using NodeGuard.Services.Spark
+@inject ISparkWalletService SparkWallet
+@inject ISparkGuardrails Guardrails
+@inject SparkSettings SparkSettings
+@inject IWalletRepository WalletRepository
+@inject INodeRepository NodeRepository
+@inject ISwapOutRepository SwapOutRepository
+
+<Row Margin="Margin.Is3.FromTop" Class="align-items-center">
+    <Column>
+        @if (IsWalletMode)
+        {
+            <Paragraph>Spark swaps go through hot Spark wallets in NodeGuard (SPARK_SIGNER=wallet): each node through the one in its liquidity settings.</Paragraph>
+        }
+        else
+        {
+            <Paragraph>Spark swaps of every node go through the remote signer's Spark wallet (SPARK_SIGNER=remote).</Paragraph>
+        }
+    </Column>
+    <Column ColumnSize="ColumnSize.IsAuto" Class="d-flex align-items-center gap-2">
+        @if (IsWalletMode)
+        {
+            <Check TValue="bool" Checked="_showArchived" CheckedChanged="OnShowArchivedChanged">Show archived</Check>
+            @if (IsFinanceManager)
+            {
+                <Button Color="Color.Primary" Clicked="@(() => _modals.ShowCreateAsync())">New Spark wallet</Button>
+            }
+        }
+        <Button Color="Color.Secondary" Disabled="_loading" Clicked="LoadAsync">Refresh</Button>
+    </Column>
+</Row>
+
+@if (_error is not null)
+{
+    <Alert Color="Color.Danger" Visible>
+        <AlertDescription>@_error</AlertDescription>
+    </Alert>
+}
+
+<Table Striped Hoverable Responsive>
+    <TableHeader>
+        <TableRow>
+            <TableHeaderCell></TableHeaderCell>
+            <TableHeaderCell>Name</TableHeaderCell>
+            <TableHeaderCell>Identity</TableHeaderCell>
+            <TableHeaderCell>Status</TableHeaderCell>
+            <TableHeaderCell>
+                <Tooltip Text="What it owned when the swap monitor last checked it; Details reads it live" Placement="TooltipPlacement.Top" Multiline="true">Balance ⓘ</Tooltip>
+            </TableHeaderCell>
+            <TableHeaderCell>Max balance</TableHeaderCell>
+            <TableHeaderCell>Used by</TableHeaderCell>
+            <TableHeaderCell>Pending swaps</TableHeaderCell>
+        </TableRow>
+    </TableHeader>
+    <TableBody>
+        @if (_rows.Count == 0)
+        {
+            <TableRow>
+                <TableRowCell ColumnSpan="8">@(_loading ? "Loading…" : "No Spark wallets.")</TableRowCell>
+            </TableRow>
+        }
+        @foreach (var row in _rows)
+        {
+            var identity = row.Entry.IdentityPublicKey ?? row.Status.IdentityPublicKey;
+            <TableRow>
+                <TableRowCell>
+                    <Dropdown>
+                        <DropdownToggle Color="Color.Primary"></DropdownToggle>
+                        <DropdownMenu>
+                            <DropdownItem Clicked="@(() => _modals.ShowDetailsAsync(row.Entry))">Details</DropdownItem>
+                            @if (IsFinanceManager && !row.Entry.IsArchived)
+                            {
+                                <DropdownItem Clicked="@(() => _modals.ShowWithdrawAllAsync(row.Entry))">Withdraw all</DropdownItem>
+                                @if (row.Entry.Ref.WalletId is not null)
+                                {
+                                    <DropdownItem Clicked="@(() => _modals.ShowMaxBalanceAsync(row.Entry))">Edit max balance</DropdownItem>
+                                    <DropdownItem Clicked="@(() => _modals.ShowArchiveAsync(row.Entry))">Archive</DropdownItem>
+                                }
+                            }
+                        </DropdownMenu>
+                    </Dropdown>
+                </TableRowCell>
+                <TableRowCell>
+                    ⚡ @row.Entry.Name
+                    @if (row.Entry.Ref.WalletId is null)
+                    {
+                        <Badge Color="Color.Info" Margin="Margin.Is1.FromStart">Remote signer</Badge>
+                    }
+                    else
+                    {
+                        <Badge Color="Color.Warning" Margin="Margin.Is1.FromStart">Hot</Badge>
+                    }
+                    @if (row.Entry.IsArchived)
+                    {
+                        <Badge Color="Color.Secondary" Margin="Margin.Is1.FromStart">📂 Archived</Badge>
+                    }
+                </TableRowCell>
+                <TableRowCell>
+                    @if (identity is not null)
+                    {
+                        <Tooltip Text="@identity" Placement="TooltipPlacement.Top">
+                            <code>@StringHelper.TruncateHeadAndTail(identity, 8)</code>
+                        </Tooltip>
+                    }
+                    else
+                    {
+                        <span>not known yet</span>
+                    }
+                </TableRowCell>
+                <TableRowCell>
+                    <Tooltip Text="@(row.Status.Reason ?? row.Status.State.ToString())" Placement="TooltipPlacement.Top" Multiline="true">
+                        <Badge Color="@StatusColor(row.Status.State)">@row.Status.State</Badge>
+                    </Tooltip>
+                </TableRowCell>
+                <TableRowCell>
+                    @if (row.LastBalance is { } balance)
+                    {
+                        <Tooltip Text="@($"{balance.OwnedSats:N0} sats, checked {balance.At.Humanize()}")" Placement="TooltipPlacement.Top">
+                            @SparkWalletModals.Btc(balance.OwnedSats)
+                        </Tooltip>
+                    }
+                    else
+                    {
+                        <span>not checked yet</span>
+                    }
+                    @if (row.StuckSince is { } stuckSince)
+                    {
+                        <Tooltip Text="@($"Holding sats none of its swaps in flight accounts for, since {stuckSince.Humanize()}")" Placement="TooltipPlacement.Top" Multiline="true">
+                            <Badge Color="Color.Danger" Margin="Margin.Is1.FromStart">Stuck</Badge>
+                        </Tooltip>
+                    }
+                </TableRowCell>
+                <TableRowCell>
+                    <Tooltip Text="@($"{row.Entry.MaxBalanceSats:N0} sats")" Placement="TooltipPlacement.Top">
+                        @SparkWalletModals.Btc(row.Entry.MaxBalanceSats)
+                    </Tooltip>
+                </TableRowCell>
+                <TableRowCell>@(row.UsedBy.Count > 0 ? string.Join(", ", row.UsedBy) : "no node")</TableRowCell>
+                <TableRowCell>
+                    @if (row.PendingSwaps.Count > 0)
+                    {
+                        <span>@row.PendingSwaps.Count (@SparkWalletModals.Btc(row.PendingSwaps.Sum(s => s.SatsAmount)))</span>
+                    }
+                    else
+                    {
+                        <span>none</span>
+                    }
+                </TableRowCell>
+            </TableRow>
+        }
+    </TableBody>
+</Table>
+
+<SparkWalletModals @ref="_modals" OnChanged="LoadAsync" />
+
+@code {
+    [CascadingParameter]
+    private ClaimsPrincipal? ClaimsPrincipal { get; set; }
+
+    private sealed record WalletRow(SparkWalletEntry Entry, SparkWalletStatus Status, SparkBalanceSnapshot? LastBalance,
+        DateTimeOffset? StuckSince, List<string> UsedBy, List<SwapOut> PendingSwaps);
+
+    private SparkWalletModals _modals = default!;
+    private List<WalletRow> _rows = new();
+    private bool _showArchived;
+    private bool _loading;
+    private string? _error;
+
+    private bool IsWalletMode => SparkSettings.SignerMode == SparkSignerMode.Wallet;
+
+    private bool IsFinanceManager => ClaimsPrincipal?.IsInRole(ApplicationUserRole.FinanceManager.ToString()) == true;
+
+    protected override Task OnInitializedAsync() => LoadAsync();
+
+    private async Task OnShowArchivedChanged(bool showArchived)
+    {
+        _showArchived = showArchived;
+        await LoadAsync();
+    }
+
+    private async Task LoadAsync()
+    {
+        _loading = true;
+        _error = null;
+        try
+        {
+            var entries = IsWalletMode
+                ? (await WalletRepository.GetSparkWallets(_showArchived)).Select(w => SparkWalletService.EntryOf(w, SparkSettings)).ToList()
+                : (await SparkWallet.GetWalletsAsync()).ToList();
+            var nodes = await NodeRepository.GetAll();
+            var pending = await SwapOutRepository.GetAllPending();
+
+            _rows = entries.Select(entry =>
+            {
+                var status = SparkWallet.GetStatus(entry.Ref);
+                return new WalletRow(entry, status, Guardrails.LastBalance(entry.Ref), Guardrails.StuckSince(entry.Ref),
+                    nodes.Where(n => SparkWalletModals.UsesWallet(n, entry.Ref)).Select(n => n.Name).ToList(),
+                    SparkWalletModals.PendingSwapsOf(pending, entry.IdentityPublicKey ?? status.IdentityPublicKey));
+            }).ToList();
+        }
+        catch (Exception e)
+        {
+            _error = $"The Spark wallets could not be loaded: {e.Message}";
+        }
+        finally
+        {
+            _loading = false;
+            StateHasChanged();
+        }
+    }
+
+    private static Color StatusColor(SparkWalletState state) => state switch
+    {
+        SparkWalletState.Ready => Color.Success,
+        SparkWalletState.Unavailable => Color.Danger,
+        _ => Color.Secondary
+    };
+}

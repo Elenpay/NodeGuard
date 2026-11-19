@@ -2902,7 +2902,7 @@ namespace NodeGuard.Rpc
         public async Task WithdrawAllSparkWallet_ReturnsTheSwapsExitedNow_AndTheLeftoversExit()
         {
             var sparkSwaps = new Mock<ISparkSwapService>();
-            sparkSwaps.Setup(x => x.WithdrawAllAsync(7, 3, It.IsAny<CancellationToken>())).ReturnsAsync(new SparkWithdrawal(
+            sparkSwaps.Setup(x => x.WithdrawAllAsync(new SparkWalletRef(7), 3, It.IsAny<CancellationToken>())).ReturnsAsync(new SparkWithdrawal(
                 [
                     new NodeGuard.Services.Spark.SparkSwapExit([1, 2], SparkExitStep.ExitSent, "exit-tx", null),
                     new NodeGuard.Services.Spark.SparkSwapExit([3], SparkExitStep.Waiting, null, "leaves frozen")
@@ -2930,7 +2930,7 @@ namespace NodeGuard.Rpc
         public async Task WithdrawAllSparkWallet_WithNothingLeftOver_HasNoTxId()
         {
             var sparkSwaps = new Mock<ISparkSwapService>();
-            sparkSwaps.Setup(x => x.WithdrawAllAsync(7, 3, It.IsAny<CancellationToken>()))
+            sparkSwaps.Setup(x => x.WithdrawAllAsync(new SparkWalletRef(7), 3, It.IsAny<CancellationToken>()))
                 .ReturnsAsync(new SparkWithdrawal([], null, 0, null));
             var service = CreateNodeGuardService(sparkSwaps: sparkSwaps.Object);
 
@@ -2948,11 +2948,11 @@ namespace NodeGuard.Rpc
         {
             var sparkWallet = new Mock<ISparkWalletService>();
             var sparkSwaps = new Mock<ISparkSwapService>();
-            sparkSwaps.Setup(x => x.WithdrawAllAsync(7, 3, It.IsAny<CancellationToken>()))
+            sparkSwaps.Setup(x => x.WithdrawAllAsync(new SparkWalletRef(7), 3, It.IsAny<CancellationToken>()))
                 .ThrowsAsync(new InvalidOperationException("Wallet 3 is not an available on-chain wallet to withdraw to."));
             sparkWallet.Setup(x => x.ArchiveWalletAsync(9, It.IsAny<CancellationToken>()))
                 .ThrowsAsync(new ArgumentException("Wallet 9 is not a Spark wallet."));
-            sparkWallet.Setup(x => x.GetSatsBalanceAsync(7, It.IsAny<CancellationToken>()))
+            sparkWallet.Setup(x => x.GetSatsBalanceAsync(new SparkWalletRef(7), It.IsAny<CancellationToken>()))
                 .ThrowsAsync(new SparkUnavailableException("cannot decrypt its seed"));
             var service = CreateNodeGuardService(sparkWallet: sparkWallet.Object, sparkSwaps: sparkSwaps.Object);
 

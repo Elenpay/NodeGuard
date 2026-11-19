@@ -157,15 +157,21 @@ public interface ISparkWalletService
 
     Task<IReadOnlyList<SparkWalletSummary>> ListWalletsAsync(bool includeArchived = false, CancellationToken ct = default);
 
+    /// <summary>A Spark wallet row's balance, or the remote signer's wallet's with SPARK_SIGNER=remote.</summary>
+    /// <exception cref="ArgumentException">The wallet is neither.</exception>
     /// <exception cref="SparkUnavailableException">The wallet can't be reached.</exception>
-    Task<SatsBalance> GetSatsBalanceAsync(int walletId, CancellationToken ct = default);
+    Task<SatsBalance> GetSatsBalanceAsync(SparkWalletRef wallet, CancellationToken ct = default);
 
     /// <summary>Archives the wallet; refused unless it is empty and no node uses it.</summary>
     Task ArchiveWalletAsync(int walletId, CancellationToken ct = default);
 
-    /// <summary>The wallet's latest <paramref name="limit"/> transfers, newest first, each with the swap it belongs to.</summary>
+    /// <summary>
+    /// The latest <paramref name="limit"/> transfers of a Spark wallet row, or of the remote signer's wallet with
+    /// SPARK_SIGNER=remote, newest first, each with the swap it belongs to.
+    /// </summary>
+    /// <exception cref="ArgumentException">The wallet is neither.</exception>
     /// <exception cref="SparkUnavailableException">The wallet can't be reached.</exception>
-    Task<IReadOnlyList<SparkWalletTransfer>> ListTransfersAsync(int walletId, int limit = 100, CancellationToken ct = default);
+    Task<IReadOnlyList<SparkWalletTransfer>> ListTransfersAsync(SparkWalletRef wallet, int limit = 100, CancellationToken ct = default);
 }
 
 /// <remarks>
@@ -261,8 +267,13 @@ public class SparkWalletService : ISparkWalletService, IAsyncDisposable
     private async Task<SparkWalletEntry> RemoteSignerEntryAsync(CancellationToken ct) =>
         new(SparkWalletRef.RemoteSigner, "Remote signer", await _signerProvider.GetRemoteIdentityAsync(ct), _settings.MaxBalanceSats);
 
-    private SparkWalletEntry Entry(Wallet row) =>
-        new(new SparkWalletRef(row.Id), row.Name, row.SparkIdentityPublicKey, _settings.MaxBalanceFor(row), row.IsArchived);
+    private SparkWalletEntry Entry(Wallet row) => EntryOf(row, _settings);
+
+    internal static SparkWalletEntry EntryOf(Wallet row, SparkSettings settings) =>
+        new(new SparkWalletRef(row.Id), row.Name, row.SparkIdentityPublicKey, settings.MaxBalanceFor(row), row.IsArchived);
+
+    /// <summary>The audit object id and metric tag of the remote signer's wallet, which has no wallet row.</summary>
+    public const string RemoteSignerAuditId = "remote-signer";
 
     private async Task<List<Wallet>> SparkWalletRowsAsync(bool includeArchived)
     {
@@ -422,14 +433,23 @@ public class SparkWalletService : ISparkWalletService, IAsyncDisposable
             .ToList();
     }
 
-    public async Task<SatsBalance> GetSatsBalanceAsync(int walletId, CancellationToken ct = default)
+    public async Task<SatsBalance> GetSatsBalanceAsync(SparkWalletRef wallet, CancellationToken ct = default)
     {
-        using (var scope = _scopes.CreateScope())
+        await ManagedEntryAsync(wallet, ct);
+        return (await GetBalanceAsync(wallet, ct)).SatsBalance;
+    }
+
+    /// <summary>A Spark wallet row, archived or not, or the remote signer's wallet with SPARK_SIGNER=remote.</summary>
+    private async Task<SparkWalletEntry> ManagedEntryAsync(SparkWalletRef wallet, CancellationToken ct)
+    {
+        if (wallet.WalletId is { } id)
         {
-            await SparkWalletRowAsync(scope.ServiceProvider.GetRequiredService<IWalletRepository>(), walletId);
+            using var scope = _scopes.CreateScope();
+            return Entry(await SparkWalletRowAsync(scope.ServiceProvider.GetRequiredService<IWalletRepository>(), id));
         }
 
-        return (await GetBalanceAsync(new SparkWalletRef(walletId), ct)).SatsBalance;
+        return await GetWalletAsync(wallet, ct) ?? throw new ArgumentException(
+            "The remote signer's Spark wallet is used only with SPARK_SIGNER=remote.", nameof(wallet));
     }
 
     public async Task ArchiveWalletAsync(int walletId, CancellationToken ct = default)
@@ -446,7 +466,7 @@ public class SparkWalletService : ISparkWalletService, IAsyncDisposable
                 $"{wallet.Name} is the Spark wallet of {string.Join(", ", users)}: choose another in their liquidity settings first.");
         }
 
-        var balance = await GetSatsBalanceAsync(walletId, ct);
+        var balance = await GetSatsBalanceAsync(new SparkWalletRef(walletId), ct);
         if (balance.Owned + balance.Incoming > 0)
         {
             throw new InvalidOperationException(
@@ -463,21 +483,25 @@ public class SparkWalletService : ISparkWalletService, IAsyncDisposable
         Forget(new SparkWalletRef(walletId));
     }
 
-    public async Task<IReadOnlyList<SparkWalletTransfer>> ListTransfersAsync(int walletId, int limit = 100, CancellationToken ct = default)
+    public async Task<IReadOnlyList<SparkWalletTransfer>> ListTransfersAsync(SparkWalletRef wallet, int limit = 100,
+        CancellationToken ct = default)
     {
+        var entry = await ManagedEntryAsync(wallet, ct);
+        var transfers = await GetTransfersAsync(wallet, TransferDirection.Both, DateTimeOffset.UnixEpoch, ct);
+
+        // The remote signer's identity is known once its first handshake saved it, which reading the transfers ensures
+        var identity = entry.IdentityPublicKey ?? GetStatus(wallet).IdentityPublicKey;
         using var scope = _scopes.CreateScope();
-        var wallet = await SparkWalletRowAsync(scope.ServiceProvider.GetRequiredService<IWalletRepository>(), walletId);
-        var swaps = wallet.SparkIdentityPublicKey is { } identity
+        var swaps = identity is not null
             ? await scope.ServiceProvider.GetRequiredService<ISwapOutRepository>().GetSparkSwapsByIdentityAsync(identity)
             : [];
 
-        var transfers = await GetTransfersAsync(new SparkWalletRef(walletId), TransferDirection.Both, DateTimeOffset.UnixEpoch, ct);
         return transfers
             .OrderByDescending(t => t.CreatedAt)
             .Take(limit)
             .Select(t =>
             {
-                var sent = string.Equals(t.SenderIdentityPublicKey, wallet.SparkIdentityPublicKey, StringComparison.OrdinalIgnoreCase);
+                var sent = string.Equals(t.SenderIdentityPublicKey, identity, StringComparison.OrdinalIgnoreCase);
                 return new SparkWalletTransfer(t.Id, t.CreatedAt, sent, TransferTypeLabel(t.Type), t.TotalValueSats, t.Status,
                     SwapsOf(t, sent, swaps).Select(s => s.Id).ToList());
             })

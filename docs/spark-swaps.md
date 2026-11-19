@@ -51,7 +51,7 @@ So the exposure is the sats in transit, while they are on Spark. That is why a S
 
 `SPARK_SIGNER` sets where the Spark keys live:
 
-- **`wallet`** (the default; temporary). Spark wallets are created on the Wallets page (or with `CreateSparkWallet`), and each node is given the Spark wallet its swaps pass through. Their keys are hot: see [Spark wallets](#spark-wallets-temporary).
+- **`wallet`** (the default; temporary). Spark wallets are created on the Wallets page's Spark tab (or with `CreateSparkWallet`), and each node is given the Spark wallet its swaps pass through. Their keys are hot: see [Spark wallets](#spark-wallets-temporary).
 - **`remote`**. One Spark wallet, whose keys stay in the remote signer Lambda under its `/spark/` routes, serves every node; see the [remote signer README](https://github.com/Elenpay/Nodeguard-Remote-Signer#spark-signing). Its keys come from the seed with master fingerprint `SPARK_SEED_FINGERPRINT`, at Spark account `SPARK_ACCOUNT` (`m/8797555'/account'/…`). NodeGuard calls `/spark/info` at startup. It uses the signer only if the signer reports the same contract version and a policy for exactly NodeGuard's operators, threshold and SSP, and serves the expected Spark identity:
   - On the first successful handshake, NodeGuard saves the identity the signer serves (table `SparkSignerIdentities`, one row per `SPARK_SEED_FINGERPRINT` and `SPARK_ACCOUNT`), logs a warning with it and audits it. Every later handshake must serve the same identity: swaps record the identity that received them, and a signer serving another would leave them unable to exit. Watch the logs on the first start in remote mode, and compare the saved identity with the seed ceremony's `verify --spark-account` when convenient.
   - `SPARK_IDENTITY_PUBKEY` is optional. When set, the signer must serve it from the first handshake on, and it must agree with the saved identity.
@@ -61,17 +61,19 @@ So the exposure is the sats in transit, while they are on Spark. That is why a S
     DELETE FROM "SparkSignerIdentities" WHERE "SeedFingerprint" = '<fingerprint>' AND "Account" = <account>;
     ```
 
+The Wallets page's **Spark** tab lists every Spark wallet NodeGuard uses: the remote signer's in remote mode, the Spark wallets in wallet mode. Each row shows its identity, status, balance as last checked, max balance, the nodes using it and its pending swaps. Details reads the balance live and lists the signer (and, for the remote signer, `SPARK_SEED_FINGERPRINT`, `SPARK_ACCOUNT` and where the identity came from), the exit settings, the pending swaps and the transfers. Finance managers get Withdraw all on every Spark wallet, the remote signer's included (on this tab only: `WithdrawAllSparkWallet` takes a Spark wallet's id). The treasury grid lists only on-chain wallets.
+
 If a Spark wallet's signer is refused or unreachable, or its seed no longer decrypts, that wallet is unavailable and the reason is logged. Its nodes then don't get Spark in the New Swap dialog, auto-liquidity skips Spark for them and the RPC refuses their Spark swaps. NodeGuard retries at most once a minute per wallet.
 
 ## Spark wallets (temporary)
 
 Spark wallets let NodeGuard use Spark without the remote signer, for instance for a short mainnet test. They will be removed once the remote signer is the only Spark signer.
 
-- **Creating one.** Wallets page, New ▸ New Spark wallet (finance managers). Give it a name, a Spark account (0 by default) and optionally a max balance. NodeGuard generates a 24-word mnemonic and shows it **once**: write it down. A wallet created over gRPC never shows it.
+- **Creating one.** Wallets page ▸ Spark ▸ New Spark wallet (finance managers). Give it a name, a Spark account (0 by default) and optionally a max balance. NodeGuard generates a 24-word mnemonic and shows it **once**: write it down. A wallet created over gRPC never shows it.
 - **Storage.** The mnemonic is encrypted with ASP.NET Data Protection (purpose `NodeGuard.SparkWallet.Mnemonic.v1`). The key ring is NodeGuard's own, in Postgres (`DataProtectionKeys`), so it is shared by every replica and survives restarts and redeploys. This protects against a dump of the `Wallets` table alone, not of the whole database: the key ring itself is stored unencrypted. If the key ring is lost or NodeGuard's application name changes, the mnemonics can't be decrypted, and the words shown at creation are the only way back. A wallet whose seed doesn't decrypt is reported unavailable.
 - **Using one.** Nodes page ▸ liquidity settings ▸ Spark wallet, next to the Spark weight. A Spark weight above 0 needs a Spark wallet. Several nodes may share one. A node's Spark wallet can't change while the node has a Spark swap in flight. Until a node has one, the New Swap dialog lists no node for Spark and says so.
 - **Max balance.** Each Spark wallet has its own max balance (Edit max balance), the most it may hold counting a new swap and its swaps not paid yet. Empty means `SPARK_MAX_BALANCE_SATS`. For a mainnet test, keep it small (1-2 M sats).
-- **Withdraw all** (or `WithdrawAllSparkWallet`) empties the wallet, even while its swaps run. Exits go at `SPARK_EXIT_SPEED`, each fee capped by `SPARK_MAX_EXIT_FEE_SATS`. It waits for a run of `SparkSwapExitJob` to end (up to 2 minutes), and no swap of any wallet can start meanwhile.
+- **Withdraw all** (or `WithdrawAllSparkWallet`) empties the wallet, even while its swaps run. The remote signer's wallet has the same Withdraw all, on the Spark tab. Exits go at `SPARK_EXIT_SPEED`, each fee capped by `SPARK_MAX_EXIT_FEE_SATS`. It waits for a run of `SparkSwapExitJob` to end (up to 2 minutes), and no swap of any wallet can start meanwhile.
   1. Its paid swaps exit now, as if the wallet were full: their transfers are attributed, then they exit in batches, each to a new address of its own destination wallet, and complete as usual once their payout confirms. Batches already exiting are left to the exit job.
   2. Then what no pending swap owns exits in one cooperative exit, of at most 100 leaves (largest first; withdraw again for the rest), to a new address of the on-chain wallet chosen. With no pending swap, that is everything the wallet holds, its pending transfers claimed first.
   3. Swaps still being paid stay, and so does every leaf received since the oldest pending swap was created: it may be a swap's whose transfer is not attributed yet. The result says how much stayed and why.
@@ -137,10 +139,10 @@ The swap monitor checks each Spark wallet after each pass. Each alert below is a
 - `SparkBalanceStuck`: for an hour, a Spark wallet has held more than its swaps in flight account for. Until a swap completes, what it brought in (or its amount, until that is known) is its own and never counts as stuck, including while its exit waits to confirm.
 - `SparkExitOverdue`: a paid swap still has no confirmed payout 6 hours at `FAST`, 12 at `MEDIUM` or 24 at `SLOW` (`SPARK_EXIT_SPEED`) after it should have moved on: after it was paid while its transfer isn't attributed, or after its exit was first attempted. A swap waiting for its wallet to fill is not late.
 
-Each wallet's balance is shown in its details on the Wallets page and exported as the `nodeguard.spark.balance` gauge (meter `NodeGuard.Spark`), tagged `spark.wallet` with the wallet's id (`remote-signer` for the remote signer's).
+Each wallet's balance is shown on the Wallets page's Spark tab (as the swap monitor last checked it) and in its Details (read live), and exported as the `nodeguard.spark.balance` gauge (meter `NodeGuard.Spark`), tagged `spark.wallet` with the wallet's id (`remote-signer` for the remote signer's).
 
 **Resolving by hand.**
-- **Stuck sats** (frozen, unrenewed or unclaimed leaves, or leaves no swap was given) count against the wallet's max balance until they are gone. With Spark wallets, Withdraw all exits what no pending swap owns; otherwise inspect and withdraw them with a Spark wallet of the same seed and account.
+- **Stuck sats** (frozen, unrenewed or unclaimed leaves, or leaves no swap was given) count against the wallet's max balance until they are gone. Withdraw all exits what no pending swap owns, from a Spark wallet or the remote signer's.
 - **A swap paid into a Spark identity no Spark wallet has any more** is refused by the exit job, which logs the error on every pass, unless its exit was already sent: it then completes once its payout confirms. Exit its sats from a Spark wallet with that seed and account, then set the swap's status in the database.
 
 ## Rotating or retiring the Spark seed

@@ -67,7 +67,16 @@ public class SparkWalletManagementTests
 {
     private const string Identity = "02aa000000000000000000000000000000000000000000000000000000000000aa";
 
+    private const string RemoteIdentity = "03bb000000000000000000000000000000000000000000000000000000000000bb";
+
     private static readonly SparkSettings Settings = new() { Enabled = true, SignerMode = SparkSignerMode.Wallet, MaxBalanceSats = 2_000_000 };
+
+    private static readonly SparkSettings RemoteSettings = new()
+    {
+        Enabled = true, SignerMode = SparkSignerMode.Remote, MaxBalanceSats = 2_000_000, SeedFingerprint = "c0bd1022"
+    };
+
+    private readonly ISparkSignerProvider _signerProvider = Substitute.For<ISparkSignerProvider>();
 
     private readonly ISparkSeedProtector _protector = new SparkSeedProtector(new EphemeralDataProtectionProvider());
     private readonly IWalletRepository _wallets = Substitute.For<IWalletRepository>();
@@ -106,7 +115,7 @@ public class SparkWalletManagementTests
     {
         var scopes = new ServiceCollection().AddSingleton(_wallets).AddSingleton(_nodes).AddSingleton(_swapOuts)
             .AddSingleton(_nbXplorer).AddSingleton(_audit).BuildServiceProvider().GetRequiredService<IServiceScopeFactory>();
-        return Substitute.ForPartsOf<SparkWalletService>(settings, Substitute.For<ISparkSignerProvider>(), scopes, _protector,
+        return Substitute.ForPartsOf<SparkWalletService>(settings, _signerProvider, scopes, _protector,
             NullLogger<SparkWalletService>.Instance, NullLoggerFactory.Instance, TimeProvider.System);
     }
 
@@ -251,7 +260,7 @@ public class SparkWalletManagementTests
             new() { Id = 41, Provider = SwapProvider.Spark, SparkTransferId = "receive-1", SparkLeafIds = "l1,l2" }
         });
 
-        var transfers = await Service().ListTransfersAsync(5);
+        var transfers = await Service().ListTransfersAsync(new SparkWalletRef(5));
 
         transfers.Select(t => t.Id).Should().Equal("exit-1", "stray", "odd", "receive-1");
         transfers.Should().BeEquivalentTo(new[]
@@ -275,7 +284,7 @@ public class SparkWalletManagementTests
             new() { Id = 43, Provider = SwapProvider.Spark, SparkTransferId = "receive-3", SparkLeafIds = "l4" }
         });
 
-        var transfers = await Service().ListTransfersAsync(5);
+        var transfers = await Service().ListTransfersAsync(new SparkWalletRef(5));
 
         transfers.Should().ContainSingle().Which.SwapIds.Should().Equal(41, 42);
     }
@@ -286,7 +295,7 @@ public class SparkWalletManagementTests
         _spark.Configure().GetTransfersAsync(new SparkWalletRef(5), TransferDirection.Both, DateTimeOffset.UnixEpoch, Arg.Any<CancellationToken>())
             .Returns(Enumerable.Range(1, 5).Select(i => Transfer($"t{i}", "03ss", "Transfer", minutes: i)).ToList());
 
-        var transfers = await Service().ListTransfersAsync(5, limit: 2);
+        var transfers = await Service().ListTransfersAsync(new SparkWalletRef(5), limit: 2);
 
         transfers.Select(t => t.Id).Should().Equal("t5", "t4");
     }
@@ -294,7 +303,61 @@ public class SparkWalletManagementTests
     [Fact]
     public async Task TheTransactions_OfAnOnChainWallet_AreRefused()
     {
-        await Service().Invoking(s => s.ListTransfersAsync(3)).Should().ThrowAsync<ArgumentException>().WithMessage("*not a Spark wallet*");
+        await Service().Invoking(s => s.ListTransfersAsync(new SparkWalletRef(3))).Should().ThrowAsync<ArgumentException>().WithMessage("*not a Spark wallet*");
+    }
+
+    // ── The remote signer's wallet ───────────────────────────────────────────────────────
+
+    private SparkWalletService RemoteService()
+    {
+        _signerProvider.GetRemoteIdentityAsync(Arg.Any<CancellationToken>()).Returns(RemoteIdentity);
+        return Partial(RemoteSettings);
+    }
+
+    [Fact]
+    public async Task TheRemoteSignersBalance_IsReadInRemoteMode()
+    {
+        var service = RemoteService();
+        service.Configure().GetBalanceAsync(SparkWalletRef.RemoteSigner, Arg.Any<CancellationToken>())
+            .Returns(new WalletBalance(new SatsBalance(Available: 6_000, Owned: 7_000, Incoming: 1_000), [], []));
+
+        var balance = await service.GetSatsBalanceAsync(SparkWalletRef.RemoteSigner);
+
+        balance.Should().BeEquivalentTo(new { Owned = 7_000L, Available = 6_000L, Incoming = 1_000L });
+    }
+
+    [Fact]
+    public async Task TheRemoteSignersTransactions_AreListedInRemoteMode_WithTheirDirectionAndSwap()
+    {
+        var service = RemoteService();
+        service.Configure().GetTransfersAsync(SparkWalletRef.RemoteSigner, TransferDirection.Both, DateTimeOffset.UnixEpoch,
+                Arg.Any<CancellationToken>())
+            .Returns(new List<SparkTransfer>
+            {
+                new("receive-1", "03ss", RemoteIdentity, 100_000, "Completed", DateTimeOffset.UnixEpoch.AddMinutes(1), "PreimageSwap"),
+                new("exit-1", RemoteIdentity, "03ss", 100_000, "Completed", DateTimeOffset.UnixEpoch.AddMinutes(2), "CooperativeExit")
+            });
+        _swapOuts.GetSparkSwapsByIdentityAsync(RemoteIdentity).Returns(new List<SwapOut>
+        {
+            new() { Id = 41, Provider = SwapProvider.Spark, SparkTransferId = "receive-1" }
+        });
+
+        var transfers = await service.ListTransfersAsync(SparkWalletRef.RemoteSigner);
+
+        transfers.Should().BeEquivalentTo(new[]
+        {
+            new { Id = "exit-1", IsSent = true, Type = "Exit to on-chain", SwapIds = Array.Empty<int>() },
+            new { Id = "receive-1", IsSent = false, Type = "Lightning payment in", SwapIds = new[] { 41 } }
+        }, o => o.WithStrictOrdering());
+    }
+
+    [Fact]
+    public async Task TheRemoteSignersWallet_InWalletMode_IsRefused()
+    {
+        await Service().Invoking(s => s.GetSatsBalanceAsync(SparkWalletRef.RemoteSigner)).Should().ThrowAsync<ArgumentException>()
+            .WithMessage("*SPARK_SIGNER=remote*");
+        await Service().Invoking(s => s.ListTransfersAsync(SparkWalletRef.RemoteSigner)).Should().ThrowAsync<ArgumentException>()
+            .WithMessage("*SPARK_SIGNER=remote*");
     }
 
     [Fact]

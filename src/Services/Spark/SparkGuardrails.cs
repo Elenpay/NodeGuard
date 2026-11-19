@@ -76,7 +76,7 @@ public sealed class SparkGuardrails : ISparkGuardrails, IDisposable
         _meter = new Meter(MeterName);
         _meter.CreateObservableGauge("nodeguard.spark.balance",
             () => _watches.Select(w => new Measurement<long>(w.Value.LastBalance?.OwnedSats ?? 0,
-                new KeyValuePair<string, object?>("spark.wallet", w.Key.WalletId?.ToString() ?? "remote-signer"))),
+                new KeyValuePair<string, object?>("spark.wallet", w.Key.WalletId?.ToString() ?? SparkWalletService.RemoteSignerAuditId))),
             "sats", "Sats held by each of NodeGuard's Spark wallets");
     }
 
