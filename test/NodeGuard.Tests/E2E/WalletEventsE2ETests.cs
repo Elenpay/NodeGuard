@@ -29,8 +29,9 @@ namespace NodeGuard.Tests.E2E;
 
 /// <summary>
 /// End-to-end coverage for SubscribeWalletEvents against a LIVE NodeGuard + bitcoind, driven over gRPC: a hot-wallet
-/// withdrawal is followed from creation to confirmation on the stream, and an RBF bump links the original and its
-/// replacement. Shared plumbing in <see cref="E2ETestBase"/>; gated by <see cref="E2EFactAttribute"/>. Confirmation
+/// withdrawal is followed from creation to confirmation on the stream, an RBF bump links the original and its
+/// replacement, a deposit is detected in the mempool and confirmed, and an integrator intercepting withdrawals
+/// allows, blocks or ignores them. Shared plumbing in <see cref="E2ETestBase"/>; gated by <see cref="E2EFactAttribute"/>. Confirmation
 /// needs MonitorWithdrawalsJob to run promptly (MONITOR_WITHDRAWALS_CRON is 10s in the e2e stack).
 /// </summary>
 [Trait("Category", "E2E")]
@@ -152,6 +153,33 @@ public class WalletEventsE2ETests : E2ETestBase
         var act = () => call.ResponseStream.MoveNext();
 
         (await act.Should().ThrowAsync<RpcException>()).Which.StatusCode.Should().Be(StatusCode.NotFound);
+    }
+
+    [E2EFact]
+    public async Task SubscribeWalletEvents_FollowsADepositToConfirmation()
+    {
+        const long depositSats = 123_456;
+        var client = CreateClient(out var headers);
+        var rpc = CreateBitcoindRpc();
+        var walletId = await EnsureHotWalletReadyAsync(client, headers);
+        await using var events = await WalletEventStream.OpenAsync(client, headers, walletId, _output);
+
+        var address = (await client.GetNewWalletAddressAsync(
+            new GetNewWalletAddressRequest { WalletId = walletId, Reserve = true }, headers)).Address;
+        var txId = await rpc.SendToAddressAsync(BitcoinAddress.Create(address, Network.RegTest), Money.Satoshis(depositSats));
+        _output.WriteLine($"deposit {txId} to {address}");
+
+        var detected = await events.NextDepositAsync(txId, WALLET_EVENT_TYPE.WalletEventDepositDetected);
+        detected.WalletId.Should().Be(walletId);
+        detected.Deposit.AmountSats.Should().Be(depositSats);
+        detected.Deposit.Confirmations.Should().Be(0, "it is detected in the mempool");
+        detected.Deposit.Outputs.Should().ContainSingle(o => o.Address == address && o.AmountSats == depositSats);
+
+        await MineAsync(rpc, 6);
+
+        var confirmed = await events.NextDepositAsync(txId, WALLET_EVENT_TYPE.WalletEventDepositConfirmed);
+        confirmed.Deposit.Confirmations.Should().BeGreaterThanOrEqualTo(6);
+        confirmed.Deposit.AmountSats.Should().Be(depositSats);
     }
 
     // ---- withdrawal interceptor -----------------------------------------------------------------------------------
@@ -335,6 +363,10 @@ public class WalletEventsE2ETests : E2ETestBase
             if (reason != null) decision.Reason = reason;
             return _call.RequestStream.WriteAsync(new WalletEventsClientMessage { Decision = decision });
         }
+
+        public Task<WalletEvent> NextDepositAsync(uint256 txId, WALLET_EVENT_TYPE type, TimeSpan? timeout = null) =>
+            NextAsync(e => e.Type == type && e.Deposit?.TxId == txId.ToString(),
+                timeout ?? TimeSpan.FromMinutes(2), $"{type} for deposit {txId}");
 
         public List<WALLET_EVENT_TYPE> Seen(int requestId)
         {
