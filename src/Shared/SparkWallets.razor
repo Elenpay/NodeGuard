@@ -5,7 +5,6 @@
 @inject ISparkGuardrails Guardrails
 @inject SparkSettings SparkSettings
 @inject IWalletRepository WalletRepository
-@inject INodeRepository NodeRepository
 @inject ISwapOutRepository SwapOutRepository
 
 <Row Margin="Margin.Is3.FromTop" Class="align-items-center">
@@ -50,7 +49,6 @@
                 <Tooltip Text="What it owned when the swap monitor last checked it; Details reads it live" Placement="TooltipPlacement.Top" Multiline="true">Balance ⓘ</Tooltip>
             </TableHeaderCell>
             <TableHeaderCell>Max balance</TableHeaderCell>
-            <TableHeaderCell>Used by</TableHeaderCell>
             <TableHeaderCell>Pending swaps</TableHeaderCell>
         </TableRow>
     </TableHeader>
@@ -58,7 +56,7 @@
         @if (_rows.Count == 0)
         {
             <TableRow>
-                <TableRowCell ColumnSpan="8">@(_loading ? "Loading…" : "No Spark wallets.")</TableRowCell>
+                <TableRowCell ColumnSpan="7">@(_loading ? "Loading…" : "No Spark wallets.")</TableRowCell>
             </TableRow>
         }
         @foreach (var row in _rows)
@@ -137,7 +135,6 @@
                         @SparkWalletModals.Btc(row.Entry.MaxBalanceSats)
                     </Tooltip>
                 </TableRowCell>
-                <TableRowCell>@(row.UsedBy.Count > 0 ? string.Join(", ", row.UsedBy) : "no node")</TableRowCell>
                 <TableRowCell>
                     @if (row.PendingSwaps.Count > 0)
                     {
@@ -160,7 +157,7 @@
     private ClaimsPrincipal? ClaimsPrincipal { get; set; }
 
     private sealed record WalletRow(SparkWalletEntry Entry, SparkWalletStatus Status, SparkBalanceSnapshot? LastBalance,
-        DateTimeOffset? StuckSince, List<string> UsedBy, List<SwapOut> PendingSwaps);
+        DateTimeOffset? StuckSince, List<SwapOut> PendingSwaps);
 
     private SparkWalletModals _modals = default!;
     private List<WalletRow> _rows = new();
@@ -189,14 +186,12 @@
             var entries = IsWalletMode
                 ? (await WalletRepository.GetSparkWallets(_showArchived)).Select(w => SparkWalletService.EntryOf(w, SparkSettings)).ToList()
                 : (await SparkWallet.GetWalletsAsync()).ToList();
-            var nodes = await NodeRepository.GetAll();
             var pending = await SwapOutRepository.GetAllPending();
 
             _rows = entries.Select(entry =>
             {
                 var status = SparkWallet.GetStatus(entry.Ref);
                 return new WalletRow(entry, status, Guardrails.LastBalance(entry.Ref), Guardrails.StuckSince(entry.Ref),
-                    nodes.Where(n => SparkWalletModals.UsesWallet(n, entry.Ref)).Select(n => n.Name).ToList(),
                     SparkWalletModals.PendingSwapsOf(pending, entry.IdentityPublicKey ?? status.IdentityPublicKey));
             }).ToList();
         }

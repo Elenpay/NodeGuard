@@ -136,7 +136,6 @@
                                 @(isRemote || _row?.SparkMaxBalanceSats is null ? " (SPARK_MAX_BALANCE_SATS)" : "")
                             </TableRowCell>
                         </TableRow>
-                        <TableRow><TableRowHeader>Used by</TableRowHeader><TableRowCell>@(_usedBy.Count > 0 ? string.Join(", ", _usedBy) : "no node")</TableRowCell></TableRow>
                         <TableRow><TableRowHeader>Status</TableRowHeader><TableRowCell>@status.State @status.Reason</TableRowCell></TableRow>
                         <TableRow><TableRowHeader>Exit speed</TableRowHeader><TableRowCell>@SparkSettings.ExitSpeedSummary</TableRowCell></TableRow>
                         <TableRow><TableRowHeader>Max exit fee</TableRowHeader><TableRowCell>@SparkSettings.MaxExitFeeSats.ToString("N0") sats per exit (SPARK_MAX_EXIT_FEE_SATS)</TableRowCell></TableRow>
@@ -382,7 +381,6 @@
     private SatsBalance? _balance;
     private bool _loadingBalance;
     private string? _balanceError;
-    private List<string> _usedBy = new();
     private List<SwapOut> _pendingSwaps = new();
     private Dictionary<int, string> _nodeNames = new();
     private string _detailsTab = "Details";
@@ -413,17 +411,12 @@
 
         var nodes = await NodeRepository.GetAll();
         _nodeNames = nodes.ToDictionary(n => n.Id, n => n.Name);
-        _usedBy = nodes.Where(n => UsesWallet(n, wallet.Ref)).Select(n => n.Name).ToList();
         var identity = wallet.IdentityPublicKey ?? SparkWallet.GetStatus(wallet.Ref).IdentityPublicKey;
         _pendingSwaps = PendingSwapsOf(await SwapOutRepository.GetAllPending(), identity);
 
         await _detailsModal.Show();
         await RefreshBalanceAsync();
     }
-
-    /// <summary>Whether the node's Spark swaps go through the wallet: every node with Spark weight uses the remote signer's</summary>
-    public static bool UsesWallet(Node node, SparkWalletRef wallet) =>
-        wallet.WalletId is { } id ? node.SparkWalletId == id : node.SparkSwapWeight > 0;
 
     /// <summary>The pending Spark swaps paid, or being paid, into the wallet with this identity, oldest first</summary>
     public static List<SwapOut> PendingSwapsOf(IEnumerable<SwapOut> pending, string? identity) =>
