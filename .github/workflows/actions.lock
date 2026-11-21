@@ -7,7 +7,7 @@ workflows:
         - 'vlaurin/action-ghcr-prune@v0.5.0'
     '.github/workflows/dotnet.yml':
         - 'actions/checkout@v7.0.1'
-        - 'actions/setup-dotnet@v4.3.1'
+        - 'actions/setup-dotnet@v6.0.0'
         - 'anchore/scan-action@v3.6.4'
         - 'docker/build-push-action@v6.19.2'
         - 'docker/login-action@v3.7.0'
@@ -51,9 +51,9 @@ dependencies:
         commit: 'sha1-9000827ccba6bdab643e8b6fd33ac0654aef8333'
         owner_id: 44036562
         repo_id: 192626254
-    'actions/setup-dotnet@v4.3.1':
-        ref: 'v4.3.1'
-        commit: 'sha1-67a3573c9a986a3f9c594539f4ab511d57bb3ce9'
+    'actions/setup-dotnet@v6.0.0':
+        ref: 'v6.0.0'
+        commit: 'sha1-a98b56852c35b8e3190ac28c8c2271da59106c68'
         owner_id: 44036562
         repo_id: 192625306
     'actions/upload-artifact@v4.6.2':
