@@ -8,7 +8,7 @@ workflows:
     '.github/workflows/dotnet.yml':
         - 'actions/checkout@v7.0.1'
         - 'actions/setup-dotnet@v4.3.1'
-        - 'anchore/scan-action@v3.6.4'
+        - 'anchore/scan-action@v7.4.2'
         - 'docker/build-push-action@v6.19.2'
         - 'docker/login-action@v3.7.0'
         - 'docker/metadata-action@v5.10.0'
@@ -61,9 +61,9 @@ dependencies:
         commit: 'sha1-ea165f8d65b6e75b540449e92b4886f43607fa02'
         owner_id: 44036562
         repo_id: 192625955
-    'anchore/scan-action@v3.6.4':
-        ref: 'v3.6.4'
-        commit: 'sha1-3343887d815d7b07465f6fdcd395bd66508d486a'
+    'anchore/scan-action@v7.4.2':
+        ref: 'v7.4.2'
+        commit: 'sha1-27805bf3b4e84b4a5c980df22ed233c00390a439'
         owner_id: 16208487
         repo_id: 212692077
     'docker/build-push-action@v6.19.2':
