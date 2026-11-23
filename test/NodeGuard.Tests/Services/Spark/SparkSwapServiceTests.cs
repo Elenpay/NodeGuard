@@ -94,7 +94,8 @@ public class SparkSwapServiceTests
         _scopes.CreateScope().Returns(_paymentScope);
     }
 
-    private SparkSwapService Service() => new(NullLogger<SparkSwapService>.Instance, Settings, _spark, _lightning, _swapOuts,
+    private SparkSwapService Service(SparkSettings? settings = null) => new(NullLogger<SparkSwapService>.Instance, settings ?? Settings,
+        _spark, _lightning, _swapOuts,
         _wallets, _nbXplorer, _nodes, _scopes, _time);
 
     // 500_000 sats at 1%: a fee limit of 5_000_000 msat
@@ -808,6 +809,59 @@ public class SparkSwapServiceTests
         var swap = Pending(leafIds: "l1", address: null);
 
         (await Service().PlanExitsAsync([swap])).Should().ContainSingle().Which.Should().Equal(swap);
+    }
+
+    [Fact]
+    public async Task Plan_ANodeOfTheWalletThatNeverSwapsThroughSpark_DoesNotHoldItsSwapsBack()
+    {
+        PlanFixture(ownedSats: 950_000); // 50,000 sats of room: no 100,000-sat swap of alice fits
+        var bob = new Node { Id = 2, Name = "bob", PubKey = "02bb", Endpoint = "bob:10009", SparkWalletId = 5, SparkSwapMinAmountSats = 10_000 };
+        _nodes.GetAllManagedByNodeGuard(false).Returns(new List<Node> { _node, bob });
+        var swap = Pending(leafIds: "l1", address: null);
+
+        (await Service().PlanExitsAsync([swap])).Should().ContainSingle().Which.Should().Equal(swap);
+    }
+
+    [Fact]
+    public async Task Plan_ANodeThatSwapsAutomaticallyThroughSpark_KeepsTheWalletOpenForItsSwaps()
+    {
+        PlanFixture(ownedSats: 950_000);
+        var carol = new Node
+        {
+            Id = 3, Name = "carol", PubKey = "02cc", Endpoint = "carol:10009", SparkWalletId = 5, SparkSwapMinAmountSats = 10_000,
+            AutoLiquidityManagementEnabled = true, SparkSwapWeight = 50
+        };
+        _nodes.GetAllManagedByNodeGuard(false).Returns(new List<Node> { _node, carol });
+
+        (await Service().PlanExitsAsync([Pending(leafIds: "l1", address: null)])).Should().BeEmpty();
+    }
+
+    [Fact]
+    public async Task Plan_TheRemoteSignersWallet_IsFullOnceItsSwappingNodesCannotAddASwap_WhateverOtherNodesNeverSwap()
+    {
+        // Every node maps to the remote signer's wallet; only alice swaps through Spark, with a 1,000,000-sat min swap.
+        // The other node has no Spark min of its own (SPARK_SWAP_MIN_SATS, 50,000) and must not keep the wallet open.
+        var remote = SparkWalletRef.RemoteSigner;
+        var settings = new SparkSettings
+        {
+            Enabled = true, Network = SparkNetwork.Regtest, SignerMode = SparkSignerMode.Remote, MaxExitFeeSats = 20_000,
+            MaxBalanceSats = 10_000_000
+        };
+        var entry = new SparkWalletEntry(remote, "Remote signer", Identity, 10_000_000);
+        _spark.FindByIdentityAsync(Identity, Arg.Any<CancellationToken>()).Returns(entry);
+        _spark.EnsureReadyAsync(remote, Arg.Any<CancellationToken>()).Returns(new SparkWalletStatus(SparkWalletState.Ready, Identity));
+        _spark.GetBalanceAsync(remote, Arg.Any<CancellationToken>()).Returns(
+            new WalletBalance(new SatsBalance(9_010_000, 9_010_000, 0), [], [])); // 990,000 sats of room
+        var alice = new Node
+        {
+            Id = 1, Name = "alice", PubKey = "02aa", Endpoint = "alice:10009", SparkSwapMinAmountSats = 1_000_000,
+            AutoLiquidityManagementEnabled = true, SparkSwapWeight = 50
+        };
+        var bob = new Node { Id = 2, Name = "bob", PubKey = "02bb", Endpoint = "bob:10009" };
+        _nodes.GetAllManagedByNodeGuard(false).Returns(new List<Node> { alice, bob });
+        var swap = Pending(leafIds: "l1", address: null);
+
+        (await Service(settings).PlanExitsAsync([swap])).Should().ContainSingle().Which.Should().Equal(swap);
     }
 
     [Fact]
