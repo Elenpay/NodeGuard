@@ -89,7 +89,8 @@ public interface ISparkSwapService
     /// <summary>
     /// The batches to exit now, oldest first, out of the attributed swaps not exiting yet among
     /// <paramref name="pendingSwaps"/> (all pending Spark swaps): those of each Spark wallet that is full (no node
-    /// using it can add a swap under its max balance) and none of whose swaps is still being paid, one batch per
+    /// swapping through it, by automatic liquidity with a Spark weight or with swaps in it, can add a swap under its
+    /// max balance) and none of whose swaps is still being paid, one batch per
     /// destination wallet, of at most <see cref="SparkSwapService.MaxLeavesPerExit"/> leaves.
     /// </summary>
     Task<IReadOnlyList<IReadOnlyList<SwapOut>>> PlanExitsAsync(IReadOnlyCollection<SwapOut> pendingSwaps, CancellationToken ct = default);
@@ -466,13 +467,18 @@ public sealed class SparkSwapService : ISparkSwapService
 
             var balance = (await _spark.GetBalanceAsync(entry.Ref, ct)).SatsBalance;
             var room = SparkGuardrails.RoomSats(entry.MaxBalanceSats, balance, ofWallet);
+            // Only the nodes that swap through this wallet: those AutoLiquidityManagementJob may pick Spark for, and those
+            // with swaps in it. In remote mode every node maps to the remote signer's wallet, and one that never swaps
+            // through Spark must not hold its paid swaps back.
+            var swappingNodeIds = ofWallet.Select(s => s.NodeId).ToHashSet();
             var smallestSwap = nodes
-                .Where(n => _settings.WalletFor(n) == entry.Ref)
+                .Where(n => _settings.WalletFor(n) == entry.Ref &&
+                            (n is { AutoLiquidityManagementEnabled: true, SparkSwapWeight: > 0 } || swappingNodeIds.Contains(n.Id)))
                 .Select(n => (long?)SwapProviderLimits.For(n, SwapProvider.Spark, _settings).MinSats)
                 .Min();
             if (smallestSwap is { } min && room >= min)
             {
-                _logger.LogDebug("{SparkWallet} ({Name}) has room for another swap ({Room} sats, its nodes' smallest Spark min swap {Min}): its {Count} paid swaps wait",
+                _logger.LogDebug("{SparkWallet} ({Name}) has room for another swap ({Room} sats, its swapping nodes' smallest Spark min swap {Min}): its {Count} paid swaps wait",
                     entry.Ref, entry.Name, room, min, walletSwaps.Count());
                 continue;
             }

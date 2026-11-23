@@ -65,7 +65,7 @@ public sealed class SparkSettings
     /// (<see cref="SparkSwapService.InvoiceExpirySeconds"/>) expires.
     /// </summary>
     public const int MaxPaymentTimeoutMinutes = 25;
-    public const long DefaultMaxBalanceSats = 10_000_000;
+    public const long DefaultMaxBalanceSats = 50_000_000;
 
     /// <summary>A node's smallest Spark swap by default (SPARK_SWAP_MIN_SATS).</summary>
     public const long DefaultSwapMinSats = 50_000;
