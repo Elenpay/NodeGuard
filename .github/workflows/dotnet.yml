@@ -210,7 +210,7 @@ jobs:
           labels: ${{ steps.meta.outputs.labels }}
 
       - name: Scan SBOM
-        uses: anchore/scan-action@v3.6.4
+        uses: anchore/scan-action@v7.4.2
         with:
           image: ${{ steps.meta.outputs.tags }}
           add-cpes-if-none: true
