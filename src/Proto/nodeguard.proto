@@ -250,9 +250,11 @@ message RequestWithdrawalRequest {
   string description = 4;
   // in JSON format
   string request_metadata = 5;
-  // Whether the withdrawal should be performed in a changeless way
+  // Whether the withdrawal should be performed in a changeless way: utxos_outpoints are sent in full, minus the fee,
+  // to the single destination, whose amount_sats is ignored and recorded as the total of those UTXOs
   bool changeless = 6;
-  // Outpoints for the UTXOs to use for the withdrawal
+  // Outpoints for the UTXOs to use for the withdrawal. Required when changeless, and every one of them has to be a
+  // confirmed UTXO of the wallet
   repeated string utxos_outpoints = 7;
   // MempoolRecommended fee rate
   FEES_TYPE mempool_fee_rate = 8;

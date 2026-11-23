@@ -260,7 +260,8 @@ public class NodeGuardService : Nodeguard.NodeGuardService.NodeGuardServiceBase,
 
         foreach (var destination in destinations)
         {
-            if (destination.AmountSats <= 0)
+            // A changeless withdrawal takes its amount from its UTXOs
+            if (!isChangeless && destination.AmountSats <= 0)
             {
                 throw new RpcException(new Status(StatusCode.InvalidArgument, "Amount must be greater than 0"));
             }
@@ -321,10 +322,22 @@ public class NodeGuardService : Nodeguard.NodeGuardService.NodeGuardServiceBase,
 
             if (request.Changeless)
             {
+                if (request.UtxosOutpoints.Count == 0)
+                {
+                    throw new RpcException(new Status(StatusCode.InvalidArgument, "Changeless withdrawal requires utxos"));
+                }
+
                 foreach (var outpoint in request.UtxosOutpoints)
                 {
-                    outpoints.Add(OutPoint.Parse(outpoint));
+                    if (!OutPoint.TryParse(outpoint, out var parsedOutpoint))
+                    {
+                        throw new RpcException(new Status(StatusCode.InvalidArgument, $"Invalid utxo outpoint {outpoint}"));
+                    }
+
+                    outpoints.Add(parsedOutpoint!);
                 }
+
+                outpoints = outpoints.Distinct().ToList();
 
                 // Search the utxos and lock them
                 var derivationStrategyBase = wallet.GetDerivationStrategy();
@@ -334,14 +347,36 @@ public class NodeGuardService : Nodeguard.NodeGuardService.NodeGuardServiceBase,
 
                 utxos = await _coinSelectionService.GetUTXOsByOutpointAsync(derivationStrategyBase, outpoints);
 
+                // Every outpoint has to be spendable: the withdrawal sends exactly these UTXOs
+                if (utxos.Count != outpoints.Count)
+                {
+                    throw new RpcException(new Status(StatusCode.InvalidArgument,
+                        "Some utxos are not confirmed UTXOs of the wallet"));
+                }
             }
+
+            // A changeless withdrawal sends its UTXOs in full, so that total is its amount whatever the caller
+            // declared: the amount is what the audit, the wallet events and the withdrawal interceptor are shown
+            var changelessSats = utxos.Sum(u => ((Money)u.Value).Satoshi);
 
             // Create destination objects for the withdrawal request
             var withdrawalDestinations = request.Destinations.Select(d => new WalletWithdrawalRequestDestination()
             {
                 Address = d.Address,
-                Amount = new Money(d.AmountSats, MoneyUnit.Satoshi).ToDecimal(MoneyUnit.BTC),
+                Amount = new Money(request.Changeless ? changelessSats : d.AmountSats, MoneyUnit.Satoshi)
+                    .ToDecimal(MoneyUnit.BTC),
             }).ToList();
+
+            auditDetails = new
+            {
+                request.WalletId,
+                Destinations = withdrawalDestinations.Select(d => new
+                {
+                    d.Address,
+                    AmountSats = new Money(d.Amount, MoneyUnit.BTC).Satoshi
+                }),
+                request.ReferenceId
+            };
 
             withdrawalRequest = new WalletWithdrawalRequest()
             {
