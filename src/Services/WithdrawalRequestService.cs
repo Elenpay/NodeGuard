@@ -232,8 +232,15 @@ public class WithdrawalRequestService : IWithdrawalRequestService
         }
         else
         {
+            // A changeless request sends its UTXOs in full. Older requests created over gRPC kept the amount the
+            // caller declared instead, so the replacement takes the UTXO total rather than copying it.
+            var lockedAmount = Money.Satoshis(lockedUtxos.Sum(u => u.SatsAmount)).ToDecimal(MoneyUnit.BTC);
             replacementDestinations = destinations
-                .Select(d => new WalletWithdrawalRequestDestination { Address = d.Address, Amount = d.Amount })
+                .Select(d => new WalletWithdrawalRequestDestination
+                {
+                    Address = d.Address,
+                    Amount = original.Changeless ? lockedAmount : d.Amount
+                })
                 .ToList();
         }
 

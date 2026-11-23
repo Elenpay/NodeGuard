@@ -1017,6 +1017,165 @@ namespace NodeGuard.Rpc
         }
 
         [Fact]
+        public async Task RequestWithdrawal_Changeless_StoresTheAmountOfItsUtxos_NotTheDeclaredOne()
+        {
+            //Arrange
+            var wallet = InitMockRequestWithdrawal(out var walletRepository,
+                out var nbxplorerService,
+                out _,
+                out _,
+                out _,
+                out _,
+                out var utxoList,
+                out var bitcoinService,
+                out var walletWithdrawalRequestRepository, out var mockScheduler);
+
+            wallet.IsHotWallet = false;
+            utxoList[0].Value = Money.Coins(20);
+
+            var coinSelectionService = new Mock<ICoinSelectionService>();
+            coinSelectionService
+                .Setup(x => x.GetUTXOsByOutpointAsync(It.IsAny<DerivationStrategyBase>(), It.IsAny<List<OutPoint>>()))
+                .ReturnsAsync(utxoList);
+
+            WalletWithdrawalRequest? saved = null;
+            walletWithdrawalRequestRepository.Setup(x => x.AddAsync(It.IsAny<WalletWithdrawalRequest>()))
+                .Callback<WalletWithdrawalRequest>(x => saved = x)
+                .ReturnsAsync((true, null));
+
+            object? audited = null;
+            var auditService = new Mock<IAuditService>();
+            auditService.Setup(x => x.LogAsync(AuditActionType.Create, AuditEventType.Success,
+                    AuditObjectType.WalletWithdrawalRequest, It.IsAny<string?>(), It.IsAny<object?>()))
+                .Callback<AuditActionType, AuditEventType, AuditObjectType, string?, object?>((_, _, _, _, details) => audited = details);
+
+            var mockNodeGuardService = CreateNodeGuardService(
+                walletRepository: walletRepository.Object,
+                walletWithdrawalRequestRepository: walletWithdrawalRequestRepository.Object,
+                bitcoinService: bitcoinService.Object,
+                nbXplorerService: nbxplorerService.Object,
+                schedulerFactory: mockScheduler,
+                coinSelectionService: coinSelectionService.Object,
+                auditService: auditService.Object);
+
+            var requestWithdrawalRequest = new RequestWithdrawalRequest
+            {
+                WalletId = wallet.Id,
+                Description = "Request Withdrawal Changeless Test",
+                Changeless = true,
+                UtxosOutpoints = { utxoList[0].Outpoint.ToString() },
+                Destinations = { new Destination
+                {
+                    Address = "bcrt1q590shaxaf5u08ml8jwlzghz99dup3z9592vxal",
+                    AmountSats = 1_000
+                }
+                }
+            };
+
+            //Act
+            await mockNodeGuardService.RequestWithdrawal(requestWithdrawalRequest, TestServerCallContext.Create());
+
+            //Assert
+            saved.Should().NotBeNull();
+            saved!.SatsAmount.Should().Be(Money.Coins(20).Satoshi);
+            System.Text.Json.JsonSerializer.Serialize(audited).Should().Contain("\"AmountSats\":2000000000");
+        }
+
+        [Fact]
+        public async Task RequestWithdrawal_Changeless_WithoutUtxos_IsRefused()
+        {
+            //Arrange
+            var wallet = InitMockRequestWithdrawal(out var walletRepository,
+                out var nbxplorerService,
+                out _,
+                out _,
+                out _,
+                out _,
+                out _,
+                out var bitcoinService,
+                out var walletWithdrawalRequestRepository, out var mockScheduler);
+
+            var mockNodeGuardService = CreateNodeGuardService(
+                walletRepository: walletRepository.Object,
+                walletWithdrawalRequestRepository: walletWithdrawalRequestRepository.Object,
+                bitcoinService: bitcoinService.Object,
+                nbXplorerService: nbxplorerService.Object,
+                schedulerFactory: mockScheduler);
+
+            var requestWithdrawalRequest = new RequestWithdrawalRequest
+            {
+                WalletId = wallet.Id,
+                Description = "Request Withdrawal Changeless Test",
+                Changeless = true,
+                Destinations = { new Destination
+                {
+                    Address = "bcrt1q590shaxaf5u08ml8jwlzghz99dup3z9592vxal",
+                    AmountSats = 1_000
+                }
+                }
+            };
+
+            //Act
+            var act = () => mockNodeGuardService.RequestWithdrawal(requestWithdrawalRequest, TestServerCallContext.Create());
+
+            //Assert
+            (await act.Should().ThrowAsync<RpcException>()).Which.StatusCode.Should().Be(StatusCode.InvalidArgument);
+            walletWithdrawalRequestRepository.Verify(x => x.AddAsync(It.IsAny<WalletWithdrawalRequest>()), Times.Never);
+        }
+
+        [Fact]
+        public async Task RequestWithdrawal_Changeless_WithAUtxoTheWalletDoesNotHave_IsRefused()
+        {
+            //Arrange
+            var wallet = InitMockRequestWithdrawal(out var walletRepository,
+                out var nbxplorerService,
+                out _,
+                out _,
+                out _,
+                out _,
+                out var utxoList,
+                out var bitcoinService,
+                out var walletWithdrawalRequestRepository, out var mockScheduler);
+
+            utxoList[0].Value = Money.Coins(20);
+
+            // Only the first of the two outpoints is found in the wallet
+            var coinSelectionService = new Mock<ICoinSelectionService>();
+            coinSelectionService
+                .Setup(x => x.GetUTXOsByOutpointAsync(It.IsAny<DerivationStrategyBase>(), It.IsAny<List<OutPoint>>()))
+                .ReturnsAsync(utxoList);
+
+            var mockNodeGuardService = CreateNodeGuardService(
+                walletRepository: walletRepository.Object,
+                walletWithdrawalRequestRepository: walletWithdrawalRequestRepository.Object,
+                bitcoinService: bitcoinService.Object,
+                nbXplorerService: nbxplorerService.Object,
+                schedulerFactory: mockScheduler,
+                coinSelectionService: coinSelectionService.Object);
+
+            var requestWithdrawalRequest = new RequestWithdrawalRequest
+            {
+                WalletId = wallet.Id,
+                Description = "Request Withdrawal Changeless Test",
+                Changeless = true,
+                UtxosOutpoints = { utxoList[0].Outpoint.ToString(), new OutPoint(uint256.One, 7).ToString() },
+                Destinations = { new Destination
+                {
+                    Address = "bcrt1q590shaxaf5u08ml8jwlzghz99dup3z9592vxal",
+                    AmountSats = 1_000
+                }
+                }
+            };
+
+            //Act
+            var act = () => mockNodeGuardService.RequestWithdrawal(requestWithdrawalRequest, TestServerCallContext.Create());
+
+            //Assert
+            (await act.Should().ThrowAsync<RpcException>()).Which.StatusCode.Should().Be(StatusCode.InvalidArgument);
+            walletWithdrawalRequestRepository.Verify(x => x.AddAsync(It.IsAny<WalletWithdrawalRequest>()), Times.Never);
+        }
+
+        [Fact]
         public async Task RequestWithdrawal_RefreshReturnsNull_CancelsAndAuditsTheSavedRequest()
         {
             //Arrange
