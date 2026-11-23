@@ -45,6 +45,8 @@ The images are built from open-ssp commit `89525792d65d7e0f7092e9f6d66b5082c00e4
 | `ghcr.io/elenpay/nodeguard-spark-dev-ldk-server` | open-ssp `vendor/ldk-server` ([lightningdevkit/ldk-server](https://github.com/lightningdevkit/ldk-server)) | MIT or Apache-2.0 |
 | `ghcr.io/elenpay/nodeguard-spark-dev-ssp` | open-ssp `ssp.Dockerfile` | MIT |
 
+The workflow now publishes under `ghcr.io/lunar-rails/nodeguard-spark-dev-*`. The images above were built before the repository moved and stay public, so [docker-compose.yml](docker-compose.yml) keeps using them until the next rebuild repins it.
+
 [docker-compose.yml](docker-compose.yml) refers to them by the tag `open-ssp-<commit>`. Each can be overridden with `SPARK_OPERATOR_IMAGE`, `SPARK_LDK_SERVER_IMAGE` and `SPARK_SSP_IMAGE`.
 
 To build the images locally instead, for example to try another open-ssp commit:

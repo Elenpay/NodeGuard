@@ -1,4 +1,4 @@
-module github.com/elenpay/nodeguard
+module github.com/lunar-rails/nodeguard
 
 go 1.25.0
 
