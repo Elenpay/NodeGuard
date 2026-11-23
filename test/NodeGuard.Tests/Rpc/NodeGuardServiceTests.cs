@@ -1861,6 +1861,40 @@ namespace NodeGuard.Rpc
         }
 
         [Fact]
+        public async Task AddNode_EndpointAnsweredByAnotherLnd_IsRefusedAndNotAdded()
+        {
+            // Arrange
+            var nodeRepositoryMock = new Mock<INodeRepository>();
+            var htlcMonitoringSchedulerMock = CreateHtlcMonitoringSchedulerMock();
+            var lightningServiceMock = new Mock<ILightningService>();
+            lightningServiceMock.Setup(x => x.GetNodeIdentityError(It.IsAny<Node>()))
+                .ReturnsAsync("The LND at endpoint is otherPubKey, not node nodeName (pubKey)");
+
+            var service = CreateNodeGuardService(
+                nodeRepository: nodeRepositoryMock.Object,
+                schedulerFactory: GetSchedulerFactoryMock(),
+                lightningService: lightningServiceMock.Object,
+                htlcMonitoringScheduler: htlcMonitoringSchedulerMock.Object);
+
+            var request = new AddNodeRequest
+            {
+                PubKey = "pubKey",
+                Name = "nodeName",
+                ChannelAdminMacaroon = "channelAdminMacaroon",
+                Endpoint = "endpoint",
+                ReturningFundsWalletId = 1,
+            };
+
+            // Act
+            var act = () => service.AddNode(request, new Mock<ServerCallContext>().Object);
+
+            // Assert
+            (await act.Should().ThrowAsync<RpcException>()).Which.StatusCode.Should().Be(StatusCode.FailedPrecondition);
+            nodeRepositoryMock.Verify(repo => repo.AddAsync(It.IsAny<Node>()), Times.Never);
+            htlcMonitoringSchedulerMock.Verify(x => x.EnsureNodeWorkerScheduled(It.IsAny<Node>()), Times.Never);
+        }
+
+        [Fact]
         public async Task AddNode_FailedToAddNode_ReturnsInternalError()
         {
             // Arrange

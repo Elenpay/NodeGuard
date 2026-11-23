@@ -776,6 +776,16 @@ public class NodeGuardService : Nodeguard.NodeGuardService.NodeGuardServiceBase,
             RefuseSparkWallet(await _walletRepository.GetById(request.ReturningFundsWalletId));
         }
 
+        // A managed node is only added when the LND at its endpoint holds its key
+        if (!string.IsNullOrWhiteSpace(node.Endpoint) && !string.IsNullOrWhiteSpace(node.ChannelAdminMacaroon))
+        {
+            var identityError = await _lightningService.GetNodeIdentityError(node);
+            if (identityError != null)
+            {
+                throw new RpcException(new Status(StatusCode.FailedPrecondition, identityError));
+            }
+        }
+
         try
         {
             var result = await _nodeRepository.AddAsync(node);

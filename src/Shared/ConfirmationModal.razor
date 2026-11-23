@@ -5,7 +5,15 @@
             <CloseButton />
         </ModalHeader>
         <ModalBody>
-            @((MarkupString)Body)
+            @* Both are HTML-encoded by Blazor: a body never renders as raw markup *@
+            @if (ChildContent is not null)
+            {
+                @ChildContent
+            }
+            else
+            {
+                @Body
+            }
         </ModalBody>
         <ModalFooter>
             <Button Color="Color.Secondary" Clicked="@OnCancel">@CancelLabel</Button>
@@ -22,8 +30,17 @@
     [Parameter, EditorRequired]
     public string Title { get; set; } = "";
 
-    [Parameter, EditorRequired]
+    /// <summary>
+    /// The message as plain text. Use <see cref="ChildContent"/> for one that needs formatting
+    /// </summary>
+    [Parameter]
     public string Body { get; set; } = "";
+
+    /// <summary>
+    /// A formatted message, shown instead of <see cref="Body"/>
+    /// </summary>
+    [Parameter]
+    public RenderFragment? ChildContent { get; set; }
 
     [Parameter]
     public string CancelLabel { get; set; } = "Cancel";
