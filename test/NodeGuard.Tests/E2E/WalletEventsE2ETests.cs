@@ -201,6 +201,51 @@ public class WalletEventsE2ETests : E2ETestBase
             "a blocked withdrawal is never signed");
     }
 
+    /// <summary>
+    /// A changeless withdrawal sends its UTXOs in full, so that is the amount the integrator decides on, whatever
+    /// amount the request declared
+    /// </summary>
+    [E2EFact]
+    public async Task Interceptor_IsAskedAboutWhatAChangelessWithdrawalSends_NotTheDeclaredAmount()
+    {
+        const long declaredSats = 1_000;
+
+        var client = CreateClient(out var headers);
+        var rpc = CreateBitcoindRpc();
+        var walletId = await EnsureHotWalletReadyAsync(client, headers);
+        var utxo = (await client.GetAvailableUtxosAsync(new GetAvailableUtxosRequest
+        {
+            WalletId = walletId,
+            Strategy = COIN_SELECTION_STRATEGY.BiggestFirst,
+            Limit = 1,
+            Amount = 1
+        }, headers)).Confirmed.OrderByDescending(u => u.Amount).First();
+        utxo.Amount.Should().BeGreaterThan(declaredSats);
+        await using var integrator = await WalletEventStream.OpenAsync(client, headers, walletId, _output, interceptWithdrawals: true);
+
+        var destination = await rpc.GetNewAddressAsync();
+        var withdrawal = await client.RequestWithdrawalAsync(new RequestWithdrawalRequest
+        {
+            WalletId = walletId,
+            Description = "E2E interceptor changeless",
+            Changeless = true,
+            UtxosOutpoints = { utxo.Outpoint },
+            Destinations = { new Destination { Address = destination.ToString(), AmountSats = declaredSats } },
+            MempoolFeeRate = FEES_TYPE.CustomFee,
+            CustomFeeRate = OriginalFeeRateSatPerVb,
+        }, headers);
+
+        var asked = await integrator.NextAsync(withdrawal.RequestId, WALLET_EVENT_TYPE.WalletEventWithdrawalDecisionRequested);
+        asked.Withdrawal.AmountSats.Should().Be(utxo.Amount);
+        asked.Withdrawal.Destinations.Should().ContainSingle(d =>
+            d.Address == destination.ToString() && d.AmountSats == utxo.Amount);
+
+        // Blocked, so the UTXO stays in the hot wallet for the other tests
+        await integrator.DecideAsync(asked, allow: false, reason: "over the limit");
+        await integrator.NextAsync(withdrawal.RequestId, WALLET_EVENT_TYPE.WalletEventWithdrawalRejected);
+        await AssertNeverBroadcastAsync(client, headers, rpc, withdrawal);
+    }
+
     [E2EFact]
     public async Task Interceptor_ThatDoesNotAnswer_BlocksTheWithdrawalAtTheDeadline()
     {

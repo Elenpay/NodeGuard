@@ -127,6 +127,21 @@ public class WithdrawalRequestServiceTests
     }
 
     /// <summary>
+    /// A changeless request sends its inputs in full. Requests created over gRPC used to keep the amount the caller
+    /// declared, so their bump takes the amount of the inputs instead of copying it.
+    /// </summary>
+    [Fact]
+    public async Task CreateBumpRequestAsync_ChangelessOriginal_TakesTheAmountOfItsInputs()
+    {
+        SetupOriginal(HotWallet(), changeless: true, inputSats: 10_000_000);
+
+        var bump = await CreateService().CreateBumpRequestAsync(OriginalId, MempoolRecommendedFeesType.CustomFee, 10m);
+
+        bump.WalletWithdrawalRequestDestinations.Should().ContainSingle()
+            .Which.Should().BeEquivalentTo(new { Address = DestinationAddress, Amount = 0.1m });
+    }
+
+    /// <summary>
     /// The replacement stands in for the same original request, so it keeps the requested coin selection strategy
     /// the way it keeps RequestMetadata and ReferenceId. Nothing reads the field yet.
     /// </summary>

@@ -288,6 +288,15 @@ namespace NodeGuard.Services
                 {
                     throw new ArgumentException("Destination address is null or empty.");
                 }
+
+                // The request's amount is what approvers, the audit and the withdrawal interceptor are shown,
+                // so it has to be what the inputs send
+                if (walletWithdrawalRequest.SatsAmount != changelessAmount)
+                {
+                    throw new InvalidOperationException(
+                        $"Changeless withdrawal request {walletWithdrawalRequest.Id} is for {walletWithdrawalRequest.SatsAmount} sats but its UTXOs hold {changelessAmount} sats.");
+                }
+
                 var destinationAddress = BitcoinAddress.Create(destination.Address, nbXplorerNetwork);
                 builder.Send(destinationAddress, changelessAmount);
                 builder.SubtractFees();
