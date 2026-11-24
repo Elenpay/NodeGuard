@@ -41,11 +41,9 @@ The images are built from open-ssp commit `89525792d65d7e0f7092e9f6d66b5082c00e4
 
 | Image | Built from | License |
 |---|---|---|
-| `ghcr.io/elenpay/nodeguard-spark-dev-operator` | open-ssp `vendor/spark` (benthecarman's fork of [buildonspark/spark](https://github.com/buildonspark/spark)) | Apache-2.0 |
-| `ghcr.io/elenpay/nodeguard-spark-dev-ldk-server` | open-ssp `vendor/ldk-server` ([lightningdevkit/ldk-server](https://github.com/lightningdevkit/ldk-server)) | MIT or Apache-2.0 |
-| `ghcr.io/elenpay/nodeguard-spark-dev-ssp` | open-ssp `ssp.Dockerfile` | MIT |
-
-The workflow now publishes under `ghcr.io/lunar-rails/nodeguard-spark-dev-*`. The images above were built before the repository moved and stay public, so [docker-compose.yml](docker-compose.yml) keeps using them until the next rebuild repins it.
+| `ghcr.io/lunar-rails/nodeguard-spark-dev-operator` | open-ssp `vendor/spark` (benthecarman's fork of [buildonspark/spark](https://github.com/buildonspark/spark)) | Apache-2.0 |
+| `ghcr.io/lunar-rails/nodeguard-spark-dev-ldk-server` | open-ssp `vendor/ldk-server` ([lightningdevkit/ldk-server](https://github.com/lightningdevkit/ldk-server)) | MIT or Apache-2.0 |
+| `ghcr.io/lunar-rails/nodeguard-spark-dev-ssp` | open-ssp `ssp.Dockerfile` | MIT |
 
 [docker-compose.yml](docker-compose.yml) refers to them by the tag `open-ssp-<commit>`. Each can be overridden with `SPARK_OPERATOR_IMAGE`, `SPARK_LDK_SERVER_IMAGE` and `SPARK_SSP_IMAGE`.
 
@@ -56,9 +54,9 @@ git clone --recurse-submodules https://github.com/benthecarman/open-ssp ~/open-s
 cd ~/open-ssp && git checkout 89525792d65d7e0f7092e9f6d66b5082c00e48ca && git submodule update --init --recursive
 SPARK_ADMIN_TOKEN=x SSP_IMAGE=open-ssp:regtest-local \
   docker compose -f docker-compose.regtest.yml build spark-operator-0 ldk-server ssp
-docker tag open-ssp-spark-operator:regtest ghcr.io/elenpay/nodeguard-spark-dev-operator:open-ssp-89525792d65d
-docker tag open-ssp-ldk-server:regtest ghcr.io/elenpay/nodeguard-spark-dev-ldk-server:open-ssp-89525792d65d
-docker tag open-ssp:regtest-local ghcr.io/elenpay/nodeguard-spark-dev-ssp:open-ssp-89525792d65d
+docker tag open-ssp-spark-operator:regtest ghcr.io/lunar-rails/nodeguard-spark-dev-operator:open-ssp-89525792d65d
+docker tag open-ssp-ldk-server:regtest ghcr.io/lunar-rails/nodeguard-spark-dev-ldk-server:open-ssp-89525792d65d
+docker tag open-ssp:regtest-local ghcr.io/lunar-rails/nodeguard-spark-dev-ssp:open-ssp-89525792d65d
 ```
 
 The configuration in [config/](config/) and [setup-spark.sh](setup-spark.sh) is adapted from open-ssp's e2e setup (MIT).

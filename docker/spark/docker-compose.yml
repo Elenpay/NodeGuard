@@ -15,7 +15,7 @@ x-spark: &spark
 
 x-spark-operator: &spark-operator
   <<: *spark
-  image: ${SPARK_OPERATOR_IMAGE:-ghcr.io/elenpay/nodeguard-spark-dev-operator:open-ssp-89525792d65d}
+  image: ${SPARK_OPERATOR_IMAGE:-ghcr.io/lunar-rails/nodeguard-spark-dev-operator:open-ssp-89525792d65d}
   depends_on:
     bitcoind:
       condition: service_started
@@ -99,7 +99,7 @@ services:
 
   spark-ldk-server:
     <<: *spark
-    image: ${SPARK_LDK_SERVER_IMAGE:-ghcr.io/elenpay/nodeguard-spark-dev-ldk-server:open-ssp-89525792d65d}
+    image: ${SPARK_LDK_SERVER_IMAGE:-ghcr.io/lunar-rails/nodeguard-spark-dev-ldk-server:open-ssp-89525792d65d}
     depends_on:
       bitcoind:
         condition: service_started
@@ -131,7 +131,7 @@ services:
 
   spark-ssp:
     <<: *spark
-    image: ${SPARK_SSP_IMAGE:-ghcr.io/elenpay/nodeguard-spark-dev-ssp:open-ssp-89525792d65d}
+    image: ${SPARK_SSP_IMAGE:-ghcr.io/lunar-rails/nodeguard-spark-dev-ssp:open-ssp-89525792d65d}
     depends_on:
       spark-operator-0: { condition: service_started }
       spark-operator-1: { condition: service_started }
