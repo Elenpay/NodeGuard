@@ -212,7 +212,8 @@ jobs:
       - name: Scan SBOM
         uses: anchore/scan-action@v7.4.2
         with:
-          image: ${{ steps.meta.outputs.tags }}
+          # One reference: meta's tags output is newline-separated, and grype rejects the whole list.
+          image: ${{ fromJSON(steps.meta.outputs.json).tags[0] }}
           add-cpes-if-none: true
           output-format: table
           severity-cutoff: critical
