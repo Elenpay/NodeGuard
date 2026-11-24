@@ -15,7 +15,7 @@ Current features of NodeGuard are the following:
 
 - Asynchronous channel funding leveraging cold multisig wallets and hot wallets
 - Multisig wallet creation and import (BIP39), only segwit for now
-- Liquidity automation by settings rules in tandem with [NodeGuard liquidator](https://github.com/Elenpay/liquidator)
+- Liquidity automation by settings rules in tandem with [NodeGuard liquidator](https://github.com/Lunar-Rails/ep-liquidator)
 - Optional remote signing through [NodeGuard Remote Signer](https://github.com/Lunar-Rails/Nodeguard-Remote-Signer) functions for channel funding transactions, separating the NodeGuard keys from the actual software
 - Automatic sweeping of funds in lightning nodes to avoid having funds on the node hot wallets
 - Channel management
