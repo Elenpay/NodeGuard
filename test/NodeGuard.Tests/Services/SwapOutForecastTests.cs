@@ -27,19 +27,28 @@ public class SwapOutForecastTests
 {
     private static readonly SparkSettings Spark = new() { Enabled = true, SwapMinSats = 50_000 };
 
-    /// <summary>A node the automatic swap-out runs for: 1M sats threshold, Loop only with a 100k sats min swap.</summary>
+    /// <summary>
+    /// A node the automatic swap-out runs for: 1M sats threshold, a swap budget, Loop only with a 100k sats min swap.
+    /// 40swap (200k min) and Spark (its wallet set) are ready but unweighted.
+    /// </summary>
     private static Node SwappingNode() => new()
     {
         Name = "alice",
         AutoLiquidityManagementEnabled = true,
         FundsDestinationWalletId = 1,
         MinimumBalanceThresholdSats = 1_000_000,
+        SwapBudgetSats = 100_000,
         LoopSwapWeight = 100,
         LoopSwapMinAmountSats = 100_000,
         LoopSwapMaxAmountSats = 10_000_000,
+        LoopMaxSwapsInFlight = 1,
         FortySwapWeight = 0,
         FortySwapMinAmountSats = 200_000,
-        SparkSwapWeight = 0
+        FortySwapMaxAmountSats = 10_000_000,
+        FortySwapMaxSwapsInFlight = 1,
+        SparkSwapWeight = 0,
+        SparkMaxSwapsInFlight = 1,
+        SparkWalletId = 7
     };
 
     [Fact]
@@ -138,5 +147,77 @@ public class SwapOutForecastTests
 
         SwapOutForecast.SatsSwappedAfterOpen(node, 1_000_000, 49_999, Spark).Should().BeNull();
         SwapOutForecast.SatsSwappedAfterOpen(node, 1_000_000, 50_000, Spark).Should().Be(50_000);
+    }
+
+    [Fact]
+    public void ANodeWithoutASwapBudget_IsNotSwappedOut()
+    {
+        var node = SwappingNode();
+        node.SwapBudgetSats = 0;
+
+        SwapOutForecast.SatsSwappedAfterOpen(node, 2_000_000, 500_000, Spark).Should().BeNull();
+    }
+
+    [Fact]
+    public void ANodeWhoseProvidersRunNoSwaps_IsNotSwappedOut()
+    {
+        var node = SwappingNode();
+        node.LoopMaxSwapsInFlight = 0;
+
+        SwapOutForecast.SatsSwappedAfterOpen(node, 2_000_000, 500_000, Spark).Should().BeNull();
+    }
+
+    [Fact]
+    public void AProviderThatRunsNoSwaps_IsLeftOut()
+    {
+        var node = SwappingNode();
+        node.SparkSwapWeight = 50;
+        node.SparkSwapMinAmountSats = 20_000;
+        node.SparkMaxSwapsInFlight = 0;
+
+        // Spark's 20k min doesn't apply, Loop's 100k does
+        SwapOutForecast.SatsSwappedAfterOpen(node, 1_000_000, 70_000, Spark).Should().BeNull();
+    }
+
+    [Fact]
+    public void AProviderWhoseMaxSwapIsBelowItsMin_IsLeftOut()
+    {
+        var node = SwappingNode();
+        node.SparkSwapWeight = 50;
+        node.SparkSwapMinAmountSats = 20_000;
+        node.SparkSwapMaxAmountSats = 10_000;
+
+        SwapOutForecast.SatsSwappedAfterOpen(node, 1_000_000, 70_000, Spark).Should().BeNull();
+    }
+
+    [Fact]
+    public void SparkForANodeWithoutASparkWallet_IsLeftOut()
+    {
+        var node = SwappingNode();
+        node.SparkSwapWeight = 50;
+        node.SparkSwapMinAmountSats = 20_000;
+        node.SparkWalletId = null;
+
+        SwapOutForecast.SatsSwappedAfterOpen(node, 1_000_000, 70_000, Spark).Should().BeNull();
+    }
+
+    [Fact]
+    public void SparkWithSparkDisabled_IsLeftOut()
+    {
+        var node = SwappingNode();
+        node.SparkSwapWeight = 50;
+        node.SparkSwapMinAmountSats = 20_000;
+
+        SwapOutForecast.SatsSwappedAfterOpen(node, 1_000_000, 70_000, SparkSettings.Disabled).Should().BeNull();
+        SwapOutForecast.SatsSwappedAfterOpen(node, 1_000_000, 70_000, Spark).Should().Be(70_000);
+    }
+
+    [Fact]
+    public void AnExcessOverTheMaxSwap_IsStillSwappedOut()
+    {
+        var node = SwappingNode();
+        node.LoopSwapMaxAmountSats = 200_000;
+
+        SwapOutForecast.SatsSwappedAfterOpen(node, 1_000_000, 500_000, Spark).Should().Be(500_000);
     }
 }

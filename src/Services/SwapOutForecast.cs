@@ -30,10 +30,10 @@ public static class SwapOutForecast
 {
     /// <summary>
     /// The sats of a <paramref name="channelSats"/> channel opened from <paramref name="node"/> that the automatic
-    /// swap-out would take, or null when it would not swap. It swaps when the node has automatic liquidity management on
-    /// and a funds destination wallet, and its local balance after the open (<paramref name="localBalanceSats"/>, before
-    /// the open, plus the channel) is above its threshold by at least the smallest min swap of its weighted providers.
-    /// Swap fee budget, swaps in flight and Spark wallet room are left out: they delay a swap, not prevent it.
+    /// swap-out would take, or null when it would not swap. It swaps when <see cref="SwapsOutAutomatically"/> and the
+    /// excess, the node's local balance after the open (<paramref name="localBalanceSats"/>, before the open, plus the
+    /// channel) over its threshold, fits a weighted provider the job can pick (see <see cref="CanSwap"/>).
+    /// What only delays a swap is left out: swaps in flight, the budget spent this period, a busy or full Spark wallet.
     /// </summary>
     public static long? SatsSwappedAfterOpen(Node node, long localBalanceSats, long channelSats, SparkSettings spark)
     {
@@ -43,8 +43,7 @@ public static class SwapOutForecast
         }
 
         var excess = localBalanceSats + channelSats - node.MinimumBalanceThresholdSats;
-        var minSwap = SwapProviderLimits.Weighted(node).Min(w => SwapProviderLimits.For(node, w.Provider, spark).MinSats);
-        if (excess <= 0 || excess < minSwap)
+        if (excess <= 0 || !SwapProviderLimits.Weighted(node).Any(w => CanSwap(node, w.Provider, excess, spark)))
         {
             return null;
         }
@@ -53,9 +52,24 @@ public static class SwapOutForecast
     }
 
     /// <summary>
-    /// Whether the automatic swap-out runs for <paramref name="node"/>: enabled, with automatic liquidity management on
-    /// and a funds destination wallet (as <c>INodeRepository.GetAllWithAutoLiquidityEnabled</c> picks them).
+    /// Whether the automatic swap-out can swap anything for <paramref name="node"/>: enabled, with automatic liquidity
+    /// management on, a funds destination wallet (as <c>INodeRepository.GetAllWithAutoLiquidityEnabled</c> picks them)
+    /// and a swap budget above 0 (with none, every run stops at an exhausted budget).
     /// </summary>
     public static bool SwapsOutAutomatically(Node node) =>
-        !node.IsNodeDisabled && node.AutoLiquidityManagementEnabled && node.FundsDestinationWalletId.HasValue;
+        !node.IsNodeDisabled && node.AutoLiquidityManagementEnabled && node.FundsDestinationWalletId.HasValue
+        && node.SwapBudgetSats > 0;
+
+    /// <summary>
+    /// Whether <c>AutoLiquidityManagementJob</c> can swap <paramref name="excess"/> sats through
+    /// <paramref name="provider"/>: it runs swaps (max swaps in flight above 0), the most it may take of the excess
+    /// (its max swap) reaches its min swap and, for Spark, the node has a Spark wallet.
+    /// </summary>
+    private static bool CanSwap(Node node, SwapProvider provider, long excess, SparkSettings spark)
+    {
+        var limits = SwapProviderLimits.For(node, provider, spark);
+        return limits.MaxInFlight > 0
+               && Math.Min(excess, limits.MaxSats) >= limits.MinSats
+               && (provider != SwapProvider.Spark || spark.WalletFor(node) is not null);
+    }
 }

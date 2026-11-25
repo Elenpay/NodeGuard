@@ -652,6 +652,7 @@
     private ConfirmationModal _swapOutConfirmationModal;
     // Why the open request being created would be swapped right back out, or null when it would not.
     private string? _swapOutWarning;
+    private static readonly TimeSpan SwapOutBalanceTimeout = TimeSpan.FromSeconds(5);
     private UTXOSelectorModal _utxoSelectorModalRef;
     private List<UTXO> _selectedUTXOs = new();
     private MempoolRecommendedFeesType _selectedMempoolRecommendedFeesType;
@@ -985,14 +986,24 @@
 
     /// <summary>
     /// The warning to show when the automatic swap-out would take the outbound of the channel <paramref name="request"/>
-    /// opens from its source node, or null when it would not or the node's balance can't be read.
+    /// opens from its source node, or null when it would not or the node's balance can't be read within
+    /// <see cref="SwapOutBalanceTimeout"/>.
     /// </summary>
     private async Task<string?> SwapOutWarningAsync(ChannelOperationRequest request)
     {
         var node = await NodeRepository.GetById(request.SourceNodeId, false);
         if (node == null || !SwapOutForecast.SwapsOutAutomatically(node)) return null;
 
-        var balance = await LightningService.ChannelBalanceAsync(node);
+        // The node's LND gets no deadline of its own: an unreachable one must not hold the Save button
+        Lnrpc.ChannelBalanceResponse? balance;
+        try
+        {
+            balance = await LightningService.ChannelBalanceAsync(node).WaitAsync(SwapOutBalanceTimeout);
+        }
+        catch (TimeoutException)
+        {
+            return null;
+        }
         if (balance == null) return null;
 
         var localBalanceSats = (long)(balance.LocalBalance?.Sat ?? 0) + (long)(balance.PendingOpenLocalBalance?.Sat ?? 0);
