@@ -121,22 +121,14 @@ public class AutoLiquidityManagementJob : IJob
     }
 
     /// <summary>The providers with a weight; all weights at 0 means Loop, as before.</summary>
-    private List<(SwapProvider Provider, int Weight)> WeightedProviders(Node node)
+    private IReadOnlyList<(SwapProvider Provider, int Weight)> WeightedProviders(Node node)
     {
-        var weights = new List<(SwapProvider Provider, int Weight)>
-        {
-            (SwapProvider.Loop, node.LoopSwapWeight),
-            (SwapProvider.FortySwap, node.FortySwapWeight),
-            (SwapProvider.Spark, node.SparkSwapWeight)
-        };
-
-        if (weights.All(w => w.Weight <= 0))
+        if (node is { LoopSwapWeight: <= 0, FortySwapWeight: <= 0, SparkSwapWeight: <= 0 })
         {
             _logger.LogWarning("Node {NodeName} has total weight of 0, defaulting to Loop", node.Name);
-            return [(SwapProvider.Loop, 1)];
         }
 
-        return weights.Where(w => w.Weight > 0).ToList();
+        return SwapProviderLimits.Weighted(node);
     }
 
     /// <summary>
