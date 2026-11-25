@@ -2053,6 +2053,63 @@ namespace NodeGuard.Rpc
             htlcMonitoringSchedulerMock.Verify(x => x.EnsureNodeWorkerScheduled(It.IsAny<Node>()), Times.Never);
         }
 
+        [Theory]
+        [InlineData("")]
+        [InlineData("   ")]
+        public async Task AddNode_EndpointWithoutMacaroon_IsRefusedAndNotAdded(string macaroon)
+        {
+            // Arrange
+            var nodeRepositoryMock = new Mock<INodeRepository>();
+            var lightningServiceMock = new Mock<ILightningService>();
+
+            var service = CreateNodeGuardService(
+                nodeRepository: nodeRepositoryMock.Object,
+                schedulerFactory: GetSchedulerFactoryMock(),
+                lightningService: lightningServiceMock.Object,
+                htlcMonitoringScheduler: CreateHtlcMonitoringSchedulerMock().Object);
+
+            var request = new AddNodeRequest
+            {
+                PubKey = "pubKey",
+                Name = "nodeName",
+                ChannelAdminMacaroon = macaroon,
+                Endpoint = "endpoint",
+            };
+
+            // Act
+            var act = () => service.AddNode(request, new Mock<ServerCallContext>().Object);
+
+            // Assert
+            (await act.Should().ThrowAsync<RpcException>()).Which.StatusCode.Should().Be(StatusCode.FailedPrecondition);
+            nodeRepositoryMock.Verify(repo => repo.AddAsync(It.IsAny<Node>()), Times.Never);
+        }
+
+        [Theory]
+        [InlineData("")]
+        [InlineData("   ")]
+        public async Task AddNode_BlankEndpoint_AddsAnUnmanagedNodeWithoutAskingItsIdentity(string endpoint)
+        {
+            // Arrange
+            var nodeRepositoryMock = new Mock<INodeRepository>();
+            nodeRepositoryMock.Setup(repo => repo.AddAsync(It.IsAny<Node>())).ReturnsAsync((true, null));
+            var lightningServiceMock = new Mock<ILightningService>();
+
+            var service = CreateNodeGuardService(
+                nodeRepository: nodeRepositoryMock.Object,
+                schedulerFactory: GetSchedulerFactoryMock(),
+                lightningService: lightningServiceMock.Object,
+                htlcMonitoringScheduler: CreateHtlcMonitoringSchedulerMock().Object);
+
+            var request = new AddNodeRequest { PubKey = "pubKey", Name = "nodeName", Endpoint = endpoint };
+
+            // Act
+            await service.AddNode(request, new Mock<ServerCallContext>().Object);
+
+            // Assert
+            nodeRepositoryMock.Verify(repo => repo.AddAsync(It.Is<Node>(n => n.Endpoint == null && !n.IsManaged)), Times.Once);
+            lightningServiceMock.Verify(x => x.GetNodeIdentityError(It.IsAny<Node>()), Times.Never);
+        }
+
         [Fact]
         public async Task AddNode_FailedToAddNode_ReturnsInternalError()
         {

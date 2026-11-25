@@ -271,6 +271,11 @@ namespace NodeGuard.Services
         private readonly ILightningRouterService _lightningRouterService;
         private readonly IAuditService _auditService;
 
+        /// <summary>
+        /// How long the identity check waits for the LND to answer before treating the node as unconfirmed
+        /// </summary>
+        public TimeSpan IdentityCheckTimeout { get; init; } = TimeSpan.FromSeconds(10);
+
         public LightningService(ILogger<LightningService> logger,
             IChannelOperationRequestRepository channelOperationRequestRepository,
             INodeRepository nodeRepository,
@@ -1640,7 +1645,17 @@ namespace NodeGuard.Services
         {
             if (node == null) throw new ArgumentNullException(nameof(node));
 
-            var info = await _lightningClientService.GetInfo(node);
+            GetInfoResponse? info;
+            try
+            {
+                // GetInfo has no gRPC deadline: an LND that never answers would otherwise hang the caller
+                info = await _lightningClientService.GetInfo(node).WaitAsync(IdentityCheckTimeout);
+            }
+            catch (TimeoutException)
+            {
+                info = null;
+            }
+
             if (info == null)
             {
                 return $"The LND at {node.Endpoint} could not be asked for its identity, so it cannot be confirmed to be node {node.Name}";

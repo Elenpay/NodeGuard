@@ -1745,6 +1745,26 @@ namespace NodeGuard.Services
         }
 
         [Fact]
+        public async Task GetNodeIdentityError_LndNeverAnswers_IsAnErrorOnceTheTimeoutExpires()
+        {
+            // Arrange
+            var node = new Node { Name = "carol", PubKey = "03b4", ChannelAdminMacaroon = "abc", Endpoint = "10.0.0.1" };
+            var client = new Mock<ILightningClientService>();
+            client.Setup(x => x.GetInfo(node, It.IsAny<Lightning.LightningClient>()))
+                .Returns(new TaskCompletionSource<GetInfoResponse?>().Task);
+            var lightningService = new LightningService(_logger, null, null, null, null, null, null, null, null, client.Object, null, null)
+            {
+                IdentityCheckTimeout = TimeSpan.FromMilliseconds(50)
+            };
+
+            // Act
+            var error = await lightningService.GetNodeIdentityError(node);
+
+            // Assert
+            error.Should().Contain("could not be asked");
+        }
+
+        [Fact]
         public async Task OpenChannel_SuccessSingleSig()
         {
             // Arrange

@@ -10,7 +10,6 @@
 @using NBXplorer.Models
 @using NodeGuard.Helpers;
 @using NodeGuard.Services.Spark
-@using System.Net
 @attribute [Authorize(Roles = "FinanceManager, Superadmin, NodeManager")]
 
 <PageTitle>Channel Requests</PageTitle>
@@ -567,10 +566,15 @@
 <ConfirmationModal
     @ref="_approveOperationConfirmationModal"
     Title="Are you sure?"
-    Body="@($"You selected a hot wallet. This means that the system will automatically use the funds in it without the need of manual approval. Are you sure you want to perform this operation?{(_swapOutWarning == null ? "" : $"<br/><br/>{_swapOutWarning}")}")"
     OkLabel="Yes, I am sure"
     OnCancel="@ApproveOperationCloseConfirmationModal"
-    OnSubmit="@ApproveOperationSubmitConfirmationModal"/>
+    OnSubmit="@ApproveOperationSubmitConfirmationModal">
+    <p>You selected a hot wallet. This means that the system will automatically use the funds in it without the need of manual approval. Are you sure you want to perform this operation?</p>
+    @if (_swapOutWarning != null)
+    {
+        <p>@_swapOutWarning</p>
+    }
+</ConfirmationModal>
 
 <ConfirmationModal
     @ref="_swapOutConfirmationModal"
@@ -1012,7 +1016,7 @@
         var balanceAfterBtc = new Money(localBalanceSats + request.SatsAmount).ToUnit(MoneyUnit.BTC);
         var thresholdBtc = new Money(node.MinimumBalanceThresholdSats).ToUnit(MoneyUnit.BTC);
         var swappedBtc = new Money(swappedSats).ToUnit(MoneyUnit.BTC);
-        return $"Opening this channel takes {WebUtility.HtmlEncode(node.Name)}'s local balance to {balanceAfterBtc:f8} BTC, above its {thresholdBtc:f8} BTC swap-out threshold. " +
+        return $"Opening this channel takes {node.Name}'s local balance to {balanceAfterBtc:f8} BTC, above its {thresholdBtc:f8} BTC swap-out threshold. " +
                $"Automatic liquidity management would swap out up to {swappedBtc:f8} BTC of this channel's outbound liquidity: you would pay swap fees and lose that outbound. Open it anyway?";
     }
 
