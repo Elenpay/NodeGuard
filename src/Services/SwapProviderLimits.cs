@@ -43,6 +43,22 @@ public readonly record struct SwapProviderLimits(long MinSats, long MaxSats, int
         _ => throw new ArgumentOutOfRangeException(nameof(provider), provider, "Unknown swap provider")
     };
 
+    /// <summary>
+    /// The providers <paramref name="node"/> swaps out through, with their weights: those with a weight above 0, or Loop
+    /// alone when none has one.
+    /// </summary>
+    public static IReadOnlyList<(SwapProvider Provider, int Weight)> Weighted(Node node)
+    {
+        var weighted = new List<(SwapProvider Provider, int Weight)>
+        {
+            (SwapProvider.Loop, node.LoopSwapWeight),
+            (SwapProvider.FortySwap, node.FortySwapWeight),
+            (SwapProvider.Spark, node.SparkSwapWeight)
+        }.Where(w => w.Weight > 0).ToList();
+
+        return weighted.Count > 0 ? weighted : [(SwapProvider.Loop, 1)];
+    }
+
     /// <summary><paramref name="node"/>'s max routing fee ratio for <paramref name="provider"/>'s swaps.</summary>
     public static decimal MaxRoutingFeeRatioFor(Node node, SwapProvider provider) => provider switch
     {
