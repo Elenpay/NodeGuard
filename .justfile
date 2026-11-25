@@ -99,7 +99,7 @@ update-protos:
 # Submodules #
 ##############
 
-REMOTE_SIGNER_URL := 'https://github.com/Elenpay/Nodeguard-Remote-Signer'
+REMOTE_SIGNER_URL := 'https://github.com/Lunar-Rails/Nodeguard-Remote-Signer'
 REMOTE_SIGNER_DIR := 'remote-signer'
 
 # Add the Remote Signer submodule, or initialize it on a fresh clone

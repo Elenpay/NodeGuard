@@ -9,6 +9,8 @@
 @using Google.Protobuf
 @using NBXplorer.Models
 @using NodeGuard.Helpers;
+@using NodeGuard.Services.Spark
+@using System.Net
 @attribute [Authorize(Roles = "FinanceManager, Superadmin, NodeManager")]
 
 <PageTitle>Channel Requests</PageTitle>
@@ -565,10 +567,19 @@
 <ConfirmationModal
     @ref="_approveOperationConfirmationModal"
     Title="Are you sure?"
-    Body="You selected a hot wallet. This means that the system will automatically use the funds in it without the need of manual approval. Are you sure you want to perform this operation?"
+    Body="@($"You selected a hot wallet. This means that the system will automatically use the funds in it without the need of manual approval. Are you sure you want to perform this operation?{(_swapOutWarning == null ? "" : $"<br/><br/>{_swapOutWarning}")}")"
     OkLabel="Yes, I am sure"
     OnCancel="@ApproveOperationCloseConfirmationModal"
     OnSubmit="@ApproveOperationSubmitConfirmationModal"/>
+
+<ConfirmationModal
+    @ref="_swapOutConfirmationModal"
+    Title="Swap-out warning"
+    Body="@(_swapOutWarning ?? "")"
+    OkLabel="Open anyway"
+    OkDisabled="@_createInFlight"
+    OnCancel="@SwapOutCloseConfirmationModal"
+    OnSubmit="@SwapOutSubmitConfirmationModal"/>
 
 <ConfirmationModal
     @ref="_markRequestAsFailedConfirmationModal"
@@ -597,6 +608,7 @@
 @inject IAuditService AuditService
 @inject IHttpContextAccessor HttpContextAccessor
 @inject IApplicationUserRepository ApplicationUserRepository
+@inject SparkSettings SparkSettings
 
 @code {
     private List<ChannelOperationRequest>? _channelRequests;
@@ -637,6 +649,10 @@
     private bool _createInFlight;
     private ConfirmationModal _approveOperationConfirmationModal;
     private ConfirmationModal _markRequestAsFailedConfirmationModal;
+    private ConfirmationModal _swapOutConfirmationModal;
+    // Why the open request being created would be swapped right back out, or null when it would not.
+    private string? _swapOutWarning;
+    private static readonly TimeSpan SwapOutBalanceTimeout = TimeSpan.FromSeconds(5);
     private UTXOSelectorModal _utxoSelectorModalRef;
     private List<UTXO> _selectedUTXOs = new();
     private MempoolRecommendedFeesType _selectedMempoolRecommendedFeesType;
@@ -901,45 +917,25 @@
                 };
 
                 var selectedWallet = await WalletRepository.GetById(_selectedWalletId.Value);
+                _swapOutWarning = await SwapOutWarningAsync(request);
 
-
-                if (selectedWallet.IsHotWallet)
+                if (selectedWallet.IsHotWallet || _swapOutWarning != null)
                 {
                     _selectedRequest = request;
                     await datagridRef.Edit(null);
-                    await _approveOperationConfirmationModal.ShowModal();
+                    if (selectedWallet.IsHotWallet)
+                    {
+                        await _approveOperationConfirmationModal.ShowModal();
+                    }
+                    else
+                    {
+                        await _swapOutConfirmationModal.ShowModal();
+                    }
                     await ResetChannelRequestRejectModal();
                     return;
                 }
 
-                var createChannelResult = await ChannelOperationRequestRepository.AddAsync(request);
-
-                if (createChannelResult.Item1)
-                {
-                    ToastService.ShowSuccess("Open channel request created!");
-                    await AuditService.LogAsync(
-                        AuditActionType.Create, 
-                        AuditEventType.Success, 
-                        AuditObjectType.ChannelOperationRequest,
-                        request.Id.ToString(),
-                        new { Amount = amount, SourceNodeId = _selectedSourceNodeId, DestNodeId = _selectedDestNode?.Id, Description = $"Channel open request created. Amount: {amount} BTC, SourceNodeId: {_selectedSourceNodeId}, DestNodeId: {_selectedDestNode?.Id}" });
-
-                    if (_selectedUTXOs.Count > 0)
-                    {
-                        await CoinSelectionService.LockUTXOs(_selectedUTXOs, request, BitcoinRequestType.ChannelOperation);
-                    }
-                }
-                else
-                {
-                    ToastService.ShowError(createChannelResult.Item2);
-                    await AuditService.LogAsync(
-                        AuditActionType.Create, 
-                        AuditEventType.Failure, 
-                        AuditObjectType.ChannelOperationRequest,
-                        null,
-                        new { Error = createChannelResult.Item2, Description = $"Failed to create channel open request. Error: {createChannelResult.Item2}" });
-                }
-                _utxoSelectorModalRef.ClearModal();
+                await CreateOpenRequestAsync(request);
             }
             else
             {
@@ -950,6 +946,98 @@
         await LoadData();
         await FetchRequests();
         await ReloadAllRequestsGrid();
+    }
+
+    /// <summary>
+    /// Creates a cold-wallet open request and locks its selected UTXOs.
+    /// </summary>
+    private async Task CreateOpenRequestAsync(ChannelOperationRequest request)
+    {
+        var amount = new Money(request.SatsAmount).ToUnit(MoneyUnit.BTC);
+        var createChannelResult = await ChannelOperationRequestRepository.AddAsync(request);
+
+        if (createChannelResult.Item1)
+        {
+            ToastService.ShowSuccess("Open channel request created!");
+            await AuditService.LogAsync(
+                AuditActionType.Create, 
+                AuditEventType.Success, 
+                AuditObjectType.ChannelOperationRequest,
+                request.Id.ToString(),
+                new { Amount = amount, SourceNodeId = request.SourceNodeId, DestNodeId = request.DestNodeId, Description = $"Channel open request created. Amount: {amount} BTC, SourceNodeId: {request.SourceNodeId}, DestNodeId: {request.DestNodeId}" });
+
+            if (_selectedUTXOs.Count > 0)
+            {
+                await CoinSelectionService.LockUTXOs(_selectedUTXOs, request, BitcoinRequestType.ChannelOperation);
+            }
+        }
+        else
+        {
+            ToastService.ShowError(createChannelResult.Item2);
+            await AuditService.LogAsync(
+                AuditActionType.Create, 
+                AuditEventType.Failure, 
+                AuditObjectType.ChannelOperationRequest,
+                null,
+                new { Error = createChannelResult.Item2, Description = $"Failed to create channel open request. Error: {createChannelResult.Item2}" });
+        }
+        _utxoSelectorModalRef.ClearModal();
+    }
+
+    /// <summary>
+    /// The warning to show when the automatic swap-out would take the outbound of the channel <paramref name="request"/>
+    /// opens from its source node, or null when it would not or the node's balance can't be read within
+    /// <see cref="SwapOutBalanceTimeout"/>.
+    /// </summary>
+    private async Task<string?> SwapOutWarningAsync(ChannelOperationRequest request)
+    {
+        var node = await NodeRepository.GetById(request.SourceNodeId, false);
+        if (node == null || !SwapOutForecast.SwapsOutAutomatically(node)) return null;
+
+        // The node's LND gets no deadline of its own: an unreachable one must not hold the Save button
+        Lnrpc.ChannelBalanceResponse? balance;
+        try
+        {
+            balance = await LightningService.ChannelBalanceAsync(node).WaitAsync(SwapOutBalanceTimeout);
+        }
+        catch (TimeoutException)
+        {
+            return null;
+        }
+        if (balance == null) return null;
+
+        var localBalanceSats = (long)(balance.LocalBalance?.Sat ?? 0) + (long)(balance.PendingOpenLocalBalance?.Sat ?? 0);
+        if (SwapOutForecast.SatsSwappedAfterOpen(node, localBalanceSats, request.SatsAmount, SparkSettings) is not { } swappedSats) return null;
+
+        var balanceAfterBtc = new Money(localBalanceSats + request.SatsAmount).ToUnit(MoneyUnit.BTC);
+        var thresholdBtc = new Money(node.MinimumBalanceThresholdSats).ToUnit(MoneyUnit.BTC);
+        var swappedBtc = new Money(swappedSats).ToUnit(MoneyUnit.BTC);
+        return $"Opening this channel takes {WebUtility.HtmlEncode(node.Name)}'s local balance to {balanceAfterBtc:f8} BTC, above its {thresholdBtc:f8} BTC swap-out threshold. " +
+               $"Automatic liquidity management would swap out up to {swappedBtc:f8} BTC of this channel's outbound liquidity: you would pay swap fees and lose that outbound. Open it anyway?";
+    }
+
+    private async Task SwapOutCloseConfirmationModal()
+    {
+        await _swapOutConfirmationModal.CloseModal();
+    }
+
+    private async Task SwapOutSubmitConfirmationModal()
+    {
+        if (_selectedRequest == null || _createInFlight) return;
+        _createInFlight = true;
+
+        try
+        {
+            await CreateOpenRequestAsync(_selectedRequest);
+            await _swapOutConfirmationModal.CloseModal();
+            await LoadData();
+            await FetchRequests();
+            await ReloadAllRequestsGrid();
+        }
+        finally
+        {
+            _createInFlight = false;
+        }
     }
 
     #endregion

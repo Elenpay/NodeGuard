@@ -6,7 +6,7 @@ Spark is a swap-out provider next to Loop and 40swap. A node moves Lightning liq
 
 NodeGuard is not a Spark wallet product. A Spark wallet is transit only: each swap's sats leave in an exit of their own leaves, and the guardrails below alert when sats stay behind.
 
-The Spark client is the [NSpark](https://github.com/orklabs/nspark) .NET SDK, from the [Elenpay fork](https://github.com/Elenpay/nspark) in `vendor/nspark` (a git submodule). By default, on mainnet, the operators are Lightspark, Breez and Flashnet (2-of-3) and the SSP is Lightspark's.
+The Spark client is the [NSpark](https://github.com/orklabs/nspark) .NET SDK, from the [Lunar-Rails fork](https://github.com/Lunar-Rails/nspark) in `vendor/nspark` (a git submodule). By default, on mainnet, the operators are Lightspark, Breez and Flashnet (2-of-3) and the SSP is Lightspark's.
 
 ## How a swap runs
 
@@ -52,7 +52,7 @@ So the exposure is the sats in transit, while they are on Spark. That is why a S
 `SPARK_SIGNER` sets where the Spark keys live:
 
 - **`wallet`** (the default; temporary). Spark wallets are created on the Wallets page's Spark tab (or with `CreateSparkWallet`), and each node is given the Spark wallet its swaps pass through. Their keys are hot: see [Spark wallets](#spark-wallets-temporary).
-- **`remote`**. One Spark wallet, whose keys stay in the remote signer Lambda under its `/spark/` routes, serves every node; see the [remote signer README](https://github.com/Elenpay/Nodeguard-Remote-Signer#spark-signing). Its keys come from the seed with master fingerprint `SPARK_SEED_FINGERPRINT`, at Spark account `SPARK_ACCOUNT` (`m/8797555'/account'/…`). NodeGuard calls `/spark/info` at startup. It uses the signer only if the signer reports the same contract version and a policy for exactly NodeGuard's operators, threshold and SSP, and serves the expected Spark identity:
+- **`remote`**. One Spark wallet, whose keys stay in the remote signer Lambda under its `/spark/` routes, serves every node; see the [remote signer README](https://github.com/Lunar-Rails/Nodeguard-Remote-Signer#spark-signing). Its keys come from the seed with master fingerprint `SPARK_SEED_FINGERPRINT`, at Spark account `SPARK_ACCOUNT` (`m/8797555'/account'/…`). NodeGuard calls `/spark/info` at startup. It uses the signer only if the signer reports the same contract version and a policy for exactly NodeGuard's operators, threshold and SSP, and serves the expected Spark identity:
   - On the first successful handshake, NodeGuard saves the identity the signer serves (table `SparkSignerIdentities`, one row per `SPARK_SEED_FINGERPRINT` and `SPARK_ACCOUNT`), logs a warning with it and audits it. Every later handshake must serve the same identity: swaps record the identity that received them, and a signer serving another would leave them unable to exit. Watch the logs on the first start in remote mode, and compare the saved identity with the seed ceremony's `verify --spark-account` when convenient.
   - `SPARK_IDENTITY_PUBKEY` is optional. When set, the signer must serve it from the first handshake on, and it must agree with the saved identity.
   - To accept another identity for the same seed and account on purpose, first move the Spark balance out (see [Rotating or retiring the Spark seed](#rotating-or-retiring-the-spark-seed)), then delete the saved row and restart NodeGuard:

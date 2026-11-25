@@ -1,8 +1,8 @@
 # NodeGuard
-![GitHub release (release name instead of tag name)](https://img.shields.io/github/v/release/Elenpay/NodeGuard)
-![GitHub](https://img.shields.io/github/license/Elenpay/NodeGuard)
-[![Unit tests](https://github.com/Elenpay/NodeGuard/actions/workflows/dotnet.yml/badge.svg)](https://github.com/Elenpay/NodeGuard/actions/workflows/dotnet.yml)
-[![Docker image build](https://github.com/Elenpay/NodeGuard/actions/workflows/docker.yaml/badge.svg)](https://github.com/Elenpay/NodeGuard/actions/workflows/docker.yaml)
+![GitHub release (release name instead of tag name)](https://img.shields.io/github/v/release/Lunar-Rails/NodeGuard)
+![GitHub](https://img.shields.io/github/license/Lunar-Rails/NodeGuard)
+[![Unit tests](https://github.com/Lunar-Rails/NodeGuard/actions/workflows/dotnet.yml/badge.svg)](https://github.com/Lunar-Rails/NodeGuard/actions/workflows/dotnet.yml)
+[![Docker image build](https://github.com/Lunar-Rails/NodeGuard/actions/workflows/docker.yaml/badge.svg)](https://github.com/Lunar-Rails/NodeGuard/actions/workflows/docker.yaml)
 
 <p align="center">
   <img src="nodeguard.png">
@@ -15,13 +15,13 @@ Current features of NodeGuard are the following:
 
 - Asynchronous channel funding leveraging cold multisig wallets and hot wallets
 - Multisig wallet creation and import (BIP39), only segwit for now
-- Liquidity automation by settings rules in tandem with [NodeGuard liquidator](https://github.com/Elenpay/liquidator)
-- Optional remote signing through [NodeGuard Remote Signer](https://github.com/Elenpay/Nodeguard-Remote-Signer) functions for channel funding transactions, separating the NodeGuard keys from the actual software
+- Liquidity automation by settings rules in tandem with [NodeGuard liquidator](https://github.com/Lunar-Rails/ep-liquidator)
+- Optional remote signing through [NodeGuard Remote Signer](https://github.com/Lunar-Rails/Nodeguard-Remote-Signer) functions for channel funding transactions, separating the NodeGuard keys from the actual software
 - Automatic sweeping of funds in lightning nodes to avoid having funds on the node hot wallets
 - Channel management
 - Channel creation interception with returning address to multisig wallets to avoid having funds on hot wallets
 - Support for hardware wallets to sign the PSBTs for channel funding transactions
-- Minimalistic in-browser wallet with [NodeGuard Companion](https://github.com/Elenpay/Nodeguards-Companion) to ease signing of transactions and wallet creation
+- Minimalistic in-browser wallet with [NodeGuard Companion](https://github.com/Lunar-Rails/Nodeguards-Companion) to ease signing of transactions and wallet creation
 - In-browser notification systems for channel approvals
 - Two-factor authentication
 - Manual and automated Swap Outs (Loop, 40swap and [Spark](docs/spark-swaps.md))
