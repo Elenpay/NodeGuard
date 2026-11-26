@@ -9,7 +9,6 @@
 @using Google.Protobuf
 @using NBXplorer.Models
 @using NodeGuard.Helpers;
-@using NodeGuard.Services.Spark
 @attribute [Authorize(Roles = "FinanceManager, Superadmin, NodeManager")]
 
 <PageTitle>Channel Requests</PageTitle>
@@ -566,15 +565,10 @@
 <ConfirmationModal
     @ref="_approveOperationConfirmationModal"
     Title="Are you sure?"
+    Body="@($"You selected a hot wallet. This means that the system will automatically use the funds in it without the need of manual approval. Are you sure you want to perform this operation?{(_swapOutWarning == null ? "" : $"<br/><br/>{_swapOutWarning}")}")"
     OkLabel="Yes, I am sure"
     OnCancel="@ApproveOperationCloseConfirmationModal"
-    OnSubmit="@ApproveOperationSubmitConfirmationModal">
-    <p>You selected a hot wallet. This means that the system will automatically use the funds in it without the need of manual approval. Are you sure you want to perform this operation?</p>
-    @if (_swapOutWarning != null)
-    {
-        <p>@_swapOutWarning</p>
-    }
-</ConfirmationModal>
+    OnSubmit="@ApproveOperationSubmitConfirmationModal"/>
 
 <ConfirmationModal
     @ref="_swapOutConfirmationModal"
@@ -612,7 +606,7 @@
 @inject IAuditService AuditService
 @inject IHttpContextAccessor HttpContextAccessor
 @inject IApplicationUserRepository ApplicationUserRepository
-@inject SparkSettings SparkSettings
+@inject ISwapOutWarningService SwapOutWarningService
 
 @code {
     private List<ChannelOperationRequest>? _channelRequests;
@@ -656,7 +650,6 @@
     private ConfirmationModal _swapOutConfirmationModal;
     // Why the open request being created would be swapped right back out, or null when it would not.
     private string? _swapOutWarning;
-    private static readonly TimeSpan SwapOutBalanceTimeout = TimeSpan.FromSeconds(5);
     private UTXOSelectorModal _utxoSelectorModalRef;
     private List<UTXO> _selectedUTXOs = new();
     private MempoolRecommendedFeesType _selectedMempoolRecommendedFeesType;
@@ -921,7 +914,7 @@
                 };
 
                 var selectedWallet = await WalletRepository.GetById(_selectedWalletId.Value);
-                _swapOutWarning = await SwapOutWarningAsync(request);
+                _swapOutWarning = await SwapOutWarningService.ForChannelOpenAsync(request.SourceNodeId, request.SatsAmount);
 
                 if (selectedWallet.IsHotWallet || _swapOutWarning != null)
                 {
@@ -986,38 +979,6 @@
                 new { Error = createChannelResult.Item2, Description = $"Failed to create channel open request. Error: {createChannelResult.Item2}" });
         }
         _utxoSelectorModalRef.ClearModal();
-    }
-
-    /// <summary>
-    /// The warning to show when the automatic swap-out would take the outbound of the channel <paramref name="request"/>
-    /// opens from its source node, or null when it would not or the node's balance can't be read within
-    /// <see cref="SwapOutBalanceTimeout"/>.
-    /// </summary>
-    private async Task<string?> SwapOutWarningAsync(ChannelOperationRequest request)
-    {
-        var node = await NodeRepository.GetById(request.SourceNodeId, false);
-        if (node == null || !SwapOutForecast.SwapsOutAutomatically(node)) return null;
-
-        // The node's LND gets no deadline of its own: an unreachable one must not hold the Save button
-        Lnrpc.ChannelBalanceResponse? balance;
-        try
-        {
-            balance = await LightningService.ChannelBalanceAsync(node).WaitAsync(SwapOutBalanceTimeout);
-        }
-        catch (TimeoutException)
-        {
-            return null;
-        }
-        if (balance == null) return null;
-
-        var localBalanceSats = (long)(balance.LocalBalance?.Sat ?? 0) + (long)(balance.PendingOpenLocalBalance?.Sat ?? 0);
-        if (SwapOutForecast.SatsSwappedAfterOpen(node, localBalanceSats, request.SatsAmount, SparkSettings) is not { } swappedSats) return null;
-
-        var balanceAfterBtc = new Money(localBalanceSats + request.SatsAmount).ToUnit(MoneyUnit.BTC);
-        var thresholdBtc = new Money(node.MinimumBalanceThresholdSats).ToUnit(MoneyUnit.BTC);
-        var swappedBtc = new Money(swappedSats).ToUnit(MoneyUnit.BTC);
-        return $"Opening this channel takes {node.Name}'s local balance to {balanceAfterBtc:f8} BTC, above its {thresholdBtc:f8} BTC swap-out threshold. " +
-               $"Automatic liquidity management would swap out up to {swappedBtc:f8} BTC of this channel's outbound liquidity: you would pay swap fees and lose that outbound. Open it anyway?";
     }
 
     private async Task SwapOutCloseConfirmationModal()
