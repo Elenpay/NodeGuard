@@ -20,7 +20,7 @@ jobs:
           keep-last: 5
 
       - name: Prune old containers (Dry-run)
-        uses: vlaurin/action-ghcr-prune@v0.6.0
+        uses: vlaurin/action-ghcr-prune@0cf7d39f88546edd31965acba78cdcb0be14d641 # v0.6.0
         with:
           token: ${{ github.token	 }}
           organization: ${{ github.repository_owner }}
