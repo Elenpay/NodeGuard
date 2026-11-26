@@ -124,19 +124,27 @@ public class ChannelOpenRecommendationRepository : IChannelOpenRecommendationRep
         to.LastEvidenceAt = from.LastEvidenceAt;
     }
 
-    public async Task<(bool, string?)> Update(ChannelOpenRecommendation recommendation)
+    public async Task<(bool, string?)> UpdateIfStatus(ChannelOpenRecommendation recommendation,
+        ChannelOpenRecommendationStatus expectedStatus)
     {
         await using var context = await _dbContextFactory.CreateDbContextAsync();
 
         try
         {
             recommendation.SetUpdateDatetime();
-            recommendation.Node = null;
-            recommendation.ChannelOperationRequest = null;
-            context.ChannelOpenRecommendations.Update(recommendation);
-            await context.SaveChangesAsync();
 
-            return (true, null);
+            // One statement: of two callers that both read the row in the expected status, only one matches.
+            var updated = await context.ChannelOpenRecommendations
+                .Where(x => x.Id == recommendation.Id && x.Status == expectedStatus)
+                .ExecuteUpdateAsync(setters => setters
+                    .SetProperty(x => x.Status, recommendation.Status)
+                    .SetProperty(x => x.ChannelOperationRequestId, recommendation.ChannelOperationRequestId)
+                    .SetProperty(x => x.DismissReason, recommendation.DismissReason)
+                    .SetProperty(x => x.UpdateDatetime, recommendation.UpdateDatetime));
+
+            return updated == 1
+                ? (true, null)
+                : (false, $"Recommendation is no longer {expectedStatus}");
         }
         catch (Exception e)
         {

@@ -33,7 +33,12 @@ public interface IChannelOpenRecommendationRepository
     /// </summary>
     Task<(ChannelOpenRecommendation? Persisted, string? Error)> Upsert(ChannelOpenRecommendation recommendation);
 
-    Task<(bool, string?)> Update(ChannelOpenRecommendation recommendation);
+    /// <summary>
+    /// Writes the row's lifecycle fields only while it is still in <paramref name="expectedStatus"/>,
+    /// so a caller acting on a stale read is refused instead of overwriting a newer decision.
+    /// </summary>
+    Task<(bool, string?)> UpdateIfStatus(ChannelOpenRecommendation recommendation,
+        ChannelOpenRecommendationStatus expectedStatus);
 
     /// <summary>
     /// Runs first each cycle; the upsert re-opens what still qualifies, so the panel is always the
