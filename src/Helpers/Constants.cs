@@ -423,7 +423,7 @@ public class Constants
     public static int AUTO_CHANNEL_OPEN_LOW_OUTBOUND_PCT = 20;
 
     // Per-peer suppression after an open attempt or a dismissal.
-    public static int AUTO_CHANNEL_OPEN_PEER_COOLDOWN_HOURS = 12;
+    public static int AUTO_CHANNEL_OPEN_PEER_COOLDOWN_HOURS = 6;
 
     // Plans per node per run. In Auto mode this is also the concurrency bound: nothing else caps opens in flight.
     public static int AUTO_CHANNEL_OPEN_MAX_PLANS_PER_RUN = 5;
