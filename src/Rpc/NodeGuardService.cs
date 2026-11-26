@@ -801,7 +801,8 @@ public class NodeGuardService : Nodeguard.NodeGuardService.NodeGuardServiceBase,
             Name = request.Name,
             Description = request.Description,
             ChannelAdminMacaroon = request.ChannelAdminMacaroon,
-            Endpoint = request.Endpoint,
+            // proto3 sends "" for an unset endpoint, and any non-null endpoint makes the node managed
+            Endpoint = string.IsNullOrWhiteSpace(request.Endpoint) ? null : request.Endpoint,
             AutosweepEnabled = request.AutosweepEnabled,
             FundsDestinationWalletId = request.ReturningFundsWalletId,
         };
@@ -809,6 +810,22 @@ public class NodeGuardService : Nodeguard.NodeGuardService.NodeGuardServiceBase,
         if (request.ReturningFundsWalletId != 0)
         {
             RefuseSparkWallet(await _walletRepository.GetById(request.ReturningFundsWalletId));
+        }
+
+        // A managed node is only added when the LND at its endpoint holds its key
+        if (node.Endpoint != null)
+        {
+            if (string.IsNullOrWhiteSpace(node.ChannelAdminMacaroon))
+            {
+                throw new RpcException(new Status(StatusCode.FailedPrecondition,
+                    "A managed node needs its channel admin macaroon to confirm its identity"));
+            }
+
+            var identityError = await _lightningService.GetNodeIdentityError(node);
+            if (identityError != null)
+            {
+                throw new RpcException(new Status(StatusCode.FailedPrecondition, identityError));
+            }
         }
 
         try
