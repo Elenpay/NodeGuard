@@ -318,6 +318,31 @@ public class ChannelOpenPromotionServiceTests
         _channelOperationRequestRepository.Verify(x => x.AddAsync(It.IsAny<ChannelOperationRequest>()), Times.Never);
     }
 
+    [Fact]
+    public async Task Promote_PeerChargedZeroPpm_OpensAtZeroRatherThanRefusing()
+    {
+        // Zero is a captured price, not a missing one: the peer can still earn through the base fee.
+        ArrangePromotable();
+        _recommendationRepository
+            .Setup(x => x.GetById(RecommendationId))
+            .ReturnsAsync(() =>
+            {
+                var zeroPpm = Recommendation();
+                zeroPpm.InheritedFeeRatePpm = 0;
+                return zeroPpm;
+            });
+        ChannelOperationRequest? captured = null;
+        _channelOperationRequestRepository
+            .Setup(x => x.AddAsync(It.IsAny<ChannelOperationRequest>()))
+            .ReturnsAsync((ChannelOperationRequest r) => { r.Id = 500; captured = r; return (true, (string?)null); });
+
+        var (ok, _) = await BuildService().Promote(RecommendationId, 5_000_000, userId: "u1");
+
+        ok.Should().BeTrue();
+        captured!.InitialChannelFeeRatePpm.Should().Be(0);
+        captured.InitialChannelBaseFeeMsat.Should().Be(1_000);
+    }
+
     // ── Promote: dispatch ──────────────────────────────────────────────────────────────
 
     [Fact]

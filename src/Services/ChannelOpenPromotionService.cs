@@ -104,7 +104,7 @@ public class ChannelOpenPromotionService : IChannelOpenPromotionService
             // cheapest route to a peer the drain evidence proves is expensive. It opens at the price we
             // already charge that peer, captured with the evidence and gated on — asking LND again here
             // would reprice off gossip and could contradict the number the operator approved.
-            if (recommendation.InheritedFeeRatePpm is not > 0)
+            if (recommendation.InheritedFeeRatePpm is null or < 0)
             {
                 return (false, $"Recommendation {recommendationId} carries no inherited fee policy, so there is no price to open at — it predates fee capture and will be replaced on the next run");
             }
