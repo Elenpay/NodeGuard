@@ -93,6 +93,8 @@ public class ChannelOpenPromotionService : IChannelOpenPromotionService
             return (false, $"Capacity must be greater than {Constants.MINIMUM_CHANNEL_CAPACITY_SATS} sats");
         }
 
+        ChannelOperationRequest? promotedRequest = null;
+
         try
         {
             // The peer is not a managed node, so it may not have a row yet.
@@ -135,13 +137,15 @@ public class ChannelOpenPromotionService : IChannelOpenPromotionService
             recommendation.Status = ChannelOpenRecommendationStatus.Promoted;
             recommendation.ChannelOperationRequestId = request.Id;
 
-            var (updated, updateError) = await _recommendationRepository.Update(recommendation);
+            var (updated, updateError) = await _recommendationRepository.UpdateIfStatus(recommendation, ChannelOpenRecommendationStatus.Open);
             if (!updated)
             {
                 _logger.LogError("Channel operation request {RequestId} was created but recommendation {Id} could not be marked promoted: {Error}",
                     request.Id, recommendationId, updateError);
                 return (false, updateError);
             }
+
+            promotedRequest = request;
 
             await _auditService.LogAsync(
                 AuditActionType.Create,
@@ -172,7 +176,32 @@ public class ChannelOpenPromotionService : IChannelOpenPromotionService
         catch (Exception e)
         {
             _logger.LogError(e, "Error promoting channel open recommendation {Id}", recommendationId);
+
+            // Left Pending it would never be dispatched, and would hold the peer, the budget and its coins.
+            if (promotedRequest != null)
+            {
+                FailUndispatched(promotedRequest);
+            }
+
             return (false, e.Message);
+        }
+    }
+
+    private void FailUndispatched(ChannelOperationRequest request)
+    {
+        try
+        {
+            request.Status = ChannelOperationRequestStatus.Failed;
+            request.StatusLogs.Add(ChannelStatusLog.Error("Could not dispatch the channel open"));
+            var (updated, error) = _channelOperationRequestRepository.Update(request);
+            if (!updated)
+            {
+                _logger.LogError("Could not mark undispatched channel open request {RequestId} as failed: {Error}", request.Id, error);
+            }
+        }
+        catch (Exception e)
+        {
+            _logger.LogError(e, "Could not mark undispatched channel open request {RequestId} as failed", request.Id);
         }
     }
 
@@ -235,7 +264,7 @@ public class ChannelOpenPromotionService : IChannelOpenPromotionService
         recommendation.Status = ChannelOpenRecommendationStatus.Dismissed;
         recommendation.DismissReason = reason;
 
-        var (updated, error) = await _recommendationRepository.Update(recommendation);
+        var (updated, error) = await _recommendationRepository.UpdateIfStatus(recommendation, ChannelOpenRecommendationStatus.Open);
         if (!updated)
         {
             return (false, error);

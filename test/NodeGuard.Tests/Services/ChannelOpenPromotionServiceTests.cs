@@ -101,7 +101,7 @@ public class ChannelOpenPromotionServiceTests
         _recommendationRepository.Setup(x => x.GetById(RecommendationId))
             .ReturnsAsync(Recommendation(status, walletId));
 
-        _recommendationRepository.Setup(x => x.Update(It.IsAny<ChannelOpenRecommendation>())).ReturnsAsync((true, (string?)null));
+        _recommendationRepository.Setup(x => x.UpdateIfStatus(It.IsAny<ChannelOpenRecommendation>(), ChannelOpenRecommendationStatus.Open)).ReturnsAsync((true, (string?)null));
 
         _nodeRepository.Setup(x => x.GetOrCreateByPubKey(PeerPubKey, It.IsAny<ILightningService>()))
             .ReturnsAsync(new Node { Id = DestNodeId, PubKey = PeerPubKey });
@@ -231,8 +231,8 @@ public class ChannelOpenPromotionServiceTests
         ArrangePromotable();
         ChannelOpenRecommendation? updated = null;
         _recommendationRepository
-            .Setup(x => x.Update(It.IsAny<ChannelOpenRecommendation>()))
-            .ReturnsAsync((ChannelOpenRecommendation r) => { updated = r; return (true, (string?)null); });
+            .Setup(x => x.UpdateIfStatus(It.IsAny<ChannelOpenRecommendation>(), ChannelOpenRecommendationStatus.Open))
+            .ReturnsAsync((ChannelOpenRecommendation r, ChannelOpenRecommendationStatus _) => { updated = r; return (true, (string?)null); });
 
         await BuildService().Promote(RecommendationId, 5_000_000, userId: "u1");
 
@@ -342,6 +342,27 @@ public class ChannelOpenPromotionServiceTests
     }
 
     [Fact]
+    public async Task Promote_DispatchThrowsAfterThePromotionIsSaved_FailsTheRequestRatherThanLeavingItPending()
+    {
+        ArrangePromotable(isHotWallet: true);
+        _scheduler
+            .Setup(x => x.ScheduleJob(It.IsAny<IJobDetail>(), It.IsAny<ITrigger>(), default))
+            .ThrowsAsync(new SchedulerException("store unavailable"));
+        ChannelOperationRequest? failed = null;
+        _channelOperationRequestRepository
+            .Setup(x => x.Update(It.IsAny<ChannelOperationRequest>()))
+            .Returns((ChannelOperationRequest r) => { failed = r; return (true, (string?)null); });
+
+        var (ok, error) = await BuildService().Promote(RecommendationId, 5_000_000, userId: "u1");
+
+        // Failed is what lets the next run release the peer and the coins the template locked.
+        ok.Should().BeFalse();
+        error.Should().NotBeNull();
+        failed!.Id.Should().Be(500);
+        failed.Status.Should().Be(ChannelOperationRequestStatus.Failed);
+    }
+
+    [Fact]
     public async Task Promote_HotWalletStillMissingSignatures_DoesNotSchedule()
     {
         ArrangePromotable(isHotWallet: true, signaturesCollected: false);
@@ -360,8 +381,8 @@ public class ChannelOpenPromotionServiceTests
         ArrangePromotable();
         ChannelOpenRecommendation? updated = null;
         _recommendationRepository
-            .Setup(x => x.Update(It.IsAny<ChannelOpenRecommendation>()))
-            .ReturnsAsync((ChannelOpenRecommendation r) => { updated = r; return (true, (string?)null); });
+            .Setup(x => x.UpdateIfStatus(It.IsAny<ChannelOpenRecommendation>(), ChannelOpenRecommendationStatus.Open))
+            .ReturnsAsync((ChannelOpenRecommendation r, ChannelOpenRecommendationStatus _) => { updated = r; return (true, (string?)null); });
 
         var (ok, _) = await BuildService().Dismiss(RecommendationId, "not now", userId: "u1");
 
