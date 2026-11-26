@@ -142,6 +142,11 @@ public class ChannelOpenPromotionService : IChannelOpenPromotionService
             {
                 _logger.LogError("Channel operation request {RequestId} was created but recommendation {Id} could not be marked promoted: {Error}",
                     request.Id, recommendationId, updateError);
+
+                // Nothing points at it now, so left Pending it could still be signed or sit on the budget.
+                CloseRequest(request, ChannelOperationRequestStatus.Cancelled,
+                    ChannelStatusLog.Info("Cancelled: the recommendation was no longer open when this request was created"));
+
                 return (false, updateError);
             }
 
@@ -180,28 +185,29 @@ public class ChannelOpenPromotionService : IChannelOpenPromotionService
             // Left Pending it would never be dispatched, and would hold the peer, the budget and its coins.
             if (promotedRequest != null)
             {
-                FailUndispatched(promotedRequest);
+                CloseRequest(promotedRequest, ChannelOperationRequestStatus.Failed,
+                    ChannelStatusLog.Error("Could not dispatch the channel open"));
             }
 
             return (false, e.Message);
         }
     }
 
-    private void FailUndispatched(ChannelOperationRequest request)
+    private void CloseRequest(ChannelOperationRequest request, ChannelOperationRequestStatus status, ChannelStatusLog statusLog)
     {
         try
         {
-            request.Status = ChannelOperationRequestStatus.Failed;
-            request.StatusLogs.Add(ChannelStatusLog.Error("Could not dispatch the channel open"));
+            request.Status = status;
+            request.StatusLogs.Add(statusLog);
             var (updated, error) = _channelOperationRequestRepository.Update(request);
             if (!updated)
             {
-                _logger.LogError("Could not mark undispatched channel open request {RequestId} as failed: {Error}", request.Id, error);
+                _logger.LogError("Could not mark channel open request {RequestId} as {Status}: {Error}", request.Id, status, error);
             }
         }
         catch (Exception e)
         {
-            _logger.LogError(e, "Could not mark undispatched channel open request {RequestId} as failed", request.Id);
+            _logger.LogError(e, "Could not mark channel open request {RequestId} as {Status}", request.Id, status);
         }
     }
 

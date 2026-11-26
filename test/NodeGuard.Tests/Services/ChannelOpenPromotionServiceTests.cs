@@ -241,6 +241,28 @@ public class ChannelOpenPromotionServiceTests
         updated.ChannelOperationRequestId.Should().Be(500);
     }
 
+    [Fact]
+    public async Task Promote_RecommendationNoLongerOpenOnceTheRequestExists_CancelsTheRequest()
+    {
+        // Another promotion, or the job expiring the row, got there between the read and the write.
+        ArrangePromotable();
+        _recommendationRepository
+            .Setup(x => x.UpdateIfStatus(It.IsAny<ChannelOpenRecommendation>(), ChannelOpenRecommendationStatus.Open))
+            .ReturnsAsync((false, "Recommendation is no longer Open"));
+        ChannelOperationRequest? cancelled = null;
+        _channelOperationRequestRepository
+            .Setup(x => x.Update(It.IsAny<ChannelOperationRequest>()))
+            .Returns((ChannelOperationRequest r) => { cancelled = r; return (true, (string?)null); });
+
+        var (ok, error) = await BuildService().Promote(RecommendationId, 5_000_000, userId: "u1");
+
+        ok.Should().BeFalse();
+        error.Should().Be("Recommendation is no longer Open");
+        cancelled!.Id.Should().Be(500);
+        cancelled.Status.Should().Be(ChannelOperationRequestStatus.Cancelled);
+        _lightningService.Verify(x => x.GenerateTemplatePSBT(It.IsAny<ChannelOperationRequest>()), Times.Never);
+    }
+
     // ── Promote: the fee the channel opens at ──────────────────────────────────────────
 
     [Fact]
