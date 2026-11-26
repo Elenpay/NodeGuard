@@ -169,14 +169,14 @@ public class ChannelOpenRecommendationRepository : IChannelOpenRecommendationRep
     {
         await using var context = await _dbContextFactory.CreateDbContextAsync();
 
-        // Rejected is an operator turning the peer down and Cancelled is not, so only the latter joins
-        // Failed here — a rejection suppresses the peer exactly as a dismissal does.
         var unrealized = await context.ChannelOpenRecommendations
+            .Include(x => x.ChannelOperationRequest)
             .Where(x => x.NodeId == nodeId
                         && x.Status == ChannelOpenRecommendationStatus.Promoted
                         && x.ChannelOperationRequest != null
                         && (x.ChannelOperationRequest.Status == ChannelOperationRequestStatus.Failed
-                            || x.ChannelOperationRequest.Status == ChannelOperationRequestStatus.Cancelled))
+                            || x.ChannelOperationRequest.Status == ChannelOperationRequestStatus.Cancelled
+                            || x.ChannelOperationRequest.Status == ChannelOperationRequestStatus.Rejected))
             .ToListAsync();
 
         if (unrealized.Count == 0)
@@ -184,15 +184,28 @@ public class ChannelOpenRecommendationRepository : IChannelOpenRecommendationRep
             return 0;
         }
 
+        var failed = 0;
         foreach (var recommendation in unrealized)
         {
-            recommendation.Status = ChannelOpenRecommendationStatus.Failed;
+            // Rejected is an operator turning the peer down, so it becomes a dismissal dated now: the
+            // cooldown then runs from the rejection, however long after the promotion it came.
+            if (recommendation.ChannelOperationRequest!.Status == ChannelOperationRequestStatus.Rejected)
+            {
+                recommendation.Status = ChannelOpenRecommendationStatus.Dismissed;
+                recommendation.DismissReason = "Channel open request rejected";
+            }
+            else
+            {
+                recommendation.Status = ChannelOpenRecommendationStatus.Failed;
+                failed++;
+            }
+
             recommendation.SetUpdateDatetime();
         }
 
         await context.SaveChangesAsync();
 
-        return unrealized.Count;
+        return failed;
     }
 
     public async Task<Dictionary<string, DateTimeOffset>> GetLastDecisionByPeer(int nodeId)

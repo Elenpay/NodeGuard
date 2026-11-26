@@ -50,6 +50,8 @@ public interface IChannelOpenRecommendationRepository
     /// Flips a <c>Promoted</c> row whose channel never opened to <c>Failed</c>. The promotion was a
     /// decision to fund the peer, not a verdict on it, so once it comes to nothing it must stop
     /// feeding <see cref="GetLastDecisionByPeer"/> — hence this runs ahead of it every cycle.
+    /// A rejected request is the exception: its row turns <c>Dismissed</c>, so the peer's cooldown
+    /// restarts at the rejection. Returns only the rows marked <c>Failed</c>.
     /// </summary>
     Task<int> FailUnrealizedPromotions(int nodeId);
 

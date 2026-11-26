@@ -311,8 +311,7 @@ public class ChannelOpenRecommendationRepositoryTests
     [InlineData(ChannelOperationRequestStatus.Pending)]
     [InlineData(ChannelOperationRequestStatus.OnChainConfirmationPending)]
     [InlineData(ChannelOperationRequestStatus.OnChainConfirmed)]
-    [InlineData(ChannelOperationRequestStatus.Rejected)]
-    public async Task FailUnrealizedPromotions_PromotedRowWhoseOpenIsLiveOrDecided_StaysPromoted(
+    public async Task FailUnrealizedPromotions_PromotedRowWhoseOpenIsLiveOrDone_StaysPromoted(
         ChannelOperationRequestStatus kept)
     {
         var (sut, seed) = SetupDb();
@@ -327,11 +326,40 @@ public class ChannelOpenRecommendationRepositoryTests
 
         var count = await sut.FailUnrealizedPromotions(NodeId);
 
-        // An open still on its way keeps its peer suppressed so the run cannot double the intent, and
-        // a rejection is an operator turning the peer down — a decision, like a dismissal.
+        // An open still on its way keeps its peer suppressed so the run cannot double the intent.
         count.Should().Be(0);
         var stored = await seed.ChannelOpenRecommendations.AsNoTracking().SingleAsync();
         stored.Status.Should().Be(ChannelOpenRecommendationStatus.Promoted);
+    }
+
+    [Fact]
+    public async Task FailUnrealizedPromotions_RequestRejectedLongAfterThePromotion_DismissesTheRowFromNow()
+    {
+        var (sut, seed) = SetupDb();
+        var now = DateTimeOffset.UtcNow;
+        seed.ChannelOperationRequests.Add(new ChannelOperationRequest
+        {
+            Id = 55,
+            RequestType = OperationRequestType.Open,
+            Status = ChannelOperationRequestStatus.Rejected
+        });
+        // Promoted two days ago, well past any cooldown counted from the promotion.
+        var promoted = Row(NodeId, Peer, ChannelOpenRecommendationStatus.Promoted, updatedAt: now.AddDays(-2));
+        promoted.ChannelOperationRequestId = 55;
+        seed.ChannelOpenRecommendations.Add(promoted);
+        await seed.SaveChangesAsync();
+
+        var count = await sut.FailUnrealizedPromotions(NodeId);
+
+        // Not a failure: a rejection is an operator turning the peer down, like a dismissal.
+        count.Should().Be(0);
+        var stored = await seed.ChannelOpenRecommendations.AsNoTracking().SingleAsync();
+        stored.Status.Should().Be(ChannelOpenRecommendationStatus.Dismissed);
+        stored.DismissReason.Should().Be("Channel open request rejected");
+
+        // The cooldown must run from the rejection, or the peer is proposed again on the next run.
+        var lastDecision = await sut.GetLastDecisionByPeer(NodeId);
+        lastDecision[Peer].Should().BeOnOrAfter(now);
     }
 
     [Fact]
